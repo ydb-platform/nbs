@@ -41,8 +41,7 @@ using TRequestContextPtr = TIntrusivePtr<TRequestContext>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TServerResponse
-    : public TAtomicRefCount<TServerResponse>
+struct TServerResponse: public TAtomicRefCount<TServerResponse>
 {
     const TRequestContextPtr RequestContext;
     const NProto::TError Error;
@@ -51,11 +50,11 @@ struct TServerResponse
     const TStorageBuffer DataBuffer;
 
     TServerResponse(
-            TRequestContextPtr requestContext,
-            NProto::TError error,
-            size_t requestBytes,
-            TBuffer headerBuffer,
-            TStorageBuffer dataBuffer = {})
+        TRequestContextPtr requestContext,
+        NProto::TError error,
+        size_t requestBytes,
+        TBuffer headerBuffer,
+        TStorageBuffer dataBuffer = {})
         : RequestContext(std::move(requestContext))
         , Error(std::move(error))
         , RequestBytes(requestBytes)
@@ -68,14 +67,18 @@ using TServerResponsePtr = TIntrusivePtr<TServerResponse>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IServerContext : TThrRefBase, ITaskQueue
+struct IServerContext
+    : TThrRefBase
+    , ITaskQueue
 {
     virtual bool AcquireRequest(size_t requestBytes) = 0;
 
     virtual const NProto::TReadBlocksLocalResponse& WaitFor(
-        const NThreading::TFuture<NProto::TReadBlocksLocalResponse>& future) = 0;
+        const NThreading::TFuture<NProto::TReadBlocksLocalResponse>&
+            future) = 0;
     virtual const NProto::TWriteBlocksLocalResponse& WaitFor(
-        const NThreading::TFuture<NProto::TWriteBlocksLocalResponse>& future) = 0;
+        const NThreading::TFuture<NProto::TWriteBlocksLocalResponse>&
+            future) = 0;
     virtual const NProto::TZeroBlocksResponse& WaitFor(
         const NThreading::TFuture<NProto::TZeroBlocksResponse>& future) = 0;
 
@@ -84,14 +87,11 @@ struct IServerContext : TThrRefBase, ITaskQueue
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IServerHandler
-    : public IIncompleteRequestProvider
+struct IServerHandler: public IIncompleteRequestProvider
 {
     virtual ~IServerHandler() = default;
 
-    virtual bool NegotiateClient(
-        IInputStream& in,
-        IOutputStream& out) = 0;
+    virtual bool NegotiateClient(IInputStream& in, IOutputStream& out) = 0;
 
     virtual void SendResponse(
         IOutputStream& out,

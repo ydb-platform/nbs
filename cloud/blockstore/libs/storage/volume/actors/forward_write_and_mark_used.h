@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
-
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -21,9 +20,9 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 /*
-  TWriteAndMarkUsedActor does the writing and saving of indexes of written blocks.
-  The saving of indexes can be parallel or consistent.
-  The request is completed only if writing and saving indexes are completed.
+  TWriteAndMarkUsedActor does the writing and saving of indexes of written
+  blocks. The saving of indexes can be parallel or consistent. The request is
+  completed only if writing and saving indexes are completed.
 */
 template <WriteRequest TMethod>
 class TWriteAndMarkUsedActor final
@@ -108,15 +107,15 @@ private:
 
 template <WriteRequest TMethod>
 TWriteAndMarkUsedActor<TMethod>::TWriteAndMarkUsedActor(
-        TRequestInfoPtr requestInfo,
-        typename TMethod::TRequest::ProtoRecordType request,
-        ui32 blockSize,
-        bool writeUsedBlockConsistently,
-        ui64 volumeRequestId,
-        TActorId partActorId,
-        ui64 volumeTabletId,
-        TActorId volumeActorId,
-        TChildLogTitle logTitle)
+    TRequestInfoPtr requestInfo,
+    typename TMethod::TRequest::ProtoRecordType request,
+    ui32 blockSize,
+    bool writeUsedBlockConsistently,
+    ui64 volumeRequestId,
+    TActorId partActorId,
+    ui64 volumeTabletId,
+    TActorId volumeActorId,
+    TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
     , BlockSize(blockSize)
@@ -160,8 +159,8 @@ void TWriteAndMarkUsedActor<TMethod>::WriteBlocks(const TActorContext& ctx)
         ctx.SelfID,
         request.release(),
         NActors::IEventHandle::FlagForwardOnNondelivery,
-        VolumeRequestId, // cookie
-        &ctx.SelfID      // forwardOnNondelivery
+        VolumeRequestId,   // cookie
+        &ctx.SelfID        // forwardOnNondelivery
     );
     ctx.Send(std::move(event));
     State.set(WriteRequestSent);
@@ -173,8 +172,8 @@ void TWriteAndMarkUsedActor<TMethod>::MarkUsedBlocks(const TActorContext& ctx)
     auto request = std::make_unique<TEvVolume::TEvUpdateUsedBlocksRequest>();
     request->CallContext = RequestInfo->CallContext;
     request->Record.AddStartIndices(GetStartIndex(Request));
-    request->Record.AddBlockCounts(CalculateWriteRequestBlockCount(
-        Request, BlockSize));
+    request->Record.AddBlockCounts(
+        CalculateWriteRequestBlockCount(Request, BlockSize));
     request->Record.SetUsed(true);
 
     auto event = std::make_unique<NActors::IEventHandle>(
@@ -182,8 +181,8 @@ void TWriteAndMarkUsedActor<TMethod>::MarkUsedBlocks(const TActorContext& ctx)
         ctx.SelfID,
         request.release(),
         NActors::IEventHandle::FlagForwardOnNondelivery,
-        VolumeRequestId, // cookie
-        &ctx.SelfID      // forwardOnNondelivery
+        VolumeRequestId,   // cookie
+        &ctx.SelfID        // forwardOnNondelivery
     );
     ctx.Send(std::move(event));
     State.set(UsedBlockRequestSent);
@@ -231,8 +230,10 @@ void TWriteAndMarkUsedActor<TMethod>::HandleUndelivery(
         LogTitle.GetWithTime().c_str(),
         TMethod::Name);
 
-    Record.MutableError()->CopyFrom(MakeError(E_REJECTED, TStringBuilder()
-        << TMethod::Name << " request undelivered to partition"));
+    Record.MutableError()->CopyFrom(MakeError(
+        E_REJECTED,
+        TStringBuilder() << TMethod::Name
+                         << " request undelivered to partition"));
 
     State.set(WriteResponseReceived);
     Done(ctx);
@@ -302,8 +303,10 @@ void TWriteAndMarkUsedActor<TMethod>::HandleUpdateUsedBlocksUndelivery(
 {
     Y_DEBUG_ABORT_UNLESS(ev->Cookie == VolumeRequestId);
 
-    Record.MutableError()->CopyFrom(MakeError(E_REJECTED, TStringBuilder()
-        << TMethod::Name << " used blocks update undelivered"));
+    Record.MutableError()->CopyFrom(MakeError(
+        E_REJECTED,
+        TStringBuilder() << TMethod::Name
+                         << " used blocks update undelivered"));
 
     LOG_ERROR(
         ctx,

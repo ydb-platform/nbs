@@ -9,21 +9,19 @@
 
 #include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
-#include <util/generic/hash.h>
 #include <util/generic/deque.h>
+#include <util/generic/hash.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSSProxyActor final
-    : public NActors::TActorBootstrapped<TSSProxyActor>
+class TSSProxyActor final: public NActors::TActorBootstrapped<TSSProxyActor>
 {
     struct TSchemeShardState
     {
@@ -66,11 +64,13 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleTxRegistered(
-        const NKikimr::NSchemeShard::TEvSchemeShard::TEvNotifyTxCompletionRegistered::TPtr& ev,
+        const NKikimr::NSchemeShard::TEvSchemeShard::
+            TEvNotifyTxCompletionRegistered::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleTxResult(
-        const NKikimr::NSchemeShard::TEvSchemeShard::TEvNotifyTxCompletionResult::TPtr& ev,
+        const NKikimr::NSchemeShard::TEvSchemeShard::
+            TEvNotifyTxCompletionResult::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
@@ -85,7 +85,8 @@ NProto::TError TranslateTxProxyError(NProto::TError error);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::unique_ptr<TEvSSProxy::TEvModifySchemeRequest> CreateModifySchemeRequestForAlterVolume(
+std::unique_ptr<TEvSSProxy::TEvModifySchemeRequest>
+CreateModifySchemeRequestForAlterVolume(
     TString path,
     ui64 pathId,
     ui64 version,

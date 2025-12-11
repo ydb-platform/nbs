@@ -57,16 +57,14 @@ struct TOptions
         opts.AddLongOption("since", "filter out reuqests before date")
             .Optional()
             .RequiredArgument("DATE")
-            .Handler1T<TString>([&] (const TString& val) {
-                    Since = TInstant::ParseIso8601(val);
-                });
+            .Handler1T<TString>([&](const TString& val)
+                                { Since = TInstant::ParseIso8601(val); });
 
         opts.AddLongOption("till", "filter out reuqests after date")
             .Optional()
             .RequiredArgument("DATE")
-            .Handler1T<TString>([&] (const TString& val) {
-                    Till = TInstant::ParseIso8601(val);
-                });
+            .Handler1T<TString>([&](const TString& val)
+                                { Till = TInstant::ParseIso8601(val); });
 
         opts.AddLongOption("no-internal", "ignore internal requests")
             .NoArgument()
@@ -76,10 +74,9 @@ struct TOptions
         TOptsParseResultException(&opts, argc, argv);
 
         if (Since && Till && Since > Till) {
-            ythrow yexception() << "invalid date filter: "
-                << Since.ToString() << " > " << Till.ToString();
+            ythrow yexception() << "invalid date filter: " << Since.ToString()
+                                << " > " << Till.ToString();
         }
-
 
         EvlogDumperArgv.push_back("fake");
 
@@ -99,8 +96,8 @@ struct TOptions
 
 struct IBlockInfoConsumer
 {
-    virtual ~IBlockInfoConsumer() {
-    }
+    virtual ~IBlockInfoConsumer()
+    {}
 
     virtual void UpdateBlock(ui64 commitId, ui64 blockIndex, ui32 checksum) = 0;
     virtual void RegisterAccess(
@@ -122,18 +119,17 @@ struct TRequest
     TDuration Duration;
 
     TRequest(
-            TInstant ts,
-            EBlockStoreRequest type,
-            ui32 blockIndex,
-            ui32 blockCount,
-            TDuration duration)
+        TInstant ts,
+        EBlockStoreRequest type,
+        ui32 blockIndex,
+        ui32 blockCount,
+        TDuration duration)
         : Ts(ts)
         , Type(type)
         , BlockIndex(blockIndex)
         , BlockCount(blockCount)
         , Duration(duration)
-    {
-    }
+    {}
 
     bool operator<(const TRequest& r) const
     {
@@ -143,17 +139,14 @@ struct TRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr auto WriteRequestType = static_cast<ui32>(
-    EBlockStoreRequest::WriteBlocks
-);
-constexpr auto ZeroRequestType = static_cast<ui32>(
-    EBlockStoreRequest::ZeroBlocks
-);
+constexpr auto WriteRequestType =
+    static_cast<ui32>(EBlockStoreRequest::WriteBlocks);
+constexpr auto ZeroRequestType =
+    static_cast<ui32>(EBlockStoreRequest::ZeroBlocks);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEventProcessor final
-    : public TProtobufEventProcessor
+class TEventProcessor final: public TProtobufEventProcessor
 {
 private:
     const TOptions& Options;
@@ -163,14 +156,13 @@ private:
 
 public:
     TEventProcessor(
-            const TOptions& options,
-            TVector<TRequest>* requests,
-            IBlockInfoConsumer* blockInfoConsumer)
+        const TOptions& options,
+        TVector<TRequest>* requests,
+        IBlockInfoConsumer* blockInfoConsumer)
         : Options(options)
         , Requests(requests)
         , BlockInfoConsumer(blockInfoConsumer)
-    {
-    }
+    {}
 
 protected:
     void DoProcessEvent(const TEvent* ev, IOutputStream* out) override
@@ -183,7 +175,8 @@ protected:
             auto order = GetItemOrder(*message);
 
             for (const auto& id: order) {
-                const auto ts = [&]()-> TMaybe<ui64> {
+                const auto ts = [&]() -> TMaybe<ui64>
+                {
                     switch (id.Type) {
                         case EItemType::Request: {
                             return ProcessRequest(*message, id.Index);
@@ -216,10 +209,9 @@ private:
             for (const auto& range: r.GetRanges()) {
                 for (ui64 i = 0; i < range.GetBlockCount(); ++i) {
                     BlockInfoConsumer->UpdateBlock(
-                        0,  // TODO: log CommitId for request records
+                        0,   // TODO: log CommitId for request records
                         range.GetBlockIndex() + i,
-                        ZERO_BLOCK_CHECKSUM
-                    );
+                        ZERO_BLOCK_CHECKSUM);
                 }
             }
         }
@@ -237,10 +229,10 @@ private:
                 BlockInfoConsumer->UpdateBlock(
                     bl.GetCommitId(),
                     bi.GetBlockIndex(),
-                    bi.GetChecksum()
-                );
+                    bi.GetChecksum());
             }
-        } else if (!Options.NoInternalRequests || bl.GetRequestType() < maxReq) {
+        } else if (!Options.NoInternalRequests || bl.GetRequestType() < maxReq)
+        {
             Y_ABORT_UNLESS(bl.GetRequestType() != ZeroRequestType);
 
             // deduplication needed - nbs can log different versions for the
@@ -258,8 +250,7 @@ private:
                     bl.GetCommitId(),
                     blockIndex,
                     checksum,
-                    bl.GetRequestType()
-                );
+                    bl.GetRequestType());
             }
         }
 
@@ -269,7 +260,9 @@ private:
     void OnRequest(const NProto::TProfileLogRequestInfo& r)
     {
         auto start = TInstant::MicroSeconds(r.GetTimestampMcs());
-        if (Options.Since && start < Options.Since || Options.Till && start > Options.Till) {
+        if (Options.Since && start < Options.Since ||
+            Options.Till && start > Options.Till)
+        {
             return;
         }
 
@@ -284,7 +277,8 @@ private:
             }
         }
 
-        auto duration = TDuration::MicroSeconds(Max<ui64>(r.GetDurationMcs(), 1llu));
+        auto duration =
+            TDuration::MicroSeconds(Max<ui64>(r.GetDurationMcs(), 1llu));
         auto end = start + duration;
 
         auto type = static_cast<EBlockStoreRequest>(r.GetRequestType());
@@ -302,21 +296,9 @@ private:
             count = r.GetRanges(0).GetBlockCount();
         }
 
-        Requests->emplace_back(
-            start,
-            type,
-            startIndex,
-            count,
-            duration
-        );
+        Requests->emplace_back(start, type, startIndex, count, duration);
 
-        Requests->emplace_back(
-            end,
-            type,
-            startIndex,
-            count,
-            TDuration::Zero()
-        );
+        Requests->emplace_back(end, type, startIndex, count, TDuration::Zero());
     }
 };
 
@@ -338,8 +320,7 @@ struct TIOStat
         : Label(std::move(label))
         , TimeAtDepth(1)
         , Histogram(1, 10000000, 5)
-    {
-    }
+    {}
 
     void OnRequest(TInstant ts, TDuration duration)
     {
@@ -371,12 +352,11 @@ struct TIOStat
         double timeShare = 0;
         for (ui32 depth = 1; depth < TimeAtDepth.size(); ++depth) {
             if (TimeAtDepth[depth]) {
-                timeShare += double(TimeAtDepth[depth].GetValue())
-                    / (TotalTime - TimeAtDepth[0]).GetValue();
+                timeShare += double(TimeAtDepth[depth].GetValue()) /
+                             (TotalTime - TimeAtDepth[0]).GetValue();
                 Cout << Label << " at depth " << depth
-                    << "\ttime abs: " << TimeAtDepth[depth]
-                    << "\tcumulative time share: " << timeShare
-                    << Endl;
+                     << "\ttime abs: " << TimeAtDepth[depth]
+                     << "\tcumulative time share: " << timeShare << Endl;
             }
         }
 
@@ -384,12 +364,11 @@ struct TIOStat
         Histogram.TakeSnaphot(&snapshot);
 
         Cout << Label << " latency stats(us):\n"
-            << "\tp50: " << snapshot.Percentile50 << Endl
-            << "\tp90: " << snapshot.Percentile90 << Endl
-            << "\tp99: " << snapshot.Percentile99 << Endl
-            << "\tp999: " << snapshot.Percentile999 << Endl
-            << "\ttotal req: " << snapshot.TotalCount << Endl
-            ;
+             << "\tp50: " << snapshot.Percentile50 << Endl
+             << "\tp90: " << snapshot.Percentile90 << Endl
+             << "\tp99: " << snapshot.Percentile99 << Endl
+             << "\tp999: " << snapshot.Percentile999 << Endl
+             << "\ttotal req: " << snapshot.TotalCount << Endl;
     }
 };
 
@@ -450,7 +429,8 @@ struct TBlockChecksumValidator: IBlockInfoConsumer
             ui64 CommitId = 0;
             ui32 Value = 0;
 
-            bool operator<(const TChecksum& other) const {
+            bool operator<(const TChecksum& other) const
+            {
                 return CommitId < other.CommitId;
             }
         };
@@ -470,7 +450,8 @@ struct TBlockChecksumValidator: IBlockInfoConsumer
 
         ui64 GetLatestCommitId()
         {
-            return Checksums.back().has_value() ? Checksums.back()->CommitId : 0;
+            return Checksums.back().has_value() ? Checksums.back()->CommitId
+                                                : 0;
         }
 
         void AddChecksum(const TChecksum& checksum)
@@ -512,12 +493,10 @@ struct TBlockChecksumValidator: IBlockInfoConsumer
         if (it != Blocks.end()) {
             auto oldChecksum = it->second.FindPreviousChecksum(commitId);
             if (oldChecksum && checksum != oldChecksum) {
-                Cout << "corruption at " << ts
-                    << ", block " << blockIndex
-                    << ", request=" << RequestName(requestType)
-                    << ", old checksum=" << oldChecksum
-                    << ", new checksum=" << checksum
-                    << Endl;
+                Cout << "corruption at " << ts << ", block " << blockIndex
+                     << ", request=" << RequestName(requestType)
+                     << ", old checksum=" << oldChecksum
+                     << ", new checksum=" << checksum << Endl;
             }
         }
 
@@ -543,8 +522,7 @@ int main(int argc, const char** argv)
         NEvClass::Factory(),
         &processor,
         options.EvlogDumperArgv.size(),
-        options.EvlogDumperArgv.begin()
-    );
+        options.EvlogDumperArgv.begin());
 
     Sort(requests);
 
@@ -577,8 +555,7 @@ int main(int argc, const char** argv)
         intersectionStat.OnRequest(
             (bool)request.Duration,
             request.BlockIndex,
-            request.BlockCount
-        );
+            request.BlockCount);
     }
 
     readStat.Print();

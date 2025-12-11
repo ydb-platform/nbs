@@ -3,10 +3,10 @@
 #include "adaptive_wait.h"
 #include "buffer.h"
 #include "event.h"
+#include "list.h"
+#include "log.h"
 #include "poll.h"
 #include "rcu.h"
-#include "log.h"
-#include "list.h"
 #include "utils.h"
 #include "verbs.h"
 #include "work_queue.h"
@@ -14,7 +14,6 @@
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
-
 #include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
@@ -93,9 +92,9 @@ struct TRequest
     TPooledBuffer OutBuffer{};
 
     TRequest(
-            std::weak_ptr<TClientEndpoint> endpoint,
-            IClientHandlerPtr handler,
-            std::unique_ptr<TNullContext> context)
+        std::weak_ptr<TClientEndpoint> endpoint,
+        IClientHandlerPtr handler,
+        std::unique_ptr<TNullContext> context)
         : TClientRequest(std::move(handler), std::move(context))
         , StartedCycles(GetCycleCount())
         , Endpoint(std::move(endpoint))
@@ -453,8 +452,8 @@ private:
     TBufferPool RecvBuffers;
     TMutex AllocationLock;
 
-    TPooledBuffer SendBuffer {};
-    TPooledBuffer RecvBuffer {};
+    TPooledBuffer SendBuffer{};
+    TPooledBuffer RecvBuffer{};
 
     TVector<TSendWr> SendWrs;
     TVector<TRecvWr> RecvWrs;
@@ -464,7 +463,8 @@ private:
 
     union {
         const ui64 Id = RandomNumber(Max<ui64>());
-        struct {
+        struct
+        {
             const ui32 RecvMagic;
             const ui32 SendMagic;
         };
@@ -562,13 +562,13 @@ TRequest::~TRequest()
 ////////////////////////////////////////////////////////////////////////////////
 
 TClientEndpoint::TClientEndpoint(
-        NVerbs::IVerbsPtr verbs,
-        NVerbs::TConnectionPtr connection,
-        TString host,
-        ui32 port,
-        TClientConfigPtr config,
-        TEndpointCountersPtr stats,
-        TLog log)
+    NVerbs::IVerbsPtr verbs,
+    NVerbs::TConnectionPtr connection,
+    TString host,
+    ui32 port,
+    TClientConfigPtr config,
+    TEndpointCountersPtr stats,
+    TLog log)
     : Verbs(std::move(verbs))
     , Connection(std::move(connection))
     , Host(std::move(host))
@@ -583,14 +583,16 @@ TClientEndpoint::TClientEndpoint(
     // user data attached to connection events
     Connection->context = this;
 
-    Log.SetFormatter([=, this](ELogPriority p, TStringBuf msg) {
-        Y_UNUSED(p);
-        return TStringBuilder() << "[" << Id << "] " << msg;
-    });
+    Log.SetFormatter(
+        [=, this](ELogPriority p, TStringBuf msg)
+        {
+            Y_UNUSED(p);
+            return TStringBuilder() << "[" << Id << "] " << msg;
+        });
 
-    RDMA_INFO("start endpoint " << Host
-        << " [send_magic=" << Hex(SendMagic, HF_FULL)
-        << " recv_magic=" << Hex(RecvMagic, HF_FULL) << "]");
+    RDMA_INFO(
+        "start endpoint " << Host << " [send_magic=" << Hex(SendMagic, HF_FULL)
+                          << " recv_magic=" << Hex(RecvMagic, HF_FULL) << "]");
 }
 
 TClientEndpoint::~TClientEndpoint()
@@ -614,13 +616,15 @@ void TClientEndpoint::ChangeState(
 {
     auto actualState = State.exchange(newState);
 
-    Y_ABORT_UNLESS(actualState == expectedState,
+    Y_ABORT_UNLESS(
+        actualState == expectedState,
         "invalid state transition (new: %s, expected: %s, actual: %s)",
         GetEndpointStateName(newState),
         GetEndpointStateName(expectedState),
         GetEndpointStateName(actualState));
 
-    RDMA_DEBUG(GetEndpointStateName(expectedState)
+    RDMA_DEBUG(
+        GetEndpointStateName(expectedState)
         << " -> " << GetEndpointStateName(newState));
 }
 
@@ -628,7 +632,8 @@ void TClientEndpoint::ChangeState(EEndpointState newState) noexcept
 {
     auto currentState = State.exchange(newState);
 
-    RDMA_DEBUG(GetEndpointStateName(currentState)
+    RDMA_DEBUG(
+        GetEndpointStateName(currentState)
         << " -> " << GetEndpointStateName(newState));
 }
 
@@ -644,22 +649,23 @@ void TClientEndpoint::CreateQP()
 
     CompletionQueue = Verbs->CreateCompletionQueue(
         Connection->verbs,
-        2 * Config.QueueSize,     // send + recv
+        2 * Config.QueueSize,   // send + recv
         this,
         CompletionChannel.get(),
-        0);                       // comp_vector
+        0);   // comp_vector
 
     ibv_qp_init_attr qp_attrs = {
         .qp_context = nullptr,
         .send_cq = CompletionQueue.get(),
         .recv_cq = CompletionQueue.get(),
-        .cap = {
-            .max_send_wr = Config.QueueSize,
-            .max_recv_wr = Config.QueueSize,
-            .max_send_sge = RDMA_MAX_SEND_SGE,
-            .max_recv_sge = RDMA_MAX_RECV_SGE,
-            .max_inline_data = 16,
-        },
+        .cap =
+            {
+                .max_send_wr = Config.QueueSize,
+                .max_recv_wr = Config.QueueSize,
+                .max_send_sge = RDMA_MAX_SEND_SGE,
+                .max_recv_sge = RDMA_MAX_RECV_SGE,
+                .max_inline_data = 16,
+            },
         .qp_type = IBV_QPT_RC,
         .sq_sig_all = 1,
     };
@@ -677,10 +683,12 @@ void TClientEndpoint::CreateQP()
         IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
 
     SendBuffer = SendBuffers.AcquireBuffer(
-        Config.QueueSize * sizeof(TRequestMessage), true);
+        Config.QueueSize * sizeof(TRequestMessage),
+        true);
 
     RecvBuffer = RecvBuffers.AcquireBuffer(
-        Config.QueueSize * sizeof(TResponseMessage), true);
+        Config.QueueSize * sizeof(TResponseMessage),
+        true);
 
     SendWrs.resize(Config.QueueSize);
     RecvWrs.resize(Config.QueueSize);
@@ -761,15 +769,17 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
     }
 
     if (requestBytes > Config.MaxBufferSize) {
-        return MakeError(E_FAIL, TStringBuilder()
-            << "request exceeds maximum supported size " << requestBytes
-            << " > " << Config.MaxBufferSize);
+        return MakeError(
+            E_FAIL,
+            TStringBuilder() << "request exceeds maximum supported size "
+                             << requestBytes << " > " << Config.MaxBufferSize);
     }
 
     if (responseBytes > Config.MaxBufferSize) {
-        return MakeError(E_FAIL, TStringBuilder()
-            << "response exceeds maximum supported size " << responseBytes
-            << " > " << Config.MaxBufferSize);
+        return MakeError(
+            E_FAIL,
+            TStringBuilder() << "response exceeds maximum supported size "
+                             << responseBytes << " > " << Config.MaxBufferSize);
     }
 
     auto req = std::make_unique<TRequest>(
@@ -786,11 +796,11 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
         }
     }
 
-    req->RequestBuffer = TStringBuf {
+    req->RequestBuffer = TStringBuf{
         reinterpret_cast<char*>(req->InBuffer.Address),
         req->InBuffer.Length,
     };
-    req->ResponseBuffer = TStringBuf {
+    req->ResponseBuffer = TStringBuf{
         reinterpret_cast<char*>(req->OutBuffer.Address),
         req->OutBuffer.Length,
     };
@@ -969,13 +979,11 @@ bool TClientEndpoint::AbortRequests() noexcept
 
 void TClientEndpoint::AbortRequest(
     TRequestPtr req,
-    ui32 err, const
-    TString& msg) noexcept
+    ui32 err,
+    const TString& msg) noexcept
 {
-    auto len = SerializeError(
-        err,
-        msg,
-        static_cast<TStringBuf>(req->OutBuffer));
+    auto len =
+        SerializeError(err, msg, static_cast<TStringBuf>(req->OutBuffer));
 
     auto* handler = req->Handler.get();
     handler->HandleResponse(std::move(req), RDMA_PROTO_FAIL, len);
@@ -1232,10 +1240,7 @@ void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv)
         req->CallContext->RequestId);
 
     auto* handler = req->Handler.get();
-    handler->HandleResponse(
-        std::move(req),
-        status,
-        responseBytes);
+    handler->HandleResponse(std::move(req), status, responseBytes);
 }
 
 TFuture<void> TClientEndpoint::Stop() noexcept
@@ -1312,14 +1317,15 @@ void TClientEndpoint::Disconnect() noexcept
 
 bool TClientEndpoint::Flushed() const
 {
-    return SendQueue.Size() == Config.QueueSize
-        && RecvQueue.Size() == Config.QueueSize;
+    return SendQueue.Size() == Config.QueueSize &&
+           RecvQueue.Size() == Config.QueueSize;
 }
 
 bool TClientEndpoint::FlushHanging() const
 {
-    return FlushStartCycles && CyclesToDurationSafe(GetCycleCount() -
-        FlushStartCycles) >= FLUSH_TIMEOUT;
+    return FlushStartCycles &&
+           CyclesToDurationSafe(GetCycleCount() - FlushStartCycles) >=
+               FLUSH_TIMEOUT;
 }
 
 void TClientEndpoint::FreeRequest(TRequest* req) noexcept
@@ -1372,9 +1378,9 @@ private:
 
 public:
     TConnectionPoller(
-            NVerbs::IVerbsPtr verbs,
-            IConnectionEventHandler* eventHandler,
-            TLog log)
+        NVerbs::IVerbsPtr verbs,
+        IConnectionEventHandler* eventHandler,
+        TLog log)
         : Verbs(std::move(verbs))
         , EventHandler(eventHandler)
         , Log(log)
@@ -1406,7 +1412,7 @@ public:
     {
         return Verbs->CreateConnection(
             EventChannel.get(),
-            nullptr,    // context
+            nullptr,   // context
             RDMA_PS_TCP,
             tos);
     }
@@ -1465,7 +1471,7 @@ private:
         try {
             return Verbs->GetConnectionEvent(EventChannel.get());
 
-        } catch (const TServiceError &e) {
+        } catch (const TServiceError& e) {
             RDMA_ERROR(e.what());
             return NVerbs::NullPtr;
         }
@@ -1508,9 +1514,9 @@ private:
 
 public:
     TCompletionPoller(
-            NVerbs::IVerbsPtr verbs,
-            TClientConfigPtr config,
-            TLog log)
+        NVerbs::IVerbsPtr verbs,
+        TClientConfigPtr config,
+        TLog log)
         : Verbs(std::move(verbs))
         , Config(std::move(config))
         , Log(log)
@@ -1545,9 +1551,7 @@ public:
     void Release(TClientEndpoint* endpoint)
     {
         endpoint->Poller = nullptr;
-        Endpoints.Delete([=](auto x) {
-            return endpoint == x.get();
-        });
+        Endpoints.Delete([=](auto x) { return endpoint == x.get(); });
     }
 
     void Attach(TClientEndpoint* endpoint)
@@ -1721,9 +1725,12 @@ private:
                 if (!endpoint->FlushHanging()) {
                     continue;
                 }
-                RDMA_ERROR(endpoint->Log, "flush timeout "
-                    << "[send_queue.size=" << endpoint->SendQueue.Size()
-                    << " recv_queue.size=" << endpoint->RecvQueue.Size() << "]");
+                RDMA_ERROR(
+                    endpoint->Log,
+                    "flush timeout "
+                        << "[send_queue.size=" << endpoint->SendQueue.Size()
+                        << " recv_queue.size=" << endpoint->RecvQueue.Size()
+                        << "]");
             }
 
             endpoint->ChangeState(
@@ -1822,10 +1829,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TClient::TClient(
-        NVerbs::IVerbsPtr verbs,
-        ILoggingServicePtr logging,
-        IMonitoringServicePtr monitoring,
-        TClientConfigPtr config)
+    NVerbs::IVerbsPtr verbs,
+    ILoggingServicePtr logging,
+    IMonitoringServicePtr monitoring,
+    TClientConfigPtr config)
     : Verbs(std::move(verbs))
     , Logging(std::move(logging))
     , Monitoring(std::move(monitoring))
@@ -1849,18 +1856,17 @@ void TClient::Start() noexcept
 
     CompletionPollers.resize(Config->PollerThreads);
     for (size_t i = 0; i < CompletionPollers.size(); ++i) {
-        CompletionPollers[i] = std::make_unique<TCompletionPoller>(
-            Verbs,
-            Config,
-            Log);
+        CompletionPollers[i] =
+            std::make_unique<TCompletionPoller>(Verbs, Config, Log);
         CompletionPollers[i]->Start();
     }
 
     try {
-        ConnectionPoller = std::make_unique<TConnectionPoller>(Verbs, this, Log);
+        ConnectionPoller =
+            std::make_unique<TConnectionPoller>(Verbs, this, Log);
         ConnectionPoller->Start();
 
-    } catch (const TServiceError &e) {
+    } catch (const TServiceError& e) {
         RDMA_ERROR("unable to start client: " << e.what());
         Stop();
     }
@@ -1886,10 +1892,10 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
     TString host,
     ui32 port) noexcept
 {
-    auto unavailable = [&](TString message) {
-        return MakeErrorFuture<IClientEndpointPtr>(
-            std::make_exception_ptr(TServiceError(
-                MakeError(E_RDMA_UNAVAILABLE, std::move(message)))));
+    auto unavailable = [&](TString message)
+    {
+        return MakeErrorFuture<IClientEndpointPtr>(std::make_exception_ptr(
+            TServiceError(MakeError(E_RDMA_UNAVAILABLE, std::move(message)))));
     };
 
     if (ConnectionPoller == nullptr) {
@@ -1925,7 +1931,9 @@ void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event) noexcept
 {
     TClientEndpoint* endpoint = TClientEndpoint::FromEvent(event.get());
 
-    RDMA_DEBUG(endpoint->Log, "received " << NVerbs::GetEventName(event->event));
+    RDMA_DEBUG(
+        endpoint->Log,
+        "received " << NVerbs::GetEventName(event->event));
 
     switch (event->event) {
         case RDMA_CM_EVENT_CONNECT_REQUEST:
@@ -2022,8 +2030,10 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
         RDMA_WARN(endpoint->Log, "connection is hanging");
     }
 
-    RDMA_DEBUG(endpoint->Log, "reconnect timer hit in "
-        << GetEndpointStateName(endpoint->State) << " state");
+    RDMA_DEBUG(
+        endpoint->Log,
+        "reconnect timer hit in " << GetEndpointStateName(endpoint->State)
+                                  << " state");
 
     switch (endpoint->State) {
         // wait for completion poller to flush WRs
@@ -2068,8 +2078,10 @@ void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
             if (interface.Name == Config->SourceInterface &&
                 GetScopeId(addr.Addr()) == 0)
             {
-                RDMA_INFO(endpoint->Log, "bind to " << interface.Name
-                    << " address " << NAddr::PrintHost(addr));
+                RDMA_INFO(
+                    endpoint->Log,
+                    "bind to " << interface.Name << " address "
+                               << NAddr::PrintHost(addr));
 
                 hints.ai_src_addr = addr.MutableAddr();
                 hints.ai_src_len = addr.Len();
@@ -2081,13 +2093,16 @@ void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
             EEndpointState::Disconnected,
             EEndpointState::ResolvingAddress);
 
-        auto addrinfo = Verbs->GetAddressInfo(
-            endpoint->Host, endpoint->Port, &hints);
+        auto addrinfo =
+            Verbs->GetAddressInfo(endpoint->Host, endpoint->Port, &hints);
 
         RDMA_DEBUG(endpoint->Log, "resolve server address");
 
-        Verbs->ResolveAddress(endpoint->Connection.get(), addrinfo->ai_src_addr,
-            addrinfo->ai_dst_addr, RESOLVE_TIMEOUT);
+        Verbs->ResolveAddress(
+            endpoint->Connection.get(),
+            addrinfo->ai_src_addr,
+            addrinfo->ai_dst_addr,
+            RESOLVE_TIMEOUT);
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(endpoint->Log, e.what());
@@ -2141,8 +2156,9 @@ void TClient::BeginConnect(TClientEndpoint* endpoint) noexcept
             .rnr_retry_count = 7,
         };
 
-        RDMA_INFO(endpoint->Log, "connect "
-            << NVerbs::PrintConnectionParams(&param));
+        RDMA_INFO(
+            endpoint->Log,
+            "connect " << NVerbs::PrintConnectionParams(&param));
 
         Verbs->Connect(endpoint->Connection.get(), &param);
 
@@ -2158,8 +2174,9 @@ void TClient::HandleConnected(
 {
     const rdma_conn_param* param = &event->param.conn;
 
-    RDMA_DEBUG(endpoint->Log, "validate "
-        << NVerbs::PrintConnectionParams(param));
+    RDMA_DEBUG(
+        endpoint->Log,
+        "validate " << NVerbs::PrintConnectionParams(param));
 
     if (param->private_data == nullptr ||
         param->private_data_len < sizeof(TAcceptMessage) ||
@@ -2206,20 +2223,23 @@ void TClient::HandleRejected(
         return;
     }
 
-    const auto* msg = static_cast<const TRejectMessage*>(
-        param->private_data);
+    const auto* msg = static_cast<const TRejectMessage*>(param->private_data);
 
     if (msg->Status == RDMA_PROTO_CONFIG_MISMATCH) {
         if (endpoint->Config.QueueSize > msg->QueueSize) {
-            RDMA_INFO(endpoint->Log, "set QueueSize=" << msg->QueueSize
-                << " supported by " << endpoint->Host);
+            RDMA_INFO(
+                endpoint->Log,
+                "set QueueSize=" << msg->QueueSize << " supported by "
+                                 << endpoint->Host);
 
             endpoint->Config.QueueSize = msg->QueueSize;
         }
 
         if (endpoint->Config.MaxBufferSize > msg->MaxBufferSize) {
-            RDMA_INFO(endpoint->Log, "set MaxBufferSize=" << msg->MaxBufferSize
-                << " supported by " << endpoint->Host);
+            RDMA_INFO(
+                endpoint->Log,
+                "set MaxBufferSize=" << msg->MaxBufferSize << " supported by "
+                                     << endpoint->Host);
 
             endpoint->Config.MaxBufferSize = msg->MaxBufferSize;
         }
@@ -2244,43 +2264,88 @@ TCompletionPoller& TClient::PickPoller() noexcept
 
 void TClient::DumpHtml(IOutputStream& out) const
 {
-    HTML(out) {
-        TAG(TH4) { out << "Config"; }
+    HTML (out) {
+        TAG (TH4) {
+            out << "Config";
+        }
         Config->DumpHtml(out);
 
-        TAG(TH4) { out << "Counters"; }
-        TABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "QueuedRequests"; }
-                    TABLEH() { out << "ActiveRequests"; }
-                    TABLEH() { out << "AbortedRequests"; }
-                    TABLEH() { out << "CompletedRequests"; }
-                    TABLEH() { out << "ActiveSend"; }
-                    TABLEH() { out << "ActiveRecv"; }
-                    TABLEH() { out << "Errors"; }
+        TAG (TH4) {
+            out << "Counters";
+        }
+        TABLE_CLASS ("table table-bordered") {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "QueuedRequests";
+                    }
+                    TABLEH () {
+                        out << "ActiveRequests";
+                    }
+                    TABLEH () {
+                        out << "AbortedRequests";
+                    }
+                    TABLEH () {
+                        out << "CompletedRequests";
+                    }
+                    TABLEH () {
+                        out << "ActiveSend";
+                    }
+                    TABLEH () {
+                        out << "ActiveRecv";
+                    }
+                    TABLEH () {
+                        out << "Errors";
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << Counters->QueuedRequests->Val(); }
-                    TABLED() { out << Counters->ActiveRequests->Val(); }
-                    TABLED() { out << Counters->AbortedRequests->Val(); }
-                    TABLED() { out << Counters->CompletedRequests->Val(); }
-                    TABLED() { out << Counters->ActiveSend->Val(); }
-                    TABLED() { out << Counters->ActiveRecv->Val(); }
-                    TABLED() { out << Counters->Errors->Val(); }
+                TABLER () {
+                    TABLED () {
+                        out << Counters->QueuedRequests->Val();
+                    }
+                    TABLED () {
+                        out << Counters->ActiveRequests->Val();
+                    }
+                    TABLED () {
+                        out << Counters->AbortedRequests->Val();
+                    }
+                    TABLED () {
+                        out << Counters->CompletedRequests->Val();
+                    }
+                    TABLED () {
+                        out << Counters->ActiveSend->Val();
+                    }
+                    TABLED () {
+                        out << Counters->ActiveRecv->Val();
+                    }
+                    TABLED () {
+                        out << Counters->Errors->Val();
+                    }
                 }
             }
         }
 
-        TAG(TH4) { out << "Endpoints"; }
-        TABLE_SORTABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Poller"; }
-                    TABLEH() { out << "Id"; }
-                    TABLEH() { out << "Host"; }
-                    TABLEH() { out << "Port"; }
-                    TABLEH() { out << "Magic"; }
+        TAG (TH4) {
+            out << "Endpoints";
+        }
+        TABLE_SORTABLE_CLASS("table table-bordered")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Poller";
+                    }
+                    TABLEH () {
+                        out << "Id";
+                    }
+                    TABLEH () {
+                        out << "Host";
+                    }
+                    TABLEH () {
+                        out << "Port";
+                    }
+                    TABLEH () {
+                        out << "Magic";
+                    }
                 }
             }
 
@@ -2289,13 +2354,20 @@ void TClient::DumpHtml(IOutputStream& out) const
                 auto endpoints = poller->GetEndpoints();
 
                 for (auto& ep: *endpoints) {
-                    TABLER() {
-                        TABLED() { out << i; }
-                        TABLED() { out << ep->Id; }
-                        TABLED() { out << ep->Host; }
-                        TABLED() { out << ep->Port; }
-                        TABLED()
-                        {
+                    TABLER () {
+                        TABLED () {
+                            out << i;
+                        }
+                        TABLED () {
+                            out << ep->Id;
+                        }
+                        TABLED () {
+                            out << ep->Host;
+                        }
+                        TABLED () {
+                            out << ep->Port;
+                        }
+                        TABLED () {
                             Printf(
                                 out,
                                 "%08X:%08X:%d",

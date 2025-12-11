@@ -21,35 +21,35 @@ void RunPredictorJobs(
 {
     const auto p = delayWindow.Seconds();
     workers.push_back(SystemThreadFactory()->Run(
-       [predictor, timer, start = 1, end = p / 3] () {
-           for (size_t i = start; i <= end; ++i) {
-               predictor->Register(TDuration::MilliSeconds(i));
-               timer->AdvanceTime(TDuration::MilliSeconds(350));
-               Y_UNUSED(predictor->GetPossiblePostponeDuration());
-               timer->AdvanceTime(TDuration::MilliSeconds(600));
-           }
-       }
-    ));
+        [predictor, timer, start = 1, end = p / 3]()
+        {
+            for (size_t i = start; i <= end; ++i) {
+                predictor->Register(TDuration::MilliSeconds(i));
+                timer->AdvanceTime(TDuration::MilliSeconds(350));
+                Y_UNUSED(predictor->GetPossiblePostponeDuration());
+                timer->AdvanceTime(TDuration::MilliSeconds(600));
+            }
+        }));
     workers.push_back(SystemThreadFactory()->Run(
-       [predictor, timer, start = p / 3 + 1, end = p / 3 * 2] () {
-           for (size_t i = start; i <= end; ++i) {
-               predictor->Register(TDuration::MilliSeconds(i));
-               timer->AdvanceTime(TDuration::MilliSeconds(500));
-               Y_UNUSED(predictor->GetPossiblePostponeDuration());
-               timer->AdvanceTime(TDuration::MilliSeconds(450));
-           }
-       }
-    ));
+        [predictor, timer, start = p / 3 + 1, end = p / 3 * 2]()
+        {
+            for (size_t i = start; i <= end; ++i) {
+                predictor->Register(TDuration::MilliSeconds(i));
+                timer->AdvanceTime(TDuration::MilliSeconds(500));
+                Y_UNUSED(predictor->GetPossiblePostponeDuration());
+                timer->AdvanceTime(TDuration::MilliSeconds(450));
+            }
+        }));
     workers.push_back(SystemThreadFactory()->Run(
-       [predictor, timer, start = p / 3 * 2 + 1, end = p] () {
-           for (size_t i = start; i <= end; ++i) {
-               predictor->Register(TDuration::MilliSeconds(i));
-               timer->AdvanceTime(TDuration::MilliSeconds(200));
-               Y_UNUSED(predictor->GetPossiblePostponeDuration());
-               timer->AdvanceTime(TDuration::MilliSeconds(750));
-           }
-       }
-    ));
+        [predictor, timer, start = p / 3 * 2 + 1, end = p]()
+        {
+            for (size_t i = start; i <= end; ++i) {
+                predictor->Register(TDuration::MilliSeconds(i));
+                timer->AdvanceTime(TDuration::MilliSeconds(200));
+                Y_UNUSED(predictor->GetPossiblePostponeDuration());
+                timer->AdvanceTime(TDuration::MilliSeconds(750));
+            }
+        }));
     for (auto& worker: workers) {
         worker->Join();
     }
@@ -89,26 +89,26 @@ Y_UNIT_TEST_SUITE(TPostponeTimePredictor)
         workers.reserve(3);
 
         workers.push_back(SystemThreadFactory()->Run(
-            [predictor] () {
+            [predictor]()
+            {
                 UNIT_ASSERT_VALUES_EQUAL(
                     TDuration::Zero(),
                     predictor->GetPossiblePostponeDuration());
-            }
-        ));
+            }));
         workers.push_back(SystemThreadFactory()->Run(
-            [predictor] () {
+            [predictor]()
+            {
                 UNIT_ASSERT_VALUES_EQUAL(
                     TDuration::Zero(),
                     predictor->GetPossiblePostponeDuration());
-            }
-        ));
+            }));
         workers.push_back(SystemThreadFactory()->Run(
-            [predictor] () {
+            [predictor]()
+            {
                 UNIT_ASSERT_VALUES_EQUAL(
                     TDuration::Zero(),
                     predictor->GetPossiblePostponeDuration());
-            }
-        ));
+            }));
 
         for (auto& worker: workers) {
             worker->Join();
@@ -158,26 +158,26 @@ Y_UNIT_TEST_SUITE(TPostponeTimePredictor)
         workers.reserve(3);
 
         workers.push_back(SystemThreadFactory()->Run(
-            [predictor] () {
+            [predictor]()
+            {
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
                 predictor->Register(TDuration::Zero());
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
-            }
-        ));
+            }));
         workers.push_back(SystemThreadFactory()->Run(
-            [predictor] () {
+            [predictor]()
+            {
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
                 predictor->Register(TDuration::Seconds(1));
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
-            }
-        ));
+            }));
         workers.push_back(SystemThreadFactory()->Run(
-            [predictor] () {
+            [predictor]()
+            {
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
                 predictor->Register(TDuration::Seconds(2));
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
-            }
-        ));
+            }));
 
         for (auto& worker: workers) {
             worker->Join();
@@ -231,26 +231,26 @@ Y_UNIT_TEST_SUITE(TPostponeTimePredictor)
         workers.reserve(3);
 
         workers.push_back(SystemThreadFactory()->Run(
-            [predictor] () {
+            [predictor]()
+            {
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
                 predictor->Register(TDuration::Zero());
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
-            }
-        ));
+            }));
         workers.push_back(SystemThreadFactory()->Run(
-            [predictor] () {
+            [predictor]()
+            {
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
                 predictor->Register(TDuration::Seconds(1));
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
-            }
-        ));
+            }));
         workers.push_back(SystemThreadFactory()->Run(
-            [predictor] () {
+            [predictor]()
+            {
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
                 predictor->Register(TDuration::Seconds(2));
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
-            }
-        ));
+            }));
 
         for (auto& worker: workers) {
             worker->Join();
@@ -312,7 +312,7 @@ Y_UNIT_TEST_SUITE(TPostponeTimePredictor)
         timer->AdvanceTime(TDuration::MilliSeconds(4'000));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Zero(), // Zero because of seconds accuracy
+            TDuration::Zero(),   // Zero because of seconds accuracy
             predictor->GetPossiblePostponeDuration());
     }
 
@@ -329,19 +329,19 @@ Y_UNIT_TEST_SUITE(TPostponeTimePredictor)
         workers.reserve(3);
 
         workers.push_back(SystemThreadFactory()->Run(
-            [predictor] () {
+            [predictor]()
+            {
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
                 predictor->Register(TDuration::Zero());
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
-            }
-        ));
+            }));
         workers.push_back(SystemThreadFactory()->Run(
-            [predictor] () {
+            [predictor]()
+            {
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
                 predictor->Register(TDuration::Seconds(1));
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
-            }
-        ));
+            }));
 
         for (auto& worker: workers) {
             worker->Join();
@@ -353,7 +353,8 @@ Y_UNIT_TEST_SUITE(TPostponeTimePredictor)
             predictor->GetPossiblePostponeDuration());
 
         workers.push_back(SystemThreadFactory()->Run(
-            [predictor, timer] () {
+            [predictor, timer]()
+            {
                 timer->AdvanceTime(TDuration::MilliSeconds(500));
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
                 timer->AdvanceTime(TDuration::MilliSeconds(1'000));
@@ -361,10 +362,10 @@ Y_UNIT_TEST_SUITE(TPostponeTimePredictor)
                 timer->AdvanceTime(TDuration::MilliSeconds(250));
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
                 timer->AdvanceTime(TDuration::MilliSeconds(750));
-            }
-        ));
+            }));
         workers.push_back(SystemThreadFactory()->Run(
-            [predictor, timer] () {
+            [predictor, timer]()
+            {
                 timer->AdvanceTime(TDuration::MilliSeconds(250));
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
                 timer->AdvanceTime(TDuration::MilliSeconds(1'000));
@@ -372,8 +373,7 @@ Y_UNIT_TEST_SUITE(TPostponeTimePredictor)
                 timer->AdvanceTime(TDuration::MilliSeconds(750));
                 Y_UNUSED(predictor->GetPossiblePostponeDuration());
                 timer->AdvanceTime(TDuration::MilliSeconds(500));
-            }
-        ));
+            }));
 
         for (auto& worker: workers) {
             worker->Join();

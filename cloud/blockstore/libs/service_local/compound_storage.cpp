@@ -5,11 +5,13 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/sglist_block_range.h>
 
-#include <util/generic/algorithm.h>
 #include <library/cpp/deprecated/atomic/atomic.h>
+
+#include <util/generic/algorithm.h>
 #include <util/system/yassert.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -53,10 +55,7 @@ private:
     ui64 StorageBlockOffset;
 
 public:
-    TStorageIterator(
-            const TVector<ui64>& offsets,
-            ui64 startIndex,
-            ui32 blocks)
+    TStorageIterator(const TVector<ui64>& offsets, ui64 startIndex, ui32 blocks)
         : Offsets(offsets)
         , EndBlock(startIndex + blocks)
     {
@@ -201,7 +200,7 @@ using TZeroBlocksCtx = TGenericBlocksCtx<NProto::TZeroBlocksResponse>;
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename R>
-struct TLocalBlocksCtx : TGenericBlocksCtx<R>
+struct TLocalBlocksCtx: TGenericBlocksCtx<R>
 {
     TGuardedSgList::TGuard Guard;
 
@@ -244,8 +243,7 @@ struct TEraseDeviceCtx
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCompoundStorage final
-    : public IStorage
+class TCompoundStorage final: public IStorage
 {
 private:
     const TVector<IStoragePtr> Storages;
@@ -257,12 +255,12 @@ private:
 
 public:
     TCompoundStorage(
-            TVector<IStoragePtr> storages,
-            TVector<ui64> offsets,
-            ui32 blockSize,
-            TString diskId,
-            TString clientId,
-            IServerStatsPtr serverStats)
+        TVector<IStoragePtr> storages,
+        TVector<ui64> offsets,
+        ui32 blockSize,
+        TString diskId,
+        TString clientId,
+        IServerStatsPtr serverStats)
         : Storages(std::move(storages))
         , Offsets(std::move(offsets))
         , BlockSize(blockSize)
@@ -328,10 +326,7 @@ TFuture<NProto::TZeroBlocksResponse> TCompoundStorage::ZeroBlocks(
         return MakeFuture(NProto::TZeroBlocksResponse());
     }
 
-    TStorageIterator it(
-        Offsets,
-        request->GetStartIndex(),
-        totalBlockCount);
+    TStorageIterator it(Offsets, request->GetStartIndex(), totalBlockCount);
 
     const ui32 count = it.Count();
 
@@ -365,12 +360,11 @@ TFuture<NProto::TZeroBlocksResponse> TCompoundStorage::ZeroBlocks(
         subRequest->SetStartIndex(storageBlockRange.BlockRange.Start);
         subRequest->SetBlocksCount(storageBlockRange.BlockRange.Size());
 
-        Storages[storageBlockRange.Storage]->ZeroBlocks(
-            callContext,
-            std::move(subRequest)
-        ).Subscribe([=] (const auto& future) {
-            requestContext->OnResponse(future.GetValue().GetError());
-        });
+        Storages[storageBlockRange.Storage]
+            ->ZeroBlocks(callContext, std::move(subRequest))
+            .Subscribe(
+                [=](const auto& future)
+                { requestContext->OnResponse(future.GetValue().GetError()); });
     }
 
     return requestContext->Promise;
@@ -393,10 +387,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TCompoundStorage::ReadBlocksLocal(
             "failed to acquire sglist in CompoundStorage");
     }
 
-    TStorageIterator it(
-        Offsets,
-        request->GetStartIndex(),
-        totalBlockCount);
+    TStorageIterator it(Offsets, request->GetStartIndex(), totalBlockCount);
 
     const ui32 count = it.Count();
 
@@ -423,9 +414,8 @@ TFuture<NProto::TReadBlocksLocalResponse> TCompoundStorage::ReadBlocksLocal(
 
     TSgListBlockRange src(guard.Get(), BlockSize);
 
-    auto requestContext = std::make_shared<TReadBlocksLocalCtx>(
-        count,
-        std::move(guard));
+    auto requestContext =
+        std::make_shared<TReadBlocksLocalCtx>(count, std::move(guard));
 
     TStorageBlockRange storageBlockRange;
     while (it.Next(storageBlockRange)) {
@@ -439,12 +429,11 @@ TFuture<NProto::TReadBlocksLocalResponse> TCompoundStorage::ReadBlocksLocal(
         subRequest->BlockSize = request->BlockSize;
         subRequest->Sglist.SetSgList(src.Next(blockCount));
 
-        Storages[storageBlockRange.Storage]->ReadBlocksLocal(
-            callContext,
-            std::move(subRequest)
-        ).Subscribe([=] (const auto& future) {
-            requestContext->OnResponse(future.GetValue().GetError());
-        });
+        Storages[storageBlockRange.Storage]
+            ->ReadBlocksLocal(callContext, std::move(subRequest))
+            .Subscribe(
+                [=](const auto& future)
+                { requestContext->OnResponse(future.GetValue().GetError()); });
     }
 
     return requestContext->Promise;
@@ -467,10 +456,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TCompoundStorage::WriteBlocksLocal(
             "failed to acquire sglist in CompoundStorage");
     }
 
-    TStorageIterator it(
-        Offsets,
-        request->GetStartIndex(),
-        totalBlockCount);
+    TStorageIterator it(Offsets, request->GetStartIndex(), totalBlockCount);
 
     const ui32 count = it.Count();
 
@@ -497,9 +483,8 @@ TFuture<NProto::TWriteBlocksLocalResponse> TCompoundStorage::WriteBlocksLocal(
 
     TSgListBlockRange dst(guard.Get(), BlockSize);
 
-    auto requestContext = std::make_shared<TWriteBlocksLocalCtx>(
-        count,
-        std::move(guard));
+    auto requestContext =
+        std::make_shared<TWriteBlocksLocalCtx>(count, std::move(guard));
 
     TStorageBlockRange storageBlockRange;
     while (it.Next(storageBlockRange)) {
@@ -513,12 +498,11 @@ TFuture<NProto::TWriteBlocksLocalResponse> TCompoundStorage::WriteBlocksLocal(
         subRequest->BlockSize = request->BlockSize;
         subRequest->Sglist.SetSgList(dst.Next(blockCount));
 
-        Storages[storageBlockRange.Storage]->WriteBlocksLocal(
-            callContext,
-            std::move(subRequest)
-        ).Subscribe([=] (const auto& future) {
-            requestContext->OnResponse(future.GetValue().GetError());
-        });
+        Storages[storageBlockRange.Storage]
+            ->WriteBlocksLocal(callContext, std::move(subRequest))
+            .Subscribe(
+                [=](const auto& future)
+                { requestContext->OnResponse(future.GetValue().GetError()); });
     }
 
     return requestContext->Promise;
@@ -530,9 +514,8 @@ TFuture<NProto::TError> TCompoundStorage::EraseDevice(
     auto context = std::make_shared<TEraseDeviceCtx>(Storages.size());
 
     for (auto& storage: Storages) {
-        storage->EraseDevice(method).Subscribe([=] (auto& future) {
-            context->OnResponse(future.GetValue());
-        });
+        storage->EraseDevice(method).Subscribe(
+            [=](auto& future) { context->OnResponse(future.GetValue()); });
     }
 
     return context->Promise;
@@ -551,7 +534,6 @@ void TCompoundStorage::ReportIOError()
         storage->ReportIOError();
     }
 }
-
 
 }   // namespace
 

@@ -12,48 +12,49 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_DIAGNOSTICS_CONFIG(xxx)                                      \
-    xxx(BastionNameSuffix,  TString,    ""    )\
-    xxx(FilestoreMonPort,   ui32,       8767                                  )\
-                                                                               \
-    xxx(SamplingRate,               ui32,       0                             )\
-    xxx(SlowRequestSamplingRate,    ui32,       0                             )\
-    xxx(TracesUnifiedAgentEndpoint, TString,    ""                            )\
-    xxx(TracesSyslogIdentifier,     TString,    ""                            )\
-                                                                               \
-    xxx(ProfileLogTimeThreshold,    TDuration,  TDuration::Seconds(15)        )\
-    xxx(LWTraceShuttleCount,        ui32,       2000                          )\
-                                                                               \
-    xxx(CpuWaitServiceName,         TString,    ""                            )\
-    xxx(CpuWaitFilename,            TString,    ""                            )\
-                                                                               \
-    xxx(MetricsUpdateInterval,      TDuration,  TDuration::Seconds(5)         )\
-                                                                               \
-    xxx(SlowExecutionTimeRequestThreshold, TDuration, TDuration::Seconds(10)  )\
-    xxx(SlowTotalTimeRequestThreshold,     TDuration, TDuration::Seconds(30)  )\
-                                                                               \
-    xxx(PostponeTimePredictorInterval,   TDuration, TDuration::Seconds(15)    )\
-    xxx(PostponeTimePredictorMaxTime,    TDuration, TDuration::Minutes(1)     )\
-    xxx(PostponeTimePredictorPercentage, double,    0.0                       )\
-    xxx(MonitoringUrlData,               TMonitoringUrlData,  {}              )\
-    xxx(ReportHistogramAsMultipleCounters,  bool,            true             )\
-    xxx(ReportHistogramAsSingleCounter,     bool,            false            )\
-    xxx(UseMsUnitsForTimeHistogram,         bool,            false            )\
-                                                                               \
-    xxx(HDDFileSystemPerformanceProfile,    TFileSystemPerformanceProfile, {} )\
-    xxx(SSDFileSystemPerformanceProfile,    TFileSystemPerformanceProfile, {} )\
-                                                                               \
-    xxx(StatsFetcherType,          NCloud::NProto::EStatsFetcherType,          \
-                                   NCloud::NProto::EStatsFetcherType::CGROUP  )\
-                                                                               \
-    xxx(ProfileLogMaxFlushRecords,      ui64, 0                               )\
-    xxx(ProfileLogMaxFrameFlushRecords, ui64, 0                               )\
+#define FILESTORE_DIAGNOSTICS_CONFIG(xxx)                                     \
+    xxx(BastionNameSuffix, TString, "")                                       \
+    xxx(FilestoreMonPort, ui32, 8767)                                         \
+                                                                              \
+    xxx(SamplingRate, ui32, 0)                                                \
+    xxx(SlowRequestSamplingRate, ui32, 0)                                     \
+    xxx(TracesUnifiedAgentEndpoint, TString, "")                              \
+    xxx(TracesSyslogIdentifier, TString, "")                                  \
+                                                                              \
+    xxx(ProfileLogTimeThreshold, TDuration, TDuration::Seconds(15))           \
+    xxx(LWTraceShuttleCount, ui32, 2000)                                      \
+                                                                              \
+    xxx(CpuWaitServiceName, TString, "")                                      \
+    xxx(CpuWaitFilename, TString, "")                                         \
+                                                                              \
+    xxx(MetricsUpdateInterval, TDuration, TDuration::Seconds(5))              \
+                                                                              \
+    xxx(SlowExecutionTimeRequestThreshold, TDuration, TDuration::Seconds(10)) \
+    xxx(SlowTotalTimeRequestThreshold, TDuration, TDuration::Seconds(30))     \
+                                                                              \
+    xxx(PostponeTimePredictorInterval, TDuration, TDuration::Seconds(15))     \
+    xxx(PostponeTimePredictorMaxTime, TDuration, TDuration::Minutes(1))       \
+    xxx(PostponeTimePredictorPercentage, double, 0.0)                         \
+    xxx(MonitoringUrlData, TMonitoringUrlData, {})                            \
+    xxx(ReportHistogramAsMultipleCounters, bool, true)                        \
+    xxx(ReportHistogramAsSingleCounter, bool, false)                          \
+    xxx(UseMsUnitsForTimeHistogram, bool, false)                              \
+                                                                              \
+    xxx(HDDFileSystemPerformanceProfile, TFileSystemPerformanceProfile, {})   \
+    xxx(SSDFileSystemPerformanceProfile, TFileSystemPerformanceProfile, {})   \
+                                                                              \
+    xxx(StatsFetcherType,                                                     \
+        NCloud::NProto::EStatsFetcherType,                                    \
+        NCloud::NProto::EStatsFetcherType::CGROUP)                            \
+                                                                              \
+    xxx(ProfileLogMaxFlushRecords, ui64, 0)                                   \
+    xxx(ProfileLogMaxFrameFlushRecords, ui64, 0)
 
 // FILESTORE_DIAGNOSTICS_CONFIG
 
-#define FILESTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value)                \
-    Y_DECLARE_UNUSED static const type Default##name = value;                  \
-// FILESTORE_DIAGOSTICS_DECLARE_CONFIG
+#define FILESTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value) \
+    Y_DECLARE_UNUSED static const type Default##name = value;   \
+    // FILESTORE_DIAGOSTICS_DECLARE_CONFIG
 
 FILESTORE_DIAGNOSTICS_CONFIG(FILESTORE_DIAGNOSTICS_DECLARE_CONFIG)
 
@@ -74,16 +75,14 @@ TDuration ConvertValue<TDuration, ui32>(const ui32& value)
 }
 
 template <>
-TRequestThresholds
-ConvertValue<TRequestThresholds, TProtoRequestThresholds>(
+TRequestThresholds ConvertValue<TRequestThresholds, TProtoRequestThresholds>(
     const TProtoRequestThresholds& value)
 {
     return ConvertRequestThresholds(value);
 }
 
 template <>
-TMonitoringUrlData
-ConvertValue<TMonitoringUrlData, NProto::TMonitoringUrlData>(
+TMonitoringUrlData ConvertValue<TMonitoringUrlData, NProto::TMonitoringUrlData>(
     const NProto::TMonitoringUrlData& value)
 {
     return TMonitoringUrlData(value);
@@ -98,8 +97,7 @@ TRequestPerformanceProfile ConvertValue(
 template <>
 TFileSystemPerformanceProfile ConvertValue<
     TFileSystemPerformanceProfile,
-    NProto::TFileSystemPerformanceProfile>
-(
+    NProto::TFileSystemPerformanceProfile>(
     const NProto::TFileSystemPerformanceProfile& value)
 {
     return {
@@ -119,18 +117,19 @@ TFileSystemPerformanceProfile ConvertValue<
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDiagnosticsConfig::TDiagnosticsConfig(NProto::TDiagnosticsConfig diagnosticsConfig)
+TDiagnosticsConfig::TDiagnosticsConfig(
+    NProto::TDiagnosticsConfig diagnosticsConfig)
     : DiagnosticsConfig(std::move(diagnosticsConfig))
 {}
 
-#define FILESTORE_CONFIG_GETTER(name, type, ...)                               \
-type TDiagnosticsConfig::Get##name() const                                     \
-{                                                                              \
-    return NCloud::HasField(DiagnosticsConfig, #name)                          \
-        ? ConvertValue<type>(DiagnosticsConfig.Get##name())                    \
-        : Default##name;                                                       \
-}                                                                              \
-// FILESTORE_CONFIG_GETTER
+#define FILESTORE_CONFIG_GETTER(name, type, ...)                       \
+    type TDiagnosticsConfig::Get##name() const                         \
+    {                                                                  \
+        return NCloud::HasField(DiagnosticsConfig, #name)              \
+                   ? ConvertValue<type>(DiagnosticsConfig.Get##name()) \
+                   : Default##name;                                    \
+    }                                                                  \
+    // FILESTORE_CONFIG_GETTER
 
 FILESTORE_DIAGNOSTICS_CONFIG(FILESTORE_CONFIG_GETTER);
 
@@ -161,9 +160,9 @@ EHistogramCounterOptions TDiagnosticsConfig::GetHistogramCounterOptions() const
 
 void TDiagnosticsConfig::Dump(IOutputStream& out) const
 {
-#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
-    out << #name << ": " << Get##name() << Endl;                               \
-// FILESTORE_CONFIG_DUMP
+#define FILESTORE_CONFIG_DUMP(name, ...)         \
+    out << #name << ": " << Get##name() << Endl; \
+    // FILESTORE_CONFIG_DUMP
 
     FILESTORE_DIAGNOSTICS_CONFIG(FILESTORE_CONFIG_DUMP);
 
@@ -172,16 +171,21 @@ void TDiagnosticsConfig::Dump(IOutputStream& out) const
 
 void TDiagnosticsConfig::DumpHtml(IOutputStream& out) const
 {
-#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { out << Get##name(); }                                       \
-    }                                                                          \
-// FILESTORE_CONFIG_DUMP
+#define FILESTORE_CONFIG_DUMP(name, ...) \
+    TABLER () {                          \
+        TABLED () {                      \
+            out << #name;                \
+        }                                \
+        TABLED () {                      \
+            out << Get##name();          \
+        }                                \
+    }                                    \
+    // FILESTORE_CONFIG_DUMP
 
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
+    HTML (out) {
+        TABLE_CLASS ("table table-condensed") {
+            TABLEBODY()
+            {
                 FILESTORE_DIAGNOSTICS_CONFIG(FILESTORE_CONFIG_DUMP);
             }
         }
@@ -245,6 +249,5 @@ void Out<NCloud::NProto::EStatsFetcherType>(
     IOutputStream& out,
     NCloud::NProto::EStatsFetcherType statsFetcherType)
 {
-    out << NCloud::NProto::EStatsFetcherType_Name(
-        statsFetcherType);
+    out << NCloud::NProto::EStatsFetcherType_Name(statsFetcherType);
 }

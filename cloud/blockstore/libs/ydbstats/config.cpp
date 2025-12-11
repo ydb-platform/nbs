@@ -15,29 +15,29 @@ TDuration Seconds(ui32 value)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_YDBSTATS_CONFIG(xxx)                                        \
-    xxx(StatsTableName,                   TString,          ""                )\
-    xxx(HistoryTablePrefix,               TString,          ""                )\
-    xxx(DatabaseName,                     TString,          ""                )\
-    xxx(TokenFile,                        TString,          ""                )\
-    xxx(ServerAddress,                    TString,          ""                )\
-    xxx(HistoryTableLifetimeDays,         ui32,             3                 )\
-    xxx(StatsTableRotationAfterDays,      ui32,             1                 )\
-    xxx(ArchiveStatsTableName,            TString,          ""                )\
-    xxx(BlobLoadMetricsTableName,         TString,          ""                )\
-    xxx(GroupsTableName,                  TString,          ""                )\
-    xxx(PartitionsTableName,              TString,          ""                )\
-    xxx(UseSsl,                           bool,             false             )\
-    xxx(StatsTableTtl,                    TDuration,        Seconds(0)        )\
-    xxx(ArchiveStatsTableTtl,             TDuration,        Seconds(0)        )\
-                                                                               \
-    xxx(IamTokenRefreshTimeBeforeExpiration, TDuration,     Seconds(5)        )\
+#define BLOCKSTORE_YDBSTATS_CONFIG(xxx)              \
+    xxx(StatsTableName, TString, "")                 \
+    xxx(HistoryTablePrefix, TString, "")             \
+    xxx(DatabaseName, TString, "")                   \
+    xxx(TokenFile, TString, "")                      \
+    xxx(ServerAddress, TString, "")                  \
+    xxx(HistoryTableLifetimeDays, ui32, 3)           \
+    xxx(StatsTableRotationAfterDays, ui32, 1)        \
+    xxx(ArchiveStatsTableName, TString, "")          \
+    xxx(BlobLoadMetricsTableName, TString, "")       \
+    xxx(GroupsTableName, TString, "")                \
+    xxx(PartitionsTableName, TString, "")            \
+    xxx(UseSsl, bool, false)                         \
+    xxx(StatsTableTtl, TDuration, Seconds(0))        \
+    xxx(ArchiveStatsTableTtl, TDuration, Seconds(0)) \
+                                                     \
+    xxx(IamTokenRefreshTimeBeforeExpiration, TDuration, Seconds(5))
 
 // BLOCKSTORE_YDBSTATS_CONFIG
 
-#define BLOCKSTORE_YDBSTATS_DECLARE_CONFIG(name, type, value)                  \
-    Y_DECLARE_UNUSED static const type Default##name = value;                  \
-// BLOCKSTORE_YDBSTATS_DECLARE_CONFIG
+#define BLOCKSTORE_YDBSTATS_DECLARE_CONFIG(name, type, value) \
+    Y_DECLARE_UNUSED static const type Default##name = value; \
+    // BLOCKSTORE_YDBSTATS_DECLARE_CONFIG
 
 BLOCKSTORE_YDBSTATS_CONFIG(BLOCKSTORE_YDBSTATS_DECLARE_CONFIG)
 
@@ -67,20 +67,19 @@ TYdbStatsConfig::TYdbStatsConfig(NProto::TYdbStatsConfig ydbStatsConfig)
 
 bool TYdbStatsConfig::IsValid() const
 {
-    return
-        YdbStatsConfig.GetStatsTableName() &&
-        YdbStatsConfig.GetHistoryTablePrefix() &&
-        YdbStatsConfig.GetDatabaseName() &&
-        YdbStatsConfig.GetServerAddress();
+    return YdbStatsConfig.GetStatsTableName() &&
+           YdbStatsConfig.GetHistoryTablePrefix() &&
+           YdbStatsConfig.GetDatabaseName() &&
+           YdbStatsConfig.GetServerAddress();
 }
 
-#define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
-type TYdbStatsConfig::Get##name() const                                        \
-{                                                                              \
-    auto value = YdbStatsConfig.Get##name();                                   \
-    return value ? ConvertValue<type>(value) : Default##name;                  \
-}                                                                              \
-// BLOCKSTORE_CONFIG_GETTER
+#define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                 \
+    type TYdbStatsConfig::Get##name() const                       \
+    {                                                             \
+        auto value = YdbStatsConfig.Get##name();                  \
+        return value ? ConvertValue<type>(value) : Default##name; \
+    }                                                             \
+    // BLOCKSTORE_CONFIG_GETTER
 
 BLOCKSTORE_YDBSTATS_CONFIG(BLOCKSTORE_CONFIG_GETTER);
 

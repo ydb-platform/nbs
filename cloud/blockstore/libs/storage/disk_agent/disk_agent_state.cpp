@@ -104,13 +104,11 @@ struct TCollectStatsContext
 
     const ui32 InitErrorsCount;
 
-    TCollectStatsContext(
-            size_t deviceCount,
-            ui32 initErrorsCount)
+    TCollectStatsContext(size_t deviceCount, ui32 initErrorsCount)
         : Ids(deviceCount)
         , Stats(deviceCount)
         , Buckets(deviceCount)
-        , RemainingRequests(deviceCount * 2) // stats & buckets per device
+        , RemainingRequests(deviceCount * 2)   // stats & buckets per device
         , InitErrorsCount(initErrorsCount)
     {}
 
@@ -259,8 +257,7 @@ TVector<IProfileLog::TBlockInfo> ComputeDigest(
         const auto blockIndex = req.GetStartIndex() + i;
         const auto digest = generator.ComputeDigest(
             blockIndex,
-            TBlockDataRef::CreateZeroBlock(blockSize)
-        );
+            TBlockDataRef::CreateZeroBlock(blockSize));
 
         if (digest.Defined()) {
             blockInfos.push_back({blockIndex, *digest});
@@ -292,20 +289,20 @@ TVector<IProfileLog::TBlockInfo> ComputeDigest(
 ////////////////////////////////////////////////////////////////////////////////
 
 TDiskAgentState::TDiskAgentState(
-        TStorageConfigPtr storageConfig,
-        TDiskAgentConfigPtr agentConfig,
-        NSpdk::ISpdkEnvPtr spdk,
-        ICachingAllocatorPtr allocator,
-        IStorageProviderPtr storageProvider,
-        IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        ILoggingServicePtr logging,
-        NRdma::IServerPtr rdmaServer,
-        NNvme::INvmeManagerPtr nvmeManager,
-        TRdmaTargetConfigPtr rdmaTargetConfig,
-        TOldRequestCounters oldRequestCounters,
-        IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
-        ITaskQueuePtr backgroundThreadPool)
+    TStorageConfigPtr storageConfig,
+    TDiskAgentConfigPtr agentConfig,
+    NSpdk::ISpdkEnvPtr spdk,
+    ICachingAllocatorPtr allocator,
+    IStorageProviderPtr storageProvider,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    ILoggingServicePtr logging,
+    NRdma::IServerPtr rdmaServer,
+    NNvme::INvmeManagerPtr nvmeManager,
+    TRdmaTargetConfigPtr rdmaTargetConfig,
+    TOldRequestCounters oldRequestCounters,
+    IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
+    ITaskQueuePtr backgroundThreadPool)
     : StorageConfig(std::move(storageConfig))
     , AgentConfig(std::move(agentConfig))
     , Spdk(std::move(spdk))
@@ -321,8 +318,7 @@ TDiskAgentState::TDiskAgentState(
     , RdmaTargetConfig(std::move(rdmaTargetConfig))
     , OldRequestCounters(std::move(oldRequestCounters))
     , BackgroundThreadPool(std::move(backgroundThreadPool))
-{
-}
+{}
 
 TStorageAdapterPtr TDiskAgentState::GetDeviceStorageAdapter(
     const TString& uuid,
@@ -330,8 +326,8 @@ TStorageAdapterPtr TDiskAgentState::GetDeviceStorageAdapter(
     const NProto::EVolumeAccessMode accessMode) const
 {
     return AgentConfig->GetAcquireRequired()
-        ? GetDeviceStorageAdapterImpl(uuid, clientId, accessMode)
-        : GetDeviceStorageAdapterImpl(uuid);
+               ? GetDeviceStorageAdapterImpl(uuid, clientId, accessMode)
+               : GetDeviceStorageAdapterImpl(uuid);
 }
 
 TStorageAdapterPtr TDiskAgentState::GetDeviceStorageAdapterImpl(
@@ -436,68 +432,71 @@ ui32 TDiskAgentState::GetDevicesCount() const
 TFuture<TInitializeResult> TDiskAgentState::InitSpdkStorage()
 {
     return InitializeSpdk(AgentConfig, Spdk, Allocator)
-        .Apply([this] (auto future) {
-            TInitializeSpdkResult r = future.ExtractValue();
+        .Apply(
+            [this](auto future)
+            {
+                TInitializeSpdkResult r = future.ExtractValue();
 
-            InitErrorsCount = r.Errors.size();
+                InitErrorsCount = r.Errors.size();
 
-            SpdkTarget = std::move(r.SpdkTarget);
+                SpdkTarget = std::move(r.SpdkTarget);
 
-            for (size_t i = 0; i != r.Configs.size(); ++i) {
-                const auto& config = r.Configs[i];
+                for (size_t i = 0; i != r.Configs.size(); ++i) {
+                    const auto& config = r.Configs[i];
 
-                TDeviceState device {
-                    .Config = config,
-                };
+                    TDeviceState device{
+                        .Config = config,
+                    };
 
-                Devices.emplace(
-                    config.GetDeviceUUID(),
-                    std::move(device));
-            }
+                    Devices.emplace(config.GetDeviceUUID(), std::move(device));
+                }
 
-            return TInitializeResult{
-                .Configs = std::move(r.Configs),
-                .Devices = std::move(r.Devices),
-                .Errors = std::move(r.Errors)};
-        });
+                return TInitializeResult{
+                    .Configs = std::move(r.Configs),
+                    .Devices = std::move(r.Devices),
+                    .Errors = std::move(r.Errors)};
+            });
 }
 
 TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
 {
     return InitializeStorage(
-            Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
-            StorageConfig,
-            AgentConfig,
-            StorageProvider,
-            NvmeManager)
-        .Apply([=, this] (auto future) {
-            TInitializeStorageResult r = future.ExtractValue();
+               Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
+               StorageConfig,
+               AgentConfig,
+               StorageProvider,
+               NvmeManager)
+        .Apply(
+            [=, this](auto future)
+            {
+                TInitializeStorageResult r = future.ExtractValue();
 
-            InitErrorsCount = r.Errors.size();
+                InitErrorsCount = r.Errors.size();
 
-            Y_ABORT_UNLESS(r.Configs.size() == r.Devices.size()
-                  && r.Configs.size() == r.Stats.size());
+                Y_ABORT_UNLESS(
+                    r.Configs.size() == r.Devices.size() &&
+                    r.Configs.size() == r.Stats.size());
 
-            for (size_t i = 0; i != r.Configs.size(); ++i) {
-                const auto& config = r.Configs[i];
+                for (size_t i = 0; i != r.Configs.size(); ++i) {
+                    const auto& config = r.Configs[i];
 
-                TDeviceState device {
-                    .Config = config,
-                    .Stats = std::move(r.Stats[i])
-                };
+                    TDeviceState device{
+                        .Config = config,
+                        .Stats = std::move(r.Stats[i])};
 
-                Devices.emplace(config.GetDeviceUUID(), std::move(device));
-            }
+                    Devices.emplace(config.GetDeviceUUID(), std::move(device));
+                }
 
-            return TInitializeResult{
-                .Configs = std::move(r.Configs),
-                .Devices = std::move(r.Devices),
-                .Errors = std::move(r.Errors),
-                .ConfigMismatchErrors = std::move(r.ConfigMismatchErrors),
-                .DevicesWithSuspendedIO = std::move(r.DevicesWithSuspendedIO),
-                .LostDevicesIds = std::move(r.LostDevicesIds),
-                .Guard = std::move(r.Guard)};
-        });
+                return TInitializeResult{
+                    .Configs = std::move(r.Configs),
+                    .Devices = std::move(r.Devices),
+                    .Errors = std::move(r.Errors),
+                    .ConfigMismatchErrors = std::move(r.ConfigMismatchErrors),
+                    .DevicesWithSuspendedIO =
+                        std::move(r.DevicesWithSuspendedIO),
+                    .LostDevicesIds = std::move(r.LostDevicesIds),
+                    .Guard = std::move(r.Guard)};
+            });
 }
 
 void TDiskAgentState::InitRdmaTarget()
@@ -603,9 +602,8 @@ TFuture<NProto::TAgentStats> TDiskAgentState::CollectStats()
         return MakeFuture(std::move(stats));
     }
 
-    auto context = std::make_shared<TCollectStatsContext>(
-        Devices.size(),
-        InitErrorsCount);
+    auto context =
+        std::make_shared<TCollectStatsContext>(Devices.size(), InitErrorsCount);
 
     size_t i = 0;
     for (const auto& [id, device]: Devices) {
@@ -615,21 +613,27 @@ TFuture<NProto::TAgentStats> TDiskAgentState::CollectStats()
 
         const auto& deviceName = device.Config.GetDeviceName();
 
-        Spdk->GetDeviceIoStats(deviceName).Subscribe([=] (const auto& future) {
-            try {
-                context->OnStats(index, future.GetValue());
-            } catch (...) {
-                context->OnError(index);
-            }
-        });
+        Spdk->GetDeviceIoStats(deviceName)
+            .Subscribe(
+                [=](const auto& future)
+                {
+                    try {
+                        context->OnStats(index, future.GetValue());
+                    } catch (...) {
+                        context->OnError(index);
+                    }
+                });
 
-        Spdk->GetHistogramBuckets(deviceName).Subscribe([=] (auto future) {
-            try {
-                context->OnBuckets(index, future.ExtractValue());
-            } catch (...) {
-                context->OnError(index);
-            }
-        });
+        Spdk->GetHistogramBuckets(deviceName)
+            .Subscribe(
+                [=](auto future)
+                {
+                    try {
+                        context->OnBuckets(index, future.ExtractValue());
+                    } catch (...) {
+                        context->OnError(index);
+                    }
+                });
     }
 
     return context->Promise;
@@ -682,7 +686,7 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
         MakeIntrusive<TCallContext>(),
         std::move(readRequest),
         request.GetBlockSize(),
-        {} // no data buffer
+        {}   // no data buffer
     );
 
     if (!StorageConfig->GetUseTestBlockDigestGenerator()) {
@@ -736,11 +740,12 @@ void TDiskAgentState::WriteProfileLog(
     ProfileLog->Write({
         .DiskId = uuid,
         .Ts = now,
-        .Request = IProfileLog::TSysReadWriteRequestBlockInfos{
-            .RequestType = ESysRequestType::WriteDeviceBlocks,
-            .BlockInfos = std::move(blockInfos),
-            .CommitId = 0,
-        },
+        .Request =
+            IProfileLog::TSysReadWriteRequestBlockInfos{
+                .RequestType = ESysRequestType::WriteDeviceBlocks,
+                .BlockInfos = std::move(blockInfos),
+                .CommitId = 0,
+            },
     });
 }
 
@@ -758,11 +763,12 @@ void TDiskAgentState::WriteProfileLog(
     ProfileLog->Write({
         .DiskId = uuid,
         .Ts = now,
-        .Request = IProfileLog::TSysReadWriteRequestBlockInfos{
-            .RequestType = ESysRequestType::ZeroDeviceBlocks,
-            .BlockInfos = std::move(blockInfos),
-            .CommitId = 0,
-        },
+        .Request =
+            IProfileLog::TSysReadWriteRequestBlockInfos{
+                .RequestType = ESysRequestType::ZeroDeviceBlocks,
+                .BlockInfos = std::move(blockInfos),
+                .CommitId = 0,
+            },
     });
 }
 
@@ -784,7 +790,7 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::Write(
         request.GetDeviceUUID(),
         std::move(writeRequest),
         request.GetBlockSize(),
-        {}  // buffer
+        {}   // buffer
     );
 }
 
@@ -795,21 +801,14 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::WriteBlocks(
     ui32 blockSize,
     TStringBuf buffer)
 {
-    CheckIfDeviceIsDisabled(
-        deviceUUID,
-        request->GetHeaders().GetClientId());
+    CheckIfDeviceIsDisabled(deviceUUID, request->GetHeaders().GetClientId());
 
     const auto& device = GetDeviceStorageAdapter(
         deviceUUID,
         request->GetHeaders().GetClientId(),
         NProto::VOLUME_ACCESS_READ_WRITE);
 
-    WriteProfileLog(
-        now,
-        deviceUUID,
-        *request,
-        blockSize,
-        buffer);
+    WriteProfileLog(now, deviceUUID, *request, blockSize, buffer);
 
     auto result = device->WriteBlocks(
         now,
@@ -819,7 +818,8 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::WriteBlocks(
         buffer);
 
     return result.Apply(
-        [] (const auto& future) {
+        [](const auto& future)
+        {
             NProto::TWriteDeviceBlocksResponse response;
 
             *response.MutableError() = future.GetValue().GetError();
@@ -858,7 +858,8 @@ TFuture<NProto::TZeroDeviceBlocksResponse> TDiskAgentState::WriteZeroes(
         request.GetBlockSize());
 
     return result.Apply(
-        [] (const auto& future) {
+        [](const auto& future)
+        {
             NProto::TZeroDeviceBlocksResponse response;
 
             *response.MutableError() = future.GetValue().GetError();
@@ -873,19 +874,21 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
 {
     const auto& device = GetDeviceStorageAdapterImpl(uuid);
     const auto& sessionInfo = DeviceClient->GetWriterSession(uuid);
-    if (sessionInfo.Id
-            && sessionInfo.LastActivityTs
-                + AgentConfig->GetReleaseInactiveSessionsTimeout() > now)
+    if (sessionInfo.Id &&
+        sessionInfo.LastActivityTs +
+                AgentConfig->GetReleaseInactiveSessionsTimeout() >
+            now)
     {
         ReportAcquiredDiskEraseAttempt(
             {{"device", uuid}, {"client", sessionInfo.Id}});
 
         ythrow TServiceError(E_INVALID_STATE)
-            << "Device " << uuid.Quote()
-            << " already acquired by client " << sessionInfo.Id;
+            << "Device " << uuid.Quote() << " already acquired by client "
+            << sessionInfo.Id;
     }
 
-    if (AgentConfig->GetDeviceEraseMethod() == NProto::DEVICE_ERASE_METHOD_NONE) {
+    if (AgentConfig->GetDeviceEraseMethod() == NProto::DEVICE_ERASE_METHOD_NONE)
+    {
         return MakeFuture(NProto::TError());
     }
 
@@ -1028,11 +1031,8 @@ void TDiskAgentState::ReleaseDevices(
                "release any sessions at this state.";
     }
 
-    CheckError(DeviceClient->ReleaseDevices(
-        uuids,
-        clientId,
-        diskId,
-        volumeGeneration));
+    CheckError(DeviceClient
+                   ->ReleaseDevices(uuids, clientId, diskId, volumeGeneration));
 }
 
 void TDiskAgentState::DisableDevice(const TString& uuid)
@@ -1129,8 +1129,9 @@ void TDiskAgentState::RestoreSessions(
 
         auto& sessions = *proto.MutableSessions();
 
-        STORAGE_INFO("Found " << sessions.size()
-            << " sessions in the session cache: " << JoinSeq(" ", sessions));
+        STORAGE_INFO(
+            "Found " << sessions.size() << " sessions in the session cache: "
+                     << JoinSeq(" ", sessions));
 
         int errors = 0;
 
@@ -1139,9 +1140,10 @@ void TDiskAgentState::RestoreSessions(
                 std::make_move_iterator(session.MutableDeviceIds()->begin()),
                 std::make_move_iterator(session.MutableDeviceIds()->end()));
 
-            EraseIf(uuids, [&] (const auto& uuid) {
-                return lostDevicesIds.contains(uuid);
-            });
+            EraseIf(
+                uuids,
+                [&](const auto& uuid)
+                { return lostDevicesIds.contains(uuid); });
 
             const auto [_, error] = client.AcquireDevices(
                 uuids,
@@ -1156,9 +1158,10 @@ void TDiskAgentState::RestoreSessions(
             if (HasError(error)) {
                 ++errors;
 
-                STORAGE_ERROR("Can't restore session "
-                    << session.GetClientId().Quote() << " from the cache: "
-                    << FormatError(error));
+                STORAGE_ERROR(
+                    "Can't restore session "
+                    << session.GetClientId().Quote()
+                    << " from the cache: " << FormatError(error));
 
                 client.ReleaseDevices(
                     uuids,
@@ -1173,7 +1176,8 @@ void TDiskAgentState::RestoreSessions(
                 "some sessions have not recovered");
         }
     } catch (...) {
-        STORAGE_ERROR("Can't restore sessions from the cache: "
+        STORAGE_ERROR(
+            "Can't restore sessions from the cache: "
             << CurrentExceptionMessage());
         ReportDiskAgentSessionCacheRestoreError();
     }

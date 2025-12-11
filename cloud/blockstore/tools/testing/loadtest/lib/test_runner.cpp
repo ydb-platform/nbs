@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/validation/validation.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -41,10 +42,10 @@ struct TCompletedRequest
     TDuration Elapsed;
 
     TCompletedRequest(
-            EBlockStoreRequest requestType,
-            const TBlockRange64& blockRange,
-            const NProto::TError& error,
-            TDuration elapsed)
+        EBlockStoreRequest requestType,
+        const TBlockRange64& blockRange,
+        const NProto::TError& error,
+        TDuration elapsed)
         : RequestType(requestType)
         , BlockRange(blockRange)
         , Error(error)
@@ -116,20 +117,20 @@ private:
     TPromise<TTestResultsPtr> Response = NewPromise<TTestResultsPtr>();
     TTestResultsPtr TestResults = std::make_unique<TTestResults>();
 
-    IAllocator* Allocator = BufferPool();  // TDefaultAllocator::Instance()
+    IAllocator* Allocator = BufferPool();   // TDefaultAllocator::Instance()
 
 public:
     TTestRunner(
-            ILoggingServicePtr loggingService,
-            ISessionPtr session,
-            NProto::TVolume volume,
-            TString loggingTag,
-            IRequestGeneratorPtr requests,
-            TString checkpointId,
-            ui32 maxIoDepth,
-            TVector<ui32> successOnError,
-            IBlockDigestCalculatorPtr digestCalculator,
-            std::atomic<bool>& shouldStop)
+        ILoggingServicePtr loggingService,
+        ISessionPtr session,
+        NProto::TVolume volume,
+        TString loggingTag,
+        IRequestGeneratorPtr requests,
+        TString checkpointId,
+        ui32 maxIoDepth,
+        TVector<ui32> successOnError,
+        IBlockDigestCalculatorPtr digestCalculator,
+        std::atomic<bool>& shouldStop)
         : Log(loggingService->CreateLog(requests->Describe()))
         , Volume(std::move(volume))
         , LoggingTag(std::move(loggingTag))
@@ -140,8 +141,7 @@ public:
         , SuccessOnError(std::move(successOnError))
         , DigestCalculator(std::move(digestCalculator))
         , ShouldStop(shouldStop)
-    {
-    }
+    {}
 
     TFuture<TTestResultsPtr> Run() override
     {
@@ -226,7 +226,8 @@ bool TTestRunner::SendNextRequest()
             break;
 
         default:
-            Y_ABORT_UNLESS(TStringBuilder()
+            Y_ABORT_UNLESS(
+                TStringBuilder()
                 << "unexpected request type: "
                 << GetBlockStoreRequestName(request.RequestType));
     }
@@ -236,9 +237,9 @@ bool TTestRunner::SendNextRequest()
 
 void TTestRunner::SendReadRequest(const TBlockRange64& range)
 {
-    STORAGE_DEBUG(LoggingTag
-        << "ReadBlocks request: ("
-        << range.Start << ", " << range.Size() << ")");
+    STORAGE_DEBUG(
+        LoggingTag << "ReadBlocks request: (" << range.Start << ", "
+                   << range.Size() << ")");
 
     auto buffer = Allocator->Allocate(Volume.GetBlockSize() * range.Size());
     auto guardedSgList = TGuardedSgList(BuildSgList(buffer));
@@ -256,16 +257,17 @@ void TTestRunner::SendReadRequest(const TBlockRange64& range)
         std::move(request));
 
     future.Subscribe(
-        [=, this, p=shared_from_this()] (const auto& f) mutable {
+        [=, this, p = shared_from_this()](const auto& f) mutable
+        {
             guardedSgList.Close();
             Allocator->Release(buffer);
 
             const auto& response = f.GetValue();
             const auto& error = response.GetError();
             if (FAILED(error.GetCode())) {
-                STORAGE_ERROR(LoggingTag
-                    << "ReadBlocks request failed with error: "
-                    << FormatError(error));
+                STORAGE_ERROR(
+                    LoggingTag << "ReadBlocks request failed with error: "
+                               << FormatError(error));
             }
 
             p->SignalCompletion(
@@ -278,9 +280,9 @@ void TTestRunner::SendReadRequest(const TBlockRange64& range)
 
 void TTestRunner::SendWriteRequest(const TBlockRange64& range)
 {
-    STORAGE_DEBUG(LoggingTag
-        << "WriteBlocks request: ("
-        << range.Start << ", " << range.Size() << ")");
+    STORAGE_DEBUG(
+        LoggingTag << "WriteBlocks request: (" << range.Start << ", "
+                   << range.Size() << ")");
 
     Y_DEBUG_ABORT_UNLESS(Volume.GetBlockSize() >= sizeof(RequestsSent));
     auto buffer = Allocator->Allocate(Volume.GetBlockSize() * range.Size());
@@ -293,15 +295,13 @@ void TTestRunner::SendWriteRequest(const TBlockRange64& range)
         memset(
             data + sizeof(reqNumber),
             1 + RandomNumber<ui8>(Max<ui8>()),
-            Volume.GetBlockSize() - sizeof(reqNumber)
-        );
+            Volume.GetBlockSize() - sizeof(reqNumber));
 
         if (DigestCalculator) {
             // return value ignored
             DigestCalculator->Calculate(
                 range.Start + b,
-                {data, Volume.GetBlockSize()}
-            );
+                {data, Volume.GetBlockSize()});
         }
     }
 
@@ -317,16 +317,17 @@ void TTestRunner::SendWriteRequest(const TBlockRange64& range)
         std::move(request));
 
     future.Subscribe(
-        [=, this, p=shared_from_this()] (const auto& f) mutable {
+        [=, this, p = shared_from_this()](const auto& f) mutable
+        {
             guardedSgList.Close();
             Allocator->Release(buffer);
 
             const auto& response = f.GetValue();
             const auto& error = response.GetError();
             if (FAILED(error.GetCode())) {
-                STORAGE_ERROR(LoggingTag
-                    << "WriteBlocks request failed with error: "
-                    << FormatError(error));
+                STORAGE_ERROR(
+                    LoggingTag << "WriteBlocks request failed with error: "
+                               << FormatError(error));
             }
 
             p->SignalCompletion(
@@ -339,9 +340,9 @@ void TTestRunner::SendWriteRequest(const TBlockRange64& range)
 
 void TTestRunner::SendZeroRequest(const TBlockRange64& range)
 {
-    STORAGE_DEBUG(LoggingTag
-        << "ZeroBlocks request: ("
-        << range.Start << ", " << range.Size() << ")");
+    STORAGE_DEBUG(
+        LoggingTag << "ZeroBlocks request: (" << range.Start << ", "
+                   << range.Size() << ")");
 
     auto started = TInstant::Now();
     auto request = std::make_shared<NProto::TZeroBlocksRequest>();
@@ -354,23 +355,22 @@ void TTestRunner::SendZeroRequest(const TBlockRange64& range)
             // return value ignored
             DigestCalculator->Calculate(
                 range.Start + b,
-                {data.begin(), data.size()}
-            );
+                {data.begin(), data.size()});
         }
     }
 
-    auto future = Session->ZeroBlocks(
-        MakeIntrusive<TCallContext>(),
-        std::move(request));
+    auto future =
+        Session->ZeroBlocks(MakeIntrusive<TCallContext>(), std::move(request));
 
     future.Subscribe(
-        [=, this, p=shared_from_this()] (const auto& f) {
+        [=, this, p = shared_from_this()](const auto& f)
+        {
             const auto& response = f.GetValue();
             const auto& error = response.GetError();
             if (FAILED(error.GetCode())) {
-                STORAGE_ERROR(LoggingTag
-                    << "ZeroBlocks request failed with error: "
-                    << FormatError(error));
+                STORAGE_ERROR(
+                    LoggingTag << "ZeroBlocks request failed with error: "
+                               << FormatError(error));
             }
 
             p->SignalCompletion(
@@ -383,14 +383,15 @@ void TTestRunner::SendZeroRequest(const TBlockRange64& range)
 
 bool TTestRunner::StopRequested() const
 {
-    return ShouldStop.load(std::memory_order_acquire)
-        || TestResults->Status != NProto::TEST_STATUS_OK;
+    return ShouldStop.load(std::memory_order_acquire) ||
+           TestResults->Status != NProto::TEST_STATUS_OK;
 }
 
 bool TTestRunner::CheckExitCondition() const
 {
-    return (RequestsSent == RequestsCompleted
-        && (StopRequested() || !Requests->HasMoreRequests()));
+    return (
+        RequestsSent == RequestsCompleted &&
+        (StopRequested() || !Requests->HasMoreRequests()));
 }
 
 bool TTestRunner::CheckSendRequestCondition() const
@@ -400,7 +401,7 @@ bool TTestRunner::CheckSendRequestCondition() const
 
 TSgList TTestRunner::BuildSgList(const IAllocator::TBlock& block)
 {
-    return {{ (char*)block.Data, block.Len }};
+    return {{(char*)block.Data, block.Len}};
 }
 
 void TTestRunner::SignalCompletion(
@@ -409,8 +410,11 @@ void TTestRunner::SignalCompletion(
     const NProto::TError& error,
     TDuration elapsed)
 {
-    CompletionQueue.Enqueue(
-        std::make_unique<TCompletedRequest>(requestType, range, error, elapsed));
+    CompletionQueue.Enqueue(std::make_unique<TCompletedRequest>(
+        requestType,
+        range,
+        error,
+        elapsed));
 
     Event.Signal();
 }
@@ -424,14 +428,17 @@ void TTestRunner::ProcessCompletedRequests()
         --CurrentIoDepth;
 
         if (FAILED(request->Error.GetCode())) {
-            const auto status = FindPtr(SuccessOnError, request->Error.GetCode())
-                ? NProto::TEST_STATUS_EXPECTED_ERROR
-                : NProto::TEST_STATUS_FAILURE;
+            const auto status =
+                FindPtr(SuccessOnError, request->Error.GetCode())
+                    ? NProto::TEST_STATUS_EXPECTED_ERROR
+                    : NProto::TEST_STATUS_FAILURE;
 
-            if (TestResults->Status != status && status == NProto::TEST_STATUS_FAILURE) {
-                STORAGE_ERROR(LoggingTag
-                    << "Request failed with error: "
-                    << FormatError(request->Error));
+            if (TestResults->Status != status &&
+                status == NProto::TEST_STATUS_FAILURE)
+            {
+                STORAGE_ERROR(
+                    LoggingTag << "Request failed with error: "
+                               << FormatError(request->Error));
             }
 
             TestResults->Status = status;
@@ -458,7 +465,8 @@ void TTestRunner::ProcessCompletedRequests()
                 break;
 
             default:
-                Y_ABORT_UNLESS(TStringBuilder()
+                Y_ABORT_UNLESS(
+                    TStringBuilder()
                     << "unexpected request type: "
                     << GetBlockStoreRequestName(request->RequestType));
         }
@@ -472,10 +480,12 @@ void TTestRunner::ReportProgress()
     auto now = Now();
     if (now - LastReportTs > reportInterval) {
         const auto timePassed = now - LastReportTs;
-        const auto requestsCompleted = RequestsCompleted - LastRequestsCompleted;
+        const auto requestsCompleted =
+            RequestsCompleted - LastRequestsCompleted;
 
-        STORAGE_INFO(LoggingTag
-            << "Current IOPS: " << (requestsCompleted / timePassed.Seconds()));
+        STORAGE_INFO(
+            LoggingTag << "Current IOPS: "
+                       << (requestsCompleted / timePassed.Seconds()));
 
         LastReportTs = now;
         LastRequestsCompleted = RequestsCompleted;

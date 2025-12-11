@@ -6,7 +6,6 @@
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
 #include <contrib/ydb/core/tablet/tablet_setup.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -27,9 +26,8 @@ void TServiceActor::HandleUnmountVolume(
     auto volume = State.GetVolume(diskId);
 
     if (!volume || !volume->VolumeSessionActor) {
-
-        auto response = std::make_unique<TEvService::TEvUnmountVolumeResponse>(
-            MakeError(
+        auto response =
+            std::make_unique<TEvService::TEvUnmountVolumeResponse>(MakeError(
                 S_ALREADY,
                 TStringBuilder() << "Volume not mounted: " << diskId.Quote()));
 

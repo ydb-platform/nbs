@@ -16,12 +16,12 @@ Y_UNIT_TEST_SUITE(TServiceStatsTest)
         auto nodeIdx = SetupTestEnv(env);
         auto& runtime = env.GetRuntime();
 
-        TServiceClient service {runtime, nodeIdx};
+        TServiceClient service{runtime, nodeIdx};
 
-        auto counter = runtime.GetAppData(nodeIdx).Counters
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "service")
-            ->GetCounter("SelfPingMaxUs", false);
+        auto counter = runtime.GetAppData(nodeIdx)
+                           .Counters->GetSubgroup("counters", "blockstore")
+                           ->GetSubgroup("component", "service")
+                           ->GetCounter("SelfPingMaxUs", false);
 
         {
             TDispatchOptions opts;

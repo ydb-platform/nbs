@@ -246,9 +246,8 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
 
         UNIT_ASSERT(!manager->IsReady(NProto::CELL_DATA_TRANSPORT_RDMA));
 
-        setup->RdmaSetupPromise.SetValue(
-            TResultOrError<IBlockStorePtr>(
-                std::make_shared<TTestBlockStore>()));
+        setup->RdmaSetupPromise.SetValue(TResultOrError<IBlockStorePtr>(
+            std::make_shared<TTestBlockStore>()));
 
         UNIT_ASSERT(manager->IsReady(NProto::CELL_DATA_TRANSPORT_RDMA));
         UNIT_ASSERT(manager->IsReady(NProto::CELL_DATA_TRANSPORT_GRPC));
@@ -334,9 +333,8 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
         UNIT_ASSERT(!manager->IsReady(NProto::CELL_DATA_TRANSPORT_RDMA));
         UNIT_ASSERT(manager->IsReady(NProto::CELL_DATA_TRANSPORT_GRPC));
 
-        setup->RdmaSetupPromise.SetValue(
-            TResultOrError<IBlockStorePtr>(
-                std::make_shared<TTestBlockStore>()));
+        setup->RdmaSetupPromise.SetValue(TResultOrError<IBlockStorePtr>(
+            std::make_shared<TTestBlockStore>()));
 
         UNIT_ASSERT(manager->IsReady(NProto::CELL_DATA_TRANSPORT_RDMA));
         UNIT_ASSERT(manager->IsReady(NProto::CELL_DATA_TRANSPORT_GRPC));

@@ -12,8 +12,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestRootKmsKeyProvider final
-    : IRootKmsKeyProvider
+struct TTestRootKmsKeyProvider final: IRootKmsKeyProvider
 {
     const TString EncryptionKey;
 
@@ -119,9 +118,7 @@ Y_UNIT_TEST_SUITE(TEncryptionKeyTest)
 
         auto keyOrError = KeyProvider->GetKey(spec, {}).ExtractValue();
         UNIT_ASSERT(HasError(keyOrError));
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            keyOrError.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, keyOrError.GetError().GetCode());
     }
 
     Y_UNIT_TEST_F(ShouldFailToProvideKeyIfKeyRingNotExist, TFixture)
@@ -133,9 +130,7 @@ Y_UNIT_TEST_SUITE(TEncryptionKeyTest)
 
         auto keyOrError = KeyProvider->GetKey(spec, {}).ExtractValue();
         UNIT_ASSERT(HasError(keyOrError));
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            keyOrError.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, keyOrError.GetError().GetCode());
     }
 
     Y_UNIT_TEST_F(ShouldFailToProvideKeyIfKeyPathIsEmpty, TFixture)
@@ -145,9 +140,7 @@ Y_UNIT_TEST_SUITE(TEncryptionKeyTest)
 
         auto keyOrError = KeyProvider->GetKey(spec, {}).ExtractValue();
         UNIT_ASSERT(HasError(keyOrError));
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            keyOrError.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, keyOrError.GetError().GetCode());
     }
 }
 

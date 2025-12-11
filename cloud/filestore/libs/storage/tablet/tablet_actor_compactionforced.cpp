@@ -72,9 +72,7 @@ private:
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
 
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        const NProto::TError& error);
+    void ReplyAndDie(const TActorContext& ctx, const NProto::TError& error);
 
     void ReportProgress(const TActorContext& ctx);
 };
@@ -120,8 +118,7 @@ void TForcedOperationActor<TResponseType, TRequestConstructor>::
 }
 
 template <typename TResponseType, typename TRequestConstructor>
-STFUNC(
-    (TForcedOperationActor<TResponseType, TRequestConstructor>::StateWork))
+STFUNC((TForcedOperationActor<TResponseType, TRequestConstructor>::StateWork))
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleWakeUp);
@@ -164,8 +161,9 @@ void TForcedOperationActor<TResponseType, TRequestConstructor>::
 }
 
 template <typename TResponseType, typename TRequestConstructor>
-void TForcedOperationActor<TResponseType, TRequestConstructor>::
-    HandleWakeUp(const TEvents::TEvWakeup::TPtr& ev, const TActorContext& ctx)
+void TForcedOperationActor<TResponseType, TRequestConstructor>::HandleWakeUp(
+    const TEvents::TEvWakeup::TPtr& ev,
+    const TActorContext& ctx)
 {
     Y_UNUSED(ev);
     SendRangeOperationRequest(ctx);
@@ -182,8 +180,9 @@ void TForcedOperationActor<TResponseType, TRequestConstructor>::
 }
 
 template <typename TResponseType, typename TRequestConstructor>
-void TForcedOperationActor<TResponseType, TRequestConstructor>::
-    ReplyAndDie(const TActorContext& ctx, const NProto::TError& error)
+void TForcedOperationActor<TResponseType, TRequestConstructor>::ReplyAndDie(
+    const TActorContext& ctx,
+    const NProto::TError& error)
 {
     {
         // notify tablet
@@ -208,8 +207,8 @@ void TForcedOperationActor<TResponseType, TRequestConstructor>::
 }
 
 template <typename TResponseType, typename TRequestConstructor>
-void TForcedOperationActor<TResponseType, TRequestConstructor>::
-    ReportProgress(const TActorContext& ctx)
+void TForcedOperationActor<TResponseType, TRequestConstructor>::ReportProgress(
+    const TActorContext& ctx)
 {
     using TEvent = TEvIndexTabletPrivate::TEvForcedRangeOperationProgress;
     NCloud::Send(ctx, Tablet, std::make_unique<TEvent>(State.Current));
@@ -290,13 +289,14 @@ void TIndexTabletActor::HandleForcedRangeOperation(
 {
     auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s ForcedRangeOperation request for %lu ranges",
         LogTag.c_str(),
         msg->Ranges.size());
 
-    auto replyError = [&] (
-        const NProto::TError& error)
+    auto replyError = [&](const NProto::TError& error)
     {
         if (ev->Sender == ctx.SelfID) {
             return;
@@ -312,10 +312,8 @@ void TIndexTabletActor::HandleForcedRangeOperation(
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     // will lose original request info in case of enqueueing external request
@@ -349,7 +347,8 @@ void TIndexTabletActor::HandleForcedRangeOperation(
                 *GetForcedRangeOperationState(),
                 std::move(requestInfo));
             break;
-        case TEvIndexTabletPrivate::EForcedRangeOperationMode::DeleteZeroCompactionRanges:
+        case TEvIndexTabletPrivate::EForcedRangeOperationMode::
+            DeleteZeroCompactionRanges:
             actor = std::make_unique<TDeleteRangesWithEmptyScoreActor>(
                 ctx.SelfID,
                 LogTag,
@@ -371,7 +370,9 @@ void TIndexTabletActor::HandleForcedRangeOperationCompleted(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s ForcedRangeOperation completed (%s)",
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());

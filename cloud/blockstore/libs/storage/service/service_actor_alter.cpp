@@ -1,12 +1,13 @@
 #include "service_actor.h"
 
+#include "cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor.h"
+
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
-#include "cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor.h"
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/libs/common/media.h>
@@ -25,8 +26,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAlterVolumeActor final
-    : public TActorBootstrapped<TAlterVolumeActor>
+class TAlterVolumeActor final: public TActorBootstrapped<TAlterVolumeActor>
 {
 private:
     const TActorId Sender;
@@ -87,22 +87,24 @@ private:
         volumeParams.BlocksCountPerPartition = ComputeBlocksCountPerPartition(
             blocksCount,
             volumeConfig.GetBlocksPerStripe(),
-            volumeConfig.PartitionsSize()
-        );
+            volumeConfig.PartitionsSize());
 
         const auto mediaKind = volumeConfig.GetStorageMediaKind();
         volumeParams.MediaKind =
             static_cast<NCloud::NProto::EStorageMediaKind>(mediaKind);
 
         if (volumeConfig.ExplicitChannelProfilesSize()) {
-            Y_DEBUG_ABORT_UNLESS(volumeConfig.ExplicitChannelProfilesSize() > 3);
-            for (ui32 i = 3; i < volumeConfig.ExplicitChannelProfilesSize(); ++i) {
+            Y_DEBUG_ABORT_UNLESS(
+                volumeConfig.ExplicitChannelProfilesSize() > 3);
+            for (ui32 i = 3; i < volumeConfig.ExplicitChannelProfilesSize();
+                 ++i)
+            {
                 const auto& channelProfile =
                     volumeConfig.GetExplicitChannelProfiles(i);
-                volumeParams.DataChannels.push_back({
-                    channelProfile.GetPoolKind(),
-                    static_cast<EChannelDataKind>(channelProfile.GetDataKind())
-                });
+                volumeParams.DataChannels.push_back(
+                    {channelProfile.GetPoolKind(),
+                     static_cast<EChannelDataKind>(
+                         channelProfile.GetDataKind())});
             }
         }
 
@@ -152,10 +154,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TAlterVolumeActor::TAlterVolumeActor(
-        const TActorId& sender,
-        ui64 cookie,
-        TStorageConfigPtr config,
-        const NProto::TResizeVolumeRequest& request)
+    const TActorId& sender,
+    ui64 cookie,
+    TStorageConfigPtr config,
+    const NProto::TResizeVolumeRequest& request)
     : Sender(sender)
     , Cookie(cookie)
     , Config(std::move(config))
@@ -167,10 +169,10 @@ TAlterVolumeActor::TAlterVolumeActor(
 {}
 
 TAlterVolumeActor::TAlterVolumeActor(
-        const TActorId& sender,
-        ui64 cookie,
-        TStorageConfigPtr config,
-        const NProto::TAlterVolumeRequest& request)
+    const TActorId& sender,
+    ui64 cookie,
+    TStorageConfigPtr config,
+    const NProto::TAlterVolumeRequest& request)
     : Sender(sender)
     , Cookie(cookie)
     , Config(std::move(config))
@@ -181,15 +183,16 @@ TAlterVolumeActor::TAlterVolumeActor(
     VolumeConfig.SetFolderId(request.GetFolderId());
     VolumeConfig.SetCloudId(request.GetCloudId());
     if (request.GetEncryptionKeyHash()) {
-        VolumeConfig.MutableEncryptionDesc()->SetKeyHash(request.GetEncryptionKeyHash());
+        VolumeConfig.MutableEncryptionDesc()->SetKeyHash(
+            request.GetEncryptionKeyHash());
     }
 }
 
 TAlterVolumeActor::TAlterVolumeActor(
-        const TActorId& sender,
-        ui64 cookie,
-        TStorageConfigPtr config,
-        const NPrivateProto::TSetupChannelsRequest& request)
+    const TActorId& sender,
+    ui64 cookie,
+    TStorageConfigPtr config,
+    const NPrivateProto::TSetupChannelsRequest& request)
     : Sender(sender)
     , Cookie(cookie)
     , Config(std::move(config))
@@ -211,7 +214,9 @@ void TAlterVolumeActor::DescribeVolume(const TActorContext& ctx)
 {
     Become(&TThis::StateDescribeVolume);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending describe request for volume %s",
         DiskId.Quote().c_str());
 
@@ -229,12 +234,17 @@ void TAlterVolumeActor::AlterVolume(
 {
     Become(&TThis::StateAlterVolume);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending alter request for %s",
         path.Quote().c_str());
 
     auto request = CreateModifySchemeRequestForAlterVolume(
-        path, pathId, version, VolumeConfig);
+        path,
+        pathId,
+        version,
+        VolumeConfig);
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
 }
 
@@ -245,20 +255,18 @@ void TAlterVolumeActor::WaitReady(const TActorContext& ctx)
     auto request = std::make_unique<TEvVolume::TEvWaitReadyRequest>();
     request->Record.SetDiskId(DiskId);
 
-    NCloud::Send(
-        ctx,
-        MakeVolumeProxyServiceId(),
-        std::move(request),
-        Cookie);
+    NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request), Cookie);
 }
 
 void TAlterVolumeActor::ReplyAndDie(const TActorContext& ctx)
 {
     if (NewBlocksCount || SetupChannelsRequested) {
-        auto response = std::make_unique<TEvService::TEvResizeVolumeResponse>(Error);
+        auto response =
+            std::make_unique<TEvService::TEvResizeVolumeResponse>(Error);
         NCloud::Send(ctx, Sender, std::move(response), Cookie);
     } else {
-        auto response = std::make_unique<TEvService::TEvAlterVolumeResponse>(Error);
+        auto response =
+            std::make_unique<TEvService::TEvAlterVolumeResponse>(Error);
         NCloud::Send(ctx, Sender, std::move(response), Cookie);
     }
 
@@ -273,7 +281,9 @@ void TAlterVolumeActor::HandleDescribeVolumeResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Volume %s: describe failed: %s",
             DiskId.Quote().c_str(),
             FormatError(error).c_str());
@@ -297,8 +307,9 @@ void TAlterVolumeActor::HandleDescribeVolumeResponse(
         ui32 oldBlocksCount = 0;
         for (const auto& partition: oldVolumeConfig.GetPartitions()) {
             oldBlocksCount += partition.GetBlockCount();
-            Y_ABORT_UNLESS(oldVolumeConfig.GetPartitions(0).GetBlockCount()
-                    == partition.GetBlockCount());
+            Y_ABORT_UNLESS(
+                oldVolumeConfig.GetPartitions(0).GetBlockCount() ==
+                partition.GetBlockCount());
         }
 
         auto volumeParams = BuildVolumeParams(oldVolumeConfig, oldBlocksCount);
@@ -313,66 +324,74 @@ void TAlterVolumeActor::HandleDescribeVolumeResponse(
             const auto maxBlocks = ComputeMaxBlocks(
                 *Config,
                 volumeParams.MediaKind,
-                volumeParams.PartitionsCount
-            );
+                volumeParams.PartitionsCount);
 
             if (volumeParams.GetBlocksCount() > maxBlocks) {
                 Error = MakeError(
                     E_ARGUMENT,
-                    TStringBuilder() << "disk size for media kind "
+                    TStringBuilder()
+                        << "disk size for media kind "
                         << MediaKindToString(volumeParams.MediaKind)
-                        << " should be <= " << maxBlocks << " blocks"
-                );
+                        << " should be <= " << maxBlocks << " blocks");
                 ReplyAndDie(ctx);
                 return;
             }
 
-            const auto size = volumeParams.GetBlocksCount() * volumeParams.BlockSize;
+            const auto size =
+                volumeParams.GetBlocksCount() * volumeParams.BlockSize;
 
-            if (volumeParams.MediaKind == NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
-                    && size % (Config->GetAllocationUnitNonReplicatedSSD() * 1_GB) != 0)
+            if (volumeParams.MediaKind ==
+                    NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED &&
+                size % (Config->GetAllocationUnitNonReplicatedSSD() * 1_GB) !=
+                    0)
             {
                 Error = MakeError(
                     E_ARGUMENT,
-                    TStringBuilder() << "volume size should be divisible by "
-                        << (Config->GetAllocationUnitNonReplicatedSSD() * 1_GB)
-                );
+                    TStringBuilder()
+                        << "volume size should be divisible by "
+                        << (Config->GetAllocationUnitNonReplicatedSSD() *
+                            1_GB));
                 ReplyAndDie(ctx);
                 return;
             }
 
-            if (volumeParams.MediaKind == NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED
-                    && size % (Config->GetAllocationUnitNonReplicatedHDD() * 1_GB) != 0)
+            if (volumeParams.MediaKind ==
+                    NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED &&
+                size % (Config->GetAllocationUnitNonReplicatedHDD() * 1_GB) !=
+                    0)
             {
                 Error = MakeError(
                     E_ARGUMENT,
-                    TStringBuilder() << "volume size should be divisible by "
-                        << (Config->GetAllocationUnitNonReplicatedHDD() * 1_GB)
-                );
+                    TStringBuilder()
+                        << "volume size should be divisible by "
+                        << (Config->GetAllocationUnitNonReplicatedHDD() *
+                            1_GB));
                 ReplyAndDie(ctx);
                 return;
             }
 
-            if (volumeParams.MediaKind == NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2
-                    && size % (Config->GetAllocationUnitMirror2SSD() * 1_GB) != 0)
+            if (volumeParams.MediaKind ==
+                    NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2 &&
+                size % (Config->GetAllocationUnitMirror2SSD() * 1_GB) != 0)
             {
                 Error = MakeError(
                     E_ARGUMENT,
-                    TStringBuilder() << "volume size should be divisible by "
-                        << (Config->GetAllocationUnitMirror2SSD() * 1_GB)
-                );
+                    TStringBuilder()
+                        << "volume size should be divisible by "
+                        << (Config->GetAllocationUnitMirror2SSD() * 1_GB));
                 ReplyAndDie(ctx);
                 return;
             }
 
-            if (volumeParams.MediaKind == NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3
-                    && size % (Config->GetAllocationUnitMirror3SSD() * 1_GB) != 0)
+            if (volumeParams.MediaKind ==
+                    NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3 &&
+                size % (Config->GetAllocationUnitMirror3SSD() * 1_GB) != 0)
             {
                 Error = MakeError(
                     E_ARGUMENT,
-                    TStringBuilder() << "volume size should be divisible by "
-                        << (Config->GetAllocationUnitMirror3SSD() * 1_GB)
-                );
+                    TStringBuilder()
+                        << "volume size should be divisible by "
+                        << (Config->GetAllocationUnitMirror3SSD() * 1_GB));
                 ReplyAndDie(ctx);
                 return;
             }
@@ -398,11 +417,14 @@ void TAlterVolumeActor::HandleDescribeVolumeResponse(
         }
 
         if (oldVolumeConfig.GetIsPartitionsPoolKindSetManually()) {
-            for (ui32 i = 0; i < oldVolumeConfig.ExplicitChannelProfilesSize(); ++i) {
+            for (ui32 i = 0; i < oldVolumeConfig.ExplicitChannelProfilesSize();
+                 ++i)
+            {
                 while (i >= VolumeConfig.ExplicitChannelProfilesSize()) {
                     VolumeConfig.AddExplicitChannelProfiles();
                 }
-                auto* existingProfile = VolumeConfig.MutableExplicitChannelProfiles(i);
+                auto* existingProfile =
+                    VolumeConfig.MutableExplicitChannelProfiles(i);
                 const auto& oldProfile =
                     oldVolumeConfig.GetExplicitChannelProfiles(i);
                 existingProfile->SetPoolKind(oldProfile.GetPoolKind());
@@ -414,21 +436,22 @@ void TAlterVolumeActor::HandleDescribeVolumeResponse(
             volumeParams,
             Flags,
             PerformanceProfile,
-            VolumeConfig
-        );
+            VolumeConfig);
 
-        if (
-                NewBlocksCount
-                && !SetMissingParams(volumeParams, oldVolumeConfig, VolumeConfig)
-                && CompareVolumeConfigs(oldVolumeConfig, VolumeConfig)
-           )
+        if (NewBlocksCount &&
+            !SetMissingParams(volumeParams, oldVolumeConfig, VolumeConfig) &&
+            CompareVolumeConfigs(oldVolumeConfig, VolumeConfig))
         {
-            LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::SERVICE,
                 "Volume %s already has the required settings, size=%lu",
                 DiskId.Quote().c_str(),
                 volumeParams.GetBlocksCount());
 
-            Error = MakeError(S_ALREADY, "Volume already has the required settings");
+            Error = MakeError(
+                S_ALREADY,
+                "Volume already has the required settings");
             WaitReady(ctx);
             return;
         }
@@ -456,7 +479,9 @@ void TAlterVolumeActor::HandleAlterVolumeResponse(
     NProto::TError error = msg->GetError();
     ui32 errorCode = error.GetCode();
     if (FAILED(errorCode)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "%s of volume %s failed: %s",
             GetOperationString(),
             DiskId.Quote().c_str(),
@@ -467,7 +492,9 @@ void TAlterVolumeActor::HandleAlterVolumeResponse(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending WaitReady request to volume %s",
         DiskId.Quote().c_str());
 
@@ -481,14 +508,18 @@ void TAlterVolumeActor::HandleWaitReadyResponse(
     const auto* msg = ev->Get();
 
     if (HasError(msg->GetError())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "%s->WaitReady request failed for volume %s, error: %s",
             GetOperationString(),
             DiskId.Quote().c_str(),
             msg->GetErrorReason().Quote().c_str());
         Error = msg->GetError();
     } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Successfully %s volume %s",
             GetOperationString(),
             DiskId.Quote().c_str());
@@ -502,7 +533,9 @@ void TAlterVolumeActor::HandleWaitReadyResponse(
 STFUNC(TAlterVolumeActor::StateDescribeVolume)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvDescribeVolumeResponse, HandleDescribeVolumeResponse);
+        HFunc(
+            TEvSSProxy::TEvDescribeVolumeResponse,
+            HandleDescribeVolumeResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -552,7 +585,9 @@ void TServiceActor::HandleAlterVolume(
     const auto* msg = ev->Get();
     const auto& request = msg->Record;
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Altering volume: %s, %s, %s, %s, %u, %s",
         request.GetDiskId().Quote().c_str(),
         request.GetProjectId().Quote().c_str(),
@@ -576,15 +611,19 @@ void TServiceActor::HandleResizeVolume(
     const auto* msg = ev->Get();
     const auto& request = msg->Record;
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Resizing volume: %s, %llu, %u",
         request.GetDiskId().Quote().c_str(),
         request.GetBlocksCount(),
         request.GetConfigVersion());
 
     if (!request.GetBlocksCount()) {
-        auto response = std::make_unique<TEvService::TEvResizeVolumeResponse>(
-            MakeError(E_ARGUMENT, "BlocksCount should not be 0 for resize requests"));
+        auto response =
+            std::make_unique<TEvService::TEvResizeVolumeResponse>(MakeError(
+                E_ARGUMENT,
+                "BlocksCount should not be 0 for resize requests"));
         NCloud::Send(ctx, ev->Sender, std::move(response), ev->Cookie);
         return;
     }
@@ -604,18 +643,14 @@ void RegisterAlterVolumeActor(
     const NPrivateProto::TSetupChannelsRequest& request,
     const NActors::TActorContext& ctx)
 {
-
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Setup channels volume: %s, %u",
         request.GetDiskId().Quote().c_str(),
         request.GetConfigVersion());
 
-    NCloud::Register<TAlterVolumeActor>(
-        ctx,
-        sender,
-        cookie,
-        config,
-        request);
+    NCloud::Register<TAlterVolumeActor>(ctx, sender, cookie, config, request);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

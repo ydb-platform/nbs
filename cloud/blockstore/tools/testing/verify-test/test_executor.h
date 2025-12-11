@@ -2,8 +2,9 @@
 
 #include "private.h"
 
-#include <util/datetime/base.h>
 #include <library/cpp/deprecated/atomic/atomic.h>
+
+#include <util/datetime/base.h>
 
 namespace NCloud::NBlockStore {
 
@@ -38,12 +39,12 @@ struct TTestExecutorConfig
     bool DirectIo;
 
     TTestExecutorConfig(
-            ui64 startOffset,
-            ui64 endOffset,
-            ui64 step,
-            ui32 blockSize,
-            ETestPattern testPattern,
-            bool directIo)
+        ui64 startOffset,
+        ui64 endOffset,
+        ui64 step,
+        ui32 blockSize,
+        ETestPattern testPattern,
+        bool directIo)
         : StartOffset(startOffset)
         , EndOffset(endOffset)
         , Step(step)

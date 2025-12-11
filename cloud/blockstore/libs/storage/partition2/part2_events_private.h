@@ -6,9 +6,9 @@
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
-#include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/compaction_options.h>
 #include <cloud/blockstore/libs/storage/core/compaction_type.h>
+#include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/model/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/partition2/model/blob.h>
@@ -20,8 +20,8 @@
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actorid.h>
+
 #include <library/cpp/containers/stack_vector/stack_vec.h>
 #include <library/cpp/lwtrace/shuttle.h>
 
@@ -33,20 +33,20 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_PARTITION2_REQUESTS_PRIVATE(xxx, ...)                       \
-    xxx(ReadBlob,               __VA_ARGS__)                                   \
-    xxx(WriteBlob,              __VA_ARGS__)                                   \
-    xxx(AddBlobs,               __VA_ARGS__)                                   \
-    xxx(AddFreshBlocks,         __VA_ARGS__)                                   \
-    xxx(Flush,                  __VA_ARGS__)                                   \
-    xxx(Compaction,             __VA_ARGS__)                                   \
-    xxx(Cleanup,                __VA_ARGS__)                                   \
-    xxx(InitIndex,              __VA_ARGS__)                                   \
-    xxx(UpdateIndexStructures,  __VA_ARGS__)                                   \
-    xxx(CollectGarbage,         __VA_ARGS__)                                   \
-    xxx(AddGarbage,             __VA_ARGS__)                                   \
-    xxx(DeleteGarbage,          __VA_ARGS__)                                   \
-// BLOCKSTORE_PARTITION2_REQUESTS_PRIVATE
+#define BLOCKSTORE_PARTITION2_REQUESTS_PRIVATE(xxx, ...) \
+    xxx(ReadBlob, __VA_ARGS__)                           \
+    xxx(WriteBlob, __VA_ARGS__)                          \
+    xxx(AddBlobs, __VA_ARGS__)                           \
+    xxx(AddFreshBlocks, __VA_ARGS__)                     \
+    xxx(Flush, __VA_ARGS__)                              \
+    xxx(Compaction, __VA_ARGS__)                         \
+    xxx(Cleanup, __VA_ARGS__)                            \
+    xxx(InitIndex, __VA_ARGS__)                          \
+    xxx(UpdateIndexStructures, __VA_ARGS__)              \
+    xxx(CollectGarbage, __VA_ARGS__)                     \
+    xxx(AddGarbage, __VA_ARGS__)                         \
+    xxx(DeleteGarbage, __VA_ARGS__)                      \
+    // BLOCKSTORE_PARTITION2_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -59,11 +59,11 @@ struct TReadBlocksRequest
     ui32 GroupId;
 
     TReadBlocksRequest(
-            const NKikimr::TLogoBlobID& blobId,
-            NActors::TActorId proxy,
-            ui16 blobOffset,
-            ui32 blockIndex,
-            ui32 groupId)
+        const NKikimr::TLogoBlobID& blobId,
+        NActors::TActorId proxy,
+        ui16 blobOffset,
+        ui32 blockIndex,
+        ui32 groupId)
         : BlobId(blobId)
         , BSProxy(proxy)
         , BlobOffset(blobOffset)
@@ -95,13 +95,13 @@ struct TEvPartitionPrivate
         TReadBlobRequest() = default;
 
         TReadBlobRequest(
-                const NKikimr::TLogoBlobID& blobId,
-                NActors::TActorId proxy,
-                TVector<ui16> blobOffsets,
-                TGuardedSgList sglist,
-                ui32 groupId,
-                bool async,
-                TInstant deadline)
+            const NKikimr::TLogoBlobID& blobId,
+            NActors::TActorId proxy,
+            TVector<ui16> blobOffsets,
+            TGuardedSgList sglist,
+            ui32 groupId,
+            bool async,
+            TInstant deadline)
             : BlobId(blobId)
             , Proxy(proxy)
             , BlobOffsets(std::move(blobOffsets))
@@ -130,10 +130,10 @@ struct TEvPartitionPrivate
         TReadBlobCompleted() = default;
 
         TReadBlobCompleted(
-                const NKikimr::TLogoBlobID blobId,
-                ui32 bytesCount,
-                TDuration requestTime,
-                ui32 groupId)
+            const NKikimr::TLogoBlobID blobId,
+            ui32 bytesCount,
+            TDuration requestTime,
+            ui32 groupId)
             : BlobId(blobId)
             , BytesCount(bytesCount)
             , RequestTime(requestTime)
@@ -159,10 +159,10 @@ struct TEvPartitionPrivate
 
         template <typename TData>
         TWriteBlobRequest(
-                TPartialBlobId blobId,
-                TData data,
-                bool async = false,
-                TInstant deadline = TInstant::Max())
+            TPartialBlobId blobId,
+            TData data,
+            bool async = false,
+            TInstant deadline = TInstant::Max())
             : BlobId(blobId)
             , Data(std::move(data))
             , Async(async)
@@ -185,10 +185,10 @@ struct TEvPartitionPrivate
         TWriteBlobCompleted() = default;
 
         TWriteBlobCompleted(
-                const TPartialBlobId& blobId,
-                NKikimr::TStorageStatusFlags storageStatusFlags,
-                double approximateFreeSpaceShare,
-                TDuration requestTime)
+            const TPartialBlobId& blobId,
+            NKikimr::TStorageStatusFlags storageStatusFlags,
+            double approximateFreeSpaceShare,
+            TDuration requestTime)
             : BlobId(blobId)
             , StorageStatusFlags(storageStatusFlags)
             , ApproximateFreeSpaceShare(approximateFreeSpaceShare)
@@ -211,9 +211,7 @@ struct TEvPartitionPrivate
 
         TAddBlobsRequest() = default;
 
-        TAddBlobsRequest(
-                EAddBlobMode mode,
-                TVector<TAddBlob> newBlobs)
+        TAddBlobsRequest(EAddBlobMode mode, TVector<TAddBlob> newBlobs)
             : Mode(mode)
             , NewBlobs(std::move(newBlobs))
             , BlobsSkippedByCompaction(0)
@@ -223,12 +221,12 @@ struct TEvPartitionPrivate
         }
 
         TAddBlobsRequest(
-                EAddBlobMode mode,
-                TVector<TAddBlob> newBlobs,
-                TGarbageInfo garbageInfo,
-                TAffectedBlobInfos affectedBlobInfos,
-                ui32 blobsSkippedByCompaction,
-                ui32 blocksSkippedByCompaction)
+            EAddBlobMode mode,
+            TVector<TAddBlob> newBlobs,
+            TGarbageInfo garbageInfo,
+            TAffectedBlobInfos affectedBlobInfos,
+            ui32 blobsSkippedByCompaction,
+            ui32 blocksSkippedByCompaction)
             : Mode(mode)
             , NewBlobs(std::move(newBlobs))
             , GarbageInfo(std::move(garbageInfo))
@@ -256,10 +254,10 @@ struct TEvPartitionPrivate
         const ui64 FirstRequestDeletionId;
 
         TAddFreshBlocksRequest(
-                ui64 commitId,
-                TVector<TBlockRange32> blockRanges,
-                TVector<IWriteBlocksHandlerPtr> writeHandlers,
-                ui64 firstRequestDeletionId)
+            ui64 commitId,
+            TVector<TBlockRange32> blockRanges,
+            TVector<IWriteBlocksHandlerPtr> writeHandlers,
+            ui64 firstRequestDeletionId)
             : CommitId(commitId)
             , BlockRanges(std::move(blockRanges))
             , WriteHandlers(std::move(writeHandlers))
@@ -303,8 +301,8 @@ struct TEvPartitionPrivate
         TCompactionRequest() = default;
 
         TCompactionRequest(
-                ui32 blockIndex,
-                TCompactionOptions compactionOptions)
+            ui32 blockIndex,
+            TCompactionOptions compactionOptions)
             : BlockIndex(blockIndex)
             , CompactionOptions(compactionOptions)
         {}
@@ -316,7 +314,6 @@ struct TEvPartitionPrivate
         TCompactionRequest(ECompactionMode mode)
             : Mode(mode)
         {}
-
 
         TCompactionRequest(TGarbageInfo garbageInfo)
             : Mode(GarbageCompaction)
@@ -382,8 +379,7 @@ struct TEvPartitionPrivate
 
         TUpdateIndexStructuresRequest(const TBlockRange32& blockRange)
             : BlockRange(blockRange)
-        {
-        }
+        {}
     };
 
     struct TUpdateIndexStructuresResponse
@@ -394,8 +390,7 @@ struct TEvPartitionPrivate
 
         TUpdateIndexStructuresResponse(ui32 mixedZoneCount)
             : MixedZoneCount(mixedZoneCount)
-        {
-        }
+        {}
     };
 
     //
@@ -442,9 +437,9 @@ struct TEvPartitionPrivate
         TDeleteGarbageRequest() = default;
 
         TDeleteGarbageRequest(
-                ui64 commitId,
-                TVector<TPartialBlobId> newBlobs,
-                TVector<TPartialBlobId> garbageBlobs)
+            ui64 commitId,
+            TVector<TPartialBlobId> newBlobs,
+            TVector<TPartialBlobId> garbageBlobs)
             : CommitId(commitId)
             , NewBlobs(std::move(newBlobs))
             , GarbageBlobs(std::move(garbageBlobs))
@@ -477,8 +472,7 @@ struct TEvPartitionPrivate
     // ReadBlocksCompleted
     //
 
-    struct TReadBlocksCompleted
-        : TOperationCompleted
+    struct TReadBlocksCompleted: TOperationCompleted
     {
         struct TCompactionRangeReadStats
         {
@@ -487,14 +481,13 @@ struct TEvPartitionPrivate
             ui32 BlockCount;
 
             TCompactionRangeReadStats(
-                    ui32 blockIndex,
-                    ui32 blobCount,
-                    ui32 blockCount)
+                ui32 blockIndex,
+                ui32 blobCount,
+                ui32 blockCount)
                 : BlockIndex(blockIndex)
                 , BlobCount(blobCount)
                 , BlockCount(blockCount)
-            {
-            }
+            {}
         };
 
         TStackVec<TCompactionRangeReadStats, 2> ReadStats;
@@ -504,16 +497,13 @@ struct TEvPartitionPrivate
     // WriteBlocksCompleted
     //
 
-    struct TWriteBlocksCompleted
-        : TOperationCompleted
+    struct TWriteBlocksCompleted: TOperationCompleted
     {
         bool CollectBarrierAcquired;
 
-        TWriteBlocksCompleted(
-                bool collectBarrierAcquired)
+        TWriteBlocksCompleted(bool collectBarrierAcquired)
             : CollectBarrierAcquired(collectBarrierAcquired)
-        {
-        }
+        {}
     };
 
     //
@@ -528,8 +518,7 @@ struct TEvPartitionPrivate
     // CompactionCompleted
     //
 
-    struct TCompactionCompleted
-        : TOperationCompleted
+    struct TCompactionCompleted: TOperationCompleted
     {
         ECompactionType CompactionType;
     };
@@ -573,28 +562,42 @@ struct TEvPartitionPrivate
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStorePrivateEvents::PARTITION_END,
+    static_assert(
+        EvEnd < (int)TBlockStorePrivateEvents::PARTITION_END,
         "EvEnd expected to be < TBlockStorePrivateEvents::PARTITION_END");
 
     BLOCKSTORE_PARTITION2_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENTS)
 
     using TEvUpdateCounters = TRequestEvent<TEmpty, EvUpdateCounters>;
     using TEvUpdateYellowState = TRequestEvent<TEmpty, EvUpdateYellowState>;
-    using TEvSendBackpressureReport = TRequestEvent<TEmpty, EvSendBackpressureReport>;
+    using TEvSendBackpressureReport =
+        TRequestEvent<TEmpty, EvSendBackpressureReport>;
     using TEvProcessWriteQueue = TRequestEvent<TEmpty, EvProcessWriteQueue>;
 
-    using TEvReadBlobCompleted = TResponseEvent<TReadBlobCompleted, EvReadBlobCompleted>;
-    using TEvWriteBlobCompleted = TResponseEvent<TWriteBlobCompleted, EvWriteBlobCompleted>;
-    using TEvReadBlocksCompleted = TResponseEvent<TReadBlocksCompleted, EvReadBlocksCompleted>;
-    using TEvWriteBlocksCompleted = TResponseEvent<TWriteBlocksCompleted, EvWriteBlocksCompleted>;
-    using TEvZeroBlocksCompleted = TResponseEvent<TOperationCompleted, EvZeroBlocksCompleted>;
-    using TEvFlushCompleted = TResponseEvent<TOperationCompleted, EvFlushCompleted>;
-    using TEvCompactionCompleted = TResponseEvent<TCompactionCompleted, EvCompactionCompleted>;
-    using TEvCollectGarbageCompleted = TResponseEvent<TOperationCompleted, EvCollectGarbageCompleted>;
-    using TEvForcedCompactionCompleted = TResponseEvent<TForcedCompactionCompleted, EvForcedCompactionCompleted>;
-    using TEvForcedCleanupCompleted = TResponseEvent<TForcedCleanupCompleted, EvForcedCleanupCompleted>;
-    using TEvInitFreshZonesCompleted = TResponseEvent<TEmpty, EvInitFreshZonesCompleted>;
-    using TEvGetChangedBlocksCompleted = TResponseEvent<TOperationCompleted, EvGetChangedBlocksCompleted>;
+    using TEvReadBlobCompleted =
+        TResponseEvent<TReadBlobCompleted, EvReadBlobCompleted>;
+    using TEvWriteBlobCompleted =
+        TResponseEvent<TWriteBlobCompleted, EvWriteBlobCompleted>;
+    using TEvReadBlocksCompleted =
+        TResponseEvent<TReadBlocksCompleted, EvReadBlocksCompleted>;
+    using TEvWriteBlocksCompleted =
+        TResponseEvent<TWriteBlocksCompleted, EvWriteBlocksCompleted>;
+    using TEvZeroBlocksCompleted =
+        TResponseEvent<TOperationCompleted, EvZeroBlocksCompleted>;
+    using TEvFlushCompleted =
+        TResponseEvent<TOperationCompleted, EvFlushCompleted>;
+    using TEvCompactionCompleted =
+        TResponseEvent<TCompactionCompleted, EvCompactionCompleted>;
+    using TEvCollectGarbageCompleted =
+        TResponseEvent<TOperationCompleted, EvCollectGarbageCompleted>;
+    using TEvForcedCompactionCompleted =
+        TResponseEvent<TForcedCompactionCompleted, EvForcedCompactionCompleted>;
+    using TEvForcedCleanupCompleted =
+        TResponseEvent<TForcedCleanupCompleted, EvForcedCleanupCompleted>;
+    using TEvInitFreshZonesCompleted =
+        TResponseEvent<TEmpty, EvInitFreshZonesCompleted>;
+    using TEvGetChangedBlocksCompleted =
+        TResponseEvent<TOperationCompleted, EvGetChangedBlocksCompleted>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

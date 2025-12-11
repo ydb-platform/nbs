@@ -12,17 +12,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServiceStorage final
-    : public IStorage
+class TServiceStorage final: public IStorage
 {
 private:
     const IBlockStorePtr Service;
     const TString DiskId;
 
 public:
-    TServiceStorage(
-            IBlockStorePtr service,
-            TString diskId)
+    TServiceStorage(IBlockStorePtr service, TString diskId)
         : Service(std::move(service))
         , DiskId(std::move(diskId))
     {}
@@ -32,9 +29,7 @@ public:
         std::shared_ptr<NProto::TZeroBlocksRequest> request) override
     {
         PrepareRequest(*request);
-        return Service->ZeroBlocks(
-            std::move(callContext),
-            std::move(request));
+        return Service->ZeroBlocks(std::move(callContext), std::move(request));
     }
 
     TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
@@ -84,8 +79,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDefaultStorageProvider final
-    : public IStorageProvider
+class TDefaultStorageProvider final: public IStorageProvider
 {
 private:
     IBlockStorePtr Service;
@@ -103,9 +97,8 @@ public:
         Y_UNUSED(clientId);
         Y_UNUSED(accessMode);
 
-        auto storage = std::make_shared<TServiceStorage>(
-            Service,
-            volume.GetDiskId());
+        auto storage =
+            std::make_shared<TServiceStorage>(Service, volume.GetDiskId());
 
         return MakeFuture<IStoragePtr>(storage);
     }
@@ -148,22 +141,24 @@ private:
 
         const auto& storageProvider = StorageProviders[storageNum];
         return storageProvider->CreateStorage(volume, clientId, accessMode)
-            .Apply([=, weak_ptr = std::move(weak_ptr)] (const auto& future) {
-                const auto& storage = future.GetValue();
-                if (storage) {
-                    return MakeFuture(storage);
-                }
+            .Apply(
+                [=, weak_ptr = std::move(weak_ptr)](const auto& future)
+                {
+                    const auto& storage = future.GetValue();
+                    if (storage) {
+                        return MakeFuture(storage);
+                    }
 
-                if (auto p = weak_ptr.lock()) {
-                    return p->CreateStorage(
-                        storageNum + 1,
-                        volume,
-                        clientId,
-                        accessMode);
-                }
+                    if (auto p = weak_ptr.lock()) {
+                        return p->CreateStorage(
+                            storageNum + 1,
+                            volume,
+                            clientId,
+                            accessMode);
+                    }
 
-                return MakeFuture<IStoragePtr>(nullptr);
-            });
+                    return MakeFuture<IStoragePtr>(nullptr);
+                });
     }
 };
 
@@ -171,8 +166,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IStorageProviderPtr CreateDefaultStorageProvider(
-    IBlockStorePtr service)
+IStorageProviderPtr CreateDefaultStorageProvider(IBlockStorePtr service)
 {
     return std::make_shared<TDefaultStorageProvider>(std::move(service));
 }

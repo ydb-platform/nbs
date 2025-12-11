@@ -50,14 +50,13 @@ private:
 
 public:
     TYdbTokenProvider(
-            ISchedulerPtr scheduler,
-            IIamTokenClientPtr client,
-            TDuration tokenRefreshTimeBeforeExpiration,
-            TTokenInfo initialToken)
+        ISchedulerPtr scheduler,
+        IIamTokenClientPtr client,
+        TDuration tokenRefreshTimeBeforeExpiration,
+        TTokenInfo initialToken)
         : Scheduler(std::move(scheduler))
         , Client(std::move(client))
-        , TokenRefreshTimeBeforeExpiration(
-              tokenRefreshTimeBeforeExpiration)
+        , TokenRefreshTimeBeforeExpiration(tokenRefreshTimeBeforeExpiration)
         , Token(std::move(initialToken.Token))
         , ExpiresAt(initialToken.ExpiresAt)
     {}
@@ -134,8 +133,7 @@ using TYdbTokenProviderPtr = std::shared_ptr<TYdbTokenProvider>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TIamCredentialsProviderFactory final
-    : public ICredentialsProviderFactory
+class TIamCredentialsProviderFactory final: public ICredentialsProviderFactory
 {
 private:
     const TDuration IamTokenRefreshTimeBeforeExpiration;
@@ -145,10 +143,10 @@ private:
 
 public:
     TIamCredentialsProviderFactory(
-            TDuration iamTokenRefreshTimeBeforeExpiration,
-            TTokenInfo initialTokenInfo,
-            ISchedulerPtr scheduler,
-            IIamTokenClientPtr client)
+        TDuration iamTokenRefreshTimeBeforeExpiration,
+        TTokenInfo initialTokenInfo,
+        ISchedulerPtr scheduler,
+        IIamTokenClientPtr client)
         : IamTokenRefreshTimeBeforeExpiration(
               iamTokenRefreshTimeBeforeExpiration)
         , InitialTokenInfo(std::move(initialTokenInfo))
@@ -168,7 +166,7 @@ public:
     }
 };
 
-}  // namespace
+}   // namespace
 
 TCredentialsProviderFactoryPtr CreateIamCredentialsProviderFactory(
     TDuration iamTokenRefreshTimeBeforeExpiration,

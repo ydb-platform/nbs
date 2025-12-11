@@ -190,8 +190,11 @@ NRdma::IServerEndpointPtr TRdmaAsyncTestServer::StartEndpoint(
     return ep;
 }
 
-NThreading::TFuture<NProto::TWriteDeviceBlocksResponse> TRdmaAsyncTestServer::
-    Run(TString host, ui32 port, NProto::TWriteDeviceBlocksRequest request)
+NThreading::TFuture<NProto::TWriteDeviceBlocksResponse>
+TRdmaAsyncTestServer::Run(
+    TString host,
+    ui32 port,
+    NProto::TWriteDeviceBlocksRequest request)
 {
     auto& ep = Endpoints[MakeKey(host, port)];
     UNIT_ASSERT(ep.get());
@@ -200,8 +203,11 @@ NThreading::TFuture<NProto::TWriteDeviceBlocksResponse> TRdmaAsyncTestServer::
         std::move(request));
 }
 
-NThreading::TFuture<NProto::TReadDeviceBlocksResponse> TRdmaAsyncTestServer::
-    Run(TString host, ui32 port, NProto::TReadDeviceBlocksRequest request)
+NThreading::TFuture<NProto::TReadDeviceBlocksResponse>
+TRdmaAsyncTestServer::Run(
+    TString host,
+    ui32 port,
+    NProto::TReadDeviceBlocksRequest request)
 {
     auto& ep = Endpoints[MakeKey(host, port)];
     UNIT_ASSERT(ep.get());
@@ -223,8 +229,11 @@ TRdmaAsyncTestServer::Run(
         std::move(request));
 }
 
-NThreading::TFuture<NProto::TZeroDeviceBlocksResponse> TRdmaAsyncTestServer::
-    Run(TString host, ui32 port, NProto::TZeroDeviceBlocksRequest request)
+NThreading::TFuture<NProto::TZeroDeviceBlocksResponse>
+TRdmaAsyncTestServer::Run(
+    TString host,
+    ui32 port,
+    NProto::TZeroDeviceBlocksRequest request)
 {
     auto& ep = Endpoints[MakeKey(host, port)];
     UNIT_ASSERT(ep.get());

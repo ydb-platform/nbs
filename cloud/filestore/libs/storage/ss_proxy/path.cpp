@@ -14,7 +14,8 @@ TString ComputeFolder(const TString& fileSystemId)
 {
     constexpr ui32 folders = 1 << 10;
 
-    const auto hash = MurmurHash<ui32>(fileSystemId.data(), fileSystemId.size());
+    const auto hash =
+        MurmurHash<ui32>(fileSystemId.data(), fileSystemId.size());
     return "_" + IntToString<16>(hash % folders);
 }
 

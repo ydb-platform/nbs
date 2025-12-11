@@ -83,10 +83,8 @@ public:
     // Nodes_Ver
     //
 
-    virtual bool ReadNodeVer(
-        ui64 nodeId,
-        ui64 commitId,
-        TMaybe<TNode>& node) = 0;
+    virtual bool
+    ReadNodeVer(ui64 nodeId, ui64 commitId, TMaybe<TNode>& node) = 0;
 
     //
     // NodeAttrs
@@ -98,10 +96,8 @@ public:
         const TString& name,
         TMaybe<TNodeAttr>& attr) = 0;
 
-    virtual bool ReadNodeAttrs(
-        ui64 nodeId,
-        ui64 commitId,
-        TVector<TNodeAttr>& attrs) = 0;
+    virtual bool
+    ReadNodeAttrs(ui64 nodeId, ui64 commitId, TVector<TNodeAttr>& attrs) = 0;
 
     //
     // NodeAttrs_Ver
@@ -113,10 +109,8 @@ public:
         const TString& name,
         TMaybe<TNodeAttr>& attr) = 0;
 
-    virtual bool ReadNodeAttrVers(
-        ui64 nodeId,
-        ui64 commitId,
-        TVector<TNodeAttr>& attrs) = 0;
+    virtual bool
+    ReadNodeAttrVers(ui64 nodeId, ui64 commitId, TVector<TNodeAttr>& attrs) = 0;
 
     //
     // NodeRefs
@@ -167,10 +161,8 @@ public:
         const TString& name,
         TMaybe<TNodeRef>& ref) = 0;
 
-    virtual bool ReadNodeRefVers(
-        ui64 nodeId,
-        ui64 commitId,
-        TVector<TNodeRef>& refs) = 0;
+    virtual bool
+    ReadNodeRefVers(ui64 nodeId, ui64 commitId, TVector<TNodeRef>& refs) = 0;
 
     //
     // CheckpointNodes

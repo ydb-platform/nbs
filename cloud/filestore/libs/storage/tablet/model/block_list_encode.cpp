@@ -19,13 +19,13 @@ size_t GetBlockOffset(const TVector<TBlock>& blocks, const TBlock& block)
     return offset;
 }
 
-TByteVector EncodeBlockEntries(const TBlock& block, ui32 blocksCount, IAllocator* alloc)
+TByteVector
+EncodeBlockEntries(const TBlock& block, ui32 blocksCount, IAllocator* alloc)
 {
     TBinaryWriter writer(alloc);
 
-    writer.Write<NBlockListSpec::TListHeader>({
-        NBlockListSpec::TListHeader::Blocks
-    });
+    writer.Write<NBlockListSpec::TListHeader>(
+        {NBlockListSpec::TListHeader::Blocks});
 
     writer.Write<NBlockListSpec::TMergedBlockGroup>({
         block.NodeId,
@@ -42,37 +42,34 @@ TByteVector EncodeBlockEntries(const TVector<TBlock>& blocks, IAllocator* alloc)
 {
     TBinaryWriter writer(alloc);
 
-    writer.Write<NBlockListSpec::TListHeader>({
-        NBlockListSpec::TListHeader::Blocks
-    });
+    writer.Write<NBlockListSpec::TListHeader>(
+        {NBlockListSpec::TListHeader::Blocks});
 
-    auto writeSingleEntry = [&] (const TBlock& block) {
-        writer.Write<NBlockListSpec::TSingleBlockEntry>({
-            block.NodeId,
-            block.MinCommitId,
-            block.BlockIndex,
-            static_cast<ui16>(GetBlockOffset(blocks, block))
-        });
+    auto writeSingleEntry = [&](const TBlock& block)
+    {
+        writer.Write<NBlockListSpec::TSingleBlockEntry>(
+            {block.NodeId,
+             block.MinCommitId,
+             block.BlockIndex,
+             static_cast<ui16>(GetBlockOffset(blocks, block))});
     };
 
-    auto writeMergedGroup = [&] (TArrayRef<const TBlock*> group) {
+    auto writeMergedGroup = [&](TArrayRef<const TBlock*> group)
+    {
         const auto& block = *group[0];
-        writer.Write<NBlockListSpec::TMergedBlockGroup>({
-            block.NodeId,
-            block.MinCommitId,
-            static_cast<ui16>(group.size()),
-            block.BlockIndex,
-            static_cast<ui16>(GetBlockOffset(blocks, block))
-        });
+        writer.Write<NBlockListSpec::TMergedBlockGroup>(
+            {block.NodeId,
+             block.MinCommitId,
+             static_cast<ui16>(group.size()),
+             block.BlockIndex,
+             static_cast<ui16>(GetBlockOffset(blocks, block))});
     };
 
-    auto writeMixedGroup = [&] (TArrayRef<const TBlock*> group) {
+    auto writeMixedGroup = [&](TArrayRef<const TBlock*> group)
+    {
         const auto& block = *group[0];
-        writer.Write<NBlockListSpec::TMixedBlockGroup>({
-            block.NodeId,
-            block.MinCommitId,
-            static_cast<ui16>(group.size())
-        });
+        writer.Write<NBlockListSpec::TMixedBlockGroup>(
+            {block.NodeId, block.MinCommitId, static_cast<ui16>(group.size())});
 
         for (const auto* block: group) {
             writer.Write<ui32>(block->BlockIndex);
@@ -81,16 +78,15 @@ TByteVector EncodeBlockEntries(const TVector<TBlock>& blocks, IAllocator* alloc)
             writer.Write<ui16>(GetBlockOffset(blocks, *block));
         }
         if (group.size() & 1) {
-            writer.Write<ui16>(0);  // padding
+            writer.Write<ui16>(0);   // padding
         }
     };
 
     GroupBy(
         MakeArrayRef(blocks),
-        [] (const TBlock& l, const TBlock& r) {
-            return l.NodeId == r.NodeId;
-        },
-        [&] (TArrayRef<const TBlock> group) {
+        [](const TBlock& l, const TBlock& r) { return l.NodeId == r.NodeId; },
+        [&](TArrayRef<const TBlock> group)
+        {
             if (group.size() == 1) {
                 writeSingleEntry(group[0]);
                 return;
@@ -102,16 +98,17 @@ TByteVector EncodeBlockEntries(const TVector<TBlock>& blocks, IAllocator* alloc)
             }
 
             // order by (MinCommitId DESC)
-            StableSort(refs, [] (const TBlock* l, const TBlock* r) {
-                return l->MinCommitId > r->MinCommitId;
-            });
+            StableSort(
+                refs,
+                [](const TBlock* l, const TBlock* r)
+                { return l->MinCommitId > r->MinCommitId; });
 
             GroupBy(
                 MakeArrayRef(refs),
-                [] (const TBlock* l, const TBlock* r) {
-                    return l->MinCommitId == r->MinCommitId;
-                },
-                [&] (TArrayRef<const TBlock*> group) {
+                [](const TBlock* l, const TBlock* r)
+                { return l->MinCommitId == r->MinCommitId; },
+                [&](TArrayRef<const TBlock*> group)
+                {
                     if (group.size() == 1) {
                         writeSingleEntry(*group[0]);
                         return;
@@ -120,11 +117,14 @@ TByteVector EncodeBlockEntries(const TVector<TBlock>& blocks, IAllocator* alloc)
                     TVector<const TBlock*> mixedGroup;
                     GroupBy(
                         group,
-                        [] (const TBlock* l, const TBlock* r) {
-                            return r == l + 1 && r->BlockIndex == l->BlockIndex + 1;
+                        [](const TBlock* l, const TBlock* r) {
+                            return r == l + 1 &&
+                                   r->BlockIndex == l->BlockIndex + 1;
                         },
-                        [&] (TArrayRef<const TBlock*> mergedGroup) {
-                            if (mergedGroup.size() >= NBlockListSpec::MergedGroupMinSize) {
+                        [&](TArrayRef<const TBlock*> mergedGroup)
+                        {
+                            if (mergedGroup.size() >=
+                                NBlockListSpec::MergedGroupMinSize) {
                                 writeMergedGroup(mergedGroup);
                             } else {
                                 for (const TBlock* block: mergedGroup) {
@@ -144,13 +144,13 @@ TByteVector EncodeBlockEntries(const TVector<TBlock>& blocks, IAllocator* alloc)
     return writer.Finish();
 }
 
-TByteVector EncodeDeletionMarkers(const TBlock& block, ui32 blocksCount, IAllocator* alloc)
+TByteVector
+EncodeDeletionMarkers(const TBlock& block, ui32 blocksCount, IAllocator* alloc)
 {
     TBinaryWriter writer(alloc);
 
-    writer.Write<NBlockListSpec::TListHeader>({
-        NBlockListSpec::TListHeader::DeletionMarkers
-    });
+    writer.Write<NBlockListSpec::TListHeader>(
+        {NBlockListSpec::TListHeader::DeletionMarkers});
 
     if (block.MaxCommitId != InvalidCommitId) {
         writer.Write<NBlockListSpec::TMergedDeletionGroup>({
@@ -163,42 +163,42 @@ TByteVector EncodeDeletionMarkers(const TBlock& block, ui32 blocksCount, IAlloca
     return writer.Finish();
 }
 
-TByteVector EncodeDeletionMarkers(const TVector<TBlock>& blocks, IAllocator* alloc)
+TByteVector EncodeDeletionMarkers(
+    const TVector<TBlock>& blocks,
+    IAllocator* alloc)
 {
     TBinaryWriter writer(alloc);
 
-    writer.Write<NBlockListSpec::TListHeader>({
-        NBlockListSpec::TListHeader::DeletionMarkers
-    });
+    writer.Write<NBlockListSpec::TListHeader>(
+        {NBlockListSpec::TListHeader::DeletionMarkers});
 
-    auto writeSingleEntry = [&] (const TBlock& block) {
-        writer.Write<NBlockListSpec::TSingleDeletionMarker>({
-            block.MaxCommitId,
-            static_cast<ui16>(GetBlockOffset(blocks, block))
-        });
+    auto writeSingleEntry = [&](const TBlock& block)
+    {
+        writer.Write<NBlockListSpec::TSingleDeletionMarker>(
+            {block.MaxCommitId,
+             static_cast<ui16>(GetBlockOffset(blocks, block))});
     };
 
-    auto writeMergedGroup = [&] (TArrayRef<const TBlock*> group) {
+    auto writeMergedGroup = [&](TArrayRef<const TBlock*> group)
+    {
         const auto& block = *group[0];
-        writer.Write<NBlockListSpec::TMergedDeletionGroup>({
-            block.MaxCommitId,
-            static_cast<ui16>(group.size()),
-            static_cast<ui16>(GetBlockOffset(blocks, block))
-        });
+        writer.Write<NBlockListSpec::TMergedDeletionGroup>(
+            {block.MaxCommitId,
+             static_cast<ui16>(group.size()),
+             static_cast<ui16>(GetBlockOffset(blocks, block))});
     };
 
-    auto writeMixedGroup = [&] (TArrayRef<const TBlock*> group) {
+    auto writeMixedGroup = [&](TArrayRef<const TBlock*> group)
+    {
         const auto& block = *group[0];
-        writer.Write<NBlockListSpec::TMixedDeletionGroup>({
-            block.MaxCommitId,
-            static_cast<ui16>(group.size())
-        });
+        writer.Write<NBlockListSpec::TMixedDeletionGroup>(
+            {block.MaxCommitId, static_cast<ui16>(group.size())});
 
         for (const auto* block: group) {
             writer.Write<ui16>(GetBlockOffset(blocks, *block));
         }
         if (group.size() & 1) {
-            writer.Write<ui16>(0);  // padding
+            writer.Write<ui16>(0);   // padding
         }
     };
 
@@ -210,16 +210,17 @@ TByteVector EncodeDeletionMarkers(const TVector<TBlock>& blocks, IAllocator* all
     }
 
     // order by (MaxCommitId DESC)
-    StableSort(refs, [] (const TBlock* l, const TBlock* r) {
-        return l->MaxCommitId > r->MaxCommitId;
-    });
+    StableSort(
+        refs,
+        [](const TBlock* l, const TBlock* r)
+        { return l->MaxCommitId > r->MaxCommitId; });
 
     GroupBy(
         MakeArrayRef(refs),
-        [] (const TBlock* l, const TBlock* r) {
-            return l->MaxCommitId == r->MaxCommitId;
-        },
-        [&] (TArrayRef<const TBlock*> group) {
+        [](const TBlock* l, const TBlock* r)
+        { return l->MaxCommitId == r->MaxCommitId; },
+        [&](TArrayRef<const TBlock*> group)
+        {
             if (group.size() == 1) {
                 writeSingleEntry(*group[0]);
                 return;
@@ -228,11 +229,11 @@ TByteVector EncodeDeletionMarkers(const TVector<TBlock>& blocks, IAllocator* all
             TVector<const TBlock*> mixedGroup;
             GroupBy(
                 group,
-                [] (const TBlock* l, const TBlock* r) {
-                    return r == l + 1;
-                },
-                [&] (TArrayRef<const TBlock*> mergedGroup) {
-                    if (mergedGroup.size() >= NBlockListSpec::MergedGroupMinSize) {
+                [](const TBlock* l, const TBlock* r) { return r == l + 1; },
+                [&](TArrayRef<const TBlock*> mergedGroup)
+                {
+                    if (mergedGroup.size() >=
+                        NBlockListSpec::MergedGroupMinSize) {
                         writeMergedGroup(mergedGroup);
                     } else {
                         for (const TBlock* block: mergedGroup) {
@@ -268,7 +269,9 @@ TBlockList TBlockList::EncodeBlocks(
     };
 }
 
-TBlockList TBlockList::EncodeBlocks(const TVector<TBlock>& blocks, IAllocator* alloc)
+TBlockList TBlockList::EncodeBlocks(
+    const TVector<TBlock>& blocks,
+    IAllocator* alloc)
 {
     Y_ABORT_UNLESS(blocks.size() <= MaxBlocksCount);
 

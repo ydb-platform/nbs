@@ -17,8 +17,7 @@ struct TMetricsServiceConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IMetricsService
-    : public IStartable
+struct IMetricsService: public IStartable
 {
     virtual ~IMetricsService() = default;
 

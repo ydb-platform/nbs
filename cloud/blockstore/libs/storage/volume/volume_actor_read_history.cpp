@@ -27,10 +27,8 @@ void TVolumeActor::HandleReadHistory(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     ProcessReadHistory(
         ctx,
@@ -72,11 +70,8 @@ bool TVolumeActor::PrepareReadHistory(
 
     TVolumeDatabase db(tx.DB);
 
-    return db.ReadHistory(
-        args.Ts,
-        args.OldestTs,
-        args.RecordCount,
-        args.History);
+    return db
+        .ReadHistory(args.Ts, args.OldestTs, args.RecordCount, args.History);
 }
 
 void TVolumeActor::ExecuteReadHistory(
@@ -102,7 +97,8 @@ void TVolumeActor::CompleteReadHistory(
             {},
             args.RequestInfo);
     } else {
-        auto response = std::make_unique<TEvVolumePrivate::TEvReadHistoryResponse>();
+        auto response =
+            std::make_unique<TEvVolumePrivate::TEvReadHistoryResponse>();
         response->History = std::move(args.History.Items);
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));

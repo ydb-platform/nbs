@@ -67,13 +67,13 @@ void AddBlobInfo(
         FillRange(
             *info->AddRanges(),
             lastNodeId,
-                    InvalidHandle,
+            InvalidHandle,
             lastBlockIndex * blockSize,
             blockCount * blockSize);
     }
 }
 
-template<>
+template <>
 void AddBlobInfo(
     const ui32 blockSize,
     const TMergedBlobMeta& blob,
@@ -98,8 +98,7 @@ void AddBlobInfo(
 #define FILESTORE_MATERIALIZE_REQUEST(name, ...) #name,
 
 static const TString SystemRequestNames[] = {
-    FILESTORE_SYSTEM_REQUESTS(FILESTORE_MATERIALIZE_REQUEST)
-};
+    FILESTORE_SYSTEM_REQUESTS(FILESTORE_MATERIALIZE_REQUEST)};
 
 #undef FILESTORE_MATERIALIZE_REQUEST
 

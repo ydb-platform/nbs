@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/throttling/throttler_metrics.h>
 #include <cloud/blockstore/libs/throttling/throttler_policy.h>
 #include <cloud/blockstore/libs/throttling/throttler_tracker_test.h>
+
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -24,8 +25,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThrottlerPolicy final
-    : public IThrottlerPolicy
+class TThrottlerPolicy final: public IThrottlerPolicy
 {
 public:
     bool Frozen = true;
@@ -41,9 +41,7 @@ public:
         Y_UNUSED(requestType);
         Y_UNUSED(byteCount);
 
-        return Frozen
-            ? TDuration::Max()
-            : TDuration::Zero();
+        return Frozen ? TDuration::Max() : TDuration::Zero();
     }
 
     double CalculateCurrentSpentBudgetShare(TInstant ts) const override
@@ -73,9 +71,7 @@ struct TVolumeProcessingPolicy
         return false;
     }
 
-    void UnmountVolume(
-        const TString& diskId,
-        const TString& clientId)
+    void UnmountVolume(const TString& diskId, const TString& clientId)
     {
         Y_UNUSED(diskId);
         Y_UNUSED(clientId);
@@ -125,7 +121,7 @@ struct TTestEnvironment final
         , Timer(std::make_shared<TTestTimer>())
         , Scheduler(std::make_shared<TTestScheduler>())
         , VolumeStats(
-            std::make_shared<TTestVolumeStats<TVolumeProcessingPolicy>>())
+              std::make_shared<TTestVolumeStats<TVolumeProcessingPolicy>>())
         , Service(std::make_shared<TTestService>())
     {
         InitTestLogger();
@@ -147,29 +143,28 @@ struct TTestEnvironment final
 
     void InitTestLogger()
     {
-#define SET_HANDLER(name, ...)                                                 \
-    Logger->name##LogPostponedRequestHandler = [] (                            \
-        ui64,                                                                  \
-        TCallContext&,                                                         \
-        IVolumeInfo*,                                                          \
-        const NProto::T##name##Request&,                                       \
-        TDuration)                                                             \
-    {};                                                                        \
-                                                                               \
-    Logger->name##LogAdvancedRequestHandler = [] (                             \
-        ui64,                                                                  \
-        TCallContext&,                                                         \
-        IVolumeInfo*,                                                          \
-        const NProto::T##name##Request&)                                       \
-    {};                                                                        \
-                                                                               \
-    Logger->name##LogErrorHandler = [] (                                       \
-        const NProto::T##name##Request&,                                       \
-        const TString&)                                                        \
-    {                                                                          \
-        UNIT_ASSERT(false);                                                    \
-    };                                                                         \
-// SET_HANDLER
+#define SET_HANDLER(name, ...)                              \
+    Logger->name##LogPostponedRequestHandler =              \
+        [](ui64,                                            \
+           TCallContext&,                                   \
+           IVolumeInfo*,                                    \
+           const NProto::T##name##Request&,                 \
+           TDuration) {                                     \
+        };                                                  \
+                                                            \
+    Logger->name##LogAdvancedRequestHandler =               \
+        [](ui64,                                            \
+           TCallContext&,                                   \
+           IVolumeInfo*,                                    \
+           const NProto::T##name##Request&) {               \
+        };                                                  \
+                                                            \
+    Logger->name##LogErrorHandler =                         \
+        [](const NProto::T##name##Request&, const TString&) \
+    {                                                       \
+        UNIT_ASSERT(false);                                 \
+    };                                                      \
+    // SET_HANDLER
 
         BLOCKSTORE_SERVICE(SET_HANDLER)
 
@@ -178,26 +173,24 @@ struct TTestEnvironment final
 
     void InitTestTracker()
     {
-#define SET_HANDLER(name, ...)                                                 \
-    Tracker->name##TrackReceivedRequestHandler =                               \
-        [&ReceivedCount = this->ReceivedCount] (                               \
-            TCallContext&,                                                     \
-            IVolumeInfo*,                                                      \
-            const NProto::T##name##Request&)                                   \
-    {                                                                          \
-        ++ReceivedCount[static_cast<size_t>(EBlockStoreRequest::name)];        \
-    };                                                                         \
-                                                                               \
-    Tracker->name##TrackPostponedRequestHandler = [] (                         \
-        TCallContext&,                                                         \
-        const NProto::T##name##Request&)                                       \
-    {};                                                                        \
-                                                                               \
-    Tracker->name##TrackAdvancedRequestHandler = [] (                          \
-        TCallContext&,                                                         \
-        const NProto::T##name##Request&)                                       \
-    {};                                                                        \
-// SET_HANDLER
+#define SET_HANDLER(name, ...)                                          \
+    Tracker->name##TrackReceivedRequestHandler =                        \
+        [&ReceivedCount = this->ReceivedCount](                         \
+            TCallContext&,                                              \
+            IVolumeInfo*,                                               \
+            const NProto::T##name##Request&)                            \
+    {                                                                   \
+        ++ReceivedCount[static_cast<size_t>(EBlockStoreRequest::name)]; \
+    };                                                                  \
+                                                                        \
+    Tracker->name##TrackPostponedRequestHandler =                       \
+        [](TCallContext&, const NProto::T##name##Request&) {            \
+        };                                                              \
+                                                                        \
+    Tracker->name##TrackAdvancedRequestHandler =                        \
+        [](TCallContext&, const NProto::T##name##Request&) {            \
+        };                                                              \
+    // SET_HANDLER
 
         BLOCKSTORE_SERVICE(SET_HANDLER)
 
@@ -206,27 +199,26 @@ struct TTestEnvironment final
 
     void InitTestService()
     {
-#define SET_HANDLER(name, ...)                                                 \
-    Service->name##Handler = [&RequestCount = this->RequestCount] (            \
-        std::shared_ptr<NProto::T##name##Request>)                             \
-    {                                                                          \
-        ++RequestCount[static_cast<size_t>(EBlockStoreRequest::name)];         \
-        return MakeFuture(NProto::T##name##Response());                        \
-    };                                                                         \
-// SET_HANDLER
+#define SET_HANDLER(name, ...)                                              \
+    Service->name##Handler = [&RequestCount = this->RequestCount](          \
+                                 std::shared_ptr<NProto::T##name##Request>) \
+    {                                                                       \
+        ++RequestCount[static_cast<size_t>(EBlockStoreRequest::name)];      \
+        return MakeFuture(NProto::T##name##Response());                     \
+    };                                                                      \
+    // SET_HANDLER
 
         BLOCKSTORE_SERVICE(SET_HANDLER)
 
 #undef SET_HANDLER
     }
 
-
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    std::shared_ptr<NProto::T##name##Request> Create##name##Request()          \
-    {                                                                          \
-        return std::make_shared<NProto::T##name##Request>();                   \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                          \
+    std::shared_ptr<NProto::T##name##Request> Create##name##Request() \
+    {                                                                 \
+        return std::make_shared<NProto::T##name##Request>();          \
+    }                                                                 \
+    // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
@@ -244,11 +236,11 @@ Y_UNIT_TEST_SUITE(TThrottlingServiceTest)
         TTestEnvironment env;
         constexpr auto requestCount = 7;
 
-#define DO_REQUEST(name, ...)                                                  \
-    env.ThrottlingService->name(                                               \
-        MakeIntrusive<TCallContext>(),                                         \
-        env.Create##name##Request());                                          \
-// DO_REQUEST
+#define DO_REQUEST(name, ...)          \
+    env.ThrottlingService->name(       \
+        MakeIntrusive<TCallContext>(), \
+        env.Create##name##Request());  \
+    // DO_REQUEST
 
         for (ui32 i = 0; i < requestCount; ++i) {
             BLOCKSTORE_SERVICE(DO_REQUEST)
@@ -256,18 +248,15 @@ Y_UNIT_TEST_SUITE(TThrottlingServiceTest)
 
 #undef DO_REQUEST
 
-#define TEST_REQUEST(name, throttlerReceivedCount, serviceReceivedCount)       \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        throttlerReceivedCount,                                                \
-        env.ReceivedCount[static_cast<size_t>(                                 \
-            EBlockStoreRequest::name)]);                                       \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        ShouldBeThrottled<NProto::T##name##Request>()                          \
-            ? serviceReceivedCount                                             \
-            : requestCount,                                                    \
-        env.RequestCount[static_cast<size_t>(                                  \
-            EBlockStoreRequest::name)]);                                       \
-// TEST_REQUEST
+#define TEST_REQUEST(name, throttlerReceivedCount, serviceReceivedCount)     \
+    UNIT_ASSERT_VALUES_EQUAL(                                                \
+        throttlerReceivedCount,                                              \
+        env.ReceivedCount[static_cast<size_t>(EBlockStoreRequest::name)]);   \
+    UNIT_ASSERT_VALUES_EQUAL(                                                \
+        ShouldBeThrottled<NProto::T##name##Request>() ? serviceReceivedCount \
+                                                      : requestCount,        \
+        env.RequestCount[static_cast<size_t>(EBlockStoreRequest::name)]);    \
+    // TEST_REQUEST
 
         BLOCKSTORE_SERVICE(TEST_REQUEST, requestCount, 0)
 

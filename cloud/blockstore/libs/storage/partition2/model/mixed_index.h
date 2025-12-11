@@ -35,10 +35,8 @@ public:
     void OnCheckpointDeletion(ui64 checkpointId);
 
     bool FindBlock(ui32 blockIndex, TBlockAndLocation* result) const;
-    bool FindBlock(
-        ui64 commitId,
-        ui32 blockIndex,
-        TBlockAndLocation* result) const;
+    bool
+    FindBlock(ui64 commitId, ui32 blockIndex, TBlockAndLocation* result) const;
 
     TVector<TBlockAndLocation> FindAllBlocks(const TBlockRange32& range) const;
 

@@ -6,8 +6,7 @@ namespace NCloud::NStorage::NUserStats {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMonPageWrapper
-    : public NMonitoring::IMonPage
+class TMonPageWrapper: public NMonitoring::IMonPage
 {
 public:
     using TFunction = std::function<void(IOutputStream&)>;
@@ -26,4 +25,4 @@ private:
     TFunction Function;
 };
 
-}   // NCloud::NStorage::NUserStats
+}   // namespace NCloud::NStorage::NUserStats

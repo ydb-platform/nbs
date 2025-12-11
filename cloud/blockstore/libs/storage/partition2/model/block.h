@@ -34,27 +34,25 @@ struct TBlock
         , MaxCommitId(maxCommitId)
     {}
 
-    bool operator ==(const TBlock& other) const
+    bool operator==(const TBlock& other) const
     {
-        return BlockIndex == other.BlockIndex
-            && MinCommitId == other.MinCommitId
-            && MaxCommitId == other.MaxCommitId
-            && Zeroed == other.Zeroed;
+        return BlockIndex == other.BlockIndex &&
+               MinCommitId == other.MinCommitId &&
+               MaxCommitId == other.MaxCommitId && Zeroed == other.Zeroed;
     }
 
-    bool operator <(const TBlock& other) const
+    bool operator<(const TBlock& other) const
     {
         // order by (BlockIndex ASC, MinCommitId DESC)
-        return BlockIndex < other.BlockIndex
-            || (BlockIndex == other.BlockIndex && MinCommitId > other.MinCommitId);
+        return BlockIndex < other.BlockIndex ||
+               (BlockIndex == other.BlockIndex &&
+                MinCommitId > other.MinCommitId);
     }
 };
 
 static_assert(sizeof(TBlock) == 24);
 
-IOutputStream& operator <<(
-    IOutputStream& out,
-    const TBlock& block);
+IOutputStream& operator<<(IOutputStream& out, const TBlock& block);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -99,7 +97,7 @@ struct TBlockCompare
     using is_transparent = void;
 
     template <typename T1, typename T2>
-    bool operator ()(const T1& l, const T2& r) const
+    bool operator()(const T1& l, const T2& r) const
     {
         return Compare(l, r);
     }
@@ -108,8 +106,8 @@ struct TBlockCompare
     static bool Compare(const T1& l, const T2& r)
     {
         // order by (BlockIndex ASC, MinCommitId DESC)
-        return l.BlockIndex < r.BlockIndex
-            || (l.BlockIndex == r.BlockIndex && l.MinCommitId > r.MinCommitId);
+        return l.BlockIndex < r.BlockIndex ||
+               (l.BlockIndex == r.BlockIndex && l.MinCommitId > r.MinCommitId);
     }
 };
 
@@ -125,7 +123,7 @@ struct TDeletedBlock
         , CommitId(commitId)
     {}
 
-    auto operator <=>(const TDeletedBlock&) const = default;
+    auto operator<=>(const TDeletedBlock&) const = default;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -149,10 +147,10 @@ struct TFreshBlockRangeWithContent
     TString Data;
 
     TFreshBlockRangeWithContent(
-            TBlockRange32 blockRange,
-            ui64 deletionId,
-            TSgList sgList,
-            TString data)
+        TBlockRange32 blockRange,
+        ui64 deletionId,
+        TSgList sgList,
+        TString data)
         : BlockRange(blockRange)
         , DeletionId(deletionId)
         , SgList(std::move(sgList))
@@ -170,7 +168,7 @@ struct TFreshBlockUpdate
         , BlockRange(blockRange)
     {}
 
-    auto operator <=>(const TFreshBlockUpdate&) const = default;
+    auto operator<=>(const TFreshBlockUpdate&) const = default;
 };
 
 using TFreshBlockUpdates = TDeque<TFreshBlockUpdate>;

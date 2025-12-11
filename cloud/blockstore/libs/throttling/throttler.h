@@ -11,21 +11,20 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IThrottler
-    : IStartable
+struct IThrottler: IStartable
 {
     virtual ~IThrottler() = default;
 
     virtual void UpdateThrottlerPolicy(IThrottlerPolicyPtr throttlerPolicy) = 0;
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    virtual NThreading::TFuture<NProto::T##name##Response> name(               \
-        const IBlockStorePtr& dataClient,                                      \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) = 0;                \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                     \
+    virtual NThreading::TFuture<NProto::T##name##Response> name( \
+        const IBlockStorePtr& dataClient,                        \
+        TCallContextPtr callContext,                             \
+        std::shared_ptr<NProto::T##name##Request> request) = 0;  \
+    // BLOCKSTORE_DECLARE_METHOD
 
-BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
+    BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
 #undef BLOCKSTORE_DECLARE_METHOD
 };

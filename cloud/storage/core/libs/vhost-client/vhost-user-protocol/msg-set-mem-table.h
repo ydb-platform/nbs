@@ -6,8 +6,7 @@ namespace NVHostUser {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSetMemTable
-    : public IMessage
+class TSetMemTable: public IMessage
 {
 public:
     struct Y_PACKED MemoryRegion
@@ -32,9 +31,7 @@ public:
 
     bool Execute(int sock) override
     {
-        if (Regions.size() > MAX_MEM_REGIONS ||
-            Regions.size() != Fds.size())
-        {
+        if (Regions.size() > MAX_MEM_REGIONS || Regions.size() != Fds.size()) {
             return false;
         }
 
@@ -48,10 +45,9 @@ public:
 
         request.Base.Request = VHOST_USER_SET_MEM_TABLE;
         request.Base.Flags = 1;
-        request.Base.AdditionDataSize =
-            Regions.size() * sizeof(MemoryRegion) +
-            sizeof(request.NumRegions) +
-            sizeof(request.Padding);
+        request.Base.AdditionDataSize = Regions.size() * sizeof(MemoryRegion) +
+                                        sizeof(request.NumRegions) +
+                                        sizeof(request.Padding);
         request.NumRegions = Regions.size();
         request.Padding = 0;
         memcpy(
@@ -72,4 +68,4 @@ public:
     }
 };
 
-} // namespace NVHostUser
+}   // namespace NVHostUser

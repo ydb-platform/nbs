@@ -32,17 +32,18 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
 
         ui32 deletionStep = 10;
         for (ui32 step: Steps) {
-            queue.Add({
-                TPartialBlobId(1, step, 3, 1024, 0, 0),
-                MakeCommitId(1, ++deletionStep)
-            });
+            queue.Add(
+                {TPartialBlobId(1, step, 3, 1024, 0, 0),
+                 MakeCommitId(1, ++deletionStep)});
         }
 
         UNIT_ASSERT_VALUES_EQUAL(queue.GetCount(MakeCommitId(1, 20)), 10);
         UNIT_ASSERT_VALUES_EQUAL(queue.GetCount(MakeCommitId(1, 15)), 5);
         UNIT_ASSERT_VALUES_EQUAL(queue.GetCount(MakeCommitId(1, 11)), 1);
 
-        EnsureEqual(queue.GetItems(MakeCommitId(1, 20)), {8, 9, 7, 6, 4, 2, 10, 5, 1, 3});
+        EnsureEqual(
+            queue.GetItems(MakeCommitId(1, 20)),
+            {8, 9, 7, 6, 4, 2, 10, 5, 1, 3});
         EnsureEqual(queue.GetItems(MakeCommitId(1, 15)), {8, 9, 7, 6, 4});
         EnsureEqual(queue.GetItems(MakeCommitId(1, 11)), {8});
     }
@@ -53,10 +54,9 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
 
         ui32 deletionStep = 10;
         for (ui32 step: Steps) {
-            queue.Add({
-                TPartialBlobId(1, step, 3, 1024, 0, 0),
-                MakeCommitId(1, ++deletionStep)
-            });
+            queue.Add(
+                {TPartialBlobId(1, step, 3, 1024, 0, 0),
+                 MakeCommitId(1, ++deletionStep)});
         }
 
         UNIT_ASSERT_VALUES_EQUAL(queue.GetCount(MakeCommitId(1, 20)), 10);

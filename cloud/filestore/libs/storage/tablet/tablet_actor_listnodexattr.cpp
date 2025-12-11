@@ -28,23 +28,22 @@ void TIndexTabletActor::HandleListNodeXAttr(
     const TEvService::TEvListNodeXAttrRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!AcceptRequest<TEvService::TListNodeXAttrMethod>(ev, ctx, ValidateRequest)) {
+    if (!AcceptRequest<TEvService::TListNodeXAttrMethod>(
+            ev,
+            ctx,
+            ValidateRequest))
+    {
         return;
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TListNodeXAttrMethod>(*requestInfo);
 
-    ExecuteTx<TListNodeXAttr>(
-        ctx,
-        std::move(requestInfo),
-        msg->Record);
+    ExecuteTx<TListNodeXAttr>(ctx, std::move(requestInfo), msg->Record);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -55,10 +54,8 @@ bool TIndexTabletActor::ValidateTx_ListNodeXAttr(
 {
     Y_UNUSED(ctx);
 
-    auto* session = FindSession(
-        args.ClientId,
-        args.SessionId,
-        args.SessionSeqNo);
+    auto* session =
+        FindSession(args.ClientId, args.SessionId, args.SessionSeqNo);
     if (!session) {
         args.Error = ErrorInvalidSession(
             args.ClientId,
@@ -108,7 +105,8 @@ void TIndexTabletActor::CompleteTx_ListNodeXAttr(
 {
     RemoveTransaction(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvListNodeXAttrResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvListNodeXAttrResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         response->Record.MutableNames()->Reserve(args.Attrs.size());
         for (const auto& attr: args.Attrs) {

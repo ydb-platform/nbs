@@ -43,22 +43,22 @@ constexpr double GetMetricsMultiplicator(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_CACHED_COUNTERS(xxx, ...)                                   \
-    xxx(MixedBytesCount,                                           __VA_ARGS__)\
-    xxx(MergedBytesCount,                                          __VA_ARGS__)\
-    xxx(FreshBytesCount,                                           __VA_ARGS__)\
-    xxx(UsedBytesCount,                                            __VA_ARGS__)\
-    xxx(LogicalUsedBytesCount,                                     __VA_ARGS__)\
-    xxx(BytesCount,                                                __VA_ARGS__)\
-    xxx(CheckpointBytes,                                           __VA_ARGS__)\
-    xxx(CompactionScore,                                           __VA_ARGS__)\
-    xxx(CompactionGarbageScore,                                    __VA_ARGS__)\
-    xxx(CleanupQueueBytes,                                         __VA_ARGS__)\
-    xxx(GarbageQueueBytes,                                         __VA_ARGS__)\
-    xxx(ChannelHistorySize,                                        __VA_ARGS__)\
-    xxx(UnconfirmedBlobCount,                                      __VA_ARGS__)\
-    xxx(ConfirmedBlobCount,                                        __VA_ARGS__)\
-// BLOCKSTORE_CACHED_COUNTERS
+#define BLOCKSTORE_CACHED_COUNTERS(xxx, ...) \
+    xxx(MixedBytesCount, __VA_ARGS__)        \
+    xxx(MergedBytesCount, __VA_ARGS__)       \
+    xxx(FreshBytesCount, __VA_ARGS__)        \
+    xxx(UsedBytesCount, __VA_ARGS__)         \
+    xxx(LogicalUsedBytesCount, __VA_ARGS__)  \
+    xxx(BytesCount, __VA_ARGS__)             \
+    xxx(CheckpointBytes, __VA_ARGS__)        \
+    xxx(CompactionScore, __VA_ARGS__)        \
+    xxx(CompactionGarbageScore, __VA_ARGS__) \
+    xxx(CleanupQueueBytes, __VA_ARGS__)      \
+    xxx(GarbageQueueBytes, __VA_ARGS__)      \
+    xxx(ChannelHistorySize, __VA_ARGS__)     \
+    xxx(UnconfirmedBlobCount, __VA_ARGS__)   \
+    xxx(ConfirmedBlobCount, __VA_ARGS__)     \
+    // BLOCKSTORE_CACHED_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -66,9 +66,9 @@ void TVolumeActor::CopyCachedStatsToPartCounters(
     const NProto::TCachedPartStats& src,
     TPartitionStatInfo& dst)
 {
-#define POPULATE_COUNTERS(name, ...)                                           \
-    dst.CachedCounters.Simple.name.Set(src.Get##name());                       \
-// POPULATE_COUNTERS
+#define POPULATE_COUNTERS(name, ...)                     \
+    dst.CachedCounters.Simple.name.Set(src.Get##name()); \
+    // POPULATE_COUNTERS
 
     BLOCKSTORE_CACHED_COUNTERS(POPULATE_COUNTERS)
 #undef POPULATE_COUNTERS
@@ -80,9 +80,9 @@ void TVolumeActor::CopyPartCountersToCachedStats(
     const TPartitionDiskCounters& src,
     NProto::TCachedPartStats& dst)
 {
-#define CACHE_COUNTERS(name, ...)                                             \
-    dst.Set##name(src.Simple.name.Value);                                     \
-// CACHE_COUNTERS
+#define CACHE_COUNTERS(name, ...)         \
+    dst.Set##name(src.Simple.name.Value); \
+    // CACHE_COUNTERS
 
     BLOCKSTORE_CACHED_COUNTERS(CACHE_COUNTERS)
 #undef CACHE_COUNTERS
@@ -92,9 +92,9 @@ void TVolumeActor::UpdateCachedStats(
     const TPartitionDiskCounters& src,
     TPartitionDiskCounters& dst)
 {
-#define UPDATE_COUNTERS(name, ...)                                            \
-    dst.Simple.name.Value = src.Simple.name.Value;                            \
-// UPDATE_COUNTERS
+#define UPDATE_COUNTERS(name, ...)                 \
+    dst.Simple.name.Value = src.Simple.name.Value; \
+    // UPDATE_COUNTERS
 
     BLOCKSTORE_CACHED_COUNTERS(UPDATE_COUNTERS)
 #undef UPDATE_COUNTERS
@@ -105,10 +105,12 @@ void TVolumeActor::UpdateCachedStats(
 void TVolumeActor::UpdateActorStats(const TActorContext& ctx)
 {
     if (Counters) {
-        auto& actorQueue = Counters->Percentile()
-            [TVolumeCounters::PERCENTILE_COUNTER_Actor_ActorQueue];
-        auto& mailboxQueue = Counters->Percentile()
-            [TVolumeCounters::PERCENTILE_COUNTER_Actor_MailboxQueue];
+        auto& actorQueue =
+            Counters->Percentile()
+                [TVolumeCounters::PERCENTILE_COUNTER_Actor_ActorQueue];
+        auto& mailboxQueue =
+            Counters->Percentile()
+                [TVolumeCounters::PERCENTILE_COUNTER_Actor_MailboxQueue];
 
         auto actorQueues = ctx.CountMailboxEvents(1001);
         IncrementFor(actorQueue, actorQueues.first);
@@ -246,11 +248,8 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
         }
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext
-    );
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     auto* statInfo = State->GetPartitionStatByDiskId(msg->DiskId);
 
@@ -457,8 +456,7 @@ void TVolumeActor::CompleteSavePartStats(
     NCloud::Send(
         ctx,
         SelfId(),
-        std::make_unique<TEvVolumePrivate::TEvPartStatsSaved>()
-    );
+        std::make_unique<TEvVolumePrivate::TEvPartStatsSaved>());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -560,8 +558,7 @@ void TVolumeActor::DoSendPartStatsToService(
     NBlobMetrics::TBlobLoadMetrics offsetPartitionMetrics;
 
     bool partStatFound = false;
-    for (auto& info: State->GetPartitionStatInfos())
-    {
+    for (auto& info: State->GetPartitionStatInfos()) {
         if (info.DiskId != diskId) {
             continue;
         }
@@ -677,8 +674,7 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
 
     simple.ResyncStarted.Set(State->IsMirrorResyncNeeded());
     simple.ResyncProgress.Set(
-        100 * State->GetMeta().GetResyncIndex() / GetBlocksCount()
-    );
+        100 * State->GetMeta().GetResyncIndex() / GetBlocksCount());
 
     simple.HasLaggingDevices.Set(State->HasLaggingAgents());
     simple.LaggingDevicesCount.Set(State->GetLaggingDeviceIds().size());

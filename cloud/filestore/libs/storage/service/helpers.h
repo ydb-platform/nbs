@@ -3,13 +3,13 @@
 #include "public.h"
 
 namespace NKikimrFileStore {
-    class TConfig;
+class TConfig;
 }
 
 namespace NCloud::NFileStore::NProto {
-    class TFileStore;
-    class TFileStorePerformanceProfile;
-}
+class TFileStore;
+class TFileStorePerformanceProfile;
+}   // namespace NCloud::NFileStore::NProto
 
 namespace NCloud::NFileStore::NStorage {
 

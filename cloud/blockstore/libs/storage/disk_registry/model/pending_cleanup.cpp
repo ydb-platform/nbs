@@ -106,9 +106,7 @@ bool TPendingCleanup::EraseDisk(const TString& diskId)
         return false;
     }
 
-    EraseNodesIf(DeviceToDisk, [&] (auto& x) {
-        return x.second == diskId;
-    });
+    EraseNodesIf(DeviceToDisk, [&](auto& x) { return x.second == diskId; });
 
     return true;
 }

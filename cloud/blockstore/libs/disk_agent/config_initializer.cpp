@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
+
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
@@ -74,23 +75,23 @@ ui32 ReadNetworkMbitThroughput(
 void TConfigInitializer::ApplyCMSConfigs(NKikimrConfig::TAppConfig cmsConfig)
 {
     if (cmsConfig.HasBlobStorageConfig()) {
-        KikimrConfig->MutableBlobStorageConfig()
-            ->Swap(cmsConfig.MutableBlobStorageConfig());
+        KikimrConfig->MutableBlobStorageConfig()->Swap(
+            cmsConfig.MutableBlobStorageConfig());
     }
 
     if (cmsConfig.HasDomainsConfig()) {
-        KikimrConfig->MutableDomainsConfig()
-            ->Swap(cmsConfig.MutableDomainsConfig());
+        KikimrConfig->MutableDomainsConfig()->Swap(
+            cmsConfig.MutableDomainsConfig());
     }
 
     if (cmsConfig.HasNameserviceConfig()) {
-        KikimrConfig->MutableNameserviceConfig()
-            ->Swap(cmsConfig.MutableNameserviceConfig());
+        KikimrConfig->MutableNameserviceConfig()->Swap(
+            cmsConfig.MutableNameserviceConfig());
     }
 
     if (cmsConfig.HasDynamicNameserviceConfig()) {
-        KikimrConfig->MutableDynamicNameserviceConfig()
-            ->Swap(cmsConfig.MutableDynamicNameserviceConfig());
+        KikimrConfig->MutableDynamicNameserviceConfig()->Swap(
+            cmsConfig.MutableDynamicNameserviceConfig());
     }
 
     ApplyCustomCMSConfigs(cmsConfig);
@@ -136,10 +137,7 @@ void TConfigInitializer::InitKikimrConfig()
 
     auto& nameServiceConfig = *KikimrConfig->MutableNameserviceConfig();
     if (Options->NameServiceConfig) {
-        ParseProtoTextFromFile(
-            Options->NameServiceConfig,
-            nameServiceConfig
-        );
+        ParseProtoTextFromFile(Options->NameServiceConfig, nameServiceConfig);
     }
 
     if (Options->SuppressVersionCheck) {
@@ -151,8 +149,7 @@ void TConfigInitializer::InitKikimrConfig()
     if (Options->DynamicNameServiceConfig) {
         ParseProtoTextFromFile(
             Options->DynamicNameServiceConfig,
-            dynamicNameServiceConfig
-        );
+            dynamicNameServiceConfig);
     }
 
     if (Options->AuthConfig) {
@@ -168,7 +165,9 @@ void TConfigInitializer::InitDiagnosticsConfig()
 {
     NProto::TDiagnosticsConfig diagnosticsConfig;
     if (Options->DiagnosticsConfig) {
-        ParseProtoTextFromFileRobust(Options->DiagnosticsConfig, diagnosticsConfig);
+        ParseProtoTextFromFileRobust(
+            Options->DiagnosticsConfig,
+            diagnosticsConfig);
     }
 
     if (Options->MonitoringPort) {
@@ -213,7 +212,8 @@ void TConfigInitializer::InitDiskAgentConfig()
     SetupDiskAgentConfig(diskAgentConfig);
     ApplySpdkEnvConfig(diskAgentConfig.GetSpdkEnvConfig());
 
-    const ui32 networkMbitThroughput = ReadNetworkMbitThroughput(Log, diskAgentConfig);
+    const ui32 networkMbitThroughput =
+        ReadNetworkMbitThroughput(Log, diskAgentConfig);
     DiskAgentConfig = std::make_shared<NStorage::TDiskAgentConfig>(
         std::move(diskAgentConfig),
         Rack,
@@ -227,8 +227,8 @@ void TConfigInitializer::InitDiskRegistryProxyConfig()
         ParseProtoTextFromFileRobust(Options->DiskRegistryProxyConfig, config);
     }
 
-    DiskRegistryProxyConfig = std::make_shared<NStorage::TDiskRegistryProxyConfig>(
-        std::move(config));
+    DiskRegistryProxyConfig =
+        std::make_shared<NStorage::TDiskRegistryProxyConfig>(std::move(config));
 }
 
 void TConfigInitializer::InitServerConfig()
@@ -285,8 +285,7 @@ void TConfigInitializer::InitRdmaConfig()
         }
     }
 
-    RdmaConfig =
-        std::make_shared<NRdma::TRdmaConfig>(rdmaConfig);
+    RdmaConfig = std::make_shared<NRdma::TRdmaConfig>(rdmaConfig);
 }
 
 NKikimrConfig::TLogConfig TConfigInitializer::GetLogConfig() const
@@ -313,7 +312,8 @@ NKikimrConfig::TMonitoringConfig TConfigInitializer::GetMonitoringConfig() const
     return monConfig;
 }
 
-void TConfigInitializer::SetupMonitoringConfig(NKikimrConfig::TMonitoringConfig& monConfig) const
+void TConfigInitializer::SetupMonitoringConfig(
+    NKikimrConfig::TMonitoringConfig& monConfig) const
 {
     if (Options->MonitoringAddress) {
         monConfig.SetMonitoringAddress(Options->MonitoringAddress);
@@ -325,11 +325,12 @@ void TConfigInitializer::SetupMonitoringConfig(NKikimrConfig::TMonitoringConfig&
         monConfig.SetMonitoringThreads(Options->MonitoringThreads);
     }
     if (!monConfig.HasMonitoringThreads()) {
-        monConfig.SetMonitoringThreads(1);  // reasonable defaults
+        monConfig.SetMonitoringThreads(1);   // reasonable defaults
     }
 }
 
-void TConfigInitializer::SetupLogConfig(NKikimrConfig::TLogConfig& logConfig) const
+void TConfigInitializer::SetupLogConfig(
+    NKikimrConfig::TLogConfig& logConfig) const
 {
     if (Options->SysLogService) {
         logConfig.SetSysLogService(Options->SysLogService);
@@ -394,8 +395,7 @@ void TConfigInitializer::ApplyFeaturesConfig(const TString& text)
     NCloud::NProto::TFeaturesConfig config;
     ParseProtoTextFromStringRobust(text, config);
 
-    FeaturesConfig =
-        std::make_shared<NFeatures::TFeaturesConfig>(config);
+    FeaturesConfig = std::make_shared<NFeatures::TFeaturesConfig>(config);
 
     // features config has changed, update storage config
     StorageConfig->SetFeaturesConfig(FeaturesConfig);
@@ -466,7 +466,8 @@ void TConfigInitializer::ApplyStorageServiceConfig(const TString& text)
         storageConfig,
         FeaturesConfig);
 
-    Y_ENSURE(!Options->SchemeShardDir ||
+    Y_ENSURE(
+        !Options->SchemeShardDir ||
         GetFullSchemeShardDir() == StorageConfig->GetSchemeShardDir());
 }
 
@@ -495,11 +496,12 @@ void TConfigInitializer::ApplyDiskRegistryProxyConfig(const TString& text)
     NProto::TDiskRegistryProxyConfig config;
     ParseProtoTextFromStringRobust(text, config);
 
-    DiskRegistryProxyConfig = std::make_shared<NStorage::TDiskRegistryProxyConfig>(
-        std::move(config));
+    DiskRegistryProxyConfig =
+        std::make_shared<NStorage::TDiskRegistryProxyConfig>(std::move(config));
 }
 
-void TConfigInitializer::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config)
+void TConfigInitializer::ApplyCustomCMSConfigs(
+    const NKikimrConfig::TAppConfig& config)
 {
     THashMap<TString, ui32> configs;
 
@@ -516,18 +518,18 @@ void TConfigInitializer::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& 
     using TSelf = TConfigInitializer;
     using TApplyFn = void (TSelf::*)(const TString&);
 
-    const TVector<std::pair<TString, TApplyFn>> configHandlers {
-        { "ActorSystemConfig",       &TSelf::ApplyActorSystemConfig       },
-        { "AuthConfig",              &TSelf::ApplyAuthConfig              },
-        { "DiagnosticsConfig",       &TSelf::ApplyDiagnosticsConfig       },
-        { "DiskAgentConfig",         &TSelf::ApplyDiskAgentConfig         },
-        { "DiskRegistryProxyConfig", &TSelf::ApplyDiskRegistryProxyConfig },
-        { "InterconnectConfig",      &TSelf::ApplyInterconnectConfig      },
-        { "LogConfig",               &TSelf::ApplyLogConfig               },
-        { "MonitoringConfig",        &TSelf::ApplyMonitoringConfig        },
-        { "ServerAppConfig",         &TSelf::ApplyServerAppConfig         },
-        { "FeaturesConfig",          &TSelf::ApplyFeaturesConfig          },
-        { "StorageServiceConfig",    &TSelf::ApplyStorageServiceConfig    },
+    const TVector<std::pair<TString, TApplyFn>> configHandlers{
+        {"ActorSystemConfig", &TSelf::ApplyActorSystemConfig},
+        {"AuthConfig", &TSelf::ApplyAuthConfig},
+        {"DiagnosticsConfig", &TSelf::ApplyDiagnosticsConfig},
+        {"DiskAgentConfig", &TSelf::ApplyDiskAgentConfig},
+        {"DiskRegistryProxyConfig", &TSelf::ApplyDiskRegistryProxyConfig},
+        {"InterconnectConfig", &TSelf::ApplyInterconnectConfig},
+        {"LogConfig", &TSelf::ApplyLogConfig},
+        {"MonitoringConfig", &TSelf::ApplyMonitoringConfig},
+        {"ServerAppConfig", &TSelf::ApplyServerAppConfig},
+        {"FeaturesConfig", &TSelf::ApplyFeaturesConfig},
+        {"StorageServiceConfig", &TSelf::ApplyStorageServiceConfig},
     };
 
     for (const auto& handler: configHandlers) {

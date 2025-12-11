@@ -25,16 +25,15 @@ struct IReadBlocksHandler
     virtual ~IReadBlocksHandler() = default;
 
     // TODO: split into multiple funcs:
-    // * void SetUnencryptedBlockMaskBits(const TVector<ui64>& blockIndices, bool value)
+    // * void SetUnencryptedBlockMaskBits(const TVector<ui64>& blockIndices,
+    // bool value)
     // * TGuardedSgList InitializeBuffers(const TVector<ui64>& blockIndices)
     virtual TGuardedSgList GetGuardedSgList(
         const TVector<ui64>& blockIndices,
         bool baseDisk) = 0;
 
-    virtual bool SetBlock(
-        ui64 blockIndex,
-        TBlockDataRef blockContent,
-        bool baseDisk) = 0;
+    virtual bool
+    SetBlock(ui64 blockIndex, TBlockDataRef blockContent, bool baseDisk) = 0;
 
     virtual void Clear() = 0;
 

@@ -53,7 +53,8 @@ int ReplyError(
 
     int res = fuse_reply_err(req, errorCode);
     if (res != 0) {
-        STORAGE_WARN(callContext.LogString()
+        STORAGE_WARN(
+            callContext.LogString()
             << " fuse_reply_err failed with code " << res);
     }
 
@@ -84,14 +85,15 @@ int ReplyEntry(
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
     fuse_req_t req,
-    const fuse_entry_param *e)
+    const fuse_entry_param* e)
 {
     requestStats.ResponseSent(callContext);
     FILESTORE_TRACK(ResponseSent, (&callContext), "Entry");
 
     int res = fuse_reply_entry(req, e);
     if (res != 0) {
-        STORAGE_WARN(callContext.LogString()
+        STORAGE_WARN(
+            callContext.LogString()
             << " fuse_reply_entry failed with code " << res);
     }
 
@@ -116,15 +118,16 @@ int ReplyCreate(
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
     fuse_req_t req,
-    const fuse_entry_param *e,
-    const fuse_file_info *fi)
+    const fuse_entry_param* e,
+    const fuse_file_info* fi)
 {
     requestStats.ResponseSent(callContext);
     FILESTORE_TRACK(ResponseSent, (&callContext), "Create");
 
     int res = fuse_reply_create(req, e, fi);
     if (res != 0) {
-        STORAGE_WARN(callContext.LogString()
+        STORAGE_WARN(
+            callContext.LogString()
             << " fuse_reply_create failed with code " << res);
     }
 
@@ -149,7 +152,7 @@ int ReplyAttr(
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
     fuse_req_t req,
-    const struct stat *attr,
+    const struct stat* attr,
     double attr_timeout)
 {
     requestStats.ResponseSent(callContext);
@@ -157,7 +160,8 @@ int ReplyAttr(
 
     int res = fuse_reply_attr(req, attr, attr_timeout);
     if (res != 0) {
-        STORAGE_WARN(callContext.LogString()
+        STORAGE_WARN(
+            callContext.LogString()
             << " fuse_reply_attr failed with code " << res);
     }
 
@@ -182,14 +186,15 @@ int ReplyReadLink(
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
     fuse_req_t req,
-    const char *link)
+    const char* link)
 {
     FILESTORE_TRACK(ResponseSent, (&callContext), "ReadLink");
     requestStats.ResponseSent(callContext);
 
     int res = fuse_reply_readlink(req, link);
     if (res != 0) {
-        STORAGE_WARN(callContext.LogString()
+        STORAGE_WARN(
+            callContext.LogString()
             << " fuse_reply_readlink failed with code " << res);
     }
 
@@ -214,14 +219,15 @@ int ReplyOpen(
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
     fuse_req_t req,
-    const fuse_file_info *fi)
+    const fuse_file_info* fi)
 {
     FILESTORE_TRACK(ResponseSent, (&callContext), "Open");
     requestStats.ResponseSent(callContext);
 
     int res = fuse_reply_open(req, fi);
     if (res != 0) {
-        STORAGE_WARN(callContext.LogString()
+        STORAGE_WARN(
+            callContext.LogString()
             << " fuse_reply_open failed with code " << res);
     }
 
@@ -253,7 +259,8 @@ int ReplyWrite(
 
     int res = fuse_reply_write(req, count);
     if (res != 0) {
-        STORAGE_WARN(callContext.LogString()
+        STORAGE_WARN(
+            callContext.LogString()
             << " fuse_reply_write failed with code " << res);
     }
 
@@ -278,7 +285,7 @@ int ReplyBuf(
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
     fuse_req_t req,
-    const char *buf,
+    const char* buf,
     size_t size)
 {
     requestStats.ResponseSent(callContext);
@@ -286,7 +293,8 @@ int ReplyBuf(
 
     int res = fuse_reply_buf(req, buf, size);
     if (res != 0) {
-        STORAGE_WARN(callContext.LogString()
+        STORAGE_WARN(
+            callContext.LogString()
             << " fuse_reply_buf failed with code " << res);
     }
 
@@ -311,14 +319,15 @@ int ReplyStatFs(
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
     fuse_req_t req,
-    const struct statvfs *stbuf)
+    const struct statvfs* stbuf)
 {
     requestStats.ResponseSent(callContext);
     FILESTORE_TRACK(ResponseSent, (&callContext), "StatFs");
 
     int res = fuse_reply_statfs(req, stbuf);
     if (res != 0) {
-        STORAGE_WARN(callContext.LogString()
+        STORAGE_WARN(
+            callContext.LogString()
             << " fuse_reply_statfs failed with code " << res);
     }
 
@@ -350,7 +359,8 @@ int ReplyXAttr(
 
     int res = fuse_reply_xattr(req, count);
     if (res != 0) {
-        STORAGE_WARN(callContext.LogString()
+        STORAGE_WARN(
+            callContext.LogString()
             << " fuse_reply_xattr failed with code " << res);
     }
 
@@ -375,14 +385,15 @@ int ReplyLock(
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
     fuse_req_t req,
-    const struct flock *lock)
+    const struct flock* lock)
 {
     requestStats.ResponseSent(callContext);
     FILESTORE_TRACK(ResponseSent, (&callContext), "Lock");
 
     int res = fuse_reply_lock(req, lock);
     if (res != 0) {
-        STORAGE_WARN(callContext.LogString()
+        STORAGE_WARN(
+            callContext.LogString()
             << " fuse_reply_lock failed with code " << res);
     }
 
@@ -414,7 +425,8 @@ void CancelRequest(
         req,
         static_cast<fuse_cancelation_code>(callContext.CancellationCode));
     if (res != 0) {
-        STORAGE_WARN(callContext.LogString()
+        STORAGE_WARN(
+            callContext.LogString()
             << " fuse_cancel_request failed with code " << res)
     }
 

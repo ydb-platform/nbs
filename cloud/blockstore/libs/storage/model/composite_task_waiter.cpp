@@ -90,4 +90,4 @@ void TCompositeTaskList::FinishDependentTaskAwait(
     }
 }
 
-} // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore::NStorage

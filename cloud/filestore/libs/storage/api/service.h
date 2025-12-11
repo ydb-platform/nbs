@@ -14,63 +14,63 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_SERVICE_REQUESTS_FWD(xxx, ...)                               \
-    xxx(AddClusterNode,                     __VA_ARGS__)                       \
-    xxx(RemoveClusterNode,                  __VA_ARGS__)                       \
-    xxx(ListClusterNodes,                   __VA_ARGS__)                       \
-    xxx(AddClusterClients,                  __VA_ARGS__)                       \
-    xxx(RemoveClusterClients,               __VA_ARGS__)                       \
-    xxx(ListClusterClients,                 __VA_ARGS__)                       \
-    xxx(UpdateCluster,                      __VA_ARGS__)                       \
-                                                                               \
-    xxx(ResetSession,                       __VA_ARGS__)                       \
-                                                                               \
-    xxx(SubscribeSession,                   __VA_ARGS__)                       \
-                                                                               \
-    xxx(CreateCheckpoint,                   __VA_ARGS__)                       \
-    xxx(DestroyCheckpoint,                  __VA_ARGS__)                       \
-                                                                               \
-    xxx(ResolvePath,                        __VA_ARGS__)                       \
-                                                                               \
-// FILESTORE_SERVICE_REQUESTS_FWD
+#define FILESTORE_SERVICE_REQUESTS_FWD(xxx, ...) \
+    xxx(AddClusterNode, __VA_ARGS__)             \
+    xxx(RemoveClusterNode, __VA_ARGS__)          \
+    xxx(ListClusterNodes, __VA_ARGS__)           \
+    xxx(AddClusterClients, __VA_ARGS__)          \
+    xxx(RemoveClusterClients, __VA_ARGS__)       \
+    xxx(ListClusterClients, __VA_ARGS__)         \
+    xxx(UpdateCluster, __VA_ARGS__)              \
+                                                 \
+    xxx(ResetSession, __VA_ARGS__)               \
+                                                 \
+    xxx(SubscribeSession, __VA_ARGS__)           \
+                                                 \
+    xxx(CreateCheckpoint, __VA_ARGS__)           \
+    xxx(DestroyCheckpoint, __VA_ARGS__)          \
+                                                 \
+    xxx(ResolvePath, __VA_ARGS__)                \
+                                                 \
+    // FILESTORE_SERVICE_REQUESTS_FWD
 
-#define FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_NODE_ID(xxx, ...)           \
-    xxx(AccessNode,                         __VA_ARGS__)                       \
-    xxx(SetNodeAttr,                        __VA_ARGS__)                       \
-    xxx(RemoveNodeXAttr,                    __VA_ARGS__)                       \
-                                                                               \
-    xxx(UnlinkNode,                         __VA_ARGS__)                       \
-    xxx(RenameNode,                         __VA_ARGS__)                       \
-    xxx(ReadLink,                           __VA_ARGS__)                       \
-// FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_NODE_ID
+#define FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_NODE_ID(xxx, ...) \
+    xxx(AccessNode, __VA_ARGS__)                                     \
+    xxx(SetNodeAttr, __VA_ARGS__)                                    \
+    xxx(RemoveNodeXAttr, __VA_ARGS__)                                \
+                                                                     \
+    xxx(UnlinkNode, __VA_ARGS__)                                     \
+    xxx(RenameNode, __VA_ARGS__)                                     \
+    xxx(ReadLink, __VA_ARGS__)                                       \
+    // FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_NODE_ID
 
-#define FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_HANDLE(xxx, ...)            \
-    xxx(DestroyHandle,                      __VA_ARGS__)                       \
-    xxx(AllocateData,                       __VA_ARGS__)                       \
-                                                                               \
-    xxx(AcquireLock,                        __VA_ARGS__)                       \
-    xxx(ReleaseLock,                        __VA_ARGS__)                       \
-    xxx(TestLock,                           __VA_ARGS__)                       \
-// FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_HANDLE
+#define FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_HANDLE(xxx, ...) \
+    xxx(DestroyHandle, __VA_ARGS__)                                 \
+    xxx(AllocateData, __VA_ARGS__)                                  \
+                                                                    \
+    xxx(AcquireLock, __VA_ARGS__)                                   \
+    xxx(ReleaseLock, __VA_ARGS__)                                   \
+    xxx(TestLock, __VA_ARGS__)                                      \
+    // FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_HANDLE
 
-#define FILESTORE_SERVICE_REQUESTS_HANDLE(xxx, ...)                            \
-    xxx(WriteData,                          __VA_ARGS__)                       \
-    xxx(ReadData,                           __VA_ARGS__)                       \
-    xxx(ListNodes,                          __VA_ARGS__)                       \
-    xxx(GetNodeAttr,                        __VA_ARGS__)                       \
-    xxx(CreateHandle,                       __VA_ARGS__)                       \
-    xxx(CreateNode,                         __VA_ARGS__)                       \
-    xxx(GetNodeXAttr,                       __VA_ARGS__)                       \
-    xxx(SetNodeXAttr,                       __VA_ARGS__)                       \
-    xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
-// FILESTORE_SERVICE_REQUESTS_HANDLE
+#define FILESTORE_SERVICE_REQUESTS_HANDLE(xxx, ...) \
+    xxx(WriteData, __VA_ARGS__)                     \
+    xxx(ReadData, __VA_ARGS__)                      \
+    xxx(ListNodes, __VA_ARGS__)                     \
+    xxx(GetNodeAttr, __VA_ARGS__)                   \
+    xxx(CreateHandle, __VA_ARGS__)                  \
+    xxx(CreateNode, __VA_ARGS__)                    \
+    xxx(GetNodeXAttr, __VA_ARGS__)                  \
+    xxx(SetNodeXAttr, __VA_ARGS__)                  \
+    xxx(ListNodeXAttr, __VA_ARGS__)                 \
+    // FILESTORE_SERVICE_REQUESTS_HANDLE
 
-#define FILESTORE_SERVICE_REQUESTS(xxx, ...)                                   \
-    FILESTORE_SERVICE_REQUESTS_HANDLE(xxx,   __VA_ARGS__)                      \
-    FILESTORE_SERVICE_REQUESTS_FWD(xxx,      __VA_ARGS__)                      \
-    FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_NODE_ID(xxx,  __VA_ARGS__)      \
-    FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_HANDLE(xxx,   __VA_ARGS__)      \
-// FILESTORE_SERVICE_REQUESTS
+#define FILESTORE_SERVICE_REQUESTS(xxx, ...)                             \
+    FILESTORE_SERVICE_REQUESTS_HANDLE(xxx, __VA_ARGS__)                  \
+    FILESTORE_SERVICE_REQUESTS_FWD(xxx, __VA_ARGS__)                     \
+    FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_NODE_ID(xxx, __VA_ARGS__) \
+    FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_HANDLE(xxx, __VA_ARGS__)  \
+    // FILESTORE_SERVICE_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -91,11 +91,11 @@ struct TEvService
         NProtoPrivate::TFileSystemConfig Config;
 
         TRegisterLocalFileStore(
-                TString fileStoreId,
-                ui64 tablet,
-                ui64 generation,
-                bool isShard,
-                NProtoPrivate::TFileSystemConfig config)
+            TString fileStoreId,
+            ui64 tablet,
+            ui64 generation,
+            bool isShard,
+            NProtoPrivate::TFileSystemConfig config)
             : FileStoreId(std::move(fileStoreId))
             , TabletId(tablet)
             , Generation(generation)
@@ -109,9 +109,7 @@ struct TEvService
         const TString FileStoreId;
         const ui64 Generation;
 
-        TUnregisterLocalFileStore(
-                TString fileStoreId,
-                ui64 generation)
+        TUnregisterLocalFileStore(TString fileStoreId, ui64 generation)
             : FileStoreId(std::move(fileStoreId))
             , Generation(generation)
         {}
@@ -276,18 +274,17 @@ struct TEvService
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TFileStoreEvents::SERVICE_END,
+    static_assert(
+        EvEnd < (int)TFileStoreEvents::SERVICE_END,
         "EvEnd expected to be < TFileStoreEvents::SERVICE_END");
 
     FILESTORE_REMOTE_SERVICE(FILESTORE_DECLARE_PROTO_EVENTS, NProto)
 
-    using TEvRegisterLocalFileStoreRequest = TRequestEvent<
-        TRegisterLocalFileStore,
-        EvRegisterLocalFileStore>;
+    using TEvRegisterLocalFileStoreRequest =
+        TRequestEvent<TRegisterLocalFileStore, EvRegisterLocalFileStore>;
 
-    using TEvUnregisterLocalFileStoreRequest = TRequestEvent<
-        TUnregisterLocalFileStore,
-        EvUnregisterLocalFileStore>;
+    using TEvUnregisterLocalFileStoreRequest =
+        TRequestEvent<TUnregisterLocalFileStore, EvUnregisterLocalFileStore>;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

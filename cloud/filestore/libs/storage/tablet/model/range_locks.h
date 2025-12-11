@@ -41,7 +41,7 @@ struct TLockRange
     ELockOrigin LockOrigin = ELockOrigin::Fcntl;
 };
 
-IOutputStream& operator <<(IOutputStream& out, const TLockRange& range);
+IOutputStream& operator<<(IOutputStream& out, const TLockRange& range);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -64,13 +64,13 @@ struct TRangeLockOperationResult
     TVector<ui64>& RemovedLockIds();
     TLockIncompatibleInfo& Incompatible();
 
-    template<typename T>
+    template <typename T>
     bool IncompatibleHolds() const
     {
         return std::holds_alternative<T>(
             std::get<TLockIncompatibleInfo>(Value));
     }
-    template<typename T>
+    template <typename T>
     T& IncompatibleAs()
     {
         return std::get<T>(Incompatible());
@@ -87,10 +87,8 @@ public:
     TRangeLocks();
     ~TRangeLocks();
 
-    TRangeLockOperationResult Acquire(
-        const TString& sessionId,
-        ui64 lockId,
-        const TLockRange& range);
+    TRangeLockOperationResult
+    Acquire(const TString& sessionId, ui64 lockId, const TLockRange& range);
 
     TRangeLockOperationResult Release(
         const TString& sessionId,

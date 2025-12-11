@@ -11,24 +11,22 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TIncompleteRequestProcessor
-    : public IIncompleteRequestProcessor
+struct TIncompleteRequestProcessor: public IIncompleteRequestProcessor
 {
     const IServerStatsPtr Stats;
     const TVector<IIncompleteRequestProviderPtr> IncompleteProviders;
 
     TIncompleteRequestProcessor(
-            IServerStatsPtr stats,
-            TVector<IIncompleteRequestProviderPtr> incompleteProviders)
+        IServerStatsPtr stats,
+        TVector<IIncompleteRequestProviderPtr> incompleteProviders)
         : Stats(std::move(stats))
         , IncompleteProviders(std::move(incompleteProviders))
     {}
 
     void UpdateStats(bool updateIntervalFinished) override
     {
-        TIncompleteRequestsCollector collector = std::bind_front(
-            &IServerStats::AddIncompleteRequest,
-            Stats.get());
+        TIncompleteRequestsCollector collector =
+            std::bind_front(&IServerStats::AddIncompleteRequest, Stats.get());
 
         for (auto& incompleteRequestProvider: IncompleteProviders) {
             incompleteRequestProvider->CollectRequests(collector);
@@ -40,8 +38,7 @@ struct TIncompleteRequestProcessor
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TIncompleteRequestProcessorStub
-    : public IIncompleteRequestProcessor
+struct TIncompleteRequestProcessorStub: public IIncompleteRequestProcessor
 {
     void UpdateStats(bool updateIntervalFinished) override
     {
@@ -59,8 +56,7 @@ IIncompleteRequestProcessorPtr CreateIncompleteRequestProcessor(
 {
     return std::make_shared<TIncompleteRequestProcessor>(
         std::move(stats),
-        std::move(incompleteProviders)
-    );
+        std::move(incompleteProviders));
 }
 
 IIncompleteRequestProcessorPtr CreateIncompleteRequestProcessorStub()

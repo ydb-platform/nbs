@@ -1,4 +1,5 @@
 #include "tablet.h"
+
 #include "tablet_schema.h"
 
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
@@ -19,8 +20,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEnvironment
-    : public NUnitTest::TBaseFixture
+struct TEnvironment: public NUnitTest::TBaseFixture
 {
     const ui64 MaxBlocks = 64;
 
@@ -41,9 +41,7 @@ struct TEnvironment
             Env.GetRuntime(),
             nodeIdx,
             tabletId,
-            TFileSystemConfig{
-                .BlockCount = MaxBlocks
-            });
+            TFileSystemConfig{.BlockCount = MaxBlocks});
         Tablet->InitSession("client", "session");
 
         Id = CreateNode(*Tablet, TCreateNodeArgs::File(RootNodeId, "test_1"));
@@ -117,7 +115,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Allocate)
                 4_KB,
                 ProtoFlag(NProto::TAllocateDataRequest::F_PUNCH_HOLE));
 
-            UNIT_ASSERT_VALUES_EQUAL(E_FS_NOTSUPP, response->GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_FS_NOTSUPP,
+                response->GetError().GetCode());
         }
 
         {
@@ -134,22 +134,17 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Allocate)
 
     Y_UNIT_TEST_F(ShouldReturnErrorOnInvalidHandle, TEnvironment)
     {
-        const auto response = Tablet->AssertAllocateDataFailed(
-            Handle + 1,
-            0,
-            4_KB,
-            0);
+        const auto response =
+            Tablet->AssertAllocateDataFailed(Handle + 1, 0, 4_KB, 0);
 
-        UNIT_ASSERT_VALUES_EQUAL(E_FS_BADHANDLE, response->GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_FS_BADHANDLE,
+            response->GetError().GetCode());
     }
 
     Y_UNIT_TEST_F(ShouldReturnErrorOnZeroLength, TEnvironment)
     {
-        const auto response = Tablet->AssertAllocateDataFailed(
-            Handle,
-            0,
-            0,
-            0);
+        const auto response = Tablet->AssertAllocateDataFailed(Handle, 0, 0, 0);
 
         UNIT_ASSERT_VALUES_EQUAL(E_FS_INVAL, response->GetError().GetCode());
     }
@@ -158,11 +153,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Allocate)
     {
         {
             // too big
-            const auto response = Tablet->AssertAllocateDataFailed(
-                Handle,
-                0,
-                Max<ui64>(),
-                0);
+            const auto response =
+                Tablet->AssertAllocateDataFailed(Handle, 0, Max<ui64>(), 0);
 
             UNIT_ASSERT_VALUES_EQUAL(E_FS_FBIG, response->GetError().GetCode());
         }
@@ -175,7 +167,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Allocate)
                 Max<ui32>(),
                 0);
 
-            UNIT_ASSERT_VALUES_EQUAL(E_FS_NOSPC, response->GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_FS_NOSPC,
+                response->GetError().GetCode());
         }
 
         {
@@ -186,7 +180,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Allocate)
                 (MaxBlocks - 1) * 4_KB,
                 0);
 
-            UNIT_ASSERT_VALUES_EQUAL(E_FS_NOSPC, response->GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_FS_NOSPC,
+                response->GetError().GetCode());
         }
 
         {
@@ -197,7 +193,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Allocate)
                 (MaxBlocks + 1) * 4_KB,
                 0);
 
-            UNIT_ASSERT_VALUES_EQUAL(E_FS_NOSPC, response->GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_FS_NOSPC,
+                response->GetError().GetCode());
         }
     }
 
@@ -242,7 +240,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Allocate)
 
     Y_UNIT_TEST_F(ShouldAllocateDataWithUnshareRange, TEnvironment)
     {
-        const ui32 flags = ProtoFlag(NProto::TAllocateDataRequest::F_UNSHARE_RANGE);
+        const ui32 flags =
+            ProtoFlag(NProto::TAllocateDataRequest::F_UNSHARE_RANGE);
 
         Tablet->AllocateData(Handle, 0, 8_KB, flags);
 
@@ -341,7 +340,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Allocate)
 
     Y_UNIT_TEST_F(ShouldAllocateDataWithZero, TEnvironment)
     {
-        const ui32 flags = ProtoFlag(NProto::TAllocateDataRequest::F_ZERO_RANGE);
+        const ui32 flags =
+            ProtoFlag(NProto::TAllocateDataRequest::F_ZERO_RANGE);
 
         Tablet->AllocateData(Handle, 0, 16_KB, flags);
 

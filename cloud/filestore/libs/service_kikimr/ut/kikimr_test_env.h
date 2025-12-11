@@ -8,8 +8,7 @@ namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestActorSystem final
-    : public IActorSystem
+class TTestActorSystem final: public IActorSystem
 {
 private:
     std::unique_ptr<NKikimr::TTestBasicRuntime> Runtime;

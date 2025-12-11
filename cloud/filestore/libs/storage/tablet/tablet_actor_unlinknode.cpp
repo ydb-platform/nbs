@@ -84,14 +84,14 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TUnlinkNodeInShardActor::TUnlinkNodeInShardActor(
-        TString logTag,
-        TRequestInfoPtr requestInfo,
-        const TActorId& parentId,
-        NProtoPrivate::TUnlinkNodeInShardRequest request,
-        ui64 requestId,
-        ui64 opLogEntryId,
-        TUnlinkNodeInShardResult result,
-        bool shouldUnlockUponCompletion)
+    TString logTag,
+    TRequestInfoPtr requestInfo,
+    const TActorId& parentId,
+    NProtoPrivate::TUnlinkNodeInShardRequest request,
+    ui64 requestId,
+    ui64 opLogEntryId,
+    TUnlinkNodeInShardResult result,
+    bool shouldUnlockUponCompletion)
     : LogTag(std::move(logTag))
     , RequestInfo(std::move(requestInfo))
     , ParentId(parentId)
@@ -127,9 +127,7 @@ void TUnlinkNodeInShardActor::SendRequest(const TActorContext& ctx)
         Request.GetFileSystemId().c_str(),
         Request.GetName().c_str());
 
-    ctx.Send(
-        MakeIndexTabletProxyServiceId(),
-        request.release());
+    ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 }
 
 void TUnlinkNodeInShardActor::HandleUnlinkNodeResponse(
@@ -226,11 +224,14 @@ void TUnlinkNodeInShardActor::ReplyAndDie(
     if (HasError(error)) {
         if (auto* x = std::get_if<NProto::TRenameNodeResponse>(&Result)) {
             *x->MutableError() = std::move(error);
-        } else if (auto* x = std::get_if<
-                NProtoPrivate::TRenameNodeInDestinationResponse>(&Result))
+        } else if (
+            auto* x =
+                std::get_if<NProtoPrivate::TRenameNodeInDestinationResponse>(
+                    &Result))
         {
             *x->MutableError() = std::move(error);
-        } else if (auto* x = std::get_if<NProto::TUnlinkNodeResponse>(&Result)) {
+        } else if (auto* x = std::get_if<NProto::TUnlinkNodeResponse>(&Result))
+        {
             *x->MutableError() = std::move(error);
         } else {
             TABLET_VERIFY_C(
@@ -303,7 +304,8 @@ void TIndexTabletActor::HandleUnlinkNode(
 
         const auto requestId = GetRequestId(msg->Record);
         if (const auto* e = session->LookupDupEntry(requestId)) {
-            auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>();
+            auto response =
+                std::make_unique<TEvService::TEvUnlinkNodeResponse>();
             if (GetDupCacheEntry(e, response->Record)) {
                 return NCloud::Reply(ctx, *ev, std::move(response));
             }
@@ -313,26 +315,23 @@ void TIndexTabletActor::HandleUnlinkNode(
     }
 
     if (!TryLockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()})) {
-        auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>(
-            MakeError(E_REJECTED, TStringBuilder() << "node ref "
-                << msg->Record.GetNodeId() << " " << msg->Record.GetName()
-                << " is locked for UnlinkNode"));
+        auto response =
+            std::make_unique<TEvService::TEvUnlinkNodeResponse>(MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "node ref " << msg->Record.GetNodeId() << " "
+                    << msg->Record.GetName() << " is locked for UnlinkNode"));
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TUnlinkNodeMethod>(*requestInfo);
 
-    ExecuteTx<TUnlinkNode>(
-        ctx,
-        std::move(requestInfo),
-        std::move(msg->Record));
+    ExecuteTx<TUnlinkNode>(ctx, std::move(requestInfo), std::move(msg->Record));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -401,7 +400,8 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
     // TODO: AccessCheck
 
     if (!args.ChildNode) {
-        auto message = ReportChildNodeIsNull(TStringBuilder()
+        auto message = ReportChildNodeIsNull(
+            TStringBuilder()
             << "UnlinkNode: " << args.Request.ShortDebugString());
         args.Error = MakeError(E_INVALID_STATE, std::move(message));
         return true;
@@ -503,7 +503,8 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
     if (!BehaveAsShard(args.Request.GetHeaders())) {
         auto* session = FindSession(args.SessionId);
         if (!session) {
-            auto message = ReportSessionNotFoundInTx(TStringBuilder()
+            auto message = ReportSessionNotFoundInTx(
+                TStringBuilder()
                 << "UnlinkNode: " << args.Request.ShortDebugString());
             args.Error = MakeError(E_INVALID_STATE, std::move(message));
             return;
@@ -524,7 +525,9 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     const TActorContext& ctx,
     TTxIndexTablet::TUnlinkNode& args)
 {
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s[%s] UnlinkNode completed (%s)",
         LogTag.c_str(),
         args.SessionId.c_str(),
@@ -540,7 +543,8 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     if (!HasError(args.Error) && !args.ChildRef &&
         !Config->GetParentlessFilesOnly())
     {
-        auto message = ReportChildRefIsNull(TStringBuilder()
+        auto message = ReportChildRefIsNull(
+            TStringBuilder()
             << "UnlinkNode: " << args.Request.ShortDebugString());
         args.Error = MakeError(E_INVALID_STATE, std::move(message));
     }
@@ -562,7 +566,9 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
 
     if (!HasError(args.Error)) {
         if (args.ChildRef && args.ChildRef->IsExternal()) {
-            LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::TABLET,
                 "%s Unlinking node in shard upon UnlinkNode: %s, %s",
                 LogTag.c_str(),
                 args.ChildRef->ShardId.c_str(),
@@ -598,10 +604,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     RemoveTransaction(*args.RequestInfo);
     EnqueueBlobIndexOpIfNeeded(ctx);
 
-    Metrics.UnlinkNode.Update(
-        1,
-        0,
-        ctx.Now() - args.RequestInfo->StartedTs);
+    Metrics.UnlinkNode.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
 
     auto response =
         std::make_unique<TEvService::TEvUnlinkNodeResponse>(args.Error);
@@ -788,8 +791,10 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                 ctx.Now() - msg->RequestInfo->StartedTs);
 
             NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
-        } else if (auto* x = std::get_if<
-                NProtoPrivate::TRenameNodeInDestinationResponse>(&res))
+        } else if (
+            auto* x =
+                std::get_if<NProtoPrivate::TRenameNodeInDestinationResponse>(
+                    &res))
         {
             auto response = std::make_unique<
                 TEvIndexTablet::TEvRenameNodeInDestinationResponse>();

@@ -202,7 +202,7 @@ public:
             node = next;
         }
 
-        return { head, tail };
+        return {head, tail};
     }
 };
 

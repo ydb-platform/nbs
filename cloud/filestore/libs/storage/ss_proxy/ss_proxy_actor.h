@@ -13,15 +13,14 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
-#include <util/generic/hash.h>
 #include <util/generic/deque.h>
+#include <util/generic/hash.h>
 
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSSProxyActor final
-    : public NActors::TActorBootstrapped<TSSProxyActor>
+class TSSProxyActor final: public NActors::TActorBootstrapped<TSSProxyActor>
 {
 private:
     const TStorageConfigPtr Config;

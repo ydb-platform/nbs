@@ -63,8 +63,8 @@ void OutputBlockInfos(const TBlockInfos& blockInfos, IOutputStream* out)
         if (i) {
             (*out) << " ";
         }
-        (*out) << blockInfos[i].GetBlockIndex()
-            << ":" << blockInfos[i].GetChecksum();
+        (*out) << blockInfos[i].GetBlockIndex() << ":"
+               << blockInfos[i].GetChecksum();
     }
 }
 
@@ -76,25 +76,23 @@ void OutputBlockCommitIds(
         if (i) {
             (*out) << " ";
         }
-        (*out) << blockCommitIds[i].GetBlockIndex()
-            << ":" << blockCommitIds[i].GetMinCommitIdOld()
-            << ":" << blockCommitIds[i].GetMaxCommitIdOld()
-            << ":" << blockCommitIds[i].GetMinCommitIdNew()
-            << ":" << blockCommitIds[i].GetMaxCommitIdNew();
+        (*out) << blockCommitIds[i].GetBlockIndex() << ":"
+               << blockCommitIds[i].GetMinCommitIdOld() << ":"
+               << blockCommitIds[i].GetMaxCommitIdOld() << ":"
+               << blockCommitIds[i].GetMinCommitIdNew() << ":"
+               << blockCommitIds[i].GetMaxCommitIdNew();
     }
 }
 
-void OutputBlobUpdates(
-    const TBlobUpdates& blobUpdates,
-    IOutputStream* out)
+void OutputBlobUpdates(const TBlobUpdates& blobUpdates, IOutputStream* out)
 {
     for (int i = 0; i < blobUpdates.size(); ++i) {
         if (i) {
             (*out) << " ";
         }
-        (*out) << blobUpdates[i].GetCommitId()
-            << ":" << blobUpdates[i].GetBlockRange().GetBlockIndex()
-            << "," << blobUpdates[i].GetBlockRange().GetBlockCount();
+        (*out) << blobUpdates[i].GetCommitId() << ":"
+               << blobUpdates[i].GetBlockRange().GetBlockIndex() << ","
+               << blobUpdates[i].GetBlockRange().GetBlockCount();
     }
 }
 
@@ -129,11 +127,8 @@ TVector<TItemDescriptor> GetItemOrder(const NProto::TProfileLogRecord& record)
 {
     TVector<TItemDescriptor> order;
     order.reserve(
-        record.RequestsSize() +
-        record.BlockInfoListsSize() +
-        record.BlockCommitIdListsSize() +
-        record.BlobUpdateListsSize()
-    );
+        record.RequestsSize() + record.BlockInfoListsSize() +
+        record.BlockCommitIdListsSize() + record.BlobUpdateListsSize());
 
     for (ui32 i = 0; i < record.RequestsSize(); ++i) {
         order.emplace_back(EItemType::Request, i);
@@ -151,10 +146,8 @@ TVector<TItemDescriptor> GetItemOrder(const NProto::TProfileLogRecord& record)
     Sort(
         order.begin(),
         order.end(),
-        [&] (const auto& i, const auto& j) {
-            return GetTimestampMcs(record, i) < GetTimestampMcs(record, j);
-        }
-    );
+        [&](const auto& i, const auto& j)
+        { return GetTimestampMcs(record, i) < GetTimestampMcs(record, j); });
 
     return order;
 }
@@ -166,17 +159,13 @@ void DumpRequest(
 {
     const auto& r = record.GetRequests(i);
 
-    (*out) << TInstant::MicroSeconds(r.GetTimestampMcs())
-        << "\t" << record.GetDiskId()
-        << "\t" << record.GetVersion()
-        << "\t" << RequestName(r.GetRequestType())
-        << "\tR"
-        << "\t" << r.GetDurationMcs()
-        << "\t";
+    (*out) << TInstant::MicroSeconds(r.GetTimestampMcs()) << "\t"
+           << record.GetDiskId() << "\t" << record.GetVersion() << "\t"
+           << RequestName(r.GetRequestType()) << "\tR" << "\t"
+           << r.GetDurationMcs() << "\t";
     if (r.GetRanges().empty()) {
         // legacy branch
-        (*out) << r.GetBlockIndex()
-            << "," << r.GetBlockCount();
+        (*out) << r.GetBlockIndex() << "," << r.GetBlockCount();
     } else {
         OutputRanges(r.GetRanges(), *out);
     }
@@ -190,13 +179,10 @@ void DumpBlockInfoList(
 {
     const auto& bl = record.GetBlockInfoLists(i);
 
-    (*out) << TInstant::MicroSeconds(bl.GetTimestampMcs())
-        << "\t" << record.GetDiskId()
-        << "\t" << record.GetVersion()
-        << "\t" << RequestName(bl.GetRequestType())
-        << "\tB"
-        << "\t" << bl.GetCommitId()
-        << "\t";
+    (*out) << TInstant::MicroSeconds(bl.GetTimestampMcs()) << "\t"
+           << record.GetDiskId() << "\t" << record.GetVersion() << "\t"
+           << RequestName(bl.GetRequestType()) << "\tB" << "\t"
+           << bl.GetCommitId() << "\t";
     OutputBlockInfos(bl.GetBlockInfos(), out);
     (*out) << "\n";
 }
@@ -208,13 +194,10 @@ void DumpBlockCommitIdList(
 {
     const auto& bl = record.GetBlockCommitIdLists(i);
 
-    (*out) << TInstant::MicroSeconds(bl.GetTimestampMcs())
-        << "\t" << record.GetDiskId()
-        << "\t" << record.GetVersion()
-        << "\t" << RequestName(bl.GetRequestType())
-        << "\tC"
-        << "\t" << bl.GetCommitId()
-        << "\t";
+    (*out) << TInstant::MicroSeconds(bl.GetTimestampMcs()) << "\t"
+           << record.GetDiskId() << "\t" << record.GetVersion() << "\t"
+           << RequestName(bl.GetRequestType()) << "\tC" << "\t"
+           << bl.GetCommitId() << "\t";
     OutputBlockCommitIds(bl.GetBlockCommitIds(), out);
     (*out) << "\n";
 }
@@ -226,16 +209,11 @@ void DumpBlobUpdateList(
 {
     const auto& bl = record.GetBlobUpdateLists(i);
 
-    (*out) << TInstant::MicroSeconds(bl.GetTimestampMcs())
-        << "\t" << record.GetDiskId()
-        << "\t" << record.GetVersion()
-        << "\t" << "Cleanup"
-        << "\tU"
-        << "\t" << bl.GetCleanupCommitId()
-        << "\t";
+    (*out) << TInstant::MicroSeconds(bl.GetTimestampMcs()) << "\t"
+           << record.GetDiskId() << "\t" << record.GetVersion() << "\t"
+           << "Cleanup" << "\tU" << "\t" << bl.GetCleanupCommitId() << "\t";
     OutputBlobUpdates(bl.GetBlobUpdates(), out);
     (*out) << "\n";
-
 }
 
 TString RequestName(const ui32 requestType)
@@ -243,16 +221,12 @@ TString RequestName(const ui32 requestType)
     TString name;
     if (requestType < static_cast<int>(EBlockStoreRequest::MAX)) {
         name = GetBlockStoreRequestName(
-            static_cast<EBlockStoreRequest>(requestType)
-        );
+            static_cast<EBlockStoreRequest>(requestType));
     } else if (requestType < static_cast<int>(ESysRequestType::MAX)) {
-        name = GetSysRequestName(
-            static_cast<ESysRequestType>(requestType)
-        );
+        name = GetSysRequestName(static_cast<ESysRequestType>(requestType));
     } else {
         name = GetPrivateRequestName(
-            static_cast<EPrivateRequestType>(requestType)
-        );
+            static_cast<EPrivateRequestType>(requestType));
     }
 
     // XXX

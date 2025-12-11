@@ -6,8 +6,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDescribeCommand final
-    : public TFileStoreCommand
+class TDescribeCommand final: public TFileStoreCommand
 {
 public:
     TDescribeCommand() = default;
@@ -19,10 +18,9 @@ public:
         auto request = std::make_shared<NProto::TGetFileStoreInfoRequest>();
         request->SetFileSystemId(FileSystemId);
 
-        auto response = WaitFor(
-            Client->GetFileStoreInfo(
-                std::move(callContext),
-                std::move(request)));
+        auto response = WaitFor(Client->GetFileStoreInfo(
+            std::move(callContext),
+            std::move(request)));
 
         if (HasError(response)) {
             ythrow TServiceError(response.GetError());

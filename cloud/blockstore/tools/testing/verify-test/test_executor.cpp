@@ -15,8 +15,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestExecutorRead final
-    : public ITestExecutor
+class TTestExecutorRead final: public ITestExecutor
 {
 private:
     TAtomic ShouldStop = 0;
@@ -39,8 +38,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestExecutorWrite final
-    : public ITestExecutor
+class TTestExecutorWrite final: public ITestExecutor
 {
 private:
     TAtomic ShouldStop = 0;
@@ -83,10 +81,8 @@ TVector<ui64> GenerateOffsetsQueue(const TTestExecutorConfig& config)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::unique_ptr<char[]> GenerateData(
-    ui64 offset,
-    ui32 blockSize,
-    ETestPattern testPattern)
+std::unique_ptr<char[]>
+GenerateData(ui64 offset, ui32 blockSize, ETestPattern testPattern)
 {
     static const ui32 multiplier = 53;
     ui32 coeff = 1;
@@ -105,7 +101,8 @@ std::unique_ptr<char[]> GenerateData(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-EOpenMode GetOpenFlags(bool direct) {
+EOpenMode GetOpenFlags(bool direct)
+{
     EOpenMode flags = EOpenModeFlag::RdWr;
     if (direct) {
         flags |= EOpenModeFlag::DirectAligned;
@@ -121,7 +118,7 @@ struct THexDataDump
     TStringBuf Data;
 
     THexDataDump(const char* ptr, ui32 size)
-        : Data {ptr, size}
+        : Data{ptr, size}
     {}
 };
 
@@ -136,7 +133,8 @@ TTestExecutorReport TTestExecutorRead::Run(
     const auto offsetsQueue = GenerateOffsetsQueue(*Config);
 
     AtomicAdd(waitingForStart, 1);
-    while (AtomicGet(shouldStart) != 1 && AtomicGet(ShouldStop) == 0) {}
+    while (AtomicGet(shouldStart) != 1 && AtomicGet(ShouldStop) == 0) {
+    }
 
     auto startTime = Now();
 
@@ -145,26 +143,25 @@ TTestExecutorReport TTestExecutorRead::Run(
             return {};
         }
 
-        auto expectedData = GenerateData(
-            offset,
-            Config->BlockSize,
-            Config->TestPattern);
+        auto expectedData =
+            GenerateData(offset, Config->BlockSize, Config->TestPattern);
         std::unique_ptr<char[]> actualData(new char[Config->BlockSize]);
 
         std::fill_n(
             reinterpret_cast<ui32*>(actualData.get()),
             Config->BlockSize / sizeof(ui32),
-            SwapBytes32(0xdeadbeef)
-        );
+            SwapBytes32(0xdeadbeef));
 
         file.Seek(offset, sSet);
         file.Read(actualData.get(), Config->BlockSize);
 
         if (memcmp(actualData.get(), expectedData.get(), Config->BlockSize)) {
-            ythrow yexception()
-                << "Actual data differs from expected: "
-                << "#offset = " << offset
-                << " data = \n" << THexDataDump {actualData.get(), Config->BlockSize};
+            ythrow yexception() << "Actual data differs from expected: "
+                                << "#offset = " << offset << " data = \n"
+                                << THexDataDump {
+                                       actualData.get(),
+                                       Config -> BlockSize
+                                   };
         }
     }
 
@@ -189,7 +186,8 @@ TTestExecutorReport TTestExecutorWrite::Run(
     const auto offsetsQueue = GenerateOffsetsQueue(*Config);
 
     AtomicAdd(waitingForStart, 1);
-    while (AtomicGet(shouldStart) != 1 && AtomicGet(ShouldStop) == 0) {}
+    while (AtomicGet(shouldStart) != 1 && AtomicGet(ShouldStop) == 0) {
+    }
 
     auto startTime = Now();
 
@@ -198,7 +196,8 @@ TTestExecutorReport TTestExecutorWrite::Run(
             return {};
         }
 
-        auto data = GenerateData(offset, Config->BlockSize, Config->TestPattern);
+        auto data =
+            GenerateData(offset, Config->BlockSize, Config->TestPattern);
 
         file.Seek(offset, sSet);
         file.Write(data.get(), Config->BlockSize);

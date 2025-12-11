@@ -9,4 +9,4 @@ NActors::TActorId MakeStorageUserStatsId()
     return NActors::TActorId(0, "blk-user-st");
 }
 
-}   // NCloud::NStorage
+}   // namespace NCloud::NStorage

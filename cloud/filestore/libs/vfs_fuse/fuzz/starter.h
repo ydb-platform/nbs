@@ -43,4 +43,4 @@ private:
     TStarter();
 };
 
-} // namespace NCloud::NFileStore::NFuse
+}   // namespace NCloud::NFileStore::NFuse

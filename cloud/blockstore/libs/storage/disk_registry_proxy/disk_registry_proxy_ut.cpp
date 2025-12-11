@@ -1,13 +1,10 @@
 #include "disk_registry_proxy.h"
 
-
 #include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/config/storage.pb.h>
-
 #include <cloud/blockstore/libs/kikimr/helpers.h>
-
-#include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
+#include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_mock.h>
@@ -46,9 +43,7 @@ class TDiskRegistryMock final
     , public NTabletFlatExecutor::TTabletExecutedFlat
 {
 public:
-    TDiskRegistryMock(
-            const TActorId& owner,
-            TTabletStorageInfo* info)
+    TDiskRegistryMock(const TActorId& owner, TTabletStorageInfo* info)
         : TActor(&TThis::StateInit)
         , TTabletExecutedFlat(info, owner, nullptr)
     {}
@@ -98,7 +93,9 @@ private:
             IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
             HFunc(TEvDiskRegistry::TEvAllocateDiskRequest, HandleAllocateDisk);
-            HFunc(TEvDiskRegistry::TEvDeallocateDiskRequest, HandleDeallocateDisk);
+            HFunc(
+                TEvDiskRegistry::TEvDeallocateDiskRequest,
+                HandleDeallocateDisk);
 
             HFunc(TEvDiskRegistry::TEvAcquireDiskRequest, HandleAcquireDisk);
             HFunc(TEvDiskRegistry::TEvReleaseDiskRequest, HandleReleaseDisk);
@@ -129,7 +126,8 @@ private:
         const TEvDiskRegistry::TEvAllocateDiskRequest::TPtr& ev,
         const TActorContext& ctx)
     {
-        auto response = std::make_unique<TEvDiskRegistry::TEvAllocateDiskResponse>();
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvAllocateDiskResponse>();
 
         auto device = response->Record.AddDevices();
         device->SetDeviceName("test");
@@ -141,7 +139,8 @@ private:
         const TEvDiskRegistry::TEvAcquireDiskRequest::TPtr& ev,
         const TActorContext& ctx)
     {
-        auto response = std::make_unique<TEvDiskRegistry::TEvAcquireDiskResponse>();
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvAcquireDiskResponse>();
 
         auto device = response->Record.AddDevices();
         device->SetDeviceName("test");
@@ -153,7 +152,9 @@ private:
         const TEvDiskRegistry::TEvDeallocateDiskRequest::TPtr& ev,
         const TActorContext& ctx)
     {
-        NCloud::Reply(ctx, *ev,
+        NCloud::Reply(
+            ctx,
+            *ev,
             std::make_unique<TEvDiskRegistry::TEvDeallocateDiskResponse>());
     }
 
@@ -161,11 +162,13 @@ private:
         const TEvDiskRegistry::TEvReleaseDiskRequest::TPtr& ev,
         const TActorContext& ctx)
     {
-        NCloud::Reply(ctx, *ev,
+        NCloud::Reply(
+            ctx,
+            *ev,
             std::make_unique<TEvDiskRegistry::TEvReleaseDiskResponse>());
     }
 
-}; // TDiskRegistryMock
+};   // TDiskRegistryMock
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -174,8 +177,7 @@ struct THiveProxyMockConfig
     int RetryCount = 0;
 };
 
-class THiveProxyMock final
-    : public TActor<THiveProxyMock>
+class THiveProxyMock final: public TActor<THiveProxyMock>
 {
 private:
     const THiveProxyMockConfig Config;
@@ -210,8 +212,9 @@ private:
         }
 
         if (msg->Owner == DeadOwner) {
-            auto response = std::make_unique<TEvHiveProxy::TEvLookupTabletResponse>(
-                MakeError(E_FAIL));
+            auto response =
+                std::make_unique<TEvHiveProxy::TEvLookupTabletResponse>(
+                    MakeError(E_FAIL));
 
             NCloud::Reply(ctx, *ev, std::move(response));
             return;
@@ -239,15 +242,16 @@ private:
 void BootDiskRegistryMock(TTestActorRuntime& runtime)
 {
     std::unique_ptr<TTabletStorageInfo> tabletInfo(CreateTestTabletInfo(
-            TestDiskRegistryTabletId,
-            TTabletTypes::BlockStoreDiskRegistry));
+        TestDiskRegistryTabletId,
+        TTabletTypes::BlockStoreDiskRegistry));
 
-    auto createFunc =
-        [=] (const TActorId& owner, TTabletStorageInfo* info) {
-            return new TDiskRegistryMock(owner, info);
-        };
+    auto createFunc = [=](const TActorId& owner, TTabletStorageInfo* info)
+    {
+        return new TDiskRegistryMock(owner, info);
+    };
 
-    auto actorId = CreateTestBootstrapper(runtime, tabletInfo.release(), createFunc);
+    auto actorId =
+        CreateTestBootstrapper(runtime, tabletInfo.release(), createFunc);
     runtime.EnableScheduleForActor(actorId);
 
     {
@@ -262,11 +266,8 @@ void RebootDiskRegistryMock(TTestActorRuntime& runtime)
 {
     auto sender = runtime.AllocateEdgeActor(0);
 
-    TVector<ui64> tablets = { TestDiskRegistryTabletId };
-    auto guard = CreateTabletScheduledEventsGuard(
-        tablets,
-        runtime,
-        sender);
+    TVector<ui64> tablets = {TestDiskRegistryTabletId};
+    auto guard = CreateTabletScheduledEventsGuard(tablets, runtime, sender);
 
     RebootTablet(runtime, TestDiskRegistryTabletId, sender);
 }
@@ -299,10 +300,8 @@ struct TTestRuntimeBuilder
         return *this;
     }
 
-    TTestRuntimeBuilder& WithPoolKinds(
-        TString sysKind,
-        TString logKind,
-        TString indexKind)
+    TTestRuntimeBuilder&
+    WithPoolKinds(TString sysKind, TString logKind, TString indexKind)
     {
         StorageConfig.SetSSDSystemChannelPoolKind(sysKind);
         StorageConfig.SetSSDLogChannelPoolKind(logKind);
@@ -310,13 +309,15 @@ struct TTestRuntimeBuilder
         return *this;
     }
 
-    TTestRuntimeBuilder& WithStoragePools(TVector<TSSProxyMock::TPoolDescr> pools)
+    TTestRuntimeBuilder& WithStoragePools(
+        TVector<TSSProxyMock::TPoolDescr> pools)
     {
         Pools = std::move(pools);
         return *this;
     }
 
-    TTestRuntimeBuilder& WithObserver(TTestActorRuntimeBase::TEventObserver observer)
+    TTestRuntimeBuilder& WithObserver(
+        TTestActorRuntimeBase::TEventObserver observer)
     {
         StartObserver = observer;
         return *this;
@@ -331,20 +332,25 @@ struct TTestRuntimeBuilder
             TBlockStoreComponents::END,
             GetComponentName);
 
-        runtime->SetLogPriority(TBlockStoreComponents::DISK_REGISTRY_PROXY, NLog::PRI_DEBUG);
-        runtime->SetLogPriority(TBlockStoreComponents::SS_PROXY, NLog::PRI_DEBUG);
+        runtime->SetLogPriority(
+            TBlockStoreComponents::DISK_REGISTRY_PROXY,
+            NLog::PRI_DEBUG);
+        runtime->SetLogPriority(
+            TBlockStoreComponents::SS_PROXY,
+            NLog::PRI_DEBUG);
 
-        // for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
+        // for (ui32 i = TBlockStoreComponents::START; i <
+        // TBlockStoreComponents::END; ++i) {
         //    runtime->SetLogPriority(i, NLog::PRI_DEBUG);
         // }
         // runtime->SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
 
         runtime->SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
+            [](auto& runtime, const auto& parentId, const auto& actorId)
+            {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
 
         if (StartObserver) {
             runtime->SetObserverFunc(StartObserver);
@@ -417,10 +423,7 @@ public:
         const TActorId& recipient,
         std::unique_ptr<TRequest> request)
     {
-        auto* ev = new IEventHandle(
-            recipient,
-            Sender,
-            request.release());
+        auto* ev = new IEventHandle(recipient, Sender, request.release());
 
         Runtime.Send(ev, NodeIdx);
     }
@@ -432,12 +435,14 @@ public:
         Runtime.GrabEdgeEventRethrow<TResponse>(handle, WaitTimeout);
 
         UNIT_ASSERT(handle);
-        return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
+        return std::unique_ptr<TResponse>(
+            handle->Release<TResponse>().Release());
     }
 
     auto CreateAllocateDiskRequest(const TString& diskId, ui64 diskSize)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvAllocateDiskRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvAllocateDiskRequest>();
 
         request->Record.SetDiskId(diskId);
         request->Record.SetBlockSize(4_KB);
@@ -446,11 +451,10 @@ public:
         return request;
     }
 
-    auto CreateDeallocateDiskRequest(
-        const TString& diskId,
-        bool sync = false)
+    auto CreateDeallocateDiskRequest(const TString& diskId, bool sync = false)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvDeallocateDiskRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvDeallocateDiskRequest>();
 
         request->Record.SetDiskId(diskId);
         request->Record.SetSync(sync);
@@ -458,9 +462,12 @@ public:
         return request;
     }
 
-    auto CreateAcquireDiskRequest(const TString& diskId, const TString& clientId)
+    auto CreateAcquireDiskRequest(
+        const TString& diskId,
+        const TString& clientId)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvAcquireDiskRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvAcquireDiskRequest>();
 
         request->Record.SetDiskId(diskId);
         request->Record.MutableHeaders()->SetClientId(clientId);
@@ -468,9 +475,12 @@ public:
         return request;
     }
 
-    auto CreateReleaseDiskRequest(const TString& diskId, const TString& clientId)
+    auto CreateReleaseDiskRequest(
+        const TString& diskId,
+        const TString& clientId)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvReleaseDiskRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvReleaseDiskRequest>();
 
         request->Record.SetDiskId(diskId);
         request->Record.MutableHeaders()->SetClientId(clientId);
@@ -480,60 +490,67 @@ public:
 
     auto CreateSubscribeRequest(const TActorId& subscriber)
     {
-        auto request = std::make_unique<TEvDiskRegistryProxy::TEvSubscribeRequest>(
-            subscriber);
+        auto request =
+            std::make_unique<TEvDiskRegistryProxy::TEvSubscribeRequest>(
+                subscriber);
 
         return request;
     }
 
     auto CreateUnsubscribeRequest(const TActorId& subscriber)
     {
-        auto request = std::make_unique<TEvDiskRegistryProxy::TEvUnsubscribeRequest>(
-            subscriber);
+        auto request =
+            std::make_unique<TEvDiskRegistryProxy::TEvUnsubscribeRequest>(
+                subscriber);
 
         return request;
     }
 
-    auto CreateReassignRequest(TString sysKind, TString logKind, TString indexKind)
+    auto
+    CreateReassignRequest(TString sysKind, TString logKind, TString indexKind)
     {
-        auto request = std::make_unique<TEvDiskRegistryProxy::TEvReassignRequest>(
-            std::move(sysKind),
-            std::move(logKind),
-            std::move(indexKind)
-        );
+        auto request =
+            std::make_unique<TEvDiskRegistryProxy::TEvReassignRequest>(
+                std::move(sysKind),
+                std::move(logKind),
+                std::move(indexKind));
 
         return request;
     }
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
-    template <typename... Args>                                                \
-    void Send##name##Request(Args&&... args)                                   \
-    {                                                                          \
-        auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(MakeDiskRegistryProxyServiceId(), std::move(request));     \
-    }                                                                          \
-                                                                               \
-    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response()            \
-    {                                                                          \
-        return RecvResponse<ns::TEv##name##Response>();                        \
-    }                                                                          \
-                                                                               \
-    template <typename... Args>                                                \
-    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)              \
-    {                                                                          \
-        auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(MakeDiskRegistryProxyServiceId(), std::move(request));     \
-                                                                               \
-        auto response = RecvResponse<ns::TEv##name##Response>();               \
-        UNIT_ASSERT_C(                                                         \
-            SUCCEEDED(response->GetStatus()),                                  \
-            response->GetErrorReason());                                       \
-        return response;                                                       \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ns)                                \
+    template <typename... Args>                                            \
+    void Send##name##Request(Args&&... args)                               \
+    {                                                                      \
+        auto request = Create##name##Request(std::forward<Args>(args)...); \
+        SendRequest(MakeDiskRegistryProxyServiceId(), std::move(request)); \
+    }                                                                      \
+                                                                           \
+    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response()        \
+    {                                                                      \
+        return RecvResponse<ns::TEv##name##Response>();                    \
+    }                                                                      \
+                                                                           \
+    template <typename... Args>                                            \
+    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)          \
+    {                                                                      \
+        auto request = Create##name##Request(std::forward<Args>(args)...); \
+        SendRequest(MakeDiskRegistryProxyServiceId(), std::move(request)); \
+                                                                           \
+        auto response = RecvResponse<ns::TEv##name##Response>();           \
+        UNIT_ASSERT_C(                                                     \
+            SUCCEEDED(response->GetStatus()),                              \
+            response->GetErrorReason());                                   \
+        return response;                                                   \
+    }                                                                      \
+    // BLOCKSTORE_DECLARE_METHOD
 
-    BLOCKSTORE_DISK_REGISTRY_REQUESTS(BLOCKSTORE_DECLARE_METHOD, TEvDiskRegistry)
-    BLOCKSTORE_DISK_REGISTRY_PROXY_REQUESTS(BLOCKSTORE_DECLARE_METHOD, TEvDiskRegistryProxy)
+    BLOCKSTORE_DISK_REGISTRY_REQUESTS(
+        BLOCKSTORE_DECLARE_METHOD,
+        TEvDiskRegistry)
+    BLOCKSTORE_DISK_REGISTRY_PROXY_REQUESTS(
+        BLOCKSTORE_DECLARE_METHOD,
+        TEvDiskRegistryProxy)
 
 #undef BLOCKSTORE_DECLARE_METHOD
 };
@@ -553,7 +570,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
         auto response = client.AllocateDisk("disk-id", 10_GB);
 
         UNIT_ASSERT_VALUES_EQUAL(1, response->Record.DevicesSize());
-        UNIT_ASSERT_VALUES_EQUAL("test", response->Record.GetDevices(0).GetDeviceName());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "test",
+            response->Record.GetDevices(0).GetDeviceName());
 
         client.DeallocateDisk("disk-id", true);
     }
@@ -567,7 +586,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
         auto response = client.AcquireDisk("disk-id", "session-id");
 
         UNIT_ASSERT_VALUES_EQUAL(1, response->Record.DevicesSize());
-        UNIT_ASSERT_VALUES_EQUAL("test", response->Record.GetDevices(0).GetDeviceName());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "test",
+            response->Record.GetDevices(0).GetDeviceName());
 
         client.ReleaseDisk("disk-id", "session-id");
     }
@@ -588,9 +609,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
 
     Y_UNIT_TEST(ShouldRespondWithoutOwner)
     {
-        auto runtime = TTestRuntimeBuilder()
-            .WithOwnerId(0)
-            .Build();
+        auto runtime = TTestRuntimeBuilder().WithOwnerId(0).Build();
 
         TDiskRegistryClient client(*runtime);
 
@@ -601,9 +620,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
 
     Y_UNIT_TEST(ShouldHandleCreateTabletError)
     {
-        auto runtime = TTestRuntimeBuilder()
-            .WithOwnerId(DeadOwner)
-            .Build();
+        auto runtime = TTestRuntimeBuilder().WithOwnerId(DeadOwner).Build();
 
         TDiskRegistryClient client(*runtime);
 
@@ -615,10 +632,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
     Y_UNIT_TEST(ShouldNotCreateDrIfNoSuitableStoragePool)
     {
         auto runtime = TTestRuntimeBuilder()
-            .WithPoolKind("ssd")
-            .WithOwnerId(DeadOwner)
-            .WithStoragePools({{"hdd-pool", "hdd"}})
-            .Build();
+                           .WithPoolKind("ssd")
+                           .WithOwnerId(DeadOwner)
+                           .WithStoragePools({{"hdd-pool", "hdd"}})
+                           .Build();
 
         TDiskRegistryClient client(*runtime);
 
@@ -701,20 +718,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
         THiveProxyMockConfig config;
         config.RetryCount = 5;
 
-        auto runtime = TTestRuntimeBuilder()
-            .With(config)
-            .Build();
+        auto runtime = TTestRuntimeBuilder().With(config).Build();
 
         int lookupCount = 1;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                if (event->GetTypeRewrite() == TEvHiveProxy::EvLookupTabletRequest) {
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvHiveProxy::EvLookupTabletRequest) {
                     ++lookupCount;
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         TDiskRegistryClient client(*runtime);
 
@@ -741,18 +758,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
         THiveProxyMockConfig config;
         config.RetryCount = 2;
 
-        auto runtime = TTestRuntimeBuilder()
-            .With(config)
-            .Build();
+        auto runtime = TTestRuntimeBuilder().With(config).Build();
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                if (event->GetTypeRewrite() == TEvHiveProxy::EvLookupTabletRequest) {
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvHiveProxy::EvLookupTabletRequest) {
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         TDiskRegistryClient client(*runtime);
 
@@ -776,10 +793,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
 
         auto sender = runtime->AllocateEdgeActor();
 
-        runtime->Send(new IEventHandle(
-            MakeDiskRegistryProxyServiceId(),
-            sender,
-            new TEvHiveProxy::TEvLookupTabletResponse(MakeError(E_FAIL))),
+        runtime->Send(
+            new IEventHandle(
+                MakeDiskRegistryProxyServiceId(),
+                sender,
+                new TEvHiveProxy::TEvLookupTabletResponse(MakeError(E_FAIL))),
             0,
             true);
 
@@ -798,14 +816,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
     {
         auto runtime = TTestRuntimeBuilder().Build();
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                if (event->GetTypeRewrite() == TEvDiskRegistry::EvAllocateDiskResponse) {
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskRegistry::EvAllocateDiskResponse)
+                {
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         TDiskRegistryClient client(*runtime);
 
@@ -815,10 +836,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
         {
             TDispatchOptions options;
 
-            options.FinalEvents = {
-                TDispatchOptions::TFinalEventCondition(
-                    TEvDiskRegistry::EvAllocateDiskRequest)
-            };
+            options.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+                TEvDiskRegistry::EvAllocateDiskRequest)};
 
             runtime->DispatchEvents(options, TDuration::Seconds(1));
         }
@@ -840,9 +859,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
     {
         TVector<TString> bindings;
 
-        TTestActorRuntimeBase::TEventObserver ob = [&] (TAutoPtr<IEventHandle>& event) {
-            if (event->GetTypeRewrite() == TEvHiveProxy::EvCreateTabletRequest) {
-                const auto* msg = event->Get<TEvHiveProxy::TEvCreateTabletRequest>();
+        TTestActorRuntimeBase::TEventObserver ob =
+            [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() == TEvHiveProxy::EvCreateTabletRequest)
+            {
+                const auto* msg =
+                    event->Get<TEvHiveProxy::TEvCreateTabletRequest>();
                 for (const auto& ch: msg->Request.GetBindedChannels()) {
                     bindings.push_back(ch.GetStoragePoolName());
                 }
@@ -851,29 +874,35 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
             return TTestActorRuntime::DefaultObserverFunc(event);
         };
 
-        auto runtime = TTestRuntimeBuilder()
-            .WithPoolKind("ssd")
-            .WithOwnerId(DeadOwner)
-            .WithStoragePools({{"hdd-pool", "hdd"}, {"ssd-pool", "ssd"}})
-            .WithObserver(ob)
-            .Build();
+        auto runtime =
+            TTestRuntimeBuilder()
+                .WithPoolKind("ssd")
+                .WithOwnerId(DeadOwner)
+                .WithStoragePools({{"hdd-pool", "hdd"}, {"ssd-pool", "ssd"}})
+                .WithObserver(ob)
+                .Build();
 
         TDiskRegistryClient client(*runtime);
 
         UNIT_ASSERT_VALUES_EQUAL(
             true,
-            std::all_of(bindings.begin(), bindings.end(), [&] (const auto& s) {
-                return s == "ssd-pool";
-            }));
+            std::all_of(
+                bindings.begin(),
+                bindings.end(),
+                [&](const auto& s) { return s == "ssd-pool"; }));
     }
 
     Y_UNIT_TEST(ShouldReassignDRToDesiredKind)
     {
         TVector<TString> bindings;
 
-        TTestActorRuntimeBase::TEventObserver ob = [&] (TAutoPtr<IEventHandle>& event) {
-            if (event->GetTypeRewrite() == TEvHiveProxy::EvCreateTabletRequest) {
-                const auto* msg = event->Get<TEvHiveProxy::TEvCreateTabletRequest>();
+        TTestActorRuntimeBase::TEventObserver ob =
+            [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() == TEvHiveProxy::EvCreateTabletRequest)
+            {
+                const auto* msg =
+                    event->Get<TEvHiveProxy::TEvCreateTabletRequest>();
                 for (const auto& ch: msg->Request.GetBindedChannels()) {
                     bindings.push_back(ch.GetStoragePoolName());
                 }
@@ -882,20 +911,22 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
             return TTestActorRuntime::DefaultObserverFunc(event);
         };
 
-        auto runtime = TTestRuntimeBuilder()
-            .WithPoolKind("ssd")
-            .WithOwnerId(DeadOwner)
-            .WithStoragePools({{"hdd-pool", "hdd"}, {"ssd-pool", "ssd"}})
-            .WithObserver(ob)
-            .Build();
+        auto runtime =
+            TTestRuntimeBuilder()
+                .WithPoolKind("ssd")
+                .WithOwnerId(DeadOwner)
+                .WithStoragePools({{"hdd-pool", "hdd"}, {"ssd-pool", "ssd"}})
+                .WithObserver(ob)
+                .Build();
 
         TDiskRegistryClient client(*runtime);
 
         UNIT_ASSERT_VALUES_EQUAL(
             true,
-            std::all_of(bindings.begin(), bindings.end(), [&] (const auto& s) {
-                return s == "ssd-pool";
-            }));
+            std::all_of(
+                bindings.begin(),
+                bindings.end(),
+                [&](const auto& s) { return s == "ssd-pool"; }));
 
         bindings.clear();
 
@@ -903,18 +934,23 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             true,
-            std::all_of(bindings.begin(), bindings.end(), [&] (const auto& s) {
-                return s == "hdd-pool";
-            }));
+            std::all_of(
+                bindings.begin(),
+                bindings.end(),
+                [&](const auto& s) { return s == "hdd-pool"; }));
     }
 
     Y_UNIT_TEST(ShouldFailReassignIfNoPoolForKind)
     {
         TVector<TString> bindings;
 
-        TTestActorRuntimeBase::TEventObserver ob = [&] (TAutoPtr<IEventHandle>& event) {
-            if (event->GetTypeRewrite() == TEvHiveProxy::EvCreateTabletRequest) {
-                const auto* msg = event->Get<TEvHiveProxy::TEvCreateTabletRequest>();
+        TTestActorRuntimeBase::TEventObserver ob =
+            [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() == TEvHiveProxy::EvCreateTabletRequest)
+            {
+                const auto* msg =
+                    event->Get<TEvHiveProxy::TEvCreateTabletRequest>();
                 for (const auto& ch: msg->Request.GetBindedChannels()) {
                     bindings.push_back(ch.GetStoragePoolName());
                 }
@@ -923,20 +959,22 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
             return TTestActorRuntime::DefaultObserverFunc(event);
         };
 
-        auto runtime = TTestRuntimeBuilder()
-            .WithPoolKind("ssd")
-            .WithOwnerId(DeadOwner)
-            .WithStoragePools({{"hdd-pool", "hdd"}, {"ssd-pool", "ssd"}})
-            .WithObserver(ob)
-            .Build();
+        auto runtime =
+            TTestRuntimeBuilder()
+                .WithPoolKind("ssd")
+                .WithOwnerId(DeadOwner)
+                .WithStoragePools({{"hdd-pool", "hdd"}, {"ssd-pool", "ssd"}})
+                .WithObserver(ob)
+                .Build();
 
         TDiskRegistryClient client(*runtime);
 
         UNIT_ASSERT_VALUES_EQUAL(
             true,
-            std::all_of(bindings.begin(), bindings.end(), [&] (const auto& s) {
-                return s == "ssd-pool";
-            }));
+            std::all_of(
+                bindings.begin(),
+                bindings.end(),
+                [&](const auto& s) { return s == "ssd-pool"; }));
 
         bindings.clear();
 
@@ -949,9 +987,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
     {
         TVector<TString> bindings;
 
-        TTestActorRuntimeBase::TEventObserver ob = [&] (TAutoPtr<IEventHandle>& event) {
-            if (event->GetTypeRewrite() == TEvHiveProxy::EvCreateTabletRequest) {
-                const auto* msg = event->Get<TEvHiveProxy::TEvCreateTabletRequest>();
+        TTestActorRuntimeBase::TEventObserver ob =
+            [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() == TEvHiveProxy::EvCreateTabletRequest)
+            {
+                const auto* msg =
+                    event->Get<TEvHiveProxy::TEvCreateTabletRequest>();
                 for (const auto& ch: msg->Request.GetBindedChannels()) {
                     bindings.push_back(ch.GetStoragePoolName());
                 }
@@ -960,12 +1002,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
             return TTestActorRuntime::DefaultObserverFunc(event);
         };
 
-        auto runtime = TTestRuntimeBuilder()
-            .WithPoolKind("ssd")
-            .WithOwnerId(DeadOwner)
-            .WithStoragePools({{"hdd-pool", "hdd"}, {"ssd-pool", "ssd"}})
-            .WithObserver(ob)
-            .Build();
+        auto runtime =
+            TTestRuntimeBuilder()
+                .WithPoolKind("ssd")
+                .WithOwnerId(DeadOwner)
+                .WithStoragePools({{"hdd-pool", "hdd"}, {"ssd-pool", "ssd"}})
+                .WithObserver(ob)
+                .Build();
 
         TDiskRegistryClient client(*runtime);
 
@@ -985,23 +1028,25 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
     Y_UNIT_TEST(ShouldNotStartReassignIfAnotherReassignIsInProgress)
     {
         auto runtime = TTestRuntimeBuilder()
-            .WithPoolKind("ssd")
-            .WithOwnerId(DefaultOwner)
-            .WithStoragePools({{"ssd-pool", "ssd"}})
-            .Build();
+                           .WithPoolKind("ssd")
+                           .WithOwnerId(DefaultOwner)
+                           .WithStoragePools({{"ssd-pool", "ssd"}})
+                           .Build();
 
         TDiskRegistryClient client(*runtime);
 
         client.SendReassignRequest("hdd", "hdd", "hdd");
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                if (event->GetTypeRewrite() == TEvHiveProxy::EvCreateTabletRequest) {
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvHiveProxy::EvCreateTabletRequest) {
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         client.SendReassignRequest("hdd", "hdd", "hdd");
         auto response = client.RecvReassignResponse();

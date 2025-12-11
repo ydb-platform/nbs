@@ -18,10 +18,10 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE(xxx, ...)                       \
-    xxx(RegisterAgent,              __VA_ARGS__)                               \
-    xxx(CollectStats,               __VA_ARGS__)                               \
-// BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE
+#define BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE(xxx, ...) \
+    xxx(RegisterAgent, __VA_ARGS__)                      \
+    xxx(CollectStats, __VA_ARGS__)                       \
+    // BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -41,10 +41,10 @@ struct TEvDiskAgentPrivate
         TInitAgentCompleted() = default;
 
         TInitAgentCompleted(
-                TVector<NProto::TDeviceConfig> configs,
-                TVector<TString> errors,
-                TVector<TString> configMismatchErrors,
-                TVector<TString> devicesWithSuspendedIO)
+            TVector<NProto::TDeviceConfig> configs,
+            TVector<TString> errors,
+            TVector<TString> configMismatchErrors,
+            TVector<TString> devicesWithSuspendedIO)
             : Configs(std::move(configs))
             , Errors(std::move(errors))
             , ConfigMismatchErrors(std::move(configMismatchErrors))
@@ -57,7 +57,8 @@ struct TEvDiskAgentPrivate
     //
 
     struct TRegisterAgentRequest
-    {};
+    {
+    };
 
     struct TRegisterAgentResponse
     {
@@ -69,7 +70,8 @@ struct TEvDiskAgentPrivate
     //
 
     struct TCollectStatsRequest
-    {};
+    {
+    };
 
     struct TCollectStatsResponse
     {
@@ -77,8 +79,7 @@ struct TEvDiskAgentPrivate
 
         TCollectStatsResponse() = default;
 
-        explicit TCollectStatsResponse(
-                NProto::TAgentStats stats)
+        explicit TCollectStatsResponse(NProto::TAgentStats stats)
             : Stats(std::move(stats))
         {}
     };
@@ -144,17 +145,18 @@ struct TEvDiskAgentPrivate
 
         TUpdateSessionCacheRequest() = default;
         explicit TUpdateSessionCacheRequest(
-                TVector<NProto::TDiskAgentDeviceSession> sessions)
+            TVector<NProto::TDiskAgentDeviceSession> sessions)
             : Sessions(std::move(sessions))
         {}
     };
 
     struct TUpdateSessionCacheResponse
-    {};
-
+    {
+    };
 
     struct TCancelSuspensionRequest
-    {};
+    {
+    };
 
     //
     // ParsedWriteDeviceBlocksRequest
@@ -178,7 +180,7 @@ struct TEvDiskAgentPrivate
 
         TMultiAgentWriteDeviceBlocksResponse() = default;
 
-        TMultiAgentWriteDeviceBlocksResponse(NProto::TError  error)
+        TMultiAgentWriteDeviceBlocksResponse(NProto::TError error)
             : Error(std::move(error))
         {}
 
@@ -243,32 +245,29 @@ struct TEvDiskAgentPrivate
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStorePrivateEvents::DISK_AGENT_END,
+    static_assert(
+        EvEnd < (int)TBlockStorePrivateEvents::DISK_AGENT_END,
         "EvEnd expected to be < TBlockStorePrivateEvents::DISK_AGENT_END");
 
     BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENTS)
 
-    using TEvInitAgentCompleted = TResponseEvent<
-        TInitAgentCompleted,
-        EvInitAgentCompleted>;
+    using TEvInitAgentCompleted =
+        TResponseEvent<TInitAgentCompleted, EvInitAgentCompleted>;
 
-    using TEvSecureEraseCompleted = TResponseEvent<
-        TSecureEraseCompleted,
-        EvSecureEraseCompleted>;
+    using TEvSecureEraseCompleted =
+        TResponseEvent<TSecureEraseCompleted, EvSecureEraseCompleted>;
 
     using TEvPathsDetached = TResponseEvent<TPathsDetached, EvPathsDetached>;
 
-    using TEvWriteOrZeroCompleted = TResponseEvent<
-        TWriteOrZeroCompleted,
-        EvWriteOrZeroCompleted>;
+    using TEvWriteOrZeroCompleted =
+        TResponseEvent<TWriteOrZeroCompleted, EvWriteOrZeroCompleted>;
 
     using TEvReportDelayedDiskAgentConfigMismatch = TResponseEvent<
         TReportDelayedDiskAgentConfigMismatch,
         EvReportDelayedDiskAgentConfigMismatch>;
 
-    using TEvCancelSuspensionRequest = TRequestEvent<
-        TCancelSuspensionRequest,
-        EvCancelSuspensionRequest>;
+    using TEvCancelSuspensionRequest =
+        TRequestEvent<TCancelSuspensionRequest, EvCancelSuspensionRequest>;
 
     using TEvParsedWriteDeviceBlocksRequest = TRequestEvent<
         TParsedWriteDeviceBlocksRequest,

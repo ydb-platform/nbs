@@ -18,9 +18,9 @@
 #include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 #include <contrib/ydb/core/testlib/test_client.h>
-
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/event.h>
+
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -186,8 +186,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestRegistryVisitor
-    : public NMetrics::IRegistryVisitor
+class TTestRegistryVisitor: public NMetrics::IRegistryVisitor
 {
 public:
     using TLabel = NCloud::NFileStore::NMetrics::TLabel;
@@ -234,9 +233,8 @@ public:
     void ValidateExpectedCounters(
         const TVector<std::pair<TVector<TLabel>, i64>>& expectedCounters);
     void ValidateExpectedCountersWithPredicate(
-        const TVector<
-            std::pair<TVector<TLabel>, std::function<bool(i64)>>
-        >& expectedCounters);
+        const TVector<std::pair<TVector<TLabel>, std::function<bool(i64)>>>&
+            expectedCounters);
     void ValidateExpectedHistogram(
         const TVector<std::pair<TVector<TLabel>, i64>>& expectedCounters,
         bool checkEqual);
@@ -251,34 +249,32 @@ TStorageConfigPtr CreateTestStorageConfig(NProto::TStorageConfig storageConfig);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define TABLET_TEST_HEAD(name)                                                 \
-    void TestImpl##name(TFileSystemConfig tabletConfig);                       \
-    Y_UNIT_TEST(name)                                                          \
-    {                                                                          \
-        TestImpl##name(TFileSystemConfig{.BlockSize = 4_KB});                  \
-    }                                                                          \
-// TABLET_TEST_HEAD
+#define TABLET_TEST_HEAD(name)                                \
+    void TestImpl##name(TFileSystemConfig tabletConfig);      \
+    Y_UNIT_TEST(name)                                         \
+    {                                                         \
+        TestImpl##name(TFileSystemConfig{.BlockSize = 4_KB}); \
+    }                                                         \
+    // TABLET_TEST_HEAD
 
-#define TABLET_TEST_IMPL(name, largeBS)                                        \
-    TABLET_TEST_HEAD(name)                                                     \
-    Y_UNIT_TEST(name##largeBS)                                                 \
-    {                                                                          \
-        TestImpl##name(TFileSystemConfig{.BlockSize = largeBS});               \
-    }                                                                          \
-    void TestImpl##name(TFileSystemConfig tabletConfig)                        \
-// TABLET_TEST_IMPL
+#define TABLET_TEST_IMPL(name, largeBS)                          \
+    TABLET_TEST_HEAD(name)                                       \
+    Y_UNIT_TEST(name##largeBS)                                   \
+    {                                                            \
+        TestImpl##name(TFileSystemConfig{.BlockSize = largeBS}); \
+    }                                                            \
+    void TestImpl##name(TFileSystemConfig tabletConfig)   // TABLET_TEST_IMPL
 
-#define TABLET_TEST_4K_ONLY(name)                                              \
-    TABLET_TEST_HEAD(name)                                                     \
-    void TestImpl##name(TFileSystemConfig tabletConfig)                        \
-// TABLET_TEST_4K_ONLY
+#define TABLET_TEST_4K_ONLY(name) \
+    TABLET_TEST_HEAD(name)        \
+    void TestImpl##name(TFileSystemConfig tabletConfig)   // TABLET_TEST_4K_ONLY
 
-#define TABLET_TEST(name)                                                      \
-    TABLET_TEST_IMPL(name, 128_KB)                                             \
-// TABLET_TEST
+#define TABLET_TEST(name)          \
+    TABLET_TEST_IMPL(name, 128_KB) \
+    // TABLET_TEST
 
-#define TABLET_TEST_16K(name)                                                  \
-    TABLET_TEST_IMPL(name, 16_KB)                                              \
-// TABLET_TEST_16K
+#define TABLET_TEST_16K(name)     \
+    TABLET_TEST_IMPL(name, 16_KB) \
+    // TABLET_TEST_16K
 
 }   // namespace NCloud::NFileStore::NStorage

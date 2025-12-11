@@ -52,22 +52,21 @@ void TIndexTabletActor::HandleListNodes(
     const TEvService::TEvListNodesRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!AcceptRequest<TEvService::TListNodesMethod>(ev, ctx, ValidateRequest)) {
+    if (!AcceptRequest<TEvService::TListNodesMethod>(ev, ctx, ValidateRequest))
+    {
         return;
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TListNodesMethod>(*requestInfo);
 
-    auto maxBytes = Min(
-        Config->GetMaxResponseEntries() * MaxName,
-        Config->GetMaxResponseBytes());
+    auto maxBytes =
+        Min(Config->GetMaxResponseEntries() * MaxName,
+            Config->GetMaxResponseBytes());
     if (auto bytes = msg->Record.GetMaxBytes()) {
         maxBytes = Min(bytes, maxBytes);
     }
@@ -88,10 +87,8 @@ bool TIndexTabletActor::ValidateTx_ListNodes(
 {
     Y_UNUSED(ctx);
 
-    auto* session = FindSession(
-        args.ClientId,
-        args.SessionId,
-        args.SessionSeqNo);
+    auto* session =
+        FindSession(args.ClientId, args.SessionId, args.SessionSeqNo);
     if (!session) {
         args.Error = ErrorInvalidSession(
             args.ClientId,
@@ -139,19 +136,19 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
             Max<ui64>(),
             args.BytesToPrecharge))
     {
-        return false; // not ready
+        return false;   // not ready
     }
 
     bool ready = true;
     // list children refs
     if (!ReadNodeRefs(
-        db,
-        args.NodeId,
-        args.CommitId,
-        args.Cookie,
-        args.ChildRefs,
-        args.MaxBytes,
-        &args.Next))
+            db,
+            args.NodeId,
+            args.CommitId,
+            args.Cookie,
+            args.ChildRefs,
+            args.MaxBytes,
+            &args.Next))
     {
         ready = false;
     }
@@ -184,7 +181,8 @@ void TIndexTabletActor::CompleteTx_ListNodes(
 {
     RemoveTransaction(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvListNodesResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvListNodesResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         auto& record = response->Record;
         record.MutableNames()->Reserve(args.ChildRefs.size());
@@ -203,7 +201,6 @@ void TIndexTabletActor::CompleteTx_ListNodes(
                         ref.Name,
                         ref.ShardId,
                         ref.ShardNodeName);
-
                 }
 
                 continue;

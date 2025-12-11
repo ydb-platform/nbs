@@ -45,7 +45,7 @@ struct TGetSessionIdSelector<T, std::enable_if_t<!THasGetSessionId<T>::value>>
 template <typename T>
 using TGetSessionId = TGetSessionIdSelector<T>;
 
-}   // NImpl
+}   // namespace NImpl
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -108,7 +108,8 @@ void VolumeConfigToVolumeModel(
 
 void FillDeviceInfo(
     const google::protobuf::RepeatedPtrField<NProto::TDeviceConfig>& devices,
-    const google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>& migrations,
+    const google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>&
+        migrations,
     const google::protobuf::RepeatedPtrField<NProto::TReplica>& replicas,
     const google::protobuf::RepeatedPtrField<TString>& freshDeviceIds,
     NProto::TVolume& volume);
@@ -176,7 +177,8 @@ inline bool RequiresCheckpointSupport(const NProto::TZeroBlocksRequest&)
     return false;
 }
 
-inline bool RequiresCheckpointSupport(const NProto::TChecksumDeviceBlocksRequest&)
+inline bool RequiresCheckpointSupport(
+    const NProto::TChecksumDeviceBlocksRequest&)
 {
     return false;
 }
@@ -232,9 +234,11 @@ TBlockRange64 BuildRequestBlockRange(
 TBlockRange64 BuildRequestBlockRange(
     const TEvDiskAgent::TEvZeroDeviceBlocksRequest& request);
 
-ui64 GetVolumeRequestId(const TEvDiskAgent::TEvWriteDeviceBlocksRequest& request);
+ui64 GetVolumeRequestId(
+    const TEvDiskAgent::TEvWriteDeviceBlocksRequest& request);
 ui64 GetVolumeRequestId(const NProto::TWriteDeviceBlocksRequest& request);
-ui64 GetVolumeRequestId(const TEvDiskAgent::TEvZeroDeviceBlocksRequest& request);
+ui64 GetVolumeRequestId(
+    const TEvDiskAgent::TEvZeroDeviceBlocksRequest& request);
 
 ui64 GetVolumeRequestId(const TEvService::TEvWriteBlocksRequest& request);
 ui64 GetVolumeRequestId(const TEvService::TEvWriteBlocksLocalRequest& request);

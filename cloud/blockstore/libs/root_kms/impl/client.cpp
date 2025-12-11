@@ -48,8 +48,7 @@ struct IRequestHandler
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDecryptDataKeyHandler final
-    : public IRequestHandler
+class TDecryptDataKeyHandler final: public IRequestHandler
 {
 private:
     using TReader =
@@ -106,8 +105,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGenerateDataKeyRequestHandler final
-    : public IRequestHandler
+class TGenerateDataKeyRequestHandler final: public IRequestHandler
 {
 private:
     using TReader =
@@ -125,9 +123,7 @@ private:
     TPromise<TResult> Promise = NewPromise<TResult>();
 
 public:
-    TGenerateDataKeyRequestHandler(
-        TDuration timeout,
-        const TString& keyId)
+    TGenerateDataKeyRequestHandler(TDuration timeout, const TString& keyId)
     {
         if (timeout) {
             ClientContext.set_deadline(timeout.ToDeadLine());
@@ -169,15 +165,12 @@ public:
 
 TString ReadFile(const TString& name)
 {
-    return name
-        ? TFileInput(name).ReadAll()
-        : TString();
+    return name ? TFileInput(name).ReadAll() : TString();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRootKmsClient final
-    : public IRootKmsClient
+class TRootKmsClient final: public IRootKmsClient
 {
 private:
     TGrpcInitializer GrpcInitializer;
@@ -216,8 +209,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TRootKmsClient::TRootKmsClient(
-        ILoggingServicePtr logging,
-        TCreateRootKmsClientParams params)
+    ILoggingServicePtr logging,
+    TCreateRootKmsClientParams params)
     : Logging(std::move(logging))
     , Params(std::move(params))
 {}
@@ -234,8 +227,7 @@ void TRootKmsClient::Start()
     grpc::SslCredentialsOptions sslOpts{
         .pem_root_certs = ReadFile(Params.RootCertsFile),
         .pem_private_key = ReadFile(Params.PrivateKeyFile),
-        .pem_cert_chain = ReadFile(Params.CertChainFile)
-    };
+        .pem_cert_chain = ReadFile(Params.CertChainFile)};
 
     STORAGE_INFO("Connect to " << Params.Address);
 
@@ -267,8 +259,9 @@ void TRootKmsClient::Stop()
     STORAGE_INFO("Stopped");
 }
 
-auto TRootKmsClient::Decrypt(const TString& keyId, const TString& ciphertext)
-    -> TFuture<TResultOrError<TEncryptionKey>>
+auto TRootKmsClient::Decrypt(
+    const TString& keyId,
+    const TString& ciphertext) -> TFuture<TResultOrError<TEncryptionKey>>
 {
     STORAGE_DEBUG("Decrypt DEK with key " << keyId.Quote());
 
@@ -285,14 +278,13 @@ auto TRootKmsClient::Decrypt(const TString& keyId, const TString& ciphertext)
     return future;
 }
 
-auto TRootKmsClient::GenerateDataEncryptionKey(const TString& keyId)
-    -> TFuture<TResultOrError<NProto::TKmsKey>>
+auto TRootKmsClient::GenerateDataEncryptionKey(
+    const TString& keyId) -> TFuture<TResultOrError<NProto::TKmsKey>>
 {
     STORAGE_DEBUG("Generate DEK with key " << keyId.Quote());
 
-    auto requestHandler = std::make_unique<TGenerateDataKeyRequestHandler>(
-        DefaultTimeout,
-        keyId);
+    auto requestHandler =
+        std::make_unique<TGenerateDataKeyRequestHandler>(DefaultTimeout, keyId);
 
     auto future = requestHandler->Execute(*Service, CQ);
 
@@ -309,8 +301,7 @@ void TRootKmsClient::ThreadFn()
 
     while (CQ.Next(&tag, &ok)) {
         std::unique_ptr<IRequestHandler> requestHandler(
-            static_cast<IRequestHandler*>(tag)
-        );
+            static_cast<IRequestHandler*>(tag));
         requestHandler->Complete();
     }
 }

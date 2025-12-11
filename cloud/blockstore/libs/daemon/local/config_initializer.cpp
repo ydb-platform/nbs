@@ -1,4 +1,5 @@
 #include "config_initializer.h"
+
 #include "options.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -56,6 +57,5 @@ TString TConfigInitializerLocal::GetLogBackendFileName() const
 {
     return "";
 }
-
 
 }   // namespace NCloud::NBlockStore::NServer

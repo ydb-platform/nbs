@@ -31,7 +31,9 @@ enum class EHandledOn
 
 template <typename T>
 concept HasSessionId = requires(T& obj) {
-    { obj.GetSessionId() } -> std::convertible_to<TString>;
+    {
+        obj.GetSessionId()
+    } -> std::convertible_to<TString>;
 };
 
 struct TTestSessionSwitcher
@@ -142,7 +144,6 @@ struct TTestDataPlainMethods
         , Zero(primaryClient, secondaryClient)
     {}
 };
-
 
 template <typename TRequest, typename TResponse>
 void Check(

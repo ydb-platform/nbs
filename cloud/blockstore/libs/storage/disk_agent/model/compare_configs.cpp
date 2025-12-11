@@ -29,7 +29,9 @@ NProto::TError CompareConfigs(
         return MakeError(E_ARGUMENT, "Unexpected offset");
     }
 
-    if (expected.GetFileSize() && expected.GetFileSize() != current.GetFileSize()) {
+    if (expected.GetFileSize() &&
+        expected.GetFileSize() != current.GetFileSize())
+    {
         return MakeError(E_ARGUMENT, "Unexpected file size");
     }
 
@@ -44,19 +46,21 @@ NProto::TError CompareConfigs(
     const TVector<NProto::TFileDeviceArgs>& expectedConfig,
     const TVector<NProto::TFileDeviceArgs>& currentConfig)
 {
-    auto byId = [] (const auto& device) -> TStringBuf {
+    auto byId = [](const auto& device) -> TStringBuf
+    {
         return device.GetDeviceId();
     };
 
-    if (!IsSortedBy(expectedConfig,  byId)) {
+    if (!IsSortedBy(expectedConfig, byId)) {
         return MakeError(E_ARGUMENT, "expected config is not sorted");
     }
 
-    if (!IsSortedBy(currentConfig,  byId)) {
+    if (!IsSortedBy(currentConfig, byId)) {
         return MakeError(E_ARGUMENT, "current config is not sorted");
     }
 
-    auto pathExists = [&] (const auto& device) {
+    auto pathExists = [&](const auto& device)
+    {
         return NFs::Exists(device.GetPath());
     };
 
@@ -76,9 +80,11 @@ NProto::TError CompareConfigs(
         if (expected.GetDeviceId() == current.GetDeviceId()) {
             const auto error = CompareConfigs(expected, current);
             if (HasError(error)) {
-                return MakeError(error.GetCode(), TStringBuilder()
-                    << error.GetMessage() << ". Expected config: "
-                    << expected << ". Current config: " << current);
+                return MakeError(
+                    error.GetCode(),
+                    TStringBuilder() << error.GetMessage()
+                                     << ". Expected config: " << expected
+                                     << ". Current config: " << current);
             }
 
             ++i;
@@ -96,10 +102,8 @@ NProto::TError CompareConfigs(
         ++i;
     }
 
-    const auto* lostDevice = FindIfPtr(
-        expectedConfig.begin() + i,
-        expectedConfig.end(),
-        pathExists);
+    const auto* lostDevice =
+        FindIfPtr(expectedConfig.begin() + i, expectedConfig.end(), pathExists);
 
     if (lostDevice) {
         return MakeError(

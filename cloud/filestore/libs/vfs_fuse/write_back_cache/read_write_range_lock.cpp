@@ -17,12 +17,11 @@ void TReadWriteRangeLock::LockRead(
         "Input argument [" << begin << ", " << end << ") is invalid interval");
 
     if (WriteLocks.HasIntersection(begin, end)) {
-        PendingLocks.push_back({
-            .Begin = begin,
-            .End = end,
-            .Action = std::move(action),
-            .IsWrite = false
-        });
+        PendingLocks.push_back(
+            {.Begin = begin,
+             .End = end,
+             .Action = std::move(action),
+             .IsWrite = false});
     } else {
         ReadLocks.AddInterval(begin, end);
         action();
@@ -41,12 +40,11 @@ void TReadWriteRangeLock::LockWrite(
     WriteLocks.AddInterval(begin, end);
 
     if (ReadLocks.HasIntersection(begin, end)) {
-        PendingLocks.push_back({
-            .Begin = begin,
-            .End = end,
-            .Action = std::move(action),
-            .IsWrite = true
-        });
+        PendingLocks.push_back(
+            {.Begin = begin,
+             .End = end,
+             .Action = std::move(action),
+             .IsWrite = true});
     } else {
         action();
     }
@@ -77,21 +75,24 @@ void TReadWriteRangeLock::ProcessPendingLocks()
 
     TVector<std::function<void()>> actions;
 
-    EraseIf(PendingLocks, [this, &actions](TPendingLock& pl) {
-        if (pl.IsWrite) {
-            if (!ReadLocks.HasIntersection(pl.Begin, pl.End)) {
-                actions.push_back(std::move(pl.Action));
-                return true;
+    EraseIf(
+        PendingLocks,
+        [this, &actions](TPendingLock& pl)
+        {
+            if (pl.IsWrite) {
+                if (!ReadLocks.HasIntersection(pl.Begin, pl.End)) {
+                    actions.push_back(std::move(pl.Action));
+                    return true;
+                }
+            } else {
+                if (!WriteLocks.HasIntersection(pl.Begin, pl.End)) {
+                    ReadLocks.AddInterval(pl.Begin, pl.End);
+                    actions.push_back(std::move(pl.Action));
+                    return true;
+                }
             }
-        } else {
-            if (!WriteLocks.HasIntersection(pl.Begin, pl.End)) {
-                ReadLocks.AddInterval(pl.Begin, pl.End);
-                actions.push_back(std::move(pl.Action));
-                return true;
-            }
-        }
-        return false;
-    });
+            return false;
+        });
 
     for (auto& action: actions) {
         action();

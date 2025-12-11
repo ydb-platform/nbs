@@ -33,9 +33,9 @@ struct TEvServicePrivate
         const NProto::TError Error;
 
         TVolumeTabletStatus(
-                ui64 tabletId,
-                const NProto::TVolume& volumeInfo,
-                const NActors::TActorId& volumeActor)
+            ui64 tabletId,
+            const NProto::TVolume& volumeInfo,
+            const NActors::TActorId& volumeActor)
             : TabletId(tabletId)
             , VolumeInfo(volumeInfo)
             , VolumeActor(volumeActor)
@@ -130,15 +130,15 @@ struct TEvServicePrivate
         const bool VolumeSessionRestartRequired;
 
         TMountRequestProcessed(
-                NProto::TVolume volume,
-                NProto::TMountVolumeRequest request,
-                ui64 mountStartTick,
-                TRequestInfoPtr requestInfo,
-                ui64 volumeTabletId,
-                bool hadLocalStart,
-                NProto::EVolumeBinding bindingType,
-                NProto::EPreemptionSource preemptionSource,
-                bool volumeSessionRestartRequired)
+            NProto::TVolume volume,
+            NProto::TMountVolumeRequest request,
+            ui64 mountStartTick,
+            TRequestInfoPtr requestInfo,
+            ui64 volumeTabletId,
+            bool hadLocalStart,
+            NProto::EVolumeBinding bindingType,
+            NProto::EPreemptionSource preemptionSource,
+            bool volumeSessionRestartRequired)
             : Volume(std::move(volume))
             , MountStartTick(mountStartTick)
             , Request(std::move(request))
@@ -164,11 +164,11 @@ struct TEvServicePrivate
         const bool VolumeSessionRestartRequired;
 
         TUnmountRequestProcessed(
-                TString diskId,
-                TString clientId,
-                const NActors::TActorId& requestSender,
-                NProto::EControlRequestSource source,
-                bool volumeSessionRestartRequired)
+            TString diskId,
+            TString clientId,
+            const NActors::TActorId& requestSender,
+            NProto::EControlRequestSource source,
+            bool volumeSessionRestartRequired)
             : DiskId(std::move(diskId))
             , ClientId(std::move(clientId))
             , RequestSender(requestSender)
@@ -207,7 +207,6 @@ struct TEvServicePrivate
     {
     };
 
-
     //
     // InternalMountVolume request
     //
@@ -220,8 +219,7 @@ struct TEvServicePrivate
 
         TInternalMountVolumeRequest() = default;
 
-        explicit TInternalMountVolumeRequest(
-                NProto::TMountVolumeRequest record)
+        explicit TInternalMountVolumeRequest(NProto::TMountVolumeRequest record)
             : Record(std::move(record))
         {}
     };
@@ -272,8 +270,8 @@ struct TEvServicePrivate
         const NProto::EPreemptionSource PreemptionSource;
 
         TUpdateManuallyPreemptedVolume(
-                const TString& diskId,
-                NProto::EPreemptionSource preemptionSource)
+            const TString& diskId,
+            NProto::EPreemptionSource preemptionSource)
             : DiskId(diskId)
             , PreemptionSource(preemptionSource)
         {}
@@ -332,89 +330,61 @@ struct TEvServicePrivate
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStorePrivateEvents::SERVICE_END,
+    static_assert(
+        EvEnd < (int)TBlockStorePrivateEvents::SERVICE_END,
         "EvEnd expected to be < TBlockStorePrivateEvents::SERVICE_END");
 
+    using TEvVolumeTabletStatus =
+        TRequestEvent<TVolumeTabletStatus, EvVolumeTabletStatus>;
 
-    using TEvVolumeTabletStatus = TRequestEvent<
-        TVolumeTabletStatus,
-        EvVolumeTabletStatus
-    >;
+    using TEvStartVolumeActorStopped =
+        TRequestEvent<TStartVolumeActorStopped, EvStartVolumeActorStopped>;
 
-    using TEvStartVolumeActorStopped = TRequestEvent<
-        TStartVolumeActorStopped,
-        EvStartVolumeActorStopped
-    >;
+    using TEvInactiveClientsTimeout =
+        TRequestEvent<TInactiveClientsTimeout, EvInactiveClientsTimeout>;
 
-    using TEvInactiveClientsTimeout = TRequestEvent<
-        TInactiveClientsTimeout,
-        EvInactiveClientsTimeout
-    >;
+    using TEvStartVolumeRequest =
+        TRequestEvent<TStartVolumeRequest, EvStartVolumeRequest>;
 
-    using TEvStartVolumeRequest = TRequestEvent<
-        TStartVolumeRequest,
-        EvStartVolumeRequest
-    >;
+    using TEvStartVolumeResponse =
+        TResponseEvent<TStartVolumeResponse, EvStartVolumeResponse>;
 
-    using TEvStartVolumeResponse = TResponseEvent<
-        TStartVolumeResponse,
-        EvStartVolumeResponse
-    >;
+    using TEvStopVolumeRequest =
+        TRequestEvent<TStopVolumeRequest, EvStopVolumeRequest>;
 
-    using TEvStopVolumeRequest = TRequestEvent<
-        TStopVolumeRequest,
-        EvStopVolumeRequest
-    >;
+    using TEvStopVolumeResponse =
+        TResponseEvent<TStopVolumeResponse, EvStopVolumeResponse>;
 
-    using TEvStopVolumeResponse = TResponseEvent<
-        TStopVolumeResponse,
-        EvStopVolumeResponse
-    >;
+    using TEvMountRequestProcessed =
+        TResponseEvent<TMountRequestProcessed, EvMountRequestProcessed>;
 
-    using TEvMountRequestProcessed = TResponseEvent<
-        TMountRequestProcessed,
-        EvMountRequestProcessed
-    >;
+    using TEvUnmountRequestProcessed =
+        TResponseEvent<TUnmountRequestProcessed, EvUnmountRequestProcessed>;
 
-    using TEvUnmountRequestProcessed = TResponseEvent<
-        TUnmountRequestProcessed,
-        EvUnmountRequestProcessed
-    >;
+    using TEvSessionActorDied =
+        TResponseEvent<TSessionActorDied, EvSessionActorDied>;
 
-    using TEvSessionActorDied = TResponseEvent<
-        TSessionActorDied,
-        EvSessionActorDied
-    >;
+    using TEvVolumePipeReset =
+        TRequestEvent<TVolumePipeReset, EvVolumePipeReset>;
 
-    using TEvVolumePipeReset = TRequestEvent<
-        TVolumePipeReset,
-        EvVolumePipeReset
-    >;
-
-    using TEvResetPipeClient = TRequestEvent<
-        TResetPipeClient,
-        EvResetPipeClient
-    >;
+    using TEvResetPipeClient =
+        TRequestEvent<TResetPipeClient, EvResetPipeClient>;
 
     using TEvInternalMountVolumeRequest = TRequestEvent<
         TInternalMountVolumeRequest,
-        EvInternalMountVolumeRequest
-    >;
+        EvInternalMountVolumeRequest>;
 
     using TEvInternalMountVolumeResponse = TResponseEvent<
         TInternalMountVolumeResponse,
-        EvInternalMountVolumeResponse
-    >;
+        EvInternalMountVolumeResponse>;
 
     using TEvUpdateManuallyPreemptedVolume = TRequestEvent<
         TUpdateManuallyPreemptedVolume,
-        EvUpdateManuallyPreemptedVolume
-    >;
+        EvUpdateManuallyPreemptedVolume>;
 
     using TEvSyncManuallyPreemptedVolumesComplete = TRequestEvent<
         TSyncManuallyPreemptedVolumesComplete,
-        EvSyncManuallyPreemptedVolumesComplete
-    >;
+        EvSyncManuallyPreemptedVolumesComplete>;
 
     using TEvSelfPing = TRequestEvent<TSelfPing, EvSelfPing>;
 
@@ -422,9 +392,8 @@ struct TEvServicePrivate
         TCreateEncryptionKeyResponse,
         EvCreateEncryptionKeyResponse>;
 
-    using TEvListMountedVolumesRequest = TResponseEvent<
-        TListMountedVolumesRequest,
-        EvListMountedVolumesRequest>;
+    using TEvListMountedVolumesRequest =
+        TResponseEvent<TListMountedVolumesRequest, EvListMountedVolumesRequest>;
 
     using TEvListMountedVolumesResponse = TResponseEvent<
         TListMountedVolumesResponse,

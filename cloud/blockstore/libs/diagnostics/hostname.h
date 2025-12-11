@@ -34,8 +34,10 @@ TString GetMonitoringVolumeUrl(
 
 TString GetMonitoringVolumeUrlWithoutDiskId(const TDiagnosticsConfig& config);
 
-TString
-GetQueries(ui32 groupId, const TString& storagePool, const TString& channelKind);
+TString GetQueries(
+    ui32 groupId,
+    const TString& storagePool,
+    const TString& channelKind);
 
 TString GetMonitoringYDBGroupUrl(
     const TDiagnosticsConfig& config,

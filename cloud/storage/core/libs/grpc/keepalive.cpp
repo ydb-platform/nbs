@@ -9,11 +9,9 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TKeepAliveOption::TMutator
-    : public grpc_socket_mutator
+class TKeepAliveOption::TMutator: public grpc_socket_mutator
 {
-    struct TVTable
-        : public grpc_socket_mutator_vtable
+    struct TVTable: public grpc_socket_mutator_vtable
     {
         TVTable()
         {
@@ -29,10 +27,7 @@ private:
     ui32 ProbesCount;
 
 public:
-    TMutator(
-            TDuration idleTimeout,
-            TDuration probeTimeout,
-            ui32 probesCount)
+    TMutator(TDuration idleTimeout, TDuration probeTimeout, ui32 probesCount)
         : IdleTimeout(idleTimeout)
         , ProbeTimeout(probeTimeout)
         , ProbesCount(probesCount)
@@ -56,16 +51,22 @@ private:
 
 #if defined(__linux__)
         ui32 idleTimeout = m->IdleTimeout.Seconds();
-        if (idleTimeout && (SetSockOpt(fd, IPPROTO_TCP, TCP_KEEPIDLE, idleTimeout) != 0)) {
+        if (idleTimeout &&
+            (SetSockOpt(fd, IPPROTO_TCP, TCP_KEEPIDLE, idleTimeout) != 0))
+        {
             return false;
         }
 
         ui32 probeTimeout = m->ProbeTimeout.Seconds();
-        if (probeTimeout && (SetSockOpt(fd, IPPROTO_TCP, TCP_KEEPINTVL, probeTimeout) != 0)) {
+        if (probeTimeout &&
+            (SetSockOpt(fd, IPPROTO_TCP, TCP_KEEPINTVL, probeTimeout) != 0))
+        {
             return false;
         }
 
-        if (m->ProbesCount && (SetSockOpt(fd, IPPROTO_TCP, TCP_KEEPCNT, m->ProbesCount) != 0)) {
+        if (m->ProbesCount &&
+            (SetSockOpt(fd, IPPROTO_TCP, TCP_KEEPCNT, m->ProbesCount) != 0))
+        {
             return false;
         }
 #endif
@@ -89,9 +90,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TKeepAliveOption::TKeepAliveOption(
-        TDuration idleTimeout,
-        TDuration probeTimeout,
-        ui32 probesCount)
+    TDuration idleTimeout,
+    TDuration probeTimeout,
+    ui32 probesCount)
     : Mutator(new TMutator(idleTimeout, probeTimeout, probesCount))
 {}
 

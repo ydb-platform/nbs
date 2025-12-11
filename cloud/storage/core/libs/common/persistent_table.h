@@ -47,7 +47,7 @@ public:
         H Data;
     };
 
-    enum class ERecordState: ui8
+    enum class ERecordState : ui8
     {
         Free = 0,
         Allocated,
@@ -248,7 +248,8 @@ private:
 
         const auto initialRecordCount = RecordCount;
 
-        auto resizeTable = [this](auto newRecordCount) {
+        auto resizeTable = [this](auto newRecordCount)
+        {
             FileMap->ResizeAndRemap(0, CalcFileSize(newRecordCount));
             HeaderPtr = reinterpret_cast<THeader*>(FileMap->Ptr());
             RecordsPtr = reinterpret_cast<TRecord*>(HeaderPtr + 1);
@@ -257,13 +258,16 @@ private:
             HeaderPtr->RecordCount = RecordCount;
         };
 
-        // allow table to grow if table was previously allocated with smaller size
+        // allow table to grow if table was previously allocated with smaller
+        // size
         resizeTable(std::max(header->RecordCount, initialRecordCount));
 
         CompactRecords();
 
         // shrink table if it fits into requested size after compaction
-        if (initialRecordCount < RecordCount && NextFreeRecord <= initialRecordCount) {
+        if (initialRecordCount < RecordCount &&
+            NextFreeRecord <= initialRecordCount)
+        {
             resizeTable(initialRecordCount);
         }
     }

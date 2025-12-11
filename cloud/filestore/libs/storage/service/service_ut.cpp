@@ -1,4 +1,5 @@
 #include "service.h"
+
 #include "service_private.h"
 
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
@@ -13,10 +14,10 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <contrib/ydb/core/base/hive.h>
+
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
-
-#include <contrib/ydb/core/base/hive.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -27,8 +28,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestProfileLog
-    : public IProfileLog
+class TTestProfileLog: public IProfileLog
 {
 public:
     TMap<ui32, TVector<TRecord>> Requests;
@@ -73,11 +73,12 @@ NProtoPrivate::TChangeStorageConfigResponse ExecuteChangeStorageConfig(
     TString buf;
     google::protobuf::util::MessageToJsonString(request, &buf);
 
-    auto jsonResponse = service.ExecuteAction(
-        "changestorageconfig", buf);
+    auto jsonResponse = service.ExecuteAction("changestorageconfig", buf);
     NProtoPrivate::TChangeStorageConfigResponse response;
     UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-        jsonResponse->Record.GetOutput(), &response).ok());
+                    jsonResponse->Record.GetOutput(),
+                    &response)
+                    .ok());
     return response;
 }
 
@@ -107,11 +108,10 @@ NProtoPrivate::TSetHasXAttrsResponse ExecuteSetHasXAttrs(
 
     auto jsonResponse = service.ExecuteAction("sethasxattrs", buf);
     NProtoPrivate::TSetHasXAttrsResponse response;
-    UNIT_ASSERT(
-        google::protobuf::util::JsonStringToMessage(
-            jsonResponse->Record.GetOutput(),
-            &response)
-            .ok());
+    UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                    jsonResponse->Record.GetOutput(),
+                    &response)
+                    .ok());
     return response;
 }
 
@@ -331,9 +331,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         const auto customMaxReadIops = 111;
         const auto customMaxWriteIops = 222;
         service.CreateFileStore("test", initialBlockCount);
-        auto resizeRequest = service.CreateResizeFileStoreRequest(
-            "test",
-            blockCount);
+        auto resizeRequest =
+            service.CreateResizeFileStoreRequest("test", blockCount);
         resizeRequest->Record.MutablePerformanceProfile()->SetMaxReadIops(
             customMaxReadIops);
         service.SendRequest(MakeStorageServiceId(), std::move(resizeRequest));
@@ -354,9 +353,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         // custom
         UNIT_ASSERT_VALUES_EQUAL(customMaxReadIops, profile.GetMaxReadIops());
 
-        resizeRequest = service.CreateResizeFileStoreRequest(
-            "test",
-            blockCount);
+        resizeRequest =
+            service.CreateResizeFileStoreRequest("test", blockCount);
         resizeRequest->Record.MutablePerformanceProfile()->SetMaxWriteIops(
             customMaxWriteIops);
 
@@ -388,16 +386,21 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto& runtime = env.GetRuntime();
 
         ui32 createChannelsCount = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvStorageSSProxy::EvModifySchemeRequest: {
-                        auto* msg = event->Get<TEvStorageSSProxy::TEvModifySchemeRequest>();
+                        auto* msg = event->Get<
+                            TEvStorageSSProxy::TEvModifySchemeRequest>();
                         if (msg->ModifyScheme.GetOperationType() ==
                             NKikimrSchemeOp::ESchemeOpCreateFileStore)
                         {
-                            const auto& request = msg->ModifyScheme.GetCreateFileStore();
+                            const auto& request =
+                                msg->ModifyScheme.GetCreateFileStore();
                             const auto& config = request.GetConfig();
-                            createChannelsCount = config.ExplicitChannelProfilesSize();
+                            createChannelsCount =
+                                config.ExplicitChannelProfilesSize();
                         }
                         break;
                     }
@@ -410,16 +413,21 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT(createChannelsCount > 0);
 
         ui32 alterChannelsCount = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvStorageSSProxy::EvModifySchemeRequest: {
-                        auto* msg = event->Get<TEvStorageSSProxy::TEvModifySchemeRequest>();
+                        auto* msg = event->Get<
+                            TEvStorageSSProxy::TEvModifySchemeRequest>();
                         if (msg->ModifyScheme.GetOperationType() ==
                             NKikimrSchemeOp::ESchemeOpAlterFileStore)
                         {
-                            const auto& request = msg->ModifyScheme.GetAlterFileStore();
+                            const auto& request =
+                                msg->ModifyScheme.GetAlterFileStore();
                             const auto& config = request.GetConfig();
-                            alterChannelsCount = config.ExplicitChannelProfilesSize();
+                            alterChannelsCount =
+                                config.ExplicitChannelProfilesSize();
                         }
                         break;
                     }
@@ -443,17 +451,19 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore("test", 1000);
 
         auto error = MakeError(E_ARGUMENT, "Error");
-        runtime.SetObserverFunc( [nodeIdx, error, &runtime] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [nodeIdx, error, &runtime](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeFileStoreRequest: {
-                        auto response = std::make_unique<TEvSSProxy::TEvDescribeFileStoreResponse>(
-                            error);
+                        auto response = std::make_unique<
+                            TEvSSProxy::TEvDescribeFileStoreResponse>(error);
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
                                 event->Recipient,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
                                 event->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
@@ -474,7 +484,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ui32 nodeIdx = env.CreateNode("nfs");
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        const auto size1 = 1_GB/DefaultBlockSize;
+        const auto size1 = 1_GB / DefaultBlockSize;
 
         auto response1 = service.DescribeFileStoreModel(size1);
         auto& model1 = response1->Record.GetFileStoreModel();
@@ -489,16 +499,24 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(profile1.GetMaxReadBandwidth(), 30_MB);
         UNIT_ASSERT_VALUES_EQUAL(profile1.GetMaxWriteBandwidth(), 30_MB);
         UNIT_ASSERT_VALUES_EQUAL(profile1.GetMaxPostponedWeight(), 128_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile1.GetMaxPostponedTime(), TDuration::Seconds(20).MilliSeconds());
+        UNIT_ASSERT_VALUES_EQUAL(
+            profile1.GetMaxPostponedTime(),
+            TDuration::Seconds(20).MilliSeconds());
         UNIT_ASSERT_VALUES_EQUAL(profile1.GetMaxPostponedCount(), 1024);
-        UNIT_ASSERT_VALUES_EQUAL(profile1.GetBoostTime(), TDuration::Minutes(30).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile1.GetBoostRefillTime(), TDuration::Hours(12).MilliSeconds());
+        UNIT_ASSERT_VALUES_EQUAL(
+            profile1.GetBoostTime(),
+            TDuration::Minutes(30).MilliSeconds());
+        UNIT_ASSERT_VALUES_EQUAL(
+            profile1.GetBoostRefillTime(),
+            TDuration::Hours(12).MilliSeconds());
         UNIT_ASSERT_VALUES_EQUAL(profile1.GetBoostPercentage(), 400);
         UNIT_ASSERT_VALUES_EQUAL(profile1.GetBurstPercentage(), 10);
         UNIT_ASSERT_VALUES_EQUAL(profile1.GetMaxWriteCostMultiplier(), 20);
-        UNIT_ASSERT_VALUES_EQUAL(profile1.GetDefaultPostponedRequestWeight(), 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL(
+            profile1.GetDefaultPostponedRequestWeight(),
+            4_KB);
 
-        const auto size2 = 4_TB/DefaultBlockSize;
+        const auto size2 = 4_TB / DefaultBlockSize;
         auto response2 = service.DescribeFileStoreModel(size2);
         auto& model2 = response2->Record.GetFileStoreModel();
         UNIT_ASSERT_VALUES_EQUAL(model2.GetBlocksCount(), size2);
@@ -512,14 +530,22 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(profile2.GetMaxReadBandwidth(), 240_MB);
         UNIT_ASSERT_VALUES_EQUAL(profile2.GetMaxWriteBandwidth(), 240_MB);
         UNIT_ASSERT_VALUES_EQUAL(profile2.GetMaxPostponedWeight(), 128_MB);
-        UNIT_ASSERT_VALUES_EQUAL(profile2.GetMaxPostponedTime(), TDuration::Seconds(20).MilliSeconds());
+        UNIT_ASSERT_VALUES_EQUAL(
+            profile2.GetMaxPostponedTime(),
+            TDuration::Seconds(20).MilliSeconds());
         UNIT_ASSERT_VALUES_EQUAL(profile2.GetMaxPostponedCount(), 1024);
-        UNIT_ASSERT_VALUES_EQUAL(profile2.GetBoostTime(), TDuration::Minutes(30).MilliSeconds());
-        UNIT_ASSERT_VALUES_EQUAL(profile2.GetBoostRefillTime(), TDuration::Hours(12).MilliSeconds());
+        UNIT_ASSERT_VALUES_EQUAL(
+            profile2.GetBoostTime(),
+            TDuration::Minutes(30).MilliSeconds());
+        UNIT_ASSERT_VALUES_EQUAL(
+            profile2.GetBoostRefillTime(),
+            TDuration::Hours(12).MilliSeconds());
         UNIT_ASSERT_VALUES_EQUAL(profile2.GetBoostPercentage(), 25);
         UNIT_ASSERT_VALUES_EQUAL(profile2.GetBurstPercentage(), 10);
         UNIT_ASSERT_VALUES_EQUAL(profile2.GetMaxWriteCostMultiplier(), 20);
-        UNIT_ASSERT_VALUES_EQUAL(profile2.GetDefaultPostponedRequestWeight(), 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL(
+            profile2.GetDefaultPostponedRequestWeight(),
+            4_KB);
 
         service.AssertDescribeFileStoreModelFailed(0);
         service.AssertDescribeFileStoreModelFailed(1000, 0);
@@ -549,14 +575,19 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ui32 nodeIdx = env.CreateNode("nfs");
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore("test", 1000, DefaultBlockSize, NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
+        service.CreateFileStore(
+            "test",
+            1000,
+            DefaultBlockSize,
+            NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
 
         auto response = service.CreateSession(THeaders{"test", "client", ""});
 
         UNIT_ASSERT(response->Record.HasFileStore());
         UNIT_ASSERT_EQUAL(
             NProto::EStorageMediaKind::STORAGE_MEDIA_SSD,
-            static_cast<NProto::EStorageMediaKind>(response->Record.GetFileStore().GetStorageMediaKind()));
+            static_cast<NProto::EStorageMediaKind>(
+                response->Record.GetFileStore().GetStorageMediaKind()));
     }
 
     Y_UNIT_TEST(ShouldRestoreSessionIfPipeFailed)
@@ -573,7 +604,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         bool fail = true;
         TActorId worker;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 if (!fail) {
                     return TTestActorRuntime::DefaultObserverFunc(event);
                 }
@@ -585,8 +618,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     }
                     case TEvTabletPipe::EvClientConnected: {
                         if (fail && worker && event->Recipient == worker) {
-                            auto* msg = event->Get<TEvTabletPipe::TEvClientConnected>();
-                            const_cast<NKikimrProto::EReplyStatus&>(msg->Status) = NKikimrProto::ERROR;
+                            auto* msg =
+                                event->Get<TEvTabletPipe::TEvClientConnected>();
+                            const_cast<NKikimrProto::EReplyStatus&>(
+                                msg->Status) = NKikimrProto::ERROR;
                         } else {
                             fail = false;
                         }
@@ -614,7 +649,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto& runtime = env.GetRuntime();
 
         TActorId worker;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeFileStoreRequest: {
                         worker = event->Sender;
@@ -639,15 +676,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 worker,
                 TActorId(),
                 msg.release(),
-                0, // flags
+                0,   // flags
                 0),
             nodeIdx);
 
         TDispatchOptions options;
-        options.FinalEvents = {
-            TDispatchOptions::TFinalEventCondition(
-                TEvIndexTablet::EvCreateSessionRequest)
-        };
+        options.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+            TEvIndexTablet::EvCreateSessionRequest)};
         env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
     }
 
@@ -664,7 +699,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto& runtime = env.GetRuntime();
 
         bool fail = true;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 if (!fail) {
                     return TTestActorRuntime::DefaultObserverFunc(event);
                 }
@@ -672,7 +709,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTablet::EvCreateSessionRequest: {
                         fail = false;
-                        auto response = std::make_unique<TEvIndexTablet::TEvCreateSessionResponse>(
+                        auto response = std::make_unique<
+                            TEvIndexTablet::TEvCreateSessionResponse>(
                             MakeError(E_REJECTED, "xxx"));
 
                         runtime.Send(
@@ -681,7 +719,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                                 event->Sender,
                                 event->Sender,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
                                 event->Cookie),
                             nodeIdx);
 
@@ -710,7 +748,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto& runtime = env.GetRuntime();
 
         bool fail = true;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 if (!fail) {
                     return TTestActorRuntime::DefaultObserverFunc(event);
                 }
@@ -718,7 +758,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTablet::EvCreateSessionRequest: {
                         fail = false;
-                        auto response = std::make_unique<TEvIndexTablet::TEvCreateSessionResponse>(
+                        auto response = std::make_unique<
+                            TEvIndexTablet::TEvCreateSessionResponse>(
                             MakeError(E_REJECTED, "xxx"));
 
                         runtime.Send(
@@ -727,7 +768,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                                 event->Sender,
                                 event->Sender,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
                                 event->Cookie),
                             nodeIdx);
 
@@ -753,23 +794,27 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         ui64 tabletId = -1;
         TActorId session;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) mutable {
-            switch (event->GetTypeRewrite()) {
-                case TEvSSProxy::EvDescribeFileStoreResponse: {
-                    const auto* msg = event->Get<TEvSSProxy::TEvDescribeFileStoreResponse>();
-                    const auto& desc = msg->PathDescription.GetFileStoreDescription();
-                    tabletId = desc.GetIndexTabletId();
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event) mutable
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeFileStoreResponse: {
+                        const auto* msg = event->Get<
+                            TEvSSProxy::TEvDescribeFileStoreResponse>();
+                        const auto& desc =
+                            msg->PathDescription.GetFileStoreDescription();
+                        tabletId = desc.GetIndexTabletId();
 
-                    return TTestActorRuntime::EEventAction::PROCESS;
+                        return TTestActorRuntime::EEventAction::PROCESS;
+                    }
+                    case TEvIndexTablet::EvCreateSessionRequest: {
+                        session = event->Sender;
+                        return TTestActorRuntime::EEventAction::PROCESS;
+                    }
                 }
-                case TEvIndexTablet::EvCreateSessionRequest: {
-                    session = event->Sender;
-                    return TTestActorRuntime::EEventAction::PROCESS;
-                }
-            }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
-        });
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000);
@@ -782,16 +827,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
 
         // explicitly fail session actor, proper way is to catch
-        // IndexTablet::CreateSession request via observer func and respond w error
-        // but for some reason runtime doesn't catch this event during tablet restart
-        // though it actually happens and session resotres by the end of restart
+        // IndexTablet::CreateSession request via observer func and respond w
+        // error but for some reason runtime doesn't catch this event during
+        // tablet restart though it actually happens and session resotres by the
+        // end of restart
         runtime.Send(
             new IEventHandle(
                 // send back
                 session,
                 session,
                 new TEvents::TEvPoisonPill(),
-                0, // flags
+                0,   // flags
                 0),
             nodeIdx);
 
@@ -802,7 +848,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             headers,
             TCreateNodeArgs::File(RootNodeId, "aaa"));
 
-        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), (ui32)E_FS_INVALID_SESSION);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response->GetError().GetCode(),
+            (ui32)E_FS_INVALID_SESSION);
 
         service.CreateSession(headers);
         service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "aaa"));
@@ -821,24 +869,24 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto headers = service.InitSession(
             "test",
             "client",
-            "",         // checkpointId
-            true        // restoreClientSession
+            "",    // checkpointId
+            true   // restoreClientSession
         );
         UNIT_ASSERT_VALUES_UNEQUAL("", headers.SessionId);
 
         auto headers2 = service.InitSession(
             "test",
             "client",
-            "",         // checkpointId
-            true        // restoreClientSession
+            "",    // checkpointId
+            true   // restoreClientSession
         );
         UNIT_ASSERT_VALUES_EQUAL(headers.SessionId, headers2.SessionId);
 
         auto headers3 = service.InitSession(
             "test",
             "client",
-            "",         // checkpointId
-            false       // restoreClientSession
+            "",     // checkpointId
+            false   // restoreClientSession
         );
         UNIT_ASSERT_VALUES_UNEQUAL(headers.SessionId, headers3.SessionId);
 
@@ -893,7 +941,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         auto response = service.RecvCreateNodeResponse();
         UNIT_ASSERT(response);
-        UNIT_ASSERT_C(SUCCEEDED(response->GetStatus()), response->GetErrorReason().c_str());
+        UNIT_ASSERT_C(
+            SUCCEEDED(response->GetStatus()),
+            response->GetErrorReason().c_str());
     }
 
     Y_UNIT_TEST(ShouldNotForwardRequestsWithInvalidSession)
@@ -968,7 +1018,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file2"));
 
         {
-            auto response = service.RecvResponse<TEvService::TEvGetSessionEventsResponse>();
+            auto response =
+                service.RecvResponse<TEvService::TEvGetSessionEventsResponse>();
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
@@ -986,8 +1037,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ui32 nodeIdx = env.CreateNode("nfs");
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
-        TVector<TString> expected = {"dir/fs1", "dir/fs2", "dir1/fs", "dir2/fs"};
-        for (const auto& id : expected) {
+        TVector<TString> expected = {
+            "dir/fs1",
+            "dir/fs2",
+            "dir1/fs",
+            "dir2/fs"};
+        for (const auto& id: expected) {
             service.CreateFileStore(id, 1000);
         }
 
@@ -1001,8 +1056,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(filestores, expected);
 
         auto counters = env.GetCounters()
-            ->FindSubgroup("component", "service")
-            ->FindSubgroup("request", "ListFileStores");
+                            ->FindSubgroup("component", "service")
+                            ->FindSubgroup("request", "ListFileStores");
         counters->OutputPlainText(Cerr);
         UNIT_ASSERT_EQUAL(1, counters->GetCounter("Count")->GetAtomic());
         UNIT_ASSERT_EQUAL(0, counters->GetCounter("InProgress")->GetAtomic());
@@ -1022,17 +1077,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto error = MakeError(E_ARGUMENT, "Error");
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc( [nodeIdx, error, &runtime] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [nodeIdx, error, &runtime](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvStorageSSProxy::EvDescribeSchemeRequest: {
-                        auto response = std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeResponse>(
+                        auto response = std::make_unique<
+                            TEvStorageSSProxy::TEvDescribeSchemeResponse>(
                             error);
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
                                 event->Recipient,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
                                 event->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
@@ -1067,7 +1125,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.ResizeFileStore("test", 100'000'000);
         UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
 
-        service.DescribeFileStoreModel(1_GB/DefaultBlockSize);
+        service.DescribeFileStoreModel(1_GB / DefaultBlockSize);
         UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
 
         service.ListFileStores();
@@ -1083,13 +1141,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, profileLog->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            profileLog->Requests[static_cast<ui32>(EFileStoreRequest::CreateNode)].size());
+            profileLog
+                ->Requests[static_cast<ui32>(EFileStoreRequest::CreateNode)]
+                .size());
 
         service.ListNodes(headers, 1);
         UNIT_ASSERT_VALUES_EQUAL(2, profileLog->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            profileLog->Requests[static_cast<ui32>(EFileStoreRequest::ListNodes)].size());
+            profileLog
+                ->Requests[static_cast<ui32>(EFileStoreRequest::ListNodes)]
+                .size());
 
         service.DestroySession(headers);
         UNIT_ASSERT_VALUES_EQUAL(2, profileLog->Requests.size());
@@ -1118,21 +1180,28 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto headers1 = service1.InitSession("test", "client");
         service1.PingSession(headers1);
 
-        service1.CreateNode(headers1, TCreateNodeArgs::File(RootNodeId, "file"));
+        service1.CreateNode(
+            headers1,
+            TCreateNodeArgs::File(RootNodeId, "file"));
         service1.ListNodes(headers1, 1);
 
-        auto headers2 = service2.InitSession("test", "client", "", false, 1, true);
+        auto headers2 =
+            service2.InitSession("test", "client", "", false, 1, true);
         service2.PingSession(headers2);
 
         headers2 = service2.InitSession("test", "client", "", true, 1);
         service2.PingSession(headers2);
 
-        service2.CreateNode(headers2, TCreateNodeArgs::File(RootNodeId, "file2"));
+        service2.CreateNode(
+            headers2,
+            TCreateNodeArgs::File(RootNodeId, "file2"));
         service2.ListNodes(headers2, 1);
 
         service1.DestroySession(headers1);
 
-        service2.CreateNode(headers2, TCreateNodeArgs::File(RootNodeId, "file3"));
+        service2.CreateNode(
+            headers2,
+            TCreateNodeArgs::File(RootNodeId, "file3"));
         service2.DestroySession(headers2);
     }
 
@@ -1152,18 +1221,23 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateNode(headers1, TCreateNodeArgs::File(RootNodeId, "file"));
         service.ListNodes(headers1, 1);
 
-        auto headers2 = service.InitSession("test", "client", "", true, 1, true);
+        auto headers2 =
+            service.InitSession("test", "client", "", true, 1, true);
         service.PingSession(headers2);
 
         headers2 = service.InitSession("test", "client", "", true, 1);
         service.PingSession(headers2);
 
-        service.CreateNode(headers2, TCreateNodeArgs::File(RootNodeId, "file2"));
+        service.CreateNode(
+            headers2,
+            TCreateNodeArgs::File(RootNodeId, "file2"));
         service.ListNodes(headers2, 1);
 
         service.DestroySession(headers1);
 
-        service.CreateNode(headers2, TCreateNodeArgs::File(RootNodeId, "file3"));
+        service.CreateNode(
+            headers2,
+            TCreateNodeArgs::File(RootNodeId, "file3"));
     }
 
     Y_UNIT_TEST(ShouldProperlyDeleteSubsessions)
@@ -1182,12 +1256,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateNode(headers1, TCreateNodeArgs::File(RootNodeId, "file"));
         service.ListNodes(headers1, 1);
 
-        auto headers2 = service.InitSession("test", "client", "", true, 1, true);
+        auto headers2 =
+            service.InitSession("test", "client", "", true, 1, true);
         service.PingSession(headers2);
 
         service.DestroySession(headers1);
 
-        service.CreateNode(headers2, TCreateNodeArgs::File(RootNodeId, "file3"));
+        service.CreateNode(
+            headers2,
+            TCreateNodeArgs::File(RootNodeId, "file3"));
     }
 
     Y_UNIT_TEST(ShouldProperlyDeleteCounters)
@@ -1218,7 +1295,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             UNIT_ASSERT(counter);
         }
 
-        auto headers2 = service.InitSession("test", "client", "", true, 1, true);
+        auto headers2 =
+            service.InitSession("test", "client", "", true, 1, true);
         service.PingSession(headers2);
 
         {
@@ -1265,7 +1343,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TActorId worker;
         TAutoPtr<IEventHandle> resp;
         bool fail = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTablet::EvCreateSessionRequest: {
                         worker = event->Sender;
@@ -1312,11 +1392,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         TActorId worker;
         bool fail = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTablet::EvCreateSessionResponse: {
                         if (fail) {
-                            auto response = std::make_unique<TEvIndexTablet::TEvCreateSessionResponse>(
+                            auto response = std::make_unique<
+                                TEvIndexTablet::TEvCreateSessionResponse>(
                                 MakeError(E_REJECTED, "xxx"));
                             fail = false;
                             runtime.Send(
@@ -1325,7 +1408,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                                     event->Recipient,
                                     event->Recipient,
                                     response.release(),
-                                    0, // flags
+                                    0,   // flags
                                     event->Cookie),
                                 nodeIdx);
 
@@ -1373,21 +1456,31 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.ListNodes(headers, 1);
 
         THeaders headers1;
-        auto response1 = service.InitSession(headers1, "test", "client", "", true, 1, true);
-        UNIT_ASSERT_VALUES_EQUAL(response1->Record.GetSession().GetSessionState(), "123");
+        auto response1 =
+            service.InitSession(headers1, "test", "client", "", true, 1, true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response1->Record.GetSession().GetSessionState(),
+            "123");
         service.PingSession(headers1);
 
         THeaders headers2;
-        auto response2 = service.InitSession(headers2, "test", "client", "", true, 1, false);
-        UNIT_ASSERT_VALUES_EQUAL(response2->Record.GetSession().GetSessionState(), "123");
+        auto response2 =
+            service.InitSession(headers2, "test", "client", "", true, 1, false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response2->Record.GetSession().GetSessionState(),
+            "123");
         service.PingSession(headers2);
 
-        service.CreateNode(headers2, TCreateNodeArgs::File(RootNodeId, "file2"));
+        service.CreateNode(
+            headers2,
+            TCreateNodeArgs::File(RootNodeId, "file2"));
         service.ListNodes(headers2, 1);
 
         service.DestroySession(headers);
 
-        service.CreateNode(headers2, TCreateNodeArgs::File(RootNodeId, "file3"));
+        service.CreateNode(
+            headers2,
+            TCreateNodeArgs::File(RootNodeId, "file3"));
     }
 
     Y_UNIT_TEST(ShouldGetStorageConfigValues)
@@ -1410,19 +1503,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         TString buf;
         google::protobuf::util::MessageToJsonString(request, &buf);
-        auto jsonResponse = service.ExecuteAction("getstorageconfigfields", buf);
+        auto jsonResponse =
+            service.ExecuteAction("getstorageconfigfields", buf);
         NProtoPrivate::TGetStorageConfigFieldsResponse response;
         UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-            jsonResponse->Record.GetOutput(), &response).ok());
+                        jsonResponse->Record.GetOutput(),
+                        &response)
+                        .ok());
 
         const auto& storageValues = response.GetStorageConfigFieldsToValues();
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            storageValues.at("SSDBoostTime"),
-            "Default");
-        UNIT_ASSERT_VALUES_EQUAL(
-            storageValues.at("Unknown"),
-            "Not found");
+        UNIT_ASSERT_VALUES_EQUAL(storageValues.at("SSDBoostTime"), "Default");
+        UNIT_ASSERT_VALUES_EQUAL(storageValues.at("Unknown"), "Not found");
         UNIT_ASSERT_VALUES_EQUAL(
             storageValues.at("CompactionThreshold"),
             "1000");
@@ -1431,9 +1523,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     void CheckStorageConfigValues(
         TVector<TString> names,
         THashMap<TString, TString> answer,
-        TServiceClient& service)
+        TServiceClient & service)
     {
-
         NProtoPrivate::TGetStorageConfigFieldsRequest request;
         request.SetFileSystemId("test");
         for (const auto& name: names) {
@@ -1442,14 +1533,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         TString buf;
         google::protobuf::util::MessageToJsonString(request, &buf);
-        auto jsonResponse = service.ExecuteAction("getstorageconfigfields", buf);
+        auto jsonResponse =
+            service.ExecuteAction("getstorageconfigfields", buf);
         NProtoPrivate::TGetStorageConfigFieldsResponse response;
         UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-            jsonResponse->Record.GetOutput(), &response).ok());
+                        jsonResponse->Record.GetOutput(),
+                        &response)
+                        .ok());
 
         auto storageValues = response.GetStorageConfigFieldsToValues();
 
-        for (const auto& [name, value] : answer) {
+        for (const auto& [name, value]: answer) {
             UNIT_ASSERT_VALUES_EQUAL(storageValues[name], value);
         }
     }
@@ -1473,10 +1567,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             // Check that new config was set
             NProto::TStorageConfig newConfig;
             newConfig.SetCleanupThresholdForBackpressure(5);
-            const auto response = ExecuteChangeStorageConfig(
-                std::move(newConfig), service);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
             UNIT_ASSERT_VALUES_EQUAL(
-                response.GetStorageConfig().GetCleanupThresholdForBackpressure(),
+                response.GetStorageConfig()
+                    .GetCleanupThresholdForBackpressure(),
                 5);
             TDispatchOptions options;
             env.GetRuntime().DispatchEvents(options, TDuration::Seconds(2));
@@ -1492,13 +1587,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             // MergeWithStorageConfigFromTabletDB is true
             NProto::TStorageConfig newConfig;
             newConfig.SetCompactionThresholdForBackpressure(10);
-            const auto response = ExecuteChangeStorageConfig(
-                std::move(newConfig), service, true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service, true);
             UNIT_ASSERT_VALUES_EQUAL(
-                response.GetStorageConfig().GetCleanupThresholdForBackpressure(),
+                response.GetStorageConfig()
+                    .GetCleanupThresholdForBackpressure(),
                 5);
             UNIT_ASSERT_VALUES_EQUAL(
-                response.GetStorageConfig().GetCompactionThresholdForBackpressure(),
+                response.GetStorageConfig()
+                    .GetCompactionThresholdForBackpressure(),
                 10);
             TDispatchOptions options;
             env.GetRuntime().DispatchEvents(options, TDuration::Seconds(2));
@@ -1506,11 +1603,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         CheckStorageConfigValues(
             {"CleanupThresholdForBackpressure",
-            "CompactionThresholdForBackpressure"},
-            {
-                {"CleanupThresholdForBackpressure", "5"},
-                {"CompactionThresholdForBackpressure", "10"}
-            },
+             "CompactionThresholdForBackpressure"},
+            {{"CleanupThresholdForBackpressure", "5"},
+             {"CompactionThresholdForBackpressure", "10"}},
             service);
 
         {
@@ -1518,21 +1613,22 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             // MergeWithStorageConfigFromTabletDB is false
             NProto::TStorageConfig newConfig;
             const auto response = ExecuteChangeStorageConfig(
-                std::move(newConfig), service, false);
-            UNIT_ASSERT(
-                !response.GetStorageConfig().GetCleanupThresholdForBackpressure());
-            UNIT_ASSERT(
-                !response.GetStorageConfig().GetCompactionThresholdForBackpressure());
+                std::move(newConfig),
+                service,
+                false);
+            UNIT_ASSERT(!response.GetStorageConfig()
+                             .GetCleanupThresholdForBackpressure());
+            UNIT_ASSERT(!response.GetStorageConfig()
+                             .GetCompactionThresholdForBackpressure());
             TDispatchOptions options;
             env.GetRuntime().DispatchEvents(options, TDuration::Seconds(2));
         }
 
         CheckStorageConfigValues(
-            {"CleanupThresholdForBackpressure", "CompactionThresholdForBackpressure"},
-            {
-                {"CleanupThresholdForBackpressure", "Default"},
-                {"CompactionThresholdForBackpressure", "Default"}
-            },
+            {"CleanupThresholdForBackpressure",
+             "CompactionThresholdForBackpressure"},
+            {{"CleanupThresholdForBackpressure", "Default"},
+             {"CompactionThresholdForBackpressure", "Default"}},
             service);
     }
 
@@ -1630,7 +1726,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         // delaying pipe creation response
         ui64 tabletId = -1;
         env.GetRuntime().SetEventFilter(
-            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeFileStoreResponse: {
                         using TResponse =
@@ -1652,16 +1749,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         THeaders headers1 = {"test", "client", "session", 3};
         service.CreateSession(
             headers1,
-            "", // checkpointId
-            false, // restoreClientSession
+            "",      // checkpointId
+            false,   // restoreClientSession
             headers1.SessionSeqNo);
         service.ResetSession(headers1, "some_state");
 
         THeaders headers2 = {"test", "client2", "session2", 4};
         service.CreateSession(
             headers2,
-            "", // checkpointId
-            false, // restoreClientSession
+            "",      // checkpointId
+            false,   // restoreClientSession
             headers2.SessionSeqNo);
         service.ResetSession(headers2, "some_state2");
 
@@ -1674,7 +1771,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             auto jsonResponse = service.ExecuteAction("describesessions", buf);
             NProtoPrivate::TDescribeSessionsResponse response;
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                jsonResponse->Record.GetOutput(), &response).ok());
+                            jsonResponse->Record.GetOutput(),
+                            &response)
+                            .ok());
 
             const auto& sessions = response.GetSessions();
             UNIT_ASSERT_VALUES_EQUAL(2, sessions.size());
@@ -1708,7 +1807,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             auto jsonResponse = service.ExecuteAction("describesessions", buf);
             NProtoPrivate::TDescribeSessionsResponse response;
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                jsonResponse->Record.GetOutput(), &response).ok());
+                            jsonResponse->Record.GetOutput(),
+                            &response)
+                            .ok());
 
             const auto& sessions = response.GetSessions();
             UNIT_ASSERT_VALUES_EQUAL(2, sessions.size());
@@ -1814,7 +1915,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldProperlyProcessSlowPipeCreation)
     {
         NProto::TStorageConfig config;
-        config.SetIdleSessionTimeout(5'000); // 5s
+        config.SetIdleSessionTimeout(5'000);   // 5s
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -1824,7 +1925,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         // enabling scheduling for all actors
         runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId) {
+            [](auto& runtime, const auto& parentId, const auto& actorId)
+            {
                 Y_UNUSED(parentId);
                 runtime.EnableScheduleForActor(actorId);
             });
@@ -1837,31 +1939,39 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         // delaying pipe creation response
         ui64 tabletId = -1;
         bool caughtClientConnected = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) mutable {
-            switch (event->GetTypeRewrite()) {
-                case TEvSSProxy::EvDescribeFileStoreResponse: {
-                    const auto* msg = event->Get<TEvSSProxy::TEvDescribeFileStoreResponse>();
-                    const auto& desc = msg->PathDescription.GetFileStoreDescription();
-                    tabletId = desc.GetIndexTabletId();
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event) mutable
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeFileStoreResponse: {
+                        const auto* msg = event->Get<
+                            TEvSSProxy::TEvDescribeFileStoreResponse>();
+                        const auto& desc =
+                            msg->PathDescription.GetFileStoreDescription();
+                        tabletId = desc.GetIndexTabletId();
 
-                    return TTestActorRuntime::EEventAction::PROCESS;
-                }
-                case TEvTabletPipe::EvClientConnected: {
-                    const auto* msg = event->Get<TEvTabletPipe::TEvClientConnected>();
-                    if (msg->TabletId == tabletId) {
-                        if (!caughtClientConnected) {
-                            runtime.Schedule(event, TDuration::Seconds(10), nodeIdx);
-                            caughtClientConnected = true;
-                            return TTestActorRuntime::EEventAction::DROP;
-                        }
+                        return TTestActorRuntime::EEventAction::PROCESS;
                     }
+                    case TEvTabletPipe::EvClientConnected: {
+                        const auto* msg =
+                            event->Get<TEvTabletPipe::TEvClientConnected>();
+                        if (msg->TabletId == tabletId) {
+                            if (!caughtClientConnected) {
+                                runtime.Schedule(
+                                    event,
+                                    TDuration::Seconds(10),
+                                    nodeIdx);
+                                caughtClientConnected = true;
+                                return TTestActorRuntime::EEventAction::DROP;
+                            }
+                        }
 
-                    break;
+                        break;
+                    }
                 }
-            }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
-        });
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
 
         // creating session
         service.SendCreateSessionRequest(headers);
@@ -1879,7 +1989,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         bool pipeRestored = false;
         runtime.SetEventFilter(
-            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvTabletPipe::EvClientConnected: {
                         const auto* msg =
@@ -1908,7 +2019,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldProperlyProcessSlowSessionCreation)
     {
         NProto::TStorageConfig config;
-        config.SetIdleSessionTimeout(5'000); // 5s
+        config.SetIdleSessionTimeout(5'000);   // 5s
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -1918,7 +2029,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         // enabling scheduling for all actors
         runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId) {
+            [](auto& runtime, const auto& parentId, const auto& actorId)
+            {
                 Y_UNUSED(parentId);
                 runtime.EnableScheduleForActor(actorId);
             });
@@ -1934,7 +2046,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TActorId createSessionActor;
 
         runtime.SetEventFilter(
-            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeFileStoreResponse: {
                         createSessionActor = event->Recipient;
@@ -1945,7 +2058,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                         ++createSessionResponses;
 
                         if (!rescheduled) {
-                            runtime.Schedule(event, TDuration::Seconds(10), nodeIdx);
+                            runtime.Schedule(
+                                event,
+                                TDuration::Seconds(10),
+                                nodeIdx);
                             rescheduled = true;
                             return true;
                         }
@@ -1980,7 +2096,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 createSessionActor,
                 runtime.AllocateEdgeActor(nodeIdx),
                 msg.release(),
-                0, // flags
+                0,   // flags
                 0),
             nodeIdx);
 
@@ -1996,7 +2112,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(UnsuccessfulSessionActorShouldStopWorking)
     {
         NProto::TStorageConfig config;
-        config.SetIdleSessionTimeout(5'000); // 5s
+        config.SetIdleSessionTimeout(5'000);   // 5s
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -2006,7 +2122,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         // enabling scheduling for all actors
         runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId) {
+            [](auto& runtime, const auto& parentId, const auto& actorId)
+            {
                 Y_UNUSED(parentId);
                 runtime.EnableScheduleForActor(actorId);
             });
@@ -2020,30 +2137,36 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         bool rescheduled = false;
 
         runtime.SetEventFilter(
-            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
-            switch (event->GetTypeRewrite()) {
-                case TEvIndexTablet::EvCreateSessionResponse: {
-                    if (!rescheduled) {
-                        auto* msg = event->Get<TEvIndexTablet::TEvCreateSessionResponse>();
-                        *msg->Record.MutableError() = MakeError(E_TIMEOUT, "timeout");
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvCreateSessionResponse: {
+                        if (!rescheduled) {
+                            auto* msg = event->Get<
+                                TEvIndexTablet::TEvCreateSessionResponse>();
+                            *msg->Record.MutableError() =
+                                MakeError(E_TIMEOUT, "timeout");
 
-                        runtime.Schedule(event, TDuration::Seconds(10), nodeIdx);
-                        rescheduled = true;
-                        return true;
+                            runtime.Schedule(
+                                event,
+                                TDuration::Seconds(10),
+                                nodeIdx);
+                            rescheduled = true;
+                            return true;
+                        }
+
+                        break;
                     }
 
-                    break;
+                    case TEvServicePrivate::EvSessionCreated: {
+                        ++sessionCreated;
+
+                        break;
+                    }
                 }
 
-                case TEvServicePrivate::EvSessionCreated: {
-                    ++sessionCreated;
-
-                    break;
-                }
-            }
-
-            return false;
-        });
+                return false;
+            });
 
         // creating session
         service.SendCreateSessionRequest(headers);
@@ -2086,24 +2209,30 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore("test", 1000);
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) mutable {
-            switch (event->GetTypeRewrite()) {
-                case TEvIndexTablet::EvCreateSessionRequest: {
-                    const auto* msg =
-                        event->Get<TEvIndexTablet::TEvCreateSessionRequest>();
-                    UNIT_ASSERT_VALUES_UNEQUAL("", GetOriginFqdn(msg->Record));
-                    break;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event) mutable
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvCreateSessionRequest: {
+                        const auto* msg = event->Get<
+                            TEvIndexTablet::TEvCreateSessionRequest>();
+                        UNIT_ASSERT_VALUES_UNEQUAL(
+                            "",
+                            GetOriginFqdn(msg->Record));
+                        break;
+                    }
                 }
-            }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
-        });
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
 
         THeaders headers = {"test", "client", "", 0};
         service.CreateSession(headers);
     }
 
-    void CheckTwoStageReads(NProto::EStorageMediaKind mediaKind, bool disableForHdd)
+    void CheckTwoStageReads(
+        NProto::EStorageMediaKind mediaKind,
+        bool disableForHdd)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -2187,12 +2316,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
 
         auto counters = env.GetCounters()
-            ->FindSubgroup("component", "service_fs")
-            ->FindSubgroup("host", "cluster")
-            ->FindSubgroup("filesystem", fs)
-            ->FindSubgroup("client", "client")
-            ->FindSubgroup("cloud", "test_cloud")
-            ->FindSubgroup("folder", "test_folder");
+                            ->FindSubgroup("component", "service_fs")
+                            ->FindSubgroup("host", "cluster")
+                            ->FindSubgroup("filesystem", fs)
+                            ->FindSubgroup("client", "client")
+                            ->FindSubgroup("cloud", "test_cloud")
+                            ->FindSubgroup("folder", "test_folder");
         {
             auto subgroup = counters->FindSubgroup("request", "DescribeData");
             UNIT_ASSERT(subgroup);
@@ -2236,7 +2365,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetTwoStageReadEnabled(true);
-        storageConfig.SetFlushThreshold(1); // disabling fresh blocks
+        storageConfig.SetFlushThreshold(1);   // disabling fresh blocks
         storageConfig.SetTwoStageReadThreshold(8_KB);
 
         TTestEnv env({}, storageConfig);
@@ -2280,12 +2409,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
 
         auto counters = env.GetCounters()
-            ->FindSubgroup("component", "service_fs")
-            ->FindSubgroup("host", "cluster")
-            ->FindSubgroup("filesystem", fs)
-            ->FindSubgroup("client", "client")
-            ->FindSubgroup("cloud", "test_cloud")
-            ->FindSubgroup("folder", "test_folder");
+                            ->FindSubgroup("component", "service_fs")
+                            ->FindSubgroup("host", "cluster")
+                            ->FindSubgroup("filesystem", fs)
+                            ->FindSubgroup("client", "client")
+                            ->FindSubgroup("cloud", "test_cloud")
+                            ->FindSubgroup("folder", "test_folder");
         {
             auto subgroup = counters->FindSubgroup("request", "DescribeData");
             UNIT_ASSERT(subgroup);
@@ -2325,26 +2454,29 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ui32 describeDataResponses = 0;
         ui32 readDataResponses = 0;
 
-        env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
-            Y_UNUSED(runtime);
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
 
-            switch (event->GetTypeRewrite()) {
-                case TEvIndexTablet::EvDescribeDataResponse: {
-                    using TResponse = TEvIndexTablet::TEvDescribeDataResponse;
-                    auto* msg = event->template Get<TResponse>();
-                    msg->Record.MutableError()->CopyFrom(error);
-                    ++describeDataResponses;
-                    return false;
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvDescribeDataResponse: {
+                        using TResponse =
+                            TEvIndexTablet::TEvDescribeDataResponse;
+                        auto* msg = event->template Get<TResponse>();
+                        msg->Record.MutableError()->CopyFrom(error);
+                        ++describeDataResponses;
+                        return false;
+                    }
+
+                    case TEvService::EvReadDataResponse: {
+                        ++readDataResponses;
+                        return false;
+                    }
                 }
 
-                case TEvService::EvReadDataResponse: {
-                    ++readDataResponses;
-                    return false;
-                }
-            }
-
-            return false;
-        });
+                return false;
+            });
 
         {
             NProto::TStorageConfig newConfig;
@@ -2395,40 +2527,42 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ui32 describeDataResponses = 0;
         ui32 readDataResponses = 0;
 
-        env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
-            Y_UNUSED(runtime);
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
 
-            switch (event->GetTypeRewrite()) {
-                case TEvBlobStorage::EvGetResult: {
-                    using TResponse = TEvBlobStorage::TEvGetResult;
-                    auto* msg = event->template Get<TResponse>();
-                    ui32 bytes = 0;
-                    for (size_t i = 0; i < msg->ResponseSz; ++i) {
-                        const auto& response = msg->Responses[i];
-                        bytes += response.Buffer.GetSize();
-                    }
-                    if (bytes == 256_KB) {
-                        if (evGets == 0) {
-                            msg->Status = NKikimrProto::ERROR;
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvGetResult: {
+                        using TResponse = TEvBlobStorage::TEvGetResult;
+                        auto* msg = event->template Get<TResponse>();
+                        ui32 bytes = 0;
+                        for (size_t i = 0; i < msg->ResponseSz; ++i) {
+                            const auto& response = msg->Responses[i];
+                            bytes += response.Buffer.GetSize();
                         }
-                        ++evGets;
+                        if (bytes == 256_KB) {
+                            if (evGets == 0) {
+                                msg->Status = NKikimrProto::ERROR;
+                            }
+                            ++evGets;
+                        }
+                        return false;
                     }
-                    return false;
+
+                    case TEvIndexTablet::EvDescribeDataResponse: {
+                        ++describeDataResponses;
+                        return false;
+                    }
+
+                    case TEvService::EvReadDataResponse: {
+                        ++readDataResponses;
+                        return false;
+                    }
                 }
 
-                case TEvIndexTablet::EvDescribeDataResponse: {
-                    ++describeDataResponses;
-                    return false;
-                }
-
-                case TEvService::EvReadDataResponse: {
-                    ++readDataResponses;
-                    return false;
-                }
-            }
-
-            return false;
-        });
+                return false;
+            });
 
         {
             NProto::TStorageConfig newConfig;
@@ -2473,7 +2607,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                             ->FindSubgroup("folder", "test_folder")
                             ->FindSubgroup("request", "ReadBlob");
         UNIT_ASSERT(counters);
-        UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("InProgress")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters->GetCounter("InProgress")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldReassignTablet)
@@ -2489,32 +2625,33 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ui64 reassignedTabletId = 0;
         TVector<ui32> reassignedChannels;
         env.GetRuntime().SetEventFilter(
-            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
-            switch (event->GetTypeRewrite()) {
-                case TEvSSProxy::EvDescribeFileStoreResponse: {
-                    const auto* msg =
-                        event->Get<TEvSSProxy::TEvDescribeFileStoreResponse>();
-                    const auto& desc =
-                        msg->PathDescription.GetFileStoreDescription();
-                    tabletId = desc.GetIndexTabletId();
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeFileStoreResponse: {
+                        const auto* msg = event->Get<
+                            TEvSSProxy::TEvDescribeFileStoreResponse>();
+                        const auto& desc =
+                            msg->PathDescription.GetFileStoreDescription();
+                        tabletId = desc.GetIndexTabletId();
 
-                    break;
+                        break;
+                    }
+
+                    case NKikimr::TEvHive::EvReassignTablet: {
+                        const auto* msg =
+                            event->Get<NKikimr::TEvHive::TEvReassignTablet>();
+                        reassignedTabletId = msg->Record.GetTabletID();
+                        reassignedChannels = {
+                            msg->Record.GetChannels().begin(),
+                            msg->Record.GetChannels().end()};
+
+                        break;
+                    }
                 }
 
-                case NKikimr::TEvHive::EvReassignTablet: {
-                    const auto* msg =
-                        event->Get<NKikimr::TEvHive::TEvReassignTablet>();
-                    reassignedTabletId = msg->Record.GetTabletID();
-                    reassignedChannels = {
-                        msg->Record.GetChannels().begin(),
-                        msg->Record.GetChannels().end()};
-
-                    break;
-                }
-            }
-
-            return false;
-        });
+                return false;
+            });
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000);
@@ -2533,7 +2670,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto jsonResponse = service.ExecuteAction("reassigntablet", buf);
         NProtoPrivate::TReassignTabletResponse response;
         UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-            jsonResponse->Record.GetOutput(), &response).ok());
+                        jsonResponse->Record.GetOutput(),
+                        &response)
+                        .ok());
 
         UNIT_ASSERT_VALUES_EQUAL(tabletId, reassignedTabletId);
         UNIT_ASSERT_VALUES_EQUAL(2, reassignedChannels.size());
@@ -2541,7 +2680,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(4, reassignedChannels[1]);
     }
 
-    void CheckThreeStageWrites(NProto::EStorageMediaKind kind, bool disableForHdd)
+    void CheckThreeStageWrites(
+        NProto::EStorageMediaKind kind,
+        bool disableForHdd)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -2574,13 +2715,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
 
         auto headers = service.InitSession(fs, "client");
-        ui64 nodeId = service
-            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
-            ->Record.GetNode()
-            .GetId();
-        ui64 handle = service
-            .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
-            ->Record.GetHandle();
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
 
         ui32 putRequestCount = 0;
         TActorId worker;
@@ -2647,29 +2790,34 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             DefaultBlockSize * BlockGroupSize * 10,
             11);
         validateWriteData(0, DefaultBlockSize * BlockGroupSize * 3, 3);
-        // Currently the data is written from 0th to (1 + BlockGroupSize * 10) = 641th block
-        // Therefore, the next write should fail
-        auto stat =
-            service.GetNodeAttr(headers, fs, RootNodeId, "file")->Record.GetNode();
+        // Currently the data is written from 0th to (1 + BlockGroupSize * 10) =
+        // 641th block Therefore, the next write should fail
+        auto stat = service.GetNodeAttr(headers, fs, RootNodeId, "file")
+                        ->Record.GetNode();
         UNIT_ASSERT_VALUES_EQUAL(641 * DefaultBlockSize, stat.GetSize());
 
-        auto data =
-            GenerateValidateData(DefaultBlockSize * 360);
+        auto data = GenerateValidateData(DefaultBlockSize * 360);
 
-        auto response =
-            service.AssertWriteDataFailed(headers, fs, nodeId, handle, DefaultBlockSize * 641, data);
+        auto response = service.AssertWriteDataFailed(
+            headers,
+            fs,
+            nodeId,
+            handle,
+            DefaultBlockSize * 641,
+            data);
         auto error = STATUS_FROM_CODE(response->GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL((ui32)NProto::E_FS_NOSPC, error);
 
         auto counters = env.GetCounters()
-            ->FindSubgroup("component", "service_fs")
-            ->FindSubgroup("host", "cluster")
-            ->FindSubgroup("filesystem", fs)
-            ->FindSubgroup("client", "client")
-            ->FindSubgroup("cloud", "test_cloud")
-            ->FindSubgroup("folder", "test_folder");
+                            ->FindSubgroup("component", "service_fs")
+                            ->FindSubgroup("host", "cluster")
+                            ->FindSubgroup("filesystem", fs)
+                            ->FindSubgroup("client", "client")
+                            ->FindSubgroup("cloud", "test_cloud")
+                            ->FindSubgroup("folder", "test_folder");
         {
-            auto subgroup = counters->FindSubgroup("request", "GenerateBlobIds");
+            auto subgroup =
+                counters->FindSubgroup("request", "GenerateBlobIds");
             UNIT_ASSERT(subgroup);
             UNIT_ASSERT_VALUES_EQUAL(
                 7,
@@ -2743,13 +2891,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
 
         auto headers = service.InitSession(fs, "client");
-        ui64 nodeId = service
-            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
-            ->Record.GetNode()
-            .GetId();
-        ui64 handle = service
-            .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
-            ->Record.GetHandle();
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
 
         auto& runtime = env.GetRuntime();
 
@@ -2770,8 +2920,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             // clang-format on
             runtime.ClearCounters();
 
-            auto stat =
-                service.GetNodeAttr(headers, fs, RootNodeId, "file")->Record.GetNode();
+            auto stat = service.GetNodeAttr(headers, fs, RootNodeId, "file")
+                            ->Record.GetNode();
             UNIT_ASSERT_VALUES_EQUAL(expectedFilesize, stat.GetSize());
         };
 
@@ -2796,13 +2946,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(fs, 1000);
 
         auto headers = service.InitSession(fs, "client");
-        ui64 nodeId = service
-            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
-            ->Record.GetNode()
-            .GetId();
-        ui64 handle = service
-            .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
-            ->Record.GetHandle();
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
 
         NProtoPrivate::TAddDataRequest addData;
         env.GetRuntime().SetEventFilter(
@@ -2812,8 +2964,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTablet::EvAddDataRequest: {
-                        addData = event->template Get<
-                            TEvIndexTablet::TEvAddDataRequest>()->Record;
+                        addData = event
+                                      ->template Get<
+                                          TEvIndexTablet::TEvAddDataRequest>()
+                                      ->Record;
                         break;
                     }
                 }
@@ -2824,13 +2978,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto offset = 3_KB;
 
         service.WriteData(headers, fs, nodeId, handle, offset, data);
-        auto readData = service.ReadData(
-            headers,
-            fs,
-            nodeId,
-            handle,
-            offset,
-            data.size())->Record.GetBuffer();
+        auto readData =
+            service.ReadData(headers, fs, nodeId, handle, offset, data.size())
+                ->Record.GetBuffer();
         UNIT_ASSERT_VALUES_EQUAL(data, readData);
         UNIT_ASSERT_VALUES_EQUAL(2, addData.UnalignedDataRangesSize());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -2840,11 +2990,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             TStringBuf(data).Tail(5_KB),
             addData.GetUnalignedDataRanges(1).GetContent());
 
-        auto stat = service.GetNodeAttr(
-            headers,
-            fs,
-            RootNodeId,
-            "file")->Record.GetNode();
+        auto stat = service.GetNodeAttr(headers, fs, RootNodeId, "file")
+                        ->Record.GetNode();
         UNIT_ASSERT_VALUES_EQUAL(data.size() + offset, stat.GetSize());
     }
 
@@ -2891,7 +3038,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            2, // 1 from service, 1 from tablet
+            2,   // 1 from service, 1 from tablet
             profileLog
                 ->Requests[static_cast<ui32>(EFileStoreRequest::WriteData)]
                 .size());
@@ -2956,13 +3103,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
 
         auto headers = service.InitSession(fs, "client");
-        ui64 nodeId = service
-            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
-            ->Record.GetNode()
-            .GetId();
-        ui64 handle = service
-            .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
-            ->Record.GetHandle();
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
 
         // GenerateBlobIdsResponse fails
         TString data = GenerateValidateData(256_KB);
@@ -3051,7 +3200,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, evPuts);
         // clang-format on
 
-
         auto counters = env.GetCounters()
                             ->FindSubgroup("component", "service_fs")
                             ->FindSubgroup("host", "cluster")
@@ -3061,7 +3209,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                             ->FindSubgroup("folder", "test_folder")
                             ->FindSubgroup("request", "WriteBlob");
         UNIT_ASSERT(counters);
-        UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("InProgress")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters->GetCounter("InProgress")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldThrottleMulipleStageReadsAndWrites)
@@ -3183,13 +3333,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
 
         auto headers = service.InitSession(fs, "client");
-        ui64 nodeId = service
-            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
-            ->Record.GetNode()
-            .GetId();
-        ui64 handle = service
-            .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
-            ->Record.GetHandle();
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
 
         const auto yellowFlag =
             NKikimrBlobStorage::EStatusFlags::StatusDiskSpaceYellowStop;
@@ -3214,8 +3366,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     }
 
                     case TEvIndexTablet::EvAddDataRequest: {
-                        addData = event->template Get<
-                            TEvIndexTablet::TEvAddDataRequest>()->Record;
+                        addData = event
+                                      ->template Get<
+                                          TEvIndexTablet::TEvAddDataRequest>()
+                                      ->Record;
                         break;
                     }
                 }
@@ -3226,8 +3380,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.WriteData(headers, fs, nodeId, handle, 0, data);
         UNIT_ASSERT_VALUES_EQUAL(1, addData.BlobIdsSize());
         UNIT_ASSERT_VALUES_EQUAL(1, addData.StorageStatusFlagsSize());
-        UNIT_ASSERT(NKikimr::TStorageStatusFlags(
-            addData.GetStorageStatusFlags(0)).Check(yellowFlag));
+        UNIT_ASSERT(
+            NKikimr::TStorageStatusFlags(addData.GetStorageStatusFlags(0))
+                .Check(yellowFlag));
         UNIT_ASSERT_VALUES_EQUAL(1, addData.ApproximateFreeSpaceSharesSize());
         UNIT_ASSERT_VALUES_EQUAL(
             freeSpaceShare,
@@ -3405,7 +3560,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
-
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(originalFs, 1000);
         service.CreateFileStore(mirroredFs, 1000);
@@ -3414,7 +3568,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto mirroredHeaders = service.InitSession(mirroredFs, "client");
 
         // Create file in the original fs
-        service.CreateNode(originalHeaders, TCreateNodeArgs::File(RootNodeId, "testfile"));
+        service.CreateNode(
+            originalHeaders,
+            TCreateNodeArgs::File(RootNodeId, "testfile"));
 
         // Check that the file is visible in the mirrored fs
         auto listNodesResponse =
@@ -3426,29 +3582,41 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto nodeId = listNodesResponse.GetNodes(0).GetId();
 
         // write to the file in the mirrored fs
-        auto mirroredHandle = service.CreateHandle(
+        auto mirroredHandle = service
+                                  .CreateHandle(
+                                      mirroredHeaders,
+                                      mirroredFs,
+                                      nodeId,
+                                      "",
+                                      TCreateHandleArgs::WRNLY)
+                                  ->Record.GetHandle();
+        auto data = GenerateValidateData(256_KB);
+        service.WriteData(
             mirroredHeaders,
             mirroredFs,
             nodeId,
-            "",
-            TCreateHandleArgs::WRNLY)->Record.GetHandle();
-        auto data = GenerateValidateData(256_KB);
-        service.WriteData(mirroredHeaders, mirroredFs, nodeId, mirroredHandle, 0, data);
+            mirroredHandle,
+            0,
+            data);
 
         // validate that written data can be read from the original fs
-        auto originalHandle = service.CreateHandle(
-            originalHeaders,
-            originalFs,
-            nodeId,
-            "",
-            TCreateHandleArgs::RDNLY)->Record.GetHandle();
-        auto readData = service.ReadData(
-            originalHeaders,
-            originalFs,
-            nodeId,
-            originalHandle,
-            0,
-            256_KB)->Record.GetBuffer();
+        auto originalHandle = service
+                                  .CreateHandle(
+                                      originalHeaders,
+                                      originalFs,
+                                      nodeId,
+                                      "",
+                                      TCreateHandleArgs::RDNLY)
+                                  ->Record.GetHandle();
+        auto readData = service
+                            .ReadData(
+                                originalHeaders,
+                                originalFs,
+                                nodeId,
+                                originalHandle,
+                                0,
+                                256_KB)
+                            ->Record.GetBuffer();
         UNIT_ASSERT_VALUES_EQUAL(data, readData);
     }
 
@@ -3462,7 +3630,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ui64 tabletId = -1;
         ui32 lastCompactionMapRangeId = 0;
         env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
                 Y_UNUSED(runtime);
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeFileStoreResponse: {
@@ -3486,7 +3655,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 }
 
                 return false;
-        });
+            });
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1'000);
@@ -3506,8 +3675,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto jsonResponse = service.ExecuteAction("writecompactionmap", buf);
         NProtoPrivate::TWriteCompactionMapResponse response;
         UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-            jsonResponse->Record.GetOutput(),
-            &response).ok());
+                        jsonResponse->Record.GetOutput(),
+                        &response)
+                        .ok());
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.RebootTablet();
@@ -3558,32 +3728,34 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
 
         auto headers = service.InitSession(fs, "client");
-        ui64 nodeId = service
-            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
-            ->Record.GetNode()
-            .GetId();
-        ui64 handle = service
-            .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
-            ->Record.GetHandle();
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
 
         auto data = GenerateValidateData(2 * DefaultBlockSize);
         service.WriteData(headers, fs, nodeId, handle, 0, data);
 
         auto readDataResult =
-            service
-                .ReadData(headers, fs, nodeId, handle, 0, data.size());
+            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
 
         UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
 
         auto counters = env.GetCounters()
-            ->FindSubgroup("component", "service_fs")
-            ->FindSubgroup("host", "cluster")
-            ->FindSubgroup("filesystem", fs)
-            ->FindSubgroup("client", "client")
-            ->FindSubgroup("cloud", "test_cloud")
-            ->FindSubgroup("folder", "test_folder");
+                            ->FindSubgroup("component", "service_fs")
+                            ->FindSubgroup("host", "cluster")
+                            ->FindSubgroup("filesystem", fs)
+                            ->FindSubgroup("client", "client")
+                            ->FindSubgroup("cloud", "test_cloud")
+                            ->FindSubgroup("folder", "test_folder");
         {
-            auto subgroup = counters->FindSubgroup("request", "GenerateBlobIds");
+            auto subgroup =
+                counters->FindSubgroup("request", "GenerateBlobIds");
             UNIT_ASSERT(subgroup);
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
@@ -3633,12 +3805,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldNotPerformThreeStageWritesAndTwoStageReadsForHddIfDisabled)
+    Y_UNIT_TEST(
+        ShouldNotPerformThreeStageWritesAndTwoStageReadsForHddIfDisabled)
     {
         CheckDisableMultistageReadWritesForHdd(NProto::STORAGE_MEDIA_HDD);
     }
 
-    Y_UNIT_TEST(ShouldNotPerformThreeStageWritesAndTwoStageReadsForHybridIfDisabled)
+    Y_UNIT_TEST(
+        ShouldNotPerformThreeStageWritesAndTwoStageReadsForHybridIfDisabled)
     {
         CheckDisableMultistageReadWritesForHdd(NProto::STORAGE_MEDIA_HYBRID);
     }
@@ -3660,9 +3834,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         service.RegisterLocalFileStore(
             "test",
-            1, // tablet id
-            1, // generation
-            false, // isShard
+            1,       // tablet id
+            1,       // generation
+            false,   // isShard
             {});
 
         env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
@@ -3670,39 +3844,33 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         auto counters = env.GetRuntime().GetAppData(nodeIdx).Counters;
 
-        auto fsCounter = counters
-            ->FindSubgroup("counters", "filestore")
-            ->FindSubgroup("component", "service")
-            ->GetCounter("FileSystemCount", false);
+        auto fsCounter = counters->FindSubgroup("counters", "filestore")
+                             ->FindSubgroup("component", "service")
+                             ->GetCounter("FileSystemCount", false);
 
-        auto hddFsCounter = counters
-            ->FindSubgroup("counters", "filestore")
-            ->FindSubgroup("component", "service")
-            ->FindSubgroup("type", "hdd")
-            ->GetCounter("FileSystemCount", false);
+        auto hddFsCounter = counters->FindSubgroup("counters", "filestore")
+                                ->FindSubgroup("component", "service")
+                                ->FindSubgroup("type", "hdd")
+                                ->GetCounter("FileSystemCount", false);
 
-        auto ssdFsCounter = counters
-            ->FindSubgroup("counters", "filestore")
-            ->FindSubgroup("component", "service")
-            ->FindSubgroup("type", "ssd")
-            ->GetCounter("FileSystemCount", false);
+        auto ssdFsCounter = counters->FindSubgroup("counters", "filestore")
+                                ->FindSubgroup("component", "service")
+                                ->FindSubgroup("type", "ssd")
+                                ->GetCounter("FileSystemCount", false);
 
-        auto tabletCounter = counters
-            ->FindSubgroup("counters", "filestore")
-            ->FindSubgroup("component", "service")
-            ->GetCounter("TabletCount", false);
+        auto tabletCounter = counters->FindSubgroup("counters", "filestore")
+                                 ->FindSubgroup("component", "service")
+                                 ->GetCounter("TabletCount", false);
 
-        auto hddTabletCounter = counters
-            ->FindSubgroup("counters", "filestore")
-            ->FindSubgroup("component", "service")
-            ->FindSubgroup("type", "hdd")
-            ->GetCounter("TabletCount", false);
+        auto hddTabletCounter = counters->FindSubgroup("counters", "filestore")
+                                    ->FindSubgroup("component", "service")
+                                    ->FindSubgroup("type", "hdd")
+                                    ->GetCounter("TabletCount", false);
 
-        auto ssdTabletCounter = counters
-            ->FindSubgroup("counters", "filestore")
-            ->FindSubgroup("component", "service")
-            ->FindSubgroup("type", "ssd")
-            ->GetCounter("TabletCount", false);
+        auto ssdTabletCounter = counters->FindSubgroup("counters", "filestore")
+                                    ->FindSubgroup("component", "service")
+                                    ->FindSubgroup("type", "ssd")
+                                    ->GetCounter("TabletCount", false);
 
         UNIT_ASSERT_VALUES_EQUAL(1, fsCounter->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(1, tabletCounter->GetAtomic());
@@ -3804,7 +3972,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             // Small unaligned data
             auto data = GenerateValidateData(123, 2);
             auto dataOffset = 77;
-            service.WriteData(headers, fs, nodeId, InvalidHandle, dataOffset, data);
+            service.WriteData(
+                headers,
+                fs,
+                nodeId,
+                InvalidHandle,
+                dataOffset,
+                data);
             auto response = service.ReadData(
                 headers,
                 fs,
@@ -4137,24 +4311,22 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TVector<std::array<char, 4_KB>> buffers(64);
         TVector<std::span<char>> spans;
         for (size_t i = 0; i < buffers.size(); ++i) {
-            spans.push_back(std::span<char>(buffers[i].data(), buffers[i].size()));
+            spans.push_back(
+                std::span<char>(buffers[i].data(), buffers[i].size()));
         }
 
-        auto readDataResult = service.ReadData(
-            headers,
-            fs,
-            nodeId,
-            handle,
-            0,
-            data.size(),
-            spans);
+        auto readDataResult =
+            service
+                .ReadData(headers, fs, nodeId, handle, 0, data.size(), spans);
 
         TString result;
         for (const auto& buf: spans) {
             result.append(buf.data(), buf.size());
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetLength(), data.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            readDataResult->Record.GetLength(),
+            data.size());
         UNIT_ASSERT_VALUES_EQUAL(result, data);
 
         // Passing less target data than requested size should fail

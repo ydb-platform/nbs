@@ -8,23 +8,19 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_COUNTER_NAME(name, category, ...)    #category "/" #name,
+#define BLOCKSTORE_COUNTER_NAME(name, category, ...) #category "/" #name,
 
 const char* const TDiskRegistryCounters::SimpleCounterNames[] = {
-    BLOCKSTORE_DISK_REGISTRY_SIMPLE_COUNTERS(BLOCKSTORE_COUNTER_NAME)
-};
+    BLOCKSTORE_DISK_REGISTRY_SIMPLE_COUNTERS(BLOCKSTORE_COUNTER_NAME)};
 
 const char* const TDiskRegistryCounters::CumulativeCounterNames[] = {
-    BLOCKSTORE_DISK_REGISTRY_CUMULATIVE_COUNTERS(BLOCKSTORE_COUNTER_NAME)
-};
+    BLOCKSTORE_DISK_REGISTRY_CUMULATIVE_COUNTERS(BLOCKSTORE_COUNTER_NAME)};
 
 const char* const TDiskRegistryCounters::PercentileCounterNames[] = {
-    BLOCKSTORE_DISK_REGISTRY_PERCENTILE_COUNTERS(BLOCKSTORE_COUNTER_NAME)
-};
+    BLOCKSTORE_DISK_REGISTRY_PERCENTILE_COUNTERS(BLOCKSTORE_COUNTER_NAME)};
 
 const char* const TDiskRegistryCounters::TransactionTypeNames[] = {
-    BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS(BLOCKSTORE_COUNTER_NAME, Tx)
-};
+    BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS(BLOCKSTORE_COUNTER_NAME, Tx)};
 
 #undef BLOCKSTORE_COUNTER_NAME
 

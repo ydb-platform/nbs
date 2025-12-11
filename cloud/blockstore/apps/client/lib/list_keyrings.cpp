@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -13,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TListKeyringsCommand final
-    : public TCommand
+class TListKeyringsCommand final: public TCommand
 {
 public:
     TListKeyringsCommand(IBlockStorePtr client)
@@ -29,8 +29,7 @@ protected:
         STORAGE_DEBUG("Sending ListKeyrings request");
         auto result = WaitFor(ClientEndpoint->ListKeyrings(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TListKeyringsRequest>()
-        ));
+            std::make_shared<NProto::TListKeyringsRequest>()));
 
         STORAGE_DEBUG("Received ListKeyrings response");
         if (Proto) {
@@ -47,8 +46,8 @@ protected:
         for (const auto& endpoint: endpoints) {
             const auto& request = endpoint.GetRequest();
             output << "keyring-id: " << endpoint.GetKeyringId()
-                << " socket: " << request.GetUnixSocketPath().Quote()
-                << Endl;
+                   << " socket: " << request.GetUnixSocketPath().Quote()
+                   << Endl;
         }
         return true;
     }

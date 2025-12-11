@@ -24,13 +24,13 @@ void TIndexTabletActor::ReplayOpLog(
         if (op.HasCreateNodeRequest()) {
             RegisterCreateNodeInShardActor(
                 ctx,
-                nullptr, // requestInfo
+                nullptr,   // requestInfo
                 op.GetCreateNodeRequest(),
-                op.GetRequestId(), // needed for DupCache update (only for
-                                   // shard requests originating from
-                                   // CreateNode requests)
+                op.GetRequestId(),   // needed for DupCache update (only for
+                                     // shard requests originating from
+                                     // CreateNode requests)
                 op.GetEntryId(),
-                {} // response
+                {}   // response
             );
         } else if (op.HasUnlinkNodeRequest()) {
             // This case is kept for backward compatibility with old oplog
@@ -82,19 +82,21 @@ void TIndexTabletActor::ReplayOpLog(
                 shouldUnlockUponCompletion);
         } else if (op.HasRenameNodeInDestinationRequest()) {
             const auto& request = op.GetRenameNodeInDestinationRequest();
-            const bool locked = TryLockNodeRef({
-                request.GetOriginalRequest().GetNodeId(),
-                request.GetOriginalRequest().GetName()});
+            const bool locked = TryLockNodeRef(
+                {request.GetOriginalRequest().GetNodeId(),
+                 request.GetOriginalRequest().GetName()});
             if (!locked) {
-                ReportFailedToLockNodeRef(TStringBuilder() << "Request: "
+                ReportFailedToLockNodeRef(
+                    TStringBuilder()
+                    << "Request: "
                     << request.GetOriginalRequest().ShortUtf8DebugString());
             }
             RegisterRenameNodeInDestinationActor(
                 ctx,
-                nullptr, // requestInfo
+                nullptr,   // requestInfo
                 request,
-                0, // requestId (TODO(#2674): either idempotency or use real
-                   // requestId)
+                0,   // requestId (TODO(#2674): either idempotency or use real
+                     // requestId)
                 op.GetEntryId());
         } else {
             const TString message = ReportUnknownOpLogEntry(
@@ -139,7 +141,9 @@ void TIndexTabletActor::CompleteTx_DeleteOpLogEntry(
     const TActorContext& ctx,
     TTxIndexTablet::TDeleteOpLogEntry& args)
 {
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s DeleteOpLogEntry completed (%lu)",
         LogTag.c_str(),
         args.EntryId);

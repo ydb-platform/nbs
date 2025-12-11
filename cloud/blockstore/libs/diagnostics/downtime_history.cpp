@@ -6,8 +6,7 @@ namespace NCloud::NBlockStore {
 
 TDowntimeHistoryHolder::TDowntimeHistoryHolder()
     : DownEvents(MAX_HISTORY_DEPTH)
-{
-}
+{}
 
 bool TDowntimeHistoryHolder::Empty() const
 {
@@ -16,8 +15,8 @@ bool TDowntimeHistoryHolder::Empty() const
 
 void TDowntimeHistoryHolder::PushBack(TInstant now, EDowntimeStateChange state)
 {
-    if (DownEvents.TotalSize() == 0
-        || (DownEvents[ DownEvents.TotalSize() - 1 ].second != state))
+    if (DownEvents.TotalSize() == 0 ||
+        (DownEvents[DownEvents.TotalSize() - 1].second != state))
     {
         DownEvents.PushBack(std::make_pair(now, state));
     }
@@ -31,7 +30,7 @@ TDowntimeHistory TDowntimeHistoryHolder::RecentEvents(TInstant now) const
 
     size_t i = DownEvents.FirstIndex();
     for (; i + 1 < DownEvents.TotalSize(); ++i) {
-        if ((now - DownEvents[ i + 1 ].first) < MAX_HISTORY_DURATION) {
+        if ((now - DownEvents[i + 1].first) < MAX_HISTORY_DURATION) {
             break;
         }
     }
@@ -53,7 +52,7 @@ bool TDowntimeHistoryHolder::HasRecentState(
 
     size_t i = DownEvents.FirstIndex();
     for (; i + 1 < DownEvents.TotalSize(); ++i) {
-        if ((now - DownEvents[ i + 1 ].first) < MAX_HISTORY_DURATION) {
+        if ((now - DownEvents[i + 1].first) < MAX_HISTORY_DURATION) {
             break;
         }
     }

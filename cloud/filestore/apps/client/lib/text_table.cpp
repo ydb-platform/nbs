@@ -1,10 +1,10 @@
 #include "text_table.h"
 
-#include <google/protobuf/text_format.h>
-
-#include <util/stream/format.h>
 #include <util/generic/yexception.h>
+#include <util/stream/format.h>
 #include <util/stream/output.h>
+
+#include <google/protobuf/text_format.h>
 
 namespace NCloud::NFileStore::NClient::NTextTable {
 
@@ -35,8 +35,9 @@ void PrintColumns(IOutputStream& out, const TTextTable& table)
 
 void PrintRows(IOutputStream& out, const TTextTable& table)
 {
-    auto printRow = [&out, &columns = table.GetColumns()] (
-            const TTextTable::TRow& row) {
+    auto printRow =
+        [&out, &columns = table.GetColumns()](const TTextTable::TRow& row)
+    {
         for (size_t i = 0; i < columns.size() - 1; ++i) {
             const auto& column = columns[i];
             out << RightPad(row[i], CalcColumnWidth(column.MinWidth));
@@ -55,15 +56,14 @@ void PrintRows(IOutputStream& out, const TTextTable& table)
     printRow(rows.back());
 }
 
-}    // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TTextTable::TColumn::TColumn(TString name, ui64 minWidth)
     : Name(std::move(name))
     , MinWidth(Min(minWidth, Name.size()))
-{
-}
+{}
 
 void TTextTable::TColumn::UpdateWidth(size_t value)
 {
@@ -75,15 +75,13 @@ void TTextTable::TColumn::UpdateWidth(size_t value)
 TTextTable::TTextTable(TTextTable::TColumns columns, TTextTable::TRows rows)
     : Columns(std::move(columns))
     , Rows(std::move(rows))
-{
-}
+{}
 
 void TTextTable::AddRow(TTextTable::TRow row)
 {
     Y_ENSURE(
         Columns.empty() || Columns.size() == row.size(),
-        "Failed to add row: column's size is not matching row's size"
-    );
+        "Failed to add row: column's size is not matching row's size");
 
     if (Columns.empty()) {
         Columns.resize(row.size());
@@ -119,7 +117,7 @@ TTextTable::TColumns ToColumns(const TVector<TString>& columnNames)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template<>
+template <>
 void Out<NCloud::NFileStore::NClient::NTextTable::TTextTable>(
     IOutputStream& out,
     const NCloud::NFileStore::NClient::NTextTable::TTextTable& table)
@@ -130,8 +128,7 @@ void Out<NCloud::NFileStore::NClient::NTextTable::TTextTable>(
     Y_ENSURE(
         rows.empty() ||
             table.GetColumns().size() == table.GetRows().front().size(),
-        "Failed to print, column's size is not matching row's size"
-    );
+        "Failed to print, column's size is not matching row's size");
 
     PrintColumns(out, table);
     PrintRows(out, table);

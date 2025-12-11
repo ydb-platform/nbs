@@ -48,17 +48,18 @@ private:
         const TActorContext& ctx);
 
     void HandleInitiateDiskReallocationResponse(
-        const TEvDiskRegistryPrivate::TEvInitiateDiskReallocationResponse::TPtr& ev,
+        const TEvDiskRegistryPrivate::TEvInitiateDiskReallocationResponse::TPtr&
+            ev,
         const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 THttpVolumeReallocActor::THttpVolumeReallocActor(
-        const TActorId& owner,
-        ui64 tabletId,
-        TRequestInfoPtr requestInfo,
-        TString diskId)
+    const TActorId& owner,
+    ui64 tabletId,
+    TRequestInfoPtr requestInfo,
+    TString diskId)
     : Owner(owner)
     , TabletId(tabletId)
     , RequestInfo(std::move(requestInfo))
@@ -67,13 +68,10 @@ THttpVolumeReallocActor::THttpVolumeReallocActor(
 
 void THttpVolumeReallocActor::Bootstrap(const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvDiskRegistryPrivate::TEvInitiateDiskReallocationRequest>(
-        DiskId);
+    auto request = std::make_unique<
+        TEvDiskRegistryPrivate::TEvInitiateDiskReallocationRequest>(DiskId);
 
-    NCloud::Send(
-        ctx,
-        Owner,
-        std::move(request));
+    NCloud::Send(ctx, Owner, std::move(request));
 
     Become(&TThis::StateWork);
 }
@@ -84,7 +82,11 @@ void THttpVolumeReallocActor::Notify(
     const EAlertLevel alertLevel)
 {
     TStringStream out;
-    BuildTabletNotifyPageWithRedirect(out, std::move(message), TabletId, alertLevel);
+    BuildTabletNotifyPageWithRedirect(
+        out,
+        std::move(message),
+        TabletId,
+        alertLevel);
 
     NCloud::Reply(
         ctx,
@@ -92,17 +94,17 @@ void THttpVolumeReallocActor::Notify(
         std::make_unique<NMon::TEvRemoteHttpInfoRes>(std::move(out.Str())));
 }
 
-void THttpVolumeReallocActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)
+void THttpVolumeReallocActor::ReplyAndDie(
+    const TActorContext& ctx,
+    NProto::TError error)
 {
     if (SUCCEEDED(error.GetCode())) {
         Notify(ctx, "Operation successfully completed", EAlertLevel::SUCCESS);
     } else {
         Notify(
             ctx,
-            TStringBuilder()
-                << "failed to reallocate volume "
-                << DiskId.Quote()
-                << ": " << FormatError(error),
+            TStringBuilder() << "failed to reallocate volume " << DiskId.Quote()
+                             << ": " << FormatError(error),
             EAlertLevel::DANGER);
     }
 
@@ -165,14 +167,13 @@ void TDiskRegistryActor::HandleHttpInfo_VolumeRealloc(
     const auto& diskId = params.Get("DiskID");
 
     if (!diskId) {
-        RejectHttpRequest(
-            ctx,
-            *requestInfo,
-            "No disk id is given");
+        RejectHttpRequest(ctx, *requestInfo, "No disk id is given");
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
         "Initiate volume reallocation from monitoring page: volume %s",
         diskId.Quote().data());
 

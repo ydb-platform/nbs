@@ -17,7 +17,7 @@ TBlock MakeKey(ui32 blockIndex, ui64 commitId)
     return TBlock(blockIndex, commitId, false);
 }
 
-}  // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -25,17 +25,17 @@ struct TFreshBlockCompare
 {
     using is_transparent = void;
 
-    bool operator ()(const TFreshBlock& l, const TFreshBlock& r) const
+    bool operator()(const TFreshBlock& l, const TFreshBlock& r) const
     {
         return CompareBlocks(l.Meta, r.Meta);
     }
 
-    bool operator ()(const TBlock& l, const TFreshBlock& r) const
+    bool operator()(const TBlock& l, const TFreshBlock& r) const
     {
         return CompareBlocks(l, r.Meta);
     }
 
-    bool operator ()(const TFreshBlock& l, const TBlock& r) const
+    bool operator()(const TFreshBlock& l, const TBlock& r) const
     {
         return CompareBlocks(l.Meta, r);
     }
@@ -76,8 +76,7 @@ TBlockIndex::~TBlockIndex()
         if (block.Content) {
             IAllocator::TBlock alloc{
                 const_cast<char*>(block.Content.data()),
-                block.Content.size()
-            };
+                block.Content.size()};
             Impl->Allocator->Release(alloc);
         }
     }
@@ -101,14 +100,12 @@ bool TBlockIndex::AddBlock(
 
     std::tie(it, inserted) = Impl->Blocks.emplace(
         TBlock{blockIndex, commitId, isStoredInDb},
-        content
-    );
+        content);
 
     if (!inserted && content) {
         IAllocator::TBlock alloc{
             const_cast<char*>(content.data()),
-            content.size()
-        };
+            content.size()};
         Impl->Allocator->Release(alloc);
     }
 
@@ -126,8 +123,7 @@ bool TBlockIndex::RemoveBlock(ui32 blockIndex, ui64 commitId, bool isStoredInDb)
         if (it->Content) {
             IAllocator::TBlock alloc{
                 const_cast<char*>(it->Content.data()),
-                it->Content.size()
-            };
+                it->Content.size()};
             Impl->Allocator->Release(alloc);
         }
 
@@ -143,7 +139,8 @@ void TBlockIndex::FindBlocks(
     const TBlockRange32& blockRange,
     ui64 checkpointId) const
 {
-    auto start = Impl->Blocks.lower_bound(MakeKey(blockRange.Start, checkpointId));
+    auto start =
+        Impl->Blocks.lower_bound(MakeKey(blockRange.Start, checkpointId));
     auto end = Impl->Blocks.upper_bound(MakeKey(blockRange.End, 0));
 
     for (auto it = start; it != end; ++it) {

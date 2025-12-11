@@ -51,12 +51,14 @@ struct fuse_virtio_request
     void* buffer;
     bool response_sent;
 
-    struct {
+    struct
+    {
         struct iovec* iov;
         size_t count;
     } in;
 
-    struct {
+    struct
+    {
         struct iovec* iov;
         size_t count;
     } out;
@@ -64,12 +66,14 @@ struct fuse_virtio_request
     struct iovec iov[1];
 };
 
-struct unregister_context {
+struct unregister_context
+{
     struct fuse_session* se;
     atomic_bool completed;
 };
 
-#define VIRTIO_REQ_FROM_CHAN(ch) containerof(ch, struct fuse_virtio_request, ch);
+#define VIRTIO_REQ_FROM_CHAN(ch) \
+    containerof(ch, struct fuse_virtio_request, ch);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -84,8 +88,10 @@ static size_t iov_size(struct iovec* iov, size_t count)
 }
 
 static void iov_copy_to_iov(
-    struct iovec* dst_iov, size_t dst_count,
-    struct iovec* src_iov, size_t src_count,
+    struct iovec* dst_iov,
+    size_t dst_count,
+    struct iovec* src_iov,
+    size_t src_count,
     size_t to_copy)
 {
     size_t dst_offset = 0;
@@ -196,18 +202,19 @@ static bool is_ignored_request(struct fuse_in_header* in)
     return in->opcode == FUSE_INTERRUPT;
 }
 
-struct iov_iter {
-    struct iovec *iov;
+struct iov_iter
+{
+    struct iovec* iov;
     size_t count;
     size_t idx;
     size_t off;
 };
 
-static size_t iov_iter_to_buf(struct iov_iter *it, void *buf, size_t len)
+static size_t iov_iter_to_buf(struct iov_iter* it, void* buf, size_t len)
 {
-    void *ptr = buf;
+    void* ptr = buf;
     while (it->idx < it->count && len) {
-        struct iovec *iov = &it->iov[it->idx];
+        struct iovec* iov = &it->iov[it->idx];
         size_t cplen = MIN(len, iov->iov_len - it->off);
 
         void* src = iov->iov_base + it->off;
@@ -253,10 +260,13 @@ static int process_request(struct fuse_session* se, struct vhd_io* io)
 
     size_t len = iov_size(req->in.iov, req->in.count);
 
-    VHD_LOG_DEBUG("request with %zu IN desc of length %zu "
-                  "and %zu OUT desc of length %zu\n",
-        req->in.count, len,
-        req->out.count, iov_size(req->out.iov, req->out.count));
+    VHD_LOG_DEBUG(
+        "request with %zu IN desc of length %zu "
+        "and %zu OUT desc of length %zu\n",
+        req->in.count,
+        len,
+        req->out.count,
+        iov_size(req->out.iov, req->out.count));
 
     if (len > se->bufsize) {
         complete_request(req, 0);
@@ -282,8 +292,10 @@ static int process_request(struct fuse_session* se, struct vhd_io* io)
         return 0;
     }
 
-    size_t buf0len = !is_write_request(&in_hdr) ? len :
-        sizeof(struct fuse_in_header) + sizeof(struct fuse_write_in);
+    size_t buf0len =
+        !is_write_request(&in_hdr)
+            ? len
+            : sizeof(struct fuse_in_header) + sizeof(struct fuse_write_in);
 
     req->buffer = vhd_alloc(buf0len);
     /* The guest may have changed the buffer, use the header copied earlier */
@@ -292,20 +304,23 @@ static int process_request(struct fuse_session* se, struct vhd_io* io)
 
     struct fuse_bufvec bufv;
     size_t extra_bufs = it.count - it.idx;
-    struct fuse_bufvec *pbufv = !extra_bufs ? &bufv :
-        vhd_alloc(sizeof(*pbufv) + sizeof(struct fuse_buf) * extra_bufs);
+    struct fuse_bufvec* pbufv =
+        !extra_bufs
+            ? &bufv
+            : vhd_alloc(sizeof(*pbufv) + sizeof(struct fuse_buf) * extra_bufs);
 
-    *pbufv = (struct fuse_bufvec) {
+    *pbufv = (struct fuse_bufvec){
         .count = 1 + extra_bufs,
-        .buf[0] = {
-            .mem = req->buffer,
-            .size = buf0len,
-            .fd = -1,
-        },
+        .buf[0] =
+            {
+                .mem = req->buffer,
+                .size = buf0len,
+                .fd = -1,
+            },
     };
     size_t idx;
     for (idx = 1; it.idx < it.count; idx++, it.idx++, it.off = 0) {
-        pbufv->buf[idx] = (struct fuse_buf) {
+        pbufv->buf[idx] = (struct fuse_buf){
             .mem = it.iov[it.idx].iov_base + it.off,
             .size = it.iov[it.idx].iov_len - it.off,
             .fd = -1,
@@ -336,7 +351,7 @@ static void unregister_complete(void* ctx)
 
 static void unregister_complete_and_notify(void* ctx)
 {
-    struct unregister_context *unreg_ctx = ctx;
+    struct unregister_context* unreg_ctx = ctx;
     unregister_complete(unreg_ctx->se);
     atomic_store(&unreg_ctx->completed, true);
 }
@@ -389,9 +404,7 @@ void fuse_session_getparams(
     params->bufsize = se->bufsize;
 }
 
-int fuse_cancel_request(
-    fuse_req_t req,
-    enum fuse_cancelation_code code)
+int fuse_cancel_request(fuse_req_t req, enum fuse_cancelation_code code)
 {
     struct fuse_chan* ch = req->ch;
     struct fuse_virtio_request* vhd_req = VIRTIO_REQ_FROM_CHAN(ch);
@@ -494,10 +507,7 @@ void virtio_session_close(struct fuse_session* se)
 
 void virtio_session_exit(struct fuse_session* se)
 {
-    struct unregister_context unreg_ctx = {
-        .se = se,
-        .completed = false
-    };
+    struct unregister_context unreg_ctx = {.se = se, .completed = false};
 
     struct fuse_virtio_dev* dev = se->virtio_dev;
 
@@ -553,17 +563,26 @@ int virtio_send_msg(
     VHD_ASSERT(iov[0].iov_len >= sizeof(struct fuse_out_header));
 
     size_t response_bytes = iov_size(iov, count);
-    VHD_LOG_DEBUG("response with %d desc of length %zu\n",
-        count, response_bytes);
+    VHD_LOG_DEBUG(
+        "response with %d desc of length %zu\n",
+        count,
+        response_bytes);
 
     int error = 0;
     size_t out_bytes = iov_size(req->out.iov, req->out.count);
     if (response_bytes <= out_bytes) {
-        iov_copy_to_iov(req->out.iov, req->out.count, iov, count, response_bytes);
+        iov_copy_to_iov(
+            req->out.iov,
+            req->out.count,
+            iov,
+            count,
+            response_bytes);
     } else {
-        VHD_LOG_ERROR("request buffers too small for response - "
-                      "requested:%zu, available:%zu\n",
-            response_bytes, out_bytes);
+        VHD_LOG_ERROR(
+            "request buffers too small for response - "
+            "requested:%zu, available:%zu\n",
+            response_bytes,
+            out_bytes);
         error = -E2BIG;
     }
 
@@ -590,8 +609,11 @@ int virtio_send_data_iov(
     return -1;
 }
 
-int virtio_out_buf(struct fuse_session *se, struct fuse_chan *ch,
-                   struct iovec **iov, int *count)
+int virtio_out_buf(
+    struct fuse_session* se,
+    struct fuse_chan* ch,
+    struct iovec** iov,
+    int* count)
 {
     Y_UNUSED(se);
 

@@ -2,8 +2,8 @@
 
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/storage/api/service.h>
-#include <cloud/filestore/libs/storage/core/request_info.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
+#include <cloud/filestore/libs/storage/core/request_info.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -19,16 +19,16 @@ LWTRACE_USING(FILESTORE_STORAGE_PROVIDER);
 ////////////////////////////////////////////////////////////////////////////////
 
 TWriteDataActor::TWriteDataActor(
-        ITraceSerializerPtr traceSerializer,
-        TString logTag,
-        TString fileSystemId,
-        TActorId tablet,
-        TRequestInfoPtr requestInfo,
-        ui64 commitId,
-        TVector<TMergedBlob> blobs,
-        TWriteRange writeRange,
-        IProfileLogPtr profileLog,
-        NProto::TProfileLogRequestInfo profileLogRequest)
+    ITraceSerializerPtr traceSerializer,
+    TString logTag,
+    TString fileSystemId,
+    TActorId tablet,
+    TRequestInfoPtr requestInfo,
+    ui64 commitId,
+    TVector<TMergedBlob> blobs,
+    TWriteRange writeRange,
+    IProfileLogPtr profileLog,
+    NProto::TProfileLogRequestInfo profileLogRequest)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
     , FileSystemId(std::move(fileSystemId))
@@ -59,8 +59,7 @@ void TWriteDataActor::Bootstrap(const TActorContext& ctx)
 void TWriteDataActor::WriteBlob(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvIndexTabletPrivate::TEvWriteBlobRequest>(
-        RequestInfo->CallContext
-    );
+        RequestInfo->CallContext);
 
     for (auto& blob: Blobs) {
         request->Blobs.emplace_back(blob.BlobId, std::move(blob.BlobContent));
@@ -86,8 +85,7 @@ void TWriteDataActor::HandleWriteBlobResponse(
 void TWriteDataActor::AddBlob(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvIndexTabletPrivate::TEvAddBlobRequest>(
-        RequestInfo->CallContext
-    );
+        RequestInfo->CallContext);
     request->Mode = EAddBlobMode::Write;
     request->WriteRanges.push_back(WriteRange);
 
@@ -147,8 +145,11 @@ void TWriteDataActor::ReplyAndDie(
         "WriteData");
 
     if (RequestInfo->Sender != Tablet) {
-        auto response = std::make_unique<TEvService::TEvWriteDataResponse>(error);
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
+        auto response =
+            std::make_unique<TEvService::TEvWriteDataResponse>(error);
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
             "%s WriteData: #%lu completed (%s)",
             LogTag.c_str(),
             RequestInfo->CallContext->RequestId,
@@ -171,7 +172,9 @@ STFUNC(TWriteDataActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvIndexTabletPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
+        HFunc(
+            TEvIndexTabletPrivate::TEvWriteBlobResponse,
+            HandleWriteBlobResponse);
         HFunc(TEvIndexTabletPrivate::TEvAddBlobResponse, HandleAddBlobResponse);
 
         default:

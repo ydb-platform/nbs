@@ -70,7 +70,9 @@ struct TOptions
             .RequiredArgument("STR")
             .StoreResult(&DiskId);
 
-        opts.AddLongOption("disk-ids-path", "use multiple disk ids for filtration")
+        opts.AddLongOption(
+                "disk-ids-path",
+                "use multiple disk ids for filtration")
             .RequiredArgument("STR")
             .StoreResult(&DiskIdsPath);
 
@@ -98,17 +100,23 @@ struct TOptions
             .DefaultValue("1m")
             .StoreResult(&ReportIntervalStr);
 
-        opts.AddLongOption("only-writes", "consider only zero and write requests")
+        opts.AddLongOption(
+                "only-writes",
+                "consider only zero and write requests")
             .NoArgument()
             .SetFlag(&OnlyWrites)
             .DefaultValue(false);
 
-        opts.AddLongOption("accessed-stats", "dump stats about accessed blocks map")
+        opts.AddLongOption(
+                "accessed-stats",
+                "dump stats about accessed blocks map")
             .NoArgument()
             .SetFlag(&AccessedBlocksStats)
             .DefaultValue(false);
 
-        opts.AddLongOption("accessed-blocks-dir", "folder to store accessed blocks map per disk")
+        opts.AddLongOption(
+                "accessed-blocks-dir",
+                "folder to store accessed blocks map per disk")
             .RequiredArgument("STR")
             .StoreResult(&AccessedBlocksDir);
 
@@ -145,7 +153,8 @@ struct TOptions
             TStringBuf arg;
             while (sit.NextTok(' ', arg)) {
                 if (sit.size()) {
-                    const auto idx = EvlogDumperParamsStr.size() - sit.size() - 1;
+                    const auto idx =
+                        EvlogDumperParamsStr.size() - sit.size() - 1;
                     EvlogDumperParamsStr[idx] = 0;
                 }
                 EvlogDumperArgv.push_back(arg.data());
@@ -156,7 +165,9 @@ struct TOptions
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void SerializeCompressedBitmap(const TCompressedBitmap& bitmap, IOutputStream& stream)
+void SerializeCompressedBitmap(
+    const TCompressedBitmap& bitmap,
+    IOutputStream& stream)
 {
     ui64 i = 0;
     const ui64 end = bitmap.Capacity();
@@ -175,7 +186,7 @@ void SerializeCompressedBitmap(const TCompressedBitmap& bitmap, IOutputStream& s
         }
 
         auto s = bitmap.RangeSerializer(i, j);
-        TCompressedBitmap::TSerializedChunk chunk {};
+        TCompressedBitmap::TSerializedChunk chunk{};
         while (s.Next(&chunk)) {
             stream.Write(
                 reinterpret_cast<const char*>(&chunk.ChunkIdx),
@@ -212,10 +223,8 @@ void DeserializeCompressedBitmap(
         Y_ABORT_UNLESS(stream.Next(&size, sizeof(ui32)) == sizeof(ui32));
         Y_ABORT_UNLESS(stream.Next(&data, *size) == *size);
 
-        chunks.push_back({
-            .ChunkIdx = *chunkIdx,
-            .Data = TStringBuf(data, *size)
-        });
+        chunks.push_back(
+            {.ChunkIdx = *chunkIdx, .Data = TStringBuf(data, *size)});
     }
 
     for (const auto& chunk: chunks) {
@@ -225,8 +234,7 @@ void DeserializeCompressedBitmap(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEventProcessor final
-    : public TProtobufEventProcessor
+class TEventProcessor final: public TProtobufEventProcessor
 {
 private:
     const TOptions& Options;
@@ -294,11 +302,9 @@ public:
                 const auto accessedBlockPercentage =
                     100 * state.AccessedBlocks->Count() / diskBlocks;
 
-                Cout << "DiskId=" << diskId
-                    << "\tBlockCount=" << diskBlocks
-                    << "\tAccessedBlockCount=" << state.AccessedBlocks->Count()
-                    << " (" << accessedBlockPercentage << "%)"
-                    << Endl;
+                Cout << "DiskId=" << diskId << "\tBlockCount=" << diskBlocks
+                     << "\tAccessedBlockCount=" << state.AccessedBlocks->Count()
+                     << " (" << accessedBlockPercentage << "%)" << Endl;
             }
             return;
         }
@@ -312,14 +318,20 @@ public:
                 if (disk.second.UnwrittenBlocks.size()) {
                     auto& d = disk.second;
                     const auto blocksPerGB = 1_GB / d.BlockSize;
-                    ui64 last = (d.AccessedBlocks->Capacity() - 1) / blocksPerGB;
+                    ui64 last =
+                        (d.AccessedBlocks->Capacity() - 1) / blocksPerGB;
                     for (ui64 i = 0; i <= last; ++i) {
-                        if (auto it = d.UnwrittenBlocks.find(i); it != d.UnwrittenBlocks.end()) {
+                        if (auto it = d.UnwrittenBlocks.find(i);
+                            it != d.UnwrittenBlocks.end())
+                        {
                             Cout << "range[" << i << " GB] has ";
-                            Cout << d.UnwrittenBlocks[i].size() << " unwritten blocks read.";
-                            if (Options.CheckReads == ECheckReadMode::MODE_DETAILS) {
+                            Cout << d.UnwrittenBlocks[i].size()
+                                 << " unwritten blocks read.";
+                            if (Options.CheckReads ==
+                                ECheckReadMode::MODE_DETAILS)
+                            {
                                 Cout << " Blocks: [";
-                                for (const auto& e : d.UnwrittenBlocks[i]) {
+                                for (const auto& e: d.UnwrittenBlocks[i]) {
                                     Cout << e << ',';
                                 }
                                 Cout << ']';
@@ -395,8 +407,7 @@ private:
     {
         auto start = TInstant::MicroSeconds(r.GetTimestampMcs());
 
-        auto type =
-            static_cast<EBlockStoreRequest>(r.GetRequestType());
+        auto type = static_cast<EBlockStoreRequest>(r.GetRequestType());
 
         if (Options.OnlyWrites && !IsWriteRequest(type)) {
             return;
@@ -426,7 +437,8 @@ private:
                     ui64 rangeIndex = index / blocksPerGB;
                     ui64 nextRangeIndex = (rangeIndex + 1) * blocksPerGB;
                     ui64 endIndex = Min(nextRangeIndex, startIndex + count);
-                    auto numWritten = diskState.AccessedBlocks->Count(index, endIndex);
+                    auto numWritten =
+                        diskState.AccessedBlocks->Count(index, endIndex);
 
                     if (numWritten < endIndex - index) {
                         for (ui64 i = index; i < endIndex; ++i) {
@@ -443,13 +455,12 @@ private:
 
         if (Options.TraceBlock >= 0 && IsReadWriteRequest(type)) {
             ui64 blockIndex = Options.TraceBlock;
-            if ((blockIndex >= startIndex) && (blockIndex < startIndex + count)) {
-                Cout << start
-                    << " DiskId=" << diskId
-                    << " Request=" << r.GetRequestType()
-                    << " index=" << startIndex << ", "
-                    << " count=" << count
-                    << Endl;
+            if ((blockIndex >= startIndex) && (blockIndex < startIndex + count))
+            {
+                Cout << start << " DiskId=" << diskId
+                     << " Request=" << r.GetRequestType()
+                     << " index=" << startIndex << ", " << " count=" << count
+                     << Endl;
             }
             return;
         }
@@ -467,15 +478,16 @@ private:
                 ++accessCount;
             }
 
-            while (diskState.AccessQueue.front().Ts + Options.WindowSize < start) {
-                auto& accessCount = diskState.Zone2Accesses[
-                    diskState.AccessQueue.front().ZoneId
-                ];
+            while (diskState.AccessQueue.front().Ts + Options.WindowSize <
+                   start)
+            {
+                auto& accessCount =
+                    diskState
+                        .Zone2Accesses[diskState.AccessQueue.front().ZoneId];
                 --accessCount;
                 if (!accessCount) {
                     diskState.Zone2Accesses.erase(
-                        diskState.AccessQueue.front().ZoneId
-                    );
+                        diskState.AccessQueue.front().ZoneId);
                     --diskState.ActiveZoneCount;
                 }
                 diskState.AccessQueue.pop_front();
@@ -487,17 +499,15 @@ private:
         if (diskState.LastReportTs + Options.ReportInterval < start) {
             const auto diskBlocks = diskState.AccessedBlocks->Capacity();
 
-            const auto activePercentage =
-                100 * diskState.ActiveZoneCount / (diskBlocks / Options.ZoneBlocks);
+            const auto activePercentage = 100 * diskState.ActiveZoneCount /
+                                          (diskBlocks / Options.ZoneBlocks);
             const auto accessedBlockPercentage =
                 100 * diskState.AccessedBlocks->Count() / diskBlocks;
-            Cout << diskState.LastReportTs
-                << "\tDiskId=" << diskId
-                << "\tActiveZoneCount=" << diskState.ActiveZoneCount
-                << " (" << activePercentage << "%)"
-                << "\tAccessedBlockCount=" << diskState.AccessedBlocks->Count()
-                << " (" << accessedBlockPercentage << "%)"
-                << Endl;
+            Cout << diskState.LastReportTs << "\tDiskId=" << diskId
+                 << "\tActiveZoneCount=" << diskState.ActiveZoneCount << " ("
+                 << activePercentage << "%)"
+                 << "\tAccessedBlockCount=" << diskState.AccessedBlocks->Count()
+                 << " (" << accessedBlockPercentage << "%)" << Endl;
 
             diskState.LastReportTs = start;
         }
@@ -519,8 +529,7 @@ int main(int argc, const char** argv)
                 NEvClass::Factory(),
                 &processor,
                 options.EvlogDumperArgv.size(),
-                options.EvlogDumperArgv.begin()
-            );
+                options.EvlogDumperArgv.begin());
         }
     } catch (const yexception& e) {
         Cerr << e.what() << Endl;

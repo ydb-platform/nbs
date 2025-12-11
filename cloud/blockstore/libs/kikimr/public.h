@@ -6,16 +6,16 @@
 #include <util/generic/ptr.h>
 
 namespace NKikimr {
-    namespace NNodeTabletMonitor {
-        struct ITabletStateClassifier;
-        using ITabletStateClassifierPtr = TIntrusivePtr<ITabletStateClassifier>;
+namespace NNodeTabletMonitor {
+struct ITabletStateClassifier;
+using ITabletStateClassifierPtr = TIntrusivePtr<ITabletStateClassifier>;
 
-        struct ITabletListRenderer;
-        using ITabletListRendererPtr = TIntrusivePtr<ITabletListRenderer>;
-    }
+struct ITabletListRenderer;
+using ITabletListRendererPtr = TIntrusivePtr<ITabletListRenderer>;
+}   // namespace NNodeTabletMonitor
 
-    class TControlBoard;
-    using TControlBoardPtr = TIntrusivePtr<TControlBoard>;
+class TControlBoard;
+using TControlBoardPtr = TIntrusivePtr<TControlBoard>;
 
-    class TKikimrScopeId;
-}
+class TKikimrScopeId;
+}   // namespace NKikimr

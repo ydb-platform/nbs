@@ -4,12 +4,14 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_private.h>
+
 #include <cloud/storage/core/libs/common/helpers.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
+
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/json/json_writer.h>
 
@@ -35,14 +37,14 @@ private:
     const TString Input;
 
 public:
-    TGetDependentDisksActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TGetDependentDisksActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void GetDependentDisks(const TActorContext& ctx, NProto::TGetDependentDisksRequest request);
+    void GetDependentDisks(
+        const TActorContext& ctx,
+        NProto::TGetDependentDisksRequest request);
 
     void ReplyAndDie(
         const TActorContext& ctx,
@@ -62,8 +64,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TGetDependentDisksActor::TGetDependentDisksActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -95,7 +97,9 @@ void TGetDependentDisksActor::GetDependentDisks(
 {
     Become(&TThis::StateWork);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending get dependent disks request");
 
     NCloud::Send(
@@ -103,8 +107,7 @@ void TGetDependentDisksActor::GetDependentDisks(
         MakeDiskRegistryProxyServiceId(),
         std::make_unique<TEvDiskRegistry::TEvGetDependentDisksRequest>(
             MakeIntrusive<TCallContext>(),
-            std::move(request))
-    );
+            std::move(request)));
 }
 
 void TGetDependentDisksActor::ReplyAndDie(
@@ -134,7 +137,8 @@ void TGetDependentDisksActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(error);
     ReplyAndDie(ctx, std::move(response));
 }
 

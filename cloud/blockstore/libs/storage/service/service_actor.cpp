@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
+
 #include <cloud/storage/core/libs/common/alloc.h>
 
 #include <contrib/ydb/core/base/appdata.h>
@@ -17,18 +18,18 @@ using namespace NKikimr;
 ////////////////////////////////////////////////////////////////////////////////
 
 TServiceActor::TServiceActor(
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
-        IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        NDiscovery::IDiscoveryServicePtr discoveryService,
-        ITraceSerializerPtr traceSerializer,
-        NServer::IEndpointEventHandlerPtr endpointEventHandler,
-        NRdma::IClientPtr rdmaClient,
-        IVolumeStatsPtr volumeStats,
-        TManuallyPreemptedVolumesPtr preemptedVolumes,
-        IRootKmsKeyProviderPtr rootKmsKeyProvider,
-        bool temporaryServer)
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    NDiscovery::IDiscoveryServicePtr discoveryService,
+    ITraceSerializerPtr traceSerializer,
+    NServer::IEndpointEventHandlerPtr endpointEventHandler,
+    NRdma::IClientPtr rdmaClient,
+    IVolumeStatsPtr volumeStats,
+    TManuallyPreemptedVolumesPtr preemptedVolumes,
+    IRootKmsKeyProviderPtr rootKmsKeyProvider,
+    bool temporaryServer)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
@@ -61,8 +62,13 @@ void TServiceActor::RegisterPages(const TActorContext& ctx)
     if (mon) {
         auto* rootPage = mon->RegisterIndexPage("blockstore", "BlockStore");
 
-        mon->RegisterActorPage(rootPage, "service", "Service",
-            false, ctx.ActorSystem(), SelfId());
+        mon->RegisterActorPage(
+            rootPage,
+            "service",
+            "Service",
+            false,
+            ctx.ActorSystem(),
+            SelfId());
     }
 }
 
@@ -71,10 +77,9 @@ void TServiceActor::RegisterCounters(const TActorContext& ctx)
     Counters = CreateServiceCounters();
 
     SelfPingMaxUsCounter = AppData(ctx)
-        ->Counters
-        ->GetSubgroup("counters", "blockstore")
-        ->GetSubgroup("component", "service")
-        ->GetCounter("SelfPingMaxUs", false);
+                               ->Counters->GetSubgroup("counters", "blockstore")
+                               ->GetSubgroup("component", "service")
+                               ->GetCounter("SelfPingMaxUs", false);
 
     ScheduleSelfPing(ctx);
 
@@ -97,7 +102,9 @@ void TServiceActor::ScheduleCountersUpdate(const TActorContext& ctx)
 
 void TServiceActor::UpdateCounters(const TActorContext& ctx)
 {
-    auto& bytesAllocated = Counters->Simple()[TServiceCounters::SIMPLE_COUNTER_Stats_BlockBufferBytes];
+    auto& bytesAllocated =
+        Counters
+            ->Simple()[TServiceCounters::SIMPLE_COUNTER_Stats_BlockBufferBytes];
     bytesAllocated.Set(TProfilingAllocator::Instance()->GetBytesAllocated());
 
     auto counters = AppData(ctx)->Counters;
@@ -107,8 +114,8 @@ void TServiceActor::UpdateCounters(const TActorContext& ctx)
 
         const auto& simpleCounters = Counters->Simple();
         for (ui32 idx = 0; idx < simpleCounters.Size(); ++idx) {
-            auto counter = serviceCounters->GetCounter(
-                Counters->SimpleCounterName(idx));
+            auto counter =
+                serviceCounters->GetCounter(Counters->SimpleCounterName(idx));
             *counter = simpleCounters[idx].Get();
         }
 
@@ -127,7 +134,10 @@ void TServiceActor::UpdateCounters(const TActorContext& ctx)
                 Counters->PercentileCounterName(idx));
 
             const auto& percentileCounter = percentileCounters[idx];
-            for (ui32 idxRange = 0; idxRange < percentileCounter.GetRangeCount(); ++idxRange) {
+            for (ui32 idxRange = 0;
+                 idxRange < percentileCounter.GetRangeCount();
+                 ++idxRange)
+            {
                 auto counter = histogramGroup->GetCounter(
                     percentileCounter.GetRangeName(idxRange),
                     true);
@@ -143,10 +153,12 @@ void TServiceActor::UpdateCounters(const TActorContext& ctx)
 void TServiceActor::UpdateActorStats(const TActorContext& ctx)
 {
     if (Counters) {
-        auto& actorQueue = Counters->Percentile()
-            [TServiceCounters::PERCENTILE_COUNTER_Actor_ActorQueue];
-        auto& mailboxQueue = Counters->Percentile()
-            [TServiceCounters::PERCENTILE_COUNTER_Actor_MailboxQueue];
+        auto& actorQueue =
+            Counters->Percentile()
+                [TServiceCounters::PERCENTILE_COUNTER_Actor_ActorQueue];
+        auto& mailboxQueue =
+            Counters->Percentile()
+                [TServiceCounters::PERCENTILE_COUNTER_Actor_MailboxQueue];
 
         auto actorQueues = ctx.CountMailboxEvents(1001);
         IncrementFor(actorQueue, actorQueues.first);
@@ -167,7 +179,6 @@ void TServiceActor::HandleVolumeMountStateChanged(
         volume->SetTabletReportedLocalMount(msg->HasLocalMount);
     }
 }
-
 
 void TServiceActor::HandleRegisterVolume(
     const TEvService::TEvRegisterVolume::TPtr& ev,
@@ -190,7 +201,9 @@ void TServiceActor::HandleVolumeConfigUpdated(
 
     auto volume = State.GetVolume(msg->DiskId);
     if (!volume) {
-        LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Volume %s not found",
             msg->DiskId.Quote().data());
         return;
@@ -227,7 +240,8 @@ void TServiceActor::HandleSelfPing(
     const TEvServicePrivate::TEvSelfPing::TPtr& ev,
     const TActorContext& ctx)
 {
-    SelfPingMaxUs = std::max(SelfPingMaxUs, GetCycleCount() - ev->Get()->StartCycles);
+    SelfPingMaxUs =
+        std::max(SelfPingMaxUs, GetCycleCount() - ev->Get()->StartCycles);
     ScheduleSelfPing(ctx);
 }
 
@@ -253,7 +267,8 @@ void TServiceActor::HandleDiscoverInstances(
 {
     const auto* msg = ev->Get();
 
-    auto response = std::make_unique<TEvService::TEvDiscoverInstancesResponse>();
+    auto response =
+        std::make_unique<TEvService::TEvDiscoverInstancesResponse>();
     DiscoveryService->ServeRequest(msg->Record, &response->Record);
 
     NCloud::Reply(ctx, *ev, std::move(response));
@@ -297,7 +312,9 @@ STFUNC(TServiceActor::StateWork)
 
         HFunc(NMon::TEvHttpInfo, HandleHttpInfo);
 
-        HFunc(TEvService::TEvVolumeMountStateChanged, HandleVolumeMountStateChanged);
+        HFunc(
+            TEvService::TEvVolumeMountStateChanged,
+            HandleVolumeMountStateChanged);
         HFunc(TEvService::TEvRegisterVolume, HandleRegisterVolume);
         HFunc(TEvService::TEvUnregisterVolume, HandleUnregisterVolume);
         HFunc(TEvService::TEvVolumeConfigUpdated, HandleVolumeConfigUpdated);

@@ -48,10 +48,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 THttpRemoveClientActor::THttpRemoveClientActor(
-        TRequestInfoPtr requestInfo,
-        TString diskId,
-        TString clientId,
-        ui64 tabletId)
+    TRequestInfoPtr requestInfo,
+    TString diskId,
+    TString clientId,
+    ui64 tabletId)
     : RequestInfo(std::move(requestInfo))
     , DiskId(std::move(diskId))
     , ClientId(std::move(clientId))
@@ -66,10 +66,7 @@ void THttpRemoveClientActor::Bootstrap(const TActorContext& ctx)
     request->Record.SetIsMonRequest(true);
 
     // TODO: why don't we send to volume actor directly?
-    NCloud::Send(
-        ctx,
-        MakeVolumeProxyServiceId(),
-        std::move(request));
+    NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
 
     Become(&TThis::StateWork);
 }
@@ -105,10 +102,9 @@ void THttpRemoveClientActor::HandleRemoveClientResponse(
     } else {
         Notify(
             ctx,
-            TStringBuilder() << "failed to remove client "
-                << ClientId.Quote() << " from volume "
-                << DiskId.Quote() << ": "
-                << FormatError(response->GetError()),
+            TStringBuilder() << "failed to remove client " << ClientId.Quote()
+                             << " from volume " << DiskId.Quote() << ": "
+                             << FormatError(response->GetError()),
             EAlertLevel::DANGER);
     }
 
@@ -131,7 +127,7 @@ STFUNC(THttpRemoveClientActor::StateWork)
     }
 }
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -151,10 +147,7 @@ void TVolumeActor::HandleHttpInfo_RemoveClient(
         clientId.Quote().c_str());
 
     if (!clientId) {
-        RejectHttpRequest(
-            ctx,
-            *requestInfo,
-            "No client id is given");
+        RejectHttpRequest(ctx, *requestInfo, "No client id is given");
         return;
     }
 

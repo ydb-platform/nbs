@@ -1,4 +1,5 @@
 #include "config_initializer.h"
+
 #include "options.h"
 
 #include <cloud/blockstore/libs/client/client.h>
@@ -63,7 +64,7 @@ void TConfigInitializerYdb::InitStorageConfig()
 
     if (ServerConfig && ServerConfig->GetServerConfig()) {
         NStorage::AdaptNodeRegistrationParams(
-            {}, // overriddenNodeType, node type is not passed in cmd line
+            {},   // overriddenNodeType, node type is not passed in cmd line
             *ServerConfig->GetServerConfig(),
             storageConfig);
     }
@@ -133,8 +134,8 @@ void TConfigInitializerYdb::InitIamClientConfig()
         ParseProtoTextFromFile(Options->IamConfig, config);
     }
 
-    IamClientConfig = std::make_shared<NIamClient::TIamClientConfig>(
-        std::move(config));
+    IamClientConfig =
+        std::make_shared<NIamClient::TIamClientConfig>(std::move(config));
 }
 
 void TConfigInitializerYdb::InitKmsClientConfig()
@@ -192,8 +193,8 @@ TDuration TConfigInitializerYdb::GetInactiveClientsTimeout() const
     return StorageConfig->GetInactiveClientsTimeout();
 }
 
-
-void TConfigInitializerYdb::SetupStorageConfig(NProto::TStorageServiceConfig& config) const
+void TConfigInitializerYdb::SetupStorageConfig(
+    NProto::TStorageServiceConfig& config) const
 {
     if (Options->TemporaryServer) {
         config.SetRemoteMountOnly(true);
@@ -219,8 +220,7 @@ void TConfigInitializerYdb::ApplyFeaturesConfig(const TString& text)
     NProto::TFeaturesConfig config;
     ParseProtoTextFromStringRobust(text, config);
 
-    FeaturesConfig =
-        std::make_shared<NFeatures::TFeaturesConfig>(config);
+    FeaturesConfig = std::make_shared<NFeatures::TFeaturesConfig>(config);
 
     // features config has changed, update storage config
     StorageConfig->SetFeaturesConfig(FeaturesConfig);
@@ -288,7 +288,7 @@ void TConfigInitializerYdb::ApplyStorageServiceConfig(const TString& text)
 
     if (ServerConfig && ServerConfig->GetServerConfig()) {
         NStorage::AdaptNodeRegistrationParams(
-            {}, // overriddenNodeType, node type is not passed in cmd line
+            {},   // overriddenNodeType, node type is not passed in cmd line
             *ServerConfig->GetServerConfig(),
             storageConfig);
     }
@@ -303,7 +303,8 @@ void TConfigInitializerYdb::ApplyStorageServiceConfig(const TString& text)
         storageConfig,
         FeaturesConfig);
 
-    Y_ENSURE(!Options->SchemeShardDir ||
+    Y_ENSURE(
+        !Options->SchemeShardDir ||
         GetFullSchemeShardDir() == StorageConfig->GetSchemeShardDir());
 }
 
@@ -337,8 +338,8 @@ void TConfigInitializerYdb::ApplyDiskRegistryProxyConfig(const TString& text)
     NProto::TDiskRegistryProxyConfig config;
     ParseProtoTextFromStringRobust(text, config);
 
-    DiskRegistryProxyConfig = std::make_shared<NStorage::TDiskRegistryProxyConfig>(
-        std::move(config));
+    DiskRegistryProxyConfig =
+        std::make_shared<NStorage::TDiskRegistryProxyConfig>(std::move(config));
 }
 
 void TConfigInitializerYdb::ApplyIamClientConfig(const TString& text)
@@ -346,8 +347,8 @@ void TConfigInitializerYdb::ApplyIamClientConfig(const TString& text)
     NProto::TIamClientConfig config;
     ParseProtoTextFromString(text, config);
 
-    IamClientConfig = std::make_shared<NIamClient::TIamClientConfig>(
-        std::move(config));
+    IamClientConfig =
+        std::make_shared<NIamClient::TIamClientConfig>(std::move(config));
 }
 
 void TConfigInitializerYdb::ApplyKmsClientConfig(const TString& text)
@@ -394,27 +395,27 @@ void TConfigInitializerYdb::ApplyNamedConfigs(
     using TSelf = TConfigInitializerYdb;
     using TApplyFn = void (TSelf::*)(const TString&);
 
-    const TVector<std::pair<TString, TApplyFn>> configHandlers {
-        { "ActorSystemConfig",       &TSelf::ApplyActorSystemConfig       },
-        { "AuthConfig",              &TSelf::ApplyAuthConfig              },
-        { "DiagnosticsConfig",       &TSelf::ApplyDiagnosticsConfig       },
-        { "DiscoveryServiceConfig",  &TSelf::ApplyDiscoveryServiceConfig  },
-        { "DiskAgentConfig",         &TSelf::ApplyDiskAgentConfig         },
-        { "DiskRegistryProxyConfig", &TSelf::ApplyDiskRegistryProxyConfig },
-        { "FeaturesConfig",          &TSelf::ApplyFeaturesConfig          },
-        { "InterconnectConfig",      &TSelf::ApplyInterconnectConfig      },
-        { "LogbrokerConfig",         &TSelf::ApplyLogbrokerConfig         },
-        { "LogConfig",               &TSelf::ApplyLogConfig               },
-        { "MonitoringConfig",        &TSelf::ApplyMonitoringConfig        },
-        { "NotifyConfig",            &TSelf::ApplyNotifyConfig            },
-        { "ServerAppConfig",         &TSelf::ApplyServerAppConfig         },
-        { "SpdkEnvConfig",           &TSelf::ApplySpdkEnvConfig           },
-        { "StorageServiceConfig",    &TSelf::ApplyStorageServiceConfig    },
-        { "YdbStatsConfig",          &TSelf::ApplyYdbStatsConfig          },
-        { "IamClientConfig",         &TSelf::ApplyIamClientConfig         },
-        { "KmsClientConfig",         &TSelf::ApplyKmsClientConfig         },
-        { "RootKmsConfig",           &TSelf::ApplyRootKmsConfig           },
-        { "ComputeClientConfig",     &TSelf::ApplyComputeClientConfig     },
+    const TVector<std::pair<TString, TApplyFn>> configHandlers{
+        {"ActorSystemConfig", &TSelf::ApplyActorSystemConfig},
+        {"AuthConfig", &TSelf::ApplyAuthConfig},
+        {"DiagnosticsConfig", &TSelf::ApplyDiagnosticsConfig},
+        {"DiscoveryServiceConfig", &TSelf::ApplyDiscoveryServiceConfig},
+        {"DiskAgentConfig", &TSelf::ApplyDiskAgentConfig},
+        {"DiskRegistryProxyConfig", &TSelf::ApplyDiskRegistryProxyConfig},
+        {"FeaturesConfig", &TSelf::ApplyFeaturesConfig},
+        {"InterconnectConfig", &TSelf::ApplyInterconnectConfig},
+        {"LogbrokerConfig", &TSelf::ApplyLogbrokerConfig},
+        {"LogConfig", &TSelf::ApplyLogConfig},
+        {"MonitoringConfig", &TSelf::ApplyMonitoringConfig},
+        {"NotifyConfig", &TSelf::ApplyNotifyConfig},
+        {"ServerAppConfig", &TSelf::ApplyServerAppConfig},
+        {"SpdkEnvConfig", &TSelf::ApplySpdkEnvConfig},
+        {"StorageServiceConfig", &TSelf::ApplyStorageServiceConfig},
+        {"YdbStatsConfig", &TSelf::ApplyYdbStatsConfig},
+        {"IamClientConfig", &TSelf::ApplyIamClientConfig},
+        {"KmsClientConfig", &TSelf::ApplyKmsClientConfig},
+        {"RootKmsConfig", &TSelf::ApplyRootKmsConfig},
+        {"ComputeClientConfig", &TSelf::ApplyComputeClientConfig},
     };
 
     for (const auto& handler: configHandlers) {

@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -14,8 +15,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TListEndpointsCommand final
-    : public TCommand
+class TListEndpointsCommand final: public TCommand
 {
 private:
     bool WaitForRestoring;
@@ -47,9 +47,9 @@ protected:
 
             result = WaitFor(ClientEndpoint->ListEndpoints(
                 MakeIntrusive<TCallContext>(),
-                std::make_shared<NProto::TListEndpointsRequest>()
-            ));
-        } while (WaitForRestoring && !HasError(result) && !result.GetEndpointsWereRestored());
+                std::make_shared<NProto::TListEndpointsRequest>()));
+        } while (WaitForRestoring && !HasError(result) &&
+                 !result.GetEndpointsWereRestored());
 
         STORAGE_DEBUG("Received ListEndpoints response");
         if (Proto) {
@@ -65,9 +65,9 @@ protected:
         const auto& endpoints = result.GetEndpoints();
         for (const auto& endpoint: endpoints) {
             output << "socket: " << endpoint.GetUnixSocketPath().Quote()
-                << " disk-id: " << endpoint.GetDiskId().Quote()
-                << " ipc-type: " << GetIpcTypeString(endpoint.GetIpcType())
-                << Endl;
+                   << " disk-id: " << endpoint.GetDiskId().Quote()
+                   << " ipc-type: " << GetIpcTypeString(endpoint.GetIpcType())
+                   << Endl;
         }
         return true;
     }

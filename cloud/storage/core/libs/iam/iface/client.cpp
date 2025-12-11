@@ -8,8 +8,7 @@ namespace {
 
 using namespace NThreading;
 
-class TIamTokenClientStub final
-    : public IIamTokenClient
+class TIamTokenClientStub final: public IIamTokenClient
 {
 public:
     TResultOrError<TTokenInfo> GetToken() override
@@ -23,12 +22,10 @@ public:
     }
 
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 };
 
 }   // namespace

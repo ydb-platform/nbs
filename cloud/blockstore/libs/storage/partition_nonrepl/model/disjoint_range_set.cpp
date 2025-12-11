@@ -56,7 +56,7 @@ TBlockRange64 TDisjointRangeSet::LeftmostRange() const
 ////////////////////////////////////////////////////////////////////////////////
 
 TDisjointRangeSetIterator::TDisjointRangeSetIterator(
-        const TDisjointRangeSet& rangeSet)
+    const TDisjointRangeSet& rangeSet)
     : RangeSet(rangeSet)
     , Pos(RangeSet.EndToStart.cbegin())
 {}

@@ -211,20 +211,18 @@ struct TEventProcessor: TProtobufEventProcessor
 
                 if (!req.RangesSize()) {
                     return req.GetBlockCount() != 0 &&
-                           FilterRange->Overlaps(
-                               TBlockRange64::WithLength(
-                                   req.GetBlockIndex(),
-                                   req.GetBlockCount()));
+                           FilterRange->Overlaps(TBlockRange64::WithLength(
+                               req.GetBlockIndex(),
+                               req.GetBlockCount()));
                 }
 
                 return AnyOf(
                     req.GetRanges(),
                     [&](const auto& r)
                     {
-                        return FilterRange->Overlaps(
-                            TBlockRange64::WithLength(
-                                r.GetBlockIndex(),
-                                r.GetBlockCount()));
+                        return FilterRange->Overlaps(TBlockRange64::WithLength(
+                            r.GetBlockIndex(),
+                            r.GetBlockCount()));
                     });
             }
             default:
@@ -276,16 +274,19 @@ public:
 
         opts.AddLongOption(
                 "filter-by-range",
-                "Show only requests that overlap with the range. Example: --filter-by-range 5000,5100")
+                "Show only requests that overlap with the range. Example: "
+                "--filter-by-range 5000,5100")
             .Optional()
-            .Handler1T<TString>([&] (TStringBuf s) {
-                TStringBuf lhs;
-                TStringBuf rhs;
-                s.Split(',', lhs, rhs);
-                Processor->FilterRange = TBlockRange64::MakeClosedInterval(
-                    FromString<ui64>(lhs),
-                    FromString<ui64>(rhs));
-            });
+            .Handler1T<TString>(
+                [&](TStringBuf s)
+                {
+                    TStringBuf lhs;
+                    TStringBuf rhs;
+                    s.Split(',', lhs, rhs);
+                    Processor->FilterRange = TBlockRange64::MakeClosedInterval(
+                        FromString<ui64>(lhs),
+                        FromString<ui64>(rhs));
+                });
 
         opts.AddLongOption(
                 "output-sqlite-file",
@@ -301,7 +302,8 @@ public:
 
         opts.AddLongOption(
                 "known-disks-file",
-                "File with known volumes. Contains diskId, block size and media kind")
+                "File with known volumes. Contains diskId, block size and "
+                "media kind")
             .Optional()
             .StoreResult(&Processor->KnownDisksFilename);
 

@@ -1,4 +1,5 @@
 #include "tablet_actor.h"
+
 #include "shard_request_actor.h"
 
 namespace NCloud::NFileStore::NStorage {
@@ -30,7 +31,9 @@ void TIndexTabletActor::HandleResetSession(
     const auto& sessionId = GetSessionId(msg->Record);
     const auto seqNo = GetSessionSeqNo(msg->Record);
 
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s ResetSession c:%s, s:%s n:%lu",
         LogTag.c_str(),
         clientId.c_str(),
@@ -40,19 +43,14 @@ void TIndexTabletActor::HandleResetSession(
     auto* session = FindSession(sessionId);
     if (!session || session->GetClientId() != clientId) {
         auto response = std::make_unique<TEvService::TEvResetSessionResponse>(
-            ErrorInvalidSession(
-                clientId,
-                sessionId,
-                seqNo));
+            ErrorInvalidSession(clientId, sessionId, seqNo));
 
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TResetSessionMethod>(*requestInfo);
@@ -83,7 +81,9 @@ bool TIndexTabletActor::PrepareTx_ResetSession(
         return true;
     }
 
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s Reset session s:%s n:%lu l:%lu",
         LogTag.c_str(),
         args.SessionId.c_str(),
@@ -141,7 +141,9 @@ void TIndexTabletActor::ExecuteTx_ResetSession(
         auto nodeId = handle->GetNodeId();
         DestroyHandle(db, &*(handle++));
 
-        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s Removing handle upon session reset s:%s n:%lu",
             LogTag.c_str(),
             args.SessionId.c_str(),
@@ -149,24 +151,24 @@ void TIndexTabletActor::ExecuteTx_ResetSession(
 
         auto it = args.Nodes.find(nodeId);
         if (it != args.Nodes.end() && !HasOpenHandles(nodeId)) {
-            LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            LOG_INFO(
+                ctx,
+                TFileStoreComponents::TABLET,
                 "%s Removing node upon session reset s:%s n:%lu (size %lu)",
                 LogTag.c_str(),
                 args.SessionId.c_str(),
                 nodeId,
                 it->Attrs.GetSize());
 
-            auto e = RemoveNode(
-                db,
-                *it,
-                it->MinCommitId,
-                commitId);
+            auto e = RemoveNode(db, *it, it->MinCommitId, commitId);
 
             if (HasError(e)) {
-                WriteOrphanNode(db, TStringBuilder()
-                    << "DestroySession: " << args.SessionId
-                    << ", RemoveNode: " << nodeId
-                    << ", Error: " << FormatError(e), nodeId);
+                WriteOrphanNode(
+                    db,
+                    TStringBuilder() << "DestroySession: " << args.SessionId
+                                     << ", RemoveNode: " << nodeId
+                                     << ", Error: " << FormatError(e),
+                    nodeId);
             }
         }
     }
@@ -187,7 +189,9 @@ void TIndexTabletActor::CompleteTx_ResetSession(
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     // session will be reset in other shards via the code in the main tablet
     if (!IsMainTablet() || shardIds.empty()) {
-        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s ResetSession completed",
             LogTag.c_str());
 
@@ -195,7 +199,9 @@ void TIndexTabletActor::CompleteTx_ResetSession(
         return;
     }
 
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s ResetSession completed - local"
         ", resetting shard sessions (%s)",
         LogTag.c_str(),

@@ -13,8 +13,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDestroyActor final
-    : public TActorBootstrapped<TDestroyActor>
+class TDestroyActor final: public TActorBootstrapped<TDestroyActor>
 {
 private:
     const TActorId Owner;
@@ -54,11 +53,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDestroyActor::TDestroyActor(
-        const TActorId& owner,
-        const ui64 tabletID,
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
-        TVector<TString> diskIds)
+    const TActorId& owner,
+    const ui64 tabletID,
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr config,
+    TVector<TString> diskIds)
     : Owner(owner)
     , TabletID(tabletID)
     , RequestInfo(std::move(requestInfo))
@@ -78,15 +77,14 @@ void TDestroyActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)
     auto end = std::partition(
         DiskIds.begin(),
         DiskIds.end(),
-        [] (const TString& diskId) {
-            return !!diskId;
-        });
+        [](const TString& diskId) { return !!diskId; });
     DiskIds.erase(end, DiskIds.end());
 
-    auto response = std::make_unique<TEvDiskRegistryPrivate::TEvDestroyBrokenDisksResponse>(
-        std::move(error),
-        RequestInfo->CallContext,
-        std::move(DiskIds));
+    auto response =
+        std::make_unique<TEvDiskRegistryPrivate::TEvDestroyBrokenDisksResponse>(
+            std::move(error),
+            RequestInfo->CallContext,
+            std::move(DiskIds));
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
@@ -103,7 +101,9 @@ void TDestroyActor::DestroyDisks(const TActorContext& ctx)
 
     ui64 cookie = 0;
     for (const auto& diskId: DiskIds) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
             "[%lu] Destroying broken volume: DiskId=%s",
             TabletID,
             diskId.Quote().c_str());
@@ -111,12 +111,7 @@ void TDestroyActor::DestroyDisks(const TActorContext& ctx)
         auto request = std::make_unique<TEvService::TEvDestroyVolumeRequest>();
         request->Record.SetDiskId(diskId);
         request->Record.SetDestroyIfBroken(true);
-        NCloud::Send(
-            ctx,
-            MakeStorageServiceId(),
-            std::move(request),
-            cookie++
-        );
+        NCloud::Send(ctx, MakeStorageServiceId(), std::move(request), cookie++);
     }
 }
 
@@ -141,14 +136,18 @@ void TDestroyActor::HandleDestroyVolumeResponse(
     Y_ABORT_UNLESS(PendingOperations >= 0);
 
     if (HasError(ev->Get()->Record)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
             "[%lu] Volume destruction failed: DiskId=%s, Error=%s",
             TabletID,
             DiskIds[cookie].Quote().c_str(),
             FormatError(ev->Get()->Record.GetError()).c_str());
         DiskIds[cookie] = {};
     } else {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
             "[%lu] Volume destruction succeeded: DiskId=%s",
             TabletID,
             DiskIds[cookie].Quote().c_str());
@@ -166,7 +165,9 @@ STFUNC(TDestroyActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvService::TEvDestroyVolumeResponse, HandleDestroyVolumeResponse);
+        HFunc(
+            TEvService::TEvDestroyVolumeResponse,
+            HandleDestroyVolumeResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -191,9 +192,9 @@ void TDiskRegistryActor::HandleListBrokenDisks(
     for (const auto& bdi: State->GetBrokenDisks()) {
         diskIds.push_back(bdi.DiskId);
     }
-    auto response = std::make_unique<TEvDiskRegistryPrivate::TEvListBrokenDisksResponse>(
-        std::move(diskIds)
-    );
+    auto response =
+        std::make_unique<TEvDiskRegistryPrivate::TEvListBrokenDisksResponse>(
+            std::move(diskIds));
     Sort(response->DiskIds.begin(), response->DiskIds.end());
 
     NCloud::Send(ctx, ev->Sender, std::move(response));
@@ -209,11 +210,14 @@ void TDiskRegistryActor::DestroyBrokenDisks(const TActorContext& ctx)
 
     BrokenDisksDestructionInProgress = true;
 
-    auto request = std::make_unique<TEvDiskRegistryPrivate::TEvDestroyBrokenDisksRequest>();
+    auto request = std::make_unique<
+        TEvDiskRegistryPrivate::TEvDestroyBrokenDisksRequest>();
 
     auto deadline = ctx.Now() + Config->GetBrokenDiskDestructionDelay();
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Scheduled broken disks destruction, now: %lu, deadline: %lu",
         TabletID(),
         ctx.Now().MicroSeconds(),
@@ -248,14 +252,9 @@ void TDiskRegistryActor::HandleDestroyBrokenDisks(
         ctx,
         SelfId(),
         TabletID(),
-        CreateRequestInfo(
-            SelfId(),
-            0,
-            MakeIntrusive<TCallContext>()
-        ),
+        CreateRequestInfo(SelfId(), 0, MakeIntrusive<TCallContext>()),
         Config,
-        DisksBeingDestroyed
-    );
+        DisksBeingDestroyed);
     Actors.insert(actor);
 }
 
@@ -268,10 +267,8 @@ void TDiskRegistryActor::HandleDestroyBrokenDisksResponse(
         CreateRequestInfo<TEvDiskRegistryPrivate::TDestroyBrokenDisksMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext
-        ),
-        std::move(ev->Get()->Disks)
-    );
+            ev->Get()->CallContext),
+        std::move(ev->Get()->Disks));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

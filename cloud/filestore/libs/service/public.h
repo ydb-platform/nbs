@@ -1,8 +1,8 @@
 #pragma once
 
-#include <memory>
-
 #include <util/generic/ptr.h>
+
+#include <memory>
 
 namespace NCloud::NFileStore {
 

@@ -1,4 +1,5 @@
 #include "storage.h"
+
 #include "storage_test.h"
 
 #include <cloud/storage/core/libs/common/timer.h>
@@ -56,10 +57,13 @@ public:
 
 Y_UNIT_TEST_SUITE(TStorageTest)
 {
-    void ShouldHandleNonNormalizedRequests(ui32 requestBlockSize, bool useDataBuffer)
+    void ShouldHandleNonNormalizedRequests(
+        ui32 requestBlockSize,
+        bool useDataBuffer)
     {
         auto storage = std::make_shared<TTestStorage>();
-        storage->WriteBlocksLocalHandler = [] (auto ctx, auto request) {
+        storage->WriteBlocksLocalHandler = [](auto ctx, auto request)
+        {
             Y_UNUSED(ctx);
 
             UNIT_ASSERT_VALUES_EQUAL(1_MB / 4_KB, request->BlocksCount);
@@ -106,8 +110,7 @@ Y_UNIT_TEST_SUITE(TStorageTest)
             MakeIntrusive<TCallContext>(),
             std::move(request),
             requestBlockSize,
-            dataBuffer
-        );
+            dataBuffer);
 
         auto response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT(!HasError(response));
@@ -128,7 +131,8 @@ Y_UNIT_TEST_SUITE(TStorageTest)
     void ShouldNormalizeRequests(ui32 requestBlockSize, bool useDataBuffer)
     {
         auto storage = std::make_shared<TTestStorage>();
-        storage->WriteBlocksLocalHandler = [] (auto ctx, auto request) {
+        storage->WriteBlocksLocalHandler = [](auto ctx, auto request)
+        {
             Y_UNUSED(ctx);
 
             UNIT_ASSERT_VALUES_EQUAL(1_MB / 4_KB, request->BlocksCount);
@@ -177,8 +181,7 @@ Y_UNIT_TEST_SUITE(TStorageTest)
             MakeIntrusive<TCallContext>(),
             std::move(request),
             requestBlockSize,
-            dataBuffer
-        );
+            dataBuffer);
 
         auto response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT(!HasError(response));
@@ -202,19 +205,22 @@ Y_UNIT_TEST_SUITE(TStorageTest)
         constexpr TDuration WaitTimeout = TDuration::Seconds(2);
 
         auto storage = std::make_shared<TTestStorage>();
-        storage->ReadBlocksLocalHandler = [&](auto ctx, auto request) {
+        storage->ReadBlocksLocalHandler = [&](auto ctx, auto request)
+        {
             auto promise = NewPromise<NProto::TReadBlocksLocalResponse>();
             Y_UNUSED(ctx);
             Y_UNUSED(request);
             return promise;
         };
-        storage->WriteBlocksLocalHandler = [&](auto ctx, auto request) {
+        storage->WriteBlocksLocalHandler = [&](auto ctx, auto request)
+        {
             auto promise = NewPromise<NProto::TWriteBlocksLocalResponse>();
             Y_UNUSED(ctx);
             Y_UNUSED(request);
             return promise;
         };
-        storage->ZeroBlocksHandler = [&](auto ctx, auto request) {
+        storage->ZeroBlocksHandler = [&](auto ctx, auto request)
+        {
             auto promise = NewPromise<NProto::TZeroBlocksResponse>();
             Y_UNUSED(ctx);
             Y_UNUSED(request);
@@ -325,17 +331,20 @@ Y_UNIT_TEST_SUITE(TStorageTest)
         auto readPromise = NewPromise<NProto::TReadBlocksLocalResponse>();
         auto writePromise = NewPromise<NProto::TWriteBlocksLocalResponse>();
         auto zeroPromise = NewPromise<NProto::TZeroBlocksResponse>();
-        storage->ReadBlocksLocalHandler = [&](auto ctx, auto request) {
+        storage->ReadBlocksLocalHandler = [&](auto ctx, auto request)
+        {
             Y_UNUSED(ctx);
             Y_UNUSED(request);
             return readPromise;
         };
-        storage->WriteBlocksLocalHandler = [&](auto ctx, auto request) {
+        storage->WriteBlocksLocalHandler = [&](auto ctx, auto request)
+        {
             Y_UNUSED(ctx);
             Y_UNUSED(request);
             return writePromise;
         };
-        storage->ZeroBlocksHandler = [&](auto ctx, auto request) {
+        storage->ZeroBlocksHandler = [&](auto ctx, auto request)
+        {
             Y_UNUSED(ctx);
             Y_UNUSED(request);
             return zeroPromise;
@@ -415,7 +424,8 @@ Y_UNIT_TEST_SUITE(TStorageTest)
         // these calls will occur in the Shutdown(), we will simulate the
         // successful waiting for requests to be completed during Shutdown().
         fastTimer->AddOnTickCallback(
-            [&]() { readPromise.SetValue(NProto::TReadBlocksLocalResponse{}); });
+            [&]()
+            { readPromise.SetValue(NProto::TReadBlocksLocalResponse{}); });
         fastTimer->AddOnTickCallback(
             [&]() { writePromise.SetValue(NProto::TWriteBlocksResponse{}); });
         fastTimer->AddOnTickCallback(
@@ -561,7 +571,7 @@ Y_UNIT_TEST_SUITE(TStorageTest)
             auto request = std::make_shared<NProto::TReadBlocksRequest>();
             request->SetBlocksCount(2);
 
-            TString data(4096 * 2 , '\0');
+            TString data(4096 * 2, '\0');
             TStringBuf dataBuf;
 
             if (useDataBuffer) {
@@ -572,9 +582,8 @@ Y_UNIT_TEST_SUITE(TStorageTest)
                 Now(),
                 MakeIntrusive<TCallContext>(),
                 std::move(request),
-                4096, // block size
-                dataBuf
-            );
+                4096,   // block size
+                dataBuf);
 
             response.Wait();
             const auto& value = response.GetValue();
@@ -589,7 +598,6 @@ Y_UNIT_TEST_SUITE(TStorageTest)
                 UNIT_ASSERT_EQUAL(firstBlock, blockBuffers[0]);
                 UNIT_ASSERT_EQUAL(secondBlock, blockBuffers[1]);
             }
-
         }
     }
 

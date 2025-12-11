@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/storage/model/public.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -15,8 +16,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCreatePlacementGroupCommand final
-    : public TCommand
+class TCreatePlacementGroupCommand final: public TCommand
 {
 private:
     TString GroupId;
@@ -35,16 +35,19 @@ public:
         Opts.AddLongOption("placement-strategy", "Placement strategy")
             .RequiredArgument("{spread, partition}")
             .DefaultValue("spread")
-            .Handler1T<TString>([this] (const TString& s) {
-                if (s == "spread") {
-                    PlacementStrategy = NProto::PLACEMENT_STRATEGY_SPREAD;
-                } else if (s == "partition") {
-                    PlacementStrategy = NProto::PLACEMENT_STRATEGY_PARTITION;
-                } else {
-                    ythrow yexception()
-                        << "unknown placement strategy: " << s.Quote();
-                }
-            });
+            .Handler1T<TString>(
+                [this](const TString& s)
+                {
+                    if (s == "spread") {
+                        PlacementStrategy = NProto::PLACEMENT_STRATEGY_SPREAD;
+                    } else if (s == "partition") {
+                        PlacementStrategy =
+                            NProto::PLACEMENT_STRATEGY_PARTITION;
+                    } else {
+                        ythrow yexception()
+                            << "unknown placement strategy: " << s.Quote();
+                    }
+                });
 
         Opts.AddLongOption("partition-count", "Placement partitions count")
             .RequiredArgument("NUM")
@@ -95,7 +98,8 @@ protected:
 private:
     bool CheckOpts() const
     {
-        const auto* groupId = ParseResultPtr->FindLongOptParseResult("group-id");
+        const auto* groupId =
+            ParseResultPtr->FindLongOptParseResult("group-id");
         if (!groupId) {
             STORAGE_ERROR("Group id is required");
             return false;
@@ -133,7 +137,7 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

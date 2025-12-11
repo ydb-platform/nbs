@@ -10,7 +10,6 @@
 #include <memory>
 #include <mutex>
 #include <optional>
-
 #include <span>
 
 namespace NVHost {
@@ -34,13 +33,15 @@ private:
     TClient Impl;
 
 public:
-    explicit TBufferedClient(TString sockPath, TBufferedClientParams params = {});
+    explicit TBufferedClient(
+        TString sockPath,
+        TBufferedClientParams params = {});
 
     TBufferedClient(const TBufferedClient&) = delete;
-    TBufferedClient& operator = (const TBufferedClient&) = delete;
+    TBufferedClient& operator=(const TBufferedClient&) = delete;
 
     TBufferedClient(TBufferedClient&&) = default;
-    TBufferedClient& operator = (TBufferedClient&&) = default;
+    TBufferedClient& operator=(TBufferedClient&&) = default;
 
     ui64 GetBufferSize() const;
 
@@ -54,4 +55,4 @@ public:
         TVector<TVector<char>>& outBuffers);
 };
 
-} // namespace NVHost
+}   // namespace NVHost

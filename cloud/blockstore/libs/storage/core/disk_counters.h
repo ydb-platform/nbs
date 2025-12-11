@@ -26,17 +26,17 @@ struct TMemberWithMeta: public TBase
 
     template <typename... TArgs>
     explicit TMemberWithMeta(
-            EPublishingPolicy publishingPolicy,
-            TArgs&&... args)
+        EPublishingPolicy publishingPolicy,
+        TArgs&&... args)
         : TBase(std::forward<TArgs>(args)...)
         , PublishingPolicy(publishingPolicy)
     {}
 
     template <typename... TArgs>
     TMemberWithMeta(
-            EPublishingPolicy publishingPolicy,
-            ERequestCounterOption counterOption,
-            TArgs&&... args)
+        EPublishingPolicy publishingPolicy,
+        ERequestCounterOption counterOption,
+        TArgs&&... args)
         : TBase(std::forward<TArgs>(args)...)
         , PublishingPolicy(publishingPolicy)
         , CounterOption(counterOption)
@@ -376,7 +376,7 @@ struct THistogramRequestCounters
         TMemberMeta<THighResCounter THistogramRequestCounters::*>;
 
     explicit THistogramRequestCounters(
-            EHistogramCounterOptions histCounterOptions)
+        EHistogramCounterOptions histCounterOptions)
         : HistCounterOptions(histCounterOptions)
     {}
 
@@ -629,7 +629,8 @@ struct TVolumeSelfSimpleCounters
         MakeMeta<&TVolumeSelfSimpleCounters::LongRunningReadBlob>(),
         MakeMeta<&TVolumeSelfSimpleCounters::LongRunningWriteBlob>(),
         MakeMeta<&TVolumeSelfSimpleCounters::UseFastPath>(),
-        MakeMeta<&TVolumeSelfSimpleCounters::HasPerformanceProfileModifications>(),
+        MakeMeta<
+            &TVolumeSelfSimpleCounters::HasPerformanceProfileModifications>(),
 
         MakeMeta<&TVolumeSelfSimpleCounters::RealMaxWriteBandwidth>(),
         MakeMeta<&TVolumeSelfSimpleCounters::PostponedQueueWeight>(),
@@ -715,7 +716,7 @@ struct TVolumeThrottlerDelayCounters
     TCounter DescribeBlocks{EPublishingPolicy::All, HistCounterOptions};
 
     explicit TVolumeThrottlerDelayCounters(
-            EHistogramCounterOptions histCounterOptions)
+        EHistogramCounterOptions histCounterOptions)
         : HistCounterOptions(histCounterOptions)
     {}
 
@@ -746,7 +747,7 @@ struct TVolumeIngestTimeCounters
     TCounter ZeroBlocks{EPublishingPolicy::All, HistCounterOptions};
 
     explicit TVolumeIngestTimeCounters(
-            EHistogramCounterOptions histCounterOptions)
+        EHistogramCounterOptions histCounterOptions)
         : HistCounterOptions(histCounterOptions)
     {}
 
@@ -785,9 +786,7 @@ struct TTransportCounters
         MakeMetaWithTag<&TTransportCounters::WriteBytesMultiAgent>(
             "RequestBytes",
             "WriteBlocksMultiAgent"),
-        MakeMetaWithTag<&TTransportCounters::ReadCount>(
-            "Count",
-            "ReadBlocks"),
+        MakeMetaWithTag<&TTransportCounters::ReadCount>("Count", "ReadBlocks"),
         MakeMetaWithTag<&TTransportCounters::WriteCount>(
             "Count",
             "WriteBlocks"),
@@ -798,9 +797,8 @@ struct TTransportCounters
 };
 
 static_assert(
-    sizeof(TTransportCounters) ==
-    (sizeof(TTransportCounters::TCounter) *
-     std::size(TTransportCounters::AllCounters)));
+    sizeof(TTransportCounters) == (sizeof(TTransportCounters::TCounter) *
+                                   std::size(TTransportCounters::AllCounters)));
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TPartitionDiskCounters
@@ -815,8 +813,8 @@ struct TPartitionDiskCounters
     EPublishingPolicy Policy;
 
     TPartitionDiskCounters(
-            EPublishingPolicy policy,
-            EHistogramCounterOptions histCounterOptions)
+        EPublishingPolicy policy,
+        EHistogramCounterOptions histCounterOptions)
         : RequestCounters(histCounterOptions)
         , Histogram(histCounterOptions)
         , Policy(policy)
@@ -841,8 +839,8 @@ struct TVolumeSelfCounters
     EPublishingPolicy Policy;
 
     TVolumeSelfCounters(
-            EPublishingPolicy policy,
-            EHistogramCounterOptions histCounterOptions)
+        EPublishingPolicy policy,
+        EHistogramCounterOptions histCounterOptions)
         : ThrottlerDelayRequestCounters(histCounterOptions)
         , IngestTimeRequestCounters(histCounterOptions)
         , Policy(policy)

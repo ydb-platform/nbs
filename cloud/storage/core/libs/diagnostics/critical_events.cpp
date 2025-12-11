@@ -1,4 +1,5 @@
 #include "critical_events.h"
+
 #include "public.h"
 
 #include <library/cpp/logger/log.h>
@@ -15,7 +16,7 @@ namespace {
 NMonitoring::TDynamicCountersPtr CriticalEvents;
 TLog Log;
 
-}  // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -28,16 +29,16 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
 {
     CriticalEvents = std::move(counters);
 
-#define STORAGE_INIT_CRITICAL_EVENT_COUNTER(name)                              \
-    *CriticalEvents->GetCounter(GetCriticalEventFor##name(), true) = 0;        \
-// STORAGE_INIT_CRITICAL_EVENT_COUNTER
+#define STORAGE_INIT_CRITICAL_EVENT_COUNTER(name)                       \
+    *CriticalEvents->GetCounter(GetCriticalEventFor##name(), true) = 0; \
+    // STORAGE_INIT_CRITICAL_EVENT_COUNTER
 
     STORAGE_CRITICAL_EVENTS(STORAGE_INIT_CRITICAL_EVENT_COUNTER)
 #undef STORAGE_INIT_CRITICAL_EVENT_COUNTER
 
-#define STORAGE_INIT_IMPOSSIBLE_EVENT_COUNTER(name)                            \
-    *CriticalEvents->GetCounter(GetImpossibleEventFor##name(), true) = 0;      \
-// STORAGE_INIT_IMPOSSIBLE_EVENT_COUNTER
+#define STORAGE_INIT_IMPOSSIBLE_EVENT_COUNTER(name)                       \
+    *CriticalEvents->GetCounter(GetImpossibleEventFor##name(), true) = 0; \
+    // STORAGE_INIT_IMPOSSIBLE_EVENT_COUNTER
 
     STORAGE_IMPOSSIBLE_EVENTS(STORAGE_INIT_IMPOSSIBLE_EVENT_COUNTER)
 #undef STORAGE_INIT_IMPOSSIBLE_EVENT_COUNTER
@@ -67,9 +68,7 @@ TString ReportCriticalEvent(
     }
 
     if (CriticalEvents) {
-        auto counter = CriticalEvents->GetCounter(
-            sensorName,
-            true);
+        auto counter = CriticalEvents->GetCounter(sensorName, true);
         counter->Inc();
     }
 
@@ -91,40 +90,40 @@ TString ReportCriticalEvent(
     return fullMessage;
 }
 
-#define STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE(name)                            \
-    TString Report##name(const TString& message)                               \
-    {                                                                          \
-        return ReportCriticalEvent(                                            \
-            GetCriticalEventFor##name(),                                       \
-            message,                                                           \
-            false);                                                            \
-    }                                                                          \
-                                                                               \
-    const TString GetCriticalEventFor##name()                                  \
-    {                                                                          \
-        return "AppCriticalEvents/"#name;                                      \
-    }                                                                          \
-// STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE
+#define STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE(name) \
+    TString Report##name(const TString& message)    \
+    {                                               \
+        return ReportCriticalEvent(                 \
+            GetCriticalEventFor##name(),            \
+            message,                                \
+            false);                                 \
+    }                                               \
+                                                    \
+    const TString GetCriticalEventFor##name()       \
+    {                                               \
+        return "AppCriticalEvents/" #name;          \
+    }                                               \
+    // STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE
 
-    STORAGE_CRITICAL_EVENTS(STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE)
+STORAGE_CRITICAL_EVENTS(STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE)
 #undef STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE
 
-#define STORAGE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE(name)                          \
-    TString Report##name(const TString& message)                               \
-    {                                                                          \
-        return ReportCriticalEvent(                                            \
-            GetImpossibleEventFor##name(),                                     \
-            message,                                                           \
-            true);                                                             \
-    }                                                                          \
-                                                                               \
-    const TString GetImpossibleEventFor##name()                                \
-    {                                                                          \
-        return "AppImpossibleEvents/"#name;                                    \
-    }                                                                          \
-// STORAGE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE
+#define STORAGE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE(name) \
+    TString Report##name(const TString& message)      \
+    {                                                 \
+        return ReportCriticalEvent(                   \
+            GetImpossibleEventFor##name(),            \
+            message,                                  \
+            true);                                    \
+    }                                                 \
+                                                      \
+    const TString GetImpossibleEventFor##name()       \
+    {                                                 \
+        return "AppImpossibleEvents/" #name;          \
+    }                                                 \
+    // STORAGE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE
 
-    STORAGE_IMPOSSIBLE_EVENTS(STORAGE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE)
+STORAGE_IMPOSSIBLE_EVENTS(STORAGE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE)
 #undef STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -138,11 +137,10 @@ void ReportPreconditionFailed(
 {
     ReportCriticalEvent(
         "PreconditionFailed",
-        TStringBuilder()
-            << file << ":" << line
-            << " " << func << "(): requirement " << expr
-            << " failed. " << message,
-        true    // verifyDebug
+        TStringBuilder() << file << ":" << line << " " << func
+                         << "(): requirement " << expr << " failed. "
+                         << message,
+        true   // verifyDebug
     );
 }
 

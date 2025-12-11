@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -20,8 +21,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCopyVolumeCommand
-    : public TCommand
+class TCopyVolumeCommand: public TCommand
 {
 protected:
     TString DiskId;
@@ -98,7 +98,8 @@ protected:
         BlocksCount = volume.GetBlocksCount();
         MainDiskStorageMediaKind = volume.GetStorageMediaKind();
 
-        if (BackupDiskStorageMediaKind == NCloud::NProto::STORAGE_MEDIA_DEFAULT) {
+        if (BackupDiskStorageMediaKind == NCloud::NProto::STORAGE_MEDIA_DEFAULT)
+        {
             BackupDiskStorageMediaKind = MainDiskStorageMediaKind;
         }
 
@@ -165,7 +166,9 @@ protected:
 
     void GetChangedBlocks(ui64 startIndex, ui32 blocksCount)
     {
-        STORAGE_DEBUG("Getting changed blocks " << startIndex << "-" << startIndex + blocksCount);
+        STORAGE_DEBUG(
+            "Getting changed blocks " << startIndex << "-"
+                                      << startIndex + blocksCount);
 
         auto request = std::make_shared<NProto::TGetChangedBlocksRequest>();
         request->SetDiskId(DiskId);
@@ -176,15 +179,18 @@ protected:
 
         auto requestId = GetRequestId(*request);
         auto future = ClientEndpoint->GetChangedBlocks(
-            MakeIntrusive<TCallContext>(requestId), std::move(request));
+            MakeIntrusive<TCallContext>(requestId),
+            std::move(request));
 
-        ChangedBlocks = future.Subscribe([=, this](const auto& future) {
-            const auto& response = future.GetValue();
-            if (HasError(response)) {
-                STORAGE_ERROR(FormatError(response.GetError()));
-                ShouldContinue.ShouldStop(1);
-            }
-        });
+        ChangedBlocks = future.Subscribe(
+            [=, this](const auto& future)
+            {
+                const auto& response = future.GetValue();
+                if (HasError(response)) {
+                    STORAGE_ERROR(FormatError(response.GetError()));
+                    ShouldContinue.ShouldStop(1);
+                }
+            });
     }
 
     TRange NextRange(const char* mask, ui64 i, ui64 n)
@@ -197,7 +203,9 @@ protected:
             i++;
         }
 
-        while (i < n && (mask[i / CHAR_BIT] & (1 << i % CHAR_BIT)) != 0 && changed < BatchBlocksCount) {
+        while (i < n && (mask[i / CHAR_BIT] & (1 << i % CHAR_BIT)) != 0 &&
+               changed < BatchBlocksCount)
+        {
             changed++;
             i++;
         }
@@ -207,7 +215,8 @@ protected:
 
     TRange GetNextRange()
     {
-        if (IsDiskRegistryMediaKind(MainDiskStorageMediaKind) || !CheckpointId) {
+        if (IsDiskRegistryMediaKind(MainDiskStorageMediaKind) || !CheckpointId)
+        {
             return {0, Min<ui64>(BatchBlocksCount, BlocksCount - StartIndex)};
         }
 
@@ -236,7 +245,9 @@ protected:
         auto range = GetNextRange();
 
         if (range.Empty) {
-            STORAGE_DEBUG("Skipping zero blocks " << StartIndex << "-" << StartIndex + range.Empty);
+            STORAGE_DEBUG(
+                "Skipping zero blocks " << StartIndex << "-"
+                                        << StartIndex + range.Empty);
             StartIndex += range.Empty;
 
             if (AtomicSub(BlocksLeft, range.Empty) == 0) {
@@ -255,7 +266,8 @@ protected:
 
     void DoReadBlocks(ui32 bucket, ui64 startIndex, ui32 blocksCount)
     {
-        STORAGE_DEBUG("Reading blocks " << startIndex << "-" << startIndex + blocksCount);
+        STORAGE_DEBUG(
+            "Reading blocks " << startIndex << "-" << startIndex + blocksCount);
 
         TString buffer;
         buffer.ReserveAndResize(BlockSize * blocksCount);
@@ -271,24 +283,35 @@ protected:
             MakeIntrusive<TCallContext>(),
             std::move(request));
 
-        future.Subscribe([=, this, holder = std::move(holder)](const auto& future) mutable {
-            const auto& response = future.GetValue();
-            if (HasError(response)) {
-                STORAGE_ERROR(FormatError(response.GetError()));
-                ShouldContinue.ShouldStop(1);
-                return;
-            }
-            Write[bucket].Subscribe([=, this, holder = std::move(holder)](const auto& future) mutable {
-                Y_UNUSED(future);
-                WriteBlocks(bucket, startIndex, blocksCount, holder.Extract());
-                Queue.Push(bucket);
+        future.Subscribe(
+            [=, this, holder = std::move(holder)](const auto& future) mutable
+            {
+                const auto& response = future.GetValue();
+                if (HasError(response)) {
+                    STORAGE_ERROR(FormatError(response.GetError()));
+                    ShouldContinue.ShouldStop(1);
+                    return;
+                }
+                Write[bucket].Subscribe(
+                    [=, this, holder = std::move(holder)](
+                        const auto& future) mutable
+                    {
+                        Y_UNUSED(future);
+                        WriteBlocks(
+                            bucket,
+                            startIndex,
+                            blocksCount,
+                            holder.Extract());
+                        Queue.Push(bucket);
+                    });
             });
-        });
     }
 
-    void WriteBlocks(ui32 bucket, ui64 startIndex, ui32 blocksCount, TString buffer)
+    void
+    WriteBlocks(ui32 bucket, ui64 startIndex, ui32 blocksCount, TString buffer)
     {
-        STORAGE_DEBUG("Writing blocks " << startIndex << "-" << startIndex + blocksCount);
+        STORAGE_DEBUG(
+            "Writing blocks " << startIndex << "-" << startIndex + blocksCount);
 
         TGuardedBuffer holder(std::move(buffer));
         auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
@@ -301,19 +324,21 @@ protected:
             MakeIntrusive<TCallContext>(),
             std::move(request));
 
-        Write[bucket].Subscribe([=, this, holder = std::move(holder)](const auto& future) mutable {
-            holder.Extract();
+        Write[bucket].Subscribe(
+            [=, this, holder = std::move(holder)](const auto& future) mutable
+            {
+                holder.Extract();
 
-            const auto& response = future.GetValue();
-            if (HasError(response)) {
-                STORAGE_ERROR(FormatError(response.GetError()));
-                ShouldContinue.ShouldStop(1);
-                return;
-            }
-            if (AtomicSub(BlocksLeft, blocksCount) == 0) {
-                ShouldContinue.ShouldStop(0);
-            }
-        });
+                const auto& response = future.GetValue();
+                if (HasError(response)) {
+                    STORAGE_ERROR(FormatError(response.GetError()));
+                    ShouldContinue.ShouldStop(1);
+                    return;
+                }
+                if (AtomicSub(BlocksLeft, blocksCount) == 0) {
+                    ShouldContinue.ShouldStop(0);
+                }
+            });
     }
 
     bool CopyBlocks()
@@ -322,7 +347,8 @@ protected:
         BlocksLeft = BlocksCount;
 
         for (ui32 bucket = 0; bucket < IoDepth; bucket++) {
-            Write.emplace_back(NThreading::MakeFuture(NProto::TWriteBlocksLocalResponse()));
+            Write.emplace_back(
+                NThreading::MakeFuture(NProto::TWriteBlocksLocalResponse()));
             ReadBlocks(bucket);
         }
 
@@ -355,8 +381,7 @@ protected:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBackupVolumeCommand final
-    : public TCopyVolumeCommand
+class TBackupVolumeCommand final: public TCopyVolumeCommand
 {
 public:
     TBackupVolumeCommand(IBlockStorePtr client)
@@ -393,7 +418,9 @@ public:
             .RequiredArgument("NUM")
             .StoreResult(&IoDepth);
 
-        Opts.AddLongOption("changed-blocks-count", "GetChangedBlocks request blocks count")
+        Opts.AddLongOption(
+                "changed-blocks-count",
+                "GetChangedBlocks request blocks count")
             .RequiredArgument("NUM")
             .StoreResult(&ChangedBlocksCount);
 
@@ -415,17 +442,17 @@ protected:
             ParseStorageMediaKind(
                 *ParseResultPtr,
                 StorageMediaKindArg,
-                BackupDiskStorageMediaKind
-            );
+                BackupDiskStorageMediaKind);
         }
 
         if (!DescribeVolume()) {
             return false;
         }
 
-        Y_DEFER {
+        Y_DEFER
+        {
             Cleanup();
-        };
+        }
 
         if (!CreateVolume()) {
             return false;
@@ -472,7 +499,8 @@ private:
     {
         bool result = TCopyVolumeCommand::CheckOpts();
 
-        auto* version = ParseResultPtr->FindLongOptParseResult("tablet-version");
+        auto* version =
+            ParseResultPtr->FindLongOptParseResult("tablet-version");
 
         if (version && TabletVersion != 1 && TabletVersion != 2) {
             STORAGE_ERROR("Tablet version should be either 1 or 2");
@@ -544,7 +572,8 @@ private:
 
         auto requestId = GetRequestId(*request);
         auto response = WaitFor(ClientEndpoint->DestroyVolume(
-            MakeIntrusive<TCallContext>(requestId), std::move(request)));
+            MakeIntrusive<TCallContext>(requestId),
+            std::move(request)));
 
         if (HasError(response)) {
             return Fail(response.GetError());
@@ -567,7 +596,8 @@ private:
 
         auto requestId = GetRequestId(*request);
         auto response = WaitFor(ClientEndpoint->DeleteCheckpoint(
-            MakeIntrusive<TCallContext>(requestId), std::move(request)));
+            MakeIntrusive<TCallContext>(requestId),
+            std::move(request)));
 
         if (HasError(response)) {
             return Fail(response.GetError());
@@ -579,8 +609,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRestoreVolumeCommand final
-    : public TCopyVolumeCommand
+class TRestoreVolumeCommand final: public TCopyVolumeCommand
 {
 public:
     TRestoreVolumeCommand(IBlockStorePtr client)
@@ -609,7 +638,9 @@ public:
             .RequiredArgument("NUM")
             .StoreResult(&IoDepth);
 
-        Opts.AddLongOption("changed-blocks-count", "GetChangedBlocks request blocks count")
+        Opts.AddLongOption(
+                "changed-blocks-count",
+                "GetChangedBlocks request blocks count")
             .RequiredArgument("NUM")
             .StoreResult(&ChangedBlocksCount);
     }
@@ -635,9 +666,10 @@ protected:
             return false;
         }
 
-        Y_DEFER {
+        Y_DEFER
+        {
             Cleanup();
-        };
+        }
 
         if (!CopyBlocks()) {
             return false;
@@ -678,12 +710,15 @@ private:
         bool result = true;
 
         if (auto bs = response.GetVolume().GetBlockSize(); bs != BlockSize) {
-            STORAGE_ERROR("Unexpected block size: " << bs << " != " << BlockSize);
+            STORAGE_ERROR(
+                "Unexpected block size: " << bs << " != " << BlockSize);
             result = false;
         }
 
-        if (auto bc = response.GetVolume().GetBlocksCount(); bc != BlocksCount) {
-            STORAGE_ERROR("Unexpected block count: " << bc << " != " << BlocksCount);
+        if (auto bc = response.GetVolume().GetBlocksCount(); bc != BlocksCount)
+        {
+            STORAGE_ERROR(
+                "Unexpected block count: " << bc << " != " << BlocksCount);
             result = false;
         }
 

@@ -22,8 +22,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TKeyringStorage final
-    : public IEndpointStorage
+class TKeyringStorage final: public IEndpointStorage
 {
 private:
     const TString RootKeyringDesc;
@@ -32,9 +31,9 @@ private:
 
 public:
     TKeyringStorage(
-            TString rootKeyringDesc,
-            TString endpointsKeyringDesc,
-            bool notImplementedErrorIsFatal)
+        TString rootKeyringDesc,
+        TString endpointsKeyringDesc,
+        bool notImplementedErrorIsFatal)
         : RootKeyringDesc(std::move(rootKeyringDesc))
         , EndpointsKeyringDesc(std::move(endpointsKeyringDesc))
         , NotImplementedErrorIsFatal(notImplementedErrorIsFatal)
@@ -70,8 +69,10 @@ public:
             }
         }
 
-        return MakeError(E_INVALID_STATE, TStringBuilder()
-            << "Failed to find endpoint with id " << endpointId);
+        return MakeError(
+            E_INVALID_STATE,
+            TStringBuilder()
+                << "Failed to find endpoint with id " << endpointId);
     }
 
     NProto::TError AddEndpoint(
@@ -107,36 +108,37 @@ private:
             return TVector<TKeyring>();
         }
 
-        return SafeExecute<TResultOrError<TVector<TKeyring>>>([&] {
-            auto rootKeyring = TKeyring::GetProcKey(RootKeyringDesc);
-            if (!rootKeyring) {
-                ythrow TServiceError(E_INVALID_STATE)
-                    << "Failed to find root keyring "
-                    << RootKeyringDesc.Quote();
-            }
+        return SafeExecute<TResultOrError<TVector<TKeyring>>>(
+            [&]
+            {
+                auto rootKeyring = TKeyring::GetProcKey(RootKeyringDesc);
+                if (!rootKeyring) {
+                    ythrow TServiceError(E_INVALID_STATE)
+                        << "Failed to find root keyring "
+                        << RootKeyringDesc.Quote();
+                }
 
-            auto endpointsKeyring = rootKeyring.SearchKeyring(
-                EndpointsKeyringDesc);
+                auto endpointsKeyring =
+                    rootKeyring.SearchKeyring(EndpointsKeyringDesc);
 
-            if (!endpointsKeyring) {
-                ythrow TServiceError(E_INVALID_STATE)
-                    << "Failed to find endpoints keyring "
-                    << EndpointsKeyringDesc.Quote();
-            }
+                if (!endpointsKeyring) {
+                    ythrow TServiceError(E_INVALID_STATE)
+                        << "Failed to find endpoints keyring "
+                        << EndpointsKeyringDesc.Quote();
+                }
 
-            return endpointsKeyring.GetUserKeys();
-        });
+                return endpointsKeyring.GetUserKeys();
+            });
     }
 
     TResultOrError<TString> GetKeyringValue(TKeyring keyring)
     {
-        return SafeExecute<TResultOrError<TString>>([&] {
-            return keyring.GetValue();
-        });
+        return SafeExecute<TResultOrError<TString>>(
+            [&] { return keyring.GetValue(); });
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

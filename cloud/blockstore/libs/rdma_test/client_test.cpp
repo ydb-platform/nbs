@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+
 #include <cloud/storage/core/libs/common/sglist.h>
 
 #include <util/generic/deque.h>
@@ -24,8 +25,8 @@ class TRequest: public NRdma::TClientRequest
 {
 public:
     TRequest(
-            NRdma::IClientHandlerPtr handler,
-            std::unique_ptr<NRdma::TNullContext> context)
+        NRdma::IClientHandlerPtr handler,
+        std::unique_ptr<NRdma::TNullContext> context)
         : NRdma::TClientRequest(std::move(handler), std::move(context))
     {}
 
@@ -47,8 +48,7 @@ TString MakeKey(const TString& host, ui32 port)
 
 }   // namespace
 
-struct TRdmaClientTest::TRdmaEndpointImpl
-    : NRdma::IClientEndpoint
+struct TRdmaClientTest::TRdmaEndpointImpl: NRdma::IClientEndpoint
 {
     using TDeviceBlocks = TDeque<TString>;
     TMap<TString, TDeviceBlocks> Devices;
@@ -63,7 +63,8 @@ struct TRdmaClientTest::TRdmaEndpointImpl
 
     TFuture<void> FutureToWaitBeforeRequestProcessing;
 
-    TRdmaEndpointImpl() : FutureToWaitBeforeRequestProcessing(MakeFuture())
+    TRdmaEndpointImpl()
+        : FutureToWaitBeforeRequestProcessing(MakeFuture())
     {}
 
     TResultOrError<NRdma::TClientRequestPtr> AllocateRequest(
@@ -76,9 +77,8 @@ struct TRdmaClientTest::TRdmaEndpointImpl
             return AllocationError;
         }
 
-        auto req = std::make_unique<TRequest>(
-            std::move(handler),
-            std::move(context));
+        auto req =
+            std::make_unique<TRequest>(std::move(handler), std::move(context));
         req->RequestBuffer = {new char[requestBytes], requestBytes};
         req->ResponseBuffer = {new char[responseBytes], responseBytes};
 
@@ -224,7 +224,8 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     using TProto = NProto::TZeroDeviceBlocksRequest;
                     auto* request = static_cast<TProto*>(result.Proto.get());
                     const auto blockCount = request->GetBlocksCount();
-                    const size_t minSize = request->GetStartIndex() + blockCount;
+                    const size_t minSize =
+                        request->GetStartIndex() + blockCount;
 
                     auto& blocks =
                         GetDeviceBlocks(request->GetDeviceUUID(), minSize);

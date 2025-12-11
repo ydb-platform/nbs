@@ -24,8 +24,8 @@ void TPartitionActor::EnqueueUpdateIndexStructuresIfNeeded(
 
     const auto now = ctx.Now();
 
-    if (now - LastUpdateIndexStructuresTs
-            < Config->GetIndexStructuresConversionAttemptInterval())
+    if (now - LastUpdateIndexStructuresTs <
+        Config->GetIndexStructuresConversionAttemptInterval())
     {
         return;
     }
@@ -33,8 +33,7 @@ void TPartitionActor::EnqueueUpdateIndexStructuresIfNeeded(
     auto request =
         std::make_unique<TEvPartitionPrivate::TEvUpdateIndexStructuresRequest>(
             MakeIntrusive<TCallContext>(CreateRequestId()),
-            TBlockRange32::WithLength(0, PartitionConfig.GetBlocksCount())
-        );
+            TBlockRange32::WithLength(0, PartitionConfig.GetBlocksCount()));
 
     LWTRACK(
         BackgroundTaskStarted_Partition,
@@ -44,10 +43,7 @@ void TPartitionActor::EnqueueUpdateIndexStructuresIfNeeded(
         request->CallContext->RequestId,
         PartitionConfig.GetDiskId());
 
-    NCloud::Send(
-        ctx,
-        SelfId(),
-        std::move(request));
+    NCloud::Send(ctx, SelfId(), std::move(request));
 }
 
 void TPartitionActor::HandleUpdateIndexStructures(
@@ -57,10 +53,7 @@ void TPartitionActor::HandleUpdateIndexStructures(
     auto* msg = ev->Get();
 
     auto requestInfo =
-        CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            msg->CallContext);
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -70,11 +63,10 @@ void TPartitionActor::HandleUpdateIndexStructures(
         "UpdateIndexStructures",
         requestInfo->CallContext->RequestId);
 
-    auto replyError = [=] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
+    auto replyError = [=](const TActorContext& ctx,
+                          TRequestInfo& requestInfo,
+                          ui32 errorCode,
+                          TString errorReason)
     {
         using TResponse = TEvPartitionPrivate::TEvUpdateIndexStructuresResponse;
         auto response = std::make_unique<TResponse>(
@@ -94,16 +86,14 @@ void TPartitionActor::HandleUpdateIndexStructures(
             ctx,
             *requestInfo,
             E_INVALID_STATE,
-            "conversion into mixed index is disabled"
-        );
+            "conversion into mixed index is disabled");
         return;
     }
 
-    auto tx = CreateTx<TUpdateIndexStructures>(
-        requestInfo,
-        msg->BlockRange);
+    auto tx = CreateTx<TUpdateIndexStructures>(requestInfo, msg->BlockRange);
 
-    AddTransaction<TEvPartitionPrivate::TUpdateIndexStructuresMethod>(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TUpdateIndexStructuresMethod>(
+        *requestInfo);
 
     ExecuteTx(ctx, std::move(tx));
 }
@@ -127,8 +117,7 @@ bool TPartitionActor::PrepareUpdateIndexStructures(
         ctx.Now(),
         args.BlockRange,
         &args.ConvertedToMixedIndex,
-        &args.ConvertedToRangeMap
-    );
+        &args.ConvertedToRangeMap);
 }
 
 void TPartitionActor::ExecuteUpdateIndexStructures(
@@ -151,9 +140,7 @@ void TPartitionActor::CompleteUpdateIndexStructures(
         ctx,
         *args.RequestInfo,
         std::make_unique<TEvPartitionPrivate::TEvUpdateIndexStructuresResponse>(
-            State->GetMixedZoneCount()
-        )
-    );
+            State->GetMixedZoneCount()));
 
     TRequestScope timer(*args.RequestInfo);
     RemoveTransaction(*args.RequestInfo);

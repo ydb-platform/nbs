@@ -24,9 +24,9 @@ private:
 
 public:
     TListLocalFileStoresActionActor(
-            TRequestInfoPtr requestInfo,
-            TString input,
-            TVector<TString> fileSystemIds)
+        TRequestInfoPtr requestInfo,
+        TString input,
+        TVector<TString> fileSystemIds)
         : RequestInfo(std::move(requestInfo))
         , Input(std::move(input))
         , FileSystemIds(std::move(fileSystemIds))

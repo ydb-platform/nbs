@@ -63,10 +63,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeVolumeActor::TDescribeVolumeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
-        TString diskId,
-        bool exactDiskIdMatch)
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr config,
+    TString diskId,
+    bool exactDiskIdMatch)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskId(std::move(diskId))
@@ -113,7 +113,9 @@ void TDescribeVolumeActor::HandleDescribeVolumeResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Volume %s: describe failed: %s",
             DiskId.Quote().data(),
             FormatError(error).data());
@@ -154,7 +156,9 @@ void TDescribeVolumeActor::HandleDescribeDiskResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Non-replicated volume %s: describe failed: %s",
             DiskId.Quote().data(),
             FormatError(error).data());
@@ -186,14 +190,17 @@ void TDescribeVolumeActor::ReplyAndDie(
     Die(ctx);
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TDescribeVolumeActor::StateDescribeVolume)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvDescribeVolumeResponse, HandleDescribeVolumeResponse);
-        HFunc(TEvDiskRegistry::TEvDescribeDiskResponse, HandleDescribeDiskResponse);
+        HFunc(
+            TEvSSProxy::TEvDescribeVolumeResponse,
+            HandleDescribeVolumeResponse);
+        HFunc(
+            TEvDiskRegistry::TEvDescribeDiskResponse,
+            HandleDescribeDiskResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -214,15 +221,15 @@ void TServiceActor::HandleDescribeVolume(
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     const auto& request = msg->Record;
 
     if (request.GetDiskId().empty()) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Empty DiskId in DescribeVolume");
 
         auto response = std::make_unique<TEvService::TEvDescribeVolumeResponse>(
@@ -231,7 +238,9 @@ void TServiceActor::HandleDescribeVolume(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Describing volume: %s",
         request.GetDiskId().Quote().data());
 

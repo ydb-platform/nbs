@@ -1,6 +1,7 @@
 #include "lowlevel.h"
 
 #include <cloud/filestore/libs/service/error.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <contrib/libs/libcap/include/sys/capability.h>
@@ -10,8 +11,6 @@
 #include <util/generic/scope.h>
 #include <util/stream/format.h>
 #include <util/string/builder.h>
-
-#include <array>
 
 #include <dirent.h>
 #include <errno.h>
@@ -24,10 +23,12 @@
 #include <sys/xattr.h>
 #include <utime.h>
 
+#include <array>
+
 // FIXME
 #if !defined(F_OFD_GETLK)
-#define F_OFD_GETLK     36
-#define F_OFD_SETLK     37
+#define F_OFD_GETLK 36
+#define F_OFD_SETLK 37
 #endif
 
 namespace NCloud::NFileStore::NLowLevel {
@@ -117,9 +118,10 @@ FHANDLE Fd(const TFileHandle& handle)
         return false;
     }
 
-    Y_DEFER {
+    Y_DEFER
+    {
         cap_free(caps);
-    };
+    }
 
     auto ret = cap_set_flag(caps, CAP_EFFECTIVE, 1, &val, CAP_SET);
     if (ret == -1) {
@@ -136,9 +138,10 @@ FHANDLE Fd(const TFileHandle& handle)
 TFileHandle Open(const TString& path, int flags, int mode)
 {
     int fd = open(path.data(), flags, mode);
-    Y_ENSURE_EX(fd != -1, TServiceError(GetSystemErrorCode())
-        << "failed to open " << path.Quote()
-        << ": " << LastSystemErrorText());
+    Y_ENSURE_EX(
+        fd != -1,
+        TServiceError(GetSystemErrorCode()) << "failed to open " << path.Quote()
+                                            << ": " << LastSystemErrorText());
 
     return fd;
 }
@@ -152,22 +155,22 @@ TFileHandle Open(const TFileHandle& handle, int flags, int mode)
     flags &= ~O_NOFOLLOW;
 
     int fd = open(path, flags, mode);
-    Y_ENSURE_EX(fd != -1, TServiceError(GetSystemErrorCode())
-        << "failed to open: " << LastSystemErrorText());
+    Y_ENSURE_EX(
+        fd != -1,
+        TServiceError(GetSystemErrorCode())
+            << "failed to open: " << LastSystemErrorText());
 
     return fd;
 }
 
-TFileHandle OpenAt(
-    const TFileHandle& handle,
-    const TString& name,
-    int flags,
-    int mode)
+TFileHandle
+OpenAt(const TFileHandle& handle, const TString& name, int flags, int mode)
 {
     int fd = openat(Fd(handle), name.data(), flags, mode);
-    Y_ENSURE_EX(fd != -1, TServiceError(GetSystemErrorCode())
-        << "failed to open " << name.Quote()
-        << ": " << LastSystemErrorText());
+    Y_ENSURE_EX(
+        fd != -1,
+        TServiceError(GetSystemErrorCode()) << "failed to open " << name.Quote()
+                                            << ": " << LastSystemErrorText());
 
     return fd;
 }
@@ -175,17 +178,21 @@ TFileHandle OpenAt(
 void MkDirAt(const TFileHandle& handle, const TString& name, int mode)
 {
     int res = mkdirat(Fd(handle), name.data(), mode);
-    Y_ENSURE_EX(res != -1, TServiceError(GetSystemErrorCode())
-        << "failed to create dir: " << name.Quote()
-        << ": " << LastSystemErrorText());
+    Y_ENSURE_EX(
+        res != -1,
+        TServiceError(GetSystemErrorCode())
+            << "failed to create dir: " << name.Quote() << ": "
+            << LastSystemErrorText());
 }
 
 void MkSockAt(const TFileHandle& handle, const TString& name, int mode)
 {
     int res = mknodat(Fd(handle), name.data(), mode | S_IFSOCK, dev_t{});
-    Y_ENSURE_EX(res != -1, TServiceError(GetSystemErrorCode())
-        << "failed to create socket: " << name.Quote()
-        << ": " << LastSystemErrorText());
+    Y_ENSURE_EX(
+        res != -1,
+        TServiceError(GetSystemErrorCode())
+            << "failed to create socket: " << name.Quote() << ": "
+            << LastSystemErrorText());
 }
 
 void MkFifoAt(const TFileHandle& handle, const TString& name, int mode)
@@ -198,18 +205,32 @@ void MkFifoAt(const TFileHandle& handle, const TString& name, int mode)
             << LastSystemErrorText());
 }
 
-void MkCharDeviceAt(const TFileHandle& handle, const TString& name, int mode, dev_t dev) {
+void MkCharDeviceAt(
+    const TFileHandle& handle,
+    const TString& name,
+    int mode,
+    dev_t dev)
+{
     int res = mknodat(Fd(handle), name.data(), mode | S_IFCHR, dev);
-    Y_ENSURE_EX(res != -1, TServiceError(GetSystemErrorCode())
-        << "failed to create char device: " << name.Quote()
-        << ": " << LastSystemErrorText());
+    Y_ENSURE_EX(
+        res != -1,
+        TServiceError(GetSystemErrorCode())
+            << "failed to create char device: " << name.Quote() << ": "
+            << LastSystemErrorText());
 }
 
-void MkBlockDeviceAt(const TFileHandle& handle, const TString& name, int mode, dev_t dev) {
+void MkBlockDeviceAt(
+    const TFileHandle& handle,
+    const TString& name,
+    int mode,
+    dev_t dev)
+{
     int res = mknodat(Fd(handle), name.data(), mode | S_IFBLK, dev);
-    Y_ENSURE_EX(res != -1, TServiceError(GetSystemErrorCode())
-        << "failed to create block device: " << name.Quote()
-        << ": " << LastSystemErrorText());
+    Y_ENSURE_EX(
+        res != -1,
+        TServiceError(GetSystemErrorCode())
+            << "failed to create block device: " << name.Quote() << ": "
+            << LastSystemErrorText());
 }
 
 void LinkAt(
@@ -220,15 +241,13 @@ void LinkAt(
     char path[64] = {0};
     sprintf(path, "/proc/self/fd/%i", Fd(node));
 
-    int res = linkat(
-        AT_FDCWD,
-        path,
-        Fd(parent),
-        name.data(),
-        AT_SYMLINK_FOLLOW);
-    Y_ENSURE_EX(res != -1, TServiceError(GetSystemErrorCode())
-        << "failed to create link: " << name.Quote()
-        << ": " << LastSystemErrorText());
+    int res =
+        linkat(AT_FDCWD, path, Fd(parent), name.data(), AT_SYMLINK_FOLLOW);
+    Y_ENSURE_EX(
+        res != -1,
+        TServiceError(GetSystemErrorCode())
+            << "failed to create link: " << name.Quote() << ": "
+            << LastSystemErrorText());
 }
 
 void SymLinkAt(
@@ -237,9 +256,11 @@ void SymLinkAt(
     const TString& name)
 {
     int res = symlinkat(target.data(), Fd(handle), name.data());
-    Y_ENSURE_EX(res != -1, TServiceError(GetSystemErrorCode())
-        << "failed to create symlink: " << name.Quote() << " -> "
-        << target.Quote() << ": " << LastSystemErrorText());
+    Y_ENSURE_EX(
+        res != -1,
+        TServiceError(GetSystemErrorCode())
+            << "failed to create symlink: " << name.Quote() << " -> "
+            << target.Quote() << ": " << LastSystemErrorText());
 }
 
 void RenameAt(
@@ -258,26 +279,32 @@ void RenameAt(
         Fd(newHandle),
         newname.data(),
         flags);
-    Y_ENSURE_EX(res != -1, TServiceError(GetSystemErrorCode())
-        << "failed to rename " << name.Quote() << " -> " << newname.Quote()
-        << ": " << LastSystemErrorText());
+    Y_ENSURE_EX(
+        res != -1,
+        TServiceError(GetSystemErrorCode())
+            << "failed to rename " << name.Quote() << " -> " << newname.Quote()
+            << ": " << LastSystemErrorText());
 }
 
 void UnlinkAt(const TFileHandle& handle, const TString& name, bool directory)
 {
     int flags = directory ? AT_REMOVEDIR : 0;
     int res = unlinkat(Fd(handle), name.data(), flags);
-    Y_ENSURE_EX(res != -1, TServiceError(GetSystemErrorCode())
-        << "failed to remove " << (directory ? "file " : "dir ") << name.Quote()
-        << ": " << LastSystemErrorText());
+    Y_ENSURE_EX(
+        res != -1,
+        TServiceError(GetSystemErrorCode())
+            << "failed to remove " << (directory ? "file " : "dir ")
+            << name.Quote() << ": " << LastSystemErrorText());
 }
 
 TFileStatEx Stat(const TFileHandle& handle)
 {
     struct stat fs = {};
     int res = fstat(Fd(handle), &fs);
-    Y_ENSURE_EX(res != -1, TServiceError(GetSystemErrorCode())
-        << "failed to stat: " << LastSystemErrorText());
+    Y_ENSURE_EX(
+        res != -1,
+        TServiceError(GetSystemErrorCode())
+            << "failed to stat: " << LastSystemErrorText());
 
     return GetFileStat(fs);
 }
@@ -286,9 +313,10 @@ TFileStatEx StatAt(const TFileHandle& handle, const TString& name)
 {
     struct stat fs = {};
     int res = fstatat(Fd(handle), name.data(), &fs, AT_SYMLINK_NOFOLLOW);
-    Y_ENSURE_EX(res != -1, TServiceError(GetSystemErrorCode())
-        << "failed to stat " << name.Quote()
-        << ": " << LastSystemErrorText());
+    Y_ENSURE_EX(
+        res != -1,
+        TServiceError(GetSystemErrorCode()) << "failed to stat " << name.Quote()
+                                            << ": " << LastSystemErrorText());
 
     return GetFileStat(fs);
 }
@@ -297,8 +325,10 @@ TFileSystemStat StatFs(const TFileHandle& handle)
 {
     struct statfs fs = {};
     int res = fstatfs(Fd(handle), &fs);
-    Y_ENSURE_EX(res != -1, TServiceError(GetSystemErrorCode())
-        << "failed to fstatfs: " << LastSystemErrorText());
+    Y_ENSURE_EX(
+        res != -1,
+        TServiceError(GetSystemErrorCode())
+            << "failed to fstatfs: " << LastSystemErrorText());
 
     return GetFileSystemStat(fs);
 }
@@ -310,23 +340,25 @@ TListDirResult ListDirAt(
     bool ignoreErrors)
 {
     auto fd = openat(Fd(handle), ".", O_RDONLY);
-    Y_ENSURE_EX(fd != -1, TServiceError(GetSystemErrorCode())
-        << "failed to open: " << LastSystemErrorText());
+    Y_ENSURE_EX(
+        fd != -1,
+        TServiceError(GetSystemErrorCode())
+            << "failed to open: " << LastSystemErrorText());
 
     auto* dir = fdopendir(fd);
     if (!dir) {
         close(fd);
         ythrow TServiceError(GetSystemErrorCode())
-            << "failed to list dir: "
-            << LastSystemErrorText();
+            << "failed to list dir: " << LastSystemErrorText();
     }
 
-    Y_DEFER {
+    Y_DEFER
+    {
         if (closedir(dir) != 0) {
             // best effort
             close(fd);
         }
-    };
+    }
 
     if (offset) {
         seekdir(dir, offset);
@@ -359,15 +391,17 @@ TListDirResult ListDirAt(
         }
     }
 
-    Y_ENSURE_EX(errno == 0, TServiceError(GetSystemErrorCode())
-        << "failed to list: "
-        << LastSystemErrorText());
+    Y_ENSURE_EX(
+        errno == 0,
+        TServiceError(GetSystemErrorCode())
+            << "failed to list: " << LastSystemErrorText());
 
     long loc = telldir(dir);
 
-    Y_ENSURE_EX(loc != -1, TServiceError(GetSystemErrorCode())
-        << "failed to telldir: "
-        << LastSystemErrorText());
+    Y_ENSURE_EX(
+        loc != -1,
+        TServiceError(GetSystemErrorCode())
+            << "failed to telldir: " << LastSystemErrorText());
 
     res.DirOffset = loc;
 
@@ -394,8 +428,7 @@ void Access(const TFileHandle& handle, int mode)
     int res = access(path, mode);
     if (res != 0) {
         ythrow TServiceError(GetSystemErrorCode())
-            << "access failed: "
-            << LastSystemErrorText();
+            << "access failed: " << LastSystemErrorText();
     }
 }
 
@@ -407,8 +440,7 @@ void Chmod(const TFileHandle& handle, int mode)
     int res = chmod(path, mode);
     if (res != 0) {
         ythrow TServiceError(GetSystemErrorCode())
-            << "chmod failed: "
-            << LastSystemErrorText();
+            << "chmod failed: " << LastSystemErrorText();
     }
 }
 
@@ -420,8 +452,7 @@ void Chown(const TFileHandle& handle, uid_t uid, gid_t gid)
     int res = chown(path, uid, gid);
     if (res != 0) {
         ythrow TServiceError(GetSystemErrorCode())
-            << "chown failed: "
-            << LastSystemErrorText();
+            << "chown failed: " << LastSystemErrorText();
     }
 }
 
@@ -435,8 +466,7 @@ void Utimes(const TFileHandle& handle, TInstant atime, TInstant mtime)
     int res = utimensat(AT_FDCWD, path, tv, 0);
     if (res != 0) {
         ythrow TServiceError(GetSystemErrorCode())
-            << "utime failed: "
-            << LastSystemErrorText();
+            << "utime failed: " << LastSystemErrorText();
     }
 }
 
@@ -448,17 +478,17 @@ void Truncate(const TFileHandle& handle, size_t size)
     int res = truncate(path, size);
     if (res != 0) {
         ythrow TServiceError(GetSystemErrorCode())
-            << "truncate failed: "
-            << LastSystemErrorText();
+            << "truncate failed: " << LastSystemErrorText();
     }
 }
 
 void Allocate(const TFileHandle& handle, int flags, off_t offset, off_t length)
 {
     int res = fallocate(Fd(handle), flags, offset, length);
-    Y_ENSURE_EX(res != -1, TServiceError(GetSystemErrorCode())
-        << "allocate failed: "
-        << LastSystemErrorText());
+    Y_ENSURE_EX(
+        res != -1,
+        TServiceError(GetSystemErrorCode())
+            << "allocate failed: " << LastSystemErrorText());
 }
 
 TString ReadLink(const TFileHandle& handle)
@@ -468,8 +498,7 @@ TString ReadLink(const TFileHandle& handle)
     int res = readlinkat(Fd(handle), "", &link[0], link.size());
     if (res == -1) {
         ythrow TServiceError(GetSystemErrorCode())
-            << "readlink failed: "
-            << LastSystemErrorText();
+            << "readlink failed: " << LastSystemErrorText();
     }
 
     if ((size_t)res == link.size()) {
@@ -491,11 +520,7 @@ TString GetXAttr(const TFileHandle& handle, const TString& name)
     TVector<char> buf;
 
     while (true) {
-        int res = getxattr(
-            path,
-            name.c_str(),
-            nullptr,
-            0);
+        int res = getxattr(path, name.c_str(), nullptr, 0);
 
         if (res < 0) {
             ythrow TServiceError(ErrorAttributeDoesNotExist(name));
@@ -503,11 +528,7 @@ TString GetXAttr(const TFileHandle& handle, const TString& name)
 
         buf.resize(res + 1);
 
-        res = getxattr(
-            path,
-            name.c_str(),
-            buf.data(),
-            buf.size());
+        res = getxattr(path, name.c_str(), buf.data(), buf.size());
 
         if (res < 0) {
             if (errno == ERANGE) {
@@ -515,8 +536,8 @@ TString GetXAttr(const TFileHandle& handle, const TString& name)
             }
 
             ythrow TServiceError(E_IO)
-                << "failed to get attribute (" << name.Quote() << "): "
-                << LastSystemErrorText();
+                << "failed to get attribute (" << name.Quote()
+                << "): " << LastSystemErrorText();
         }
 
         buf.resize(res);
@@ -541,8 +562,8 @@ void SetXAttr(
 
     if (res != 0) {
         ythrow TServiceError(E_IO)
-            << "failed to set attribute (" << name.Quote() << ", " << value.Quote() << "): "
-            << LastSystemErrorText();
+            << "failed to set attribute (" << name.Quote() << ", "
+            << value.Quote() << "): " << LastSystemErrorText();
     }
 }
 
@@ -554,8 +575,8 @@ void RemoveXAttr(const TFileHandle& handle, const TString& name)
     int res = removexattr(path, name.c_str());
     if (res != 0) {
         ythrow TServiceError(E_IO)
-            << "failed to remove attribute (" << name.Quote() << "): "
-            << LastSystemErrorText();
+            << "failed to remove attribute (" << name.Quote()
+            << "): " << LastSystemErrorText();
     }
 }
 
@@ -567,23 +588,16 @@ TVector<TString> ListXAttrs(const TFileHandle& handle)
     TVector<char> buf;
 
     while (true) {
-        int res = listxattr(
-            path,
-            nullptr,
-            0);
+        int res = listxattr(path, nullptr, 0);
 
         if (res < 0) {
             ythrow TServiceError(E_IO)
-                << "failed to list attributes: "
-                << LastSystemErrorText();
+                << "failed to list attributes: " << LastSystemErrorText();
         }
 
         buf.resize(res + 1);
 
-        res = listxattr(
-            path,
-            buf.data(),
-            buf.size());
+        res = listxattr(path, buf.data(), buf.size());
 
         if (res < 0) {
             if (errno == ERANGE) {
@@ -591,12 +605,11 @@ TVector<TString> ListXAttrs(const TFileHandle& handle)
             }
 
             ythrow TServiceError(E_IO)
-                << "failed to list attributes: "
-                << LastSystemErrorText();
+                << "failed to list attributes: " << LastSystemErrorText();
         }
 
         if (res == 0) {
-            return {}; // no attributes
+            return {};   // no attributes
         }
 
         buf.resize(res);
@@ -613,8 +626,7 @@ bool AcquireLock(
     bool shared)
 {
     struct flock lck = {};
-    lck.l_whence = SEEK_SET,
-    lck.l_start = offset;
+    lck.l_whence = SEEK_SET, lck.l_start = offset;
     lck.l_len = len;
     lck.l_type = shared ? F_RDLCK : F_WRLCK;
 
@@ -622,8 +634,8 @@ bool AcquireLock(
     if (res != 0) {
         if (errno != EAGAIN) {
             ythrow TServiceError(GetSystemErrorCode())
-                << "lock failed at (" << offset << ", " << len << "): "
-                << LastSystemErrorText();
+                << "lock failed at (" << offset << ", " << len
+                << "): " << LastSystemErrorText();
         }
 
         return false;
@@ -635,16 +647,15 @@ bool AcquireLock(
 bool TestLock(const TFileHandle& handle, off_t offset, off_t len, bool shared)
 {
     struct flock lck = {};
-    lck.l_whence = SEEK_SET,
-    lck.l_start = offset;
+    lck.l_whence = SEEK_SET, lck.l_start = offset;
     lck.l_len = len;
     lck.l_type = shared ? F_RDLCK : F_WRLCK;
 
     int res = fcntl(Fd(handle), F_OFD_GETLK, &lck);
     if (res != 0) {
         ythrow TServiceError(GetSystemErrorCode())
-            << "test lock failed at (" << offset << ", " << len << "): "
-            << LastSystemErrorText();
+            << "test lock failed at (" << offset << ", " << len
+            << "): " << LastSystemErrorText();
     }
 
     return lck.l_type == F_UNLCK;
@@ -653,16 +664,15 @@ bool TestLock(const TFileHandle& handle, off_t offset, off_t len, bool shared)
 void ReleaseLock(const TFileHandle& handle, off_t offset, off_t len)
 {
     struct flock lck = {};
-    lck.l_whence = SEEK_SET,
-    lck.l_start = offset;
+    lck.l_whence = SEEK_SET, lck.l_start = offset;
     lck.l_len = len;
     lck.l_type = F_UNLCK;
 
     int res = fcntl(Fd(handle), F_OFD_SETLK, &lck);
     if (res != 0) {
         ythrow TServiceError(GetSystemErrorCode())
-            << "unlock failed at (" << offset << ", " << len << "): "
-            << LastSystemErrorText();
+            << "unlock failed at (" << offset << ", " << len
+            << "): " << LastSystemErrorText();
     }
 }
 
@@ -753,9 +763,11 @@ TFileId::TFileId(const TFileHandle& handle)
 
 TFileHandle TFileId::Open(const TFileHandle& mountHandle, int flags)
 {
-    int fd =  open_by_handle_at(mountHandle, &FileHandle, flags);
-    Y_ENSURE_EX(fd != -1, TServiceError(GetSystemErrorCode())
-        << "open_by_handle_at failed: " << LastSystemErrorText());
+    int fd = open_by_handle_at(mountHandle, &FileHandle, flags);
+    Y_ENSURE_EX(
+        fd != -1,
+        TServiceError(GetSystemErrorCode())
+            << "open_by_handle_at failed: " << LastSystemErrorText());
     return fd;
 }
 
@@ -766,33 +778,30 @@ TString TFileId::ToString() const
         << ", Type=" << Hex(FileHandle.handle_type);
 
     switch (EFileIdType(FileHandle.handle_type)) {
-    case EFileIdType::Lustre:
-        out << ", Lustre(Seq=" << Hex(LustreFid.Seq)
-            << ", Oid=" << Hex(LustreFid.Oid)
-            << ", Ver=" << Hex(LustreFid.Ver)
-            << ", ParentSeq=" << Hex(LustreFid.ParentSeq)
-            << ", ParentOid=" << Hex(LustreFid.ParentOid)
-            << ", ParentVer=" << Hex(LustreFid.ParentVer)
-            << ")";
-        break;
-    case EFileIdType::Weka:
-        out << ", Weka(Id=" << Hex(WekaInodeId.Id)
-            << ", Context=" << Hex(WekaInodeId.Context)
-            << ", ParentId=" << Hex(WekaInodeId.ParentId)
-            << ", ParentContext=" << Hex(WekaInodeId.ParentContext)
-            << ")";
-        break;
-    case EFileIdType::VastNfs:
-        out << ", VastNfs(IdHigh32=" << Hex(VastNfsInodeId.IdHigh32)
-            << ", IdLow32=" << Hex(VastNfsInodeId.IdLow32)
-            << ", FileType=" << Hex(VastNfsInodeId.FileType)
-            << ", Unused=" << Hex(VastNfsInodeId.Unused)
-            << ", ServerFhSize=" << Hex(VastNfsInodeId.ServerFhSize)
-            << ", ServerId=" << Hex(VastNfsInodeId.ServerId)
-            << ", ServerView=" << Hex(VastNfsInodeId.ServerView)
-            << ", ServerUnused=" << Hex(VastNfsInodeId.ServerUnused)
-            << ")";
-        break;
+        case EFileIdType::Lustre:
+            out << ", Lustre(Seq=" << Hex(LustreFid.Seq)
+                << ", Oid=" << Hex(LustreFid.Oid)
+                << ", Ver=" << Hex(LustreFid.Ver)
+                << ", ParentSeq=" << Hex(LustreFid.ParentSeq)
+                << ", ParentOid=" << Hex(LustreFid.ParentOid)
+                << ", ParentVer=" << Hex(LustreFid.ParentVer) << ")";
+            break;
+        case EFileIdType::Weka:
+            out << ", Weka(Id=" << Hex(WekaInodeId.Id)
+                << ", Context=" << Hex(WekaInodeId.Context)
+                << ", ParentId=" << Hex(WekaInodeId.ParentId)
+                << ", ParentContext=" << Hex(WekaInodeId.ParentContext) << ")";
+            break;
+        case EFileIdType::VastNfs:
+            out << ", VastNfs(IdHigh32=" << Hex(VastNfsInodeId.IdHigh32)
+                << ", IdLow32=" << Hex(VastNfsInodeId.IdLow32)
+                << ", FileType=" << Hex(VastNfsInodeId.FileType)
+                << ", Unused=" << Hex(VastNfsInodeId.Unused)
+                << ", ServerFhSize=" << Hex(VastNfsInodeId.ServerFhSize)
+                << ", ServerId=" << Hex(VastNfsInodeId.ServerId)
+                << ", ServerView=" << Hex(VastNfsInodeId.ServerView)
+                << ", ServerUnused=" << Hex(VastNfsInodeId.ServerUnused) << ")";
+            break;
     }
 
     out << ", Buffer=" << HexText(TStringBuf(Buffer, FileHandle.handle_bytes));

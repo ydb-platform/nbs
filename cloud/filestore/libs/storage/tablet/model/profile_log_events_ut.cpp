@@ -16,8 +16,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestProfileLog
-    : IProfileLog
+struct TTestProfileLog: IProfileLog
 {
     IProfileLog::TRecord Record;
 
@@ -63,11 +62,13 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "CollectGarbage",
-            GetFileStoreSystemRequestName(EFileStoreSystemRequest::CollectGarbage));
+            GetFileStoreSystemRequestName(
+                EFileStoreSystemRequest::CollectGarbage));
 
         UNIT_ASSERT_VALUES_EQUAL(
             "DeleteGarbage",
-            GetFileStoreSystemRequestName(EFileStoreSystemRequest::DeleteGarbage));
+            GetFileStoreSystemRequestName(
+                EFileStoreSystemRequest::DeleteGarbage));
 
         UNIT_ASSERT_VALUES_EQUAL(
             "ReadBlob",
@@ -83,7 +84,8 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "TruncateRange",
-            GetFileStoreSystemRequestName(EFileStoreSystemRequest::TruncateRange));
+            GetFileStoreSystemRequestName(
+                EFileStoreSystemRequest::TruncateRange));
 
         UNIT_ASSERT_VALUES_EQUAL(
             "ZeroRange",
@@ -114,7 +116,10 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
         const auto requestType = EFileStoreSystemRequest::Compaction;
 
         NProto::TProfileLogRequestInfo profileLogRequest;
-        InitTabletProfileLogRequestInfo(profileLogRequest, requestType, timestamp);
+        InitTabletProfileLogRequestInfo(
+            profileLogRequest,
+            requestType,
+            timestamp);
 
         UNIT_ASSERT_VALUES_EQUAL(
             timestamp.MicroSeconds(),
@@ -160,7 +165,9 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
         UNIT_ASSERT_VALUES_EQUAL(
             error.GetCode(),
             profileLog->Record.Request.GetErrorCode());
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Record.Request.GetRanges().size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            profileLog->Record.Request.GetRanges().size());
         UNIT_ASSERT(!profileLog->Record.Request.HasNodeInfo());
         UNIT_ASSERT(!profileLog->Record.Request.HasLockInfo());
     }
@@ -169,7 +176,7 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
     {
         {
             const ui64 nodeId = 42;
-            const ui64 offset =  4096;
+            const ui64 offset = 4096;
             const ui64 bytes = 128;
 
             NProto::TProfileLogRequestInfo profileLogRequest;
@@ -199,7 +206,7 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
         {
             const ui64 nodeId = 123;
             const ui64 handle = 21;
-            const ui64 offset =  512;
+            const ui64 offset = 512;
             const ui64 bytes = 32;
 
             NProto::TProfileLogRequestInfo profileLogRequest;
@@ -249,7 +256,11 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
         NProto::TProfileLogRequestInfo profileLogRequest;
         AddBlobsInfo(
             blockSize,
-            TVector<TMixedBlob>{oldBlobFirst, oldBlobSecond, emptyBlob, newBlob},
+            TVector<TMixedBlob>{
+                oldBlobFirst,
+                oldBlobSecond,
+                emptyBlob,
+                newBlob},
             profileLogRequest);
 
         UNIT_ASSERT(!profileLogRequest.HasTimestampMcs());
@@ -258,16 +269,16 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
         UNIT_ASSERT(!profileLogRequest.HasErrorCode());
         UNIT_ASSERT_VALUES_EQUAL(4, profileLogRequest.GetBlobsInfo().size());
 
-#define TEST_RANGE(index, rindex, nodeId, offset, bytes)                       \
-    {                                                                          \
-        const auto& info = profileLogRequest.GetBlobsInfo().at(index);         \
-        const auto& range = info.GetRanges().at(rindex);                       \
-        UNIT_ASSERT_VALUES_EQUAL(nodeId, range.GetNodeId());                   \
-        UNIT_ASSERT(!range.HasHandle());                                       \
-        UNIT_ASSERT_VALUES_EQUAL(offset, range.GetOffset());                   \
-        UNIT_ASSERT_VALUES_EQUAL(bytes, range.GetBytes());                     \
-    }                                                                          \
-// TEST_RANGE
+#define TEST_RANGE(index, rindex, nodeId, offset, bytes)               \
+    {                                                                  \
+        const auto& info = profileLogRequest.GetBlobsInfo().at(index); \
+        const auto& range = info.GetRanges().at(rindex);               \
+        UNIT_ASSERT_VALUES_EQUAL(nodeId, range.GetNodeId());           \
+        UNIT_ASSERT(!range.HasHandle());                               \
+        UNIT_ASSERT_VALUES_EQUAL(offset, range.GetOffset());           \
+        UNIT_ASSERT_VALUES_EQUAL(bytes, range.GetBytes());             \
+    }                                                                  \
+    // TEST_RANGE
 
         TEST_RANGE(0, 0, 1, 3 * blockSize, blockSize);
         TEST_RANGE(0, 1, 1, 5 * blockSize, blockSize);
@@ -292,9 +303,8 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
         const auto oldBlobSecond = TMixedBlobMeta(
             MakePartialBlobId(1, 3),
             {TBlock(2, 4, 0, 0), TBlock(2, 5, 0, 0), TBlock(3, 0, 0, 0)});
-        const auto newBlob = TMixedBlobMeta(
-            MakePartialBlobId(2, 1),
-            {TBlock(1, 10, 0, 0)});
+        const auto newBlob =
+            TMixedBlobMeta(MakePartialBlobId(2, 1), {TBlock(1, 10, 0, 0)});
 
         NProto::TProfileLogRequestInfo profileLogRequest;
         AddBlobsInfo(
@@ -312,16 +322,16 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
         UNIT_ASSERT(!profileLogRequest.HasErrorCode());
         UNIT_ASSERT_VALUES_EQUAL(4, profileLogRequest.GetBlobsInfo().size());
 
-#define TEST_RANGE(index, rindex, nodeId, offset, bytes)                       \
-    {                                                                          \
-        const auto& info = profileLogRequest.GetBlobsInfo().at(index);         \
-        const auto& range = info.GetRanges().at(rindex);                       \
-        UNIT_ASSERT_VALUES_EQUAL(nodeId, range.GetNodeId());                   \
-        UNIT_ASSERT(!range.HasHandle());                                       \
-        UNIT_ASSERT_VALUES_EQUAL(offset, range.GetOffset());                   \
-        UNIT_ASSERT_VALUES_EQUAL(bytes, range.GetBytes());                     \
-    }                                                                          \
-// TEST_RANGE
+#define TEST_RANGE(index, rindex, nodeId, offset, bytes)               \
+    {                                                                  \
+        const auto& info = profileLogRequest.GetBlobsInfo().at(index); \
+        const auto& range = info.GetRanges().at(rindex);               \
+        UNIT_ASSERT_VALUES_EQUAL(nodeId, range.GetNodeId());           \
+        UNIT_ASSERT(!range.HasHandle());                               \
+        UNIT_ASSERT_VALUES_EQUAL(offset, range.GetOffset());           \
+        UNIT_ASSERT_VALUES_EQUAL(bytes, range.GetBytes());             \
+    }                                                                  \
+    // TEST_RANGE
 
         TEST_RANGE(0, 0, 1, 3 * blockSize, 2 * blockSize);
         TEST_RANGE(0, 1, 1, 6 * blockSize, blockSize);
@@ -338,22 +348,14 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
     Y_UNIT_TEST(ShouldAddBlobsInfoForMergedBlobMeta)
     {
         const ui32 blockSize = 1024;
-        const auto oldBlobFirst = TMergedBlobMeta(
-            MakePartialBlobId(1, 1),
-            TBlock(1, 3, 0, 0),
-            1);
-        const auto emptyBlob = TMergedBlobMeta(
-            MakePartialBlobId(1, 3),
-            TBlock(2, 8, 0, 0),
-            0);
-        const auto oldBlobSecond = TMergedBlobMeta(
-            MakePartialBlobId(1, 3),
-            TBlock(2, 4, 0, 0),
-            5);
-        const auto newBlob = TMergedBlobMeta(
-            MakePartialBlobId(2, 1),
-            TBlock(1, 2, 0, 0),
-            2);
+        const auto oldBlobFirst =
+            TMergedBlobMeta(MakePartialBlobId(1, 1), TBlock(1, 3, 0, 0), 1);
+        const auto emptyBlob =
+            TMergedBlobMeta(MakePartialBlobId(1, 3), TBlock(2, 8, 0, 0), 0);
+        const auto oldBlobSecond =
+            TMergedBlobMeta(MakePartialBlobId(1, 3), TBlock(2, 4, 0, 0), 5);
+        const auto newBlob =
+            TMergedBlobMeta(MakePartialBlobId(2, 1), TBlock(1, 2, 0, 0), 2);
 
         NProto::TProfileLogRequestInfo profileLogRequest;
         AddBlobsInfo(
@@ -371,16 +373,16 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
         UNIT_ASSERT(!profileLogRequest.HasErrorCode());
         UNIT_ASSERT_VALUES_EQUAL(4, profileLogRequest.GetBlobsInfo().size());
 
-#define TEST_RANGE(index, nodeId, offset, bytes)                               \
-    {                                                                          \
-        const auto& info = profileLogRequest.GetBlobsInfo().at(index);         \
-        const auto& range = info.GetRanges().at(0);                            \
-        UNIT_ASSERT_VALUES_EQUAL(nodeId, range.GetNodeId());                   \
-        UNIT_ASSERT(!range.HasHandle());                                       \
-        UNIT_ASSERT_VALUES_EQUAL(offset, range.GetOffset());                   \
-        UNIT_ASSERT_VALUES_EQUAL(bytes, range.GetBytes());                     \
-    }                                                                          \
-// TEST_RANGE
+#define TEST_RANGE(index, nodeId, offset, bytes)                       \
+    {                                                                  \
+        const auto& info = profileLogRequest.GetBlobsInfo().at(index); \
+        const auto& range = info.GetRanges().at(0);                    \
+        UNIT_ASSERT_VALUES_EQUAL(nodeId, range.GetNodeId());           \
+        UNIT_ASSERT(!range.HasHandle());                               \
+        UNIT_ASSERT_VALUES_EQUAL(offset, range.GetOffset());           \
+        UNIT_ASSERT_VALUES_EQUAL(bytes, range.GetBytes());             \
+    }                                                                  \
+    // TEST_RANGE
 
         TEST_RANGE(0, 1, 3 * blockSize, blockSize);
         TEST_RANGE(1, 2, 8 * blockSize, 0);
@@ -416,7 +418,9 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
         UNIT_ASSERT(!profileLogRequest.HasRequestType());
         UNIT_ASSERT(!profileLogRequest.HasErrorCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(1, profileLogRequest.GetCompactionRanges().size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            profileLogRequest.GetCompactionRanges().size());
         UNIT_ASSERT_VALUES_EQUAL(
             100500,
             profileLogRequest.GetCompactionRanges().at(0).GetCommitId());
@@ -431,7 +435,9 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
             profileLogRequest.GetCompactionRanges().at(0).GetDeletionsCount());
         UNIT_ASSERT_VALUES_EQUAL(
             1000,
-            profileLogRequest.GetCompactionRanges().at(0).GetGarbageBlocksCount());
+            profileLogRequest.GetCompactionRanges()
+                .at(0)
+                .GetGarbageBlocksCount());
 
         UNIT_ASSERT(!profileLogRequest.HasNodeInfo());
         UNIT_ASSERT(!profileLogRequest.HasLockInfo());

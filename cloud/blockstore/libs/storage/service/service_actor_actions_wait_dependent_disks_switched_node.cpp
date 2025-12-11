@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -104,9 +105,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TWaitDependentDisksToSwitchNodeActor::TWaitDependentDisksToSwitchNodeActor(
-        TRequestInfoPtr requestInfo,
-        TString input,
-        TDuration retryTimeout)
+    TRequestInfoPtr requestInfo,
+    TString input,
+    TDuration retryTimeout)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
     , RetryTimeout(retryTimeout)

@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/libs/vhost/server.h>
+
 #include <cloud/storage/core/libs/common/media.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -13,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TVhostEndpointListener final
-    : public IEndpointListener
+class TVhostEndpointListener final: public IEndpointListener
 {
 private:
     const NVhost::IServerPtr Server;
@@ -25,11 +25,11 @@ private:
 
 public:
     TVhostEndpointListener(
-            NVhost::IServerPtr server,
-            NProto::TChecksumFlags checksumFlags,
-            bool vhostDiscardEnabled,
-            ui32 maxZeroBlocksSubRequestSize,
-            ui32 optimalIoSize)
+        NVhost::IServerPtr server,
+        NProto::TChecksumFlags checksumFlags,
+        bool vhostDiscardEnabled,
+        ui32 maxZeroBlocksSubRequestSize,
+        ui32 optimalIoSize)
         : Server(std::move(server))
         , ChecksumFlags(std::move(checksumFlags))
         , VhostDiscardEnabled(vhostDiscardEnabled)
@@ -49,7 +49,8 @@ public:
         options.BlockSize = volume.GetBlockSize();
         options.BlocksCount = volume.GetBlocksCount();
         options.VhostQueuesCount = request.GetVhostQueuesCount();
-        options.UnalignedRequestsDisabled = request.GetUnalignedRequestsDisabled();
+        options.UnalignedRequestsDisabled =
+            request.GetUnalignedRequestsDisabled();
         options.CheckBufferModificationDuringWriting =
             ChecksumFlags.GetCheckBufferModificationForMirrorDisk() &&
             IsReliableDiskRegistryMediaKind(volume.GetStorageMediaKind());
@@ -76,8 +77,7 @@ public:
         return MakeFuture<NProto::TError>();
     }
 
-    TFuture<NProto::TError> StopEndpoint(
-        const TString& socketPath) override
+    TFuture<NProto::TError> StopEndpoint(const TString& socketPath) override
     {
         return Server->StopEndpoint(socketPath);
     }

@@ -10,7 +10,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TBlobs : TSet<TPartialBlobId, TLess<TPartialBlobId>, TStlAllocator>
+struct TBlobs: TSet<TPartialBlobId, TLess<TPartialBlobId>, TStlAllocator>
 {
     using TBase = TSet<TPartialBlobId, TLess<TPartialBlobId>, TStlAllocator>;
 
@@ -71,7 +71,7 @@ struct TBarrierOps
         using is_transparent = void;
 
         template <typename T1, typename T2>
-        bool operator ()(const T1& l, const T2& r) const
+        bool operator()(const T1& l, const T2& r) const
         {
             return GetCommitId(l) < GetCommitId(r);
         }
@@ -199,7 +199,7 @@ bool TGarbageQueue::TryReleaseCollectBarrier(ui64 commitId)
     }
 
     // we have to release barriers in order
-    for (auto it = Impl->Barriers.begin(); it != Impl->Barriers.end(); ) {
+    for (auto it = Impl->Barriers.begin(); it != Impl->Barriers.end();) {
         auto& barrier = const_cast<TBarrier&>(*it);
         if (barrier.RefCount) {
             break;

@@ -1,5 +1,6 @@
-#include "bootstrap.h"
 #include "command.h"
+
+#include "bootstrap.h"
 #include "factory.h"
 
 #include <cloud/blockstore/libs/client/client.h>
@@ -7,8 +8,8 @@
 #include <cloud/blockstore/libs/client/durable.h>
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/client/throttling.h>
-#include <cloud/blockstore/libs/diagnostics/probes.h>
 #include <cloud/blockstore/libs/diagnostics/incomplete_request_processor.h>
+#include <cloud/blockstore/libs/diagnostics/probes.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
@@ -18,6 +19,7 @@
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/throttling/throttler_logger.h>
 #include <cloud/blockstore/libs/throttling/throttler_metrics.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -29,7 +31,6 @@
 #include <cloud/storage/core/libs/version/version.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
-
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -72,7 +73,9 @@ TString GetIamTokenFromFile(const TString& iamTokenFile)
     auto filename = ResolvePath(iamTokenFile);
     TFile file;
     try {
-        file = TFile(filename, EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
+        file = TFile(
+            filename,
+            EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
     } catch (...) {
         return {};
     }
@@ -83,7 +86,7 @@ TString GetIamTokenFromFile(const TString& iamTokenFile)
     Y_ENSURE(
         code == 0,
         TStringBuilder() << "failed to stat file " << filename
-            << ", code=" << code);
+                         << ", code=" << code);
 
     Y_ENSURE(
         (buf.st_mode & (S_IROTH | S_IWOTH | S_IXOTH)) == 0,
@@ -116,17 +119,17 @@ TCommand::TCommand(IBlockStorePtr client)
         .StoreResult(&BatchBlocksCount);
 
     Opts.AddLongOption("config")
-        .Help(TStringBuilder()
-            << "config file name. Default is "
-            << DefaultConfigFile)
+        .Help(
+            TStringBuilder()
+            << "config file name. Default is " << DefaultConfigFile)
         .RequiredArgument("STR")
         .DefaultValue(DefaultConfigFile)
         .StoreResult(&ConfigFile);
 
     Opts.AddLongOption("iam-config")
-        .Help(TStringBuilder()
-            << "iam-config file name. Default is "
-            << DefaultIamConfigFile)
+        .Help(
+            TStringBuilder()
+            << "iam-config file name. Default is " << DefaultIamConfigFile)
         .RequiredArgument("STR")
         .StoreResult(&IamConfigFile);
 
@@ -168,9 +171,8 @@ TCommand::TCommand(IBlockStorePtr client)
 
     Opts.AddLongOption("timeout", "timeout in seconds")
         .OptionalArgument("NUM")
-        .Handler1T<ui32>([this] (const auto& timeout) {
-            Timeout = TDuration::Seconds(timeout);
-        });
+        .Handler1T<ui32>([this](const auto& timeout)
+                         { Timeout = TDuration::Seconds(timeout); });
 
     Opts.AddLongOption("proto")
         .Help("Use protobuf syntax for requests and responses")
@@ -185,7 +187,9 @@ TCommand::TCommand(IBlockStorePtr client)
         .RequiredArgument("STR")
         .StoreResult(&ErrorFile);
 
-    Opts.AddLongOption("output", "output file name (or stdout if not specified)")
+    Opts.AddLongOption(
+            "output",
+            "output file name (or stdout if not specified)")
         .RequiredArgument("STR")
         .StoreResult(&OutputFile);
 
@@ -197,8 +201,8 @@ TCommand::TCommand(IBlockStorePtr client)
         .StoreResult(&IamTokenFile);
 
     Opts.AddLongOption(
-        "client-performance-profile",
-        "path to client performance profile")
+            "client-performance-profile",
+            "path to client performance profile")
         .RequiredArgument("STR")
         .StoreResult(&ClientPerformanceProfile);
 
@@ -220,11 +224,7 @@ void TCommand::Prepare(int argc, const char* argv[])
 bool TCommand::Execute()
 {
     if (Timeout != TDuration::Zero()) {
-        Scheduler->Schedule(
-            Timer->Now() + Timeout,
-            [=, this] {
-                Shutdown();
-            });
+        Scheduler->Schedule(Timer->Now() + Timeout, [=, this] { Shutdown(); });
     }
 
     return DoExecute();
@@ -324,8 +324,8 @@ NProto::TMountVolumeResponse TCommand::MountVolume(
     TSessionConfig sessionConfig;
     sessionConfig.DiskId = std::move(diskId);
     sessionConfig.MountToken = std::move(mountToken);
-    sessionConfig.MountMode = mountLocal
-        ? NProto::VOLUME_MOUNT_LOCAL : NProto::VOLUME_MOUNT_REMOTE;
+    sessionConfig.MountMode =
+        mountLocal ? NProto::VOLUME_MOUNT_LOCAL : NProto::VOLUME_MOUNT_REMOTE;
     if (throttlingDisabled) {
         SetProtoFlag(sessionConfig.MountFlags, NProto::MF_THROTTLING_DISABLED);
     }
@@ -353,9 +353,8 @@ NProto::TMountVolumeResponse TCommand::MountVolume(
         ClientConfig,
         sessionConfig);
 
-    auto response = SafeExecute<NProto::TMountVolumeResponse>([&] {
-        return WaitFor(session->MountVolume());
-    });
+    auto response = SafeExecute<NProto::TMountVolumeResponse>(
+        [&] { return WaitFor(session->MountVolume()); });
 
     if (HasError(response)) {
         STORAGE_ERROR(
@@ -366,9 +365,8 @@ NProto::TMountVolumeResponse TCommand::MountVolume(
 
 bool TCommand::UnmountVolume(ISession& session)
 {
-    auto response = SafeExecute<NProto::TUnmountVolumeResponse>([&] {
-        return WaitFor(session.UnmountVolume());
-    });
+    auto response = SafeExecute<NProto::TUnmountVolumeResponse>(
+        [&] { return WaitFor(session.UnmountVolume()); });
 
     if (HasError(response)) {
         STORAGE_ERROR(
@@ -395,7 +393,8 @@ bool TCommand::WaitForI(const NThreading::TFuture<void>& future)
 
 void TCommand::Parse(const int argc, const char* argv[])
 {
-    ParseResultPtr = std::make_unique<TOptsParseResultException>(&Opts, argc, argv);
+    ParseResultPtr =
+        std::make_unique<TOptsParseResultException>(&Opts, argc, argv);
 
     if (ParseResultPtr->FindLongOptParseResult("verbose") && !VerboseLevel) {
         VerboseLevel = "debug";
@@ -419,8 +418,8 @@ void TCommand::Init()
     TLogSettings logSettings;
 
     if (logConfig.HasLogLevel()) {
-        logSettings.FiltrationLevel = static_cast<ELogPriority>(
-            logConfig.GetLogLevel());
+        logSettings.FiltrationLevel =
+            static_cast<ELogPriority>(logConfig.GetLogLevel());
     }
 
     Logging = CreateLoggingService("console", logSettings);
@@ -437,14 +436,12 @@ void TCommand::Init()
         Monitoring = CreateMonitoringServiceStub();
     }
 
-    auto rootGroup = Monitoring->GetCounters()
-        ->GetSubgroup("counters", "blockstore");
+    auto rootGroup =
+        Monitoring->GetCounters()->GetSubgroup("counters", "blockstore");
 
     auto clientGroup = rootGroup->GetSubgroup("component", "client");
-    auto versionCounter = clientGroup->GetNamedCounter(
-        "version",
-        GetFullVersionString(),
-        false);
+    auto versionCounter =
+        clientGroup->GetNamedCounter("version", GetFullVersionString(), false);
     *versionCounter = 1;
 
     RequestStats = CreateClientRequestStats(
@@ -487,7 +484,7 @@ void TCommand::Init()
             Scheduler,
             CreateIncompleteRequestProcessor(
                 ClientStats,
-                {})  // TODO: fill incompleteRequestProviders (NBS-2167)
+                {})   // TODO: fill incompleteRequestProviders (NBS-2167)
         );
 
         auto endpoint = Client->CreateEndpoint();
@@ -511,17 +508,13 @@ void TCommand::Init()
                 std::move(ClientEndpoint),
                 CreateThrottler(
                     CreateClientThrottlerLogger(RequestStats, Logging),
-                    CreateThrottlerMetrics(
-                        Timer,
-                        rootGroup,
-                        "client"),
+                    CreateThrottlerMetrics(Timer, rootGroup, "client"),
                     CreateClientThrottlerPolicy(performanceProfile),
                     CreateClientThrottlerTracker(),
                     Timer,
                     Scheduler,
                     VolumeStats));
         }
-
     }
 
     Start();
@@ -595,7 +588,7 @@ void TCommand::InitClientConfig()
     if (SecurePort) {
         clientConfig.SetSecurePort(SecurePort);
     }
-    if (ServerUnixSocketPath){
+    if (ServerUnixSocketPath) {
         clientConfig.SetUnixSocketPath(ServerUnixSocketPath);
     }
     if (clientConfig.GetHost() == "localhost" &&
@@ -626,7 +619,7 @@ void TCommand::InitClientConfig()
         monConfig.SetThreadsCount(MonitoringThreads);
     }
     if (!monConfig.GetThreadsCount()) {
-        monConfig.SetThreadsCount(1);  // reasonable defaults
+        monConfig.SetThreadsCount(1);   // reasonable defaults
     }
 
     auto& logConfig = *appConfig.MutableLogConfig();

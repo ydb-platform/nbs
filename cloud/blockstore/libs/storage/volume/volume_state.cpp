@@ -24,22 +24,22 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool THistoryLogKey::operator == (const THistoryLogKey& rhs) const
+bool THistoryLogKey::operator==(const THistoryLogKey& rhs) const
 {
     return std::tie(Timestamp, SeqNo) == std::tie(rhs.Timestamp, rhs.SeqNo);
 }
 
-bool THistoryLogKey::operator != (const THistoryLogKey& rhs) const
+bool THistoryLogKey::operator!=(const THistoryLogKey& rhs) const
 {
     return !(*this == rhs);
 }
 
-bool THistoryLogKey::operator < (THistoryLogKey rhs) const
+bool THistoryLogKey::operator<(THistoryLogKey rhs) const
 {
     return std::tie(Timestamp, SeqNo) < std::tie(rhs.Timestamp, rhs.SeqNo);
 }
 
-bool THistoryLogKey::operator >= (THistoryLogKey rhs) const
+bool THistoryLogKey::operator>=(THistoryLogKey rhs) const
 {
     return !(*this < rhs);
 }
@@ -60,16 +60,17 @@ ui64 ComputeBlockCount(const NProto::TVolumeMeta& meta)
 ////////////////////////////////////////////////////////////////////////////////
 
 TCachedVolumeMountHistory::TCachedVolumeMountHistory(
-        ui32 capacity,
-        TVolumeMountHistorySlice records)
+    ui32 capacity,
+    TVolumeMountHistorySlice records)
     : Capacity(capacity)
-    , LastLogRecord(!records.Items.empty() ? records.Items.front().Key : THistoryLogKey())
+    , LastLogRecord(
+          !records.Items.empty() ? records.Items.front().Key : THistoryLogKey())
     , NextOlderRecord(std::move(records.NextOlderRecord))
 {
     for (size_t i = 0; i < records.Items.size(); ++i) {
         if (i == Capacity) {
-           NextOlderRecord.emplace(records.Items[i].Key);
-           break;
+            NextOlderRecord.emplace(records.Items[i].Key);
+            break;
         }
         Items.emplace_back(std::move(records.Items[i]));
     }
@@ -86,7 +87,8 @@ void TCachedVolumeMountHistory::AddHistoryLogItem(
     }
 }
 
-THistoryLogKey TCachedVolumeMountHistory::AllocateHistoryLogKey(TInstant timestamp)
+THistoryLogKey TCachedVolumeMountHistory::AllocateHistoryLogKey(
+    TInstant timestamp)
 {
     if (LastLogRecord.Timestamp != timestamp) {
         LastLogRecord.Timestamp = timestamp;
@@ -112,18 +114,18 @@ void TCachedVolumeMountHistory::CleanupHistoryIfNeeded(TInstant oldest)
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumeState::TVolumeState(
-        TStorageConfigPtr storageConfig,
-        TDiagnosticsConfigPtr diagnosticsConfig,
-        NProto::TVolumeMeta meta,
-        TVector<TVolumeMetaHistoryItem> metaHistory,
-        TVector<TRuntimeVolumeParamsValue> volumeParams,
-        TThrottlerConfig throttlerConfig,
-        THashMap<TString, TVolumeClientState> infos,
-        TCachedVolumeMountHistory mountHistory,
-        TVector<TCheckpointRequest> checkpointRequests,
-        TFollowerDisks followerDisks,
-        TLeaderDisks leaderDisks,
-        bool startPartitionsNeeded)
+    TStorageConfigPtr storageConfig,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    NProto::TVolumeMeta meta,
+    TVector<TVolumeMetaHistoryItem> metaHistory,
+    TVector<TRuntimeVolumeParamsValue> volumeParams,
+    TThrottlerConfig throttlerConfig,
+    THashMap<TString, TVolumeClientState> infos,
+    TCachedVolumeMountHistory mountHistory,
+    TVector<TCheckpointRequest> checkpointRequests,
+    TFollowerDisks followerDisks,
+    TLeaderDisks leaderDisks,
+    bool startPartitionsNeeded)
     : StorageConfig(std::move(storageConfig))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , Meta(std::move(meta))
@@ -148,14 +150,15 @@ TVolumeState::TVolumeState(
         if (IsReadWriteMode(volumeClientInfo.GetVolumeAccessMode())) {
             ReadWriteAccessClientId = pair.first;
             MountSeqNumber = volumeClientInfo.GetMountSeqNumber();
-            if (volumeClientInfo.GetVolumeAccessMode()
-                    == NProto::VOLUME_ACCESS_REPAIR)
+            if (volumeClientInfo.GetVolumeAccessMode() ==
+                NProto::VOLUME_ACCESS_REPAIR)
             {
                 StorageAccessMode = EStorageAccessMode::Repair;
             }
         }
 
-        if (volumeClientInfo.GetVolumeMountMode() == NProto::VOLUME_MOUNT_LOCAL) {
+        if (volumeClientInfo.GetVolumeMountMode() == NProto::VOLUME_MOUNT_LOCAL)
+        {
             LocalMountClientId = pair.first;
         }
     }
@@ -228,7 +231,8 @@ THashSet<TString> TVolumeState::GetLaggingDeviceIds() const
     return laggingDevices;
 }
 
-void TVolumeState::FillOutdatedDevices() {
+void TVolumeState::FillOutdatedDevices()
+{
     OutdatedDevices.clear();
     for (const auto& agent: Meta.GetLaggingAgentsInfo().GetAgents()) {
         for (const auto& device: agent.GetDevices()) {
@@ -326,11 +330,11 @@ void TVolumeState::Reset()
     TrackUsedBlocks = ShouldTrackUsedBlocks();
     MaskUnusedBlocks = false;
     MaxTimedOutDeviceStateDuration = TDuration::Zero();
-    UseRdma = StorageConfig->GetUseRdma()
-        || StorageConfig->IsUseRdmaFeatureEnabled(
-            Meta.GetConfig().GetCloudId(),
-            Meta.GetConfig().GetFolderId(),
-            Meta.GetConfig().GetDiskId());
+    UseRdma =
+        StorageConfig->GetUseRdma() || StorageConfig->IsUseRdmaFeatureEnabled(
+                                           Meta.GetConfig().GetCloudId(),
+                                           Meta.GetConfig().GetFolderId(),
+                                           Meta.GetConfig().GetDiskId());
     UseFastPath = false;
     AcceptInvalidDiskAllocationResponse = false;
     UseIntermediateWriteBuffer = false;
@@ -427,12 +431,12 @@ THashSet<TString> TVolumeState::MakeFilteredDeviceIds() const
     }
 
     THashSet<TString> filtered;
-    auto addFreshDevices = [&] (const auto& devices) {
+    auto addFreshDevices = [&](const auto& devices)
+    {
         for (const auto& device: devices) {
-            const bool found = Find(
-                ids.begin(),
-                ids.end(),
-                device.GetDeviceUUID()) != ids.end();
+            const bool found =
+                Find(ids.begin(), ids.end(), device.GetDeviceUUID()) !=
+                ids.end();
 
             if (found) {
                 filtered.insert(device.GetDeviceUUID());
@@ -584,7 +588,8 @@ TPartitionInfo::EState TVolumeState::UpdatePartitionsState()
         }
     }
 
-    Y_ABORT_UNLESS(unknown + stopped + started + ready + failed == Partitions.size());
+    Y_ABORT_UNLESS(
+        unknown + stopped + started + ready + failed == Partitions.size());
     if (unknown) {
         PartitionsState = TPartitionInfo::UNKNOWN;
     } else if (failed) {
@@ -720,7 +725,8 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
         const bool volumeClientMigrationInProgress =
             IsVolumeClientMigrationInProgress();
 
-        // migration is still in progress if the new client is mounting as remote
+        // migration is still in progress if the new client is mounting as
+        // remote
         res.VolumeClientMigrationInProgress =
             (mountMode == NProto::VOLUME_MOUNT_REMOTE) &&
             volumeClientMigrationInProgress;
@@ -822,8 +828,8 @@ bool TVolumeState::IsClientStale(
     const NProto::TVolumeClientInfo& clientInfo,
     TInstant referenceTimestamp) const
 {
-    auto disconnectTimestamp = TInstant::MicroSeconds(
-        clientInfo.GetDisconnectTimestamp());
+    auto disconnectTimestamp =
+        TInstant::MicroSeconds(clientInfo.GetDisconnectTimestamp());
     // clients which don't correspond to disconnected services are considered
     // active
     if (!disconnectTimestamp) {
@@ -838,12 +844,12 @@ bool TVolumeState::IsClientStale(
 
 bool TVolumeState::HasActiveClients(TInstant referenceTimestamp) const
 {
-    for (const auto& client : ClientInfosByClientId) {
+    for (const auto& client: ClientInfosByClientId) {
         auto disconnectTimestamp = TInstant::MicroSeconds(
             client.second.GetVolumeClientInfo().GetDisconnectTimestamp());
-            if (!disconnectTimestamp) {
-                return true;
-            }
+        if (!disconnectTimestamp) {
+            return true;
+        }
         TDuration timePassed = referenceTimestamp - disconnectTimestamp;
         if (timePassed < StorageConfig->GetInactiveClientsTimeout()) {
             return true;
@@ -862,7 +868,8 @@ bool TVolumeState::IsPreempted(TActorId selfId) const
     return false;
 }
 
-const NProto::TVolumeClientInfo* TVolumeState::GetClient(const TString& clientId) const
+const NProto::TVolumeClientInfo* TVolumeState::GetClient(
+    const TString& clientId) const
 {
     auto it = ClientInfosByClientId.find(clientId);
     if (it != ClientInfosByClientId.end()) {
@@ -887,7 +894,8 @@ NProto::TError TVolumeState::RemoveClient(
 
     auto& clientInfo = it->second;
 
-    const auto accessMode = clientInfo.GetVolumeClientInfo().GetVolumeAccessMode();
+    const auto accessMode =
+        clientInfo.GetVolumeClientInfo().GetVolumeAccessMode();
     if (accessMode == NProto::VOLUME_ACCESS_REPAIR) {
         StorageAccessMode = EStorageAccessMode::Default;
     }
@@ -966,7 +974,8 @@ TVector<TActorId> TVolumeState::ClearPipeServerIds(TInstant ts)
     return result;
 }
 
-const THashMultiMap<TActorId, TString>& TVolumeState::GetPipeServerId2ClientId() const
+const THashMultiMap<TActorId, TString>&
+TVolumeState::GetPipeServerId2ClientId() const
 {
     return ClientIdsByPipeServerId;
 }
@@ -1048,7 +1057,7 @@ void TVolumeState::AddOrUpdateFollower(TFollowerDiskInfo follower)
     Y_DEFER
     {
         UpdateLeadershipStatus();
-    };
+    }
 
     for (auto& followerInfo: FollowerDisks) {
         if (followerInfo.Link.Match(follower.Link)) {
@@ -1064,7 +1073,7 @@ void TVolumeState::RemoveFollower(const TLeaderFollowerLink& link)
     Y_DEFER
     {
         UpdateLeadershipStatus();
-    };
+    }
 
     EraseIf(
         FollowerDisks,
@@ -1103,7 +1112,7 @@ void TVolumeState::AddOrUpdateLeader(TLeaderDiskInfo leader)
     Y_DEFER
     {
         UpdateLeadershipStatus();
-    };
+    }
 
     for (auto& leaderInfo: LeaderDisks) {
         if (leaderInfo.Link.Match(leader.Link)) {
@@ -1119,7 +1128,7 @@ void TVolumeState::RemoveLeader(const TLeaderFollowerLink& link)
     Y_DEFER
     {
         UpdateLeadershipStatus();
-    };
+    }
 
     EraseIf(
         LeaderDisks,
@@ -1165,7 +1174,8 @@ void TVolumeState::UpdateLeadershipStatus()
         }
     }
 
-    // If this is the destination disk (follower), then we are look at LeaderDisks.
+    // If this is the destination disk (follower), then we are look at
+    // LeaderDisks.
     for (const auto& leaderInfo: LeaderDisks) {
         if (leaderInfo.State == TLeaderDiskInfo::EState::Following) {
             LeadershipStatus = ELeadershipStatus::Follower;
@@ -1211,9 +1221,8 @@ bool TVolumeState::CanPreemptClient(
     TInstant referenceTimestamp,
     ui64 newClientMountSeqNumber) const
 {
-    return
-        IsClientStale(oldClientId, referenceTimestamp) ||
-            newClientMountSeqNumber > MountSeqNumber;
+    return IsClientStale(oldClientId, referenceTimestamp) ||
+           newClientMountSeqNumber > MountSeqNumber;
 }
 
 bool TVolumeState::CanAcceptClient(
@@ -1231,7 +1240,8 @@ bool TVolumeState::CanAcceptClient(
     }
 
     if (proposedFillGeneration > 0 &&
-            proposedFillGeneration != Meta.GetVolumeConfig().GetFillGeneration()) {
+        proposedFillGeneration != Meta.GetVolumeConfig().GetFillGeneration())
+    {
         return false;
     }
 
@@ -1323,8 +1333,8 @@ TPartitionStatInfo* TVolumeState::GetPartitionStatInfoByTabletId(ui64 tabletId)
     return nullptr;
 }
 
-TPartitionStatInfo*
-TVolumeState::GetPartitionStatByDiskId(const TString& diskId)
+TPartitionStatInfo* TVolumeState::GetPartitionStatByDiskId(
+    const TString& diskId)
 {
     for (auto& statInfo: PartitionStatInfos) {
         if (statInfo.DiskId == diskId) {
@@ -1418,7 +1428,8 @@ NProto::TError TVolumeState::FindDirtyBlocksBetweenLightCheckpoints(
         mask);
 }
 
-void TVolumeState::MarkBlocksAsDirtyInCheckpointLight(const TBlockRange64& blockRange)
+void TVolumeState::MarkBlocksAsDirtyInCheckpointLight(
+    const TBlockRange64& blockRange)
 {
     if (!CheckpointLight) {
         return;
@@ -1430,7 +1441,7 @@ void TVolumeState::MarkBlocksAsDirtyInCheckpointLight(const TBlockRange64& block
 {
     // local mounted client has read only access
     return !LocalMountClientId.empty() &&
-            LocalMountClientId != ReadWriteAccessClientId;
+           LocalMountClientId != ReadWriteAccessClientId;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

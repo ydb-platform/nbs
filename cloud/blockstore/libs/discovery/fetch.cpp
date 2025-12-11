@@ -31,9 +31,7 @@ void DeleteAt(TInstanceList& instances, const TVector<ui32>& indices)
 {
     ui32 offset = 0;
     for (ui32 i = 0; i < instances.Instances.size(); ++i) {
-        if (offset < indices.size()
-                && i == indices[offset])
-        {
+        if (offset < indices.size() && i == indices[offset]) {
             ++offset;
         } else if (offset) {
             const auto j = i - offset;
@@ -95,14 +93,12 @@ struct TRequestContext
     TRequestContext(ui32 requestCount)
         : RequestCount(requestCount)
         , Status(requestCount)
-    {
-    }
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TOnRecv
-    : NNeh::IOnRecv
+struct TOnRecv: NNeh::IOnRecv
 {
     TString Group;
     TPromise<TResult> Result;
@@ -110,22 +106,23 @@ struct TOnRecv
     TOnRecv(TString group)
         : Group(std::move(group))
         , Result(NewPromise<TResult>())
+    {}
+
+    void OnNotify(NNeh::THandle& handle) override
     {
+        Result.SetValue(
+            {std::move(Group),
+             handle.Response()->Data,
+             handle.Response()->GetErrorText()});
     }
 
-    void OnNotify(NNeh::THandle& handle) override {
-        Result.SetValue({
-            std::move(Group),
-            handle.Response()->Data,
-            handle.Response()->GetErrorText()
-        });
-    }
-
-    void OnEnd() override {
+    void OnEnd() override
+    {
         delete this;
     }
 
-    void OnRecv(NNeh::THandle&) override {
+    void OnRecv(NNeh::THandle&) override
+    {
         delete this;
     }
 };
@@ -144,8 +141,7 @@ using TFetcherStatePtr = TIntrusivePtr<TFetcherState>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TConductorInstanceFetcher final
-    : public IInstanceFetcher
+class TConductorInstanceFetcher final: public IInstanceFetcher
 {
 private:
     TDiscoveryConfigPtr Config;
@@ -161,11 +157,11 @@ private:
 
 public:
     TConductorInstanceFetcher(
-            TDiscoveryConfigPtr config,
-            ILoggingServicePtr logging,
-            IMonitoringServicePtr monitoring,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler)
+        TDiscoveryConfigPtr config,
+        ILoggingServicePtr logging,
+        IMonitoringServicePtr monitoring,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler)
         : Config(std::move(config))
         , Logging(std::move(logging))
         , Monitoring(std::move(monitoring))
@@ -184,8 +180,10 @@ public:
         auto counters = Monitoring->GetCounters();
         auto rootGroup = counters->GetSubgroup("counters", "blockstore");
 
-        auto discoveryCounters = rootGroup->GetSubgroup("component", "discovery");
-        auto fetcherCounters = discoveryCounters->GetSubgroup("subcomponent", "conductor-fetcher");
+        auto discoveryCounters =
+            rootGroup->GetSubgroup("component", "discovery");
+        auto fetcherCounters =
+            discoveryCounters->GetSubgroup("subcomponent", "conductor-fetcher");
         Counters.Register(*fetcherCounters);
     }
 
@@ -207,15 +205,15 @@ public:
 
         auto promise = NewPromise();
         auto requestContext = std::make_shared<TRequestContext>(
-            Config->GetConductorGroups().size()
-        );
+            Config->GetConductorGroups().size());
 
         for (ui32 i = 0; i < Config->GetConductorGroups().size(); ++i) {
             const auto group = Config->GetConductorGroups()[i];
 
             auto onRecv = std::make_unique<TOnRecv>(group);
             onRecv->Result.GetFuture().Subscribe(
-                [=, this, s = State, &instances] (auto f) mutable {
+                [=, this, s = State, &instances](auto f) mutable
+                {
                     TReadGuard guard(s->Lock);
 
                     if (!s->Running) {
@@ -224,30 +222,32 @@ public:
 
                     const auto& result = f.GetValue();
 
-                    if (OnConductorResult(i, result, *requestContext, instances)) {
+                    if (OnConductorResult(
+                            i,
+                            result,
+                            *requestContext,
+                            instances)) {
                         promise.SetValue();
                     }
-                }
-            );
+                });
 
             NNeh::Request(Config->GetConductorApiUrl() + "/" + group, &*onRecv);
             onRecv.release();
 
             Scheduler->Schedule(
                 Timer->Now() + Config->GetConductorRequestTimeout(),
-                [=, this, &instances] () mutable {
+                [=, this, &instances]() mutable
+                {
                     const auto done = OnConductorResult(
                         i,
                         {group, {}, "timeout"},
                         *requestContext,
-                        instances
-                    );
+                        instances);
 
                     if (done) {
                         promise.SetValue();
                     }
-                }
-            );
+                });
         }
 
         return promise;
@@ -272,9 +272,10 @@ private:
 
             if (result.Error) {
                 Counters.OnFetchError();
-                STORAGE_ERROR(TStringBuilder()
-                    << "conductor instance fetch error: " << result.Error.Quote()
-                    << ", group: " << result.Group.Quote());
+                STORAGE_ERROR(
+                    TStringBuilder() << "conductor instance fetch error: "
+                                     << result.Error.Quote()
+                                     << ", group: " << result.Group.Quote());
             } else {
                 TStringBuf s(result.Data);
                 THashSet<TStringBuf> hosts;
@@ -288,7 +289,7 @@ private:
                     THashSet<TStringBuf> oldHosts;
                     THashSet<TStringBuf> newHosts;
 
-                    for (const auto& ii : instances.Instances) {
+                    for (const auto& ii: instances.Instances) {
                         if (hosts.contains(ii.Host)) {
                             oldHosts.insert(ii.Host);
                         } else if (ii.Tag == result.Group) {
@@ -296,25 +297,26 @@ private:
                         }
                     }
 
-                    for (auto host : hosts) {
+                    for (auto host: hosts) {
                         if (!oldHosts.contains(host)) {
                             newHosts.insert(host);
                         }
                     }
 
-                    EraseIf(instances.Instances, [&] (const auto& ii) {
-                        return deletedHosts.contains(ii.Host);
-                    });
+                    EraseIf(
+                        instances.Instances,
+                        [&](const auto& ii)
+                        { return deletedHosts.contains(ii.Host); });
 
                     auto e = instances.Instances.size();
 
                     if (Config->GetConductorSecureInstancePort()) {
-                        instances.Instances.resize(e + 2*newHosts.size());
+                        instances.Instances.resize(e + 2 * newHosts.size());
                     } else {
                         instances.Instances.resize(e + newHosts.size());
                     }
 
-                    for (auto host : newHosts) {
+                    for (auto host: newHosts) {
                         auto& ii = instances.Instances[e];
                         ii.Host = host;
                         ii.Port = Config->GetConductorInstancePort();
@@ -323,7 +325,7 @@ private:
                     }
 
                     if (Config->GetConductorSecureInstancePort()) {
-                        for (auto host : newHosts) {
+                        for (auto host: newHosts) {
                             auto& ii = instances.Instances[e];
                             ii.Host = host;
                             ii.Port = Config->GetConductorSecureInstancePort();
@@ -350,8 +352,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStaticInstanceFetcher final
-    : public IInstanceFetcher
+class TStaticInstanceFetcher final: public IInstanceFetcher
 {
 private:
     TDiscoveryConfigPtr Config;
@@ -363,14 +364,13 @@ private:
 
 public:
     TStaticInstanceFetcher(
-            TDiscoveryConfigPtr config,
-            ILoggingServicePtr logging,
-            IMonitoringServicePtr monitoring)
+        TDiscoveryConfigPtr config,
+        ILoggingServicePtr logging,
+        IMonitoringServicePtr monitoring)
         : Config(std::move(config))
         , Logging(std::move(logging))
         , Monitoring(std::move(monitoring))
-    {
-    }
+    {}
 
 public:
     void Start() override
@@ -379,14 +379,15 @@ public:
         auto counters = Monitoring->GetCounters();
         auto rootGroup = counters->GetSubgroup("counters", "blockstore");
 
-        auto discoveryCounters = rootGroup->GetSubgroup("component", "discovery");
-        auto fetcherCounters = rootGroup->GetSubgroup("subcomponent", "conductor-fetcher");
+        auto discoveryCounters =
+            rootGroup->GetSubgroup("component", "discovery");
+        auto fetcherCounters =
+            rootGroup->GetSubgroup("subcomponent", "conductor-fetcher");
         Counters.Register(*fetcherCounters);
     }
 
     void Stop() override
-    {
-    }
+    {}
 
     TFuture<void> FetchInstances(TInstanceList& instances) override
     {
@@ -408,7 +409,8 @@ public:
                 (secPortStr && !TryFromString(secPortStr, secPort)))
             {
                 Counters.OnFetchError();
-                STORAGE_ERROR(TStringBuilder()
+                STORAGE_ERROR(
+                    TStringBuilder()
                     << "static instance config parsing error, broken entry: "
                     << line.Quote());
 
@@ -418,7 +420,9 @@ public:
             newInstances.emplace(std::make_pair(TString{host}, port), false);
 
             if (secPort) {
-                newInstances.emplace(std::make_pair(TString{host}, secPort), true);
+                newInstances.emplace(
+                    std::make_pair(TString{host}, secPort),
+                    true);
             }
         }
 
@@ -438,7 +442,7 @@ public:
 
             auto e = instances.Instances.size() - deletedIndices.size();
             instances.Instances.resize(e + newInstances.size());
-            for (auto& [newInstance, secure] : newInstances) {
+            for (auto& [newInstance, secure]: newInstances) {
                 auto& ii = instances.Instances[e];
                 ii.Host = newInstance.first;
                 ii.Port = newInstance.second;
@@ -455,8 +459,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TInstanceFetcherStub final
-    : public IInstanceFetcher
+class TInstanceFetcherStub final: public IInstanceFetcher
 {
 private:
     const TDeque<TInstanceInfo> Instances;
@@ -464,17 +467,14 @@ private:
 public:
     TInstanceFetcherStub(TDeque<TInstanceInfo> instances)
         : Instances(std::move(instances))
-    {
-    }
+    {}
 
 public:
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 
     TFuture<void> FetchInstances(TInstanceList& instances) override
     {
@@ -504,8 +504,7 @@ IInstanceFetcherPtr CreateConductorInstanceFetcher(
         std::move(logging),
         std::move(monitoring),
         std::move(timer),
-        std::move(scheduler)
-    );
+        std::move(scheduler));
 }
 
 IInstanceFetcherPtr CreateStaticInstanceFetcher(
@@ -516,12 +515,10 @@ IInstanceFetcherPtr CreateStaticInstanceFetcher(
     return std::make_shared<TStaticInstanceFetcher>(
         std::move(config),
         std::move(logging),
-        std::move(monitoring)
-    );
+        std::move(monitoring));
 }
 
-IInstanceFetcherPtr CreateInstanceFetcherStub(
-    TDeque<TInstanceInfo> instances)
+IInstanceFetcherPtr CreateInstanceFetcherStub(TDeque<TInstanceInfo> instances)
 {
     return std::make_shared<TInstanceFetcherStub>(std::move(instances));
 }

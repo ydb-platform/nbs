@@ -18,7 +18,7 @@ private:
 
 public:
     explicit TDiskRegistryProxyConfig(
-            NProto::TDiskRegistryProxyConfig config = {});
+        NProto::TDiskRegistryProxyConfig config = {});
 
     ui64 GetOwner() const;
     ui64 GetOwnerIdx() const;

@@ -8,7 +8,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 struct TGarbageQueue::TImpl
 {
-    struct TBlobs : TSet<TPartialBlobId>
+    struct TBlobs: TSet<TPartialBlobId>
     {
         bool Add(const TPartialBlobId& blobId)
         {

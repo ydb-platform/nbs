@@ -8,12 +8,13 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TNullStorage final
-    : public IStorage
+class TNullStorage final: public IStorage
 {
 public:
-    void Start() override {}
-    void Stop() override {}
+    void Start() override
+    {}
+    void Stop() override
+    {}
 
     TFuture<NProto::TError> ReadBlocks(
         TCallContextPtr callContext,

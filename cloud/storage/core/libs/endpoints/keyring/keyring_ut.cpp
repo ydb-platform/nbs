@@ -46,7 +46,8 @@ Y_UNIT_TEST_SUITE(TKeyringTest)
         }
 
         // remove keyring tree
-        Y_DEFER {
+        Y_DEFER
+        {
             auto process = TKeyring::GetRoot(TKeyring::Process);
             UNIT_ASSERT(process);
 
@@ -61,9 +62,10 @@ Y_UNIT_TEST_SUITE(TKeyringTest)
 
             auto res2 = user.UnlinkKeyring(root);
             UNIT_ASSERT(res2);
-        };
+        }
 
-        auto RootChecker = [&] (const TKeyring& root) {
+        auto RootChecker = [&](const TKeyring& root)
+        {
             UNIT_ASSERT(root);
 
             auto subRoot = root.SearchKeyring(subRootDesc);

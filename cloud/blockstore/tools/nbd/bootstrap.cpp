@@ -3,14 +3,13 @@
 #include "options.h"
 
 #include <cloud/blockstore/config/server.pb.h>
-
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/client/throttling.h>
-#include <cloud/blockstore/libs/diagnostics/probes.h>
 #include <cloud/blockstore/libs/diagnostics/incomplete_request_processor.h>
+#include <cloud/blockstore/libs/diagnostics/probes.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
@@ -26,6 +25,7 @@
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_null.h>
 #include <cloud/blockstore/libs/service/storage.h>
+
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -37,7 +37,6 @@
 #include <cloud/storage/core/libs/version/version.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
-
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -77,7 +76,9 @@ TString GetIamToken(const TString& iamTokenFile)
     auto filename = ResolvePath(iamTokenFile);
     TFile file;
     try {
-        file = TFile(filename, EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
+        file = TFile(
+            filename,
+            EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
     } catch (...) {
         return {};
     }
@@ -130,15 +131,15 @@ void TBootstrap::Init()
     TLogSettings logSettings;
 
     if (logConfig.HasLogLevel()) {
-        logSettings.FiltrationLevel = static_cast<ELogPriority>(
-            logConfig.GetLogLevel());
+        logSettings.FiltrationLevel =
+            static_cast<ELogPriority>(logConfig.GetLogLevel());
     }
 
     if (Options->VerboseLevel) {
         auto level = GetLogLevel(Options->VerboseLevel);
         if (!level) {
             ythrow yexception()
-                << "unknown log level: " << Options->VerboseLevel.Quote();
+                << "unknown log level: " << Options -> VerboseLevel.Quote();
         }
         logSettings.FiltrationLevel = *level;
     }
@@ -220,7 +221,7 @@ void TBootstrap::InitClientConfig()
         monConfig.SetThreadsCount(Options->MonitoringThreads);
     }
     if (!monConfig.GetThreadsCount()) {
-        monConfig.SetThreadsCount(1);  // reasonable defaults
+        monConfig.SetThreadsCount(1);   // reasonable defaults
     }
 
     auto iamTokenFile = Options->IamTokenFile;
@@ -390,8 +391,8 @@ void TBootstrap::InitNullClient()
 
 void TBootstrap::InitControlClient()
 {
-    auto rootGroup = Monitoring->GetCounters()
-        ->GetSubgroup("counters", "blockstore");
+    auto rootGroup =
+        Monitoring->GetCounters()->GetSubgroup("counters", "blockstore");
 
     auto clientGroup = rootGroup->GetSubgroup("component", "client");
 
@@ -429,7 +430,7 @@ void TBootstrap::InitControlClient()
         Scheduler,
         CreateIncompleteRequestProcessor(
             ClientStats,
-            {})  // TODO: fill incompleteRequestProviders (NBS-2167)
+            {})   // TODO: fill incompleteRequestProviders (NBS-2167)
     );
 
     ClientEndpoint = Client->CreateEndpoint();
@@ -455,9 +456,7 @@ void TBootstrap::InitClientSession()
     sessionConfig.AccessMode = Options->AccessMode;
     sessionConfig.MountMode = Options->MountMode;
     if (Options->ThrottlingDisabled) {
-        SetProtoFlag(
-            sessionConfig.MountFlags,
-            NProto::MF_THROTTLING_DISABLED);
+        SetProtoFlag(sessionConfig.MountFlags, NProto::MF_THROTTLING_DISABLED);
     }
     sessionConfig.ClientVersionInfo = GetFullVersionString();
 
@@ -501,18 +500,16 @@ void TBootstrap::StartNbdServer(TNetworkAddress listenAddress)
         CreateErrorHandlerStub(),
         options);
 
-    TServerConfig serverConfig {
-        .ThreadsCount = 1,  // there will be just one endpoint
+    TServerConfig serverConfig{
+        .ThreadsCount = 1,   // there will be just one endpoint
         .MaxInFlightBytesPerThread = Options->MaxInFlightBytes,
-        .Affinity = {}
-    };
+        .Affinity = {}};
 
     NbdServer = CreateServer(Logging, serverConfig);
     NbdServer->Start();
 
-    auto future = NbdServer->StartEndpoint(
-        listenAddress,
-        std::move(handlerFactory));
+    auto future =
+        NbdServer->StartEndpoint(listenAddress, std::move(handlerFactory));
     CheckError(future.GetValue(WaitTimeout));
 }
 
@@ -535,9 +532,7 @@ void TBootstrap::StartNbdEndpoint()
     request->SetVolumeMountMode(Options->MountMode);
     ui32 mountFlags = 0;
     if (Options->ThrottlingDisabled) {
-        SetProtoFlag(
-            mountFlags,
-            NProto::MF_THROTTLING_DISABLED);
+        SetProtoFlag(mountFlags, NProto::MF_THROTTLING_DISABLED);
     }
     request->SetMountFlags(mountFlags);
     request->SetUnalignedRequestsDisabled(Options->UnalignedRequestsDisabled);
@@ -550,9 +545,8 @@ void TBootstrap::StartNbdEndpoint()
             Options->EncryptionKeyPath);
     }
 
-    auto future = ClientEndpoint->StartEndpoint(
-        std::move(ctx),
-        std::move(request));
+    auto future =
+        ClientEndpoint->StartEndpoint(std::move(ctx), std::move(request));
     CheckError(future.GetValue(WaitTimeout));
 }
 
@@ -562,9 +556,8 @@ void TBootstrap::StopNbdEndpoint()
     auto request = std::make_shared<NProto::TStopEndpointRequest>();
     request->SetUnixSocketPath(Options->ListenUnixSocketPath);
 
-    auto future = ClientEndpoint->StopEndpoint(
-        std::move(ctx),
-        std::move(request));
+    auto future =
+        ClientEndpoint->StopEndpoint(std::move(ctx), std::move(request));
     CheckError(future.GetValue(WaitTimeout));
 }
 

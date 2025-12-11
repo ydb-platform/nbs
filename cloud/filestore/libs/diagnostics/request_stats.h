@@ -44,15 +44,15 @@ struct IRequestStats
 
     virtual void UpdateStats(bool updatePercentiles) = 0;
 
-    virtual void RegisterIncompleteRequestProvider(IIncompleteRequestProviderPtr provider) = 0;
+    virtual void RegisterIncompleteRequestProvider(
+        IIncompleteRequestProviderPtr provider) = 0;
 
     virtual void Reset() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IRequestStatsRegistry
-    : public IIncompleteRequestProcessor
+struct IRequestStatsRegistry: public IIncompleteRequestProcessor
 {
     virtual IRequestStatsPtr GetRequestStats() = 0;
 

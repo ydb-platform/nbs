@@ -25,20 +25,20 @@ TDuration MSeconds(ui64 x)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define IAM_SERVICE_CONFIG(xxx)                                                \
-    xxx(MetadataServiceUrl,              TString,        {}                   )\
-    xxx(TokenAgentUnixSocket,            TString,        {}                   )\
-    xxx(InitialRetryTimeout,             TDuration,      MSeconds(500)        )\
-    xxx(RetryTimeoutIncrement,           TDuration,      MSeconds(0)          )\
-    xxx(RetryAttempts,                   ui32,           1                    )\
-    xxx(GrpcTimeout,                     TDuration,      Seconds(30)          )\
-    xxx(HttpTimeout,                     TDuration,      Seconds(30)          )\
-    xxx(TokenRefreshTimeout,             TDuration,      Minutes(0)           )\
-// IAM_SERVICE_CONFIG
+#define IAM_SERVICE_CONFIG(xxx)                        \
+    xxx(MetadataServiceUrl, TString, {})               \
+    xxx(TokenAgentUnixSocket, TString, {})             \
+    xxx(InitialRetryTimeout, TDuration, MSeconds(500)) \
+    xxx(RetryTimeoutIncrement, TDuration, MSeconds(0)) \
+    xxx(RetryAttempts, ui32, 1)                        \
+    xxx(GrpcTimeout, TDuration, Seconds(30))           \
+    xxx(HttpTimeout, TDuration, Seconds(30))           \
+    xxx(TokenRefreshTimeout, TDuration, Minutes(0))    \
+    // IAM_SERVICE_CONFIG
 
-#define IAM_SERVICE_DECLARE_CONFIG(name, type, value)                          \
-    Y_DECLARE_UNUSED static const type Default##name = value;                  \
-// IAM_SERVICE_DECLARE_CONFIG
+#define IAM_SERVICE_DECLARE_CONFIG(name, type, value)         \
+    Y_DECLARE_UNUSED static const type Default##name = value; \
+    // IAM_SERVICE_DECLARE_CONFIG
 
 IAM_SERVICE_CONFIG(IAM_SERVICE_DECLARE_CONFIG)
 
@@ -66,13 +66,13 @@ TIamClientConfig::TIamClientConfig(NProto::TIamClientConfig config)
     : Config(std::move(config))
 {}
 
-#define IAM_SERVICE_CONFIG_GETTER(name, type, ...)                             \
-type TIamClientConfig::Get##name() const                                       \
-{                                                                              \
-    const auto value = Config.Get##name();                                     \
-    return value ? ConvertValue<type>(value) : Default##name;                  \
-}                                                                              \
-// IAM_SERVICE_CONFIG_GETTER
+#define IAM_SERVICE_CONFIG_GETTER(name, type, ...)                \
+    type TIamClientConfig::Get##name() const                      \
+    {                                                             \
+        const auto value = Config.Get##name();                    \
+        return value ? ConvertValue<type>(value) : Default##name; \
+    }                                                             \
+    // IAM_SERVICE_CONFIG_GETTER
 
 IAM_SERVICE_CONFIG(IAM_SERVICE_CONFIG_GETTER)
 

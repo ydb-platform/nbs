@@ -50,27 +50,26 @@ TInstanceInfo Instance(TString host, ui16 port)
     return ii;
 }
 
-struct TTestBalancingPolicy
-    : IBalancingPolicy
+struct TTestBalancingPolicy: IBalancingPolicy
 {
     TTestBalancingPolicy(TVector<TString> bestHosts)
         : BestHosts(std::move(bestHosts))
-    {
-    }
+    {}
 
     void Reorder(TInstanceList& instances) override
     {
         with_lock (instances.Lock) {
-            for (auto& ii : instances.Instances) {
+            for (auto& ii: instances.Instances) {
                 auto it = Find(BestHosts.begin(), BestHosts.end(), ii.Host);
-                ii.BalancingScore = it == BestHosts.end()
-                    ? 0
-                    : 1. / (1 + std::distance(BestHosts.begin(), it));
+                ii.BalancingScore =
+                    it == BestHosts.end()
+                        ? 0
+                        : 1. / (1 + std::distance(BestHosts.begin(), it));
             }
 
-            StableSortBy(instances.Instances, [] (const auto& ii) {
-                return -ii.BalancingScore;
-            });
+            StableSortBy(
+                instances.Instances,
+                [](const auto& ii) { return -ii.BalancingScore; });
         }
     }
 
@@ -87,8 +86,7 @@ TString SetupBanFile(std::initializer_list<TString> hosts)
     return filename;
 }
 
-struct TTestHealthChecker
-    : IHealthChecker
+struct TTestHealthChecker: IHealthChecker
 {
     NThreading::TPromise<void> Promise = NThreading::NewPromise();
 
@@ -100,12 +98,10 @@ struct TTestHealthChecker
     }
 
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 };
 
 }   // namespace
@@ -117,10 +113,8 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
     Y_UNIT_TEST(ShouldServeRequest)
     {
         NProto::TDiscoveryServiceConfig config;
-        config.SetBannedInstanceListFile(SetupBanFile({
-            "bannedhost\t1",
-            "besthost\t555"
-        }));
+        config.SetBannedInstanceListFile(
+            SetupBanFile({"bannedhost\t1", "besthost\t555"}));
 
         TEnv env(std::move(config));
 
@@ -147,15 +141,12 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
                 Instance("host3", 3),
             }),
             CreateHealthCheckerStub(),
-            std::make_shared<TTestBalancingPolicy>(
-                TVector<TString>{
-                    "bannedhost",
-                    "besthost",
-                    "secondbesthost",
-                    "host1",
-                }
-            )
-        );
+            std::make_shared<TTestBalancingPolicy>(TVector<TString>{
+                "bannedhost",
+                "besthost",
+                "secondbesthost",
+                "host1",
+            }));
 
         discovery->Start();
 
@@ -173,7 +164,9 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(1, response.InstancesSize());
 
-            UNIT_ASSERT_VALUES_EQUAL("besthost", response.GetInstances(0).GetHost());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "besthost",
+                response.GetInstances(0).GetHost());
             UNIT_ASSERT_VALUES_EQUAL(1, response.GetInstances(0).GetPort());
         }
 
@@ -186,10 +179,14 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(2, response.InstancesSize());
 
-            UNIT_ASSERT_VALUES_EQUAL("besthost", response.GetInstances(0).GetHost());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "besthost",
+                response.GetInstances(0).GetHost());
             UNIT_ASSERT_VALUES_EQUAL(1, response.GetInstances(0).GetPort());
 
-            UNIT_ASSERT_VALUES_EQUAL("secondbesthost", response.GetInstances(1).GetHost());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "secondbesthost",
+                response.GetInstances(1).GetHost());
             UNIT_ASSERT_VALUES_EQUAL(2, response.GetInstances(1).GetPort());
         }
 
@@ -218,8 +215,7 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
             CreateInstanceFetcherStub({Instance("host1", 1)}),
             CreateInstanceFetcherStub({Instance("host2", 2)}),
             hc,
-            std::make_shared<TTestBalancingPolicy>(TVector<TString>{})
-        );
+            std::make_shared<TTestBalancingPolicy>(TVector<TString>{}));
 
         discovery->Start();
 
@@ -269,11 +265,8 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
     void ShouldFilterInstancesImpl(NProto::EDiscoveryPortFilter filter)
     {
         NProto::TDiscoveryServiceConfig config;
-        config.SetBannedInstanceListFile(SetupBanFile({
-            "bannedhost\t1",
-            "bannedhost\t10",
-            "besthost\t555"
-        }));
+        config.SetBannedInstanceListFile(
+            SetupBanFile({"bannedhost\t1", "bannedhost\t10", "besthost\t555"}));
 
         TEnv env(std::move(config));
 
@@ -306,15 +299,12 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
                 Instance("host3", 30),
             }),
             CreateHealthCheckerStub(),
-            std::make_shared<TTestBalancingPolicy>(
-                TVector<TString>{
-                    "bannedhost",
-                    "besthost",
-                    "secondbesthost",
-                    "host1",
-                }
-            )
-        );
+            std::make_shared<TTestBalancingPolicy>(TVector<TString>{
+                "bannedhost",
+                "besthost",
+                "secondbesthost",
+                "host1",
+            }));
 
         discovery->Start();
 
@@ -323,14 +313,16 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
         // healthcheck & balancing
         scheduler->RunAllScheduledTasks();
 
-        auto checkPort = [&] (int port, int insecurePort) {
+        auto checkPort = [&](int port, int insecurePort)
+        {
             if (filter == NProto::EDiscoveryPortFilter::DISCOVERY_ANY_PORT) {
                 return;
             }
 
-            const int expectedPort = filter == NProto::EDiscoveryPortFilter::DISCOVERY_INSECURE_PORT
-                ? insecurePort
-                : 10*insecurePort;
+            const int expectedPort =
+                filter == NProto::EDiscoveryPortFilter::DISCOVERY_INSECURE_PORT
+                    ? insecurePort
+                    : 10 * insecurePort;
             UNIT_ASSERT_VALUES_EQUAL(expectedPort, port);
         };
 
@@ -344,7 +336,9 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(1, response.InstancesSize());
 
-            UNIT_ASSERT_VALUES_EQUAL("besthost", response.GetInstances(0).GetHost());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "besthost",
+                response.GetInstances(0).GetHost());
 
             checkPort(response.GetInstances(0).GetPort(), 1);
         }
@@ -360,12 +354,20 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
             UNIT_ASSERT_VALUES_EQUAL(2, response.InstancesSize());
 
             if (filter == NProto::EDiscoveryPortFilter::DISCOVERY_ANY_PORT) {
-                UNIT_ASSERT_VALUES_EQUAL("besthost", response.GetInstances(0).GetHost());
-                UNIT_ASSERT_VALUES_EQUAL("besthost", response.GetInstances(1).GetHost());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "besthost",
+                    response.GetInstances(0).GetHost());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "besthost",
+                    response.GetInstances(1).GetHost());
             } else {
-                UNIT_ASSERT_VALUES_EQUAL("besthost", response.GetInstances(0).GetHost());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "besthost",
+                    response.GetInstances(0).GetHost());
                 checkPort(response.GetInstances(0).GetPort(), 1);
-                UNIT_ASSERT_VALUES_EQUAL("secondbesthost", response.GetInstances(1).GetHost());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "secondbesthost",
+                    response.GetInstances(1).GetHost());
                 checkPort(response.GetInstances(1).GetPort(), 2);
             }
         }
@@ -375,17 +377,20 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
 
     Y_UNIT_TEST(ShouldNoFilterInstances)
     {
-        ShouldFilterInstancesImpl(NProto::EDiscoveryPortFilter::DISCOVERY_ANY_PORT);
+        ShouldFilterInstancesImpl(
+            NProto::EDiscoveryPortFilter::DISCOVERY_ANY_PORT);
     }
 
     Y_UNIT_TEST(ShouldFilterInstancesSecure)
     {
-        ShouldFilterInstancesImpl(NProto::EDiscoveryPortFilter::DISCOVERY_SECURE_PORT);
+        ShouldFilterInstancesImpl(
+            NProto::EDiscoveryPortFilter::DISCOVERY_SECURE_PORT);
     }
 
     Y_UNIT_TEST(ShouldFilterInstancesInsecure)
     {
-        ShouldFilterInstancesImpl(NProto::EDiscoveryPortFilter::DISCOVERY_INSECURE_PORT);
+        ShouldFilterInstancesImpl(
+            NProto::EDiscoveryPortFilter::DISCOVERY_INSECURE_PORT);
     }
 
     Y_UNIT_TEST(ShouldStubWorks)
@@ -395,7 +400,9 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
         const TString expectedHost = "hostname";
 
         auto discovery = CreateDiscoveryServiceStub(
-            expectedHost, expectedInsecurePort, expectedSecurePort);
+            expectedHost,
+            expectedInsecurePort,
+            expectedSecurePort);
 
         discovery->Start();
 
@@ -408,8 +415,12 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(1, response.InstancesSize());
 
-            UNIT_ASSERT_VALUES_EQUAL(expectedHost, response.GetInstances(0).GetHost());
-            UNIT_ASSERT_VALUES_EQUAL(expectedInsecurePort, response.GetInstances(0).GetPort());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedHost,
+                response.GetInstances(0).GetHost());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedInsecurePort,
+                response.GetInstances(0).GetPort());
         }
 
         using NProto::EDiscoveryPortFilter;
@@ -417,29 +428,39 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
         {
             NProto::TDiscoverInstancesRequest request;
             request.SetLimit(1);
-            request.SetInstanceFilter(EDiscoveryPortFilter::DISCOVERY_INSECURE_PORT);
+            request.SetInstanceFilter(
+                EDiscoveryPortFilter::DISCOVERY_INSECURE_PORT);
 
             NProto::TDiscoverInstancesResponse response;
             discovery->ServeRequest(request, &response);
 
             UNIT_ASSERT_VALUES_EQUAL(1, response.InstancesSize());
 
-            UNIT_ASSERT_VALUES_EQUAL(expectedHost, response.GetInstances(0).GetHost());
-            UNIT_ASSERT_VALUES_EQUAL(expectedInsecurePort, response.GetInstances(0).GetPort());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedHost,
+                response.GetInstances(0).GetHost());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedInsecurePort,
+                response.GetInstances(0).GetPort());
         }
 
         {
             NProto::TDiscoverInstancesRequest request;
             request.SetLimit(1);
-            request.SetInstanceFilter(EDiscoveryPortFilter::DISCOVERY_SECURE_PORT);
+            request.SetInstanceFilter(
+                EDiscoveryPortFilter::DISCOVERY_SECURE_PORT);
 
             NProto::TDiscoverInstancesResponse response;
             discovery->ServeRequest(request, &response);
 
             UNIT_ASSERT_VALUES_EQUAL(1, response.InstancesSize());
 
-            UNIT_ASSERT_VALUES_EQUAL(expectedHost, response.GetInstances(0).GetHost());
-            UNIT_ASSERT_VALUES_EQUAL(expectedSecurePort, response.GetInstances(0).GetPort());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedHost,
+                response.GetInstances(0).GetHost());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedSecurePort,
+                response.GetInstances(0).GetPort());
         }
 
         discovery->Stop();

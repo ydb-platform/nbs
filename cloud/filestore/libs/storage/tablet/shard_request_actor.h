@@ -11,7 +11,8 @@ namespace NCloud::NFileStore::NStorage {
 
 template <typename TRequest, typename TResponse>
 class TShardRequestActor final
-    : public NActors::TActorBootstrapped<TShardRequestActor<TRequest, TResponse>>
+    : public NActors::TActorBootstrapped<
+          TShardRequestActor<TRequest, TResponse>>
 {
 private:
     const TString LogTag;
@@ -74,12 +75,12 @@ private:
 
 template <typename TRequest, typename TResponse>
 TShardRequestActor<TRequest, TResponse>::TShardRequestActor(
-        TString logTag,
-        NActors::TActorId tablet,
-        TRequestInfoPtr requestInfo,
-        TRequest::ProtoRecordType request,
-        TVector<TString> shardIds,
-        std::unique_ptr<TResponse> response)
+    TString logTag,
+    NActors::TActorId tablet,
+    TRequestInfoPtr requestInfo,
+    TRequest::ProtoRecordType request,
+    TVector<TString> shardIds,
+    std::unique_ptr<TResponse> response)
     : LogTag(std::move(logTag))
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
@@ -117,7 +118,7 @@ void TShardRequestActor<TRequest, TResponse>::SendRequests(
         ctx.Send(
             MakeIndexTabletProxyServiceId(),
             request.release(),
-            {}, // flags
+            {},   // flags
             cookie++);
     }
 }

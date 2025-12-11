@@ -10,8 +10,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRmCommand final
-    : public TFileStoreCommand
+class TRmCommand final: public TFileStoreCommand
 {
 private:
     TString Path;
@@ -31,9 +30,7 @@ public:
             .RequiredArgument("ID")
             .StoreResult(&NodeId);
 
-        Opts.AddLongOption('r', "recursive")
-            .NoArgument()
-            .SetFlag(&RemoveDir);
+        Opts.AddLongOption('r', "recursive").NoArgument().SetFlag(&RemoveDir);
     }
 
     bool Execute() override
@@ -57,9 +54,8 @@ public:
         request->SetName(Path);
         request->SetUnlinkDirectory(RemoveDir);
 
-        auto response = WaitFor(session.UnlinkNode(
-            PrepareCallContext(),
-            std::move(request)));
+        auto response = WaitFor(
+            session.UnlinkNode(PrepareCallContext(), std::move(request)));
 
         CheckResponse(response);
 

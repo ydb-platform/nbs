@@ -24,7 +24,10 @@ private:
     NActors::TActorId Sender;
 
 public:
-    TSSProxyClient(TStorageConfigPtr config, NKikimr::TTestActorRuntime& runtime, ui32 nodeIdx)
+    TSSProxyClient(
+        TStorageConfigPtr config,
+        NKikimr::TTestActorRuntime& runtime,
+        ui32 nodeIdx)
         : StorageConfig(std::move(config))
         , Runtime(runtime)
         , NodeIdx(nodeIdx)
@@ -45,8 +48,8 @@ public:
             recipient,
             Sender,
             request.release(),
-            0,          // flags
-            0,          // cookie
+            0,   // flags
+            0,   // cookie
             // forwardOnNondelivery
             nullptr);
 
@@ -58,17 +61,21 @@ public:
     {
         TAutoPtr<NActors::IEventHandle> handle;
         Runtime.GrabEdgeEventRethrow<TResponse>(handle);
-        return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
+        return std::unique_ptr<TResponse>(
+            handle->Release<TResponse>().Release());
     }
 
     auto CreateDescribeSchemeRequest(const TString& path)
     {
-        return std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeRequest>(path);
+        return std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeRequest>(
+            path);
     }
 
-    auto CreateModifySchemeRequest(const NKikimrSchemeOp::TModifyScheme& modifyScheme)
+    auto CreateModifySchemeRequest(
+        const NKikimrSchemeOp::TModifyScheme& modifyScheme)
     {
-        return std::make_unique<TEvStorageSSProxy::TEvModifySchemeRequest>(modifyScheme);
+        return std::make_unique<TEvStorageSSProxy::TEvModifySchemeRequest>(
+            modifyScheme);
     }
 
     auto CreateDescribeFileStoreRequest(const TString& path)
@@ -89,10 +96,10 @@ public:
         config.SetBlocksCount(blocksCount);
 
         SetupFileStorePerformanceAndChannels(
-            false,  // do not allocate mixed0 channel
+            false,   // do not allocate mixed0 channel
             *StorageConfig,
             config,
-            {}      // clientPerformanceProfile
+            {}   // clientPerformanceProfile
         );
 
         return std::make_unique<TEvSSProxy::TEvCreateFileStoreRequest>(config);
@@ -100,35 +107,36 @@ public:
 
     auto CreateDestroyFileStoreRequest(const TString& fileSystemId)
     {
-        return std::make_unique<TEvSSProxy::TEvDestroyFileStoreRequest>(fileSystemId);
+        return std::make_unique<TEvSSProxy::TEvDestroyFileStoreRequest>(
+            fileSystemId);
     }
 
-#define FILESTORE_DECLARE_METHOD(name, ns)                                     \
-    template <typename... Args>                                                \
-    void Send##name##Request(Args&&... args)                                   \
-    {                                                                          \
-        auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(MakeSSProxyServiceId(), std::move(request));               \
-    }                                                                          \
-                                                                               \
-    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response()            \
-    {                                                                          \
-        return RecvResponse<ns::TEv##name##Response>();                        \
-    }                                                                          \
-                                                                               \
-    template <typename... Args>                                                \
-    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)              \
-    {                                                                          \
-        auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(MakeSSProxyServiceId(), std::move(request));               \
-                                                                               \
-        auto response = RecvResponse<ns::TEv##name##Response>();               \
-        UNIT_ASSERT_C(                                                         \
-            SUCCEEDED(response->GetStatus()),                                  \
-            response->GetErrorReason());                                       \
-        return response;                                                       \
-    }                                                                          \
-// FILESTORE_DECLARE_METHOD
+#define FILESTORE_DECLARE_METHOD(name, ns)                                 \
+    template <typename... Args>                                            \
+    void Send##name##Request(Args&&... args)                               \
+    {                                                                      \
+        auto request = Create##name##Request(std::forward<Args>(args)...); \
+        SendRequest(MakeSSProxyServiceId(), std::move(request));           \
+    }                                                                      \
+                                                                           \
+    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response()        \
+    {                                                                      \
+        return RecvResponse<ns::TEv##name##Response>();                    \
+    }                                                                      \
+                                                                           \
+    template <typename... Args>                                            \
+    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)          \
+    {                                                                      \
+        auto request = Create##name##Request(std::forward<Args>(args)...); \
+        SendRequest(MakeSSProxyServiceId(), std::move(request));           \
+                                                                           \
+        auto response = RecvResponse<ns::TEv##name##Response>();           \
+        UNIT_ASSERT_C(                                                     \
+            SUCCEEDED(response->GetStatus()),                              \
+            response->GetErrorReason());                                   \
+        return response;                                                   \
+    }                                                                      \
+    // FILESTORE_DECLARE_METHOD
 
     FILESTORE_DECLARE_METHOD(DescribeScheme, TEvStorageSSProxy)
     FILESTORE_DECLARE_METHOD(ModifyScheme, TEvStorageSSProxy)

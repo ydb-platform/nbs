@@ -19,8 +19,7 @@ void Print(const NProto::TCreateSessionResponse& response, bool jsonOutput)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCreateSessionCommand final
-    : public TFileStoreCommand
+class TCreateSessionCommand final: public TFileStoreCommand
 {
 private:
     TString SessionId;
@@ -37,9 +36,8 @@ public:
             .RequiredArgument("CLIENT_ID")
             .StoreResult(&ClientId);
 
-        Opts.AddLongOption("seq-no")
-            .RequiredArgument("SEQ_NO")
-            .StoreResult(&SeqNo);
+        Opts.AddLongOption("seq-no").RequiredArgument("SEQ_NO").StoreResult(
+            &SeqNo);
     }
 
     bool Execute() override

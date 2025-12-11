@@ -34,7 +34,9 @@ NProto::TError ValidateRequest(
     }
 
     // F_PUNCH_HOLE must be OR'ed with F_KEEP_SIZE
-    if (HasFlag(request.GetFlags(), NProto::TAllocateDataRequest::F_PUNCH_HOLE) &&
+    if (HasFlag(
+            request.GetFlags(),
+            NProto::TAllocateDataRequest::F_PUNCH_HOLE) &&
         !HasFlag(request.GetFlags(), NProto::TAllocateDataRequest::F_KEEP_SIZE))
     {
         return ErrorNotSupported(
@@ -43,11 +45,16 @@ NProto::TError ValidateRequest(
 
     // TODO: Support later after NBS-3095 and
     // add errors from https://man7.org/linux/man-pages/man2/fallocate.2.html
-    if (HasFlag(request.GetFlags(), NProto::TAllocateDataRequest::F_INSERT_RANGE) ||
-        HasFlag(request.GetFlags(), NProto::TAllocateDataRequest::F_COLLAPSE_RANGE))
+    if (HasFlag(
+            request.GetFlags(),
+            NProto::TAllocateDataRequest::F_INSERT_RANGE) ||
+        HasFlag(
+            request.GetFlags(),
+            NProto::TAllocateDataRequest::F_COLLAPSE_RANGE))
     {
         return ErrorNotSupported(
-            "FALLOC_FL_INSERT_RANGE and FALLOC_FL_COLLAPSE_RANGE flags are not supported");
+            "FALLOC_FL_INSERT_RANGE and FALLOC_FL_COLLAPSE_RANGE flags are not "
+            "supported");
     }
 
     return {};
@@ -71,7 +78,8 @@ void TIndexTabletActor::HandleAllocateData(
         return;
     }
 
-    auto validator = [&] (const NProto::TAllocateDataRequest& request) {
+    auto validator = [&](const NProto::TAllocateDataRequest& request)
+    {
         return ValidateRequest(
             request,
             GetBlockSize(),
@@ -83,18 +91,13 @@ void TIndexTabletActor::HandleAllocateData(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TAllocateDataMethod>(*requestInfo);
 
-    ExecuteTx<TAllocateData>(
-        ctx,
-        std::move(requestInfo),
-        msg->Record);
+    ExecuteTx<TAllocateData>(ctx, std::move(requestInfo), msg->Record);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -106,7 +109,8 @@ bool TIndexTabletActor::PrepareTx_AllocateData(
 {
     Y_UNUSED(ctx);
 
-    auto* session = FindSession(args.ClientId, args.SessionId, args.SessionSeqNo);
+    auto* session =
+        FindSession(args.ClientId, args.SessionId, args.SessionSeqNo);
     if (!session) {
         args.Error = ErrorInvalidSession(
             args.ClientId,
@@ -182,7 +186,8 @@ void TIndexTabletActor::ExecuteTx_AllocateData(
 
     const ui64 size = args.Offset + args.Length;
     const ui64 minBorder = Min(size, args.Node->Attrs.GetSize());
-    const bool needExtend = args.Node->Attrs.GetSize() < size &&
+    const bool needExtend =
+        args.Node->Attrs.GetSize() < size &&
         !HasFlag(args.Flags, NProto::TAllocateDataRequest::F_KEEP_SIZE);
 
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
@@ -245,7 +250,8 @@ void TIndexTabletActor::CompleteTx_AllocateData(
 
     RemoveTransaction(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvAllocateDataResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvAllocateDataResponse>(args.Error);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 

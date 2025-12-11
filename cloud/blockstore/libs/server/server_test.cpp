@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
+
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -33,10 +34,7 @@ namespace {
 
 TString GetTestFilePath(const TString& fileName)
 {
-    return JoinFsPaths(
-        ArcadiaSourceRoot(),
-        "cloud/blockstore/tests",
-        fileName);
+    return JoinFsPaths(ArcadiaSourceRoot(), "cloud/blockstore/tests", fileName);
 }
 
 TDiagnosticsConfigPtr CreateTestDiagnosticsConfig()
@@ -50,8 +48,7 @@ TDiagnosticsConfigPtr CreateTestDiagnosticsConfig()
 
 TTestServerBuilder::TTestServerBuilder(TTestContext testContext)
     : TestContext(std::move(testContext))
-{
-}
+{}
 
 TTestServerBuilder& TTestServerBuilder::SetPort(ui16 port)
 {
@@ -89,13 +86,15 @@ TTestServerBuilder& TTestServerBuilder::AddCert(
     return *this;
 }
 
-TTestServerBuilder& TTestServerBuilder::SetUnixSocketPath(const TString& unixSocketPath)
+TTestServerBuilder& TTestServerBuilder::SetUnixSocketPath(
+    const TString& unixSocketPath)
 {
     ServerAppConfig.MutableServerConfig()->SetUnixSocketPath(unixSocketPath);
     return *this;
 }
 
-TTestServerBuilder& TTestServerBuilder::SetVolumeStats(IVolumeStatsPtr volumeStats)
+TTestServerBuilder& TTestServerBuilder::SetVolumeStats(
+    IVolumeStatsPtr volumeStats)
 {
     TestContext.VolumeStats = std::move(volumeStats);
     return *this;
@@ -127,9 +126,7 @@ IServerPtr TTestServerBuilder::BuildServer(
         std::move(serverStats),
         std::move(service),
         std::move(udsService),
-        TServerOptions {
-            .CellId = TestContext.CellId
-        });
+        TServerOptions{.CellId = TestContext.CellId});
     return server;
 }
 
@@ -183,13 +180,15 @@ TTestClientBuilder& TTestClientBuilder::SetCertificate(
     return *this;
 }
 
-TTestClientBuilder& TTestClientBuilder::SetUnixSocketPath(const TString& unixSocketPath)
+TTestClientBuilder& TTestClientBuilder::SetUnixSocketPath(
+    const TString& unixSocketPath)
 {
     ClientAppConfig.MutableClientConfig()->SetUnixSocketPath(unixSocketPath);
     return *this;
 }
 
-TTestClientBuilder& TTestClientBuilder::SetVolumeStats(IVolumeStatsPtr volumeStats)
+TTestClientBuilder& TTestClientBuilder::SetVolumeStats(
+    IVolumeStatsPtr volumeStats)
 {
     TestContext.VolumeStats = std::move(volumeStats);
     return *this;

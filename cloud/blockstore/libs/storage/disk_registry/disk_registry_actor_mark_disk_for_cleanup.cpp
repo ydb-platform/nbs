@@ -18,13 +18,14 @@ void TDiskRegistryActor::HandleMarkDiskForCleanup(
 {
     auto msg = ev->Get();
     auto diskId = msg->Record.GetDiskId();
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "mark disk %s for cleanup", diskId.Quote().data());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "mark disk %s for cleanup",
+        diskId.Quote().data());
 
     ExecuteTx<TMarkDiskForCleanup>(
         ctx,
@@ -61,8 +62,9 @@ void TDiskRegistryActor::CompleteMarkDiskForCleanup(
     const TActorContext& ctx,
     TTxDiskRegistry::TMarkDiskForCleanup& args)
 {
-    auto reply = std::make_unique<TEvDiskRegistry::TEvMarkDiskForCleanupResponse>(
-        std::move(args.Error));
+    auto reply =
+        std::make_unique<TEvDiskRegistry::TEvMarkDiskForCleanupResponse>(
+            std::move(args.Error));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(reply));
 }

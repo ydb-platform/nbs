@@ -41,7 +41,7 @@ struct TMixedBlockOps
 
     static TBlockKey GetBlockKey(const TMixedBlock& block)
     {
-        return { block.BlockIndex, block.CommitId };
+        return {block.BlockIndex, block.CommitId};
     }
 
     static TBlockKey GetBlockKey(const TBlockKey& blockKey)
@@ -56,13 +56,11 @@ using TBlocks = THashSet<
     TMixedBlock,
     TMixedBlockOps::THash,
     TMixedBlockOps::TEqualTo,
-    TStlAlloc<TMixedBlock>
->;
+    TStlAlloc<TMixedBlock> >;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCacheItem
-    : public TIntrusiveListItem<TCacheItem>
+struct TCacheItem: public TIntrusiveListItem<TCacheItem>
 {
     ui32 RangeIdx;
     ERangeTemperature Temperature = ERangeTemperature::Warm;
@@ -76,8 +74,7 @@ struct TCacheItem
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWarmRangeInserter final
-    : public IInserter
+class TWarmRangeInserter final: public IInserter
 {
 private:
     TBlocks& Blocks;
@@ -95,8 +92,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TColdRangeInserter final
-    : public IInserter
+class TColdRangeInserter final: public IInserter
 {
 public:
     void Insert(TMixedBlock block) override
@@ -105,7 +101,7 @@ public:
     }
 };
 
-}  // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -117,8 +113,7 @@ private:
         TCacheItem,
         THash<ui32>,
         TEqualTo<ui32>,
-        TStlAlloc<int>
-    >;
+        TStlAlloc<int> >;
     using TList = TIntrusiveList<TCacheItem>;
 
     TIndex Index;
@@ -169,9 +164,7 @@ void TMixedIndexCache::TImpl::RaiseRangeTemperature(ui32 rangeIdx)
         return;
     }
 
-    auto [it, emplaced] = Index.try_emplace(
-        rangeIdx,
-        rangeIdx, Allocator);
+    auto [it, emplaced] = Index.try_emplace(rangeIdx, rangeIdx, Allocator);
 
     Y_ABORT_UNLESS(emplaced);
     List.PushBack(&it->second);
@@ -203,19 +196,20 @@ TInserterPtr TMixedIndexCache::TImpl::GetInserterForRange(ui32 rangeIdx)
     return std::make_unique<TWarmRangeInserter>(blocks);
 }
 
-void TMixedIndexCache::TImpl::InsertBlockIfHot(ui32 rangeIdx,TMixedBlock block)
+void TMixedIndexCache::TImpl::InsertBlockIfHot(ui32 rangeIdx, TMixedBlock block)
 {
     auto it = Index.find(rangeIdx);
     if (it != Index.end() && it->second.Temperature == ERangeTemperature::Hot) {
         const bool inserted = it->second.Blocks.insert(block).second;
-        Y_ABORT_UNLESS(inserted, "duplicate block (blockIndex: %u, commitId: %lu",
-            block.BlockIndex, block.CommitId);
+        Y_ABORT_UNLESS(
+            inserted,
+            "duplicate block (blockIndex: %u, commitId: %lu",
+            block.BlockIndex,
+            block.CommitId);
     }
 }
 
-void TMixedIndexCache::TImpl::EraseBlockIfHot(
-    ui32 rangeIdx,
-    TBlockKey blockKey)
+void TMixedIndexCache::TImpl::EraseBlockIfHot(ui32 rangeIdx, TBlockKey blockKey)
 {
     auto it = Index.find(rangeIdx);
     if (it != Index.end() && it->second.Temperature == ERangeTemperature::Hot) {
@@ -253,8 +247,7 @@ TMixedIndexCache::TMixedIndexCache(ui32 maxSize, IAllocator* allocator)
 
 TMixedIndexCache::~TMixedIndexCache() = default;
 
-ERangeTemperature TMixedIndexCache::GetRangeTemperature(
-    ui32 rangeIdx) const
+ERangeTemperature TMixedIndexCache::GetRangeTemperature(ui32 rangeIdx) const
 {
     return Impl->GetRangeTemperature(rangeIdx);
 }
@@ -264,22 +257,17 @@ void TMixedIndexCache::RaiseRangeTemperature(ui32 rangeIdx)
     Impl->RaiseRangeTemperature(rangeIdx);
 }
 
-TInserterPtr TMixedIndexCache::GetInserterForRange(
-    ui32 rangeIdx)
+TInserterPtr TMixedIndexCache::GetInserterForRange(ui32 rangeIdx)
 {
     return Impl->GetInserterForRange(rangeIdx);
 }
 
-void TMixedIndexCache::InsertBlockIfHot(
-    ui32 rangeIdx,
-    TMixedBlock block)
+void TMixedIndexCache::InsertBlockIfHot(ui32 rangeIdx, TMixedBlock block)
 {
     Impl->InsertBlockIfHot(rangeIdx, block);
 }
 
-void TMixedIndexCache::EraseBlockIfHot(
-    ui32 rangeIdx,
-    TBlockKey blockKey)
+void TMixedIndexCache::EraseBlockIfHot(ui32 rangeIdx, TBlockKey blockKey)
 {
     Impl->EraseBlockIfHot(rangeIdx, blockKey);
 }

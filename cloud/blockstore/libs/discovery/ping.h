@@ -22,13 +22,12 @@ struct TPingResponseInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IPingClient
-    : IStartable
+struct IPingClient: IStartable
 {
     virtual ~IPingClient() = default;
 
-    virtual NThreading::TFuture<TPingResponseInfo> Ping(
-        TString host, ui16 port, TDuration timeout) = 0;
+    virtual NThreading::TFuture<TPingResponseInfo>
+    Ping(TString host, ui16 port, TDuration timeout) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

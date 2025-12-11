@@ -5,13 +5,14 @@
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
+
 #include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
-#include <library/cpp/iterator/enumerate.h>
-
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+
+#include <library/cpp/iterator/enumerate.h>
 
 #include <utility>
 
@@ -27,10 +28,11 @@ namespace {
 
 bool IsThreeStageWriteEnabled(const NProto::TFileStore& fs)
 {
-    const auto isHdd = fs.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HYBRID
-        || fs.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HDD;
-    const auto disabledAsHdd = isHdd &&
-        fs.GetFeatures().GetThreeStageWriteDisabledForHDD();
+    const auto isHdd =
+        fs.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HYBRID ||
+        fs.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HDD;
+    const auto disabledAsHdd =
+        isHdd && fs.GetFeatures().GetThreeStageWriteDisabledForHDD();
     return !disabledAsHdd && fs.GetFeatures().GetThreeStageWriteEnabled();
 }
 
@@ -51,8 +53,9 @@ public:
         static_assert(sizeof(ui64) == sizeof(char*));
     }
 
-    ~TIovecContiguousChunk() {
-        if constexpr(Owner) {
+    ~TIovecContiguousChunk()
+    {
+        if constexpr (Owner) {
             delete[] Base;
         }
     }
@@ -94,10 +97,9 @@ TRope CreateRopeFromIovecs(const NProto::TWriteDataRequest& request)
         }
         rope.Insert(
             rope.End(),
-            TRope(TRcBuf(
-                MakeIntrusive<TIovecContiguousChunk<>>(
-                    iovec.GetBase(),
-                    iovec.GetLength()))));
+            TRope(TRcBuf(MakeIntrusive<TIovecContiguousChunk<>>(
+                iovec.GetBase(),
+                iovec.GetLength()))));
     }
     return rope;
 }
@@ -187,13 +189,13 @@ private:
 
 public:
     TWriteDataActor(
-            NProto::TWriteDataRequest request,
-            TByteRange range,
-            TRequestInfoPtr requestInfo,
-            TString logTag,
-            IRequestStatsPtr requestStats,
-            IProfileLogPtr profileLog,
-            NCloud::NProto::EStorageMediaKind mediaKind)
+        NProto::TWriteDataRequest request,
+        TByteRange range,
+        TRequestInfoPtr requestInfo,
+        TString logTag,
+        IRequestStatsPtr requestStats,
+        IProfileLogPtr profileLog,
+        NCloud::NProto::EStorageMediaKind mediaKind)
         : WriteRequest(std::move(request))
         , Range(range)
         , BlobRange(Range.AlignedSubRange())
@@ -709,10 +711,7 @@ void TStorageServiceActor::HandleWriteData(
     ui32 blockSize = filestore.GetBlockSize();
 
     const auto bytesCount = CalculateByteCount(msg->Record);
-    const TByteRange range(
-        msg->Record.GetOffset(),
-        bytesCount,
-        blockSize);
+    const TByteRange range(msg->Record.GetOffset(), bytesCount, blockSize);
     const bool threeStageWriteEnabled =
         range.Length >= filestore.GetFeatures().GetThreeStageWriteThreshold() &&
         threeStageWriteAllowed &&

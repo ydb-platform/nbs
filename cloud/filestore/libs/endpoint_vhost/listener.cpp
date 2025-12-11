@@ -20,8 +20,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEndpoint final
-    : public IEndpoint
+class TEndpoint final: public IEndpoint
 {
 private:
     const IFileSystemLoopPtr Loop;
@@ -56,8 +55,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEndpointListener final
-    : public IEndpointListener
+class TEndpointListener final: public IEndpointListener
 {
 private:
     const ILoggingServicePtr Logging;
@@ -73,14 +71,14 @@ private:
 
 public:
     TEndpointListener(
-            ILoggingServicePtr logging,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            IFileStoreEndpointsPtr filestoreEndpoints,
-            IFileSystemLoopFactoryPtr loopFactory,
-            THandleOpsQueueConfig handleOpsQueueConfig,
-            TWriteBackCacheConfig writeBackCacheConfig,
-            TDirectoryHandlesStorageConfig directoryHandlesStorageConfig)
+        ILoggingServicePtr logging,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler,
+        IFileStoreEndpointsPtr filestoreEndpoints,
+        IFileSystemLoopFactoryPtr loopFactory,
+        THandleOpsQueueConfig handleOpsQueueConfig,
+        TWriteBackCacheConfig writeBackCacheConfig,
+        TDirectoryHandlesStorageConfig directoryHandlesStorageConfig)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
@@ -88,7 +86,8 @@ public:
         , LoopFactory(std::move(loopFactory))
         , HandleOpsQueueConfig(std::move(handleOpsQueueConfig))
         , WriteBackCacheConfig(std::move(writeBackCacheConfig))
-        , DirectoryHandlesStorageConfig(std::move(directoryHandlesStorageConfig))
+        , DirectoryHandlesStorageConfig(
+              std::move(directoryHandlesStorageConfig))
     {
         Log = Logging->CreateLog("NFS_VHOST");
     }
@@ -140,13 +139,14 @@ public:
             WriteBackCacheConfig.FlushMaxWriteRequestsCount);
         protoConfig.SetWriteBackCacheFlushMaxSumWriteRequestsSize(
             WriteBackCacheConfig.FlushMaxSumWriteRequestsSize);
-        protoConfig.SetDirectoryHandlesStoragePath(DirectoryHandlesStorageConfig.PathPrefix);
-        protoConfig.SetDirectoryHandlesInitialDataSize(DirectoryHandlesStorageConfig.InitialDataSize);
+        protoConfig.SetDirectoryHandlesStoragePath(
+            DirectoryHandlesStorageConfig.PathPrefix);
+        protoConfig.SetDirectoryHandlesInitialDataSize(
+            DirectoryHandlesStorageConfig.InitialDataSize);
 
         auto vFSConfig = std::make_shared<TVFSConfig>(std::move(protoConfig));
-        auto Loop = LoopFactory->Create(
-            std::move(vFSConfig),
-            std::move(session));
+        auto Loop =
+            LoopFactory->Create(std::move(vFSConfig), std::move(session));
 
         return std::make_shared<TEndpoint>(std::move(Loop));
     }

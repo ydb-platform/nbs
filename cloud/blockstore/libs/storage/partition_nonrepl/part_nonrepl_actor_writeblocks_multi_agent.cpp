@@ -73,15 +73,15 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDiskAgentMultiWriteActor::TDiskAgentMultiWriteActor(
-        TRequestInfoPtr requestInfo,
-        NProto::TMultiAgentWriteRequest request,
-        TRequestTimeoutPolicy timeoutPolicy,
-        TVector<TDeviceRequest> deviceRequests,
-        TNonreplicatedPartitionConfigPtr partConfig,
-        TActorId volumeActorId,
-        const TActorId& part,
-        bool assignVolumeRequestId,
-        TChildLogTitle logTitle)
+    TRequestInfoPtr requestInfo,
+    NProto::TMultiAgentWriteRequest request,
+    TRequestTimeoutPolicy timeoutPolicy,
+    TVector<TDeviceRequest> deviceRequests,
+    TNonreplicatedPartitionConfigPtr partConfig,
+    TActorId volumeActorId,
+    const TActorId& part,
+    bool assignVolumeRequestId,
+    TChildLogTitle logTitle)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -322,7 +322,8 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWrite(
     if (deviceRequests.size() != 1) {
         // TMultiAgentWriteActor perform TEvMultiAgentWriteRequest only if all
         // TEvGetDeviceForRangeRequests to replicas have returned success. These
-        // requests are response with an error if the request hits two disk-agents.
+        // requests are response with an error if the request hits two
+        // disk-agents.
         ReportMultiAgentRequestAffectsTwoDevices(
             "partActor",
             {{"disk", PartConfig->GetName()}, {"range", msg->Record.Range}});
@@ -369,7 +370,9 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWriteBlocksCompleted(
         msg->Stats.GetUserWriteCounters().GetBlocksCount() *
         PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
-    PartCounters->RequestCounters.WriteBlocksMultiAgent.AddRequest(time, requestBytes);
+    PartCounters->RequestCounters.WriteBlocksMultiAgent.AddRequest(
+        time,
+        requestBytes);
     PartCounters->Interconnect.WriteBytesMultiAgent.Increment(requestBytes);
     PartCounters->Interconnect.WriteCountMultiAgent.Increment(1);
 

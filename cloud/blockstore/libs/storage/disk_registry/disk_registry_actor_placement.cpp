@@ -17,10 +17,8 @@ void TDiskRegistryActor::HandleCreatePlacementGroup(
 
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LOG_INFO(
         ctx,
@@ -78,9 +76,9 @@ void TDiskRegistryActor::CompleteCreatePlacementGroup(
             FormatError(args.Error).c_str());
     }
 
-    auto response = std::make_unique<TEvService::TEvCreatePlacementGroupResponse>(
-        std::move(args.Error)
-    );
+    auto response =
+        std::make_unique<TEvService::TEvCreatePlacementGroupResponse>(
+            std::move(args.Error));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
@@ -95,10 +93,8 @@ void TDiskRegistryActor::HandleDestroyPlacementGroup(
 
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LOG_DEBUG(
         ctx,
@@ -134,7 +130,8 @@ void TDiskRegistryActor::ExecuteDestroyPlacementGroup(
     Y_UNUSED(ctx);
 
     TDiskRegistryDatabase db(tx.DB);
-    args.Error = State->DestroyPlacementGroup(db, args.GroupId, args.AffectedDisks);
+    args.Error =
+        State->DestroyPlacementGroup(db, args.GroupId, args.AffectedDisks);
 }
 
 void TDiskRegistryActor::CompleteDestroyPlacementGroup(
@@ -160,9 +157,9 @@ void TDiskRegistryActor::CompleteDestroyPlacementGroup(
         }
     }
 
-    auto response = std::make_unique<TEvService::TEvDestroyPlacementGroupResponse>(
-        std::move(args.Error)
-    );
+    auto response =
+        std::make_unique<TEvService::TEvDestroyPlacementGroupResponse>(
+            std::move(args.Error));
 
     if (delayedReply) {
         delayedReply->ArmReply(*args.RequestInfo, std::move(response));
@@ -181,10 +178,8 @@ void TDiskRegistryActor::HandleAlterPlacementGroupMembership(
 
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LOG_INFO(
         ctx,
@@ -202,13 +197,10 @@ void TDiskRegistryActor::HandleAlterPlacementGroupMembership(
         msg->Record.GetConfigVersion(),
         TVector<TString>(
             msg->Record.GetDisksToAdd().begin(),
-            msg->Record.GetDisksToAdd().end()
-        ),
+            msg->Record.GetDisksToAdd().end()),
         TVector<TString>(
             msg->Record.GetDisksToRemove().begin(),
-            msg->Record.GetDisksToRemove().end()
-        )
-    );
+            msg->Record.GetDisksToRemove().end()));
 }
 
 bool TDiskRegistryActor::PrepareAlterPlacementGroupMembership(
@@ -238,8 +230,7 @@ void TDiskRegistryActor::ExecuteAlterPlacementGroupMembership(
         args.PlacementPartitionIndex,
         args.ConfigVersion,
         args.FailedToAdd,
-        args.DiskIdsToRemove
-    );
+        args.DiskIdsToRemove);
 }
 
 void TDiskRegistryActor::CompleteAlterPlacementGroupMembership(
@@ -270,9 +261,9 @@ void TDiskRegistryActor::CompleteAlterPlacementGroupMembership(
         }
     }
 
-    auto response = std::make_unique<TEvService::TEvAlterPlacementGroupMembershipResponse>(
-        std::move(args.Error)
-    );
+    auto response =
+        std::make_unique<TEvService::TEvAlterPlacementGroupMembershipResponse>(
+            std::move(args.Error));
     for (auto& diskId: args.FailedToAdd) {
         *response->Record.AddDisksImpossibleToAdd() = std::move(diskId);
     }
@@ -294,10 +285,8 @@ void TDiskRegistryActor::HandleListPlacementGroups(
 
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LOG_INFO(
         ctx,
@@ -306,7 +295,8 @@ void TDiskRegistryActor::HandleListPlacementGroups(
         LogTitle.GetWithTime().c_str(),
         msg->Record.ShortDebugString().c_str());
 
-    auto response = std::make_unique<TEvService::TEvListPlacementGroupsResponse>();
+    auto response =
+        std::make_unique<TEvService::TEvListPlacementGroupsResponse>();
     for (const auto& x: State->GetPlacementGroups()) {
         *response->Record.AddGroupIds() = x.first;
     }
@@ -324,10 +314,8 @@ void TDiskRegistryActor::HandleDescribePlacementGroup(
 
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LOG_INFO(
         ctx,
@@ -336,7 +324,8 @@ void TDiskRegistryActor::HandleDescribePlacementGroup(
         LogTitle.GetWithTime().c_str(),
         msg->Record.ShortDebugString().c_str());
 
-    auto response = std::make_unique<TEvService::TEvDescribePlacementGroupResponse>();
+    auto response =
+        std::make_unique<TEvService::TEvDescribePlacementGroupResponse>();
     if (const auto* g = State->FindPlacementGroup(msg->Record.GetGroupId())) {
         auto* group = response->Record.MutableGroup();
         group->SetGroupId(msg->Record.GetGroupId());
@@ -355,8 +344,7 @@ void TDiskRegistryActor::HandleDescribePlacementGroup(
     } else {
         *response->Record.MutableError() = MakeError(
             E_NOT_FOUND,
-            Sprintf("no such group: %s", msg->Record.GetGroupId().c_str())
-        );
+            Sprintf("no such group: %s", msg->Record.GetGroupId().c_str()));
     }
 
     NCloud::Reply(ctx, *requestInfo, std::move(response));

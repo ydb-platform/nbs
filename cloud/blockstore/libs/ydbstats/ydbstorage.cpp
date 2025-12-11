@@ -4,6 +4,7 @@
 #include "ydbauth.h"
 
 #include <cloud/blockstore/libs/kikimr/events.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -37,7 +38,7 @@ TString LoadToken(const TString& path)
 {
     try {
         return TFileInput{path}.ReadLine();
-    } catch(...) {
+    } catch (...) {
         return {};
     }
 }
@@ -69,19 +70,14 @@ TString BuildError(
     const TString& text)
 {
     return TStringBuilder()
-        << errorPrefix << text
-        << " error code: " << status.GetStatus()
-        << " with reason:" << ExtractYdbError(status);
+           << errorPrefix << text << " error code: " << status.GetStatus()
+           << " with reason:" << ExtractYdbError(status);
 }
 
-TString BuildError(
-    const TStatus& status,
-    const TString& text)
+TString BuildError(const TStatus& status, const TString& text)
 {
-    return TStringBuilder()
-        << text
-        << " error code: " << status.GetStatus()
-        << " with reason:" << ExtractYdbError(status);
+    return TStringBuilder() << text << " error code: " << status.GetStatus()
+                            << " with reason:" << ExtractYdbError(status);
 }
 
 TDriverConfig BuildDriverConfig(
@@ -91,8 +87,8 @@ TDriverConfig BuildDriverConfig(
     IIamTokenClientPtr tokenClient)
 {
     auto driverConfig = TDriverConfig()
-        .SetEndpoint(config.GetServerAddress())
-        .SetDatabase(config.GetDatabaseName());
+                            .SetEndpoint(config.GetServerAddress())
+                            .SetDatabase(config.GetDatabaseName());
 
     if (config.GetUseSsl()) {
         driverConfig.SetCredentialsProviderFactory(
@@ -103,7 +99,7 @@ TDriverConfig BuildDriverConfig(
                 std::move(tokenClient)));
         driverConfig.UseSecureConnection();
     } else {
-       driverConfig.SetAuthToken(LoadToken(config.GetTokenFile()));
+        driverConfig.SetAuthToken(LoadToken(config.GetTokenFile()));
     }
     return driverConfig;
 }
@@ -130,10 +126,10 @@ private:
 
 public:
     TYdbNativeStorage(
-            TYdbStatsConfigPtr config,
-            ILoggingServicePtr logging,
-            ISchedulerPtr scheduler,
-            IIamTokenClientPtr iamClient)
+        TYdbStatsConfigPtr config,
+        ILoggingServicePtr logging,
+        ISchedulerPtr scheduler,
+        IIamTokenClientPtr iamClient)
         : Config(std::move(config))
         , Logging(std::move(logging))
         , Scheduler(std::move(scheduler))
@@ -150,7 +146,8 @@ public:
 
     TFuture<NProto::TError> DropTable(const TString& table) override;
 
-    TFuture<TDescribeTableResponse> DescribeTable(const TString& table) override;
+    TFuture<TDescribeTableResponse> DescribeTable(
+        const TString& table) override;
 
     TFuture<TGetTablesResponse> GetHistoryTables() override;
 
@@ -206,17 +203,23 @@ TFuture<NProto::TError> TYdbNativeStorage::CreateTable(
 
     auto tableName = GetFullTableName(table);
     auto future = Client->RetryOperation(
-        [=] (TSession session) {
-            return session.CreateTable(tableName, TTableDescription(description));
+        [=](TSession session) {
+            return session.CreateTable(
+                tableName,
+                TTableDescription(description));
         });
 
     return future.Apply(
-        [=, this] (const auto& future) {
+        [=, this](const auto& future)
+        {
             auto status = ExtractStatus(future);
             if (status.IsSuccess()) {
                 return MakeError(S_OK);
             }
-            auto out = BuildError(status, "unable to create table ", tableName.Quote());
+            auto out = BuildError(
+                status,
+                "unable to create table ",
+                tableName.Quote());
             STORAGE_ERROR(out);
             return MakeError(E_FAIL, out);
         });
@@ -233,17 +236,18 @@ TFuture<NProto::TError> TYdbNativeStorage::AlterTable(
 
     auto tableName = GetFullTableName(table);
     auto future = Client->RetryOperation(
-        [=] (TSession session) {
-            return session.AlterTable(tableName, settings);
-        });
+        [=](TSession session)
+        { return session.AlterTable(tableName, settings); });
 
     return future.Apply(
-        [=, this] (const auto& future) {
+        [=, this](const auto& future)
+        {
             auto status = ExtractStatus(future);
             if (status.IsSuccess()) {
                 return MakeError(S_OK);
             }
-            auto out = BuildError(status, "unable to alter table ", tableName.Quote());
+            auto out =
+                BuildError(status, "unable to alter table ", tableName.Quote());
             STORAGE_ERROR(out);
             return MakeError(E_FAIL, out);
         });
@@ -258,17 +262,17 @@ TFuture<NProto::TError> TYdbNativeStorage::DropTable(const TString& table)
 
     auto tableName = GetFullTableName(table);
     auto future = Client->RetryOperation(
-        [=] (TSession session) {
-            return session.DropTable(tableName);
-        });
+        [=](TSession session) { return session.DropTable(tableName); });
 
     return future.Apply(
-        [=, this] (const auto& future) {
+        [=, this](const auto& future)
+        {
             auto status = ExtractStatus(future);
             if (status.IsSuccess()) {
                 return MakeError(S_OK);
             }
-            auto out = BuildError(status, "unable to drop table ", tableName.Quote());
+            auto out =
+                BuildError(status, "unable to drop table ", tableName.Quote());
             STORAGE_ERROR(out);
             return MakeError(E_FAIL, out);
         });
@@ -285,37 +289,47 @@ TFuture<NYdbStats::TDescribeTableResponse> TYdbNativeStorage::DescribeTable(
     auto result = NewPromise<NYdbStats::TDescribeTableResponse>();
     auto tableName = GetFullTableName(table);
 
-    TTableClient::TOperationFunc describe = [=] (TSession session) {
-        return session.DescribeTable(tableName).Apply([=] (const auto& future) mutable {
-            if (future.GetValue().IsSuccess()) {
-                const auto& description = future.GetValue().GetTableDescription();
-                result.SetValue(TDescribeTableResponse(
-                    description.GetColumns(),
-                    description.GetPrimaryKeyColumns(),
-                    description.GetTtlSettings()));
-            }
-            return MakeFuture<NYdb::TStatus>(future.GetValue());
-        });
+    TTableClient::TOperationFunc describe = [=](TSession session)
+    {
+        return session.DescribeTable(tableName).Apply(
+            [=](const auto& future) mutable
+            {
+                if (future.GetValue().IsSuccess()) {
+                    const auto& description =
+                        future.GetValue().GetTableDescription();
+                    result.SetValue(TDescribeTableResponse(
+                        description.GetColumns(),
+                        description.GetPrimaryKeyColumns(),
+                        description.GetTtlSettings()));
+                }
+                return MakeFuture<NYdb::TStatus>(future.GetValue());
+            });
     };
 
-    Client->RetryOperation(describe).Subscribe([=, this] (const auto& future) mutable {
-        auto status = ExtractStatus(future);
-        if (status.IsSuccess()) {
-            // promise result is already set
-            return;
-        }
-        if (status.GetStatus() == EStatus::SCHEME_ERROR) {
-            auto out = BuildError(status, tableName.Quote(), " does not exist");
-            STORAGE_ERROR(out);
-            auto error = MakeError(E_NOT_FOUND, out);
-            result.SetValue(TDescribeTableResponse(error));
-        } else {
-            auto out = BuildError(status, "unable to describe table ", tableName.Quote());
-            STORAGE_ERROR(out);
-            auto error = MakeError(E_FAIL, out);
-            result.SetValue(TDescribeTableResponse(error));
-        }
-    });
+    Client->RetryOperation(describe).Subscribe(
+        [=, this](const auto& future) mutable
+        {
+            auto status = ExtractStatus(future);
+            if (status.IsSuccess()) {
+                // promise result is already set
+                return;
+            }
+            if (status.GetStatus() == EStatus::SCHEME_ERROR) {
+                auto out =
+                    BuildError(status, tableName.Quote(), " does not exist");
+                STORAGE_ERROR(out);
+                auto error = MakeError(E_NOT_FOUND, out);
+                result.SetValue(TDescribeTableResponse(error));
+            } else {
+                auto out = BuildError(
+                    status,
+                    "unable to describe table ",
+                    tableName.Quote());
+                STORAGE_ERROR(out);
+                auto error = MakeError(E_FAIL, out);
+                result.SetValue(TDescribeTableResponse(error));
+            }
+        });
     return result;
 }
 
@@ -330,10 +344,14 @@ TFuture<TGetTablesResponse> TYdbNativeStorage::GetHistoryTables()
     auto future = SchemeClient->ListDirectory(database);
 
     return future.Apply(
-        [=, this] (const auto& future) {
+        [=, this](const auto& future)
+        {
             auto status = ExtractStatus(future);
             if (!status.IsSuccess()) {
-                auto out = BuildError(status, "unable to list directory ", database.Quote());
+                auto out = BuildError(
+                    status,
+                    "unable to list directory ",
+                    database.Quote());
                 STORAGE_ERROR(out);
                 return TGetTablesResponse(MakeError(E_FAIL, out));
             }
@@ -362,10 +380,11 @@ TFuture<NProto::TError> TYdbNativeStorage::ExecuteUploadQuery(
             MakeError(E_REJECTED, "YDB stats storage is not initialized yet"));
     }
 
-    auto func = [tableName = std::move(tableName), data = std::move(data)] (
-        TTableClient& client) mutable
+    auto func = [tableName = std::move(tableName),
+                 data = std::move(data)](TTableClient& client) mutable
     {
-        auto convertUpsertResult = [] (const TAsyncBulkUpsertResult& future) {
+        auto convertUpsertResult = [](const TAsyncBulkUpsertResult& future)
+        {
             return ExtractStatus(future);
         };
         auto f = client.BulkUpsert(tableName, NYdb::TValue{data});
@@ -432,13 +451,10 @@ TMaybe<TInstant> TYdbNativeStorage::ExtractTableTime(const TString& name) const
 
 TString TYdbNativeStorage::GetFullTableName(const TString& table) const
 {
-    return TStringBuilder()
-        << Config->GetDatabaseName()
-        << '/'
-        << table;
+    return TStringBuilder() << Config->GetDatabaseName() << '/' << table;
 }
 
-}  // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

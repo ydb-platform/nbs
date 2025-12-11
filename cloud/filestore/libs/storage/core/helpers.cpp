@@ -22,8 +22,7 @@ void Convert(
         config.GetPerformanceProfileMaxWriteBandwidth());
     performanceProfile.SetMaxWriteIops(
         config.GetPerformanceProfileMaxWriteIops());
-    performanceProfile.SetBoostTime(
-        config.GetPerformanceProfileBoostTime());
+    performanceProfile.SetBoostTime(config.GetPerformanceProfileBoostTime());
     performanceProfile.SetBoostRefillTime(
         config.GetPerformanceProfileBoostRefillTime());
     performanceProfile.SetBoostPercentage(
@@ -56,8 +55,7 @@ void Convert(
         performanceProfile.GetMaxWriteBandwidth());
     config.SetPerformanceProfileMaxWriteIops(
         performanceProfile.GetMaxWriteIops());
-    config.SetPerformanceProfileBoostTime(
-        performanceProfile.GetBoostTime());
+    config.SetPerformanceProfileBoostTime(performanceProfile.GetBoostTime());
     config.SetPerformanceProfileBoostRefillTime(
         performanceProfile.GetBoostRefillTime());
     config.SetPerformanceProfileBoostPercentage(
@@ -75,7 +73,6 @@ void Convert(
     config.SetPerformanceProfileMaxPostponedCount(
         performanceProfile.GetMaxPostponedCount());
 }
-
 
 template <>
 ui64 CalculateByteCount<NProto::TWriteDataRequest>(

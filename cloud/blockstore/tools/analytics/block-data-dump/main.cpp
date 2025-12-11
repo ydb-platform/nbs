@@ -27,25 +27,37 @@ TString FormatTimestamp(ui64 mcs)
 void Dump(const TBlockData& data)
 {
     std::printf(
-        "RequestNumber:    %20" PRIu64 " [0x%016" PRIx64 "]\n"
-        "PartNumber:       %20" PRIu64 " [0x%016" PRIx64 "]\n"
-        "BlockIndex:       %20" PRIu64 " [0x%016" PRIx64 "]\n"
-        "RangeIdx:         %20" PRIu64 " [0x%016" PRIx64 "]\n"
-        "RequestTimestamp: %s [0x%016" PRIx64 "]\n"
-        "TestTimestamp:    %s [0x%016" PRIx64 "]\n"
-        "TestId:           %20" PRIu64 " [0x%016" PRIx64 "]\n"
+        "RequestNumber:    %20" PRIu64 " [0x%016" PRIx64
+        "]\n"
+        "PartNumber:       %20" PRIu64 " [0x%016" PRIx64
+        "]\n"
+        "BlockIndex:       %20" PRIu64 " [0x%016" PRIx64
+        "]\n"
+        "RangeIdx:         %20" PRIu64 " [0x%016" PRIx64
+        "]\n"
+        "RequestTimestamp: %s [0x%016" PRIx64
+        "]\n"
+        "TestTimestamp:    %s [0x%016" PRIx64
+        "]\n"
+        "TestId:           %20" PRIu64 " [0x%016" PRIx64
+        "]\n"
         "Checksum:         %20" PRIu64 " [0x%016" PRIx64 "]\n",
-        data.RequestNumber, data.RequestNumber,
-        data.PartNumber, data.PartNumber,
-        data.BlockIndex, data.BlockIndex,
-        data.RangeIdx, data.RangeIdx,
+        data.RequestNumber,
+        data.RequestNumber,
+        data.PartNumber,
+        data.PartNumber,
+        data.BlockIndex,
+        data.BlockIndex,
+        data.RangeIdx,
+        data.RangeIdx,
         FormatTimestamp(data.RequestTimestamp).c_str(),
         data.RequestTimestamp,
         FormatTimestamp(data.TestTimestamp).c_str(),
         data.TestTimestamp,
-        data.TestId, data.TestId,
-        data.Checksum, data.Checksum
-    );
+        data.TestId,
+        data.TestId,
+        data.Checksum,
+        data.Checksum);
 }
 
 ui64 Checksum(TBlockData blockData)
@@ -58,7 +70,7 @@ void DumpMap(TFile& file, const TOptions& options)
 {
     constexpr ui64 lineBreak = 128;
 
-    TBlockData blockData {};
+    TBlockData blockData{};
 
     ui64 offset = options.StartIndex * options.BlockSize;
     ui64 line = 0;
@@ -73,8 +85,8 @@ void DumpMap(TFile& file, const TOptions& options)
 
         const ui64 checksum = Checksum(blockData);
 
-        const bool ok = (checksum == blockData.Checksum)
-            && (!options.TestId || options.TestId == blockData.TestId);
+        const bool ok = (checksum == blockData.Checksum) &&
+                        (!options.TestId || options.TestId == blockData.TestId);
 
         std::putchar(symbol[ok]);
 
@@ -87,18 +99,19 @@ void DumpMap(TFile& file, const TOptions& options)
 
 void DumpText(TFile& file, const TOptions& options)
 {
-    TBlockData blockData {};
+    TBlockData blockData{};
 
     ui64 offset = options.StartIndex * options.BlockSize;
 
-    const char* status[] { " (corrupted)", "" };
+    const char* status[]{" (corrupted)", ""};
 
     for (ui64 i = 0; i != options.BlockCount; ++i) {
         file.Pload(&blockData, sizeof(blockData), offset);
 
         const ui64 checksum = Checksum(blockData);
 
-        std::printf("=========== # %" PRIu64 " 0x%016" PRIx64 "%s ===========\n",
+        std::printf(
+            "=========== # %" PRIu64 " 0x%016" PRIx64 "%s ===========\n",
             options.StartIndex + i,
             checksum,
             status[checksum == blockData.Checksum]);
@@ -112,10 +125,9 @@ void DumpText(TFile& file, const TOptions& options)
 
 void Run(const TOptions& options)
 {
-    TFile file {
+    TFile file{
         options.Path,
-        EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly
-    };
+        EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly};
 
     switch (options.Format) {
         case EFormat::Text:
@@ -134,7 +146,7 @@ void Run(const TOptions& options)
 int main(int argc, char** argv)
 {
     try {
-        const TOptions options {argc, argv};
+        const TOptions options{argc, argv};
 
         Run(options);
 

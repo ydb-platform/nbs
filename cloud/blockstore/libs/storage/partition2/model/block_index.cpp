@@ -14,17 +14,17 @@ struct TFreshBlockCompare
 {
     using is_transparent = void;
 
-    bool operator ()(const TFreshBlock& l, const TFreshBlock& r) const
+    bool operator()(const TFreshBlock& l, const TFreshBlock& r) const
     {
         return TBlockCompare()(l.Meta, r.Meta);
     }
 
-    bool operator ()(const TBlockKey& l, const TFreshBlock& r) const
+    bool operator()(const TBlockKey& l, const TFreshBlock& r) const
     {
         return TBlockCompare()(l, r.Meta);
     }
 
-    bool operator ()(const TFreshBlock& l, const TBlockKey& r) const
+    bool operator()(const TFreshBlock& l, const TBlockKey& r) const
     {
         return TBlockCompare()(l.Meta, r);
     }
@@ -55,8 +55,7 @@ TBlockIndex::~TBlockIndex()
         if (block.Content) {
             IAllocator::TBlock alloc{
                 const_cast<char*>(block.Content.data()),
-                block.Content.size()
-            };
+                block.Content.size()};
             Impl->Allocator->Release(alloc);
         }
     }
@@ -85,8 +84,7 @@ bool TBlockIndex::AddBlock(
             maxCommitId,
             false,
         },
-        content
-    );
+        content);
 
     return inserted;
 }
@@ -98,8 +96,7 @@ bool TBlockIndex::RemoveBlock(ui32 blockIndex, ui64 minCommitId)
         if (it->Content) {
             IAllocator::TBlock alloc{
                 const_cast<char*>(it->Content.data()),
-                it->Content.size()
-            };
+                it->Content.size()};
             Impl->Allocator->Release(alloc);
         }
         Impl->Blocks.erase(it);
@@ -138,7 +135,9 @@ const TFreshBlock* TBlockIndex::FindBlock(ui32 blockIndex) const
     return nullptr;
 }
 
-const TFreshBlock* TBlockIndex::FindBlock(ui32 blockIndex, ui64 checkpointId) const
+const TFreshBlock* TBlockIndex::FindBlock(
+    ui32 blockIndex,
+    ui64 checkpointId) const
 {
     auto it = Impl->Blocks.lower_bound(TBlockKey(blockIndex, checkpointId));
     if (it != Impl->Blocks.end() && it->Meta.BlockIndex == blockIndex) {
@@ -180,11 +179,13 @@ TVector<TFreshBlock> TBlockIndex::FindBlocks(ui64 checkpointId) const
     return result;
 }
 
-TVector<TFreshBlock> TBlockIndex::FindBlocks(const TBlockRange32& blockRange) const
+TVector<TFreshBlock> TBlockIndex::FindBlocks(
+    const TBlockRange32& blockRange) const
 {
     TVector<TFreshBlock> result(Reserve(blockRange.Size()));
 
-    auto start = Impl->Blocks.lower_bound(TBlockKey(blockRange.Start, InvalidCommitId));
+    auto start =
+        Impl->Blocks.lower_bound(TBlockKey(blockRange.Start, InvalidCommitId));
     auto end = Impl->Blocks.upper_bound(TBlockKey(blockRange.End, 0));
 
     for (auto it = start; it != end; ++it) {
@@ -200,7 +201,8 @@ TVector<TFreshBlock> TBlockIndex::FindBlocks(
 {
     TVector<TFreshBlock> result(Reserve(blockRange.Size()));
 
-    auto start = Impl->Blocks.lower_bound(TBlockKey(blockRange.Start, InvalidCommitId));
+    auto start =
+        Impl->Blocks.lower_bound(TBlockKey(blockRange.Start, InvalidCommitId));
     auto end = Impl->Blocks.upper_bound(TBlockKey(blockRange.End, 0));
 
     for (auto it = start; it != end; ++it) {

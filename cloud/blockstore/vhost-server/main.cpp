@@ -6,6 +6,7 @@
 
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/encryption/encryptor.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/json/json_writer.h>
@@ -32,15 +33,14 @@ timespec ToTimeSpec(TDuration t)
         .tv_nsec = t.MicroSecondsOfSecond() * 1000};
 }
 
-class TCerrJsonLogBackend
-    : public TLogBackend
+class TCerrJsonLogBackend: public TLogBackend
 {
     ELogPriority VerboseLevel;
     bool PipeClosed = false;
 
 public:
     explicit TCerrJsonLogBackend(ELogPriority verboseLevel)
-        : VerboseLevel {verboseLevel}
+        : VerboseLevel{verboseLevel}
     {}
 
     ELogPriority FiltrationLevel() const override
@@ -55,7 +55,7 @@ public:
         }
 
         TStringStream ss;
-        NJsonWriter::TBuf buf {NJsonWriter::HEM_DONT_ESCAPE_HTML, &ss};
+        NJsonWriter::TBuf buf{NJsonWriter::HEM_DONT_ESCAPE_HTML, &ss};
         buf.BeginObject();
         buf.WriteKey("priority");
         buf.WriteInt(rec.Priority);
@@ -77,20 +77,19 @@ public:
     {}
 };
 
-struct TDefaultLoggingService
-    : public NCloud::ILoggingService
+struct TDefaultLoggingService: public NCloud::ILoggingService
 {
     const ELogPriority LogPriority;
 
     TDefaultLoggingService(ELogPriority logPriority)
-        : LogPriority {logPriority}
+        : LogPriority{logPriority}
     {}
 
     TLog CreateLog(const TString& component) override
     {
         Y_UNUSED(component);
 
-        return TLog {MakeHolder<TCerrJsonLogBackend>(LogPriority)};
+        return TLog{MakeHolder<TCerrJsonLogBackend>(LogPriority)};
     }
 
     void Start() override
@@ -190,7 +189,7 @@ bool IsParentProcessAlive(__pid_t parentPid)
 
 }   // namespace
 
-} // namespace NCloud::NBlockStore::NVHostServer
+}   // namespace NCloud::NBlockStore::NVHostServer
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -244,7 +243,8 @@ int main(int argc, char** argv)
 
     TInstant deathTimerStartedAt;
     // Wait for signal to stop the server (Ctrl+C) or dump statistics.
-    const bool isParentAlive = IsParentProcessAlive(options.BlockstoreServicePid);
+    const bool isParentAlive =
+        IsParentProcessAlive(options.BlockstoreServicePid);
     if (!isParentAlive) {
         STORAGE_INFO("Parent process exit immediately.");
         deathTimerStartedAt = TInstant::Now();
@@ -304,7 +304,8 @@ int main(int argc, char** argv)
                 parentExit = true;
             } break;
             case -1: {
-                STORAGE_WARN("Exit. Timeout after parent process exit has expired.");
+                STORAGE_WARN(
+                    "Exit. Timeout after parent process exit has expired.");
                 running = false;
             } break;
             default: {

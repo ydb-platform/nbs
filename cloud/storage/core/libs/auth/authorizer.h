@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include <cloud/storage/core/libs/kikimr/public.h>
-
 #include <cloud/storage/core/protos/authorization_mode.pb.h>
 
 namespace NCloud::NStorage {
@@ -18,4 +17,3 @@ NActors::IActorPtr CreateAuthorizerActor(
     bool checkAuthorization);
 
 }   // namespace NCloud::NStorage
-

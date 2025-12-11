@@ -1,4 +1,5 @@
 #include "tablet_actor.h"
+
 #include "shard_request_actor.h"
 
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
@@ -72,8 +73,8 @@ void FillFeatures(
     features->SetDirectoryCreationInShardsEnabled(
         fileSystem.GetDirectoryCreationInShardsEnabled());
 
-    // HasXAttrs is false only if LazyXAttrsEnabled == true and we know for sure that
-    // there are no XAttrs in the filesystem
+    // HasXAttrs is false only if LazyXAttrsEnabled == true and we know for sure
+    // that there are no XAttrs in the filesystem
     const bool hasXAttrs =
         !config.GetLazyXAttrsEnabled() ||
         fileSystemStats.GetHasXAttrs() !=
@@ -112,7 +113,9 @@ TActorId DoRecoverSession(
     auto oldOwner =
         state.RecoverSession(session, sessionSeqNo, readOnly, owner);
     if (oldOwner) {
-        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET,
             "[s:%s][n:%lu] kill from tablet %s self %s",
             sessionId.Quote().c_str(),
             sessionSeqNo,
@@ -122,7 +125,9 @@ TActorId DoRecoverSession(
         NCloud::Send(ctx, oldOwner, std::make_unique<TEvents::TEvPoisonPill>());
     }
 
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
         "DoRecoverSession c:%s, s:%s, session seqno:%lu new seqno:%lu",
         clientId.c_str(),
         session->GetSessionId().c_str(),
@@ -177,27 +182,30 @@ void TIndexTabletActor::HandleCreateSession(
 {
     auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s CreateSession: %s",
         LogTag.c_str(),
         DumpMessage(msg->Record).c_str());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     const auto expectedShardCount =
         CalculateExpectedShardCount(Config->GetMaxShardCount());
     const auto actualShardCount = GetFileSystem().ShardFileSystemIdsSize();
     if (actualShardCount < expectedShardCount) {
-        auto message = TStringBuilder() << "Shard count smaller than expected: "
-            << actualShardCount << " < " << expectedShardCount;
+        auto message = TStringBuilder()
+                       << "Shard count smaller than expected: "
+                       << actualShardCount << " < " << expectedShardCount;
         const bool shouldReject =
             Config->GetEnforceCorrectFileSystemShardCountUponSessionCreation();
         if (shouldReject) {
-            LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            LOG_INFO(
+                ctx,
+                TFileStoreComponents::TABLET,
                 "%s CreateSession rejected: %s",
                 LogTag.c_str(),
                 message.c_str());
@@ -209,7 +217,9 @@ void TIndexTabletActor::HandleCreateSession(
             return;
         }
 
-        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s CreateSession: %s",
             LogTag.c_str(),
             message.c_str());
@@ -270,16 +280,23 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 owner,
                 ctx);
             if (toKill != owner) {
-                LOG_INFO(ctx, TFileStoreComponents::TABLET,
-                    "%s CreateSession c:%s, s:%s, seqno:%lu recovered by session",
+                LOG_INFO(
+                    ctx,
+                    TFileStoreComponents::TABLET,
+                    "%s CreateSession c:%s, s:%s, seqno:%lu recovered by "
+                    "session",
                     LogTag.c_str(),
                     clientId.c_str(),
                     session->GetSessionId().c_str(),
                     seqNo);
             } else {
-                args.Error = MakeError(E_INVALID_STATE, "session seqno is too old");
-                LOG_ERROR(ctx, TFileStoreComponents::TABLET,
-                    "%s CreateSession c:%s, s:%s, seqno:%lu failed to restore session: %s",
+                args.Error =
+                    MakeError(E_INVALID_STATE, "session seqno is too old");
+                LOG_ERROR(
+                    ctx,
+                    TFileStoreComponents::TABLET,
+                    "%s CreateSession c:%s, s:%s, seqno:%lu failed to restore "
+                    "session: %s",
                     LogTag.c_str(),
                     clientId.c_str(),
                     args.SessionId.c_str(),
@@ -287,7 +304,8 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                     FormatError(args.Error).c_str());
             }
         } else {
-            args.Error = MakeError(E_INVALID_STATE, "session client id mismatch");
+            args.Error =
+                MakeError(E_INVALID_STATE, "session client id mismatch");
         }
         return;
     }
@@ -296,7 +314,9 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
     if (args.Request.GetRestoreClientSession()) {
         auto* session = FindSessionByClientId(clientId);
         if (session) {
-            LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            LOG_INFO(
+                ctx,
+                TFileStoreComponents::TABLET,
                 "%s CreateSession c:%s, s:%s recovered by client",
                 LogTag.c_str(),
                 clientId.c_str(),
@@ -319,7 +339,9 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
             return;
         }
 
-        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s CreateSession: no session available for client c: %s",
             LogTag.c_str(),
             clientId.c_str());
@@ -331,7 +353,9 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
     }
 
     args.SessionId = sessionId;
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s CreateSession c:%s, s:%s, n:%lu creating new session",
         LogTag.c_str(),
         clientId.c_str(),
@@ -361,7 +385,9 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     using TResponse = TEvIndexTablet::TEvCreateSessionResponse;
 
     if (HasError(args.Error)) {
-        LOG_WARN(ctx, TFileStoreComponents::TABLET,
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s CreateSession failed (%s)",
             LogTag.c_str(),
             FormatError(args.Error).c_str());
@@ -374,8 +400,10 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     auto* session = FindSession(args.SessionId);
     if (!session) {
         auto message = TStringBuilder() << "Session " << args.SessionId
-            << " destroyed during creation";
-        LOG_WARN(ctx, TFileStoreComponents::TABLET,
+                                        << " destroyed during creation";
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s %s",
             LogTag.c_str(),
             message.c_str());
@@ -410,7 +438,9 @@ void TIndexTabletActor::CompleteTx_CreateSession(
         }
     }
     if (shardIds.empty()) {
-        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s CreateSession completed (%s)",
             LogTag.c_str(),
             FormatError(args.Error).c_str());
@@ -419,7 +449,9 @@ void TIndexTabletActor::CompleteTx_CreateSession(
         return;
     }
 
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s CreateSession completed - local (%s)",
         LogTag.c_str(),
         FormatError(args.Error).c_str());
@@ -447,9 +479,9 @@ void TIndexTabletActor::HandleSyncShardSessions(
     for (auto& request: BuildCreateSessionRequests(filter)) {
         CreateSessionsInShards(
             ctx,
-            nullptr, // requestInfo
+            nullptr,   // requestInfo
             std::move(request),
-            nullptr, // response
+            nullptr,   // response
             {info.ShardId});
 
         ++info.SessionCount;
@@ -468,11 +500,13 @@ void TIndexTabletActor::CreateSessionsInShards(
     std::unique_ptr<TEvIndexTablet::TEvCreateSessionResponse> response,
     TVector<TString> shardIds)
 {
-    TString logTag = TStringBuilder() << LogTag
-        << " s=" << request.GetHeaders().GetSessionId()
-        << " c=" << request.GetHeaders().GetClientId();
+    TString logTag = TStringBuilder()
+                     << LogTag << " s=" << request.GetHeaders().GetSessionId()
+                     << " c=" << request.GetHeaders().GetClientId();
 
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s Creating shard sessions (%s)",
         logTag.c_str(),
         JoinSeq(",", shardIds).c_str());

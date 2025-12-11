@@ -15,8 +15,8 @@ namespace {
 
 NProto::TError ValidateRequest(const NProto::TRenameNodeRequest& request)
 {
-    if (request.GetNodeId() == InvalidNodeId
-            || request.GetNewParentId() == InvalidNodeId)
+    if (request.GetNodeId() == InvalidNodeId ||
+        request.GetNewParentId() == InvalidNodeId)
     {
         return ErrorInvalidArgument();
     }
@@ -65,18 +65,18 @@ void TIndexTabletActor::HandleRenameNode(
     }
 
     if (!TryLockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()})) {
-        auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(
-            MakeError(E_REJECTED, TStringBuilder() << "node ref "
-                << msg->Record.GetNodeId() << " " << msg->Record.GetName()
-                << " is locked for RenameNode"));
+        auto response =
+            std::make_unique<TEvService::TEvRenameNodeResponse>(MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "node ref " << msg->Record.GetNodeId() << " "
+                    << msg->Record.GetName() << " is locked for RenameNode"));
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TRenameNodeMethod>(*requestInfo);
@@ -90,9 +90,10 @@ void TIndexTabletActor::HandleRenameNode(
         const auto parentShardNo = ExtractShardNo(msg->Record.GetNodeId());
         if (parentShardNo != shardNo) {
             auto message = ReportRenameNodeRequestSentToWrongShard(
-                TStringBuilder() << "RenameNode: "
-                    << msg->Record.ShortDebugString() << " received by shard "
-                    << shardNo << ", expected: " << parentShardNo);
+                TStringBuilder()
+                << "RenameNode: " << msg->Record.ShortDebugString()
+                << " received by shard " << shardNo
+                << ", expected: " << parentShardNo);
             auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(
                 MakeError(E_ARGUMENT, std::move(message)));
             NCloud::Reply(ctx, *requestInfo, std::move(response));
@@ -107,23 +108,24 @@ void TIndexTabletActor::HandleRenameNode(
             if (newParentShardNo > static_cast<ui32>(shardIds.size())) {
                 UnlockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()});
                 auto message = ReportInvalidShardNo(
-                    TStringBuilder() << "RenameNode: "
-                        << msg->Record.ShortDebugString() << " newParentShardNo"
-                        << ": " << newParentShardNo << ", shard count: "
-                        << shardIds.size());
+                    TStringBuilder()
+                    << "RenameNode: " << msg->Record.ShortDebugString()
+                    << " newParentShardNo" << ": " << newParentShardNo
+                    << ", shard count: " << shardIds.size());
                 auto response =
                     std::make_unique<TEvService::TEvRenameNodeResponse>(
                         MakeError(E_ARGUMENT, std::move(message)));
                 NCloud::Reply(ctx, *requestInfo, std::move(response));
-            } else if (newParentShardNo == 0
-                    && msg->Record.GetNewParentId() != RootNodeId)
+            } else if (
+                newParentShardNo == 0 &&
+                msg->Record.GetNewParentId() != RootNodeId)
             {
                 UnlockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()});
                 auto message = ReportInvalidShardNo(
-                    TStringBuilder() << "RenameNode: "
-                        << msg->Record.ShortDebugString() << " newParentShardNo"
-                        << ": " << newParentShardNo << ", NewParentId: "
-                        << msg->Record.GetNewParentId());
+                    TStringBuilder()
+                    << "RenameNode: " << msg->Record.ShortDebugString()
+                    << " newParentShardNo" << ": " << newParentShardNo
+                    << ", NewParentId: " << msg->Record.GetNewParentId());
                 auto response =
                     std::make_unique<TEvService::TEvRenameNodeResponse>(
                         MakeError(E_ARGUMENT, std::move(message)));
@@ -133,18 +135,14 @@ void TIndexTabletActor::HandleRenameNode(
                     ctx,
                     std::move(requestInfo),
                     std::move(msg->Record),
-                    newParentShardNo
-                        ? shardIds[newParentShardNo - 1]
-                        : GetMainFileSystemId());
+                    newParentShardNo ? shardIds[newParentShardNo - 1]
+                                     : GetMainFileSystemId());
             }
             return;
         }
     }
 
-    ExecuteTx<TRenameNode>(
-        ctx,
-        std::move(requestInfo),
-        std::move(msg->Record));
+    ExecuteTx<TRenameNode>(ctx, std::move(requestInfo), std::move(msg->Record));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -204,7 +202,8 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
         // TODO: AccessCheck
 
         if (!args.ChildNode) {
-            auto message = ReportChildNodeIsNull(TStringBuilder()
+            auto message = ReportChildNodeIsNull(
+                TStringBuilder()
                 << "RenameNode: " << args.Request.ShortDebugString());
             args.Error = MakeError(E_INVALID_STATE, std::move(message));
             return true;
@@ -212,11 +211,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
     }
 
     // validate new parent node exists
-    if (!ReadNode(
-            db,
-            args.NewParentNodeId,
-            args.CommitId,
-            args.NewParentNode))
+    if (!ReadNode(db, args.NewParentNodeId, args.CommitId, args.NewParentNode))
     {
         return false;   // not ready
     }
@@ -259,7 +254,8 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
             // TODO: AccessCheck
 
             if (!args.NewChildNode) {
-                auto message = ReportNewChildNodeIsNull(TStringBuilder()
+                auto message = ReportNewChildNodeIsNull(
+                    TStringBuilder()
                     << "RenameNode: " << args.Request.ShortDebugString());
                 args.Error = MakeError(E_INVALID_STATE, std::move(message));
                 return true;
@@ -268,12 +264,13 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
 
         // oldpath and newpath are existing hard links to the same file, then
         // rename() does nothing
-        const bool isSameNode = args.ChildNode && args.NewChildNode
-            && args.ChildNode->NodeId == args.NewChildNode->NodeId;
-        const bool isSameExternalNode = args.ChildRef->ShardId
-            && args.NewChildRef->ShardId
-            && args.ChildRef->ShardId == args.NewChildRef->ShardId
-            && args.ChildRef->ShardNodeName == args.NewChildRef->ShardNodeName;
+        const bool isSameNode =
+            args.ChildNode && args.NewChildNode &&
+            args.ChildNode->NodeId == args.NewChildNode->NodeId;
+        const bool isSameExternalNode =
+            args.ChildRef->ShardId && args.NewChildRef->ShardId &&
+            args.ChildRef->ShardId == args.NewChildRef->ShardId &&
+            args.ChildRef->ShardNodeName == args.NewChildRef->ShardNodeName;
         if (isSameNode || isSameExternalNode) {
             args.Error = MakeError(S_ALREADY, "is the same file");
             return true;
@@ -286,22 +283,22 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
 
         // oldpath directory: newpath must either not exist, or it must specify
         // an empty directory.
-        if (args.ChildNode
-                && args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE)
+        if (args.ChildNode &&
+            args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE)
         {
-            if (!args.NewChildNode || args.NewChildNode->Attrs.GetType()
-                    != NProto::E_DIRECTORY_NODE)
+            if (!args.NewChildNode ||
+                args.NewChildNode->Attrs.GetType() != NProto::E_DIRECTORY_NODE)
             {
                 args.Error = ErrorIsNotDirectory(args.NewChildNode->NodeId);
                 return true;
             }
         }
 
-        if (args.NewChildNode && args.NewChildNode->Attrs.GetType()
-                == NProto::E_DIRECTORY_NODE)
+        if (args.NewChildNode &&
+            args.NewChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE)
         {
-            if (!args.ChildNode || args.ChildNode->Attrs.GetType()
-                    != NProto::E_DIRECTORY_NODE)
+            if (!args.ChildNode ||
+                args.ChildNode->Attrs.GetType() != NProto::E_DIRECTORY_NODE)
             {
                 args.Error = ErrorIsDirectory(args.NewChildNode->NodeId);
                 return true;
@@ -340,7 +337,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
 {
     FILESTORE_VALIDATE_TX_ERROR(RenameNode, args);
     if (args.Error.GetCode() == S_ALREADY) {
-        return; // nothing to do
+        return;   // nothing to do
     }
 
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
@@ -385,7 +382,8 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.NewChildRef->ShardNodeName);
         } else if (!args.NewChildRef->IsExternal()) {
             if (!args.NewChildNode) {
-                auto message = ReportNewChildNodeIsNull(TStringBuilder()
+                auto message = ReportNewChildNodeIsNull(
+                    TStringBuilder()
                     << "RenameNode: " << args.Request.ShortDebugString());
                 args.Error = MakeError(E_INVALID_STATE, std::move(message));
                 return;
@@ -403,11 +401,14 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
 
             if (HasError(e)) {
                 const auto nodeId = args.NewChildNode->NodeId;
-                WriteOrphanNode(db, TStringBuilder()
-                    << "RenameNode: " << args.SessionId
-                    << ", ParentNodeId: " << args.NewParentNode->NodeId
-                    << ", NodeId: " << nodeId
-                    << ", Error: " << FormatError(e), nodeId);
+                WriteOrphanNode(
+                    db,
+                    TStringBuilder()
+                        << "RenameNode: " << args.SessionId
+                        << ", ParentNodeId: " << args.NewParentNode->NodeId
+                        << ", NodeId: " << nodeId
+                        << ", Error: " << FormatError(e),
+                    nodeId);
             }
         } else {
             // remove target ref
@@ -426,8 +427,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
             args.OpLogEntry.SetEntryId(args.CommitId);
             auto* shardRequest =
                 args.OpLogEntry.MutableUnlinkNodeInShardRequest();
-            shardRequest->MutableHeaders()->CopyFrom(
-                args.Request.GetHeaders());
+            shardRequest->MutableHeaders()->CopyFrom(args.Request.GetHeaders());
             shardRequest->SetFileSystemId(args.NewChildRef->ShardId);
             shardRequest->SetNodeId(RootNodeId);
             shardRequest->SetName(args.NewChildRef->ShardNodeName);
@@ -467,7 +467,8 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
 
     auto* session = FindSession(args.SessionId);
     if (!session) {
-        auto message = ReportSessionNotFoundInTx(TStringBuilder()
+        auto message = ReportSessionNotFoundInTx(
+            TStringBuilder()
             << "RenameNode: " << args.Request.ShortDebugString());
         args.Error = MakeError(E_INVALID_STATE, std::move(message));
         return;
@@ -505,7 +506,8 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     }
 
     if (!HasError(args.Error) && !args.ChildRef) {
-        auto message = ReportChildRefIsNull(TStringBuilder()
+        auto message = ReportChildRefIsNull(
+            TStringBuilder()
             << "RenameNode: " << args.Request.ShortDebugString());
         args.Error = MakeError(E_INVALID_STATE, std::move(message));
     }
@@ -555,12 +557,10 @@ void TIndexTabletActor::CompleteTx_RenameNode(
 
     RemoveTransaction(*args.RequestInfo);
 
-    Metrics.RenameNode.Update(
-        1,
-        0,
-        ctx.Now() - args.RequestInfo->StartedTs);
+    Metrics.RenameNode.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
 
-    auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvRenameNodeResponse>(args.Error);
     CompleteResponse<TEvService::TRenameNodeMethod>(
         response->Record,
         args.RequestInfo->CallContext,

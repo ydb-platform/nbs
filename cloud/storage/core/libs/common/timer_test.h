@@ -10,8 +10,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestTimer final
-    : public ITimer
+class TTestTimer final: public ITimer
 {
 private:
     TAtomic Timestamp = 0;

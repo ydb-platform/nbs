@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/copy_range.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_common.h>
+
 #include <cloud/storage/core/libs/common/sglist.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -30,16 +31,16 @@ constexpr ui64 TargetPartitionTag = 2;
 }   // namespace
 
 TDirectCopyRangeActor::TDirectCopyRangeActor(
-        TRequestInfoPtr requestInfo,
-        ui32 blockSize,
-        TBlockRange64 range,
-        TActorId source,
-        TActorId target,
-        TString writerClientId,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        NActors::TActorId volumeActorId,
-        bool assignVolumeRequestId,
-        TActorId actorToLockAndDrainRange)
+    TRequestInfoPtr requestInfo,
+    ui32 blockSize,
+    TBlockRange64 range,
+    TActorId source,
+    TActorId target,
+    TString writerClientId,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    NActors::TActorId volumeActorId,
+    bool assignVolumeRequestId,
+    TActorId actorToLockAndDrainRange)
     : BlockSize(blockSize)
     , Range(range)
     , SourceActor(source)

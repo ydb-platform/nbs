@@ -32,8 +32,7 @@ bool HasError(const TFuture<T>& future)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TValidationCallback final
-    : public IValidationCallback
+struct TValidationCallback final: public IValidationCallback
 {
     size_t ErrorsCount = 0;
 
@@ -46,11 +45,12 @@ struct TValidationCallback final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestService final
-    : public IBlockStore
+struct TTestService final: public IBlockStore
 {
-    void Start() override {}
-    void Stop() override {}
+    void Start() override
+    {}
+    void Stop() override
+    {}
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
@@ -70,7 +70,7 @@ struct TTestService final
     {                                                                          \
         return name##Handler(ctx, *request);                                   \
     }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+    // BLOCKSTORE_IMPLEMENT_METHOD
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
 
@@ -156,10 +156,7 @@ std::shared_ptr<NProto::TWriteBlocksLocalRequest> CreateWriteBlocksLocalRequest(
     auto blocksHolder = std::make_shared<TVector<TString>>();
     blocksHolderList.push_back(blocksHolder);
 
-    auto sglist = ResizeBlocks(
-        *blocksHolder,
-        blocksCount,
-        data);
+    auto sglist = ResizeBlocks(*blocksHolder, blocksCount, data);
     request->Sglist = TGuardedSgList(std::move(sglist));
     return request;
 }
@@ -174,10 +171,7 @@ std::shared_ptr<NProto::TReadBlocksLocalRequest> CreateReadBlocksLocalRequest(
     auto blocksHolder = std::make_shared<TVector<TString>>();
     blocksHolderList.push_back(blocksHolder);
 
-    auto sglist = ResizeBlocks(
-        *blocksHolder,
-        blocksCount,
-        data);
+    auto sglist = ResizeBlocks(*blocksHolder, blocksCount, data);
 
     auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
     request->SetDiskId(diskId);
@@ -217,9 +211,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         service->MountVolumeHandler =
-            [&] (TCallContextPtr, const NProto::TMountVolumeRequest&) {
-                return mountResponse;
-            };
+            [&](TCallContextPtr, const NProto::TMountVolumeRequest&)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(ctx, std::move(mountRequest));
         mountResponse.SetValue(*CreateMountVolumeResponse());
@@ -232,22 +227,26 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto writeResponse1 = NewPromise<NProto::TWriteBlocksResponse>();
 
         service->WriteBlocksHandler =
-            [&] (TCallContextPtr, const NProto::TWriteBlocksRequest&) {
-                return writeResponse1;
-            };
+            [&](TCallContextPtr, const NProto::TWriteBlocksRequest&)
+        {
+            return writeResponse1;
+        };
 
-        auto writeResult1 = validator->WriteBlocks(ctx, std::move(writeRequest1));
+        auto writeResult1 =
+            validator->WriteBlocks(ctx, std::move(writeRequest1));
 
         // WriteBlocks
         auto writeRequest2 = CreateWriteBlocksRequest("test", 1, 1);
         auto writeResponse2 = NewPromise<NProto::TWriteBlocksResponse>();
 
         service->WriteBlocksHandler =
-            [&] (TCallContextPtr, const NProto::TWriteBlocksRequest&) {
-                return writeResponse2;
-            };
+            [&](TCallContextPtr, const NProto::TWriteBlocksRequest&)
+        {
+            return writeResponse2;
+        };
 
-        auto writeResult2 = validator->WriteBlocks(ctx, std::move(writeRequest2));
+        auto writeResult2 =
+            validator->WriteBlocks(ctx, std::move(writeRequest2));
 
         writeResponse1.SetValue({});
         writeResponse2.SetValue({});
@@ -280,9 +279,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         service->MountVolumeHandler =
-            [&] (TCallContextPtr, const NProto::TMountVolumeRequest&) {
-                return mountResponse;
-            };
+            [&](TCallContextPtr, const NProto::TMountVolumeRequest&)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(ctx, std::move(mountRequest));
         mountResponse.SetValue(*CreateMountVolumeResponse());
@@ -295,22 +295,26 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto writeResponse1 = NewPromise<NProto::TWriteBlocksResponse>();
 
         service->WriteBlocksHandler =
-            [&] (TCallContextPtr, const NProto::TWriteBlocksRequest&) {
-                return writeResponse1;
-            };
+            [&](TCallContextPtr, const NProto::TWriteBlocksRequest&)
+        {
+            return writeResponse1;
+        };
 
-        auto writeResult1 = validator->WriteBlocks(ctx, std::move(writeRequest1));
+        auto writeResult1 =
+            validator->WriteBlocks(ctx, std::move(writeRequest1));
 
         // WriteBlocks
         auto writeRequest2 = CreateWriteBlocksRequest("test", 0, 1);
         auto writeResponse2 = NewPromise<NProto::TWriteBlocksResponse>();
 
         service->WriteBlocksHandler =
-            [&] (TCallContextPtr, const NProto::TWriteBlocksRequest&) {
-                return writeResponse2;
-            };
+            [&](TCallContextPtr, const NProto::TWriteBlocksRequest&)
+        {
+            return writeResponse2;
+        };
 
-        auto writeResult2 = validator->WriteBlocks(ctx, std::move(writeRequest2));
+        auto writeResult2 =
+            validator->WriteBlocks(ctx, std::move(writeRequest2));
 
         writeResponse1.SetValue({});
         writeResponse2.SetValue({});
@@ -343,9 +347,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         service->MountVolumeHandler =
-            [&] (TCallContextPtr, const NProto::TMountVolumeRequest&) {
-                return mountResponse;
-            };
+            [&](TCallContextPtr, const NProto::TMountVolumeRequest&)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(ctx, std::move(mountRequest));
         mountResponse.SetValue(*CreateMountVolumeResponse());
@@ -358,9 +363,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto writeResponse = NewPromise<NProto::TWriteBlocksResponse>();
 
         service->WriteBlocksHandler =
-            [&] (TCallContextPtr, const NProto::TWriteBlocksRequest&) {
-                return writeResponse;
-            };
+            [&](TCallContextPtr, const NProto::TWriteBlocksRequest&)
+        {
+            return writeResponse;
+        };
 
         auto writeResult = validator->WriteBlocks(ctx, std::move(writeRequest));
 
@@ -369,9 +375,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto readResponse = NewPromise<NProto::TReadBlocksResponse>();
 
         service->ReadBlocksHandler =
-            [&] (TCallContextPtr, const NProto::TReadBlocksRequest&) {
-                return readResponse;
-            };
+            [&](TCallContextPtr, const NProto::TReadBlocksRequest&)
+        {
+            return readResponse;
+        };
 
         auto readResult = validator->ReadBlocks(ctx, std::move(readRequest));
 
@@ -387,9 +394,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto readResponse2 = NewPromise<NProto::TReadBlocksResponse>();
 
         service->ReadBlocksHandler =
-            [&] (TCallContextPtr, const NProto::TReadBlocksRequest&) {
-                return readResponse2;
-            };
+            [&](TCallContextPtr, const NProto::TReadBlocksRequest&)
+        {
+            return readResponse2;
+        };
 
         auto readResult2 = validator->ReadBlocks(ctx, std::move(readRequest2));
         readResponse2.SetValue(CreateReadBlocksResponse(1));
@@ -421,9 +429,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         service->MountVolumeHandler =
-            [&] (TCallContextPtr, const NProto::TMountVolumeRequest&) {
-                return mountResponse;
-            };
+            [&](TCallContextPtr, const NProto::TMountVolumeRequest&)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(ctx, std::move(mountRequest));
         mountResponse.SetValue(*CreateMountVolumeResponse());
@@ -436,9 +445,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto writeResponse = NewPromise<NProto::TWriteBlocksResponse>();
 
         service->WriteBlocksHandler =
-            [&] (TCallContextPtr, const NProto::TWriteBlocksRequest&) {
-                return writeResponse;
-            };
+            [&](TCallContextPtr, const NProto::TWriteBlocksRequest&)
+        {
+            return writeResponse;
+        };
 
         auto writeResult = validator->WriteBlocks(ctx, std::move(writeRequest));
         writeResponse.SetValue({});
@@ -451,9 +461,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto readResponse = NewPromise<NProto::TReadBlocksResponse>();
 
         service->ReadBlocksHandler =
-            [&] (TCallContextPtr, const NProto::TReadBlocksRequest&) {
-                return readResponse;
-            };
+            [&](TCallContextPtr, const NProto::TReadBlocksRequest&)
+        {
+            return readResponse;
+        };
 
         auto readResult = validator->ReadBlocks(ctx, std::move(readRequest));
         readResponse.SetValue(CreateReadBlocksResponse(1));
@@ -485,9 +496,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         service->MountVolumeHandler =
-            [&] (TCallContextPtr, const NProto::TMountVolumeRequest&) {
-                return mountResponse;
-            };
+            [&](TCallContextPtr, const NProto::TMountVolumeRequest&)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(ctx, std::move(mountRequest));
         mountResponse.SetValue(*CreateMountVolumeResponse());
@@ -500,9 +512,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto readResponse1 = NewPromise<NProto::TReadBlocksResponse>();
 
         service->ReadBlocksHandler =
-            [&] (TCallContextPtr, const NProto::TReadBlocksRequest&) {
-                return readResponse1;
-            };
+            [&](TCallContextPtr, const NProto::TReadBlocksRequest&)
+        {
+            return readResponse1;
+        };
 
         auto readResult1 = validator->ReadBlocks(ctx, std::move(readRequest1));
 
@@ -511,9 +524,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto readResponse2 = NewPromise<NProto::TReadBlocksResponse>();
 
         service->ReadBlocksHandler =
-            [&] (TCallContextPtr, const NProto::TReadBlocksRequest&) {
-                return readResponse2;
-            };
+            [&](TCallContextPtr, const NProto::TReadBlocksRequest&)
+        {
+            return readResponse2;
+        };
 
         auto readResult2 = validator->ReadBlocks(ctx, std::move(readRequest2));
 
@@ -525,7 +539,7 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, callback->ErrorsCount);
     }
 
-    //Local requests
+    // Local requests
 
     Y_UNIT_TEST(ShouldNotWarnOnNonOverlappingLocalRequests)
     {
@@ -551,9 +565,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         service->MountVolumeHandler =
-            [&] (TCallContextPtr, const NProto::TMountVolumeRequest&) {
-                return mountResponse;
-            };
+            [&](TCallContextPtr, const NProto::TMountVolumeRequest&)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(ctx, std::move(mountRequest));
         mountResponse.SetValue(*CreateMountVolumeResponse());
@@ -562,26 +577,32 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, callback->ErrorsCount);
 
         // WriteBlocks
-        auto writeRequest1 = CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1);
+        auto writeRequest1 =
+            CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1);
         auto writeResponse1 = NewPromise<NProto::TWriteBlocksLocalResponse>();
 
         service->WriteBlocksLocalHandler =
-            [&] (TCallContextPtr, const NProto::TWriteBlocksLocalRequest&) {
-                return writeResponse1;
-            };
+            [&](TCallContextPtr, const NProto::TWriteBlocksLocalRequest&)
+        {
+            return writeResponse1;
+        };
 
-        auto writeResult1 = validator->WriteBlocksLocal(ctx, std::move(writeRequest1));
+        auto writeResult1 =
+            validator->WriteBlocksLocal(ctx, std::move(writeRequest1));
 
         // WriteBlocks
-        auto writeRequest2 = CreateWriteBlocksLocalRequest(blocksHolderList, "test", 1, 1);
+        auto writeRequest2 =
+            CreateWriteBlocksLocalRequest(blocksHolderList, "test", 1, 1);
         auto writeResponse2 = NewPromise<NProto::TWriteBlocksLocalResponse>();
 
         service->WriteBlocksLocalHandler =
-            [&] (TCallContextPtr, const NProto::TWriteBlocksLocalRequest&) {
-                return writeResponse2;
-            };
+            [&](TCallContextPtr, const NProto::TWriteBlocksLocalRequest&)
+        {
+            return writeResponse2;
+        };
 
-        auto writeResult2 = validator->WriteBlocksLocal(ctx, std::move(writeRequest2));
+        auto writeResult2 =
+            validator->WriteBlocksLocal(ctx, std::move(writeRequest2));
 
         writeResponse1.SetValue({});
         writeResponse2.SetValue({});
@@ -615,9 +636,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         service->MountVolumeHandler =
-            [&] (TCallContextPtr, const NProto::TMountVolumeRequest&) {
-                return mountResponse;
-            };
+            [&](TCallContextPtr, const NProto::TMountVolumeRequest&)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(ctx, std::move(mountRequest));
         mountResponse.SetValue(*CreateMountVolumeResponse());
@@ -626,26 +648,32 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, callback->ErrorsCount);
 
         // WriteBlocks
-        auto writeRequest1 = CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1);
+        auto writeRequest1 =
+            CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1);
         auto writeResponse1 = NewPromise<NProto::TWriteBlocksLocalResponse>();
 
         service->WriteBlocksLocalHandler =
-            [&] (TCallContextPtr, const NProto::TWriteBlocksLocalRequest&) {
-                return writeResponse1;
-            };
+            [&](TCallContextPtr, const NProto::TWriteBlocksLocalRequest&)
+        {
+            return writeResponse1;
+        };
 
-        auto writeResult1 = validator->WriteBlocksLocal(ctx, std::move(writeRequest1));
+        auto writeResult1 =
+            validator->WriteBlocksLocal(ctx, std::move(writeRequest1));
 
         // WriteBlocks
-        auto writeRequest2 = CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1);
+        auto writeRequest2 =
+            CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1);
         auto writeResponse2 = NewPromise<NProto::TWriteBlocksLocalResponse>();
 
         service->WriteBlocksLocalHandler =
-            [&] (TCallContextPtr, const NProto::TWriteBlocksLocalRequest&) {
-                return writeResponse2;
-            };
+            [&](TCallContextPtr, const NProto::TWriteBlocksLocalRequest&)
+        {
+            return writeResponse2;
+        };
 
-        auto writeResult2 = validator->WriteBlocksLocal(ctx, std::move(writeRequest2));
+        auto writeResult2 =
+            validator->WriteBlocksLocal(ctx, std::move(writeRequest2));
 
         writeResponse1.SetValue({});
         writeResponse2.SetValue({});
@@ -679,9 +707,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         service->MountVolumeHandler =
-            [&] (TCallContextPtr, const NProto::TMountVolumeRequest&) {
-                return mountResponse;
-            };
+            [&](TCallContextPtr, const NProto::TMountVolumeRequest&)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(ctx, std::move(mountRequest));
         mountResponse.SetValue(*CreateMountVolumeResponse());
@@ -690,26 +719,32 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, callback->ErrorsCount);
 
         // WriteBlocks
-        auto writeRequest = CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1);
+        auto writeRequest =
+            CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1);
         auto writeResponse = NewPromise<NProto::TWriteBlocksLocalResponse>();
 
         service->WriteBlocksLocalHandler =
-            [&] (TCallContextPtr, const NProto::TWriteBlocksLocalRequest&) {
-                return writeResponse;
-            };
+            [&](TCallContextPtr, const NProto::TWriteBlocksLocalRequest&)
+        {
+            return writeResponse;
+        };
 
-        auto writeResult = validator->WriteBlocksLocal(ctx, std::move(writeRequest));
+        auto writeResult =
+            validator->WriteBlocksLocal(ctx, std::move(writeRequest));
 
         // ReadBlocks
-        auto readRequest = CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
+        auto readRequest =
+            CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
         auto readResponse = NewPromise<NProto::TReadBlocksLocalResponse>();
 
         service->ReadBlocksLocalHandler =
-            [&] (TCallContextPtr, const NProto::TReadBlocksLocalRequest&) {
-                return readResponse;
-            };
+            [&](TCallContextPtr, const NProto::TReadBlocksLocalRequest&)
+        {
+            return readResponse;
+        };
 
-        auto readResult = validator->ReadBlocksLocal(ctx, std::move(readRequest));
+        auto readResult =
+            validator->ReadBlocksLocal(ctx, std::move(readRequest));
 
         writeResponse.SetValue({});
         readResponse.SetValue({});
@@ -719,15 +754,18 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, callback->ErrorsCount);
 
         // ReadBlocks
-        auto readRequest2 = CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
+        auto readRequest2 =
+            CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
         auto readResponse2 = NewPromise<NProto::TReadBlocksLocalResponse>();
 
         service->ReadBlocksLocalHandler =
-            [&] (TCallContextPtr, const NProto::TReadBlocksLocalRequest&) {
-                return readResponse2;
-            };
+            [&](TCallContextPtr, const NProto::TReadBlocksLocalRequest&)
+        {
+            return readResponse2;
+        };
 
-        auto readResult2 = validator->ReadBlocksLocal(ctx, std::move(readRequest2));
+        auto readResult2 =
+            validator->ReadBlocksLocal(ctx, std::move(readRequest2));
         readResponse2.SetValue({});
 
         UNIT_ASSERT(!HasError(readResult2));
@@ -758,9 +796,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         service->MountVolumeHandler =
-            [&] (TCallContextPtr, const NProto::TMountVolumeRequest&) {
-                return mountResponse;
-            };
+            [&](TCallContextPtr, const NProto::TMountVolumeRequest&)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(ctx, std::move(mountRequest));
         mountResponse.SetValue(*CreateMountVolumeResponse());
@@ -769,30 +808,36 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, callback->ErrorsCount);
 
         // WriteBlocks
-        auto writeRequest = CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1, "t");
+        auto writeRequest =
+            CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1, "t");
         auto writeResponse = NewPromise<NProto::TWriteBlocksLocalResponse>();
 
         service->WriteBlocksLocalHandler =
-            [&] (TCallContextPtr, const NProto::TWriteBlocksLocalRequest&) {
-                return writeResponse;
-            };
+            [&](TCallContextPtr, const NProto::TWriteBlocksLocalRequest&)
+        {
+            return writeResponse;
+        };
 
-        auto writeResult = validator->WriteBlocksLocal(ctx, std::move(writeRequest));
+        auto writeResult =
+            validator->WriteBlocksLocal(ctx, std::move(writeRequest));
         writeResponse.SetValue({});
 
         UNIT_ASSERT(!HasError(writeResult));
         UNIT_ASSERT_VALUES_EQUAL(0, callback->ErrorsCount);
 
         // ReadBlocks
-        auto readRequest = CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
+        auto readRequest =
+            CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
         auto readResponse = NewPromise<NProto::TReadBlocksLocalResponse>();
 
         service->ReadBlocksLocalHandler =
-            [&] (TCallContextPtr, const NProto::TReadBlocksLocalRequest&) {
-                return readResponse;
-            };
+            [&](TCallContextPtr, const NProto::TReadBlocksLocalRequest&)
+        {
+            return readResponse;
+        };
 
-        auto readResult = validator->ReadBlocksLocal(ctx, std::move(readRequest));
+        auto readResult =
+            validator->ReadBlocksLocal(ctx, std::move(readRequest));
         readResponse.SetValue({});
 
         UNIT_ASSERT(!HasError(readResult));
@@ -823,9 +868,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         service->MountVolumeHandler =
-            [&] (TCallContextPtr, const NProto::TMountVolumeRequest&) {
-                return mountResponse;
-            };
+            [&](TCallContextPtr, const NProto::TMountVolumeRequest&)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(ctx, std::move(mountRequest));
         mountResponse.SetValue(*CreateMountVolumeResponse());
@@ -834,26 +880,32 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, callback->ErrorsCount);
 
         // ReadBlocks
-        auto readRequest1 = CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
+        auto readRequest1 =
+            CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
         auto readResponse1 = NewPromise<NProto::TReadBlocksLocalResponse>();
 
         service->ReadBlocksLocalHandler =
-            [&] (TCallContextPtr, const NProto::TReadBlocksLocalRequest&) {
-                return readResponse1;
-            };
+            [&](TCallContextPtr, const NProto::TReadBlocksLocalRequest&)
+        {
+            return readResponse1;
+        };
 
-        auto readResult1 = validator->ReadBlocksLocal(ctx, std::move(readRequest1));
+        auto readResult1 =
+            validator->ReadBlocksLocal(ctx, std::move(readRequest1));
 
         // ReadBlocks
-        auto readRequest2 = CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
+        auto readRequest2 =
+            CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
         auto readResponse2 = NewPromise<NProto::TReadBlocksLocalResponse>();
 
         service->ReadBlocksLocalHandler =
-            [&] (TCallContextPtr, const NProto::TReadBlocksLocalRequest&) {
-                return readResponse2;
-            };
+            [&](TCallContextPtr, const NProto::TReadBlocksLocalRequest&)
+        {
+            return readResponse2;
+        };
 
-        auto readResult2 = validator->ReadBlocksLocal(ctx, std::move(readRequest2));
+        auto readResult2 =
+            validator->ReadBlocksLocal(ctx, std::move(readRequest2));
 
         readResponse1.SetValue({});
         readResponse2.SetValue({});
@@ -886,9 +938,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         service->MountVolumeHandler =
-            [&] (TCallContextPtr, const NProto::TMountVolumeRequest&) {
-                return mountResponse;
-            };
+            [&](TCallContextPtr, const NProto::TMountVolumeRequest&)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(ctx, std::move(mountRequest));
         mountResponse.SetValue(*CreateMountVolumeResponse());
@@ -901,22 +954,26 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto writeResponse1 = NewPromise<NProto::TWriteBlocksResponse>();
 
         service->WriteBlocksHandler =
-            [&] (TCallContextPtr, const NProto::TWriteBlocksRequest&) {
-                return writeResponse1;
-            };
+            [&](TCallContextPtr, const NProto::TWriteBlocksRequest&)
+        {
+            return writeResponse1;
+        };
 
-        auto writeResult1 = validator->WriteBlocks(ctx, std::move(writeRequest1));
+        auto writeResult1 =
+            validator->WriteBlocks(ctx, std::move(writeRequest1));
 
         // WriteBlocks
         auto writeRequest2 = CreateWriteBlocksRequest("test", 0, 1, "t");
         auto writeResponse2 = NewPromise<NProto::TWriteBlocksResponse>();
 
         service->WriteBlocksHandler =
-            [&] (TCallContextPtr, const NProto::TWriteBlocksRequest&) {
-                return writeResponse2;
-            };
+            [&](TCallContextPtr, const NProto::TWriteBlocksRequest&)
+        {
+            return writeResponse2;
+        };
 
-        auto writeResult2 = validator->WriteBlocks(ctx, std::move(writeRequest2));
+        auto writeResult2 =
+            validator->WriteBlocks(ctx, std::move(writeRequest2));
 
         writeResponse1.SetValue({});
         writeResponse2.SetValue({});
@@ -930,9 +987,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto readResponse = NewPromise<NProto::TReadBlocksResponse>();
 
         service->ReadBlocksHandler =
-            [&] (TCallContextPtr, const NProto::TReadBlocksRequest&) {
-                return readResponse;
-            };
+            [&](TCallContextPtr, const NProto::TReadBlocksRequest&)
+        {
+            return readResponse;
+        };
 
         auto readResult = validator->ReadBlocks(ctx, std::move(readRequest));
         readResponse.SetValue(CreateReadBlocksResponse(1));
@@ -965,9 +1023,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         service->MountVolumeHandler =
-            [&] (TCallContextPtr, const NProto::TMountVolumeRequest&) {
-                return mountResponse;
-            };
+            [&](TCallContextPtr, const NProto::TMountVolumeRequest&)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(ctx, std::move(mountRequest));
         mountResponse.SetValue(*CreateMountVolumeResponse());
@@ -980,9 +1039,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto writeResponse = NewPromise<NProto::TWriteBlocksResponse>();
 
         service->WriteBlocksHandler =
-            [&] (TCallContextPtr, const NProto::TWriteBlocksRequest&) {
-                return writeResponse;
-            };
+            [&](TCallContextPtr, const NProto::TWriteBlocksRequest&)
+        {
+            return writeResponse;
+        };
 
         auto writeResult = validator->WriteBlocks(ctx, std::move(writeRequest));
 
@@ -991,9 +1051,10 @@ Y_UNIT_TEST_SUITE(TValidationServiceTest)
         auto readResponse = NewPromise<NProto::TReadBlocksResponse>();
 
         service->ReadBlocksHandler =
-            [&] (TCallContextPtr, const NProto::TReadBlocksRequest&) {
-                return readResponse;
-            };
+            [&](TCallContextPtr, const NProto::TReadBlocksRequest&)
+        {
+            return readResponse;
+        };
 
         auto readResult = validator->ReadBlocks(ctx, std::move(readRequest));
 

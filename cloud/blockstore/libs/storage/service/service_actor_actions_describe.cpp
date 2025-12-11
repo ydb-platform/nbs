@@ -9,6 +9,7 @@
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
+
 #include <library/cpp/json/json_reader.h>
 
 #include <google/protobuf/util/json_util.h>
@@ -33,9 +34,7 @@ private:
     TString DiskId;
 
 public:
-    TDescribeVolumeActionsActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TDescribeVolumeActionsActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -56,8 +55,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeVolumeActionsActor::TDescribeVolumeActionsActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -66,7 +65,9 @@ void TDescribeVolumeActionsActor::Bootstrap(const TActorContext& ctx)
 {
     NJson::TJsonValue input;
     if (!NJson::ReadJsonTree(Input, &input, false)) {
-        HandleError(ctx, MakeError(E_ARGUMENT, "Input should be in JSON format"));
+        HandleError(
+            ctx,
+            MakeError(E_ARGUMENT, "Input should be in JSON format"));
         return;
     }
 
@@ -113,7 +114,8 @@ void TDescribeVolumeActionsActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(error);
 
     LWTRACK(
         ResponseSent_Service,

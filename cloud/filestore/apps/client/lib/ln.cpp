@@ -11,8 +11,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TLnCommand final
-    : public TFileStoreCommand
+class TLnCommand final: public TFileStoreCommand
 {
 private:
     TString Path;
@@ -46,9 +45,8 @@ public:
         request->SetName(TString(resolved.back().Name));
         request->MutableSymLink()->SetTargetPath(SymLink);
 
-        auto response = WaitFor(session.CreateNode(
-            PrepareCallContext(),
-            std::move(request)));
+        auto response = WaitFor(
+            session.CreateNode(PrepareCallContext(), std::move(request)));
 
         CheckResponse(response);
         return true;

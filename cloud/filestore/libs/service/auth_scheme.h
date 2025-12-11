@@ -6,7 +6,6 @@
 
 #include <cloud/storage/core/libs/auth/auth_scheme.h>
 
-
 namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -23,6 +22,7 @@ TPermissionList GetRequestPermissions(
 }
 
 TPermissionList GetRequestPermissions(
-    const NProto::TExecuteActionRequest& request, const TVector<TString>& actionsNoAuth);
+    const NProto::TExecuteActionRequest& request,
+    const TVector<TString>& actionsNoAuth);
 
 }   // namespace NCloud::NFileStore

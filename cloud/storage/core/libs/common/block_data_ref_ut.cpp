@@ -2,7 +2,6 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-
 namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,7 +25,9 @@ Y_UNIT_TEST_SUITE(TBlockDataRefTest)
 
     Y_UNIT_TEST(ConstructZeroBlock)
     {
-        UNIT_ASSERT_VALUES_EQUAL("", TBlockDataRef::CreateZeroBlock(4096).AsStringBuf());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            TBlockDataRef::CreateZeroBlock(4096).AsStringBuf());
     }
 
     Y_UNIT_TEST(CompareZeroBlocks)

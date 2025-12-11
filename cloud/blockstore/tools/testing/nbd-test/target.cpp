@@ -12,9 +12,10 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/deprecated/atomic/atomic.h>
+
 #include <util/generic/guid.h>
 #include <util/network/address.h>
-#include <library/cpp/deprecated/atomic/atomic.h>
 #include <util/system/condvar.h>
 #include <util/system/mutex.h>
 
@@ -24,8 +25,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestTarget final
-    : public IRunnable
+class TTestTarget final: public IRunnable
 {
 private:
     TAtomic ShouldStop = 0;
@@ -76,8 +76,7 @@ int TTestTarget::Run()
     try {
         Term();
     } catch (...) {
-        STORAGE_ERROR(
-            "Error during shutdown: " << CurrentExceptionMessage());
+        STORAGE_ERROR("Error during shutdown: " << CurrentExceptionMessage());
     }
 
     return AtomicGet(ExitCode);
@@ -140,12 +139,9 @@ void TTestTarget::Init()
     Server = CreateServer(Logging, serverConfig);
     Server->Start();
 
-    auto listenAddress = TNetworkAddress(
-        TUnixSocketPath(Options->SocketPath));
+    auto listenAddress = TNetworkAddress(TUnixSocketPath(Options->SocketPath));
 
-    auto future = Server->StartEndpoint(
-        listenAddress,
-        ServerHandlerFactory);
+    auto future = Server->StartEndpoint(listenAddress, ServerHandlerFactory);
     CheckError(future.GetValue(WaitTimeout));
 }
 

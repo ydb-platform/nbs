@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_common_actor.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -31,7 +32,6 @@ public:
     };
 
 private:
-
     // We always start from the WaitAcquireFor* or Error states.
     //
     // WaitAcquireForPrepareStart -> Preparing -> CheckpointReady
@@ -64,7 +64,8 @@ private:
         WaitAcquireForPrepareContinue,
 
         // Waiting for the acquire of the shadow disk devices. The disk is
-        // already completely filled and we will only read checkpoint data from it.
+        // already completely filled and we will only read checkpoint data from
+        // it.
         WaitAcquireForRead,
 
         // The devices of the shadow disk have been successfully acquired and we

@@ -8,6 +8,7 @@
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
+
 #include <library/cpp/json/json_reader.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -30,9 +31,7 @@ private:
     const TString Input;
 
 public:
-    TSuspendDeviceActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TSuspendDeviceActionActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -50,8 +49,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TSuspendDeviceActionActor::TSuspendDeviceActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -65,21 +64,20 @@ void TSuspendDeviceActionActor::Bootstrap(const TActorContext& ctx)
 
     NJson::TJsonValue input;
     if (!NJson::ReadJsonTree(Input, &input, false)) {
-        ReplyAndDie(ctx,
+        ReplyAndDie(
+            ctx,
             MakeError(E_ARGUMENT, "Input should be in JSON format"));
         return;
     }
 
     if (!input.Has("DeviceId")) {
-        ReplyAndDie(ctx,
-            MakeError(E_ARGUMENT, "DeviceId is required"));
+        ReplyAndDie(ctx, MakeError(E_ARGUMENT, "DeviceId is required"));
         return;
     }
 
     Become(&TThis::StateWork);
 
-    auto request =
-        std::make_unique<TEvDiskRegistry::TEvSuspendDeviceRequest>();
+    auto request = std::make_unique<TEvDiskRegistry::TEvSuspendDeviceRequest>();
 
     request->Record.SetDeviceId(input["DeviceId"].GetString());
 

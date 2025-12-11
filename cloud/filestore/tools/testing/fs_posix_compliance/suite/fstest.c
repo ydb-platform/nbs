@@ -23,7 +23,8 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: src/tools/regression/fstest/fstest.c,v 1.1 2007/01/17 01:42:07 pjd Exp $
+ * $FreeBSD: src/tools/regression/fstest/fstest.c,v 1.1 2007/01/17 01:42:07 pjd
+ * Exp $
  */
 
 #ifndef _GNU_SOURCE
@@ -116,8 +117,15 @@ static struct syscall_desc syscalls[] = {
     {"symlink", ACTION_SYMLINK, {TYPE_STRING, TYPE_STRING, TYPE_NONE}},
     {"rename", ACTION_RENAME, {TYPE_STRING, TYPE_STRING, TYPE_NONE}},
     {"mkfifo", ACTION_MKFIFO, {TYPE_STRING, TYPE_NUMBER, TYPE_NONE}},
-    {"mknod", ACTION_MKNOD, { TYPE_STRING, TYPE_STRING, TYPE_NUMBER, TYPE_NUMBER, TYPE_NUMBER, TYPE_NONE}},
-    {"bind", ACTION_BIND, { TYPE_STRING, TYPE_NONE }},
+    {"mknod",
+     ACTION_MKNOD,
+     {TYPE_STRING,
+      TYPE_STRING,
+      TYPE_NUMBER,
+      TYPE_NUMBER,
+      TYPE_NUMBER,
+      TYPE_NONE}},
+    {"bind", ACTION_BIND, {TYPE_STRING, TYPE_NONE}},
     {"chmod", ACTION_CHMOD, {TYPE_STRING, TYPE_NUMBER, TYPE_NONE}},
 #ifdef HAS_LCHMOD
     {"lchmod", ACTION_LCHMOD, {TYPE_STRING, TYPE_NUMBER, TYPE_NONE}},
@@ -135,7 +143,7 @@ static struct syscall_desc syscalls[] = {
     {"truncate", ACTION_TRUNCATE, {TYPE_STRING, TYPE_NUMBER, TYPE_NONE}},
     {"stat", ACTION_STAT, {TYPE_STRING, TYPE_STRING, TYPE_NONE}},
     {"lstat", ACTION_LSTAT, {TYPE_STRING, TYPE_STRING, TYPE_NONE}},
-    {"pathconf", ACTION_PATHCONF, { TYPE_STRING, TYPE_STRING, TYPE_NONE }},
+    {"pathconf", ACTION_PATHCONF, {TYPE_STRING, TYPE_STRING, TYPE_NONE}},
     {"opendir", ACTION_OPENDIR, {TYPE_STRING, TYPE_NONE}},
     {NULL, -1, {TYPE_NONE}}};
 
@@ -228,8 +236,8 @@ static struct flag chflags_flags[] = {
     {0, NULL}};
 #endif
 
-
-struct name {
+struct name
+{
     int n_name;
     const char* n_str;
 };
@@ -247,9 +255,7 @@ static struct name pathconf_names[] = {
 #ifdef _PC_SYMLINK_MAX
     {_PC_SYMLINK_MAX, "_PC_SYMLINK_MAX"},
 #endif
-    {0, NULL}
-};
-
+    {0, NULL}};
 
 static const char* err2str(int error);
 
@@ -308,8 +314,7 @@ static char* flags2str(struct flag* tflags, long long flags)
 }
 #endif
 
-static int
-str2name(struct name *names, char *name)
+static int str2name(struct name* names, char* name)
 {
     unsigned int i;
 
@@ -356,43 +361,48 @@ static void show_stat(struct stat64* sp, const char* what)
     } else if (strcmp(what, "ctime") == 0) {
         printf("%lld", (long long)sp->st_ctime);
 #ifdef HAS_CHFLAGS
-    } else if (strcmp(what, "flags") == 0)
+    } else if (strcmp(what, "flags") == 0) {
         printf("%s", flags2str(chflags_flags, sp->st_flags));
-#endif
-    } else if (strcmp(what, "major") == 0) {
-        printf("%u", (unsigned int)major(sp->st_rdev));
-    } else if (strcmp(what, "minor") == 0) {
-        printf("%u", (unsigned int)minor(sp->st_rdev));
-    } else if (strcmp(what, "type") == 0) {
-        switch (sp->st_mode & S_IFMT) {
-            case S_IFIFO:
-                printf("fifo");
-                break;
-            case S_IFCHR:
-                printf("char");
-                break;
-            case S_IFDIR:
-                printf("dir");
-                break;
-            case S_IFBLK:
-                printf("block");
-                break;
-            case S_IFREG:
-                printf("regular");
-                break;
-            case S_IFLNK:
-                printf("symlink");
-                break;
-            case S_IFSOCK:
-                printf("socket");
-                break;
-            default:
-                printf("unknown");
-                break;
-        }
-    } else {
-        printf("unknown");
     }
+#endif
+}
+else if (strcmp(what, "major") == 0) {
+    printf("%u", (unsigned int)major(sp->st_rdev));
+}
+else if (strcmp(what, "minor") == 0) {
+    printf("%u", (unsigned int)minor(sp->st_rdev));
+}
+else if (strcmp(what, "type") == 0) {
+    switch (sp->st_mode & S_IFMT) {
+        case S_IFIFO:
+            printf("fifo");
+            break;
+        case S_IFCHR:
+            printf("char");
+            break;
+        case S_IFDIR:
+            printf("dir");
+            break;
+        case S_IFBLK:
+            printf("block");
+            break;
+        case S_IFREG:
+            printf("regular");
+            break;
+        case S_IFLNK:
+            printf("symlink");
+            break;
+        case S_IFSOCK:
+            printf("socket");
+            break;
+        default:
+            printf("unknown");
+            break;
+    }
+}
+else {
+    printf("unknown");
+}
 }
 
 static void show_stats(struct stat64* sp, char* what)
@@ -513,22 +523,17 @@ static unsigned int call_syscall(struct syscall_desc* scall, char* argv[])
             dev_t dev;
 
             dev = makedev(NUM(3), NUM(4));
-            if (strcmp(STR(1), "c") == 0) {      /* character device */
+            if (strcmp(STR(1), "c") == 0) { /* character device */
                 ntype = S_IFCHR;
-            }
-            else if (strcmp(STR(1), "b") == 0) { /* block device */
+            } else if (strcmp(STR(1), "b") == 0) { /* block device */
                 ntype = S_IFBLK;
-            }
-            else if (strcmp(STR(1), "f") == 0) { /* fifo special */
+            } else if (strcmp(STR(1), "f") == 0) { /* fifo special */
                 ntype = S_IFIFO;
-            }
-            else if (strcmp(STR(1), "d") == 0) { /* directory */
+            } else if (strcmp(STR(1), "d") == 0) { /* directory */
                 ntype = S_IFDIR;
-            }
-            else if (strcmp(STR(1), "o") == 0) { /* regular file */
+            } else if (strcmp(STR(1), "o") == 0) { /* regular file */
                 ntype = S_IFREG;
-            }
-            else {
+            } else {
                 fprintf(stderr, "wrong argument 1\n");
                 exit(1);
             }
@@ -546,7 +551,7 @@ static unsigned int call_syscall(struct syscall_desc* scall, char* argv[])
             if (rval < 0) {
                 break;
             }
-            rval = bind(rval, (struct sockaddr *)&sunx, sizeof(sunx));
+            rval = bind(rval, (struct sockaddr*)&sunx, sizeof(sunx));
             break;
         }
         case ACTION_CHMOD:

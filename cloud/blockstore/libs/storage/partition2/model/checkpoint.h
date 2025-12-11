@@ -29,14 +29,12 @@ struct TCheckpointInfo
 
     TCheckpointInfo(TVector<TPartialBlobId> blobIds)
         : BlobIds(std::move(blobIds))
-    {
-    }
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCheckpointStorage final
-    : public IPivotalCommitStorage
+class TCheckpointStorage final: public IPivotalCommitStorage
 {
     using TCheckpointMap = THashMap<TString, NProto::TCheckpointMeta>;
 
@@ -81,9 +79,7 @@ private:
 public:
     void Put(ui64 commitId, TCheckpointInfo info);
     TVector<TPartialBlobId> DeleteNextCheckpoint();
-    TVector<TPartialBlobId> ExtractBlobsToCleanup(
-        size_t limit,
-        ui64* commitId);
+    TVector<TPartialBlobId> ExtractBlobsToCleanup(size_t limit, ui64* commitId);
 
     bool IsEmpty() const
     {

@@ -10,4 +10,4 @@ namespace NVHost {
 
 using TSgList = TVector<std::span<char>>;
 
-} // namespace NVHost
+}   // namespace NVHost

@@ -1,4 +1,5 @@
 #include "disk_registry_actor.h"
+
 #include "disk_registry_database.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -21,10 +22,8 @@ void TDiskRegistryActor::HandleRegisterAgent(
     auto* msg = ev->Get();
     const auto& agentConfig = msg->Record.GetAgentConfig();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     auto priority = NActors::NLog::PRI_INFO;
 
@@ -90,7 +89,7 @@ void TDiskRegistryActor::ExecuteAddAgent(
         return;
     }
 
-    for (auto it = ServerToAgentId.begin(); it != ServerToAgentId.end(); ) {
+    for (auto it = ServerToAgentId.begin(); it != ServerToAgentId.end();) {
         const auto& agentId = it->second;
 
         if (agentId == args.Config.GetAgentId()) {
@@ -161,7 +160,8 @@ void TDiskRegistryActor::CompleteAddAgent(
             diskId.Quote().c_str());
     }
 
-    auto response = std::make_unique<TEvDiskRegistry::TEvRegisterAgentResponse>();
+    auto response =
+        std::make_unique<TEvDiskRegistry::TEvRegisterAgentResponse>();
     *response->Record.MutableError() = std::move(args.Error);
     response->Record.MutableDevicesToDisableIO()->Assign(
         args.DevicesToDisableIO.begin(),
@@ -188,10 +188,8 @@ void TDiskRegistryActor::HandleUnregisterAgent(
 
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LOG_INFO(
         ctx,
@@ -245,7 +243,8 @@ void TDiskRegistryActor::CompleteRemoveAgent(
             FormatError(args.Error).c_str());
     }
 
-    auto response = std::make_unique<TEvDiskRegistry::TEvUnregisterAgentResponse>();
+    auto response =
+        std::make_unique<TEvDiskRegistry::TEvUnregisterAgentResponse>();
 
     *response->Record.MutableError() = std::move(args.Error);
 

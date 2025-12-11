@@ -264,7 +264,9 @@ NProto::TVolume CreateVolumeWithDiagnosticsProfile(
     return volume;
 }
 
-TDynamicCountersPtr CreateVolumeCounters(TDynamicCountersPtr root, const TString& name)
+TDynamicCountersPtr CreateVolumeCounters(
+    TDynamicCountersPtr root,
+    const TString& name)
 {
     auto hostGroup = root->GetSubgroup("host", "cluster");
     return hostGroup->GetSubgroup("volume", name);
@@ -424,64 +426,55 @@ void CheckServerSufferCounters(
     NCloud::NProto::EStorageMediaKind kind,
     i64 cnt)
 {
-    auto serverGroup = root
-        ->GetSubgroup("counters", "blockstore")
-        ->GetSubgroup("component", "server");
+    auto serverGroup = root->GetSubgroup("counters", "blockstore")
+                           ->GetSubgroup("component", "server");
 
     switch (kind) {
         case NCloud::NProto::STORAGE_MEDIA_SSD: {
-            auto perType = serverGroup
-                ->GetSubgroup("type", "ssd")
-                ->GetCounter("DisksSuffer", false);
+            auto perType = serverGroup->GetSubgroup("type", "ssd")
+                               ->GetCounter("DisksSuffer", false);
             UNIT_ASSERT_VALUES_EQUAL(cnt, perType->Val());
             break;
         }
         case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: {
-            auto perType = serverGroup
-                ->GetSubgroup("type", "ssd_nonrepl")
-                ->GetCounter("DisksSuffer", false);
+            auto perType = serverGroup->GetSubgroup("type", "ssd_nonrepl")
+                               ->GetCounter("DisksSuffer", false);
             UNIT_ASSERT_VALUES_EQUAL(cnt, perType->Val());
             break;
         }
         case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: {
-            auto perType = serverGroup
-                ->GetSubgroup("type", "hdd_nonrepl")
-                ->GetCounter("DisksSuffer", false);
+            auto perType = serverGroup->GetSubgroup("type", "hdd_nonrepl")
+                               ->GetCounter("DisksSuffer", false);
             UNIT_ASSERT_VALUES_EQUAL(cnt, perType->Val());
             break;
         }
         case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2: {
-            auto perType = serverGroup
-                ->GetSubgroup("type", "ssd_mirror2")
-                ->GetCounter("DisksSuffer", false);
+            auto perType = serverGroup->GetSubgroup("type", "ssd_mirror2")
+                               ->GetCounter("DisksSuffer", false);
             UNIT_ASSERT_VALUES_EQUAL(cnt, perType->Val());
             break;
         }
         case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3: {
-            auto perType = serverGroup
-                ->GetSubgroup("type", "ssd_mirror3")
-                ->GetCounter("DisksSuffer", false);
+            auto perType = serverGroup->GetSubgroup("type", "ssd_mirror3")
+                               ->GetCounter("DisksSuffer", false);
             UNIT_ASSERT_VALUES_EQUAL(cnt, perType->Val());
             break;
         }
         case NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL: {
-            auto perType = serverGroup
-                ->GetSubgroup("type", "ssd_local")
-                ->GetCounter("DisksSuffer", false);
+            auto perType = serverGroup->GetSubgroup("type", "ssd_local")
+                               ->GetCounter("DisksSuffer", false);
             UNIT_ASSERT_VALUES_EQUAL(cnt, perType->Val());
             break;
         }
         case NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL: {
-            auto perType = serverGroup
-                ->GetSubgroup("type", "hdd_local")
-                ->GetCounter("DisksSuffer", false);
+            auto perType = serverGroup->GetSubgroup("type", "hdd_local")
+                               ->GetCounter("DisksSuffer", false);
             UNIT_ASSERT_VALUES_EQUAL(cnt, perType->Val());
             break;
         }
         default: {
-            auto perType = serverGroup
-                ->GetSubgroup("type", "hdd")
-                ->GetCounter("DisksSuffer", false);
+            auto perType = serverGroup->GetSubgroup("type", "hdd")
+                               ->GetCounter("DisksSuffer", false);
             UNIT_ASSERT_VALUES_EQUAL(cnt, perType->Val());
             break;
         }
@@ -508,11 +501,11 @@ void TestSufferWithMetrics(NCloud::NProto::EStorageMediaKind diskKind)
 
     TSufferCounters sufferCounters(
         "DisksSuffer",
-        counters
-            ->GetSubgroup("counters", "blockstore")
+        counters->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "server"));
 
-    auto commonKind = [&] (const auto& kind) ->auto {
+    auto commonKind = [&](const auto& kind) -> auto
+    {
         if (kind == NProto::STORAGE_MEDIA_DEFAULT ||
             kind == NProto::STORAGE_MEDIA_HYBRID ||
             kind == NProto::STORAGE_MEDIA_HDD)
@@ -523,11 +516,8 @@ void TestSufferWithMetrics(NCloud::NProto::EStorageMediaKind diskKind)
         }
     };
 
-    auto runIO = [&] (
-        bool slow,
-        i64 expected,
-        i64 expectedSmooth,
-        i64 expectedCritical)
+    auto runIO =
+        [&](bool slow, i64 expected, i64 expectedSmooth, i64 expectedCritical)
     {
         TestSufferCount(
             calc,
@@ -542,9 +532,8 @@ void TestSufferWithMetrics(NCloud::NProto::EStorageMediaKind diskKind)
         }
         sufferCounters.PublishCounters();
 
-        auto serverGroup = counters
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server");
+        auto serverGroup = counters->GetSubgroup("counters", "blockstore")
+                               ->GetSubgroup("component", "server");
 
         auto total = serverGroup->GetCounter("DisksSuffer", false);
         UNIT_ASSERT_VALUES_EQUAL(expected, total->Val());
@@ -564,7 +553,7 @@ void TestSufferWithMetrics(NCloud::NProto::EStorageMediaKind diskKind)
     runIO(false, 0, 0, 0);
 }
 
-};  //namespace
+};   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -579,8 +568,7 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             0,
             0,
             0,
-            0
-        );
+            0);
 
         auto volume = CreateVolume(
             "test1",
@@ -588,17 +576,14 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             0,
             0,
             0,
-            0
-        );
+            0);
         auto volumeCounters = CreateVolumeCounters(counters, "test1");
 
         auto volumePerfCalc = TVolumePerformanceCalculator(
             volume,
             std::make_shared<TDiagnosticsConfig>());
 
-        volumePerfCalc.Register(
-            *volumeCounters,
-            volume);
+        volumePerfCalc.Register(*volumeCounters, volume);
 
         TStringStream strStream;
         volumeCounters->OutputPlainText(strStream);
@@ -612,24 +597,20 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = monitoring->GetCounters();
 
-        auto config = CreateDefaultPerformanceSettings(
-            NCloud::NProto::STORAGE_MEDIA_SSD
-        );
+        auto config =
+            CreateDefaultPerformanceSettings(NCloud::NProto::STORAGE_MEDIA_SSD);
 
         auto volume = CreateVolumeWithDiagnosticsProfile(
             "test1",
             NCloud::NProto::STORAGE_MEDIA_SSD,
-            config
-        );
+            config);
         auto volumeCounters = CreateVolumeCounters(counters, "test1");
 
         auto volumePerfCalc = TVolumePerformanceCalculator(
             volume,
             std::make_shared<TDiagnosticsConfig>(std::move(config)));
 
-        volumePerfCalc.Register(
-            *volumeCounters,
-            volume);
+        volumePerfCalc.Register(*volumeCounters, volume);
 
         TStringStream strStream;
         volumeCounters->OutputPlainText(strStream);
@@ -643,24 +624,20 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = monitoring->GetCounters();
 
-        auto config = CreateDefaultPerformanceSettings(
-            NCloud::NProto::STORAGE_MEDIA_SSD
-        );
+        auto config =
+            CreateDefaultPerformanceSettings(NCloud::NProto::STORAGE_MEDIA_SSD);
 
         auto volume = CreateVolumeWithDiagnosticsProfile(
             "test1",
             NCloud::NProto::STORAGE_MEDIA_SSD,
-            config
-        );
+            config);
         auto volumeCounters = CreateVolumeCounters(counters, "test1");
 
         auto volumePerfCalc = TVolumePerformanceCalculator(
             volume,
             std::make_shared<TDiagnosticsConfig>(std::move(config)));
 
-        volumePerfCalc.Register(
-            *volumeCounters,
-            volume);
+        volumePerfCalc.Register(*volumeCounters, volume);
 
         volumePerfCalc.OnRequestCompleted(
             EBlockStoreRequest::WriteBlocks,
@@ -673,10 +650,9 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             volumePerfCalc.UpdateStats();
         }
 
-        auto sufferCounter = counters
-            ->GetSubgroup("host", "cluster")
-            ->FindSubgroup("volume", "test1")
-            ->GetCounter("Suffer", false);
+        auto sufferCounter = counters->GetSubgroup("host", "cluster")
+                                 ->FindSubgroup("volume", "test1")
+                                 ->GetCounter("Suffer", false);
         UNIT_ASSERT_VALUES_EQUAL(0, sufferCounter->Val());
     }
 
@@ -730,15 +706,13 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = monitoring->GetCounters();
 
-        auto config = CreateDefaultPerformanceSettings(
-            NCloud::NProto::STORAGE_MEDIA_SSD
-        );
+        auto config =
+            CreateDefaultPerformanceSettings(NCloud::NProto::STORAGE_MEDIA_SSD);
 
         auto volume = CreateVolumeWithDiagnosticsProfile(
             "test1",
             NCloud::NProto::STORAGE_MEDIA_SSD,
-            config
-        );
+            config);
         auto volumeCounters = CreateVolumeCounters(counters, "test1");
 
         auto volumePerfCalc = TVolumePerformanceCalculator(
@@ -780,14 +754,14 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             0);
     }
 
-    Y_UNIT_TEST(ShouldCorrectlyUpdatePerformanceSettingsIfClientPerfSettingsIncreased)
+    Y_UNIT_TEST(
+        ShouldCorrectlyUpdatePerformanceSettingsIfClientPerfSettingsIncreased)
     {
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = monitoring->GetCounters();
 
-        auto config = CreateDefaultPerformanceSettings(
-            NCloud::NProto::STORAGE_MEDIA_SSD
-        );
+        auto config =
+            CreateDefaultPerformanceSettings(NCloud::NProto::STORAGE_MEDIA_SSD);
 
         auto volumeNoSettings = CreateVolume(
             "test1",
@@ -795,8 +769,7 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             0,
             0,
             0,
-            0
-        );
+            0);
 
         auto volume = CreateVolume(
             "test1",
@@ -823,7 +796,8 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             1,
             1,
             0);
-        auto oldTime = volumePerfCalc.GetExpectedWriteCost(1024 * 1024) + TDuration::MicroSeconds(10);
+        auto oldTime = volumePerfCalc.GetExpectedWriteCost(1024 * 1024) +
+                       TDuration::MicroSeconds(10);
 
         // mount with settings
         volumePerfCalc.Register(*volumeCounters, volume);
@@ -840,8 +814,7 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
         auto updatedVolume = CreateVolumeWithDiagnosticsProfile(
             "test1",
             NCloud::NProto::STORAGE_MEDIA_SSD,
-            config
-        );
+            config);
         volumePerfCalc.Register(*volumeCounters, updatedVolume);
 
         TestSuffer(
@@ -860,14 +833,12 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
         auto counters = monitoring->GetCounters();
 
         auto config = CreateDefaultPerformanceSettings(
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
-        );
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
 
         auto volume = CreateVolumeWithDiagnosticsProfile(
             "test1",
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            config
-        );
+            config);
         auto volumeCounters = CreateVolumeCounters(counters, "test1");
 
         auto volumePerfCalc = TVolumePerformanceCalculator(
@@ -888,15 +859,13 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = monitoring->GetCounters();
 
-        auto config = CreateDefaultPerformanceSettings(
-            NCloud::NProto::STORAGE_MEDIA_SSD
-        );
+        auto config =
+            CreateDefaultPerformanceSettings(NCloud::NProto::STORAGE_MEDIA_SSD);
 
         auto volume = CreateVolumeWithDiagnosticsProfile(
             "test1",
             NCloud::NProto::STORAGE_MEDIA_SSD,
-            config
-        );
+            config);
         auto volumeCounters = CreateVolumeCounters(counters, "test1");
 
         auto volumePerfCalc = TVolumePerformanceCalculator(
@@ -910,8 +879,8 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
                 EBlockStoreRequest::WriteBlocks,
                 0,
                 DurationToCyclesSafe(
-                    volumePerfCalc.GetExpectedWriteCost(4096)
-                    + TDuration::Seconds(1)),
+                    volumePerfCalc.GetExpectedWriteCost(4096) +
+                    TDuration::Seconds(1)),
                 0,
                 4096);
         }
@@ -957,17 +926,15 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
 
         auto config = CreateDefaultPerformanceSettings();
 
-        auto serverGroup = counters
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server");
+        auto serverGroup = counters->GetSubgroup("counters", "blockstore")
+                               ->GetSubgroup("component", "server");
 
         TSufferCounters sufferCounters("DisksSuffer", serverGroup);
 
         sufferCounters.PublishCounters();
 
-        auto perType = serverGroup
-            ->GetSubgroup("type", "ssd_mirror3")
-            ->FindCounter("DisksSuffer");
+        auto perType = serverGroup->GetSubgroup("type", "ssd_mirror3")
+                           ->FindCounter("DisksSuffer");
         UNIT_ASSERT(perType);
         UNIT_ASSERT_VALUES_EQUAL(0, perType->Val());
     }

@@ -20,22 +20,20 @@ struct TMixedBlock
     ui16 BlobOffset;
 
     TMixedBlock(
-            TPartialBlobId blobId,
-            ui64 commitId,
-            ui32 blockIndex,
-            ui16 blobOffset)
-       : BlobId(blobId)
-       , CommitId(commitId)
-       , BlockIndex(blockIndex)
-       , BlobOffset(blobOffset)
+        TPartialBlobId blobId,
+        ui64 commitId,
+        ui32 blockIndex,
+        ui16 blobOffset)
+        : BlobId(blobId)
+        , CommitId(commitId)
+        , BlockIndex(blockIndex)
+        , BlobOffset(blobOffset)
     {}
 
     bool operator==(const TMixedBlock& other) const
     {
-        return BlockIndex == other.BlockIndex
-            && CommitId == other.CommitId
-            && BlobId == other.BlobId
-            && BlobOffset == other.BlobOffset;
+        return BlockIndex == other.BlockIndex && CommitId == other.CommitId &&
+               BlobId == other.BlobId && BlobOffset == other.BlobOffset;
     }
 };
 
@@ -70,9 +68,7 @@ private:
     std::unique_ptr<TImpl> Impl;
 
 public:
-    TMixedIndexCache(
-        ui32 maxSize,
-        IAllocator* = TDefaultAllocator::Instance());
+    TMixedIndexCache(ui32 maxSize, IAllocator* = TDefaultAllocator::Instance());
 
     ~TMixedIndexCache();
 

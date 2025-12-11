@@ -24,36 +24,35 @@ using namespace NCloud::NStorage;
 ////////////////////////////////////////////////////////////////////////////////
 
 const TIndexTabletActor::TStateInfo TIndexTabletActor::States[STATE_MAX] = {
-    { "Boot",   (IActor::TReceiveFunc)&TIndexTabletActor::StateBoot   },
-    { "Init",   (IActor::TReceiveFunc)&TIndexTabletActor::StateInit   },
-    { "Work",   (IActor::TReceiveFunc)&TIndexTabletActor::StateWork   },
-    { "Zombie", (IActor::TReceiveFunc)&TIndexTabletActor::StateZombie },
-    { "Broken", (IActor::TReceiveFunc)&TIndexTabletActor::StateBroken },
+    {"Boot", (IActor::TReceiveFunc)&TIndexTabletActor::StateBoot},
+    {"Init", (IActor::TReceiveFunc)&TIndexTabletActor::StateInit},
+    {"Work", (IActor::TReceiveFunc)&TIndexTabletActor::StateWork},
+    {"Zombie", (IActor::TReceiveFunc)&TIndexTabletActor::StateZombie},
+    {"Broken", (IActor::TReceiveFunc)&TIndexTabletActor::StateBroken},
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TIndexTabletActor::TIndexTabletActor(
-        const TActorId& owner,
-        TTabletStorageInfoPtr storage,
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagConfig,
-        IProfileLogPtr profileLog,
-        ITraceSerializerPtr traceSerializer,
-        NMetrics::IMetricsRegistryPtr metricsRegistry,
-        bool useNoneCompactionPolicy)
+    const TActorId& owner,
+    TTabletStorageInfoPtr storage,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagConfig,
+    IProfileLogPtr profileLog,
+    ITraceSerializerPtr traceSerializer,
+    NMetrics::IMetricsRegistryPtr metricsRegistry,
+    bool useNoneCompactionPolicy)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage))
     , Metrics{std::move(metricsRegistry)}
     , ProfileLog(std::move(profileLog))
     , TraceSerializer(std::move(traceSerializer))
     , ThrottlerLogger(
-        [this](ui32 opType, TDuration time) {
-            UpdateDelayCounter(
-                static_cast<TThrottlingPolicy::EOpType>(opType),
-                time);
-        }
-    )
+          [this](ui32 opType, TDuration time) {
+              UpdateDelayCounter(
+                  static_cast<TThrottlingPolicy::EOpType>(opType),
+                  time);
+          })
     , Config(std::move(config))
     , DiagConfig(std::move(diagConfig))
     , UseNoneCompactionPolicy(useNoneCompactionPolicy)
@@ -77,16 +76,17 @@ TString TIndexTabletActor::GetStateName(ui32 state)
 
 void TIndexTabletActor::Enqueue(STFUNC_SIG)
 {
-    ALOG_ERROR(TFileStoreComponents::TABLET,
-        LogTag
-        << " IGNORING message type# " << ev->GetTypeRewrite()
-        << " from Sender# " << ToString(ev->Sender)
-        << " in StateBoot");
+    ALOG_ERROR(
+        TFileStoreComponents::TABLET,
+        LogTag << " IGNORING message type# " << ev->GetTypeRewrite()
+               << " from Sender# " << ToString(ev->Sender) << " in StateBoot");
 }
 
 void TIndexTabletActor::DefaultSignalTabletActive(const TActorContext& ctx)
 {
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
         LogTag << " Activated executor");
 }
 
@@ -109,7 +109,9 @@ void TIndexTabletActor::BecomeAux(const TActorContext& ctx, EState state)
     Become(States[state].Func);
     CurrentState = state;
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s Switched to state %s (system: %s, user: %s, executor: %s)",
         LogTag.c_str(),
         States[state].Name.c_str(),
@@ -150,8 +152,8 @@ bool TIndexTabletActor::ReassignChannelsEnabled() const
 void TIndexTabletActor::ReassignDataChannelsIfNeeded(
     const NActors::TActorContext& ctx)
 {
-    auto channels = GetChannelsToMove(
-        Config->GetReassignChannelsPercentageThreshold());
+    auto channels =
+        GetChannelsToMove(Config->GetReassignChannelsPercentageThreshold());
 
     if (channels.empty()) {
         return;
@@ -160,7 +162,9 @@ void TIndexTabletActor::ReassignDataChannelsIfNeeded(
     if (ReassignRequestSentTs.GetValue()) {
         const auto timeout = TDuration::Minutes(1);
         if (ReassignRequestSentTs + timeout < ctx.Now()) {
-            LOG_WARN(ctx, TFileStoreComponents::TABLET,
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::TABLET,
                 "%s No reaction to reassign request in %lu seconds, retrying",
                 LogTag.c_str(),
                 timeout.Seconds());
@@ -180,30 +184,32 @@ void TIndexTabletActor::ReassignDataChannelsIfNeeded(
             sb << channel;
         }
 
-        LOG_WARN(ctx, TFileStoreComponents::TABLET,
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s Reassign request sent for channels: %s",
             LogTag.c_str(),
             sb.c_str());
     }
 
-    Metrics.ReassignCount.fetch_add(
-        channels.size(),
-        std::memory_order_relaxed);
+    Metrics.ReassignCount.fetch_add(channels.size(), std::memory_order_relaxed);
 
     NCloud::Send<TEvHiveProxy::TEvReassignTabletRequest>(
         ctx,
         MakeHiveProxyServiceId(),
-        0,  // cookie
+        0,   // cookie
         TabletID(),
         std::move(channels));
 
     ReassignRequestSentTs = ctx.Now();
 }
 
-bool TIndexTabletActor::CheckSessionForDestroy(const TSession* session, ui64 seqNo)
+bool TIndexTabletActor::CheckSessionForDestroy(
+    const TSession* session,
+    ui64 seqNo)
 {
     return session->GetSessionSeqNo() == seqNo &&
-        session->GetSessionRwSeqNo() == seqNo;
+           session->GetSessionRwSeqNo() == seqNo;
 }
 
 bool TIndexTabletActor::OnRenderAppHtmlPage(
@@ -375,8 +381,8 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
         }
 
         if (BackpressureErrorCount >=
-                Config->GetMaxBackpressureErrorsBeforeSuicide()
-                || backpressurePeriod >=
+                Config->GetMaxBackpressureErrorsBeforeSuicide() ||
+            backpressurePeriod >=
                 Config->GetMaxBackpressurePeriodBeforeSuicide())
         {
             LOG_WARN(
@@ -475,23 +481,24 @@ TCompactionInfo TIndexTabletActor::GetCompactionInfo() const
             stored = 0;
         }
     }
-    const auto avgGarbagePercentage = used && stored > used
-        ? 100 * static_cast<double>(stored - used) / used
-        : 0;
+    const auto avgGarbagePercentage =
+        used && stored > used ? 100 * static_cast<double>(stored - used) / used
+                              : 0;
     const auto rangeCount = compactionStats.UsedRangesCount;
-    const auto avgCompactionScore = rangeCount
-        ? static_cast<double>(stats.GetMixedBlobsCount()) / rangeCount
-        : 0;
+    const auto avgCompactionScore =
+        rangeCount
+            ? static_cast<double>(stats.GetMixedBlobsCount()) / rangeCount
+            : 0;
     // TODO: use GarbageCompactionThreshold
 
-    bool shouldCompactByGarbage = Config->GetNewCompactionEnabled()
-        && avgGarbagePercentage
-            >= Config->GetGarbageCompactionThresholdAverage();
+    bool shouldCompactByGarbage =
+        Config->GetNewCompactionEnabled() &&
+        avgGarbagePercentage >= Config->GetGarbageCompactionThresholdAverage();
 
-    const bool shouldCompactByBlobs = compactionScore >= compactionThreshold
-        || Config->GetNewCompactionEnabled()
-        && compactionScore > 1
-        && avgCompactionScore >= compactionThresholdAverage;
+    const bool shouldCompactByBlobs =
+        compactionScore >= compactionThreshold ||
+        Config->GetNewCompactionEnabled() && compactionScore > 1 &&
+            avgCompactionScore >= compactionThresholdAverage;
 
     // blobs-based compaction has priority
     if (!shouldCompactByBlobs && shouldCompactByGarbage) {
@@ -548,9 +555,10 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
                   (BlockGroupSize * NodeGroupSize)
             : static_cast<double>(compactionStats.UsedRangesCount);
 
-    const auto avgCleanupScore = rangeCount > 0.0
-        ? static_cast<double>(stats.GetDeletionMarkersCount()) / rangeCount
-        : 0;
+    const auto avgCleanupScore =
+        rangeCount > 0.0
+            ? static_cast<double>(stats.GetDeletionMarkersCount()) / rangeCount
+            : 0;
 
     const bool shouldCleanup =
         rangeCount > 0.0
@@ -586,10 +594,9 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
         GetPriorityRangeCount(),
         isPriority,
         Config->GetNewCleanupEnabled(),
-        cleanupScore >= Config->GetCleanupThreshold()
-            || Config->GetNewCleanupEnabled()
-            && cleanupScore && shouldCleanup
-            || isPriority};
+        cleanupScore >= Config->GetCleanupThreshold() ||
+            Config->GetNewCleanupEnabled() && cleanupScore && shouldCleanup ||
+            isPriority};
 }
 
 bool TIndexTabletActor::ShouldThrottleCleanup(
@@ -616,8 +623,8 @@ bool TIndexTabletActor::ShouldThrottleCleanup(
 
     const auto deletionMarkersCountAfterCleanup =
         deletionMarkersCount >= rangeCompactionStats.DeletionsCount
-        ? deletionMarkersCount - rangeCompactionStats.DeletionsCount
-        : 0;
+            ? deletionMarkersCount - rangeCompactionStats.DeletionsCount
+            : 0;
 
     // Cleanup is to be throttled only when the number of deletion markers after
     // cleanup will drop below the minimal observed amount of deletion markers.
@@ -635,9 +642,9 @@ bool TIndexTabletActor::ShouldThrottleCleanup(
 }
 
 EBackgroundOpBackpressureStatus
-    TIndexTabletActor::GetBackgroundOpBackpressureStatus(
-        ui64 threshold,
-        ui64 value) const
+TIndexTabletActor::GetBackgroundOpBackpressureStatus(
+    ui64 threshold,
+    ui64 value) const
 {
     if (value >= threshold) {
         return EBackgroundOpBackpressureStatus::ThresholdReached;
@@ -646,19 +653,17 @@ EBackgroundOpBackpressureStatus
         Config->GetBackpressureThresholdPercentageForBackgroundOpsPriority();
     const auto scaledThreshold = threshold * percentage / 100;
     return value >= scaledThreshold
-        ? EBackgroundOpBackpressureStatus::CloseToThreshold
-        : EBackgroundOpBackpressureStatus::Normal;
+               ? EBackgroundOpBackpressureStatus::CloseToThreshold
+               : EBackgroundOpBackpressureStatus::Normal;
 }
 
 TBackgroundOpsBackpressureStatus
-    TIndexTabletActor::GetBackgroundOpsBackpressureStatus() const
+TIndexTabletActor::GetBackgroundOpsBackpressureStatus() const
 {
     const auto bpThresholds = BuildBackpressureThresholds();
     const auto bpValues = GetBackpressureValues();
     return {
-        GetBackgroundOpBackpressureStatus(
-            bpThresholds.Flush,
-            bpValues.Flush),
+        GetBackgroundOpBackpressureStatus(bpThresholds.Flush, bpValues.Flush),
         GetBackgroundOpBackpressureStatus(
             bpThresholds.FlushBytes,
             bpValues.FlushBytes),
@@ -686,7 +691,9 @@ void TIndexTabletActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s Stop tablet because of PoisonPill request, ev->Sender: %s",
         LogTag.c_str(),
         ev->Sender.ToString().c_str());
@@ -707,7 +714,9 @@ void TIndexTabletActor::HandleSessionDisconnected(
     const TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s Server disconnected, ev->Sender: %s",
         LogTag.c_str(),
         ev->Sender.ToString().c_str());
@@ -721,7 +730,8 @@ void TIndexTabletActor::HandleGetFileSystemConfig(
     const TEvIndexTablet::TEvGetFileSystemConfigRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvIndexTablet::TEvGetFileSystemConfigResponse>();
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvGetFileSystemConfigResponse>();
     Convert(GetFileSystem(), *response->Record.MutableConfig());
 
     NCloud::Reply(ctx, *ev, std::move(response));
@@ -764,10 +774,7 @@ void TIndexTabletActor::HandleGetStorageConfig(
         std::make_unique<TEvIndexTablet::TEvGetStorageConfigResponse>();
     *response->Record.MutableStorageConfig() = Config->GetStorageConfigProto();
 
-    NCloud::Reply(
-        ctx,
-        *ev,
-        std::move(response));
+    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 void TIndexTabletActor::HandleGetFileSystemTopology(
@@ -793,10 +800,7 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
         response->Record.ShortDebugString().c_str(),
         GetFileSystem().ShortDebugString().c_str());
 
-    NCloud::Reply(
-        ctx,
-        *ev,
-        std::move(response));
+    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 void TIndexTabletActor::HandleDescribeSessions(
@@ -862,9 +866,10 @@ void TIndexTabletActor::HandleForcedOperation(
         if (currentMode == mode) {
             e = MakeError(S_ALREADY, "already launched");
         } else {
-            e = MakeError(E_TRY_AGAIN, TStringBuilder() << "mode mismatch: "
-                << static_cast<int>(mode)
-                << " != " << static_cast<int>(currentMode));
+            e = MakeError(
+                E_TRY_AGAIN,
+                TStringBuilder() << "mode mismatch: " << static_cast<int>(mode)
+                                 << " != " << static_cast<int>(currentMode));
         }
     }
 
@@ -877,8 +882,8 @@ void TIndexTabletActor::HandleForcedOperation(
             ranges = GenerateForceDeleteZeroCompactionRanges();
         } else {
             ranges = request.GetProcessAllRanges()
-                ? GetAllCompactionRanges()
-                : GetNonEmptyCompactionRanges();
+                         ? GetAllCompactionRanges()
+                         : GetNonEmptyCompactionRanges();
         }
         const auto* b =
             LowerBound(ranges.begin(), ranges.end(), request.GetMinRangeId());
@@ -912,7 +917,7 @@ void TIndexTabletActor::HandleForcedOperationStatus(
         response->Record.MutableError()->CopyFrom(MakeError(
             E_NOT_FOUND,
             TStringBuilder() << "forced operation with id "
-                << request.GetOperationId() << "not found"));
+                             << request.GetOperationId() << "not found"));
     }
 
     NCloud::Reply(ctx, *ev, std::move(response));
@@ -936,7 +941,9 @@ bool TIndexTabletActor::HandleRequests(STFUNC_SIG)
         FILESTORE_SERVICE_REQUESTS(FILESTORE_HANDLE_REQUEST, TEvService)
 
         FILESTORE_TABLET_REQUESTS(FILESTORE_HANDLE_REQUEST, TEvIndexTablet)
-        FILESTORE_TABLET_REQUESTS_PRIVATE(FILESTORE_HANDLE_REQUEST, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS_PRIVATE(
+            FILESTORE_HANDLE_REQUEST,
+            TEvIndexTabletPrivate)
 
         default:
             return false;
@@ -948,7 +955,9 @@ bool TIndexTabletActor::HandleRequests(STFUNC_SIG)
 bool TIndexTabletActor::HandleCompletions(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(FILESTORE_HANDLE_COMPLETION, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(
+            FILESTORE_HANDLE_COMPLETION,
+            TEvIndexTabletPrivate)
 
         default:
             return false;
@@ -960,7 +969,9 @@ bool TIndexTabletActor::HandleCompletions(STFUNC_SIG)
 bool TIndexTabletActor::IgnoreCompletions(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(FILESTORE_IGNORE_COMPLETION, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(
+            FILESTORE_IGNORE_COMPLETION,
+            TEvIndexTabletPrivate)
 
         default:
             return false;
@@ -975,7 +986,9 @@ bool TIndexTabletActor::RejectRequests(STFUNC_SIG)
         FILESTORE_SERVICE_REQUESTS(FILESTORE_REJECT_REQUEST, TEvService)
 
         FILESTORE_TABLET_REQUESTS(FILESTORE_REJECT_REQUEST, TEvIndexTablet)
-        FILESTORE_TABLET_REQUESTS_PRIVATE(FILESTORE_REJECT_REQUEST, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS_PRIVATE(
+            FILESTORE_REJECT_REQUEST,
+            TEvIndexTabletPrivate)
 
         default:
             return false;
@@ -987,10 +1000,16 @@ bool TIndexTabletActor::RejectRequests(STFUNC_SIG)
 bool TIndexTabletActor::RejectRequestsByBrokenTablet(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        FILESTORE_SERVICE_REQUESTS(FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET, TEvService)
+        FILESTORE_SERVICE_REQUESTS(
+            FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET,
+            TEvService)
 
-        FILESTORE_TABLET_REQUESTS(FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET, TEvIndexTablet)
-        FILESTORE_TABLET_REQUESTS_PRIVATE(FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS(
+            FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET,
+            TEvIndexTablet)
+        FILESTORE_TABLET_REQUESTS_PRIVATE(
+            FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET,
+            TEvIndexTabletPrivate)
 
         default:
             return false;
@@ -1039,8 +1058,12 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
         HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
         HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
-        HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
-        HFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier, HandleReleaseCollectBarrier);
+        HFunc(
+            TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters,
+            HandleUpdateLeakyBucketCounters);
+        HFunc(
+            TEvIndexTabletPrivate::TEvReleaseCollectBarrier,
+            HandleReleaseCollectBarrier);
         HFunc(
             TEvIndexTabletPrivate::TEvForcedRangeOperationProgress,
             HandleForcedRangeOperationProgress);
@@ -1072,9 +1095,7 @@ STFUNC(TIndexTabletActor::StateInit)
         FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
 
         default:
-            if (!RejectRequests(ev) &&
-                !HandleDefaultEvents(ev, SelfId()))
-            {
+            if (!RejectRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
                 HandleUnexpectedEvent(
                     ev,
                     TFileStoreComponents::TABLET,
@@ -1092,17 +1113,27 @@ STFUNC(TIndexTabletActor::StateWork)
     }
 
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvIndexTabletPrivate::TEvReadDataCompleted, HandleReadDataCompleted);
-        HFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted, HandleWriteDataCompleted);
-        HFunc(TEvIndexTabletPrivate::TEvAddDataCompleted, HandleAddDataCompleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvReadDataCompleted,
+            HandleReadDataCompleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvWriteDataCompleted,
+            HandleWriteDataCompleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvAddDataCompleted,
+            HandleAddDataCompleted);
         HFunc(
             TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse,
             HandleLoadCompactionMapChunkResponse);
 
         HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
-        HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
+        HFunc(
+            TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters,
+            HandleUpdateLeakyBucketCounters);
 
-        HFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier, HandleReleaseCollectBarrier);
+        HFunc(
+            TEvIndexTabletPrivate::TEvReleaseCollectBarrier,
+            HandleReleaseCollectBarrier);
         HFunc(
             TEvIndexTabletPrivate::TEvForcedRangeOperationProgress,
             HandleForcedRangeOperationProgress);
@@ -1285,7 +1316,9 @@ void TIndexTabletActor::RebootTabletOnCommitOverflow(
     const TActorContext& ctx,
     const TString& request)
 {
-    LOG_ERROR(ctx, TFileStoreComponents::TABLET,
+    LOG_ERROR(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s CommitId overflow in %s. Restarting",
         LogTag.c_str(),
         request.c_str());
@@ -1304,21 +1337,23 @@ void TIndexTabletActor::RegisterFileStore(const NActors::TActorContext& ctx)
     NProtoPrivate::TFileSystemConfig config;
     Convert(GetFileSystem(), config);
 
-    auto request = std::make_unique<TEvService::TEvRegisterLocalFileStoreRequest>(
-        GetFileSystemId(),
-        TabletID(),
-        GetGeneration(),
-        GetFileSystem().GetShardNo() > 0,
-        std::move(config));
+    auto request =
+        std::make_unique<TEvService::TEvRegisterLocalFileStoreRequest>(
+            GetFileSystemId(),
+            TabletID(),
+            GetGeneration(),
+            GetFileSystem().GetShardNo() > 0,
+            std::move(config));
 
     ctx.Send(MakeStorageServiceId(), request.release());
 }
 
 void TIndexTabletActor::UnregisterFileStore(const NActors::TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvService::TEvUnregisterLocalFileStoreRequest>(
-        GetFileSystemId(),
-        GetGeneration());
+    auto request =
+        std::make_unique<TEvService::TEvUnregisterLocalFileStoreRequest>(
+            GetFileSystemId(),
+            GetGeneration());
 
     ctx.Send(MakeStorageServiceId(), request.release());
 }
@@ -1327,13 +1362,9 @@ void TIndexTabletActor::UpdateLogTag()
 {
     if (GetFileSystemId()) {
         TIndexTabletState::UpdateLogTag(
-            Sprintf("[f:%s][t:%lu]",
-                GetFileSystemId().c_str(),
-                TabletID()));
+            Sprintf("[f:%s][t:%lu]", GetFileSystemId().c_str(), TabletID()));
     } else {
-        TIndexTabletState::UpdateLogTag(
-            Sprintf("[t:%lu]",
-                TabletID()));
+        TIndexTabletState::UpdateLogTag(Sprintf("[t:%lu]", TabletID()));
     }
 }
 
@@ -1368,10 +1399,8 @@ bool TIndexTabletActor::HasBlocksLeft(ui64 blocksRequired) const
 
 bool TIndexTabletActor::HasSpaceLeft(ui64 prevSize, ui64 newSize) const
 {
-    return HasBlocksLeft(
-        static_cast<ui64>(Max<i64>(
-            0,
-            GetBlocksDifference(prevSize, newSize, GetBlockSize()))));
+    return HasBlocksLeft(static_cast<ui64>(
+        Max<i64>(0, GetBlocksDifference(prevSize, newSize, GetBlockSize()))));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

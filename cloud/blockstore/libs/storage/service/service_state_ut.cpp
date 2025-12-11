@@ -187,16 +187,28 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
             true);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, bindingType);
         UNIT_ASSERT_VALUES_EQUAL(0, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(false, remoteVolume->SharedCountersLockAcquired);
+        UNIT_ASSERT_VALUES_EQUAL(
+            false,
+            remoteVolume->SharedCountersLockAcquired);
 
         auto* clientInfo = remoteVolume->AddClientInfo("xxx");
         clientInfo->VolumeMountMode = NProto::VOLUME_MOUNT_REMOTE;
 
-        remoteVolume->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, bindingType, {});
+        remoteVolume->OnMountFinished(
+            *sharedCounters,
+            NProto::SOURCE_NONE,
+            bindingType,
+            {});
         UNIT_ASSERT_VALUES_EQUAL(0, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, remoteVolume->PreemptionSource);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, remoteVolume->BindingType);
-        UNIT_ASSERT_VALUES_EQUAL(false, remoteVolume->SharedCountersLockAcquired);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            remoteVolume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::BINDING_REMOTE,
+            remoteVolume->BindingType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            false,
+            remoteVolume->SharedCountersLockAcquired);
     }
 
     Y_UNIT_TEST(ShouldKeepSourceInitialMount)
@@ -215,14 +227,22 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, bindingType);
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
         UNIT_ASSERT_VALUES_EQUAL(true, volume1->SharedCountersLockAcquired);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, volume1->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            volume1->PreemptionSource);
 
         auto* clientInfo = volume1->AddClientInfo("xxx");
         clientInfo->VolumeMountMode = NProto::VOLUME_MOUNT_LOCAL;
 
-        volume1->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, bindingType, {});
+        volume1->OnMountFinished(
+            *sharedCounters,
+            NProto::SOURCE_NONE,
+            bindingType,
+            {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, volume1->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            volume1->PreemptionSource);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, volume1->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(true, volume1->SharedCountersLockAcquired);
 
@@ -235,14 +255,22 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, bindingType);
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
         UNIT_ASSERT_VALUES_EQUAL(false, volume2->SharedCountersLockAcquired);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_INITIAL_MOUNT, volume2->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_INITIAL_MOUNT,
+            volume2->PreemptionSource);
 
         clientInfo = volume2->AddClientInfo("yyy");
         clientInfo->VolumeMountMode = NProto::VOLUME_MOUNT_LOCAL;
 
-        volume2->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, bindingType, {});
+        volume2->OnMountFinished(
+            *sharedCounters,
+            NProto::SOURCE_NONE,
+            bindingType,
+            {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_INITIAL_MOUNT, volume2->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_INITIAL_MOUNT,
+            volume2->PreemptionSource);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, volume2->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(false, volume2->SharedCountersLockAcquired);
 
@@ -255,14 +283,22 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, bindingType);
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
         UNIT_ASSERT_VALUES_EQUAL(false, volume2->SharedCountersLockAcquired);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_INITIAL_MOUNT, volume2->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_INITIAL_MOUNT,
+            volume2->PreemptionSource);
 
         clientInfo = volume2->AddClientInfo("yyy");
         clientInfo->VolumeMountMode = NProto::VOLUME_MOUNT_LOCAL;
 
-        volume2->OnMountFinished(*sharedCounters, NProto::SOURCE_BALANCER, bindingType, {});
+        volume2->OnMountFinished(
+            *sharedCounters,
+            NProto::SOURCE_BALANCER,
+            bindingType,
+            {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_INITIAL_MOUNT, volume2->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_INITIAL_MOUNT,
+            volume2->PreemptionSource);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, volume2->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(false, volume2->SharedCountersLockAcquired);
     }
@@ -286,10 +322,18 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
         auto* clientInfo = localVolume->AddClientInfo("xxx");
         clientInfo->VolumeMountMode = NProto::VOLUME_MOUNT_LOCAL;
 
-        localVolume->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, bindingType, {});
+        localVolume->OnMountFinished(
+            *sharedCounters,
+            NProto::SOURCE_NONE,
+            bindingType,
+            {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, localVolume->PreemptionSource);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, localVolume->BindingType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            localVolume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::BINDING_LOCAL,
+            localVolume->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(true, localVolume->SharedCountersLockAcquired);
     }
 
@@ -307,16 +351,28 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
             true);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, bindingType);
         UNIT_ASSERT_VALUES_EQUAL(0, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(false, remoteVolume->SharedCountersLockAcquired);
+        UNIT_ASSERT_VALUES_EQUAL(
+            false,
+            remoteVolume->SharedCountersLockAcquired);
 
         auto* clientInfo = remoteVolume->AddClientInfo("xxx");
         clientInfo->VolumeMountMode = NProto::VOLUME_MOUNT_REMOTE;
 
-        remoteVolume->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, bindingType, {});
+        remoteVolume->OnMountFinished(
+            *sharedCounters,
+            NProto::SOURCE_NONE,
+            bindingType,
+            {});
         UNIT_ASSERT_VALUES_EQUAL(0, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, remoteVolume->PreemptionSource);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, remoteVolume->BindingType);
-        UNIT_ASSERT_VALUES_EQUAL(false, remoteVolume->SharedCountersLockAcquired);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            remoteVolume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::BINDING_REMOTE,
+            remoteVolume->BindingType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            false,
+            remoteVolume->SharedCountersLockAcquired);
 
         bindingType = remoteVolume->OnMountStarted(
             *sharedCounters,
@@ -326,15 +382,27 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
             true);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, bindingType);
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(true, remoteVolume->SharedCountersLockAcquired);
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            remoteVolume->SharedCountersLockAcquired);
 
         clientInfo->VolumeMountMode = NProto::VOLUME_MOUNT_LOCAL;
 
-        remoteVolume->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, bindingType, {});
+        remoteVolume->OnMountFinished(
+            *sharedCounters,
+            NProto::SOURCE_NONE,
+            bindingType,
+            {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, remoteVolume->PreemptionSource);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, remoteVolume->BindingType);
-        UNIT_ASSERT_VALUES_EQUAL(true, remoteVolume->SharedCountersLockAcquired);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            remoteVolume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::BINDING_LOCAL,
+            remoteVolume->BindingType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            remoteVolume->SharedCountersLockAcquired);
     }
 
     Y_UNIT_TEST(ShouldHandleRemountFromLocalToRemote)
@@ -356,10 +424,18 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
         auto* clientInfo = localVolume->AddClientInfo("xxx");
         clientInfo->VolumeMountMode = NProto::VOLUME_MOUNT_LOCAL;
 
-        localVolume->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, bindingType, {});
+        localVolume->OnMountFinished(
+            *sharedCounters,
+            NProto::SOURCE_NONE,
+            bindingType,
+            {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, localVolume->PreemptionSource);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, localVolume->BindingType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            localVolume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::BINDING_LOCAL,
+            localVolume->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(true, localVolume->SharedCountersLockAcquired);
 
         bindingType = localVolume->OnMountStarted(
@@ -374,14 +450,25 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
 
         clientInfo->VolumeMountMode = NProto::VOLUME_MOUNT_REMOTE;
 
-        localVolume->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, bindingType, {});
+        localVolume->OnMountFinished(
+            *sharedCounters,
+            NProto::SOURCE_NONE,
+            bindingType,
+            {});
         UNIT_ASSERT_VALUES_EQUAL(0, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, localVolume->PreemptionSource);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, localVolume->BindingType);
-        UNIT_ASSERT_VALUES_EQUAL(false, localVolume->SharedCountersLockAcquired);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            localVolume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::BINDING_REMOTE,
+            localVolume->BindingType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            false,
+            localVolume->SharedCountersLockAcquired);
     }
 
-    Y_UNIT_TEST(ShouldNotIncreaseLocalVolumeCountIfLocalMountForSubsequentRemounts)
+    Y_UNIT_TEST(
+        ShouldNotIncreaseLocalVolumeCountIfLocalMountForSubsequentRemounts)
     {
         auto sharedCounters = CreateSharedCounters(CreateStorageConfig(1));
 
@@ -400,10 +487,18 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
         auto* clientInfo = localVolume->AddClientInfo("xxx");
         clientInfo->VolumeMountMode = NProto::VOLUME_MOUNT_LOCAL;
 
-        localVolume->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, bindingType, {});
+        localVolume->OnMountFinished(
+            *sharedCounters,
+            NProto::SOURCE_NONE,
+            bindingType,
+            {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, localVolume->PreemptionSource);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, localVolume->BindingType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            localVolume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::BINDING_LOCAL,
+            localVolume->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(true, localVolume->SharedCountersLockAcquired);
 
         bindingType = localVolume->OnMountStarted(
@@ -418,10 +513,18 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
 
         clientInfo->VolumeMountMode = NProto::VOLUME_MOUNT_LOCAL;
 
-        localVolume->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, bindingType, {});
+        localVolume->OnMountFinished(
+            *sharedCounters,
+            NProto::SOURCE_NONE,
+            bindingType,
+            {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, localVolume->PreemptionSource);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, localVolume->BindingType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            localVolume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::BINDING_LOCAL,
+            localVolume->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(true, localVolume->SharedCountersLockAcquired);
     }
 
@@ -444,10 +547,18 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
         auto* clientInfo = localVolume->AddClientInfo("xxx");
         clientInfo->VolumeMountMode = NProto::VOLUME_MOUNT_LOCAL;
 
-        localVolume->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, bindingType, {});
+        localVolume->OnMountFinished(
+            *sharedCounters,
+            NProto::SOURCE_NONE,
+            bindingType,
+            {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, localVolume->PreemptionSource);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, localVolume->BindingType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            localVolume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::BINDING_LOCAL,
+            localVolume->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(true, localVolume->SharedCountersLockAcquired);
 
         bindingType = localVolume->OnMountStarted(
@@ -463,10 +574,18 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
         clientInfo = localVolume->AddClientInfo("yyy");
         clientInfo->VolumeMountMode = NProto::VOLUME_MOUNT_REMOTE;
 
-        localVolume->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, bindingType, {});
+        localVolume->OnMountFinished(
+            *sharedCounters,
+            NProto::SOURCE_NONE,
+            bindingType,
+            {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, localVolume->PreemptionSource);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, localVolume->BindingType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            localVolume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::BINDING_LOCAL,
+            localVolume->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(true, localVolume->SharedCountersLockAcquired);
     }
 
@@ -489,10 +608,18 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
         auto* clientInfo = localVolume->AddClientInfo("xxx");
         clientInfo->VolumeMountMode = NProto::VOLUME_MOUNT_LOCAL;
 
-        localVolume->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, bindingType, {});
+        localVolume->OnMountFinished(
+            *sharedCounters,
+            NProto::SOURCE_NONE,
+            bindingType,
+            {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, localVolume->PreemptionSource);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, localVolume->BindingType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            localVolume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::BINDING_LOCAL,
+            localVolume->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(true, localVolume->SharedCountersLockAcquired);
 
         bindingType = localVolume->OnMountStarted(
@@ -508,10 +635,18 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
         clientInfo = localVolume->AddClientInfo("yyy");
         clientInfo->VolumeMountMode = NProto::VOLUME_MOUNT_REMOTE;
 
-        localVolume->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, bindingType, {});
+        localVolume->OnMountFinished(
+            *sharedCounters,
+            NProto::SOURCE_NONE,
+            bindingType,
+            {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, localVolume->PreemptionSource);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, localVolume->BindingType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            localVolume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::BINDING_LOCAL,
+            localVolume->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(true, localVolume->SharedCountersLockAcquired);
 
         localVolume->RemoveClientInfo(clientInfo);
@@ -538,10 +673,18 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
         auto* localClientInfo = localVolume->AddClientInfo("xxx");
         localClientInfo->VolumeMountMode = NProto::VOLUME_MOUNT_LOCAL;
 
-        localVolume->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, bindingType, {});
+        localVolume->OnMountFinished(
+            *sharedCounters,
+            NProto::SOURCE_NONE,
+            bindingType,
+            {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, localVolume->PreemptionSource);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, localVolume->BindingType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            localVolume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::BINDING_LOCAL,
+            localVolume->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(true, localVolume->SharedCountersLockAcquired);
 
         bindingType = localVolume->OnMountStarted(
@@ -557,17 +700,29 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
         auto* remoteClientInfo = localVolume->AddClientInfo("yyy");
         remoteClientInfo->VolumeMountMode = NProto::VOLUME_MOUNT_REMOTE;
 
-        localVolume->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, bindingType, {});
+        localVolume->OnMountFinished(
+            *sharedCounters,
+            NProto::SOURCE_NONE,
+            bindingType,
+            {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, localVolume->PreemptionSource);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, localVolume->BindingType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            localVolume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::BINDING_LOCAL,
+            localVolume->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(true, localVolume->SharedCountersLockAcquired);
 
         localVolume->RemoveClientInfo(localClientInfo);
         localVolume->OnClientRemoved(*sharedCounters);
         UNIT_ASSERT_VALUES_EQUAL(0, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, localVolume->BindingType);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, localVolume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::BINDING_REMOTE,
+            localVolume->BindingType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            localVolume->PreemptionSource);
     }
 
     Y_UNIT_TEST(ShouldRequestRemoteMountIfLimitOfLocalVolumesIsReached)
@@ -594,28 +749,24 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
             NProto::VOLUME_MOUNT_LOCAL,
             true);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, b2);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_INITIAL_MOUNT, v2->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_INITIAL_MOUNT,
+            v2->PreemptionSource);
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
         UNIT_ASSERT_VALUES_EQUAL(false, v2->SharedCountersLockAcquired);
 
-        v2->OnMountFinished(
-            *sharedCounters,
-            NProto::SOURCE_NONE,
-            b2,
-            {});
+        v2->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, b2, {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_INITIAL_MOUNT, v2->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_INITIAL_MOUNT,
+            v2->PreemptionSource);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, v2->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(false, v2->SharedCountersLockAcquired);
 
         auto* localClientInfo = v1->AddClientInfo("xxx");
         localClientInfo->VolumeMountMode = NProto::VOLUME_MOUNT_LOCAL;
 
-        v1->OnMountFinished(
-            *sharedCounters,
-            NProto::SOURCE_NONE,
-            b1,
-            {});
+        v1->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, b1, {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
         UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, v1->PreemptionSource);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, v1->BindingType);
@@ -646,31 +797,27 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
             NProto::VOLUME_MOUNT_LOCAL,
             true);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, b2);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_INITIAL_MOUNT, v2->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_INITIAL_MOUNT,
+            v2->PreemptionSource);
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
         UNIT_ASSERT_VALUES_EQUAL(false, v2->SharedCountersLockAcquired);
 
         auto* v2Client = v2->AddClientInfo("yyy");
         v2Client->VolumeMountMode = NProto::VOLUME_MOUNT_LOCAL;
 
-        v2->OnMountFinished(
-            *sharedCounters,
-            NProto::SOURCE_NONE,
-            b2,
-            {});
+        v2->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, b2, {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_INITIAL_MOUNT, v2->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_INITIAL_MOUNT,
+            v2->PreemptionSource);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, v2->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(false, v2->SharedCountersLockAcquired);
 
         auto* v1Client = v1->AddClientInfo("xxx");
         v1Client->VolumeMountMode = NProto::VOLUME_MOUNT_LOCAL;
 
-        v1->OnMountFinished(
-            *sharedCounters,
-            NProto::SOURCE_NONE,
-            b1,
-            {});
+        v1->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, b1, {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
         UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, v1->PreemptionSource);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, v1->BindingType);
@@ -688,15 +835,13 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
             NProto::VOLUME_MOUNT_LOCAL,
             true);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, b3);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_INITIAL_MOUNT, v2->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_INITIAL_MOUNT,
+            v2->PreemptionSource);
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
         UNIT_ASSERT_VALUES_EQUAL(true, v2->SharedCountersLockAcquired);
 
-        v2->OnMountFinished(
-            *sharedCounters,
-            NProto::SOURCE_NONE,
-            b3,
-            {});
+        v2->OnMountFinished(*sharedCounters, NProto::SOURCE_NONE, b3, {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
         UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, v2->PreemptionSource);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, v2->BindingType);
@@ -725,9 +870,15 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
             bindingType,
             MakeError(E_REJECTED, ""));
         UNIT_ASSERT_VALUES_EQUAL(0, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, localVolume->PreemptionSource);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, localVolume->BindingType);
-        UNIT_ASSERT_VALUES_EQUAL(false, localVolume->SharedCountersLockAcquired);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            localVolume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::BINDING_REMOTE,
+            localVolume->BindingType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            false,
+            localVolume->SharedCountersLockAcquired);
     }
 
     Y_UNIT_TEST(ShouldAllowToOverrideBindingFromMonitoring)
@@ -775,7 +926,9 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
             bindingType,
             {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_MANUAL, volume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_MANUAL,
+            volume->PreemptionSource);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, volume->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(true, volume->SharedCountersLockAcquired);
 
@@ -797,7 +950,9 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
             bindingType,
             {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_MANUAL, volume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_MANUAL,
+            volume->PreemptionSource);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, volume->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(true, volume->SharedCountersLockAcquired);
 
@@ -870,7 +1025,9 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
             bindingType,
             {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_BALANCER, volume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_BALANCER,
+            volume->PreemptionSource);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, volume->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(true, volume->SharedCountersLockAcquired);
 
@@ -892,7 +1049,9 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
             bindingType,
             {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_BALANCER, volume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_BALANCER,
+            volume->PreemptionSource);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, volume->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(true, volume->SharedCountersLockAcquired);
 
@@ -934,9 +1093,7 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, bindingType);
         UNIT_ASSERT_VALUES_EQUAL(0, sharedCounters->LocalVolumeCount);
         UNIT_ASSERT_VALUES_EQUAL(false, volume->SharedCountersLockAcquired);
-        UNIT_ASSERT_VALUES_EQUAL(
-            NProto::SOURCE_NONE,
-            volume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, volume->PreemptionSource);
 
         auto* clientInfo = volume->AddClientInfo("xxx");
         clientInfo->VolumeMountMode = NProto::VOLUME_MOUNT_LOCAL;
@@ -1001,7 +1158,9 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
             {});
 
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, volume1->BindingType);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, volume1->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            volume1->PreemptionSource);
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
         UNIT_ASSERT_VALUES_EQUAL(true, volume1->SharedCountersLockAcquired);
 
@@ -1141,7 +1300,9 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
             {});
 
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_LOCAL, volume1->BindingType);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_NONE, volume1->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_NONE,
+            volume1->PreemptionSource);
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
         UNIT_ASSERT_VALUES_EQUAL(true, volume1->SharedCountersLockAcquired);
 
@@ -1241,17 +1402,20 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
             auto volume = state.GetOrAddVolume("disk0");
 
             UNIT_ASSERT_VALUES_UNEQUAL(
-                NProto::SOURCE_MANUAL, volume->PreemptionSource);
+                NProto::SOURCE_MANUAL,
+                volume->PreemptionSource);
         }
 
         {
             auto volume = state.GetOrAddVolume("disk1");
 
             UNIT_ASSERT_VALUES_EQUAL(
-                NProto::SOURCE_MANUAL, volume->PreemptionSource);
+                NProto::SOURCE_MANUAL,
+                volume->PreemptionSource);
 
             UNIT_ASSERT_VALUES_EQUAL(
-                NProto::BINDING_REMOTE, volume->BindingType);
+                NProto::BINDING_REMOTE,
+                volume->BindingType);
         }
     }
 
@@ -1303,7 +1467,9 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
             bindingType,
             {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_MANUAL, volume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_MANUAL,
+            volume->PreemptionSource);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, volume->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(true, volume->SharedCountersLockAcquired);
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1328,7 +1494,9 @@ Y_UNIT_TEST_SUITE(TServiceStateTest)
             bindingType,
             {});
         UNIT_ASSERT_VALUES_EQUAL(1, sharedCounters->LocalVolumeCount);
-        UNIT_ASSERT_VALUES_EQUAL(NProto::SOURCE_MANUAL, volume->PreemptionSource);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::SOURCE_MANUAL,
+            volume->PreemptionSource);
         UNIT_ASSERT_VALUES_EQUAL(NProto::BINDING_REMOTE, volume->BindingType);
         UNIT_ASSERT_VALUES_EQUAL(true, volume->SharedCountersLockAcquired);
         UNIT_ASSERT_VALUES_EQUAL(

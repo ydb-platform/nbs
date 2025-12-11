@@ -12,9 +12,9 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
-#include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/partition_statistics_counters.h>
@@ -83,8 +83,8 @@ class TPartitionActor final
         TString OperationId;
 
         TForcedCompactionInfo(
-                TVector<ui32> rangesToCompact,
-                TString operationId)
+            TVector<ui32> rangesToCompact,
+            TString operationId)
             : RangesToCompact(std::move(rangesToCompact))
             , OperationId(std::move(operationId))
         {}
@@ -95,9 +95,7 @@ class TPartitionActor final
         ui32 NumRanges = 0;
         TInstant CompleteTs = {};
 
-        TForcedCompactionResult(
-                ui32 numRanges,
-                TInstant completeTs)
+        TForcedCompactionResult(ui32 numRanges, TInstant completeTs)
             : NumRanges(numRanges)
             , CompleteTs(completeTs)
         {}
@@ -151,7 +149,8 @@ private:
 
     // Pending forced compaction requests
     TDeque<TForcedCompactionInfo> PendingForcedCompactionRequests;
-    THashMap<TString, TForcedCompactionResult> CompletedForcedCompactionRequests;
+    THashMap<TString, TForcedCompactionResult>
+        CompletedForcedCompactionRequests;
 
     NBlobMetrics::TBlobLoadMetrics PrevMetrics;
     NBlobMetrics::TBlobLoadMetrics OverlayMetrics;
@@ -348,9 +347,8 @@ private:
     template <typename TMethod>
     void AddTransaction(TRequestInfo& requestInfo)
     {
-        auto cancelRoutine = [] (
-            const NActors::TActorContext& ctx,
-            TRequestInfo& requestInfo)
+        auto cancelRoutine =
+            [](const NActors::TActorContext& ctx, TRequestInfo& requestInfo)
         {
             auto response = std::make_unique<typename TMethod::TResponse>(
                 MakeError(E_REJECTED, "tablet is shutting down"));
@@ -381,9 +379,7 @@ private:
         ui64 value,
         bool isOverlayDisk);
 
-    void UpdateNetworkStat(
-        const TInstant& now,
-        ui64 value);
+    void UpdateNetworkStat(const TInstant& now, ui64 value);
 
     void UpdateStorageStat(i64 value);
     void UpdateCPUUsageStat(TInstant now, ui64 value);
@@ -438,9 +434,7 @@ private:
         ui64 diskThreshold,
         const NActors::TActorContext& ctx);
 
-    bool IsCompactRangePending(
-        const TString& operationId,
-        ui32& ranges) const;
+    bool IsCompactRangePending(const TString& operationId, ui32& ranges) const;
 
     NActors::IActorPtr CreateMetadataRebuildUsedBlocksActor(
         NActors::TActorId tablet,
@@ -482,7 +476,8 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleReassignTabletResponse(
-        const NCloud::NStorage::TEvHiveProxy::TEvReassignTabletResponse::TPtr& ev,
+        const NCloud::NStorage::TEvHiveProxy::TEvReassignTabletResponse::TPtr&
+            ev,
         const NActors::TActorContext& ctx);
 
     void HandleHttpInfo(
@@ -731,12 +726,22 @@ private:
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)
-    BLOCKSTORE_PARTITION_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartitionPrivate)
-    BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartitionCommonPrivate)
-    BLOCKSTORE_PARTITION_REQUESTS_FWD_SERVICE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvService)
-    BLOCKSTORE_PARTITION_REQUESTS_FWD_VOLUME(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolume)
+    BLOCKSTORE_PARTITION_REQUESTS_PRIVATE(
+        BLOCKSTORE_IMPLEMENT_REQUEST,
+        TEvPartitionPrivate)
+    BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(
+        BLOCKSTORE_IMPLEMENT_REQUEST,
+        TEvPartitionCommonPrivate)
+    BLOCKSTORE_PARTITION_REQUESTS_FWD_SERVICE(
+        BLOCKSTORE_IMPLEMENT_REQUEST,
+        TEvService)
+    BLOCKSTORE_PARTITION_REQUESTS_FWD_VOLUME(
+        BLOCKSTORE_IMPLEMENT_REQUEST,
+        TEvVolume)
 
-    BLOCKSTORE_PARTITION_TRANSACTIONS(BLOCKSTORE_IMPLEMENT_TRANSACTION, TTxPartition)
+    BLOCKSTORE_PARTITION_TRANSACTIONS(
+        BLOCKSTORE_IMPLEMENT_TRANSACTION,
+        TTxPartition)
 };
 
 ////////////////////////////////////////////////////////////////////////////////

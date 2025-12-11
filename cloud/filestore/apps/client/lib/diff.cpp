@@ -25,8 +25,7 @@ TString RDiff()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDiffCommand final
-    : public TFileStoreCommand
+class TDiffCommand final: public TFileStoreCommand
 {
 private:
     TString OtherFileSystemId;
@@ -60,20 +59,15 @@ public:
             result[subPath] = node;
 
             if (node.GetType() == NProto::E_DIRECTORY_NODE) {
-                StatAll(
-                    session,
-                    fsId,
-                    subPath + "/",
-                    node.GetId(),
-                    result);
+                StatAll(session, fsId, subPath + "/", node.GetId(), result);
             }
         }
     }
 
     void DumpPath(const TString& path) const
     {
-        Cout << NColorizer::StdOut().DarkYellow() << "=\tPATH: "
-            << path << Endl;
+        Cout << NColorizer::StdOut().DarkYellow() << "=\tPATH: " << path
+             << Endl;
     }
 
     void DumpLine(const TString& prefix, const TString& line) const
@@ -84,16 +78,14 @@ public:
     TString Node2Str(const NProto::TNodeAttr& attr) const
     {
         TStringBuilder sb;
-        sb << NColorizer::StdOut().Magenta()
-            << "Id=" << attr.GetId()
-            << " Uid=" << attr.GetUid()
-            << " Gid=" << attr.GetGid()
-            << " Type=" << attr.GetType()
-            << " Size=" << FormatByteSize(attr.GetSize())
-            << " Links=" << attr.GetLinks();
+        sb << NColorizer::StdOut().Magenta() << "Id=" << attr.GetId()
+           << " Uid=" << attr.GetUid() << " Gid=" << attr.GetGid()
+           << " Type=" << attr.GetType()
+           << " Size=" << FormatByteSize(attr.GetSize())
+           << " Links=" << attr.GetLinks();
         if (attr.GetShardFileSystemId()) {
             sb << " Shard=" << attr.GetShardFileSystemId()
-                << " NameInShard=" << attr.GetShardNodeName();
+               << " NameInShard=" << attr.GetShardNodeName();
         }
         return sb;
     }
@@ -104,7 +96,7 @@ public:
         const NProto::TNodeAttr& attr) const
     {
         Cout << prefix << "PATH: " << NColorizer::StdOut().DarkYellow() << path
-            << "\tATTR: " << Node2Str(attr) << Endl;
+             << "\tATTR: " << Node2Str(attr) << Endl;
     }
 
     TString ReadNodeContent(ISession& session, const NProto::TNodeAttr& attr)
@@ -130,9 +122,8 @@ public:
         readRequest->SetHandle(handle);
         readRequest->SetLength(attr.GetSize());
 
-        auto readResponse = WaitFor(session.ReadData(
-            PrepareCallContext(),
-            std::move(readRequest)));
+        auto readResponse = WaitFor(
+            session.ReadData(PrepareCallContext(), std::move(readRequest)));
 
         CheckResponse(readResponse);
 
@@ -167,9 +158,8 @@ public:
             DumpLine(RDiff() + "ATTR: ", Node2Str(rattr));
         }
 
-        if (ShouldDiffContent
-                && lattr.GetType() == NProto::E_REGULAR_NODE
-                && rattr.GetType() == NProto::E_REGULAR_NODE)
+        if (ShouldDiffContent && lattr.GetType() == NProto::E_REGULAR_NODE &&
+            rattr.GetType() == NProto::E_REGULAR_NODE)
         {
             const auto lcontent = ReadNodeContent(lsession, lattr);
             const auto rcontent = ReadNodeContent(rsession, rattr);
@@ -184,8 +174,8 @@ public:
             }
         }
 
-        if (lattr.GetType() == NProto::E_LINK_NODE
-                && rattr.GetType() == NProto::E_LINK_NODE)
+        if (lattr.GetType() == NProto::E_LINK_NODE &&
+            rattr.GetType() == NProto::E_LINK_NODE)
         {
             const auto lcontent = ReadLink(lsession, lattr.GetId());
             const auto rcontent = ReadLink(rsession, rattr.GetId());

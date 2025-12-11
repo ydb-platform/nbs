@@ -34,13 +34,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestDumpable
-    : public IDumpable
+struct TTestDumpable: public IDumpable
 {
     void Dump(IOutputStream& out) const override
     {
         Y_UNUSED(out);
-    };
+    }
 
     void DumpHtml(IOutputStream& out) const override
     {
@@ -102,45 +101,46 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         auto scheduler = std::make_shared<TTestScheduler>();
 
         auto serverStats = std::make_shared<TTestServerStats>();
-        serverStats->MountVolumeHandler = [&] (
-                const NProto::TVolume& volume,
-                const TString& clientId,
-                const TString& instanceId)
-            {
-                Y_UNUSED(clientId);
-                Y_UNUSED(instanceId);
+        serverStats->MountVolumeHandler = [&](const NProto::TVolume& volume,
+                                              const TString& clientId,
+                                              const TString& instanceId)
+        {
+            Y_UNUSED(clientId);
+            Y_UNUSED(instanceId);
 
-                UNIT_ASSERT_VALUES_EQUAL(diskId, volume.GetDiskId());
-                ++serverStatsMountCounter;
-                return true;
-            };
-        serverStats->UnmountVolumeHandler = [&] (
-                const TString& unmountDiskId,
-                const TString& clientId)
-            {
-                Y_UNUSED(clientId);
-                UNIT_ASSERT_VALUES_EQUAL(diskId, unmountDiskId);
-            };
+            UNIT_ASSERT_VALUES_EQUAL(diskId, volume.GetDiskId());
+            ++serverStatsMountCounter;
+            return true;
+        };
+        serverStats->UnmountVolumeHandler =
+            [&](const TString& unmountDiskId, const TString& clientId)
+        {
+            Y_UNUSED(clientId);
+            UNIT_ASSERT_VALUES_EQUAL(diskId, unmountDiskId);
+        };
 
         auto service = std::make_shared<TTestService>();
         service->DescribeVolumeHandler =
-            [&] (std::shared_ptr<NProto::TDescribeVolumeRequest> request) {
-                auto response = NProto::TDescribeVolumeResponse();
-                response.MutableVolume()->SetDiskId(request->GetDiskId());
-                return MakeFuture(std::move(response));
-            };
+            [&](std::shared_ptr<NProto::TDescribeVolumeRequest> request)
+        {
+            auto response = NProto::TDescribeVolumeResponse();
+            response.MutableVolume()->SetDiskId(request->GetDiskId());
+            return MakeFuture(std::move(response));
+        };
         service->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                NProto::TMountVolumeResponse response;
-                response.MutableVolume()->SetDiskId(request->GetDiskId());
-                response.SetInactiveClientsTimeout(100);
-                return MakeFuture(response);
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            NProto::TMountVolumeResponse response;
+            response.MutableVolume()->SetDiskId(request->GetDiskId());
+            response.SetInactiveClientsTimeout(100);
+            return MakeFuture(response);
+        };
         service->UnmountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture(NProto::TUnmountVolumeResponse());
-            };
+            [&](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture(NProto::TUnmountVolumeResponse());
+        };
 
         auto executor = TExecutor::Create("TestService");
         auto logging = CreateLoggingService("console");
@@ -166,9 +166,10 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             TSessionManagerOptions());
 
         executor->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             executor->Stop();
-        };
+        }
 
         NProto::TStartEndpointRequest request;
         request.SetUnixSocketPath(socketPath);
@@ -231,30 +232,34 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
 
         auto service = std::make_shared<TTestService>();
         service->DescribeVolumeHandler =
-            [&] (std::shared_ptr<NProto::TDescribeVolumeRequest> request) {
-                auto response = NProto::TDescribeVolumeResponse();
-                response.MutableVolume()->SetDiskId(request->GetDiskId());
-                return MakeFuture(std::move(response));
-            };
+            [&](std::shared_ptr<NProto::TDescribeVolumeRequest> request)
+        {
+            auto response = NProto::TDescribeVolumeResponse();
+            response.MutableVolume()->SetDiskId(request->GetDiskId());
+            return MakeFuture(std::move(response));
+        };
         service->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                NProto::TMountVolumeResponse response;
-                response.MutableVolume()->SetDiskId(request->GetDiskId());
-                response.SetInactiveClientsTimeout(100);
-                return MakeFuture(response);
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            NProto::TMountVolumeResponse response;
+            response.MutableVolume()->SetDiskId(request->GetDiskId());
+            response.SetInactiveClientsTimeout(100);
+            return MakeFuture(response);
+        };
         service->UnmountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture(NProto::TUnmountVolumeResponse());
-            };
+            [&](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture(NProto::TUnmountVolumeResponse());
+        };
         service->ReadBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
-                Y_UNUSED(request);
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            Y_UNUSED(request);
 
-                return MakeFuture<NProto::TReadBlocksLocalResponse>(
-                    TErrorResponse(E_ARGUMENT, "Test fatal error"));
-            };
+            return MakeFuture<NProto::TReadBlocksLocalResponse>(
+                TErrorResponse(E_ARGUMENT, "Test fatal error"));
+        };
 
         auto executor = TExecutor::Create("TestService");
         auto logging = CreateLoggingService("console");
@@ -284,9 +289,10 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             options);
 
         executor->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             executor->Stop();
-        };
+        }
 
         NProto::TStartEndpointRequest request;
         request.SetUnixSocketPath(socketPath);
@@ -357,10 +363,11 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             return MakeFuture(NProto::TUnmountVolumeResponse());
         };
         service->ReadBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture<NProto::TReadBlocksLocalResponse>();
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TReadBlocksLocalResponse>();
+        };
 
         auto monitoring = CreateMonitoringServiceStub();
         auto timer = CreateCpuCycleTimer();
@@ -383,7 +390,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         Y_DEFER
         {
             scheduler->Stop();
-        };
+        }
 
         auto executor = TExecutor::Create("TestService");
         auto logging = CreateLoggingService("console");
@@ -414,7 +421,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         Y_DEFER
         {
             executor->Stop();
-        };
+        }
 
         NProto::TStartEndpointRequest request;
         request.SetUnixSocketPath(socketPath);
@@ -465,8 +472,8 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
                                 ->GetSubgroup("folder", folderId);
 
         auto postponedCount = diskCounters->GetSubgroup("request", "ReadBlocks")
-                                 ->FindCounter("PostponedCount")
-                                 ->Val();
+                                  ->FindCounter("PostponedCount")
+                                  ->Val();
         if (disableClientThrottler) {
             UNIT_ASSERT_VALUES_EQUAL(0, postponedCount);
         } else {
@@ -495,31 +502,34 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
 
         auto service = std::make_shared<TTestService>();
         service->DescribeVolumeHandler =
-            [&] (std::shared_ptr<NProto::TDescribeVolumeRequest> request) {
-                auto response = NProto::TDescribeVolumeResponse();
-                response.MutableVolume()->SetDiskId(request->GetDiskId());
-                return MakeFuture(std::move(response));
-            };
+            [&](std::shared_ptr<NProto::TDescribeVolumeRequest> request)
+        {
+            auto response = NProto::TDescribeVolumeResponse();
+            response.MutableVolume()->SetDiskId(request->GetDiskId());
+            return MakeFuture(std::move(response));
+        };
         // Setting up the handler for the mount request, which will add the
         // PrincipalDiskId when mounting testDiskId, which will lead to switch
         // session.
         service->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                NProto::TMountVolumeResponse response;
-                response.MutableVolume()->SetDiskId(request->GetDiskId());
-                if (request->GetDiskId() == diskId) {
-                    // Response with filled PrincipalDiskId will switch session.
-                    response.MutableVolume()->SetPrincipalDiskId(
-                        NStorage::GetNextDiskId(diskId));
-                }
-                response.SetInactiveClientsTimeout(100);
-                return MakeFuture(response);
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            NProto::TMountVolumeResponse response;
+            response.MutableVolume()->SetDiskId(request->GetDiskId());
+            if (request->GetDiskId() == diskId) {
+                // Response with filled PrincipalDiskId will switch session.
+                response.MutableVolume()->SetPrincipalDiskId(
+                    NStorage::GetNextDiskId(diskId));
+            }
+            response.SetInactiveClientsTimeout(100);
+            return MakeFuture(response);
+        };
         service->UnmountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture(NProto::TUnmountVolumeResponse());
-            };
+            [&](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture(NProto::TUnmountVolumeResponse());
+        };
 
         // Setting up the handler to respond E_REJECTED if the request handled
         // by testDiskId and S_OK if the request handled by disk testDiskId-copy
@@ -561,11 +571,11 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             executor,
             TSessionManagerOptions());
 
-
         executor->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             executor->Stop();
-        };
+        }
 
         NProto::TStartEndpointRequest request;
         request.SetUnixSocketPath(socketPath);

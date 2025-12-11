@@ -24,7 +24,7 @@
 #include <util/datetime/base.h>
 
 namespace NCloud::NFileStore::NProto {
-    class TProfileLogRequestInfo;
+class TProfileLogRequestInfo;
 }   // namespace NCloud::NFileStore::NProto
 
 namespace NCloud::NFileStore::NStorage {
@@ -126,12 +126,12 @@ private:
 
     bool HandleRequests(STFUNC_SIG);
 
-#define FILESTORE_DECLARE_REQUEST_RESPONSE(name, ns)                           \
-    FILESTORE_IMPLEMENT_REQUEST(name, ns)                                      \
-                                                                               \
-    void Handle##name(                                                         \
-        const ns::TEv##name##Response::TPtr& ev,                               \
-        const NActors::TActorContext& ctx);                                    \
+#define FILESTORE_DECLARE_REQUEST_RESPONSE(name, ns) \
+    FILESTORE_IMPLEMENT_REQUEST(name, ns)            \
+                                                     \
+    void Handle##name(                               \
+        const ns::TEv##name##Response::TPtr& ev,     \
+        const NActors::TActorContext& ctx);
 
     FILESTORE_REMOTE_SERVICE(FILESTORE_DECLARE_REQUEST_RESPONSE, TEvService)
 #undef FILESTORE_DECLARE_REQUEST_RESPONSE

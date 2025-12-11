@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -14,8 +15,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAlterPlacementGroupMembershipCommand final
-    : public TCommand
+class TAlterPlacementGroupMembershipCommand final: public TCommand
 {
 private:
     TString GroupId;
@@ -32,7 +32,9 @@ public:
             .RequiredArgument("STR")
             .StoreResult(&GroupId);
 
-        Opts.AddLongOption("placement-partition-index", "Placement partition index")
+        Opts.AddLongOption(
+                "placement-partition-index",
+                "Placement partition index")
             .RequiredArgument("NUM")
             .StoreResult(&PlacementPartitionIndex);
 
@@ -42,13 +44,15 @@ public:
 
         Opts.AddLongOption(
                 "disk-to-add",
-                "Add this disk to the group (several disks can be added at a time)")
+                "Add this disk to the group (several disks can be added at a "
+                "time)")
             .RequiredArgument("STR")
             .AppendTo(&DisksToAdd);
 
         Opts.AddLongOption(
                 "disk-to-remove",
-                "Remove this disk from the group (several disks can be removed at a time)")
+                "Remove this disk from the group (several disks can be removed "
+                "at a time)")
             .RequiredArgument("STR")
             .AppendTo(&DisksToRemove);
     }
@@ -65,7 +69,8 @@ protected:
         auto& error = GetErrorStream();
 
         STORAGE_DEBUG("Reading AlterPlacementGroupMembership request");
-        auto request = std::make_shared<NProto::TAlterPlacementGroupMembershipRequest>();
+        auto request =
+            std::make_shared<NProto::TAlterPlacementGroupMembershipRequest>();
         if (Proto) {
             ParseFromTextFormat(input, *request);
         } else {
@@ -113,7 +118,8 @@ protected:
 private:
     bool CheckOpts() const
     {
-        const auto* groupId = ParseResultPtr->FindLongOptParseResult("group-id");
+        const auto* groupId =
+            ParseResultPtr->FindLongOptParseResult("group-id");
         if (!groupId) {
             STORAGE_ERROR("Group id is required");
             return false;
@@ -128,13 +134,14 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TCommandPtr NewAlterPlacementGroupMembershipCommand(IBlockStorePtr client)
 {
-    return MakeIntrusive<TAlterPlacementGroupMembershipCommand>(std::move(client));
+    return MakeIntrusive<TAlterPlacementGroupMembershipCommand>(
+        std::move(client));
 }
 
 }   // namespace NCloud::NBlockStore::NClient

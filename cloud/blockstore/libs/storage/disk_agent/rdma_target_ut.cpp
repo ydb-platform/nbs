@@ -261,9 +261,7 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
         }
 
         // Secure erase device.
-        env.RdmaTarget->DeviceSecureEraseFinish(
-            env.Device_1,
-            MakeError(S_OK));
+        env.RdmaTarget->DeviceSecureEraseFinish(env.Device_1, MakeError(S_OK));
 
         {   // Try write with id=99 again. This one should be executed
             // successfully.
@@ -297,9 +295,7 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
                 response.GetError().GetMessage());
         }
 
-        env.RdmaTarget->DeviceSecureEraseFinish(
-            env.Device_1,
-            MakeError(S_OK));
+        env.RdmaTarget->DeviceSecureEraseFinish(env.Device_1, MakeError(S_OK));
 
         {
             auto responseFuture =

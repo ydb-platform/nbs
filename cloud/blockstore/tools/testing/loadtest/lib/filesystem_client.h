@@ -21,4 +21,4 @@ IBlockStorePtr CreateClient(
     IMonitoringServicePtr monitoring,
     IServerStatsPtr clientStats);
 
-}   // namespace NCloud::NBlockStore::NClient
+}   // namespace NCloud::NBlockStore::NFilesystemClient

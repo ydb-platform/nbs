@@ -62,8 +62,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TResponse>
-struct TClientRequestImpl final
-    : public TClientRequest
+struct TClientRequestImpl final: public TClientRequest
 {
     TPromise<TResponse> Response = NewPromise<TResponse>();
 
@@ -76,7 +75,8 @@ struct TClientRequestImpl final
 };
 
 using TClientReadRequest = TClientRequestImpl<NProto::TReadBlocksLocalResponse>;
-using TClientWriteRequest = TClientRequestImpl<NProto::TWriteBlocksLocalResponse>;
+using TClientWriteRequest =
+    TClientRequestImpl<NProto::TWriteBlocksLocalResponse>;
 using TClientZeroRequest = TClientRequestImpl<NProto::TZeroBlocksResponse>;
 using TClientMountRequest = TClientRequestImpl<NProto::TError>;
 
@@ -90,8 +90,7 @@ ui64 RequestConnectionId()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TConnection
-    : public TAtomicRefCount<TConnection>
+class TConnection: public TAtomicRefCount<TConnection>
 {
 private:
     TLog Log;
@@ -107,15 +106,16 @@ private:
 
 public:
     TConnection(
-            const TLog& log,
-            TContExecutor* e,
-            IClientHandlerPtr handler,
-            const TNetworkAddress& connectAddress)
+        const TLog& log,
+        TContExecutor* e,
+        IClientHandlerPtr handler,
+        const TNetworkAddress& connectAddress)
         : Log(log)
         , Handler(std::move(handler))
         , ConnectAddress(connectAddress)
-        , LogTag(TStringBuilder() << "Conn#" << RequestConnectionId()
-            << " " << PrintHostAndPort(ConnectAddress))
+        , LogTag(
+              TStringBuilder() << "Conn#" << RequestConnectionId() << " "
+                               << PrintHostAndPort(ConnectAddress))
         , RequestQueue(e)
     {}
 
@@ -184,8 +184,9 @@ private:
                 DoSendRequest(c, request);
             } catch (...) {
                 auto exceptionMessage = CurrentExceptionMessage();
-                STORAGE_WARN(LogTag << " - unhandled error in Send: "
-                    << exceptionMessage);
+                STORAGE_WARN(
+                    LogTag << " - unhandled error in Send: "
+                           << exceptionMessage);
 
                 request->Complete(
                     TErrorResponse(UnavailableError, exceptionMessage));
@@ -218,8 +219,9 @@ private:
             DoReceive(c);
         } catch (...) {
             if (!c->Cancelled()) {
-                STORAGE_WARN(LogTag << " - unhandled error in Receive: "
-                    << CurrentExceptionMessage());
+                STORAGE_WARN(
+                    LogTag << " - unhandled error in Receive: "
+                           << CurrentExceptionMessage());
             }
         }
 
@@ -241,8 +243,7 @@ using TConnectionPtr = TIntrusivePtr<TConnection>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEndpoint final
-    : public TEndpointBase
+class TEndpoint final: public TEndpointBase
 {
 private:
     const TExecutorPtr Executor;
@@ -256,11 +257,11 @@ private:
 
 public:
     TEndpoint(
-            TLog& log,
-            TExecutorPtr executor,
-            const TNetworkAddress& connectAddress,
-            IClientHandlerPtr handler,
-            IBlockStorePtr volumeClient)
+        TLog& log,
+        TExecutorPtr executor,
+        const TNetworkAddress& connectAddress,
+        IClientHandlerPtr handler,
+        IBlockStorePtr volumeClient)
         : Executor(std::move(executor))
         , ConnectAddress(connectAddress)
         , Handler(std::move(handler))
@@ -281,9 +282,9 @@ public:
             Handler,
             ConnectAddress);
 
-        Executor->Execute([&] {
-            Connection->Start(Executor->GetContExecutor());
-        }).GetValueSync();
+        Executor
+            ->Execute([&] { Connection->Start(Executor->GetContExecutor()); })
+            .GetValueSync();
     }
 
     void Stop() override
@@ -349,25 +350,29 @@ public:
         const auto& volumeClient = VolumeClient;
         const auto& connection = Connection;
 
-        return future.Apply([=, this, request = std::move(request)] (auto f) mutable {
-            auto error = f.ExtractValue();
+        return future.Apply(
+            [=, this, request = std::move(request)](auto f) mutable
+            {
+                auto error = f.ExtractValue();
 
-            if (HasError(error)) {
-                NProto::TMountVolumeResponse response;
-                response.MutableError()->CopyFrom(std::move(error));
-                return MakeFuture(response);
-            }
+                if (HasError(error)) {
+                    NProto::TMountVolumeResponse response;
+                    response.MutableError()->CopyFrom(std::move(error));
+                    return MakeFuture(response);
+                }
 
-            auto future = volumeClient->MountVolume(
-                std::move(callContext),
-                std::move(request));
+                auto future = volumeClient->MountVolume(
+                    std::move(callContext),
+                    std::move(request));
 
-            return future.Apply([=, this] (const auto& f) {
-                return HandleMountVolumeResponse(
-                    f.GetValue(),
-                    connection->GetExportInfo().GetValue());
+                return future.Apply(
+                    [=, this](const auto& f)
+                    {
+                        return HandleMountVolumeResponse(
+                            f.GetValue(),
+                            connection->GetExportInfo().GetValue());
+                    });
             });
-        });
     }
 
     TFuture<NProto::TUnmountVolumeResponse> UnmountVolume(
@@ -411,10 +416,12 @@ private:
         if (!HasError(response) &&
             response.GetVolume().GetBlockSize() != GetBlockSize(exportInfo))
         {
-            return TErrorResponse(E_INVALID_STATE, TStringBuilder()
-                << "volume BlockSize is not equal to nbd-device BlockSize: "
-                << response.GetVolume().GetBlockSize()
-                << " != " << GetBlockSize(exportInfo));
+            return TErrorResponse(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "volume BlockSize is not equal to nbd-device BlockSize: "
+                    << response.GetVolume().GetBlockSize()
+                    << " != " << GetBlockSize(exportInfo));
         }
 
         return response;
@@ -470,7 +477,7 @@ public:
 private:
     void CleanEndpoints()
     {
-        for (auto it = Endpoints.begin(); it != Endpoints.end(); ) {
+        for (auto it = Endpoints.begin(); it != Endpoints.end();) {
             if (it->lock()) {
                 ++it;
             } else {
@@ -482,8 +489,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TClient final
-    : public IClient
+class TClient final: public IClient
 {
 private:
     const ui32 ThreadsCount;

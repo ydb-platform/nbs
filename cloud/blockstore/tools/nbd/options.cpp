@@ -15,9 +15,9 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 static const TMap<TString, EDeviceMode> DeviceModes = {
-    { "endpoint",   EDeviceMode::Endpoint },
-    { "proxy",      EDeviceMode::Proxy    },
-    { "null",       EDeviceMode::Null     },
+    {"endpoint", EDeviceMode::Endpoint},
+    {"proxy", EDeviceMode::Proxy},
+    {"null", EDeviceMode::Null},
 };
 
 EDeviceMode DeviceModeFromString(const TString& s)
@@ -33,10 +33,10 @@ EDeviceMode DeviceModeFromString(const TString& s)
 ////////////////////////////////////////////////////////////////////////////////
 
 static const TMap<TString, NProto::EVolumeAccessMode> AccessModes = {
-    { "rw",      NProto::VOLUME_ACCESS_READ_WRITE     },
-    { "ro",      NProto::VOLUME_ACCESS_READ_ONLY      },
-    { "repair",  NProto::VOLUME_ACCESS_REPAIR         },
-    { "user-ro", NProto::VOLUME_ACCESS_USER_READ_ONLY },
+    {"rw", NProto::VOLUME_ACCESS_READ_WRITE},
+    {"ro", NProto::VOLUME_ACCESS_READ_ONLY},
+    {"repair", NProto::VOLUME_ACCESS_REPAIR},
+    {"user-ro", NProto::VOLUME_ACCESS_USER_READ_ONLY},
 };
 
 NProto::EVolumeAccessMode AccessModeFromString(const TString& s)
@@ -52,8 +52,8 @@ NProto::EVolumeAccessMode AccessModeFromString(const TString& s)
 ////////////////////////////////////////////////////////////////////////////////
 
 static const TMap<TString, NProto::EVolumeMountMode> MountModes = {
-    { "local",  NProto::VOLUME_MOUNT_LOCAL  },
-    { "remote", NProto::VOLUME_MOUNT_REMOTE },
+    {"local", NProto::VOLUME_MOUNT_LOCAL},
+    {"remote", NProto::VOLUME_MOUNT_REMOTE},
 };
 
 NProto::EVolumeMountMode MountModeFromString(const TString& s)
@@ -95,11 +95,12 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("STR")
         .StoreResult(&IamTokenFile);
 
-    opts.AddLongOption("device-mode", "nbs device connection mode [endpoint, proxy, null]")
+    opts.AddLongOption(
+            "device-mode",
+            "nbs device connection mode [endpoint, proxy, null]")
         .RequiredArgument("STR")
-        .Handler1T<TString>([this] (const auto& s) {
-            DeviceMode = DeviceModeFromString(s);
-        });
+        .Handler1T<TString>([this](const auto& s)
+                            { DeviceMode = DeviceModeFromString(s); });
 
     opts.AddLongOption("mon-file")
         .RequiredArgument("STR")
@@ -129,29 +130,32 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("STR")
         .StoreResult(&CheckpointId);
 
-    opts.AddLongOption("access-mode", "volume access mode [rw|ro|repair|user-ro]")
+    opts.AddLongOption(
+            "access-mode",
+            "volume access mode [rw|ro|repair|user-ro]")
         .RequiredArgument("STR")
-        .Handler1T<TString>([this] (const auto& s) {
-            AccessMode = AccessModeFromString(s);
-        });
+        .Handler1T<TString>([this](const auto& s)
+                            { AccessMode = AccessModeFromString(s); });
 
     opts.AddLongOption("mount-mode", "volume mount mode [local|remote]")
         .RequiredArgument("STR")
-        .Handler1T<TString>([this] (const auto& s) {
-            MountMode = MountModeFromString(s);
-        });
+        .Handler1T<TString>([this](const auto& s)
+                            { MountMode = MountModeFromString(s); });
 
     opts.AddLongOption("encryption-mode", "encryption mode [no|aes-xts|test]")
         .RequiredArgument("STR")
-        .Handler1T<TString>([this] (const auto& s) {
-            EncryptionMode = EncryptionModeFromString(s);
-        });
+        .Handler1T<TString>([this](const auto& s)
+                            { EncryptionMode = EncryptionModeFromString(s); });
 
-    opts.AddLongOption("encryption-key-path", "path to file with encryption key")
+    opts.AddLongOption(
+            "encryption-key-path",
+            "path to file with encryption key")
         .RequiredArgument("STR")
         .StoreResult(&EncryptionKeyPath);
 
-    opts.AddLongOption("throttling-disabled", "sets MF_THROTTLING_DISABLED mount flag")
+    opts.AddLongOption(
+            "throttling-disabled",
+            "sets MF_THROTTLING_DISABLED mount flag")
         .NoArgument()
         .SetFlag(&ThrottlingDisabled);
 
@@ -176,8 +180,8 @@ void TOptions::Parse(int argc, char** argv)
         .StoreResult(&ListenUnixSocketPath);
 
     const auto& device = opts.AddLongOption("connect-device")
-        .OptionalArgument("STR")
-        .StoreResult(&ConnectDevicePath);
+                             .OptionalArgument("STR")
+                             .StoreResult(&ConnectDevicePath);
 
     opts.AddLongOption("null-blocksize")
         .RequiredArgument("NUM")
@@ -193,27 +197,30 @@ void TOptions::Parse(int argc, char** argv)
 
     opts.AddLongOption("request-timeout", "request timeout")
         .OptionalArgument("NUM")
-        .Handler1T<TString>([this] (const auto& s) {
-            RequestTimeout = TDuration::Parse(s);
-            Y_ENSURE(
-                RequestTimeout.MicroSeconds() % 1000000 == 0,
-                "timeout should be a multiple of a second"
-            );
-        });
+        .Handler1T<TString>(
+            [this](const auto& s)
+            {
+                RequestTimeout = TDuration::Parse(s);
+                Y_ENSURE(
+                    RequestTimeout.MicroSeconds() % 1000000 == 0,
+                    "timeout should be a multiple of a second");
+            });
 
     opts.AddLongOption("connection-timeout", "connection timeout")
         .OptionalArgument("NUM")
-        .Handler1T<TString>([this] (const auto& s) {
-            ConnectionTimeout = TDuration::Parse(s);
-            Y_ENSURE(
-                ConnectionTimeout.MicroSeconds() % 1000000 == 0,
-                "connection timeout should be a multiple of a second"
-            );
-        });
+        .Handler1T<TString>(
+            [this](const auto& s)
+            {
+                ConnectionTimeout = TDuration::Parse(s);
+                Y_ENSURE(
+                    ConnectionTimeout.MicroSeconds() % 1000000 == 0,
+                    "connection timeout should be a multiple of a second");
+            });
 
-    const auto& verbose = opts.AddLongOption("verbose", "output level for diagnostics messages")
-        .OptionalArgument("STR")
-        .StoreResult(&VerboseLevel);
+    const auto& verbose =
+        opts.AddLongOption("verbose", "output level for diagnostics messages")
+            .OptionalArgument("STR")
+            .StoreResult(&VerboseLevel);
 
     opts.AddLongOption("grpc-trace", "turn on grpc tracing")
         .NoArgument()
@@ -232,7 +239,8 @@ void TOptions::Parse(int argc, char** argv)
     Y_ENSURE(DeviceMode == EDeviceMode::Null || DiskId);
 
     if (DeviceMode == EDeviceMode::Endpoint) {
-        Y_ENSURE(ListenUnixSocketPath,
+        Y_ENSURE(
+            ListenUnixSocketPath,
             "'--listen-path' option is required for endpoint device-mode");
     }
 

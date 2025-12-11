@@ -24,8 +24,7 @@ void TFileSystem::SetAttr(
     fuse_file_info* fi)
 {
     ui64 handle = fi ? fi->fh : 0;
-    STORAGE_DEBUG("SetAttr #" << ino << " @" << handle
-        << " mask:" << to_set);
+    STORAGE_DEBUG("SetAttr #" << ino << " @" << handle << " mask:" << to_set);
 
     if (!ValidateNodeId(*callContext, req, ino)) {
         return;
@@ -76,23 +75,29 @@ void TFileSystem::SetAttr(
     request->SetFlags(flags);
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue->Enqueue(reqId, TNodeId {ino});
+    FSyncQueue->Enqueue(reqId, TNodeId{ino});
 
     Session->SetNodeAttr(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                self->FSyncQueue->Dequeue(reqId, error, TNodeId{ino});
 
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyAttr(*callContext, error, req, response.GetNode());
-            }
-        });
+                if (CheckResponse(self, *callContext, req, response)) {
+                    self->ReplyAttr(
+                        *callContext,
+                        error,
+                        req,
+                        response.GetNode());
+                }
+            });
 }
 
 void TFileSystem::GetAttr(
@@ -113,13 +118,21 @@ void TFileSystem::GetAttr(
     request->SetHandle(handle);
 
     Session->GetNodeAttr(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                self->ReplyAttr(*callContext, error, req, response.GetNode());
-            }
-        });
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                if (auto self = ptr.lock();
+                    CheckResponse(self, *callContext, req, response))
+                {
+                    self->ReplyAttr(
+                        *callContext,
+                        error,
+                        req,
+                        response.GetNode());
+                }
+            });
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -133,9 +146,9 @@ void TFileSystem::SetXAttr(
     TString value,
     int xflags)
 {
-    STORAGE_DEBUG("SetXAttr #" << ino << " name: " << name.Quote()
-        << ", value:" << value.Quote()
-        << ", flags:" << xflags);
+    STORAGE_DEBUG(
+        "SetXAttr #" << ino << " name: " << name.Quote()
+                     << ", value:" << value.Quote() << ", flags:" << xflags);
 
     if (Config->GetExtendedAttributesDisabled()) {
         ReplyError(*callContext, MakeError(E_FS_NOTSUPP), req, ENOSYS);
@@ -160,29 +173,31 @@ void TFileSystem::SetXAttr(
     request->SetFlags(flags);
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue->Enqueue(reqId, TNodeId {ino});
+    FSyncQueue->Enqueue(reqId, TNodeId{ino});
 
     Session->SetNodeXAttr(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                self->FSyncQueue->Dequeue(reqId, error, TNodeId{ino});
 
-            self->UpdateXAttrCache(
-                ino,
-                name,
-                value,
-                response.GetVersion(),
-                error);
-            if (self->CheckResponse(*callContext, req, response)) {
-                self->ReplyError(*callContext, error, req, 0);
-            }
-        });
+                self->UpdateXAttrCache(
+                    ino,
+                    name,
+                    value,
+                    response.GetVersion(),
+                    error);
+                if (self->CheckResponse(*callContext, req, response)) {
+                    self->ReplyError(*callContext, error, req, 0);
+                }
+            });
 }
 
 void TFileSystem::GetXAttr(
@@ -222,29 +237,31 @@ void TFileSystem::GetXAttr(
     request->SetName(name);
 
     Session->GetNodeXAttr(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->UpdateXAttrCache(
-                ino,
-                name,
-                response.GetValue(),
-                response.GetVersion(),
-                error);
-            if (self->CheckResponse(*callContext, req, response)) {
-                self->ReplyXAttrInt(
-                    *callContext,
-                    error,
-                    req,
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                self->UpdateXAttrCache(
+                    ino,
+                    name,
                     response.GetValue(),
-                    size);
-            }
-        });
+                    response.GetVersion(),
+                    error);
+                if (self->CheckResponse(*callContext, req, response)) {
+                    self->ReplyXAttrInt(
+                        *callContext,
+                        error,
+                        req,
+                        response.GetValue(),
+                        size);
+                }
+            });
 }
 
 void TFileSystem::ListXAttr(
@@ -267,22 +284,26 @@ void TFileSystem::ListXAttr(
     auto request = StartRequest<NProto::TListNodeXAttrRequest>(ino);
 
     Session->ListNodeXAttr(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            const auto& response = future.GetValue();
-            if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                TStringBuilder value;
-                for (const auto& name: response.GetNames()) {
-                    value << name << '\0';
-                }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                const auto& response = future.GetValue();
+                if (auto self = ptr.lock();
+                    CheckResponse(self, *callContext, req, response))
+                {
+                    TStringBuilder value;
+                    for (const auto& name: response.GetNames()) {
+                        value << name << '\0';
+                    }
 
-                self->ReplyXAttrInt(
-                    *callContext,
-                    response.GetError(),
-                    req,
-                    value,
-                    size);
-            }
-        });
+                    self->ReplyXAttrInt(
+                        *callContext,
+                        response.GetError(),
+                        req,
+                        value,
+                        size);
+                }
+            });
 }
 
 void TFileSystem::RemoveXAttr(
@@ -306,27 +327,29 @@ void TFileSystem::RemoveXAttr(
     request->SetName(name);
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue->Enqueue(reqId, TNodeId {ino});
+    FSyncQueue->Enqueue(reqId, TNodeId{ino});
 
     Session->RemoveNodeXAttr(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
-
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
-
-            if (CheckResponse(self, *callContext, req, response)) {
-                with_lock (self->XAttrCacheLock) {
-                    self->XAttrCache.Forget(ino, name);
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
                 }
 
-                self->ReplyError(*callContext, error, req, 0);
-            }
-        });
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                self->FSyncQueue->Dequeue(reqId, error, TNodeId{ino});
+
+                if (CheckResponse(self, *callContext, req, response)) {
+                    with_lock (self->XAttrCacheLock) {
+                        self->XAttrCache.Forget(ino, name);
+                    }
+
+                    self->ReplyError(*callContext, error, req, 0);
+                }
+            });
 }
 
 }   // namespace NCloud::NFileStore::NFuse

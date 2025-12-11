@@ -64,10 +64,10 @@ private:
 
 public:
     TImpl(
-            ILoggingServicePtr logging,
-            TFsPath devicesFolder,
-            TFsPath locksFolder,
-            TStringBuf nameMask)
+        ILoggingServicePtr logging,
+        TFsPath devicesFolder,
+        TFsPath locksFolder,
+        TStringBuf nameMask)
         : Logging(std::move(logging))
         , DevicesFolder(std::move(devicesFolder))
         , LocksFolder(std::move(locksFolder))
@@ -171,21 +171,20 @@ public:
 TDeviceLocker::TDeviceLocker() = default;
 
 TDeviceLocker::TDeviceLocker(
-        ILoggingServicePtr logging,
-        TFsPath devicesFolder,
-        TFsPath locksFolder,
-        TStringBuf nameMask)
+    ILoggingServicePtr logging,
+    TFsPath devicesFolder,
+    TFsPath locksFolder,
+    TStringBuf nameMask)
     : Impl(std::make_unique<TImpl>(
-        std::move(logging),
-        std::move(devicesFolder),
-        std::move(locksFolder),
-        nameMask))
+          std::move(logging),
+          std::move(devicesFolder),
+          std::move(locksFolder),
+          nameMask))
 {}
 
 TDeviceLocker::~TDeviceLocker() = default;
 TDeviceLocker::TDeviceLocker(TDeviceLocker&&) noexcept = default;
-TDeviceLocker& TDeviceLocker::operator=(
-    TDeviceLocker&&) noexcept = default;
+TDeviceLocker& TDeviceLocker::operator=(TDeviceLocker&&) noexcept = default;
 
 TResultOrError<TFsPath> TDeviceLocker::AcquireDevice(
     const TRetryOptions& retryOptions)

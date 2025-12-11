@@ -33,7 +33,8 @@ public:
     bool RemoveNewBlob(const TPartialBlobId& blobId);
 
     size_t GetNewBlobsCount(ui64 maxCommitId = InvalidCommitId) const;
-    TVector<TPartialBlobId> GetNewBlobs(ui64 maxCommitId = InvalidCommitId) const;
+    TVector<TPartialBlobId> GetNewBlobs(
+        ui64 maxCommitId = InvalidCommitId) const;
 
     //
     // Garbage blobs
@@ -45,7 +46,8 @@ public:
     bool RemoveGarbageBlob(const TPartialBlobId& blobId);
 
     size_t GetGarbageBlobsCount(ui64 maxCommitId = InvalidCommitId) const;
-    TVector<TPartialBlobId> GetGarbageBlobs(ui64 maxCommitId = InvalidCommitId) const;
+    TVector<TPartialBlobId> GetGarbageBlobs(
+        ui64 maxCommitId = InvalidCommitId) const;
     ui64 GetGarbageQueueBytes() const;
 
     //

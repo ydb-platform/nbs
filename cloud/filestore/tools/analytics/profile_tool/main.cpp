@@ -59,8 +59,7 @@ public:
 
         } catch (const NLastGetopt::TUsageException& e) {
             Cerr << FormatCmdLine(argc, argv)
-                << " failed: " << CurrentExceptionMessage()
-                << Endl;
+                 << " failed: " << CurrentExceptionMessage() << Endl;
 
             if (Command) {
                 Command->GetOpts().PrintUsage(GetProgramName());
@@ -70,8 +69,7 @@ public:
             return 1;
         } catch (...) {
             Cerr << FormatCmdLine(argc, argv)
-                << " failed: " << CurrentExceptionMessage()
-                << Endl;
+                 << " failed: " << CurrentExceptionMessage() << Endl;
             return 1;
         }
     }

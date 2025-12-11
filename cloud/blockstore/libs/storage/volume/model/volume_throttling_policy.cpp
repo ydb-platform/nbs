@@ -19,8 +19,8 @@ namespace {
 // Read ops are limited based solely on the requested MaxRead{Bandwidth,Iops}.
 // Write ops are limited based on some 'Target{Bandwidth,Iops}', which equals
 // MaxWrite{Bandwidth,Iops} when the partition's health is fine and is
-// gradually decreased if the partition's not feeling OK until it actually starts
-// feeling OK
+// gradually decreased if the partition's not feeling OK until it actually
+// starts feeling OK
 
 double CalculateWriteCostMultiplier(const TBackpressureReport& lastReport)
 {
@@ -59,7 +59,8 @@ TDuration CalculateBoostTime(const NProto::TVolumePerformanceProfile& config)
         static_cast<ui64>((rate - 1.) * config.GetBoostTime()));
 }
 
-TDuration CalculateBoostRefillTime(const NProto::TVolumePerformanceProfile& config)
+TDuration CalculateBoostRefillTime(
+    const NProto::TVolumePerformanceProfile& config)
 {
     return TDuration::MilliSeconds(config.GetBoostRefillTime());
 }
@@ -86,15 +87,15 @@ struct TVolumeThrottlingPolicy::TImpl
     double UsedBandwidthQuota = 0;
 
     TImpl(
-            NProto::TVolumePerformanceProfile config,
-            NProto::TVolumeThrottlingRule throttlingRule,
-            const ui32 policyVersion,
-            const ui32 volatileVersion,
-            const TDuration maxDelay,
-            const ui32 maxWriteCostMultiplier,
-            const ui64 defaultPostponedRequestWeight,
-            const TDuration initialBoostBudget,
-            const bool useDiskSpaceScore)
+        NProto::TVolumePerformanceProfile config,
+        NProto::TVolumeThrottlingRule throttlingRule,
+        const ui32 policyVersion,
+        const ui32 volatileVersion,
+        const TDuration maxDelay,
+        const ui32 maxWriteCostMultiplier,
+        const ui64 defaultPostponedRequestWeight,
+        const TDuration initialBoostBudget,
+        const bool useDiskSpaceScore)
         : Config(std::move(config))
         , ThrottlingRule(std::move(throttlingRule))
         , PolicyVersion(policyVersion)
@@ -104,14 +105,12 @@ struct TVolumeThrottlingPolicy::TImpl
         , DefaultPostponedRequestWeight(defaultPostponedRequestWeight)
         , UseDiskSpaceScore(useDiskSpaceScore)
         , Bucket(
-            CalcBurstTime(),
-            CalculateBoostRate(CurrentProfile()),
-            CalculateBoostTime(CurrentProfile()),
-            CalculateBoostRefillTime(CurrentProfile()),
-            initialBoostBudget
-        )
-    {
-    }
+              CalcBurstTime(),
+              CalculateBoostRate(CurrentProfile()),
+              CalculateBoostTime(CurrentProfile()),
+              CalculateBoostRefillTime(CurrentProfile()),
+              initialBoostBudget)
+    {}
 
     NProto::TVolumePerformanceProfile CurrentProfile() const
     {
@@ -173,8 +172,8 @@ struct TVolumeThrottlingPolicy::TImpl
     {
         const auto& config = CurrentProfile();
         return SecondsToDuration(
-            (config.GetBurstPercentage() ? config.GetBurstPercentage() : 10)
-            / 100.);
+            (config.GetBurstPercentage() ? config.GetBurstPercentage() : 10) /
+            100.);
     }
 
     void OnBackpressureReport(
@@ -214,13 +213,14 @@ struct TVolumeThrottlingPolicy::TImpl
         if (!UseDiskSpaceScore) {
             bp.DiskSpaceScore = 0;
         }
-        WriteCostMultiplier = Min(
-            CalculateWriteCostMultiplier(bp),
-            double(Max(MaxWriteCostMultiplier, 1u))
-        );
+        WriteCostMultiplier =
+            Min(CalculateWriteCostMultiplier(bp),
+                double(Max(MaxWriteCostMultiplier, 1u)));
     }
 
-    void OnPostponedEvent(TInstant ts, const TThrottlingRequestInfo& requestInfo)
+    void OnPostponedEvent(
+        TInstant ts,
+        const TThrottlingRequestInfo& requestInfo)
     {
         Y_UNUSED(ts);
 
@@ -258,8 +258,7 @@ struct TVolumeThrottlingPolicy::TImpl
             ts,
             PostponedRequestWeight(
                 static_cast<EOpType>(requestInfo.OpType),
-                requestInfo.ByteCount)
-        );
+                requestInfo.ByteCount));
     }
 
     ui32 MaxIops(EOpType opType) const
@@ -305,8 +304,8 @@ struct TVolumeThrottlingPolicy::TImpl
 
         const ui64 bandwidthUpdate = requestInfo.ByteCount;
         double m = static_cast<EOpType>(requestInfo.OpType) == EOpType::Read
-            ? 1.0
-            : WriteCostMultiplier;
+                       ? 1.0
+                       : WriteCostMultiplier;
 
         const auto maxBandwidth =
             MaxBandwidth(static_cast<EOpType>(requestInfo.OpType));
@@ -345,17 +344,15 @@ struct TVolumeThrottlingPolicy::TImpl
             ts,
             PostponedRequestWeight(
                 static_cast<EOpType>(requestInfo.OpType),
-                requestInfo.ByteCount)
-        );
+                requestInfo.ByteCount));
 
         return postponed ? d : TMaybe<TDuration>();
     }
 
     ui64 PostponedRequestWeight(EOpType opType, ui64 byteCount) const
     {
-        return opType == EOpType::Write
-            ? byteCount
-            : DefaultPostponedRequestWeight;
+        return opType == EOpType::Write ? byteCount
+                                        : DefaultPostponedRequestWeight;
     }
 
     double CalculateCurrentSpentBudgetShare(TInstant ts) const
@@ -411,8 +408,8 @@ void TVolumeThrottlingPolicy::Reset(
     const NProto::TVolumePerformanceProfile& config,
     const TThrottlerConfig& throttlerConfig)
 {
-    auto coefficients = Impl ? Impl->ThrottlingRule
-                             : NProto::TVolumeThrottlingRule{};
+    auto coefficients =
+        Impl ? Impl->ThrottlingRule : NProto::TVolumeThrottlingRule{};
     auto volatileVersion = Impl ? Impl->VolatileVersion : 0;
     Reset(
         config,
@@ -425,8 +422,7 @@ void TVolumeThrottlingPolicy::Reset(
         throttlerConfig.UseDiskSpaceScore);
 }
 
-void TVolumeThrottlingPolicy::Reset(
-    const TVolumeThrottlingPolicy& policy)
+void TVolumeThrottlingPolicy::Reset(const TVolumeThrottlingPolicy& policy)
 {
     Reset(
         policy.Impl->Config,
@@ -499,7 +495,8 @@ ui64 TVolumeThrottlingPolicy::CalculatePostponedWeight() const
     return Impl->PostponedWeight;
 }
 
-double TVolumeThrottlingPolicy::CalculateCurrentSpentBudgetShare(TInstant ts) const
+double TVolumeThrottlingPolicy::CalculateCurrentSpentBudgetShare(
+    TInstant ts) const
 {
     return Impl->CalculateCurrentSpentBudgetShare(ts);
 }
@@ -510,12 +507,14 @@ TVolumeThrottlingPolicy::TakeSplittedUsedQuota()
     return Impl->TakeSplittedUsedQuota();
 }
 
-const TBackpressureReport& TVolumeThrottlingPolicy::GetCurrentBackpressure() const
+const TBackpressureReport&
+TVolumeThrottlingPolicy::GetCurrentBackpressure() const
 {
     return Impl->CurrentBackpressure;
 }
 
-const NProto::TVolumePerformanceProfile& TVolumeThrottlingPolicy::GetConfig() const
+const NProto::TVolumePerformanceProfile&
+TVolumeThrottlingPolicy::GetConfig() const
 {
     return Impl->Config;
 }
@@ -525,22 +524,30 @@ ui32 TVolumeThrottlingPolicy::GetVolatileThrottlingVersion() const
     return Impl->VolatileVersion;
 }
 
-const NProto::TVolumeThrottlingRule& TVolumeThrottlingPolicy::GetVolatileThrottlingRule() const {
+const NProto::TVolumeThrottlingRule&
+TVolumeThrottlingPolicy::GetVolatileThrottlingRule() const
+{
     return Impl->ThrottlingRule;
 }
 
-NProto::TVolumePerformanceProfile TVolumeThrottlingPolicy::GetCurrentPerformanceProfile() const {
+NProto::TVolumePerformanceProfile
+TVolumeThrottlingPolicy::GetCurrentPerformanceProfile() const
+{
     return Impl->CurrentProfile();
 }
 
 ui64 TVolumeThrottlingPolicy::C1(EOpType opType) const
 {
-    return CalculateThrottlerC1(Impl->MaxIops(opType), Impl->MaxBandwidth(opType));
+    return CalculateThrottlerC1(
+        Impl->MaxIops(opType),
+        Impl->MaxBandwidth(opType));
 }
 
 ui64 TVolumeThrottlingPolicy::C2(EOpType opType) const
 {
-    return CalculateThrottlerC2(Impl->MaxIops(opType), Impl->MaxBandwidth(opType));
+    return CalculateThrottlerC2(
+        Impl->MaxIops(opType),
+        Impl->MaxBandwidth(opType));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

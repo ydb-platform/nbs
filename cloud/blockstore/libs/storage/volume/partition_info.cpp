@@ -81,11 +81,11 @@ TPartitionStartInfo TActorsStack::GetStartInfo() const
 ////////////////////////////////////////////////////////////////////////////////
 
 TPartitionInfo::TPartitionInfo(
-        ui64 tabletId,
-        NProto::TPartitionConfig partitionConfig,
-        ui32 partitionIndex,
-        TDuration timeoutIncrement,
-        TDuration timeoutMax)
+    ui64 tabletId,
+    NProto::TPartitionConfig partitionConfig,
+    ui32 partitionIndex,
+    TDuration timeoutIncrement,
+    TDuration timeoutMax)
     : TabletId(tabletId)
     , PartitionIndex(partitionIndex)
     , PartitionConfig(std::move(partitionConfig))

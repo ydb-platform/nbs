@@ -16,8 +16,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ITraceProcessor
-    : public IStartable
+struct ITraceProcessor: public IStartable
 {
     virtual ~ITraceProcessor() = default;
 

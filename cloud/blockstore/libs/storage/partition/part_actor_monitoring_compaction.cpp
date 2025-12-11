@@ -56,12 +56,11 @@ void TPartitionActor::HandleHttpInfo_ForceCompaction(
         auto startIndex = Min(State->GetBlocksCount(), blockIndex);
         auto endIndex = Min(State->GetBlocksCount(), blockIndex + blocksCount);
 
-        rangesToCompact = TVector<ui32>(
-            ::xrange(
-                compactionMap.GetRangeStart(startIndex),
-                compactionMap.GetRangeStart(endIndex) + compactionMap.GetRangeSize(),
-                compactionMap.GetRangeSize())
-        );
+        rangesToCompact = TVector<ui32>(::xrange(
+            compactionMap.GetRangeStart(startIndex),
+            compactionMap.GetRangeStart(endIndex) +
+                compactionMap.GetRangeSize(),
+            compactionMap.GetRangeSize()));
     } else {
         rangesToCompact = compactionMap.GetNonEmptyRanges();
     }
@@ -75,7 +74,10 @@ void TPartitionActor::HandleHttpInfo_ForceCompaction(
         return;
     }
 
-    AddForcedCompaction(ctx, std::move(rangesToCompact), "partition-monitoring-compaction");
+    AddForcedCompaction(
+        ctx,
+        std::move(rangesToCompact),
+        "partition-monitoring-compaction");
     EnqueueForcedCompaction(ctx);
 
     SendHttpResponse(

@@ -19,7 +19,7 @@ void TFSyncCache::AddRequest(const TRequest& request)
 {
     Y_ABORT_UNLESS(request.NodeId);
 
-    TItem item{ .Request = request };
+    TItem item{.Request = request};
 
     // Meta request.
     Meta[request.NodeId].emplace(request.ReqId, item);
@@ -40,37 +40,42 @@ void TFSyncCache::AddRequest(const TRequest& request)
 
 TFuture<NProto::TError> TFSyncCache::AddFSyncRequest(const TRequest& request)
 {
-    TItem item{ .Request = request, .Promise = NewPromise<NProto::TError>() };
+    TItem item{.Request = request, .Promise = NewPromise<NProto::TError>()};
     auto future = item.Promise.GetFuture();
 
     if (request.NodeId) {
         if (request.Handle) {
             // Node Data request.
-            Data[request.NodeId][request.Handle]
-                .emplace(request.ReqId, std::move(item));
+            Data[request.NodeId][request.Handle].emplace(
+                request.ReqId,
+                std::move(item));
 
-            STORAGE_TRACE(LogTag
-                << " FSync request was added to local data map " << request);
+            STORAGE_TRACE(
+                LogTag << " FSync request was added to local data map "
+                       << request);
         } else {
             // Node Meta request.
             Meta[request.NodeId].emplace(request.ReqId, std::move(item));
 
-            STORAGE_TRACE(LogTag
-                << " FSync request was added to local meta map " << request);
+            STORAGE_TRACE(
+                LogTag << " FSync request was added to local meta map "
+                       << request);
         }
     } else {
         if (request.Handle) {
             // Global Data request.
             GlobalData.emplace(request.ReqId, std::move(item));
 
-            STORAGE_TRACE(LogTag
-                << " FSync request was added to global data map " << request);
+            STORAGE_TRACE(
+                LogTag << " FSync request was added to global data map "
+                       << request);
         } else {
             // Global Meta request.
             GlobalMeta.emplace(request.ReqId, std::move(item));
 
-            STORAGE_TRACE(LogTag
-                << " FSync request was added to global meta map " << request);
+            STORAGE_TRACE(
+                LogTag << " FSync request was added to global meta map "
+                       << request);
         }
     }
 
@@ -98,8 +103,8 @@ void TFSyncCache::RemoveRequest(const TRequest& request)
             Meta.erase(nodeIt);
         }
 
-        STORAGE_TRACE(LogTag
-            << " Request was removed from local meta map " << request);
+        STORAGE_TRACE(
+            LogTag << " Request was removed from local meta map " << request);
 
         // Global meta request.
         if (!GlobalMeta.erase(request.ReqId)) {
@@ -108,8 +113,8 @@ void TFSyncCache::RemoveRequest(const TRequest& request)
                 request.ReqId);
         }
 
-        STORAGE_TRACE(LogTag
-            << " Request was removed from global meta map " << request);
+        STORAGE_TRACE(
+            LogTag << " Request was removed from global meta map " << request);
     }
 
     if (request.Handle) {
@@ -136,8 +141,8 @@ void TFSyncCache::RemoveRequest(const TRequest& request)
             }
         }
 
-        STORAGE_TRACE(LogTag
-            << " Request was removed from local data map " << request);
+        STORAGE_TRACE(
+            LogTag << " Request was removed from local data map " << request);
 
         // Global data request.
         if (!GlobalData.erase(request.ReqId)) {
@@ -146,8 +151,8 @@ void TFSyncCache::RemoveRequest(const TRequest& request)
                 request.ReqId);
         }
 
-        STORAGE_TRACE(LogTag
-            << " Request was removed from global data map " << request);
+        STORAGE_TRACE(
+            LogTag << " Request was removed from global data map " << request);
     }
 
     CheckFSyncNotifications();
@@ -155,7 +160,8 @@ void TFSyncCache::RemoveRequest(const TRequest& request)
 
 void TFSyncCache::CheckFSyncNotifications()
 {
-    const auto notifyAndErase = [this] (auto& kv) {
+    const auto notifyAndErase = [this](auto& kv)
+    {
         return NotifyAndEraseLatest(kv.second);
     };
 
@@ -166,11 +172,14 @@ void TFSyncCache::CheckFSyncNotifications()
     NotifyAndEraseLatest(GlobalMeta);
 
     // Check in node data map.
-    EraseNodesIf(Data, [&] (auto& kv) {
-        auto& map = kv.second;
-        EraseNodesIf(map, notifyAndErase);
-        return map.empty();
-    });
+    EraseNodesIf(
+        Data,
+        [&](auto& kv)
+        {
+            auto& map = kv.second;
+            EraseNodesIf(map, notifyAndErase);
+            return map.empty();
+        });
 
     // Check in global data map.
     NotifyAndEraseLatest(GlobalData);
@@ -202,8 +211,8 @@ void TFSyncCache::Notify(
     // https://man7.org/linux/man-pages/man3/fflush.3.html
     promise.SetValue({});
 
-    STORAGE_TRACE(LogTag
-        << " FSync request was notified and erased " << request);
+    STORAGE_TRACE(
+        LogTag << " FSync request was notified and erased " << request);
 }
 
 bool TFSyncCache::IsFSync(const TItem& item) const
@@ -214,8 +223,8 @@ bool TFSyncCache::IsFSync(const TItem& item) const
 ////////////////////////////////////////////////////////////////////////////////
 
 TFSyncQueue::TFSyncQueue(
-        const TString& fileSystemId,
-        ILoggingServicePtr logging)
+    const TString& fileSystemId,
+    ILoggingServicePtr logging)
     : LogTag("[" + fileSystemId + "][FSYNC]")
     , Logging(std::move(logging))
     , Log(Logging->CreateLog("NFS_FUSE"))
@@ -224,7 +233,7 @@ TFSyncQueue::TFSyncQueue(
 
 void TFSyncQueue::Enqueue(TRequestId reqId, TNodeId nodeId, THandle handle)
 {
-    TRequest request{ .ReqId = reqId, .NodeId = nodeId, .Handle = handle };
+    TRequest request{.ReqId = reqId, .NodeId = nodeId, .Handle = handle};
 
     STORAGE_TRACE(LogTag << " Request was started " << request);
 
@@ -242,7 +251,7 @@ void TFSyncQueue::Dequeue(
     // TODO: Request can finish with error
     Y_UNUSED(error);
 
-    TRequest request{ .ReqId = reqId, .NodeId = nodeId, .Handle = handle };
+    TRequest request{.ReqId = reqId, .NodeId = nodeId, .Handle = handle};
 
     STORAGE_TRACE(LogTag << " Request was finished " << request);
 
@@ -255,10 +264,10 @@ TFuture<NProto::TError> TFSyncQueue::WaitForRequests(
     TRequestId reqId,
     TNodeId nodeId)
 {
-    TRequest request{ .ReqId = reqId, .NodeId = nodeId };
+    TRequest request{.ReqId = reqId, .NodeId = nodeId};
 
-    STORAGE_TRACE(LogTag
-        << " FSync request was received " << request << " meta");
+    STORAGE_TRACE(
+        LogTag << " FSync request was received " << request << " meta");
 
     with_lock (StateLock) {
         return CurrentState.AddFSyncRequest(request);
@@ -268,7 +277,10 @@ TFuture<NProto::TError> TFSyncQueue::WaitForRequests(
 TFuture<NProto::TError> TFSyncQueue::WaitForDataRequests(TRequestId reqId)
 {
     // Handle should not be equal to InvalidHandle for global data fsync.
-    return WaitForDataRequests(reqId, TNodeId {InvalidNodeId}, THandle {~InvalidHandle});
+    return WaitForDataRequests(
+        reqId,
+        TNodeId{InvalidNodeId},
+        THandle{~InvalidHandle});
 }
 
 TFuture<NProto::TError> TFSyncQueue::WaitForDataRequests(
@@ -276,10 +288,10 @@ TFuture<NProto::TError> TFSyncQueue::WaitForDataRequests(
     TNodeId nodeId,
     THandle handle)
 {
-    TRequest request{ .ReqId = reqId, .NodeId = nodeId, .Handle = handle };
+    TRequest request{.ReqId = reqId, .NodeId = nodeId, .Handle = handle};
 
-    STORAGE_TRACE(LogTag
-        << " FSync request was received " << request << " data");
+    STORAGE_TRACE(
+        LogTag << " FSync request was received " << request << " data");
 
     with_lock (StateLock) {
         return CurrentState.AddFSyncRequest(request);
@@ -340,8 +352,6 @@ inline void Out<NCloud::NFileStore::NVFS::TFSyncCache::TRequest>(
     IOutputStream& out,
     const NCloud::NFileStore::NVFS::TFSyncCache::TRequest& request)
 {
-    out
-        << "#" << ToUnderlying(request.NodeId)
-        << " @" << ToUnderlying(request.Handle)
-        << " id:" << request.ReqId;
+    out << "#" << ToUnderlying(request.NodeId) << " @"
+        << ToUnderlying(request.Handle) << " id:" << request.ReqId;
 }

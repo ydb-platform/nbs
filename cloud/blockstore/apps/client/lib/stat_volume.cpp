@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -14,8 +15,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStatVolumeCommand final
-    : public TCommand
+class TStatVolumeCommand final: public TCommand
 {
 private:
     TString DiskId;
@@ -30,13 +30,11 @@ public:
             .RequiredArgument("STR")
             .StoreResult(&DiskId);
 
-        Opts.AddLongOption("flags")
-            .RequiredArgument("NUM")
-            .StoreResult(&Flags);
+        Opts.AddLongOption("flags").RequiredArgument("NUM").StoreResult(&Flags);
 
         Opts.AddLongOption(
-            "storage-config-fields",
-            "Get overridden value of these StorageConfig's fields")
+                "storage-config-fields",
+                "Get overridden value of these StorageConfig's fields")
             .RequiredArgument("STR")
             .AppendTo(&StorageConfigFields);
     }
@@ -92,7 +90,7 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

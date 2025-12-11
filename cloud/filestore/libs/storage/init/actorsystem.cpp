@@ -57,8 +57,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStorageServicesInitializer final
-    : public IServiceInitializer
+class TStorageServicesInitializer final: public IServiceInitializer
 {
 private:
     const TActorSystemArgs Args;
@@ -66,8 +65,8 @@ private:
 
 public:
     TStorageServicesInitializer(
-            const TActorSystemArgs& args,
-            IRequestStatsRegistryPtr statsRegistry)
+        const TActorSystemArgs& args,
+        IRequestStatsRegistryPtr statsRegistry)
         : Args{args}
         , StatsRegistry{std::move(statsRegistry)}
     {}
@@ -191,8 +190,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCustomLocalServiceInitializer final
-    : public IServiceInitializer
+class TCustomLocalServiceInitializer final: public IServiceInitializer
 {
 private:
     const TActorSystemArgs Args;
@@ -200,8 +198,8 @@ private:
 
 public:
     TCustomLocalServiceInitializer(
-            const TActorSystemArgs& args,
-            NMetrics::IMetricsRegistryPtr metricsRegistry)
+        const TActorSystemArgs& args,
+        NMetrics::IMetricsRegistryPtr metricsRegistry)
         : Args(args)
         , MetricsRegistry(std::move(metricsRegistry))
     {}
@@ -213,31 +211,30 @@ public:
         auto config = Args.StorageConfig;
         auto diagConfig = Args.DiagnosticsConfig;
 
-        auto tabletFactory =
-            [config,
-             diagConfig,
-             profileLog = Args.ProfileLog,
-             traceSerializer = Args.TraceSerializer,
-             metricsRegistry = MetricsRegistry] (
-                const TActorId& owner,
-                TTabletStorageInfo* storage)
-            {
-                Y_ABORT_UNLESS(storage->TabletType == TTabletTypes::FileStore);
-                bool useNoneCompactionPolicy = true;
-                if (config->GetNewLocalDBCompactionPolicyEnabled()) {
-                    useNoneCompactionPolicy = false;
-                }
-                auto actor = CreateIndexTablet(
-                    owner,
-                    storage,
-                    config,
-                    diagConfig,
-                    std::move(profileLog),
-                    std::move(traceSerializer),
-                    std::move(metricsRegistry),
-                    useNoneCompactionPolicy);
-                return actor.release();
-            };
+        auto tabletFactory = [config,
+                              diagConfig,
+                              profileLog = Args.ProfileLog,
+                              traceSerializer = Args.TraceSerializer,
+                              metricsRegistry = MetricsRegistry](
+                                 const TActorId& owner,
+                                 TTabletStorageInfo* storage)
+        {
+            Y_ABORT_UNLESS(storage->TabletType == TTabletTypes::FileStore);
+            bool useNoneCompactionPolicy = true;
+            if (config->GetNewLocalDBCompactionPolicyEnabled()) {
+                useNoneCompactionPolicy = false;
+            }
+            auto actor = CreateIndexTablet(
+                owner,
+                storage,
+                config,
+                diagConfig,
+                std::move(profileLog),
+                std::move(traceSerializer),
+                std::move(metricsRegistry),
+                useNoneCompactionPolicy);
+            return actor.release();
+        };
 
         TLocalConfig::TPtr localConfig = new TLocalConfig();
 
@@ -257,16 +254,17 @@ public:
         }
 
         localConfig->TabletClassInfo[tabletType] =
-            TLocalConfig::TTabletClassInfo(
-                new TTabletSetupInfo(
-                    std::move(tabletFactory),
-                    TMailboxType::ReadAsFilled,
-                    appData->UserPoolId,
-                    TMailboxType::ReadAsFilled,
-                    appData->SystemPoolId));
+            TLocalConfig::TTabletClassInfo(new TTabletSetupInfo(
+                std::move(tabletFactory),
+                TMailboxType::ReadAsFilled,
+                appData->UserPoolId,
+                TMailboxType::ReadAsFilled,
+                appData->SystemPoolId));
 
-        TTenantPoolConfig::TPtr tenantPoolConfig = new TTenantPoolConfig(localConfig);
-        tenantPoolConfig->AddStaticSlot(Args.StorageConfig->GetSchemeShardDir());
+        TTenantPoolConfig::TPtr tenantPoolConfig =
+            new TTenantPoolConfig(localConfig);
+        tenantPoolConfig->AddStaticSlot(
+            Args.StorageConfig->GetSchemeShardDir());
 
         setup->LocalServices.emplace_back(
             MakeTenantPoolRootID(),
@@ -312,7 +310,9 @@ public:
 
     TLog CreateLog(const TString& component) override;
 
-    IMonPagePtr RegisterIndexPage(const TString& path, const TString& title) override;
+    IMonPagePtr RegisterIndexPage(
+        const TString& path,
+        const TString& title) override;
     void RegisterMonPage(IMonPagePtr page) override;
     IMonPagePtr GetMonPage(const TString& path) override;
     TDynamicCountersPtr GetCounters() override;
@@ -369,7 +369,7 @@ void TActorSystem::Init()
     servicesMask.EnableSharedCache = 1;
     servicesMask.EnableTxProxy = 1;
     servicesMask.EnableIcbService = 1;
-    servicesMask.EnableLocalService = 0;    // configured manually
+    servicesMask.EnableLocalService = 0;   // configured manually
     servicesMask.EnableSchemeBoardMonitoring = 1;
     servicesMask.EnableConfigsDispatcher =
         Args.StorageConfig->GetConfigsDispatcherServiceEnabled();
@@ -424,10 +424,7 @@ TActorId TActorSystem::Register(IActorPtr actor, TStringBuf executorName)
         }
     }
 
-    return ActorSystem->Register(
-        actor.release(),
-        TMailboxType::Simple,
-        id);
+    return ActorSystem->Register(actor.release(), TMailboxType::Simple, id);
 }
 
 bool TActorSystem::Send(const TActorId& recipient, IEventBasePtr event)
@@ -445,12 +442,18 @@ TLog TActorSystem::CreateLog(const TString& componentName)
         auto component = LogSettings->FindComponent(componentName);
         if (component != NLog::InvalidComponent) {
             auto settings = LogSettings->GetComponentSettings(component);
-            logSettings.FiltrationLevel = static_cast<ELogPriority>(settings.Raw.X.Level);
+            logSettings.FiltrationLevel =
+                static_cast<ELogPriority>(settings.Raw.X.Level);
         } else {
-            logSettings.FiltrationLevel = static_cast<ELogPriority>(LogSettings->DefPriority);
+            logSettings.FiltrationLevel =
+                static_cast<ELogPriority>(LogSettings->DefPriority);
         }
 
-        return CreateComponentLog(componentName, LogBackend, Args.AsyncLogger, logSettings);
+        return CreateComponentLog(
+            componentName,
+            LogBackend,
+            Args.AsyncLogger,
+            logSettings);
     }
 
     return {};

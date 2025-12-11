@@ -112,7 +112,7 @@ void TVolumeActor::HandleLinkLeaderVolumeToFollower(
         .LeaderDiskId = msg->Record.GetDiskId(),
         .LeaderShardId = msg->Record.GetLeaderShardId(),
         .FollowerDiskId = msg->Record.GetFollowerDiskId(),
-        .FollowerShardId =  msg->Record.GetFollowerShardId()};
+        .FollowerShardId = msg->Record.GetFollowerShardId()};
 
     if (auto follower = State->FindFollower(link)) {
         link = follower->Link;

@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
+
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -18,17 +19,17 @@ namespace NCloud::NBlockStore::NLoadTest {
 ////////////////////////////////////////////////////////////////////////////////
 
 TCompareDataActionRunner::TCompareDataActionRunner(
-        TLog& log,
-        TAppContext& appContext,
-        const TAliasedVolumes& aliasedVolumes,
-        NClient::TClientAppConfigPtr clientConfig,
-        ITimerPtr timer,
-        ISchedulerPtr scheduler,
-        ILoggingServicePtr logging,
-        IRequestStatsPtr requestStats,
-        IVolumeStatsPtr volumeStats,
-        IClientFactory& clientFactory,
-        TTestContext& testContext)
+    TLog& log,
+    TAppContext& appContext,
+    const TAliasedVolumes& aliasedVolumes,
+    NClient::TClientAppConfigPtr clientConfig,
+    ITimerPtr timer,
+    ISchedulerPtr scheduler,
+    ILoggingServicePtr logging,
+    IRequestStatsPtr requestStats,
+    IVolumeStatsPtr volumeStats,
+    IClientFactory& clientFactory,
+    TTestContext& testContext)
     : Log(log)
     , AppContext(appContext)
     , AliasedVolumes(aliasedVolumes)
@@ -40,8 +41,7 @@ TCompareDataActionRunner::TCompareDataActionRunner(
     , VolumeStats(std::move(volumeStats))
     , ClientFactory(clientFactory)
     , TestContext(testContext)
-{
-}
+{}
 
 int TCompareDataActionRunner::Run(
     const NProto::TActionGraph::TCompareDataAction& action)
@@ -53,14 +53,12 @@ int TCompareDataActionRunner::Run(
         TestContext.Client->Start();
 
         Y_ENSURE(
-            action.GetExpected().GetVolumeName()
-                == action.GetActual().GetVolumeName(),
-            "different volume names in Expected/Actual not supported yet"
-        );
+            action.GetExpected().GetVolumeName() ==
+                action.GetActual().GetVolumeName(),
+            "different volume names in Expected/Actual not supported yet");
 
-        auto volumeName = AliasedVolumes.ResolveAlias(
-            action.GetExpected().GetVolumeName()
-        );
+        auto volumeName =
+            AliasedVolumes.ResolveAlias(action.GetExpected().GetVolumeName());
 
         NClient::TSessionConfig sessionConfig;
         sessionConfig.DiskId = volumeName;
@@ -77,14 +75,12 @@ int TCompareDataActionRunner::Run(
             VolumeStats,
             TestContext.Client,
             ClientConfig,
-            sessionConfig
-        );
+            sessionConfig);
         STORAGE_INFO("Mount volume: " << volumeName);
         auto response = WaitForCompletion(
             "MountVolume",
             TestContext.Session->MountVolume(),
-            {}
-        );
+            {});
 
         TestContext.Volume = response.GetVolume();
 
@@ -95,12 +91,13 @@ int TCompareDataActionRunner::Run(
         TVector<char> expectedBuffer(bufferSize);
         TVector<char> actualBuffer(bufferSize);
 
-        for (ui32 blockIndex = 0; blockIndex < blocksCount; blockIndex += chunkSize) {
+        for (ui32 blockIndex = 0; blockIndex < blocksCount;
+             blockIndex += chunkSize)
+        {
             if (AppContext.ShouldStop.load(std::memory_order_acquire)) {
                 STORAGE_INFO(
                     "Cancelled block crcs initialization for volume: "
-                    << volumeName
-                );
+                    << volumeName);
                 return EC_COMPARE_DATA_ACTION_FAILED;
             }
 
@@ -109,15 +106,13 @@ int TCompareDataActionRunner::Run(
                 action.GetExpected(),
                 blockIndex,
                 requestBlocks,
-                &expectedBuffer
-            );
+                &expectedBuffer);
 
             ReadBlocks(
                 action.GetActual(),
                 blockIndex,
                 requestBlocks,
-                &actualBuffer
-            );
+                &actualBuffer);
 
             ui32 lastBadBlock = -1;
             for (ui32 i = 0; i < bufferSize; ++i) {
@@ -127,11 +122,10 @@ int TCompareDataActionRunner::Run(
                     if (block != lastBadBlock) {
                         STORAGE_ERROR(
                             "CompareData: inconsistency in block "
-                            << block
-                            << ", byte " << (i % TestContext.Volume.GetBlockSize())
+                            << block << ", byte "
+                            << (i % TestContext.Volume.GetBlockSize())
                             << ", expected=" << ui32(ui8(expectedBuffer[i]))
-                            << ", actual=" << ui32(ui8(actualBuffer[i]))
-                        );
+                            << ", actual=" << ui32(ui8(actualBuffer[i])));
                         code = EC_COMPARE_DATA_ACTION_FAILED;
                     }
                     lastBadBlock = block;
@@ -149,11 +143,11 @@ int TCompareDataActionRunner::Run(
             WaitForCompletion(
                 "UnmountVolume",
                 TestContext.Session->UnmountVolume(),
-                {}
-            );
+                {});
         }
     } catch (...) {
-        STORAGE_ERROR("Exception during CompareData execution: "
+        STORAGE_ERROR(
+            "Exception during CompareData execution: "
             << CurrentExceptionMessage());
         AppContext.FailedTests.fetch_add(1);
         return EC_COMPARE_DATA_ACTION_FAILED;
@@ -189,13 +183,10 @@ void TCompareDataActionRunner::ReadBlocks(
     if (HasError(response)) {
         const auto& error = response.GetError();
         STORAGE_ERROR(
-            "ReadBlocks failed" <<
-            " for disk " << TestContext.Volume.GetDiskId() <<
-            " at block " << blockIndex <<
-            " range " << blocksCount <<
-            " with error " << error.GetCode() <<
-            " , message " << error.GetMessage()
-        );
+            "ReadBlocks failed"
+            << " for disk " << TestContext.Volume.GetDiskId() << " at block "
+            << blockIndex << " range " << blocksCount << " with error "
+            << error.GetCode() << " , message " << error.GetMessage());
         throw yexception()
             << "CompareData failed because of a ReadBlocks failure: "
             << FormatError(error);
@@ -216,8 +207,7 @@ void TCompareDataActionRunner::ReadBlocks(
             source.GetSecondCheckpointId(),
             blockIndex,
             blocksCount,
-            &update
-        );
+            &update);
 
         auto request = std::make_shared<NProto::TGetChangedBlocksRequest>();
         request->SetDiskId(TestContext.Volume.GetDiskId());
@@ -230,20 +220,18 @@ void TCompareDataActionRunner::ReadBlocks(
             "GetChangedBlocks",
             TestContext.Client->GetChangedBlocks(
                 MakeIntrusive<TCallContext>(),
-                std::move(request)
-            ),
-            {}
-        );
+                std::move(request)),
+            {});
 
         for (ui32 i = 0; i < response.GetMask().size(); ++i) {
             for (ui32 j = 0; j < 8; ++j) {
                 if (response.GetMask()[i] & (1 << j)) {
-                    const auto idx = (i * 8 + j) * TestContext.Volume.GetBlockSize();
+                    const auto idx =
+                        (i * 8 + j) * TestContext.Volume.GetBlockSize();
                     memcpy(
                         buffer->begin() + idx,
                         update.begin() + idx,
-                        TestContext.Volume.GetBlockSize()
-                    );
+                        TestContext.Volume.GetBlockSize());
                 }
             }
         }

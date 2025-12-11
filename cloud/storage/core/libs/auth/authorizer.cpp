@@ -3,14 +3,14 @@
 #include "auth_counters.h"
 #include "auth_scheme.h"
 
-#include <cloud/storage/core/libs/kikimr/helpers.h>
 #include <cloud/storage/core/libs/api/authorizer.h>
+#include <cloud/storage/core/libs/kikimr/helpers.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/security/ticket_parser.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
+
 #include <library/cpp/digest/crc32c/crc32c.h>
 
 #include <util/generic/deque.h>
@@ -59,10 +59,10 @@ struct TRequestPermissionsInfo
     const TString& Token;
 
     TRequestPermissionsInfo(
-            ui64 requestId,
-            const TVector<TString>& permissions,
-            const TVector<std::pair<TString, TString>>& attributes,
-            const TString& token)
+        ui64 requestId,
+        const TVector<TString>& permissions,
+        const TVector<std::pair<TString, TString>>& attributes,
+        const TString& token)
         : RequestId(requestId)
         , Permissions(permissions)
         , Attributes(attributes)
@@ -70,18 +70,18 @@ struct TRequestPermissionsInfo
     {}
 };
 
-IOutputStream& operator <<(
+IOutputStream& operator<<(
     IOutputStream& out,
     const TRequestPermissionsInfo& info)
 {
     out << "{ ";
     out << "RequestId = " << info.RequestId << ", ";
     out << "Permissions = [";
-    for (const auto& permission : info.Permissions) {
+    for (const auto& permission: info.Permissions) {
         out << "'" << permission << "', ";
     }
     out << "], ";
-    for (const auto& attribute : info.Attributes) {
+    for (const auto& attribute: info.Attributes) {
         if (attribute.first == "folder_id") {
             out << "folder_id = '" << attribute.second << "', ";
             break;
@@ -100,16 +100,16 @@ struct TResponsePermissionsInfo
     const bool Allowed;
 
     TResponsePermissionsInfo(
-            ui64 requestId,
-            const TEvTicketParser::TEvAuthorizeTicketResult& response,
-            bool allowed)
+        ui64 requestId,
+        const TEvTicketParser::TEvAuthorizeTicketResult& response,
+        bool allowed)
         : RequestId(requestId)
         , Response(response)
         , Allowed(allowed)
     {}
 };
 
-IOutputStream& operator <<(
+IOutputStream& operator<<(
     IOutputStream& out,
     const TResponsePermissionsInfo& info)
 {
@@ -121,7 +121,7 @@ IOutputStream& operator <<(
     out << "Ticket = '" << MaskSecret(info.Response.Ticket) << "', ";
     if (const auto& token = info.Response.Token) {
         out << "GroupSIDs = [";
-        for (const auto& sid : token->GetGroupSIDs()) {
+        for (const auto& sid: token->GetGroupSIDs()) {
             out << "'" << sid << "', ";
         }
         out << "], ";
@@ -144,9 +144,9 @@ bool PermissionsMatch(
     if (!userToken) {
         return false;
     }
-    for (const auto& permission : requestedPermissions) {
+    for (const auto& permission: requestedPermissions) {
         TString sid = TStringBuilder()
-            << permission << "-" << DatabaseId << "@as";
+                      << permission << "-" << DatabaseId << "@as";
         if (!userToken->IsExist(sid)) {
             return false;
         }
@@ -182,13 +182,13 @@ private:
 
 public:
     TRequestPermissionsActor(
-            int component,
-            ui64 requestId,
-            TString token,
-            TVector<TString> permissions,
-            TVector<std::pair<TString, TString>> attributes,
-            IEventHandlePtr originalRequest,
-            TAuthCountersPtr counters)
+        int component,
+        ui64 requestId,
+        TString token,
+        TVector<TString> permissions,
+        TVector<std::pair<TString, TString>> attributes,
+        IEventHandlePtr originalRequest,
+        TAuthCountersPtr counters)
         : Component(component)
         , RequestId(requestId)
         , Token(std::move(token))
@@ -200,9 +200,14 @@ public:
 
     void Bootstrap(const TActorContext& ctx)
     {
-        LOG_DEBUG_S(ctx, Component,
-            "Requesting permissions: "
-            << TRequestPermissionsInfo(RequestId, Permissions, Attributes, Token));
+        LOG_DEBUG_S(
+            ctx,
+            Component,
+            "Requesting permissions: " << TRequestPermissionsInfo(
+                RequestId,
+                Permissions,
+                Attributes,
+                Token));
 
         NCloud::Send(
             ctx,
@@ -236,12 +241,15 @@ private:
         const auto* msg = ev->Get();
 
         if (msg->Error && msg->Error.Retryable) {
-            LOG_WARN_S(ctx, Component,
+            LOG_WARN_S(
+                ctx,
+                Component,
                 "Permissions response: "
-                << TResponsePermissionsInfo(RequestId, *msg, false));
+                    << TResponsePermissionsInfo(RequestId, *msg, false));
 
             NProto::TError error;
-            // Need to indicate that request should be retried on the client side.
+            // Need to indicate that request should be retried on the client
+            // side.
             error.SetCode(E_REJECTED);
             NCloud::Reply(
                 ctx,
@@ -254,14 +262,17 @@ private:
         const bool allow = PermissionsMatch(Permissions, *msg);
 
         auto logLevel = allow ? NLog::PRI_DEBUG : NLog::PRI_WARN;
-        LOG_LOG_S(ctx, logLevel, Component,
+        LOG_LOG_S(
+            ctx,
+            logLevel,
+            Component,
             "Token = '" << MaskSecret(Token) << "'"
-            << ", Permissions response: "
-            << TResponsePermissionsInfo(RequestId, *msg, allow));
+                        << ", Permissions response: "
+                        << TResponsePermissionsInfo(RequestId, *msg, allow));
 
-        Counters->ReportAuthorizationStatus(allow
-            ? EAuthorizationStatus::PermissionsGranted
-            : EAuthorizationStatus::PermissionsDenied);
+        Counters->ReportAuthorizationStatus(
+            allow ? EAuthorizationStatus::PermissionsGranted
+                  : EAuthorizationStatus::PermissionsDenied);
 
         NProto::TError error;
         if (!allow) {
@@ -278,8 +289,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAuthorizerActor final
-    : public TActorBootstrapped<TAuthorizerActor>
+class TAuthorizerActor final: public TActorBootstrapped<TAuthorizerActor>
 {
 private:
     const int Component;
@@ -291,11 +301,11 @@ private:
 
 public:
     TAuthorizerActor(
-            int component,
-            TString counterId,
-            TString folderId,
-            NProto::EAuthorizationMode authMode,
-            bool checkAuthorization)
+        int component,
+        TString counterId,
+        TString folderId,
+        NProto::EAuthorizationMode authMode,
+        bool checkAuthorization)
         : Component(component)
         , CounterId(std::move(counterId))
         , FolderId(std::move(folderId))
@@ -305,9 +315,8 @@ public:
 
     void Bootstrap(const TActorContext& ctx)
     {
-        Counters = MakeIntrusive<TAuthCounters>(
-            AppData(ctx)->Counters,
-            CounterId);
+        Counters =
+            MakeIntrusive<TAuthCounters>(AppData(ctx)->Counters, CounterId);
 
         TThis::Become(&TThis::StateWork);
     }
@@ -316,9 +325,7 @@ private:
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
-            HFunc(
-                TEvAuth::TEvAuthorizationRequest,
-                HandleAuthorizationRequest);
+            HFunc(TEvAuth::TEvAuthorizationRequest, HandleAuthorizationRequest);
 
             default:
                 HandleUnexpectedEvent(ev, Component, __PRETTY_FUNCTION__);
@@ -346,9 +353,11 @@ private:
 
         if (msg->Token.empty()) {
             if (requireAuthorization) {
-                LOG_ERROR_S(ctx, Component,
+                LOG_ERROR_S(
+                    ctx,
+                    Component,
                     "Request for authorization with empty token: "
-                    << requestId);
+                        << requestId);
 
                 Counters->ReportAuthorizationStatus(
                     EAuthorizationStatus::PermissionsDeniedWithEmptyToken);
@@ -356,11 +365,14 @@ private:
                 NCloud::Reply(
                     ctx,
                     *ev,
-                    std::make_unique<TEvAuth::TEvAuthorizationResponse>(MakeError(E_UNAUTHORIZED)));
+                    std::make_unique<TEvAuth::TEvAuthorizationResponse>(
+                        MakeError(E_UNAUTHORIZED)));
             } else {
-                LOG_DEBUG_S(ctx, Component,
+                LOG_DEBUG_S(
+                    ctx,
+                    Component,
                     "Authorization is skipped for request with empty token: "
-                    << requestId);
+                        << requestId);
 
                 Counters->ReportAuthorizationStatus(
                     EAuthorizationStatus::PermissionsGrantedWithEmptyToken);
@@ -376,9 +388,11 @@ private:
 
         if (!CheckAuthorization) {
             if (requireAuthorization) {
-                LOG_ERROR_S(ctx, Component,
+                LOG_ERROR_S(
+                    ctx,
+                    Component,
                     "Authorization is disabled but enforced. Failing request: "
-                    << requestId);
+                        << requestId);
 
                 Counters->ReportAuthorizationStatus(
                     EAuthorizationStatus::PermissionsDeniedWhenDisabled);
@@ -386,11 +400,14 @@ private:
                 NCloud::Reply(
                     ctx,
                     *ev,
-                    std::make_unique<TEvAuth::TEvAuthorizationResponse>(MakeError(E_UNAUTHORIZED)));
+                    std::make_unique<TEvAuth::TEvAuthorizationResponse>(
+                        MakeError(E_UNAUTHORIZED)));
             } else {
-                LOG_WARN_S(ctx, Component,
+                LOG_WARN_S(
+                    ctx,
+                    Component,
                     "Request for authorization with authorization disabled: "
-                    << requestId);
+                        << requestId);
 
                 Counters->ReportAuthorizationStatus(
                     EAuthorizationStatus::PermissionsGrantedWhenDisabled);
@@ -405,7 +422,9 @@ private:
         }
 
         if (FolderId.empty()) {
-            LOG_ERROR_S(ctx, Component,
+            LOG_ERROR_S(
+                ctx,
+                Component,
                 "Authorization is enabled but FolderId is not set on server");
 
             Counters->ReportAuthorizationStatus(
@@ -414,7 +433,8 @@ private:
             NCloud::Reply(
                 ctx,
                 *ev,
-                std::make_unique<TEvAuth::TEvAuthorizationResponse>(MakeError(E_UNAUTHORIZED)));
+                std::make_unique<TEvAuth::TEvAuthorizationResponse>(
+                    MakeError(E_UNAUTHORIZED)));
         }
 
         NCloud::RegisterLocal(
@@ -430,7 +450,7 @@ private:
     }
 };
 
-}  // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

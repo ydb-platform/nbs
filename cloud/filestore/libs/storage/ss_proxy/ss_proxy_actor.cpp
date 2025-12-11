@@ -26,7 +26,8 @@ void TSSProxyActor::Bootstrap(const TActorContext& ctx)
         .PipeClientMinRetryTime = Config->GetPipeClientMinRetryTime(),
         .PipeClientMaxRetryTime = Config->GetPipeClientMaxRetryTime(),
         .SchemeShardDir = Config->GetSchemeShardDir(),
-        .PathDescriptionBackupFilePath = Config->GetPathDescriptionBackupFilePath(),
+        .PathDescriptionBackupFilePath =
+            Config->GetPathDescriptionBackupFilePath(),
     });
     StorageSSProxy = NCloud::Register(ctx, std::move(actor));
 }
@@ -36,9 +37,13 @@ void TSSProxyActor::Bootstrap(const TActorContext& ctx)
 bool TSSProxyActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvStorageSSProxy::TEvDescribeSchemeRequest, HandleDescribeScheme);
+        HFunc(
+            TEvStorageSSProxy::TEvDescribeSchemeRequest,
+            HandleDescribeScheme);
         HFunc(TEvStorageSSProxy::TEvModifySchemeRequest, HandleModifyScheme);
-        HFunc(TEvStorageSSProxy::TEvBackupPathDescriptionsRequest, HandleBackupPathDescriptions);
+        HFunc(
+            TEvStorageSSProxy::TEvBackupPathDescriptionsRequest,
+            HandleBackupPathDescriptions);
 
         FILESTORE_SS_PROXY_REQUESTS(FILESTORE_HANDLE_REQUEST, TEvSSProxy)
 

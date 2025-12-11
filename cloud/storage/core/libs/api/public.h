@@ -8,7 +8,7 @@ namespace NMonitoring {
 
 class IMetricSupplier;
 
-}   // NMonitoring
+}   // namespace NMonitoring
 
 namespace NCloud::NStorage {
 

@@ -1,4 +1,5 @@
 #include "healthcheck.h"
+
 #include "config.h"
 #include "ping.h"
 #include "test_server.h"
@@ -54,8 +55,7 @@ struct TEnv
                     PortManager.GetTcpPort(),
                     RootCertsPath,
                     PrivateKeyPath,
-                    CertPath
-                ));
+                    CertPath));
 
                 try {
                     Instances.back()->ForkStart();
@@ -107,16 +107,16 @@ Y_UNIT_TEST_SUITE(HealthcheckTest)
             std::move(logging),
             monitoring,
             CreateInsecurePingClient(),
-            CreateSecurePingClient(env.RootCertsPath)
-        );
+            CreateSecurePingClient(env.RootCertsPath));
 
         healthChecker->Start();
 
         TInstanceList instances;
-        for (const auto& instance : env.Instances) {
-            instances.Instances.push_back(Instance("localhost", insecure
-                ? instance->Port()
-                : instance->SecurePort(), insecure));
+        for (const auto& instance: env.Instances) {
+            instances.Instances.push_back(Instance(
+                "localhost",
+                insecure ? instance->Port() : instance->SecurePort(),
+                insecure));
         }
         instances.Instances.push_back(Instance("0.0.0.0", 1));
         instances.Instances.push_back(Instance("nonexistenthost", 80));
@@ -127,35 +127,34 @@ Y_UNIT_TEST_SUITE(HealthcheckTest)
 
         healthChecker->UpdateStatus(instances).Wait();
 
-        UNIT_ASSERT(instances.Instances[0].Status
-            == TInstanceInfo::EStatus::Reachable);
-        UNIT_ASSERT_VALUES_EQUAL(
-            100,
-            instances.Instances[0].LastStat.Bytes
-        );
+        UNIT_ASSERT(
+            instances.Instances[0].Status == TInstanceInfo::EStatus::Reachable);
+        UNIT_ASSERT_VALUES_EQUAL(100, instances.Instances[0].LastStat.Bytes);
 
-        UNIT_ASSERT(instances.Instances[1].Status
-            == TInstanceInfo::EStatus::Reachable);
-        UNIT_ASSERT_VALUES_EQUAL(
-            200,
-            instances.Instances[1].LastStat.Bytes
-        );
+        UNIT_ASSERT(
+            instances.Instances[1].Status == TInstanceInfo::EStatus::Reachable);
+        UNIT_ASSERT_VALUES_EQUAL(200, instances.Instances[1].LastStat.Bytes);
 
-        UNIT_ASSERT(instances.Instances[2].Status
-            == TInstanceInfo::EStatus::Unreachable);
-        UNIT_ASSERT(instances.Instances[3].Status
-            == TInstanceInfo::EStatus::Unreachable);
-        UNIT_ASSERT(instances.Instances[4].Status
-            == TInstanceInfo::EStatus::Unreachable);
+        UNIT_ASSERT(
+            instances.Instances[2].Status ==
+            TInstanceInfo::EStatus::Unreachable);
+        UNIT_ASSERT(
+            instances.Instances[3].Status ==
+            TInstanceInfo::EStatus::Unreachable);
+        UNIT_ASSERT(
+            instances.Instances[4].Status ==
+            TInstanceInfo::EStatus::Unreachable);
 
         // hdr histogram does not work under tsan
         if (!NSan::TSanIsOn()) {
-            const auto pingTimeMedian = monitoring->GetCounters()
-                ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "discovery")
-                ->GetSubgroup("subcomponent", "healthcheck")
-                ->GetSubgroup("percentiles", "PingTime")
-                ->GetCounter("50")->GetAtomic();
+            const auto pingTimeMedian =
+                monitoring->GetCounters()
+                    ->GetSubgroup("counters", "blockstore")
+                    ->GetSubgroup("component", "discovery")
+                    ->GetSubgroup("subcomponent", "healthcheck")
+                    ->GetSubgroup("percentiles", "PingTime")
+                    ->GetCounter("50")
+                    ->GetAtomic();
 
             UNIT_ASSERT(pingTimeMedian);
         }
@@ -172,35 +171,36 @@ Y_UNIT_TEST_SUITE(HealthcheckTest)
             CreateLoggingService("console"),
             CreateMonitoringServiceStub(),
             CreateInsecurePingClient(),
-            CreateSecurePingClient(env.RootCertsPath)
-        );
+            CreateSecurePingClient(env.RootCertsPath));
 
         healthChecker->Start();
 
         TInstanceList instances;
-        for (const auto& instance : env.Instances) {
-            instances.Instances.push_back(Instance("localhost", insecure
-                ? instance->Port()
-                : instance->SecurePort(), insecure));
+        for (const auto& instance: env.Instances) {
+            instances.Instances.push_back(Instance(
+                "localhost",
+                insecure ? instance->Port() : instance->SecurePort(),
+                insecure));
         }
 
         env.Instances[1]->SetDropPingRequests(true);
 
         healthChecker->UpdateStatus(instances).Wait();
 
-        UNIT_ASSERT(instances.Instances[0].Status
-            == TInstanceInfo::EStatus::Reachable);
-        UNIT_ASSERT(instances.Instances[1].Status
-            == TInstanceInfo::EStatus::Unreachable);
+        UNIT_ASSERT(
+            instances.Instances[0].Status == TInstanceInfo::EStatus::Reachable);
+        UNIT_ASSERT(
+            instances.Instances[1].Status ==
+            TInstanceInfo::EStatus::Unreachable);
 
         env.Instances[1]->SetDropPingRequests(false);
 
         healthChecker->UpdateStatus(instances).Wait();
 
-        UNIT_ASSERT(instances.Instances[0].Status
-            == TInstanceInfo::EStatus::Reachable);
-        UNIT_ASSERT(instances.Instances[1].Status
-            == TInstanceInfo::EStatus::Reachable);
+        UNIT_ASSERT(
+            instances.Instances[0].Status == TInstanceInfo::EStatus::Reachable);
+        UNIT_ASSERT(
+            instances.Instances[1].Status == TInstanceInfo::EStatus::Reachable);
 
         healthChecker->Stop();
     }
@@ -214,28 +214,30 @@ Y_UNIT_TEST_SUITE(HealthcheckTest)
             CreateLoggingService("console"),
             CreateMonitoringServiceStub(),
             CreateInsecurePingClient(),
-            CreateSecurePingClient(env.RootCertsPath)
-        );
+            CreateSecurePingClient(env.RootCertsPath));
 
         healthChecker->Start();
 
         TInstanceList instances;
-        for (const auto& instance : env.Instances) {
-            instances.Instances.push_back(Instance("localhost", insecure
-                ? instance->Port()
-                : instance->SecurePort(), insecure));
+        for (const auto& instance: env.Instances) {
+            instances.Instances.push_back(Instance(
+                "localhost",
+                insecure ? instance->Port() : instance->SecurePort(),
+                insecure));
         }
 
         healthChecker->UpdateStatus(instances).Wait();
 
-        UNIT_ASSERT(instances.Instances[0].Status
-            == TInstanceInfo::EStatus::Reachable);
-        UNIT_ASSERT(instances.Instances[1].Status
-            == TInstanceInfo::EStatus::Reachable);
-        UNIT_ASSERT(instances.Instances[2].Status
-            == TInstanceInfo::EStatus::Unreachable);
-        UNIT_ASSERT(instances.Instances[3].Status
-            == TInstanceInfo::EStatus::Unreachable);
+        UNIT_ASSERT(
+            instances.Instances[0].Status == TInstanceInfo::EStatus::Reachable);
+        UNIT_ASSERT(
+            instances.Instances[1].Status == TInstanceInfo::EStatus::Reachable);
+        UNIT_ASSERT(
+            instances.Instances[2].Status ==
+            TInstanceInfo::EStatus::Unreachable);
+        UNIT_ASSERT(
+            instances.Instances[3].Status ==
+            TInstanceInfo::EStatus::Unreachable);
 
         const auto ts0 = instances.Instances[0].LastStat.Ts;
         const auto ts1 = instances.Instances[1].LastStat.Ts;
@@ -246,14 +248,14 @@ Y_UNIT_TEST_SUITE(HealthcheckTest)
 
         healthChecker->UpdateStatus(instances).Wait();
 
-        UNIT_ASSERT(instances.Instances[0].Status
-            == TInstanceInfo::EStatus::Reachable);
-        UNIT_ASSERT(instances.Instances[1].Status
-            == TInstanceInfo::EStatus::Reachable);
-        UNIT_ASSERT(instances.Instances[2].Status
-            == TInstanceInfo::EStatus::Reachable);
-        UNIT_ASSERT(instances.Instances[3].Status
-            == TInstanceInfo::EStatus::Reachable);
+        UNIT_ASSERT(
+            instances.Instances[0].Status == TInstanceInfo::EStatus::Reachable);
+        UNIT_ASSERT(
+            instances.Instances[1].Status == TInstanceInfo::EStatus::Reachable);
+        UNIT_ASSERT(
+            instances.Instances[2].Status == TInstanceInfo::EStatus::Reachable);
+        UNIT_ASSERT(
+            instances.Instances[3].Status == TInstanceInfo::EStatus::Reachable);
 
         UNIT_ASSERT_VALUES_EQUAL(ts0, instances.Instances[0].LastStat.Ts);
         UNIT_ASSERT_VALUES_EQUAL(ts1, instances.Instances[1].LastStat.Ts);
@@ -265,14 +267,14 @@ Y_UNIT_TEST_SUITE(HealthcheckTest)
 
         healthChecker->UpdateStatus(instances).Wait();
 
-        UNIT_ASSERT(instances.Instances[0].Status
-            == TInstanceInfo::EStatus::Reachable);
-        UNIT_ASSERT(instances.Instances[1].Status
-            == TInstanceInfo::EStatus::Reachable);
-        UNIT_ASSERT(instances.Instances[2].Status
-            == TInstanceInfo::EStatus::Reachable);
-        UNIT_ASSERT(instances.Instances[3].Status
-            == TInstanceInfo::EStatus::Reachable);
+        UNIT_ASSERT(
+            instances.Instances[0].Status == TInstanceInfo::EStatus::Reachable);
+        UNIT_ASSERT(
+            instances.Instances[1].Status == TInstanceInfo::EStatus::Reachable);
+        UNIT_ASSERT(
+            instances.Instances[2].Status == TInstanceInfo::EStatus::Reachable);
+        UNIT_ASSERT(
+            instances.Instances[3].Status == TInstanceInfo::EStatus::Reachable);
 
         UNIT_ASSERT_VALUES_UNEQUAL(ts0, instances.Instances[0].LastStat.Ts);
         UNIT_ASSERT_VALUES_UNEQUAL(ts1, instances.Instances[1].LastStat.Ts);
@@ -311,8 +313,7 @@ Y_UNIT_TEST_SUITE(HealthcheckTest)
             CreateLoggingService("console"),
             CreateMonitoringServiceStub(),
             CreateInsecurePingClient(),
-            CreateSecurePingClient(env.RootCertsPath)
-        );
+            CreateSecurePingClient(env.RootCertsPath));
 
         healthChecker->Start();
 

@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+
 #include <cloud/storage/core/libs/common/sglist.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -21,16 +22,16 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 ////////////////////////////////////////////////////////////////////////////////
 
 TCopyRangeActor::TCopyRangeActor(
-        TRequestInfoPtr requestInfo,
-        ui32 blockSize,
-        TBlockRange64 range,
-        TActorId source,
-        TActorId target,
-        TString writerClientId,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        NActors::TActorId volumeActorId,
-        bool assignVolumeRequestId,
-        TActorId actorToLockAndDrainRange)
+    TRequestInfoPtr requestInfo,
+    ui32 blockSize,
+    TBlockRange64 range,
+    TActorId source,
+    TActorId target,
+    TString writerClientId,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    NActors::TActorId volumeActorId,
+    bool assignVolumeRequestId,
+    TActorId actorToLockAndDrainRange)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , Range(range)
@@ -41,8 +42,7 @@ TCopyRangeActor::TCopyRangeActor(
     , VolumeActorId(volumeActorId)
     , AssignVolumeRequestId(assignVolumeRequestId)
     , ActorToLockAndDrainRange(actorToLockAndDrainRange)
-{
-}
+{}
 
 void TCopyRangeActor::Bootstrap(const TActorContext& ctx)
 {
@@ -135,7 +135,7 @@ void TCopyRangeActor::WriteBlocks(
     headers->SetVolumeRequestId(VolumeRequestId);
 
     const auto& buffers = request->Record.GetBlocks().GetBuffers();
-    for (int i = 0; i < buffers.size();++i) {
+    for (int i = 0; i < buffers.size(); ++i) {
         const TString& block = buffers.Get(i);
         auto blockIndex = i + Range.Start;
 

@@ -7,10 +7,9 @@
 
 #include <cloud/storage/core/libs/api/ss_proxy.h>
 
-#include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
-#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
 #include <contrib/ydb/core/protos/filestore_config.pb.h>
-
+#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 #include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/generic/string.h>
@@ -19,12 +18,12 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_SS_PROXY_REQUESTS(xxx, ...)                                  \
-    xxx(DescribeFileStore,  __VA_ARGS__)                                       \
-    xxx(CreateFileStore,    __VA_ARGS__)                                       \
-    xxx(AlterFileStore,     __VA_ARGS__)                                       \
-    xxx(DestroyFileStore,   __VA_ARGS__)                                       \
-// FILESTORE_SS_PROXY_REQUESTS
+#define FILESTORE_SS_PROXY_REQUESTS(xxx, ...) \
+    xxx(DescribeFileStore, __VA_ARGS__)       \
+    xxx(CreateFileStore, __VA_ARGS__)         \
+    xxx(AlterFileStore, __VA_ARGS__)          \
+    xxx(DestroyFileStore, __VA_ARGS__)        \
+    // FILESTORE_SS_PROXY_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -55,8 +54,8 @@ struct TEvSSProxy
         TDescribeFileStoreResponse() = default;
 
         TDescribeFileStoreResponse(
-                TString path,
-                NKikimrSchemeOp::TPathDescription pathDescription)
+            TString path,
+            NKikimrSchemeOp::TPathDescription pathDescription)
             : Path(std::move(path))
             , PathDescription(std::move(pathDescription))
         {}
@@ -81,8 +80,8 @@ struct TEvSSProxy
         const TString Reason;
 
         TCreateFileStoreResponse(
-                NKikimrScheme::EStatus status = NKikimrScheme::StatusSuccess,
-                TString reason = {})
+            NKikimrScheme::EStatus status = NKikimrScheme::StatusSuccess,
+            TString reason = {})
             : Status(status)
             , Reason(std::move(reason))
         {}
@@ -96,8 +95,7 @@ struct TEvSSProxy
     {
         const NKikimrFileStore::TConfig Config;
 
-        TAlterFileStoreRequest(
-                NKikimrFileStore::TConfig config)
+        TAlterFileStoreRequest(NKikimrFileStore::TConfig config)
             : Config(std::move(config))
         {}
     };
@@ -108,8 +106,8 @@ struct TEvSSProxy
         const TString Reason;
 
         TAlterFileStoreResponse(
-                NKikimrScheme::EStatus status = NKikimrScheme::StatusSuccess,
-                TString reason = TString())
+            NKikimrScheme::EStatus status = NKikimrScheme::StatusSuccess,
+            TString reason = TString())
             : Status(status)
             , Reason(std::move(reason))
         {}
@@ -134,8 +132,8 @@ struct TEvSSProxy
         const TString Reason;
 
         TDestroyFileStoreResponse(
-                NKikimrScheme::EStatus status = NKikimrScheme::StatusSuccess,
-                TString reason = {})
+            NKikimrScheme::EStatus status = NKikimrScheme::StatusSuccess,
+            TString reason = {})
             : Status(status)
             , Reason(std::move(reason))
         {}
@@ -164,7 +162,8 @@ struct TEvSSProxy
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TFileStoreEvents::SS_PROXY_END,
+    static_assert(
+        EvEnd < (int)TFileStoreEvents::SS_PROXY_END,
         "EvEnd expected to be < TFileStoreEvents::SS_PROXY_END");
 
     FILESTORE_SS_PROXY_REQUESTS(FILESTORE_DECLARE_EVENTS)

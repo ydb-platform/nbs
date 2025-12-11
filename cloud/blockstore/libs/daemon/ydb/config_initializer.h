@@ -4,7 +4,6 @@
 
 #include <cloud/blockstore/config/grpc_client.pb.h>
 #include <cloud/blockstore/config/root_kms.pb.h>
-
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/throttling.h>
 #include <cloud/blockstore/libs/common/public.h>
@@ -80,7 +79,8 @@ struct TConfigInitializerYdb final
     bool GetUseNonreplicatedRdmaActor() const override;
     TDuration GetInactiveClientsTimeout() const override;
 
-    void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config) override;
+    void ApplyCustomCMSConfigs(
+        const NKikimrConfig::TAppConfig& config) override;
 
 private:
     void SetupStorageConfig(NProto::TStorageServiceConfig& config) const;

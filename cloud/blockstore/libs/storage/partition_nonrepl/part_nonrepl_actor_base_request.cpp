@@ -20,15 +20,15 @@ using EReason = TEvNonreplPartitionPrivate::TCancelRequest::EReason;
 ///////////////////////////////////////////////////////////////////////////////
 
 TDiskAgentBaseRequestActor::TDiskAgentBaseRequestActor(
-        TRequestInfoPtr requestInfo,
-        ui64 requestId,
-        TString requestName,
-        TRequestTimeoutPolicy timeoutPolicy,
-        TVector<TDeviceRequest> deviceRequests,
-        TNonreplicatedPartitionConfigPtr partConfig,
-        TActorId volumeActorId,
-        const TActorId& part,
-        TChildLogTitle logTitle)
+    TRequestInfoPtr requestInfo,
+    ui64 requestId,
+    TString requestName,
+    TRequestTimeoutPolicy timeoutPolicy,
+    TVector<TDeviceRequest> deviceRequests,
+    TNonreplicatedPartitionConfigPtr partConfig,
+    TActorId volumeActorId,
+    const TActorId& part,
+    TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , DeviceRequests(std::move(deviceRequests))
     , PartConfig(std::move(partConfig))

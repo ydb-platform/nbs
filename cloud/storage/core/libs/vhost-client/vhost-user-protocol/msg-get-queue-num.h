@@ -6,8 +6,7 @@ namespace NVHostUser {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGetQueueNum
-    : public IMessage
+class TGetQueueNum: public IMessage
 {
 private:
     uint64_t QueueNum = 0;
@@ -57,4 +56,4 @@ public:
     }
 };
 
-} // namespace NVHostUser
+}   // namespace NVHostUser

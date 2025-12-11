@@ -1,4 +1,5 @@
 #include "tablet.h"
+
 #include "tablet_schema.h"
 
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
@@ -15,8 +16,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTablet
-    : public NUnitTest::TBaseFixture
+struct TTablet: public NUnitTest::TBaseFixture
 {
 private:
     std::unique_ptr<TTestEnv> Env = nullptr;
@@ -101,22 +101,22 @@ public:
         Tablet->RecoverSession();
     }
 
-#define TEST_CLIENT_DECLARE_METHOD(name)                                       \
-    auto Assert##name##QuickResponse(ui32 status)                              \
-    {                                                                          \
-        return Tablet->Assert##name##QuickResponse(status);                    \
-    }                                                                          \
-                                                                               \
-    auto Assert##name##Response(ui32 status)                                   \
-    {                                                                          \
-        return Tablet->Assert##name##Response(status);                         \
-    }                                                                          \
-                                                                               \
-    void Assert##name##NoResponse()                                            \
-    {                                                                          \
-        Tablet->Assert##name##NoResponse();                                    \
-    }                                                                          \
-// TEST_CLIENT_DECLARE_METHOD
+#define TEST_CLIENT_DECLARE_METHOD(name)                    \
+    auto Assert##name##QuickResponse(ui32 status)           \
+    {                                                       \
+        return Tablet->Assert##name##QuickResponse(status); \
+    }                                                       \
+                                                            \
+    auto Assert##name##Response(ui32 status)                \
+    {                                                       \
+        return Tablet->Assert##name##Response(status);      \
+    }                                                       \
+                                                            \
+    void Assert##name##NoResponse()                         \
+    {                                                       \
+        Tablet->Assert##name##NoResponse();                 \
+    }                                                       \
+    // TEST_CLIENT_DECLARE_METHOD
 
     TEST_CLIENT_DECLARE_METHOD(ReadData);
     TEST_CLIENT_DECLARE_METHOD(WriteData);
@@ -190,7 +190,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
             TDuration::Seconds(25).MilliSeconds(),   // maxPostponedTime
             64,                                      // maxPostponedCount
             100,                                     // burstPercentage
-            1_KB                                     // defaultPostponedRequestWeight
+            1_KB   // defaultPostponedRequestWeight
         );
         UpdateConfig(config);
 
@@ -198,8 +198,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         for (size_t i = 0; i < 10; ++i) {
             Tick(TDuration::Seconds(1));
             ReadData(4_KB * i, 4_KB);
-            const auto readResponse =
-                AssertReadDataQuickResponse(S_OK);
+            const auto readResponse = AssertReadDataQuickResponse(S_OK);
 
             if (i == 0) {
                 UNIT_ASSERT_VALUES_EQUAL(
@@ -399,10 +398,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
             TDuration::Seconds(25).MilliSeconds(),   // maxPostponedTime
             64,                                      // maxPostponedCount
             100,                                     // burstPercentage
-            1_KB                                     // defaultPostponedRequestWeight
+            1_KB   // defaultPostponedRequestWeight
         );
 
-        const auto checkFunction = [this](bool throttlerShouldBeEnabled) {
+        const auto checkFunction = [this](bool throttlerShouldBeEnabled)
+        {
             WriteData(0, 4_KB, 'a');
             if (!throttlerShouldBeEnabled) {
                 AssertWriteDataQuickResponse(S_OK);
@@ -472,7 +472,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
             TDuration::Seconds(25).MilliSeconds(),   // maxPostponedTime
             64,                                      // maxPostponedCount
             100,                                     // burstPercentage
-            1_KB                                     // defaultPostponedRequestWeight
+            1_KB   // defaultPostponedRequestWeight
         );
         UpdateConfig(config);
 
@@ -484,7 +484,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         AssertReadDataQuickResponse(E_REJECTED);
     }
 
-    Y_UNIT_TEST_F(ShouldProperlyProcessPostponedRequestsAfterConfigUpdate, TTablet)
+    Y_UNIT_TEST_F(
+        ShouldProperlyProcessPostponedRequestsAfterConfigUpdate,
+        TTablet)
     {
         auto config = MakeThrottlerConfig(
             true,                                    // throttlingEnabled
@@ -500,7 +502,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
             TDuration::Seconds(25).MilliSeconds(),   // maxPostponedTime
             64,                                      // maxPostponedCount
             100,                                     // burstPercentage
-            1_KB                                     // defaultPostponedRequestWeight
+            1_KB   // defaultPostponedRequestWeight
         );
         UpdateConfig(config);
 
@@ -534,7 +536,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
             TDuration::Seconds(25).MilliSeconds(),   // maxPostponedTime
             64,                                      // maxPostponedCount
             100,                                     // burstPercentage
-            1_KB                                     // defaultPostponedRequestWeight
+            1_KB   // defaultPostponedRequestWeight
         );
         UpdateConfig(config);
 
@@ -555,9 +557,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         AssertReadDataNoResponse();
 
         const auto response = AssertReadDataResponse(S_OK);
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            response->Record.GetBuffer().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetBuffer().size());
         AssertWriteDataResponse(S_OK);
     }
 
@@ -577,7 +577,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
             TDuration::Seconds(1).MilliSeconds(),    // maxPostponedTime
             64,                                      // maxPostponedCount
             100,                                     // burstPercentage
-            1_KB                                     // defaultPostponedRequestWeight
+            1_KB   // defaultPostponedRequestWeight
         );
         UpdateConfig(config);
 
@@ -610,7 +610,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
             TDuration::Seconds(1).MilliSeconds(),    // maxPostponedTime
             64,                                      // maxPostponedCount
             100,                                     // burstPercentage
-            1_KB                                     // defaultPostponedRequestWeight
+            1_KB   // defaultPostponedRequestWeight
         );
         UpdateConfig(config);
 
@@ -638,7 +638,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
             TDuration::Seconds(1).MilliSeconds(),    // maxPostponedTime
             64,                                      // maxPostponedCount
             100,                                     // burstPercentage
-            1_KB                                     // defaultPostponedRequestWeight
+            1_KB   // defaultPostponedRequestWeight
         );
         UpdateConfig(config);
 
@@ -677,7 +677,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
             tabletConfig);
         tablet.InitSession("client", "session");
 
-        auto nodeId = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto nodeId =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, nodeId);
         tablet.WriteData(handle, 0, fileSize, 'a');
         tablet.DestroyHandle(handle);
@@ -689,11 +690,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetUsedBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(2 * blockCount - 1,
+            UNIT_ASSERT_VALUES_EQUAL(
+                2 * blockCount - 1,
                 stats.GetDeletionMarkersCount());
         }
 
-        // Enable automatic cleanup and configure throttling to consume 1% of CPU
+        // Enable automatic cleanup and configure throttling to consume 1% of
+        // CPU
         storageConfig.SetCleanupThresholdAverage(64);
         storageConfig.SetCleanupCpuThrottlingThresholdPercentage(1);
         storageConfig.SetCalculateCleanupScoreBasedOnUsedBlocksCount(true);
@@ -738,7 +741,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetUsedBlocksCount());
-            UNIT_ASSERT_GT(deletionMarkersCount,
+            UNIT_ASSERT_GT(
+                deletionMarkersCount,
                 stats.GetDeletionMarkersCount());
         }
 

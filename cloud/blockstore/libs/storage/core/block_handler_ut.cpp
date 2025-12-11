@@ -42,7 +42,8 @@ TDynBitMap BitMapFromString(const TString& s)
 
     if (s) {
         mask.Reserve(s.size() * 8);
-        Y_ABORT_UNLESS(mask.GetChunkCount() * sizeof(TDynBitMap::TChunk) == s.size());
+        Y_ABORT_UNLESS(
+            mask.GetChunkCount() * sizeof(TDynBitMap::TChunk) == s.size());
         auto* dst = const_cast<TDynBitMap::TChunk*>(mask.GetChunks());
         memcpy(dst, s.data(), s.size());
     }
@@ -68,8 +69,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         auto request = std::make_unique<TEvService::TEvWriteBlocksRequest>();
 
         auto& blocks = *request->Record.MutableBlocks();
-        for (ui64 blockIndex = blockRange.Start;
-             blockIndex <= blockRange.End;
+        for (ui64 blockIndex = blockRange.Start; blockIndex <= blockRange.End;
              ++blockIndex)
         {
             blocks.AddBuffers(GetBlockContent(blockIndex));
@@ -87,7 +87,9 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
 
         for (size_t index = 0; index < sglist.size(); ++index) {
             ui64 blockIndex = blockRange.Start + index;
-            UNIT_ASSERT_EQUAL(sglist[index].AsStringBuf(), GetBlockContent(blockIndex));
+            UNIT_ASSERT_EQUAL(
+                sglist[index].AsStringBuf(),
+                GetBlockContent(blockIndex));
         }
     }
 
@@ -98,7 +100,8 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         auto request = std::make_unique<TEvService::TEvWriteBlocksRequest>();
 
         auto& blocks = *request->Record.MutableBlocks();
-        blocks.AddBuffers(GetBlockContent(1) + GetBlockContent(2) + GetBlockContent(3));
+        blocks.AddBuffers(
+            GetBlockContent(1) + GetBlockContent(2) + GetBlockContent(3));
         blocks.AddBuffers(GetBlockContent(4) + GetBlockContent(5));
 
         auto handler = CreateWriteBlocksHandler(
@@ -113,7 +116,9 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
 
         for (size_t index = 0; index < sglist.size(); ++index) {
             ui64 blockIndex = blockRange.Start + index;
-            UNIT_ASSERT_EQUAL(sglist[index].AsStringBuf(), GetBlockContent(blockIndex));
+            UNIT_ASSERT_EQUAL(
+                sglist[index].AsStringBuf(),
+                GetBlockContent(blockIndex));
         }
     }
 
@@ -125,8 +130,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
             blockRange,
             DefaultBlockSize,
             /*enableDataIntegrityValidation=*/false);
-        for (ui64 blockIndex = blockRange.Start;
-             blockIndex <= blockRange.End;
+        for (ui64 blockIndex = blockRange.Start; blockIndex <= blockRange.End;
              ++blockIndex)
         {
             auto blockContent = GetBlockContent(blockIndex);
@@ -142,8 +146,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         const auto& blocks = response.GetBlocks();
         UNIT_ASSERT_EQUAL(blocks.BuffersSize(), blockRange.Size());
 
-        for (ui64 blockIndex = blockRange.Start;
-             blockIndex <= blockRange.End;
+        for (ui64 blockIndex = blockRange.Start; blockIndex <= blockRange.End;
              ++blockIndex)
         {
             UNIT_ASSERT_EQUAL(
@@ -285,14 +288,27 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
             auto guard = responseSgList.Acquire();
             UNIT_ASSERT(guard);
             auto resBlocks = guard.Get();
-            UNIT_ASSERT(resBlocks[0].AsStringBuf() == TString(DefaultBlockSize, char(0)));
-            UNIT_ASSERT(resBlocks[1].AsStringBuf() == TString(DefaultBlockSize, char(0)));
-            UNIT_ASSERT(resBlocks[2].AsStringBuf() == TString(DefaultBlockSize, 'c'));
-            UNIT_ASSERT(resBlocks[3].AsStringBuf() == TString(DefaultBlockSize, char(0)));
-            UNIT_ASSERT(resBlocks[4].AsStringBuf() == TString(DefaultBlockSize, char(0)));
-            UNIT_ASSERT(resBlocks[5].AsStringBuf() == TString(DefaultBlockSize, char(0)));
-            UNIT_ASSERT(resBlocks[6].AsStringBuf() == TString(DefaultBlockSize, 'e'));
-            UNIT_ASSERT(resBlocks[7].AsStringBuf() == TString(DefaultBlockSize, 'e'));
+            UNIT_ASSERT(
+                resBlocks[0].AsStringBuf() ==
+                TString(DefaultBlockSize, char(0)));
+            UNIT_ASSERT(
+                resBlocks[1].AsStringBuf() ==
+                TString(DefaultBlockSize, char(0)));
+            UNIT_ASSERT(
+                resBlocks[2].AsStringBuf() == TString(DefaultBlockSize, 'c'));
+            UNIT_ASSERT(
+                resBlocks[3].AsStringBuf() ==
+                TString(DefaultBlockSize, char(0)));
+            UNIT_ASSERT(
+                resBlocks[4].AsStringBuf() ==
+                TString(DefaultBlockSize, char(0)));
+            UNIT_ASSERT(
+                resBlocks[5].AsStringBuf() ==
+                TString(DefaultBlockSize, char(0)));
+            UNIT_ASSERT(
+                resBlocks[6].AsStringBuf() == TString(DefaultBlockSize, 'e'));
+            UNIT_ASSERT(
+                resBlocks[7].AsStringBuf() == TString(DefaultBlockSize, 'e'));
         }
         UNIT_ASSERT(!response.GetAllZeroes());
     }
@@ -351,7 +367,8 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         TVector<TString> holders;
 
         TVector<std::pair<IWriteBlocksHandlerPtr, TBlockRange64>> parts;
-        auto addPart = [&] (TBlockRange64 range, char data) {
+        auto addPart = [&](TBlockRange64 range, char data)
+        {
             TString content(DefaultBlockSize, data);
             auto handler = CreateTestWriteBlocksHandler(range, content);
 
@@ -372,14 +389,22 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         auto resBlocks = guard.Get();
 
         UNIT_ASSERT(resBlocks.size() == 8);
-        UNIT_ASSERT(resBlocks[0].AsStringBuf() == TString(DefaultBlockSize, 'a'));
-        UNIT_ASSERT(resBlocks[1].AsStringBuf() == TString(DefaultBlockSize, 'b'));
-        UNIT_ASSERT(resBlocks[2].AsStringBuf() == TString(DefaultBlockSize, 'b'));
-        UNIT_ASSERT(resBlocks[3].AsStringBuf() == TString(DefaultBlockSize, 'c'));
-        UNIT_ASSERT(resBlocks[4].AsStringBuf() == TString(DefaultBlockSize, 'c'));
-        UNIT_ASSERT(resBlocks[5].AsStringBuf() == TString(DefaultBlockSize, 'd'));
-        UNIT_ASSERT(resBlocks[6].AsStringBuf() == TString(DefaultBlockSize, 'd'));
-        UNIT_ASSERT(resBlocks[7].AsStringBuf() == TString(DefaultBlockSize, 'e'));
+        UNIT_ASSERT(
+            resBlocks[0].AsStringBuf() == TString(DefaultBlockSize, 'a'));
+        UNIT_ASSERT(
+            resBlocks[1].AsStringBuf() == TString(DefaultBlockSize, 'b'));
+        UNIT_ASSERT(
+            resBlocks[2].AsStringBuf() == TString(DefaultBlockSize, 'b'));
+        UNIT_ASSERT(
+            resBlocks[3].AsStringBuf() == TString(DefaultBlockSize, 'c'));
+        UNIT_ASSERT(
+            resBlocks[4].AsStringBuf() == TString(DefaultBlockSize, 'c'));
+        UNIT_ASSERT(
+            resBlocks[5].AsStringBuf() == TString(DefaultBlockSize, 'd'));
+        UNIT_ASSERT(
+            resBlocks[6].AsStringBuf() == TString(DefaultBlockSize, 'd'));
+        UNIT_ASSERT(
+            resBlocks[7].AsStringBuf() == TString(DefaultBlockSize, 'e'));
     }
 
     Y_UNIT_TEST(ShouldDestroySgListInWriteBlocksDtor)

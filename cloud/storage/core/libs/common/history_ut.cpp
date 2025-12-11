@@ -34,14 +34,14 @@ Y_UNIT_TEST_SUITE(THistoryTest)
             history.Put(0);
             history.Put(0);
 
-            history.Put(0); // replaces 0 with 0
+            history.Put(0);   // replaces 0 with 0
             UNIT_ASSERT_VALUES_EQUAL(history.Contains(0), true);
 
-            history.Put(1); // replaces 0 with 1
+            history.Put(1);   // replaces 0 with 1
             UNIT_ASSERT_VALUES_EQUAL(history.Contains(0), true);
             UNIT_ASSERT_VALUES_EQUAL(history.Contains(1), true);
 
-            history.Put(1); // replaces last 0 with 1
+            history.Put(1);   // replaces last 0 with 1
             UNIT_ASSERT_VALUES_EQUAL(history.Contains(0), false);
             UNIT_ASSERT_VALUES_EQUAL(history.Contains(1), true);
         }

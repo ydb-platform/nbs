@@ -14,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEnv
-    : public NUnitTest::TBaseFixture
+struct TEnv: public NUnitTest::TBaseFixture
 {
     NProto::TProfileLogRecord FirstRecord;
     NProto::TProfileLogRecord SecondRecord;
@@ -39,148 +38,155 @@ private:
         {
             auto* request = FirstRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                         // request
-                0,                                                // timestmpMcs
-                10,                                               // durationMcs
-                static_cast<ui32>(EFileStoreRequest::CreateNode), // requestType
-                0);                                               // errorCode
+                *request,   // request
+                0,          // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::CreateNode),   // requestType
+                0);                                   // errorCode
             SetupNodeInfo(
-                *request->MutableNodeInfo(), // nodeInfo
-                {},                          // parentNodeId
-                {},                          // nodeName
-                1,                           // newParentNodeId
-                "test_node",                 // newNodeName
-                {},                          // flags
-                7,                           // mode
-                2,                           // nodeId
-                {},                          // handle
-                64);                         // size
+                *request->MutableNodeInfo(),   // nodeInfo
+                {},                            // parentNodeId
+                {},                            // nodeName
+                1,                             // newParentNodeId
+                "test_node",                   // newNodeName
+                {},                            // flags
+                7,                             // mode
+                2,                             // nodeId
+                {},                            // handle
+                64);                           // size
         }
 
         {
             auto* request = FirstRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                         // request
-                10,                                               // timestmpMcs
-                10,                                               // durationMcs
-                static_cast<ui32>(EFileStoreRequest::AccessNode), // requestType
-                0);                                               // errorCode
+                *request,   // request
+                10,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::AccessNode),   // requestType
+                0);                                   // errorCode
             SetupNodeInfo(
-                *request->MutableNodeInfo(), // nodeInfo
-                {},                          // parentNodeId
-                {},                          // nodeName
-                {},                          // newParentNodeId
-                {},                          // newNodeName
-                7,                           // flags
-                {},                          // mode
-                2,                           // nodeId
-                {},                          // handle
-                {});                         // size
+                *request->MutableNodeInfo(),   // nodeInfo
+                {},                            // parentNodeId
+                {},                            // nodeName
+                {},                            // newParentNodeId
+                {},                            // newNodeName
+                7,                             // flags
+                {},                            // mode
+                2,                             // nodeId
+                {},                            // handle
+                {});                           // size
         }
 
         {
             auto* request = FirstRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                           // request
-                20,                                                 // timestmpMcs
-                10,                                                 // durationMcs
-                static_cast<ui32>(EFileStoreRequest::CreateHandle), // requestType
-                0);                                                 // errorCode
+                *request,   // request
+                20,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::CreateHandle),   // requestType
+                0);                                     // errorCode
             SetupNodeInfo(
-                *request->MutableNodeInfo(), // nodeInfo
-                1,                           // parentNodeId
-                "test_node",                 // nodeName
-                {},                          // newParentNodeId
-                {},                          // newNodeName
-                3,                           // flags
-                5,                           // mode
-                2,                           // nodeId
-                100,                         // handle
-                64);                         // size
+                *request->MutableNodeInfo(),   // nodeInfo
+                1,                             // parentNodeId
+                "test_node",                   // nodeName
+                {},                            // newParentNodeId
+                {},                            // newNodeName
+                3,                             // flags
+                5,                             // mode
+                2,                             // nodeId
+                100,                           // handle
+                64);                           // size
         }
 
         {
             auto* request = FirstRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                          // request
-                30,                                                // timestmpMcs
-                10,                                                // durationMcs
-                static_cast<ui32>(EFileStoreRequest::AcquireLock), // requestType
-                0);                                                // errorCode
+                *request,   // request
+                30,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::AcquireLock),   // requestType
+                0);                                    // errorCode
             SetupLockInfo(
-                *request->MutableLockInfo(), // lockInfo
-                2,                           // nodeId
-                101,                         // handle
-                5,                           // owner
-                0,                           // offset
-                32,                          // length
-                0,                           // lockType
-                {},                          // conflictedOwner
-                {},                          // conflictedOffset
-                {});                         // conflictedLength
+                *request->MutableLockInfo(),   // lockInfo
+                2,                             // nodeId
+                101,                           // handle
+                5,                             // owner
+                0,                             // offset
+                32,                            // length
+                0,                             // lockType
+                {},                            // conflictedOwner
+                {},                            // conflictedOffset
+                {});                           // conflictedLength
         }
 
         {
             auto* request = FirstRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                         // request
-                40,                                               // timestmpMcs
-                10,                                               // durationMcs
-                static_cast<ui32>(EFileStoreRequest::RenameNode), // requestType
-                0);                                               // errorCode
+                *request,   // request
+                40,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::RenameNode),   // requestType
+                0);                                   // errorCode
             SetupNodeInfo(
-                *request->MutableNodeInfo(), // nodeInfo
-                1,                           // parentNodeId
-                "test_node",                 // nodeName
-                1,                           // newParentNodeId
-                "test_node_2",               // newNodeName
-                {},                          // flags
-                {},                          // mode
-                {},                          // nodeId
-                {},                          // handle
-                {});                         // size
+                *request->MutableNodeInfo(),   // nodeInfo
+                1,                             // parentNodeId
+                "test_node",                   // nodeName
+                1,                             // newParentNodeId
+                "test_node_2",                 // newNodeName
+                {},                            // flags
+                {},                            // mode
+                {},                            // nodeId
+                {},                            // handle
+                {});                           // size
         }
 
         {
             auto* request = FirstRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                          // request
-                50,                                                // timestmpMcs
-                10,                                                // durationMcs
-                static_cast<ui32>(EFileStoreRequest::ReleaseLock), // requestType
-                0);                                                // errorCode
+                *request,   // request
+                50,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::ReleaseLock),   // requestType
+                0);                                    // errorCode
             SetupLockInfo(
-                *request->MutableLockInfo(), // lockInfo
-                2,                           // nodeId
-                102,                         // handle
-                5,                           // owner
-                0,                           // offset
-                32,                          // length
-                0,                           // lockType
-                {},                          // conflictedOwner
-                {},                          // conflictedOffset
-                {});                         // conflictedLength
+                *request->MutableLockInfo(),   // lockInfo
+                2,                             // nodeId
+                102,                           // handle
+                5,                             // owner
+                0,                             // offset
+                32,                            // length
+                0,                             // lockType
+                {},                            // conflictedOwner
+                {},                            // conflictedOffset
+                {});                           // conflictedLength
         }
 
         {
             auto* request = FirstRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                         // request
-                60,                                               // timestmpMcs
-                10,                                               // durationMcs
-                static_cast<ui32>(EFileStoreRequest::AccessNode), // requestType
-                0);                                               // errorCode
+                *request,   // request
+                60,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::AccessNode),   // requestType
+                0);                                   // errorCode
             SetupNodeInfo(
-                *request->MutableNodeInfo(), // nodeInfo
-                {},                          // parentNodeId
-                {},                          // nodeName
-                {},                          // newParentNodeId
-                {},                          // newNodeName
-                7,                           // flags
-                {},                          // mode
-                2,                           // nodeId
-                {},                          // handle
-                {});                         // size
+                *request->MutableNodeInfo(),   // nodeInfo
+                {},                            // parentNodeId
+                {},                            // nodeName
+                {},                            // newParentNodeId
+                {},                            // newNodeName
+                7,                             // flags
+                {},                            // mode
+                2,                             // nodeId
+                {},                            // handle
+                {});                           // size
         }
     }
 
@@ -191,169 +197,177 @@ private:
         {
             auto* request = SecondRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                         // request
-                0,                                                // timestmpMcs
-                10,                                               // durationMcs
-                static_cast<ui32>(EFileStoreRequest::CreateNode), // requestType
-                0);                                               // errorCode
+                *request,   // request
+                0,          // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::CreateNode),   // requestType
+                0);                                   // errorCode
             SetupNodeInfo(
-                *request->MutableNodeInfo(), // nodeInfo
-                {},                          // parentNodeId
-                {},                          // nodeName
-                1,                           // newParentNodeId
-                "test_node",                 // newNodeName
-                {},                          // flags
-                7,                           // mode
-                2,                           // nodeId
-                {},                          // handle
-                64);                         // size
+                *request->MutableNodeInfo(),   // nodeInfo
+                {},                            // parentNodeId
+                {},                            // nodeName
+                1,                             // newParentNodeId
+                "test_node",                   // newNodeName
+                {},                            // flags
+                7,                             // mode
+                2,                             // nodeId
+                {},                            // handle
+                64);                           // size
         }
 
         {
             auto* request = SecondRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                         // request
-                10,                                               // timestmpMcs
-                10,                                               // durationMcs
-                static_cast<ui32>(EFileStoreRequest::AccessNode), // requestType
-                0);                                               // errorCode
+                *request,   // request
+                10,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::AccessNode),   // requestType
+                0);                                   // errorCode
             SetupNodeInfo(
-                *request->MutableNodeInfo(), // nodeInfo
-                {},                          // parentNodeId
-                {},                          // nodeName
-                {},                          // newParentNodeId
-                {},                          // newNodeName
-                7,                           // flags
-                {},                          // mode
-                2,                           // nodeId
-                {},                          // handle
-                {});                         // size
+                *request->MutableNodeInfo(),   // nodeInfo
+                {},                            // parentNodeId
+                {},                            // nodeName
+                {},                            // newParentNodeId
+                {},                            // newNodeName
+                7,                             // flags
+                {},                            // mode
+                2,                             // nodeId
+                {},                            // handle
+                {});                           // size
         }
 
         {
             auto* request = SecondRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                           // request
-                20,                                                 // timestmpMcs
-                10,                                                 // durationMcs
-                static_cast<ui32>(EFileStoreRequest::CreateHandle), // requestType
-                0);                                                 // errorCode
+                *request,   // request
+                20,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::CreateHandle),   // requestType
+                0);                                     // errorCode
             SetupNodeInfo(
-                *request->MutableNodeInfo(), // nodeInfo
-                1,                           // parentNodeId
-                "test_node",                 // nodeName
-                {},                          // newParentNodeId
-                {},                          // newNodeName
-                3,                           // flags
-                5,                           // mode
-                2,                           // nodeId
-                100,                         // handle
-                64);                         // size
+                *request->MutableNodeInfo(),   // nodeInfo
+                1,                             // parentNodeId
+                "test_node",                   // nodeName
+                {},                            // newParentNodeId
+                {},                            // newNodeName
+                3,                             // flags
+                5,                             // mode
+                2,                             // nodeId
+                100,                           // handle
+                64);                           // size
         }
 
         {
             auto* request = SecondRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                          // request
-                30,                                                // timestmpMcs
-                10,                                                // durationMcs
-                static_cast<ui32>(EFileStoreRequest::SetNodeAttr), // requestType
-                0);                                                // errorCode
+                *request,   // request
+                30,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::SetNodeAttr),   // requestType
+                0);                                    // errorCode
             SetupNodeInfo(
-                *request->MutableNodeInfo(), // nodeInfo
-                {},                          // parentNodeId
-                {},                          // nodeName
-                {},                          // newParentNodeId
-                {},                          // newNodeName
-                7,                           // flags
-                5,                           // mode
-                1,                           // nodeId
-                101,                         // handle
-                64);                         // size
+                *request->MutableNodeInfo(),   // nodeInfo
+                {},                            // parentNodeId
+                {},                            // nodeName
+                {},                            // newParentNodeId
+                {},                            // newNodeName
+                7,                             // flags
+                5,                             // mode
+                1,                             // nodeId
+                101,                           // handle
+                64);                           // size
         }
 
         {
             auto* request = SecondRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                           // request
-                40,                                                 // timestmpMcs
-                10,                                                 // durationMcs
-                static_cast<ui32>(EFileStoreRequest::SetNodeXAttr), // requestType
-                0);                                                 // errorCode
+                *request,   // request
+                40,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::SetNodeXAttr),   // requestType
+                0);                                     // errorCode
             SetupNodeInfo(
-                *request->MutableNodeInfo(), // nodeInfo
-                {},                          // parentNodeId
-                "attr_name",                 // nodeName
-                {},                          // newParentNodeId
-                "attr_value",                // newNodeName
-                7,                           // flags
-                {},                          // mode
-                1,                           // nodeId
-                {},                          // handle
-                16);                         // size
+                *request->MutableNodeInfo(),   // nodeInfo
+                {},                            // parentNodeId
+                "attr_name",                   // nodeName
+                {},                            // newParentNodeId
+                "attr_value",                  // newNodeName
+                7,                             // flags
+                {},                            // mode
+                1,                             // nodeId
+                {},                            // handle
+                16);                           // size
         }
 
         {
             auto* request = SecondRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                          // request
-                50,                                                // timestmpMcs
-                10,                                                // durationMcs
-                static_cast<ui32>(EFileStoreRequest::GetNodeAttr), // requestType
-                0);                                                // errorCode
+                *request,   // request
+                50,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::GetNodeAttr),   // requestType
+                0);                                    // errorCode
             SetupNodeInfo(
-                *request->MutableNodeInfo(), // nodeInfo
-                1,                           // parentNodeId
-                "test_node",                 // nodeName
-                {},                          // newParentNodeId
-                {},                          // newNodeName
-                5,                           // flags
-                7,                           // mode
-                2,                           // nodeId
-                101,                         // handle
-                16);                         // size
+                *request->MutableNodeInfo(),   // nodeInfo
+                1,                             // parentNodeId
+                "test_node",                   // nodeName
+                {},                            // newParentNodeId
+                {},                            // newNodeName
+                5,                             // flags
+                7,                             // mode
+                2,                             // nodeId
+                101,                           // handle
+                16);                           // size
         }
 
         {
             auto* request = SecondRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                           // request
-                60,                                                 // timestmpMcs
-                10,                                                 // durationMcs
-                static_cast<ui32>(EFileStoreRequest::GetNodeXAttr), // requestType
-                0);                                                 // errorCode
+                *request,   // request
+                60,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::GetNodeXAttr),   // requestType
+                0);                                     // errorCode
             SetupNodeInfo(
-                *request->MutableNodeInfo(), // nodeInfo
-                {},                          // parentNodeId
-                "attr_name",                 // nodeName
-                {},                          // newParentNodeId
-                "attr_value",                // newNodeName
-                {},                          // flags
-                {},                          // mode
-                2,                           // nodeId
-                {},                          // handle
-                1);                          // size
+                *request->MutableNodeInfo(),   // nodeInfo
+                {},                            // parentNodeId
+                "attr_name",                   // nodeName
+                {},                            // newParentNodeId
+                "attr_value",                  // newNodeName
+                {},                            // flags
+                {},                            // mode
+                2,                             // nodeId
+                {},                            // handle
+                1);                            // size
         }
 
         {
             auto* request = SecondRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                            // request
-                70,                                                  // timestmpMcs
-                10,                                                  // durationMcs
-                static_cast<ui32>(EFileStoreRequest::DestroyHandle), // requestType
-                0);                                                  // errorCode
+                *request,   // request
+                70,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::DestroyHandle),   // requestType
+                0);                                      // errorCode
             SetupNodeInfo(
-                *request->MutableNodeInfo(), // nodeInfo
-                {},                          // parentNodeId
-                {},                          // nodeName
-                {},                          // newParentNodeId
-                {},                          // newNodeName
-                {},                          // flags
-                {},                          // mode
-                2,                           // nodeId
-                100,                         // handle
-                {});                         // size
+                *request->MutableNodeInfo(),   // nodeInfo
+                {},                            // parentNodeId
+                {},                            // nodeName
+                {},                            // newParentNodeId
+                {},                            // newNodeName
+                {},                            // flags
+                {},                            // mode
+                2,                             // nodeId
+                100,                           // handle
+                {});                           // size
         }
     }
 
@@ -364,235 +378,246 @@ private:
         {
             auto* request = ThirdRecord.AddRequests();
             SetupRequestMainInfo(
+                *request,   // request
+                0,          // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::CreateNode),   // requestType
+                0);                                   // errorCode
+            SetupNodeInfo(
+                *request->MutableNodeInfo(),   // nodeInfo
+                {},                            // parentNodeId
+                {},                            // nodeName
+                1,                             // newParentNodeId
+                "test_node",                   // newNodeName
+                {},                            // flags
+                7,                             // mode
+                2,                             // nodeId
+                {},                            // handle
+                64);                           // size
+        }
+
+        {
+            auto* request = ThirdRecord.AddRequests();
+            SetupRequestMainInfo(
+                *request,   // request
+                10,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::CreateHandle),   // requestType
+                0);                                     // errorCode
+            SetupNodeInfo(
+                *request->MutableNodeInfo(),   // nodeInfo
+                1,                             // parentNodeId
+                "test_node",                   // nodeName
+                {},                            // newParentNodeId
+                {},                            // newNodeName
+                3,                             // flags
+                5,                             // mode
+                2,                             // nodeId
+                100,                           // handle
+                64);                           // size
+        }
+
+        {
+            auto* request = ThirdRecord.AddRequests();
+            SetupRequestMainInfo(
+                *request,   // request
+                20,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::AcquireLock),   // requestType
+                0);                                    // errorCode
+            SetupLockInfo(
+                *request->MutableLockInfo(),   // lockInfo
+                2,                             // nodeId
+                100,                           // handle
+                5,                             // owner
+                0,                             // offset
+                32,                            // length
+                0,                             // lockType
+                {},                            // conflictedOwner
+                {},                            // conflictedOffset
+                {});                           // conflictedLength
+        }
+
+        {
+            auto* request = ThirdRecord.AddRequests();
+            SetupRequestMainInfo(
                 *request,                                         // request
-                0,                                                // timestmpMcs
+                30,                                               // timestmpMcs
                 10,                                               // durationMcs
-                static_cast<ui32>(EFileStoreRequest::CreateNode), // requestType
+                static_cast<ui32>(EFileStoreRequest::TestLock),   // requestType
                 0);                                               // errorCode
-            SetupNodeInfo(
-                *request->MutableNodeInfo(), // nodeInfo
-                {},                          // parentNodeId
-                {},                          // nodeName
-                1,                           // newParentNodeId
-                "test_node",                 // newNodeName
-                {},                          // flags
-                7,                           // mode
-                2,                           // nodeId
-                {},                          // handle
-                64);                         // size
-        }
-
-        {
-            auto* request = ThirdRecord.AddRequests();
-            SetupRequestMainInfo(
-                *request,                                           // request
-                10,                                                 // timestmpMcs
-                10,                                                 // durationMcs
-                static_cast<ui32>(EFileStoreRequest::CreateHandle), // requestType
-                0);                                                 // errorCode
-            SetupNodeInfo(
-                *request->MutableNodeInfo(), // nodeInfo
-                1,                           // parentNodeId
-                "test_node",                 // nodeName
-                {},                          // newParentNodeId
-                {},                          // newNodeName
-                3,                           // flags
-                5,                           // mode
-                2,                           // nodeId
-                100,                         // handle
-                64);                         // size
-        }
-
-        {
-            auto* request = ThirdRecord.AddRequests();
-            SetupRequestMainInfo(
-                *request,                                          // request
-                20,                                                // timestmpMcs
-                10,                                                // durationMcs
-                static_cast<ui32>(EFileStoreRequest::AcquireLock), // requestType
-                0);                                                // errorCode
             SetupLockInfo(
-                *request->MutableLockInfo(), // lockInfo
-                2,                           // nodeId
-                100,                         // handle
-                5,                           // owner
-                0,                           // offset
-                32,                          // length
-                0,                           // lockType
-                {},                          // conflictedOwner
-                {},                          // conflictedOffset
-                {});                         // conflictedLength
+                *request->MutableLockInfo(),   // lockInfo
+                2,                             // nodeId
+                100,                           // handle
+                5,                             // owner
+                0,                             // offset
+                32,                            // length
+                0,                             // lockType
+                1,                             // conflictedOwner
+                0,                             // conflictedOffset
+                16);                           // conflictedLength
         }
 
         {
             auto* request = ThirdRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                       // request
-                30,                                             // timestmpMcs
-                10,                                             // durationMcs
-                static_cast<ui32>(EFileStoreRequest::TestLock), // requestType
-                0);                                             // errorCode
-            SetupLockInfo(
-                *request->MutableLockInfo(), // lockInfo
-                2,                           // nodeId
-                100,                         // handle
-                5,                           // owner
-                0,                           // offset
-                32,                          // length
-                0,                           // lockType
-                1,                           // conflictedOwner
-                0,                           // conflictedOffset
-                16);                         // conflictedLength
+                *request,                                         // request
+                40,                                               // timestmpMcs
+                10,                                               // durationMcs
+                static_cast<ui32>(EFileStoreRequest::ReadData),   // requestType
+                0);                                               // errorCode
+            SetupRange(
+                *request->AddRanges(),   // rangeInfo
+                2,                       // nodeId
+                100,                     // handle
+                0,                       // offset
+                32);                     // length
+            SetupRange(
+                *request->AddRanges(),   // rangeInfo
+                1,                       // nodeId
+                100,                     // handle
+                32,                      // offset
+                32);                     // length
         }
 
         {
             auto* request = ThirdRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                       // request
-                40,                                             // timestmpMcs
-                10,                                             // durationMcs
-                static_cast<ui32>(EFileStoreRequest::ReadData), // requestType
-                0);                                             // errorCode
+                *request,   // request
+                50,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(NStorage::EFileStoreSystemRequest::
+                                      ReadBlob),   // requestType
+                0);                                // errorCode
             SetupRange(
-                *request->AddRanges(), // rangeInfo
-                2,                     // nodeId
-                100,                   // handle
-                0,                     // offset
-                32);                   // length
-            SetupRange(
-                *request->AddRanges(), // rangeInfo
-                1,                     // nodeId
-                100,                   // handle
-                32,                    // offset
-                32);                   // length
+                *request->AddRanges(),   // rangeInfo
+                1,                       // nodeId
+                {},                      // handle
+                0,                       // offset
+                64);                     // length
         }
 
         {
             auto* request = ThirdRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                                       // request
-                50,                                                             // timestmpMcs
-                10,                                                             // durationMcs
-                static_cast<ui32>(NStorage::EFileStoreSystemRequest::ReadBlob), // requestType
-                0);                                                             // errorCode
+                *request,   // request
+                60,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::WriteData),   // requestType
+                0);                                  // errorCode
             SetupRange(
-                *request->AddRanges(), // rangeInfo
-                1,                     // nodeId
-                {},                    // handle
-                0,                     // offset
-                64);                   // length
+                *request->AddRanges(),   // rangeInfo
+                1,                       // nodeId
+                100,                     // handle
+                0,                       // offset
+                32);                     // length
         }
 
         {
             auto* request = ThirdRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                        // request
-                60,                                              // timestmpMcs
-                10,                                              // durationMcs
-                static_cast<ui32>(EFileStoreRequest::WriteData), // requestType
-                0);                                              // errorCode
+                *request,   // request
+                70,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(NStorage::EFileStoreSystemRequest::
+                                      WriteBlob),   // requestType
+                0);                                 // errorCode
             SetupRange(
-                *request->AddRanges(), // rangeInfo
-                1,                     // nodeId
-                100,                   // handle
-                0,                     // offset
-                32);                   // length
+                *request->AddRanges(),   // rangeInfo
+                2,                       // nodeId
+                {},                      // handle
+                0,                       // offset
+                64);                     // length
         }
 
         {
             auto* request = ThirdRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                                        // request
-                70,                                                              // timestmpMcs
-                10,                                                              // durationMcs
-                static_cast<ui32>(NStorage::EFileStoreSystemRequest::WriteBlob), // requestType
-                0);                                                              // errorCode
+                *request,   // request
+                80,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(NStorage::EFileStoreSystemRequest::
+                                      Cleanup),   // requestType
+                0);                               // errorCode
             SetupRange(
-                *request->AddRanges(), // rangeInfo
-                2,                     // nodeId
-                {},                    // handle
-                0,                     // offset
-                64);                   // length
+                *request->AddRanges(),   // rangeInfo
+                2,                       // nodeId
+                {},                      // handle
+                0,                       // offset
+                64);                     // length
         }
 
         {
             auto* request = ThirdRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                                      // request
-                80,                                                            // timestmpMcs
-                10,                                                            // durationMcs
-                static_cast<ui32>(NStorage::EFileStoreSystemRequest::Cleanup), // requestType
-                0);                                                            // errorCode
+                *request,   // request
+                90,         // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(NStorage::EFileStoreSystemRequest::
+                                      Compaction),   // requestType
+                0);                                  // errorCode
             SetupRange(
-                *request->AddRanges(), // rangeInfo
-                2,                     // nodeId
-                {},                    // handle
-                0,                     // offset
-                64);                   // length
+                *request->AddRanges(),   // rangeInfo
+                2,                       // nodeId
+                {},                      // handle
+                0,                       // offset
+                64);                     // length
         }
 
         {
             auto* request = ThirdRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                                         // request
-                90,                                                               // timestmpMcs
-                10,                                                               // durationMcs
-                static_cast<ui32>(NStorage::EFileStoreSystemRequest::Compaction), // requestType
-                0);                                                               // errorCode
+                *request,   // request
+                100,        // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(NStorage::EFileStoreSystemRequest::
+                                      CollectGarbage),   // requestType
+                0);                                      // errorCode
             SetupRange(
-                *request->AddRanges(), // rangeInfo
-                2,                     // nodeId
-                {},                    // handle
-                0,                     // offset
-                64);                   // length
+                *request->AddRanges(),   // rangeInfo
+                1,                       // nodeId
+                100,                     // handle
+                0,                       // offset
+                64);                     // length
         }
 
         {
             auto* request = ThirdRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                                             // request
-                100,                                                                  // timestmpMcs
-                10,                                                                   // durationMcs
-                static_cast<ui32>(NStorage::EFileStoreSystemRequest::CollectGarbage), // requestType
-                0);                                                                   // errorCode
+                *request,   // request
+                110,        // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(NStorage::EFileStoreSystemRequest::
+                                      DeleteGarbage),   // requestType
+                0);                                     // errorCode
             SetupRange(
-                *request->AddRanges(), // rangeInfo
-                1,                     // nodeId
-                100,                   // handle
-                0,                     // offset
-                64);                   // length
+                *request->AddRanges(),   // rangeInfo
+                2,                       // nodeId
+                {},                      // handle
+                1,                       // offset
+                0);                      // length
         }
 
         {
             auto* request = ThirdRecord.AddRequests();
             SetupRequestMainInfo(
-                *request,                                                            // request
-                110,                                                                 // timestmpMcs
-                10,                                                                  // durationMcs
-                static_cast<ui32>(NStorage::EFileStoreSystemRequest::DeleteGarbage), // requestType
-                0);                                                                  // errorCode
+                *request,   // request
+                120,        // timestmpMcs
+                10,         // durationMcs
+                static_cast<ui32>(
+                    EFileStoreRequest::WriteData),   // requestType
+                0);                                  // errorCode
             SetupRange(
-                *request->AddRanges(), // rangeInfo
-                2,                     // nodeId
-                {},                    // handle
-                1,                     // offset
-                0);                    // length
-        }
-
-        {
-            auto* request = ThirdRecord.AddRequests();
-            SetupRequestMainInfo(
-                *request,                                        // request
-                120,                                             // timestmpMcs
-                10,                                              // durationMcs
-                static_cast<ui32>(EFileStoreRequest::WriteData), // requestType
-                0);                                              // errorCode
-            SetupRange(
-                *request->AddRanges(), // rangeInfo
-                1,                     // nodeId
-                100,                   // handle
-                32,                    // offset
-                32);                   // length
+                *request->AddRanges(),   // rangeInfo
+                1,                       // nodeId
+                100,                     // handle
+                32,                      // offset
+                32);                     // length
         }
     }
 
@@ -621,11 +646,11 @@ private:
         const TMaybe<ui64>& conflictedOffset,
         const TMaybe<ui64>& conflictedLength)
     {
-#define SETUP_FIELD(internal_name, name)                                       \
-    if (internal_name.Defined()) {                                             \
-        lockInfo.Set##name(internal_name.GetRef());                            \
-    }                                                                          \
-// SETUP_FIELD
+#define SETUP_FIELD(internal_name, name)            \
+    if (internal_name.Defined()) {                  \
+        lockInfo.Set##name(internal_name.GetRef()); \
+    }                                               \
+    // SETUP_FIELD
 
         SETUP_FIELD(nodeId, NodeId);
         SETUP_FIELD(handle, Handle);
@@ -652,11 +677,11 @@ private:
         const TMaybe<ui64>& handle,
         const TMaybe<ui64>& size)
     {
-#define SETUP_FIELD(internal_name, name)                                       \
-    if (internal_name.Defined()) {                                             \
-        nodeInfo.Set##name(internal_name.GetRef());                            \
-    }                                                                          \
-// SETUP_FIELD
+#define SETUP_FIELD(internal_name, name)            \
+    if (internal_name.Defined()) {                  \
+        nodeInfo.Set##name(internal_name.GetRef()); \
+    }                                               \
+    // SETUP_FIELD
 
         SETUP_FIELD(parentNodeId, ParentNodeId);
         SETUP_FIELD(nodeName, NodeName);
@@ -678,11 +703,11 @@ private:
         const TMaybe<ui64>& offset,
         const TMaybe<ui64>& bytes)
     {
-#define SETUP_FIELD(internal_name, name)                                       \
-    if (internal_name.Defined()) {                                             \
-        range.Set##name(internal_name.GetRef());                               \
-    }                                                                          \
-// SETUP_FIELD
+#define SETUP_FIELD(internal_name, name)         \
+    if (internal_name.Defined()) {               \
+        range.Set##name(internal_name.GetRef()); \
+    }                                            \
+    // SETUP_FIELD
 
         SETUP_FIELD(nodeId, NodeId);
         SETUP_FIELD(handle, Handle);
@@ -733,9 +758,8 @@ Y_UNIT_TEST_SUITE(TRequestFilterTest)
 
     Y_UNIT_TEST_F(ShouldFilterByNodeIdRecord, TEnv)
     {
-        auto filter = CreateRequestFilterByNodeId(
-            CreateRequestFilterAccept(),
-            2);
+        auto filter =
+            CreateRequestFilterByNodeId(CreateRequestFilterAccept(), 2);
 
         UNIT_ASSERT_VALUES_EQUAL(
             "FileSystemId: \"fs1\" "
@@ -804,9 +828,8 @@ Y_UNIT_TEST_SUITE(TRequestFilterTest)
 
     Y_UNIT_TEST_F(ShouldFilterByHandleRecord, TEnv)
     {
-        auto filter = CreateRequestFilterByHandle(
-            CreateRequestFilterAccept(),
-            100);
+        auto filter =
+            CreateRequestFilterByHandle(CreateRequestFilterAccept(), 100);
 
         UNIT_ASSERT_VALUES_EQUAL(
             "FileSystemId: \"fs1\" "
@@ -838,9 +861,11 @@ Y_UNIT_TEST_SUITE(TRequestFilterTest)
             "ErrorCode: 0 Ranges { NodeId: 2 Handle: 100 Offset: 0 Bytes: 32 } "
             "Ranges { NodeId: 1 Handle: 100 Offset: 32 Bytes: 32 } } "
             "Requests { TimestampMcs: 60 DurationMcs: 10 RequestType: 44 "
-            "ErrorCode: 0 Ranges { NodeId: 1 Handle: 100 Offset: 0 Bytes: 32 } } "
+            "ErrorCode: 0 Ranges { NodeId: 1 Handle: 100 Offset: 0 Bytes: 32 } "
+            "} "
             "Requests { TimestampMcs: 120 DurationMcs: 10 RequestType: 44 "
-            "ErrorCode: 0 Ranges { NodeId: 1 Handle: 100 Offset: 32 Bytes: 32 } }",
+            "ErrorCode: 0 Ranges { NodeId: 1 Handle: 100 Offset: 32 Bytes: 32 "
+            "} }",
             filter->GetFilteredRecord(ThirdRecord).ShortDebugString());
     }
 
@@ -868,7 +893,8 @@ Y_UNIT_TEST_SUITE(TRequestFilterTest)
 
         filter = CreateRequestFilterByRequestType(
             CreateRequestFilterAccept(),
-            {static_cast<ui32>(NStorage::EFileStoreSystemRequest::CollectGarbage)});
+            {static_cast<ui32>(
+                NStorage::EFileStoreSystemRequest::CollectGarbage)});
 
         UNIT_ASSERT_VALUES_EQUAL(
             "",
@@ -879,16 +905,15 @@ Y_UNIT_TEST_SUITE(TRequestFilterTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "FileSystemId: \"fs3\" "
             "Requests { TimestampMcs: 100 DurationMcs: 10 RequestType: 10006 "
-            "ErrorCode: 0 Ranges { NodeId: 1 Handle: 100 Offset: 0 Bytes: 64 } }",
+            "ErrorCode: 0 Ranges { NodeId: 1 Handle: 100 Offset: 0 Bytes: 64 } "
+            "}",
             filter->GetFilteredRecord(ThirdRecord).ShortDebugString());
     }
 
-    Y_UNIT_TEST_F(ShouldFilterByRangeRecord, TEnv) {
-        auto filter = CreateRequestFilterByRange(
-            CreateRequestFilterAccept(),
-            16,
-            48,
-            4);
+    Y_UNIT_TEST_F(ShouldFilterByRangeRecord, TEnv)
+    {
+        auto filter =
+            CreateRequestFilterByRange(CreateRequestFilterAccept(), 16, 48, 4);
 
         UNIT_ASSERT_VALUES_EQUAL(
             "",
@@ -904,7 +929,8 @@ Y_UNIT_TEST_SUITE(TRequestFilterTest)
             "Requests { TimestampMcs: 50 DurationMcs: 10 RequestType: 10008 "
             "ErrorCode: 0 Ranges { NodeId: 1 Offset: 0 Bytes: 64 } } "
             "Requests { TimestampMcs: 60 DurationMcs: 10 RequestType: 44 "
-            "ErrorCode: 0 Ranges { NodeId: 1 Handle: 100 Offset: 0 Bytes: 32 } } "
+            "ErrorCode: 0 Ranges { NodeId: 1 Handle: 100 Offset: 0 Bytes: 32 } "
+            "} "
             "Requests { TimestampMcs: 70 DurationMcs: 10 RequestType: 10009 "
             "ErrorCode: 0 Ranges { NodeId: 2 Offset: 0 Bytes: 64 } } "
             "Requests { TimestampMcs: 80 DurationMcs: 10 RequestType: 10004 "
@@ -912,14 +938,12 @@ Y_UNIT_TEST_SUITE(TRequestFilterTest)
             "Requests { TimestampMcs: 90 DurationMcs: 10 RequestType: 10003 "
             "ErrorCode: 0 Ranges { NodeId: 2 Offset: 0 Bytes: 64 } } "
             "Requests { TimestampMcs: 120 DurationMcs: 10 RequestType: 44 "
-            "ErrorCode: 0 Ranges { NodeId: 1 Handle: 100 Offset: 32 Bytes: 32 } }",
-        filter->GetFilteredRecord(ThirdRecord).ShortDebugString());
+            "ErrorCode: 0 Ranges { NodeId: 1 Handle: 100 Offset: 32 Bytes: 32 "
+            "} }",
+            filter->GetFilteredRecord(ThirdRecord).ShortDebugString());
 
-        filter = CreateRequestFilterByRange(
-            CreateRequestFilterAccept(),
-            96,
-            16,
-            4);
+        filter =
+            CreateRequestFilterByRange(CreateRequestFilterAccept(), 96, 16, 4);
 
         UNIT_ASSERT_VALUES_EQUAL(
             "",
@@ -931,11 +955,8 @@ Y_UNIT_TEST_SUITE(TRequestFilterTest)
             "",
             filter->GetFilteredRecord(ThirdRecord).ShortDebugString());
 
-        filter = CreateRequestFilterByRange(
-            CreateRequestFilterAccept(),
-            64,
-            16,
-            4);
+        filter =
+            CreateRequestFilterByRange(CreateRequestFilterAccept(), 64, 16, 4);
 
         UNIT_ASSERT_VALUES_EQUAL(
             "",
@@ -947,11 +968,8 @@ Y_UNIT_TEST_SUITE(TRequestFilterTest)
             "",
             filter->GetFilteredRecord(ThirdRecord).ShortDebugString());
 
-        filter = CreateRequestFilterByRange(
-            CreateRequestFilterAccept(),
-            63,
-            5,
-            4);
+        filter =
+            CreateRequestFilterByRange(CreateRequestFilterAccept(), 63, 5, 4);
 
         UNIT_ASSERT_VALUES_EQUAL(
             "",
@@ -973,15 +991,14 @@ Y_UNIT_TEST_SUITE(TRequestFilterTest)
             "Requests { TimestampMcs: 90 DurationMcs: 10 RequestType: 10003 "
             "ErrorCode: 0 Ranges { NodeId: 2 Offset: 0 Bytes: 64 } } "
             "Requests { TimestampMcs: 120 DurationMcs: 10 RequestType: 44 "
-            "ErrorCode: 0 Ranges { NodeId: 1 Handle: 100 Offset: 32 Bytes: 32 } }",
+            "ErrorCode: 0 Ranges { NodeId: 1 Handle: 100 Offset: 32 Bytes: 32 "
+            "} }",
             filter->GetFilteredRecord(ThirdRecord).ShortDebugString());
     }
 
     Y_UNIT_TEST_F(ShouldFilterBySinceRecord, TEnv)
     {
-        auto filter = CreateRequestFilterSince(
-            CreateRequestFilterAccept(),
-            70);
+        auto filter = CreateRequestFilterSince(CreateRequestFilterAccept(), 70);
 
         UNIT_ASSERT_VALUES_EQUAL(
             "",
@@ -1000,19 +1017,19 @@ Y_UNIT_TEST_SUITE(TRequestFilterTest)
             "Requests { TimestampMcs: 90 DurationMcs: 10 RequestType: 10003 "
             "ErrorCode: 0 Ranges { NodeId: 2 Offset: 0 Bytes: 64 } } "
             "Requests { TimestampMcs: 100 DurationMcs: 10 RequestType: 10006 "
-            "ErrorCode: 0 Ranges { NodeId: 1 Handle: 100 Offset: 0 Bytes: 64 } } "
+            "ErrorCode: 0 Ranges { NodeId: 1 Handle: 100 Offset: 0 Bytes: 64 } "
+            "} "
             "Requests { TimestampMcs: 110 DurationMcs: 10 RequestType: 10007 "
             "ErrorCode: 0 Ranges { NodeId: 2 Offset: 1 Bytes: 0 } } "
             "Requests { TimestampMcs: 120 DurationMcs: 10 RequestType: 44 "
-            "ErrorCode: 0 Ranges { NodeId: 1 Handle: 100 Offset: 32 Bytes: 32 } }",
+            "ErrorCode: 0 Ranges { NodeId: 1 Handle: 100 Offset: 32 Bytes: 32 "
+            "} }",
             filter->GetFilteredRecord(ThirdRecord).ShortDebugString());
     }
 
     Y_UNIT_TEST_F(ShouldFilterByUntilRecord, TEnv)
     {
-        auto filter = CreateRequestFilterUntil(
-            CreateRequestFilterAccept(),
-            0);
+        auto filter = CreateRequestFilterUntil(CreateRequestFilterAccept(), 0);
 
         UNIT_ASSERT_VALUES_EQUAL(
             "",
@@ -1024,9 +1041,7 @@ Y_UNIT_TEST_SUITE(TRequestFilterTest)
             "",
             filter->GetFilteredRecord(ThirdRecord).ShortDebugString());
 
-        filter = CreateRequestFilterUntil(
-            CreateRequestFilterAccept(),
-            70);
+        filter = CreateRequestFilterUntil(CreateRequestFilterAccept(), 70);
 
         UNIT_ASSERT_VALUES_EQUAL(
             "FileSystemId: \"fs1\" "
@@ -1094,7 +1109,8 @@ Y_UNIT_TEST_SUITE(TRequestFilterTest)
             "Requests { TimestampMcs: 50 DurationMcs: 10 RequestType: 10008 "
             "ErrorCode: 0 Ranges { NodeId: 1 Offset: 0 Bytes: 64 } } "
             "Requests { TimestampMcs: 60 DurationMcs: 10 RequestType: 44 "
-            "ErrorCode: 0 Ranges { NodeId: 1 Handle: 100 Offset: 0 Bytes: 32 } }",
+            "ErrorCode: 0 Ranges { NodeId: 1 Handle: 100 Offset: 0 Bytes: 32 } "
+            "}",
             filter->GetFilteredRecord(ThirdRecord).ShortDebugString());
     }
 
@@ -1213,11 +1229,8 @@ Y_UNIT_TEST_SUITE(TRequestFilterTest)
             "Ranges { NodeId: 1 Handle: 100 Offset: 32 Bytes: 32 } }",
             filterByType->GetFilteredRecord(ThirdRecord).ShortDebugString());
 
-        auto filterByRange = CreateRequestFilterByRange(
-            std::move(filterByType),
-            0,
-            16,
-            1);
+        auto filterByRange =
+            CreateRequestFilterByRange(std::move(filterByType), 0, 16, 1);
 
         UNIT_ASSERT_VALUES_EQUAL(
             "",
@@ -1232,11 +1245,7 @@ Y_UNIT_TEST_SUITE(TRequestFilterTest)
             "Ranges { NodeId: 1 Handle: 100 Offset: 32 Bytes: 32 } }",
             filterByRange->GetFilteredRecord(ThirdRecord).ShortDebugString());
 
-        filter = CreateRequestFilterByRange(
-            std::move(filterByRange),
-            64,
-            1,
-            1);
+        filter = CreateRequestFilterByRange(std::move(filterByRange), 64, 1, 1);
 
         UNIT_ASSERT_VALUES_EQUAL(
             "",

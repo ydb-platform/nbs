@@ -113,68 +113,40 @@ Y_UNIT_TEST_SUITE(TraceConverter)
 
                 UNIT_ASSERT_VALUES_EQUAL(span.events().size(), 4);
 
-                UNIT_ASSERT_VALUES_EQUAL(
-                    span.events(0).name(),
-                    "NoParam");
-                UNIT_ASSERT_VALUES_EQUAL(
-                    span.events(0).attributes().size(),
-                    0);
+                UNIT_ASSERT_VALUES_EQUAL(span.events(0).name(), "NoParam");
+                UNIT_ASSERT_VALUES_EQUAL(span.events(0).attributes().size(), 0);
 
-                UNIT_ASSERT_VALUES_EQUAL(
-                    span.events(1).name(),
-                    "IntParam");
-                UNIT_ASSERT_VALUES_EQUAL(
-                    span.events(1).attributes().size(),
-                    1);
+                UNIT_ASSERT_VALUES_EQUAL(span.events(1).name(), "IntParam");
+                UNIT_ASSERT_VALUES_EQUAL(span.events(1).attributes().size(), 1);
                 UNIT_ASSERT_VALUES_EQUAL(
                     span.events(1).attributes(0).key(),
                     "value");
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.events(1)
-                        .attributes(0)
-                        .value()
-                        .int_value(),
+                    span.events(1).attributes(0).value().int_value(),
                     1);
 
-                UNIT_ASSERT_VALUES_EQUAL(
-                    span.events(2).name(),
-                    "TwoIntParam");
-                UNIT_ASSERT_VALUES_EQUAL(
-                    span.events(2).attributes().size(),
-                    2);
+                UNIT_ASSERT_VALUES_EQUAL(span.events(2).name(), "TwoIntParam");
+                UNIT_ASSERT_VALUES_EQUAL(span.events(2).attributes().size(), 2);
                 UNIT_ASSERT_VALUES_EQUAL(
                     span.events(2).attributes(0).key(),
                     "value1");
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.events(2)
-                        .attributes(0)
-                        .value()
-                        .int_value(),
+                    span.events(2).attributes(0).value().int_value(),
                     3);
                 UNIT_ASSERT_VALUES_EQUAL(
                     span.events(2).attributes(1).key(),
                     "value2");
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.events(2)
-                        .attributes(1)
-                        .value()
-                        .int_value(),
+                    span.events(2).attributes(1).value().int_value(),
                     4);
 
-                UNIT_ASSERT_VALUES_EQUAL(
-                    span.events(3).name(),
-                    "StringParam");
-                UNIT_ASSERT_VALUES_EQUAL(
-                    span.events(3).attributes().size(),
-                    1);
+                UNIT_ASSERT_VALUES_EQUAL(span.events(3).name(), "StringParam");
+                UNIT_ASSERT_VALUES_EQUAL(span.events(3).attributes().size(), 1);
                 UNIT_ASSERT_VALUES_EQUAL(
                     span.events(3).attributes(0).key(),
                     "svalue");
                 UNIT_ASSERT_VALUES_EQUAL(
-                    span.events(3)
-                        .attributes(0)
-                        .value()
-                        .string_value(),
+                    span.events(3).attributes(0).value().string_value(),
                     "string");
             }
         } reader;

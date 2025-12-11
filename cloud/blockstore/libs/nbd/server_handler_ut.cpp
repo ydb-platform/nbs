@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/service/storage_test.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -39,9 +40,7 @@ private:
     IStoragePtr Storage;
 
 public:
-    TBootstrap(
-            ILoggingServicePtr logging,
-            IStoragePtr storage)
+    TBootstrap(ILoggingServicePtr logging, IStoragePtr storage)
         : Logging(std::move(logging))
         , Storage(std::move(storage))
     {}
@@ -77,14 +76,13 @@ std::unique_ptr<TBootstrap> CreateBootstrap(
     std::shared_ptr<TTestStorage> storage)
 {
     return std::make_unique<TBootstrap>(
-        CreateLoggingService("console", { TLOG_DEBUG }),
+        CreateLoggingService("console", {TLOG_DEBUG}),
         std::move(storage));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServerContext
-    : public IServerContext
+class TServerContext: public IServerContext
 {
 private:
     IOutputStream& Out;
@@ -95,12 +93,10 @@ public:
     {}
 
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 
     bool AcquireRequest(size_t requestBytes) override
     {
@@ -145,27 +141,27 @@ public:
 
 void SetupStorage(TTestStorage& storage)
 {
-    storage.ZeroBlocksHandler = [&] (
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TZeroBlocksRequest> request)
+    storage.ZeroBlocksHandler =
+        [&](TCallContextPtr callContext,
+            std::shared_ptr<NProto::TZeroBlocksRequest> request)
     {
         Y_UNUSED(callContext);
         Y_UNUSED(request);
         return MakeFuture<NProto::TZeroBlocksResponse>();
     };
 
-    storage.ReadBlocksLocalHandler = [&] (
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+    storage.ReadBlocksLocalHandler =
+        [&](TCallContextPtr callContext,
+            std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
     {
         Y_UNUSED(callContext);
         Y_UNUSED(request);
         return MakeFuture<NProto::TReadBlocksLocalResponse>();
     };
 
-    storage.WriteBlocksLocalHandler = [&] (
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+    storage.WriteBlocksLocalHandler =
+        [&](TCallContextPtr callContext,
+            std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
     {
         Y_UNUSED(callContext);
         Y_UNUSED(request);
@@ -173,10 +169,8 @@ void SetupStorage(TTestStorage& storage)
     };
 }
 
-TExportInfo NegotiateClient(
-    IServerHandler& handler,
-    TStringStream& in,
-    TStringStream& out)
+TExportInfo
+NegotiateClient(IServerHandler& handler, TStringStream& in, TStringStream& out)
 {
     TRequestReader reader(in);
     TRequestWriter writer(out);
@@ -187,7 +181,7 @@ TExportInfo NegotiateClient(
 
     {
         TExportInfoRequest request;
-        request.InfoTypes = { NBD_INFO_NAME, NBD_INFO_BLOCK_SIZE };
+        request.InfoTypes = {NBD_INFO_NAME, NBD_INFO_BLOCK_SIZE};
 
         TBufferRequestWriter requestOut;
         requestOut.WriteExportInfoRequest(request);
@@ -197,12 +191,13 @@ TExportInfo NegotiateClient(
 
     UNIT_ASSERT(handler.NegotiateClient(out, in));
 
-    TExportInfo result {};
+    TExportInfo result{};
 
     {
         TServerHello hello;
         UNIT_ASSERT(reader.ReadServerHello(hello));
-        UNIT_ASSERT(hello.Flags == NBD_FLAG_FIXED_NEWSTYLE | NBD_FLAG_NO_ZEROES);
+        UNIT_ASSERT(
+            hello.Flags == NBD_FLAG_FIXED_NEWSTYLE | NBD_FLAG_NO_ZEROES);
     }
 
     {
@@ -222,7 +217,7 @@ TExportInfo NegotiateClient(
         UNIT_ASSERT(reply.Type == NBD_REP_SERVER);
         TBufferRequestReader response(replyData);
 
-        TExportInfo exp {};
+        TExportInfo exp{};
         UNIT_ASSERT(response.ReadExportList(exp));
         UNIT_ASSERT(exp.Name == DefaultDiskId);
     }
@@ -244,7 +239,7 @@ TExportInfo NegotiateClient(
         UNIT_ASSERT(reply.Type == NBD_REP_INFO);
         TBufferRequestReader replyIn(replyData);
 
-        TExportInfo exp {};
+        TExportInfo exp{};
         ui16 type;
         UNIT_ASSERT(replyIn.ReadExportInfo(exp, type));
         UNIT_ASSERT(type == NBD_INFO_NAME);
@@ -260,7 +255,7 @@ TExportInfo NegotiateClient(
         UNIT_ASSERT(reply.Type == NBD_REP_INFO);
         TBufferRequestReader replyIn(replyData);
 
-        TExportInfo exp {};
+        TExportInfo exp{};
         ui16 type;
         UNIT_ASSERT(replyIn.ReadExportInfo(exp, type));
         UNIT_ASSERT(type == NBD_INFO_BLOCK_SIZE);
@@ -277,7 +272,7 @@ TExportInfo NegotiateClient(
         UNIT_ASSERT(reply.Type == NBD_REP_INFO);
         TBufferRequestReader replyIn(replyData);
 
-        TExportInfo exp {};
+        TExportInfo exp{};
         ui16 type;
         UNIT_ASSERT(replyIn.ReadExportInfo(exp, type));
         UNIT_ASSERT(type == NBD_INFO_EXPORT);
@@ -301,7 +296,7 @@ void ProcessRequests(
     IServerHandler& handler,
     TStringStream& in,
     TStringStream& out,
-    ui32 length = 4*1024)
+    ui32 length = 4 * 1024)
 {
     TRequestReader reader(in);
     TRequestWriter writer(out);
@@ -555,7 +550,9 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
             TStringStream out;
 
             auto exportInfo = NegotiateClient(*handler, in, out);
-            UNIT_ASSERT_VALUES_EQUAL(defaultMinBlockSize, exportInfo.MinBlockSize);
+            UNIT_ASSERT_VALUES_EQUAL(
+                defaultMinBlockSize,
+                exportInfo.MinBlockSize);
             UNIT_ASSERT_VALUES_EQUAL(blockSize, exportInfo.OptBlockSize);
         }
 
@@ -627,13 +624,13 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
         ui32 requestCounter = 0;
         ui32 expectedRequestCounter = 0;
 
-        serverStats->PrepareMetricRequestHandler = [&] (
-            TMetricRequest& metricRequest,
-            TString clientId,
-            TString diskId,
-            ui64 startIndex,
-            ui32 requestBytes,
-            bool unaligned)
+        serverStats->PrepareMetricRequestHandler =
+            [&](TMetricRequest& metricRequest,
+                TString clientId,
+                TString diskId,
+                ui64 startIndex,
+                ui32 requestBytes,
+                bool unaligned)
         {
             Y_UNUSED(clientId);
 
@@ -642,13 +639,14 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
 
             UNIT_ASSERT_VALUES_EQUAL(expectedUnaligned, unaligned);
 
-            switch (metricRequest.RequestType)
-            {
+            switch (metricRequest.RequestType) {
                 case EBlockStoreRequest::ReadBlocks:
                 case EBlockStoreRequest::WriteBlocks:
                 case EBlockStoreRequest::ZeroBlocks:
                     UNIT_ASSERT_VALUES_EQUAL(expectedStartIndex, startIndex);
-                    UNIT_ASSERT_VALUES_EQUAL(expectedBlockCount * DefaultBlockSize, requestBytes);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        expectedBlockCount * DefaultBlockSize,
+                        requestBytes);
                     break;
                 case EBlockStoreRequest::MountVolume:
                 case EBlockStoreRequest::UnmountVolume:

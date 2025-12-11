@@ -20,9 +20,9 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumeAsPartitionActor::TVolumeAsPartitionActor(
-        TChildLogTitle logTitle,
-        ui32 originalBlockSize,
-        TString diskId)
+    TChildLogTitle logTitle,
+    ui32 originalBlockSize,
+    TString diskId)
     : LogTitle(std::move(logTitle))
     , OriginalBlockSize(originalBlockSize)
     , DiskId(std::move(diskId))
@@ -60,12 +60,11 @@ void TVolumeAsPartitionActor::ForwardRequestToFollower(
     auto* msg = ev->Get();
     msg->Record.MutableHeaders()->SetExactDiskIdMatch(true);
 
-    const ui64 requestId = RequestsInProgress.AddWriteRequest(
-        TRequestCtx{
-            .OriginalSender = ev->Sender,
-            .OriginalCookie = ev->Cookie,
-            .BlockRange = BuildRequestBlockRange(*msg, OriginalBlockSize),
-            .ReplyType = replyType});
+    const ui64 requestId = RequestsInProgress.AddWriteRequest(TRequestCtx{
+        .OriginalSender = ev->Sender,
+        .OriginalCookie = ev->Cookie,
+        .BlockRange = BuildRequestBlockRange(*msg, OriginalBlockSize),
+        .ReplyType = replyType});
 
     NActors::TActorId nondeliveryActor = SelfId();
     auto message = std::make_unique<NActors::IEventHandle>(
@@ -231,7 +230,8 @@ void TVolumeAsPartitionActor::DoWriteBlocks(
         BuildRequestBlockRange(*msg, OriginalBlockSize);
     const ui64 offset = originalRange.Start * OriginalBlockSize;
     const ui64 size = originalRange.Size() * OriginalBlockSize;
-    const bool needReadModifyWrite = ((offset % BlockSize) != 0) || ((size % BlockSize) != 0);
+    const bool needReadModifyWrite =
+        ((offset % BlockSize) != 0) || ((size % BlockSize) != 0);
 
     if (needReadModifyWrite) {
         auto message = TStringBuilder()
@@ -451,7 +451,8 @@ void TVolumeAsPartitionActor::HandleZeroBlocks(
         BuildRequestBlockRange(*msg, OriginalBlockSize);
     const ui64 offset = originalRange.Start * OriginalBlockSize;
     const ui64 size = originalRange.Size() * OriginalBlockSize;
-    const bool needReadModifyWrite = ((offset % BlockSize) != 0) || ((size % BlockSize) != 0);
+    const bool needReadModifyWrite =
+        ((offset % BlockSize) != 0) || ((size % BlockSize) != 0);
 
     if (needReadModifyWrite) {
         auto message = TStringBuilder() << "Can't ZeroBlocks to follower disk. "

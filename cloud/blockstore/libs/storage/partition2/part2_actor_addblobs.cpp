@@ -25,10 +25,8 @@ void TPartitionActor::HandleAddBlobs(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -38,7 +36,9 @@ void TPartitionActor::HandleAddBlobs(
         "AddBlobs",
         requestInfo->CallContext->RequestId);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] Start adding blobs",
         TabletID());
 
@@ -115,10 +115,10 @@ void TPartitionActor::ExecuteAddBlobs(
         State->UpdateBlob(
             db,
             blobInfo.BlobId,
-            false,  // fastPathAllowed
-            blobInfo.Blocks
-        );
-        // TODO: update Ranges map as well? delete these blobs from the corresponding ranges?
+            false,   // fastPathAllowed
+            blobInfo.Blocks);
+        // TODO: update Ranges map as well? delete these blobs from the
+        // corresponding ranges?
     }
 
     for (auto& blob: args.NewBlobs) {
@@ -129,7 +129,9 @@ void TPartitionActor::ExecuteAddBlobs(
             blob.Blocks.front().BlockIndex,
             blob.Blocks.back().BlockIndex);
 
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             "[%lu] Add blob (blob: %s, range: %s)",
             TabletID(),
             DumpBlobIds(TabletID(), blob.BlobId).data(),
@@ -148,8 +150,9 @@ void TPartitionActor::ExecuteAddBlobs(
             ui64 commitId = State->GenerateCommitId();
 
             for (auto& block: blob.Blocks) {
-                Y_ABORT_UNLESS(block.MinCommitId == InvalidCommitId
-                      && block.MaxCommitId == InvalidCommitId);
+                Y_ABORT_UNLESS(
+                    block.MinCommitId == InvalidCommitId &&
+                    block.MaxCommitId == InvalidCommitId);
                 block.MinCommitId = commitId;
             }
 
@@ -243,7 +246,9 @@ void TPartitionActor::CompleteAddBlobs(
     TRequestScope timer(*args.RequestInfo);
     RemoveTransaction(*args.RequestInfo);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] Complete add blobs",
         TabletID());
 
@@ -260,7 +265,8 @@ void TPartitionActor::CompleteAddBlobs(
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-    auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
+    auto time =
+        CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.AddBlobs.AddRequest(time);
 
     EnqueueCompactionIfNeeded(ctx);

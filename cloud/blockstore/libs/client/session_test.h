@@ -14,51 +14,44 @@ namespace NCloud::NBlockStore::NClient {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestSession final
-    : public ISession
+struct TTestSession final: public ISession
 {
-    ui32 MaxTransfer = 8*1024*1024;
+    ui32 MaxTransfer = 8 * 1024 * 1024;
 
     ui32 GetMaxTransfer() const override
     {
         return MaxTransfer;
     }
 
-    using TMountVolumeHandler = std::function<
-        NThreading::TFuture<NProto::TMountVolumeResponse>(
-            const NProto::THeaders& headers)
-        >;
+    using TMountVolumeHandler =
+        std::function<NThreading::TFuture<NProto::TMountVolumeResponse>(
+            const NProto::THeaders& headers)>;
 
-    using TUnmountVolumeHandler = std::function<
-        NThreading::TFuture<NProto::TUnmountVolumeResponse>(
-            const NProto::THeaders& headers)
-        >;
+    using TUnmountVolumeHandler =
+        std::function<NThreading::TFuture<NProto::TUnmountVolumeResponse>(
+            const NProto::THeaders& headers)>;
 
-    using TEnsureVolumeMountedHandler = std::function<
-        NThreading::TFuture<NProto::TMountVolumeResponse>()>;
+    using TEnsureVolumeMountedHandler =
+        std::function<NThreading::TFuture<NProto::TMountVolumeResponse>()>;
 
-    using TReadBlocksHandler = std::function<
-        NThreading::TFuture<NProto::TReadBlocksLocalResponse>(
+    using TReadBlocksHandler =
+        std::function<NThreading::TFuture<NProto::TReadBlocksLocalResponse>(
             TCallContextPtr callContext,
-            std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
-        >;
+            std::shared_ptr<NProto::TReadBlocksLocalRequest> request)>;
 
-    using TWriteBlocksHandler = std::function<
-        NThreading::TFuture<NProto::TWriteBlocksLocalResponse>(
+    using TWriteBlocksHandler =
+        std::function<NThreading::TFuture<NProto::TWriteBlocksLocalResponse>(
             TCallContextPtr callContext,
-            std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
-        >;
+            std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)>;
 
-    using TZeroBlocksHandler = std::function<
-        NThreading::TFuture<NProto::TZeroBlocksResponse>(
+    using TZeroBlocksHandler =
+        std::function<NThreading::TFuture<NProto::TZeroBlocksResponse>(
             TCallContextPtr callContext,
-            std::shared_ptr<NProto::TZeroBlocksRequest> request)
-        >;
+            std::shared_ptr<NProto::TZeroBlocksRequest> request)>;
 
-    using TEraseDeviceHandler = std::function<
-        NThreading::TFuture<NProto::TError>(
-            NProto::EDeviceEraseMethod method)
-        >;
+    using TEraseDeviceHandler =
+        std::function<NThreading::TFuture<NProto::TError>(
+            NProto::EDeviceEraseMethod method)>;
 
     TMountVolumeHandler MountVolumeHandler;
     TUnmountVolumeHandler UnmountVolumeHandler;
@@ -98,7 +91,8 @@ struct TTestSession final
         return UnmountVolumeHandler(headers);
     }
 
-    NThreading::TFuture<NProto::TMountVolumeResponse> EnsureVolumeMounted() override
+    NThreading::TFuture<NProto::TMountVolumeResponse>
+    EnsureVolumeMounted() override
     {
         return EnsureVolumeMountedHandler();
     }

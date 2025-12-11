@@ -28,11 +28,9 @@ void TNonreplicatedPartitionActor::SendStats(const TActorContext& ctx)
     }
 
     PartCounters->Simple.IORequestsInFlight.Set(
-        RequestsInProgress.GetRequestCount()
-    );
+        RequestsInProgress.GetRequestCount());
     PartCounters->Simple.BytesCount.Set(
-        PartConfig->GetBlockCount() * PartConfig->GetBlockSize()
-    );
+        PartConfig->GetBlockCount() * PartConfig->GetBlockSize());
 
     PartCounters->Simple.HasBrokenDevice.Set(
         CalculateHasBrokenDeviceCounterValue(ctx, false));

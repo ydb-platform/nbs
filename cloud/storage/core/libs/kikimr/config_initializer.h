@@ -10,8 +10,7 @@ namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TConfigInitializerYdbBase
-    : public virtual TConfigInitializerBase
+struct TConfigInitializerYdbBase: public virtual TConfigInitializerBase
 {
     TOptionsYdbBasePtr Options;
 
@@ -25,7 +24,8 @@ struct TConfigInitializerYdbBase
 
     void InitKikimrConfig();
 
-    void SetupMonitoringConfig(NKikimrConfig::TMonitoringConfig& monConfig) const;
+    void SetupMonitoringConfig(
+        NKikimrConfig::TMonitoringConfig& monConfig) const;
     void SetupLogLevel(NKikimrConfig::TLogConfig& logConfig) const;
 
     void ApplyCMSConfigs(NKikimrConfig::TAppConfig cmsConfig);
@@ -36,7 +36,8 @@ struct TConfigInitializerYdbBase
     ui32 GetMonitoringThreads() const override;
     TString GetLogBackendFileName() const override;
 
-    virtual void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config) = 0;
+    virtual void ApplyCustomCMSConfigs(
+        const NKikimrConfig::TAppConfig& config) = 0;
 
 protected:
     NKikimrConfig::TLogConfig GetLogConfig() const;
@@ -50,4 +51,4 @@ protected:
     void ApplyMonitoringConfig(const TString& text);
 };
 
-}   // namespace NCloud::NServer
+}   // namespace NCloud::NStorage

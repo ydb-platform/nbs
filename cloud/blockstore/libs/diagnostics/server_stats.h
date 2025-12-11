@@ -27,8 +27,8 @@ struct TMetricRequest
     TString DiskId;
     IVolumeInfoPtr VolumeInfo;
     ui64 StartIndex = 0;
-    NCloud::NProto::EStorageMediaKind MediaKind
-        = NCloud::NProto::STORAGE_MEDIA_HDD;
+    NCloud::NProto::EStorageMediaKind MediaKind =
+        NCloud::NProto::STORAGE_MEDIA_HDD;
     ui64 RequestBytes = 0;
     TInstant RequestTimestamp;
     bool Unaligned = false;
@@ -41,13 +41,12 @@ struct TMetricRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IServerStats
-    : public IStats
+struct IServerStats: public IStats
 {
     virtual TExecutorCounters::TExecutorScope StartExecutor() = 0;
 
-    virtual NMonitoring::TDynamicCounters::TCounterPtr
-        GetEndpointCounter(NProto::EClientIpcType ipcType) = 0;
+    virtual NMonitoring::TDynamicCounters::TCounterPtr GetEndpointCounter(
+        NProto::EClientIpcType ipcType) = 0;
 
     virtual bool MountVolume(
         const NProto::TVolume& volume,

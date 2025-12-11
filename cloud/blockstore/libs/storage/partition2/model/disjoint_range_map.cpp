@@ -1,5 +1,6 @@
-#include "alloc.h"
 #include "disjoint_range_map.h"
+
+#include "alloc.h"
 
 #include <util/generic/map.h>
 
@@ -17,7 +18,8 @@ struct TDisjointRangeMap::TBinaryTreeMap
         ui64 Mark;
     };
 
-    using TData = TMap<ui32, TItem, TLess<ui32>, TStlAllocator>; // End -> {Begin, Mark}
+    using TData =
+        TMap<ui32, TItem, TLess<ui32>, TStlAllocator>;   // End -> {Begin, Mark}
     TData Data;
 
     TBinaryTreeMap()
@@ -135,7 +137,6 @@ struct TDisjointRangeMap::TBinaryTreeMap
             ++lo;
         }
 
-
         if (start <= br.End) {
             Data[br.End] = {start, mark};
         }
@@ -189,8 +190,7 @@ struct TDisjointRangeMap::TWideTreeMap
 {
     struct TNode: TNonCopyable
     {
-        union TValue
-        {
+        union TValue {
             TNode* Node = nullptr;
             ui64 Mark;
         };
@@ -217,14 +217,17 @@ struct TDisjointRangeMap::TWideTreeMap
             Children.fill(TValue());
         }
 
-        TNode* NewNode() {
+        TNode* NewNode()
+        {
             return NewImpl<TNode>(
                 GetAllocatorByTag(EAllocatorTag::DisjointRangeMap));
         }
 
-        void DeleteNode(TNode* node) {
+        void DeleteNode(TNode* node)
+        {
             DeleteImpl(
-                GetAllocatorByTag(EAllocatorTag::DisjointRangeMap), node);
+                GetAllocatorByTag(EAllocatorTag::DisjointRangeMap),
+                node);
         }
     };
 
@@ -246,8 +249,7 @@ struct TDisjointRangeMap::TWideTreeMap
             : Range(range)
             , BlockIndex(Range.Start)
             , Root(root)
-        {
-        }
+        {}
 
         bool IsValid() const
         {
@@ -343,10 +345,9 @@ struct TDisjointRangeMap::TWideTreeMap
                     CurrentNode = c.Node;
                     ++CurrentDepth;
                 } else if (CurrentNode->IsLeaf && c.Mark) {
-                    BlockIndex = (CurrentPath[0] << 24)
-                        + (CurrentPath[1] << 16)
-                        + (CurrentPath[2] << 8)
-                        + CurrentPath[3];
+                    BlockIndex = (CurrentPath[0] << 24) +
+                                 (CurrentPath[1] << 16) +
+                                 (CurrentPath[2] << 8) + CurrentPath[3];
 
                     return;
                 } else {
@@ -389,8 +390,7 @@ struct TDisjointRangeMap::TWideTreeMap
     {
         TIterator(TBlockRange32 range, TNode* root)
             : TIteratorBase<TNode*>(range, root)
-        {
-        }
+        {}
 
         void Set(ui64 mark)
         {
@@ -505,13 +505,13 @@ TDisjointRangeMap::TDisjointRangeMap(EOptimizationMode mode)
             break;
         }
 
-        default: Y_ABORT_UNLESS(0);
+        default:
+            Y_ABORT_UNLESS(0);
     }
 }
 
 TDisjointRangeMap::~TDisjointRangeMap()
-{
-}
+{}
 
 void TDisjointRangeMap::Mark(TBlockRange32 blockRange, ui64 mark)
 {

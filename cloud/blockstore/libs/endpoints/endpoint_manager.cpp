@@ -58,14 +58,12 @@ int GetFieldCount()
     return T::GetDescriptor()->field_count();
 }
 
-bool CompareRequests(
-    const NProto::TKmsKey& left,
-    const NProto::TKmsKey& right)
+bool CompareRequests(const NProto::TKmsKey& left, const NProto::TKmsKey& right)
 {
     Y_DEBUG_ABORT_UNLESS(3 == GetFieldCount<NProto::TKmsKey>());
-    return left.GetKekId() == right.GetKekId()
-        && left.GetEncryptedDEK() == right.GetEncryptedDEK()
-        && left.GetTaskId() == right.GetTaskId();
+    return left.GetKekId() == right.GetKekId() &&
+           left.GetEncryptedDEK() == right.GetEncryptedDEK() &&
+           left.GetTaskId() == right.GetTaskId();
 }
 
 bool CompareRequests(
@@ -73,9 +71,9 @@ bool CompareRequests(
     const NProto::TKeyPath& right)
 {
     Y_DEBUG_ABORT_UNLESS(3 == GetFieldCount<NProto::TKeyPath>());
-    return left.GetKeyringId() == right.GetKeyringId()
-        && left.GetFilePath() == right.GetFilePath()
-        && CompareRequests(left.GetKmsKey(), right.GetKmsKey());
+    return left.GetKeyringId() == right.GetKeyringId() &&
+           left.GetFilePath() == right.GetFilePath() &&
+           CompareRequests(left.GetKmsKey(), right.GetKmsKey());
 }
 
 bool CompareRequests(
@@ -83,9 +81,9 @@ bool CompareRequests(
     const NProto::TEncryptionSpec& right)
 {
     Y_DEBUG_ABORT_UNLESS(3 == GetFieldCount<NProto::TEncryptionSpec>());
-    return left.GetMode() == right.GetMode()
-        && CompareRequests(left.GetKeyPath(), right.GetKeyPath())
-        && left.GetKeyHash() == right.GetKeyHash();
+    return left.GetMode() == right.GetMode() &&
+           CompareRequests(left.GetKeyPath(), right.GetKeyPath()) &&
+           left.GetKeyHash() == right.GetKeyHash();
 }
 
 bool CompareRequests(
@@ -93,33 +91,43 @@ bool CompareRequests(
     const NProto::TClientProfile& right)
 {
     Y_DEBUG_ABORT_UNLESS(2 == GetFieldCount<NProto::TClientProfile>());
-    return left.GetCpuUnitCount() == right.GetCpuUnitCount()
-        && left.GetHostType() == right.GetHostType();
+    return left.GetCpuUnitCount() == right.GetCpuUnitCount() &&
+           left.GetHostType() == right.GetHostType();
 }
 
 bool CompareRequests(
     const NProto::TClientMediaKindPerformanceProfile& left,
     const NProto::TClientMediaKindPerformanceProfile& right)
 {
-    Y_DEBUG_ABORT_UNLESS(4 == GetFieldCount<NProto::TClientMediaKindPerformanceProfile>());
-    return left.GetMaxReadIops() == right.GetMaxReadIops()
-        && left.GetMaxWriteIops() == right.GetMaxWriteIops()
-        && left.GetMaxReadBandwidth() == right.GetMaxReadBandwidth()
-        && left.GetMaxWriteBandwidth() == right.GetMaxWriteBandwidth();
+    Y_DEBUG_ABORT_UNLESS(
+        4 == GetFieldCount<NProto::TClientMediaKindPerformanceProfile>());
+    return left.GetMaxReadIops() == right.GetMaxReadIops() &&
+           left.GetMaxWriteIops() == right.GetMaxWriteIops() &&
+           left.GetMaxReadBandwidth() == right.GetMaxReadBandwidth() &&
+           left.GetMaxWriteBandwidth() == right.GetMaxWriteBandwidth();
 }
 
 bool CompareRequests(
     const NProto::TClientPerformanceProfile& left,
     const NProto::TClientPerformanceProfile& right)
 {
-    Y_DEBUG_ABORT_UNLESS(7 == GetFieldCount<NProto::TClientPerformanceProfile>());
-    return CompareRequests(left.GetHDDProfile(), right.GetHDDProfile())
-        && CompareRequests(left.GetSSDProfile(), right.GetSSDProfile())
-        && CompareRequests(left.GetNonreplProfile(), right.GetNonreplProfile())
-        && CompareRequests(left.GetMirror2Profile(), right.GetMirror2Profile())
-        && CompareRequests(left.GetMirror3Profile(), right.GetMirror3Profile())
-        && CompareRequests(left.GetHddNonreplProfile(), right.GetHddNonreplProfile())
-        && left.GetBurstTime() == right.GetBurstTime();
+    Y_DEBUG_ABORT_UNLESS(
+        7 == GetFieldCount<NProto::TClientPerformanceProfile>());
+    return CompareRequests(left.GetHDDProfile(), right.GetHDDProfile()) &&
+           CompareRequests(left.GetSSDProfile(), right.GetSSDProfile()) &&
+           CompareRequests(
+               left.GetNonreplProfile(),
+               right.GetNonreplProfile()) &&
+           CompareRequests(
+               left.GetMirror2Profile(),
+               right.GetMirror2Profile()) &&
+           CompareRequests(
+               left.GetMirror3Profile(),
+               right.GetMirror3Profile()) &&
+           CompareRequests(
+               left.GetHddNonreplProfile(),
+               right.GetHddNonreplProfile()) &&
+           left.GetBurstTime() == right.GetBurstTime();
 }
 
 bool CompareRequests(
@@ -127,33 +135,38 @@ bool CompareRequests(
     const NProto::TStartEndpointRequest& right)
 {
     Y_DEBUG_ABORT_UNLESS(24 == GetFieldCount<NProto::TStartEndpointRequest>());
-    return left.GetUnixSocketPath() == right.GetUnixSocketPath()
-        && left.GetDiskId() == right.GetDiskId()
-        && left.GetInstanceId() == right.GetInstanceId()
-        && left.GetVolumeAccessMode() == right.GetVolumeAccessMode()
-        && left.GetVolumeMountMode() == right.GetVolumeMountMode()
-        && left.GetIpcType() == right.GetIpcType()
-        && left.GetClientVersionInfo() == right.GetClientVersionInfo()
-        && left.GetThrottlingDisabled() == right.GetThrottlingDisabled()
-        && left.GetMountSeqNumber() == right.GetMountSeqNumber()
-        && left.GetClientId() == right.GetClientId()
-        && CompareRequests(left.GetClientProfile(), right.GetClientProfile())
-        && CompareRequests(left.GetClientPerformanceProfile(), right.GetClientPerformanceProfile())
-        && left.GetVhostQueuesCount() == right.GetVhostQueuesCount()
-        && left.GetUnalignedRequestsDisabled() == right.GetUnalignedRequestsDisabled()
-        && CompareRequests(left.GetEncryptionSpec(), right.GetEncryptionSpec())
-        && left.GetSendNbdMinBlockSize() == right.GetSendNbdMinBlockSize()
-        && left.GetMountFlags() == right.GetMountFlags()
-        && left.GetDeviceName() == right.GetDeviceName()
-        && std::equal(
-            left.GetClientCGroups().begin(),
-            left.GetClientCGroups().end(),
-            right.GetClientCGroups().begin(),
-            right.GetClientCGroups().end())
-        && left.GetPersistent() == right.GetPersistent()
-        && left.GetNbdDeviceFile() == right.GetNbdDeviceFile()
-        && left.GetUseFreeNbdDeviceFile() == right.GetUseFreeNbdDeviceFile()
-        && left.GetVhostDiscardEnabled() == right.GetVhostDiscardEnabled();
+    return left.GetUnixSocketPath() == right.GetUnixSocketPath() &&
+           left.GetDiskId() == right.GetDiskId() &&
+           left.GetInstanceId() == right.GetInstanceId() &&
+           left.GetVolumeAccessMode() == right.GetVolumeAccessMode() &&
+           left.GetVolumeMountMode() == right.GetVolumeMountMode() &&
+           left.GetIpcType() == right.GetIpcType() &&
+           left.GetClientVersionInfo() == right.GetClientVersionInfo() &&
+           left.GetThrottlingDisabled() == right.GetThrottlingDisabled() &&
+           left.GetMountSeqNumber() == right.GetMountSeqNumber() &&
+           left.GetClientId() == right.GetClientId() &&
+           CompareRequests(left.GetClientProfile(), right.GetClientProfile()) &&
+           CompareRequests(
+               left.GetClientPerformanceProfile(),
+               right.GetClientPerformanceProfile()) &&
+           left.GetVhostQueuesCount() == right.GetVhostQueuesCount() &&
+           left.GetUnalignedRequestsDisabled() ==
+               right.GetUnalignedRequestsDisabled() &&
+           CompareRequests(
+               left.GetEncryptionSpec(),
+               right.GetEncryptionSpec()) &&
+           left.GetSendNbdMinBlockSize() == right.GetSendNbdMinBlockSize() &&
+           left.GetMountFlags() == right.GetMountFlags() &&
+           left.GetDeviceName() == right.GetDeviceName() &&
+           std::equal(
+               left.GetClientCGroups().begin(),
+               left.GetClientCGroups().end(),
+               right.GetClientCGroups().begin(),
+               right.GetClientCGroups().end()) &&
+           left.GetPersistent() == right.GetPersistent() &&
+           left.GetNbdDeviceFile() == right.GetNbdDeviceFile() &&
+           left.GetUseFreeNbdDeviceFile() == right.GetUseFreeNbdDeviceFile() &&
+           left.GetVhostDiscardEnabled() == right.GetVhostDiscardEnabled();
 }
 
 bool CompareRequests(
@@ -202,18 +215,23 @@ public:
     {
         size_t num = 0;
         if (!GetDeviceNum(device, num)) {
-            return MakeError(E_ARGUMENT, TStringBuilder()
-                << "Couldn't parse nbd device file: " << device);
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "Couldn't parse nbd device file: " << device);
         }
 
         if (!NFs::Exists(device)) {
-            return MakeError(E_INVALID_STATE, TStringBuilder()
-                << "No file for nbd device: " << device);
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder() << "No file for nbd device: " << device);
         }
 
         if (num < BusyDevices.size() && BusyDevices[num]) {
-            return MakeError(E_INVALID_STATE, TStringBuilder()
-                << "Nbd device file doesn't exist: " << device);
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "Nbd device file doesn't exist: " << device);
         }
 
         if (num >= BusyDevices.size()) {
@@ -300,8 +318,7 @@ public:
 
 class TEndpointManager;
 
-class TRestoringClient final
-    : public TBlockStoreNotImplemented
+class TRestoringClient final: public TBlockStoreNotImplemented
 {
 private:
     TEndpointManager& EndpointManager;
@@ -318,15 +335,15 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        using TRequest = NProto::T##name##Request;                             \
-        using TResponse = NProto::T##name##Response;                           \
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)         \
+    struct T##name##Method                           \
+    {                                                \
+        using TRequest = NProto::T##name##Request;   \
+        using TResponse = NProto::T##name##Response; \
     };
 // BLOCKSTORE_DECLARE_METHOD
 
-    BLOCKSTORE_ENDPOINT_SERVICE(BLOCKSTORE_DECLARE_METHOD)
+BLOCKSTORE_ENDPOINT_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
 #undef BLOCKSTORE_DECLARE_METHOD
 
@@ -377,9 +394,9 @@ bool CompareRequests(
     const TSwitchEndpointRequest& left,
     const TSwitchEndpointRequest& right)
 {
-    return left.GetDiskId() == right.GetDiskId()
-        && left.GetUnixSocketPath() == right.GetUnixSocketPath()
-        && left.GetReason() == right.GetReason();
+    return left.GetDiskId() == right.GetDiskId() &&
+           left.GetUnixSocketPath() == right.GetUnixSocketPath() &&
+           left.GetReason() == right.GetReason();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -446,8 +463,8 @@ private:
         {}
 
         TErrorHandler(
-                std::weak_ptr<TEndpointManager> manager,
-                std::shared_ptr<TEndpoint> endpoint)
+            std::weak_ptr<TEndpointManager> manager,
+            std::shared_ptr<TEndpoint> endpoint)
             : Manager(std::move(manager))
         {
             SetEndpoint(std::move(endpoint));
@@ -478,7 +495,8 @@ private:
     const TExecutorPtr Executor;
     const ISessionManagerPtr SessionManager;
     const IEndpointStoragePtr EndpointStorage;
-    const THashMap<NProto::EClientIpcType, IEndpointListenerPtr> EndpointListeners;
+    const THashMap<NProto::EClientIpcType, IEndpointListenerPtr>
+        EndpointListeners;
     const NBD::IDeviceFactoryPtr NbdDeviceFactory;
     const IBlockStorePtr Service;
     const TString NbdSocketSuffix;
@@ -493,8 +511,7 @@ private:
         TRequestState<TStartEndpointMethod>,
         TRequestState<TStopEndpointMethod>,
         TRequestState<TRefreshEndpointMethod>,
-        TRequestState<TSwitchEndpointMethod>
-    >;
+        TRequestState<TSwitchEndpointMethod>>;
     THashMap<TString, TRequestStateVariant> ProcessingSockets;
 
     THashMap<TString, std::shared_ptr<TEndpoint>> Endpoints;
@@ -502,7 +519,8 @@ private:
     NClient::IMetricClientPtr RestoringClient;
     TSet<TString> RestoringEndpoints;
 
-    enum {
+    enum
+    {
         WaitingForRestoring = 0,
         ReadingStorage = 1,
         StartingEndpoints = 2,
@@ -513,20 +531,20 @@ private:
 
 public:
     TEndpointManager(
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            ILoggingServicePtr logging,
-            IRequestStatsPtr requestStats,
-            IVolumeStatsPtr volumeStats,
-            IServerStatsPtr serverStats,
-            TExecutorPtr executor,
-            ISessionManagerPtr sessionManager,
-            IEndpointStoragePtr endpointStorage,
-            THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
-            NBD::IDeviceFactoryPtr nbdDeviceFactory,
-            NBD::IErrorHandlerMapPtr nbdErrorHandlerMap,
-            IBlockStorePtr service,
-            TEndpointManagerOptions options)
+        ITimerPtr timer,
+        ISchedulerPtr scheduler,
+        ILoggingServicePtr logging,
+        IRequestStatsPtr requestStats,
+        IVolumeStatsPtr volumeStats,
+        IServerStatsPtr serverStats,
+        TExecutorPtr executor,
+        ISessionManagerPtr sessionManager,
+        IEndpointStoragePtr endpointStorage,
+        THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
+        NBD::IDeviceFactoryPtr nbdDeviceFactory,
+        NBD::IErrorHandlerMapPtr nbdErrorHandlerMap,
+        IBlockStorePtr service,
+        TEndpointManagerOptions options)
         : Logging(std::move(logging))
         , ServerStats(std::move(serverStats))
         , Scheduler(std::move(scheduler))
@@ -591,9 +609,8 @@ public:
         return Executor->Execute([                                             \
             ctx = std::move(callContext),                                      \
             req = std::move(request),                                          \
-            weakSelf = weak_from_this()] () mutable                            \
-        -> T##name##Method::TResponse                                          \
-        {                                                                      \
+            weakSelf = weak_from_this()                                        \
+        ]() mutable -> T##name##Method::TResponse {                            \
             auto self = weakSelf.lock();                                       \
             if (!self) {                                                       \
                 return TErrorResponse(E_FAIL, "EndpointManager is destroyed"); \
@@ -606,7 +623,7 @@ public:
     T##name##Method::TResponse Do##name(                                       \
         TCallContextPtr ctx,                                                   \
         std::shared_ptr<T##name##Method::TRequest> req);                       \
-// ENDPOINT_IMPLEMENT_METHOD
+    // ENDPOINT_IMPLEMENT_METHOD
 
     BLOCKSTORE_ENDPOINT_SERVICE(ENDPOINT_IMPLEMENT_METHOD, override)
     ENDPOINT_IMPLEMENT_METHOD(SwitchEndpoint, )
@@ -620,14 +637,16 @@ public:
     TFuture<void> RestoreEndpoints() override
     {
         AtomicSet(RestoringStage, ReadingStorage);
-        return Executor->Execute([weakSelf = weak_from_this()] () mutable {
-            if (auto self = weakSelf.lock()) {
-                auto future = self->DoRestoreEndpoints();
-                AtomicSet(self->RestoringStage, self->StartingEndpoints);
-                self->Executor->WaitFor(future);
-                AtomicSet(self->RestoringStage, self->Completed);
-            }
-        });
+        return Executor->Execute(
+            [weakSelf = weak_from_this()]() mutable
+            {
+                if (auto self = weakSelf.lock()) {
+                    auto future = self->DoRestoreEndpoints();
+                    AtomicSet(self->RestoringStage, self->StartingEndpoints);
+                    self->Executor->WaitFor(future);
+                    AtomicSet(self->RestoringStage, self->Completed);
+                }
+            });
     }
 
     TFuture<NProto::TStartEndpointResponse> RestoreSingleEndpoint(
@@ -648,9 +667,12 @@ private:
         switch (AtomicGet(RestoringStage)) {
             case WaitingForRestoring:
                 return true;
-            case ReadingStorage: return true;
-            case StartingEndpoints: return RestoringEndpoints.contains(socket);
-            case Completed: return false;
+            case ReadingStorage:
+                return true;
+            case StartingEndpoints:
+                return RestoringEndpoints.contains(socket);
+            case Completed:
+                return false;
         }
         return false;
     }
@@ -696,8 +718,8 @@ private:
     void CloseAllEndpointSockets(const NProto::TStartEndpointRequest& request);
     void CloseEndpointSocket(const NProto::TStartEndpointRequest& request);
 
-    std::shared_ptr<NProto::TStartEndpointRequest> CreateNbdStartEndpointRequest(
-        const NProto::TStartEndpointRequest& request);
+    std::shared_ptr<NProto::TStartEndpointRequest>
+    CreateNbdStartEndpointRequest(const NProto::TStartEndpointRequest& request);
 
     TResultOrError<NBD::IDevicePtr> StartNbdDevice(
         std::shared_ptr<NProto::TStartEndpointRequest> request,
@@ -753,17 +775,20 @@ private:
             const auto& st = it->second;
             auto* state = std::get_if<TRequestState<TMethod>>(&st);
             if (!state) {
-                auto response = TErrorResponse(E_REJECTED, TStringBuilder()
-                    << "endpoint " << socketPath.Quote()
-                    << " is " << GetProcessName(st) << " now");
+                auto response = TErrorResponse(
+                    E_REJECTED,
+                    TStringBuilder() << "endpoint " << socketPath.Quote()
+                                     << " is " << GetProcessName(st) << " now");
                 promise.SetValue(std::move(response));
                 return promise;
             }
 
             if (!CompareRequests(request, state->Request)) {
-                auto response = TErrorResponse(E_REJECTED, TStringBuilder()
-                    << "endpoint " << socketPath.Quote()
-                    << " is " << GetProcessName(st) << " now with other args");
+                auto response = TErrorResponse(
+                    E_REJECTED,
+                    TStringBuilder()
+                        << "endpoint " << socketPath.Quote() << " is "
+                        << GetProcessName(st) << " now with other args");
                 promise.SetValue(std::move(response));
                 return promise;
             }
@@ -782,7 +807,7 @@ private:
 
         STORAGE_INFO(
             "Endpoint " << socketPath.Quote() << " is processing "
-            << GetProcessName(insertedIt->second) << " state");
+                        << GetProcessName(insertedIt->second) << " state");
 
         return promise;
     }
@@ -794,31 +819,29 @@ private:
 
         const auto processName = GetProcessName(it->second);
         STORAGE_INFO(
-            "Endpoint " << socketPath.Quote()
-            << " processed " << processName << " state");
+            "Endpoint " << socketPath.Quote() << " processed " << processName
+                        << " state");
 
         ProcessingSockets.erase(it);
     }
 
     TString GetProcessName(const TRequestStateVariant& st)
     {
-        return std::visit(TOverloaded{
-            [] (const TRequestState<TStartEndpointMethod>&) {
-                return "starting";
-            },
-            [] (const TRequestState<TStopEndpointMethod>&) {
-                return "stopping";
-            },
-            [] (const TRequestState<TRefreshEndpointMethod>&) {
-                return "refreshing";
-            },
-            [] (const TRequestState<TSwitchEndpointMethod>&) {
-                return "switching";
-            },
-            [](const auto&) {
-                return "busy (undefined process)";
-            }
-        }, st);
+        return std::visit(
+            TOverloaded{
+                [](const TRequestState<TStartEndpointMethod>&)
+                { return "starting"; },
+                [](const TRequestState<TStopEndpointMethod>&)
+                { return "stopping"; },
+                [](const TRequestState<TRefreshEndpointMethod>&)
+                { return "refreshing"; },
+                [](const TRequestState<TSwitchEndpointMethod>&)
+                { return "switching"; },
+                [](const auto&)
+                {
+                    return "busy (undefined process)";
+                }},
+            st);
     }
 };
 
@@ -902,8 +925,10 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
             }
 
             if (!NFs::Exists(socketPath)) {
-                return TErrorResponse(E_INVALID_STATE, TStringBuilder()
-                    << "failed to recreate socket: " << socketPath.Quote());
+                return TErrorResponse(
+                    E_INVALID_STATE,
+                    TStringBuilder()
+                        << "failed to recreate socket: " << socketPath.Quote());
             }
         }
 
@@ -995,8 +1020,10 @@ NProto::TError TEndpointManager::AlterEndpoint(
     const auto& socketPath = newReq.GetUnixSocketPath();
 
     // NBS-3018
-    if (!CompareRequests(oldReq.GetClientProfile(), newReq.GetClientProfile())) {
-        STORAGE_WARN("Modified ClientProfile will be ignored for endpoint: "
+    if (!CompareRequests(oldReq.GetClientProfile(), newReq.GetClientProfile()))
+    {
+        STORAGE_WARN(
+            "Modified ClientProfile will be ignored for endpoint: "
             << socketPath.Quote());
 
         oldReq.MutableClientProfile()->CopyFrom(newReq.GetClientProfile());
@@ -1004,7 +1031,8 @@ NProto::TError TEndpointManager::AlterEndpoint(
 
     // CLOUD-98154
     if (oldReq.GetDeviceName() != newReq.GetDeviceName()) {
-        STORAGE_WARN("Modified DeviceName will be ignored for endpoint: "
+        STORAGE_WARN(
+            "Modified DeviceName will be ignored for endpoint: "
             << socketPath.Quote());
 
         oldReq.SetDeviceName(newReq.GetDeviceName());
@@ -1015,9 +1043,10 @@ NProto::TError TEndpointManager::AlterEndpoint(
     }
 
     if (CompareRequests(newReq, oldReq)) {
-        return MakeError(S_ALREADY, TStringBuilder()
-            << "endpoint " << socketPath.Quote()
-            << " has already been started");
+        return MakeError(
+            S_ALREADY,
+            TStringBuilder() << "endpoint " << socketPath.Quote()
+                             << " has already been started");
     }
 
     oldReq.SetVolumeAccessMode(newReq.GetVolumeAccessMode());
@@ -1025,9 +1054,10 @@ NProto::TError TEndpointManager::AlterEndpoint(
     oldReq.SetMountSeqNumber(newReq.GetMountSeqNumber());
 
     if (!CompareRequests(newReq, oldReq)) {
-        return MakeError(E_INVALID_STATE, TStringBuilder()
-            << "endpoint " << socketPath.Quote()
-            << " has already been started with other args");
+        return MakeError(
+            E_INVALID_STATE,
+            TStringBuilder() << "endpoint " << socketPath.Quote()
+                             << " has already been started with other args");
     }
 
     auto future = SessionManager->AlterSession(
@@ -1095,7 +1125,8 @@ NProto::TError TEndpointManager::RestartListenerEndpoint(
     auto future = listener->StopEndpoint(request.GetUnixSocketPath());
     error = Executor->WaitFor(future);
     if (HasError(error)) {
-        STORAGE_ERROR("Failed to stop endpoint while restarting it: "
+        STORAGE_ERROR(
+            "Failed to stop endpoint while restarting it: "
             << FormatError(error));
     }
 
@@ -1105,7 +1136,8 @@ NProto::TError TEndpointManager::RestartListenerEndpoint(
         sessionInfo.Session);
     error = Executor->WaitFor(future);
     if (HasError(error)) {
-        STORAGE_ERROR("Failed to start endpoint while recreating it: "
+        STORAGE_ERROR(
+            "Failed to start endpoint while recreating it: "
             << FormatError(error));
     }
 
@@ -1192,7 +1224,8 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
         c->Dec();
     }
 
-    if (endpoint->Device) { // could have been already stopped by an error handler
+    if (endpoint->Device)
+    {   // could have been already stopped by an error handler
         auto stopFuture = endpoint->Device->Stop(true);
         const auto& stopError = Executor->WaitFor(stopFuture);
         if (HasError(stopError)) {
@@ -1229,8 +1262,7 @@ NProto::TListEndpointsResponse TEndpointManager::DoListEndpoints(
         responseEndpoints.Add()->CopyFrom(*endpoint->Request);
     }
 
-    response.SetEndpointsWereRestored(
-        AtomicGet(RestoringStage) == Completed);
+    response.SetEndpointsWereRestored(AtomicGet(RestoringStage) == Completed);
     return response;
 }
 
@@ -1246,18 +1278,17 @@ NProto::TKickEndpointResponse TEndpointManager::DoKickEndpoint(
 
     auto startReq = DeserializeEndpoint<NProto::TStartEndpointRequest>(str);
     if (!startReq) {
-        return TErrorResponse(E_INVALID_STATE, TStringBuilder()
-            << "Failed to deserialize endpoint with key "
-            << request->GetKeyringId());
+        return TErrorResponse(
+            E_INVALID_STATE,
+            TStringBuilder() << "Failed to deserialize endpoint with key "
+                             << request->GetKeyringId());
     }
 
     startReq->MutableHeaders()->MergeFrom(request->GetHeaders());
     startReq->SetPersistent(false);
 
     STORAGE_INFO("Kick StartEndpoint request: " << *startReq);
-    auto response = DoStartEndpoint(
-        std::move(ctx),
-        std::move(startReq));
+    auto response = DoStartEndpoint(std::move(ctx), std::move(startReq));
 
     return TErrorResponse(response.GetError());
 }
@@ -1284,17 +1315,19 @@ NProto::TListKeyringsResponse TEndpointManager::DoListKeyrings(
         endpoint.SetKeyringId(keyringId);
 
         auto [str, error] = EndpointStorage->GetEndpoint(keyringId);
-        if (HasError(error)
-                && !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT))
+        if (HasError(error) &&
+            !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT))
         {
-            STORAGE_WARN("Failed to get endpoint from storage, ID: "
+            STORAGE_WARN(
+                "Failed to get endpoint from storage, ID: "
                 << keyringId << ", error: " << FormatError(error));
             continue;
         }
 
         auto req = DeserializeEndpoint<NProto::TStartEndpointRequest>(str);
         if (!req) {
-            STORAGE_WARN("Failed to deserialize endpoint from storage, ID: "
+            STORAGE_WARN(
+                "Failed to deserialize endpoint from storage, ID: "
                 << keyringId);
             continue;
         }
@@ -1358,8 +1391,10 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
 
     auto it = Endpoints.find(socketPath);
     if (it == Endpoints.end()) {
-        return TErrorResponse(S_FALSE, TStringBuilder()
-            << "endpoint " << socketPath.Quote() << " not started");
+        return TErrorResponse(
+            S_FALSE,
+            TStringBuilder()
+                << "endpoint " << socketPath.Quote() << " not started");
     }
 
     auto ipcType = it->second->Request->GetIpcType();
@@ -1370,7 +1405,8 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
         socketPath);
     const auto& listener = listenerIt->second;
 
-    auto future = SessionManager->GetSession(std::move(ctx), socketPath, headers);
+    auto future =
+        SessionManager->GetSession(std::move(ctx), socketPath, headers);
     const auto& [sessionInfo, getSessionError] = Executor->WaitFor(future);
 
     if (HasError(getSessionError)) {
@@ -1380,14 +1416,17 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
     it->second->Volume.SetBlocksCount(sessionInfo.Volume.GetBlocksCount());
     it->second->Volume.SetBlockSize(sessionInfo.Volume.GetBlockSize());
 
-    auto error = it->second->Device->Resize(
-        sessionInfo.Volume.GetBlocksCount() *
-        sessionInfo.Volume.GetBlockSize()).GetValueSync();
+    auto error = it->second->Device
+                     ->Resize(
+                         sessionInfo.Volume.GetBlocksCount() *
+                         sessionInfo.Volume.GetBlockSize())
+                     .GetValueSync();
     if (HasError(error)) {
         return TErrorResponse(error);
     }
 
-    const auto refreshError = listener->RefreshEndpoint(socketPath, sessionInfo.Volume);
+    const auto refreshError =
+        listener->RefreshEndpoint(socketPath, sessionInfo.Volume);
     return TErrorResponse(refreshError);
 }
 
@@ -1414,7 +1453,8 @@ void TEndpointManager::ProcessException(
     auto deadline =
         TInstant::Now() + context->BackoffProvider.GetDelayAndIncrease();
 
-    auto func = [weakSelf = weak_from_this(), context = std::move(context)]() {
+    auto func = [weakSelf = weak_from_this(), context = std::move(context)]()
+    {
         if (auto self = weakSelf.lock()) {
             self->DoProcessException(std::move(context));
         }
@@ -1439,7 +1479,8 @@ void TEndpointManager::DoProcessException(
 
     auto state = ProcessingSockets.find(endpoint->Request->GetUnixSocketPath());
     if (state != ProcessingSockets.end() &&
-        std::holds_alternative<TRequestState<TStopEndpointMethod>>(state->second))
+        std::holds_alternative<TRequestState<TStopEndpointMethod>>(
+            state->second))
     {
         STORAGE_WARN(prefix << " endpoint is stopping, cancel restart");
         return;
@@ -1452,26 +1493,26 @@ void TEndpointManager::DoProcessException(
     }
 
     if (endpoint->Generation != context->Generation) {
-        STORAGE_WARN(prefix << " generation mismatch (" << endpoint->Generation
-            << " != " << context->Generation << "), cancel restart");
+        STORAGE_WARN(
+            prefix << " generation mismatch (" << endpoint->Generation
+                   << " != " << context->Generation << "), cancel restart");
         return;
     }
     endpoint->Generation++;
 
     STORAGE_INFO(prefix << " restart endpoint");
 
-    bool hasDevice =
-        endpoint->Request->HasNbdDeviceFile() &&
-        endpoint->Request->GetNbdDeviceFile() &&
-        endpoint->Request->GetPersistent();
+    bool hasDevice = endpoint->Request->HasNbdDeviceFile() &&
+                     endpoint->Request->GetNbdDeviceFile() &&
+                     endpoint->Request->GetPersistent();
 
     if (hasDevice && endpoint->Device) {
         STORAGE_INFO(prefix << " stop device");
         auto future = endpoint->Device->Stop(false);
         auto error = Executor->WaitFor(future);
         if (HasError(error)) {
-            STORAGE_ERROR(prefix << " failed to stop device: "
-                                 << FormatError(error));
+            STORAGE_ERROR(
+                prefix << " failed to stop device: " << FormatError(error));
         }
         endpoint->Device.reset();
     }
@@ -1492,7 +1533,8 @@ void TEndpointManager::DoProcessException(
         *endpoint->Request,
         TSessionInfo(endpoint->Volume, session));
     if (HasError(error)) {
-        STORAGE_ERROR(prefix << " failed to open socket: " << FormatError(error));
+        STORAGE_ERROR(
+            prefix << " failed to open socket: " << FormatError(error));
         context->Generation++;
         ProcessException(std::move(context), std::move(prefix));
         return;
@@ -1508,8 +1550,8 @@ void TEndpointManager::DoProcessException(
         auto startDeviceFuture = device->Start();
         error = Executor->WaitFor(startDeviceFuture);
         if (HasError(error)) {
-            STORAGE_ERROR(prefix << "failed to start device: "
-                << FormatError(error));
+            STORAGE_ERROR(
+                prefix << "failed to start device: " << FormatError(error));
             context->Generation++;
             ProcessException(std::move(context), std::move(prefix));
             return;
@@ -1548,16 +1590,19 @@ NProto::TError TEndpointManager::OpenEndpointSocket(
     auto ipcType = request.GetIpcType();
     auto listenerIt = EndpointListeners.find(ipcType);
     if (listenerIt == EndpointListeners.end()) {
-        return MakeError(E_ARGUMENT, TStringBuilder()
-            << "unsupported endpoint type: " << static_cast<ui32>(ipcType));
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "unsupported endpoint type: " << static_cast<ui32>(ipcType));
     }
     auto listener = listenerIt->second;
 
     if (request.GetUnixSocketPath().size() > UnixSocketPathLengthLimit) {
-        return MakeError(E_ARGUMENT, TStringBuilder()
-            << "Length of socket path should not be more than "
-            << UnixSocketPathLengthLimit
-            << ", socket: " << request.GetUnixSocketPath());
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "Length of socket path should not be more than "
+                             << UnixSocketPathLengthLimit
+                             << ", socket: " << request.GetUnixSocketPath());
     }
 
     auto future = listener->StartEndpoint(
@@ -1576,7 +1621,8 @@ void TEndpointManager::CloseAllEndpointSockets(
 
     auto nbdRequest = CreateNbdStartEndpointRequest(request);
     if (nbdRequest) {
-        STORAGE_INFO("Stop additional endpoint: "
+        STORAGE_INFO(
+            "Stop additional endpoint: "
             << nbdRequest->GetUnixSocketPath().Quote());
         CloseEndpointSocket(*nbdRequest);
     }
@@ -1597,8 +1643,9 @@ void TEndpointManager::CloseEndpointSocket(
 
     auto future = listener->StopEndpoint(socketPath);
     if (const auto& error = Executor->WaitFor(future); HasError(error)) {
-        STORAGE_ERROR("Failed to close socket " << socketPath.Quote()
-            << ", error: " << FormatError(error));
+        STORAGE_ERROR(
+            "Failed to close socket " << socketPath.Quote()
+                                      << ", error: " << FormatError(error));
     }
 }
 
@@ -1627,11 +1674,14 @@ NProto::TError TEndpointManager::DoSwitchEndpoint(
 {
     const auto& diskId = request->GetDiskId();
 
-    auto it = FindIf(Endpoints, [&] (auto& v) {
-        const auto& [_, endpoint] = v;
-        return endpoint->Request->GetDiskId() == diskId
-            && endpoint->Request->GetIpcType() == NProto::IPC_VHOST;
-    });
+    auto it = FindIf(
+        Endpoints,
+        [&](auto& v)
+        {
+            const auto& [_, endpoint] = v;
+            return endpoint->Request->GetDiskId() == diskId &&
+                   endpoint->Request->GetIpcType() == NProto::IPC_VHOST;
+        });
 
     if (it == Endpoints.end()) {
         return MakeError(S_OK);
@@ -1664,8 +1714,10 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
 
     auto it = Endpoints.find(socketPath);
     if (it == Endpoints.end()) {
-        return MakeError(S_FALSE, TStringBuilder()
-            << "endpoint " << socketPath.Quote() << " not started");
+        return MakeError(
+            S_FALSE,
+            TStringBuilder()
+                << "endpoint " << socketPath.Quote() << " not started");
     }
 
     auto startRequest = it->second->Request;
@@ -1681,7 +1733,8 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
         startRequest->GetUnixSocketPath(),
         startRequest->GetHeaders());
 
-    const auto& [sessionInfo, getSessionError] = Executor->WaitFor(getSessionFuture);
+    const auto& [sessionInfo, getSessionError] =
+        Executor->WaitFor(getSessionFuture);
     if (HasError(getSessionError)) {
         return getSessionError;
     }
@@ -1721,7 +1774,8 @@ TResultOrError<NBD::IDevicePtr> TEndpointManager::StartNbdDevice(
         request->GetUseFreeNbdDeviceFile())
     {
         if (restoring) {
-            return MakeError(E_ARGUMENT,
+            return MakeError(
+                E_ARGUMENT,
                 "Forbidden 'FreeNbdDeviceFile' flag in restoring endpoints");
         }
 
@@ -1736,7 +1790,8 @@ TResultOrError<NBD::IDevicePtr> TEndpointManager::StartNbdDevice(
 
     if (!restoring) {
         if (!request->GetPersistent()) {
-            return MakeError(E_ARGUMENT,
+            return MakeError(
+                E_ARGUMENT,
                 "Only persistent endpoints can connect to nbd device");
         }
 
@@ -1819,12 +1874,13 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
 
     for (const auto& endpointId: endpointIds) {
         auto [str, error] = EndpointStorage->GetEndpoint(endpointId);
-        if (HasError(error)
-                && !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT))
+        if (HasError(error) &&
+            !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT))
         {
             // NBS-3678
-            STORAGE_WARN("Failed to restore endpoint. ID: " << endpointId
-                << ", error: " << FormatError(error));
+            STORAGE_WARN(
+                "Failed to restore endpoint. ID: " << endpointId << ", error: "
+                                                   << FormatError(error));
             continue;
         }
 
@@ -1875,23 +1931,27 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
             std::move(request));
 
         auto weakPtr = weak_from_this();
-        future.Subscribe([weakPtr, socketPath, endpointId] (const auto& f) {
-            const auto& response = f.GetValue();
-            if (HasError(response)) {
-                ReportEndpointRestoringError(
-                    TStringBuilder() << "Endpoint restoring error occurred for "
-                                        "endpoint, error: "
-                                     << FormatError(response.GetError()),
-                    {{"endpointId", endpointId}, {"socketPath", socketPath}});
-            }
+        future.Subscribe(
+            [weakPtr, socketPath, endpointId](const auto& f)
+            {
+                const auto& response = f.GetValue();
+                if (HasError(response)) {
+                    ReportEndpointRestoringError(
+                        TStringBuilder()
+                            << "Endpoint restoring error occurred for "
+                               "endpoint, error: "
+                            << FormatError(response.GetError()),
+                        {{"endpointId", endpointId},
+                         {"socketPath", socketPath}});
+                }
 
-            if (auto ptr = weakPtr.lock()) {
-                ptr->HandleRestoredEndpoint(
-                    socketPath,
-                    endpointId,
-                    response.GetError());
-            }
-        });
+                if (auto ptr = weakPtr.lock()) {
+                    ptr->HandleRestoredEndpoint(
+                        socketPath,
+                        endpointId,
+                        response.GetError());
+                }
+            });
 
         futures.push_back(future.IgnoreResult());
     }
@@ -1905,8 +1965,9 @@ void TEndpointManager::HandleRestoredEndpoint(
     const NProto::TError& error)
 {
     if (HasError(error)) {
-        STORAGE_ERROR("Failed to start endpoint " << socketPath.Quote()
-            << ", error:" << FormatError(error));
+        STORAGE_ERROR(
+            "Failed to start endpoint " << socketPath.Quote()
+                                        << ", error:" << FormatError(error));
         if (error.GetCode() ==
             MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
         {
@@ -1917,11 +1978,13 @@ void TEndpointManager::HandleRestoredEndpoint(
         }
     }
 
-    Executor->Execute([socketPath, weakSelf = weak_from_this()] () mutable {
-        if (auto self = weakSelf.lock()) {
-            self->RestoringEndpoints.erase(socketPath);
-        }
-    });
+    Executor->Execute(
+        [socketPath, weakSelf = weak_from_this()]() mutable
+        {
+            if (auto self = weakSelf.lock()) {
+                self->RestoringEndpoints.erase(socketPath);
+            }
+        });
 }
 
 void TEndpointManager::ReleaseNbdDevice(const TString& device, bool restoring)

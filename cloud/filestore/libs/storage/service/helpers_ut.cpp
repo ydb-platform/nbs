@@ -4,11 +4,11 @@
 
 #include <cloud/storage/core/protos/media.pb.h>
 
-#include <google/protobuf/util/message_differencer.h>
+#include <contrib/ydb/core/protos/filestore_config.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <contrib/ydb/core/protos/filestore_config.pb.h>
+#include <google/protobuf/util/message_differencer.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -16,8 +16,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TConfigs
-    : public NUnitTest::TBaseFixture
+struct TConfigs: public NUnitTest::TBaseFixture
 {
     NProto::TFileStore TargetFileStore;
 

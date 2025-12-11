@@ -20,7 +20,7 @@ const TStringBuf ArcPart = "/arc/";
 const TStringBuf ArcadiaSuffix = "/arcadia";
 const TStringBuf StablePrefix = "stable-";
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -129,10 +129,10 @@ int GetRevisionFromBranch(const TString& branch)
         return -1;
     }
 
-#define ADD_VERSION_COMPONENT(component, symbolCount)                          \
-    if (component > pow(10, symbolCount)) {                                    \
-        return -1;                                                             \
-    }                                                                          \
+#define ADD_VERSION_COMPONENT(component, symbolCount) \
+    if (component > pow(10, symbolCount)) {           \
+        return -1;                                    \
+    }                                                 \
     version = version * pow(10, symbolCount) + component;
 
     int version = major;
@@ -151,10 +151,8 @@ const TString& GetFullVersionString()
         return custom;
     }
 
-    static const TString fullVersion = TStringBuilder()
-        << GetSvnRevision()
-        << '.'
-        << GetSvnBranch();
+    static const TString fullVersion =
+        TStringBuilder() << GetSvnRevision() << '.' << GetSvnBranch();
 
     return fullVersion;
 }

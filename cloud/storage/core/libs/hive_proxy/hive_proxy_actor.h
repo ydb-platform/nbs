@@ -10,7 +10,6 @@
 #include <contrib/ydb/core/base/hive.h>
 #include <contrib/ydb/core/mind/local.h>
 #include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -24,8 +23,7 @@ namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class THiveProxyActor final
-    : public NActors::TActorBootstrapped<THiveProxyActor>
+class THiveProxyActor final: public NActors::TActorBootstrapped<THiveProxyActor>
 {
 public:
     struct TRequestInfo
@@ -40,8 +38,7 @@ public:
         TRequestInfo(NActors::TActorId sender, ui64 cookie)
             : Sender(sender)
             , Cookie(cookie)
-        {
-        }
+        {}
 
         void Drop()
         {
@@ -55,13 +52,14 @@ public:
         }
     };
 
-    struct TCreateOrLookupRequest
-        : public TRequestInfo
+    struct TCreateOrLookupRequest: public TRequestInfo
     {
         const bool IsLookup = false;
         TAutoPtr<NActors::IEventHandle> Event;
 
-        TCreateOrLookupRequest(bool isLookup, TAutoPtr<NActors::IEventHandle> event)
+        TCreateOrLookupRequest(
+            bool isLookup,
+            TAutoPtr<NActors::IEventHandle> event)
             : TRequestInfo(event->Sender, event->Cookie)
             , IsLookup(isLookup)
             , Event(std::move(event))
@@ -115,9 +113,14 @@ private:
         void OnUpdateStats()
         {
             switch (State) {
-                case STATE_NO_STATS: State = STATE_HAS_STATS; break;
-                case STATE_HAS_STATS: break;
-                default: State = STATE_SEND_UPDATE; break;
+                case STATE_NO_STATS:
+                    State = STATE_HAS_STATS;
+                    break;
+                case STATE_HAS_STATS:
+                    break;
+                default:
+                    State = STATE_SEND_UPDATE;
+                    break;
             }
         }
 
@@ -135,9 +138,14 @@ private:
             Y_DEBUG_ABORT_UNLESS(State != STATE_NO_STATS);
             Y_DEBUG_ABORT_UNLESS(State != STATE_HAS_STATS);
             switch (State) {
-                case STATE_SENDING_STATS: State = STATE_NO_STATS; break;
-                case STATE_SEND_UPDATE: State = STATE_HAS_STATS; break;
-                default: break;
+                case STATE_SENDING_STATS:
+                    State = STATE_NO_STATS;
+                    break;
+                case STATE_SEND_UPDATE:
+                    State = STATE_HAS_STATS;
+                    break;
+                default:
+                    break;
             }
         }
 
@@ -224,7 +232,9 @@ private:
         TLockState* state,
         const NProto::TError& error = {});
 
-    void ScheduleSendTabletMetrics(const NActors::TActorContext& ctx, ui64 hive);
+    void ScheduleSendTabletMetrics(
+        const NActors::TActorContext& ctx,
+        ui64 hive);
 
     void AddTabletMetrics(
         ui64 tabletId,

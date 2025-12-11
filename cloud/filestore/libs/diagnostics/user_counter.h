@@ -27,4 +27,4 @@ void UnregisterFilestore(
     const TString& filestoreId,
     const TString& instanceId);
 
-}   // NCloud::NFileStore::NUserCounter
+}   // namespace NCloud::NFileStore::NUserCounter

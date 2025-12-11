@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
+
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <contrib/ydb/core/base/appdata.h>
@@ -20,18 +21,18 @@ using namespace NKikimr;
 ////////////////////////////////////////////////////////////////////////////////
 
 TDiskAgentActor::TDiskAgentActor(
-        TStorageConfigPtr config,
-        TDiskAgentConfigPtr agentConfig,
-        NRdma::TRdmaConfigPtr rdmaConfig,
-        NSpdk::ISpdkEnvPtr spdk,
-        ICachingAllocatorPtr allocator,
-        IStorageProviderPtr storageProvider,
-        IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        ILoggingServicePtr logging,
-        NRdma::IServerPtr rdmaServer,
-        NNvme::INvmeManagerPtr nvmeManager,
-        ITaskQueuePtr backgroundThreadPool)
+    TStorageConfigPtr config,
+    TDiskAgentConfigPtr agentConfig,
+    NRdma::TRdmaConfigPtr rdmaConfig,
+    NSpdk::ISpdkEnvPtr spdk,
+    ICachingAllocatorPtr allocator,
+    IStorageProviderPtr storageProvider,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    ILoggingServicePtr logging,
+    NRdma::IServerPtr rdmaServer,
+    NNvme::INvmeManagerPtr nvmeManager,
+    ITaskQueuePtr backgroundThreadPool)
     : Config(std::move(config))
     , AgentConfig(std::move(agentConfig))
     , RdmaConfig(std::move(rdmaConfig))
@@ -65,8 +66,13 @@ void TDiskAgentActor::RegisterPages(const TActorContext& ctx)
     if (mon) {
         auto* rootPage = mon->RegisterIndexPage("blockstore", "BlockStore");
 
-        mon->RegisterActorPage(rootPage, "disk_agent", "DiskAgent",
-            false, ctx.ActorSystem(), SelfId());
+        mon->RegisterActorPage(
+            rootPage,
+            "disk_agent",
+            "DiskAgent",
+            false,
+            ctx.ActorSystem(),
+            SelfId());
     }
 }
 
@@ -78,10 +84,12 @@ void TDiskAgentActor::RegisterCounters(const TActorContext& ctx)
     if (counters) {
         auto rootGroup = counters->GetSubgroup("counters", "blockstore");
         auto totalCounters = rootGroup->GetSubgroup("component", "disk_agent");
-        auto outOfOrderCounters = totalCounters->GetSubgroup("utils", "old_requests");
+        auto outOfOrderCounters =
+            totalCounters->GetSubgroup("utils", "old_requests");
 
         OldRequestCounters.Delayed = outOfOrderCounters->GetCounter("Delayed");
-        OldRequestCounters.Rejected = outOfOrderCounters->GetCounter("Rejected");
+        OldRequestCounters.Rejected =
+            outOfOrderCounters->GetCounter("Rejected");
 
         UpdateCounters(ctx);
         ScheduleCountersUpdate(ctx);
@@ -104,10 +112,12 @@ void TDiskAgentActor::UpdateCounters(const TActorContext& ctx)
 void TDiskAgentActor::UpdateActorStats()
 {
     if (Counters) {
-        auto& actorQueue = Counters->Percentile()
-            [TDiskAgentCounters::PERCENTILE_COUNTER_Actor_ActorQueue];
-        auto& mailboxQueue = Counters->Percentile()
-            [TDiskAgentCounters::PERCENTILE_COUNTER_Actor_MailboxQueue];
+        auto& actorQueue =
+            Counters->Percentile()
+                [TDiskAgentCounters::PERCENTILE_COUNTER_Actor_ActorQueue];
+        auto& mailboxQueue =
+            Counters->Percentile()
+                [TDiskAgentCounters::PERCENTILE_COUNTER_Actor_MailboxQueue];
         auto ctx(ActorContext());
         auto actorQueues = ctx.CountMailboxEvents(1001);
         IncrementFor(actorQueue, actorQueues.first);
@@ -126,7 +136,7 @@ void TDiskAgentActor::UpdateSessionCache(const TActorContext& ctx)
     NCloud::Send<TEvDiskAgentPrivate::TEvUpdateSessionCacheRequest>(
         ctx,
         SessionCacheActor,
-        0,  // cookie
+        0,   // cookie
         State->GetSessions());
 }
 
@@ -233,8 +243,7 @@ void TDiskAgentActor::HandlePoisonPill(
                 ctx,
                 *requestInfo,
                 std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceResponse>(
-                    MakeError(E_REJECTED, "DiskAgent is dead")
-                ));
+                    MakeError(E_REJECTED, "DiskAgent is dead")));
         }
     }
 
@@ -260,7 +269,9 @@ bool TDiskAgentActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
         BLOCKSTORE_DISK_AGENT_REQUESTS(BLOCKSTORE_HANDLE_REQUEST, TEvDiskAgent)
-        BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE(BLOCKSTORE_HANDLE_REQUEST, TEvDiskAgentPrivate)
+        BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE(
+            BLOCKSTORE_HANDLE_REQUEST,
+            TEvDiskAgentPrivate)
 
         default:
             return false;
@@ -295,7 +306,9 @@ STFUNC(TDiskAgentActor::StateInit)
 
         HFunc(NMon::TEvHttpInfo, HandleHttpInfo);
 
-        HFunc(TEvDiskAgentPrivate::TEvInitAgentCompleted, HandleInitAgentCompleted);
+        HFunc(
+            TEvDiskAgentPrivate::TEvInitAgentCompleted,
+            HandleInitAgentCompleted);
 
         HFunc(
             TEvDiskAgentPrivate::TEvReportDelayedDiskAgentConfigMismatch,
@@ -356,16 +369,25 @@ STFUNC(TDiskAgentActor::StateWork)
 
         HFunc(NMon::TEvHttpInfo, HandleHttpInfo);
 
-        HFunc(TEvDiskAgentPrivate::TEvSecureEraseCompleted, HandleSecureEraseCompleted);
+        HFunc(
+            TEvDiskAgentPrivate::TEvSecureEraseCompleted,
+            HandleSecureEraseCompleted);
 
-        HFunc(TEvDiskAgentPrivate::TEvRegisterAgentResponse,
+        HFunc(
+            TEvDiskAgentPrivate::TEvRegisterAgentResponse,
             HandleRegisterAgentResponse);
 
-        HFunc(TEvDiskRegistryProxy::TEvSubscribeResponse, HandleSubscribeResponse);
-        HFunc(TEvDiskRegistryProxy::TEvConnectionEstablished, HandleConnectionEstablished);
+        HFunc(
+            TEvDiskRegistryProxy::TEvSubscribeResponse,
+            HandleSubscribeResponse);
+        HFunc(
+            TEvDiskRegistryProxy::TEvConnectionEstablished,
+            HandleConnectionEstablished);
         HFunc(TEvDiskRegistryProxy::TEvConnectionLost, HandleConnectionLost);
 
-        HFunc(TEvDiskAgentPrivate::TEvWriteOrZeroCompleted, HandleWriteOrZeroCompleted);
+        HFunc(
+            TEvDiskAgentPrivate::TEvWriteOrZeroCompleted,
+            HandleWriteOrZeroCompleted);
 
         HFunc(
             TEvDiskAgentPrivate::TEvReportDelayedDiskAgentConfigMismatch,
@@ -408,9 +430,9 @@ STFUNC(TDiskAgentActor::StateWork)
                     &ev),
                 ActorContext());
             break;
-        HFunc(
-            TEvDiskAgent::TEvDirectCopyBlocksRequest,
-            HandleDirectCopyBlocks);
+            HFunc(
+                TEvDiskAgent::TEvDirectCopyBlocksRequest,
+                HandleDirectCopyBlocks);
 
         default:
             if (!HandleRequests(ev)) {

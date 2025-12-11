@@ -42,8 +42,7 @@ struct ITestVhostQueue
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestVhostQueueFactory final
-    : public IVhostQueueFactory
+struct TTestVhostQueueFactory final: public IVhostQueueFactory
 {
     TManualEvent FailedEvent;
     TVector<std::shared_ptr<ITestVhostQueue>> Queues;

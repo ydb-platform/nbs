@@ -18,37 +18,37 @@ static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define VHOST_SERVICE_CONFIG(xxx)                                              \
-    xxx(ServiceEndpoints,           TVector<NProto::TServiceEndpoint>,  {}    )\
-    xxx(RootKeyringName,            TString,                "nfs"             )\
-    xxx(EndpointsKeyringName,       TString,                "nfs-endpoints"   )\
-    xxx(EndpointStorageType,                                                   \
-        NCloud::NProto::EEndpointStorageType,                                  \
-        NCloud::NProto::ENDPOINT_STORAGE_KEYRING                              )\
-    xxx(EndpointStorageDir,         TString,                {}                )\
-    xxx(SocketAccessMode,           ui32,                   MODE0660          )\
-    xxx(EndpointStorageNotImplementedErrorIsFatal,  bool,   false             )\
-                                                                               \
-    xxx(HandleOpsQueuePath,                         TString,    ""            )\
-    xxx(HandleOpsQueueSize,                         ui32,       1_GB          )\
-    xxx(WriteBackCachePath,                         TString,    ""            )\
-    xxx(WriteBackCacheCapacity,                     ui64,       1_GB          )\
-    xxx(WriteBackCacheAutomaticFlushPeriod,                                    \
-        TDuration,                                                             \
-        TDuration::MilliSeconds(100)                                          )\
-    xxx(WriteBackCacheFlushRetryPeriod,                                        \
-        TDuration,                                                             \
-        TDuration::MilliSeconds(100)                                          )\
-    xxx(WriteBackCacheFlushMaxWriteRequestSize,     ui32,       1_MB          )\
-    xxx(WriteBackCacheFlushMaxWriteRequestsCount,   ui32,       64            )\
-    xxx(WriteBackCacheFlushMaxSumWriteRequestsSize, ui32,       32_MB         )\
-    xxx(DirectoryHandlesStoragePath,                TString,    ""            )\
-    xxx(DirectoryHandlesInitialDataSize,            ui64,       1_GB          )\
-// VHOST_SERVICE_CONFIG
+#define VHOST_SERVICE_CONFIG(xxx)                                \
+    xxx(ServiceEndpoints, TVector<NProto::TServiceEndpoint>, {}) \
+    xxx(RootKeyringName, TString, "nfs")                         \
+    xxx(EndpointsKeyringName, TString, "nfs-endpoints")          \
+    xxx(EndpointStorageType,                                     \
+        NCloud::NProto::EEndpointStorageType,                    \
+        NCloud::NProto::ENDPOINT_STORAGE_KEYRING)                \
+    xxx(EndpointStorageDir, TString, {})                         \
+    xxx(SocketAccessMode, ui32, MODE0660)                        \
+    xxx(EndpointStorageNotImplementedErrorIsFatal, bool, false)  \
+                                                                 \
+    xxx(HandleOpsQueuePath, TString, "")                         \
+    xxx(HandleOpsQueueSize, ui32, 1_GB)                          \
+    xxx(WriteBackCachePath, TString, "")                         \
+    xxx(WriteBackCacheCapacity, ui64, 1_GB)                      \
+    xxx(WriteBackCacheAutomaticFlushPeriod,                      \
+        TDuration,                                               \
+        TDuration::MilliSeconds(100))                            \
+    xxx(WriteBackCacheFlushRetryPeriod,                          \
+        TDuration,                                               \
+        TDuration::MilliSeconds(100))                            \
+    xxx(WriteBackCacheFlushMaxWriteRequestSize, ui32, 1_MB)      \
+    xxx(WriteBackCacheFlushMaxWriteRequestsCount, ui32, 64)      \
+    xxx(WriteBackCacheFlushMaxSumWriteRequestsSize, ui32, 32_MB) \
+    xxx(DirectoryHandlesStoragePath, TString, "")                \
+    xxx(DirectoryHandlesInitialDataSize, ui64, 1_GB)             \
+    // VHOST_SERVICE_CONFIG
 
-#define VHOST_SERVICE_DECLARE_CONFIG(name, type, value)                        \
-    Y_DECLARE_UNUSED static const type Default##name = value;                  \
-// VHOST_SERVICE_DECLARE_CONFIG
+#define VHOST_SERVICE_DECLARE_CONFIG(name, type, value)       \
+    Y_DECLARE_UNUSED static const type Default##name = value; \
+    // VHOST_SERVICE_DECLARE_CONFIG
 
 VHOST_SERVICE_CONFIG(VHOST_SERVICE_DECLARE_CONFIG)
 
@@ -69,8 +69,7 @@ TDuration ConvertValue<TDuration, ui32>(const ui32& value)
 }
 
 template <class TTarget, typename TSource>
-TTarget ConvertValue(
-    const google::protobuf::RepeatedPtrField<TSource>& value)
+TTarget ConvertValue(const google::protobuf::RepeatedPtrField<TSource>& value)
 {
     TTarget v(Reserve(value.size()));
     for (const auto& x: value) {
@@ -78,7 +77,6 @@ TTarget ConvertValue(
     }
     return v;
 }
-
 
 template <typename T>
 bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
@@ -117,8 +115,7 @@ void DumpImpl(
             break;
         default:
             os << "(Unknown EEndpointStorageType value "
-                << static_cast<int>(value)
-                << ")";
+               << static_cast<int>(value) << ")";
             break;
     }
 }
@@ -164,7 +161,7 @@ VHOST_SERVICE_CONFIG(DECLARE_FIELD_CHECKER)
         return IsEmpty##name(ProtoConfig, value) ? Default##name              \
                                                  : ConvertValue<type>(value); \
     }                                                                         \
-// VHOST_CONFIG_GETTER
+    // VHOST_CONFIG_GETTER
 
 VHOST_SERVICE_CONFIG(VHOST_CONFIG_GETTER)
 
@@ -172,11 +169,11 @@ VHOST_SERVICE_CONFIG(VHOST_CONFIG_GETTER)
 
 void TVhostServiceConfig::Dump(IOutputStream& out) const
 {
-#define VHOST_CONFIG_DUMP(name, ...)                                           \
-    out << #name << ": ";                                                      \
-    DumpImpl(Get##name(), out);                                                \
-    out << Endl;                                                               \
-// VHOST_CONFIG_DUMP
+#define VHOST_CONFIG_DUMP(name, ...) \
+    out << #name << ": ";            \
+    DumpImpl(Get##name(), out);      \
+    out << Endl;                     \
+    // VHOST_CONFIG_DUMP
 
     VHOST_SERVICE_CONFIG(VHOST_CONFIG_DUMP);
 
@@ -185,16 +182,21 @@ void TVhostServiceConfig::Dump(IOutputStream& out) const
 
 void TVhostServiceConfig::DumpHtml(IOutputStream& out) const
 {
-#define VHOST_CONFIG_DUMP(name, ...)                                           \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { DumpImpl(Get##name(), out); }                               \
-    }                                                                          \
-// VHOST_CONFIG_DUMP
+#define VHOST_CONFIG_DUMP(name, ...)    \
+    TABLER () {                         \
+        TABLED () {                     \
+            out << #name;               \
+        }                               \
+        TABLED () {                     \
+            DumpImpl(Get##name(), out); \
+        }                               \
+    }                                   \
+    // VHOST_CONFIG_DUMP
 
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
+    HTML (out) {
+        TABLE_CLASS ("table table-condensed") {
+            TABLEBODY()
+            {
                 VHOST_SERVICE_CONFIG(VHOST_CONFIG_DUMP);
             }
         }
@@ -203,11 +205,12 @@ void TVhostServiceConfig::DumpHtml(IOutputStream& out) const
 #undef VHOST_CONFIG_DUMP
 }
 
-const NProto::TLocalServiceConfig* TVhostServiceConfig::GetLocalServiceConfig() const
+const NProto::TLocalServiceConfig*
+TVhostServiceConfig::GetLocalServiceConfig() const
 {
     return ProtoConfig.HasLocalServiceConfig()
-        ? &ProtoConfig.GetLocalServiceConfig()
-        : nullptr;
+               ? &ProtoConfig.GetLocalServiceConfig()
+               : nullptr;
 }
 
 #undef VHOST_SERVICE_CONFIG

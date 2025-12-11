@@ -84,22 +84,20 @@ struct TOptions
         opts.AddLongOption("since", "filter out reuqests before date")
             .Optional()
             .RequiredArgument("DATE")
-            .Handler1T<TString>([&] (const TString& val) {
-                    Since = TInstant::ParseIso8601(val);
-                });
+            .Handler1T<TString>([&](const TString& val)
+                                { Since = TInstant::ParseIso8601(val); });
 
         opts.AddLongOption("till", "filter out reuqests after date")
             .Optional()
             .RequiredArgument("DATE")
-            .Handler1T<TString>([&] (const TString& val) {
-                    Till = TInstant::ParseIso8601(val);
-                });
+            .Handler1T<TString>([&](const TString& val)
+                                { Till = TInstant::ParseIso8601(val); });
 
         TOptsParseResultException(&opts, argc, argv);
 
         if (Since && Till && Since > Till) {
-            ythrow yexception() << "invalid date filter: "
-                << Since.ToString() << " > " << Till.ToString();
+            ythrow yexception() << "invalid date filter: " << Since.ToString()
+                                << " > " << Till.ToString();
         }
 
         EvlogDumperArgv.push_back("fake");
@@ -127,18 +125,17 @@ struct TRequest
     TDuration PostponedTime;
 
     TRequest(
-            TInstant ts,
-            EBlockStoreRequest type,
-            ui32 blockCount,
-            TDuration duration,
-            TDuration postponedTime)
+        TInstant ts,
+        EBlockStoreRequest type,
+        ui32 blockCount,
+        TDuration duration,
+        TDuration postponedTime)
         : Ts(ts)
         , Type(type)
         , BlockCount(blockCount)
         , Duration(duration)
         , PostponedTime(postponedTime)
-    {
-    }
+    {}
 
     bool operator<(const TRequest& r) const
     {
@@ -148,8 +145,7 @@ struct TRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEventProcessor final
-    : public TProtobufEventProcessor
+class TEventProcessor final: public TProtobufEventProcessor
 {
 private:
     const TOptions& Options;
@@ -157,13 +153,10 @@ private:
     ui64 LastTs = 0;
 
 public:
-    TEventProcessor(
-            const TOptions& options,
-            TVector<TRequest>* requests)
+    TEventProcessor(const TOptions& options, TVector<TRequest>* requests)
         : Options(options)
         , Requests(requests)
-    {
-    }
+    {}
 
 protected:
     void DoProcessEvent(const TEvent* ev, IOutputStream* out) override
@@ -176,7 +169,8 @@ protected:
             auto order = GetItemOrder(*message);
 
             for (const auto& id: order) {
-                const auto ts = [&]()-> TMaybe<ui64> {
+                const auto ts = [&]() -> TMaybe<ui64>
+                {
                     switch (id.Type) {
                         case EItemType::Request: {
                             return ProcessRequest(*message, id.Index);
@@ -208,12 +202,16 @@ private:
     void OnRequest(const NProto::TProfileLogRequestInfo& r)
     {
         auto start = TInstant::MicroSeconds(r.GetTimestampMcs());
-        if (Options.Since && start < Options.Since || Options.Till && start > Options.Till) {
+        if (Options.Since && start < Options.Since ||
+            Options.Till && start > Options.Till)
+        {
             return;
         }
 
-        auto duration = TDuration::MicroSeconds(Max<ui64>(r.GetDurationMcs(), 1llu));
-        auto postponed = TDuration::MicroSeconds(Max<ui64>(r.GetPostponedTimeMcs(), 1llu));
+        auto duration =
+            TDuration::MicroSeconds(Max<ui64>(r.GetDurationMcs(), 1llu));
+        auto postponed =
+            TDuration::MicroSeconds(Max<ui64>(r.GetPostponedTimeMcs(), 1llu));
 
         auto type = static_cast<EBlockStoreRequest>(r.GetRequestType());
         if (!IsReadWriteRequest(type)) {
@@ -227,13 +225,7 @@ private:
             count = r.GetRanges(0).GetBlockCount();
         }
 
-        Requests->emplace_back(
-            start,
-            type,
-            count,
-            duration,
-            postponed
-        );
+        Requests->emplace_back(start, type, count, duration, postponed);
     }
 };
 
@@ -248,9 +240,9 @@ struct TSufferStat
     TVolumePerformanceCalculator PerfCalc;
 
     TSufferStat(
-            const TVector<TRequest>& events,
-            const NProto::TVolume& volume,
-            TDiagnosticsConfigPtr diagnosticsConfig)
+        const TVector<TRequest>& events,
+        const NProto::TVolume& volume,
+        TDiagnosticsConfigPtr diagnosticsConfig)
         : Events(events)
         , PerfCalc(volume, std::move(diagnosticsConfig))
     {
@@ -262,12 +254,11 @@ struct TSufferStat
         auto calcExpectedCost = PerfCalc.GetExpectedCost().MicroSeconds();
         auto calcCurrentCost = PerfCalc.GetCurrentCost().MicroSeconds();
         bool curSuffer = PerfCalc.UpdateStats();
-        Cout << " Exp: " << expectedCost
-            << "\tReal: " << realCost
-            << "\tCalc Exp: " << calcExpectedCost
-            << "\tCalc Real: " << calcCurrentCost
-            << "\t1 second suffer: " << curSuffer
-            << "\t15 seconds suffer: " << PerfCalc.IsSuffering() << Endl;
+        Cout << " Exp: " << expectedCost << "\tReal: " << realCost
+             << "\tCalc Exp: " << calcExpectedCost
+             << "\tCalc Real: " << calcCurrentCost
+             << "\t1 second suffer: " << curSuffer
+             << "\t15 seconds suffer: " << PerfCalc.IsSuffering() << Endl;
     }
 
     void Print(ui64 blockSize)
@@ -308,9 +299,11 @@ struct TSufferStat
                 DurationToCyclesSafe(e.PostponedTime),
                 requestBytes);
 
-            expectedCost += IsReadRequest(type) ?
-                PerfCalc.GetExpectedReadCost(requestBytes).MicroSeconds() :
-                PerfCalc.GetExpectedWriteCost(requestBytes).MicroSeconds();
+            expectedCost +=
+                IsReadRequest(type)
+                    ? PerfCalc.GetExpectedReadCost(requestBytes).MicroSeconds()
+                    : PerfCalc.GetExpectedWriteCost(requestBytes)
+                          .MicroSeconds();
             if (e.Duration > e.PostponedTime) {
                 realCost += (e.Duration - e.PostponedTime).MicroSeconds();
             }
@@ -387,7 +380,8 @@ int main(int argc, const char** argv)
 
     NProto::EStorageMediaKind mediaKind;
     if (!ParseMediaKind(options.StorageMediaKind, mediaKind)) {
-        Cerr  << "Failed to parse storage media kind: " << options.StorageMediaKind;
+        Cerr << "Failed to parse storage media kind: "
+             << options.StorageMediaKind;
         return 0;
     }
 
@@ -398,8 +392,7 @@ int main(int argc, const char** argv)
         NEvClass::Factory(),
         &processor,
         options.EvlogDumperArgv.size(),
-        options.EvlogDumperArgv.begin()
-    );
+        options.EvlogDumperArgv.begin());
 
     Sort(requests);
 

@@ -8,14 +8,16 @@
 const int blockSize = 4096;
 const int rangeSize = 1024;
 
-void dump(const bool* usedBlocks, int size) {
+void dump(const bool* usedBlocks, int size)
+{
     // TODO: rle and other stuff
     for (int i = 0; i < size; ++i) {
         printf("%d", usedBlocks[i]);
     }
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[])
+{
     if (argc < 2) {
         printf("Error args\n");
         return 0;
@@ -31,7 +33,7 @@ int main(int argc, char *argv[]) {
 
     int alignment = 512;
     char buf[blockSize + alignment];
-    char* block = (char*) (alignment * ((intptr_t) buf / alignment) + alignment);
+    char* block = (char*)(alignment * ((intptr_t)buf / alignment) + alignment);
     int offset = 0;
     bool usedBlocks[rangeSize];
     int blockIdx = 0;

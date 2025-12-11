@@ -16,8 +16,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TVolumeStatActor final
-    : public TActorBootstrapped<TVolumeStatActor>
+class TVolumeStatActor final: public TActorBootstrapped<TVolumeStatActor>
 {
 private:
     const TActorId VolumeBalancerActorId;
@@ -25,15 +24,17 @@ private:
 
 public:
     TVolumeStatActor(
-            TActorId volumeBalancerActorId,
-            TVector<NProto::TVolumeBalancerDiskStats> volumes)
+        TActorId volumeBalancerActorId,
+        TVector<NProto::TVolumeBalancerDiskStats> volumes)
         : VolumeBalancerActorId(volumeBalancerActorId)
         , Volumes(std::move(volumes))
     {}
 
     void Bootstrap(const TActorContext& ctx)
     {
-        auto request = std::make_unique<TEvStatsService::TEvGetVolumeStatsRequest>(std::move(Volumes));
+        auto request =
+            std::make_unique<TEvStatsService::TEvGetVolumeStatsRequest>(
+                std::move(Volumes));
         NCloud::Send(ctx, MakeStorageStatsServiceId(), std::move(request));
 
         Become(&TThis::StateWork);
@@ -47,7 +48,8 @@ private:
         const TActorContext& ctx)
     {
         auto* msg = ev->Get();
-        auto response = std::make_unique<TEvService::TEvGetVolumeStatsResponse>(std::move(msg->VolumeStats));
+        auto response = std::make_unique<TEvService::TEvGetVolumeStatsResponse>(
+            std::move(msg->VolumeStats));
         NCloud::Send(ctx, VolumeBalancerActorId, std::move(response));
         Die(ctx);
     }
@@ -55,11 +57,12 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
 STFUNC(TVolumeStatActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvStatsService::TEvGetVolumeStatsResponse, HandleGetVolumeStatsResponse);
+        HFunc(
+            TEvStatsService::TEvGetVolumeStatsResponse,
+            HandleGetVolumeStatsResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -70,7 +73,7 @@ STFUNC(TVolumeStatActor::StateWork)
     }
 }
 
-}    // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -100,10 +103,7 @@ void TServiceActor::HandleGetVolumeStats(
         }
     }
 
-    NCloud::Register<TVolumeStatActor>(
-        ctx,
-        ev->Sender,
-        std::move(volumes));
+    NCloud::Register<TVolumeStatActor>(ctx, ev->Sender, std::move(volumes));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

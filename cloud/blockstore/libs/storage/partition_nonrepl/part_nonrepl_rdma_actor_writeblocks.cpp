@@ -1,4 +1,5 @@
 #include "part_nonrepl_rdma_actor.h"
+
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
@@ -86,15 +87,15 @@ public:
     using TResponseProto = NProto::TWriteDeviceBlocksResponse;
 
     TRdmaWriteBlocksResponseHandler(
-            TActorSystem* actorSystem,
-            TNonreplicatedPartitionConfigPtr partConfig,
-            TRequestInfoPtr requestInfo,
-            size_t requestCount,
-            bool replyLocal,
-            ui32 requestBlockCount,
-            NActors::TActorId volumeActorId,
-            NActors::TActorId parentActorId,
-            ui64 requestId)
+        TActorSystem* actorSystem,
+        TNonreplicatedPartitionConfigPtr partConfig,
+        TRequestInfoPtr requestInfo,
+        size_t requestCount,
+        bool replyLocal,
+        ui32 requestBlockCount,
+        NActors::TActorId volumeActorId,
+        NActors::TActorId parentActorId,
+        ui64 requestId)
         : TBase(
               actorSystem,
               std::move(partConfig),
@@ -152,11 +153,11 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
         "WriteBlocks",
         requestInfo->CallContext->RequestId);
 
-    auto replyError = [this] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
+    auto replyError = [this](
+                          const TActorContext& ctx,
+                          TRequestInfo& requestInfo,
+                          ui32 errorCode,
+                          TString errorReason)
     {
         auto response = std::make_unique<TEvService::TEvWriteBlocksResponse>(
             PartConfig->MakeError(errorCode, std::move(errorReason)));
@@ -176,17 +177,18 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
                 ctx,
                 *requestInfo,
                 E_ARGUMENT,
-                TStringBuilder() << "buffer not divisible by blockSize: "
-                    << buffer.size() << " % " << PartConfig->GetBlockSize()
-                    << " != 0");
+                TStringBuilder()
+                    << "buffer not divisible by blockSize: " << buffer.size()
+                    << " % " << PartConfig->GetBlockSize() << " != 0");
             return;
         }
     }
 
     const auto blockRange = TBlockRange64::WithLength(
         msg->Record.GetStartIndex(),
-        CalculateWriteRequestBlockCount(msg->Record, PartConfig->GetBlockSize())
-    );
+        CalculateWriteRequestBlockCount(
+            msg->Record,
+            PartConfig->GetBlockSize()));
 
     TVector<TDeviceRequest> deviceRequests;
     bool ok = InitRequests<TEvService::TWriteBlocksMethod>(
@@ -194,8 +196,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
         ctx,
         *requestInfo,
         blockRange,
-        &deviceRequests
-    );
+        &deviceRequests);
 
     if (!ok) {
         return;
@@ -336,14 +337,15 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
         "WriteBlocks",
         requestInfo->CallContext->RequestId);
 
-    auto replyError = [this] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
+    auto replyError = [this](
+                          const TActorContext& ctx,
+                          TRequestInfo& requestInfo,
+                          ui32 errorCode,
+                          TString errorReason)
     {
-        auto response = std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
-            PartConfig->MakeError(errorCode, std::move(errorReason)));
+        auto response =
+            std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
+                PartConfig->MakeError(errorCode, std::move(errorReason)));
 
         LWTRACK(
             ResponseSent_Partition,
@@ -375,8 +377,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
         ctx,
         *requestInfo,
         blockRange,
-        &deviceRequests
-    );
+        &deviceRequests);
 
     if (!ok) {
         return;

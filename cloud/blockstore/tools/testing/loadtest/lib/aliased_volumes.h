@@ -28,8 +28,7 @@ private:
 public:
     TAliasedVolumes(TLog& log)
         : Log(log)
-    {
-    }
+    {}
 
 public:
     void RegisterAlias(TString volumeName, TString alias);

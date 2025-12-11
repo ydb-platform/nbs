@@ -14,28 +14,39 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 void TDiskRegistryActor::PublishDiskStates(const TActorContext& ctx)
 {
-    if (DiskStatesPublicationInProgress || State->GetDiskStateUpdates().empty()) {
+    if (DiskStatesPublicationInProgress || State->GetDiskStateUpdates().empty())
+    {
         return;
     }
 
     DiskStatesPublicationInProgress = true;
 
-    auto request = std::make_unique<TEvDiskRegistryPrivate::TEvPublishDiskStatesRequest>();
+    auto request =
+        std::make_unique<TEvDiskRegistryPrivate::TEvPublishDiskStatesRequest>();
 
-    auto deadline = Min(DiskStatesPublicationStartTs, ctx.Now()) + TDuration::Seconds(5);
+    auto deadline =
+        Min(DiskStatesPublicationStartTs, ctx.Now()) + TDuration::Seconds(5);
     if (deadline > ctx.Now()) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Scheduled disk state updates publication, now: %lu, deadline: %lu",
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "[%lu] Scheduled disk state updates publication, now: %lu, "
+            "deadline: %lu",
             TabletID(),
             ctx.Now().MicroSeconds(),
             deadline.MicroSeconds());
 
         ctx.Schedule(
             deadline,
-            std::make_unique<IEventHandle>(ctx.SelfID, ctx.SelfID, request.get()));
+            std::make_unique<IEventHandle>(
+                ctx.SelfID,
+                ctx.SelfID,
+                request.get()));
         request.release();
     } else {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
             "[%lu] Sending disk state updates request",
             TabletID());
 
@@ -49,7 +60,9 @@ void TDiskRegistryActor::HandlePublishDiskStates(
 {
     BLOCKSTORE_DISK_REGISTRY_COUNTER(PublishDiskStates);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Disk state updates request. Updates=%d",
         TabletID(),
         State->GetDiskStateUpdates().size());
@@ -57,7 +70,8 @@ void TDiskRegistryActor::HandlePublishDiskStates(
     DiskStatesPublicationStartTs = ctx.Now();
 
     if (State->GetDiskStateUpdates().empty()) {
-        auto response = std::make_unique<TEvDiskRegistryPrivate::TEvPublishDiskStatesResponse>(
+        auto response = std::make_unique<
+            TEvDiskRegistryPrivate::TEvPublishDiskStatesResponse>(
             ev->Get()->CallContext,
             0);
         NCloud::Reply(ctx, *ev, std::move(response));
@@ -65,11 +79,8 @@ void TDiskRegistryActor::HandlePublishDiskStates(
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        ev->Get()->CallContext
-    );
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
 
     auto* actorSystem = ctx.ActorSystem();
     auto replyFrom = ctx.SelfID;
@@ -83,26 +94,28 @@ void TDiskRegistryActor::HandlePublishDiskStates(
         TString s;
         const bool ok = state.SerializeToString(&s);
         Y_DEBUG_ABORT_UNLESS(ok);
-        messages.push_back({ std::move(s), u.SeqNo });
+        messages.push_back({std::move(s), u.SeqNo});
     }
 
     const ui64 maxSeqNo = messages.back().SeqNo;
 
     LogbrokerService->Write(std::move(messages), DiskStatesPublicationStartTs)
-        .Subscribe([=] (const auto& future) {
-            auto response = std::make_unique<TEvDiskRegistryPrivate::TEvPublishDiskStatesResponse>(
-                future.GetValue(),
-                requestInfo->CallContext,
-                maxSeqNo);
+        .Subscribe(
+            [=](const auto& future)
+            {
+                auto response = std::make_unique<
+                    TEvDiskRegistryPrivate::TEvPublishDiskStatesResponse>(
+                    future.GetValue(),
+                    requestInfo->CallContext,
+                    maxSeqNo);
 
-            actorSystem->Send(
-                new IEventHandle(
+                actorSystem->Send(new IEventHandle(
                     requestInfo->Sender,
                     replyFrom,
                     response.release(),
-                    0,          // flags
+                    0,   // flags
                     requestInfo->Cookie));
-        });
+            });
 }
 
 void TDiskRegistryActor::HandlePublishDiskStatesResponse(
@@ -122,7 +135,9 @@ void TDiskRegistryActor::HandlePublishDiskStatesResponse(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Publish disk state completed",
         TabletID());
 
@@ -131,10 +146,8 @@ void TDiskRegistryActor::HandlePublishDiskStatesResponse(
         CreateRequestInfo<TEvDiskRegistryPrivate::TPublishDiskStatesMethod>(
             ev->Sender,
             ev->Cookie,
-            msg->CallContext
-        ),
-        msg->MaxSeqNo
-    );
+            msg->CallContext),
+        msg->MaxSeqNo);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -6,8 +6,7 @@ namespace NVHostUser {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGetVringBase
-    : public IMessage
+class TGetVringBase: public IMessage
 {
 private:
     uint32_t Index;
@@ -67,4 +66,4 @@ public:
     }
 };
 
-} // namespace NVHostUser
+}   // namespace NVHostUser

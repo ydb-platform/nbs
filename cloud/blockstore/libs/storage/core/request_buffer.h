@@ -38,8 +38,7 @@ public:
     public:
         TGuard(TRequestBuffer<TData>& parent)
             : Parent(parent)
-        {
-        }
+        {}
 
         TGuard(const TGuard& rhs) = delete;
         TGuard(TGuard&& rhs) = delete;

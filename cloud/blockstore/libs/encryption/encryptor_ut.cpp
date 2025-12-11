@@ -36,9 +36,9 @@ Y_UNIT_TEST_SUITE(TEncryptorTest)
         TString eData = TString::Uninitialized(DefaultBlockSize);
         TString dData = TString::Uninitialized(DefaultBlockSize);
 
-        auto dataRef = TBlockDataRef{ data.data(), data.size() };
-        auto eDataRef = TBlockDataRef{ eData.data(), eData.size() };
-        auto dDataRef = TBlockDataRef{ dData.data(), dData.size() };
+        auto dataRef = TBlockDataRef{data.data(), data.size()};
+        auto eDataRef = TBlockDataRef{eData.data(), eData.size()};
+        auto dDataRef = TBlockDataRef{dData.data(), dData.size()};
 
         auto encryptor = CreateAesXtsEncryptor(DefaultEncryptionKey);
 
@@ -58,7 +58,7 @@ Y_UNIT_TEST_SUITE(TEncryptorTest)
         auto eDataRef = TBlockDataRef::CreateZeroBlock(DefaultBlockSize);
 
         TString tmpData = TString::Uninitialized(DefaultBlockSize);
-        auto dDataRef = TBlockDataRef{ tmpData.data(), tmpData.size() };
+        auto dDataRef = TBlockDataRef{tmpData.data(), tmpData.size()};
 
         auto encryptor = CreateAesXtsEncryptor(DefaultEncryptionKey);
 
@@ -81,9 +81,9 @@ Y_UNIT_TEST_SUITE(TEncryptorTest)
         TString eData1 = TString::Uninitialized(DefaultBlockSize);
         TString eData2 = TString::Uninitialized(DefaultBlockSize);
 
-        auto dataRef = TBlockDataRef{ data.data(), data.size() };
-        auto eDataRef1 = TBlockDataRef{ eData1.data(), eData1.size() };
-        auto eDataRef2 = TBlockDataRef{ eData2.data(), eData2.size() };
+        auto dataRef = TBlockDataRef{data.data(), data.size()};
+        auto eDataRef1 = TBlockDataRef{eData1.data(), eData1.size()};
+        auto eDataRef2 = TBlockDataRef{eData2.data(), eData2.size()};
 
         auto encryptor = CreateAesXtsEncryptor(DefaultEncryptionKey);
 
@@ -98,8 +98,8 @@ Y_UNIT_TEST_SUITE(TEncryptorTest)
         TString dData1 = TString::Uninitialized(DefaultBlockSize);
         TString dData2 = TString::Uninitialized(DefaultBlockSize);
 
-        auto dDataRef1 = TBlockDataRef{ dData1.data(), dData1.size() };
-        auto dDataRef2 = TBlockDataRef{ dData2.data(), dData2.size() };
+        auto dDataRef1 = TBlockDataRef{dData1.data(), dData1.size()};
+        auto dDataRef2 = TBlockDataRef{dData2.data(), dData2.size()};
 
         auto err1 = encryptor->Decrypt(eDataRef1, dDataRef1, blockIndex1);
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, err1.GetCode(), err1);
@@ -120,9 +120,9 @@ Y_UNIT_TEST_SUITE(TEncryptorTest)
         TString eData = TString::Uninitialized(DefaultBlockSize);
         TString dData = TString::Uninitialized(DefaultBlockSize);
 
-        auto dataRef = TBlockDataRef{ data.data(), data.size() };
-        auto eDataRef = TBlockDataRef{ eData.data(), eData.size() };
-        auto dDataRef = TBlockDataRef{ dData.data(), dData.size() };
+        auto dataRef = TBlockDataRef{data.data(), data.size()};
+        auto eDataRef = TBlockDataRef{eData.data(), eData.size()};
+        auto dDataRef = TBlockDataRef{dData.data(), dData.size()};
 
         auto blockIndex = 13;
         auto encryptor = CreateTestCaesarEncryptor(42);

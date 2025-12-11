@@ -84,22 +84,17 @@ void TMirrorPartitionActor::MirrorRequest(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    const auto range = BuildRequestBlockRange(
-        *ev->Get(),
-        State.GetBlockSize());
+    const auto range = BuildRequestBlockRange(*ev->Get(), State.GetBlockSize());
 
     if (BlockRangeRequests.OverlapsWithRequest(range)) {
         Reply(
             ctx,
             *requestInfo,
-            std::make_unique<typename TMethod::TResponse>(MakeError(
-                E_REJECTED,
-                "range is blocked for writing")));
+            std::make_unique<typename TMethod::TResponse>(
+                MakeError(E_REJECTED, "range is blocked for writing")));
         return;
     }
 
@@ -107,16 +102,15 @@ void TMirrorPartitionActor::MirrorRequest(
         Reply(
             ctx,
             *requestInfo,
-            std::make_unique<typename TMethod::TResponse>(Status)
-        );
+            std::make_unique<typename TMethod::TResponse>(Status));
         return;
     }
 
     const auto requestIdentityKey = TakeNextRequestIdentifier();
     if (GetScrubbingRange().Overlaps(range)) {
         if (ResyncRangeStarted) {
-            auto response = std::make_unique<typename TMethod::TResponse>(
-                MakeError(
+            auto response =
+                std::make_unique<typename TMethod::TResponse>(MakeError(
                     E_REJECTED,
                     TStringBuilder()
                         << "Request " << TMethod::Name

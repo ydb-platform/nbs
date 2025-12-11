@@ -11,15 +11,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString CreateInputDescription(
-    const TString& diskId,
-    ui32 blockSize,
-    bool force)
+TString
+CreateInputDescription(const TString& diskId, ui32 blockSize, bool force)
 {
     return TStringBuilder()
-        << "DiskId=" << diskId.c_str()
-        << ", BlockSize=" << blockSize
-        << ", Force=" << force ? "true" : "false";
+                   << "DiskId=" << diskId.c_str() << ", BlockSize=" << blockSize
+                   << ", Force=" << force
+               ? "true"
+               : "false";
 }
 
 TString CreateInputDescription(
@@ -53,8 +52,7 @@ void TDiskRegistryActor::HandleUpdateDiskBlockSize(
         CreateRequestInfo<TEvDiskRegistry::TUpdateDiskBlockSizeMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext
-        ),
+            ev->Get()->CallContext),
         record.GetDiskId(),
         record.GetBlockSize(),
         record.GetForce());

@@ -12,7 +12,7 @@ namespace NMonitoring {
 
 class IMetricSupplier;
 
-}   // NMonitoring
+}   // namespace NMonitoring
 
 namespace NCloud::NStorage {
 
@@ -20,7 +20,7 @@ namespace NCloud::NStorage {
 
 using IUserMetricsSupplierPtr = std::shared_ptr<NMonitoring::IMetricSupplier>;
 
-}   // NCloud::NStorage
+}   // namespace NCloud::NStorage
 
 namespace NCloud::NBlockStore {
 
@@ -53,12 +53,14 @@ struct IStatsAggregator;
 using IStatsAggregatorPtr = std::shared_ptr<IStatsAggregator>;
 
 struct IClientPercentileCalculator;
-using IClientPercentileCalculatorPtr = std::shared_ptr<IClientPercentileCalculator>;
+using IClientPercentileCalculatorPtr =
+    std::shared_ptr<IClientPercentileCalculator>;
 
 using IMetricConsumerPtr = std::shared_ptr<NMonitoring::IMetricConsumer>;
 
 struct IIncompleteRequestProvider;
-using IIncompleteRequestProviderPtr = std::shared_ptr<IIncompleteRequestProvider>;
+using IIncompleteRequestProviderPtr =
+    std::shared_ptr<IIncompleteRequestProvider>;
 
 struct IProfileLog;
 using IProfileLogPtr = std::shared_ptr<IProfileLog>;

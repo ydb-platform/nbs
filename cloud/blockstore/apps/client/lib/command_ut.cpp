@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/service/service_test.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <library/cpp/json/json_reader.h>
@@ -34,11 +35,11 @@ std::shared_ptr<TClientFactories> MakeClientFactories()
 {
     auto clientFactories = std::make_shared<TClientFactories>();
 
-    clientFactories->IamClientFactory = [] (
-        NCloud::NIamClient::TIamClientConfigPtr config,
-        NCloud::ILoggingServicePtr logging,
-        NCloud::ISchedulerPtr scheduler,
-        NCloud::ITimerPtr timer)
+    clientFactories->IamClientFactory =
+        [](NCloud::NIamClient::TIamClientConfigPtr config,
+           NCloud::ILoggingServicePtr logging,
+           NCloud::ISchedulerPtr scheduler,
+           NCloud::ITimerPtr timer)
     {
         Y_UNUSED(config);
         Y_UNUSED(logging);
@@ -101,67 +102,74 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TString mountToken = CreateGuidAsString();
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
-                detectedMountVolumeRequest = true;
-                UNIT_ASSERT(request->GetVolumeMountMode() == NProto::VOLUME_MOUNT_REMOTE);
-                UNIT_ASSERT(request->GetToken() == mountToken);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            detectedMountVolumeRequest = true;
+            UNIT_ASSERT(
+                request->GetVolumeMountMode() == NProto::VOLUME_MOUNT_REMOTE);
+            UNIT_ASSERT(request->GetToken() == mountToken);
 
-                NProto::TMountVolumeResponse response;
-                response.SetSessionId(sessionId);
+            NProto::TMountVolumeResponse response;
+            response.SetSessionId(sessionId);
 
-                auto& volume = *response.MutableVolume();
-                volume.SetDiskId(DefaultDiskId);
-                volume.SetBlockSize(DefaultBlockSize);
-                volume.SetBlocksCount(4096);
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId(DefaultDiskId);
+            volume.SetBlockSize(DefaultBlockSize);
+            volume.SetBlocksCount(4096);
 
-                return MakeFuture(response);
-            };
+            return MakeFuture(response);
+        };
         client->UnmountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
-                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
-                UNIT_ASSERT(request->GetSessionId() == sessionId);
-                detectedUnmountVolumeRequest = true;
-                return MakeFuture<NProto::TUnmountVolumeResponse>();
-            };
+            [&](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            UNIT_ASSERT(request->GetSessionId() == sessionId);
+            detectedUnmountVolumeRequest = true;
+            return MakeFuture<NProto::TUnmountVolumeResponse>();
+        };
         client->ReadBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
-                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
-                UNIT_ASSERT(request->GetSessionId() == sessionId);
-                detectedReadBlocksRequest = true;
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            UNIT_ASSERT(request->GetSessionId() == sessionId);
+            detectedReadBlocksRequest = true;
 
-                auto guard = request->Sglist.Acquire();
-                UNIT_ASSERT(guard);
-                const auto& sglist = guard.Get();
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            const auto& sglist = guard.Get();
 
-                for(ui64 i = 0; i < sglist.size(); ++i) {
-                    auto* dstPtr = const_cast<char*>(sglist[i].Data());
-                    memset(dstPtr, 0, sglist[i].Size());
-                }
+            for (ui64 i = 0; i < sglist.size(); ++i) {
+                auto* dstPtr = const_cast<char*>(sglist[i].Data());
+                memset(dstPtr, 0, sglist[i].Size());
+            }
 
-                return MakeFuture(NProto::TReadBlocksLocalResponse());
-            };
+            return MakeFuture(NProto::TReadBlocksLocalResponse());
+        };
         client->WriteBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) {
-                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
-                UNIT_ASSERT(request->GetSessionId() == sessionId);
-                detectedWriteBlocksRequest = true;
-                return MakeFuture<NProto::TWriteBlocksLocalResponse>();
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            UNIT_ASSERT(request->GetSessionId() == sessionId);
+            detectedWriteBlocksRequest = true;
+            return MakeFuture<NProto::TWriteBlocksLocalResponse>();
+        };
         client->ZeroBlocksHandler =
-            [&] (std::shared_ptr<NProto::TZeroBlocksRequest> request) {
-                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
-                UNIT_ASSERT(request->GetSessionId() == sessionId);
-                detectedZeroBlocksRequest = true;
-                return MakeFuture<NProto::TZeroBlocksResponse>();
-            };
+            [&](std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            UNIT_ASSERT(request->GetSessionId() == sessionId);
+            detectedZeroBlocksRequest = true;
+            return MakeFuture<NProto::TZeroBlocksResponse>();
+        };
 
         {
             TVector<TString> argv;
             argv.reserve(5);
             argv.emplace_back(GetProgramName());
             argv.emplace_back(TStringBuilder() << "--token=" << mountToken);
-            argv.emplace_back(TStringBuilder() << "--disk-id=" << DefaultDiskId);
+            argv.emplace_back(
+                TStringBuilder() << "--disk-id=" << DefaultDiskId);
             argv.emplace_back("--start-index=0");
             argv.emplace_back("--blocks-count=1");
 
@@ -222,9 +230,9 @@ Y_UNIT_TEST_SUITE(TCommandTest)
     Y_UNIT_TEST(ShouldSendProtoRequestsAndReceiveProtoResponses)
     {
         TString createVolumeRequest = TStringBuilder()
-            << " DiskId:" << DefaultDiskId.Quote()
-            << " BlockSize:" << DefaultBlockSize
-            << " BlocksCount:" << DefaultBlocksCount;
+                                      << " DiskId:" << DefaultDiskId.Quote()
+                                      << " BlockSize:" << DefaultBlockSize
+                                      << " BlocksCount:" << DefaultBlocksCount;
 
         TFile createVolumeRequestFile(
             "create-volume-request",
@@ -241,15 +249,16 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         bool detectedCreateVolumeRequest = false;
 
         client->CreateVolumeHandler =
-            [&] (std::shared_ptr<NProto::TCreateVolumeRequest> request) {
-                detectedCreateVolumeRequest = true;
-                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
-                UNIT_ASSERT(request->GetBlockSize() == DefaultBlockSize);
-                UNIT_ASSERT(request->GetBlocksCount() == DefaultBlocksCount);
-                NProto::TCreateVolumeResponse response;
-                response.MutableError()->SetCode(S_ALREADY);
-                return MakeFuture(response);
-            };
+            [&](std::shared_ptr<NProto::TCreateVolumeRequest> request)
+        {
+            detectedCreateVolumeRequest = true;
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            UNIT_ASSERT(request->GetBlockSize() == DefaultBlockSize);
+            UNIT_ASSERT(request->GetBlocksCount() == DefaultBlocksCount);
+            NProto::TCreateVolumeResponse response;
+            response.MutableError()->SetCode(S_ALREADY);
+            return MakeFuture(response);
+        };
 
         TString outputFileName = "create-volume-response";
 
@@ -257,10 +266,10 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         argv.reserve(4);
         argv.emplace_back(GetProgramName());
         argv.emplace_back("--proto");
-        argv.emplace_back(TStringBuilder() << "--input="
-            << createVolumeRequestFile.GetName());
-        argv.emplace_back(TStringBuilder() << "--output="
-            << outputFileName);
+        argv.emplace_back(
+            TStringBuilder()
+            << "--input=" << createVolumeRequestFile.GetName());
+        argv.emplace_back(TStringBuilder() << "--output=" << outputFileName);
 
         UNIT_ASSERT(ExecuteRequest("createvolume", argv, client));
         UNIT_ASSERT(detectedCreateVolumeRequest);
@@ -287,50 +296,55 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TString mountToken = CreateGuidAsString();
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
-                UNIT_ASSERT(request->GetVolumeMountMode() == NProto::VOLUME_MOUNT_REMOTE);
-                UNIT_ASSERT(request->GetToken() == mountToken);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            UNIT_ASSERT(
+                request->GetVolumeMountMode() == NProto::VOLUME_MOUNT_REMOTE);
+            UNIT_ASSERT(request->GetToken() == mountToken);
 
-                ++mountVolumeCounter;
+            ++mountVolumeCounter;
 
-                NProto::TMountVolumeResponse response;
-                response.SetSessionId(sessionId);
+            NProto::TMountVolumeResponse response;
+            response.SetSessionId(sessionId);
 
-                auto& volume = *response.MutableVolume();
-                volume.SetDiskId(DefaultDiskId);
-                volume.SetBlockSize(DefaultBlockSize);
-                volume.SetBlocksCount(volumeBlocksCount);
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId(DefaultDiskId);
+            volume.SetBlockSize(DefaultBlockSize);
+            volume.SetBlocksCount(volumeBlocksCount);
 
-                return MakeFuture(response);
-            };
+            return MakeFuture(response);
+        };
         client->UnmountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
-                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
-                UNIT_ASSERT(request->GetSessionId() == sessionId);
-                ++unmountVolumeCounter;
-                return MakeFuture<NProto::TUnmountVolumeResponse>();
-            };
+            [&](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            UNIT_ASSERT(request->GetSessionId() == sessionId);
+            ++unmountVolumeCounter;
+            return MakeFuture<NProto::TUnmountVolumeResponse>();
+        };
         client->ReadBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
-                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
-                UNIT_ASSERT(request->GetSessionId() == sessionId);
-                UNIT_ASSERT(request->GetBlocksCount() ==
-                    Min(1024ul, volumeBlocksCount - 1024 * readBlocksCounter));
-                UNIT_ASSERT(request->GetStartIndex() == 1024 * readBlocksCounter);
-                ++readBlocksCounter;
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            UNIT_ASSERT(request->GetSessionId() == sessionId);
+            UNIT_ASSERT(
+                request->GetBlocksCount() ==
+                Min(1024ul, volumeBlocksCount - 1024 * readBlocksCounter));
+            UNIT_ASSERT(request->GetStartIndex() == 1024 * readBlocksCounter);
+            ++readBlocksCounter;
 
-                auto guard = request->Sglist.Acquire();
-                UNIT_ASSERT(guard);
-                const auto& sglist = guard.Get();
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            const auto& sglist = guard.Get();
 
-                for(ui64 i = 0; i < sglist.size(); ++i) {
-                    auto* dstPtr = const_cast<char*>(sglist[i].Data());
-                    memset(dstPtr, 0, sglist[i].Size());
-                }
+            for (ui64 i = 0; i < sglist.size(); ++i) {
+                auto* dstPtr = const_cast<char*>(sglist[i].Data());
+                memset(dstPtr, 0, sglist[i].Size());
+            }
 
-                return MakeFuture(NProto::TReadBlocksLocalResponse());
-            };
+            return MakeFuture(NProto::TReadBlocksLocalResponse());
+        };
 
         TVector<TString> argv;
         argv.reserve(4);
@@ -352,7 +366,8 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TVector<TString> argv;
         argv.reserve(4);
         argv.emplace_back(GetProgramName());
-        argv.emplace_back(TStringBuilder() << "--token=" << CreateGuidAsString());
+        argv.emplace_back(
+            TStringBuilder() << "--token=" << CreateGuidAsString());
         argv.emplace_back(TStringBuilder() << "--disk-id=" << DefaultDiskId);
         argv.emplace_back("--start-index=0");
 
@@ -366,60 +381,66 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TString sessionId = CreateGuidAsString();
         constexpr ui64 VolumeBlocksCount = 4096;
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
 
-                NProto::TMountVolumeResponse response;
-                response.SetSessionId(sessionId);
+            NProto::TMountVolumeResponse response;
+            response.SetSessionId(sessionId);
 
-                auto& volume = *response.MutableVolume();
-                volume.SetDiskId(DefaultDiskId);
-                volume.SetBlockSize(DefaultBlockSize);
-                volume.SetBlocksCount(VolumeBlocksCount);
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId(DefaultDiskId);
+            volume.SetBlockSize(DefaultBlockSize);
+            volume.SetBlocksCount(VolumeBlocksCount);
 
-                return MakeFuture(response);
-            };
+            return MakeFuture(response);
+        };
         client->UnmountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
-                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
-                UNIT_ASSERT(request->GetSessionId() == sessionId);
-                return MakeFuture<NProto::TUnmountVolumeResponse>();
-            };
+            [&](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            UNIT_ASSERT(request->GetSessionId() == sessionId);
+            return MakeFuture<NProto::TUnmountVolumeResponse>();
+        };
         client->ReadBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
-                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
-                UNIT_ASSERT(request->GetSessionId() == sessionId);
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            UNIT_ASSERT(request->GetSessionId() == sessionId);
 
-                auto guard = request->Sglist.Acquire();
-                UNIT_ASSERT(guard);
-                const auto& sglist = guard.Get();
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            const auto& sglist = guard.Get();
 
-                for(ui64 i = 0; i < sglist.size(); ++i) {
-                    auto* dstPtr = const_cast<char*>(sglist[i].Data());
-                    memset(dstPtr, 0, sglist[i].Size());
-                }
+            for (ui64 i = 0; i < sglist.size(); ++i) {
+                auto* dstPtr = const_cast<char*>(sglist[i].Data());
+                memset(dstPtr, 0, sglist[i].Size());
+            }
 
-                return MakeFuture(NProto::TReadBlocksLocalResponse());
-            };
+            return MakeFuture(NProto::TReadBlocksLocalResponse());
+        };
 
         TVector<TString> argv;
         argv.reserve(4);
         argv.emplace_back(GetProgramName());
-        argv.emplace_back(TStringBuilder() << "--token=" << CreateGuidAsString());
+        argv.emplace_back(
+            TStringBuilder() << "--token=" << CreateGuidAsString());
         argv.emplace_back(TStringBuilder() << "--disk-id=" << DefaultDiskId);
         argv.emplace_back("--blocks-count=1");
 
         UNIT_ASSERT(ExecuteRequest("readblocks", argv, client));
     }
 
-    Y_UNIT_TEST(ShouldRefuseToReadBlocksIfReadAllFlagIsSpecifiedAlongWithProtoFlag)
+    Y_UNIT_TEST(
+        ShouldRefuseToReadBlocksIfReadAllFlagIsSpecifiedAlongWithProtoFlag)
     {
         auto client = std::make_shared<TTestService>();
 
         TVector<TString> argv;
         argv.reserve(5);
         argv.emplace_back(GetProgramName());
-        argv.emplace_back(TStringBuilder() << "--token=" << CreateGuidAsString());
+        argv.emplace_back(
+            TStringBuilder() << "--token=" << CreateGuidAsString());
         argv.emplace_back(TStringBuilder() << "--disk-id=" << DefaultDiskId);
         argv.emplace_back("--read-all");
         argv.emplace_back("--proto");
@@ -517,46 +538,52 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         writeBlocksRequestFile.Close();
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
-                UNIT_ASSERT(request->GetVolumeMountMode() == NProto::VOLUME_MOUNT_REMOTE);
-                UNIT_ASSERT(request->GetToken() == mountToken);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            UNIT_ASSERT(
+                request->GetVolumeMountMode() == NProto::VOLUME_MOUNT_REMOTE);
+            UNIT_ASSERT(request->GetToken() == mountToken);
 
-                ++mountVolumeCounter;
+            ++mountVolumeCounter;
 
-                NProto::TMountVolumeResponse response;
-                response.SetSessionId(sessionId);
+            NProto::TMountVolumeResponse response;
+            response.SetSessionId(sessionId);
 
-                auto& volume = *response.MutableVolume();
-                volume.SetDiskId(DefaultDiskId);
-                volume.SetBlockSize(DefaultBlockSize);
-                volume.SetBlocksCount(volumeBlocksCount);
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId(DefaultDiskId);
+            volume.SetBlockSize(DefaultBlockSize);
+            volume.SetBlocksCount(volumeBlocksCount);
 
-                return MakeFuture(response);
-            };
+            return MakeFuture(response);
+        };
         client->UnmountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
-                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
-                UNIT_ASSERT(request->GetSessionId() == sessionId);
-                ++unmountVolumeCounter;
-                return MakeFuture<NProto::TUnmountVolumeResponse>();
-            };
+            [&](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            UNIT_ASSERT(request->GetSessionId() == sessionId);
+            ++unmountVolumeCounter;
+            return MakeFuture<NProto::TUnmountVolumeResponse>();
+        };
         client->WriteBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) {
-                auto guard = request->Sglist.Acquire();
-                UNIT_ASSERT(guard);
-                const auto& sglist = guard.Get();
+            [&](std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            const auto& sglist = guard.Get();
 
-                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
-                UNIT_ASSERT(request->GetSessionId() == sessionId);
-                auto expectedCount = Min<size_t>(
-                    1024, volumeBlocksCount - 1024 * writeBlocksCounter);
-                UNIT_ASSERT_VALUES_EQUAL(
-                    expectedCount * DefaultBlockSize, SgListGetSize(sglist));
-                UNIT_ASSERT(request->GetStartIndex() == 1024 * writeBlocksCounter);
-                ++writeBlocksCounter;
-                return MakeFuture<NProto::TWriteBlocksLocalResponse>();
-            };
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            UNIT_ASSERT(request->GetSessionId() == sessionId);
+            auto expectedCount = Min<size_t>(
+                1024,
+                volumeBlocksCount - 1024 * writeBlocksCounter);
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedCount * DefaultBlockSize,
+                SgListGetSize(sglist));
+            UNIT_ASSERT(request->GetStartIndex() == 1024 * writeBlocksCounter);
+            ++writeBlocksCounter;
+            return MakeFuture<NProto::TWriteBlocksLocalResponse>();
+        };
 
         TVector<TString> argv;
         argv.reserve(5);
@@ -586,39 +613,43 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TString mountToken = CreateGuidAsString();
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
-                UNIT_ASSERT(request->GetVolumeMountMode() == NProto::VOLUME_MOUNT_REMOTE);
-                UNIT_ASSERT(request->GetToken() == mountToken);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            UNIT_ASSERT(
+                request->GetVolumeMountMode() == NProto::VOLUME_MOUNT_REMOTE);
+            UNIT_ASSERT(request->GetToken() == mountToken);
 
-                ++mountVolumeCounter;
+            ++mountVolumeCounter;
 
-                NProto::TMountVolumeResponse response;
-                response.SetSessionId(sessionId);
+            NProto::TMountVolumeResponse response;
+            response.SetSessionId(sessionId);
 
-                auto& volume = *response.MutableVolume();
-                volume.SetDiskId(DefaultDiskId);
-                volume.SetBlockSize(DefaultBlockSize);
-                volume.SetBlocksCount(volumeBlocksCount);
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId(DefaultDiskId);
+            volume.SetBlockSize(DefaultBlockSize);
+            volume.SetBlocksCount(volumeBlocksCount);
 
-                return MakeFuture(response);
-            };
+            return MakeFuture(response);
+        };
         client->UnmountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
-                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
-                UNIT_ASSERT(request->GetSessionId() == sessionId);
-                ++unmountVolumeCounter;
-                return MakeFuture<NProto::TUnmountVolumeResponse>();
-            };
+            [&](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            UNIT_ASSERT(request->GetSessionId() == sessionId);
+            ++unmountVolumeCounter;
+            return MakeFuture<NProto::TUnmountVolumeResponse>();
+        };
         client->ZeroBlocksHandler =
-            [&] (std::shared_ptr<NProto::TZeroBlocksRequest> request) {
-                UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
-                UNIT_ASSERT(request->GetSessionId() == sessionId);
-                UNIT_ASSERT(request->GetStartIndex() == 0);
-                UNIT_ASSERT(request->GetBlocksCount() == volumeBlocksCount);
-                ++zeroBlocksCounter;
-                return MakeFuture<NProto::TZeroBlocksResponse>();
-            };
+            [&](std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            UNIT_ASSERT(request->GetDiskId() == DefaultDiskId);
+            UNIT_ASSERT(request->GetSessionId() == sessionId);
+            UNIT_ASSERT(request->GetStartIndex() == 0);
+            UNIT_ASSERT(request->GetBlocksCount() == volumeBlocksCount);
+            ++zeroBlocksCounter;
+            return MakeFuture<NProto::TZeroBlocksResponse>();
+        };
 
         TVector<TString> argv;
         argv.reserve(4);
@@ -640,7 +671,8 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TVector<TString> argv;
         argv.reserve(4);
         argv.emplace_back(GetProgramName());
-        argv.emplace_back(TStringBuilder() << "--token=" << CreateGuidAsString());
+        argv.emplace_back(
+            TStringBuilder() << "--token=" << CreateGuidAsString());
         argv.emplace_back(TStringBuilder() << "--disk-id=" << DefaultDiskId);
         argv.emplace_back("--start-index=0");
 
@@ -654,21 +686,24 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TVector<TString> argv;
         argv.reserve(4);
         argv.emplace_back(GetProgramName());
-        argv.emplace_back(TStringBuilder() << "--token=" << CreateGuidAsString());
+        argv.emplace_back(
+            TStringBuilder() << "--token=" << CreateGuidAsString());
         argv.emplace_back(TStringBuilder() << "--disk-id=" << DefaultDiskId);
         argv.emplace_back("--blocks-count=1");
 
         UNIT_ASSERT(!ExecuteRequest("zeroblocks", argv, client));
     }
 
-    Y_UNIT_TEST(ShouldRefuseToZeroBlocksIfZeroAllFlagIsSpecifiedAlongWithProtoFlag)
+    Y_UNIT_TEST(
+        ShouldRefuseToZeroBlocksIfZeroAllFlagIsSpecifiedAlongWithProtoFlag)
     {
         auto client = std::make_shared<TTestService>();
 
         TVector<TString> argv;
         argv.reserve(5);
         argv.emplace_back(GetProgramName());
-        argv.emplace_back(TStringBuilder() << "--token=" << CreateGuidAsString());
+        argv.emplace_back(
+            TStringBuilder() << "--token=" << CreateGuidAsString());
         argv.emplace_back(TStringBuilder() << "--disk-id=" << DefaultDiskId);
         argv.emplace_back("--zero-all");
         argv.emplace_back("--proto");
@@ -682,9 +717,11 @@ Y_UNIT_TEST_SUITE(TCommandTest)
 
         auto client = std::make_shared<TTestService>();
 
-        client->DiscoverInstancesHandler = [&] (auto request) {
+        client->DiscoverInstancesHandler = [&](auto request)
+        {
             UNIT_ASSERT(request->GetLimit() == 1);
-            UNIT_ASSERT(request->GetInstanceFilter() ==
+            UNIT_ASSERT(
+                request->GetInstanceFilter() ==
                 EDiscoveryPortFilter::DISCOVERY_SECURE_PORT);
 
             NProto::TDiscoverInstancesResponse response;
@@ -695,8 +732,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TVector<TString> argv{
             GetProgramName(),
             "--limit=1",
-            "--instance-filter=secure"
-        };
+            "--instance-filter=secure"};
 
         UNIT_ASSERT(ExecuteRequest("discoverinstances", argv, client));
     }
@@ -706,16 +742,13 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         auto promise = NewPromise<NProto::TPingResponse>();
 
         auto client = std::make_shared<TTestService>();
-        client->PingHandler =
-            [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
-                return promise;
-            };
-
-        TVector<TString> argv{
-            GetProgramName(),
-            "--timeout=1"
+        client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            Y_UNUSED(request);
+            return promise;
         };
+
+        TVector<TString> argv{GetProgramName(), "--timeout=1"};
 
         UNIT_ASSERT(!ExecuteRequest("ping", argv, client));
     }
@@ -843,7 +876,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             UNIT_ASSERT(NJson::ReadJsonTree(request->GetInput(), &json));
             ui32 replicaCount = json["ReplicaCount"].GetUIntegerRobust();
 
-            if(requestCount == 0){
+            if (requestCount == 0) {
                 UNIT_ASSERT_VALUES_EQUAL(3, replicaCount);
             } else {
                 UNIT_ASSERT_VALUES_UNEQUAL(3, replicaCount);

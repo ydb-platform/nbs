@@ -66,10 +66,8 @@ void TIndexTabletActor::HandleRenameNodeInDestination(
     }
     */
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TMethod>(*requestInfo);
@@ -97,11 +95,7 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
     args.CommitId = GetCurrentCommitId();
 
     // validate new parent node exists
-    if (!ReadNode(
-            db,
-            args.NewParentNodeId,
-            args.CommitId,
-            args.NewParentNode))
+    if (!ReadNode(db, args.NewParentNodeId, args.CommitId, args.NewParentNode))
     {
         return false;   // not ready
     }
@@ -126,9 +120,10 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
 
     if (args.NewChildRef) {
         if (HasFlag(args.Flags, NProto::TRenameNodeRequest::F_NOREPLACE)) {
-            if (args.NewChildRef->ShardId == args.Request.GetSourceNodeShardId()
-                    && args.NewChildRef->ShardNodeName
-                    == args.Request.GetSourceNodeShardNodeName())
+            if (args.NewChildRef->ShardId ==
+                    args.Request.GetSourceNodeShardId() &&
+                args.NewChildRef->ShardNodeName ==
+                    args.Request.GetSourceNodeShardNodeName())
             {
                 // just an extra precaution for the case of DupCache-related
                 // bugs
@@ -140,9 +135,9 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
         }
 
         if (!args.NewChildRef->IsExternal()) {
-            auto message = ReportRenameNodeRequestForLocalNode(TStringBuilder()
-                << "RenameNodeInDestination: "
-                << args.Request.ShortDebugString());
+            auto message = ReportRenameNodeRequestForLocalNode(
+                TStringBuilder() << "RenameNodeInDestination: "
+                                 << args.Request.ShortDebugString());
             args.Error = MakeError(E_ARGUMENT, std::move(message));
             return true;
         }
@@ -150,9 +145,9 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
         // oldpath and newpath are existing hard links to the same file, then
         // rename() does nothing
         const bool isSameExternalNode =
-            args.Request.GetSourceNodeShardId() == args.NewChildRef->ShardId
-            && args.Request.GetSourceNodeShardNodeName()
-                == args.NewChildRef->ShardNodeName;
+            args.Request.GetSourceNodeShardId() == args.NewChildRef->ShardId &&
+            args.Request.GetSourceNodeShardNodeName() ==
+                args.NewChildRef->ShardNodeName;
         if (isSameExternalNode) {
             args.Error = MakeError(S_ALREADY, "is the same file");
             return true;
@@ -182,7 +177,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
 {
     FILESTORE_VALIDATE_TX_ERROR(RenameNodeInDestination, args);
     if (args.Error.GetCode() == S_ALREADY) {
-        return; // nothing to do
+        return;   // nothing to do
     }
 
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
@@ -209,9 +204,9 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
             args.Response.SetOldTargetNodeShardNodeName(
                 args.NewChildRef->ShardNodeName);
         } else if (!args.NewChildRef->IsExternal()) {
-            auto message = ReportUnexpectedLocalNode(TStringBuilder()
-                << "RenameNodeInDestination: "
-                << args.Request.ShortDebugString());
+            auto message = ReportUnexpectedLocalNode(
+                TStringBuilder() << "RenameNodeInDestination: "
+                                 << args.Request.ShortDebugString());
             // here the code is E_INVALID_STATE since we should've checked this
             // thing before - in HandleRenameNodeInDestination
             args.Error = MakeError(E_INVALID_STATE, std::move(message));
@@ -233,8 +228,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
             args.OpLogEntry.SetEntryId(args.CommitId);
             auto* shardRequest =
                 args.OpLogEntry.MutableUnlinkNodeInShardRequest();
-            shardRequest->MutableHeaders()->CopyFrom(
-                args.Request.GetHeaders());
+            shardRequest->MutableHeaders()->CopyFrom(args.Request.GetHeaders());
             shardRequest->SetFileSystemId(args.NewChildRef->ShardId);
             shardRequest->SetNodeId(RootNodeId);
             shardRequest->SetName(args.NewChildRef->ShardNodeName);
@@ -249,7 +243,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
         args.NewParentNodeId,
         args.CommitId,
         args.NewName,
-        InvalidNodeId, // ChildNodeId
+        InvalidNodeId,   // ChildNodeId
         args.Request.GetSourceNodeShardId(),
         args.Request.GetSourceNodeShardNodeName());
 
@@ -264,7 +258,8 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
 
     auto* session = FindSession(args.SessionId);
     if (!session) {
-        auto message = ReportSessionNotFoundInTx(TStringBuilder()
+        auto message = ReportSessionNotFoundInTx(
+            TStringBuilder()
             << "RenameNode: " << args.Request.ShortDebugString());
         args.Error = MakeError(E_INVALID_STATE, std::move(message));
         return;
@@ -326,10 +321,7 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
 
     RemoveTransaction(*args.RequestInfo);
 
-    Metrics.RenameNode.Update(
-        1,
-        0,
-        ctx.Now() - args.RequestInfo->StartedTs);
+    Metrics.RenameNode.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
 
     using TMethod = TEvIndexTablet::TRenameNodeInDestinationMethod;
     auto response = std::make_unique<TMethod::TResponse>(args.Error);

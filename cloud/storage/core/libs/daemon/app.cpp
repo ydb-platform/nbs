@@ -3,6 +3,7 @@
 #include <cloud/storage/core/libs/common/thread.h>
 
 #include <contrib/ydb/library/actors/util/should_continue.h>
+
 #include <library/cpp/deprecated/atomic/atomic.h>
 #include <library/cpp/logger/backend.h>
 #include <library/cpp/sighandler/async_signals_handler.h>
@@ -49,7 +50,9 @@ public:
             SetCurrentThreadName("Main");
 
             with_lock (WaitMutex) {
-                while (ShouldContinue->PollState() == TProgramShouldContinue::Continue) {
+                while (ShouldContinue->PollState() ==
+                       TProgramShouldContinue::Continue)
+                {
                     WaitCondVar.WaitT(WaitMutex, ShouldContinueSleepTime);
                 }
             }

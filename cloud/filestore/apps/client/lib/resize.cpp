@@ -1,5 +1,4 @@
 #include "command.h"
-
 #include "performance_profile_params.h"
 
 namespace NCloud::NFileStore::NClient {
@@ -8,8 +7,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TResizeCommand final
-    : public TFileStoreCommand
+class TResizeCommand final: public TFileStoreCommand
 {
 private:
     const TPerformanceProfileParams PerformanceProfileParams;
@@ -28,9 +26,8 @@ public:
             .RequiredArgument("NUM")
             .StoreResult(&BlocksCount);
 
-        Opts.AddLongOption("force")
-            .StoreTrue(&Force)
-            .Help("force flag allows to decrease the size of the file store");
+        Opts.AddLongOption("force").StoreTrue(&Force).Help(
+            "force flag allows to decrease the size of the file store");
 
         Opts.AddLongOption("shard-count")
             .RequiredArgument("NUM")
@@ -56,10 +53,9 @@ public:
 
         PerformanceProfileParams.FillRequest(*request);
 
-        auto response = WaitFor(
-            Client->ResizeFileStore(
-                std::move(callContext),
-                std::move(request)));
+        auto response = WaitFor(Client->ResizeFileStore(
+            std::move(callContext),
+            std::move(request)));
 
         if (HasError(response)) {
             ythrow TServiceError(response.GetError());

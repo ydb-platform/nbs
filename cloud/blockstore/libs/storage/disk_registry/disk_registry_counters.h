@@ -14,22 +14,22 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DISK_REGISTRY_ACTOR_COUNTERS(xxx, ...)                      \
-    xxx(ActorQueue,                     __VA_ARGS__)                           \
-    xxx(MailboxQueue,                   __VA_ARGS__)                           \
-// BLOCKSTORE_DISK_REGISTRY_ACTOR_COUNTERS
+#define BLOCKSTORE_DISK_REGISTRY_ACTOR_COUNTERS(xxx, ...) \
+    xxx(ActorQueue, __VA_ARGS__)                          \
+    xxx(MailboxQueue, __VA_ARGS__)                        \
+    // BLOCKSTORE_DISK_REGISTRY_ACTOR_COUNTERS
 
-#define BLOCKSTORE_DISK_REGISTRY_SIMPLE_COUNTERS(xxx)                          \
-// BLOCKSTORE_DISK_REGISTRY_SIMPLE_COUNTERS
+#define BLOCKSTORE_DISK_REGISTRY_SIMPLE_COUNTERS(xxx) \
+    // BLOCKSTORE_DISK_REGISTRY_SIMPLE_COUNTERS
 
-#define BLOCKSTORE_DISK_REGISTRY_CUMULATIVE_COUNTERS(xxx)                      \
-    BLOCKSTORE_DISK_REGISTRY_REQUESTS(xxx, Request)                            \
-    BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE(xxx, Request)                    \
-// BLOCKSTORE_DISK_REGISTRY_CUMULATIVE_COUNTERS
+#define BLOCKSTORE_DISK_REGISTRY_CUMULATIVE_COUNTERS(xxx)   \
+    BLOCKSTORE_DISK_REGISTRY_REQUESTS(xxx, Request)         \
+    BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE(xxx, Request) \
+    // BLOCKSTORE_DISK_REGISTRY_CUMULATIVE_COUNTERS
 
-#define BLOCKSTORE_DISK_REGISTRY_PERCENTILE_COUNTERS(xxx)                      \
-    BLOCKSTORE_DISK_REGISTRY_ACTOR_COUNTERS(xxx, Actor)                        \
-// BLOCKSTORE_DISK_REGISTRY_PERCENTILE_COUNTERS
+#define BLOCKSTORE_DISK_REGISTRY_PERCENTILE_COUNTERS(xxx) \
+    BLOCKSTORE_DISK_REGISTRY_ACTOR_COUNTERS(xxx, Actor)   \
+    // BLOCKSTORE_DISK_REGISTRY_PERCENTILE_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -52,7 +52,8 @@ struct TDiskRegistryCounters
 #define BLOCKSTORE_CUMULATIVE_COUNTER(name, category, ...) \
     CUMULATIVE_COUNTER_##category##_##name,
 
-        BLOCKSTORE_DISK_REGISTRY_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
+        BLOCKSTORE_DISK_REGISTRY_CUMULATIVE_COUNTERS(
+            BLOCKSTORE_CUMULATIVE_COUNTER)
         CUMULATIVE_COUNTER_SIZE
 
 #undef BLOCKSTORE_CUMULATIVE_COUNTER
@@ -64,7 +65,8 @@ struct TDiskRegistryCounters
 #define BLOCKSTORE_PERCENTILE_COUNTER(name, category, ...) \
     PERCENTILE_COUNTER_##category##_##name,
 
-        BLOCKSTORE_DISK_REGISTRY_PERCENTILE_COUNTERS(BLOCKSTORE_PERCENTILE_COUNTER)
+        BLOCKSTORE_DISK_REGISTRY_PERCENTILE_COUNTERS(
+            BLOCKSTORE_PERCENTILE_COUNTER)
         PERCENTILE_COUNTER_SIZE
 
 #undef BLOCKSTORE_PERCENTILE_COUNTER
@@ -73,7 +75,7 @@ struct TDiskRegistryCounters
 
     enum ETransactionType
     {
-#define BLOCKSTORE_TRANSACTION_TYPE(name, ...)      TX_##name,
+#define BLOCKSTORE_TRANSACTION_TYPE(name, ...) TX_##name,
 
         BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS(BLOCKSTORE_TRANSACTION_TYPE)
         TX_SIZE
@@ -85,6 +87,7 @@ struct TDiskRegistryCounters
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::unique_ptr<NKikimr::TTabletCountersWithTxTypes> CreateDiskRegistryCounters();
+std::unique_ptr<NKikimr::TTabletCountersWithTxTypes>
+CreateDiskRegistryCounters();
 
 }   // namespace NCloud::NBlockStore::NStorage

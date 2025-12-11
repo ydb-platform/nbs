@@ -87,9 +87,10 @@ NProto::TError CompleteReadBlocksLocalRequest(
 
     size_t expectedSize = request.GetBlocksCount() * request.BlockSize;
     if (srcSize != expectedSize) {
-        return TErrorResponse(E_ARGUMENT, TStringBuilder()
-            << "invalid response size (expected: " << expectedSize
-            << ", actual: " << srcSize << ")");
+        return TErrorResponse(
+            E_ARGUMENT,
+            TStringBuilder() << "invalid response size (expected: "
+                             << expectedSize << ", actual: " << srcSize << ")");
     }
 
     auto guard = request.Sglist.Acquire();
@@ -102,9 +103,10 @@ NProto::TError CompleteReadBlocksLocalRequest(
     auto dstSize = SgListGetSize(dst);
 
     if (dstSize < srcSize) {
-        return TErrorResponse(E_ARGUMENT, TStringBuilder()
-            << "invalid buffer size (expected: " << srcSize
-            << ", actual: " << dstSize << ")");
+        return TErrorResponse(
+            E_ARGUMENT,
+            TStringBuilder() << "invalid buffer size (expected: " << srcSize
+                             << ", actual: " << dstSize << ")");
     }
 
     size_t bytesRead = SgListCopy(src, dst);
@@ -136,9 +138,10 @@ TResultOrError<TWriteBlocksRequestPtr> CreateWriteBlocksRequest(
 
     size_t expectedSize = localRequest.BlocksCount * localRequest.BlockSize;
     if (srcSize < expectedSize) {
-        return TErrorResponse(E_ARGUMENT, TStringBuilder()
-            << "invalid buffer size (expected: " << expectedSize
-            << ", actual: " << srcSize << ")");
+        return TErrorResponse(
+            E_ARGUMENT,
+            TStringBuilder() << "invalid buffer size (expected: "
+                             << expectedSize << ", actual: " << srcSize << ")");
     }
 
     auto request = std::make_shared<NProto::TWriteBlocksRequest>(localRequest);
@@ -159,14 +162,14 @@ TResultOrError<TWriteBlocksRequestPtr> CreateWriteBlocksRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TClientRequestHandlerBase
-    : public NStorage::NGrpc::TRequestHandlerBase
+struct TClientRequestHandlerBase: public NStorage::NGrpc::TRequestHandlerBase
 {
     const EBlockStoreRequest RequestType;
     ui64 RequestId = 0;
     TString DiskId;
 
-    enum {
+    enum
+    {
         WaitingForRequest = 0,
         SendingRequest = 1,
         RequestCompleted = 2,
@@ -252,8 +255,8 @@ struct TAppContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TExecutorContext = NStorage::NGrpc::
-    TExecutorContext<grpc::CompletionQueue, TRequestsInFlight>;
+using TExecutorContext =
+    NStorage::NGrpc::TExecutorContext<grpc::CompletionQueue, TRequestsInFlight>;
 using TExecutor = NStorage::NGrpc::TExecutor<
     grpc::CompletionQueue,
     TRequestsInFlight,
@@ -261,19 +264,20 @@ using TExecutor = NStorage::NGrpc::TExecutor<
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        static constexpr EBlockStoreRequest Request = EBlockStoreRequest::name;\
-                                                                               \
-        using TRequest = NProto::T##name##Request;                             \
-        using TResponse = NProto::T##name##Response;                           \
-                                                                               \
-        template <typename T, typename ...TArgs>                               \
-        static auto Prepare(T& service, TArgs&& ...args)                       \
-        {                                                                      \
-            return service.Async##name(std::forward<TArgs>(args)...);          \
-        }                                                                      \
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                          \
+    struct T##name##Method                                            \
+    {                                                                 \
+        static constexpr EBlockStoreRequest Request =                 \
+            EBlockStoreRequest::name;                                 \
+                                                                      \
+        using TRequest = NProto::T##name##Request;                    \
+        using TResponse = NProto::T##name##Response;                  \
+                                                                      \
+        template <typename T, typename... TArgs>                      \
+        static auto Prepare(T& service, TArgs&&... args)              \
+        {                                                             \
+            return service.Async##name(std::forward<TArgs>(args)...); \
+        }                                                             \
     };
 // BLOCKSTORE_DECLARE_METHOD
 
@@ -283,11 +287,11 @@ BLOCKSTORE_GRPC_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        using TRequest = NProto::T##name##Request;                             \
-        using TResponse = NProto::T##name##Response;                           \
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)         \
+    struct T##name##Method                           \
+    {                                                \
+        using TRequest = NProto::T##name##Request;   \
+        using TResponse = NProto::T##name##Response; \
     };
 // BLOCKSTORE_DECLARE_METHOD
 
@@ -298,8 +302,7 @@ BLOCKSTORE_LOCAL_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TService, typename TMethod>
-class TRequestHandler final
-    : public TClientRequestHandlerBase
+class TRequestHandler final: public TClientRequestHandlerBase
 {
     using TRequest = typename TMethod::TRequest;
     using TResponse = typename TMethod::TResponse;
@@ -321,12 +324,12 @@ private:
 
 public:
     TRequestHandler(
-            TAppContext& appCtx,
-            TExecutorContext& execCtx,
-            TService& service,
-            TCallContextPtr callContext,
-            std::shared_ptr<TRequest> request,
-            const TPromise<TResponse>& promise)
+        TAppContext& appCtx,
+        TExecutorContext& execCtx,
+        TService& service,
+        TCallContextPtr callContext,
+        std::shared_ptr<TRequest> request,
+        const TPromise<TResponse>& promise)
         : TClientRequestHandlerBase(TMethod::Request)
         , AppCtx(appCtx)
         , ExecCtx(execCtx)
@@ -376,7 +379,11 @@ public:
         for (;;) {
             switch (AtomicGet(RequestState)) {
                 case WaitingForRequest:
-                    if (AtomicCas(&RequestState, SendingRequest, WaitingForRequest)) {
+                    if (AtomicCas(
+                            &RequestState,
+                            SendingRequest,
+                            WaitingForRequest))
+                    {
                         PrepareRequestContext();
                         SendRequest();
 
@@ -386,7 +393,11 @@ public:
                     break;
 
                 case SendingRequest:
-                    if (AtomicCas(&RequestState, RequestCompleted, SendingRequest)) {
+                    if (AtomicCas(
+                            &RequestState,
+                            RequestCompleted,
+                            SendingRequest))
+                    {
                         ProcessResponse();
                     }
                     break;
@@ -418,13 +429,16 @@ private:
         auto now = TInstant::Now();
 
         auto timestamp = TInstant::MicroSeconds(headers.GetTimestamp());
-        if (!timestamp || timestamp > now || now - timestamp > TDuration::Seconds(1)) {
+        if (!timestamp || timestamp > now ||
+            now - timestamp > TDuration::Seconds(1))
+        {
             // fix request timestamp
             timestamp = now;
             headers.SetTimestamp(timestamp.MicroSeconds());
         }
 
-        auto requestTimeout = TDuration::MilliSeconds(headers.GetRequestTimeout());
+        auto requestTimeout =
+            TDuration::MilliSeconds(headers.GetRequestTimeout());
         if (!requestTimeout) {
             requestTimeout = AppCtx.Config->GetRequestTimeout();
             headers.SetRequestTimeout(requestTimeout.MilliSeconds());
@@ -613,8 +627,7 @@ public:
 
     IBlockStorePtr CreateDataEndpoint() override;
 
-    IBlockStorePtr CreateDataEndpoint(
-        const TString& socketPath) override;
+    IBlockStorePtr CreateDataEndpoint(const TString& socketPath) override;
 
 private:
     bool InitControlEndpoint();
@@ -645,23 +658,21 @@ public:
         Stop();
     }
 
-    void Start() override {
-       TClientBase::Start();
-    };
+    void Start() override
+    {
+        TClientBase::Start();
+    }
 
-    void Stop() override {
+    void Stop() override
+    {
         TClientBase::Stop();
-    };
+    }
 
-    IBlockStorePtr CreateEndpoint(
-        const TString& host,
-        ui32 port,
-        bool isSecure) override;
+    IBlockStorePtr
+    CreateEndpoint(const TString& host, ui32 port, bool isSecure) override;
 
-    IBlockStorePtr CreateDataEndpoint(
-        const TString& host,
-        ui32 port,
-        bool isSecure) override;
+    IBlockStorePtr
+    CreateDataEndpoint(const TString& host, ui32 port, bool isSecure) override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -722,16 +733,12 @@ std::shared_ptr<grpc::Channel> TClientBase::CreateTcpSocketChannel(
     const TString& address,
     bool secureEndpoint)
 {
-    auto credentials = CreateTcpClientChannelCredentials(
-        secureEndpoint,
-        *Config);
+    auto credentials =
+        CreateTcpClientChannelCredentials(secureEndpoint, *Config);
 
     STORAGE_INFO("Connect to " << address);
 
-    return CreateCustomChannel(
-        address,
-        credentials,
-        CreateChannelArguments());
+    return CreateCustomChannel(address, credentials, CreateChannelArguments());
 }
 
 std::shared_ptr<grpc::Channel> TClientBase::CreateUnixSocketChannel(
@@ -747,10 +754,8 @@ std::shared_ptr<grpc::Channel> TClientBase::CreateUnixSocketChannel(
         return nullptr;
     }
 
-    auto channel = grpc::CreateCustomInsecureChannelFromFd(
-        "localhost",
-        socket,
-        args);
+    auto channel =
+        grpc::CreateCustomInsecureChannelFromFd("localhost", socket, args);
 
     socket.Release();   // ownership transferred to Channel
     return channel;
@@ -835,7 +840,9 @@ void TClient::UploadStats()
     if (dataEndpoint) {
         dataEndpoint->UploadClientMetrics(std::move(ctx), std::move(request));
     } else if (controlEndpoint) {
-        controlEndpoint->UploadClientMetrics(std::move(ctx), std::move(request));
+        controlEndpoint->UploadClientMetrics(
+            std::move(ctx),
+            std::move(request));
     }
 }
 
@@ -851,8 +858,8 @@ protected:
 
 public:
     TEndpointBase(
-            std::shared_ptr<TClient> client,
-            std::shared_ptr<typename TService::Stub> service)
+        std::shared_ptr<TClient> client,
+        std::shared_ptr<typename TService::Stub> service)
         : Client(std::move(client))
         , Service(std::move(service))
     {}
@@ -896,7 +903,8 @@ protected:
     }
 
     template <>
-    TFuture<NProto::TWriteBlocksLocalResponse> ExecuteRequest<TWriteBlocksLocalMethod>(
+    TFuture<NProto::TWriteBlocksLocalResponse>
+    ExecuteRequest<TWriteBlocksLocalMethod>(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteBlocksLocalRequest> localRequest)
     {
@@ -914,7 +922,8 @@ protected:
     }
 
     template <>
-    TFuture<NProto::TReadBlocksLocalResponse> ExecuteRequest<TReadBlocksLocalMethod>(
+    TFuture<NProto::TReadBlocksLocalResponse>
+    ExecuteRequest<TReadBlocksLocalMethod>(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
     {
@@ -923,27 +932,27 @@ protected:
             std::move(callContext),
             request);
 
-        return future.Apply([request = std::move(request)] (
-            TFuture<NProto::TReadBlocksResponse> f)
-        {
-            NProto::TReadBlocksLocalResponse response(f.ExtractValue());
-            if (HasError(response)) {
+        return future.Apply(
+            [request =
+                 std::move(request)](TFuture<NProto::TReadBlocksResponse> f)
+            {
+                NProto::TReadBlocksLocalResponse response(f.ExtractValue());
+                if (HasError(response)) {
+                    return response;
+                }
+
+                auto error = CompleteReadBlocksLocalRequest(*request, response);
+                if (HasError(error)) {
+                    NProto::TReadBlocksLocalResponse response;
+                    *response.MutableError() = std::move(error);
+                    return response;
+                }
+
+                // no more need response's Blocks; free memory
+                response.MutableBlocks()->Clear();
+
                 return response;
-            }
-
-            auto error =
-                CompleteReadBlocksLocalRequest(*request, response);
-            if (HasError(error)) {
-                NProto::TReadBlocksLocalResponse response;
-                *response.MutableError() = std::move(error);
-                return response;
-            }
-
-            // no more need response's Blocks; free memory
-            response.MutableBlocks()->Clear();
-
-            return response;
-        });
+            });
     }
 
     grpc::ChannelArguments CreateChannelArguments()
@@ -960,9 +969,8 @@ protected:
 
     bool StartWithUds(const TString& unixSocketPath)
     {
-        auto channel = CreateUnixSocketChannel(
-            unixSocketPath,
-            CreateChannelArguments());
+        auto channel =
+            CreateUnixSocketChannel(unixSocketPath, CreateChannelArguments());
 
         if (!channel) {
             return false;
@@ -976,24 +984,23 @@ protected:
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TClient>
-class TEndpoint final
-    : public TEndpointBase<NProto::TBlockStoreService, TClient>
+class TEndpoint final: public TEndpointBase<NProto::TBlockStoreService, TClient>
 {
     using TBase = TEndpointBase<NProto::TBlockStoreService, TClient>;
 
 public:
     using TEndpointBase<NProto::TBlockStoreService, TClient>::TEndpointBase;
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        return TBase::template ExecuteRequest<T##name##Method>(                \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                      \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr callContext,                                \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        return TBase::template ExecuteRequest<T##name##Method>(     \
+            std::move(callContext),                                 \
+            std::move(request));                                    \
+    }                                                               \
+    // BLOCKSTORE_IMPLEMENT_METHOD
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
 
@@ -1007,19 +1014,20 @@ class TDataEndpoint final
     : public TEndpointBase<NProto::TBlockStoreDataService, TClient>
 {
     using TBase = TEndpointBase<NProto::TBlockStoreDataService, TClient>;
+
 public:
     using TEndpointBase<NProto::TBlockStoreDataService, TClient>::TEndpointBase;
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        return TBase::template ExecuteRequest<T##name##Method>(                \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                      \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr callContext,                                \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        return TBase::template ExecuteRequest<T##name##Method>(     \
+            std::move(callContext),                                 \
+            std::move(request));                                    \
+    }                                                               \
+    // BLOCKSTORE_IMPLEMENT_METHOD
 
     BLOCKSTORE_DATA_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
 
@@ -1034,22 +1042,23 @@ using TNbsUdsSocketClient = TUdsSocketClient<TBase, TCallContextPtr>;
 ////////////////////////////////////////////////////////////////////////////////
 
 class TSocketEndpoint final
-    : public TNbsUdsSocketClient<TEndpointBase<typename NProto::TBlockStoreService, TClient>>
+    : public TNbsUdsSocketClient<
+          TEndpointBase<typename NProto::TBlockStoreService, TClient>>
 {
 public:
     using TBase = TEndpointBase<typename NProto::TBlockStoreService, TClient>;
     using TNbsUdsSocketClient<TBase>::TNbsUdsSocketClient;
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        return ExecuteRequest<T##name##Method>(                                \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                      \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr callContext,                                \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        return ExecuteRequest<T##name##Method>(                     \
+            std::move(callContext),                                 \
+            std::move(request));                                    \
+    }                                                               \
+    // BLOCKSTORE_IMPLEMENT_METHOD
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
 
@@ -1059,22 +1068,24 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 class TSocketDataEndpoint final
-    : public TNbsUdsSocketClient<TEndpointBase<typename NProto::TBlockStoreDataService, TClient>>
+    : public TNbsUdsSocketClient<
+          TEndpointBase<typename NProto::TBlockStoreDataService, TClient>>
 {
 public:
-    using TBase = TEndpointBase<typename NProto::TBlockStoreDataService, TClient>;
+    using TBase =
+        TEndpointBase<typename NProto::TBlockStoreDataService, TClient>;
     using TNbsUdsSocketClient<TBase>::TNbsUdsSocketClient;
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        return ExecuteRequest<T##name##Method>(                                \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                      \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr callContext,                                \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        return ExecuteRequest<T##name##Method>(                     \
+            std::move(callContext),                                 \
+            std::move(request));                                    \
+    }                                                               \
+    // BLOCKSTORE_IMPLEMENT_METHOD
 
     BLOCKSTORE_DATA_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
 
@@ -1093,7 +1104,8 @@ void TClient::ScheduleUploadStats()
 
     Scheduler->Schedule(
         Timer->Now() + UpdateCountersInterval,
-        [weakPtr = std::move(weakPtr)] {
+        [weakPtr = std::move(weakPtr)]
+        {
             if (auto p = weakPtr.lock()) {
                 p->UploadStats();
                 p->ScheduleUploadStats();
@@ -1119,13 +1131,15 @@ bool TClient::InitControlEndpoint()
 
     if (Config->GetSecurePort() != 0 || Config->GetInsecurePort() != 0) {
         bool secureEndpoint = Config->GetSecurePort() != 0;
-        auto address = Join(":", Config->GetHost(),
-            secureEndpoint ? Config->GetSecurePort() : Config->GetInsecurePort());
+        auto address = Join(
+            ":",
+            Config->GetHost(),
+            secureEndpoint ? Config->GetSecurePort()
+                           : Config->GetInsecurePort());
 
         auto channel = CreateTcpSocketChannel(address, secureEndpoint);
         if (!channel) {
-            ythrow TServiceError(E_FAIL)
-                << "could not start gRPC client";
+            ythrow TServiceError(E_FAIL) << "could not start gRPC client";
         }
 
         ControlEndpoint = std::make_shared<TEndpoint<TClient>>(
@@ -1145,13 +1159,12 @@ bool TClient::InitDataEndpoint()
 
     if (Config->GetPort() != 0) {
         auto address = Join(":", Config->GetHost(), Config->GetPort());
-        auto secureEndpoint = false;    // auth not supported
+        auto secureEndpoint = false;   // auth not supported
 
         auto channel = CreateTcpSocketChannel(address, secureEndpoint);
 
         if (!channel) {
-            ythrow TServiceError(E_FAIL)
-                << "could not start gRPC client";
+            ythrow TServiceError(E_FAIL) << "could not start gRPC client";
         }
 
         DataEndpoint = std::make_shared<TDataEndpoint<TClient>>(
@@ -1192,23 +1205,21 @@ IBlockStorePtr TClient::CreateDataEndpoint(const TString& socketPath)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IBlockStorePtr TMultiHostClient::CreateEndpoint(
-    const TString& host,
-    ui32 port,
-    bool isSecure)
+IBlockStorePtr
+TMultiHostClient::CreateEndpoint(const TString& host, ui32 port, bool isSecure)
 {
     with_lock (EndpointLock) {
         Y_ENSURE(port);
         auto address = Join(":", host, port);
 
-        if (auto it = Cache.find(make_pair(address, false)); it != Cache.end()) {
+        if (auto it = Cache.find(make_pair(address, false)); it != Cache.end())
+        {
             return it->second;
         }
 
         auto channel = CreateTcpSocketChannel(address, isSecure);
         if (!channel) {
-            ythrow TServiceError(E_FAIL)
-                << "could not start gRPC client";
+            ythrow TServiceError(E_FAIL) << "could not start gRPC client";
         }
 
         auto endpoint = std::make_shared<TEndpoint<TMultiHostClient>>(
@@ -1234,8 +1245,7 @@ IBlockStorePtr TMultiHostClient::CreateDataEndpoint(
 
         auto channel = CreateTcpSocketChannel(address, isSecure);
         if (!channel) {
-            ythrow TServiceError(E_FAIL)
-                << "could not start gRPC client";
+            ythrow TServiceError(E_FAIL) << "could not start gRPC client";
         }
 
         auto endpoint = std::make_shared<TDataEndpoint<TMultiHostClient>>(

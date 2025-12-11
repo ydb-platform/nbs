@@ -29,8 +29,8 @@ TProfilingAllocator* GetAllocatorByTag(EAllocatorTag tag);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename T, typename ...TArgs>
-T* NewImpl(IAllocator* allocator, TArgs&& ...args)
+template <typename T, typename... TArgs>
+T* NewImpl(IAllocator* allocator, TArgs&&... args)
 {
     auto block = allocator->Allocate(sizeof(T));
     Y_ABORT_UNLESS(block.Data);
@@ -42,7 +42,7 @@ void DeleteImpl(IAllocator* allocator, T* p)
 {
     if (p) {
         p->~T();
-        allocator->Release({ p, sizeof(T) });
+        allocator->Release({p, sizeof(T)});
     }
 }
 

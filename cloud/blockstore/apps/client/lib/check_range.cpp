@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -51,9 +52,9 @@ struct TRequestBuilder
     TRequestBuilder() = default;
 
     TRequestBuilder(
-            ui32 startIndex,
-            ui32 remainingBlocks,
-            ui32 blocksPerRequest)
+        ui32 startIndex,
+        ui32 remainingBlocks,
+        ui32 blocksPerRequest)
         : StartIndex(startIndex)
         , RemainingBlocks(remainingBlocks)
         , BlocksPerRequest(blocksPerRequest)
@@ -128,7 +129,8 @@ public:
         Opts.AddLongOption(
                 "compare-results",
                 "compare results of range checking operations from the folder "
-"               './check Range_$disk-id*', with the current ones, before overwrite file with new ones")
+                "               './check Range_$disk-id*', with the current "
+                "ones, before overwrite file with new ones")
             .NoArgument()
             .StoreTrue(&CompareResultsEnabled);
 
@@ -210,7 +212,7 @@ protected:
                 }
             }
 
-            if (CompareResultsEnabled){
+            if (CompareResultsEnabled) {
                 CompareChecksums(result.GetOutput(), *range);
             }
 
@@ -326,10 +328,14 @@ private:
 
     TResultOrError<TString> ReadJsonFromFile(const TString& fileName)
     {
-        return SafeExecute<TResultOrError<TString>>([&] {
-            TIFStream file(fileName, EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
-            return file.ReadAll();
-        });
+        return SafeExecute<TResultOrError<TString>>(
+            [&]
+            {
+                TIFStream file(
+                    fileName,
+                    EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
+                return file.ReadAll();
+            });
     }
 
     void CompareChecksums(const TString& response, TBlockRange64 range)
@@ -351,9 +357,8 @@ private:
         }
 
         if (!NJson::ReadJsonTree(data, &jsonFromFile)) {
-            GetOutputStream()
-                << "Error while parsing json from file " << fileName
-                << " for range " << range << Endl;
+            GetOutputStream() << "Error while parsing json from file "
+                              << fileName << " for range " << range << Endl;
             return;
         }
 

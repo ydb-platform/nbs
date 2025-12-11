@@ -1,6 +1,5 @@
-#include "stats_fetcher.h"
-
 #include "critical_events.h"
+#include "stats_fetcher.h"
 
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
@@ -19,8 +18,8 @@ const TString ComponentName = "STORAGE_CGROUPS";
 
 auto SetupCriticalEvents(IMonitoringServicePtr monitoring)
 {
-    auto rootGroup = monitoring->GetCounters()
-        ->GetSubgroup("counters", "storage");
+    auto rootGroup =
+        monitoring->GetCounters()->GetSubgroup("counters", "storage");
 
     auto serverGroup = rootGroup->GetSubgroup("component", "server");
     InitCriticalEventsCounter(serverGroup);
@@ -39,7 +38,7 @@ void UpdateCGroupWaitDuration(TTempFileHandle& file, TDuration value)
     file.Resize(buffer.size());
 }
 
-};  //namespace
+};   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -51,9 +50,8 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
 
         UpdateCGroupWaitDuration(statsFile, TDuration::MicroSeconds(10));
 
-        auto fetcher = CreateCgroupStatsFetcher(
-            ComponentName,
-            statsFile.Name());
+        auto fetcher =
+            CreateCgroupStatsFetcher(ComponentName, statsFile.Name());
         fetcher->GetCpuWait();
 
         auto cpuWait = fetcher->GetCpuWait();
@@ -75,16 +73,13 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto serverGroup = SetupCriticalEvents(monitoring);
 
-        auto fetcher = CreateCgroupStatsFetcher(
-            ComponentName,
-            "noname");
+        auto fetcher = CreateCgroupStatsFetcher(ComponentName, "noname");
         fetcher->GetCpuWait();
 
         auto cpuWait = fetcher->GetCpuWait();
         UNIT_ASSERT_C(HasError(cpuWait), cpuWait.GetError());
         cpuWait = fetcher->GetCpuWait();
         UNIT_ASSERT_C(HasError(cpuWait), cpuWait.GetError());
-
     }
 
     Y_UNIT_TEST(ShouldReportErrorIfNewValueIsLowerThanPrevious)
@@ -93,9 +88,7 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
 
         UpdateCGroupWaitDuration(statsFile, TDuration::MicroSeconds(100));
 
-        auto fetcher = CreateCgroupStatsFetcher(
-            ComponentName,
-            "test");
+        auto fetcher = CreateCgroupStatsFetcher(ComponentName, "test");
         fetcher->GetCpuWait();
 
         UpdateCGroupWaitDuration(statsFile, TDuration::MicroSeconds(80));

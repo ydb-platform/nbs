@@ -27,11 +27,11 @@ public:
 
     enum ERootKeyring
     {
-        Thread = 0,     // thread-specific keyring
-        Process,        // process-specific keyring
-        Session,        // session-specific keyring
-        User,           // UID-specific keyring
-        UserSession,    // UID-session keyring
+        Thread = 0,    // thread-specific keyring
+        Process,       // process-specific keyring
+        Session,       // session-specific keyring
+        User,          // UID-specific keyring
+        UserSession,   // UID-session keyring
     };
 
     static TKeyring Create(ui32 keySerial);

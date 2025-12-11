@@ -68,11 +68,8 @@ struct TTestEnv
     TDuration ScrubbingInterval;
     NRdma::IClientPtr RdmaClient;
 
-    static void AddDevice(
-        ui32 nodeId,
-        ui32 blockCount,
-        TString name,
-        TDevices& devices)
+    static void
+    AddDevice(ui32 nodeId, ui32 blockCount, TString name, TDevices& devices)
     {
         const auto k = DefaultBlockSize / DefaultDeviceBlockSize;
 
@@ -98,8 +95,9 @@ struct TTestEnv
         auto devices = DefaultDevices(nodeId);
         for (auto& device: devices) {
             if (device.GetDeviceUUID()) {
-                device.SetDeviceUUID(TStringBuilder() << device.GetDeviceUUID()
-                    << "#" << replicaId);
+                device.SetDeviceUUID(
+                    TStringBuilder()
+                    << device.GetDeviceUUID() << "#" << replicaId);
             }
         }
         return devices;
@@ -108,9 +106,8 @@ struct TTestEnv
     static TMigrations DefaultMigrations(ui64 nodeId, ui32 replicaId)
     {
         TMigrations migrations;
-        auto devices = replicaId
-            ? DefaultReplica(nodeId, replicaId)
-            : DefaultDevices(nodeId);
+        auto devices = replicaId ? DefaultReplica(nodeId, replicaId)
+                                 : DefaultDevices(nodeId);
         for (auto& device: devices) {
             if (device.GetDeviceUUID()) {
                 auto* m = migrations.Add();
@@ -124,33 +121,33 @@ struct TTestEnv
     }
 
     explicit TTestEnv(
-            TTestActorRuntime& runtime,
-            NProto::TStorageServiceConfig configBase = {},
-            bool useRdma = false,
-            NProto::EEncryptionMode encryptionMode = NProto::NO_ENCRYPTION)
+        TTestActorRuntime& runtime,
+        NProto::TStorageServiceConfig configBase = {},
+        bool useRdma = false,
+        NProto::EEncryptionMode encryptionMode = NProto::NO_ENCRYPTION)
         : TTestEnv(
-            runtime,
-            DefaultDevices(runtime.GetNodeId(0)),
-            TVector<TDevices>{
-                DefaultReplica(runtime.GetNodeId(0), 1),
-                DefaultReplica(runtime.GetNodeId(0), 2),
-            },
-            {}, // migrations
-            {}, // freshDeviceIds
-            std::move(configBase),
-            useRdma,
-            encryptionMode)
+              runtime,
+              DefaultDevices(runtime.GetNodeId(0)),
+              TVector<TDevices>{
+                  DefaultReplica(runtime.GetNodeId(0), 1),
+                  DefaultReplica(runtime.GetNodeId(0), 2),
+              },
+              {},   // migrations
+              {},   // freshDeviceIds
+              std::move(configBase),
+              useRdma,
+              encryptionMode)
     {}
 
     TTestEnv(
-            TTestActorRuntime& runtime,
-            TDevices devices,
-            TVector<TDevices> replicas,
-            TMigrations migrations = {},
-            THashSet<TString> freshDeviceIds = {},
-            NProto::TStorageServiceConfig configBase = {},
-            bool useRdma = false,
-            NProto::EEncryptionMode encryptionMode = NProto::NO_ENCRYPTION)
+        TTestActorRuntime& runtime,
+        TDevices devices,
+        TVector<TDevices> replicas,
+        TMigrations migrations = {},
+        THashSet<TString> freshDeviceIds = {},
+        NProto::TStorageServiceConfig configBase = {},
+        bool useRdma = false,
+        NProto::EEncryptionMode encryptionMode = NProto::NO_ENCRYPTION)
         : Runtime(runtime)
         , ActorId(0, "YYY")
         , VolumeActorId(0, "VVV")
@@ -174,8 +171,7 @@ struct TTestEnv
         Config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         ScrubbingInterval = CalculateScrubbingInterval(
             6144,
@@ -205,9 +201,7 @@ struct TTestEnv
             TActorSetupCmd(
                 new TDiskAgentMock(allDevices, DiskAgentState),
                 TMailboxType::Simple,
-                0
-            )
-        );
+                0));
 
         TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
             params{
@@ -233,20 +227,19 @@ struct TTestEnv
             CreateDiagnosticsConfig(),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
-            "", // rwClientId
+            "",   // rwClientId
             partConfig,
             std::move(migrations),
             replicas,
             RdmaClient,
             VolumeActorId,
             VolumeActorId,
-            TActorId() // resyncActorId
+            TActorId()   // resyncActorId
         );
 
         Runtime.AddLocalService(
             ActorId,
-            TActorSetupCmd(part.release(), TMailboxType::Simple, 0)
-        );
+            TActorSetupCmd(part.release(), TMailboxType::Simple, 0));
 
         AddReplica(partConfig->Fork(partConfig->GetDevices()), "ZZZ");
         for (size_t i = 0; i < replicas.size(); ++i) {
@@ -257,24 +250,20 @@ struct TTestEnv
 
         Runtime.AddLocalService(
             VolumeActorId,
-            TActorSetupCmd(volume.release(), TMailboxType::Simple, 0)
-        );
+            TActorSetupCmd(volume.release(), TMailboxType::Simple, 0));
 
         auto diskRegistry = std::make_unique<TDummyActor>();
 
         Runtime.AddLocalService(
             MakeDiskRegistryProxyServiceId(),
-            TActorSetupCmd(diskRegistry.release(), TMailboxType::Simple, 0)
-        );
+            TActorSetupCmd(diskRegistry.release(), TMailboxType::Simple, 0));
 
         Runtime.AddLocalService(
             MakeStorageStatsServiceId(),
             TActorSetupCmd(
                 new TStorageStatsServiceMock(StorageStatsServiceState),
                 TMailboxType::Simple,
-                0
-            )
-        );
+                0));
 
         Runtime.AddLocalService(
             MakeStorageServiceId(),
@@ -283,9 +272,7 @@ struct TTestEnv
         NKikimr::SetupTabletServices(Runtime);
     }
 
-    void AddReplica(
-        TNonreplicatedPartitionConfigPtr partConfig,
-        TString name)
+    void AddReplica(TNonreplicatedPartitionConfigPtr partConfig, TString name)
     {
         auto part = CreateNonreplicatedPartition(
             Config,
@@ -298,8 +285,7 @@ struct TTestEnv
         TActorId actorId(0, name);
         Runtime.AddLocalService(
             actorId,
-            TActorSetupCmd(part.release(), TMailboxType::Simple, 0)
-        );
+            TActorSetupCmd(part.release(), TMailboxType::Simple, 0));
 
         ReplicaActors.push_back(actorId);
     }
@@ -343,7 +329,10 @@ struct TTestEnv
             TBlockStoreComponents::END,
             GetComponentName);
 
-        for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
+        for (ui32 i = TBlockStoreComponents::START;
+             i < TBlockStoreComponents::END;
+             ++i)
+        {
             Runtime.SetLogPriority(i, NLog::PRI_DEBUG);
         }
         // Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
@@ -355,7 +344,6 @@ struct TTestEnv
     }
 };
 
-
 void WaitUntilScrubbingFinishesCurrentCycle(TTestEnv& testEnv)
 {
     auto& counters = testEnv.StorageStatsServiceState->Counters;
@@ -364,8 +352,7 @@ void WaitUntilScrubbingFinishesCurrentCycle(TTestEnv& testEnv)
     while (iterations++ < 100) {
         testEnv.Runtime.AdvanceCurrentTime(UpdateCountersInterval);
         testEnv.Runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
-        if (prevScrubbingProgress > counters.Simple.ScrubbingProgress.Value)
-        {
+        if (prevScrubbingProgress > counters.Simple.ScrubbingProgress.Value) {
             break;
         }
         prevScrubbingProgress = counters.Simple.ScrubbingProgress.Value;
@@ -418,8 +405,7 @@ void TestAgentData(
     const auto& buffers = response->Record.GetBlocks().GetBuffers();
     UNIT_ASSERT_VALUES_EQUAL(blockCount, buffers.size());
 
-    for (const auto& block: buffers)
-    {
+    for (const auto& block: buffers) {
         UNIT_ASSERT_VALUES_EQUAL(TString(4_KB, c), block);
     }
 }
@@ -441,94 +427,92 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TPartitionClient client(runtime, env.ActorId);
 
         {
-            auto response = client.ReadBlocks(
-                TBlockRange64::WithLength(1024, 3072));
+            auto response =
+                client.ReadBlocks(TBlockRange64::WithLength(1024, 3072));
             const auto& blocks = response->Record.GetBlocks();
 
             UNIT_ASSERT_VALUES_EQUAL(3072, blocks.BuffersSize());
-            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, blocks.GetBuffers(0).size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                DefaultBlockSize,
+                blocks.GetBuffers(0).size());
             UNIT_ASSERT_VALUES_EQUAL(
                 TString(DefaultBlockSize, 0),
-                blocks.GetBuffers(0)
-            );
+                blocks.GetBuffers(0));
 
-            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, blocks.GetBuffers(3071).size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                DefaultBlockSize,
+                blocks.GetBuffers(3071).size());
             UNIT_ASSERT_VALUES_EQUAL(
                 TString(DefaultBlockSize, 0),
-                blocks.GetBuffers(3071)
-            );
+                blocks.GetBuffers(3071));
         }
 
         client.WriteBlocks(TBlockRange64::WithLength(1024, 3072), 1);
         client.WriteBlocks(TBlockRange64::MakeClosedInterval(1024, 4023), 2);
 
         {
-            auto response = client.ReadBlocks(
-                TBlockRange64::WithLength(1024, 3072));
+            auto response =
+                client.ReadBlocks(TBlockRange64::WithLength(1024, 3072));
             const auto& blocks = response->Record.GetBlocks();
             UNIT_ASSERT_VALUES_EQUAL(3072, blocks.BuffersSize());
-            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, blocks.GetBuffers(0).size());
-            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, blocks.GetBuffers(2999).size());
-            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, blocks.GetBuffers(3000).size());
-            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, blocks.GetBuffers(3071).size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                DefaultBlockSize,
+                blocks.GetBuffers(0).size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                DefaultBlockSize,
+                blocks.GetBuffers(2999).size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                DefaultBlockSize,
+                blocks.GetBuffers(3000).size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                DefaultBlockSize,
+                blocks.GetBuffers(3071).size());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 TString(DefaultBlockSize, 2),
-                blocks.GetBuffers(0)
-            );
+                blocks.GetBuffers(0));
             UNIT_ASSERT_VALUES_EQUAL(
                 TString(DefaultBlockSize, 2),
-                blocks.GetBuffers(2999)
-            );
+                blocks.GetBuffers(2999));
             UNIT_ASSERT_VALUES_EQUAL(
                 TString(DefaultBlockSize, 1),
-                blocks.GetBuffers(3000)
-            );
+                blocks.GetBuffers(3000));
             UNIT_ASSERT_VALUES_EQUAL(
                 TString(DefaultBlockSize, 1),
-                blocks.GetBuffers(3071)
-            );
+                blocks.GetBuffers(3071));
         }
 
         client.ZeroBlocks(TBlockRange64::MakeClosedInterval(2024, 3023));
 
         {
-            auto response = client.ReadBlocks(
-                TBlockRange64::WithLength(1024, 3072));
+            auto response =
+                client.ReadBlocks(TBlockRange64::WithLength(1024, 3072));
             const auto& blocks = response->Record.GetBlocks();
             UNIT_ASSERT_VALUES_EQUAL(3072, blocks.BuffersSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 TString(DefaultBlockSize, 2),
-                blocks.GetBuffers(0)
-            );
+                blocks.GetBuffers(0));
             UNIT_ASSERT_VALUES_EQUAL(
                 TString(DefaultBlockSize, 2),
-                blocks.GetBuffers(999)
-            );
+                blocks.GetBuffers(999));
             UNIT_ASSERT_VALUES_EQUAL(
                 TString(DefaultBlockSize, 0),
-                blocks.GetBuffers(1000)
-            );
+                blocks.GetBuffers(1000));
             UNIT_ASSERT_VALUES_EQUAL(
                 TString(DefaultBlockSize, 0),
-                blocks.GetBuffers(1999)
-            );
+                blocks.GetBuffers(1999));
             UNIT_ASSERT_VALUES_EQUAL(
                 TString(DefaultBlockSize, 2),
-                blocks.GetBuffers(2000)
-            );
+                blocks.GetBuffers(2000));
             UNIT_ASSERT_VALUES_EQUAL(
                 TString(DefaultBlockSize, 2),
-                blocks.GetBuffers(2999)
-            );
+                blocks.GetBuffers(2999));
             UNIT_ASSERT_VALUES_EQUAL(
                 TString(DefaultBlockSize, 1),
-                blocks.GetBuffers(3000)
-            );
+                blocks.GetBuffers(3000));
             UNIT_ASSERT_VALUES_EQUAL(
                 TString(DefaultBlockSize, 1),
-                blocks.GetBuffers(3071)
-            );
+                blocks.GetBuffers(3071));
         }
 
         client.WriteBlocks(TBlockRange64::MakeClosedInterval(5000, 5199), 3);
@@ -542,15 +526,13 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             for (ui32 i = 0; i < 50; ++i) {
                 UNIT_ASSERT_VALUES_EQUAL(
                     TString(DefaultBlockSize, 3),
-                    blocks.GetBuffers(i)
-                );
+                    blocks.GetBuffers(i));
             }
 
             for (ui32 i = 51; i < 120; ++i) {
                 UNIT_ASSERT_VALUES_EQUAL(
                     TString(DefaultBlockSize, 0),
-                    blocks.GetBuffers(i)
-                );
+                    blocks.GetBuffers(i));
             }
         }
 
@@ -573,18 +555,15 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(4, counters.ReadBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize * 9336,
-            counters.ReadBlocks.RequestBytes
-        );
+            counters.ReadBlocks.RequestBytes);
         UNIT_ASSERT_VALUES_EQUAL(3 * 3, counters.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             3 * DefaultBlockSize * 6192,
-            counters.WriteBlocks.RequestBytes
-        );
+            counters.WriteBlocks.RequestBytes);
         UNIT_ASSERT_VALUES_EQUAL(3 * 2, counters.ZeroBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             3 * DefaultBlockSize * 1070,
-            counters.ZeroBlocks.RequestBytes
-        );
+            counters.ZeroBlocks.RequestBytes);
     }
 
     Y_UNIT_TEST(ShouldLocalReadWrite)
@@ -608,8 +587,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 TGuardedSgList(ResizeBlocks(
                     blocks,
                     blockRange1.Size(),
-                    TString(DefaultBlockSize, '\0')
-                )));
+                    TString(DefaultBlockSize, '\0'))));
 
             for (const auto& block: blocks) {
                 for (auto c: block) {
@@ -631,8 +609,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 TGuardedSgList(ResizeBlocks(
                     blocks,
                     120,
-                    TString(DefaultBlockSize, '\0')
-                )));
+                    TString(DefaultBlockSize, '\0'))));
 
             for (ui32 i = 0; i < 120; ++i) {
                 const auto& block = blocks[i];
@@ -650,8 +627,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 TGuardedSgList(ResizeBlocks(
                     blocks,
                     blockRange3.Size(),
-                    TString(DefaultBlockSize, '\0')
-                )));
+                    TString(DefaultBlockSize, '\0'))));
             auto response = client.RecvReadBlocksLocalResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_REJECTED,
@@ -667,18 +643,14 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
         UNIT_ASSERT_VALUES_EQUAL(2, counters.ReadBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
-            DefaultBlockSize * (
-                blockRange1.Size() + blockRange3.Intersect(diskRange).Size()
-            ),
-            counters.ReadBlocks.RequestBytes
-        );
+            DefaultBlockSize *
+                (blockRange1.Size() + blockRange3.Intersect(diskRange).Size()),
+            counters.ReadBlocks.RequestBytes);
         UNIT_ASSERT_VALUES_EQUAL(3 * 2, counters.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
-            3 * DefaultBlockSize * (
-                blockRange1.Size() + blockRange2.Intersect(diskRange).Size()
-            ),
-            counters.WriteBlocks.RequestBytes
-        );
+            3 * DefaultBlockSize *
+                (blockRange1.Size() + blockRange2.Intersect(diskRange).Size()),
+            counters.WriteBlocks.RequestBytes);
     }
 
     Y_UNIT_TEST(ShouldMirrorWriteAndZeroRequests)
@@ -688,13 +660,16 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         THashMap<TString, TBlockRange64> device2WriteRange;
         THashMap<TString, TBlockRange64> device2ZeroRange;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
                         using TRequest =
                             TEvDiskAgent::TEvWriteDeviceBlocksRequest;
                         const auto& record = event->Get<TRequest>()->Record;
-                        UNIT_ASSERT(!device2WriteRange.contains(record.GetDeviceUUID()));
+                        UNIT_ASSERT(!device2WriteRange.contains(
+                            record.GetDeviceUUID()));
                         device2WriteRange[record.GetDeviceUUID()] =
                             TBlockRange64::WithLength(
                                 record.GetStartIndex(),
@@ -706,7 +681,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                         using TRequest =
                             TEvDiskAgent::TEvZeroDeviceBlocksRequest;
                         const auto& record = event->Get<TRequest>()->Record;
-                        UNIT_ASSERT(!device2ZeroRange.contains(record.GetDeviceUUID()));
+                        UNIT_ASSERT(
+                            !device2ZeroRange.contains(record.GetDeviceUUID()));
                         device2ZeroRange[record.GetDeviceUUID()] =
                             TBlockRange64::WithLength(
                                 record.GetStartIndex(),
@@ -716,8 +692,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         TTestEnv env(runtime);
 
@@ -805,7 +780,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 TTestEnv::DefaultReplica(runtime.GetNodeId(0), 1),
                 TTestEnv::DefaultReplica(runtime.GetNodeId(0), 2),
             },
-            {}, // migrations
+            {},   // migrations
             freshDeviceIds);
 
         TPartitionClient client(runtime, env.ActorId);
@@ -823,8 +798,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             for (const auto& deviceId: freshDeviceIds) {
                 auto sender = runtime.AllocateEdgeActor();
 
-                auto request =
-                    std::make_unique<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
+                auto request = std::make_unique<
+                    TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
 
                 request->Record.SetStartIndex(0);
                 request->Record.SetBlocksCount(Max<ui32>());
@@ -840,24 +815,24 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         }
 
-#define TEST_READ(blockRange) {                                                \
-            TVector<TString> blocks;                                           \
-                                                                               \
-            client.ReadBlocksLocal(                                            \
-                blockRange,                                                    \
-                TGuardedSgList(ResizeBlocks(                                   \
-                    blocks,                                                    \
-                    blockRange.Size(),                                         \
-                    TString(DefaultBlockSize, '\0')                            \
-                )));                                                           \
-                                                                               \
-            for (const auto& block: blocks) {                                  \
-                for (auto c: block) {                                          \
-                    UNIT_ASSERT_VALUES_EQUAL('A', c);                          \
-                }                                                              \
-            }                                                                  \
-        }                                                                      \
-// TEST_READ
+#define TEST_READ(blockRange)                       \
+    {                                               \
+        TVector<TString> blocks;                    \
+                                                    \
+        client.ReadBlocksLocal(                     \
+            blockRange,                             \
+            TGuardedSgList(ResizeBlocks(            \
+                blocks,                             \
+                blockRange.Size(),                  \
+                TString(DefaultBlockSize, '\0')))); \
+                                                    \
+        for (const auto& block: blocks) {           \
+            for (auto c: block) {                   \
+                UNIT_ASSERT_VALUES_EQUAL('A', c);   \
+            }                                       \
+        }                                           \
+    }                                               \
+    // TEST_READ
 
         // doing multiple reads to check that none of them targets fresh devices
         TEST_READ(TBlockRange64::MakeOneBlock(0));
@@ -893,8 +868,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         env.WriteReplica(2, range1, 'C');
 
         // Check that with 0 replica index we read all replicas round-robin
-        for (char c: TVector{'A', 'B', 'C'})
-        {
+        for (char c: TVector{'A', 'B', 'C'}) {
             auto response = client.ReadBlocks(range1, 0);
             const auto& blocks = response->Record.GetBlocks();
             UNIT_ASSERT_VALUES_EQUAL(100, blocks.BuffersSize());
@@ -1082,7 +1056,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         TMigrationTestRuntime()
         {
-            auto obs = [&] (auto& event) {
+            auto obs = [&](auto& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistry::EvFinishMigrationRequest: {
                         UNIT_ASSERT(!FinishRequestObserved);
@@ -1100,7 +1075,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                     }
 
                     case TEvNonreplPartitionPrivate::EvRangeMigrated: {
-                        using TEv = TEvNonreplPartitionPrivate::TEvRangeMigrated;
+                        using TEv =
+                            TEvNonreplPartitionPrivate::TEvRangeMigrated;
                         auto* msg = event->template Get<TEv>();
                         if (!HasError(msg->Error)) {
                             ++MigratedRanges;
@@ -1114,12 +1090,12 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             };
 
             Runtime.SetRegistrationObserverFunc(
-                [=] (auto& runtime, const auto& parentId, const auto& actorId)
-            {
-                Y_UNUSED(parentId);
-                runtime.SetObserverFunc(obs);
-                runtime.EnableScheduleForActor(actorId);
-            });
+                [=](auto& runtime, const auto& parentId, const auto& actorId)
+                {
+                    Y_UNUSED(parentId);
+                    runtime.SetObserverFunc(obs);
+                    runtime.EnableScheduleForActor(actorId);
+                });
         }
 
         void WriteToAgent(TString deviceId, char c, ui32 blockCount)
@@ -1138,12 +1114,11 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 *blocks.AddBuffers() = TString(4_KB, c);
             }
 
-            auto diskAgentActorId = MakeDiskAgentServiceId(Runtime.GetNodeId(0));
-            Runtime.Send(new IEventHandle(
-                diskAgentActorId,
-                sender,
-                request.release()));
-        };
+            auto diskAgentActorId =
+                MakeDiskAgentServiceId(Runtime.GetNodeId(0));
+            Runtime.Send(
+                new IEventHandle(diskAgentActorId, sender, request.release()));
+        }
 
         void TestAgentData(TString deviceId, char c, ui32 blockCount)
         {
@@ -1169,7 +1144,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 TTestEnv::DefaultReplica(runtime.GetNodeId(0), 1),
                 TTestEnv::DefaultReplica(runtime.GetNodeId(0), 2),
             },
-            {}, // migrations
+            {},   // migrations
             freshDeviceIds);
 
         mr.WriteToAgent("vasya#2", 'A', 2048);
@@ -1211,7 +1186,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 TTestEnv::DefaultReplica(runtime.GetNodeId(0), 2),
             },
             TTestEnv::DefaultMigrations(runtime.GetNodeId(0), 0),
-            {}  // freshDeviceIds
+            {}   // freshDeviceIds
         );
 
         mr.WriteToAgent("vasya", 'A', 2048);
@@ -1258,8 +1233,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 TGuardedSgList(ResizeBlocks(
                     blocks,
                     blockRange.Size(),
-                    TString(DefaultBlockSize, '\0')
-                )));
+                    TString(DefaultBlockSize, '\0'))));
             auto response = client.RecvReadBlocksLocalResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_REJECTED,
@@ -1288,8 +1262,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 TGuardedSgList(ResizeBlocks(
                     blocks,
                     blockRange.Size(),
-                    TString(DefaultBlockSize, '\0')
-                )));
+                    TString(DefaultBlockSize, '\0'))));
 
             for (const auto& block: blocks) {
                 for (auto c: block) {
@@ -1503,7 +1476,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 "AppCriticalEvents/MirroredDiskMinorityChecksumMismatch",
                 true);
 
-        UNIT_ASSERT_VALUES_EQUAL(2, mirroredDiskMinorityChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            mirroredDiskMinorityChecksumMismatch->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, counters.Simple.ChecksumMismatches.Value);
         UNIT_ASSERT(addTagResponse);
 
@@ -1517,7 +1492,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         WaitUntilScrubbingFinishesCurrentCycle(env);
         WaitUntilScrubbingFinishesCurrentCycle(env);
         UNIT_ASSERT_VALUES_EQUAL(3, counters.Simple.ChecksumMismatches.Value);
-        UNIT_ASSERT_VALUES_EQUAL(3, mirroredDiskMinorityChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            mirroredDiskMinorityChecksumMismatch->Val());
 
         // at this point, scrubbing may not start from the beginning,
         // so we need to wait for 2 cycles to be sure that
@@ -1527,7 +1504,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         // check that all ranges was resynced and there is no more mismatches
         UNIT_ASSERT_VALUES_EQUAL(3, counters.Simple.ChecksumMismatches.Value);
-        UNIT_ASSERT_VALUES_EQUAL(3, mirroredDiskMinorityChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            mirroredDiskMinorityChecksumMismatch->Val());
 
         // check scrubbing online stat
         UNIT_ASSERT_VALUES_EQUAL(3, minors.size());
@@ -1562,8 +1541,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             [&](auto& runtime, auto& event)
             {
                 Y_UNUSED(runtime);
-                if (event->GetTypeRewrite() ==
-                    TEvService::EvAddTagsResponse) {
+                if (event->GetTypeRewrite() == TEvService::EvAddTagsResponse) {
                     auto response =
                         std::make_unique<TEvService::TEvAddTagsResponse>(
                             MakeError(E_REJECTED, "error"));
@@ -1649,41 +1627,45 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         ui32 rangeCount = 0;
         TAutoPtr<IEventHandle> delayedRequest;
         runtime.SetScheduledEventFilter(
-            [&] (auto& runtime, auto& event, auto&& delay, auto&& deadline)
-        {
-            Y_UNUSED(runtime);
-            Y_UNUSED(delay);
-            Y_UNUSED(deadline);
-            if (event->GetTypeRewrite() ==
-                TEvNonreplPartitionPrivate::EvScrubbingNextRange)
+            [&](auto& runtime, auto& event, auto&& delay, auto&& deadline)
             {
-                ++rangeCount;
-                if (delayedRequest && rangeCount > 5) {
-                    runtime.Send(delayedRequest.Release());
+                Y_UNUSED(runtime);
+                Y_UNUSED(delay);
+                Y_UNUSED(deadline);
+                if (event->GetTypeRewrite() ==
+                    TEvNonreplPartitionPrivate::EvScrubbingNextRange)
+                {
+                    ++rangeCount;
+                    if (delayedRequest && rangeCount > 5) {
+                        runtime.Send(delayedRequest.Release());
+                    }
                 }
-            }
 
-            return false;
-        });
-        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
-            Y_UNUSED(runtime);
-            if (event->GetTypeRewrite() ==
-                TEvDiskAgent::EvWriteDeviceBlocksRequest)
+                return false;
+            });
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
             {
-                if (!delayedRequest) {
-                    delayedRequest = event.Release();
-                    return true;
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvWriteDeviceBlocksRequest)
+                {
+                    if (!delayedRequest) {
+                        delayedRequest = event.Release();
+                        return true;
+                    }
                 }
-            }
 
-            return false;
-        });
+                return false;
+            });
         env.WriteActor(env.ActorId, range, 'D');
 
         auto mirroredDiskMinorityChecksumMismatch = counters->GetCounter(
             "AppCriticalEvents/MirroredDiskMinorityChecksumMismatch",
             true);
-        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskMinorityChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            mirroredDiskMinorityChecksumMismatch->Val());
 
         rangeCount = 0;
         ui32 iterations = 0;
@@ -1691,7 +1673,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             runtime.DispatchEvents({}, env.ScrubbingInterval);
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskMinorityChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            mirroredDiskMinorityChecksumMismatch->Val());
     }
 
     Y_UNIT_TEST(ShouldNotFindMismatchIfChecksumIntersectedWithWrite)
@@ -1711,7 +1695,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         env.WriteReplica(1, range, 'B');
         env.WriteReplica(2, range, 'C');
 
-        enum {
+        enum
+        {
             INIT,
             REQUESTS_RECEIVED,
             CHECKSUM_SENT,
@@ -1721,66 +1706,68 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         ui32 rangeCount = 0;
         TAutoPtr<IEventHandle> delayedWriteRequest;
         TAutoPtr<IEventHandle> delayedChecksumRequest;
-        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
-            Y_UNUSED(runtime);
-            switch (state) {
-                case INIT: {
-                    if (event->GetTypeRewrite() ==
-                        TEvDiskAgent::EvWriteDeviceBlocksRequest)
-                    {
-                        if (!delayedWriteRequest) {
-                            delayedWriteRequest = event.Release();
-                            return true;
-                        }
-                    }
-                    if (event->GetTypeRewrite() ==
-                        TEvDiskAgent::EvChecksumDeviceBlocksRequest)
-                    {
-                        if (!delayedChecksumRequest) {
-                            delayedChecksumRequest = event.Release();
-                            return true;
-                        }
-                    }
-                    if (delayedWriteRequest && delayedChecksumRequest) {
-                        state = REQUESTS_RECEIVED;
-                    }
-                    break;
-                }
-                case REQUESTS_RECEIVED: {
-                    state = CHECKSUM_SENT;
-                    runtime.Send(delayedChecksumRequest.Release());
-                    break;
-                }
-                case CHECKSUM_SENT: {
-                    if (event->GetTypeRewrite() ==
-                        TEvDiskAgent::EvChecksumDeviceBlocksResponse)
-                    {
-                        state = FINISH;
-                        runtime.Send(delayedWriteRequest.Release());
-                    }
-                    break;
-                }
-                default:
-                    break;
-            }
-
-            return false;
-        });
-        runtime.SetScheduledEventFilter(
-            [&] (auto& runtime, auto& event, auto&& delay, auto&& deadline)
-        {
-            Y_UNUSED(runtime);
-            Y_UNUSED(delay);
-            Y_UNUSED(deadline);
-            if (state == FINISH &&
-                event->GetTypeRewrite() ==
-                    TEvNonreplPartitionPrivate::EvScrubbingNextRange)
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
             {
-                ++rangeCount;
-            }
+                Y_UNUSED(runtime);
+                switch (state) {
+                    case INIT: {
+                        if (event->GetTypeRewrite() ==
+                            TEvDiskAgent::EvWriteDeviceBlocksRequest)
+                        {
+                            if (!delayedWriteRequest) {
+                                delayedWriteRequest = event.Release();
+                                return true;
+                            }
+                        }
+                        if (event->GetTypeRewrite() ==
+                            TEvDiskAgent::EvChecksumDeviceBlocksRequest)
+                        {
+                            if (!delayedChecksumRequest) {
+                                delayedChecksumRequest = event.Release();
+                                return true;
+                            }
+                        }
+                        if (delayedWriteRequest && delayedChecksumRequest) {
+                            state = REQUESTS_RECEIVED;
+                        }
+                        break;
+                    }
+                    case REQUESTS_RECEIVED: {
+                        state = CHECKSUM_SENT;
+                        runtime.Send(delayedChecksumRequest.Release());
+                        break;
+                    }
+                    case CHECKSUM_SENT: {
+                        if (event->GetTypeRewrite() ==
+                            TEvDiskAgent::EvChecksumDeviceBlocksResponse)
+                        {
+                            state = FINISH;
+                            runtime.Send(delayedWriteRequest.Release());
+                        }
+                        break;
+                    }
+                    default:
+                        break;
+                }
 
-            return false;
-        });
+                return false;
+            });
+        runtime.SetScheduledEventFilter(
+            [&](auto& runtime, auto& event, auto&& delay, auto&& deadline)
+            {
+                Y_UNUSED(runtime);
+                Y_UNUSED(delay);
+                Y_UNUSED(deadline);
+                if (state == FINISH &&
+                    event->GetTypeRewrite() ==
+                        TEvNonreplPartitionPrivate::EvScrubbingNextRange)
+                {
+                    ++rangeCount;
+                }
+
+                return false;
+            });
 
         runtime.DispatchEvents({}, env.ScrubbingInterval);
 
@@ -1795,7 +1782,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             "AppCriticalEvents/MirroredDiskMinorityChecksumMismatch",
             true);
 
-        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskMinorityChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            mirroredDiskMinorityChecksumMismatch->Val());
     }
 
     Y_UNIT_TEST(ShouldNotFindMismatchIfWriteRequestToOneReplicaHasError)
@@ -1815,30 +1804,31 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         TAutoPtr<IEventHandle> delayedWriteResponse;
         ui32 writeDeviceResponses = 0;
-        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
-            Y_UNUSED(runtime);
-            if (event->GetTypeRewrite() ==
-                TEvDiskAgent::EvWriteDeviceBlocksRequest)
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
             {
-                ++writeDeviceResponses;
-                if (writeDeviceResponses == 3) {
-                    auto response = std::make_unique<
-                        TEvDiskAgent::TEvWriteDeviceBlocksResponse>(
-                        MakeError(E_REJECTED, "error"));
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvWriteDeviceBlocksRequest)
+                {
+                    ++writeDeviceResponses;
+                    if (writeDeviceResponses == 3) {
+                        auto response = std::make_unique<
+                            TEvDiskAgent::TEvWriteDeviceBlocksResponse>(
+                            MakeError(E_REJECTED, "error"));
 
-                    delayedWriteResponse = new IEventHandle(
-                        event->Sender,
-                        event->Recipient,
-                        response.release(),
-                        0, // flags
-                        event->Cookie
-                    );
+                        delayedWriteResponse = new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0,   // flags
+                            event->Cookie);
 
-                    return true;
+                        return true;
+                    }
                 }
-            }
-            return false;
-        });
+                return false;
+            });
 
         TPartitionClient client(runtime, env.ActorId);
         TString data(DefaultBlockSize, 'B');
@@ -1854,12 +1844,15 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         runtime.AdvanceCurrentTime(UpdateCountersInterval);
         runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
 
-        auto mirroredDiskMinorityChecksumMismatch = critEventsCounters->GetCounter(
-            "AppCriticalEvents/MirroredDiskMinorityChecksumMismatch",
-            true);
+        auto mirroredDiskMinorityChecksumMismatch =
+            critEventsCounters->GetCounter(
+                "AppCriticalEvents/MirroredDiskMinorityChecksumMismatch",
+                true);
         auto& counters = env.StorageStatsServiceState->Counters;
 
-        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskMinorityChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            mirroredDiskMinorityChecksumMismatch->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, counters.Simple.ScrubbingProgress.Value);
 
         client.SendWriteBlocksLocalRequest(range, data);
@@ -1867,13 +1860,15 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         iterations = 0;
         while (counters.Simple.ScrubbingProgress.Value == 0 &&
-            iterations++ < 100)
+               iterations++ < 100)
         {
             runtime.AdvanceCurrentTime(UpdateCountersInterval);
             runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskMinorityChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            mirroredDiskMinorityChecksumMismatch->Val());
     }
 
     Y_UNIT_TEST(ShouldRejectRequestsIfRangeResyncingAfterChecksumMismatch)
@@ -1883,32 +1878,34 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TTestRuntime runtime;
 
         TAutoPtr<IEventHandle> delayedRangeResynced;
-        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
-            Y_UNUSED(runtime);
-            if (event->GetTypeRewrite() ==
-                TEvNonreplPartitionPrivate::EvRangeResynced)
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
             {
-                delayedRangeResynced = event.Release();
-                return true;
-            }
-            return false;
-        });
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                    TEvNonreplPartitionPrivate::EvRangeResynced)
+                {
+                    delayedRangeResynced = event.Release();
+                    return true;
+                }
+                return false;
+            });
 
         ui32 rangeCount = 0;
         runtime.SetScheduledEventFilter(
-            [&] (auto& runtime, auto& event, auto&& delay, auto&& deadline)
-        {
-            Y_UNUSED(runtime);
-            Y_UNUSED(delay);
-            Y_UNUSED(deadline);
-            if (event->GetTypeRewrite() ==
-                TEvNonreplPartitionPrivate::EvScrubbingNextRange)
+            [&](auto& runtime, auto& event, auto&& delay, auto&& deadline)
             {
-                ++rangeCount;
-            }
+                Y_UNUSED(runtime);
+                Y_UNUSED(delay);
+                Y_UNUSED(deadline);
+                if (event->GetTypeRewrite() ==
+                    TEvNonreplPartitionPrivate::EvScrubbingNextRange)
+                {
+                    ++rangeCount;
+                }
 
-            return false;
-        });
+                return false;
+            });
 
         TDynamicCountersPtr critEventsCounters = new TDynamicCounters();
         InitCriticalEventsCounter(critEventsCounters);
@@ -1929,7 +1926,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         // wait for resync 3rd range
         iterations = 0;
         while (!delayedRangeResynced && iterations++ < 100) {
-            runtime.AdvanceCurrentTime(env.Config->GetScrubbingChecksumMismatchTimeout());
+            runtime.AdvanceCurrentTime(
+                env.Config->GetScrubbingChecksumMismatchTimeout());
             runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
         }
 
@@ -1952,8 +1950,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 TGuardedSgList(ResizeBlocks(
                     blocks,
                     range2.Size(),
-                    TString(DefaultBlockSize, '\0')
-                )));
+                    TString(DefaultBlockSize, '\0'))));
             auto response = client.RecvReadBlocksLocalResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_REJECTED,
@@ -1976,22 +1973,25 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldStartResyncAfterScrubbingOnlyIfMajorityOfChecksumsAreEqual)
+    Y_UNIT_TEST(
+        ShouldStartResyncAfterScrubbingOnlyIfMajorityOfChecksumsAreEqual)
     {
         using namespace NMonitoring;
 
         TTestRuntime runtime;
 
         ui32 rangeResynced = 0;
-        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
-            Y_UNUSED(runtime);
-            if (event->GetTypeRewrite() ==
-                TEvNonreplPartitionPrivate::EvRangeResynced)
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
             {
-                ++rangeResynced;
-            }
-            return false;
-        });
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                    TEvNonreplPartitionPrivate::EvRangeResynced)
+                {
+                    ++rangeResynced;
+                }
+                return false;
+            });
 
         TTestEnv env(runtime);
         auto& counters = env.StorageStatsServiceState->Counters;
@@ -2018,8 +2018,12 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         WaitUntilScrubbingFinishesCurrentCycle(env);
         UNIT_ASSERT_VALUES_EQUAL(2, counters.Simple.ChecksumMismatches.Value);
         UNIT_ASSERT_VALUES_EQUAL(0, rangeResynced);
-        UNIT_ASSERT_VALUES_EQUAL(2, mirroredDiskMajorityChecksumMismatch->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskMinorityChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            mirroredDiskMajorityChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            mirroredDiskMinorityChecksumMismatch->Val());
 
         // Make data in 1st and 3rd replica the same.
         env.WriteReplica(2, range, 'A');
@@ -2030,8 +2034,12 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         WaitUntilScrubbingFinishesCurrentCycle(env);
         UNIT_ASSERT_VALUES_EQUAL(3, counters.Simple.ChecksumMismatches.Value);
         UNIT_ASSERT_VALUES_EQUAL(1, rangeResynced);
-        UNIT_ASSERT_VALUES_EQUAL(2, mirroredDiskMajorityChecksumMismatch->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, mirroredDiskMinorityChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            mirroredDiskMajorityChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            mirroredDiskMinorityChecksumMismatch->Val());
     }
 
     void ShouldRejectReadUponChecksumMismatchIfRead2IsEnabled(
@@ -2042,25 +2050,28 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TTestBasicRuntime runtime;
 
         runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
+            [](auto& runtime, const auto& parentId, const auto& actorId)
+            {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
 
         TAutoPtr<IEventHandle> toSend;
         bool interceptReadDeviceBlocks = false;
-        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
-            Y_UNUSED(runtime);
-            if (!toSend && interceptReadDeviceBlocks && event->GetTypeRewrite()
-                    == TEvDiskAgent::EvReadDeviceBlocksRequest)
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
             {
-                toSend = event;
-                return true;
-            }
+                Y_UNUSED(runtime);
+                if (!toSend && interceptReadDeviceBlocks &&
+                    event->GetTypeRewrite() ==
+                        TEvDiskAgent::EvReadDeviceBlocksRequest)
+                {
+                    toSend = event;
+                    return true;
+                }
 
-            return false;
-        });
+                return false;
+            });
 
         TDynamicCountersPtr critEventsCounters = new TDynamicCounters();
         InitCriticalEventsCounter(critEventsCounters);
@@ -2094,8 +2105,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 TGuardedSgList(ResizeBlocks(
                     blocks,
                     range.Size(),
-                    TString(DefaultBlockSize, '\0')
-                )));
+                    TString(DefaultBlockSize, '\0'))));
             auto response = client.RecvReadBlocksLocalResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_REJECTED,
@@ -2163,42 +2173,43 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             mirroredDiskChecksumMismatchUponRead->Val());
     }
 
-    Y_UNIT_TEST(ShouldRejectReadUponChecksumMismatchIfRead2IsEnabled_NBSChecksumCalculation)
+    Y_UNIT_TEST(
+        ShouldRejectReadUponChecksumMismatchIfRead2IsEnabled_NBSChecksumCalculation)
     {
         ShouldRejectReadUponChecksumMismatchIfRead2IsEnabled(false);
     }
 
-    Y_UNIT_TEST(ShouldRejectReadUponChecksumMismatchIfRead2IsEnabled_DiskAgentChecksumCalculation)
+    Y_UNIT_TEST(
+        ShouldRejectReadUponChecksumMismatchIfRead2IsEnabled_DiskAgentChecksumCalculation)
     {
         ShouldRejectReadUponChecksumMismatchIfRead2IsEnabled(true);
     }
 
-    Y_UNIT_TEST(ShouldNotFireMismatchUponReadErrorWhenThereAreOverlappingWritesAndRead2IsEnabled)
+    Y_UNIT_TEST(
+        ShouldNotFireMismatchUponReadErrorWhenThereAreOverlappingWritesAndRead2IsEnabled)
     {
         using namespace NMonitoring;
 
         TTestBasicRuntime runtime;
 
         runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto&, const auto& actorId)
-        {
-            runtime.EnableScheduleForActor(actorId);
-        });
+            [](auto& runtime, const auto&, const auto& actorId)
+            { runtime.EnableScheduleForActor(actorId); });
 
         TAutoPtr<IEventHandle> toSend;
         bool interceptReadDeviceBlocks = false;
         bool interceptWriteDeviceBlocks = false;
 
         runtime.SetEventFilter(
-            [&] (auto&, auto& event)
+            [&](auto&, auto& event)
             {
                 if (!toSend) {
                     if ((interceptReadDeviceBlocks &&
-                        event->GetTypeRewrite() ==
-                            TEvDiskAgent::EvReadDeviceBlocksRequest) ||
+                         event->GetTypeRewrite() ==
+                             TEvDiskAgent::EvReadDeviceBlocksRequest) ||
                         (interceptWriteDeviceBlocks &&
-                        event->GetTypeRewrite() ==
-                            TEvDiskAgent::EvWriteDeviceBlocksRequest))
+                         event->GetTypeRewrite() ==
+                             TEvDiskAgent::EvWriteDeviceBlocksRequest))
                     {
                         toSend = event;
                         return true;
@@ -2254,8 +2265,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         runtime.Send(toSend);
         toSend.Reset();
         {
-            // Read request should cause E_REJECTED error since data checksums in
-            // replicas are different.
+            // Read request should cause E_REJECTED error since data checksums
+            // in replicas are different.
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_REJECTED,
@@ -2525,9 +2536,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TTestEnv env(runtime);
         TPartitionClient client(runtime, env.ActorId);
 
-        client.WriteBlocks(
-            TBlockRange64::MakeClosedInterval(0, 1024),
-            1);
+        client.WriteBlocks(TBlockRange64::MakeClosedInterval(0, 1024), 1);
 
         ui32 checksumResponseCount = 0;
 
@@ -2616,9 +2625,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
         TPartitionClient client(runtime, env.ActorId);
-        client.WriteBlocks(
-            TBlockRange64::MakeClosedInterval(0, 1024),
-            1);
+        client.WriteBlocks(TBlockRange64::MakeClosedInterval(0, 1024), 1);
         ui32 checksumResponseCount = 0;
         TActorId recepient;
         TMap<TActorId, TSet<TActorId>> actorIds;
@@ -2680,8 +2687,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             TBlockRange64::MakeClosedInterval(0, 1024),
             1);
 
-        client.SendLockAndDrainRangeRequest(
-            TBlockRange64::WithLength(0, 1024));
+        client.SendLockAndDrainRangeRequest(TBlockRange64::WithLength(0, 1024));
 
         runtime.DispatchEvents({}, 10ms);
 
@@ -2736,20 +2742,22 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                         stollenEvent.reset(event.Release());
                         return TTestActorRuntimeBase::EEventAction::DROP;
                     }
-                    case NPartition::TEvPartition::EvLockAndDrainRangeResponse: {
+                    case NPartition::TEvPartition::
+                        EvLockAndDrainRangeResponse: {
                         drainRangeResponseCount += 1;
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-            runtime.AdvanceCurrentTime(100ms);
-            runtime.DispatchEvents({}, 100ms);
+        runtime.AdvanceCurrentTime(100ms);
+        runtime.DispatchEvents({}, 100ms);
 
-        client.SendWriteBlocksRequest(TBlockRange64::MakeClosedInterval(0, 1024), 1);
+        client.SendWriteBlocksRequest(
+            TBlockRange64::MakeClosedInterval(0, 1024),
+            1);
 
-        client.SendLockAndDrainRangeRequest(
-            TBlockRange64::WithLength(0, 1024));
+        client.SendLockAndDrainRangeRequest(TBlockRange64::WithLength(0, 1024));
 
         runtime.DispatchEvents({}, 10ms);
 
@@ -2759,7 +2767,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case NPartition::TEvPartition::EvLockAndDrainRangeResponse: {
+                    case NPartition::TEvPartition::
+                        EvLockAndDrainRangeResponse: {
                         drainRangeResponseCount += 1;
                     }
                 }
@@ -3198,7 +3207,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                         TEvGetDeviceForRangeResponse;
 
                     ++describeRequestCount;
-                    if (describeRequestCount == 1 || describeRequestCount == 2) {
+                    if (describeRequestCount == 1 || describeRequestCount == 2)
+                    {
                         auto response = std::make_unique<TResponse>(
                             MakeError(E_REJECTED, "error"));
                         runtime.Schedule(
@@ -3816,12 +3826,12 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         TDynamicCountersPtr critEventsCounters = new TDynamicCounters();
         InitCriticalEventsCounter(critEventsCounters);
-        auto inconsistentCritEvent =
-            critEventsCounters->GetCounter(
-                "AppCriticalEvents/DiskAgentInconsistentMultiWriteResponse",
-                true);
+        auto inconsistentCritEvent = critEventsCounters->GetCounter(
+            "AppCriticalEvents/DiskAgentInconsistentMultiWriteResponse",
+            true);
 
-        // Send the first request and simulate an inconsistent response from the disk-agent.
+        // Send the first request and simulate an inconsistent response from the
+        // disk-agent.
         client.SendWriteBlocksRequest(TBlockRange64::WithLength(10, 5), 1);
         auto response = client.RecvWriteBlocksResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
@@ -3829,7 +3839,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(1, multiAgentRequestCount);
         UNIT_ASSERT_VALUES_EQUAL(1, inconsistentCritEvent->Val());
 
-        // Send the second request and expect mirror-partition turn multi-agent feature off.
+        // Send the second request and expect mirror-partition turn multi-agent
+        // feature off.
         multiAgentRequestCount = 0;
         client.SendWriteBlocksRequest(TBlockRange64::WithLength(10, 5), 1);
         response = client.RecvWriteBlocksResponse();

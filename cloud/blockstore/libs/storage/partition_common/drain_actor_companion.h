@@ -51,8 +51,9 @@ public:
 
 private:
     void DoProcessDrainRequests(const NActors::TActorContext& ctx);
-    void DoProcessWaitForInFlightWritesRequests(const NActors::TActorContext& ctx);
+    void DoProcessWaitForInFlightWritesRequests(
+        const NActors::TActorContext& ctx);
     void DoProcessDrainRangeRequests(const NActors::TActorContext& ctx);
 };
 
-}  // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore::NStorage

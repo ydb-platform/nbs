@@ -1,5 +1,6 @@
-#include "public.h"
 #include "cleanup.h"
+
+#include "public.h"
 
 #include <library/cpp/testing/unittest/env.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -37,7 +38,7 @@ struct TDev: IDev
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -45,12 +46,7 @@ Y_UNIT_TEST_SUITE(TCleanupTest)
 {
     Y_UNIT_TEST(ShouldCleanup4K)
     {
-        TSuperBlock sb {
-            4096,
-            4,
-            6094848,
-            4096
-        };
+        TSuperBlock sb{4096, 4, 6094848, 4096};
 
         TVector<TFreeList> freeSpace{
             {0, 1000, 100},
@@ -71,24 +67,17 @@ Y_UNIT_TEST_SUITE(TCleanupTest)
         for (ui64 i = 0; i != dev.W.size(); ++i) {
             UNIT_ASSERT_VALUES_EQUAL(
                 sb.BlockSize * freeSpace[i].Count,
-                dev.W[i].first
-            );
+                dev.W[i].first);
 
             UNIT_ASSERT_VALUES_EQUAL(
                 sb.BlockSize * (i * sb.BlocksPerGroup + freeSpace[i].Offset),
-                dev.W[i].second
-            );
+                dev.W[i].second);
         }
     }
 
     Y_UNIT_TEST(ShouldCleanup512)
     {
-        TSuperBlock sb {
-            4096,
-            4,
-            6094848,
-            512
-        };
+        TSuperBlock sb{4096, 4, 6094848, 512};
 
         TVector<TFreeList> freeSpace{
             {0, 1000, 100},
@@ -101,16 +90,18 @@ Y_UNIT_TEST_SUITE(TCleanupTest)
 
         Cleanup(dev, sb, freeSpace, 2, false);
 
-        TVector<std::pair<ui32, i64>> expectedW {
-            { sb.BlockSize,     sb.BlocksPerGroup * sb.BlockSize },
-            { sb.BlockSize, 2 * sb.BlocksPerGroup * sb.BlockSize },
-            { sb.BlockSize, 3 * sb.BlocksPerGroup * sb.BlockSize },
+        TVector<std::pair<ui32, i64>> expectedW{
+            {sb.BlockSize, sb.BlocksPerGroup * sb.BlockSize},
+            {sb.BlockSize, 2 * sb.BlocksPerGroup * sb.BlockSize},
+            {sb.BlockSize, 3 * sb.BlocksPerGroup * sb.BlockSize},
 
-            { 100 * sb.BlockSize, sb.BlockSize * freeSpace[0].Offset },
-            { 200 * sb.BlockSize, sb.BlockSize * (sb.BlocksPerGroup + freeSpace[1].Offset) },
-            { 300 * sb.BlockSize, sb.BlockSize * (2 * sb.BlocksPerGroup + freeSpace[2].Offset) },
-            { 400 * sb.BlockSize, sb.BlockSize * (3 * sb.BlocksPerGroup + freeSpace[3].Offset) }
-        };
+            {100 * sb.BlockSize, sb.BlockSize * freeSpace[0].Offset},
+            {200 * sb.BlockSize,
+             sb.BlockSize * (sb.BlocksPerGroup + freeSpace[1].Offset)},
+            {300 * sb.BlockSize,
+             sb.BlockSize * (2 * sb.BlocksPerGroup + freeSpace[2].Offset)},
+            {400 * sb.BlockSize,
+             sb.BlockSize * (3 * sb.BlocksPerGroup + freeSpace[3].Offset)}};
 
         UNIT_ASSERT_VALUES_EQUAL(sb.GroupCount - 1, dev.R.size());
         UNIT_ASSERT_VALUES_EQUAL(expectedW.size(), dev.W.size());

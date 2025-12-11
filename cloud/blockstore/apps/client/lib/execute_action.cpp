@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -14,8 +15,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TExecuteActionCommand final
-    : public TCommand
+class TExecuteActionCommand final: public TCommand
 {
 private:
     TString Action;
@@ -43,8 +43,8 @@ protected:
         TStringInput inputBytes(Input);
 
         auto& input = ParseResultPtr->FindLongOptParseResult("input-bytes")
-            ? inputBytes
-            : GetInputStream();
+                          ? inputBytes
+                          : GetInputStream();
         auto& output = GetOutputStream();
 
         STORAGE_DEBUG("Reading ExecuteAction request");
@@ -86,7 +86,8 @@ private:
             return false;
         }
 
-        const auto* inputBytes = ParseResultPtr->FindLongOptParseResult("input-bytes");
+        const auto* inputBytes =
+            ParseResultPtr->FindLongOptParseResult("input-bytes");
         const auto* input = ParseResultPtr->FindLongOptParseResult("input");
         if (inputBytes && input) {
             STORAGE_ERROR("Parameter input-bytes and input can't be together");
@@ -97,7 +98,7 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

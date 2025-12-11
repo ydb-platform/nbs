@@ -39,7 +39,6 @@ struct TOptions
             .Required()
             .StoreResult(&FeaturesPath);
 
-
         TOptsParseResultException res(&opts, argc, argv);
     }
 };

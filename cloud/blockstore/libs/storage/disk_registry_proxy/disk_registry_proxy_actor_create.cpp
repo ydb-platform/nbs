@@ -16,9 +16,9 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/log.h>
+
 #include <library/cpp/monlib/service/pages/templates.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -87,10 +87,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCreateDiskRegistryActor::TCreateDiskRegistryActor(
-        TStorageConfigPtr config,
-        TDiskRegistryProxyConfigPtr diskRegistryProxyConfig,
-        TActorId sender,
-        TDiskRegistryChannelKinds kinds)
+    TStorageConfigPtr config,
+    TDiskRegistryProxyConfigPtr diskRegistryProxyConfig,
+    TActorId sender,
+    TDiskRegistryChannelKinds kinds)
     : StorageConfig(std::move(config))
     , Config(std::move(diskRegistryProxyConfig))
     , Sender(std::move(sender))
@@ -104,11 +104,7 @@ void TCreateDiskRegistryActor::Bootstrap(const TActorContext& ctx)
     auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
         StorageConfig->GetSchemeShardDir());
 
-    NCloud::Send(
-        ctx,
-        MakeSSProxyServiceId(),
-        std::move(request),
-        0);
+    NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request), 0);
 }
 
 void TCreateDiskRegistryActor::ReplyAndDie(
@@ -143,21 +139,27 @@ void TCreateDiskRegistryActor::HandleDescribeSchemeResponse(
     const TActorContext& ctx)
 {
     if (ev->Cookie) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_PROXY,
             "Received unexpected DescribeScheme response");
 
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_PROXY,
         "Received DescribeScheme response");
 
     auto* msg = ev->Get();
 
     if (HasError(msg->Error)) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_PROXY,
             "Can't create Disk Registry tablet. Error on describe scheme: "
-            << FormatError(msg->Error));
+                << FormatError(msg->Error));
 
         ReplyAndDie(ctx, std::move(msg->Error));
         return;
@@ -166,12 +168,16 @@ void TCreateDiskRegistryActor::HandleDescribeSchemeResponse(
     const auto& descr = msg->PathDescription.GetDomainDescription();
 
     if (descr.StoragePoolsSize() == 0) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_PROXY,
             "Can't create Disk Registry tablet. Empty storage pool");
 
         ReplyAndDie(
             ctx,
-            MakeError(E_FAIL, "Can't create Disk Registry tablet. Empty storage pool"));
+            MakeError(
+                E_FAIL,
+                "Can't create Disk Registry tablet. Empty storage pool"));
         return;
     }
 
@@ -184,21 +190,19 @@ void TCreateDiskRegistryActor::HandleDescribeSchemeResponse(
     *request.AddAllowedDomains() = descr.GetDomainKey();
 
     for (const auto& channelKind: GetPoolKinds(Kinds, *StorageConfig)) {
-        auto* pool = FindIfPtr(descr.GetStoragePools(), [&] (const auto& pool) {
-            return pool.GetKind() == channelKind;
-        });
+        auto* pool = FindIfPtr(
+            descr.GetStoragePools(),
+            [&](const auto& pool) { return pool.GetKind() == channelKind; });
         if (!pool) {
             TStringBuilder pools;
             for (const auto& pool: descr.GetStoragePools()) {
                 pools << '[' << pool.GetName() << "," << pool.GetKind() << ']';
             }
 
-            auto b = TStringBuilder() <<
-                "Can't create Disk Registry tablet. No pool for " <<
-                channelKind.Quote() <<
-                " but only " <<
-                pools <<
-                " available";
+            auto b = TStringBuilder()
+                     << "Can't create Disk Registry tablet. No pool for "
+                     << channelKind.Quote() << " but only " << pools
+                     << " available";
 
             LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY, b);
 
@@ -210,7 +214,9 @@ void TCreateDiskRegistryActor::HandleDescribeSchemeResponse(
 
     const auto hiveTabletId = GetHiveTabletId(StorageConfig, ctx);
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_PROXY,
         "Create Disk Registry Tablet. Hive: " << hiveTabletId);
 
     NCloud::Send<TEvHiveProxy::TEvCreateTabletRequest>(
@@ -228,7 +234,9 @@ void TCreateDiskRegistryActor::HandleCreateTablet(
     auto* msg = ev->Get();
 
     if (ev->Cookie) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_PROXY,
             "Received expired CreateTablet response");
 
         return;
@@ -239,7 +247,9 @@ void TCreateDiskRegistryActor::HandleCreateTablet(
         return;
     }
 
-    LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
+    LOG_ERROR_S(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_PROXY,
         "Can't create Disk Registry tablet: " << FormatError(msg->Error));
     ReplyAndDie(ctx, msg->Error);
 }
@@ -247,7 +257,9 @@ void TCreateDiskRegistryActor::HandleCreateTablet(
 STFUNC(TCreateDiskRegistryActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvDescribeSchemeResponse, HandleDescribeSchemeResponse);
+        HFunc(
+            TEvSSProxy::TEvDescribeSchemeResponse,
+            HandleDescribeSchemeResponse);
         HFunc(TEvHiveProxy::TEvCreateTabletResponse, HandleCreateTablet);
 
         default:
@@ -308,8 +320,7 @@ void TDiskRegistryProxyActor::HandleCreateResult(
     }
 
     auto response = std::make_unique<TEvDiskRegistryProxy::TEvReassignResponse>(
-        std::move(msg->Error)
-    );
+        std::move(msg->Error));
 
     NCloud::Reply(ctx, *ReassignRequestInfo, std::move(response));
     ReassignRequestInfo.Reset();

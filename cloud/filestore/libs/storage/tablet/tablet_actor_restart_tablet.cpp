@@ -12,11 +12,14 @@ void TIndexTabletActor::HandleRestartTablet(
     const TEvIndexTablet::TEvRestartTabletRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_TRACE(ctx, TFileStoreComponents::TABLET,
+    LOG_TRACE(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s Received RestartTablet request, restarting",
         LogTag.c_str());
 
-    auto response = std::make_unique<TEvIndexTablet::TEvRestartTabletResponse>();
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvRestartTabletResponse>();
     NCloud::Reply(ctx, *ev, std::move(response));
 
     Suicide(ctx);

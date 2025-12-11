@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -14,8 +15,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDeleteCheckpointCommand final
-    : public TCommand
+class TDeleteCheckpointCommand final: public TCommand
 {
 private:
     TString DiskId;
@@ -83,7 +83,8 @@ private:
             return false;
         }
 
-        const auto* checkpointId = ParseResultPtr->FindLongOptParseResult("checkpoint-id");
+        const auto* checkpointId =
+            ParseResultPtr->FindLongOptParseResult("checkpoint-id");
         if (!checkpointId) {
             STORAGE_ERROR("Checkpoint id is required");
             return false;
@@ -93,7 +94,7 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

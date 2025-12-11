@@ -22,8 +22,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename ...T>
-IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&& ...args)
+template <typename... T>
+IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&&... args)
 {
     if (replyLocal) {
         return std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
@@ -123,16 +123,16 @@ private:
 };
 
 TWriteFreshBlocksActor::TWriteFreshBlocksActor(
-        const TActorId& partitionActorId,
-        ui64 commitId,
-        ui32 channel,
-        ui32 blockCount,
-        TVector<TRequest> requests,
-        TVector<TBlockRange32> blockRanges,
-        TVector<TBlockRange32> uninitializedBlockRanges,
-        TVector<IWriteBlocksHandlerPtr> writeHandlers,
-        ui64 firstRequestDeletionId,
-        IBlockDigestGeneratorPtr blockDigestGenerator)
+    const TActorId& partitionActorId,
+    ui64 commitId,
+    ui32 channel,
+    ui32 blockCount,
+    TVector<TRequest> requests,
+    TVector<TBlockRange32> blockRanges,
+    TVector<TBlockRange32> uninitializedBlockRanges,
+    TVector<IWriteBlocksHandlerPtr> writeHandlers,
+    ui64 firstRequestDeletionId,
+    IBlockDigestGeneratorPtr blockDigestGenerator)
     : PartitionActorId(partitionActorId)
     , CommitId(commitId)
     , Channel(channel)
@@ -160,7 +160,8 @@ void TWriteFreshBlocksActor::Bootstrap(const TActorContext& ctx)
 
         timers.emplace_back(*r.RequestInfo);
 
-        if (!r.RequestInfo->CallContext->LWOrbit.Fork(CombinedContext->LWOrbit)) {
+        if (!r.RequestInfo->CallContext->LWOrbit.Fork(CombinedContext->LWOrbit))
+        {
             LWTRACK(
                 ForkFailed,
                 r.RequestInfo->CallContext->LWOrbit,
@@ -197,9 +198,8 @@ NProto::TError TWriteFreshBlocksActor::BuildBlobContentAndComputeDigest()
         for (size_t index = 0; index < sgList.size(); ++index) {
             const ui32 blockIndex = blockRange->Start + index;
 
-            const auto digest = BlockDigestGenerator->ComputeDigest(
-                blockIndex,
-                sgList[index]);
+            const auto digest =
+                BlockDigestGenerator->ComputeDigest(blockIndex, sgList[index]);
 
             if (digest.Defined()) {
                 AffectedBlockInfos.push_back({blockIndex, *digest});
@@ -210,10 +210,8 @@ NProto::TError TWriteFreshBlocksActor::BuildBlobContentAndComputeDigest()
         ++writeHandler;
     }
 
-    BlobContent = BuildFreshBlobContent(
-        BlockRanges,
-        holders,
-        FirstRequestDeletionId);
+    BlobContent =
+        BuildFreshBlobContent(BlockRanges, holders, FirstRequestDeletionId);
 
     return {};
 }
@@ -234,20 +232,17 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
         step,
         Channel,
         static_cast<ui32>(BlobContent.size()),
-        0,  // cookie
-        0   // partId
+        0,   // cookie
+        0    // partId
     );
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
         CombinedContext,
         blobId,
         std::move(BlobContent),
-        false);  // async
+        false);   // async
 
-    NCloud::Send(
-        ctx,
-        PartitionActorId,
-        std::move(request));
+    NCloud::Send(ctx, PartitionActorId, std::move(request));
 }
 
 void TWriteFreshBlocksActor::InitIndex(const TActorContext& ctx)
@@ -272,10 +267,7 @@ void TWriteFreshBlocksActor::AddBlocks(const TActorContext& ctx)
         std::move(WriteHandlers),
         FirstRequestDeletionId);
 
-    NCloud::Send(
-        ctx,
-        PartitionActorId,
-        std::move(request));
+    NCloud::Send(ctx, PartitionActorId, std::move(request));
 }
 
 void TWriteFreshBlocksActor::NotifyCompleted(
@@ -285,7 +277,7 @@ void TWriteFreshBlocksActor::NotifyCompleted(
     using TEvent = TEvPartitionPrivate::TEvWriteBlocksCompleted;
     auto ev = std::make_unique<TEvent>(
         error,
-        false);  // collectBarrierAcquired
+        false);   // collectBarrierAcquired
 
     ev->ExecCycles = Requests.front().RequestInfo->GetExecCycles();
     ev->TotalCycles = Requests.front().RequestInfo->GetTotalCycles();
@@ -293,7 +285,8 @@ void TWriteFreshBlocksActor::NotifyCompleted(
     ev->AffectedBlockInfos = std::move(AffectedBlockInfos);
 
     auto execTime = CyclesToDurationSafe(ev->ExecCycles);
-    auto waitTime = CyclesToDurationSafe(Requests.front().RequestInfo->GetWaitCycles());
+    auto waitTime =
+        CyclesToDurationSafe(Requests.front().RequestInfo->GetWaitCycles());
 
     auto& counters = *ev->Stats.MutableUserWriteCounters();
     counters.SetRequestsCount(Requests.size());
@@ -415,9 +408,15 @@ STFUNC(TWriteFreshBlocksActor::StateWork)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvPartitionPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
-        HFunc(TEvPartitionPrivate::TEvAddFreshBlocksResponse, HandleAddFreshBlocksResponse);
-        HFunc(TEvPartitionPrivate::TEvInitIndexResponse, HandleInitIndexResponse);
+        HFunc(
+            TEvPartitionPrivate::TEvWriteBlobResponse,
+            HandleWriteBlobResponse);
+        HFunc(
+            TEvPartitionPrivate::TEvAddFreshBlocksResponse,
+            HandleAddFreshBlocksResponse);
+        HFunc(
+            TEvPartitionPrivate::TEvInitIndexResponse,
+            HandleInitIndexResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -551,8 +550,8 @@ void TPartitionActor::HandleAddFreshBlocks(
     auto deletionId = msg->FirstRequestDeletionId;
 
     while (blockRange != msg->BlockRanges.end()) {
-        auto guardedSgList = (**writeHandler).GetBlocks(
-            ConvertRangeSafe(*blockRange));
+        auto guardedSgList =
+            (**writeHandler).GetBlocks(ConvertRangeSafe(*blockRange));
 
         if (auto guard = guardedSgList.Acquire()) {
             const auto& sgList = guard.Get();
@@ -561,19 +560,18 @@ void TPartitionActor::HandleAddFreshBlocks(
                 State->WriteFreshBlock(block, sgList[idx - blockRange->Start]);
             }
         } else {
-            LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION,
+            LOG_ERROR_S(
+                ctx,
+                TBlockStoreComponents::PARTITION,
                 "[" << TabletID() << "]"
-                << "Failed to lock a guardedSgList on AddFreshBlocks");
+                    << "Failed to lock a guardedSgList on AddFreshBlocks");
             Suicide(ctx);
             return;
         }
 
         State->RemoveFreshBlocksInFlight(*blockRange, msg->CommitId);
 
-        State->AddBlobUpdateByFresh({
-            *blockRange,
-            msg->CommitId,
-            deletionId});
+        State->AddBlobUpdateByFresh({*blockRange, msg->CommitId, deletionId});
 
         ++blockRange;
         ++writeHandler;

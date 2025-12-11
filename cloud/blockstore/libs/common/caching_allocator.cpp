@@ -1,7 +1,8 @@
 #include "caching_allocator.h"
 
-#include <util/generic/vector.h>
 #include <library/cpp/deprecated/atomic/atomic.h>
+
+#include <util/generic/vector.h>
 #include <util/system/guard.h>
 #include <util/system/mutex.h>
 #include <util/system/yassert.h>
@@ -61,8 +62,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCachingAllocator
-    : public ICachingAllocator
+class TCachingAllocator: public ICachingAllocator
 {
     struct TCurrentPage
     {
@@ -105,10 +105,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCachingAllocator::TCachingAllocator(
-        IAllocator* upstream,
-        size_t pageSize,
-        size_t maxPageCount,
-        size_t pageDropSize)
+    IAllocator* upstream,
+    size_t pageSize,
+    size_t maxPageCount,
+    size_t pageDropSize)
     : Upstream(upstream)
     , PageSize(pageSize)
     , MaxPageCount(maxPageCount)
@@ -119,7 +119,7 @@ TCachingAllocator::TCachingAllocator(
 TCachingAllocator::~TCachingAllocator()
 {
     for (size_t i = 0; i != PageCount; ++i) {
-        Upstream->Release({ Nodes[i].Data, PageSize });
+        Upstream->Release({Nodes[i].Data, PageSize});
     }
 }
 
@@ -153,7 +153,7 @@ void TCachingAllocator::Release(TBlock block)
     if (block.Node) {
         Deallocate(block.Node);
     } else {
-        Upstream->Release({ block.Data, block.Len });
+        Upstream->Release({block.Data, block.Len});
     }
 }
 
@@ -161,7 +161,7 @@ TBlock TCachingAllocator::Fallback(size_t bytesCount)
 {
     const auto block = Upstream->Allocate(bytesCount);
 
-    return { block.Data, block.Len, nullptr };
+    return {block.Data, block.Len, nullptr};
 }
 
 void TCachingAllocator::Deallocate(TNode* node)
@@ -222,13 +222,12 @@ TBlock TCachingAllocator::AllocateFromCurrentPage(size_t bytesCount)
     auto p = node->Data + CurrentPage.Offset;
     CurrentPage.Offset += bytesCount;
 
-    return { p, bytesCount, node };
+    return {p, bytesCount, node};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSyncCachingAllocator final
-    : public TCachingAllocator
+class TSyncCachingAllocator final: public TCachingAllocator
 {
 private:
     TMutex AllocationLock;

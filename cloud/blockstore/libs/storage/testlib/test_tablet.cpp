@@ -5,11 +5,10 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 
-#include <contrib/ydb/core/blockstore/core/blockstore.h>
 #include <contrib/ydb/core/base/tablet.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
+#include <contrib/ydb/core/blockstore/core/blockstore.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
-
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -86,7 +85,9 @@ private:
 
 void TTabletActor::OnStateChanged(const TActorContext& ctx, const char* name)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] Switched to state %s (system: %s, user: %s, executor: %s)",
         TabletID(),
         name,
@@ -136,7 +137,8 @@ void TTabletActor::HandleUpdateVolumeConfig(
 {
     const auto& request = ev->Get()->Record;
 
-    auto response = std::make_unique<TEvBlockStore::TEvUpdateVolumeConfigResponse>();
+    auto response =
+        std::make_unique<TEvBlockStore::TEvUpdateVolumeConfigResponse>();
     response->Record.SetTxId(request.GetTxId());
     response->Record.SetOrigin(TabletID());
     response->Record.SetStatus(NKikimrBlockStore::OK);
@@ -150,7 +152,9 @@ void TTabletActor::ForwardRequest(
     const typename TRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] Receieved request: %s",
         TabletID(),
         name);
@@ -158,16 +162,17 @@ void TTabletActor::ForwardRequest(
     NCloud::Reply(ctx, *ev, std::make_unique<TResponse>());
 }
 
-#define BLOCKSTORE_FORWARD_REQUEST(name, ns)                                   \
-    void TTabletActor::Handle##name(                                           \
-        const ns::TEv##name##Request::TPtr& ev,                                \
-        const TActorContext& ctx)                                              \
-    {                                                                          \
-        ForwardRequest<                                                        \
-            ns::TEv##name##Request,                                            \
-            ns::TEv##name##Response>(#name, ev, ctx);                          \
-    }                                                                          \
-// BLOCKSTORE_FORWARD_REQUEST
+#define BLOCKSTORE_FORWARD_REQUEST(name, ns)                             \
+    void TTabletActor::Handle##name(                                     \
+        const ns::TEv##name##Request::TPtr& ev,                          \
+        const TActorContext& ctx)                                        \
+    {                                                                    \
+        ForwardRequest<ns::TEv##name##Request, ns::TEv##name##Response>( \
+            #name,                                                       \
+            ev,                                                          \
+            ctx);                                                        \
+    }                                                                    \
+    // BLOCKSTORE_FORWARD_REQUEST
 
 BLOCKSTORE_SERVICE_REQUESTS(BLOCKSTORE_FORWARD_REQUEST, TEvService)
 BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_FORWARD_REQUEST, TEvVolume)
@@ -218,9 +223,7 @@ STFUNC(TTabletActor::StateWork)
         HFunc(TEvBlockStore::TEvUpdateVolumeConfig, HandleUpdateVolumeConfig);
 
         default:
-            if (!HandleRequests(ev) &&
-                !HandleDefaultEvents(ev, SelfId()))
-            {
+            if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
                 HandleUnexpectedEvent(
                     ev,
                     TBlockStoreComponents::PARTITION,

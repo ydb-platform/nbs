@@ -24,12 +24,12 @@ using namespace NKikimr;
 ////////////////////////////////////////////////////////////////////////////////
 
 const TDiskRegistryActor::TStateInfo TDiskRegistryActor::States[STATE_MAX] = {
-    { "Boot",     (IActor::TReceiveFunc)&TDiskRegistryActor::StateBoot     },
-    { "Init",     (IActor::TReceiveFunc)&TDiskRegistryActor::StateInit     },
-    { "Work",     (IActor::TReceiveFunc)&TDiskRegistryActor::StateWork     },
-    { "Restore",  (IActor::TReceiveFunc)&TDiskRegistryActor::StateRestore  },
-    { "ReadOnly", (IActor::TReceiveFunc)&TDiskRegistryActor::StateReadOnly },
-    { "Zombie",   (IActor::TReceiveFunc)&TDiskRegistryActor::StateZombie   },
+    {"Boot", (IActor::TReceiveFunc)&TDiskRegistryActor::StateBoot},
+    {"Init", (IActor::TReceiveFunc)&TDiskRegistryActor::StateInit},
+    {"Work", (IActor::TReceiveFunc)&TDiskRegistryActor::StateWork},
+    {"Restore", (IActor::TReceiveFunc)&TDiskRegistryActor::StateRestore},
+    {"ReadOnly", (IActor::TReceiveFunc)&TDiskRegistryActor::StateReadOnly},
+    {"Zombie", (IActor::TReceiveFunc)&TDiskRegistryActor::StateZombie},
 };
 
 const TString DiskRegistryTransactions[] = {
@@ -40,13 +40,13 @@ const TString DiskRegistryTransactions[] = {
 };
 
 TDiskRegistryActor::TDiskRegistryActor(
-        const TActorId& owner,
-        TTabletStorageInfoPtr storage,
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
-        TLogbrokerServicePtr logbrokerService,
-        NNotify::IServicePtr notifyService,
-        ILoggingServicePtr logging)
+    const TActorId& owner,
+    TTabletStorageInfoPtr storage,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    TLogbrokerServicePtr logbrokerService,
+    NNotify::IServicePtr notifyService,
+    ILoggingServicePtr logging)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , Config(std::move(config))
@@ -78,26 +78,31 @@ void TDiskRegistryActor::ScheduleMakeBackup(
     const auto backupDirPath = Config->GetDiskRegistryBackupDirPath();
 
     if (backupDirPath.empty()) {
-        LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
             "Path for backups was not specified");
         return;
     }
 
-    const auto backupPeriod = Config->GetDiskRegistryBackupPeriod()
-        - (ctx.Now() - lastBackupTs);
+    const auto backupPeriod =
+        Config->GetDiskRegistryBackupPeriod() - (ctx.Now() - lastBackupTs);
 
-    LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
+    LOG_DEBUG_S(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
         "Schedule backup at " << backupPeriod.ToDeadLine(ctx.Now()));
 
     TString hostPrefix = Config->GetDiskRegistryCountersHost();
     if (!hostPrefix.empty()) {
-        hostPrefix  += "-";
+        hostPrefix += "-";
     }
     auto request =
         std::make_unique<TEvDiskRegistry::TEvBackupDiskRegistryStateRequest>();
     request->Record.SetBackupLocalDB(true);
-    request->Record.SetBackupFilePath(TStringBuilder()
-        << backupDirPath << "/" + hostPrefix << FormatIsoLocal(ctx.Now()) << ".json");
+    request->Record.SetBackupFilePath(
+        TStringBuilder() << backupDirPath << "/" + hostPrefix
+                         << FormatIsoLocal(ctx.Now()) << ".json");
 
     ctx.Schedule(
         backupPeriod,
@@ -111,10 +116,13 @@ void TDiskRegistryActor::ScheduleCleanup(const TActorContext& ctx)
 {
     const auto recyclingPeriod = Config->GetNonReplicatedDiskRecyclingPeriod();
 
-    LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
+    LOG_DEBUG_S(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
         "Schedule cleanup at " << recyclingPeriod.ToDeadLine(ctx.Now()));
 
-    auto request = std::make_unique<TEvDiskRegistryPrivate::TEvCleanupDisksRequest>();
+    auto request =
+        std::make_unique<TEvDiskRegistryPrivate::TEvCleanupDisksRequest>();
 
     ctx.Schedule(
         recyclingPeriod,
@@ -131,7 +139,9 @@ void TDiskRegistryActor::BecomeAux(const TActorContext& ctx, EState state)
     Become(States[state].Func);
     CurrentState = state;
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Switched to state %s (system: %s, user: %s, executor: %s)",
         TabletID(),
         States[state].Name.data(),
@@ -144,11 +154,13 @@ void TDiskRegistryActor::BecomeAux(const TActorContext& ctx, EState state)
 
 void TDiskRegistryActor::ReportTabletState(const TActorContext& ctx)
 {
-    auto service = NNodeWhiteboard::MakeNodeWhiteboardServiceId(SelfId().NodeId());
+    auto service =
+        NNodeWhiteboard::MakeNodeWhiteboardServiceId(SelfId().NodeId());
 
-    auto request = std::make_unique<NNodeWhiteboard::TEvWhiteboard::TEvTabletStateUpdate>(
-        TabletID(),
-        CurrentState);
+    auto request =
+        std::make_unique<NNodeWhiteboard::TEvWhiteboard::TEvTabletStateUpdate>(
+            TabletID(),
+            CurrentState);
 
     NCloud::Send(ctx, service, std::move(request));
 }
@@ -235,9 +247,8 @@ void TDiskRegistryActor::RegisterCounters(const TActorContext& ctx)
     }
 
     if (auto counters = AppData(ctx)->Counters) {
-        ComponentGroup = counters
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "disk_registry");
+        ComponentGroup = counters->GetSubgroup("counters", "blockstore")
+                             ->GetSubgroup("component", "disk_registry");
 
         if (Config->GetDiskRegistryCountersHost()) {
             ComponentGroup = ComponentGroup->GetSubgroup(
@@ -262,8 +273,12 @@ void TDiskRegistryActor::UpdateCounters(const TActorContext& ctx)
 void TDiskRegistryActor::UpdateActorStats(const TActorContext& ctx)
 {
     if (Counters) {
-        auto& actorQueue = Counters->Percentile()[TDiskRegistryCounters::PERCENTILE_COUNTER_Actor_ActorQueue];
-        auto& mailboxQueue = Counters->Percentile()[TDiskRegistryCounters::PERCENTILE_COUNTER_Actor_MailboxQueue];
+        auto& actorQueue =
+            Counters->Percentile()
+                [TDiskRegistryCounters::PERCENTILE_COUNTER_Actor_ActorQueue];
+        auto& mailboxQueue =
+            Counters->Percentile()
+                [TDiskRegistryCounters::PERCENTILE_COUNTER_Actor_MailboxQueue];
 
         auto actorQueues = ctx.CountMailboxEvents(1001);
         actorQueue.IncrementFor(actorQueues.first);
@@ -283,8 +298,7 @@ void TDiskRegistryActor::UnregisterCounters(const TActorContext& ctx)
     auto counters = AppData(ctx)->Counters;
 
     if (counters) {
-        counters
-            ->GetSubgroup("counters", "blockstore")
+        counters->GetSubgroup("counters", "blockstore")
             ->RemoveSubgroup("component", "disk_registry");
     }
 }
@@ -294,7 +308,8 @@ void TDiskRegistryActor::ScheduleDiskRegistryAgentListExpiredParamsCleanup(
 {
     ctx.Schedule(
         Config->GetAgentListExpiredParamsCleanupInterval(),
-        new TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup());
+        new TEvDiskRegistryPrivate::
+            TEvDiskRegistryAgentListExpiredParamsCleanup());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -330,9 +345,15 @@ void TDiskRegistryActor::HandleWakeupReadOnly(
 bool TDiskRegistryActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        BLOCKSTORE_DISK_REGISTRY_REQUESTS(BLOCKSTORE_HANDLE_REQUEST, TEvDiskRegistry)
-        BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE(BLOCKSTORE_HANDLE_REQUEST, TEvService)
-        BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE(BLOCKSTORE_HANDLE_REQUEST, TEvDiskRegistryPrivate)
+        BLOCKSTORE_DISK_REGISTRY_REQUESTS(
+            BLOCKSTORE_HANDLE_REQUEST,
+            TEvDiskRegistry)
+        BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE(
+            BLOCKSTORE_HANDLE_REQUEST,
+            TEvService)
+        BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE(
+            BLOCKSTORE_HANDLE_REQUEST,
+            TEvDiskRegistryPrivate)
 
         default:
             return false;
@@ -344,9 +365,15 @@ bool TDiskRegistryActor::HandleRequests(STFUNC_SIG)
 bool TDiskRegistryActor::RejectRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        BLOCKSTORE_DISK_REGISTRY_REQUESTS(BLOCKSTORE_REJECT_REQUEST, TEvDiskRegistry)
-        BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE(BLOCKSTORE_REJECT_REQUEST, TEvService)
-        BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE(BLOCKSTORE_REJECT_REQUEST, TEvDiskRegistryPrivate)
+        BLOCKSTORE_DISK_REGISTRY_REQUESTS(
+            BLOCKSTORE_REJECT_REQUEST,
+            TEvDiskRegistry)
+        BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE(
+            BLOCKSTORE_REJECT_REQUEST,
+            TEvService)
+        BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE(
+            BLOCKSTORE_REJECT_REQUEST,
+            TEvDiskRegistryPrivate)
 
         default:
             return false;
@@ -366,7 +393,9 @@ void TDiskRegistryActor::HandleBackupDiskRegistryStateResponse(
     auto* msg = ev->Get();
 
     if (HasError(msg->GetError())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
             "Backup error %s",
             msg->GetError().GetMessage().c_str());
     } else {
@@ -375,7 +404,8 @@ void TDiskRegistryActor::HandleBackupDiskRegistryStateResponse(
             try {
                 if (!msg->Record.GetBackup().GetConfig().ByteSize()) {
                     LOG_WARN(
-                        ctx, TBlockStoreComponents::DISK_REGISTRY,
+                        ctx,
+                        TBlockStoreComponents::DISK_REGISTRY,
                         "The backup file is not created "
                         "because the configuration is empty");
                 } else {
@@ -385,12 +415,13 @@ void TDiskRegistryActor::HandleBackupDiskRegistryStateResponse(
                         &str);
                     TFileOutput(filePath).Write(str.c_str());
                 }
-            } catch(...) {
-                LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
+            } catch (...) {
+                LOG_ERROR_S(
+                    ctx,
+                    TBlockStoreComponents::DISK_REGISTRY,
                     ReportDiskRegistryBackupFailed(
                         TStringBuilder()
-                        << "Can't create backup file "
-                        << filePath.Quote()
+                        << "Can't create backup file " << filePath.Quote()
                         << " : " << CurrentExceptionMessage().Quote()));
             }
         }
@@ -428,9 +459,11 @@ void TDiskRegistryActor::HandleServerDisconnected(
         auto& info = AgentRegInfo[agentId];
         info.Connected = false;
 
-        LOG_WARN_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        LOG_WARN_S(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
             "Agent " << agentId.Quote()
-            << " disconnected, SeqNo=" << info.SeqNo);
+                     << " disconnected, SeqNo=" << info.SeqNo);
 
         ScheduleRejectAgent(ctx, agentId, info.SeqNo);
         State->OnAgentDisconnected(ctx.Now(), agentId);
@@ -451,12 +484,16 @@ void TDiskRegistryActor::ScheduleRejectAgent(
     }
 
     auto deadline = timeout.ToDeadLine(ctx.Now());
-    LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
         "Schedule reject agent " << agentId.Quote() << ": " << ctx.Now()
-        << " -> " << deadline);
+                                 << " -> " << deadline);
 
-    auto request = std::make_unique<TEvDiskRegistryPrivate::TEvAgentConnectionLost>(
-        std::move(agentId), seqNo);
+    auto request =
+        std::make_unique<TEvDiskRegistryPrivate::TEvAgentConnectionLost>(
+            std::move(agentId),
+            seqNo);
 
     ctx.Schedule(deadline, request.release());
 }
@@ -522,14 +559,18 @@ void TDiskRegistryActor::HandleAgentConnectionLost(
 
     auto it = AgentRegInfo.find(msg->AgentId);
     if (it != AgentRegInfo.end() && msg->SeqNo < it->second.SeqNo) {
-        LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "Agent " << msg->AgentId.Quote() << " is connected: "
-            << msg->SeqNo << " < SeqNo " << it->second.SeqNo);
+        LOG_DEBUG_S(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "Agent " << msg->AgentId.Quote() << " is connected: " << msg->SeqNo
+                     << " < SeqNo " << it->second.SeqNo);
 
         return;
     }
 
-    LOG_WARN_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
+    LOG_WARN_S(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
         "Reject agent " << msg->AgentId.Quote());
 
     auto request =
@@ -547,7 +588,9 @@ void TDiskRegistryActor::HandleAgentConnectionLostReadOnly(
 {
     auto* msg = ev->Get();
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
         "Rescheduling EvAgentConnectionLost, AgentId=" << msg->AgentId.Quote());
     ctx.Schedule(TDuration::Seconds(10), ev->Release().Release());
 }
@@ -563,9 +606,11 @@ void TDiskRegistryActor::ScheduleSwitchAgentDisksToReadOnly(
     auto timeout = Config->GetNonReplicatedDiskSwitchToReadOnlyTimeout();
 
     auto deadline = timeout.ToDeadLine(ctx.Now());
-    LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
         "Scheduling switch to ReadOnly for disks associated with agent "
-        << agentId << "  " << ctx.Now() << " -> " << deadline);
+            << agentId << "  " << ctx.Now() << " -> " << deadline);
 
     auto request = std::make_unique<
         TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest>(
@@ -582,13 +627,17 @@ void TDiskRegistryActor::ScheduleSwitchAgentDisksToReadOnly(
 }
 
 void TDiskRegistryActor::HandleSwitchAgentDisksToReadOnlyReshedule(
-    const TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest::TPtr& ev,
+    const TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest::TPtr&
+        ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "Rescheduling EvSwitchAgentDisksToReadOnlyRequest, AgentId=" << msg->AgentId.Quote());
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "Rescheduling EvSwitchAgentDisksToReadOnlyRequest, AgentId="
+            << msg->AgentId.Quote());
     ctx.Schedule(TDuration::Seconds(10), ev->Release().Release());
 }
 
@@ -612,9 +661,11 @@ STFUNC(TDiskRegistryActor::StateBoot)
 
         HFunc(TEvTabletPipe::TEvServerConnected, HandleServerConnected);
         HFunc(TEvTabletPipe::TEvServerDisconnected, HandleServerDisconnected);
-        HFunc(TEvDiskRegistryPrivate::TEvAgentConnectionLost,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvAgentConnectionLost,
             HandleAgentConnectionLostReadOnly);
-        HFunc(TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest,
             HandleSwitchAgentDisksToReadOnlyReshedule);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvDiskRegistry)
@@ -634,9 +685,11 @@ STFUNC(TDiskRegistryActor::StateInit)
 
         HFunc(TEvTabletPipe::TEvServerConnected, HandleServerConnected);
         HFunc(TEvTabletPipe::TEvServerDisconnected, HandleServerDisconnected);
-        HFunc(TEvDiskRegistryPrivate::TEvAgentConnectionLost,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvAgentConnectionLost,
             HandleAgentConnectionLostReadOnly);
-        HFunc(TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest,
             HandleSwitchAgentDisksToReadOnlyReshedule);
 
         IgnoreFunc(
@@ -664,7 +717,8 @@ STFUNC(TDiskRegistryActor::StateWork)
 
         HFunc(TEvTabletPipe::TEvServerConnected, HandleServerConnected);
         HFunc(TEvTabletPipe::TEvServerDisconnected, HandleServerDisconnected);
-        HFunc(TEvDiskRegistryPrivate::TEvAgentConnectionLost,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvAgentConnectionLost,
             HandleAgentConnectionLost);
 
         IgnoreFunc(TEvDiskRegistry::TEvReleaseDiskResponse);
@@ -684,45 +738,59 @@ STFUNC(TDiskRegistryActor::StateWork)
         IgnoreFunc(
             TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
 
-        HFunc(TEvDiskRegistry::TEvBackupDiskRegistryStateResponse,
+        HFunc(
+            TEvDiskRegistry::TEvBackupDiskRegistryStateResponse,
             HandleBackupDiskRegistryStateResponse);
 
-        HFunc(TEvDiskRegistryPrivate::TEvCleanupDisksResponse,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvCleanupDisksResponse,
             HandleCleanupDisksResponse);
 
-        HFunc(TEvDiskRegistryPrivate::TEvSecureEraseResponse,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvSecureEraseResponse,
             HandleSecureEraseResponse);
 
-        HFunc(TEvDiskRegistryPrivate::TEvDestroyBrokenDisksResponse,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvDestroyBrokenDisksResponse,
             HandleDestroyBrokenDisksResponse);
 
-        HFunc(TEvDiskRegistryPrivate::TEvStartMigrationResponse,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvStartMigrationResponse,
             HandleStartMigrationResponse);
 
-        HFunc(TEvDiskRegistryPrivate::TEvNotifyDisksResponse,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvNotifyDisksResponse,
             HandleNotifyDisksResponse);
 
-        HFunc(TEvDiskRegistryPrivate::TEvNotifyUsersResponse,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvNotifyUsersResponse,
             HandleNotifyUsersResponse);
 
-        HFunc(TEvDiskRegistryPrivate::TEvPublishDiskStatesResponse,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvPublishDiskStatesResponse,
             HandlePublishDiskStatesResponse);
 
-        HFunc(TEvDiskRegistryPrivate::TEvOperationCompleted,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvOperationCompleted,
             HandleOperationCompleted);
 
-        HFunc(TEvDiskRegistryPrivate::TEvUpdateVolumeConfigResponse,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvUpdateVolumeConfigResponse,
             HandleUpdateVolumeConfigResponse);
 
-        HFunc(TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse,
             HandleRestoreDiskRegistryValidationResponse);
 
-        HFunc(TEvDiskAgent::TEvEnableAgentDeviceResponse,
+        HFunc(
+            TEvDiskAgent::TEvEnableAgentDeviceResponse,
             HandleEnableDeviceResponse);
 
         HFunc(
-            TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
-            TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanup);
+            TEvDiskRegistryPrivate::
+                TEvDiskRegistryAgentListExpiredParamsCleanup,
+            TDiskRegistryActor::
+                HandleDiskRegistryAgentListExpiredParamsCleanup);
 
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
@@ -743,9 +811,11 @@ STFUNC(TDiskRegistryActor::StateRestore)
 
         HFunc(TEvTabletPipe::TEvServerConnected, HandleServerConnected);
         HFunc(TEvTabletPipe::TEvServerDisconnected, HandleServerDisconnected);
-        HFunc(TEvDiskRegistryPrivate::TEvAgentConnectionLost,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvAgentConnectionLost,
             HandleAgentConnectionLostReadOnly);
-        HFunc(TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest,
             HandleSwitchAgentDisksToReadOnlyReshedule);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -770,10 +840,13 @@ STFUNC(TDiskRegistryActor::StateRestore)
             HandleRestoreDiskRegistryValidationResponse);
 
         HFunc(
-            TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
-            TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly);
+            TEvDiskRegistryPrivate::
+                TEvDiskRegistryAgentListExpiredParamsCleanup,
+            TDiskRegistryActor::
+                HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly);
 
-        IgnoreFunc(TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
+        IgnoreFunc(
+            TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
 
         default:
             if (!RejectRequests(ev)) {
@@ -794,9 +867,11 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
 
         HFunc(TEvTabletPipe::TEvServerConnected, HandleServerConnected);
         HFunc(TEvTabletPipe::TEvServerDisconnected, HandleServerDisconnected);
-        HFunc(TEvDiskRegistryPrivate::TEvAgentConnectionLost,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvAgentConnectionLost,
             HandleAgentConnectionLostReadOnly);
-        HFunc(TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest,
             HandleSwitchAgentDisksToReadOnlyReshedule);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -805,13 +880,15 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
 
         HFunc(TEvDiskRegistry::TEvWaitReadyRequest, HandleWaitReady);
 
-        HFunc(TEvDiskRegistry::TEvSetWritableStateRequest,
+        HFunc(
+            TEvDiskRegistry::TEvSetWritableStateRequest,
             HandleSetWritableState);
 
         HFunc(
             TEvDiskRegistry::TEvBackupDiskRegistryStateRequest,
             HandleBackupDiskRegistryState);
-        HFunc(TEvDiskRegistry::TEvBackupDiskRegistryStateResponse,
+        HFunc(
+            TEvDiskRegistry::TEvBackupDiskRegistryStateResponse,
             HandleBackupDiskRegistryStateResponse);
 
         HFunc(
@@ -820,12 +897,8 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
         HFunc(
             TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse,
             HandleRestoreDiskRegistryValidationResponse);
-        HFunc(
-            TEvDiskRegistry::TEvDescribeDiskRequest,
-            HandleDescribeDisk);
-        HFunc(
-            TEvDiskRegistry::TEvDescribeConfigRequest,
-            HandleDescribeConfig);
+        HFunc(TEvDiskRegistry::TEvDescribeDiskRequest, HandleDescribeDisk);
+        HFunc(TEvDiskRegistry::TEvDescribeConfigRequest, HandleDescribeConfig);
         HFunc(
             TEvService::TEvDescribePlacementGroupRequest,
             HandleDescribePlacementGroup);
@@ -834,10 +907,13 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
             HandleQueryAvailableStorage);
 
         HFunc(
-            TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
-            TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly);
+            TEvDiskRegistryPrivate::
+                TEvDiskRegistryAgentListExpiredParamsCleanup,
+            TDiskRegistryActor::
+                HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly);
 
-        HFunc(TEvDiskRegistryPrivate::TEvCleanupDisksResponse,
+        HFunc(
+            TEvDiskRegistryPrivate::TEvCleanupDisksResponse,
             HandleCleanupDisksResponse);
 
         HFunc(
@@ -871,8 +947,8 @@ STFUNC(TDiskRegistryActor::StateZombie)
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
         IgnoreFunc(TEvDiskRegistryPrivate::TEvAgentConnectionLost);
 
-        IgnoreFunc(
-            TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup);
+        IgnoreFunc(TEvDiskRegistryPrivate::
+                       TEvDiskRegistryAgentListExpiredParamsCleanup);
 
         IgnoreFunc(
             TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
@@ -900,7 +976,8 @@ bool ToLogicalBlocks(NProto::TDeviceConfig& device, ui32 logicalBlockSize)
         return false;
     }
 
-    device.SetBlocksCount(device.GetBlocksCount() * blockSize / logicalBlockSize);
+    device.SetBlocksCount(
+        device.GetBlocksCount() * blockSize / logicalBlockSize);
     device.SetBlockSize(logicalBlockSize);
 
     return true;
@@ -973,8 +1050,7 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
         std::move(cacheIt->second);
     acquireCacheByAgentId.erase(cacheIt);
 
-    TDuration lifetimeThreshold =
-        Config->GetCachedAcquireRequestLifetime();
+    TDuration lifetimeThreshold = Config->GetCachedAcquireRequestLifetime();
     TInstant now = ctx.Now();
 
     for (auto& [_, request]: agentAcquireRequestCache) {

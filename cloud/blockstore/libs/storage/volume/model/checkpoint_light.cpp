@@ -57,11 +57,12 @@ void TCheckpointLight::DeleteCheckpoint(const TString& checkpointId)
     }
 }
 
-bool TCheckpointLight::IsCheckpointEmptyOrExists(const TString& checkpointId) const
+bool TCheckpointLight::IsCheckpointEmptyOrExists(
+    const TString& checkpointId) const
 {
     return (checkpointId == EmptyCheckpointId) ||
-        (checkpointId == PreviousCheckpointId) ||
-        (checkpointId == CheckpointId);
+           (checkpointId == PreviousCheckpointId) ||
+           (checkpointId == CheckpointId);
 }
 
 NProto::TError TCheckpointLight::FindDirtyBlocksBetweenCheckpoints(
@@ -75,28 +76,35 @@ NProto::TError TCheckpointLight::FindDirtyBlocksBetweenCheckpoints(
     }
 
     bool allOnes = !IsCheckpointEmptyOrExists(lowCheckpointId) ||
-        !IsCheckpointEmptyOrExists(highCheckpointId) ||
-        lowCheckpointId == EmptyCheckpointId;
+                   !IsCheckpointEmptyOrExists(highCheckpointId) ||
+                   lowCheckpointId == EmptyCheckpointId;
 
     bool useCurrentDirtyBlocks = false;
     bool useFutureDirtyBlocks = false;
-    if (lowCheckpointId == CheckpointId && highCheckpointId == EmptyCheckpointId) {
+    if (lowCheckpointId == CheckpointId &&
+        highCheckpointId == EmptyCheckpointId)
+    {
         useFutureDirtyBlocks = true;
-    } else if (lowCheckpointId == PreviousCheckpointId &&
-        highCheckpointId == CheckpointId) {
+    } else if (
+        lowCheckpointId == PreviousCheckpointId &&
+        highCheckpointId == CheckpointId)
+    {
         useCurrentDirtyBlocks = true;
-    } else if (lowCheckpointId == PreviousCheckpointId &&
-        highCheckpointId == EmptyCheckpointId) {
+    } else if (
+        lowCheckpointId == PreviousCheckpointId &&
+        highCheckpointId == EmptyCheckpointId)
+    {
         useCurrentDirtyBlocks = true;
         useFutureDirtyBlocks = true;
     } else {
         allOnes = true;
     }
 
-    auto test = [&](ui64 i) {
+    auto test = [&](ui64 i)
+    {
         return allOnes ||
-           (useCurrentDirtyBlocks && CurrentDirtyBlocks.Test(i)) ||
-           (useFutureDirtyBlocks && FutureDirtyBlocks.Test(i));
+               (useCurrentDirtyBlocks && CurrentDirtyBlocks.Test(i)) ||
+               (useFutureDirtyBlocks && FutureDirtyBlocks.Test(i));
     };
 
     mask->clear();
@@ -105,7 +113,9 @@ NProto::TError TCheckpointLight::FindDirtyBlocksBetweenCheckpoints(
     auto blockIndex = blockRange.Start;
     for (size_t i = 0; i < mask->size(); ++i) {
         ui8 bitData = 0;
-        for (auto j = 0; j < 8 && blockIndex <= blockRange.End; ++j, ++blockIndex) {
+        for (auto j = 0; j < 8 && blockIndex <= blockRange.End;
+             ++j, ++blockIndex)
+        {
             bitData |= test(blockIndex) << j;
         }
 

@@ -151,7 +151,7 @@ Y_UNIT_TEST_SUITE(TLRUCache)
             TString,
             THash<TString>,
             TMap<TString, TString, TLess<TString>, TStlAllocator>>
-        hashMap(TDefaultAllocator::Instance());
+            hashMap(TDefaultAllocator::Instance());
 
         hashMap.SetMaxSize(5);
         TVector<std::pair<TString, TString>> keyValues = {
@@ -159,8 +159,7 @@ Y_UNIT_TEST_SUITE(TLRUCache)
             {"key5", "val5"},
             {"key3", "val3"},
             {"key2", "val2"},
-            {"key1", "val1"}
-        };
+            {"key1", "val1"}};
 
         for (const auto& keyValue: keyValues) {
             hashMap.emplace(keyValue.first, keyValue.second);
@@ -209,7 +208,9 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         TString keyPrefix = "key0";
         TString valuePrefix = "val0";
         for (size_t i = 0; i < maxSize; i++) {
-            hashMap.emplace(keyPrefix + std::to_string(i), valuePrefix + std::to_string(i));
+            hashMap.emplace(
+                keyPrefix + std::to_string(i),
+                valuePrefix + std::to_string(i));
         }
 
         const size_t prevBytesCount = allocator.GetBytesAllocated();
@@ -218,11 +219,14 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         keyPrefix = "key1";
         valuePrefix = "val1";
         for (size_t i = 0; i < maxSize; i++) {
-            hashMap.emplace(keyPrefix + std::to_string(i), valuePrefix + std::to_string(i));
+            hashMap.emplace(
+                keyPrefix + std::to_string(i),
+                valuePrefix + std::to_string(i));
         }
         const size_t postBytesCount = allocator.GetBytesAllocated();
 
-        // check that allocated byted count has not changed after old values were evicted
+        // check that allocated byted count has not changed after old values
+        // were evicted
         UNIT_ASSERT_EQUAL(prevBytesCount, postBytesCount);
     }
 }

@@ -20,8 +20,8 @@ TString GetEntityId(const NProto::TUserNotification& notif)
 
 TString GetEventName(const NProto::TUserNotification& notif)
 {
-    auto* field = NProto::TUserNotification::descriptor()
-        ->FindFieldByNumber(notif.GetEventCase());
+    auto* field = NProto::TUserNotification::descriptor()->FindFieldByNumber(
+        notif.GetEventCase());
 
     if (field) {
         return field->name();

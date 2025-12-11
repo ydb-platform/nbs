@@ -26,8 +26,7 @@ void TNonreplicatedPartitionRdmaActor::SendStats(const TActorContext& ctx)
     PartCounters->Simple.IORequestsInFlight.Set(
         RequestsInProgress.GetRequestCount());
     PartCounters->Simple.BytesCount.Set(
-        PartConfig->GetBlockCount() * PartConfig->GetBlockSize()
-    );
+        PartConfig->GetBlockCount() * PartConfig->GetBlockSize());
 
     auto request =
         std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(

@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 
@@ -23,21 +24,22 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        static constexpr EBlockStoreRequest Request = EBlockStoreRequest::name;\
-                                                                               \
-        using TRequest = NProto::T##name##Request;                             \
-        using TResponse = NProto::T##name##Response;                           \
-                                                                               \
-        template <typename T, typename ...TArgs>                               \
-        static TFuture<TResponse> Execute(T& client, TArgs&& ...args)          \
-        {                                                                      \
-            return client.name(std::forward<TArgs>(args)...);                  \
-        }                                                                      \
-    };                                                                         \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                          \
+    struct T##name##Method                                            \
+    {                                                                 \
+        static constexpr EBlockStoreRequest Request =                 \
+            EBlockStoreRequest::name;                                 \
+                                                                      \
+        using TRequest = NProto::T##name##Request;                    \
+        using TResponse = NProto::T##name##Response;                  \
+                                                                      \
+        template <typename T, typename... TArgs>                      \
+        static TFuture<TResponse> Execute(T& client, TArgs&&... args) \
+        {                                                             \
+            return client.name(std::forward<TArgs>(args)...);         \
+        }                                                             \
+    };                                                                \
+    // BLOCKSTORE_DECLARE_METHOD
 
 BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
@@ -45,22 +47,20 @@ BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRequestStateBase
-    : public TAtomicRefCount<TRequestStateBase>
+struct TRequestStateBase: public TAtomicRefCount<TRequestStateBase>
 {
     EBlockStoreRequest Type;
     ui64 Bytes;
     IVolumeInfoPtr VolumeInfo;
 
     TRequestStateBase(
-            EBlockStoreRequest type,
-            ui64 bytes,
-            IVolumeInfoPtr&& volumeInfo)
+        EBlockStoreRequest type,
+        ui64 bytes,
+        IVolumeInfoPtr&& volumeInfo)
         : Type(type)
         , Bytes(bytes)
         , VolumeInfo(std::move(volumeInfo))
-    {
-    }
+    {}
 
     virtual ~TRequestStateBase() = default;
 };
@@ -68,8 +68,7 @@ struct TRequestStateBase
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-struct TRequestState
-    : public TRequestStateBase
+struct TRequestState: public TRequestStateBase
 {
     std::weak_ptr<IBlockStore> Client;
     TCallContextPtr CallContext;
@@ -77,12 +76,12 @@ struct TRequestState
     TPromise<typename T::TResponse> Response;
 
     TRequestState(
-            std::weak_ptr<IBlockStore> client,
-            TCallContextPtr callContext,
-            std::shared_ptr<typename T::TRequest> request,
-            TPromise<typename T::TResponse> response,
-            ui64 bytes,
-            IVolumeInfoPtr volumeInfo)
+        std::weak_ptr<IBlockStore> client,
+        TCallContextPtr callContext,
+        std::shared_ptr<typename T::TRequest> request,
+        TPromise<typename T::TResponse> response,
+        ui64 bytes,
+        IVolumeInfoPtr volumeInfo)
         : TRequestStateBase(T::Request, bytes, std::move(volumeInfo))
         , Client(std::move(client))
         , CallContext(std::move(callContext))
@@ -118,13 +117,13 @@ private:
 
 public:
     TThrottler(
-            IThrottlerLoggerPtr throttlerLogger,
-            IThrottlerMetricsPtr throttlerMetrics,
-            IThrottlerPolicyPtr throttlerPolicy,
-            IThrottlerTrackerPtr throttlerTracker,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            IVolumeStatsPtr volumeStats)
+        IThrottlerLoggerPtr throttlerLogger,
+        IThrottlerMetricsPtr throttlerMetrics,
+        IThrottlerPolicyPtr throttlerPolicy,
+        IThrottlerTrackerPtr throttlerTracker,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler,
+        IVolumeStatsPtr volumeStats)
         : ThrottlerLogger(std::move(throttlerLogger))
         , ThrottlerMetrics(std::move(throttlerMetrics))
         , ThrottlerTracker(std::move(throttlerTracker))
@@ -152,18 +151,18 @@ public:
         }
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        const IBlockStorePtr& client,                                          \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        return HandleRequest<T##name##Method>(                                 \
-            client,                                                            \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                      \
+    TFuture<NProto::T##name##Response> name(                        \
+        const IBlockStorePtr& client,                               \
+        TCallContextPtr callContext,                                \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        return HandleRequest<T##name##Method>(                      \
+            client,                                                 \
+            std::move(callContext),                                 \
+            std::move(request));                                    \
+    }                                                               \
+    // BLOCKSTORE_IMPLEMENT_METHOD
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
 
@@ -171,9 +170,7 @@ public:
 
 private:
     template <typename TMethod>
-    bool PreprocessPostponedRequest(
-        TRequestState<TMethod>& state,
-        TInstant now)
+    bool PreprocessPostponedRequest(TRequestState<TMethod>& state, TInstant now)
     {
         if (state.VolumeInfo) {
             auto delay = PostponeIfNeeded<TMethod>(
@@ -207,28 +204,28 @@ private:
             const auto now = Timer->Now();
             const auto cycles = GetCycleCount();
 
-#define REQUEST_TYPE_CASE(name)                                                \
-    case EBlockStoreRequest::name: {                                           \
-        using TMethod = T##name##Method;                                       \
-        using TConcreteState = TRequestState<TMethod>;                         \
-        auto concreteState = static_cast<TConcreteState*>(head.Get());         \
-        if (!PreprocessPostponedRequest<TMethod>(*concreteState, now)) {       \
-            return;                                                            \
-        }                                                                      \
-        guard.Release();                                                       \
-        ThrottlerTracker->TrackAdvancedRequest(                                \
-            *concreteState->CallContext,                                       \
-            *concreteState->Request);                                          \
-        ThrottlerLogger->LogAdvancedRequest(                                   \
-            cycles,                                                            \
-            *concreteState->CallContext,                                       \
-            concreteState->VolumeInfo.get(),                                   \
-            *concreteState->Request);                                          \
-        ExecuteRequest<TMethod>(*concreteState);                               \
-                                                                               \
-        break;                                                                 \
-    }                                                                          \
-// REQUEST_TYPE_CASE
+#define REQUEST_TYPE_CASE(name)                                          \
+    case EBlockStoreRequest::name: {                                     \
+        using TMethod = T##name##Method;                                 \
+        using TConcreteState = TRequestState<TMethod>;                   \
+        auto concreteState = static_cast<TConcreteState*>(head.Get());   \
+        if (!PreprocessPostponedRequest<TMethod>(*concreteState, now)) { \
+            return;                                                      \
+        }                                                                \
+        guard.Release();                                                 \
+        ThrottlerTracker->TrackAdvancedRequest(                          \
+            *concreteState->CallContext,                                 \
+            *concreteState->Request);                                    \
+        ThrottlerLogger->LogAdvancedRequest(                             \
+            cycles,                                                      \
+            *concreteState->CallContext,                                 \
+            concreteState->VolumeInfo.get(),                             \
+            *concreteState->Request);                                    \
+        ExecuteRequest<TMethod>(*concreteState);                         \
+                                                                         \
+        break;                                                           \
+    }                                                                    \
+        // REQUEST_TYPE_CASE
 
             switch (head->Type) {
                 REQUEST_TYPE_CASE(ZeroBlocks);
@@ -279,9 +276,7 @@ private:
             bytes);
 
         if (delay.GetValue()) {
-            ScheduleFunction(
-                delay,
-                &TThrottler::ProcessPostponed);
+            ScheduleFunction(delay, &TThrottler::ProcessPostponed);
         }
 
         return delay;
@@ -346,8 +341,7 @@ private:
                 delay = PostponeIfNeeded<TMethod>(
                     now,
                     volumeInfo->GetInfo().GetStorageMediaKind(),
-                    bytes
-                );
+                    bytes);
             } else {
                 delay = TDuration::Zero();
             }
@@ -359,8 +353,7 @@ private:
                     std::move(request),
                     std::move(response),
                     bytes,
-                    std::move(volumeInfo)
-                );
+                    std::move(volumeInfo));
                 PostponedRequests.push_back(state);
             }
         }
@@ -388,10 +381,10 @@ private:
 
     template <>
     TFuture<typename TMountVolumeMethod::TResponse>
-        HandleRequest<TMountVolumeMethod>(
-            const IBlockStorePtr& client,
-            TCallContextPtr callContext,
-            std::shared_ptr<typename TMountVolumeMethod::TRequest> request)
+    HandleRequest<TMountVolumeMethod>(
+        const IBlockStorePtr& client,
+        TCallContextPtr callContext,
+        std::shared_ptr<typename TMountVolumeMethod::TRequest> request)
     {
         Y_UNUSED(TMountVolumeMethod::Request);
 
@@ -403,10 +396,10 @@ private:
 
     template <>
     TFuture<typename TUnmountVolumeMethod::TResponse>
-        HandleRequest<TUnmountVolumeMethod>(
-            const IBlockStorePtr& client,
-            TCallContextPtr callContext,
-            std::shared_ptr<typename TUnmountVolumeMethod::TRequest> request)
+    HandleRequest<TUnmountVolumeMethod>(
+        const IBlockStorePtr& client,
+        TCallContextPtr callContext,
+        std::shared_ptr<typename TUnmountVolumeMethod::TRequest> request)
     {
         Y_UNUSED(TUnmountVolumeMethod::Request);
 
@@ -434,10 +427,12 @@ private:
 
         auto weakPtr = weak_from_this();
         return TMethod::Execute(
-            *client,
-            std::move(callContext),
-            std::move(request)).Subscribe(
-                [=, weakPtr = std::move(weakPtr)] (const auto& future) {
+                   *client,
+                   std::move(callContext),
+                   std::move(request))
+            .Subscribe(
+                [=, weakPtr = std::move(weakPtr)](const auto& future)
+                {
                     const auto& response = future.GetValue();
                     auto thisPtr = weakPtr.lock();
 
@@ -494,19 +489,20 @@ private:
         std::shared_ptr<typename T::TRequest> request,
         TPromise<typename T::TResponse> promise)
     {
-        T::Execute(client, callContext, request).Subscribe(
-            [=, this, promise = std::move(promise)] (auto future) mutable {
-                auto response = ExtractResponse(future);
+        T::Execute(client, callContext, request)
+            .Subscribe(
+                [=, this, promise = std::move(promise)](auto future) mutable
+                {
+                    auto response = ExtractResponse(future);
 
-                try {
-                    promise.SetValue(std::move(response));
-                } catch (...) {
-                    ThrottlerLogger->LogError(
-                        *request,
-                        CurrentExceptionMessage());
-                }
-            }
-        );
+                    try {
+                        promise.SetValue(std::move(response));
+                    } catch (...) {
+                        ThrottlerLogger->LogError(
+                            *request,
+                            CurrentExceptionMessage());
+                    }
+                });
     }
 
     template <typename TFunction>
@@ -519,7 +515,8 @@ private:
         auto weakPtr = weak_from_this();
         Scheduler->Schedule(
             Timer->Now() + duration,
-            [func = std::move(function), weakPtr = std::move(weakPtr)] {
+            [func = std::move(function), weakPtr = std::move(weakPtr)]
+            {
                 if (auto thisPtr = weakPtr.lock()) {
                     std::invoke(std::move(func), thisPtr.get());
                 }

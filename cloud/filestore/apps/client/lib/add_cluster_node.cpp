@@ -6,8 +6,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAddClusterNodeCommand final
-    : public TFileStoreCommand
+class TAddClusterNodeCommand final: public TFileStoreCommand
 {
 private:
     TString NodeId;
@@ -30,9 +29,7 @@ public:
         request->SetNodeId(NodeId);
 
         auto response = WaitFor(
-            Client->AddClusterNode(
-                std::move(callContext),
-                std::move(request)));
+            Client->AddClusterNode(std::move(callContext), std::move(request)));
 
         if (HasError(response)) {
             ythrow TServiceError(response.GetError());

@@ -16,8 +16,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThrottlerMetrics
-    : public IThrottlerMetrics
+class TThrottlerMetrics: public IThrottlerMetrics
 {
 private:
     // first - diskId
@@ -43,16 +42,12 @@ private:
 
 public:
     TThrottlerMetrics(
-            ITimerPtr timer,
-            NMonitoring::TDynamicCountersPtr totalGroup,
-            NMonitoring::TDynamicCountersPtr volumeGroup);
+        ITimerPtr timer,
+        NMonitoring::TDynamicCountersPtr totalGroup,
+        NMonitoring::TDynamicCountersPtr volumeGroup);
 
-    void Register(
-        const TString& diskId,
-        const TString& instanceId) override;
-    void Unregister(
-        const TString& diskId,
-        const TString& instanceId) override;
+    void Register(const TString& diskId, const TString& instanceId) override;
+    void Unregister(const TString& diskId, const TString& instanceId) override;
 
     void Trim(TInstant now) override;
     void UpdateUsedQuota(ui64 quota) override;
@@ -65,17 +60,17 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TThrottlerMetrics::TQuotaInfo::TQuotaInfo(
-        NMonitoring::TDynamicCountersPtr counters,
-        ITimerPtr timer)
+    NMonitoring::TDynamicCountersPtr counters,
+    ITimerPtr timer)
     : Metrics(std::move(timer))
 {
     Metrics.Register(counters);
 }
 
 TThrottlerMetrics::TThrottlerMetrics(
-        ITimerPtr timer,
-        NMonitoring::TDynamicCountersPtr totalGroup,
-        NMonitoring::TDynamicCountersPtr volumeGroup)
+    ITimerPtr timer,
+    NMonitoring::TDynamicCountersPtr totalGroup,
+    NMonitoring::TDynamicCountersPtr volumeGroup)
     : Timer(std::move(timer))
     , TotalGroup(std::move(totalGroup))
     , VolumeGroup(std::move(volumeGroup))
@@ -129,16 +124,19 @@ void TThrottlerMetrics::Trim(TInstant now)
 {
     TWriteGuard guard(Lock);
 
-    std::erase_if(QuotaContainer, [now] (auto& kv) {
-        auto& quotaInfo = kv.second;
+    std::erase_if(
+        QuotaContainer,
+        [now](auto& kv)
+        {
+            auto& quotaInfo = kv.second;
 
-        if (now - quotaInfo.MountTime >= TRIM_THROTTLER_METRICS_INTERVAL) {
-            quotaInfo.Metrics.Unregister();
-            return true;
-        }
+            if (now - quotaInfo.MountTime >= TRIM_THROTTLER_METRICS_INTERVAL) {
+                quotaInfo.Metrics.Unregister();
+                return true;
+            }
 
-        return false;
-    });
+            return false;
+        });
 
     if (QuotaContainer.empty()) {
         UnregisterAll();
@@ -181,21 +179,16 @@ void TThrottlerMetrics::UnregisterAll()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThrottlerMetricsStub final
-    : public IThrottlerMetrics
+class TThrottlerMetricsStub final: public IThrottlerMetrics
 {
 public:
-    void Register(
-        const TString& diskId,
-        const TString& clientId) override
+    void Register(const TString& diskId, const TString& clientId) override
     {
         Y_UNUSED(diskId);
         Y_UNUSED(clientId);
     }
 
-    void Unregister(
-        const TString& diskId,
-        const TString& clientId) override
+    void Unregister(const TString& diskId, const TString& clientId) override
     {
         Y_UNUSED(diskId);
         Y_UNUSED(clientId);
@@ -232,10 +225,8 @@ IThrottlerMetricsPtr CreateThrottlerMetrics(
     return std::make_shared<TThrottlerMetrics>(
         std::move(timer),
         rootGroup->GetSubgroup("component", componentLabel),
-        rootGroup
-            ->GetSubgroup("component", componentLabel + "_volume")
+        rootGroup->GetSubgroup("component", componentLabel + "_volume")
             ->GetSubgroup("host", "cluster"));
 }
-
 
 }   // namespace NCloud::NBlockStore

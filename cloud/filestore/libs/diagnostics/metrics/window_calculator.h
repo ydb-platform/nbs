@@ -19,8 +19,7 @@ constexpr ui32 DEFAULT_BUCKET_COUNT = 15;
 ////////////////////////////////////////////////////////////////////////////////
 
 template <ui32 BucketCount>
-class TWindowCalculator
-    : private TMetricNextFreeKey
+class TWindowCalculator: private TMetricNextFreeKey
 {
     using TMetricsRegistriesMap = THashMap<TMetricKey, IMetricsRegistryPtr>;
 

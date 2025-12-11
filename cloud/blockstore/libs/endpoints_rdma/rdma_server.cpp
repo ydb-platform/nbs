@@ -30,11 +30,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define Y_ENSURE_RETURN(expr, message)                                         \
-    if (Y_UNLIKELY(!(expr))) {                                                 \
-        return MakeError(E_ARGUMENT, TStringBuilder() << message);             \
-    }                                                                          \
-// Y_ENSURE_RETURN
+#define Y_ENSURE_RETURN(expr, message)                             \
+    if (Y_UNLIKELY(!(expr))) {                                     \
+        return MakeError(E_ARGUMENT, TStringBuilder() << message); \
+    }                                                              \
+    // Y_ENSURE_RETURN
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -51,15 +51,16 @@ private:
     NRdma::IServerEndpointPtr Endpoint;
     TLog Log;
 
-    NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TRdmaEndpoint(
-            ILoggingServicePtr logging,
-            IServerStatsPtr serverStats,
-            ITaskQueuePtr taskQueue,
-            ISessionPtr session,
-            size_t blockSize)
+        ILoggingServicePtr logging,
+        IServerStatsPtr serverStats,
+        ITaskQueuePtr taskQueue,
+        ISessionPtr session,
+        size_t blockSize)
         : ServerStats(std::move(serverStats))
         , TaskQueue(std::move(taskQueue))
         , Session(std::move(session))
@@ -191,8 +192,10 @@ NProto::TError TRdmaEndpoint::DoHandleRequest(
                 out);
 
         default:
-            return MakeError(E_NOT_IMPLEMENTED, TStringBuilder()
-                << "request message not supported: " << request.MsgId);
+            return MakeError(
+                E_NOT_IMPLEMENTED,
+                TStringBuilder()
+                    << "request message not supported: " << request.MsgId);
     }
 }
 
@@ -205,7 +208,8 @@ NProto::TError TRdmaEndpoint::HandleReadBlocksRequest(
 {
     Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
 
-    TGuardedBuffer buffer(TString::Uninitialized(BlockSize * request.GetBlocksCount()));
+    TGuardedBuffer buffer(
+        TString::Uninitialized(BlockSize * request.GetBlocksCount()));
     auto guardedSgList = buffer.GetGuardedSgList();
 
     auto req = std::make_shared<NProto::TReadBlocksLocalRequest>();
@@ -213,9 +217,8 @@ NProto::TError TRdmaEndpoint::HandleReadBlocksRequest(
 
     req->Sglist = guardedSgList;
 
-    auto future = Session->ReadBlocksLocal(
-        std::move(callContext),
-        std::move(req));
+    auto future =
+        Session->ReadBlocksLocal(std::move(callContext), std::move(req));
 
     future.Subscribe(
         [self = weak_from_this(),
@@ -263,18 +266,15 @@ NProto::TError TRdmaEndpoint::HandleWriteBlocksRequest(
 {
     Y_ENSURE_RETURN(requestData.length() > 0, "invalid request");
 
-    TGuardedSgList guardedSgList({
-        { requestData.data(), requestData.length() }
-    });
+    TGuardedSgList guardedSgList({{requestData.data(), requestData.length()}});
 
     auto req = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     req->CopyFrom(request);
 
     req->Sglist = guardedSgList;
 
-    auto future = Session->WriteBlocksLocal(
-        std::move(callContext),
-        std::move(req));
+    auto future =
+        Session->WriteBlocksLocal(std::move(callContext), std::move(req));
 
     future.Subscribe(
         [self = weak_from_this(),
@@ -317,11 +317,10 @@ NProto::TError TRdmaEndpoint::HandleZeroBlocksRequest(
 {
     Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
 
-    auto req = std::make_shared<NProto::TZeroBlocksRequest>(std::move(*request));
+    auto req =
+        std::make_shared<NProto::TZeroBlocksRequest>(std::move(*request));
 
-    auto future = Session->ZeroBlocks(
-        std::move(callContext),
-        std::move(req));
+    auto future = Session->ZeroBlocks(std::move(callContext), std::move(req));
 
     future.Subscribe(
         [self = weak_from_this(), out, context](
@@ -345,8 +344,7 @@ NProto::TError TRdmaEndpoint::HandleZeroBlocksRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaEndpointListener final
-    : public IEndpointListener
+class TRdmaEndpointListener final: public IEndpointListener
 {
 private:
     const NRdma::IServerPtr Server;
@@ -360,12 +358,12 @@ private:
 
 public:
     TRdmaEndpointListener(
-            NRdma::IServerPtr server,
-            ILoggingServicePtr logging,
-            IServerStatsPtr serverStats,
-            TExecutorPtr executor,
-            ITaskQueuePtr taskQueue,
-            const TRdmaEndpointConfig& config)
+        NRdma::IServerPtr server,
+        ILoggingServicePtr logging,
+        IServerStatsPtr serverStats,
+        TExecutorPtr executor,
+        ITaskQueuePtr taskQueue,
+        const TRdmaEndpointConfig& config)
         : Server(std::move(server))
         , Logging(std::move(logging))
         , ServerStats(std::move(serverStats))
@@ -379,9 +377,9 @@ public:
         const NProto::TVolume& volume,
         ISessionPtr session) override
     {
-        return Executor->Execute([this, request, volume, session] {
-            return DoStartEndpoint(request, volume, session);
-        });
+        return Executor->Execute(
+            [this, request, volume, session]
+            { return DoStartEndpoint(request, volume, session); });
     }
 
     TFuture<NProto::TError> AlterEndpoint(
@@ -420,7 +418,6 @@ public:
         return MakeFuture(MakeError(E_NOT_IMPLEMENTED));
     }
 
-
 private:
     NProto::TError DoStartEndpoint(
         const NProto::TStartEndpointRequest& request,
@@ -442,8 +439,10 @@ NProto::TError TRdmaEndpointListener::DoStartEndpoint(
 
     auto it = Endpoints.find(socketPath);
     if (it != Endpoints.end()) {
-        return MakeError(S_ALREADY, TStringBuilder()
-            << "endpoint already started " << socketPath.Quote());
+        return MakeError(
+            S_ALREADY,
+            TStringBuilder()
+                << "endpoint already started " << socketPath.Quote());
     }
 
     auto endpoint = std::make_shared<TRdmaEndpoint>(
@@ -455,7 +454,7 @@ NProto::TError TRdmaEndpointListener::DoStartEndpoint(
 
     endpoint->Init(Server->StartEndpoint(
         Config.ListenAddress,
-        Config.ListenPort,    // TODO
+        Config.ListenPort,   // TODO
         endpoint));
 
     Endpoints.emplace(socketPath, std::move(endpoint));
@@ -466,8 +465,9 @@ NProto::TError TRdmaEndpointListener::DoStopEndpoint(const TString& socketPath)
 {
     auto it = Endpoints.find(socketPath);
     if (it == Endpoints.end()) {
-        return MakeError(S_FALSE, TStringBuilder()
-            << "endpoint not started " << socketPath.Quote());
+        return MakeError(
+            S_FALSE,
+            TStringBuilder() << "endpoint not started " << socketPath.Quote());
     }
 
     auto& endpoint = it->second;

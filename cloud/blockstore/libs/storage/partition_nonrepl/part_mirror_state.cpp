@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <util/datetime/base.h>
@@ -18,11 +19,11 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 TMirrorPartitionState::TMirrorPartitionState(
-        TStorageConfigPtr config,
-        TString rwClientId,
-        TNonreplicatedPartitionConfigPtr partConfig,
-        TMigrations migrations,
-        TVector<TDevices> replicaDevices)
+    TStorageConfigPtr config,
+    TString rwClientId,
+    TNonreplicatedPartitionConfigPtr partConfig,
+    TMigrations migrations,
+    TVector<TDevices> replicaDevices)
     : Config(std::move(config))
     , PartConfig(std::move(partConfig))
     , RWClientId(std::move(rwClientId))
@@ -65,13 +66,14 @@ NProto::TError TMirrorPartitionState::Validate()
     for (auto& replicaInfo: ReplicaInfos) {
         const auto mainDeviceCount =
             ReplicaInfos.front().Config->GetDevices().size();
-        const auto replicaDeviceCount =
-            replicaInfo.Config->GetDevices().size();
+        const auto replicaDeviceCount = replicaInfo.Config->GetDevices().size();
 
         if (mainDeviceCount != replicaDeviceCount) {
-            return MakeError(E_INVALID_STATE, TStringBuilder()
-                << "bad replica device count, main config: " << mainDeviceCount
-                << ", replica: " << replicaDeviceCount);
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "bad replica device count, main config: "
+                    << mainDeviceCount << ", replica: " << replicaDeviceCount);
         }
     }
 
@@ -151,9 +153,10 @@ bool TMirrorPartitionState::PrepareMigrationConfigForWarningDevices()
 
 bool TMirrorPartitionState::PrepareMigrationConfigForFreshDevices()
 {
-    auto* replicaInfo = FindIfPtr(ReplicaInfos, [] (const auto& info) {
-        return !info.Config->GetFreshDeviceIds().empty();
-    });
+    auto* replicaInfo = FindIfPtr(
+        ReplicaInfos,
+        [](const auto& info)
+        { return !info.Config->GetFreshDeviceIds().empty(); });
 
     if (!replicaInfo) {
         // nothing to replicate

@@ -13,8 +13,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TPivotalCommitStorageImpl final
-    : IPivotalCommitStorage
+struct TPivotalCommitStorageImpl final: IPivotalCommitStorage
 {
     TVector<ui64> CommitIds;
 
@@ -40,14 +39,11 @@ Y_UNIT_TEST_SUITE(TRebaseLogicTest)
 {
     Y_UNIT_TEST(ShouldCorrectlyRebaseCommits)
     {
-        const TPivotalCommitStorageImpl pivotalCommitStorage({
-            2, 5, 8
-        });
+        const TPivotalCommitStorageImpl pivotalCommitStorage({2, 5, 8});
 
-        auto isFrozenBlock = [](ui32 blockIndex) {
-            return blockIndex == 10
-                || blockIndex == 20
-                || blockIndex == 50;
+        auto isFrozenBlock = [](ui32 blockIndex)
+        {
+            return blockIndex == 10 || blockIndex == 20 || blockIndex == 50;
         };
 
         const ui64 lastCommitId = 15;
@@ -67,8 +63,7 @@ Y_UNIT_TEST_SUITE(TRebaseLogicTest)
             isFrozenBlock,
             lastCommitId,
             blocks,
-            pivotalCommits
-        );
+            pivotalCommits);
 
         UNIT_ASSERT_VALUES_EQUAL(5, blockCounts.LiveBlocks);
         UNIT_ASSERT_VALUES_EQUAL(2, blockCounts.GarbageBlocks);
@@ -116,8 +111,7 @@ Y_UNIT_TEST_SUITE(TRebaseLogicTest)
             isFrozenBlock,
             lastCommitId,
             blocks,
-            pivotalCommits
-        );
+            pivotalCommits);
 
         UNIT_ASSERT_VALUES_EQUAL(6, blockCounts.LiveBlocks);
         UNIT_ASSERT_VALUES_EQUAL(2, blockCounts.GarbageBlocks);
@@ -136,10 +130,9 @@ Y_UNIT_TEST_SUITE(TRebaseLogicTest)
         UNIT_ASSERT_VALUES_EQUAL(8, *pivotalCommit);
     }
 
-    Y_UNIT_TEST(ShouldCorrectlyCalculateCheckpointBlocks) {
-        const TPivotalCommitStorageImpl pivotalCommitStorage({
-            2, 5, 8
-        });
+    Y_UNIT_TEST(ShouldCorrectlyCalculateCheckpointBlocks)
+    {
+        const TPivotalCommitStorageImpl pivotalCommitStorage({2, 5, 8});
 
         const ui64 lastCommitId = 15;
 
@@ -157,14 +150,15 @@ Y_UNIT_TEST_SUITE(TRebaseLogicTest)
             [](ui32) { return false; },
             lastCommitId,
             blocks0,
-            pivotalCommits
-        );
+            pivotalCommits);
 
         UNIT_ASSERT_VALUES_EQUAL(1, blockCounts.CheckpointBlocks);
     }
 
-    Y_UNIT_TEST(ShouldCorrectlyMarkOverwrittenBlocks) {
-        auto b = [] (ui32 index, ui64 minCommitId, ui64 maxCommitId = InvalidCommitId)
+    Y_UNIT_TEST(ShouldCorrectlyMarkOverwrittenBlocks)
+    {
+        auto b =
+            [](ui32 index, ui64 minCommitId, ui64 maxCommitId = InvalidCommitId)
         {
             return TBlock(index, minCommitId, maxCommitId, false);
         };
@@ -199,8 +193,7 @@ Y_UNIT_TEST_SUITE(TRebaseLogicTest)
                 b(3, 15, 15),
                 b(3, 5, 5),
             }),
-            blocks
-        );
+            blocks);
     }
 }
 

@@ -3,8 +3,8 @@
 #include "public.h"
 
 #include <util/generic/string.h>
-#include <util/system/type_name.h>
 #include <util/generic/typetraits.h>
+#include <util/system/type_name.h>
 
 namespace NCloud::NBlockStore {
 

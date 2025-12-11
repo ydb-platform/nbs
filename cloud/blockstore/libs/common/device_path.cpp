@@ -24,9 +24,8 @@ NProto::TError DevicePath::Parse(const TString& devicePath)
     if (uri.GetField(NUri::TField::FieldScheme) != Protocol) {
         return MakeError(
             E_FAIL,
-            TStringBuilder()
-            << "device path doesn't start with "
-            << Protocol << "://, " << devicePath);
+            TStringBuilder() << "device path doesn't start with " << Protocol
+                             << "://, " << devicePath);
     }
 
     auto path = uri.GetField(NUri::TField::FieldPath);
@@ -47,9 +46,7 @@ NProto::TError DevicePath::Parse(const TString& devicePath)
 TString DevicePath::Serialize() const
 {
     return TStringBuilder()
-        << Protocol << "://"
-        << Host << ":" << Port
-        << "/" << Uuid;
+           << Protocol << "://" << Host << ":" << Port << "/" << Uuid;
 }
 
 }   // namespace NCloud::NBlockStore

@@ -12,8 +12,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDiskRegistrySchema
-    : public NKikimr::NIceDb::Schema
+struct TDiskRegistrySchema: public NKikimr::NIceDb::Schema
 {
     /* obsolete
     struct Agents
@@ -35,16 +34,13 @@ struct TDiskRegistrySchema
     };
     */
 
-    struct Disks
-        : public TTableSchema<2>
+    struct Disks: public TTableSchema<2>
     {
-        struct Id
-            : public Column<1, NKikimr::NScheme::NTypeIds::String>
+        struct Id: public Column<1, NKikimr::NScheme::NTypeIds::String>
         {
         };
 
-        struct Config
-            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        struct Config: public Column<2, NKikimr::NScheme::NTypeIds::String>
         {
             using Type = NProto::TDiskConfig;
         };
@@ -72,15 +68,13 @@ struct TDiskRegistrySchema
     };
     */
 
-    struct DiskRegistryConfig
-        : public TTableSchema<4>
+    struct DiskRegistryConfig: public TTableSchema<4>
     {
-        struct Id
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
-        {};
+        struct Id: public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
 
-        struct Config
-            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        struct Config: public Column<2, NKikimr::NScheme::NTypeIds::String>
         {
             using Type = NProto::TDiskRegistryConfig;
         };
@@ -89,31 +83,27 @@ struct TDiskRegistrySchema
         using TColumns = TableColumns<Id, Config>;
     };
 
-    struct DirtyDevices
-        : public TTableSchema<5>
+    struct DirtyDevices: public TTableSchema<5>
     {
-        struct Id
-            : public Column<1, NKikimr::NScheme::NTypeIds::String>
-        {};
+        struct Id: public Column<1, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
 
-        struct DiskId
-            : public Column<2, NKikimr::NScheme::NTypeIds::String>
-        {};
+        struct DiskId: public Column<2, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
 
         using TKey = TableKey<Id>;
         using TColumns = TableColumns<Id, DiskId>;
     };
 
-    struct PlacementGroups
-        : public TTableSchema<6>
+    struct PlacementGroups: public TTableSchema<6>
     {
-        struct Id
-            : public Column<1, NKikimr::NScheme::NTypeIds::String>
+        struct Id: public Column<1, NKikimr::NScheme::NTypeIds::String>
         {
         };
 
-        struct Config
-            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        struct Config: public Column<2, NKikimr::NScheme::NTypeIds::String>
         {
             using Type = NProto::TPlacementGroupConfig;
         };
@@ -122,21 +112,17 @@ struct TDiskRegistrySchema
         using TColumns = TableColumns<Id, Config>;
     };
 
-    struct DiskStateChanges
-        : public TTableSchema<7>
+    struct DiskStateChanges: public TTableSchema<7>
     {
-        struct SeqNo
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint64>
+        struct SeqNo: public Column<1, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
-        struct Id
-            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        struct Id: public Column<2, NKikimr::NScheme::NTypeIds::String>
         {
         };
 
-        struct State
-            : public Column<3, NKikimr::NScheme::NTypeIds::String>
+        struct State: public Column<3, NKikimr::NScheme::NTypeIds::String>
         {
             using Type = NProto::TDiskState;
         };
@@ -145,76 +131,68 @@ struct TDiskRegistrySchema
         using TColumns = TableColumns<SeqNo, Id, State>;
     };
 
-    struct BrokenDisks
-        : public TTableSchema<8>
+    struct BrokenDisks: public TTableSchema<8>
     {
-        struct Id
-            : public Column<1, NKikimr::NScheme::NTypeIds::String>
-        {};
+        struct Id: public Column<1, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
 
-        struct TsToDestroy
-            : public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
-        {};
+        struct TsToDestroy: public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
 
         using TKey = TableKey<Id>;
         using TColumns = TableColumns<Id, TsToDestroy>;
     };
 
-    struct DisksToNotify
-        : public TTableSchema<9>
+    struct DisksToNotify: public TTableSchema<9>
     {
-        struct Id
-            : public Column<1, NKikimr::NScheme::NTypeIds::String>
-        {};
+        struct Id: public Column<1, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
 
         using TKey = TableKey<Id>;
         using TColumns = TableColumns<Id>;
     };
 
-    struct DisksToCleanup
-        : public TTableSchema<10>
+    struct DisksToCleanup: public TTableSchema<10>
     {
-        struct Id
-            : public Column<1, NKikimr::NScheme::NTypeIds::String>
-        {};
+        struct Id: public Column<1, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
 
         using TKey = TableKey<Id>;
         using TColumns = TableColumns<Id>;
     };
 
     // Obsolete. TODO: Remove legacy compatibility in next release
-    struct ErrorNotifications
-        : public TTableSchema<11>
+    struct ErrorNotifications: public TTableSchema<11>
     {
-        struct Id
-            : public Column<1, NKikimr::NScheme::NTypeIds::String>
-        {};
-
-        using TKey = TableKey<Id>;
-        using TColumns = TableColumns<Id>;
-    };
-
-    struct OutdatedVolumeConfigs
-        : public TTableSchema<12>
-    {
-        struct Id
-            : public Column<1, NKikimr::NScheme::NTypeIds::String>
-        {};
-
-        using TKey = TableKey<Id>;
-        using TColumns = TableColumns<Id>;
-    };
-
-    struct AgentById
-        : public TTableSchema<13>
-    {
-        struct Id
-            : public Column<1, NKikimr::NScheme::NTypeIds::String>
+        struct Id: public Column<1, NKikimr::NScheme::NTypeIds::String>
         {
         };
 
-        struct Config
-            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        using TKey = TableKey<Id>;
+        using TColumns = TableColumns<Id>;
+    };
+
+    struct OutdatedVolumeConfigs: public TTableSchema<12>
+    {
+        struct Id: public Column<1, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        using TKey = TableKey<Id>;
+        using TColumns = TableColumns<Id>;
+    };
+
+    struct AgentById: public TTableSchema<13>
+    {
+        struct Id: public Column<1, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        struct Config: public Column<2, NKikimr::NScheme::NTypeIds::String>
         {
             using Type = NProto::TAgentConfig;
         };
@@ -223,15 +201,13 @@ struct TDiskRegistrySchema
         using TColumns = TableColumns<Id, Config>;
     };
 
-    struct SuspendedDevices
-        : public TTableSchema<14>
+    struct SuspendedDevices: public TTableSchema<14>
     {
-        struct Id
-            : public Column<1, NKikimr::NScheme::NTypeIds::String>
-        {};
+        struct Id: public Column<1, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
 
-        struct Config
-            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        struct Config: public Column<2, NKikimr::NScheme::NTypeIds::String>
         {
             using Type = NProto::TSuspendedDevice;
         };
@@ -240,16 +216,16 @@ struct TDiskRegistrySchema
         using TColumns = TableColumns<Id, Config>;
     };
 
-    struct AutomaticallyReplacedDevices
-        : public TTableSchema<16>
+    struct AutomaticallyReplacedDevices: public TTableSchema<16>
     {
-        struct Id
-            : public Column<1, NKikimr::NScheme::NTypeIds::String>
-        {};
+        struct Id: public Column<1, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
 
         struct ReplacementTs
             : public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
-        {};
+        {
+        };
 
         using TKey = TableKey<Id>;
         using TColumns = TableColumns<Id, ReplacementTs>;
@@ -280,16 +256,13 @@ struct TDiskRegistrySchema
     };
     */
 
-    struct DiskRegistryAgentListParams
-        : public TTableSchema<17>
+    struct DiskRegistryAgentListParams: public TTableSchema<17>
     {
-        struct AgentId
-            : public Column<1, NKikimr::NScheme::NTypeIds::String>
+        struct AgentId: public Column<1, NKikimr::NScheme::NTypeIds::String>
         {
         };
 
-        struct Params
-            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        struct Params: public Column<2, NKikimr::NScheme::NTypeIds::String>
         {
             using Type = NProto::TDiskRegistryAgentParams;
         };
@@ -298,12 +271,11 @@ struct TDiskRegistrySchema
         using TColumns = TableColumns<AgentId, Params>;
     };
 
-    struct UserNotifications
-        : public TTableSchema<18>
+    struct UserNotifications: public TTableSchema<18>
     {
-        struct SeqNo
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint64>
-        {};
+        struct SeqNo: public Column<1, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
 
         struct Notification
             : public Column<2, NKikimr::NScheme::NTypeIds::String>
@@ -330,8 +302,7 @@ struct TDiskRegistrySchema
         SuspendedDevices,
         AutomaticallyReplacedDevices,
         DiskRegistryAgentListParams,
-        UserNotifications
-    >;
+        UserNotifications>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

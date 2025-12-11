@@ -16,10 +16,9 @@ namespace {
 TDuration CalculateBurstTime(const TThrottlerConfig& config)
 {
     return SecondsToDuration(
-        (config.BurstPercentage
-             ? static_cast<double>(config.BurstPercentage)
-             : 10.0)
-        / 100.0);
+        (config.BurstPercentage ? static_cast<double>(config.BurstPercentage)
+                                : 10.0) /
+        100.0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -36,9 +35,8 @@ TDuration CalculateBoostTime(const TThrottlerConfig& config)
         return TDuration::MilliSeconds(0);
     }
 
-    return TDuration::MilliSeconds(
-        static_cast<ui64>((rate - 1.0)
-            * config.BoostParameters.BoostTime.MilliSeconds()));
+    return TDuration::MilliSeconds(static_cast<ui64>(
+        (rate - 1.0) * config.BoostParameters.BoostTime.MilliSeconds()));
 }
 
 }   // namespace
@@ -59,11 +57,11 @@ struct TThrottlingPolicy::TImpl
         : Version(version)
         , Config(config)
         , Bucket(
-            CalculateBurstTime(Config),
-            CalculateBoostRate(Config),
-            CalculateBoostTime(Config),
-            Config.BoostParameters.BoostRefillTime,
-            CalculateBoostTime(Config))
+              CalculateBurstTime(Config),
+              CalculateBoostRate(Config),
+              CalculateBoostTime(Config),
+              Config.BoostParameters.BoostRefillTime,
+              CalculateBoostTime(Config))
     {}
 
     void OnPostponedEvent(const TThrottlingRequestInfo& requestInfo)
@@ -86,11 +84,9 @@ struct TThrottlingPolicy::TImpl
 
     bool TryPostpone(const TThrottlingRequestInfo& requestInfo)
     {
-        return TryPostpone(
-            PostponedRequestWeight(
-                static_cast<EOpType>(requestInfo.OpType),
-                requestInfo.ByteCount)
-        );
+        return TryPostpone(PostponedRequestWeight(
+            static_cast<EOpType>(requestInfo.OpType),
+            requestInfo.ByteCount));
     }
 
     TMaybe<TDuration> SuggestDelay(
@@ -108,8 +104,8 @@ struct TThrottlingPolicy::TImpl
 
         const auto bandwidthUpdate = requestInfo.ByteCount;
         const auto m = static_cast<EOpType>(requestInfo.OpType) == EOpType::Read
-            ? 1.0
-            : WriteCostMultiplier;
+                           ? 1.0
+                           : WriteCostMultiplier;
 
         const auto maxBandwidth =
             MaxBandwidth(static_cast<EOpType>(requestInfo.OpType));
@@ -120,8 +116,7 @@ struct TThrottlingPolicy::TImpl
             m * CostPerIO(
                     CalculateThrottlerC1(maxIops, maxBandwidth),
                     CalculateThrottlerC2(maxIops, maxBandwidth),
-                    bandwidthUpdate)
-        );
+                    bandwidthUpdate));
 
         if (!d.GetValue()) {
             return TDuration::Zero();
@@ -131,11 +126,9 @@ struct TThrottlingPolicy::TImpl
             return TMaybe<TDuration>();
         }
 
-        const auto postponed = TryPostpone(
-            PostponedRequestWeight(
-                static_cast<EOpType>(requestInfo.OpType),
-                requestInfo.ByteCount)
-        );
+        const auto postponed = TryPostpone(PostponedRequestWeight(
+            static_cast<EOpType>(requestInfo.OpType),
+            requestInfo.ByteCount));
 
         return postponed ? d : TMaybe<TDuration>();
     }
@@ -152,7 +145,8 @@ struct TThrottlingPolicy::TImpl
     ui64 MaxBandwidth(EOpType opType) const
     {
         if (opType == EOpType::Write &&
-            Config.DefaultParameters.MaxWriteBandwidth) {
+            Config.DefaultParameters.MaxWriteBandwidth)
+        {
             return Config.DefaultParameters.MaxWriteBandwidth;
         }
 
@@ -178,9 +172,8 @@ private:
 
     ui64 PostponedRequestWeight(EOpType opType, ui64 byteCount) const
     {
-        return opType == EOpType::Write
-            ? byteCount
-            : Config.DefaultPostponedRequestWeight;
+        return opType == EOpType::Write ? byteCount
+                                        : Config.DefaultPostponedRequestWeight;
     }
 };
 

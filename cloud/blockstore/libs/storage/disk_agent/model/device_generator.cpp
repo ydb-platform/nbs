@@ -2,9 +2,9 @@
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <util/string/printf.h>
-
 #include <library/cpp/digest/md5/md5.h>
+
+#include <util/string/printf.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -15,7 +15,7 @@ TDeviceGenerator::TDeviceGenerator(TLog log, TString agentId)
     , AgentId(std::move(agentId))
 {}
 
-NProto::TError TDeviceGenerator::operator () (
+NProto::TError TDeviceGenerator::operator()(
     const TString& path,
     const NProto::TStorageDiscoveryConfig::TPoolConfig& poolConfig,
     ui32 deviceNumber,
@@ -28,7 +28,8 @@ NProto::TError TDeviceGenerator::operator () (
         file.SetPath(path);
         file.SetBlockSize(blockSize);
         file.SetPoolName(poolConfig.GetPoolName());
-        file.SetDeviceId(CreateDeviceId(deviceNumber, poolConfig.GetHashSuffix()));
+        file.SetDeviceId(
+            CreateDeviceId(deviceNumber, poolConfig.GetHashSuffix()));
 
         STORAGE_INFO("Found " << file);
 
@@ -99,11 +100,8 @@ TString TDeviceGenerator::CreateDeviceId(
     ui32 deviceNumber,
     const TString& suffix) const
 {
-    const auto s = Sprintf(
-        "%s-%02u%s",
-        AgentId.c_str(),
-        deviceNumber,
-        suffix.c_str());
+    const auto s =
+        Sprintf("%s-%02u%s", AgentId.c_str(), deviceNumber, suffix.c_str());
 
     return MD5::Calc(s);
 }

@@ -14,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TMixedBlockVisitor final
-    : public IMixedBlockVisitor
+struct TMixedBlockVisitor final: public IMixedBlockVisitor
 {
     TVector<TBlockDataRef> Blocks;
 
@@ -61,8 +60,8 @@ std::unique_ptr<TMixedBlocks> MakeMixedBlocks(TVector<TBlock> blocks)
         std::move(blocks),
         TDefaultAllocator::Instance());
 
-    auto mixedBlocks = std::make_unique<TMixedBlocks>(
-        TDefaultAllocator::Instance());
+    auto mixedBlocks =
+        std::make_unique<TMixedBlocks>(TDefaultAllocator::Instance());
     mixedBlocks->RefRange(RangeId);
     mixedBlocks->AddBlocks(RangeId, TPartialBlobId(), std::move(blockList));
     return mixedBlocks;
@@ -75,11 +74,8 @@ std::unique_ptr<TMixedBlocks> GenerateMixedBlocks(
 {
     TVector<TBlock> blocks;
     for (size_t i = 0; i < BlocksCount; i++) {
-        blocks.emplace_back(
-            NodeId,
-            BlockIndex + i,
-            MinCommitId,
-            InvalidCommitId);
+        blocks
+            .emplace_back(NodeId, BlockIndex + i, MinCommitId, InvalidCommitId);
     }
 
     for (size_t i = 0; i < blocks.size(); i++) {
@@ -134,21 +130,21 @@ const auto MixedBlocksWithoutDeletionMarkers = GenerateMixedBlocks(0);
 const auto MixedBlocksWithOneDeletionMarker = GenerateMixedBlocks(1);
 const auto MixedBlocksWithOneDeletionMarkerAtTheEnd = GenerateMixedBlocks(
     1,
-    false,  // mixedDeletionMarkers
-    true);  // startDeletionMarkersAtTheEnd
-const auto MixedBlocksWithMergedDeletionMarkers = GenerateMixedBlocks(
-    BlocksCount / 2);
+    false,   // mixedDeletionMarkers
+    true);   // startDeletionMarkersAtTheEnd
+const auto MixedBlocksWithMergedDeletionMarkers =
+    GenerateMixedBlocks(BlocksCount / 2);
 const auto MixedBlocksWithMergedDeletionMarkersAtTheEnd = GenerateMixedBlocks(
     BlocksCount / 4,
-    false,  // mixedDeletionMarkers
-    true);  // startDeletionMarkersAtTheEnd
+    false,   // mixedDeletionMarkers
+    true);   // startDeletionMarkersAtTheEnd
 const auto MixedBlocksWithMixedDeletionMarkers = GenerateMixedBlocks(
     BlocksCount / 4,
-    true);  // mixedDeletionMarkers
+    true);   // mixedDeletionMarkers
 const auto MixedBlocksWithMixedDeletionMarkersAtTheEnd = GenerateMixedBlocks(
     BlocksCount / 4,
-    true,   // mixedDeletionMarkers
-    true);  // startDeletionMarkersAtTheEnd
+    true,    // mixedDeletionMarkers
+    true);   // startDeletionMarkersAtTheEnd
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -213,7 +209,7 @@ Y_CPU_BENCHMARK(TMixedBlocks_FindSingleBlockWithMergedDeletionMarkers, iface)
     for (size_t i = 0; i < iface.Iterations(); ++i) {
         FindBlocks(
             *MixedBlocksWithMergedDeletionMarkers,
-            BlockIndex + BlocksCount/2,
+            BlockIndex + BlocksCount / 2,
             1);
     }
 }

@@ -4,7 +4,6 @@
 
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/common/block_range.h>
-
 #include <cloud/blockstore/tools/testing/loadtest/protos/loadtest.pb.h>
 
 #include <util/generic/vector.h>

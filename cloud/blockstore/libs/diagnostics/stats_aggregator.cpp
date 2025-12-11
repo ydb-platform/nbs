@@ -40,16 +40,12 @@ struct THistogramPercentiles
 
         TVector<TBucketInfo> delta(Reserve(update.size()));
         for (ui32 i = 0; i < update.size(); ++i) {
-            delta.emplace_back(
-                update[i].first,
-                update[i].second - Prev[i]);
+            delta.emplace_back(update[i].first, update[i].second - Prev[i]);
             Prev[i] = update[i].second;
         }
 
         auto percentiles = GetDefaultPercentiles();
-        auto result = CalculateWeightedPercentiles(
-            delta,
-            percentiles);
+        auto result = CalculateWeightedPercentiles(delta, percentiles);
 
         for (ui32 i = 0; i < result.size(); ++i) {
             auto c = counters->GetCounter(percentiles[i].second, false);
@@ -89,7 +85,9 @@ struct THistogramPercentiles
         }
     }
 
-    TVector<TBucketInfo> ReadSolomonHistogram(TLog& Log, TDynamicCounterPtr counters)
+    TVector<TBucketInfo> ReadSolomonHistogram(
+        TLog& Log,
+        TDynamicCounterPtr counters)
     {
         if (!counters) {
             return {};
@@ -100,15 +98,17 @@ struct THistogramPercentiles
         }
 
         TVector<TBucketInfo> buckets;
-        for (const auto& [counterName, bucket] : bucketCounters) {
+        for (const auto& [counterName, bucket]: bucketCounters) {
             auto counter = counters->FindCounter(counterName.LabelValue);
             if (!counter) {
-                STORAGE_WARN("cannot create counter for " << counterName.LabelValue);
+                STORAGE_WARN(
+                    "cannot create counter for " << counterName.LabelValue);
                 return {};
             }
-            const double limit = counterName.LabelValue == "Inf"
-                ? Max()
-                : StrToD(counterName.LabelValue.c_str(), nullptr);
+            const double limit =
+                counterName.LabelValue == "Inf"
+                    ? Max()
+                    : StrToD(counterName.LabelValue.c_str(), nullptr);
             buckets.emplace_back(limit, *counter);
         }
         Sort(buckets);
@@ -162,16 +162,21 @@ struct TClientRequests
         if (!counters) {
             return;
         }
-        Read.BuildPercentiles(Log, counters->FindSubgroup("request", "ReadBlocks"));
-        Write.BuildPercentiles(Log, counters->FindSubgroup("request", "WriteBlocks"));
-        Zero.BuildPercentiles(Log, counters->FindSubgroup("request", "ZeroBlocks"));
+        Read.BuildPercentiles(
+            Log,
+            counters->FindSubgroup("request", "ReadBlocks"));
+        Write.BuildPercentiles(
+            Log,
+            counters->FindSubgroup("request", "WriteBlocks"));
+        Zero.BuildPercentiles(
+            Log,
+            counters->FindSubgroup("request", "ZeroBlocks"));
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TClientPercentileCalculator
-    : public IClientPercentileCalculator
+struct TClientPercentileCalculator: public IClientPercentileCalculator
 {
     const ILoggingServicePtr Logging;
 
@@ -187,8 +192,7 @@ struct TClientPercentileCalculator
 
     explicit TClientPercentileCalculator(ILoggingServicePtr logging)
         : Logging(std::move(logging))
-    {
-    }
+    {}
 
     void Start() override
     {
@@ -196,42 +200,37 @@ struct TClientPercentileCalculator
     }
 
     void Stop() override
-    {
-    }
+    {}
 
-    void CalculatePercentiles(NMonitoring::TDynamicCountersPtr updatedCounters) override
+    void CalculatePercentiles(
+        NMonitoring::TDynamicCountersPtr updatedCounters) override
     {
         auto updatedRootGroup =
             updatedCounters->FindSubgroup("counters", "blockstore");
 
         if (updatedRootGroup) {
-            auto clientGroup = updatedRootGroup->FindSubgroup("component", "client");
+            auto clientGroup =
+                updatedRootGroup->FindSubgroup("component", "client");
             if (clientGroup) {
                 Total.BuildPercentiles(Log, clientGroup);
                 Ssd.BuildPercentiles(
                     Log,
-                    clientGroup->FindSubgroup("type", "ssd")
-                );
+                    clientGroup->FindSubgroup("type", "ssd"));
                 Hdd.BuildPercentiles(
                     Log,
-                    clientGroup->FindSubgroup("type", "hdd")
-                );
+                    clientGroup->FindSubgroup("type", "hdd"));
                 SsdNonrepl.BuildPercentiles(
                     Log,
-                    clientGroup->FindSubgroup("type", "ssd_nonrepl")
-                );
+                    clientGroup->FindSubgroup("type", "ssd_nonrepl"));
                 SsdMirror2.BuildPercentiles(
                     Log,
-                    clientGroup->FindSubgroup("type", "ssd_mirror2")
-                );
+                    clientGroup->FindSubgroup("type", "ssd_mirror2"));
                 SsdMirror3.BuildPercentiles(
                     Log,
-                    clientGroup->FindSubgroup("type", "ssd_mirror3")
-                );
+                    clientGroup->FindSubgroup("type", "ssd_mirror3"));
                 HddNonrepl.BuildPercentiles(
                     Log,
-                    clientGroup->FindSubgroup("type", "hdd_nonrepl")
-                );
+                    clientGroup->FindSubgroup("type", "hdd_nonrepl"));
             }
         }
     }
@@ -239,8 +238,7 @@ struct TClientPercentileCalculator
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStatsParser final
-    : public IMetricConsumer
+class TStatsParser final: public IMetricConsumer
 {
     TDynamicCounterPtr Counters;
     TVector<std::pair<TString, TString>> SubgroupLabels;
@@ -295,20 +293,15 @@ public:
                 c = c->GetSubgroup(labels.first, labels.second);
 
                 if (labels.first == "component" &&
-                    labels.second == "client_volume" &&
-                    !HostLabelSeen)
+                    labels.second == "client_volume" && !HostLabelSeen)
                 {
                     c = c->GetSubgroup("host", "cluster");
                 }
             }
 
             if (pair.first == "version") {
-                c = c->GetSubgroup(
-                    "revision",
-                    pair.second);
-                CurrentCounter = c->GetCounter(
-                    "version",
-                    CounterIsDerivative);
+                c = c->GetSubgroup("revision", pair.second);
+                CurrentCounter = c->GetCounter("version", CounterIsDerivative);
             } else {
                 CurrentCounter = c->GetNamedCounter(
                     pair.first,
@@ -355,11 +348,11 @@ public:
         Y_UNUSED(snapshot);
     }
 
-    void OnLogHistogram(TInstant, TLogHistogramSnapshotPtr) override {
-    }
+    void OnLogHistogram(TInstant, TLogHistogramSnapshotPtr) override
+    {}
 
-    void OnSummaryDouble(TInstant, ISummaryDoubleSnapshotPtr) override {
-    }
+    void OnSummaryDouble(TInstant, ISummaryDoubleSnapshotPtr) override
+    {}
 
 private:
     template <typename T>
@@ -405,11 +398,11 @@ private:
 
 public:
     TStatsAggregator(
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            ILoggingServicePtr logging,
-            IMonitoringServicePtr monitoring,
-            TCommitCallback commitCallback)
+        ITimerPtr timer,
+        ISchedulerPtr scheduler,
+        ILoggingServicePtr logging,
+        IMonitoringServicePtr monitoring,
+        TCommitCallback commitCallback)
         : Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
@@ -429,14 +422,15 @@ public:
         AtomicSet(ShouldStop, 1);
     }
 
-    void AddStats(const TString& id, const TString& stats, TInstant now) override
+    void
+    AddStats(const TString& id, const TString& stats, TInstant now) override
     {
         if (AtomicGet(ShouldStop)) {
             // Don't add new client stats if stopping
             return;
         }
 
-        with_lock(Lock) {
+        with_lock (Lock) {
             Stats[id] = {stats, now};
         }
     }
@@ -452,7 +446,8 @@ private:
 
         Scheduler->Schedule(
             Timer->Now() + UpdateCountersInterval,
-            [weak_ptr = std::move(weak_ptr)] {
+            [weak_ptr = std::move(weak_ptr)]
+            {
                 if (auto p = weak_ptr.lock()) {
                     p->UpdateStats();
                     p->ScheduleUpdateStats();
@@ -463,16 +458,16 @@ private:
     void UpdateStats()
     {
         TStatsMap stats;
-        with_lock(Lock) {
+        with_lock (Lock) {
             stats = std::move(Stats);
         }
 
         TDynamicCounterPtr counters = new TDynamicCounters();
 
         auto now = TInstant::Now();
-        for (auto it = stats.begin(); it != stats.end(); ) {
+        for (auto it = stats.begin(); it != stats.end();) {
             const auto& statsInfo = it->second;
-            if (now - statsInfo.LastActivityTime > 2*UpdateCountersInterval) {
+            if (now - statsInfo.LastActivityTime > 2 * UpdateCountersInterval) {
                 stats.erase(it++);
                 continue;
             }
@@ -482,8 +477,9 @@ private:
 
             try {
                 DecodeSpackV1(&in, &parser);
-            } catch(...) {
-                STORAGE_WARN("Failed to decode stats from spack: "
+            } catch (...) {
+                STORAGE_WARN(
+                    "Failed to decode stats from spack: "
                     << CurrentExceptionMessage());
                 stats.erase(it++);
                 continue;
@@ -494,7 +490,7 @@ private:
 
         CommitCallback(std::move(counters), Monitoring->GetCounters());
 
-        with_lock(Lock) {
+        with_lock (Lock) {
             // Insert back unless newer value is already in place
             for (auto& pair: stats) {
                 Stats.emplace(std::move(pair));
@@ -505,18 +501,16 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TStatsAggregatorStub final
-    : public IStatsAggregator
+struct TStatsAggregatorStub final: public IStatsAggregator
 {
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 
-    void AddStats(const TString& id, const TString& stats, TInstant now) override
+    void
+    AddStats(const TString& id, const TString& stats, TInstant now) override
     {
         Y_UNUSED(id);
         Y_UNUSED(stats);
@@ -559,7 +553,8 @@ void UpdateClientStats(
     NMonitoring::TDynamicCountersPtr baseCounters)
 {
     auto baseRootGroup = baseCounters->GetSubgroup("counters", "blockstore");
-    auto updatedRootGroup = updatedCounters->GetSubgroup("counters", "blockstore");
+    auto updatedRootGroup =
+        updatedCounters->GetSubgroup("counters", "blockstore");
 
     auto clientGroup = updatedRootGroup->FindSubgroup("component", "client");
     if (clientGroup) {
@@ -570,12 +565,15 @@ void UpdateClientStats(
         baseRootGroup->RemoveSubgroup("component", "client");
     }
 
-    auto clientVolumeGroup = updatedRootGroup->FindSubgroup("component", "client_volume");
+    auto clientVolumeGroup =
+        updatedRootGroup->FindSubgroup("component", "client_volume");
     if (clientVolumeGroup) {
-
         // Ensure the existence of subgroup - required for ReplaceSubgroup
         baseRootGroup->GetSubgroup("component", "client_volume");
-        baseRootGroup->ReplaceSubgroup("component", "client_volume", clientVolumeGroup);
+        baseRootGroup->ReplaceSubgroup(
+            "component",
+            "client_volume",
+            clientVolumeGroup);
     } else {
         baseRootGroup->RemoveSubgroup("component", "client_volume");
     }

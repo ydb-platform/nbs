@@ -1,6 +1,7 @@
 #pragma once
 
 #include "public.h"
+
 #include "request.h"
 
 #include <cloud/filestore/public/api/protos/action.pb.h>
@@ -82,11 +83,11 @@ struct IFileStore
 {
     virtual ~IFileStore() = default;
 
-#define FILESTORE_DECLARE_METHOD(name, ...)                                    \
-    virtual NThreading::TFuture<NProto::T##name##Response> name(               \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) = 0;                \
-// FILESTORE_DECLARE_METHOD
+#define FILESTORE_DECLARE_METHOD(name, ...)                      \
+    virtual NThreading::TFuture<NProto::T##name##Response> name( \
+        TCallContextPtr callContext,                             \
+        std::shared_ptr<NProto::T##name##Request> request) = 0;  \
+    // FILESTORE_DECLARE_METHOD
 
     FILESTORE_DATA_SERVICE(FILESTORE_DECLARE_METHOD)
 
@@ -108,11 +109,11 @@ struct IFileStoreService
 {
     virtual ~IFileStoreService() = default;
 
-#define FILESTORE_DECLARE_METHOD(name, ...)                                    \
-    virtual NThreading::TFuture<NProto::T##name##Response> name(               \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) = 0;                \
-// FILESTORE_DECLARE_METHOD
+#define FILESTORE_DECLARE_METHOD(name, ...)                      \
+    virtual NThreading::TFuture<NProto::T##name##Response> name( \
+        TCallContextPtr callContext,                             \
+        std::shared_ptr<NProto::T##name##Request> request) = 0;  \
+    // FILESTORE_DECLARE_METHOD
 
     FILESTORE_CONTROL_SERVICE(FILESTORE_DECLARE_METHOD)
 
@@ -121,13 +122,13 @@ struct IFileStoreService
     virtual void GetSessionEventsStream(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TGetSessionEventsRequest> request,
-        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) = 0;
+        IResponseHandlerPtr<NProto::TGetSessionEventsResponse>
+            responseHandler) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IFileStoreEndpoints
-    : public IStartable
+struct IFileStoreEndpoints: public IStartable
 {
     virtual ~IFileStoreEndpoints() = default;
 

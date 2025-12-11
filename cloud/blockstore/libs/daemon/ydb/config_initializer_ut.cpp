@@ -1,4 +1,5 @@
 #include "config_initializer.h"
+
 #include "options.h"
 
 #include <cloud/blockstore/libs/client/client.h>
@@ -12,6 +13,7 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
 #include <cloud/blockstore/libs/ydbstats/config.h>
+
 #include <cloud/storage/core/config/features.pb.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
@@ -66,7 +68,8 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         {
             auto* featureCfg = featuresCfg.Add();
             featureCfg->SetName("Cloud.NBS.FeaturesConfig");
-            auto configStr = R"(Features { Name: "Balancer" Whitelist { CloudIds: "yc.disk-manager.cloud" }})";
+            auto configStr =
+                R"(Features { Name: "Balancer" Whitelist { CloudIds: "yc.disk-manager.cloud" }})";
             featureCfg->SetConfig(configStr);
         }
 
@@ -79,11 +82,15 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
 
         ci.ApplyCustomCMSConfigs(appCfg);
         UNIT_ASSERT_VALUES_EQUAL(true, !!ci.StorageConfig);
-        UNIT_ASSERT_VALUES_EQUAL(true, ci.StorageConfig->IsBalancerFeatureEnabled(
-            "yc.disk-manager.cloud",
-            "yc.disk-manager.folder",
-            ""));
-        UNIT_ASSERT_VALUES_EQUAL(true, ci.StorageConfig->GetMultipartitionVolumesEnabled());
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            ci.StorageConfig->IsBalancerFeatureEnabled(
+                "yc.disk-manager.cloud",
+                "yc.disk-manager.folder",
+                ""));
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            ci.StorageConfig->GetMultipartitionVolumesEnabled());
     }
 
     Y_UNIT_TEST(ShouldUpdateStorageConfigWithFeaturesFromCms)
@@ -111,17 +118,22 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         {
             auto* featureCfg = featuresCfg.Add();
             featureCfg->SetName("Cloud.NBS.FeaturesConfig");
-            auto configStr = R"(Features { Name: "Balancer" Whitelist { CloudIds: "yc.disk-manager.cloud" }})";
+            auto configStr =
+                R"(Features { Name: "Balancer" Whitelist { CloudIds: "yc.disk-manager.cloud" }})";
             featureCfg->SetConfig(configStr);
         }
 
         ci.ApplyCustomCMSConfigs(appCfg);
         UNIT_ASSERT_VALUES_EQUAL(true, !!ci.StorageConfig);
-        UNIT_ASSERT_VALUES_EQUAL(true, ci.StorageConfig->IsBalancerFeatureEnabled(
-            "yc.disk-manager.cloud",
-            "yc.disk-manager.folder",
-            ""));
-        UNIT_ASSERT_VALUES_EQUAL(true, ci.StorageConfig->GetMultipartitionVolumesEnabled());
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            ci.StorageConfig->IsBalancerFeatureEnabled(
+                "yc.disk-manager.cloud",
+                "yc.disk-manager.folder",
+                ""));
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            ci.StorageConfig->GetMultipartitionVolumesEnabled());
     }
 
     Y_UNIT_TEST(ShouldIgnoreUnknownFieldsInLogConfigAndNbsConfigs)
@@ -150,7 +162,8 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         auto nbsComponentConfigPath = dir.Path() / "nbs-component.txt";
 
         TOFStream(logConfigPath.GetPath()).Write(logConfigStr);
-        TOFStream(nbsComponentConfigPath.GetPath()).Write(nbsComponentConfigStr);
+        TOFStream(nbsComponentConfigPath.GetPath())
+            .Write(nbsComponentConfigStr);
 
         auto options = CreateOptions();
         options->LogConfig = logConfigPath.GetPath();
@@ -205,7 +218,8 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
 
         TTempDir dir;
 
-        auto throttlingConfigStr = Sprintf(R"(
+        auto throttlingConfigStr = Sprintf(
+            R"(
             {"interfaces": [{"eth0": {"speed": "%d"}}], "compute_cores_num": %d}
             )",
             expected.NetworkMbitThroughput,
@@ -214,7 +228,8 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         auto throttlingConfigPath = dir.Path() / "nbs-throttling.txt";
         TOFStream(throttlingConfigPath.GetPath()).Write(throttlingConfigStr);
 
-        auto clientConfigStr = Sprintf(R"(
+        auto clientConfigStr = Sprintf(
+            R"(
             ClientConfig {
                 ThrottlingConfig {
                     InfraThrottlingConfigPath: "%s"
@@ -233,17 +248,18 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         ci.InitHostPerformanceProfile();
 
         auto& actual = ci.HostPerformanceProfile;
+        UNIT_ASSERT_VALUES_EQUAL(expected.CpuCount, actual.CpuCount);
         UNIT_ASSERT_VALUES_EQUAL(
-            expected.CpuCount, actual.CpuCount);
-        UNIT_ASSERT_VALUES_EQUAL(
-            expected.NetworkMbitThroughput, actual.NetworkMbitThroughput);
+            expected.NetworkMbitThroughput,
+            actual.NetworkMbitThroughput);
     }
 
     Y_UNIT_TEST(ShouldInitHostPerformanceProfileWithoutThrottlingConfigFile)
     {
         TTempDir dir;
         auto wrongPath = dir.Path() / "nbs-throttling.txt";
-        auto clientConfigStr = Sprintf(R"(
+        auto clientConfigStr = Sprintf(
+            R"(
             ClientConfig {
                 ThrottlingConfig {
                     InfraThrottlingConfigPath: "%s"
@@ -278,7 +294,8 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         auto throttlingConfigPath = dir.Path() / "nbs-throttling.txt";
         TOFStream(throttlingConfigPath.GetPath()).Write(throttlingConfigStr);
 
-        auto clientConfigStr = Sprintf(R"(
+        auto clientConfigStr = Sprintf(
+            R"(
             ClientConfig {
                 ThrottlingConfig {
                     InfraThrottlingConfigPath: "%s"

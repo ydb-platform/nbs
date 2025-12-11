@@ -90,26 +90,21 @@ private:
         TCallContextBase& callContext,
         const char* methodName) const
     {
-        FILESTORE_TRACK(
-            RequestPostponed_Tablet,
-            (&callContext),
-            methodName);
+        FILESTORE_TRACK(RequestPostponed_Tablet, (&callContext), methodName);
     }
 
     void TrackAdvancedRequest(
         TCallContextBase& callContext,
         const char* methodName) const
     {
-        FILESTORE_TRACK(
-            RequestAdvanced_Tablet,
-            (&callContext),
-            methodName);
+        FILESTORE_TRACK(RequestAdvanced_Tablet, (&callContext), methodName);
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TThrottlerLogger::TThrottlerLogger(std::function<void(ui32, TDuration)> updateDelayCounter)
+TThrottlerLogger::TThrottlerLogger(
+    std::function<void(ui32, TDuration)> updateDelayCounter)
     : Impl(std::make_unique<TImpl>(std::move(updateDelayCounter)))
 {}
 

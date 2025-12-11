@@ -4,14 +4,12 @@
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
-
-#include <cloud/blockstore/libs/storage/partition_common/actor_read_blob.h>
 #include <cloud/blockstore/libs/storage/partition_common/actor_describe_base_disk_blocks.h>
-
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/events.h>
+#include <cloud/blockstore/libs/storage/partition_common/actor_read_blob.h>
 
 #include <contrib/ydb/core/base/services/blobstorage_service_id.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/events.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -25,14 +23,16 @@ namespace NCloud::NBlockStore::NStorage {
  */
 template <ReadRequest TMethod>
 class TReadDiskRegistryBasedOverlayActor final
-    : public NActors::TActorBootstrapped<TReadDiskRegistryBasedOverlayActor<TMethod>>
+    : public NActors::TActorBootstrapped<
+          TReadDiskRegistryBasedOverlayActor<TMethod>>
 {
 private:
     using TActorId = NActors::TActorId;
     using TActorContext = NActors::TActorContext;
 
     using TRequest = typename TMethod::TRequest::ProtoRecordType;
-    using TBase = NActors::TActorBootstrapped<TReadDiskRegistryBasedOverlayActor<TMethod>>;
+    using TBase = NActors::TActorBootstrapped<
+        TReadDiskRegistryBasedOverlayActor<TMethod>>;
 
     const TRequestInfoPtr RequestInfo;
     const TRequest OriginalRequest;
@@ -98,9 +98,7 @@ private:
     void SendBaseDiskRequest(const TActorContext& ctx);
 
     void ReadBlocks(const TActorContext& ctx);
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        const NProto::TError& error);
+    void ReplyAndDie(const TActorContext& ctx, const NProto::TError& error);
 
 private:
     STFUNC(StateWork);

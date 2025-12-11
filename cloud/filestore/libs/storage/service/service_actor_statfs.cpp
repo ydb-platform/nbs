@@ -21,8 +21,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStatFileStoreActor final
-    : public TActorBootstrapped<TStatFileStoreActor>
+class TStatFileStoreActor final: public TActorBootstrapped<TStatFileStoreActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
@@ -31,9 +30,7 @@ private:
     NProto::TFileStore FileStore;
 
 public:
-    TStatFileStoreActor(
-        TRequestInfoPtr requestInfo,
-        TString fileSystemId);
+    TStatFileStoreActor(TRequestInfoPtr requestInfo, TString fileSystemId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -65,8 +62,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TStatFileStoreActor::TStatFileStoreActor(
-        TRequestInfoPtr requestInfo,
-        TString fileSystemId)
+    TRequestInfoPtr requestInfo,
+    TString fileSystemId)
     : RequestInfo(std::move(requestInfo))
     , FileSystemId(std::move(fileSystemId))
 {}
@@ -79,8 +76,8 @@ void TStatFileStoreActor::Bootstrap(const TActorContext& ctx)
 
 void TStatFileStoreActor::DescribeFileStore(const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(
-        FileSystemId);
+    auto request =
+        std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(FileSystemId);
 
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
 }
@@ -100,7 +97,8 @@ void TStatFileStoreActor::HandleDescribeFileStoreResponse(
     const auto& config = fileStore.GetConfig();
     Convert(config, FileStore);
 
-    auto request = std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
+    auto request =
+        std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
     // explicitly stating the intent
     request->Record.SetAllowCache(false);
     request->Record.SetFileSystemId(FileSystemId);
@@ -142,7 +140,8 @@ void TStatFileStoreActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvStatFileStoreResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvStatFileStoreResponse>(error);
     ReplyAndDie(ctx, std::move(response));
 }
 
@@ -159,7 +158,9 @@ STFUNC(TStatFileStoreActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvSSProxy::TEvDescribeFileStoreResponse, HandleDescribeFileStoreResponse);
+        HFunc(
+            TEvSSProxy::TEvDescribeFileStoreResponse,
+            HandleDescribeFileStoreResponse);
         HFunc(TEvIndexTablet::TEvGetStorageStatsResponse, HandleStorageStats);
 
         default:
@@ -189,10 +190,7 @@ void TStorageServiceActor::HandleStatFileStore(
 
     InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
 
-    auto requestInfo = CreateRequestInfo(
-        SelfId(),
-        cookie,
-        msg->CallContext);
+    auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
     auto actor = std::make_unique<TStatFileStoreActor>(
         std::move(requestInfo),

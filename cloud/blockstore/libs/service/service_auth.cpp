@@ -17,17 +17,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAuthService final
-    : public TBlockStoreImpl<TAuthService, IBlockStore>
+class TAuthService final: public TBlockStoreImpl<TAuthService, IBlockStore>
 {
 private:
     const IBlockStorePtr Service;
     const IAuthProviderPtr AuthProvider;
 
 public:
-    TAuthService(
-            IBlockStorePtr service,
-            IAuthProviderPtr authProvider)
+    TAuthService(IBlockStorePtr service, IAuthProviderPtr authProvider)
         : Service(std::move(service))
         , AuthProvider(std::move(authProvider))
     {}
@@ -56,9 +53,8 @@ public:
         const auto& internal = headers.GetInternal();
         auto permissions = GetRequestPermissions(*request);
 
-        bool needAuth = AuthProvider->NeedAuth(
-            internal.GetRequestSource(),
-            permissions);
+        bool needAuth =
+            AuthProvider->NeedAuth(internal.GetRequestSource(), permissions);
 
         if (!needAuth) {
             return TMethod::Execute(

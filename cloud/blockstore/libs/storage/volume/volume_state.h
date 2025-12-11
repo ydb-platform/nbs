@@ -14,7 +14,6 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/public.h>
-#include <cloud/blockstore/libs/storage/volume_throttling_manager/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 #include <cloud/blockstore/libs/storage/volume/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/volume/model/checkpoint_light.h>
@@ -23,6 +22,7 @@
 #include <cloud/blockstore/libs/storage/volume/model/meta.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_params.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttling_policy.h>
+#include <cloud/blockstore/libs/storage/volume_throttling_manager/volume_throttling_manager.h>
 
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -44,7 +44,8 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 using TDevices = google::protobuf::RepeatedPtrField<NProto::TDeviceConfig>;
-using TMigrations = google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>;
+using TMigrations =
+    google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -64,10 +65,10 @@ struct THistoryLogKey
         : THistoryLogKey(timestamp, 0)
     {}
 
-    bool operator == (const THistoryLogKey& rhs) const;
-    bool operator != (const THistoryLogKey& rhs) const;
-    bool operator < (THistoryLogKey rhs) const;
-    bool operator >= (THistoryLogKey rhs) const;
+    bool operator==(const THistoryLogKey& rhs) const;
+    bool operator!=(const THistoryLogKey& rhs) const;
+    bool operator<(THistoryLogKey rhs) const;
+    bool operator>=(THistoryLogKey rhs) const;
 };
 
 struct THistoryLogItem
@@ -77,9 +78,7 @@ struct THistoryLogItem
 
     THistoryLogItem() = default;
 
-    THistoryLogItem(
-            THistoryLogKey key,
-            NProto::TVolumeOperation operation)
+    THistoryLogItem(THistoryLogKey key, NProto::TVolumeOperation operation)
         : Key(key)
         , Operation(std::move(operation))
     {}
@@ -109,10 +108,10 @@ struct TPartitionStatInfo
     NBlobMetrics::TBlobLoadMetrics LastMetrics;
 
     TPartitionStatInfo(
-            const TString& diskId,
-            const ui64 tabletId,
-            EPublishingPolicy countersPolicy,
-            EHistogramCounterOptions histCounterOptions)
+        const TString& diskId,
+        const ui64 tabletId,
+        EPublishingPolicy countersPolicy,
+        EHistogramCounterOptions histCounterOptions)
         : DiskId(diskId)
         , TabletId(tabletId)
         , CachedCounters(countersPolicy, histCounterOptions)
@@ -156,9 +155,7 @@ private:
 public:
     TCachedVolumeMountHistory() = default;
 
-    TCachedVolumeMountHistory(
-        ui32 capacity,
-        TVolumeMountHistorySlice records);
+    TCachedVolumeMountHistory(ui32 capacity, TVolumeMountHistorySlice records);
 
     void AddHistoryLogItem(THistoryLogKey key, NProto::TVolumeOperation op);
 
@@ -180,8 +177,7 @@ public:
     {
         return {
             .Items{Items.begin(), Items.end()},
-            .NextOlderRecord = NextOlderRecord
-            };
+            .NextOlderRecord = NextOlderRecord};
     }
 
     // for testing purposes
@@ -329,8 +325,7 @@ public:
         Meta.SetMigrationIndex(migrationIndex);
     }
 
-    void SetBlockCountToMigrate(
-        std::optional<ui64> blockCountToMigrate)
+    void SetBlockCountToMigrate(std::optional<ui64> blockCountToMigrate)
     {
         BlockCountToMigrate = blockCountToMigrate;
     }
@@ -354,7 +349,8 @@ public:
         Meta.SetResyncIndex(0);
     }
 
-    void UpdateFillSeqNumberInMeta(ui64 fillSeqNumber) {
+    void UpdateFillSeqNumberInMeta(ui64 fillSeqNumber)
+    {
         Meta.SetFillSeqNumber(fillSeqNumber);
     }
 
@@ -490,7 +486,8 @@ public:
         return DiskRegistryBasedPartitionActor.GetTop();
     }
 
-    const TNonreplicatedPartitionConfigPtr& GetNonreplicatedPartitionConfig() const
+    const TNonreplicatedPartitionConfigPtr&
+    GetNonreplicatedPartitionConfig() const
     {
         return NonreplicatedPartitionConfig;
     }
@@ -506,8 +503,9 @@ public:
 
     EPublishingPolicy CountersPolicy() const;
 
-    TPartitionStatInfo&
-    CreatePartitionStatInfo(const TString& diskId, ui64 tabletId);
+    TPartitionStatInfo& CreatePartitionStatInfo(
+        const TString& diskId,
+        ui64 tabletId);
 
     TPartitionStatInfo* GetPartitionStatInfoByTabletId(ui64 tabletId);
 
@@ -542,8 +540,7 @@ public:
 
     bool GetShouldStartPartitionsForGc(TInstant referenceTimestamp) const
     {
-        return StartPartitionsNeeded &&
-            !HasActiveClients(referenceTimestamp);
+        return StartPartitionsNeeded && !HasActiveClients(referenceTimestamp);
     }
 
     //
@@ -653,7 +650,8 @@ public:
         const NActors::TActorId& pipeServerActorId,
         const TString& clientId);
 
-    const THashMultiMap<NActors::TActorId, TString>& GetPipeServerId2ClientId() const;
+    const THashMultiMap<NActors::TActorId, TString>&
+    GetPipeServerId2ClientId() const;
 
     TVector<NActors::TActorId> ClearPipeServerIds(TInstant ts);
 

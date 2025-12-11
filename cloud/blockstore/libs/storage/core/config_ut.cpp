@@ -1,8 +1,8 @@
 #include "config.h"
 
-#include <library/cpp/testing/unittest/registar.h>
-
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
+
+#include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -66,12 +66,14 @@ Y_UNIT_TEST_SUITE(TConfigTest)
 
         NKikimr::TControlBoard controlBoard;
 
-        const NProto::TStorageServiceConfig globalConfigProto = [] {;
+        const NProto::TStorageServiceConfig globalConfigProto = []
+        {
+            ;
             NProto::TStorageServiceConfig proto;
             proto.SetMaxMigrationBandwidth(100);
             proto.SetMaxMigrationIoDepth(4);
             return proto;
-        } ();
+        }();
 
         auto globalConfig = std::make_shared<TStorageConfig>(
             globalConfigProto,

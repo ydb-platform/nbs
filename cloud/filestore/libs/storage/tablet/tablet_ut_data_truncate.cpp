@@ -1,4 +1,5 @@
 #include "tablet.h"
+
 #include "tablet_schema.h"
 
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
@@ -31,7 +32,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
 
-        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
+        auto id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
         ui64 handle = CreateHandle(tablet, id);
 
         // unaligned
@@ -39,10 +41,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.WriteData(handle, 0, size, '1');
         UNIT_ASSERT_VALUES_EQUAL(GetNodeAttrs(tablet, id).GetSize(), size);
 
-        tablet.CreateHandle(id, "", TCreateHandleArgs::CREATE | TCreateHandleArgs::TRUNC);
+        tablet.CreateHandle(
+            id,
+            "",
+            TCreateHandleArgs::CREATE | TCreateHandleArgs::TRUNC);
         UNIT_ASSERT_VALUES_EQUAL(GetNodeAttrs(tablet, id).GetSize(), 0);
 
-        tablet.AssertCreateHandleFailed(id, "", TCreateHandleArgs::RDNLY | TCreateHandleArgs::TRUNC);
+        tablet.AssertCreateHandleFailed(
+            id,
+            "",
+            TCreateHandleArgs::RDNLY | TCreateHandleArgs::TRUNC);
     }
 
     Y_UNIT_TEST(ShouldTruncateFiles)
@@ -68,7 +76,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         args.SetSize(4_KB);
         tablet.SetNodeAttr(args);
         UNIT_ASSERT_VALUES_EQUAL(GetNodeAttrs(tablet, id).GetSize(), 4_KB);
-        UNIT_ASSERT_VALUES_EQUAL(ReadData(tablet, handle, 8_KB), TString(4_KB, '1'));
+        UNIT_ASSERT_VALUES_EQUAL(
+            ReadData(tablet, handle, 8_KB),
+            TString(4_KB, '1'));
 
         args.SetSize(4_KB + 5);
         tablet.SetNodeAttr(args);
@@ -82,7 +92,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         args.SetSize(2_KB);
         tablet.SetNodeAttr(args);
         UNIT_ASSERT_VALUES_EQUAL(GetNodeAttrs(tablet, id).GetSize(), 2_KB);
-        UNIT_ASSERT_VALUES_EQUAL(ReadData(tablet, handle, 8_KB), TString(2_KB, '1'));
+        UNIT_ASSERT_VALUES_EQUAL(
+            ReadData(tablet, handle, 8_KB),
+            TString(2_KB, '1'));
 
         args.SetSize(4_KB + 5);
         tablet.SetNodeAttr(args);
@@ -95,12 +107,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
 
         {
             TString expected = TString(2_KB, 0);
-            UNIT_ASSERT_VALUES_EQUAL(ReadData(tablet, handle, 2_KB, 2_KB), expected);
+            UNIT_ASSERT_VALUES_EQUAL(
+                ReadData(tablet, handle, 2_KB, 2_KB),
+                expected);
         }
 
         {
             TString expected = TString(5, 0);
-            UNIT_ASSERT_VALUES_EQUAL(ReadData(tablet, handle, 5, 4_KB), expected);
+            UNIT_ASSERT_VALUES_EQUAL(
+                ReadData(tablet, handle, 5, 4_KB),
+                expected);
         }
 
         {
@@ -236,7 +252,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.SetNodeAttr(args);
 
         {
-            TString expected = TString(4_KB, 'a') + TString(4_KB, '\0');;
+            TString expected = TString(4_KB, 'a') + TString(4_KB, '\0');
+            ;
             UNIT_ASSERT_VALUES_EQUAL(ReadData(tablet, handle, 8_KB), expected);
         }
 
@@ -272,8 +289,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         // Here we have 5_KB of 0s instead of 4_KB, because TruncateRange
         // must be used only on the tail of the node with resizing.
         memset(&expected[3_KB], 0, 5_KB);
-        UNIT_ASSERT_EQUAL(ReadData(tablet, handle, 4_KB), expected.substr(0, 4_KB));
-        UNIT_ASSERT_VALUES_EQUAL(ReadData(tablet, handle, 4_KB, 4_KB), expected.substr(4_KB, 4_KB));
+        UNIT_ASSERT_EQUAL(
+            ReadData(tablet, handle, 4_KB),
+            expected.substr(0, 4_KB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            ReadData(tablet, handle, 4_KB, 4_KB),
+            expected.substr(4_KB, 4_KB));
     }
 
     Y_UNIT_TEST(ShouldTruncateFreshBytes)
@@ -311,7 +332,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         args.SetSize(4_KB);
         tablet.SetNodeAttr(args);
         UNIT_ASSERT_VALUES_EQUAL(GetNodeAttrs(tablet, id).GetSize(), 4_KB);
-        UNIT_ASSERT_VALUES_EQUAL(ReadData(tablet, handle, 4_KB), expected.substr(0, 4_KB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            ReadData(tablet, handle, 4_KB),
+            expected.substr(0, 4_KB));
 
         args.SetSize(8_KB);
         tablet.SetNodeAttr(args);
@@ -350,12 +373,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         args.SetSize(5_KB);
         tablet.SetNodeAttr(args);
         UNIT_ASSERT_VALUES_EQUAL(GetNodeAttrs(tablet, id).GetSize(), 5_KB);
-        UNIT_ASSERT_VALUES_EQUAL(ReadData(tablet, handle, 6_KB), TString(5_KB, 0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            ReadData(tablet, handle, 6_KB),
+            TString(5_KB, 0));
 
         args.SetSize(2_KB);
         tablet.SetNodeAttr(args);
         UNIT_ASSERT_VALUES_EQUAL(GetNodeAttrs(tablet, id).GetSize(), 2_KB);
-        UNIT_ASSERT_VALUES_EQUAL(ReadData(tablet, handle, 5_KB), TString(2_KB, 0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            ReadData(tablet, handle, 5_KB),
+            TString(2_KB, 0));
     }
 
     Y_UNIT_TEST(ShouldSplitTruncateForBigFiles)
@@ -375,7 +402,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.InitSession("client", "session");
 
         ui32 requests = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvTruncateRangeRequest: {
@@ -384,8 +412,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
@@ -408,7 +435,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
             tablet.WriteData(handle, 0, size, 'a');
 
             tablet.SetNodeAttr(TSetNodeAttrArgs(id).SetSize(0));
-            env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+            env.GetRuntime().DispatchEvents(
+                TDispatchOptions(),
+                TDuration::Seconds(1));
 
             tablet.SetNodeAttr(TSetNodeAttrArgs(id).SetSize(size));
 
@@ -423,7 +452,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
             tablet.WriteData(handle, 0, size, 'a');
 
             tablet.SetNodeAttr(TSetNodeAttrArgs(id).SetSize(0));
-            env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+            env.GetRuntime().DispatchEvents(
+                TDispatchOptions(),
+                TDuration::Seconds(1));
 
             tablet.SetNodeAttr(TSetNodeAttrArgs(id).SetSize(size));
 
@@ -440,7 +471,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
             tablet.WriteData(handle, 0, size, 'a');
 
             tablet.SetNodeAttr(TSetNodeAttrArgs(id).SetSize(100));
-            env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+            env.GetRuntime().DispatchEvents(
+                TDispatchOptions(),
+                TDuration::Seconds(1));
 
             tablet.SetNodeAttr(TSetNodeAttrArgs(id).SetSize(size));
 
@@ -468,7 +501,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.InitSession("client", "session");
 
         ui32 requests = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvTruncateRangeRequest: {
@@ -477,8 +511,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
@@ -486,10 +519,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         ui32 size = 6 * limit * DefaultBlockSize;
         tablet.WriteData(handle, 0, size, 'a');
 
-        auto h = CreateHandle(tablet, id, {}, TCreateHandleArgs::TRUNC | TCreateHandleArgs::RDWR);
+        auto h = CreateHandle(
+            tablet,
+            id,
+            {},
+            TCreateHandleArgs::TRUNC | TCreateHandleArgs::RDWR);
         tablet.DestroyHandle(h);
 
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions(),
+            TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(requests, 6);
         UNIT_ASSERT_VALUES_EQUAL(GetNodeAttrs(tablet, id).GetSize(), 0);
@@ -515,7 +554,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.InitSession("client", "session");
 
         ui32 requests = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvTruncateRangeRequest: {
@@ -524,10 +564,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
-        auto id1 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
+        auto id1 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
 
         // over the limit
         ui32 size = 6 * limit * DefaultBlockSize;
@@ -537,7 +577,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
 
         CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
         tablet.RenameNode(RootNodeId, "test2", RootNodeId, "test1");
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions(),
+            TDuration::Seconds(1));
 
         tablet.AssertAccessNodeFailed(id1);
         UNIT_ASSERT_VALUES_EQUAL(requests, 6);
@@ -560,7 +602,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.InitSession("client", "session");
 
         ui32 requests = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvTruncateRangeRequest: {
@@ -569,8 +612,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
 
@@ -581,7 +623,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.DestroyHandle(handle);
 
         tablet.UnlinkNode(RootNodeId, "test", false);
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions(),
+            TDuration::Seconds(1));
 
         tablet.AssertAccessNodeFailed(id);
         UNIT_ASSERT_VALUES_EQUAL(requests, 6);
@@ -604,7 +648,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.InitSession("client", "session");
 
         ui32 requests = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvTruncateRangeRequest: {
@@ -613,8 +658,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
 
@@ -624,7 +668,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.WriteData(handle, 0, size, 'a');
 
         tablet.UnlinkNode(RootNodeId, "test", false);
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions(),
+            TDuration::Seconds(1));
 
         auto attrs = GetNodeAttrs(tablet, id);
         UNIT_ASSERT_VALUES_EQUAL(attrs.GetId(), id);
@@ -632,7 +678,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         UNIT_ASSERT_VALUES_EQUAL(requests, 0);
 
         tablet.DestroyHandle(handle);
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions(),
+            TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(requests, 6);
     }
@@ -654,7 +702,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.InitSession("client", "session");
 
         ui32 requests = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvTruncateRangeRequest: {
@@ -663,8 +712,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
 
@@ -674,7 +722,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.WriteData(handle, 0, size, 'a');
 
         tablet.UnlinkNode(RootNodeId, "test", false);
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions(),
+            TDuration::Seconds(1));
 
         auto attrs = GetNodeAttrs(tablet, id);
         UNIT_ASSERT_VALUES_EQUAL(attrs.GetId(), id);
@@ -682,7 +732,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         UNIT_ASSERT_VALUES_EQUAL(requests, 0);
 
         tablet.ResetSession("client", "session", 0, "state");
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions(),
+            TDuration::Seconds(1));
 
         tablet.AssertAccessNodeFailed(id);
         UNIT_ASSERT_VALUES_EQUAL(requests, 6);
@@ -705,7 +757,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.InitSession("client", "session");
 
         ui32 requests = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvTruncateRangeRequest: {
@@ -714,8 +767,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
 
@@ -725,7 +777,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         tablet.WriteData(handle, 0, size, 'a');
 
         tablet.UnlinkNode(RootNodeId, "test", false);
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions(),
+            TDuration::Seconds(1));
 
         auto attrs = GetNodeAttrs(tablet, id);
         UNIT_ASSERT_VALUES_EQUAL(attrs.GetId(), id);
@@ -733,7 +787,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         UNIT_ASSERT_VALUES_EQUAL(requests, 0);
 
         tablet.DestroySession();
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions(),
+            TDuration::Seconds(1));
 
         tablet.AssertAccessNodeFailed(id);
         UNIT_ASSERT_VALUES_EQUAL(requests, 6);

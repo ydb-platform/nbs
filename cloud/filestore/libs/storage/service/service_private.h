@@ -66,13 +66,15 @@ struct TEvServicePrivate
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TFileStoreEventsPrivate::SERVICE_WORKER_END,
+    static_assert(
+        EvEnd < (int)TFileStoreEventsPrivate::SERVICE_WORKER_END,
         "EvEnd expected to be < TFileStoreEventsPrivate::SERVICE_WORKER_END");
 
     using TEvPingSession = TRequestEvent<TEmpty, EvPingSession>;
     using TEvCreateSession = TRequestEvent<TCreateSession, EvCreateSession>;
     using TEvSessionCreated = TResponseEvent<TSessionCreated, EvSessionCreated>;
-    using TEvSessionDestroyed = TResponseEvent<TSessionDestroyed, EvSessionDestroyed>;
+    using TEvSessionDestroyed =
+        TResponseEvent<TSessionDestroyed, EvSessionDestroyed>;
     using TEvUpdateStats = TRequestEvent<TEmpty, EvUpdateStats>;
 };
 

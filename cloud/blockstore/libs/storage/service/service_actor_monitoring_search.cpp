@@ -57,9 +57,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 THttpFindVolumeActor::THttpFindVolumeActor(
-        TRequestInfoPtr requestInfo,
-        TString diskId,
-        ui32 clientCount)
+    TRequestInfoPtr requestInfo,
+    TString diskId,
+    ui32 clientCount)
     : RequestInfo(std::move(requestInfo))
     , DiskId(std::move(diskId))
     , ClientCount(clientCount)
@@ -95,9 +95,8 @@ TString THttpFindVolumeActor::HandleError(
     const TString& path)
 {
     TStringStream out;
-    out << "Could not resolve path " << path.Quote()
-        << " for volume " << DiskId.Quote()
-        << ": " << FormatError(error);
+    out << "Could not resolve path " << path.Quote() << " for volume "
+        << DiskId.Quote() << ": " << FormatError(error);
 
     LOG_ERROR(ctx, TBlockStoreComponents::SERVICE, out.Str());
     return out.Str();
@@ -109,35 +108,37 @@ TString THttpFindVolumeActor::BuildHtmlResponse(
 {
     TStringStream out;
 
-    HTML(out) {
-        TAG(TH3) { out << "Volume"; }
-        TABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Volume"; }
-                    TABLEH() { out << "Tablet ID"; }
-                    TABLEH() { out << "Clients"; }
+    HTML (out) {
+        TAG (TH3) {
+            out << "Volume";
+        }
+        TABLE_CLASS ("table table-bordered") {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Volume";
+                    }
+                    TABLEH () {
+                        out << "Tablet ID";
+                    }
+                    TABLEH () {
+                        out << "Clients";
+                    }
                 }
             }
-            TABLER() {
-                TABLED() {
+            TABLER () {
+                TABLED () {
                     out << path;
                 }
 
-                TABLED() {
-                    out << "<a href='../tablets?TabletID="
-                        << tabletId
-                        << "'>"
-                        << tabletId
-                        << "</a>";
+                TABLED () {
+                    out << "<a href='../tablets?TabletID=" << tabletId << "'>"
+                        << tabletId << "</a>";
                 }
 
-                TABLED() {
-                    out << "<a href='../blockstore/service?Volume="
-                        << DiskId
-                        << "&action=listclients'>"
-                        << ClientCount
-                        << "</a>";
+                TABLED () {
+                    out << "<a href='../blockstore/service?Volume=" << DiskId
+                        << "&action=listclients'>" << ClientCount << "</a>";
                 }
             }
         }
@@ -198,7 +199,9 @@ void TServiceActor::HandleHttpInfo_Search(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Search volume for id: %s",
         diskId.Quote().data());
 

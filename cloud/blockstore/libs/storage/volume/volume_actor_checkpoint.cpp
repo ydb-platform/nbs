@@ -57,7 +57,8 @@ using TDeleteCheckpointDataMethod = TEvVolume::TDeleteCheckpointDataMethod;
 using TGetChangedBlocksMethod = TEvService::TGetChangedBlocksMethod;
 using TGetCheckpointStatusMethod = TEvService::TGetCheckpointStatusMethod;
 
-const char* GetCheckpointRequestName(ECheckpointRequestType reqType) {
+const char* GetCheckpointRequestName(ECheckpointRequestType reqType)
+{
     switch (reqType) {
         case ECheckpointRequestType::Delete:
             return TDeleteCheckpointMethod::Name;
@@ -106,7 +107,8 @@ ECheckpointRequestType ProtoCheckpointType2Create(
     return proto2enum.Value(checkpointType, ECheckpointRequestType::Create);
 }
 
-NProto::ECheckpointStatus GetCheckpointStatus(const TActiveCheckpointInfo& checkpointInfo)
+NProto::ECheckpointStatus GetCheckpointStatus(
+    const TActiveCheckpointInfo& checkpointInfo)
 {
     switch (checkpointInfo.Type) {
         case ECheckpointType::Normal:
@@ -294,20 +296,20 @@ private:
 
 template <typename TMethod>
 TCheckpointActor<TMethod>::TCheckpointActor(
-        TRequestInfoPtr requestInfo,
-        ui64 requestId,
-        TString diskId,
-        TString checkpointId,
-        ui64 volumeTabletId,
-        TActorId volumeActorId,
-        TPartitionDescrs partitionDescrs,
-        TRequestTraceInfo traceInfo,
-        ECheckpointRequestType requestType,
-        bool createCheckpointShadowDisk,
-        bool waitForExternalDrain,
-        ui32 volumeGeneration,
-        TString shadowDiskId,
-        TChildLogTitle logTitle)
+    TRequestInfoPtr requestInfo,
+    ui64 requestId,
+    TString diskId,
+    TString checkpointId,
+    ui64 volumeTabletId,
+    TActorId volumeActorId,
+    TPartitionDescrs partitionDescrs,
+    TRequestTraceInfo traceInfo,
+    ECheckpointRequestType requestType,
+    bool createCheckpointShadowDisk,
+    bool waitForExternalDrain,
+    ui32 volumeGeneration,
+    TString shadowDiskId,
+    TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , RequestId(requestId)
     , DiskId(std::move(diskId))
@@ -323,8 +325,7 @@ TCheckpointActor<TMethod>::TCheckpointActor(
     , NeedToDestroyShadowActor(waitForExternalDrain)
     , LogTitle(std::move(logTitle))
     , DrainSource(
-          waitForExternalDrain ? EDrainSource::External
-                               : EDrainSource::None)
+          waitForExternalDrain ? EDrainSource::External : EDrainSource::None)
     , ChildCallContexts(Reserve(PartitionDescrs.size()))
 {}
 
@@ -353,8 +354,7 @@ void TCheckpointActor<TMethod>::Drain(const TActorContext& ctx)
             request.release(),
             IEventHandle::FlagForwardOnNondelivery,
             cookie++,
-            &selfId
-        );
+            &selfId);
 
         ctx.Send(event.release());
     }
@@ -395,9 +395,8 @@ void TCheckpointActor<TMethod>::UpdateCheckpointRequest(
 
     auto requestInfo = CreateRequestInfo(
         selfId,
-        0,  // cookie
-        RequestInfo->CallContext
-    );
+        0,   // cookie
+        RequestInfo->CallContext);
 
     auto request =
         std::make_unique<TEvVolumePrivate::TEvUpdateCheckpointRequestRequest>(
@@ -412,9 +411,8 @@ void TCheckpointActor<TMethod>::UpdateCheckpointRequest(
         selfId,
         request.release(),
         IEventHandle::FlagForwardOnNondelivery,
-        0,  // cookie
-        &selfId
-    );
+        0,   // cookie
+        &selfId);
 
     ctx.Send(event.release());
 
@@ -501,8 +499,7 @@ void TCheckpointActor<TMethod>::HandleDrainResponse(
         NCloud::Send(
             ctx,
             VolumeActorId,
-            std::make_unique<TEvents::TEvPoisonPill>()
-        );
+            std::make_unique<TEvents::TEvPoisonPill>());
 
         ReplyAndDie(ctx);
         return;
@@ -525,14 +522,12 @@ void TCheckpointActor<TMethod>::HandleDrainUndelivery(
 
     Error = MakeError(
         E_REJECTED,
-        "failed to deliver drain request to some partitions"
-    );
+        "failed to deliver drain request to some partitions");
 
     NCloud::Send(
         ctx,
         VolumeActorId,
-        std::make_unique<TEvents::TEvPoisonPill>()
-    );
+        std::make_unique<TEvents::TEvPoisonPill>());
 
     ReplyAndDie(ctx);
 }
@@ -618,8 +613,7 @@ void TCheckpointActor<TMethod>::HandleResponse(
         NCloud::Send(
             ctx,
             VolumeActorId,
-            std::make_unique<TEvents::TEvPoisonPill>()
-        );
+            std::make_unique<TEvents::TEvPoisonPill>());
 
         ReplyAndDie(ctx);
         return;
@@ -703,14 +697,12 @@ void TCheckpointActor<TMethod>::HandleUndelivery(
 
     Error = MakeError(
         E_REJECTED,
-        "failed to deliver checkpoint request to some partitions"
-    );
+        "failed to deliver checkpoint request to some partitions");
 
     NCloud::Send(
         ctx,
         VolumeActorId,
-        std::make_unique<TEvents::TEvPoisonPill>()
-    );
+        std::make_unique<TEvents::TEvPoisonPill>());
 
     ReplyAndDie(ctx);
 }
@@ -734,10 +726,7 @@ void TCheckpointActor<TMethod>::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    Error = MakeError(
-        E_REJECTED,
-        "tablet is shutting down"
-    );
+    Error = MakeError(E_REJECTED, "tablet is shutting down");
 
     ReplyAndDie(ctx);
 }
@@ -852,8 +841,7 @@ STFUNC(TCheckpointActor<TMethod>::StateUpdateCheckpointRequest)
     switch (ev->GetTypeRewrite()) {
         HFunc(
             TEvVolumePrivate::TEvUpdateCheckpointRequestResponse,
-            HandleUpdateCheckpointRequestResponse
-        );
+            HandleUpdateCheckpointRequestResponse);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         IgnoreFunc(TEvVolumePrivate::TEvExternalDrainDone);
@@ -975,7 +963,9 @@ void TCheckpointActor<TMethod>::DoActionForBlobStorageBasedPartition(
     const TPartitionDescr& partition,
     ui32 partitionIndex)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
         "%s Sending %s request to partition %lu",
         LogTitle.GetWithTime().c_str(),
         TMethod::Name,
@@ -988,8 +978,7 @@ void TCheckpointActor<TMethod>::DoActionForBlobStorageBasedPartition(
         request->Record.SetCheckpointType(
             RequestType == ECheckpointRequestType::CreateWithoutData
                 ? NProto::ECheckpointType::WITHOUT_DATA
-                : NProto::ECheckpointType::NORMAL
-        );
+                : NProto::ECheckpointType::NORMAL);
     }
 
     ForkTraces(request->CallContext);
@@ -1000,8 +989,7 @@ void TCheckpointActor<TMethod>::DoActionForBlobStorageBasedPartition(
         request.release(),
         IEventHandle::FlagForwardOnNondelivery,
         partitionIndex,
-        &selfId
-    );
+        &selfId);
 
     ctx.Send(event.release());
 
@@ -1050,7 +1038,8 @@ void TVolumeActor::CreateCheckpointLightRequest(
     ui64 requestId,
     const TString& checkpointId)
 {
-    const auto type = State->GetCheckpointStore().GetCheckpointType(checkpointId);
+    const auto type =
+        State->GetCheckpointStore().GetCheckpointType(checkpointId);
 
     if (type && *type == ECheckpointType::Light) {
         LOG_INFO(
@@ -1122,7 +1111,7 @@ void TVolumeActor::GetChangedBlocksForLightCheckpoints(
     const auto* msg = ev->Get();
 
     auto requestInfo =
-            CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     auto replyError = [&](NProto::TError error)
     {
@@ -1140,32 +1129,44 @@ void TVolumeActor::GetChangedBlocksForLightCheckpoints(
             msg->Record.GetBlocksCount(),
             FormatError(error).c_str());
 
-        NCloud::Reply(ctx, *requestInfo,
-            std::make_unique<TGetChangedBlocksMethod::TResponse>(std::move(error)));
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<TGetChangedBlocksMethod::TResponse>(
+                std::move(error)));
     };
 
     if (!msg->Record.GetHighCheckpointId().empty()) {
-        const auto highCheckpointType = State->GetCheckpointStore().GetCheckpointType(
+        const auto highCheckpointType =
+            State->GetCheckpointStore().GetCheckpointType(
                 msg->Record.GetHighCheckpointId());
 
-        if (!highCheckpointType || *highCheckpointType != ECheckpointType::Light){
-            replyError(MakeError(E_ARGUMENT, "High light checkpoint does not exist"));
+        if (!highCheckpointType ||
+            *highCheckpointType != ECheckpointType::Light)
+        {
+            replyError(
+                MakeError(E_ARGUMENT, "High light checkpoint does not exist"));
             return;
         }
     }
 
     if (!msg->Record.GetLowCheckpointId().empty()) {
-        const auto lowCheckpointType = State->GetCheckpointStore().GetCheckpointType(
+        const auto lowCheckpointType =
+            State->GetCheckpointStore().GetCheckpointType(
                 msg->Record.GetLowCheckpointId());
 
-        if (!lowCheckpointType || *lowCheckpointType != ECheckpointType::Light){
-            replyError(MakeError(E_ARGUMENT, "Low light checkpoint does not exist"));
+        if (!lowCheckpointType || *lowCheckpointType != ECheckpointType::Light)
+        {
+            replyError(
+                MakeError(E_ARGUMENT, "Low light checkpoint does not exist"));
             return;
         }
     }
 
     if (msg->Record.GetBlocksCount() == 0) {
-        replyError(MakeError(E_ARGUMENT, "Empty block range is forbidden for GetChangedBlocks"));
+        replyError(MakeError(
+            E_ARGUMENT,
+            "Empty block range is forbidden for GetChangedBlocks"));
         return;
     }
 
@@ -1190,9 +1191,10 @@ void TVolumeActor::GetChangedBlocksForLightCheckpoints(
     NCloud::Reply(ctx, *requestInfo, std::move(response));
 }
 
-void TVolumeActor::ReplyErrorOnNormalGetChangedBlocksRequestForDiskRegistryBasedDisk(
-    const TGetChangedBlocksMethod::TRequest::TPtr& ev,
-    const TActorContext& ctx)
+void TVolumeActor::
+    ReplyErrorOnNormalGetChangedBlocksRequestForDiskRegistryBasedDisk(
+        const TGetChangedBlocksMethod::TRequest::TPtr& ev,
+        const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
 
@@ -1214,8 +1216,8 @@ void TVolumeActor::ReplyErrorOnNormalGetChangedBlocksRequestForDiskRegistryBased
     ui32 flags = 0;
     SetProtoFlag(flags, NProto::EF_SILENT);
     auto error = MakeError(E_NOT_IMPLEMENTED, errorMsg, flags);
-    auto response = std::make_unique<TGetChangedBlocksMethod::TResponse>(
-        std::move(error));
+    auto response =
+        std::make_unique<TGetChangedBlocksMethod::TResponse>(std::move(error));
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }
@@ -1248,7 +1250,7 @@ void TVolumeActor::HandleCheckpointRequest<TCreateCheckpointMethod>(
 
     CheckpointRequests.insert(
         {checkpointRequest.RequestId,
-        {std::move(requestInfo), isTraced, traceTs}});
+         {std::move(requestInfo), isTraced, traceTs}});
 
     ProcessCheckpointRequests(ctx);
 }
@@ -1274,7 +1276,7 @@ void TVolumeActor::HandleCheckpointRequest<TDeleteCheckpointMethod>(
 
     CheckpointRequests.insert(
         {checkpointRequest.RequestId,
-        {std::move(requestInfo), isTraced, traceTs}});
+         {std::move(requestInfo), isTraced, traceTs}});
 
     ProcessCheckpointRequests(ctx);
 }
@@ -1300,7 +1302,7 @@ void TVolumeActor::HandleCheckpointRequest<TDeleteCheckpointDataMethod>(
 
     CheckpointRequests.insert(
         {checkpointRequest.RequestId,
-        {std::move(requestInfo), isTraced, traceTs}});
+         {std::move(requestInfo), isTraced, traceTs}});
 
     ProcessCheckpointRequests(ctx);
 }
@@ -1384,10 +1386,10 @@ void TVolumeActor::ProcessCheckpointRequests(const NActors::TActorContext& ctx)
         return;
     }
 
-    // there is no FIFO guarantee for requests sent via TMultiPartitionRequestActor
-    // and requests forwarded via TVolumeActor => we can start checkpoint
-    // creation only if there are no TMultiPartitionRequestActor-based requests
-    // in flight currently
+    // there is no FIFO guarantee for requests sent via
+    // TMultiPartitionRequestActor and requests forwarded via TVolumeActor => we
+    // can start checkpoint creation only if there are no
+    // TMultiPartitionRequestActor-based requests in flight currently
     if (MultipartitionWriteAndZeroRequestsInProgress) {
         return;
     }
@@ -1403,7 +1405,9 @@ void TVolumeActor::ProcessCheckpointRequests(const NActors::TActorContext& ctx)
     }
 }
 
-bool TVolumeActor::ProcessCheckpointRequest(const TActorContext& ctx, ui64 requestId)
+bool TVolumeActor::ProcessCheckpointRequest(
+    const TActorContext& ctx,
+    ui64 requestId)
 {
     auto& checkpointStore = State->GetCheckpointStore();
 
@@ -1418,11 +1422,10 @@ bool TVolumeActor::ProcessCheckpointRequest(const TActorContext& ctx, ui64 reque
     }
 
     if (request.State == ECheckpointRequestState::Received) {
-        auto validationResult =
-            checkpointStore.ValidateCheckpointRequest(
-                request.CheckpointId,
-                request.ReqType,
-                request.Type);
+        auto validationResult = checkpointStore.ValidateCheckpointRequest(
+            request.CheckpointId,
+            request.ReqType,
+            request.Type);
 
         if (validationResult) {
             // Will not save this request to database and execute it.
@@ -1480,13 +1483,12 @@ void TVolumeActor::ReplyToCheckpointRequestWithoutSaving(
         }
     }
 
-    NCloud::Reply(
-        ctx,
-        *requestInfo->RequestInfo,
-        std::move(response));
+    NCloud::Reply(ctx, *requestInfo->RequestInfo, std::move(response));
 }
 
-void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 requestId)
+void TVolumeActor::ExecuteCheckpointRequest(
+    const TActorContext& ctx,
+    ui64 requestId)
 {
     const TCheckpointRequest& request =
         State->GetCheckpointStore().GetRequestById(requestId);
@@ -1810,8 +1812,8 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
         NCloud::Reply(
             ctx,
             *args.RequestInfo,
-            std::make_unique<TEvVolumePrivate::TEvUpdateCheckpointRequestResponse>()
-        );
+            std::make_unique<
+                TEvVolumePrivate::TEvUpdateCheckpointRequestResponse>());
         Actors.erase(args.RequestInfo->Sender);
     }
 

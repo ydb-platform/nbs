@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
+
 #include <cloud/storage/core/libs/common/media.h>
 
 #include <bit>
@@ -24,19 +25,19 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
-            0,  // maxBandwidth
-            0,  // maxIops
-            0,  // burstPercentage
-            0,  // maxPostponedWeight
-            false,  // throttlingEnabled
-            1,  // version
+            0,       // maxBandwidth
+            0,       // maxIops
+            0,       // burstPercentage
+            0,       // maxPostponedWeight
+            false,   // throttlingEnabled
+            1,       // version
             NCloud::NProto::STORAGE_MEDIA_HYBRID,
             7 * 1024,   // block count per partition
-            "vol0",  // diskId
-            "cloud",  // cloudId
-            "folder",  // folderId
-            3,  // partition count
-            2  // blocksPerStripe
+            "vol0",     // diskId
+            "cloud",    // cloudId
+            "folder",   // folderId
+            3,          // partition count
+            2           // blocksPerStripe
         );
 
         volume.WaitReady();
@@ -44,13 +45,13 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         auto clientInfo = CreateVolumeClientInfo(
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
-            0
-        );
+            0);
         volume.AddClient(clientInfo);
 
-        auto popCountStr = [](const TString& s) {
+        auto popCountStr = [](const TString& s)
+        {
             ui64 count = 0;
-            for (char c : s) {
+            for (char c: s) {
                 count += std::popcount(static_cast<unsigned char>(c));
             }
             return count;
@@ -85,21 +86,37 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             clientInfo.GetClientId(),
             3);
 
-        auto response = volume.GetChangedBlocks(TBlockRange64::WithLength(0, 1024), "c1", "c2");
+        auto response = volume.GetChangedBlocks(
+            TBlockRange64::WithLength(0, 1024),
+            "c1",
+            "c2");
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
         UNIT_ASSERT_VALUES_EQUAL(1024 / 8, response->Record.GetMask().size());
-        UNIT_ASSERT_VALUES_EQUAL(16, popCountStr(response->Record.GetMask()));  // 0, 5-15, 63-64, 1022-1023
+        UNIT_ASSERT_VALUES_EQUAL(
+            16,
+            popCountStr(
+                response->Record.GetMask()));   // 0, 5-15, 63-64, 1022-1023
         // range [0-7]
-        UNIT_ASSERT_VALUES_EQUAL(0b11100001, ui8(response->Record.GetMask()[0]));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0b11100001,
+            ui8(response->Record.GetMask()[0]));
         // range [8-15]
-        UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(response->Record.GetMask()[1]));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0b11111111,
+            ui8(response->Record.GetMask()[1]));
         // range [56-63]
-        UNIT_ASSERT_VALUES_EQUAL(0b10000000, ui8(response->Record.GetMask()[7]));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0b10000000,
+            ui8(response->Record.GetMask()[7]));
         // range [64-72]
-        UNIT_ASSERT_VALUES_EQUAL(0b00000001, ui8(response->Record.GetMask()[8]));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0b00000001,
+            ui8(response->Record.GetMask()[8]));
         // range [1016-1023]
-        UNIT_ASSERT_VALUES_EQUAL(0b11000000, ui8(response->Record.GetMask()[127]));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0b11000000,
+            ui8(response->Record.GetMask()[127]));
 
         response = volume.GetChangedBlocks(
             TBlockRange64::MakeClosedInterval(1021, 1035),
@@ -111,7 +128,9 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         UNIT_ASSERT_VALUES_EQUAL(3, popCountStr(response->Record.GetMask()));
 
         // range [1021-1028]
-        UNIT_ASSERT_VALUES_EQUAL(0b00001110, ui8(response->Record.GetMask()[0]));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0b00001110,
+            ui8(response->Record.GetMask()[0]));
     }
 
     Y_UNIT_TEST(ShouldCreateCheckpointsForMultipartitionVolumes)
@@ -132,9 +151,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             "vol0",
             "cloud",
             "folder",
-            3,          // partition count
-            2
-        );
+            3,   // partition count
+            2);
 
         volume.WaitReady();
 
@@ -155,8 +173,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             volume.WriteBlocks(
                 TBlockRange64::WithLength(1024 * i, 1024),
                 clientInfo.GetClientId(),
-                1
-            );
+                1);
         }
 
         volume.CreateCheckpoint("c1");
@@ -165,16 +182,14 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             volume.WriteBlocks(
                 TBlockRange64::WithLength(1024 * i, 1024),
                 clientInfo.GetClientId(),
-                2
-            );
+                2);
         }
 
         for (ui32 i = 0; i < 21; ++i) {
             auto resp = volume.ReadBlocks(
                 TBlockRange64::WithLength(1024 * i, 1024),
                 clientInfo.GetClientId(),
-                "c1"
-            );
+                "c1");
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
             UNIT_ASSERT_VALUES_EQUAL(1024, bufs.size());
             for (ui32 j = 0; j < 1024; ++j) {
@@ -185,8 +200,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         for (ui32 i = 0; i < 21; ++i) {
             auto resp = volume.ReadBlocks(
                 TBlockRange64::WithLength(1024 * i, 1024),
-                clientInfo.GetClientId()
-            );
+                clientInfo.GetClientId());
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
             UNIT_ASSERT_VALUES_EQUAL(1024, bufs.size());
             for (ui32 j = 0; j < 1024; ++j) {
@@ -195,25 +209,27 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldDrainMultipartitionVolumePartitionsBeforeCheckpointCreation)
+    Y_UNIT_TEST(
+        ShouldDrainMultipartitionVolumePartitionsBeforeCheckpointCreation)
     {
         NProto::TStorageServiceConfig config;
-        config.SetWriteBlobThreshold(1);    // disabling fresh
+        config.SetWriteBlobThreshold(1);   // disabling fresh
         auto runtime = PrepareTestActorRuntime(config);
 
         TVolumeClient volume(*runtime);
 
         TActorId partActorId;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 if (event->GetTypeRewrite() == TEvPartition::EvWaitReadyResponse
-                        // selecting a partition actor - doesn't matter which one
-                        && !partActorId)
+                    // selecting a partition actor - doesn't matter which one
+                    && !partActorId)
                 {
                     partActorId = event->Sender;
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         volume.UpdateVolumeConfig(
             0,
@@ -227,9 +243,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             "vol0",
             "cloud",
             "folder",
-            3,          // partition count
-            2
-        );
+            3,   // partition count
+            2);
 
         volume.WaitReady();
 
@@ -242,12 +257,12 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
-            1
-        );
+            1);
 
         TDeque<std::unique_ptr<IEventHandle>> addBlobsRequests;
         bool intercept = true;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
             {
                 if (intercept) {
                     switch (event->GetTypeRewrite()) {
@@ -259,14 +274,12 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         volume.SendWriteBlocksRequest(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
-            2
-        );
+            2);
 
         runtime->DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(addBlobsRequests.size());
@@ -295,8 +308,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             auto resp = volume.ReadBlocks(
                 TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId(),
-                "c1"
-            );
+                "c1");
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
             UNIT_ASSERT_VALUES_EQUAL(1024, bufs.size());
             for (ui32 i = 0; i < 1024; ++i) {
@@ -305,25 +317,27 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldDrainMultipartitionVolumeRequestsInVolumeBeforeCheckpointCreation)
+    Y_UNIT_TEST(
+        ShouldDrainMultipartitionVolumeRequestsInVolumeBeforeCheckpointCreation)
     {
         NProto::TStorageServiceConfig config;
-        config.SetWriteBlobThreshold(1);    // disabling fresh
+        config.SetWriteBlobThreshold(1);   // disabling fresh
         auto runtime = PrepareTestActorRuntime(config);
 
         TVolumeClient volume(*runtime);
 
         TActorId partActorId;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 if (event->GetTypeRewrite() == TEvPartition::EvWaitReadyResponse
-                        // selecting a partition actor - doesn't matter which one
-                        && !partActorId)
+                    // selecting a partition actor - doesn't matter which one
+                    && !partActorId)
                 {
                     partActorId = event->Sender;
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         volume.UpdateVolumeConfig(
             0,
@@ -337,8 +351,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             "vol0",
             "cloud",
             "folder",
-            3,          // partition count
-            2           // stripe size
+            3,   // partition count
+            2    // stripe size
         );
 
         volume.WaitReady();
@@ -352,11 +366,11 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
-            1
-        );
+            1);
 
         std::unique_ptr<IEventHandle> partWriteBlocksRequest;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
             {
                 if (event->Recipient == partActorId) {
                     switch (event->GetTypeRewrite()) {
@@ -368,14 +382,12 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         volume.SendWriteBlocksRequest(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
-            2
-        );
+            2);
 
         runtime->DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(partWriteBlocksRequest);
@@ -401,8 +413,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             auto resp = volume.ReadBlocks(
                 TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId(),
-                "c1"
-            );
+                "c1");
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
             UNIT_ASSERT_VALUES_EQUAL(1024, bufs.size());
             for (ui32 i = 0; i < 1024; ++i) {
@@ -419,16 +430,17 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         TVolumeClient volume(*runtime);
 
         TActorId partActorId;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 if (event->GetTypeRewrite() == TEvPartition::EvWaitReadyResponse
-                        // selecting a partition actor - doesn't matter which one
-                        && !partActorId)
+                    // selecting a partition actor - doesn't matter which one
+                    && !partActorId)
                 {
                     partActorId = event->Sender;
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         volume.UpdateVolumeConfig(
             0,
@@ -442,9 +454,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             "vol0",
             "cloud",
             "folder",
-            3,          // partition count
-            2
-        );
+            3,   // partition count
+            2);
 
         volume.WaitReady();
 
@@ -457,21 +468,22 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
-            1
-        );
+            1);
 
         bool intercepted = false;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                if (event->GetTypeRewrite() == TEvService::EvCreateCheckpointRequest
-                        && event->Recipient == partActorId)
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvService::EvCreateCheckpointRequest &&
+                    event->Recipient == partActorId)
                 {
                     intercepted = true;
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         volume.SendCreateCheckpointRequest("c1");
         runtime->DispatchEvents({}, TDuration::Seconds(1));
@@ -480,8 +492,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.SendWriteBlocksRequest(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
-            100
-        );
+            100);
 
         {
             auto response = volume.RecvWriteBlocksResponse();
@@ -490,8 +501,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         volume.SendZeroBlocksRequest(
             TBlockRange64::WithLength(0, 1024),
-            clientInfo.GetClientId()
-        );
+            clientInfo.GetClientId());
 
         {
             auto response = volume.RecvZeroBlocksResponse();
@@ -501,15 +511,17 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.RebootTablet();
         volume.AddClient(clientInfo);
         intercepted = false;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
             {
-                if (event->GetTypeRewrite() == TEvService::EvCreateCheckpointResponse) {
+                if (event->GetTypeRewrite() ==
+                    TEvService::EvCreateCheckpointResponse)
+                {
                     intercepted = true;
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
         volume.WaitReady();
         runtime->DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(intercepted);
@@ -517,15 +529,13 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
-            2
-        );
+            2);
 
         {
             auto resp = volume.ReadBlocks(
                 TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId(),
-                "c1"
-            );
+                "c1");
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
             UNIT_ASSERT_VALUES_EQUAL(1024, bufs.size());
             for (ui32 i = 0; i < 1024; ++i) {
@@ -536,8 +546,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         {
             auto resp = volume.ReadBlocks(
                 TBlockRange64::WithLength(0, 1024),
-                clientInfo.GetClientId()
-            );
+                clientInfo.GetClientId());
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
             UNIT_ASSERT_VALUES_EQUAL(1024, bufs.size());
             for (ui32 i = 0; i < 1024; ++i) {
@@ -554,16 +563,17 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         TVolumeClient volume(*runtime);
 
         TActorId partActorId;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 if (event->GetTypeRewrite() == TEvPartition::EvWaitReadyResponse
-                        // selecting a partition actor - doesn't matter which one
-                        && !partActorId)
+                    // selecting a partition actor - doesn't matter which one
+                    && !partActorId)
                 {
                     partActorId = event->Sender;
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         volume.UpdateVolumeConfig(
             0,
@@ -577,9 +587,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             "vol0",
             "cloud",
             "folder",
-            3,          // partition count
-            2
-        );
+            3,   // partition count
+            2);
 
         volume.WaitReady();
 
@@ -592,48 +601,52 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
-            1
-        );
+            1);
 
         bool intercepted = false;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                if (event->GetTypeRewrite() == TEvService::EvCreateCheckpointRequest
-                        && event->Recipient == partActorId)
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvService::EvCreateCheckpointRequest &&
+                    event->Recipient == partActorId)
                 {
                     intercepted = true;
-                    auto response = std::make_unique<TEvService::TEvCreateCheckpointResponse>(
-                        MakeError(E_FAIL, "epic failure")
-                    );
+                    auto response = std::make_unique<
+                        TEvService::TEvCreateCheckpointResponse>(
+                        MakeError(E_FAIL, "epic failure"));
 
-                    runtime->Send(new IEventHandle(
-                        event->Sender,
-                        event->Recipient,
-                        response.release(),
-                        0, // flags
-                        event->Cookie
-                    ), 0);
+                    runtime->Send(
+                        new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0,   // flags
+                            event->Cookie),
+                        0);
 
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         volume.SendCreateCheckpointRequest("c1");
         runtime->DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(intercepted);
 
         intercepted = false;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
             {
-                if (event->GetTypeRewrite() == TEvService::EvCreateCheckpointResponse) {
+                if (event->GetTypeRewrite() ==
+                    TEvService::EvCreateCheckpointResponse)
+                {
                     intercepted = true;
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
         volume.ReconnectPipe();
         volume.AddClient(clientInfo);
         volume.WaitReady();
@@ -643,8 +656,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
-            2
-        );
+            2);
 
         {
             auto response = volume.RecvCreateCheckpointResponse();
@@ -655,8 +667,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             auto resp = volume.ReadBlocks(
                 TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId(),
-                "c1"
-            );
+                "c1");
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
             UNIT_ASSERT_VALUES_EQUAL(1024, bufs.size());
             for (ui32 i = 0; i < 1024; ++i) {
@@ -695,7 +706,10 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         // Write 21 blocks
         for (ui32 i = 0; i < 21; ++i) {
-            volume.WriteBlocks(GetBlockRangeById(i), clientInfo.GetClientId(), i);
+            volume.WriteBlocks(
+                GetBlockRangeById(i),
+                clientInfo.GetClientId(),
+                i);
         }
 
         volume.CreateCheckpoint("c1");
@@ -993,7 +1007,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         // Steal the first write or zero request to the device.
         // We will return it later to complete the execution of the request.
         std::unique_ptr<IEventHandle> stolenDeviceRequest;
-        auto stealFirstDeviceRequest = [&](TAutoPtr<IEventHandle>& event) {
+        auto stealFirstDeviceRequest = [&](TAutoPtr<IEventHandle>& event)
+        {
             const bool zeroOrWriteRequest =
                 event->GetTypeRewrite() ==
                     TEvDiskAgent::EvWriteDeviceBlocksRequest ||
@@ -1038,7 +1053,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             GetBlockRangeById(0),
             GetBlockContent('x'));
 
-        // Return stolen request - write/zero request will be completed after this
+        // Return stolen request - write/zero request will be completed after
+        // this
         runtime->Send(stolenDeviceRequest.release());
 
         if (testWriteRequest) {
@@ -1069,25 +1085,31 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
     Y_UNIT_TEST(ShouldDrainBeforeCheckpointCreationForNonreplicated)
     {
         DoShouldDrainBeforeCheckpointCreation(
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED, true);
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            true);
         DoShouldDrainBeforeCheckpointCreation(
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED, false);
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            false);
     }
 
     Y_UNIT_TEST(ShouldDrainBeforeCheckpointCreationForMirror2)
     {
         DoShouldDrainBeforeCheckpointCreation(
-            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2, true);
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
+            true);
         DoShouldDrainBeforeCheckpointCreation(
-            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2, false);
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
+            false);
     }
 
     Y_UNIT_TEST(ShouldDrainBeforeCheckpointCreationForMirror3)
     {
         DoShouldDrainBeforeCheckpointCreation(
-            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3, true);
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            true);
         DoShouldDrainBeforeCheckpointCreation(
-            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3, false);
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            false);
     }
 
     void DoMaybeDrainBeforeCheckpointCreation(bool useShadowDisk)
@@ -1169,8 +1191,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             false,
             1,
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            2.5 * blocksPerDevice
-        );
+            2.5 * blocksPerDevice);
 
         volume.WaitReady();
 
@@ -1201,16 +1222,13 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(3, volume.DevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 "transport0",
-                volume.GetDevices(0).GetTransportId()
-            );
+                volume.GetDevices(0).GetTransportId());
             UNIT_ASSERT_VALUES_EQUAL(
                 "transport1",
-                volume.GetDevices(1).GetTransportId()
-            );
+                volume.GetDevices(1).GetTransportId());
             UNIT_ASSERT_VALUES_EQUAL(
                 "transport2",
-                volume.GetDevices(2).GetTransportId()
-            );
+                volume.GetDevices(2).GetTransportId());
         }
         UNIT_ASSERT_VALUES_EQUAL(clientInfo.GetClientId(), disk.WriterClientId);
         UNIT_ASSERT_VALUES_EQUAL(0, disk.ReaderClientIds.size());
@@ -1218,22 +1236,20 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         // writing some data whose migration we will test
         const auto range1 = TBlockRange64::MakeOneBlock(5);
         const auto range2 = TBlockRange64::MakeOneBlock(5 + blocksPerDevice);
-        const auto range3 = TBlockRange64::MakeOneBlock(5 + 2 * blocksPerDevice);
+        const auto range3 =
+            TBlockRange64::MakeOneBlock(5 + 2 * blocksPerDevice);
         client1.WriteBlocksLocal(
             range1,
             clientInfo.GetClientId(),
-            GetBlockContent(1)
-        );
+            GetBlockContent(1));
         client1.WriteBlocksLocal(
             range2,
             clientInfo.GetClientId(),
-            GetBlockContent(2)
-        );
+            GetBlockContent(2));
         client1.WriteBlocksLocal(
             range3,
             clientInfo.GetClientId(),
-            GetBlockContent(3)
-        );
+            GetBlockContent(3));
 
         if (checkpointAt == 0) {
             volume.CreateCheckpoint("c1");
@@ -1243,7 +1259,9 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         TAutoPtr<IEventHandle> evRangeMigrated;
 
-        auto oldObserverFunc = runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        auto oldObserverFunc = runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 const auto migratedEvent =
                     TEvNonreplPartitionPrivate::EvRangeMigrated;
                 using TMigratedEvent =
@@ -1258,8 +1276,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         if (checkpointAt == 1) {
             volume.CreateCheckpoint("c1");
@@ -1306,7 +1323,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             runtime->DispatchEvents({}, TDuration::Seconds(1));
             TEST_NO_RESPONSE(runtime, CreateCheckpoint);
 
-            // Return stolen response - write request will be completed after this
+            // Return stolen response - write request will be completed after
+            // this
             runtime->Send(stolenResponse.release());
 
             // Checkpoint creation completed.
@@ -1329,20 +1347,16 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(2, migrations.size());
             UNIT_ASSERT_VALUES_EQUAL(
                 "transport0",
-                migrations[0].GetSourceTransportId()
-            );
+                migrations[0].GetSourceTransportId());
             UNIT_ASSERT_VALUES_EQUAL(
                 "transport0_migration",
-                migrations[0].GetTargetDevice().GetTransportId()
-            );
+                migrations[0].GetTargetDevice().GetTransportId());
             UNIT_ASSERT_VALUES_EQUAL(
                 "transport2",
-                migrations[1].GetSourceTransportId()
-            );
+                migrations[1].GetSourceTransportId());
             UNIT_ASSERT_VALUES_EQUAL(
                 "transport2_migration",
-                migrations[1].GetTargetDevice().GetTransportId()
-            );
+                migrations[1].GetTargetDevice().GetTransportId());
         }
 
         // adding a reader
@@ -1354,7 +1368,9 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         UNIT_ASSERT_VALUES_EQUAL(clientInfo.GetClientId(), disk.WriterClientId);
         UNIT_ASSERT_VALUES_EQUAL(1, disk.ReaderClientIds.size());
-        UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), disk.ReaderClientIds[0]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            clientInfo2.GetClientId(),
+            disk.ReaderClientIds[0]);
 
         UNIT_ASSERT(evRangeMigrated);
 
@@ -1386,9 +1402,13 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             const auto& devices = stat->Record.GetVolume().GetDevices();
             const auto& migrations = stat->Record.GetVolume().GetMigrations();
             UNIT_ASSERT_VALUES_EQUAL(3, devices.size());
-            UNIT_ASSERT_VALUES_EQUAL("transport0_migration", devices[0].GetTransportId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "transport0_migration",
+                devices[0].GetTransportId());
             UNIT_ASSERT_VALUES_EQUAL("transport1", devices[1].GetTransportId());
-            UNIT_ASSERT_VALUES_EQUAL("transport2_migration", devices[2].GetTransportId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "transport2_migration",
+                devices[2].GetTransportId());
             UNIT_ASSERT_VALUES_EQUAL(0, migrations.size());
         }
 
@@ -1412,11 +1432,14 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             range3,
             GetBlockContent(3));
 
-        client1.ReconnectPipe(); // reconnect since pipe was closed when client2 started read/write
+        client1.ReconnectPipe();   // reconnect since pipe was closed when
+                                   // client2 started read/write
         client1.RemoveClient(clientInfo.GetClientId());
         UNIT_ASSERT_VALUES_EQUAL("", disk.WriterClientId);
         UNIT_ASSERT_VALUES_EQUAL(1, disk.ReaderClientIds.size());
-        UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), disk.ReaderClientIds[0]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            clientInfo2.GetClientId(),
+            disk.ReaderClientIds[0]);
 
         client2.RemoveClient(clientInfo2.GetClientId());
         UNIT_ASSERT_VALUES_EQUAL("", disk.WriterClientId);
@@ -1443,23 +1466,26 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         auto runtime = PrepareTestActorRuntime(
             config,
             state,
-            {}  // featuresConfig
+            {}   // featuresConfig
         );
 
         ui64 writeRequests = 0;
         TAutoPtr<IEventHandle> evResyncFinished;
 
-        auto obs = [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+        auto obs = [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+        {
             if (event->GetTypeRewrite() == TEvVolume::EvResyncFinished) {
                 // making sure that resync mode doesn't get disabled
                 evResyncFinished = event.Release();
                 return true;
             }
 
-            if (event->Recipient == MakeStorageStatsServiceId()
-                    && event->GetTypeRewrite() == TEvStatsService::EvVolumePartCounters)
+            if (event->Recipient == MakeStorageStatsServiceId() &&
+                event->GetTypeRewrite() ==
+                    TEvStatsService::EvVolumePartCounters)
             {
-                auto* msg = event->Get<TEvStatsService::TEvVolumePartCounters>();
+                auto* msg =
+                    event->Get<TEvStatsService::TEvVolumePartCounters>();
 
                 writeRequests +=
                     msg->DiskCounters->RequestCounters.WriteBlocks.Count;
@@ -1486,8 +1512,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             "vol0",
             "cloud",
             "folder",
-            1,  // partitionCount
-            0  // blocksPerStripe
+            1,   // partitionCount
+            0    // blocksPerStripe
         );
 
         volume.WaitReady();
@@ -1518,8 +1544,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(1, v.DevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 "transport0",
-                v.GetDevices(0).GetTransportId()
-            );
+                v.GetDevices(0).GetTransportId());
 
             UNIT_ASSERT_VALUES_EQUAL(2, v.ReplicasSize());
             UNIT_ASSERT_VALUES_EQUAL(1, v.GetReplicas(0).DevicesSize());
@@ -1585,9 +1610,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             "vol0",
             "cloud",
             "folder",
-            3,          // partition count
-            2
-        );
+            3,   // partition count
+            2);
 
         volume.WaitReady();
 
@@ -1608,8 +1632,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             volume.WriteBlocks(
                 TBlockRange64::WithLength(1024 * i, 1024),
                 clientInfo.GetClientId(),
-                1
-            );
+                1);
         }
 
         volume.CreateCheckpoint("c1");
@@ -1633,8 +1656,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             volume.SendReadBlocksRequest(
                 TBlockRange64::WithLength(1024 * i, 1024),
                 clientInfo.GetClientId(),
-                "c1"
-            );
+                "c1");
 
             auto resp = volume.RecvReadBlocksResponse();
             UNIT_ASSERT(FAILED(resp->GetStatus()));
@@ -1660,19 +1682,19 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             "vol0",
             "cloud",
             "folder",
-            3,          // partition count
-            2
-        );
+            3,   // partition count
+            2);
 
         volume.WaitReady();
 
         auto httpResponse = volume.RemoteHttpInfo(
             BuildRemoteHttpQuery(
                 TestTabletId,
-                {{"action","createCheckpoint"}, {"checkpointid","1"}}),
+                {{"action", "createCheckpoint"}, {"checkpointid", "1"}}),
             HTTP_METHOD::HTTP_METHOD_POST);
 
-        UNIT_ASSERT(httpResponse->Html.Contains("Operation successfully completed"));
+        UNIT_ASSERT(
+            httpResponse->Html.Contains("Operation successfully completed"));
     }
 
     Y_UNIT_TEST(ShouldHandleHttpDeleteCheckpoint)
@@ -1693,27 +1715,30 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             "vol0",
             "cloud",
             "folder",
-            3,          // partition count
-            2
-        );
+            3,   // partition count
+            2);
 
         volume.WaitReady();
 
         auto createResponse = volume.RemoteHttpInfo(
             BuildRemoteHttpQuery(
                 TestTabletId,
-                {{"action","createCheckpoint"}, {"checkpointid","1"}}),
-        HTTP_METHOD::HTTP_METHOD_POST);
+                {{"action", "createCheckpoint"}, {"checkpointid", "1"}}),
+            HTTP_METHOD::HTTP_METHOD_POST);
 
-        UNIT_ASSERT_C(createResponse->Html.Contains("Operation successfully completed"), true);
+        UNIT_ASSERT_C(
+            createResponse->Html.Contains("Operation successfully completed"),
+            true);
 
         auto deleteResponse = volume.RemoteHttpInfo(
             BuildRemoteHttpQuery(
                 TestTabletId,
-                {{"action","deleteCheckpoint"}, {"checkpointid","1"}}),
+                {{"action", "deleteCheckpoint"}, {"checkpointid", "1"}}),
             HTTP_METHOD::HTTP_METHOD_POST);
 
-        UNIT_ASSERT_C(deleteResponse->Html.Contains("Operation successfully completed"), true);
+        UNIT_ASSERT_C(
+            deleteResponse->Html.Contains("Operation successfully completed"),
+            true);
     }
 
     Y_UNIT_TEST(ShouldFailHttpCreateCheckpointOnTabletRestart)
@@ -1734,19 +1759,26 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             "vol0",
             "cloud",
             "folder",
-            3,          // partition count
-            2
-        );
+            3,   // partition count
+            2);
 
         volume.WaitReady();
 
         bool patchRequest = true;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                if (event->GetTypeRewrite() == TEvService::EvCreateCheckpointRequest) {
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvService::EvCreateCheckpointRequest)
+                {
                     if (patchRequest) {
                         patchRequest = false;
-                        auto request = std::make_unique<TEvService::TEvCreateCheckpointRequest>();
-                        SendUndeliverableRequest(*runtime, event, std::move(request));
+                        auto request = std::make_unique<
+                            TEvService::TEvCreateCheckpointRequest>();
+                        SendUndeliverableRequest(
+                            *runtime,
+                            event,
+                            std::move(request));
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
@@ -1756,10 +1788,12 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         auto httpResponse = volume.RemoteHttpInfo(
             BuildRemoteHttpQuery(
                 TestTabletId,
-                {{"action","createCheckpoint"}, {"checkpointid","1"}}),
+                {{"action", "createCheckpoint"}, {"checkpointid", "1"}}),
             HTTP_METHOD::HTTP_METHOD_POST);
 
-        UNIT_ASSERT_C(httpResponse->Html.Contains("tablet is shutting down"), true);
+        UNIT_ASSERT_C(
+            httpResponse->Html.Contains("tablet is shutting down"),
+            true);
     }
 
     Y_UNIT_TEST(ShouldFailHttpGetCreateCheckpoint)
@@ -1780,16 +1814,14 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             "vol0",
             "cloud",
             "folder",
-            3,          // partition count
-            2
-        );
+            3,   // partition count
+            2);
 
         volume.WaitReady();
 
-        auto httpResponse = volume.RemoteHttpInfo(
-            BuildRemoteHttpQuery(
-                TestTabletId,
-                {{"action","createCheckpoint"}, {"checkpointid","1"}}));
+        auto httpResponse = volume.RemoteHttpInfo(BuildRemoteHttpQuery(
+            TestTabletId,
+            {{"action", "createCheckpoint"}, {"checkpointid", "1"}}));
 
         UNIT_ASSERT_C(httpResponse->Html.Contains("Wrong HTTP method"), true);
     }
@@ -1813,8 +1845,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
-            1
-        );
+            1);
 
         volume.CreateCheckpoint("c1");
 
@@ -1828,8 +1859,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
-            2
-        );
+            2);
 
         {
             auto stat = volume.StatVolume();
@@ -1842,8 +1872,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             auto resp = volume.ReadBlocks(
                 TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId(),
-                "c1"
-            );
+                "c1");
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
             UNIT_ASSERT_VALUES_EQUAL(1024, bufs.size());
             for (ui32 j = 0; j < 1024; ++j) {
@@ -1854,8 +1883,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         {
             auto resp = volume.ReadBlocks(
                 TBlockRange64::WithLength(0, 1024),
-                clientInfo.GetClientId()
-            );
+                clientInfo.GetClientId());
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
             UNIT_ASSERT_VALUES_EQUAL(1024, bufs.size());
             for (ui32 j = 0; j < 1024; ++j) {
@@ -1884,8 +1912,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         {
             auto resp = volume.ReadBlocks(
                 TBlockRange64::WithLength(0, 1024),
-                clientInfo.GetClientId()
-            );
+                clientInfo.GetClientId());
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
             UNIT_ASSERT_VALUES_EQUAL(1024, bufs.size());
             for (ui32 j = 0; j < 1024; ++j) {
@@ -1913,16 +1940,14 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
-            1
-        );
+            1);
 
         volume.CreateCheckpoint("c1");
 
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
-            2
-        );
+            2);
 
         {
             auto stat = volume.StatVolume();
@@ -1955,8 +1980,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             volume.SendReadBlocksRequest(
                 TBlockRange64::WithLength(0, 1024),
                 clientInfo.GetClientId(),
-                "c1"
-            );
+                "c1");
 
             auto resp = volume.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, resp->GetStatus());
@@ -1964,8 +1988,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         {
             auto resp = volume.ReadBlocks(
                 TBlockRange64::WithLength(0, 1024),
-                clientInfo.GetClientId()
-            );
+                clientInfo.GetClientId());
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
             UNIT_ASSERT_VALUES_EQUAL(1024, bufs.size());
             for (ui32 j = 0; j < 1024; ++j) {
@@ -1985,8 +2008,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         {
             auto resp = volume.ReadBlocks(
                 TBlockRange64::WithLength(0, 1024),
-                clientInfo.GetClientId()
-            );
+                clientInfo.GetClientId());
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
             UNIT_ASSERT_VALUES_EQUAL(1024, bufs.size());
             for (ui32 j = 0; j < 1024; ++j) {
@@ -2079,8 +2101,11 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             0);
         volume.AddClient(clientInfo);
 
-        auto obs = [&] (TAutoPtr<IEventHandle>& event) {
-            if (event->GetTypeRewrite() == TEvService::EvCreateCheckpointResponse) {
+        auto obs = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvService::EvCreateCheckpointResponse)
+            {
                 return TTestActorRuntime::EEventAction::DROP;
             }
 
@@ -2094,14 +2119,12 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
-            2
-        );
+            2);
 
         {
             auto resp = volume.ReadBlocks(
                 TBlockRange64::WithLength(0, 1024),
-                clientInfo.GetClientId()
-            );
+                clientInfo.GetClientId());
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
             UNIT_ASSERT_VALUES_EQUAL(1024, bufs.size());
             for (ui32 j = 0; j < 1024; ++j) {
@@ -2116,8 +2139,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         {
             auto resp = volume.ReadBlocks(
                 TBlockRange64::WithLength(0, 1024),
-                clientInfo.GetClientId()
-            );
+                clientInfo.GetClientId());
             const auto& bufs = resp->Record.GetBlocks().GetBuffers();
             UNIT_ASSERT_VALUES_EQUAL(1024, bufs.size());
             for (ui32 j = 0; j < 1024; ++j) {
@@ -2144,9 +2166,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             "vol0",
             "cloud",
             "folder",
-            3,          // partition count
-            2
-        );
+            3,   // partition count
+            2);
 
         volume.WaitReady();
         volume.StatVolume();
@@ -2159,24 +2180,34 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         {
             auto request = volume.CreateCreateCheckpointRequest("cp1");
-            request->Record.MutableHeaders()->MutableInternal()->MutableTrace()->SetIsTraced(true);
+            request->Record.MutableHeaders()
+                ->MutableInternal()
+                ->MutableTrace()
+                ->SetIsTraced(true);
 
             volume.SendToPipe(std::move(request));
 
             auto response = volume.RecvCreateCheckpointResponse();
 
-            CheckForkJoin(response->Record.GetTrace().GetLWTrace().GetTrace(), true);
+            CheckForkJoin(
+                response->Record.GetTrace().GetLWTrace().GetTrace(),
+                true);
         }
 
         {
             auto request = volume.CreateDeleteCheckpointRequest("cp1");
-            request->Record.MutableHeaders()->MutableInternal()->MutableTrace()->SetIsTraced(true);
+            request->Record.MutableHeaders()
+                ->MutableInternal()
+                ->MutableTrace()
+                ->SetIsTraced(true);
 
             volume.SendToPipe(std::move(request));
 
             auto response = volume.RecvDeleteCheckpointResponse();
 
-            CheckForkJoin(response->Record.GetTrace().GetLWTrace().GetTrace(), true);
+            CheckForkJoin(
+                response->Record.GetTrace().GetLWTrace().GetTrace(),
+                true);
         }
     }
 
@@ -2188,19 +2219,19 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
-            0,  // maxBandwidth
-            0,  // maxIops
-            0,  // burstPercentage
-            0,  // maxPostponedWeight
-            false,  // throttlingEnabled
-            1,  // version
+            0,       // maxBandwidth
+            0,       // maxIops
+            0,       // burstPercentage
+            0,       // maxPostponedWeight
+            false,   // throttlingEnabled
+            1,       // version
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024,   // block count per partition
-            "vol0",  // diskId
-            "cloud",  // cloudId
-            "folder",  // folderId
-            1,  // partition count
-            2  // blocksPerStripe
+            1024,       // block count per partition
+            "vol0",     // diskId
+            "cloud",    // cloudId
+            "folder",   // folderId
+            1,          // partition count
+            2           // blocksPerStripe
         );
         volume.WaitReady();
 
@@ -2244,9 +2275,10 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             2);
         volume.CreateCheckpoint("c2", NProto::ECheckpointType::LIGHT);
 
-        auto popCountStr = [](const TString& s) {
+        auto popCountStr = [](const TString& s)
+        {
             ui64 count = 0;
-            for (char c : s) {
+            for (char c: s) {
                 count += std::popcount(static_cast<unsigned char>(c));
             }
             return count;
@@ -2261,7 +2293,9 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
             UNIT_ASSERT_VALUES_EQUAL(1024 / 8, mask.size());
-            UNIT_ASSERT_VALUES_EQUAL(16, popCountStr(mask));  // 0, 5-15, 63-64, 1022-1023
+            UNIT_ASSERT_VALUES_EQUAL(
+                16,
+                popCountStr(mask));   // 0, 5-15, 63-64, 1022-1023
             // range [0-7]
             UNIT_ASSERT_VALUES_EQUAL(0b11100001, ui8(mask[0]));
             // range [8-15]
@@ -2299,19 +2333,19 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
-            0,  // maxBandwidth
-            0,  // maxIops
-            0,  // burstPercentage
-            0,  // maxPostponedWeight
-            false,  // throttlingEnabled
-            1,  // version
+            0,       // maxBandwidth
+            0,       // maxIops
+            0,       // burstPercentage
+            0,       // maxPostponedWeight
+            false,   // throttlingEnabled
+            1,       // version
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024,   // block count per partition
-            "vol0",  // diskId
-            "cloud",  // cloudId
-            "folder",  // folderId
-            1,  // partition count
-            2  // blocksPerStripe
+            1024,       // block count per partition
+            "vol0",     // diskId
+            "cloud",    // cloudId
+            "folder",   // folderId
+            1,          // partition count
+            2           // blocksPerStripe
         );
         volume.WaitReady();
 
@@ -2363,7 +2397,10 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
         }
 
-        volume.WriteBlocks(TBlockRange64::MakeOneBlock(1), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(1),
+            clientInfo.GetClientId(),
+            2);
 
         volume.CreateCheckpoint("c2", NProto::ECheckpointType::LIGHT);
 
@@ -2457,19 +2494,19 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
-            0,  // maxBandwidth
-            0,  // maxIops
-            0,  // burstPercentage
-            0,  // maxPostponedWeight
-            false,  // throttlingEnabled
-            1,  // version
+            0,       // maxBandwidth
+            0,       // maxIops
+            0,       // burstPercentage
+            0,       // maxPostponedWeight
+            false,   // throttlingEnabled
+            1,       // version
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024,   // block count per partition
-            "vol0",  // diskId
-            "cloud",  // cloudId
-            "folder",  // folderId
-            1,  // partition count
-            2  // blocksPerStripe
+            1024,       // block count per partition
+            "vol0",     // diskId
+            "cloud",    // cloudId
+            "folder",   // folderId
+            1,          // partition count
+            2           // blocksPerStripe
         );
         volume.WaitReady();
 
@@ -2481,7 +2518,10 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         volume.CreateCheckpoint("c1", NProto::ECheckpointType::LIGHT);
 
-        volume.WriteBlocks(TBlockRange64::MakeOneBlock(0), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            2);
 
         volume.RebootTablet();
 
@@ -2509,7 +2549,10 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
         }
 
-        volume.WriteBlocks(TBlockRange64::MakeOneBlock(1), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(1),
+            clientInfo.GetClientId(),
+            2);
         volume.CreateCheckpoint("c3", NProto::ECheckpointType::LIGHT);
 
         {
@@ -2542,19 +2585,19 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
-            0,  // maxBandwidth
-            0,  // maxIops
-            0,  // burstPercentage
-            0,  // maxPostponedWeight
-            false,  // throttlingEnabled
-            1,  // version
+            0,       // maxBandwidth
+            0,       // maxIops
+            0,       // burstPercentage
+            0,       // maxPostponedWeight
+            false,   // throttlingEnabled
+            1,       // version
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024,   // block count per partition
-            "vol0",  // diskId
-            "cloud",  // cloudId
-            "folder",  // folderId
-            1,  // partition count
-            2  // blocksPerStripe
+            1024,       // block count per partition
+            "vol0",     // diskId
+            "cloud",    // cloudId
+            "folder",   // folderId
+            1,          // partition count
+            2           // blocksPerStripe
         );
         volume.WaitReady();
 
@@ -2571,11 +2614,17 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             clientInfo.GetClientId(),
             2);
         volume.CreateCheckpoint("c2", NProto::ECheckpointType::LIGHT);
-        volume.WriteBlocks(TBlockRange64::MakeOneBlock(1), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(1),
+            clientInfo.GetClientId(),
+            2);
 
         volume.RebootTablet();
 
-        volume.WriteBlocks(TBlockRange64::MakeOneBlock(2), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(2),
+            clientInfo.GetClientId(),
+            2);
 
         volume.CreateCheckpoint("c3", NProto::ECheckpointType::LIGHT);
 
@@ -2626,19 +2675,19 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
-            0,  // maxBandwidth
-            0,  // maxIops
-            0,  // burstPercentage
-            0,  // maxPostponedWeight
-            false,  // throttlingEnabled
-            1,  // version
+            0,       // maxBandwidth
+            0,       // maxIops
+            0,       // burstPercentage
+            0,       // maxPostponedWeight
+            false,   // throttlingEnabled
+            1,       // version
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024,   // block count per partition
-            "vol0",  // diskId
-            "cloud",  // cloudId
-            "folder",  // folderId
-            1,  // partition count
-            2  // blocksPerStripe
+            1024,       // block count per partition
+            "vol0",     // diskId
+            "cloud",    // cloudId
+            "folder",   // folderId
+            1,          // partition count
+            2           // blocksPerStripe
         );
         volume.WaitReady();
 
@@ -2650,7 +2699,10 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         volume.CreateCheckpoint("c1", NProto::ECheckpointType::LIGHT);
 
-        volume.WriteBlocks(TBlockRange64::MakeOneBlock(0), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            2);
         volume.CreateCheckpoint("c2", NProto::ECheckpointType::LIGHT);
 
         volume.CreateCheckpoint("c3", NProto::ECheckpointType::LIGHT);
@@ -2698,7 +2750,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
         }
 
-        for (auto checkpointId : TVector<TString>{"c1", "c2", "c3"}) {
+        for (auto checkpointId: TVector<TString>{"c1", "c2", "c3"}) {
             UNIT_ASSERT_VALUES_EQUAL(
                 S_OK,
                 volume.DeleteCheckpoint(checkpointId)->GetStatus());
@@ -2713,19 +2765,19 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
-            0,  // maxBandwidth
-            0,  // maxIops
-            0,  // burstPercentage
-            0,  // maxPostponedWeight
-            false,  // throttlingEnabled
-            1,  // version
+            0,       // maxBandwidth
+            0,       // maxIops
+            0,       // burstPercentage
+            0,       // maxPostponedWeight
+            false,   // throttlingEnabled
+            1,       // version
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024,   // block count per partition
-            "vol0",  // diskId
-            "cloud",  // cloudId
-            "folder",  // folderId
-            1,  // partition count
-            2  // blocksPerStripe
+            1024,       // block count per partition
+            "vol0",     // diskId
+            "cloud",    // cloudId
+            "folder",   // folderId
+            1,          // partition count
+            2           // blocksPerStripe
         );
         volume.WaitReady();
 
@@ -2736,10 +2788,16 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.AddClient(clientInfo);
 
         volume.CreateCheckpoint("c1", NProto::ECheckpointType::LIGHT);
-        volume.WriteBlocks(TBlockRange64::MakeOneBlock(0), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            2);
         volume.CreateCheckpoint("c2", NProto::ECheckpointType::LIGHT);
 
-        volume.WriteBlocks(TBlockRange64::MakeOneBlock(1), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(1),
+            clientInfo.GetClientId(),
+            2);
         volume.CreateCheckpoint("c1", NProto::ECheckpointType::LIGHT);
 
         {
@@ -2792,7 +2850,10 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
         }
 
-        volume.WriteBlocks(TBlockRange64::MakeOneBlock(2), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(2),
+            clientInfo.GetClientId(),
+            2);
         volume.CreateCheckpoint("c3", NProto::ECheckpointType::LIGHT);
         volume.CreateCheckpoint("c5", NProto::ECheckpointType::LIGHT);
         volume.CreateCheckpoint("c2", NProto::ECheckpointType::LIGHT);
@@ -2808,7 +2869,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b00000100, ui8(mask[0]));
         }
 
-        for (auto checkpointId : TVector<TString>{"c1", "c2", "c3", "c4", "c5"}) {
+        for (auto checkpointId: TVector<TString>{"c1", "c2", "c3", "c4", "c5"})
+        {
             UNIT_ASSERT_VALUES_EQUAL(
                 S_OK,
                 volume.DeleteCheckpoint(checkpointId)->GetStatus());
@@ -2823,19 +2885,19 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
-            0,  // maxBandwidth
-            0,  // maxIops
-            0,  // burstPercentage
-            0,  // maxPostponedWeight
-            false,  // throttlingEnabled
-            1,  // version
+            0,       // maxBandwidth
+            0,       // maxIops
+            0,       // burstPercentage
+            0,       // maxPostponedWeight
+            false,   // throttlingEnabled
+            1,       // version
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024,   // block count per partition
-            "vol0",  // diskId
-            "cloud",  // cloudId
-            "folder",  // folderId
-            1,  // partition count
-            2  // blocksPerStripe
+            1024,       // block count per partition
+            "vol0",     // diskId
+            "cloud",    // cloudId
+            "folder",   // folderId
+            1,          // partition count
+            2           // blocksPerStripe
         );
         volume.WaitReady();
 
@@ -2846,9 +2908,15 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.AddClient(clientInfo);
 
         volume.CreateCheckpoint("c1", NProto::ECheckpointType::LIGHT);
-        volume.WriteBlocks(TBlockRange64::MakeOneBlock(0), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            2);
         volume.CreateCheckpoint("c2", NProto::ECheckpointType::LIGHT);
-        volume.WriteBlocks(TBlockRange64::MakeOneBlock(1), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(1),
+            clientInfo.GetClientId(),
+            2);
         volume.CreateCheckpoint("c3", NProto::ECheckpointType::LIGHT);
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -2860,7 +2928,9 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 TBlockRange64::MakeClosedInterval(0, 1023),
                 "c1",
                 "c2");
-            UNIT_ASSERT_VALUES_UNEQUAL(S_OK, volume.RecvGetChangedBlocksResponse()->GetStatus());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                S_OK,
+                volume.RecvGetChangedBlocksResponse()->GetStatus());
         }
 
         {
@@ -2869,7 +2939,9 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 "c2",
                 "c3");
 
-            UNIT_ASSERT_VALUES_UNEQUAL(S_OK, volume.RecvGetChangedBlocksResponse()->GetStatus());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                S_OK,
+                volume.RecvGetChangedBlocksResponse()->GetStatus());
         }
 
         {
@@ -2903,7 +2975,9 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 TBlockRange64::MakeClosedInterval(0, 1023),
                 "c1",
                 "c3");
-            UNIT_ASSERT_VALUES_UNEQUAL(S_OK, volume.RecvGetChangedBlocksResponse()->GetStatus());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                S_OK,
+                volume.RecvGetChangedBlocksResponse()->GetStatus());
         }
 
         {
@@ -2917,7 +2991,10 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
         }
 
-        volume.WriteBlocks(TBlockRange64::MakeOneBlock(2), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(2),
+            clientInfo.GetClientId(),
+            2);
         volume.CreateCheckpoint("c4", NProto::ECheckpointType::LIGHT);
         {
             volume.SendGetChangedBlocksRequest(
@@ -2925,10 +3002,15 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 "c3",
                 "c4");
 
-            UNIT_ASSERT_VALUES_UNEQUAL(S_OK, volume.RecvGetChangedBlocksResponse()->GetStatus());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                S_OK,
+                volume.RecvGetChangedBlocksResponse()->GetStatus());
         }
 
-        volume.WriteBlocks(TBlockRange64::MakeOneBlock(3), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(3),
+            clientInfo.GetClientId(),
+            2);
         volume.CreateCheckpoint("c5", NProto::ECheckpointType::LIGHT);
 
         {
@@ -2942,7 +3024,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b00001000, ui8(mask[0]));
         }
 
-        for (auto checkpointId : TVector<TString>{"c1", "c4"}) {
+        for (auto checkpointId: TVector<TString>{"c1", "c4"}) {
             UNIT_ASSERT_VALUES_EQUAL(
                 S_OK,
                 volume.DeleteCheckpoint(checkpointId)->GetStatus());
@@ -2978,10 +3060,15 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 TBlockRange64::MakeClosedInterval(0, 1023),
                 "",
                 "");
-            UNIT_ASSERT_VALUES_UNEQUAL(S_OK, volume.RecvGetChangedBlocksResponse()->GetStatus());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                S_OK,
+                volume.RecvGetChangedBlocksResponse()->GetStatus());
         }
 
-        volume.WriteBlocks(TBlockRange64::MakeOneBlock(4), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(4),
+            clientInfo.GetClientId(),
+            2);
         volume.CreateCheckpoint("c6", NProto::ECheckpointType::LIGHT);
 
         {
@@ -2995,7 +3082,10 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
         }
 
-        volume.WriteBlocks(TBlockRange64::MakeOneBlock(5), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(5),
+            clientInfo.GetClientId(),
+            2);
         volume.CreateCheckpoint("c7", NProto::ECheckpointType::LIGHT);
 
         {
@@ -3009,14 +3099,15 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b00100000, ui8(mask[0]));
         }
 
-        for (auto checkpointId : TVector<TString>{"c6", "c7"}) {
+        for (auto checkpointId: TVector<TString>{"c6", "c7"}) {
             UNIT_ASSERT_VALUES_EQUAL(
                 S_OK,
                 volume.DeleteCheckpoint(checkpointId)->GetStatus());
         }
     }
 
-    Y_UNIT_TEST(ShouldReportChangedBlocksForLightCheckpointWhenNormalCheckpointExist)
+    Y_UNIT_TEST(
+        ShouldReportChangedBlocksForLightCheckpointWhenNormalCheckpointExist)
     {
         NProto::TStorageServiceConfig storageServiceConfig;
 
@@ -3024,19 +3115,19 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
-            0,  // maxBandwidth
-            0,  // maxIops
-            0,  // burstPercentage
-            0,  // maxPostponedWeight
-            false,  // throttlingEnabled
-            1,  // version
+            0,       // maxBandwidth
+            0,       // maxIops
+            0,       // burstPercentage
+            0,       // maxPostponedWeight
+            false,   // throttlingEnabled
+            1,       // version
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024,   // block count per partition
-            "vol0",  // diskId
-            "cloud",  // cloudId
-            "folder",  // folderId
-            1,  // partition count
-            2  // blocksPerStripe
+            1024,       // block count per partition
+            "vol0",     // diskId
+            "cloud",    // cloudId
+            "folder",   // folderId
+            1,          // partition count
+            2           // blocksPerStripe
         );
         volume.WaitReady();
 
@@ -3047,7 +3138,10 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.AddClient(clientInfo);
 
         volume.CreateCheckpoint("c1", NProto::ECheckpointType::LIGHT);
-        volume.WriteBlocks(TBlockRange64::MakeOneBlock(0), clientInfo.GetClientId(), 2);
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            2);
         volume.CreateCheckpoint("c2", NProto::ECheckpointType::NORMAL);
         volume.CreateCheckpoint("c3", NProto::ECheckpointType::LIGHT);
 
@@ -3056,7 +3150,9 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 TBlockRange64::MakeClosedInterval(0, 1023),
                 "c1",
                 "c2");
-            UNIT_ASSERT_VALUES_UNEQUAL(S_OK, volume.RecvGetChangedBlocksResponse()->GetStatus());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                S_OK,
+                volume.RecvGetChangedBlocksResponse()->GetStatus());
         }
 
         {
@@ -3065,7 +3161,9 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 "c2",
                 "c3");
 
-            UNIT_ASSERT_VALUES_UNEQUAL(S_OK, volume.RecvGetChangedBlocksResponse()->GetStatus());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                S_OK,
+                volume.RecvGetChangedBlocksResponse()->GetStatus());
         }
 
         {
@@ -3074,7 +3172,9 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 "c2",
                 "c2");
 
-            UNIT_ASSERT_VALUES_UNEQUAL(S_OK, volume.RecvGetChangedBlocksResponse()->GetStatus());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                S_OK,
+                volume.RecvGetChangedBlocksResponse()->GetStatus());
         }
 
         {
@@ -3088,14 +3188,15 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b00000001, ui8(mask[0]));
         }
 
-        for (auto checkpointId : TVector<TString>{"c1", "c2", "c3"}) {
+        for (auto checkpointId: TVector<TString>{"c1", "c2", "c3"}) {
             UNIT_ASSERT_VALUES_EQUAL(
                 S_OK,
                 volume.DeleteCheckpoint(checkpointId)->GetStatus());
         }
     }
 
-    Y_UNIT_TEST(ShouldReportChangedBlocksForLightCheckpointsForEmptyHighCheckpoint)
+    Y_UNIT_TEST(
+        ShouldReportChangedBlocksForLightCheckpointsForEmptyHighCheckpoint)
     {
         NProto::TStorageServiceConfig storageServiceConfig;
 
@@ -3103,19 +3204,19 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
-            0,  // maxBandwidth
-            0,  // maxIops
-            0,  // burstPercentage
-            0,  // maxPostponedWeight
-            false,  // throttlingEnabled
-            1,  // version
+            0,       // maxBandwidth
+            0,       // maxIops
+            0,       // burstPercentage
+            0,       // maxPostponedWeight
+            false,   // throttlingEnabled
+            1,       // version
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024,   // block count per partition
-            "vol0",  // diskId
-            "cloud",  // cloudId
-            "folder",  // folderId
-            1,  // partition count
-            2  // blocksPerStripe
+            1024,       // block count per partition
+            "vol0",     // diskId
+            "cloud",    // cloudId
+            "folder",   // folderId
+            1,          // partition count
+            2           // blocksPerStripe
         );
         volume.WaitReady();
 
@@ -3130,11 +3231,16 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 TBlockRange64::MakeClosedInterval(0, 1023),
                 "",
                 "");
-            UNIT_ASSERT_VALUES_UNEQUAL(S_OK, volume.RecvGetChangedBlocksResponse()->GetStatus());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                S_OK,
+                volume.RecvGetChangedBlocksResponse()->GetStatus());
         }
 
         volume.CreateCheckpoint("c1", NProto::ECheckpointType::LIGHT);
-        volume.WriteBlocks(TBlockRange64::MakeClosedInterval(0, 1), clientInfo.GetClientId(), 1);
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1),
+            clientInfo.GetClientId(),
+            1);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -3170,7 +3276,10 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b00000011, ui8(mask[0]));
         }
 
-        volume.WriteBlocks(TBlockRange64::MakeClosedInterval(1, 2), clientInfo.GetClientId(), 1);
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(1, 2),
+            clientInfo.GetClientId(),
+            1);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -3205,7 +3314,10 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         }
 
         volume.CreateCheckpoint("c3", NProto::ECheckpointType::LIGHT);
-        volume.WriteBlocks(TBlockRange64::MakeClosedInterval(0, 1), clientInfo.GetClientId(), 1);
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1),
+            clientInfo.GetClientId(),
+            1);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -3236,7 +3348,9 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 TBlockRange64::MakeClosedInterval(0, 1023),
                 "c2",
                 "");
-            UNIT_ASSERT_VALUES_UNEQUAL(S_OK, volume.RecvGetChangedBlocksResponse()->GetStatus());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                S_OK,
+                volume.RecvGetChangedBlocksResponse()->GetStatus());
         }
 
         {
@@ -3250,7 +3364,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
         }
 
-        for (auto checkpointId : TVector<TString>{"c1", "c3"}) {
+        for (auto checkpointId: TVector<TString>{"c1", "c3"}) {
             volume.DeleteCheckpoint(checkpointId);
         }
     }
@@ -3263,19 +3377,19 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
-            0,  // maxBandwidth
-            0,  // maxIops
-            0,  // burstPercentage
-            0,  // maxPostponedWeight
-            false,  // throttlingEnabled
-            1,  // version
+            0,       // maxBandwidth
+            0,       // maxIops
+            0,       // burstPercentage
+            0,       // maxPostponedWeight
+            false,   // throttlingEnabled
+            1,       // version
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024,   // block count per partition
-            "vol0",  // diskId
-            "cloud",  // cloudId
-            "folder",  // folderId
-            1,  // partition count
-            2  // blocksPerStripe
+            1024,       // block count per partition
+            "vol0",     // diskId
+            "cloud",    // cloudId
+            "folder",   // folderId
+            1,          // partition count
+            2           // blocksPerStripe
         );
         volume.WaitReady();
 
@@ -3510,7 +3624,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         // Read from checkpoint without data should fail.
         {
-             auto request = volume.CreateReadBlocksRequest(
+            auto request = volume.CreateReadBlocksRequest(
                 TBlockRange64::MakeOneBlock(0),
                 clientInfo.GetClientId(),
                 "c1");
@@ -4247,10 +4361,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         }
 
         // Check that we still can write to the disk.
-        UNIT_ASSERT(tryWriteBlock(
-            0,
-            clientInfo2.GetClientId(),
-            'x'));
+        UNIT_ASSERT(tryWriteBlock(0, clientInfo2.GetClientId(), 'x'));
         // Check that we still can read from the disk.
         UNIT_ASSERT(tryReadBlock(
             expectedBlockCount - 1,
@@ -4295,13 +4406,15 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             if (event->GetTypeRewrite() ==
                 TEvDiskRegistry::EvAcquireDiskRequest)
             {
-                auto* msg = event->Get<TEvDiskRegistry::TEvAcquireDiskRequest>();
+                auto* msg =
+                    event->Get<TEvDiskRegistry::TEvAcquireDiskRequest>();
                 acquireClientId = msg->Record.GetHeaders().GetClientId();
             }
             if (event->GetTypeRewrite() ==
                 TEvDiskRegistry::EvReleaseDiskRequest)
             {
-                auto* msg = event->Get<TEvDiskRegistry::TEvReleaseDiskRequest>();
+                auto* msg =
+                    event->Get<TEvDiskRegistry::TEvReleaseDiskRequest>();
                 releaseClientId = msg->Record.GetHeaders().GetClientId();
             }
             return TTestActorRuntime::DefaultObserverFunc(event);
@@ -4346,15 +4459,16 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         acquireClientId = "";
         releaseClientId = "";
 
-        // Disconnect client. Expect that the shadow disk reacquired by "shadow-disk-client".
+        // Disconnect client. Expect that the shadow disk reacquired by
+        // "shadow-disk-client".
         volume.RemoveClient(clientInfo1.GetClientId());
         UNIT_ASSERT_VALUES_EQUAL(ShadowDiskClientId, acquireClientId);
         UNIT_ASSERT_VALUES_EQUAL(AnyWriterClientId, releaseClientId);
         acquireClientId = "";
         releaseClientId = "";
 
-        // Connect another client. Expect that the shadow disk reacquired by this
-        // new client.
+        // Connect another client. Expect that the shadow disk reacquired by
+        // this new client.
         auto clientInfo2 = CreateVolumeClientInfo(
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
@@ -4394,7 +4508,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         UNIT_ASSERT_VALUES_EQUAL(AnyWriterClientId, releaseClientId);
     }
 
-    Y_UNIT_TEST(ShouldReacquireShadowDiskWhenChangedToReadyWithNonBlockingTimeout)
+    Y_UNIT_TEST(
+        ShouldReacquireShadowDiskWhenChangedToReadyWithNonBlockingTimeout)
     {
         auto blockingTimeout = TDuration::Seconds(5);
         auto nonBlockingTimeout = TDuration::Seconds(30);
@@ -4454,7 +4569,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 }
             }
             if (changedToReady && event->GetTypeRewrite() ==
-                TEvDiskRegistry::EvAcquireDiskResponse)
+                                      TEvDiskRegistry::EvAcquireDiskResponse)
             {
                 stolenAcquireResponse.reset(event.Release());
                 return true;
@@ -4513,13 +4628,15 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             if (event->GetTypeRewrite() ==
                 TEvDiskRegistry::EvAcquireDiskRequest)
             {
-                auto* msg = event->Get<TEvDiskRegistry::TEvAcquireDiskRequest>();
+                auto* msg =
+                    event->Get<TEvDiskRegistry::TEvAcquireDiskRequest>();
                 acquireClientId = msg->Record.GetHeaders().GetClientId();
             }
             if (event->GetTypeRewrite() ==
                 TEvDiskRegistry::EvReleaseDiskRequest)
             {
-                auto* msg = event->Get<TEvDiskRegistry::TEvReleaseDiskRequest>();
+                auto* msg =
+                    event->Get<TEvDiskRegistry::TEvReleaseDiskRequest>();
                 releaseClientId = msg->Record.GetHeaders().GetClientId();
                 auto response =
                     std::make_unique<TEvDiskRegistry::TEvReleaseDiskResponse>(
@@ -4637,7 +4754,9 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.SendCreateCheckpointRequest("c1");
         runtime->DispatchEvents({}, TDuration::Seconds(1));
         auto response = volume.RecvCreateCheckpointResponse();
-        UNIT_ASSERT_VALUES_EQUAL(E_BS_DISK_ALLOCATION_FAILED, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_BS_DISK_ALLOCATION_FAILED,
+            response->GetStatus());
 
         // Validate checkpoint state (error).
         auto status = volume.GetCheckpointStatus("c1");
@@ -4839,19 +4958,19 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
-            0,  // maxBandwidth
-            0,  // maxIops
-            0,  // burstPercentage
-            0,  // maxPostponedWeight
-            false,  // throttlingEnabled
-            1,  // version
+            0,       // maxBandwidth
+            0,       // maxIops
+            0,       // burstPercentage
+            0,       // maxPostponedWeight
+            false,   // throttlingEnabled
+            1,       // version
             mediaKind,
-            1024,   // block count per partition
-            "vol0",  // diskId
-            "cloud",  // cloudId
-            "folder",  // folderId
-            1,  // partition count
-            2  // blocksPerStripe
+            1024,       // block count per partition
+            "vol0",     // diskId
+            "cloud",    // cloudId
+            "folder",   // folderId
+            1,          // partition count
+            2           // blocksPerStripe
         );
         volume.WaitReady();
 
@@ -4860,8 +4979,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             {NProto::ECheckpointType::LIGHT, "checkpoint_light"},
             {NProto::ECheckpointType::WITHOUT_DATA, "checkpoint_without_data"}};
 
-        for (auto [checkpointType, checkpointId] : testCases)
-        {
+        for (auto [checkpointType, checkpointId]: testCases) {
             volume.CreateCheckpoint(checkpointId, checkpointType);
             volume.DeleteCheckpoint(checkpointId);
 
@@ -4892,19 +5010,19 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
-            0,  // maxBandwidth
-            0,  // maxIops
-            0,  // burstPercentage
-            0,  // maxPostponedWeight
-            false,  // throttlingEnabled
-            1,  // version
+            0,       // maxBandwidth
+            0,       // maxIops
+            0,       // burstPercentage
+            0,       // maxPostponedWeight
+            false,   // throttlingEnabled
+            1,       // version
             NProto::STORAGE_MEDIA_SSD,
-            1024,   // block count per partition
-            "vol0",  // diskId
-            "cloud",  // cloudId
-            "folder",  // folderId
-            1,  // partition count
-            2  // blocksPerStripe
+            1024,       // block count per partition
+            "vol0",     // diskId
+            "cloud",    // cloudId
+            "folder",   // folderId
+            1,          // partition count
+            2           // blocksPerStripe
         );
         volume.WaitReady();
 
@@ -4927,19 +5045,19 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
-            0,  // maxBandwidth
-            0,  // maxIops
-            0,  // burstPercentage
-            0,  // maxPostponedWeight
-            false,  // throttlingEnabled
-            1,  // version
+            0,       // maxBandwidth
+            0,       // maxIops
+            0,       // burstPercentage
+            0,       // maxPostponedWeight
+            false,   // throttlingEnabled
+            1,       // version
             NProto::STORAGE_MEDIA_SSD,
-            1024,   // block count per partition
-            "vol0",  // diskId
-            "cloud",  // cloudId
-            "folder",  // folderId
-            1,  // partition count
-            2  // blocksPerStripe
+            1024,       // block count per partition
+            "vol0",     // diskId
+            "cloud",    // cloudId
+            "folder",   // folderId
+            1,          // partition count
+            2           // blocksPerStripe
         );
         volume.WaitReady();
 
@@ -5270,7 +5388,6 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         auto response = volume.RecvDeleteCheckpointDataResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
         UNIT_ASSERT(seenDeallocateCheckpointEvent);
-
     }
 
     Y_UNIT_TEST(ShouldShadowDiskReleaseDevicesAfterDeletingCheckpoint)

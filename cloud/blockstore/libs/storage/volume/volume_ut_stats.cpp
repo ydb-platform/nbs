@@ -19,8 +19,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         state->MigrationMode = EMigrationMode::InProgress;
         NProto::TStorageServiceConfig config;
         // XXX
-        // disabling migration index caching - migration preempts metrics-related
-        // code in test actor runtime
+        // disabling migration index caching - migration preempts
+        // metrics-related code in test actor runtime
         config.SetMigrationIndexCachingInterval(999999);
         config.SetMaxMigrationBandwidth(999'999'999);
         auto runtime = PrepareTestActorRuntime(config, state);
@@ -46,13 +46,17 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         ui64 bytesCount = 0;
         ui32 partStatsSaved = 0;
 
-        auto obs = [&] (TAutoPtr<IEventHandle>& event) {
+        auto obs = [&](TAutoPtr<IEventHandle>& event)
+        {
             if (event->GetTypeRewrite() == TEvVolumePrivate::EvPartStatsSaved) {
                 ++partStatsSaved;
-            } else if (event->Recipient == MakeStorageStatsServiceId()
-                    && event->GetTypeRewrite() == TEvStatsService::EvVolumePartCounters)
+            } else if (
+                event->Recipient == MakeStorageStatsServiceId() &&
+                event->GetTypeRewrite() ==
+                    TEvStatsService::EvVolumePartCounters)
             {
-                auto* msg = event->Get<TEvStatsService::TEvVolumePartCounters>();
+                auto* msg =
+                    event->Get<TEvStatsService::TEvVolumePartCounters>();
 
                 bytesCount = msg->DiskCounters->Simple.BytesCount.Value;
 
@@ -103,8 +107,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         runtime->SetObserverFunc(obs);
         volume.SendToPipe(
-            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>()
-        );
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
         runtime->DispatchEvents({}, TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -127,13 +130,12 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             false,
             1,
             NCloud::NProto::STORAGE_MEDIA_HYBRID,
-            1024,       // block count per partition
+            1024,   // block count per partition
             "vol0",
             "cloud",
             "folder",
-            1,          // partition count
-            2
-        );
+            1,   // partition count
+            2);
 
         CheckVolumeSendsStatsEvenIfPartitionsAreDead(
             std::move(runtime),
@@ -162,9 +164,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             "vol0",
             "cloud",
             "folder",
-            1,          // partition count
-            2
-        );
+            1,   // partition count
+            2);
 
         volume.WaitReady();
 
@@ -172,21 +173,24 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         ui64 bytesCount = 0;
         ui64 vbytesCount = 0;
 
-        auto obs = [&] (TAutoPtr<IEventHandle>& event) {
-            if (event->Recipient == MakeStorageStatsServiceId()
-                    && event->GetTypeRewrite()
-                        == TEvStatsService::EvVolumePartCounters)
+        auto obs = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->Recipient == MakeStorageStatsServiceId() &&
+                event->GetTypeRewrite() ==
+                    TEvStatsService::EvVolumePartCounters)
             {
-                auto* msg = event->Get<TEvStatsService::TEvVolumePartCounters>();
+                auto* msg =
+                    event->Get<TEvStatsService::TEvVolumePartCounters>();
 
                 bytesCount = msg->DiskCounters->Simple.BytesCount.Value;
             }
 
-            if (event->Recipient == MakeStorageStatsServiceId()
-                    && event->GetTypeRewrite()
-                        == TEvStatsService::EvVolumeSelfCounters)
+            if (event->Recipient == MakeStorageStatsServiceId() &&
+                event->GetTypeRewrite() ==
+                    TEvStatsService::EvVolumeSelfCounters)
             {
-                auto* msg = event->Get<TEvStatsService::TEvVolumeSelfCounters>();
+                auto* msg =
+                    event->Get<TEvStatsService::TEvVolumeSelfCounters>();
 
                 vbytesCount = msg->VolumeSelfCounters->Simple.VBytesCount.Value;
             }
@@ -214,8 +218,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         NProto::TStorageServiceConfig config;
         config.SetMinChannelCount(4);
         // XXX
-        // disabling migration index caching - migration preempts metrics-related
-        // code in test actor runtime
+        // disabling migration index caching - migration preempts
+        // metrics-related code in test actor runtime
         config.SetMigrationIndexCachingInterval(999999);
 
         auto state = MakeIntrusive<TDiskRegistryState>();
@@ -260,13 +264,12 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             false,
             1,
             NCloud::NProto::STORAGE_MEDIA_HYBRID,
-            1024,       // block count per partition
+            1024,   // block count per partition
             "vol0",
             "cloud",
             "folder",
-            2,          // partition count
-            2
-        );
+            2,   // partition count
+            2);
 
         volume.WaitReady();
 
@@ -278,28 +281,37 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         ui64 loadTime = 0;
         ui64 startTime = 0;
 
-        auto obs = [&] (TAutoPtr<IEventHandle>& event) {
+        auto obs = [&](TAutoPtr<IEventHandle>& event)
+        {
             if (event->GetTypeRewrite() == TEvVolumePrivate::EvPartStatsSaved) {
                 ++partStatsSaved;
-            } else if (event->Recipient == MakeStorageStatsServiceId()
-                    && event->GetTypeRewrite() == TEvStatsService::EvVolumePartCounters)
+            } else if (
+                event->Recipient == MakeStorageStatsServiceId() &&
+                event->GetTypeRewrite() ==
+                    TEvStatsService::EvVolumePartCounters)
             {
-                auto* msg = event->Get<TEvStatsService::TEvVolumePartCounters>();
+                auto* msg =
+                    event->Get<TEvStatsService::TEvVolumePartCounters>();
 
                 bytesCount = msg->DiskCounters->Simple.BytesCount.Value;
                 usedBytesCount = msg->DiskCounters->Simple.UsedBytesCount.Value;
-                channelHistorySize = msg->DiskCounters->Simple.ChannelHistorySize.Value;
-            } else if (event->Recipient == MakeStorageStatsServiceId()
-                    && event->GetTypeRewrite() == TEvStatsService::EvVolumeSelfCounters)
+                channelHistorySize =
+                    msg->DiskCounters->Simple.ChannelHistorySize.Value;
+            } else if (
+                event->Recipient == MakeStorageStatsServiceId() &&
+                event->GetTypeRewrite() ==
+                    TEvStatsService::EvVolumeSelfCounters)
             {
-                auto* msg = event->Get<TEvStatsService::TEvVolumeSelfCounters>();
+                auto* msg =
+                    event->Get<TEvStatsService::TEvVolumeSelfCounters>();
 
                 partitionCount =
                     msg->VolumeSelfCounters->Simple.PartitionCount.Value;
-                loadTime = msg->VolumeSelfCounters->Simple.LastVolumeLoadTime.Value;
-                startTime = msg->VolumeSelfCounters->Simple.LastVolumeStartTime.Value;
+                loadTime =
+                    msg->VolumeSelfCounters->Simple.LastVolumeLoadTime.Value;
+                startTime =
+                    msg->VolumeSelfCounters->Simple.LastVolumeStartTime.Value;
             }
-
 
             return TTestActorRuntime::DefaultObserverFunc(event);
         };
@@ -344,8 +356,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         runtime->SetObserverFunc(obs);
         volume.SendToPipe(
-            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>()
-        );
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
         runtime->DispatchEvents({}, TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(8_MB, bytesCount);
@@ -364,8 +375,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         partitionCount = 0;
 
         volume.SendToPipe(
-            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>()
-        );
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
         runtime->DispatchEvents({}, TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(8_MB, bytesCount);
@@ -390,8 +400,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             false,
             1,
             NCloud::NProto::STORAGE_MEDIA_HYBRID,
-            1024
-        );
+            1024);
 
         volume.WaitReady();
 
@@ -486,15 +495,15 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
 
         // Make sure that proper buckets are filled.
-        auto readIndex = FindIndexIf(readBuckets, [](const auto& bucket) {
-            return bucket.second == 1;
-        });
-        auto writeIndex = FindIndexIf(writeBuckets, [](const auto& bucket) {
-            return bucket.second == 1;
-        });
-        auto zeroIndex = FindIndexIf(zeroBuckets, [](const auto& bucket) {
-            return bucket.second == 1;
-        });
+        auto readIndex = FindIndexIf(
+            readBuckets,
+            [](const auto& bucket) { return bucket.second == 1; });
+        auto writeIndex = FindIndexIf(
+            writeBuckets,
+            [](const auto& bucket) { return bucket.second == 1; });
+        auto zeroIndex = FindIndexIf(
+            zeroBuckets,
+            [](const auto& bucket) { return bucket.second == 1; });
         UNIT_ASSERT_GE(readIndex, 19);
         UNIT_ASSERT_VALUES_UNEQUAL(readIndex, NPOS);
         UNIT_ASSERT_GE(writeIndex, 21);
@@ -522,9 +531,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         runtime->AdvanceCurrentTime(UpdateCountersInterval);
         runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
 
-        auto readIndex2 = FindIndexIf(readBuckets, [](const auto& bucket) {
-            return bucket.second == 1;
-        });
+        auto readIndex2 = FindIndexIf(
+            readBuckets,
+            [](const auto& bucket) { return bucket.second == 1; });
         UNIT_ASSERT_VALUES_EQUAL(readIndex2, NPOS);
     }
 
@@ -543,8 +552,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             false,
             1,
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024
-        );
+            1024);
         volume.WaitReady();
 
         // Write non-zero blocks directly to disk agent.
@@ -607,9 +615,13 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         // Wait for EvDiskRegistryBasedPartitionCounters arrived.
         runtime->AdvanceCurrentTime(TDuration::Seconds(60));
-        runtime->DispatchEvents({ .CustomFinalCondition = [&] {
-            return nonEmptyReports == 1;
-        }}, TDuration::Seconds(1));
+        runtime->DispatchEvents(
+            {.CustomFinalCondition =
+                 [&]
+             {
+                 return nonEmptyReports == 1;
+             }},
+            TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_UNEQUAL(cpu, TDuration());
         // All blocks should be non-void, since the "SKIP_VOID_BLOCKS" has not
@@ -636,16 +648,21 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         // Wait for EvDiskRegistryBasedPartitionCounters arrived.
         runtime->AdvanceCurrentTime(TDuration::Seconds(60));
-        runtime->DispatchEvents({ .CustomFinalCondition = [&] {
-            return nonEmptyReports == 1;
-        }}, TDuration::Seconds(1));
+        runtime->DispatchEvents(
+            {.CustomFinalCondition =
+                 [&]
+             {
+                 return nonEmptyReports == 1;
+             }},
+            TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_UNEQUAL(TDuration(), cpu);
         // Should read only 3 non-void blocks.
         UNIT_ASSERT_VALUES_EQUAL(3 * DefaultBlockSize, network);
     }
 
-    Y_UNIT_TEST(ShouldReportCpuConsumptionAndNetUtilizationForMirroredPartitions)
+    Y_UNIT_TEST(
+        ShouldReportCpuConsumptionAndNetUtilizationForMirroredPartitions)
     {
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
@@ -663,8 +680,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             false,
             1,
             NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
-            1024
-        );
+            1024);
         volume.WaitReady();
 
         // Write non-zero blocks directly to disk agent.
@@ -792,13 +808,13 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             UNIT_ASSERT(success);
         }
 
-
         UNIT_ASSERT_VALUES_UNEQUAL(TDuration(), cpu);
         // Should read only 3 non-void blocks.
         UNIT_ASSERT_VALUES_EQUAL(3 * 4096, network);
     }
 
-    Y_UNIT_TEST(ShouldReportCpuConsumptionAndNetUtilizationForMirrorResyncPartitions)
+    Y_UNIT_TEST(
+        ShouldReportCpuConsumptionAndNetUtilizationForMirrorResyncPartitions)
     {
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
@@ -1043,7 +1059,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         runtime->DispatchEvents({}, TDuration::Seconds(1));
 
         // Validate bytes count for source and shadow disks.
-        auto shadowActorBytes = useDirectCopy ? 0 :DiskByteCount;
+        auto shadowActorBytes = useDirectCopy ? 0 : DiskByteCount;
         auto directCopyBytes = useDirectCopy ? DiskByteCount : 0;
 
         UNIT_ASSERT_VALUES_EQUAL(2, statsForDisks.size());
@@ -1114,10 +1130,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             std::make_unique<TEvVolumePrivate::TEvReadHistoryRequest>(
                 runtime->GetCurrentTime(),
                 TInstant::Seconds(0),
-                Max<size_t>()
-            ));
+                Max<size_t>()));
         {
-            auto response = volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
+            auto response =
+                volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
             UNIT_ASSERT_VALUES_EQUAL(40, response->History.size());
         }
 
@@ -1134,10 +1150,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             std::make_unique<TEvVolumePrivate::TEvReadHistoryRequest>(
                 runtime->GetCurrentTime(),
                 TInstant::Seconds(0),
-                Max<size_t>()
-            ));
+                Max<size_t>()));
         {
-            auto response = volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
+            auto response =
+                volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
             UNIT_ASSERT_VALUES_EQUAL(20, response->History.size());
         }
 
@@ -1154,10 +1170,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             std::make_unique<TEvVolumePrivate::TEvReadHistoryRequest>(
                 runtime->GetCurrentTime(),
                 TInstant::Seconds(0),
-                Max<size_t>()
-            ));
+                Max<size_t>()));
         {
-            auto response = volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
+            auto response =
+                volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
             UNIT_ASSERT_VALUES_EQUAL(0, response->History.size());
         }
 
@@ -1206,10 +1222,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             std::make_unique<TEvVolumePrivate::TEvReadHistoryRequest>(
                 runtime->GetCurrentTime(),
                 TInstant::Seconds(0),
-                Max<size_t>()
-            ));
+                Max<size_t>()));
         {
-            auto response = volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
+            auto response =
+                volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
             UNIT_ASSERT_VALUES_EQUAL(2, response->History.size());
         }
 
@@ -1226,10 +1242,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             std::make_unique<TEvVolumePrivate::TEvReadHistoryRequest>(
                 runtime->GetCurrentTime(),
                 TInstant::Seconds(0),
-                Max<size_t>()
-            ));
+                Max<size_t>()));
         {
-            auto response = volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
+            auto response =
+                volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
             UNIT_ASSERT_VALUES_EQUAL(1, response->History.size());
         }
 
@@ -1246,10 +1262,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             std::make_unique<TEvVolumePrivate::TEvReadHistoryRequest>(
                 runtime->GetCurrentTime(),
                 TInstant::Seconds(0),
-                Max<size_t>()
-            ));
+                Max<size_t>()));
         {
-            auto response = volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
+            auto response =
+                volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
             UNIT_ASSERT_VALUES_EQUAL(1, response->History.size());
         }
     }
@@ -1459,8 +1475,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             {
                 auto* msg =
                     event->Get<TEvStatsService::TEvVolumeSelfCounters>();
-                counter =
-                    msg->VolumeSelfCounters->Simple.DiskAgentCount.Value;
+                counter = msg->VolumeSelfCounters->Simple.DiskAgentCount.Value;
             }
 
             return false;
@@ -1502,11 +1517,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
     Y_UNIT_TEST(ShouldNotDiskAgentCountStatSSD)
     {
-        DoShouldDiskAgentCountStat(
-            NCloud::NProto::STORAGE_MEDIA_SSD,
-            0,
-            1,
-            0);
+        DoShouldDiskAgentCountStat(NCloud::NProto::STORAGE_MEDIA_SSD, 0, 1, 0);
     }
 }
 

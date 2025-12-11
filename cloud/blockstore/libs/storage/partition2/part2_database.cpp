@@ -23,7 +23,8 @@ void TPartitionDatabase::InitSchema()
 {
     Materialize<TPartitionSchema>();
 
-    TSchemaInitializer<TPartitionSchema::TTables>::InitStorage(Database.Alter());
+    TSchemaInitializer<TPartitionSchema::TTables>::InitStorage(
+        Database.Alter());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -32,18 +33,14 @@ void TPartitionDatabase::WriteMeta(const NProto::TPartitionMeta& meta)
 {
     using TTable = TPartitionSchema::Meta;
 
-    Table<TTable>()
-        .Key(1)
-        .Update(NIceDb::TUpdate<TTable::PartitionMeta>(meta));
+    Table<TTable>().Key(1).Update(NIceDb::TUpdate<TTable::PartitionMeta>(meta));
 }
 
 bool TPartitionDatabase::ReadMeta(TMaybe<NProto::TPartitionMeta>& meta)
 {
     using TTable = TPartitionSchema::Meta;
 
-    auto it = Table<TTable>()
-        .Key(1)
-        .Select();
+    auto it = Table<TTable>().Key(1).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -62,9 +59,7 @@ bool TPartitionDatabase::ReadFreshBlockUpdates(TFreshBlockUpdates& updates)
 {
     using TTable = TPartitionSchema::FreshBlockUpdates;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select();
+    auto it = Table<TTable>().Range().Select();
 
     if (!it.IsReady()) {
         return false;
@@ -92,8 +87,7 @@ void TPartitionDatabase::AddFreshBlockUpdate(TFreshBlockUpdate update)
 
     Table<TTable>()
         .Key(update.CommitId, update.BlockRange.Start)
-        .Update(
-            NIceDb::TUpdate<TTable::EndIndex>(update.BlockRange.End));
+        .Update(NIceDb::TUpdate<TTable::EndIndex>(update.BlockRange.End));
 }
 
 void TPartitionDatabase::TrimFreshBlockUpdates(
@@ -103,9 +97,7 @@ void TPartitionDatabase::TrimFreshBlockUpdates(
     using TTable = TPartitionSchema::FreshBlockUpdates;
 
     for (; first != last; ++first) {
-        Table<TTable>()
-            .Key(first->CommitId, first->BlockRange.Start)
-            .Delete();
+        Table<TTable>().Key(first->CommitId, first->BlockRange.Start).Delete();
     }
 }
 
@@ -122,14 +114,11 @@ void TPartitionDatabase::WriteGlobalBlob(
         .Update<TTable::BlobMeta>(meta);
 }
 
-void TPartitionDatabase::DeleteGlobalBlob(
-    const TPartialBlobId& blobId)
+void TPartitionDatabase::DeleteGlobalBlob(const TPartialBlobId& blobId)
 {
     using TTable = TPartitionSchema::GlobalBlobs;
 
-    Table<TTable>()
-        .Key(blobId.CommitId(), blobId.UniqueId())
-        .Delete();
+    Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId()).Delete();
 }
 
 void TPartitionDatabase::WriteZoneBlob(
@@ -150,18 +139,14 @@ void TPartitionDatabase::DeleteZoneBlob(
 {
     using TTable = TPartitionSchema::ZoneBlobs;
 
-    Table<TTable>()
-        .Key(zoneId, blobId.CommitId(), blobId.UniqueId())
-        .Delete();
+    Table<TTable>().Key(zoneId, blobId.CommitId(), blobId.UniqueId()).Delete();
 }
 
 bool TPartitionDatabase::ReadGlobalBlobs(TVector<TBlobMeta>& blobs)
 {
     using TTable = TPartitionSchema::GlobalBlobs;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select();
+    auto it = Table<TTable>().Range().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -172,7 +157,7 @@ bool TPartitionDatabase::ReadGlobalBlobs(TVector<TBlobMeta>& blobs)
             it.GetValue<TTable::BlobCommitId>(),
             it.GetValue<TTable::BlobId>());
 
-        blobs.push_back({ blobId, it.GetValueOrDefault<TTable::BlobMeta>() });
+        blobs.push_back({blobId, it.GetValueOrDefault<TTable::BlobMeta>()});
 
         if (!it.Next()) {
             return false;   // not ready
@@ -186,9 +171,7 @@ bool TPartitionDatabase::ReadZoneBlobs(ui32 zoneId, TVector<TBlobMeta>& blobs)
 {
     using TTable = TPartitionSchema::ZoneBlobs;
 
-    auto it = Table<TTable>()
-        .Prefix(zoneId)
-        .Select();
+    auto it = Table<TTable>().Prefix(zoneId).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -199,7 +182,7 @@ bool TPartitionDatabase::ReadZoneBlobs(ui32 zoneId, TVector<TBlobMeta>& blobs)
             it.GetValue<TTable::BlobCommitId>(),
             it.GetValue<TTable::BlobId>());
 
-        blobs.push_back({ blobId, it.GetValueOrDefault<TTable::BlobMeta>() });
+        blobs.push_back({blobId, it.GetValueOrDefault<TTable::BlobMeta>()});
 
         if (!it.Next()) {
             return false;   // not ready
@@ -241,17 +224,11 @@ bool ReadKnownBlobIdsImpl(
 bool TPartitionDatabase::ReadKnownBlobIds(TVector<TPartialBlobId>& blobIds)
 {
     auto global = Table<TPartitionSchema::GlobalBlobs>();
-    auto ready = ReadKnownBlobIdsImpl<TPartitionSchema::GlobalBlobs>(
-        global,
-        blobIds,
-        0
-    );
+    auto ready =
+        ReadKnownBlobIdsImpl<TPartitionSchema::GlobalBlobs>(global, blobIds, 0);
     auto local = Table<TPartitionSchema::ZoneBlobs>();
-    ready &= ReadKnownBlobIdsImpl<TPartitionSchema::ZoneBlobs>(
-        local,
-        blobIds,
-        0
-    );
+    ready &=
+        ReadKnownBlobIdsImpl<TPartitionSchema::ZoneBlobs>(local, blobIds, 0);
     return ready;
 }
 
@@ -261,11 +238,7 @@ bool TPartitionDatabase::ReadAllZoneBlobIds(
 {
     using TTable = TPartitionSchema::ZoneBlobs;
     auto local = Table<TTable>();
-    return ReadKnownBlobIdsImpl<TTable>(
-        local,
-        blobIds,
-        commitId
-    );
+    return ReadKnownBlobIdsImpl<TTable>(local, blobIds, commitId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -295,9 +268,7 @@ void TPartitionDatabase::DeleteBlockList(const TPartialBlobId& blobId)
 {
     using TTable = TPartitionSchema::BlockLists;
 
-    Table<TTable>()
-        .Key(blobId.CommitId(), blobId.UniqueId())
-        .Delete();
+    Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId()).Delete();
 }
 
 bool TPartitionDatabase::ReadBlockList(
@@ -306,9 +277,8 @@ bool TPartitionDatabase::ReadBlockList(
 {
     using TTable = TPartitionSchema::BlockLists;
 
-    auto it = Table<TTable>()
-        .Key(blobId.CommitId(), blobId.UniqueId())
-        .Select();
+    auto it =
+        Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId()).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -317,14 +287,12 @@ bool TPartitionDatabase::ReadBlockList(
     if (it.IsValid()) {
         TByteVector blocks = FromStringBuf(
             it.GetValueOrDefault<TTable::Blocks>(),
-            GetAllocatorByTag(EAllocatorTag::BlobIndexBlockList)
-        );
+            GetAllocatorByTag(EAllocatorTag::BlobIndexBlockList));
         TByteVector deletedBlocks = FromStringBuf(
             it.GetValueOrDefault<TTable::DeletedBlocks>(),
-            GetAllocatorByTag(EAllocatorTag::BlobIndexBlockList)
-        );
+            GetAllocatorByTag(EAllocatorTag::BlobIndexBlockList));
 
-        blockList = { std::move(blocks), std::move(deletedBlocks) };
+        blockList = {std::move(blocks), std::move(deletedBlocks)};
     }
 
     return true;
@@ -351,9 +319,7 @@ void TPartitionDatabase::DeleteGlobalBlobUpdate(ui64 deletionId)
 {
     using TTable = TPartitionSchema::GlobalBlobUpdates;
 
-    Table<TTable>()
-        .Key(deletionId)
-        .Delete();
+    Table<TTable>().Key(deletionId).Delete();
 }
 
 void TPartitionDatabase::WriteZoneBlobUpdate(
@@ -372,21 +338,15 @@ void TPartitionDatabase::WriteZoneBlobUpdate(
             NIceDb::TUpdate<TTable::EndIndex>(blockRange.End));
 }
 
-void TPartitionDatabase::DeleteZoneBlobUpdate(
-    ui32 zoneId,
-    ui64 deletionId)
+void TPartitionDatabase::DeleteZoneBlobUpdate(ui32 zoneId, ui64 deletionId)
 {
     using TTable = TPartitionSchema::ZoneBlobUpdates;
 
-    Table<TTable>()
-        .Key(zoneId, deletionId)
-        .Delete();
+    Table<TTable>().Key(zoneId, deletionId).Delete();
 }
 
 template <class TTable, class TIterator>
-bool ReadBlobUpdatesImpl(
-    TIterator& it,
-    TVector<TBlobUpdate>& updates)
+bool ReadBlobUpdatesImpl(TIterator& it, TVector<TBlobUpdate>& updates)
 {
     if (!it.IsReady()) {
         return false;   // not ready
@@ -409,14 +369,11 @@ bool ReadBlobUpdatesImpl(
     return true;
 }
 
-bool TPartitionDatabase::ReadGlobalBlobUpdates(
-    TVector<TBlobUpdate>& updates)
+bool TPartitionDatabase::ReadGlobalBlobUpdates(TVector<TBlobUpdate>& updates)
 {
     using TTable = TPartitionSchema::GlobalBlobUpdates;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select();
+    auto it = Table<TTable>().Range().Select();
 
     return ReadBlobUpdatesImpl<TTable>(it, updates);
 }
@@ -427,17 +384,14 @@ bool TPartitionDatabase::ReadZoneBlobUpdates(
 {
     using TTable = TPartitionSchema::ZoneBlobUpdates;
 
-    auto it = Table<TTable>()
-        .Prefix(zoneId)
-        .Select();
+    auto it = Table<TTable>().Prefix(zoneId).Select();
 
     return ReadBlobUpdatesImpl<TTable>(it, updates);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionDatabase::WriteGlobalBlobGarbage(
-    const TBlobGarbage& garbage)
+void TPartitionDatabase::WriteGlobalBlobGarbage(const TBlobGarbage& garbage)
 {
     using TTable = TPartitionSchema::GlobalBlobGarbage;
 
@@ -446,14 +400,11 @@ void TPartitionDatabase::WriteGlobalBlobGarbage(
         .Update<TTable::BlockCount>(garbage.BlockCount);
 }
 
-void TPartitionDatabase::DeleteGlobalBlobGarbage(
-    const TPartialBlobId& blobId)
+void TPartitionDatabase::DeleteGlobalBlobGarbage(const TPartialBlobId& blobId)
 {
     using TTable = TPartitionSchema::GlobalBlobGarbage;
 
-    Table<TTable>()
-        .Key(blobId.CommitId(), blobId.UniqueId())
-        .Delete();
+    Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId()).Delete();
 }
 
 void TPartitionDatabase::WriteZoneBlobGarbage(
@@ -473,9 +424,7 @@ void TPartitionDatabase::DeleteZoneBlobGarbage(
 {
     using TTable = TPartitionSchema::ZoneBlobGarbage;
 
-    Table<TTable>()
-        .Key(zoneId, blobId.CommitId(), blobId.UniqueId())
-        .Delete();
+    Table<TTable>().Key(zoneId, blobId.CommitId(), blobId.UniqueId()).Delete();
 }
 
 template <class TTable, class TIterator>
@@ -494,10 +443,7 @@ bool ReadGlobalBlobGarbageImpl(
 
         ui16 blockCount = it.template GetValue<typename TTable::BlockCount>();
 
-        garbage.push_back({
-            blobId,
-            blockCount
-        });
+        garbage.push_back({blobId, blockCount});
 
         if (!it.Next()) {
             return false;   // not ready
@@ -512,9 +458,7 @@ bool TPartitionDatabase::ReadGlobalBlobGarbage(
 {
     using TTable = TPartitionSchema::GlobalBlobGarbage;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select();
+    auto it = Table<TTable>().Range().Select();
 
     return ReadGlobalBlobGarbageImpl<TTable>(it, garbage);
 }
@@ -525,9 +469,7 @@ bool TPartitionDatabase::ReadZoneBlobGarbage(
 {
     using TTable = TPartitionSchema::ZoneBlobGarbage;
 
-    auto it = Table<TTable>()
-        .Prefix(zoneId)
-        .Select();
+    auto it = Table<TTable>().Prefix(zoneId).Select();
 
     return ReadGlobalBlobGarbageImpl<TTable>(it, garbage);
 }
@@ -547,9 +489,7 @@ void TPartitionDatabase::DeleteCheckpoint(ui64 commitId)
 {
     using TTable = TPartitionSchema::Checkpoints;
 
-    Table<TTable>()
-        .Key(commitId)
-        .Delete();
+    Table<TTable>().Key(commitId).Delete();
 }
 
 bool TPartitionDatabase::ReadCheckpoint(
@@ -558,9 +498,7 @@ bool TPartitionDatabase::ReadCheckpoint(
 {
     using TTable = TPartitionSchema::Checkpoints;
 
-    auto it = Table<TTable>()
-        .Key(commitId)
-        .Select<TTable::CheckpointMeta>();
+    auto it = Table<TTable>().Key(commitId).Select<TTable::CheckpointMeta>();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -578,9 +516,7 @@ bool TPartitionDatabase::ReadCheckpoints(
 {
     using TTable = TPartitionSchema::Checkpoints;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select();
+    auto it = Table<TTable>().Range().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -626,9 +562,7 @@ bool TPartitionDatabase::ReadCheckpointBlobs(
 {
     using TTable = TPartitionSchema::CheckpointBlobs;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select();
+    auto it = Table<TTable>().Range().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -641,7 +575,7 @@ bool TPartitionDatabase::ReadCheckpointBlobs(
             it.GetValue<TTable::BlobCommitId>(),
             it.GetValue<TTable::BlobId>());
 
-        blobs.push_back({ commitId, blobId });
+        blobs.push_back({commitId, blobId});
 
         if (!it.Next()) {
             return false;   // not ready
@@ -657,10 +591,8 @@ bool TPartitionDatabase::ReadCheckpointBlobs(
 {
     using TTable = TPartitionSchema::CheckpointBlobs;
 
-    auto it = Table<TTable>()
-        .GreaterOrEqual(commitId)
-        .LessOrEqual(commitId)
-        .Select();
+    auto it =
+        Table<TTable>().GreaterOrEqual(commitId).LessOrEqual(commitId).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -700,9 +632,7 @@ void TPartitionDatabase::DeleteCompactionMap(ui32 blockIndex)
 {
     using TTable = TPartitionSchema::CompactionMap;
 
-    Table<TTable>()
-        .Key(blockIndex)
-        .Delete();
+    Table<TTable>().Key(blockIndex).Delete();
 }
 
 bool TPartitionDatabase::ReadCompactionMap(
@@ -710,9 +640,7 @@ bool TPartitionDatabase::ReadCompactionMap(
 {
     using TTable = TPartitionSchema::CompactionMap;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select();
+    auto it = Table<TTable>().Range().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -729,9 +657,7 @@ bool TPartitionDatabase::ReadCompactionMap(
                 0,
                 0,
                 false,
-                0
-            }
-        );
+                0});
 
         if (!it.Next()) {
             return false;   // not ready
@@ -747,27 +673,21 @@ void TPartitionDatabase::WriteGarbageBlob(const TPartialBlobId& blobId)
 {
     using TTable = TPartitionSchema::GarbageBlobs;
 
-    Table<TTable>()
-        .Key(blobId.CommitId(), blobId.UniqueId())
-        .Update();
+    Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId()).Update();
 }
 
 void TPartitionDatabase::DeleteGarbageBlob(const TPartialBlobId& blobId)
 {
     using TTable = TPartitionSchema::GarbageBlobs;
 
-    Table<TTable>()
-        .Key(blobId.CommitId(), blobId.UniqueId())
-        .Delete();
+    Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId()).Delete();
 }
 
 bool TPartitionDatabase::ReadGarbageBlobs(TVector<TPartialBlobId>& blobIds)
 {
     using TTable = TPartitionSchema::GarbageBlobs;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select();
+    auto it = Table<TTable>().Range().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready

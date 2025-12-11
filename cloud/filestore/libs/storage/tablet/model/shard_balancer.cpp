@@ -23,8 +23,8 @@ struct TShardMetaComp
         const TShardBalancerBase::TShardMeta& rhs)
     {
         return FreeSpace(lhs.Stats) == FreeSpace(rhs.Stats)
-            ? lhs.ShardIdx < rhs.ShardIdx
-            : FreeSpace(lhs.Stats) > FreeSpace(rhs.Stats);
+                   ? lhs.ShardIdx < rhs.ShardIdx
+                   : FreeSpace(lhs.Stats) > FreeSpace(rhs.Stats);
     }
 
     bool operator()(ui64 lhs, const TShardBalancerBase::TShardMeta& rhs)
@@ -36,11 +36,11 @@ struct TShardMetaComp
 ////////////////////////////////////////////////////////////////////////////////
 
 TShardBalancerBase::TShardBalancerBase(
-        ui32 blockSize,
-        ui32 maxFileBlocks,
-        ui64 desiredFreeSpaceReserve,
-        ui64 minFreeSpaceReserve,
-        TVector<TString> shardIds)
+    ui32 blockSize,
+    ui32 maxFileBlocks,
+    ui64 desiredFreeSpaceReserve,
+    ui64 minFreeSpaceReserve,
+    TVector<TString> shardIds)
     : BlockSize(blockSize)
     , DesiredFreeSpaceReserve(desiredFreeSpaceReserve)
     , MinFreeSpaceReserve(minFreeSpaceReserve)
@@ -152,11 +152,11 @@ NProto::TError TShardBalancerRandom::SelectShard(
 ////////////////////////////////////////////////////////////////////////////////
 
 TShardBalancerWeightedRandom::TShardBalancerWeightedRandom(
-        ui32 blockSize,
-        ui32 maxFileBlocks,
-        ui64 desiredFreeSpaceReserve,
-        ui64 minFreeSpaceReserve,
-        TVector<TString> shardIds)
+    ui32 blockSize,
+    ui32 maxFileBlocks,
+    ui64 desiredFreeSpaceReserve,
+    ui64 minFreeSpaceReserve,
+    TVector<TString> shardIds)
     : TShardBalancerBase(
           blockSize,
           maxFileBlocks,

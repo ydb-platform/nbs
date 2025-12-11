@@ -4,7 +4,6 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -31,8 +30,7 @@ private:
     const TString Input;
 
 public:
-    TChangeStorageConfigActionActor(TRequestInfoPtr requestInfo,
-        TString input);
+    TChangeStorageConfigActionActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -53,8 +51,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TChangeStorageConfigActionActor::TChangeStorageConfigActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -63,20 +61,18 @@ void TChangeStorageConfigActionActor::Bootstrap(const TActorContext& ctx)
 {
     NProto::TChangeStorageConfigRequest request;
     if (!google::protobuf::util::JsonStringToMessage(Input, &request).ok()) {
-        ReplyAndDie(ctx, MakeError(
-            E_ARGUMENT,
-            "Failed to parse input"));
+        ReplyAndDie(ctx, MakeError(E_ARGUMENT, "Failed to parse input"));
         return;
     }
 
     if (!request.GetDiskId()) {
-        ReplyAndDie(ctx, MakeError(
-            E_ARGUMENT,
-            "DiskId should be supplied"));
+        ReplyAndDie(ctx, MakeError(E_ARGUMENT, "DiskId should be supplied"));
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Start to change storage config of %s",
         request.GetDiskId().c_str());
 
@@ -84,10 +80,7 @@ void TChangeStorageConfigActionActor::Bootstrap(const TActorContext& ctx)
         std::make_unique<TEvVolume::TEvChangeStorageConfigRequest>();
     requestToVolume->Record = std::move(request);
 
-    NCloud::Send(
-        ctx,
-        MakeVolumeProxyServiceId(),
-        std::move(requestToVolume));
+    NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(requestToVolume));
 
     Become(&TThis::StateWork);
 }
@@ -96,12 +89,12 @@ void TChangeStorageConfigActionActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>(std::move(error));
+    auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>(
+        std::move(error));
 
     google::protobuf::util::MessageToJsonString(
         NProto::TChangeStorageConfigResponse(),
-        msg->Record.MutableOutput()
-    );
+        msg->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,
@@ -121,8 +114,8 @@ void TChangeStorageConfigActionActor::ReplyAndDie(
         response.GetError());
 
     google::protobuf::util::MessageToJsonString(
-        std::move(response), msg->Record.MutableOutput()
-    );
+        std::move(response),
+        msg->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,
@@ -148,7 +141,9 @@ void TChangeStorageConfigActionActor::HandleChangeStorageConfigResponse(
 STFUNC(TChangeStorageConfigActionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvVolume::TEvChangeStorageConfigResponse, HandleChangeStorageConfigResponse);
+        HFunc(
+            TEvVolume::TEvChangeStorageConfigResponse,
+            HandleChangeStorageConfigResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -159,7 +154,7 @@ STFUNC(TChangeStorageConfigActionActor::StateWork)
     }
 }
 
-} // namespace
+}   // namespace
 
 TResultOrError<IActorPtr> TServiceActor::CreateChangeStorageConfigActionActor(
     TRequestInfoPtr requestInfo,

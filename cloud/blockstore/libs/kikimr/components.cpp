@@ -6,18 +6,18 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TComponent {
+struct TComponent
+{
     int Component;
     TString Name;
 };
 
 #define BLOCKSTORE_DECLARE_COMPONENT(component) \
-    { TBlockStoreComponents::component, "BLOCKSTORE_" #component }, \
-// BLOCKSTORE_DECLARE_COMPONENT
+    {TBlockStoreComponents::component,          \
+     "BLOCKSTORE_" #component},   // BLOCKSTORE_DECLARE_COMPONENT
 
 static const TComponent Components[] = {
-    BLOCKSTORE_COMPONENTS(BLOCKSTORE_DECLARE_COMPONENT)
-};
+    BLOCKSTORE_COMPONENTS(BLOCKSTORE_DECLARE_COMPONENT)};
 
 #undef BLOCKSTORE_DECLARE_COMPONENT
 

@@ -10,21 +10,19 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThrottlerPolicy final
-    : public IThrottlerPolicy
+class TThrottlerPolicy final: public IThrottlerPolicy
 {
 private:
     TThrottlingServiceConfig Config;
     TLeakyBucket Bucket;
 
 public:
-    TThrottlerPolicy(
-            const TThrottlingServiceConfig& config)
+    TThrottlerPolicy(const TThrottlingServiceConfig& config)
         : Config(config)
         , Bucket(
-            1.0,
-            Config.MaxBurstTime.MicroSeconds() / 1e6,
-            Config.MaxBurstTime.MicroSeconds() / 1e6)
+              1.0,
+              Config.MaxBurstTime.MicroSeconds() / 1e6,
+              Config.MaxBurstTime.MicroSeconds() / 1e6)
     {}
 
     TDuration SuggestDelay(
@@ -65,10 +63,7 @@ public:
 
         return SecondsToDuration(Bucket.Register(
             now,
-            CostPerIO(
-                maxIops,
-                maxBandwidth,
-                byteCount).MicroSeconds() / 1e6));
+            CostPerIO(maxIops, maxBandwidth, byteCount).MicroSeconds() / 1e6));
     }
 
     double CalculateCurrentSpentBudgetShare(TInstant ts) const override

@@ -15,7 +15,7 @@ const TVector<TString> MakeNames(
 {
     TVector<TString> names;
     for (ui32 i = 0; i < limits.size(); ++i) {
-        if (i != limits.size()-1) {
+        if (i != limits.size() - 1) {
             names.emplace_back(TStringBuilder() << limits[i] << suffix);
         } else {
             names.emplace_back("Inf");
@@ -67,4 +67,3 @@ TVector<TString> TKbSizeBuckets::MakeNames()
 }
 
 }   // namespace NCloud
-

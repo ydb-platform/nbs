@@ -5,11 +5,11 @@
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
 namespace NKikimrFileStore {
-    class TConfig;
+class TConfig;
 }
 
 namespace NCloud::NFileStore::NProto {
-    class TFileStorePerformanceProfile;
+class TFileStorePerformanceProfile;
 }
 
 namespace NCloud::NFileStore::NStorage {

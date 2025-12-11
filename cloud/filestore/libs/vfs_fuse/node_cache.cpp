@@ -11,8 +11,7 @@ namespace NCloud::NFileStore::NFuse {
 TNode* TNodeCache::AddNode(const NProto::TNodeAttr& attrs)
 {
     auto [it, inserted] = Nodes.emplace(attrs);
-    Y_ABORT_UNLESS(inserted, "failed to insert %s",
-        DumpMessage(attrs).data());
+    Y_ABORT_UNLESS(inserted, "failed to insert %s", DumpMessage(attrs).data());
 
     auto* node = (TNode*)&*it;
     return node;
@@ -71,9 +70,7 @@ void TXAttrCache::Add(
                 .Name = name,
                 .Value = value,
                 .Version = version,
-                .UpdateTime = Timer->Now()
-            }
-        );
+                .UpdateTime = Timer->Now()});
     }
 }
 
@@ -85,9 +82,7 @@ void TXAttrCache::AddAbsent(ui64 ino, const TString& name)
             .Name = name,
             .Value = Nothing(),
             .Version = 0,
-            .UpdateTime = Timer->Now()
-        }
-    );
+            .UpdateTime = Timer->Now()});
 }
 
 const TXAttr* TXAttrCache::Get(ui64 ino, const TString& name)

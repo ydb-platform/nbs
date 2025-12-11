@@ -6,8 +6,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRemoveClusterNodeCommand final
-    : public TFileStoreCommand
+class TRemoveClusterNodeCommand final: public TFileStoreCommand
 {
 private:
     TString NodeId;
@@ -29,10 +28,9 @@ public:
         request->SetFileSystemId(FileSystemId);
         request->SetNodeId(NodeId);
 
-        auto response = WaitFor(
-            Client->RemoveClusterNode(
-                std::move(callContext),
-                std::move(request)));
+        auto response = WaitFor(Client->RemoveClusterNode(
+            std::move(callContext),
+            std::move(request)));
 
         if (HasError(response)) {
             ythrow TServiceError(response.GetError());

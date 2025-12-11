@@ -48,10 +48,14 @@ i64 AggregateMin(const auto& metrics, i64 result)
 i64 Aggregate(const auto& metrics, i64 base, EAggregationType type)
 {
     switch (type) {
-        case EAggregationType::AT_SUM: return AggregateSum(metrics, base);
-        case EAggregationType::AT_AVG: return AggregateAvg(metrics, base);
-        case EAggregationType::AT_MIN: return AggregateMin(metrics, Max<i64>());
-        case EAggregationType::AT_MAX: return AggregateMax(metrics, Min<i64>());
+        case EAggregationType::AT_SUM:
+            return AggregateSum(metrics, base);
+        case EAggregationType::AT_AVG:
+            return AggregateAvg(metrics, base);
+        case EAggregationType::AT_MIN:
+            return AggregateMin(metrics, Max<i64>());
+        case EAggregationType::AT_MAX:
+            return AggregateMax(metrics, Min<i64>());
         default:
             Y_ABORT("Unknown aggregation type!!!");
     }

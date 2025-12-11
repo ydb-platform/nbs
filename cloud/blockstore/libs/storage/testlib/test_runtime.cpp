@@ -40,8 +40,7 @@ TStorageConfigPtr CreateTestStorageConfig(
 
     return std::make_unique<TStorageConfig>(
         storageServiceConfig,
-        std::make_shared<NFeatures::TFeaturesConfig>(featuresConfig)
-    );
+        std::make_shared<NFeatures::TFeaturesConfig>(featuresConfig));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

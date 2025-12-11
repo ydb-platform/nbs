@@ -28,10 +28,8 @@ inline bool CheckChannelFreeSpaceShare(
         return true;
     }
 
-    const auto fss = Normalize(
-        freeSpaceShare,
-        minFreeSpace,
-        freeSpaceThreshold);
+    const auto fss =
+        Normalize(freeSpaceShare, minFreeSpace, freeSpaceThreshold);
 
     return RandomNumber<double>() < fss;
 }

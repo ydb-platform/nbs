@@ -1,5 +1,7 @@
 #include "cloud/storage/core/libs/common/format.h"
 #include "util/generic/fwd.h"
+
+#include <library/cpp/deprecated/atomic/atomic.h>
 #include <library/cpp/getopt/small/last_getopt.h>
 #include <library/cpp/threading/blocking_queue/blocking_queue.h>
 
@@ -8,7 +10,6 @@
 #include <util/generic/vector.h>
 #include <util/generic/yexception.h>
 #include <util/string/strip.h>
-#include <library/cpp/deprecated/atomic/atomic.h>
 #include <util/system/file.h>
 #include <util/system/fstat.h>
 #include <util/system/mutex.h>
@@ -60,13 +61,9 @@ struct TOptions
             .DefaultValue(Threads)
             .StoreResult(&Threads);
 
-        opts.AddLongOption("dry-run")
-            .NoArgument()
-            .StoreTrue(&DryRun);
+        opts.AddLongOption("dry-run").NoArgument().StoreTrue(&DryRun);
 
-        opts.AddLongOption('v', "verbose")
-            .NoArgument()
-            .StoreTrue(&Verbose);
+        opts.AddLongOption('v', "verbose").NoArgument().StoreTrue(&Verbose);
 
         TOptsParseResultException res(&opts, argc, argv);
     }
@@ -74,7 +71,7 @@ struct TOptions
 
 ui64 GetDevSize(const TString& path)
 {
-    TShellCommand cmd("blockdev", { "--getsize64", path });
+    TShellCommand cmd("blockdev", {"--getsize64", path});
 
     auto output = cmd.Run().Wait().GetOutput();
 
@@ -92,12 +89,13 @@ struct IDev
 {
     virtual ~IDev() = default;
     virtual void Pload(void* buffer, ui32 byteCount, i64 offset) const = 0;
-    virtual void Pwrite(const void* buffer, ui32 byteCount, i64 offset) const = 0;
+    virtual void
+    Pwrite(const void* buffer, ui32 byteCount, i64 offset) const = 0;
 
     virtual i64 GetLength() const = 0;
 };
 
-struct TDummyDev : IDev
+struct TDummyDev: IDev
 {
     void Pload(void* buffer, ui32 byteCount, i64 offset) const override
     {
@@ -119,14 +117,15 @@ struct TDummyDev : IDev
     }
 };
 
-struct TDev : IDev
+struct TDev: IDev
 {
     TFile File;
 
     explicit TDev(const TString& devPath, bool readOnly)
-        : File(devPath, readOnly
-            ? (OpenExisting | DirectAligned | RdOnly)
-            : (OpenExisting | DirectAligned | RdWr | Sync))
+        : File(
+              devPath,
+              readOnly ? (OpenExisting | DirectAligned | RdOnly)
+                       : (OpenExisting | DirectAligned | RdWr | Sync))
     {}
 
     void Pload(void* buffer, ui32 byteCount, i64 offset) const override
@@ -155,8 +154,8 @@ struct TDev : IDev
 
 struct TFree
 {
-    template<typename T>
-    void operator () (T* p) const
+    template <typename T>
+    void operator()(T* p) const
     {
         std::free(p);
     }
@@ -236,18 +235,14 @@ public:
 
         for (unsigned int i = 0; i != Options.Threads; ++i) {
             Readers.push_back(SystemThreadFactory()->Run(
-                [this, &file = *src]() {
-                    HandleErrors(&TApp::ReaderThread, file);
-                }
-            ));
+                [this, &file = *src]()
+                { HandleErrors(&TApp::ReaderThread, file); }));
         }
 
         for (unsigned int i = 0; i != Options.Threads; ++i) {
             Writers.push_back(SystemThreadFactory()->Run(
-                [this, &file = *dst]() {
-                    HandleErrors(&TApp::WriterThread, file);
-                }
-            ));
+                [this, &file = *dst]()
+                { HandleErrors(&TApp::WriterThread, file); }));
         }
 
         Buffers.reserve(Options.Threads * 2);
@@ -263,8 +258,8 @@ public:
 
         if (Options.Verbose) {
             Cout << "Copy " << Options.SrcPath << " to " << Options.DstPath
-                << ". Buffer size: " << NCloud::FormatByteSize(Options.BufferSize)
-                << Endl;
+                 << ". Buffer size: "
+                 << NCloud::FormatByteSize(Options.BufferSize) << Endl;
         }
 
         i64 offset = 0;
@@ -334,7 +329,9 @@ private:
         const auto p = w * 100 / totalLength;
         auto now = Now();
 
-        if (!ProgressTs || now - ProgressTs >= TDuration::Seconds(5) || totalLength == w) {
+        if (!ProgressTs || now - ProgressTs >= TDuration::Seconds(5) ||
+            totalLength == w)
+        {
             ui64 ws = 0;
             ui64 rs = 0;
 
@@ -348,10 +345,12 @@ private:
                 rs = static_cast<ui64>((r - PrevRead) / dt);
             }
 
-            Cout << "Written: " << NCloud::FormatByteSize(w) << " (" << NCloud::FormatByteSize(ws) << "/s) "
-                << "Read: " << NCloud::FormatByteSize(r) << " (" << NCloud::FormatByteSize(rs) << "/s) "
-                << "Progress: " << p << " % (Total " << NCloud::FormatByteSize(totalLength) << ")"
-                << Endl;
+            Cout << "Written: " << NCloud::FormatByteSize(w) << " ("
+                 << NCloud::FormatByteSize(ws) << "/s) "
+                 << "Read: " << NCloud::FormatByteSize(r) << " ("
+                 << NCloud::FormatByteSize(rs) << "/s) " << "Progress: " << p
+                 << " % (Total " << NCloud::FormatByteSize(totalLength) << ")"
+                 << Endl;
 
             ProgressTs = now;
             PrevWritten = w;
@@ -368,12 +367,12 @@ private:
         return std::make_unique<TDev>(path, readOnly);
     }
 
-    template<typename F>
+    template <typename F>
     void HandleErrors(F fn, IDev& file)
     {
         try {
             std::invoke(fn, this, file);
-        } catch(...) {
+        } catch (...) {
             FreeBuffers.Stop();
             ReadQueue.Stop();
             WriteQueue.Stop();
@@ -417,7 +416,7 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -431,7 +430,7 @@ int main(int argc, char** argv)
 
         return app.Run();
 
-    } catch(...) {
+    } catch (...) {
         Cerr << "[ERROR] " << CurrentExceptionMessage() << Endl;
     }
 

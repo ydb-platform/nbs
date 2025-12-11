@@ -399,7 +399,7 @@ private:
             HeaderPtr->ListOperationState = EListOperationState::None;
             HeaderPtr->ListOperationPrevIndex = InvalidIndex;
             HeaderPtr->ListOperationIndex = InvalidIndex;
-        };
+        }
 
         if (HeaderPtr->ListOperationState == EListOperationState::None ||
             HeaderPtr->ListOperationIndex == InvalidIndex)
@@ -450,7 +450,7 @@ private:
             HeaderPtr->ListOperationPrevIndex = InvalidIndex;
             HeaderPtr->ListOperationNextIndex = InvalidIndex;
             HeaderPtr->ListOperationIndex = InvalidIndex;
-        };
+        }
 
         if (HeaderPtr->ListOperationState == EListOperationState::None ||
             HeaderPtr->ListOperationIndex == InvalidIndex)

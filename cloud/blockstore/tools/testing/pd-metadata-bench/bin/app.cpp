@@ -74,8 +74,8 @@ public:
                 auto now = Now();
                 auto diff = now - lastTs;
                 if (diff > TDuration::Seconds(1)) {
-                    auto iops =
-                        (requestCount - lastRequestCount) * 1'000'000 / diff.MicroSeconds();
+                    auto iops = (requestCount - lastRequestCount) * 1'000'000 /
+                                diff.MicroSeconds();
                     Cout << now << "\tIOPS=" << iops << Endl;
 
                     lastRequestCount = requestCount;
@@ -91,38 +91,47 @@ public:
                     const ui64 checksum = 777;
                     TBlockMeta meta{commitId, checksum};
                     Cdbg << "write " << blockIndex << Endl;
-                    futures[i] = Table->Write(blockIndex, meta).Subscribe(
-                        [&writeResults, blockIndex, commitId] (auto) {
-                            Cdbg << "adding write result: " << blockIndex
-                                << " -> " << commitId << Endl;
-                            writeResults.Enqueue({blockIndex, commitId});
-                        }
-                    );
+                    futures[i] =
+                        Table->Write(blockIndex, meta)
+                            .Subscribe(
+                                [&writeResults, blockIndex, commitId](auto)
+                                {
+                                    Cdbg
+                                        << "adding write result: " << blockIndex
+                                        << " -> " << commitId << Endl;
+                                    writeResults.Enqueue(
+                                        {blockIndex, commitId});
+                                });
                 } else {
                     ui64 expectedCommitId = 0;
                     if (auto p = block2commitId.FindPtr(blockIndex)) {
                         expectedCommitId = *p;
                     }
-                    Cdbg << "read " << blockIndex
-                        << ", expect " << expectedCommitId << Endl;
-                    futures[i] = Table->Read(blockIndex).Apply(
-                        [blockIndex, expectedCommitId] (const auto& f) {
-                            auto actualCommitId = f.GetValue().CommitId;
-                            if (actualCommitId < expectedCommitId) {
-                                Cerr << "block " << blockIndex
-                                    << ", stale commit id " << actualCommitId
-                                    << " < " << expectedCommitId << Endl;
+                    Cdbg << "read " << blockIndex << ", expect "
+                         << expectedCommitId << Endl;
+                    futures[i] =
+                        Table->Read(blockIndex)
+                            .Apply(
+                                [blockIndex, expectedCommitId](const auto& f)
+                                {
+                                    auto actualCommitId = f.GetValue().CommitId;
+                                    if (actualCommitId < expectedCommitId) {
+                                        Cerr << "block " << blockIndex
+                                             << ", stale commit id "
+                                             << actualCommitId << " < "
+                                             << expectedCommitId << Endl;
 
-                                Y_ABORT_UNLESS(0);
-                            }
-                        }
-                    );
+                                        Y_ABORT_UNLESS(0);
+                                    }
+                                });
                 }
 
-                futures[i].Subscribe([&indices, &ev, i] (auto) {
-                    indices.Enqueue(i);
-                    ev.Signal();
-                });
+                futures[i].Subscribe(
+                    [&indices, &ev, i](auto)
+                    {
+                        indices.Enqueue(i);
+                        ev.Signal();
+                    });
 
                 ++requestCount;
 

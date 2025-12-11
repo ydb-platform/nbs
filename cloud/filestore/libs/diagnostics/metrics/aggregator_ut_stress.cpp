@@ -36,55 +36,60 @@ Y_UNIT_TEST_SUITE(TAggregatorStressTest)
             EMetricType::MT_ABSOLUTE);
 
         for (size_t i = 0; i < 5; ++i) {
-            tasks.Add([&count, &a = aggregator, &ks = keys] {
-                for (size_t j = 0; j < COUNT / 5; ++j) {
-                    std::array<TMetricKey, KEYS_PER_THREAD> keys;
-                    for (size_t k = 0; k < KEYS_PER_THREAD; ++k) {
-                        keys[k] = a.Register(CreateMetric([j] { return j; }));
-                        ks.Do([&k = keys[k]](THashSet<TMetricKey>& s) {
-                            UNIT_ASSERT(s.insert(k).second);
-                        });
+            tasks.Add(
+                [&count, &a = aggregator, &ks = keys]
+                {
+                    for (size_t j = 0; j < COUNT / 5; ++j) {
+                        std::array<TMetricKey, KEYS_PER_THREAD> keys;
+                        for (size_t k = 0; k < KEYS_PER_THREAD; ++k) {
+                            keys[k] =
+                                a.Register(CreateMetric([j] { return j; }));
+                            ks.Do([&k = keys[k]](THashSet<TMetricKey>& s)
+                                  { UNIT_ASSERT(s.insert(k).second); });
+                        }
+
+                        a.Aggregate(TInstant::Now());
+
+                        for (size_t k = 0; k < KEYS_PER_THREAD; ++k) {
+                            a.Unregister(keys[k]);
+                        }
+
+                        ++count;
                     }
-
-                    a.Aggregate(TInstant::Now());
-
-                    for (size_t k = 0; k < KEYS_PER_THREAD; ++k) {
-                        a.Unregister(keys[k]);
-                    }
-
-                    ++count;
-                }
-            });
+                });
         }
 
         for (size_t i = 0; i < 3; ++i) {
-            tasks.Add([i, &count, &a = aggregator] {
-                while (count < COUNT) {
-                    UNIT_ASSERT_VALUES_EQUAL(
-                        EAggregationType::AT_SUM,
-                        a.GetAggregationType());
+            tasks.Add(
+                [i, &count, &a = aggregator]
+                {
+                    while (count < COUNT) {
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            EAggregationType::AT_SUM,
+                            a.GetAggregationType());
 
-                    a.Aggregate(TInstant::Now());
+                        a.Aggregate(TInstant::Now());
 
-                    UNIT_ASSERT_VALUES_EQUAL(
-                        EMetricType::MT_ABSOLUTE,
-                        a.GetMetricType());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            EMetricType::MT_ABSOLUTE,
+                            a.GetMetricType());
 
-                    sleep(i + 1);
-                }
-            });
+                        sleep(i + 1);
+                    }
+                });
         }
 
         tasks.Start();
         tasks.Stop();
 
         UNIT_ASSERT_VALUES_EQUAL(COUNT, count.load());
-        UNIT_ASSERT_VALUES_EQUAL(COUNT * KEYS_PER_THREAD, keys.Access()->size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            COUNT * KEYS_PER_THREAD,
+            keys.Access()->size());
 
         const auto key = aggregator.Register(CreateMetric([] { return 1; }));
-        keys.Do([&k = key](THashSet<TMetricKey>& s) {
-            UNIT_ASSERT(s.insert(k).second);
-        });
+        keys.Do([&k = key](THashSet<TMetricKey>& s)
+                { UNIT_ASSERT(s.insert(k).second); });
 
         UNIT_ASSERT_VALUES_EQUAL(COUNT * KEYS_PER_THREAD, *key);
         UNIT_ASSERT(aggregator.Unregister(key));
@@ -94,4 +99,4 @@ Y_UNIT_TEST_SUITE(TAggregatorStressTest)
     }
 }
 
-}   // namespace NCloud::NFileStore::NMetrics
+}   // namespace NCloud::NFileStore::NMetrics::NImpl

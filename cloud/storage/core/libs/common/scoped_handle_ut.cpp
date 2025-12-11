@@ -17,7 +17,7 @@ Y_UNIT_TEST_SUITE(TScopedHandleTest)
         UNIT_ASSERT(!foo);
         UNIT_ASSERT_VALUES_EQUAL(42, static_cast<int>(foo));
 
-        foo = TFoo {0};
+        foo = TFoo{0};
         UNIT_ASSERT(foo);
         UNIT_ASSERT_VALUES_EQUAL(0, static_cast<int>(foo));
     }
@@ -35,9 +35,9 @@ Y_UNIT_TEST_SUITE(TScopedHandleTest)
     {
         using TFoo = TScopedHandle<int, 0, struct TFooTag>;
 
-        TFoo foo1 {1};
-        TFoo foo2 {1};
-        TFoo foo3 {5};
+        TFoo foo1{1};
+        TFoo foo2{1};
+        TFoo foo3{5};
 
         UNIT_ASSERT(foo1);
         UNIT_ASSERT(foo2);

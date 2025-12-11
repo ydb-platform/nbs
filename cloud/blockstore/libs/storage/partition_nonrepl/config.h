@@ -17,7 +17,8 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 using TDevices = google::protobuf::RepeatedPtrField<NProto::TDeviceConfig>;
-using TMigrations = google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>;
+using TMigrations =
+    google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>;
 
 struct TDeviceRequest
 {
@@ -34,11 +35,11 @@ struct TDeviceRequest
     const TBlockRange64 DeviceBlockRange;
 
     TDeviceRequest(
-            const NProto::TDeviceConfig& device,
-            const ui32 deviceIdx,
-            const ui32 relativeDeviceIdx,
-            const TBlockRange64& blockRange,
-            const TBlockRange64& deviceBlockRange)
+        const NProto::TDeviceConfig& device,
+        const ui32 deviceIdx,
+        const ui32 relativeDeviceIdx,
+        const TBlockRange64& blockRange,
+        const TBlockRange64& deviceBlockRange)
         : Device(device)
         , DeviceIdx(deviceIdx)
         , RelativeDeviceIdx(relativeDeviceIdx)
@@ -74,11 +75,11 @@ public:
         bool UseSimpleMigrationBandwidthLimiter = true;
 
         TNonreplicatedPartitionConfigInitParams(
-                TDevices devices,
-                TVolumeInfo volumeInfo,
-                TString name,
-                ui32 blockSize,
-                NActors::TActorId parentActorId)
+            TDevices devices,
+            TVolumeInfo volumeInfo,
+            TString name,
+            ui32 blockSize,
+            NActors::TActorId parentActorId)
             : Devices(std::move(devices))
             , VolumeInfo(volumeInfo)
             , Name(std::move(name))
@@ -87,19 +88,19 @@ public:
         {}
 
         TNonreplicatedPartitionConfigInitParams(
-                TDevices devices,
-                TVolumeInfo volumeInfo,
-                TString name,
-                ui32 blockSize,
-                NActors::TActorId parentActorId,
-                NProto::EVolumeIOMode iOMode,
-                bool muteIOErrors,
-                THashSet<TString> freshDeviceIds,
-                THashSet<TString> outdatedDeviceIds,
-                bool laggingDevicesAllowed,
-                TDuration maxTimedOutDeviceStateDuration,
-                bool maxTimedOutDeviceStateDurationOverridden,
-                bool useSimpleMigrationBandwidthLimiter)
+            TDevices devices,
+            TVolumeInfo volumeInfo,
+            TString name,
+            ui32 blockSize,
+            NActors::TActorId parentActorId,
+            NProto::EVolumeIOMode iOMode,
+            bool muteIOErrors,
+            THashSet<TString> freshDeviceIds,
+            THashSet<TString> outdatedDeviceIds,
+            bool laggingDevicesAllowed,
+            TDuration maxTimedOutDeviceStateDuration,
+            bool maxTimedOutDeviceStateDurationOverridden,
+            bool useSimpleMigrationBandwidthLimiter)
             : Devices(std::move(devices))
             , VolumeInfo(volumeInfo)
             , Name(std::move(name))

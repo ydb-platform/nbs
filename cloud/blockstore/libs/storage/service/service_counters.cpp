@@ -6,19 +6,16 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_COUNTER_NAME(name, category, ...)    #category "/" #name,
+#define BLOCKSTORE_COUNTER_NAME(name, category, ...) #category "/" #name,
 
 const char* const TServiceCounters::SimpleCounterNames[] = {
-    BLOCKSTORE_SERVICE_SIMPLE_COUNTERS(BLOCKSTORE_COUNTER_NAME)
-};
+    BLOCKSTORE_SERVICE_SIMPLE_COUNTERS(BLOCKSTORE_COUNTER_NAME)};
 
 const char* const TServiceCounters::CumulativeCounterNames[] = {
-    BLOCKSTORE_SERVICE_CUMULATIVE_COUNTERS(BLOCKSTORE_COUNTER_NAME)
-};
+    BLOCKSTORE_SERVICE_CUMULATIVE_COUNTERS(BLOCKSTORE_COUNTER_NAME)};
 
 const char* const TServiceCounters::PercentileCounterNames[] = {
-    BLOCKSTORE_SERVICE_PERCENTILE_COUNTERS(BLOCKSTORE_COUNTER_NAME)
-};
+    BLOCKSTORE_SERVICE_PERCENTILE_COUNTERS(BLOCKSTORE_COUNTER_NAME)};
 
 #undef BLOCKSTORE_COUNTER_NAME
 

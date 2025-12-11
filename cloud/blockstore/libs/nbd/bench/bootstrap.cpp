@@ -3,7 +3,6 @@
 #include "options.h"
 
 #include <cloud/blockstore/config/server.pb.h>
-
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/nbd/client.h>
@@ -15,6 +14,7 @@
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/service/service_null.h>
 #include <cloud/blockstore/libs/service/storage.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
@@ -43,8 +43,7 @@ TNetworkAddress CreateListenAddress(const TOptions& options)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServiceWrapper final
-    : public IStorage
+class TServiceWrapper final: public IStorage
 {
 private:
     const IBlockStorePtr Service;
@@ -58,9 +57,7 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TZeroBlocksRequest> request) override
     {
-        return Service->ZeroBlocks(
-            std::move(callContext),
-            std::move(request));
+        return Service->ZeroBlocks(std::move(callContext), std::move(request));
     }
 
     TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
@@ -136,28 +133,23 @@ void TBootstrap::Init()
         CreateErrorHandlerStub(),
         options);
 
-    TServerConfig serverConfig {
-        .ThreadsCount = 1,  // there will be just one endpoint
+    TServerConfig serverConfig{
+        .ThreadsCount = 1,   // there will be just one endpoint
         .LimiterEnabled = Options->LimiterEnabled,
         .MaxInFlightBytesPerThread = Options->MaxInFlightBytes,
-        .Affinity = {}
-    };
+        .Affinity = {}};
 
     Server = CreateServer(Logging, serverConfig);
 
-    ClientHandler = CreateClientHandler(
-        Logging,
-        Options->StructuredReply);
+    ClientHandler = CreateClientHandler(Logging, Options->StructuredReply);
 
     Client = CreateClient(
         Logging,
         2   // threadsCount
     );
 
-    ClientEndpoint = Client->CreateEndpoint(
-        ListenAddress,
-        ClientHandler,
-        Service);
+    ClientEndpoint =
+        Client->CreateEndpoint(ListenAddress, ClientHandler, Service);
 }
 
 void TBootstrap::Start()

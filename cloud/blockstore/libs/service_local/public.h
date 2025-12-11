@@ -5,7 +5,7 @@
 namespace NCloud::NBlockStore {
 
 namespace NProto {
-    class TLocalServiceConfig;
+class TLocalServiceConfig;
 }   // namespace NProto
 
 namespace NServer {

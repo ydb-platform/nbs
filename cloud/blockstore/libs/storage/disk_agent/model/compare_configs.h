@@ -2,9 +2,9 @@
 
 #include "public.h"
 
-#include <cloud/storage/core/libs/common/error.h>
-
 #include <cloud/blockstore/config/disk.pb.h>
+
+#include <cloud/storage/core/libs/common/error.h>
 
 #include <util/generic/vector.h>
 

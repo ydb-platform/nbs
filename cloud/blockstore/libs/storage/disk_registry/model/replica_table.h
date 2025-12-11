@@ -87,8 +87,7 @@ public:
 
     TMirroredDisksStat CalculateReplicaCountStats() const;
 
-    TMirroredDiskDevicesStat CalculateDiskStats(
-        const TString& diskId) const;
+    TMirroredDiskDevicesStat CalculateDiskStats(const TString& diskId) const;
 
 private:
     bool ChangeDevice(

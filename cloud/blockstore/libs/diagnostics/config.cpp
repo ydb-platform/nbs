@@ -12,62 +12,70 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DIAGNOSTICS_CONFIG(xxx)                                                               \
-    xxx(HostNameScheme,                  NProto::EHostNameScheme, NProto::EHostNameScheme::HOSTNAME_RAW )\
-    xxx(BastionNameSuffix,               TString,         ""                                            )\
-    xxx(ViewerHostName,                  TString,         ""                                            )\
-    xxx(KikimrMonPort,                   ui32,            8765                                          )\
-    xxx(NbsMonPort,                      ui32,            8766                                          )\
-                                                                                                         \
-    xxx(SamplingRate,                    ui32,            0                                             )\
-    xxx(SlowRequestSamplingRate,         ui32,            0                                             )\
-    xxx(TracesUnifiedAgentEndpoint,      TString,         ""                                            )\
-    xxx(TracesSyslogIdentifier,          TString,         ""                                            )\
-                                                                                                         \
-    xxx(ProfileLogTimeThreshold,         TDuration,       TDuration::Seconds(15)                        )\
-    xxx(UseAsyncLogger,                  bool,            false                                         )\
-    xxx(UnsafeLWTrace,                   bool,            false                                         )\
-    xxx(LWTraceDebugInitializationQuery, TString,         ""                                            )\
-    xxx(SsdPerfSettings,                TVolumePerfSettings,  {}                                        )\
-    xxx(HddPerfSettings,                TVolumePerfSettings,  {}                                        )\
-    xxx(NonreplPerfSettings,            TVolumePerfSettings,  {}                                        )\
-    xxx(HddNonreplPerfSettings,         TVolumePerfSettings,  {}                                        )\
-    xxx(Mirror2PerfSettings,            TVolumePerfSettings,  {}                                        )\
-    xxx(Mirror3PerfSettings,            TVolumePerfSettings,  {}                                        )\
-    xxx(LocalSSDPerfSettings,           TVolumePerfSettings,  {}                                        )\
-    xxx(LocalHDDPerfSettings,           TVolumePerfSettings,  {}                                        )\
-    xxx(ExpectedIoParallelism,          ui32,                 32                                        )\
-    xxx(CloudIdsWithStrictSLA,          TVector<TString>,     {}                                        )\
-    xxx(LWTraceShuttleCount,            ui32,                 2000                                      )\
-    xxx(MonitoringUrlData,              TMonitoringUrlData,   {}                                        )\
-                                                                                                         \
-    xxx(CpuWaitFilename,            TString, "/sys/fs/cgroup/cpu/system.slice/nbs.service/cpuacct.wait" )\
-                                                                                                         \
-    xxx(PostponeTimePredictorInterval,       TDuration,       TDuration::Seconds(5)                     )\
-    xxx(PostponeTimePredictorMaxTime,        TDuration,       TDuration::Seconds(20)                    )\
-    xxx(PostponeTimePredictorPercentage,     double,          0.5                                       )\
-    xxx(SSDDowntimeThreshold,                TDuration,       TDuration::Seconds(5)                     )\
-    xxx(HDDDowntimeThreshold,                TDuration,       TDuration::Seconds(15)                    )\
-    xxx(NonreplicatedSSDDowntimeThreshold,   TDuration,       TDuration::Seconds(5)                     )\
-    xxx(NonreplicatedHDDDowntimeThreshold,   TDuration,       TDuration::Seconds(15)                    )\
-    xxx(Mirror2SSDDowntimeThreshold,         TDuration,       TDuration::Seconds(5)                     )\
-    xxx(Mirror3SSDDowntimeThreshold,         TDuration,       TDuration::Seconds(5)                     )\
-    xxx(LocalSSDDowntimeThreshold,           TDuration,       TDuration::Seconds(5)                     )\
-    xxx(LocalHDDDowntimeThreshold,           TDuration,       TDuration::Seconds(15)                    )\
-    xxx(ReportHistogramAsMultipleCounters,   bool,            true                                      )\
-    xxx(ReportHistogramAsSingleCounter,      bool,            false                                     )\
-    xxx(UseMsUnitsForTimeHistogram,          bool,            false                                     )\
-    xxx(StatsFetcherType, NCloud::NProto::EStatsFetcherType, NCloud::NProto::EStatsFetcherType::CGROUP  )\
-                                                                                                         \
-    xxx(SkipReportingZeroBlocksMetricsForYDBBasedDisks, bool, false                                     )\
-    xxx(OpentelemetryTraceConfig,           ::NCloud::NProto::TOpentelemetryTraceConfig, {}             )\
-                                                                                                         \
-    xxx(ExecutionTimeSizeClasses,       TVector<TSizeInterval>,  {}                                     )\
-// BLOCKSTORE_DIAGNOSTICS_CONFIG
+#define BLOCKSTORE_DIAGNOSTICS_CONFIG(xxx)                                    \
+    xxx(HostNameScheme,                                                       \
+        NProto::EHostNameScheme,                                              \
+        NProto::EHostNameScheme::HOSTNAME_RAW)                                \
+    xxx(BastionNameSuffix, TString, "")                                       \
+    xxx(ViewerHostName, TString, "")                                          \
+    xxx(KikimrMonPort, ui32, 8765)                                            \
+    xxx(NbsMonPort, ui32, 8766)                                               \
+                                                                              \
+    xxx(SamplingRate, ui32, 0)                                                \
+    xxx(SlowRequestSamplingRate, ui32, 0)                                     \
+    xxx(TracesUnifiedAgentEndpoint, TString, "")                              \
+    xxx(TracesSyslogIdentifier, TString, "")                                  \
+                                                                              \
+    xxx(ProfileLogTimeThreshold, TDuration, TDuration::Seconds(15))           \
+    xxx(UseAsyncLogger, bool, false)                                          \
+    xxx(UnsafeLWTrace, bool, false)                                           \
+    xxx(LWTraceDebugInitializationQuery, TString, "")                         \
+    xxx(SsdPerfSettings, TVolumePerfSettings, {})                             \
+    xxx(HddPerfSettings, TVolumePerfSettings, {})                             \
+    xxx(NonreplPerfSettings, TVolumePerfSettings, {})                         \
+    xxx(HddNonreplPerfSettings, TVolumePerfSettings, {})                      \
+    xxx(Mirror2PerfSettings, TVolumePerfSettings, {})                         \
+    xxx(Mirror3PerfSettings, TVolumePerfSettings, {})                         \
+    xxx(LocalSSDPerfSettings, TVolumePerfSettings, {})                        \
+    xxx(LocalHDDPerfSettings, TVolumePerfSettings, {})                        \
+    xxx(ExpectedIoParallelism, ui32, 32)                                      \
+    xxx(CloudIdsWithStrictSLA, TVector<TString>, {})                          \
+    xxx(LWTraceShuttleCount, ui32, 2000)                                      \
+    xxx(MonitoringUrlData, TMonitoringUrlData, {})                            \
+                                                                              \
+    xxx(CpuWaitFilename,                                                      \
+        TString,                                                              \
+        "/sys/fs/cgroup/cpu/system.slice/nbs.service/cpuacct.wait")           \
+                                                                              \
+    xxx(PostponeTimePredictorInterval, TDuration, TDuration::Seconds(5))      \
+    xxx(PostponeTimePredictorMaxTime, TDuration, TDuration::Seconds(20))      \
+    xxx(PostponeTimePredictorPercentage, double, 0.5)                         \
+    xxx(SSDDowntimeThreshold, TDuration, TDuration::Seconds(5))               \
+    xxx(HDDDowntimeThreshold, TDuration, TDuration::Seconds(15))              \
+    xxx(NonreplicatedSSDDowntimeThreshold, TDuration, TDuration::Seconds(5))  \
+    xxx(NonreplicatedHDDDowntimeThreshold, TDuration, TDuration::Seconds(15)) \
+    xxx(Mirror2SSDDowntimeThreshold, TDuration, TDuration::Seconds(5))        \
+    xxx(Mirror3SSDDowntimeThreshold, TDuration, TDuration::Seconds(5))        \
+    xxx(LocalSSDDowntimeThreshold, TDuration, TDuration::Seconds(5))          \
+    xxx(LocalHDDDowntimeThreshold, TDuration, TDuration::Seconds(15))         \
+    xxx(ReportHistogramAsMultipleCounters, bool, true)                        \
+    xxx(ReportHistogramAsSingleCounter, bool, false)                          \
+    xxx(UseMsUnitsForTimeHistogram, bool, false)                              \
+    xxx(StatsFetcherType,                                                     \
+        NCloud::NProto::EStatsFetcherType,                                    \
+        NCloud::NProto::EStatsFetcherType::CGROUP)                            \
+                                                                              \
+    xxx(SkipReportingZeroBlocksMetricsForYDBBasedDisks, bool, false)          \
+    xxx(OpentelemetryTraceConfig,                                             \
+        ::NCloud::NProto::TOpentelemetryTraceConfig,                          \
+        {})                                                                   \
+                                                                              \
+    xxx(ExecutionTimeSizeClasses, TVector<TSizeInterval>, {})                 \
+    // BLOCKSTORE_DIAGNOSTICS_CONFIG
 
-#define BLOCKSTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value)               \
-    Y_DECLARE_UNUSED static const type Default##name = value;                  \
-// BLOCKSTORE_DIAGOSTICS_DECLARE_CONFIG
+#define BLOCKSTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value) \
+    Y_DECLARE_UNUSED static const type Default##name = value;    \
+    // BLOCKSTORE_DIAGOSTICS_DECLARE_CONFIG
 
 BLOCKSTORE_DIAGNOSTICS_CONFIG(BLOCKSTORE_DIAGNOSTICS_DECLARE_CONFIG)
 
@@ -96,16 +104,14 @@ ConvertValue<TVolumePerfSettings, NProto::TVolumePerfSettings>(
 }
 
 template <>
-TMonitoringUrlData
-ConvertValue<TMonitoringUrlData, NProto::TMonitoringUrlData>(
+TMonitoringUrlData ConvertValue<TMonitoringUrlData, NProto::TMonitoringUrlData>(
     const NProto::TMonitoringUrlData& value)
 {
     return TMonitoringUrlData(value);
 }
 
 template <>
-TRequestThresholds
-ConvertValue<TRequestThresholds, TProtoRequestThresholds>(
+TRequestThresholds ConvertValue<TRequestThresholds, TProtoRequestThresholds>(
     const TProtoRequestThresholds& value)
 {
     return ConvertRequestThresholds(value);
@@ -116,7 +122,7 @@ TVector<TString> ConvertValue(
     const google::protobuf::RepeatedPtrField<TString>& value)
 {
     TVector<TString> v;
-    for (const auto& x : value) {
+    for (const auto& x: value) {
         v.push_back(x);
     }
     return v;
@@ -128,7 +134,7 @@ TVector<TSizeInterval> ConvertValue(
         NProto::TDiagnosticsConfig::TInterval>& value)
 {
     TVector<TSizeInterval> v;
-    for (const auto& x : value) {
+    for (const auto& x: value) {
         v.push_back({x.GetStart(), x.GetEnd()});
     }
     return v;
@@ -166,18 +172,19 @@ void DumpImpl(const TVector<TSizeInterval>& value, IOutputStream& os)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDiagnosticsConfig::TDiagnosticsConfig(NProto::TDiagnosticsConfig diagnosticsConfig)
+TDiagnosticsConfig::TDiagnosticsConfig(
+    NProto::TDiagnosticsConfig diagnosticsConfig)
     : DiagnosticsConfig(std::move(diagnosticsConfig))
 {}
 
-#define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
-type TDiagnosticsConfig::Get##name() const                                     \
-{                                                                              \
-    return NCloud::HasField(DiagnosticsConfig, #name)                          \
-        ? ConvertValue<type>(DiagnosticsConfig.Get##name())                    \
-        : Default##name;                                                       \
-}                                                                              \
-// BLOCKSTORE_CONFIG_GETTER
+#define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                      \
+    type TDiagnosticsConfig::Get##name() const                         \
+    {                                                                  \
+        return NCloud::HasField(DiagnosticsConfig, #name)              \
+                   ? ConvertValue<type>(DiagnosticsConfig.Get##name()) \
+                   : Default##name;                                    \
+    }                                                                  \
+    // BLOCKSTORE_CONFIG_GETTER
 
 BLOCKSTORE_DIAGNOSTICS_CONFIG(BLOCKSTORE_CONFIG_GETTER);
 
@@ -208,11 +215,11 @@ EHistogramCounterOptions TDiagnosticsConfig::GetHistogramCounterOptions() const
 
 void TDiagnosticsConfig::Dump(IOutputStream& out) const
 {
-#define BLOCKSTORE_CONFIG_DUMP(name, ...)                                      \
-    out << #name << ": ";                                                      \
-    DumpImpl(Get##name(), out);                                                \
-    out << Endl;                                                               \
-// BLOCKSTORE_CONFIG_DUMP
+#define BLOCKSTORE_CONFIG_DUMP(name, ...) \
+    out << #name << ": ";                 \
+    DumpImpl(Get##name(), out);           \
+    out << Endl;                          \
+    // BLOCKSTORE_CONFIG_DUMP
 
     BLOCKSTORE_DIAGNOSTICS_CONFIG(BLOCKSTORE_CONFIG_DUMP);
 
@@ -221,16 +228,21 @@ void TDiagnosticsConfig::Dump(IOutputStream& out) const
 
 void TDiagnosticsConfig::DumpHtml(IOutputStream& out) const
 {
-#define BLOCKSTORE_CONFIG_DUMP(name, ...)                                      \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { DumpImpl(Get##name(), out); }                               \
-    }                                                                          \
-// BLOCKSTORE_CONFIG_DUMP
+#define BLOCKSTORE_CONFIG_DUMP(name, ...) \
+    TABLER () {                           \
+        TABLED () {                       \
+            out << #name;                 \
+        }                                 \
+        TABLED () {                       \
+            DumpImpl(Get##name(), out);   \
+        }                                 \
+    }                                     \
+    // BLOCKSTORE_CONFIG_DUMP
 
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
+    HTML (out) {
+        TABLE_CLASS ("table table-condensed") {
+            TABLEBODY()
+            {
                 BLOCKSTORE_DIAGNOSTICS_CONFIG(BLOCKSTORE_CONFIG_DUMP);
             }
         }
@@ -327,6 +339,5 @@ void Out<NCloud::NProto::EStatsFetcherType>(
     IOutputStream& out,
     NCloud::NProto::EStatsFetcherType statsFetcherType)
 {
-    out << NCloud::NProto::EStatsFetcherType_Name(
-        statsFetcherType);
+    out << NCloud::NProto::EStatsFetcherType_Name(statsFetcherType);
 }

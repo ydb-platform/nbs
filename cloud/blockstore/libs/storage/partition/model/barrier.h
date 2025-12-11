@@ -20,8 +20,7 @@ private:
         TBarrier(ui64 commitId, ui32 refCount)
             : CommitId(commitId)
             , RefCount(refCount)
-        {
-        }
+        {}
 
         bool operator<(const TBarrier& rhs) const
         {

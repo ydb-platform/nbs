@@ -42,12 +42,13 @@ using namespace NCloud::NStorage;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TBootstrapServer::TBootstrapServer(std::shared_ptr<NKikimr::TModuleFactories> moduleFactories)
+TBootstrapServer::TBootstrapServer(
+    std::shared_ptr<NKikimr::TModuleFactories> moduleFactories)
     : TBootstrapCommon(
-        std::move(moduleFactories),
-        "NFS_SERVER",
-        "server",
-        NUserStats::CreateUserCounterSupplierStub())
+          std::move(moduleFactories),
+          "NFS_SERVER",
+          "server",
+          NUserStats::CreateUserCounterSupplierStub())
 {}
 
 TBootstrapServer::~TBootstrapServer()
@@ -128,9 +129,9 @@ void TBootstrapServer::InitLWTrace()
         // internal operation started by tablet
         {"BackgroundTaskStarted_Tablet", "FILESTORE_STORAGE_PROVIDER"},
         // request accepted by tablet
-        {"RequestReceived_Tablet",       "FILESTORE_STORAGE_PROVIDER"},
+        {"RequestReceived_Tablet", "FILESTORE_STORAGE_PROVIDER"},
         // request accepted by grpc server
-        {"ExecuteRequest",               "FILESTORE_SERVER_PROVIDER"},
+        {"ExecuteRequest", "FILESTORE_SERVER_PROVIDER"},
     };
 
     TBootstrapCommon::InitLWTrace(probes, probesToTrace);
@@ -138,7 +139,9 @@ void TBootstrapServer::InitLWTrace()
 
 void TBootstrapServer::InitKikimrService()
 {
-    Y_ABORT_UNLESS(ActorSystem, "Actor system MUST be initialized to create kikimr filestore");
+    Y_ABORT_UNLESS(
+        ActorSystem,
+        "Actor system MUST be initialized to create kikimr filestore");
     Service = CreateKikimrFileStore(ActorSystem);
 
     Service = CreateAuthService(

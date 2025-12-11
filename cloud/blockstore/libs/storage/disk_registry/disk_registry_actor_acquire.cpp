@@ -1,12 +1,11 @@
 #include "disk_registry_actor.h"
 
+#include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
-#include <cloud/blockstore/libs/kikimr/events.h>
-
-#include <util/string/join.h>
 #include <util/generic/cast.h>
+#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -18,8 +17,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAcquireDiskActor final
-    : public TActorBootstrapped<TAcquireDiskActor>
+class TAcquireDiskActor final: public TActorBootstrapped<TAcquireDiskActor>
 {
 private:
     const TChildLogTitle LogTitle;
@@ -108,17 +106,17 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TAcquireDiskActor::TAcquireDiskActor(
-        TChildLogTitle logTitle,
-        const TActorId& owner,
-        TRequestInfoPtr requestInfo,
-        TVector<NProto::TDeviceConfig> devices,
-        ui32 logicalBlockSize,
-        TString diskId,
-        TString clientId,
-        NProto::EVolumeAccessMode accessMode,
-        ui64 mountSeqNumber,
-        ui32 volumeGeneration,
-        TDuration requestTimeout)
+    TChildLogTitle logTitle,
+    const TActorId& owner,
+    TRequestInfoPtr requestInfo,
+    TVector<NProto::TDeviceConfig> devices,
+    ui32 logicalBlockSize,
+    TString diskId,
+    TString clientId,
+    NProto::EVolumeAccessMode accessMode,
+    ui64 mountSeqNumber,
+    ui32 volumeGeneration,
+    TDuration requestTimeout)
     : LogTitle(std::move(logTitle))
     , Owner(owner)
     , RequestInfo(std::move(requestInfo))
@@ -131,9 +129,7 @@ TAcquireDiskActor::TAcquireDiskActor(
     , VolumeGeneration(volumeGeneration)
     , RequestTimeout(requestTimeout)
 {
-    SortBy(Devices, [] (auto& d) {
-        return d.GetNodeId();
-    });
+    SortBy(Devices, [](auto& d) { return d.GetNodeId(); });
 }
 
 void TAcquireDiskActor::Bootstrap(const TActorContext& ctx)
@@ -154,7 +150,8 @@ void TAcquireDiskActor::Bootstrap(const TActorContext& ctx)
         LogTitle.GetWithTime().c_str(),
         LogTargets().c_str());
 
-    auto sentRequests = CreateRequests<TEvDiskAgent::TEvAcquireDevicesRequest>();
+    auto sentRequests =
+        CreateRequests<TEvDiskAgent::TEvAcquireDevicesRequest>();
     SendRequests(ctx, sentRequests);
 
     Y_ABORT_UNLESS(SentAcquireRequests.empty());
@@ -229,11 +226,11 @@ void TAcquireDiskActor::SendRequests(
     PendingRequests = 0;
 
     for (const auto& r: requests) {
-        auto request = std::make_unique<TRequest>(
-            TCallContextPtr {},
-            r.Record);
+        auto request = std::make_unique<TRequest>(TCallContextPtr{}, r.Record);
 
-        LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
             "%s Send an acquire request to node #%d. Devices: %s",
             LogTitle.GetWithTime().c_str(),
             r.NodeId,
@@ -382,9 +379,11 @@ STFUNC(TAcquireDiskActor::StateAcquire)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvDiskAgent::TEvAcquireDevicesResponse,
+        HFunc(
+            TEvDiskAgent::TEvAcquireDevicesResponse,
             HandleAcquireDevicesResponse);
-        HFunc(TEvDiskAgent::TEvAcquireDevicesRequest,
+        HFunc(
+            TEvDiskAgent::TEvAcquireDevicesRequest,
             HandleAcquireDevicesUndelivery);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
@@ -447,7 +446,8 @@ void TDiskRegistryActor::HandleAcquireDisk(
         devices.push_back(std::move(*migration.MutableTargetDevice()));
     }
     for (auto& replica: diskInfo.Replicas) {
-        devices.insert(devices.end(),
+        devices.insert(
+            devices.end(),
             std::make_move_iterator(replica.begin()),
             std::make_move_iterator(replica.end()));
     }

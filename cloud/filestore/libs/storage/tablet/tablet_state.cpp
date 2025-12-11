@@ -53,11 +53,9 @@ NProto::TFileStorePerformanceProfile GetDefaultPerformanceProfile()
 
 bool IsValid(const NProto::TFileStorePerformanceProfile& profile)
 {
-    return profile.GetMaxReadIops()
-        && profile.GetMaxReadBandwidth()
-        && profile.GetMaxPostponedWeight()
-        && profile.GetMaxPostponedTime()
-        && profile.GetDefaultPostponedRequestWeight();
+    return profile.GetMaxReadIops() && profile.GetMaxReadBandwidth() &&
+           profile.GetMaxPostponedWeight() && profile.GetMaxPostponedTime() &&
+           profile.GetDefaultPostponedRequestWeight();
 }
 
 ui64 CalculateInMemoryIndexCacheCapacity(
@@ -203,7 +201,8 @@ void TIndexTabletState::UpdateConfig(
         TVector<TString>(shardIds.begin(), shardIds.end()));
 }
 
-const NProto::TFileStorePerformanceProfile& TIndexTabletState::GetPerformanceProfile() const
+const NProto::TFileStorePerformanceProfile&
+TIndexTabletState::GetPerformanceProfile() const
 {
     if (FileSystem.HasPerformanceProfile() &&
         IsValid(FileSystem.GetPerformanceProfile()))
@@ -220,11 +219,7 @@ void TIndexTabletState::DumpStats(IOutputStream& os) const
     NProtobufJson::TProto2JsonConfig config;
     config.SetFormatOutput(true);
 
-    NProtobufJson::Proto2Json(
-        FileSystemStats,
-        os,
-        config
-    );
+    NProtobufJson::Proto2Json(FileSystemStats, os, config);
 }
 
 TMiscNodeStats TIndexTabletState::GetMiscNodeStats() const
@@ -249,8 +244,8 @@ ui64 TIndexTabletState::CalculateExpectedShardCount(
 
     const ui64 currentShardCount = FileSystem.ShardFileSystemIdsSize();
     ui64 autoShardCount = 0;
-    if (FileSystem.GetAutomaticShardCreationEnabled()
-            && FileSystem.GetShardAllocationUnit())
+    if (FileSystem.GetAutomaticShardCreationEnabled() &&
+        FileSystem.GetShardAllocationUnit())
     {
         autoShardCount = ComputeShardCount(
             FileSystem.GetBlocksCount(),

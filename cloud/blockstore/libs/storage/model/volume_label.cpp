@@ -3,9 +3,8 @@
 #include <library/cpp/string_utils/quote/quote.h>
 
 #include <util/digest/murmur.h>
-#include <util/string/cast.h>
-
 #include <util/generic/algorithm.h>
+#include <util/string/cast.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -50,8 +49,7 @@ std::tuple<TString, TString> ExtractParentDirAndName(
                 Unique(
                     begin,
                     end,
-                    [](auto l, auto r) { return (l == r) && (l == '/'); }
-                ),
+                    [](auto l, auto r) { return (l == r) && (l == '/'); }),
                 end);
         }
 

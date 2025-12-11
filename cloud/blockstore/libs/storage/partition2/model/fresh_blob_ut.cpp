@@ -15,7 +15,7 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
     {
         constexpr ui64 commitId = 1234;
 
-        for (const ui32 blockSize: { 4096, 4096 * 4, 4096 * 16 }) {
+        for (const ui32 blockSize: {4096, 4096 * 4, 4096 * 16}) {
             const auto buffers = GetBuffers(blockSize);
             const auto blockRanges = GetBlockRanges();
             const auto blockIndices = GetBlockIndices(blockRanges);
@@ -24,8 +24,7 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
             const auto blobContent = BuildFreshBlobContent(
                 blockRanges,
                 holders,
-                FirstRequestDeletionId
-            );
+                FirstRequestDeletionId);
 
             TVector<TOwningFreshBlock> result;
             TBlobUpdatesByFresh blobUpdatesByFresh;
@@ -62,10 +61,13 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
             }
 
             TVector<TBlobUpdate> updates;
-            updates.assign(blobUpdatesByFresh.begin(), blobUpdatesByFresh.end());
-            Sort(updates, [] (const auto& lhs, const auto& rhs) {
-                return lhs.DeletionId < rhs.DeletionId;
-            });
+            updates.assign(
+                blobUpdatesByFresh.begin(),
+                blobUpdatesByFresh.end());
+            Sort(
+                updates,
+                [](const auto& lhs, const auto& rhs)
+                { return lhs.DeletionId < rhs.DeletionId; });
 
             UNIT_ASSERT_VALUES_EQUAL(4, updates.size());
 
@@ -131,9 +133,10 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
 
         TVector<TBlobUpdate> updates;
         updates.assign(blobUpdatesByFresh.begin(), blobUpdatesByFresh.end());
-        Sort(updates, [] (const auto& lhs, const auto& rhs) {
-            return lhs.DeletionId < rhs.DeletionId;
-        });
+        Sort(
+            updates,
+            [](const auto& lhs, const auto& rhs)
+            { return lhs.DeletionId < rhs.DeletionId; });
 
         UNIT_ASSERT_VALUES_EQUAL(4, updates.size());
 
@@ -149,10 +152,8 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
             ++blockRange;
         }
 
-        auto newBlobContent = BuildFreshBlobContent(
-            blockRanges,
-            holders,
-            FirstRequestDeletionId);
+        auto newBlobContent =
+            BuildFreshBlobContent(blockRanges, holders, FirstRequestDeletionId);
 
         UNIT_ASSERT_VALUES_EQUAL(oldBlobContent.size(), newBlobContent.size());
         for (size_t i = 0; i < oldBlobContent.size(); ++i) {

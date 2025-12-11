@@ -23,4 +23,4 @@ public:
 void Shutdown(int signum);
 void ConfigureSignals();
 
-} // namespace
+}   // namespace NCloud::NBlockStore::NClient

@@ -32,9 +32,7 @@ IStatsFetcherPtr CreateCgroupStatsFetcher(
     TString componentName,
     TString statsFile);
 
-IStatsFetcherPtr CreateTaskStatsFetcher(
-    TString componentName,
-    int pid);
+IStatsFetcherPtr CreateTaskStatsFetcher(TString componentName, int pid);
 
 IStatsFetcherPtr CreateStatsFetcherStub();
 

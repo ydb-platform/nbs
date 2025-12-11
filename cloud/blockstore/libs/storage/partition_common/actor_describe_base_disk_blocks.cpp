@@ -1,7 +1,7 @@
 #include "actor_describe_base_disk_blocks.h"
 
-#include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -14,14 +14,14 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeBaseDiskBlocksActor::TDescribeBaseDiskBlocksActor(
-        TRequestInfoPtr requestInfo,
-        TString baseDiskId,
-        TString baseDiskCheckpointId,
-        TBlockRange64 blocksRange,
-        TBlockRange64 baseDiskBlocksRange,
-        TBlockMarks blockMarks,
-        ui32 blockSize,
-        NActors::TActorId notifyActorId)
+    TRequestInfoPtr requestInfo,
+    TString baseDiskId,
+    TString baseDiskCheckpointId,
+    TBlockRange64 blocksRange,
+    TBlockRange64 baseDiskBlocksRange,
+    TBlockMarks blockMarks,
+    ui32 blockSize,
+    NActors::TActorId notifyActorId)
     : RequestInfo(std::move(requestInfo))
     , BaseDiskId(std::move(baseDiskId))
     , BaseDiskCheckpointId(std::move(baseDiskCheckpointId))
@@ -73,9 +73,8 @@ void TDescribeBaseDiskBlocksActor::ReplyAndDie(
             std::make_unique<TEvent>(error, NBlobMarkers::TBlockMarks{}));
     }
 
-    auto response = std::make_unique<TEvent>(
-        std::move(error),
-        std::move(BlockMarks));
+    auto response =
+        std::make_unique<TEvent>(std::move(error), std::move(BlockMarks));
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
@@ -89,14 +88,12 @@ void TDescribeBaseDiskBlocksActor::DescribeBlocks(const TActorContext& ctx)
     request->Record.SetBlocksCount(BaseDiskBlocksRange.Size());
     request->Record.SetDiskId(BaseDiskId);
     request->Record.SetCheckpointId(BaseDiskCheckpointId);
-    request->Record.SetBlocksCountToRead(
-        CountIf(BlockMarks, [](const auto& mark)
-            { return std::holds_alternative<TEmptyMark>(mark); }));
+    request->Record.SetBlocksCountToRead(CountIf(
+        BlockMarks,
+        [](const auto& mark)
+        { return std::holds_alternative<TEmptyMark>(mark); }));
 
-    NCloud::Send(
-        ctx,
-        MakeVolumeProxyServiceId(),
-        std::move(request));
+    NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
 }
 
 NProto::TError TDescribeBaseDiskBlocksActor::ValidateDescribeBlocksResponse(
@@ -105,18 +102,19 @@ NProto::TError TDescribeBaseDiskBlocksActor::ValidateDescribeBlocksResponse(
     const auto& record = response.Record;
 
     for (const auto& range: record.GetFreshBlockRanges()) {
-        const auto rangeToValidate =
-            TBlockRange64::WithLength(
-                range.GetStartIndex(), range.GetBlocksCount());
+        const auto rangeToValidate = TBlockRange64::WithLength(
+            range.GetStartIndex(),
+            range.GetBlocksCount());
 
         if (!BaseDiskBlocksRange.Contains(rangeToValidate)) {
             return MakeError(
                 E_FAIL,
-                TStringBuilder() <<
-                "DescribeBlocks error. Fresh block is out of range"
-                " BaseDiskBlocksRange: " << DescribeRange(BaseDiskBlocksRange) <<
-                " rangeToValidate start: " << DescribeRange(rangeToValidate));
-
+                TStringBuilder()
+                    << "DescribeBlocks error. Fresh block is out of range"
+                       " BaseDiskBlocksRange: "
+                    << DescribeRange(BaseDiskBlocksRange)
+                    << " rangeToValidate start: "
+                    << DescribeRange(rangeToValidate));
         }
 
         const auto& contentToValidate = range.GetBlocksContent();
@@ -124,11 +122,13 @@ NProto::TError TDescribeBaseDiskBlocksActor::ValidateDescribeBlocksResponse(
         if (contentToValidate.size() != rangeToValidate.Size() * BlockSize) {
             return MakeError(
                 E_FAIL,
-                TStringBuilder() <<
-                "DescribeBlocks error. Fresh block content has invalid size."
-                " rangeToValidate: " << DescribeRange(rangeToValidate) <<
-                " BlockSize: " << BlockSize <<
-                " contentToValidate size: " << contentToValidate.size());
+                TStringBuilder()
+                    << "DescribeBlocks error. Fresh block content has invalid "
+                       "size."
+                       " rangeToValidate: "
+                    << DescribeRange(rangeToValidate)
+                    << " BlockSize: " << BlockSize
+                    << " contentToValidate size: " << contentToValidate.size());
         }
     }
 
@@ -140,11 +140,11 @@ NProto::TError TDescribeBaseDiskBlocksActor::ValidateDescribeBlocksResponse(
             if (!BaseDiskBlocksRange.Contains(blockRange)) {
                 return MakeError(
                     E_FAIL,
-                    TStringBuilder() <<
-                    "DescribeBlocks error. Blob range is out of bounds."
-                    " BaseDiskBlocksRange: " << DescribeRange(BaseDiskBlocksRange) <<
-                    " blockRange:" << DescribeRange(blockRange)
-                );
+                    TStringBuilder()
+                        << "DescribeBlocks error. Blob range is out of bounds."
+                           " BaseDiskBlocksRange: "
+                        << DescribeRange(BaseDiskBlocksRange)
+                        << " blockRange:" << DescribeRange(blockRange));
             }
         }
     }
@@ -158,13 +158,15 @@ void TDescribeBaseDiskBlocksActor::ProcessDescribeBlocksResponse(
     const auto startIndex = BlocksRange.Start;
     auto& record = response.Record;
 
-    for (auto&& range : std::move(*record.MutableFreshBlockRanges())) {
-        auto sharedRange = std::make_shared<NProto::TFreshBlockRange>(std::move(range));
+    for (auto&& range: std::move(*record.MutableFreshBlockRanges())) {
+        auto sharedRange =
+            std::make_shared<NProto::TFreshBlockRange>(std::move(range));
         for (size_t index = 0; index < sharedRange->GetBlocksCount(); ++index) {
             const auto blockIndex = sharedRange->GetStartIndex() + index;
             const auto blockMarkIndex = blockIndex - startIndex;
 
-            if (std::holds_alternative<TEmptyMark>(BlockMarks[blockMarkIndex])) {
+            if (std::holds_alternative<TEmptyMark>(BlockMarks[blockMarkIndex]))
+            {
                 const char* startingByte =
                     sharedRange->GetBlocksContent().data() + index * BlockSize;
 
@@ -186,7 +188,9 @@ void TDescribeBaseDiskBlocksActor::ProcessDescribeBlocksResponse(
                 const auto blockIndex = range.GetBlockIndex() + i;
                 const auto blockMarkIndex = blockIndex - startIndex;
 
-                if (std::holds_alternative<TEmptyMark>(BlockMarks[blockMarkIndex])) {
+                if (std::holds_alternative<TEmptyMark>(
+                        BlockMarks[blockMarkIndex]))
+                {
                     BlockMarks[blockMarkIndex] = TBlobMarkOnBaseDisk(
                         blobId,
                         blockIndex,
@@ -204,9 +208,7 @@ void TDescribeBaseDiskBlocksActor::HandleDescribeBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (auto error = msg->GetError();
-        FAILED(error.GetCode()))
-    {
+    if (auto error = msg->GetError(); FAILED(error.GetCode())) {
         return ReplyAndDie(ctx, std::move(error));
     }
 
@@ -235,7 +237,9 @@ STFUNC(TDescribeBaseDiskBlocksActor::StateWork)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvVolume::TEvDescribeBlocksResponse, HandleDescribeBlocksResponse);
+        HFunc(
+            TEvVolume::TEvDescribeBlocksResponse,
+            HandleDescribeBlocksResponse);
 
         default:
             HandleUnexpectedEvent(

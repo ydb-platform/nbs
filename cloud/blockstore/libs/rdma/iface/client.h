@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include <cloud/blockstore/config/rdma.pb.h>
-
 #include <cloud/blockstore/libs/service/public.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -72,8 +71,8 @@ struct TClientRequest
 
 protected:
     TClientRequest(
-            IClientHandlerPtr handler,
-            std::unique_ptr<TNullContext> context)
+        IClientHandlerPtr handler,
+        std::unique_ptr<TNullContext> context)
         : Handler(std::move(handler))
         , Context(std::move(context))
     {}
@@ -121,8 +120,7 @@ struct IClientEndpoint
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IClient
-    : public IStartable
+struct IClient: public IStartable
 {
     virtual ~IClient() = default;
 

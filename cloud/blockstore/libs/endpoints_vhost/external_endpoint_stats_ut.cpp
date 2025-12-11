@@ -25,13 +25,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestDumpable
-    : public IDumpable
+struct TTestDumpable: public IDumpable
 {
     void Dump(IOutputStream& out) const override
     {
         Y_UNUSED(out);
-    };
+    }
 
     void DumpHtml(IOutputStream& out) const override
     {
@@ -59,14 +58,14 @@ struct TVolumeStats
 
 auto Dump(const TReqStats& stats)
 {
-    auto value = NJson::TJsonMap {
-        {"count", stats.Count}, {"bytes", stats.Bytes}
-    };
+    auto value =
+        NJson::TJsonMap{{"count", stats.Count}, {"bytes", stats.Bytes}};
 
-    auto hist = [] (auto& h) {
+    auto hist = [](auto& h)
+    {
         NJson::TJsonArray hist;
         for (auto [value, count]: h) {
-            hist.AppendValue(NJson::TJsonArray {{value, count}});
+            hist.AppendValue(NJson::TJsonArray{{value, count}});
         }
         return hist;
     };
@@ -84,19 +83,17 @@ auto Dump(const TReqStats& stats)
 
 auto Dump(TDuration elapsed, const TVolumeStats& stats)
 {
-    NJson::TJsonMap value {
+    NJson::TJsonMap value{
         {"elapsed_ms", elapsed.MilliSeconds()},
         {"read", Dump(stats.Read)},
-        {"write", Dump(stats.Write)}
-    };
+        {"write", Dump(stats.Write)}};
 
     return value;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFixture
-    : public NUnitTest::TBaseFixture
+struct TFixture: public NUnitTest::TBaseFixture
 {
     IMonitoringServicePtr Monitoring = CreateMonitoringServiceStub();
     std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
@@ -110,8 +107,8 @@ struct TFixture
         auto monitoring = CreateMonitoringServiceStub();
 
         auto serverGroup = Monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server");
+                               ->GetSubgroup("counters", "blockstore")
+                               ->GetSubgroup("component", "server");
 
         auto volumeStats = CreateVolumeStats(
             Monitoring,
@@ -138,9 +135,7 @@ struct TFixture
         ServerStats->MountVolume(volume, ClientId, "instance");
     }
 
-    void UpdateStats(
-        TEndpointStats& stats,
-        const TVolumeStats& volumeStats)
+    void UpdateStats(TEndpointStats& stats, const TVolumeStats& volumeStats)
     {
         Timer->AdvanceTime(1s);
 
@@ -157,13 +152,13 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
 {
     Y_UNIT_TEST_F(ShouldCalcMaxValues, TFixture)
     {
-        TEndpointStats stats {ClientId, DiskId, ServerStats};
+        TEndpointStats stats{ClientId, DiskId, ServerStats};
 
         auto writeBlocks = Monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server")
-            ->GetSubgroup("type", "ssd_local")
-            ->GetSubgroup("request", "WriteBlocks");
+                               ->GetSubgroup("counters", "blockstore")
+                               ->GetSubgroup("component", "server")
+                               ->GetSubgroup("type", "ssd_local")
+                               ->GetSubgroup("request", "WriteBlocks");
 
         auto count = writeBlocks->GetCounter("Count");
         auto maxCount = writeBlocks->GetCounter("MaxCount");
@@ -172,12 +167,11 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
         auto maxRequestBytes = writeBlocks->GetCounter("MaxRequestBytes");
 
         {
-            TVolumeStats volumeStats {
+            TVolumeStats volumeStats{
                 .Write = {
                     .Count = 42,
                     .Bytes = 1_MB,
-                }
-            };
+                }};
 
             UpdateStats(stats, volumeStats);
 
@@ -189,12 +183,11 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
         }
 
         {
-            TVolumeStats volumeStats {
+            TVolumeStats volumeStats{
                 .Write = {
                     .Count = 20,
                     .Bytes = 5_MB,
-                }
-            };
+                }};
 
             UpdateStats(stats, volumeStats);
 
@@ -206,12 +199,11 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
         }
 
         {
-            TVolumeStats volumeStats {
+            TVolumeStats volumeStats{
                 .Write = {
                     .Count = 1,
                     .Bytes = 5_KB,
-                }
-            };
+                }};
 
             UpdateStats(stats, volumeStats);
 
@@ -277,13 +269,13 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
 
     Y_UNIT_TEST_F(ShouldCalcHists, TFixture)
     {
-        TEndpointStats stats {ClientId, DiskId, ServerStats};
+        TEndpointStats stats{ClientId, DiskId, ServerStats};
 
         auto writeBlocks = Monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server")
-            ->GetSubgroup("type", "ssd_local")
-            ->GetSubgroup("request", "WriteBlocks");
+                               ->GetSubgroup("counters", "blockstore")
+                               ->GetSubgroup("component", "server")
+                               ->GetSubgroup("type", "ssd_local")
+                               ->GetSubgroup("request", "WriteBlocks");
 
         auto sizes = writeBlocks->FindSubgroup("histogram", "Size");
         UNIT_ASSERT(sizes);
@@ -295,14 +287,13 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
         UNIT_ASSERT(times);
 
         {
-            TVolumeStats volumeStats {
+            TVolumeStats volumeStats{
                 .Write = {
                     .Count = 10,
                     .Bytes = 40_KB,
                     .Times = {{30, 7}, {100, 2}, {200, 1}},
                     .Sizes = {{4_KB, 10}},
-                }
-            };
+                }};
 
             UpdateStats(stats, volumeStats);
 

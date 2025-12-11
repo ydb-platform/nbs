@@ -46,10 +46,10 @@ private:
 };
 
 TDescribeFileStoreActor::TDescribeFileStoreActor(
-        TRequestInfoPtr requestInfo,
-        TString schemeShardDir,
-        TActorId storageSSProxy,
-        TString fileSystemId)
+    TRequestInfoPtr requestInfo,
+    TString schemeShardDir,
+    TActorId storageSSProxy,
+    TString fileSystemId)
     : RequestInfo(std::move(requestInfo))
     , SchemeShardDir(std::move(schemeShardDir))
     , StorageSSProxy(std::move(storageSSProxy))
@@ -84,7 +84,9 @@ void TDescribeFileStoreActor::HandleDescribeSchemeResponse(
 STFUNC(TDescribeFileStoreActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvStorageSSProxy::TEvDescribeSchemeResponse, HandleDescribeSchemeResponse);
+        HFunc(
+            TEvStorageSSProxy::TEvDescribeSchemeResponse,
+            HandleDescribeSchemeResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -113,7 +115,8 @@ void TSSProxyFallbackActor::Bootstrap(const TActorContext& ctx)
         .PipeClientMinRetryTime = Config->GetPipeClientMinRetryTime(),
         .PipeClientMaxRetryTime = Config->GetPipeClientMaxRetryTime(),
         .SchemeShardDir = Config->GetSchemeShardDir(),
-        .PathDescriptionBackupFilePath = Config->GetPathDescriptionBackupFilePath(),
+        .PathDescriptionBackupFilePath =
+            Config->GetPathDescriptionBackupFilePath(),
     });
     StorageSSProxy = NCloud::Register(ctx, std::move(actor));
 }
@@ -123,7 +126,9 @@ void TSSProxyFallbackActor::Bootstrap(const TActorContext& ctx)
 bool TSSProxyFallbackActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvStorageSSProxy::TEvDescribeSchemeRequest, HandleDescribeScheme);
+        HFunc(
+            TEvStorageSSProxy::TEvDescribeSchemeRequest,
+            HandleDescribeScheme);
         HFunc(TEvStorageSSProxy::TEvModifySchemeRequest, HandleModifyScheme);
 
         FILESTORE_SS_PROXY_REQUESTS(FILESTORE_HANDLE_REQUEST, TEvSSProxy)
@@ -175,10 +180,8 @@ void TSSProxyFallbackActor::HandleDescribeFileStore(
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     NCloud::Register<TDescribeFileStoreActor>(
         ctx,

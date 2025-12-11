@@ -10,7 +10,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template<class TKey, class TValue>
+template <class TKey, class TValue>
 TString Print(const TDisjointIntervalMap<TKey, TValue>& map)
 {
     TStringBuilder sb;
@@ -31,16 +31,16 @@ TString Print(const TDisjointIntervalMap<TKey, TValue>& map)
 }
 
 template <class TKey, class TValue>
-TString PrintOverlapping(
-    TDisjointIntervalMap<TKey, TValue>& map,
-    TKey begin,
-    TKey end)
+TString
+PrintOverlapping(TDisjointIntervalMap<TKey, TValue>& map, TKey begin, TKey end)
 {
     TDisjointIntervalMap<TKey, TValue> tmp;
 
-    map.VisitOverlapping(begin, end, [&](auto it) {
-        tmp.Add(it->second.Begin, it->second.End, it->second.Value);
-    });
+    map.VisitOverlapping(
+        begin,
+        end,
+        [&](auto it)
+        { tmp.Add(it->second.Begin, it->second.End, it->second.Value); });
 
     return Print(tmp);
 }
@@ -102,11 +102,15 @@ Y_UNIT_TEST_SUITE(TDisjointIntervalMapTest)
         map.Add(9, 12, "ben");
         map.Add(6, 7, "igor");
 
-        map.VisitOverlapping(4UL, 13UL, [&](auto it) {
-            if (it->second.Value == "igor") {
-                map.Remove(it);
-            }
-        });
+        map.VisitOverlapping(
+            4UL,
+            13UL,
+            [&](auto it)
+            {
+                if (it->second.Value == "igor") {
+                    map.Remove(it);
+                }
+            });
 
         UNIT_ASSERT_VALUES_EQUAL(
             "[(1, 3): vasya, (3, 5): petya, (9, 12): ben]",
@@ -114,4 +118,4 @@ Y_UNIT_TEST_SUITE(TDisjointIntervalMapTest)
     }
 }
 
-}   // namespace NCloud::NFileStore::NFuse
+}   // namespace NCloud

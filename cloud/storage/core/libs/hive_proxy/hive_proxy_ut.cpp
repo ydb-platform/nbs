@@ -1,4 +1,5 @@
 #include "hive_proxy.h"
+
 #include "hive_proxy_events_private.h"
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -9,9 +10,9 @@
 #include <contrib/ydb/core/base/tablet_resolver.h>
 #include <contrib/ydb/core/mind/local.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
-#include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/testlib/basics/appdata.h>
 #include <contrib/ydb/core/testlib/basics/helpers.h>
+#include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
@@ -36,8 +37,7 @@ static constexpr ui64 FakeMissingTablet = 0x0000000000840104;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct THiveMockState
-    : public TAtomicRefCount<THiveMockState>
+struct THiveMockState: public TAtomicRefCount<THiveMockState>
 {
     using TPtr = TIntrusivePtr<THiveMockState>;
 
@@ -53,10 +53,10 @@ struct THiveMockState
 
 enum class EExternalBootOptions
 {
-    PROCESS  = 0,
-    FAIL     = 1,
+    PROCESS = 0,
+    FAIL = 1,
     TRYLATER = 2,
-    IGNORE   = 3,
+    IGNORE = 3,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -71,9 +71,9 @@ private:
 
 public:
     THiveMock(
-            const TActorId& owner,
-            TTabletStorageInfo* info,
-            THiveMockState::TPtr state)
+        const TActorId& owner,
+        TTabletStorageInfo* info,
+        THiveMockState::TPtr state)
         : TActor(&TThis::StateInit)
         , TTabletExecutedFlat(info, owner, nullptr)
         , State(std::move(state))
@@ -82,10 +82,10 @@ public:
     }
 
     THiveMock(
-            const TActorId& owner,
-            TTabletStorageInfo* info,
-            THiveMockState::TPtr state,
-            EExternalBootOptions externalBootOptions)
+        const TActorId& owner,
+        TTabletStorageInfo* info,
+        THiveMockState::TPtr state,
+        EExternalBootOptions externalBootOptions)
         : TActor(&TThis::StateInit)
         , TTabletExecutedFlat(info, owner, nullptr)
         , State(std::move(state))
@@ -172,10 +172,8 @@ private:
         return TActorId();
     }
 
-    void SetLockOwner(
-        const TActorContext& ctx,
-        ui64 tabletId,
-        TActorId newOwner)
+    void
+    SetLockOwner(const TActorContext& ctx, ui64 tabletId, TActorId newOwner)
     {
         auto prev = State->LockedTablets[tabletId];
         State->LockedTablets[tabletId] = newOwner;
@@ -308,9 +306,7 @@ private:
             if (ExternalBootOptions == EExternalBootOptions::TRYLATER) {
                 errorCode = NKikimrProto::TRYLATER;
             }
-            ctx.Send(
-                ev->Sender,
-                new TEvHive::TEvBootTabletReply(errorCode));
+            ctx.Send(ev->Sender, new TEvHive::TEvBootTabletReply(errorCode));
             return;
         }
 
@@ -325,7 +321,8 @@ private:
             return;
         }
 
-        ctx.Send(ev->Sender,
+        ctx.Send(
+            ev->Sender,
             new TEvLocal::TEvBootTablet(
                 *info,
                 0,
@@ -357,8 +354,7 @@ private:
             auto& channelInfo = info->Channels[channel];
             channelInfo.History.emplace_back(
                 gen,
-                channelInfo.History.back().GroupID + 1
-            );
+                channelInfo.History.back().GroupID + 1);
         }
 
         ctx.Send(ev->Sender, new TEvHive::TEvTabletCreationResult());
@@ -411,9 +407,8 @@ void BootHiveMock(
     TActorId actorId = CreateTestBootstrapper(
         runtime,
         CreateTestTabletInfo(tabletId, TTabletTypes::Hive),
-        [=] (const TActorId& owner, TTabletStorageInfo* info) -> IActor* {
-            return new THiveMock(owner, info, state, externalBootOptions);
-        });
+        [=](const TActorId& owner, TTabletStorageInfo* info) -> IActor*
+        { return new THiveMock(owner, info, state, externalBootOptions); });
     runtime.EnableScheduleForActor(actorId);
 
     {
@@ -436,11 +431,11 @@ struct TTestEnv
     THiveMockState::TPtr TenantHiveState = MakeIntrusive<THiveMockState>();
 
     TTestEnv(
-            TTestActorRuntime& runtime,
-            TString tabletBootInfoBackupFilePath = "",
-            bool fallbackMode = false,
-            bool debug = false,
-            bool useTenantHive = false)
+        TTestActorRuntime& runtime,
+        TString tabletBootInfoBackupFilePath = "",
+        bool fallbackMode = false,
+        bool debug = false,
+        bool useTenantHive = false)
         : Runtime(runtime)
         , Debug(debug)
     {
@@ -452,16 +447,24 @@ struct TTestEnv
         SetupChannelProfiles(app);
         SetupTabletServices(Runtime, &app, true);
 
-        BootHiveMock(Runtime, FakeHiveTablet, HiveState, EExternalBootOptions::PROCESS);
-        BootHiveMock(Runtime, TenantHiveTablet, TenantHiveState, EExternalBootOptions::PROCESS);
+        BootHiveMock(
+            Runtime,
+            FakeHiveTablet,
+            HiveState,
+            EExternalBootOptions::PROCESS);
+        BootHiveMock(
+            Runtime,
+            TenantHiveTablet,
+            TenantHiveState,
+            EExternalBootOptions::PROCESS);
 
         ui64 tenantHive = useTenantHive ? TenantHiveTablet : 0;
         SetupHiveProxy(tabletBootInfoBackupFilePath, fallbackMode, tenantHive);
     }
 
     TTestEnv(
-            TTestActorRuntime& runtime,
-            EExternalBootOptions externalBootOptions)
+        TTestActorRuntime& runtime,
+        EExternalBootOptions externalBootOptions)
         : Runtime(runtime)
         , HiveState(MakeIntrusive<THiveMockState>())
     {
@@ -479,22 +482,34 @@ struct TTestEnv
     }
 
     ~TTestEnv()
-    {
-    }
+    {}
 
-    void AddDomain(TAppPrepare& app, ui32 domainUid, ui32 ssId, ui64 hive, ui64 schemeRoot)
+    void AddDomain(
+        TAppPrepare& app,
+        ui32 domainUid,
+        ui32 ssId,
+        ui64 hive,
+        ui64 schemeRoot)
     {
         ui32 planResolution = 50;
         app.ClearDomainsAndHive();
-        app.AddDomain(TDomainsInfo::TDomain::ConstructDomainWithExplicitTabletIds(
-            "MyRoot", domainUid, schemeRoot,
-            ssId, ssId, TVector<ui32>{ssId},
-            domainUid, TVector<ui32>{domainUid},
-            planResolution,
-            TVector<ui64>{TDomainsInfo::MakeTxCoordinatorIDFixed(domainUid, 1)},
-            TVector<ui64>{},
-            TVector<ui64>{},
-            DefaultPoolKinds()).Release());
+        app.AddDomain(
+            TDomainsInfo::TDomain::ConstructDomainWithExplicitTabletIds(
+                "MyRoot",
+                domainUid,
+                schemeRoot,
+                ssId,
+                ssId,
+                TVector<ui32>{ssId},
+                domainUid,
+                TVector<ui32>{domainUid},
+                planResolution,
+                TVector<ui64>{
+                    TDomainsInfo::MakeTxCoordinatorIDFixed(domainUid, 1)},
+                TVector<ui64>{},
+                TVector<ui64>{},
+                DefaultPoolKinds())
+                .Release());
         app.AddHive(domainUid, hive);
     }
 
@@ -521,18 +536,16 @@ struct TTestEnv
             .TenantHiveTabletId = tenantHive,
         };
         HiveProxyActorId = Runtime.Register(
-            CreateHiveProxy(
-                std::move(config),
-                Runtime.GetAppData(0).Counters).release());
+            CreateHiveProxy(std::move(config), Runtime.GetAppData(0).Counters)
+                .release());
         Runtime.EnableScheduleForActor(HiveProxyActorId);
         Runtime.RegisterService(MakeHiveProxyServiceId(), HiveProxyActorId);
     }
 
     void EnableTabletResolverScheduling(ui32 nodeIdx = 0)
     {
-        auto actorId = Runtime.GetLocalServiceId(
-            MakeTabletResolverID(),
-            nodeIdx);
+        auto actorId =
+            Runtime.GetLocalServiceId(MakeTabletResolverID(), nodeIdx);
         UNIT_ASSERT(actorId);
         Runtime.EnableScheduleForActor(actorId);
     }
@@ -543,10 +556,8 @@ struct TTestEnv
         RebootTablet(Runtime, FakeHiveTablet, sender);
     }
 
-    void SendLockRequest(
-        const TActorId& sender,
-        ui64 tabletId,
-        ui32 errorCode = 0)
+    void
+    SendLockRequest(const TActorId& sender, ui64 tabletId, ui32 errorCode = 0)
     {
         Runtime.Send(new IEventHandle(
             MakeHiveProxyServiceId(),
@@ -559,10 +570,8 @@ struct TTestEnv
         UNIT_ASSERT_VALUES_EQUAL(event->GetError().GetCode(), errorCode);
     }
 
-    void SendUnlockRequest(
-        const TActorId& sender,
-        ui64 tabletId,
-        ui32 errorCode = 0)
+    void
+    SendUnlockRequest(const TActorId& sender, ui64 tabletId, ui32 errorCode = 0)
     {
         Runtime.Send(new IEventHandle(
             MakeHiveProxyServiceId(),
@@ -570,15 +579,13 @@ struct TTestEnv
             new TEvHiveProxy::TEvUnlockTabletRequest(tabletId)));
         TAutoPtr<IEventHandle> handle;
         auto* event =
-            Runtime.GrabEdgeEvent<TEvHiveProxy::TEvUnlockTabletResponse>(handle);
+            Runtime.GrabEdgeEvent<TEvHiveProxy::TEvUnlockTabletResponse>(
+                handle);
         UNIT_ASSERT(event);
         UNIT_ASSERT_VALUES_EQUAL(event->GetError().GetCode(), errorCode);
     }
 
-    void WaitLockLost(
-        const TActorId& sender,
-        ui64 tabletId,
-        ui32 errorCode = 0)
+    void WaitLockLost(const TActorId& sender, ui64 tabletId, ui32 errorCode = 0)
     {
         TAutoPtr<IEventHandle> handle;
         TEvHiveProxy::TEvTabletLockLost* event = nullptr;
@@ -602,7 +609,8 @@ struct TTestEnv
             new TEvHiveProxy::TEvGetStorageInfoRequest(tabletId)));
         TAutoPtr<IEventHandle> handle;
         auto* event =
-            Runtime.GrabEdgeEvent<TEvHiveProxy::TEvGetStorageInfoResponse>(handle);
+            Runtime.GrabEdgeEvent<TEvHiveProxy::TEvGetStorageInfoResponse>(
+                handle);
         UNIT_ASSERT(event);
         UNIT_ASSERT_VALUES_EQUAL(event->GetError().GetCode(), errorCode);
         return event->StorageInfo;
@@ -617,7 +625,8 @@ struct TTestEnv
             MakeHiveProxyServiceId(),
             sender,
             new TEvHiveProxy::TEvBootExternalRequest(tabletId)));
-        auto ev = Runtime.GrabEdgeEvent<TEvHiveProxy::TEvBootExternalResponse>(sender);
+        auto ev = Runtime.GrabEdgeEvent<TEvHiveProxy::TEvBootExternalResponse>(
+            sender);
         UNIT_ASSERT(ev);
         const auto* msg = ev->Get();
         UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), errorCode);
@@ -633,8 +642,11 @@ struct TTestEnv
         Runtime.Send(new IEventHandle(
             MakeHiveProxyServiceId(),
             sender,
-            new TEvHiveProxy::TEvBootExternalRequest(tabletId, requestTimeout)));
-        auto ev = Runtime.GrabEdgeEvent<TEvHiveProxy::TEvBootExternalResponse>(sender);
+            new TEvHiveProxy::TEvBootExternalRequest(
+                tabletId,
+                requestTimeout)));
+        auto ev = Runtime.GrabEdgeEvent<TEvHiveProxy::TEvBootExternalResponse>(
+            sender);
         UNIT_ASSERT(ev);
         const auto* msg = ev->Get();
         UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), errorCode);
@@ -652,9 +664,7 @@ struct TTestEnv
             sender,
             new TEvHiveProxy::TEvReassignTabletRequest(
                 tabletId,
-                std::move(channels)
-            )
-        ));
+                std::move(channels))));
         using TResponse = TEvHiveProxy::TEvReassignTabletResponse;
         auto ev = Runtime.GrabEdgeEvent<TResponse>(sender);
         UNIT_ASSERT(ev);
@@ -662,22 +672,18 @@ struct TTestEnv
         UNIT_ASSERT_VALUES_EQUAL_C(
             msg->GetStatus(),
             errorCode,
-            msg->GetErrorReason()
-        );
+            msg->GetErrorReason());
 
         return *msg;
     }
 
-    TEvHiveProxy::TDrainNodeResponse SendDrainNodeRequest(
-        const TActorId& sender,
-        bool keepDown,
-        ui32 errorCode)
+    TEvHiveProxy::TDrainNodeResponse
+    SendDrainNodeRequest(const TActorId& sender, bool keepDown, ui32 errorCode)
     {
         Runtime.Send(new IEventHandle(
             MakeHiveProxyServiceId(),
             sender,
-            new TEvHiveProxy::TEvDrainNodeRequest(keepDown)
-        ));
+            new TEvHiveProxy::TEvDrainNodeRequest(keepDown)));
         using TResponse = TEvHiveProxy::TEvDrainNodeResponse;
         auto ev = Runtime.GrabEdgeEvent<TResponse>(sender);
         UNIT_ASSERT(ev);
@@ -685,8 +691,7 @@ struct TTestEnv
         UNIT_ASSERT_VALUES_EQUAL_C(
             msg->GetStatus(),
             errorCode,
-            msg->GetErrorReason()
-        );
+            msg->GetErrorReason());
 
         return *msg;
     }
@@ -700,8 +705,9 @@ struct TTestEnv
             sender,
             new TEvHiveProxy::TEvBackupTabletBootInfosRequest()));
         auto ev =
-            Runtime.GrabEdgeEvent<TEvHiveProxy::TEvBackupTabletBootInfosResponse>(
-                sender);
+            Runtime
+                .GrabEdgeEvent<TEvHiveProxy::TEvBackupTabletBootInfosResponse>(
+                    sender);
         UNIT_ASSERT(ev);
         const auto* msg = ev->Get();
         UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), errorCode);
@@ -745,10 +751,7 @@ struct TTestEnv
         Runtime.Send(new IEventHandle(
             MakeHiveProxyServiceId(),
             sender,
-            new TEvHiveProxy::TEvLookupTabletRequest(
-                hiveId,
-                owner,
-                ownerIdx)));
+            new TEvHiveProxy::TEvLookupTabletRequest(hiveId, owner, ownerIdx)));
     }
 
     TEvHiveProxy::TCreateTabletResponse SendCreateTabletRequest(
@@ -776,18 +779,15 @@ struct TTestEnv
     {
         SendLookupTabletRequestAsync(sender, hiveId, owner, ownerIdx);
 
-        auto ev =
-            Runtime.GrabEdgeEvent<TEvHiveProxy::TEvLookupTabletResponse>(
-                sender);
+        auto ev = Runtime.GrabEdgeEvent<TEvHiveProxy::TEvLookupTabletResponse>(
+            sender);
         UNIT_ASSERT(ev);
         const auto* msg = ev->Get();
         UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), errorCode);
         return *msg;
     }
 
-    void SendTabletMetricRequestAsync(
-        const TActorId& sender,
-        ui64 tabletId)
+    void SendTabletMetricRequestAsync(const TActorId& sender, ui64 tabletId)
     {
         NKikimrTabletBase::TMetrics resourceValues;
         resourceValues.SetCPU(1'000'000);
@@ -842,13 +842,17 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         env.SendLockRequest(sender, FakeTablet2, E_REJECTED);
     }
 
-    Y_UNIT_TEST(LockMissingTablet) {
+    Y_UNIT_TEST(LockMissingTablet)
+    {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
         auto sender = runtime.AllocateEdgeActor();
 
-        env.SendLockRequest(sender, FakeMissingTablet, MAKE_KIKIMR_ERROR(NKikimrProto::ERROR));
+        env.SendLockRequest(
+            sender,
+            FakeMissingTablet,
+            MAKE_KIKIMR_ERROR(NKikimrProto::ERROR));
     }
 
     Y_UNIT_TEST(LockDifferentTablets)
@@ -889,7 +893,9 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                 new TEvHive::TEvLockTabletExecution(FakeTablet2));
 
             TAutoPtr<IEventHandle> handle;
-            auto response = runtime.GrabEdgeEvent<TEvHive::TEvLockTabletExecutionResult>(handle);
+            auto response =
+                runtime.GrabEdgeEvent<TEvHive::TEvLockTabletExecutionResult>(
+                    handle);
 
             UNIT_ASSERT(response);
             UNIT_ASSERT_VALUES_EQUAL(handle->GetRecipientRewrite(), senderB);
@@ -927,7 +933,9 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
             0);
 
         int hiveLockRequests = 0;
-        runtime.SetObserverFunc([&](TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 Y_UNUSED(runtime);
                 if (event->GetTypeRewrite() == TEvHive::EvLockTabletExecution) {
                     ++hiveLockRequests;
@@ -1006,42 +1014,32 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
         auto sender = runtime.AllocateEdgeActor();
 
-        env.SendReassignTabletRequest(
-            sender,
-            FakeTablet2,
-            {1, 3},
-            S_OK
-        );
+        env.SendReassignTabletRequest(sender, FakeTablet2, {1, 3}, S_OK);
 
         auto result = env.HiveState->StorageInfos[FakeTablet2];
 
         UNIT_ASSERT(result);
         UNIT_ASSERT_VALUES_EQUAL(
             result->Channels.size(),
-            expected->Channels.size()
-        );
+            expected->Channels.size());
         UNIT_ASSERT_VALUES_EQUAL(
             result->Channels[0].History.size(),
             expected->Channels[0].History.size());
         UNIT_ASSERT_VALUES_EQUAL(
             result->Channels[1].History.size(),
-            expected->Channels[1].History.size() + 1
-        );
+            expected->Channels[1].History.size() + 1);
         UNIT_ASSERT_VALUES_EQUAL(
             result->Channels[1].History.back().GroupID,
-            expected->Channels[1].History.back().GroupID + 1
-        );
+            expected->Channels[1].History.back().GroupID + 1);
         UNIT_ASSERT_VALUES_EQUAL(
             result->Channels[2].History.size(),
             expected->Channels[2].History.size());
         UNIT_ASSERT_VALUES_EQUAL(
             result->Channels[3].History.size(),
-            expected->Channels[3].History.size() + 1
-        );
+            expected->Channels[3].History.size() + 1);
         UNIT_ASSERT_VALUES_EQUAL(
             result->Channels[3].History.back().GroupID,
-            expected->Channels[3].History.back().GroupID + 1
-        );
+            expected->Channels[3].History.back().GroupID + 1);
     }
 
     Y_UNIT_TEST(ReassignTabletDuringDisconnect)
@@ -1056,7 +1054,9 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
         auto sender = runtime.AllocateEdgeActor();
 
-        runtime.SetObserverFunc([&](TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 Y_UNUSED(runtime);
                 if (event->GetTypeRewrite() == TEvHive::EvReassignTablet) {
                     env.RebootHive();
@@ -1066,12 +1066,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                 return TTestActorRuntime::EEventAction::PROCESS;
             });
 
-        env.SendReassignTabletRequest(
-            sender,
-            FakeTablet2,
-            {1, 3},
-            E_REJECTED
-        );
+        env.SendReassignTabletRequest(sender, FakeTablet2, {1, 3}, E_REJECTED);
     }
 
     Y_UNIT_TEST(BootExternalError)
@@ -1093,16 +1088,21 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
-        TTabletStorageInfoPtr expected =
-            CreateTestTabletInfo(FakeTablet2, TTabletTypes::BlockStorePartition);
+        TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+            FakeTablet2,
+            TTabletTypes::BlockStorePartition);
         env.HiveState->StorageInfos[FakeTablet2] = expected;
 
         auto sender = runtime.AllocateEdgeActor();
 
         auto result = env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
         UNIT_ASSERT(result.StorageInfo);
-        UNIT_ASSERT_VALUES_EQUAL(result.StorageInfo->TabletID, expected->TabletID);
-        UNIT_ASSERT_VALUES_EQUAL(result.StorageInfo->TabletType, expected->TabletType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            result.StorageInfo->TabletID,
+            expected->TabletID);
+        UNIT_ASSERT_VALUES_EQUAL(
+            result.StorageInfo->TabletType,
+            expected->TabletType);
         UNIT_ASSERT_VALUES_EQUAL(result.SuggestedGeneration, 1u);
 
         auto result2 = env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
@@ -1157,11 +1157,10 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
             auto sender = runtime.AllocateEdgeActor();
 
-            auto result = env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+            auto result =
+                env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
             UNIT_ASSERT(result.StorageInfo);
-            UNIT_ASSERT_VALUES_EQUAL(
-                FakeTablet2,
-                result.StorageInfo->TabletID);
+            UNIT_ASSERT_VALUES_EQUAL(FakeTablet2, result.StorageInfo->TabletID);
             UNIT_ASSERT_VALUES_EQUAL(1u, result.SuggestedGeneration);
 
             // Smoke check for background sync (15 seconds should be enough).
@@ -1178,7 +1177,8 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
             auto sender = runtime.AllocateEdgeActor();
 
-            auto result1 = env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+            auto result1 =
+                env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
             UNIT_ASSERT(result1.StorageInfo);
             UNIT_ASSERT_VALUES_EQUAL(
                 FakeTablet2,
@@ -1186,11 +1186,12 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
             UNIT_ASSERT_VALUES_EQUAL(1u, result1.SuggestedGeneration);
 
             // unknown tablet should not be booted
-            auto result2 = env.SendBootExternalRequest(
-                sender, 0xdeadbeaf, E_REJECTED);
+            auto result2 =
+                env.SendBootExternalRequest(sender, 0xdeadbeaf, E_REJECTED);
             UNIT_ASSERT(!result2.StorageInfo);
 
-            auto result3 = env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+            auto result3 =
+                env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
             UNIT_ASSERT(result3.StorageInfo);
             UNIT_ASSERT_VALUES_EQUAL(
                 FakeTablet2,
@@ -1242,7 +1243,9 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         request.SetOwnerIdx(1);
         request.SetTabletType(TTabletTypes::BlockStoreDiskRegistry);
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& ev)
+            {
                 if (ev->GetTypeRewrite() == TEvHive::EvCreateTablet) {
                     const auto* msg = ev->Get<TEvHive::TEvCreateTablet>();
 
@@ -1252,17 +1255,16 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                         msg->Record.GetTabletType(),
                         TTabletTypes::BlockStoreDiskRegistry);
 
-                    runtime.Send(
-                        new IEventHandle(
-                            ev->Sender,
-                            ev->Sender,
-                            new TEvHive::TEvCreateTabletReply(
-                                NKikimrProto::OK,
-                                msg->Record.GetOwner(),
-                                msg->Record.GetOwnerIdx(),
-                                FakeTablet2),
-                                0,
-                                ev->Cookie));
+                    runtime.Send(new IEventHandle(
+                        ev->Sender,
+                        ev->Sender,
+                        new TEvHive::TEvCreateTabletReply(
+                            NKikimrProto::OK,
+                            msg->Record.GetOwner(),
+                            msg->Record.GetOwnerIdx(),
+                            FakeTablet2),
+                        0,
+                        ev->Cookie));
 
                     return TTestActorRuntime::EEventAction::DROP;
                 }
@@ -1270,12 +1272,8 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                 return TTestActorRuntime::EEventAction::PROCESS;
             });
 
-
-        auto result = env.SendCreateTabletRequest(
-            sender,
-            FakeHiveTablet,
-            request,
-            S_OK);
+        auto result =
+            env.SendCreateTabletRequest(sender, FakeHiveTablet, request, S_OK);
         UNIT_ASSERT_VALUES_EQUAL(result.TabletId, FakeTablet2);
     }
 
@@ -1286,24 +1284,25 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
         auto sender = runtime.AllocateEdgeActor();
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& ev)
+            {
                 if (ev->GetTypeRewrite() == TEvHive::EvLookupTablet) {
                     const auto* msg = ev->Get<TEvHive::TEvLookupTablet>();
 
                     UNIT_ASSERT_VALUES_EQUAL(msg->Record.GetOwner(), 0);
                     UNIT_ASSERT_VALUES_EQUAL(msg->Record.GetOwnerIdx(), 1);
 
-                    runtime.Send(
-                        new IEventHandle(
-                            ev->Sender,
-                            ev->Sender,
-                            new TEvHive::TEvCreateTabletReply(
-                                NKikimrProto::OK,
-                                msg->Record.GetOwner(),
-                                msg->Record.GetOwnerIdx(),
-                                FakeTablet2),
-                                0,
-                                ev->Cookie));
+                    runtime.Send(new IEventHandle(
+                        ev->Sender,
+                        ev->Sender,
+                        new TEvHive::TEvCreateTabletReply(
+                            NKikimrProto::OK,
+                            msg->Record.GetOwner(),
+                            msg->Record.GetOwnerIdx(),
+                            FakeTablet2),
+                        0,
+                        ev->Cookie));
 
                     return TTestActorRuntime::EEventAction::DROP;
                 }
@@ -1311,13 +1310,8 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                 return TTestActorRuntime::EEventAction::PROCESS;
             });
 
-
-        auto result = env.SendLookupTabletRequest(
-            sender,
-            FakeHiveTablet,
-            0,
-            1,
-            S_OK);
+        auto result =
+            env.SendLookupTabletRequest(sender, FakeHiveTablet, 0, 1, S_OK);
         UNIT_ASSERT_VALUES_EQUAL(result.TabletId, FakeTablet2);
     }
 
@@ -1335,27 +1329,30 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         request.SetTabletType(TTabletTypes::BlockStoreDiskRegistry);
 
         bool sentCreateReply = false;
-        auto sendReply = [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev) {
+        auto sendReply =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+        {
             const auto* msg = ev->Get<TEvHive::TEvCreateTablet>();
 
-            runtime.Send(
-                new IEventHandle(
-                    ev->Sender,
-                    ev->Sender,
-                    new TEvHive::TEvCreateTabletReply(
-                        NKikimrProto::OK,
-                        msg->Record.GetOwner(),
-                        msg->Record.GetOwnerIdx(),
-                        FakeTablet2),
-                        0,
-                        ev->Cookie));
-                sentCreateReply = true;
+            runtime.Send(new IEventHandle(
+                ev->Sender,
+                ev->Sender,
+                new TEvHive::TEvCreateTabletReply(
+                    NKikimrProto::OK,
+                    msg->Record.GetOwner(),
+                    msg->Record.GetOwnerIdx(),
+                    FakeTablet2),
+                0,
+                ev->Cookie));
+            sentCreateReply = true;
         };
 
         ui32 lookupCnt = 0;
         TAutoPtr<IEventHandle> savedEvent;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& ev)
+            {
                 switch (ev->GetTypeRewrite()) {
                     case TEvHive::EvCreateTablet: {
                         const auto* msg = ev->Get<TEvHive::TEvCreateTablet>();
@@ -1375,7 +1372,8 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                     case TEvHiveProxy::EvLookupTabletRequest: {
-                        if (++lookupCnt == 10 && !sentCreateReply && savedEvent) {
+                        if (++lookupCnt == 10 && !sentCreateReply && savedEvent)
+                        {
                             sendReply(runtime, savedEvent);
                         }
 
@@ -1384,17 +1382,16 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                     case TEvHive::EvLookupTablet: {
                         const auto* msg = ev->Get<TEvHive::TEvLookupTablet>();
 
-                        runtime.Send(
-                            new IEventHandle(
-                                ev->Sender,
-                                ev->Sender,
-                                new TEvHive::TEvCreateTabletReply(
-                                    NKikimrProto::OK,
-                                    msg->Record.GetOwner(),
-                                    msg->Record.GetOwnerIdx(),
-                                    FakeTablet2),
-                                    0,
-                                    ev->Cookie));
+                        runtime.Send(new IEventHandle(
+                            ev->Sender,
+                            ev->Sender,
+                            new TEvHive::TEvCreateTabletReply(
+                                NKikimrProto::OK,
+                                msg->Record.GetOwner(),
+                                msg->Record.GetOwnerIdx(),
+                                FakeTablet2),
+                            0,
+                            ev->Cookie));
 
                         return TTestActorRuntime::EEventAction::DROP;
                     }
@@ -1403,23 +1400,13 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                 return TTestActorRuntime::DefaultObserverFunc(ev);
             });
 
-        env.SendCreateTabletRequestAsync(
-            sender,
-            FakeHiveTablet,
-            request);
+        env.SendCreateTabletRequestAsync(sender, FakeHiveTablet, request);
 
         for (uint32_t i = 0; i < 10; ++i) {
-            env.SendLookupTabletRequestAsync(
-                sender,
-                FakeHiveTablet,
-                0,
-                1);
+            env.SendLookupTabletRequestAsync(sender, FakeHiveTablet, 0, 1);
         }
 
-        env.SendCreateTabletRequestAsync(
-            sender,
-            FakeHiveTablet,
-            request);
+        env.SendCreateTabletRequestAsync(sender, FakeHiveTablet, request);
 
         {
             auto ev =
@@ -1561,7 +1548,8 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         ui32 hiveMessages = 0;
         ui32 wakeups = 0;
         runtime.SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event) {
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvHive::EvTabletMetrics: {
                         ++hiveMessages;
@@ -1571,7 +1559,8 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                         ++wakeups;
                         break;
                     }
-                    default: break;
+                    default:
+                        break;
                 }
                 return TTestActorRuntime::EEventAction::PROCESS;
             });
@@ -1598,8 +1587,9 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
         auto sender = runtime.AllocateEdgeActor();
 
-        auto counter = env.Runtime.GetAppData(0).Counters
-            ->GetCounter("HiveReconnectTime", true);
+        auto counter = env.Runtime.GetAppData(0).Counters->GetCounter(
+            "HiveReconnectTime",
+            true);
 
         env.SendLockRequest(sender, FakeTablet2);
         UNIT_ASSERT_VALUES_UNEQUAL(0, counter->Val());
@@ -1607,7 +1597,9 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         auto oldVal = counter->Val();
 
         int hiveLockRequests = 0;
-        runtime.SetObserverFunc([&](TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 Y_UNUSED(runtime);
                 if (event->GetTypeRewrite() == TEvHive::EvLockTabletExecution) {
                     ++hiveLockRequests;
@@ -1632,8 +1624,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
     Y_UNIT_TEST(ShouldLoadTabletBootInfoAtStartup)
     {
-        TString backupFilePath =
-            "BootExternal.tablet_boot_info_backup.txt";
+        TString backupFilePath = "BootExternal.tablet_boot_info_backup.txt";
 
         NKikimr::TTabletStorageInfoPtr storageInfo;
 
@@ -1662,8 +1653,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
             for (auto& channel: result.StorageInfo->Channels) {
                 expectedGroupIds.emplace_back();
                 for (auto& historyEntry: channel.History) {
-                    expectedGroupIds.back().emplace_back(
-                        historyEntry.GroupID);
+                    expectedGroupIds.back().emplace_back(historyEntry.GroupID);
                 }
             }
             storageInfo = result.StorageInfo;
@@ -1698,8 +1688,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
     Y_UNIT_TEST(ShouldListCorruptedTabletBootInfoBackupsWithoutCrash)
     {
-        TString backupFilePath =
-            "BootExternal.tablet_boot_info_backup.txt";
+        TString backupFilePath = "BootExternal.tablet_boot_info_backup.txt";
 
         NKikimr::TTabletStorageInfoPtr storageInfo;
 
@@ -1728,8 +1717,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
             for (auto& channel: result.StorageInfo->Channels) {
                 expectedGroupIds.emplace_back();
                 for (auto& historyEntry: channel.History) {
-                    expectedGroupIds.back().emplace_back(
-                        historyEntry.GroupID);
+                    expectedGroupIds.back().emplace_back(historyEntry.GroupID);
                 }
             }
             storageInfo = result.StorageInfo;

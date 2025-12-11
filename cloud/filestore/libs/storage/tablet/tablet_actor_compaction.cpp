@@ -21,8 +21,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCompactionActor final
-    : public TActorBootstrapped<TCompactionActor>
+class TCompactionActor final: public TActorBootstrapped<TCompactionActor>
 {
 private:
     const TString LogTag;
@@ -90,17 +89,17 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCompactionActor::TCompactionActor(
-        TString logTag,
-        TString fileSystemId,
-        TActorId tablet,
-        TRequestInfoPtr requestInfo,
-        ui64 commitId,
-        ui32 rangeId,
-        ui32 blockSize,
-        IProfileLogPtr profileLog,
-        TVector<TMixedBlobMeta> srcBlobs,
-        TVector<TCompactionBlob> dstBlobs,
-        NProto::TProfileLogRequestInfo profileLogRequest)
+    TString logTag,
+    TString fileSystemId,
+    TActorId tablet,
+    TRequestInfoPtr requestInfo,
+    ui64 commitId,
+    ui32 rangeId,
+    ui32 blockSize,
+    IProfileLogPtr profileLog,
+    TVector<TMixedBlobMeta> srcBlobs,
+    TVector<TCompactionBlob> dstBlobs,
+    NProto::TProfileLogRequestInfo profileLogRequest)
     : LogTag(std::move(logTag))
     , FileSystemId(std::move(fileSystemId))
     , Tablet(tablet)
@@ -154,14 +153,11 @@ void TCompactionActor::ReadBlob(const TActorContext& ctx)
         }
 
         if (blocks) {
-            auto request = std::make_unique<TEvIndexTabletPrivate::TEvReadBlobRequest>(
-                RequestInfo->CallContext
-            );
-            request->Buffer = CreateBlockBuffer(TByteRange(
-                0,
-                blocks.size() * BlockSize,
-                BlockSize
-            ));
+            auto request =
+                std::make_unique<TEvIndexTabletPrivate::TEvReadBlobRequest>(
+                    RequestInfo->CallContext);
+            request->Buffer = CreateBlockBuffer(
+                TByteRange(0, blocks.size() * BlockSize, BlockSize));
             request->Blobs.emplace_back(blob.BlobId, std::move(blocks));
             request->Blobs.back().Async = true;
 
@@ -193,8 +189,7 @@ void TCompactionActor::HandleReadBlobResponse(
 void TCompactionActor::WriteBlob(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvIndexTabletPrivate::TEvWriteBlobRequest>(
-        RequestInfo->CallContext
-    );
+        RequestInfo->CallContext);
 
     for (const auto& blob: DstBlobs) {
         TString blobContent(Reserve(BlockSize * blob.Blocks.size()));
@@ -228,8 +223,7 @@ void TCompactionActor::HandleWriteBlobResponse(
 void TCompactionActor::AddBlob(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvIndexTabletPrivate::TEvAddBlobRequest>(
-        RequestInfo->CallContext
-    );
+        RequestInfo->CallContext);
     request->Mode = EAddBlobMode::Compaction;
     request->SrcBlobs = std::move(SrcBlobs);
 
@@ -293,7 +287,9 @@ void TCompactionActor::ReplyAndDie(
 
     if (RequestInfo->Sender != Tablet) {
         // reply to caller
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvCompactionResponse>(error);
+        auto response =
+            std::make_unique<TEvIndexTabletPrivate::TEvCompactionResponse>(
+                error);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
 
@@ -305,8 +301,12 @@ STFUNC(TCompactionActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvIndexTabletPrivate::TEvReadBlobResponse, HandleReadBlobResponse);
-        HFunc(TEvIndexTabletPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
+        HFunc(
+            TEvIndexTabletPrivate::TEvReadBlobResponse,
+            HandleReadBlobResponse);
+        HFunc(
+            TEvIndexTabletPrivate::TEvWriteBlobResponse,
+            HandleWriteBlobResponse);
         HFunc(TEvIndexTabletPrivate::TEvAddBlobResponse, HandleAddBlobResponse);
 
         default:
@@ -338,8 +338,7 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
                     SelfId(),
                     new TEvIndexTabletPrivate::TEvCompactionRequest(
                         compactionInfo.RangeId,
-                        false)
-                );
+                        false));
                 return;
             }
 
@@ -347,14 +346,13 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
                 ctx.Send(
                     SelfId(),
                     new TEvIndexTabletPrivate::TEvCleanupRequest(
-                        cleanupInfo.RangeId)
-                );
+                        cleanupInfo.RangeId));
                 return;
             }
 
             case EBlobIndexOp::FlushBytes: {
-                // Flush blocked since FlushBytes op rewrites some fresh blocks as
-                // blobs
+                // Flush blocked since FlushBytes op rewrites some fresh blocks
+                // as blobs
                 if (!FlushState.Enqueue()) {
                     StartBackgroundBlobIndexOp();
                     CompleteBlobIndexOp();
@@ -363,8 +361,7 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
 
                 ctx.Send(
                     SelfId(),
-                    new TEvIndexTabletPrivate::TEvFlushBytesRequest()
-                );
+                    new TEvIndexTabletPrivate::TEvFlushBytesRequest());
                 return;
             }
 
@@ -394,7 +391,6 @@ void TIndexTabletActor::AddBlobIndexOpIfNeeded(
     const bool shouldCleanup =
         cleanupInfo.ShouldCleanup && !shouldThrottleCleanup;
 
-
     const bool shouldFlushBytesByFreshBytesCount =
         GetFreshBytesCount() >= Config->GetFlushBytesThreshold();
 
@@ -402,34 +398,28 @@ void TIndexTabletActor::AddBlobIndexOpIfNeeded(
         GetDeletedFreshBytesCount() >= Config->GetFlushBytesThreshold();
 
     const bool shouldFlushBytesByFreshBytesItemCount =
-        Config->GetFlushBytesByItemCountEnabled()
-        && GetFreshBytesItemCount()
-            >= Config->GetFlushBytesItemCountThreshold();
+        Config->GetFlushBytesByItemCountEnabled() &&
+        GetFreshBytesItemCount() >= Config->GetFlushBytesItemCountThreshold();
 
-    const bool shouldFlushBytes =
-        shouldFlushBytesByFreshBytesCount
-        || shouldFlushBytesByDeletedFreshBytesCount
-        || shouldFlushBytesByFreshBytesItemCount;
+    const bool shouldFlushBytes = shouldFlushBytesByFreshBytesCount ||
+                                  shouldFlushBytesByDeletedFreshBytesCount ||
+                                  shouldFlushBytesByFreshBytesItemCount;
 
+    const int compactionPriority =
+        compactionInfo.ShouldCompact
+            ? static_cast<int>(backpressureStatus.Compaction)
+            : 0;
 
-    const int compactionPriority = compactionInfo.ShouldCompact
-        ? static_cast<int>(backpressureStatus.Compaction)
-        : 0;
+    const int cleanupPriority =
+        shouldCleanup ? static_cast<int>(backpressureStatus.Cleanup) : 0;
 
-    const int cleanupPriority = shouldCleanup
-        ? static_cast<int>(backpressureStatus.Cleanup)
-        : 0;
-
-    const int flushBytesPriority = shouldFlushBytes
-        ? static_cast<int>(backpressureStatus.FlushBytes)
-        : 0;
+    const int flushBytesPriority =
+        shouldFlushBytes ? static_cast<int>(backpressureStatus.FlushBytes) : 0;
 
     // Prioritize background operations whose optimization targets are close
     // to their backpressure thresholds
-    const int maxPriority = Max(
-        compactionPriority,
-        cleanupPriority,
-        flushBytesPriority);
+    const int maxPriority =
+        Max(compactionPriority, cleanupPriority, flushBytesPriority);
 
     if (maxPriority == 0) {
         // No background operations are needed to run
@@ -506,7 +496,9 @@ void TIndexTabletActor::ScheduleEnqueueBlobIndexOpIfNeeded(
             new TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded());
         EnqueueBlobIndexOpIfNeededScheduled = true;
 
-        LOG_TRACE(ctx, TFileStoreComponents::TABLET,
+        LOG_TRACE(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s EnqueueBlobIndexOpIfNeeded scheduled",
             LogTag.c_str());
     }
@@ -520,7 +512,9 @@ void TIndexTabletActor::HandleEnqueueBlobIndexOpIfNeeded(
 {
     Y_UNUSED(ev);
 
-    LOG_TRACE(ctx, TFileStoreComponents::TABLET,
+    LOG_TRACE(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s EnqueueBlobIndexOpIfNeeded received",
         LogTag.c_str());
 
@@ -543,24 +537,23 @@ void TIndexTabletActor::HandleCompaction(
         msg->CallContext->FileSystemId,
         GetFileSystem().GetStorageMediaKind());
 
-    auto replyError = [&] (const NProto::TError& error) {
+    auto replyError = [&](const NProto::TError& error)
+    {
         if (ev->Sender == ctx.SelfID) {
             // nothing to do though should not happen
             return;
         }
 
-        FILESTORE_TRACK(
-            ResponseSent_Tablet,
-            msg->CallContext,
-            "Compaction");
+        FILESTORE_TRACK(ResponseSent_Tablet, msg->CallContext, "Compaction");
 
         auto response =
-            std::make_unique<TEvIndexTabletPrivate::TEvCompactionResponse>(error);
+            std::make_unique<TEvIndexTabletPrivate::TEvCompactionResponse>(
+                error);
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
-    const bool started = ev->Sender == ctx.SelfID
-        ? StartBackgroundBlobIndexOp() : BlobIndexOpState.Start();
+    const bool started = ev->Sender == ctx.SelfID ? StartBackgroundBlobIndexOp()
+                                                  : BlobIndexOpState.Start();
 
     if (!started) {
         replyError(MakeError(E_TRY_AGAIN, "cleanup/compaction is in progress"));
@@ -574,15 +567,15 @@ void TIndexTabletActor::HandleCompaction(
         return;
     }
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s Compaction started (range: #%u)",
         LogTag.c_str(),
         msg->RangeId);
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     ExecuteTx<TCompaction>(
@@ -677,11 +670,11 @@ void TIndexTabletActor::ExecuteTx_Compaction(
         const ui32 usedBlocks = storedBlocks - garbageBlocks;
         const ui32 garbagePercentage =
             usedBlocks ? 100 * garbageBlocks / usedBlocks : Max<ui32>();
-        const ui32 averageBlobSize = static_cast<ui64>(GetBlockSize())
-            * storedBlocks / args.CompactionBlobs.size();
+        const ui32 averageBlobSize = static_cast<ui64>(GetBlockSize()) *
+                                     storedBlocks / args.CompactionBlobs.size();
 
-        if (garbagePercentage <= garbageThreshold
-                && averageBlobSize >= blobSizeThreshold)
+        if (garbagePercentage <= garbageThreshold &&
+            averageBlobSize >= blobSizeThreshold)
         {
             // updating only the 'compacted' flag
             UpdateCompactionMap(
@@ -704,10 +697,9 @@ void TIndexTabletActor::CompleteTx_Compaction(
     const TActorContext& ctx,
     TTxIndexTablet::TCompaction& args)
 {
-    auto replyError = [&] (
-        const TActorContext& ctx,
-        TTxIndexTablet::TCompaction& args,
-        const NProto::TError& error)
+    auto replyError = [&](const TActorContext& ctx,
+                          TTxIndexTablet::TCompaction& args,
+                          const NProto::TError& error)
     {
         // log request
         FinalizeProfileLogRequestInfo(
@@ -731,23 +723,27 @@ void TIndexTabletActor::CompleteTx_Compaction(
     };
 
     if (args.SkipRangeRewrite) {
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s Compaction completed, nothing to do (range: #%u)",
-            LogTag.c_str(), args.RangeId);
+            LogTag.c_str(),
+            args.RangeId);
 
         replyError(ctx, args, MakeError(S_FALSE, "nothing to do"));
 
         CompleteBlobIndexOp();
         EnqueueBlobIndexOpIfNeeded(ctx);
         Metrics.Compaction.Update(
-            1,  // count
-            0,  // requestBytes
+            1,   // count
+            0,   // requestBytes
             ctx.Now() - args.RequestInfo->StartedTs);
         Metrics.Compaction.DudCount.fetch_add(1, std::memory_order_relaxed);
         return;
     }
 
-    TVector<TBlockDataRef> blocks(Reserve(args.CompactionBlobs.size() * MaxBlocksCount));
+    TVector<TBlockDataRef> blocks(
+        Reserve(args.CompactionBlobs.size() * MaxBlocksCount));
 
     for (const auto& blob: args.CompactionBlobs) {
         ui32 blockOffset = 0;   // offset in read buffer, not in blob!
@@ -758,7 +754,7 @@ void TIndexTabletActor::CompleteTx_Compaction(
                 }
 
                 blocks.emplace_back(
-                    TBlockDataRef { block, blob.BlobId, blockOffset++ });
+                    TBlockDataRef{block, blob.BlobId, blockOffset++});
             }
         }
     }
@@ -828,7 +824,9 @@ void TIndexTabletActor::HandleCompactionCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s Compaction completed (%s)",
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());

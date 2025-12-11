@@ -31,8 +31,7 @@ TThrottlingRequestInfo BuildRequestInfo(
     return {
         CalculateByteCount(request.Record),
         static_cast<ui32>(TThrottlingPolicy::EOpType::Read),
-        policyVersion
-    };
+        policyVersion};
 }
 
 template <>
@@ -43,8 +42,7 @@ TThrottlingRequestInfo BuildRequestInfo(
     return {
         CalculateByteCount(request.Record),
         static_cast<ui32>(TThrottlingPolicy::EOpType::Write),
-        policyVersion
-    };
+        policyVersion};
 }
 
 template <>
@@ -55,8 +53,7 @@ TThrottlingRequestInfo BuildRequestInfo(
     return {
         CalculateByteCount(request.Record),
         static_cast<ui32>(TThrottlingPolicy::EOpType::Read),
-        policyVersion
-    };
+        policyVersion};
 }
 
 template <>
@@ -67,8 +64,7 @@ TThrottlingRequestInfo BuildRequestInfo(
     return {
         CalculateByteCount(request.Record),
         static_cast<ui32>(TThrottlingPolicy::EOpType::Write),
-        policyVersion
-    };
+        policyVersion};
 }
 
 }   // namespace
@@ -80,7 +76,8 @@ void TIndexTabletActor::HandleUpdateLeakyBucketCounters(
     const NActors::TActorContext& ctx)
 {
     const ui64 currentRate = std::ceil(
-        GetThrottlingPolicy().CalculateCurrentSpentBudgetShare(ctx.Now()) * 100);
+        GetThrottlingPolicy().CalculateCurrentSpentBudgetShare(ctx.Now()) *
+        100);
 
     Metrics.MaxUsedQuota.Record(currentRate);
     NMetrics::Add(Metrics.UsedQuota, currentRate);
@@ -119,10 +116,8 @@ NProto::TError TIndexTabletActor::Throttle(
 
     auto* msg = ev->Get();
 
-    const auto requestInfo = BuildRequestInfo(
-        *msg,
-        GetThrottlingPolicy().GetVersion()
-    );
+    const auto requestInfo =
+        BuildRequestInfo(*msg, GetThrottlingPolicy().GetVersion());
 
     const auto status = Throttler->Throttle(
         ctx,
@@ -169,9 +164,8 @@ bool TIndexTabletActor::ThrottleIfNeeded(
             ev->Get()->CallContext,
             TMethod::Name);
 
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            std::move(error)
-        );
+        auto response =
+            std::make_unique<typename TMethod::TResponse>(std::move(error));
         NCloud::Reply(ctx, *ev, std::move(response));
         return true;
     } else if (!ev) {
@@ -184,17 +178,17 @@ bool TIndexTabletActor::ThrottleIfNeeded(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define GENERATE_IMPL(name, ns)                                                \
-template NProto::TError TIndexTabletActor::Throttle<ns::T##name##Method>(      \
-    const ns::TEv##name##Request::TPtr& ev,                                    \
-    const TActorContext& ctx);                                                 \
-                                                                               \
-template bool TIndexTabletActor::ThrottleIfNeeded<ns::T##name##Method>(        \
-    const ns::TEv##name##Request::TPtr& ev,                                    \
-    const TActorContext& ctx);                                                 \
-// GENERATE_IMPL
+#define GENERATE_IMPL(name, ns)                                               \
+    template NProto::TError TIndexTabletActor::Throttle<ns::T##name##Method>( \
+        const ns::TEv##name##Request::TPtr& ev,                               \
+        const TActorContext& ctx);                                            \
+                                                                              \
+    template bool TIndexTabletActor::ThrottleIfNeeded<ns::T##name##Method>(   \
+        const ns::TEv##name##Request::TPtr& ev,                               \
+        const TActorContext& ctx);                                            \
+    // GENERATE_IMPL
 
-GENERATE_IMPL(ReadData,  TEvService)
+GENERATE_IMPL(ReadData, TEvService)
 GENERATE_IMPL(WriteData, TEvService)
 GENERATE_IMPL(DescribeData, TEvIndexTablet)
 GENERATE_IMPL(GenerateBlobIds, TEvIndexTablet)

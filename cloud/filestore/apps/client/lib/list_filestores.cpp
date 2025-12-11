@@ -6,8 +6,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TListFileStoresCommand final
-    : public TFileStoreServiceCommand
+class TListFileStoresCommand final: public TFileStoreServiceCommand
 {
 public:
     bool Execute() override
@@ -16,9 +15,7 @@ public:
 
         auto request = std::make_shared<NProto::TListFileStoresRequest>();
         auto response = WaitFor(
-            Client->ListFileStores(
-                std::move(callContext),
-                std::move(request)));
+            Client->ListFileStores(std::move(callContext), std::move(request)));
 
         if (HasError(response)) {
             ythrow TServiceError(response.GetError());

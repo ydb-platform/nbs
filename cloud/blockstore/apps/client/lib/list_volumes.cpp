@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -13,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TListVolumesCommand final
-    : public TCommand
+class TListVolumesCommand final: public TCommand
 {
 public:
     TListVolumesCommand(IBlockStorePtr client)
@@ -29,8 +29,7 @@ protected:
         STORAGE_DEBUG("Sending ListVolumes request");
         auto result = WaitFor(ClientEndpoint->ListVolumes(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TListVolumesRequest>()
-        ));
+            std::make_shared<NProto::TListVolumesRequest>()));
 
         STORAGE_DEBUG("Received ListVolumes response");
         if (Proto) {
@@ -52,7 +51,7 @@ protected:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

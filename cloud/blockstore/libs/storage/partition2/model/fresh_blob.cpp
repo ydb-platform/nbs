@@ -62,10 +62,11 @@ NProto::TError ParseFreshBlobContent(
 
             if (offset + blockSize > buffer.size()) {
                 return MakeError(
-                    E_FAIL, TStringBuilder() <<
-                        "not enough blocks in fresh blob; #offset=" << offset <<
-                        " #blockSize=" << blockSize <<
-                        " #buffer.size()=" << buffer.size());
+                    E_FAIL,
+                    TStringBuilder()
+                        << "not enough blocks in fresh blob; #offset=" << offset
+                        << " #blockSize=" << blockSize
+                        << " #buffer.size()=" << buffer.size());
             }
 
             TString content(buffer.data() + offset, blockSize);
@@ -114,14 +115,16 @@ TString BuildFreshBlobContent(
     size_t offset = result.size();
 
     result.ReserveAndResize(offset + protoSize + contentSize);
-    Y_PROTOBUF_SUPPRESS_NODISCARD meta.SerializeToArray(const_cast<char*>(result.data()) + offset, protoSize);
+    Y_PROTOBUF_SUPPRESS_NODISCARD meta.SerializeToArray(
+        const_cast<char*>(result.data()) + offset,
+        protoSize);
 
     offset += protoSize;
 
     for (const auto& guardHolder: guardHolders) {
         const auto& sgList = guardHolder.GetSgList();
         const size_t sgListSize = SgListGetSize(sgList);
-        SgListCopy(sgList, { result.data() + offset, sgListSize });
+        SgListCopy(sgList, {result.data() + offset, sgListSize});
         offset += sgListSize;
     }
 

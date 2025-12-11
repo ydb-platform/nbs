@@ -33,8 +33,8 @@ public:
     void RegisterTrafficSource(const NActors::TActorContext& ctx);
 
     void HandleUpdateBandwidthLimit(
-        const TEvStatsServicePrivate::
-            TEvRegisterTrafficSourceResponse::TPtr& ev,
+        const TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse::TPtr&
+            ev,
         const NActors::TActorContext& ctx);
 
     void SetRecommendedBandwidth(ui64 bandwidth);

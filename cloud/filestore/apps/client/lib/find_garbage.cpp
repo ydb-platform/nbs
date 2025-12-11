@@ -23,8 +23,7 @@ struct TNode
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFindGarbageCommand final
-    : public TFileStoreCommand
+class TFindGarbageCommand final: public TFileStoreCommand
 {
 private:
     TVector<TString> Shards;
@@ -35,9 +34,7 @@ private:
 public:
     TFindGarbageCommand()
     {
-        Opts.AddLongOption("shard")
-            .RequiredArgument("STR")
-            .AppendTo(&Shards);
+        Opts.AddLongOption("shard").RequiredArgument("STR").AppendTo(&Shards);
 
         Opts.AddLongOption("page-size")
             .RequiredArgument("NUM")
@@ -92,9 +89,8 @@ public:
         request->SetNodeId(parentId);
         request->SetName(name);
 
-        auto response = WaitFor(session.GetNodeAttr(
-            PrepareCallContext(),
-            std::move(request)));
+        auto response = WaitFor(
+            session.GetNodeAttr(PrepareCallContext(), std::move(request)));
 
         if (response.GetError().GetCode() == E_FS_NOENT) {
             return {};
@@ -103,7 +99,7 @@ public:
         Y_ENSURE_EX(
             !HasError(response.GetError()),
             yexception() << "GetNodeAttr error: "
-                << FormatError(response.GetError()));
+                         << FormatError(response.GetError()));
 
         return std::move(*response.MutableNode());
     }
@@ -180,8 +176,7 @@ public:
             for (const auto& result: results) {
                 Cout << result.Shard << "\t" << result.NodeName << "\t"
                      << FormatByteSize(result.Size) << " (" << result.Size
-                     << ")"
-                     << "\n";
+                     << ")" << "\n";
             }
         }
 

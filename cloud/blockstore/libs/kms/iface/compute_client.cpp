@@ -8,8 +8,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TComputeClientStub
-    : public IComputeClient
+class TComputeClientStub: public IComputeClient
 {
 public:
     void Start() override

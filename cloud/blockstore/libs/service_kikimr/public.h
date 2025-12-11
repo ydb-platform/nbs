@@ -3,7 +3,7 @@
 namespace NCloud::NBlockStore {
 
 namespace NProto {
-    class TKikimrServiceConfig;
+class TKikimrServiceConfig;
 }
 
 }   // namespace NCloud::NBlockStore

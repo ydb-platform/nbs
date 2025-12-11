@@ -19,18 +19,16 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const std::array<NCloud::NProto::EStorageMediaKind, 5> MEDIA_KINDS {
+const std::array<NCloud::NProto::EStorageMediaKind, 5> MEDIA_KINDS{
     NCloud::NProto::STORAGE_MEDIA_HDD,
     NCloud::NProto::STORAGE_MEDIA_SSD,
     NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
     NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
-    NCloud::NProto::STORAGE_MEDIA_HYBRID
-};
+    NCloud::NProto::STORAGE_MEDIA_HYBRID};
 
-const std::array<NCloud::NProto::EStorageMediaKind, 2> HDD_MEDIA_KINDS {
+const std::array<NCloud::NProto::EStorageMediaKind, 2> HDD_MEDIA_KINDS{
     NCloud::NProto::STORAGE_MEDIA_HDD,
-    NCloud::NProto::STORAGE_MEDIA_HYBRID
-};
+    NCloud::NProto::STORAGE_MEDIA_HYBRID};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -110,8 +108,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
     {
         auto config = CreateConfigWithThrottlingParams(
             NCloud::NProto::STORAGE_MEDIA_SSD,
-            4
-        );
+            4);
 
         TVolumeParams volumeParams;
         volumeParams.BlockSize = DefaultBlockSize;
@@ -121,11 +118,11 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         NKikimrBlockStore::TVolumeConfig volumeConfig;
         ResizeVolume(*config, volumeParams, {}, {}, volumeConfig);
         UNIT_ASSERT_VALUES_EQUAL(8, volumeConfig.ExplicitChannelProfilesSize());
-        // limits should depend on the actual size - not on the number of channels
+        // limits should depend on the actual size - not on the number of
+        // channels
         UNIT_ASSERT_VALUES_EQUAL(
             15_MB,
-            volumeConfig.GetPerformanceProfileMaxReadBandwidth()
-        );
+            volumeConfig.GetPerformanceProfileMaxReadBandwidth());
 
         volumeParams.BlocksCountPerPartition = 150_GB / DefaultBlockSize;
         volumeConfig.Clear();
@@ -133,8 +130,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         UNIT_ASSERT_VALUES_EQUAL(9, volumeConfig.ExplicitChannelProfilesSize());
         UNIT_ASSERT_VALUES_EQUAL(
             75_MB,
-            volumeConfig.GetPerformanceProfileMaxReadBandwidth()
-        );
+            volumeConfig.GetPerformanceProfileMaxReadBandwidth());
     }
 
     Y_UNIT_TEST(ShouldAllocateAtMost255Channels)
@@ -150,7 +146,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         volumeParams.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD;
         NKikimrBlockStore::TVolumeConfig volumeConfig;
         ResizeVolume(*config, volumeParams, {}, {}, volumeConfig);
-        UNIT_ASSERT(volumeConfig.ExplicitChannelProfilesSize() == MaxDataChannelCount);
+        UNIT_ASSERT(
+            volumeConfig.ExplicitChannelProfilesSize() == MaxDataChannelCount);
     }
 
     Y_UNIT_TEST(ShouldSetValuesFromExplicitPerformanceProfile)
@@ -187,51 +184,40 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             UNIT_ASSERT_VALUES_EQUAL(1, volumeConfig.PartitionsSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 blocksCount,
-                volumeConfig.GetPartitions(0).GetBlockCount()
-            );
+                volumeConfig.GetPartitions(0).GetBlockCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 pp.GetMaxReadBandwidth(),
-                volumeConfig.GetPerformanceProfileMaxReadBandwidth()
-            );
+                volumeConfig.GetPerformanceProfileMaxReadBandwidth());
             UNIT_ASSERT_VALUES_EQUAL(
                 pp.GetMaxWriteBandwidth(),
-                volumeConfig.GetPerformanceProfileMaxWriteBandwidth()
-            );
+                volumeConfig.GetPerformanceProfileMaxWriteBandwidth());
             UNIT_ASSERT_VALUES_EQUAL(
                 pp.GetMaxReadIops(),
-                volumeConfig.GetPerformanceProfileMaxReadIops()
-            );
+                volumeConfig.GetPerformanceProfileMaxReadIops());
             UNIT_ASSERT_VALUES_EQUAL(
                 pp.GetMaxWriteIops(),
-                volumeConfig.GetPerformanceProfileMaxWriteIops()
-            );
+                volumeConfig.GetPerformanceProfileMaxWriteIops());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 pp.GetBurstPercentage(),
-                volumeConfig.GetPerformanceProfileBurstPercentage()
-            );
+                volumeConfig.GetPerformanceProfileBurstPercentage());
             UNIT_ASSERT_VALUES_EQUAL(
                 pp.GetMaxPostponedWeight(),
-                volumeConfig.GetPerformanceProfileMaxPostponedWeight()
-            );
+                volumeConfig.GetPerformanceProfileMaxPostponedWeight());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 pp.GetBoostTime(),
-                volumeConfig.GetPerformanceProfileBoostTime()
-            );
+                volumeConfig.GetPerformanceProfileBoostTime());
             UNIT_ASSERT_VALUES_EQUAL(
                 pp.GetBoostRefillTime(),
-                volumeConfig.GetPerformanceProfileBoostRefillTime()
-            );
+                volumeConfig.GetPerformanceProfileBoostRefillTime());
             UNIT_ASSERT_VALUES_EQUAL(
                 pp.GetBoostPercentage(),
-                volumeConfig.GetPerformanceProfileBoostPercentage()
-            );
+                volumeConfig.GetPerformanceProfileBoostPercentage());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 true,
-                volumeConfig.GetPerformanceProfileThrottlingEnabled()
-            );
+                volumeConfig.GetPerformanceProfileThrottlingEnabled());
         }
     }
 
@@ -255,58 +241,46 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             UNIT_ASSERT_VALUES_EQUAL(1, volumeConfig.PartitionsSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 blocksCount,
-                volumeConfig.GetPartitions(0).GetBlockCount()
-            );
+                volumeConfig.GetPartitions(0).GetBlockCount());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetHDDUnitReadBandwidth() * 1_MB,
-                volumeConfig.GetPerformanceProfileMaxReadBandwidth()
-            );
+                volumeConfig.GetPerformanceProfileMaxReadBandwidth());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetHDDUnitWriteBandwidth() * 1_MB,
-                volumeConfig.GetPerformanceProfileMaxWriteBandwidth()
-            );
+                volumeConfig.GetPerformanceProfileMaxWriteBandwidth());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetHDDUnitReadIops(),
-                volumeConfig.GetPerformanceProfileMaxReadIops()
-            );
+                volumeConfig.GetPerformanceProfileMaxReadIops());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetHDDUnitWriteIops(),
-                volumeConfig.GetPerformanceProfileMaxWriteIops()
-            );
+                volumeConfig.GetPerformanceProfileMaxWriteIops());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingBurstPercentage(),
-                volumeConfig.GetPerformanceProfileBurstPercentage()
-            );
+                volumeConfig.GetPerformanceProfileBurstPercentage());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingMaxPostponedWeight(),
-                volumeConfig.GetPerformanceProfileMaxPostponedWeight()
-            );
+                volumeConfig.GetPerformanceProfileMaxPostponedWeight());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingBoostTime().MilliSeconds(),
-                volumeConfig.GetPerformanceProfileBoostTime()
-            );
+                volumeConfig.GetPerformanceProfileBoostTime());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingBoostRefillTime().MilliSeconds(),
-                volumeConfig.GetPerformanceProfileBoostRefillTime()
-            );
+                volumeConfig.GetPerformanceProfileBoostRefillTime());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingHDDBoostUnits() * 100,
-                volumeConfig.GetPerformanceProfileBoostPercentage()
-            );
+                volumeConfig.GetPerformanceProfileBoostPercentage());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 true,
-                volumeConfig.GetPerformanceProfileThrottlingEnabled()
-            );
+                volumeConfig.GetPerformanceProfileThrottlingEnabled());
         }
 
         {
             auto config = CreateConfigWithThrottlingParams(
-                NCloud::NProto::STORAGE_MEDIA_SSD
-            );
+                NCloud::NProto::STORAGE_MEDIA_SSD);
 
             TVolumeParams volumeParams;
             volumeParams.BlockSize = blockSize;
@@ -320,84 +294,76 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             UNIT_ASSERT_VALUES_EQUAL(1, volumeConfig.PartitionsSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 blocksCount,
-                volumeConfig.GetPartitions(0).GetBlockCount()
-            );
+                volumeConfig.GetPartitions(0).GetBlockCount());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetSSDUnitReadBandwidth() * 1_MB,
-                volumeConfig.GetPerformanceProfileMaxReadBandwidth()
-            );
+                volumeConfig.GetPerformanceProfileMaxReadBandwidth());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetSSDUnitWriteBandwidth() * 1_MB,
-                volumeConfig.GetPerformanceProfileMaxWriteBandwidth()
-            );
+                volumeConfig.GetPerformanceProfileMaxWriteBandwidth());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetSSDUnitReadIops(),
-                volumeConfig.GetPerformanceProfileMaxReadIops()
-            );
+                volumeConfig.GetPerformanceProfileMaxReadIops());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetSSDUnitWriteIops(),
-                volumeConfig.GetPerformanceProfileMaxWriteIops()
-            );
+                volumeConfig.GetPerformanceProfileMaxWriteIops());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingBurstPercentage(),
-                volumeConfig.GetPerformanceProfileBurstPercentage()
-            );
+                volumeConfig.GetPerformanceProfileBurstPercentage());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingMaxPostponedWeight(),
-                volumeConfig.GetPerformanceProfileMaxPostponedWeight()
-            );
+                volumeConfig.GetPerformanceProfileMaxPostponedWeight());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingBoostTime().MilliSeconds(),
-                volumeConfig.GetPerformanceProfileBoostTime()
-            );
+                volumeConfig.GetPerformanceProfileBoostTime());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingBoostRefillTime().MilliSeconds(),
-                volumeConfig.GetPerformanceProfileBoostRefillTime()
-            );
+                volumeConfig.GetPerformanceProfileBoostRefillTime());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingSSDBoostUnits() * 100,
-                volumeConfig.GetPerformanceProfileBoostPercentage()
-            );
+                volumeConfig.GetPerformanceProfileBoostPercentage());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 true,
-                volumeConfig.GetPerformanceProfileThrottlingEnabled()
-            );
+                volumeConfig.GetPerformanceProfileThrottlingEnabled());
         }
 
         const auto nonreplKinds = {
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
         };
-        const auto getParams = [] (
-            const NCloud::NProto::EStorageMediaKind mediaKind,
-            const TStorageConfigPtr& config) -> std::array<ui32, 8>
+        const auto getParams =
+            [](const NCloud::NProto::EStorageMediaKind mediaKind,
+               const TStorageConfigPtr& config) -> std::array<ui32, 8>
         {
             switch (mediaKind) {
-                case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: return {
-                    config->GetNonReplicatedSSDUnitReadBandwidth(),
-                    config->GetNonReplicatedSSDUnitWriteBandwidth(),
-                    config->GetNonReplicatedSSDUnitReadIops(),
-                    config->GetNonReplicatedSSDUnitWriteIops(),
-                    config->GetNonReplicatedSSDMaxReadBandwidth(),
-                    config->GetNonReplicatedSSDMaxWriteBandwidth(),
-                    config->GetNonReplicatedSSDMaxReadIops(),
-                    config->GetNonReplicatedSSDMaxWriteIops(),
-                };
-                case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: return {
-                    config->GetNonReplicatedHDDUnitReadBandwidth(),
-                    config->GetNonReplicatedHDDUnitWriteBandwidth(),
-                    config->GetNonReplicatedHDDUnitReadIops(),
-                    config->GetNonReplicatedHDDUnitWriteIops(),
-                    config->GetNonReplicatedHDDMaxReadBandwidth(),
-                    config->GetNonReplicatedHDDMaxWriteBandwidth(),
-                    config->GetNonReplicatedHDDMaxReadIops(),
-                    config->GetNonReplicatedHDDMaxWriteIops(),
-                };
-                default: UNIT_ASSERT(false);
+                case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
+                    return {
+                        config->GetNonReplicatedSSDUnitReadBandwidth(),
+                        config->GetNonReplicatedSSDUnitWriteBandwidth(),
+                        config->GetNonReplicatedSSDUnitReadIops(),
+                        config->GetNonReplicatedSSDUnitWriteIops(),
+                        config->GetNonReplicatedSSDMaxReadBandwidth(),
+                        config->GetNonReplicatedSSDMaxWriteBandwidth(),
+                        config->GetNonReplicatedSSDMaxReadIops(),
+                        config->GetNonReplicatedSSDMaxWriteIops(),
+                    };
+                case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
+                    return {
+                        config->GetNonReplicatedHDDUnitReadBandwidth(),
+                        config->GetNonReplicatedHDDUnitWriteBandwidth(),
+                        config->GetNonReplicatedHDDUnitReadIops(),
+                        config->GetNonReplicatedHDDUnitWriteIops(),
+                        config->GetNonReplicatedHDDMaxReadBandwidth(),
+                        config->GetNonReplicatedHDDMaxWriteBandwidth(),
+                        config->GetNonReplicatedHDDMaxReadIops(),
+                        config->GetNonReplicatedHDDMaxWriteIops(),
+                    };
+                default:
+                    UNIT_ASSERT(false);
             }
 
             return {};
@@ -418,57 +384,46 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             UNIT_ASSERT_VALUES_EQUAL(1, volumeConfig.PartitionsSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 blocksCount,
-                volumeConfig.GetPartitions(0).GetBlockCount()
-            );
+                volumeConfig.GetPartitions(0).GetBlockCount());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                static_cast<ui32>(NKikimrBlockStore::EPartitionType::NonReplicated),
-                static_cast<ui32>(volumeConfig.GetPartitions(0).GetType())
-            );
+                static_cast<ui32>(
+                    NKikimrBlockStore::EPartitionType::NonReplicated),
+                static_cast<ui32>(volumeConfig.GetPartitions(0).GetType()));
 
             UNIT_ASSERT_VALUES_EQUAL(
                 2 * mediaParams[0] * 1_MB,
-                volumeConfig.GetPerformanceProfileMaxReadBandwidth()
-            );
+                volumeConfig.GetPerformanceProfileMaxReadBandwidth());
             UNIT_ASSERT_VALUES_EQUAL(
                 2 * mediaParams[1] * 1_MB,
-                volumeConfig.GetPerformanceProfileMaxWriteBandwidth()
-            );
+                volumeConfig.GetPerformanceProfileMaxWriteBandwidth());
             UNIT_ASSERT_VALUES_EQUAL(
                 2 * mediaParams[2],
-                volumeConfig.GetPerformanceProfileMaxReadIops()
-            );
+                volumeConfig.GetPerformanceProfileMaxReadIops());
             UNIT_ASSERT_VALUES_EQUAL(
                 2 * mediaParams[3],
-                volumeConfig.GetPerformanceProfileMaxWriteIops()
-            );
+                volumeConfig.GetPerformanceProfileMaxWriteIops());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingBurstPercentage(),
-                volumeConfig.GetPerformanceProfileBurstPercentage()
-            );
+                volumeConfig.GetPerformanceProfileBurstPercentage());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingMaxPostponedWeight(),
-                volumeConfig.GetPerformanceProfileMaxPostponedWeight()
-            );
+                volumeConfig.GetPerformanceProfileMaxPostponedWeight());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingBoostTime().MilliSeconds(),
-                volumeConfig.GetPerformanceProfileBoostTime()
-            );
+                volumeConfig.GetPerformanceProfileBoostTime());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingBoostRefillTime().MilliSeconds(),
-                volumeConfig.GetPerformanceProfileBoostRefillTime()
-            );
+                volumeConfig.GetPerformanceProfileBoostRefillTime());
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
-                volumeConfig.GetPerformanceProfileBoostPercentage()
-            );
+                volumeConfig.GetPerformanceProfileBoostPercentage());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 true,
-                volumeConfig.GetPerformanceProfileThrottlingEnabled()
-            );
+                volumeConfig.GetPerformanceProfileThrottlingEnabled());
 
             volumeParams.BlocksCountPerPartition = 100_TB / blockSize;
             volumeParams.PartitionsCount = 1;
@@ -479,63 +434,51 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             UNIT_ASSERT_VALUES_EQUAL(1, volumeConfig.PartitionsSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 100_TB / blockSize,
-                volumeConfig.GetPartitions(0).GetBlockCount()
-            );
+                volumeConfig.GetPartitions(0).GetBlockCount());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                static_cast<ui32>(NKikimrBlockStore::EPartitionType::NonReplicated),
-                static_cast<ui32>(volumeConfig.GetPartitions(0).GetType())
-            );
+                static_cast<ui32>(
+                    NKikimrBlockStore::EPartitionType::NonReplicated),
+                static_cast<ui32>(volumeConfig.GetPartitions(0).GetType()));
 
             UNIT_ASSERT_VALUES_EQUAL(
                 mediaParams[4] * 1_MB,
-                volumeConfig.GetPerformanceProfileMaxReadBandwidth()
-            );
+                volumeConfig.GetPerformanceProfileMaxReadBandwidth());
             UNIT_ASSERT_VALUES_EQUAL(
                 mediaParams[5] * 1_MB,
-                volumeConfig.GetPerformanceProfileMaxWriteBandwidth()
-            );
+                volumeConfig.GetPerformanceProfileMaxWriteBandwidth());
             UNIT_ASSERT_VALUES_EQUAL(
                 mediaParams[6],
-                volumeConfig.GetPerformanceProfileMaxReadIops()
-            );
+                volumeConfig.GetPerformanceProfileMaxReadIops());
             UNIT_ASSERT_VALUES_EQUAL(
                 mediaParams[7],
-                volumeConfig.GetPerformanceProfileMaxWriteIops()
-            );
+                volumeConfig.GetPerformanceProfileMaxWriteIops());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingBurstPercentage(),
-                volumeConfig.GetPerformanceProfileBurstPercentage()
-            );
+                volumeConfig.GetPerformanceProfileBurstPercentage());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingMaxPostponedWeight(),
-                volumeConfig.GetPerformanceProfileMaxPostponedWeight()
-            );
+                volumeConfig.GetPerformanceProfileMaxPostponedWeight());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingBoostTime().MilliSeconds(),
-                volumeConfig.GetPerformanceProfileBoostTime()
-            );
+                volumeConfig.GetPerformanceProfileBoostTime());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingBoostRefillTime().MilliSeconds(),
-                volumeConfig.GetPerformanceProfileBoostRefillTime()
-            );
+                volumeConfig.GetPerformanceProfileBoostRefillTime());
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
-                volumeConfig.GetPerformanceProfileBoostPercentage()
-            );
+                volumeConfig.GetPerformanceProfileBoostPercentage());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 true,
-                volumeConfig.GetPerformanceProfileThrottlingEnabled()
-            );
+                volumeConfig.GetPerformanceProfileThrottlingEnabled());
         }
 
         {
             auto config = CreateConfigWithThrottlingParams(
-                NCloud::NProto::STORAGE_MEDIA_SSD
-            );
+                NCloud::NProto::STORAGE_MEDIA_SSD);
 
             TVolumeParams volumeParams;
             volumeParams.BlockSize = blockSize;
@@ -551,56 +494,44 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             UNIT_ASSERT_VALUES_EQUAL(1, volumeConfig.PartitionsSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 volumeParams.BlocksCountPerPartition,
-                volumeConfig.GetPartitions(0).GetBlockCount()
-            );
+                volumeConfig.GetPartitions(0).GetBlockCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 nc + 4,
-                volumeConfig.ExplicitChannelProfilesSize()
-            );
+                volumeConfig.ExplicitChannelProfilesSize());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 nc * config->GetSSDUnitReadBandwidth() * 1_MB,
-                volumeConfig.GetPerformanceProfileMaxReadBandwidth()
-            );
+                volumeConfig.GetPerformanceProfileMaxReadBandwidth());
             UNIT_ASSERT_VALUES_EQUAL(
                 nc * config->GetSSDUnitWriteBandwidth() * 1_MB,
-                volumeConfig.GetPerformanceProfileMaxWriteBandwidth()
-            );
+                volumeConfig.GetPerformanceProfileMaxWriteBandwidth());
             UNIT_ASSERT_VALUES_EQUAL(
                 nc * config->GetSSDUnitReadIops(),
-                volumeConfig.GetPerformanceProfileMaxReadIops()
-            );
+                volumeConfig.GetPerformanceProfileMaxReadIops());
             UNIT_ASSERT_VALUES_EQUAL(
                 nc * config->GetSSDUnitWriteIops(),
-                volumeConfig.GetPerformanceProfileMaxWriteIops()
-            );
+                volumeConfig.GetPerformanceProfileMaxWriteIops());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingBurstPercentage(),
-                volumeConfig.GetPerformanceProfileBurstPercentage()
-            );
+                volumeConfig.GetPerformanceProfileBurstPercentage());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingMaxPostponedWeight(),
-                volumeConfig.GetPerformanceProfileMaxPostponedWeight()
-            );
+                volumeConfig.GetPerformanceProfileMaxPostponedWeight());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingBoostTime().MilliSeconds(),
-                volumeConfig.GetPerformanceProfileBoostTime()
-            );
+                volumeConfig.GetPerformanceProfileBoostTime());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetThrottlingBoostRefillTime().MilliSeconds(),
-                volumeConfig.GetPerformanceProfileBoostRefillTime()
-            );
+                volumeConfig.GetPerformanceProfileBoostRefillTime());
             UNIT_ASSERT_VALUES_EQUAL(
                 ui32(config->GetThrottlingSSDBoostUnits() * 100. / nc),
-                volumeConfig.GetPerformanceProfileBoostPercentage()
-            );
+                volumeConfig.GetPerformanceProfileBoostPercentage());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 true,
-                volumeConfig.GetPerformanceProfileThrottlingEnabled()
-            );
+                volumeConfig.GetPerformanceProfileThrottlingEnabled());
         }
     }
 
@@ -621,12 +552,10 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             ResizeVolume(*config, volumeParams, {}, {}, volumeConfig);
             UNIT_ASSERT_VALUES_EQUAL(
                 volumeParams.MaxReadIops,
-                volumeConfig.GetPerformanceProfileMaxReadIops()
-            );
+                volumeConfig.GetPerformanceProfileMaxReadIops());
             UNIT_ASSERT_VALUES_EQUAL(
                 volumeParams.MaxReadBandwidth,
-                volumeConfig.GetPerformanceProfileMaxReadBandwidth()
-            );
+                volumeConfig.GetPerformanceProfileMaxReadBandwidth());
         }
     }
 
@@ -648,12 +577,10 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
 
             UNIT_ASSERT_VALUES_EQUAL(
                 volumeParams.MaxReadBandwidth,
-                volumeConfig.GetPerformanceProfileMaxWriteBandwidth()
-            );
+                volumeConfig.GetPerformanceProfileMaxWriteBandwidth());
             UNIT_ASSERT_VALUES_EQUAL(
                 volumeParams.MaxReadIops,
-                volumeConfig.GetPerformanceProfileMaxWriteIops()
-            );
+                volumeConfig.GetPerformanceProfileMaxWriteIops());
         }
     }
 
@@ -673,26 +600,21 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
 
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetHDDMaxReadBandwidth() * 1_MB,
-                volumeConfig.GetPerformanceProfileMaxReadBandwidth()
-            );
+                volumeConfig.GetPerformanceProfileMaxReadBandwidth());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetHDDMaxWriteBandwidth() * 1_MB,
-                volumeConfig.GetPerformanceProfileMaxWriteBandwidth()
-            );
+                volumeConfig.GetPerformanceProfileMaxWriteBandwidth());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetHDDMaxReadIops(),
-                volumeConfig.GetPerformanceProfileMaxReadIops()
-            );
+                volumeConfig.GetPerformanceProfileMaxReadIops());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetHDDMaxWriteIops(),
-                volumeConfig.GetPerformanceProfileMaxWriteIops()
-            );
+                volumeConfig.GetPerformanceProfileMaxWriteIops());
         }
 
         {
             auto config = CreateConfigWithThrottlingParams(
-                NCloud::NProto::STORAGE_MEDIA_SSD
-            );
+                NCloud::NProto::STORAGE_MEDIA_SSD);
 
             TVolumeParams volumeParams;
             volumeParams.BlockSize = DefaultBlockSize;
@@ -705,20 +627,16 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
 
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetSSDMaxReadBandwidth() * 1_MB,
-                volumeConfig.GetPerformanceProfileMaxReadBandwidth()
-            );
+                volumeConfig.GetPerformanceProfileMaxReadBandwidth());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetSSDMaxWriteBandwidth() * 1_MB,
-                volumeConfig.GetPerformanceProfileMaxWriteBandwidth()
-            );
+                volumeConfig.GetPerformanceProfileMaxWriteBandwidth());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetSSDMaxReadIops(),
-                volumeConfig.GetPerformanceProfileMaxReadIops()
-            );
+                volumeConfig.GetPerformanceProfileMaxReadIops());
             UNIT_ASSERT_VALUES_EQUAL(
                 config->GetSSDMaxWriteIops(),
-                volumeConfig.GetPerformanceProfileMaxWriteIops()
-            );
+                volumeConfig.GetPerformanceProfileMaxWriteIops());
         }
     }
 
@@ -732,41 +650,31 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             NKikimrBlockStore::TVolumeConfig volumeConfig;
             NKikimrBlockStore::TVolumeConfig prevConfig;
             prevConfig.SetStorageMediaKind(mediaKind);
-            UNIT_ASSERT(!SetMissingParams(
-                volumeParams,
-                prevConfig,
-                volumeConfig
-            ));
-            UNIT_ASSERT_VALUES_EQUAL(
-                0,
-                volumeConfig.GetStorageMediaKind()
-            );
+            UNIT_ASSERT(
+                !SetMissingParams(volumeParams, prevConfig, volumeConfig));
+            UNIT_ASSERT_VALUES_EQUAL(0, volumeConfig.GetStorageMediaKind());
         }
     }
 
-#define CHECK_CHANNEL(channel, poolKind, dataKind, unit)                       \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            poolKind,                                                          \
-            volumeConfig.GetExplicitChannelProfiles(channel).GetPoolKind()     \
-        );                                                                     \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            static_cast<ui32>(dataKind),                                       \
-            volumeConfig.GetExplicitChannelProfiles(channel).GetDataKind()     \
-        );                                                                     \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            unit,                                                              \
-            volumeConfig.GetExplicitChannelProfiles(channel).GetSize()         \
-        );                                                                     \
-// CHECK_CHANNEL
+#define CHECK_CHANNEL(channel, poolKind, dataKind, unit)                 \
+    UNIT_ASSERT_VALUES_EQUAL(                                            \
+        poolKind,                                                        \
+        volumeConfig.GetExplicitChannelProfiles(channel).GetPoolKind()); \
+    UNIT_ASSERT_VALUES_EQUAL(                                            \
+        static_cast<ui32>(dataKind),                                     \
+        volumeConfig.GetExplicitChannelProfiles(channel).GetDataKind()); \
+    UNIT_ASSERT_VALUES_EQUAL(                                            \
+        unit,                                                            \
+        volumeConfig.GetExplicitChannelProfiles(channel).GetSize());     \
+    // CHECK_CHANNEL
 
-#define CHECK_CHANNEL_HDD(channel, poolKind, dataKind)                         \
-        CHECK_CHANNEL(                                                         \
-            channel,                                                           \
-            poolKind,                                                          \
-            dataKind,                                                          \
-            config->GetAllocationUnitHDD() * 1_GB                              \
-        )                                                                      \
-// CHECK_CHANNEL_HDD
+#define CHECK_CHANNEL_HDD(channel, poolKind, dataKind) \
+    CHECK_CHANNEL(                                     \
+        channel,                                       \
+        poolKind,                                      \
+        dataKind,                                      \
+        config->GetAllocationUnitHDD() * 1_GB)         \
+    // CHECK_CHANNEL_HDD
 
     void CheckVolumeChannels(
         const TStorageConfig& config,
@@ -805,58 +713,50 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             1024,
             1,
             {
-                {config.GetHDDMergedChannelPoolKind(), EChannelDataKind::Merged},
-                {config.GetHDDMergedChannelPoolKind(), EChannelDataKind::Merged},
+                {config.GetHDDMergedChannelPoolKind(),
+                 EChannelDataKind::Merged},
+                {config.GetHDDMergedChannelPoolKind(),
+                 EChannelDataKind::Merged},
             },
             0,
             0,
             0,
             0,
-            NCloud::NProto::STORAGE_MEDIA_HDD
-        };
+            NCloud::NProto::STORAGE_MEDIA_HDD};
         NKikimrBlockStore::TVolumeConfig volumeConfig;
         ResizeVolume(config, params, {}, {}, volumeConfig);
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            6,
-            volumeConfig.ExplicitChannelProfilesSize()
-        );
+        UNIT_ASSERT_VALUES_EQUAL(6, volumeConfig.ExplicitChannelProfilesSize());
         CHECK_CHANNEL(
             0,
             config.GetHDDSystemChannelPoolKind(),
             EChannelDataKind::System,
-            128_MB
-        );
+            128_MB);
         CHECK_CHANNEL(
             1,
             config.GetHDDLogChannelPoolKind(),
             EChannelDataKind::Log,
-            128_MB
-        );
+            128_MB);
         CHECK_CHANNEL(
             2,
             config.GetHDDIndexChannelPoolKind(),
             EChannelDataKind::Index,
-            16_MB
-        );
+            16_MB);
         CHECK_CHANNEL(
             3,
             config.GetHDDMergedChannelPoolKind(),
             EChannelDataKind::Merged,
-            config.GetAllocationUnitHDD() * 1_GB
-        );
+            config.GetAllocationUnitHDD() * 1_GB);
         CHECK_CHANNEL(
             4,
             config.GetHDDMergedChannelPoolKind(),
             EChannelDataKind::Merged,
-            config.GetAllocationUnitHDD() * 1_GB
-        );
+            config.GetAllocationUnitHDD() * 1_GB);
         CHECK_CHANNEL(
             5,
             config.GetHDDFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
-            128_MB
-        );
+            128_MB);
         CheckVolumeChannels(config, volumeConfig);
 
         params.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD;
@@ -868,46 +768,37 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         volumeConfig.ClearVolumeExplicitChannelProfiles();
         ResizeVolume(config, params, {}, {}, volumeConfig);
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            6,
-            volumeConfig.ExplicitChannelProfilesSize()
-        );
+        UNIT_ASSERT_VALUES_EQUAL(6, volumeConfig.ExplicitChannelProfilesSize());
         CHECK_CHANNEL(
             0,
             config.GetSSDSystemChannelPoolKind(),
             EChannelDataKind::System,
-            128_MB
-        );
+            128_MB);
         CHECK_CHANNEL(
             1,
             config.GetSSDLogChannelPoolKind(),
             EChannelDataKind::Log,
-            128_MB
-        );
+            128_MB);
         CHECK_CHANNEL(
             2,
             config.GetSSDIndexChannelPoolKind(),
             EChannelDataKind::Index,
-            16_MB
-        );
+            16_MB);
         CHECK_CHANNEL(
             3,
             config.GetSSDMergedChannelPoolKind(),
             EChannelDataKind::Merged,
-            config.GetAllocationUnitSSD() * 1_GB
-        );
+            config.GetAllocationUnitSSD() * 1_GB);
         CHECK_CHANNEL(
             4,
             config.GetSSDMergedChannelPoolKind(),
             EChannelDataKind::Merged,
-            config.GetAllocationUnitSSD() * 1_GB
-        );
+            config.GetAllocationUnitSSD() * 1_GB);
         CHECK_CHANNEL(
             5,
             config.GetSSDFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
-            128_MB
-        );
+            128_MB);
         CheckVolumeChannels(config, volumeConfig);
 
         params.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID;
@@ -919,46 +810,37 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         volumeConfig.ClearVolumeExplicitChannelProfiles();
         ResizeVolume(config, params, {}, {}, volumeConfig);
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            6,
-            volumeConfig.ExplicitChannelProfilesSize()
-        );
+        UNIT_ASSERT_VALUES_EQUAL(6, volumeConfig.ExplicitChannelProfilesSize());
         CHECK_CHANNEL(
             0,
             config.GetHybridSystemChannelPoolKind(),
             EChannelDataKind::System,
-            128_MB
-        );
+            128_MB);
         CHECK_CHANNEL(
             1,
             config.GetHybridLogChannelPoolKind(),
             EChannelDataKind::Log,
-            128_MB
-        );
+            128_MB);
         CHECK_CHANNEL(
             2,
             config.GetHybridIndexChannelPoolKind(),
             EChannelDataKind::Index,
-            16_MB
-        );
+            16_MB);
         CHECK_CHANNEL(
             3,
             config.GetHybridMergedChannelPoolKind(),
             EChannelDataKind::Merged,
-            config.GetAllocationUnitHDD() * 1_GB
-        );
+            config.GetAllocationUnitHDD() * 1_GB);
         CHECK_CHANNEL(
             4,
             config.GetHybridMergedChannelPoolKind(),
             EChannelDataKind::Merged,
-            config.GetAllocationUnitHDD() * 1_GB
-        );
+            config.GetAllocationUnitHDD() * 1_GB);
         CHECK_CHANNEL(
             5,
             config.GetHybridFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
-            128_MB
-        );
+            128_MB);
         CheckVolumeChannels(config, volumeConfig);
 
         params.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID;
@@ -968,46 +850,37 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         volumeConfig.ClearVolumeExplicitChannelProfiles();
         ResizeVolume(config, params, {}, {}, volumeConfig);
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            6,
-            volumeConfig.ExplicitChannelProfilesSize()
-        );
+        UNIT_ASSERT_VALUES_EQUAL(6, volumeConfig.ExplicitChannelProfilesSize());
         CHECK_CHANNEL(
             0,
             config.GetHybridSystemChannelPoolKind(),
             EChannelDataKind::System,
-            128_MB
-        );
+            128_MB);
         CHECK_CHANNEL(
             1,
             config.GetHybridLogChannelPoolKind(),
             EChannelDataKind::Log,
-            128_MB
-        );
+            128_MB);
         CHECK_CHANNEL(
             2,
             config.GetHybridIndexChannelPoolKind(),
             EChannelDataKind::Index,
-            100_GB / 1024
-        );
+            100_GB / 1024);
         CHECK_CHANNEL(
             3,
             config.GetHybridMergedChannelPoolKind(),
             EChannelDataKind::Merged,
-            config.GetAllocationUnitHDD() * 1_GB
-        );
+            config.GetAllocationUnitHDD() * 1_GB);
         CHECK_CHANNEL(
             4,
             config.GetHybridMergedChannelPoolKind(),
             EChannelDataKind::Merged,
-            config.GetAllocationUnitHDD() * 1_GB
-        );
+            config.GetAllocationUnitHDD() * 1_GB);
         CHECK_CHANNEL(
             5,
             config.GetHybridFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
-            128_MB
-        );
+            128_MB);
         CheckVolumeChannels(config, volumeConfig);
     }
 
@@ -1034,7 +907,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         wl->AddCloudIds("cloud_id");
 
         auto config = CreateTestStorageConfig(
-            std::move(storageServiceConfig), std::move(featuresConfig));
+            std::move(storageServiceConfig),
+            std::move(featuresConfig));
 
         NKikimrBlockStore::TVolumeConfig volumeConfig;
         volumeConfig.SetCloudId("cloud_id");
@@ -1046,21 +920,15 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         params.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD;
         ResizeVolume(*config, params, {}, {}, volumeConfig);
 
-        //System PoolKind of channel should be from StorageConfig
+        // System PoolKind of channel should be from StorageConfig
         CHECK_CHANNEL(
             0,
             config->GetSSDSystemChannelPoolKind(),
             EChannelDataKind::System,
-            128_MB
-        );
+            128_MB);
 
         // Log PoolKind should be from FeaturesConfig
-        CHECK_CHANNEL(
-            1,
-            "ssdmirror",
-            EChannelDataKind::Log,
-            128_MB
-        );
+        CHECK_CHANNEL(1, "ssdmirror", EChannelDataKind::Log, 128_MB);
     }
 
     Y_UNIT_TEST(ShouldAddMixedChannels)
@@ -1076,8 +944,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         const auto blocksCount = 1_GB / DefaultBlockSize;
         TVolumeParams params{
@@ -1092,8 +959,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             0,
             0,
             0,
-            NCloud::NProto::STORAGE_MEDIA_HYBRID
-        };
+            NCloud::NProto::STORAGE_MEDIA_HYBRID};
         NKikimrBlockStore::TVolumeConfig volumeConfig;
         ResizeVolume(*config, params, {}, {}, volumeConfig);
 
@@ -1105,8 +971,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             6,
             config->GetHybridFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
-            128_MB
-        );
+            128_MB);
 
         volumeConfig.ClearExplicitChannelProfiles();
 
@@ -1124,8 +989,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             6,
             config->GetHybridFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
-            128_MB
-        );
+            128_MB);
 
         volumeConfig.ClearExplicitChannelProfiles();
 
@@ -1147,8 +1011,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             8,
             config->GetHybridFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
-            128_MB
-        );
+            128_MB);
 
         volumeConfig.ClearExplicitChannelProfiles();
 
@@ -1160,7 +1023,9 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         params.BlocksCountPerPartition = 5 * blocksCount;
         params.PartitionsCount = 1;
         ResizeVolume(*config, params, {}, {}, volumeConfig);
-        UNIT_ASSERT_VALUES_EQUAL(10, volumeConfig.ExplicitChannelProfilesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            volumeConfig.ExplicitChannelProfilesSize());
         CHECK_CHANNEL_HDD(3, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(4, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(5, "mixed", EChannelDataKind::Mixed);
@@ -1171,8 +1036,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             9,
             config->GetHybridFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
-            128_MB
-        );
+            128_MB);
     }
 
     Y_UNIT_TEST(ShouldAddFreshChannel)
@@ -1191,17 +1055,17 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             auto config = std::make_unique<TStorageConfig>(
                 std::move(storageServiceConfig),
                 std::make_shared<NFeatures::TFeaturesConfig>(
-                    NCloud::NProto::TFeaturesConfig())
-            );
+                    NCloud::NProto::TFeaturesConfig()));
             ResizeVolume(*config, volumeParams, {}, {}, volumeConfig);
 
-            UNIT_ASSERT_VALUES_EQUAL(4, volumeConfig.ExplicitChannelProfilesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                4,
+                volumeConfig.ExplicitChannelProfilesSize());
             CHECK_CHANNEL(
                 3,
                 config->GetSSDMergedChannelPoolKind(),
                 EChannelDataKind::Merged,
-                config->GetAllocationUnitSSD() * 1_GB
-            );
+                config->GetAllocationUnitSSD() * 1_GB);
         }
         {
             NProto::TStorageServiceConfig storageServiceConfig;
@@ -1210,23 +1074,22 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             auto config = std::make_unique<TStorageConfig>(
                 std::move(storageServiceConfig),
                 std::make_shared<NFeatures::TFeaturesConfig>(
-                    NCloud::NProto::TFeaturesConfig())
-            );
+                    NCloud::NProto::TFeaturesConfig()));
             ResizeVolume(*config, volumeParams, {}, {}, volumeConfig);
 
-            UNIT_ASSERT_VALUES_EQUAL(5, volumeConfig.ExplicitChannelProfilesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                5,
+                volumeConfig.ExplicitChannelProfilesSize());
             CHECK_CHANNEL(
                 3,
                 config->GetSSDMergedChannelPoolKind(),
                 EChannelDataKind::Merged,
-                config->GetAllocationUnitSSD() * 1_GB
-            );
+                config->GetAllocationUnitSSD() * 1_GB);
             CHECK_CHANNEL(
                 4,
                 config->GetSSDFreshChannelPoolKind(),
                 EChannelDataKind::Fresh,
-                128_MB
-            );
+                128_MB);
         }
     }
 
@@ -1246,23 +1109,22 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             auto config = std::make_unique<TStorageConfig>(
                 std::move(storageServiceConfig),
                 std::make_shared<NFeatures::TFeaturesConfig>(
-                    NCloud::NProto::TFeaturesConfig())
-            );
+                    NCloud::NProto::TFeaturesConfig()));
             ResizeVolume(*config, volumeParams, {}, {}, volumeConfig);
 
-            UNIT_ASSERT_VALUES_EQUAL(5, volumeConfig.ExplicitChannelProfilesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                5,
+                volumeConfig.ExplicitChannelProfilesSize());
             CHECK_CHANNEL(
                 3,
                 config->GetSSDMergedChannelPoolKind(),
                 EChannelDataKind::Merged,
-                config->GetAllocationUnitSSD() * 1_GB
-            );
+                config->GetAllocationUnitSSD() * 1_GB);
             CHECK_CHANNEL(
                 4,
                 config->GetSSDFreshChannelPoolKind(),
                 EChannelDataKind::Fresh,
-                128_MB
-            );
+                128_MB);
         }
         {
             NProto::TStorageServiceConfig storageServiceConfig;
@@ -1271,23 +1133,22 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             auto config = std::make_unique<TStorageConfig>(
                 std::move(storageServiceConfig),
                 std::make_shared<NFeatures::TFeaturesConfig>(
-                    NCloud::NProto::TFeaturesConfig())
-            );
+                    NCloud::NProto::TFeaturesConfig()));
             ResizeVolume(*config, volumeParams, {}, {}, volumeConfig);
 
-            UNIT_ASSERT_VALUES_EQUAL(5, volumeConfig.ExplicitChannelProfilesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                5,
+                volumeConfig.ExplicitChannelProfilesSize());
             CHECK_CHANNEL(
                 3,
                 config->GetSSDMergedChannelPoolKind(),
                 EChannelDataKind::Merged,
-                config->GetAllocationUnitSSD() * 1_GB
-            );
+                config->GetAllocationUnitSSD() * 1_GB);
             CHECK_CHANNEL(
                 4,
                 config->GetSSDFreshChannelPoolKind(),
                 EChannelDataKind::Fresh,
-                128_MB
-            );
+                128_MB);
         }
     }
 
@@ -1310,8 +1171,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         const auto blocksCount = 4_GB / DefaultBlockSize;
         TVolumeParams params{
@@ -1323,12 +1183,13 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             0,
             0,
             0,
-            NCloud::NProto::STORAGE_MEDIA_HYBRID
-        };
+            NCloud::NProto::STORAGE_MEDIA_HYBRID};
         NKikimrBlockStore::TVolumeConfig volumeConfig;
         ResizeVolume(*config, params, {}, {}, volumeConfig);
 
-        UNIT_ASSERT_VALUES_EQUAL(10, volumeConfig.ExplicitChannelProfilesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            volumeConfig.ExplicitChannelProfilesSize());
         CHECK_CHANNEL_HDD(3, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(4, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(5, "merged", EChannelDataKind::Merged);
@@ -1339,8 +1200,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             9,
             config->GetHybridFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
-            128_MB
-        );
+            128_MB);
     }
 
     Y_UNIT_TEST(ShouldNotOverflowWhenUseSeparatedMixedChannelCount)
@@ -1362,8 +1222,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         const auto blocksCount = 400_GB / DefaultBlockSize;
         TVolumeParams params{
@@ -1375,8 +1234,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             0,
             0,
             0,
-            NCloud::NProto::STORAGE_MEDIA_HYBRID
-        };
+            NCloud::NProto::STORAGE_MEDIA_HYBRID};
         NKikimrBlockStore::TVolumeConfig volumeConfig;
         ResizeVolume(*config, params, {}, {}, volumeConfig);
 
@@ -1387,7 +1245,9 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
                 [kind](const auto& channel)
                 { return channel.GetDataKind() == static_cast<ui32>(kind); });
         };
-        UNIT_ASSERT_VALUES_EQUAL(255, volumeConfig.ExplicitChannelProfilesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            255,
+            volumeConfig.ExplicitChannelProfilesSize());
         UNIT_ASSERT_VALUES_EQUAL(216, countChannels(EChannelDataKind::Merged));
         UNIT_ASSERT_VALUES_EQUAL(35, countChannels(EChannelDataKind::Mixed));
         UNIT_ASSERT_VALUES_EQUAL(1, countChannels(EChannelDataKind::Fresh));
@@ -1412,8 +1272,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         auto config = std::make_unique<TStorageConfig>(
             storageServiceConfig,
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         const auto blocksCount = 4_GB / DefaultBlockSize;
         TVolumeParams params{
@@ -1425,12 +1284,13 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             0,
             0,
             0,
-            NCloud::NProto::STORAGE_MEDIA_HYBRID
-        };
+            NCloud::NProto::STORAGE_MEDIA_HYBRID};
         NKikimrBlockStore::TVolumeConfig volumeConfig;
         ResizeVolume(*config, params, {}, {}, volumeConfig);
 
-        UNIT_ASSERT_VALUES_EQUAL(10, volumeConfig.ExplicitChannelProfilesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            volumeConfig.ExplicitChannelProfilesSize());
         CHECK_CHANNEL_HDD(3, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(4, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(5, "merged", EChannelDataKind::Merged);
@@ -1444,8 +1304,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         config = std::make_unique<TStorageConfig>(
             storageServiceConfig,
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         volumeConfig.Clear();
         NProto::TVolumePerformanceProfile pp;
@@ -1465,7 +1324,9 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         };
         ResizeVolume(*config, params, {}, pp, volumeConfig);
 
-        UNIT_ASSERT_VALUES_EQUAL(10, volumeConfig.ExplicitChannelProfilesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            volumeConfig.ExplicitChannelProfilesSize());
         CHECK_CHANNEL_HDD(3, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(4, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(5, "merged", EChannelDataKind::Merged);
@@ -1480,13 +1341,14 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         config = std::make_unique<TStorageConfig>(
             storageServiceConfig,
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         volumeConfig.Clear();
         ResizeVolume(*config, params, {}, pp, volumeConfig);
 
-        UNIT_ASSERT_VALUES_EQUAL(10, volumeConfig.ExplicitChannelProfilesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            volumeConfig.ExplicitChannelProfilesSize());
         CHECK_CHANNEL_HDD(3, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(4, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(5, "merged", EChannelDataKind::Merged);
@@ -1503,8 +1365,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         config = std::make_unique<TStorageConfig>(
             storageServiceConfig,
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         volumeConfig.Clear();
         params.DataChannels = {
@@ -1518,7 +1379,9 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         };
         ResizeVolume(*config, params, {}, pp, volumeConfig);
 
-        UNIT_ASSERT_VALUES_EQUAL(10, volumeConfig.ExplicitChannelProfilesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            volumeConfig.ExplicitChannelProfilesSize());
         CHECK_CHANNEL_HDD(3, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(4, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(5, "merged", EChannelDataKind::Merged);
@@ -1531,13 +1394,14 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         config = std::make_unique<TStorageConfig>(
             storageServiceConfig,
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         volumeConfig.Clear();
         ResizeVolume(*config, params, {}, pp, volumeConfig);
 
-        UNIT_ASSERT_VALUES_EQUAL(10, volumeConfig.ExplicitChannelProfilesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            volumeConfig.ExplicitChannelProfilesSize());
         CHECK_CHANNEL_HDD(3, "merged2", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(4, "merged2", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(5, "merged2", EChannelDataKind::Merged);
@@ -1559,8 +1423,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         const auto blocksCount = 1_GB / DefaultBlockSize;
         TVolumeParams params{
@@ -1572,8 +1435,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             0,
             0,
             0,
-            NCloud::NProto::STORAGE_MEDIA_HYBRID
-        };
+            NCloud::NProto::STORAGE_MEDIA_HYBRID};
         NKikimrBlockStore::TVolumeConfig volumeConfig;
         NProto::TResizeVolumeRequestFlags flags;
         flags.SetNoSeparateMixedChannelAllocation(true);
@@ -1584,8 +1446,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             3,
             "merged",
             EChannelDataKind::Merged,
-            config->GetAllocationUnitHDD() * 1_GB
-        );
+            config->GetAllocationUnitHDD() * 1_GB);
     }
 
     Y_UNIT_TEST(ShouldResizeMultipartitionVolume)
@@ -1600,8 +1461,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         const auto blocksCount = 2_TB / 4_KB;
         TVolumeParams volumeParams;
@@ -1611,81 +1471,66 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         volumeParams.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD;
 
         NKikimrBlockStore::TVolumeConfig volumeConfig;
-        ResizeVolume(
-            *config,
-            volumeParams,
-            {},
-            {},
-            volumeConfig
-        );
+        ResizeVolume(*config, volumeParams, {}, {}, volumeConfig);
 
         UNIT_ASSERT_VALUES_EQUAL(2, volumeConfig.PartitionsSize());
         UNIT_ASSERT_VALUES_EQUAL(
             volumeParams.BlocksCountPerPartition,
-            volumeConfig.GetPartitions(0).GetBlockCount()
-        );
+            volumeConfig.GetPartitions(0).GetBlockCount());
         UNIT_ASSERT_VALUES_EQUAL(
             volumeParams.BlocksCountPerPartition,
-            volumeConfig.GetPartitions(1).GetBlockCount()
-        );
+            volumeConfig.GetPartitions(1).GetBlockCount());
 
-        UNIT_ASSERT_VALUES_EQUAL(36, volumeConfig.ExplicitChannelProfilesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            36,
+            volumeConfig.ExplicitChannelProfilesSize());
 
         CHECK_CHANNEL(
             0,
             config->GetSSDSystemChannelPoolKind(),
             EChannelDataKind::System,
-            128_MB
-        );
+            128_MB);
         CHECK_CHANNEL(
             1,
             config->GetSSDLogChannelPoolKind(),
             EChannelDataKind::Log,
-            128_MB
-        );
+            128_MB);
         CHECK_CHANNEL(
             2,
             config->GetSSDIndexChannelPoolKind(),
             EChannelDataKind::Index,
-            1_GB
-        );
+            1_GB);
         for (ui32 i = 3; i < 35; ++i) {
             CHECK_CHANNEL(
                 i,
                 config->GetSSDMergedChannelPoolKind(),
                 EChannelDataKind::Merged,
-                config->GetAllocationUnitSSD() * 1_GB
-            );
+                config->GetAllocationUnitSSD() * 1_GB);
         }
         CHECK_CHANNEL(
             35,
             config->GetSSDFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
-            128_MB
-        );
+            128_MB);
     }
 
     Y_UNIT_TEST(ShouldComputeBlocksCountPerPartition)
     {
         UNIT_ASSERT_VALUES_EQUAL(
             1024,
-            ComputeBlocksCountPerPartition(2048, 32, 2)
-        );
+            ComputeBlocksCountPerPartition(2048, 32, 2));
 
         UNIT_ASSERT_VALUES_EQUAL(
             1056,
-            ComputeBlocksCountPerPartition(2049, 32, 2)
-        );
+            ComputeBlocksCountPerPartition(2049, 32, 2));
 
         UNIT_ASSERT_VALUES_EQUAL(
             7777,
-            ComputeBlocksCountPerPartition(7777, 0, 1)
-        );
+            ComputeBlocksCountPerPartition(7777, 0, 1));
 
         UNIT_ASSERT_VALUES_EQUAL(
             7777,
-            ComputeBlocksCountPerPartition(7777, 32, 1)
-        );
+            ComputeBlocksCountPerPartition(7777, 32, 1));
     }
 
     Y_UNIT_TEST(ShouldComputePartitionsInfo)
@@ -1695,8 +1540,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             auto config = std::make_unique<TStorageConfig>(
                 std::move(storageServiceConfig),
                 std::make_shared<NFeatures::TFeaturesConfig>(
-                    NCloud::NProto::TFeaturesConfig())
-            );
+                    NCloud::NProto::TFeaturesConfig()));
 
             auto info = ComputePartitionsInfo(
                 *config,
@@ -1707,8 +1551,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
                 100500,
                 33,
                 false,
-                false
-            );
+                false);
 
             UNIT_ASSERT_VALUES_EQUAL(1, info.PartitionsCount);
             UNIT_ASSERT_VALUES_EQUAL(100500, info.BlocksCountPerPartition);
@@ -1724,8 +1567,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             auto config = std::make_unique<TStorageConfig>(
                 std::move(storageServiceConfig),
                 std::make_shared<NFeatures::TFeaturesConfig>(
-                    NCloud::NProto::TFeaturesConfig())
-            );
+                    NCloud::NProto::TFeaturesConfig()));
 
             auto blocksCount = 1_TB / 4_KB - 1;
             auto info = ComputePartitionsInfo(
@@ -1737,8 +1579,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
                 blocksCount,
                 4_KB,
                 false,
-                false
-            );
+                false);
 
             UNIT_ASSERT_VALUES_EQUAL(1, info.PartitionsCount);
             UNIT_ASSERT_VALUES_EQUAL(blocksCount, info.BlocksCountPerPartition);
@@ -1753,8 +1594,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
                 blocksCount,
                 4_KB,
                 false,
-                false
-            );
+                false);
 
             UNIT_ASSERT_VALUES_EQUAL(1, info.PartitionsCount);
             UNIT_ASSERT_VALUES_EQUAL(blocksCount, info.BlocksCountPerPartition);
@@ -1769,11 +1609,12 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
                 blocksCount,
                 4_KB,
                 false,
-                false
-            );
+                false);
 
             UNIT_ASSERT_VALUES_EQUAL(2, info.PartitionsCount);
-            UNIT_ASSERT_VALUES_EQUAL(blocksCount / 2, info.BlocksCountPerPartition);
+            UNIT_ASSERT_VALUES_EQUAL(
+                blocksCount / 2,
+                info.BlocksCountPerPartition);
 
             blocksCount = 1_TB / 4_KB + 1;
             info = ComputePartitionsInfo(
@@ -1785,14 +1626,12 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
                 blocksCount,
                 4_KB,
                 false,
-                false
-            );
+                false);
 
             UNIT_ASSERT_VALUES_EQUAL(2, info.PartitionsCount);
             UNIT_ASSERT_VALUES_EQUAL(
                 1_TB / 4_KB / 2 + 16_MB / 4_KB,
-                info.BlocksCountPerPartition
-            );
+                info.BlocksCountPerPartition);
 
             blocksCount = 4_TB / 4_KB;
             info = ComputePartitionsInfo(
@@ -1804,14 +1643,10 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
                 blocksCount,
                 4_KB,
                 false,
-                false
-            );
+                false);
 
             UNIT_ASSERT_VALUES_EQUAL(2, info.PartitionsCount);
-            UNIT_ASSERT_VALUES_EQUAL(
-                2_TB / 4_KB,
-                info.BlocksCountPerPartition
-            );
+            UNIT_ASSERT_VALUES_EQUAL(2_TB / 4_KB, info.BlocksCountPerPartition);
 
             blocksCount = 1_TB / 64_KB;
             info = ComputePartitionsInfo(
@@ -1823,14 +1658,10 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
                 blocksCount,
                 64_KB,
                 false,
-                false
-            );
+                false);
 
             UNIT_ASSERT_VALUES_EQUAL(1, info.PartitionsCount);
-            UNIT_ASSERT_VALUES_EQUAL(
-                blocksCount,
-                info.BlocksCountPerPartition
-            );
+            UNIT_ASSERT_VALUES_EQUAL(blocksCount, info.BlocksCountPerPartition);
 
             blocksCount = 1_TB / 64_KB + 1;
             info = ComputePartitionsInfo(
@@ -1842,14 +1673,12 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
                 blocksCount,
                 64_KB,
                 false,
-                false
-            );
+                false);
 
             UNIT_ASSERT_VALUES_EQUAL(2, info.PartitionsCount);
             UNIT_ASSERT_VALUES_EQUAL(
                 1_TB / 64_KB / 2 + 16_MB / 64_KB,
-                info.BlocksCountPerPartition
-            );
+                info.BlocksCountPerPartition);
         }
 
         {
@@ -1862,8 +1691,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             auto config = std::make_unique<TStorageConfig>(
                 std::move(storageServiceConfig),
                 std::make_shared<NFeatures::TFeaturesConfig>(
-                    NCloud::NProto::TFeaturesConfig())
-            );
+                    NCloud::NProto::TFeaturesConfig()));
 
             auto blocksCount = 4_TB / 4_KB;
             auto info = ComputePartitionsInfo(
@@ -1875,8 +1703,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
                 blocksCount,
                 4_KB,
                 false,
-                false
-            );
+                false);
 
             /*
                565425 stripes
@@ -1901,8 +1728,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         auto blocksCount = 1_TB / 4_KB;
         auto info = ComputePartitionsInfo(
@@ -1913,8 +1739,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             NCloud::NProto::STORAGE_MEDIA_SSD,
             blocksCount,
             4_KB,
-            false,  // isSystem
-            false   // isOverlayDisk
+            false,   // isSystem
+            false    // isOverlayDisk
         );
 
         UNIT_ASSERT_VALUES_EQUAL(2, info.PartitionsCount);
@@ -1928,8 +1754,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             NCloud::NProto::STORAGE_MEDIA_SSD,
             blocksCount,
             4_KB,
-            true,  // isSystem
-            false  // isOverlayDisk
+            true,   // isSystem
+            false   // isOverlayDisk
         );
 
         UNIT_ASSERT_VALUES_EQUAL(1, info.PartitionsCount);
@@ -1943,8 +1769,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             NCloud::NProto::STORAGE_MEDIA_SSD,
             blocksCount,
             4_KB,
-            false,  // isSystem
-            true    // isOverlayDisk
+            false,   // isSystem
+            true     // isOverlayDisk
         );
 
         UNIT_ASSERT_VALUES_EQUAL(1, info.PartitionsCount);
@@ -2077,22 +1903,21 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetMinChannelCount(4);
         storageServiceConfig.SetFreshChannelCount(1);
         storageServiceConfig.SetAllocationUnitHDD(256);
-        // in case MixedChannelsPercentageFromMerged == 0 we will receive 2 mixed channels
+        // in case MixedChannelsPercentageFromMerged == 0 we will receive 2
+        // mixed channels
         storageServiceConfig.SetMixedChannelsPercentageFromMerged(20);
 
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         const auto blocksCount = 16_GB / DefaultBlockSize;
         TVolumeParams params{
             .BlockSize = DefaultBlockSize,
             .BlocksCountPerPartition = blocksCount,
             .PartitionsCount = 1,
-            .MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID
-        };
+            .MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID};
         NKikimrBlockStore::TVolumeConfig volumeConfig;
         volumeConfig.SetPerformanceProfileMaxWriteIops(300);
         volumeConfig.SetPerformanceProfileMaxWriteBandwidth(31457280);
@@ -2108,8 +1933,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             8,
             config->GetHybridFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
-            128_MB
-        );
+            128_MB);
     }
 
     Y_UNIT_TEST(
@@ -2128,22 +1952,22 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         const auto blocksCount = 100_TB / DefaultBlockSize;
         TVolumeParams params{
             .BlockSize = DefaultBlockSize,
             .BlocksCountPerPartition = blocksCount,
             .PartitionsCount = 1,
-            .MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID
-        };
+            .MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID};
         NKikimrBlockStore::TVolumeConfig volumeConfig;
         volumeConfig.SetPerformanceProfileMaxWriteIops(300);
         volumeConfig.SetPerformanceProfileMaxWriteBandwidth(31457280);
         ResizeVolume(*config, params, {}, {}, volumeConfig);
 
-        UNIT_ASSERT_VALUES_EQUAL(255, volumeConfig.ExplicitChannelProfilesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            255,
+            volumeConfig.ExplicitChannelProfilesSize());
         for (int i = 3; i < 212; ++i) {
             CHECK_CHANNEL_HDD(i, "merged", EChannelDataKind::Merged);
         }
@@ -2154,8 +1978,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             254,
             config->GetHybridFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
-            128_MB
-        );
+            128_MB);
     }
 
     Y_UNIT_TEST(
@@ -2174,19 +1997,19 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         const auto blocksCount = 100_TB / DefaultBlockSize;
         TVolumeParams params{
             .BlockSize = DefaultBlockSize,
             .BlocksCountPerPartition = blocksCount,
             .PartitionsCount = 1,
-            .MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID
-        };
+            .MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID};
 
         for (int i = 0; i < 100; ++i) {
-            params.DataChannels.emplace_back("merged", EChannelDataKind::Merged);
+            params.DataChannels.emplace_back(
+                "merged",
+                EChannelDataKind::Merged);
         }
         for (int i = 0; i < 20; ++i) {
             params.DataChannels.emplace_back("mixed", EChannelDataKind::Mixed);
@@ -2195,7 +2018,9 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         NKikimrBlockStore::TVolumeConfig volumeConfig;
         ResizeVolume(*config, params, {}, {}, volumeConfig);
 
-        UNIT_ASSERT_VALUES_EQUAL(MaxChannelCount, volumeConfig.ExplicitChannelProfilesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            MaxChannelCount,
+            volumeConfig.ExplicitChannelProfilesSize());
         for (int i = 3; i < 103; ++i) {
             CHECK_CHANNEL_HDD(i, "merged", EChannelDataKind::Merged);
         }
@@ -2213,17 +2038,20 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             MaxChannelCount - 1,
             config->GetHybridFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
-            128_MB
-        );
+            128_MB);
 
         volumeConfig.ClearExplicitChannelProfiles();
         params.DataChannels.clear();
         for (ui32 i = 0; i < MaxMergedChannelCount; ++i) {
-            params.DataChannels.emplace_back("merged", EChannelDataKind::Merged);
+            params.DataChannels.emplace_back(
+                "merged",
+                EChannelDataKind::Merged);
         }
         ResizeVolume(*config, params, {}, {}, volumeConfig);
 
-        UNIT_ASSERT_VALUES_EQUAL(MaxChannelCount, volumeConfig.ExplicitChannelProfilesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            MaxChannelCount,
+            volumeConfig.ExplicitChannelProfilesSize());
         for (ui32 i = 0; i < MaxMergedChannelCount; ++i) {
             CHECK_CHANNEL_HDD(i + 3, "merged", EChannelDataKind::Merged);
         }
@@ -2234,8 +2062,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             MaxChannelCount - 1,
             config->GetHybridFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
-            128_MB
-        );
+            128_MB);
     }
 
     Y_UNIT_TEST(ShouldAddMixedChannelsWithMixedPercentage50)
@@ -2253,8 +2080,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         const auto blocksCount = 1_GB / DefaultBlockSize;
         TVolumeParams params{
@@ -2269,8 +2095,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             0,
             0,
             0,
-            NCloud::NProto::STORAGE_MEDIA_HYBRID
-        };
+            NCloud::NProto::STORAGE_MEDIA_HYBRID};
         NKikimrBlockStore::TVolumeConfig volumeConfig;
         ResizeVolume(*config, params, {}, {}, volumeConfig);
 
@@ -2282,8 +2107,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             6,
             config->GetHybridFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
-            128_MB
-        );
+            128_MB);
 
         volumeConfig.ClearExplicitChannelProfiles();
 
@@ -2301,8 +2125,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             6,
             config->GetHybridFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
-            128_MB
-        );
+            128_MB);
 
         volumeConfig.ClearExplicitChannelProfiles();
 
@@ -2314,7 +2137,9 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             {"merged", EChannelDataKind::Merged},
         };
         ResizeVolume(*config, params, {}, {}, volumeConfig);
-        UNIT_ASSERT_VALUES_EQUAL(10, volumeConfig.ExplicitChannelProfilesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            volumeConfig.ExplicitChannelProfilesSize());
         CHECK_CHANNEL_HDD(3, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(4, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(5, "merged", EChannelDataKind::Merged);
@@ -2325,8 +2150,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             9,
             config->GetHybridFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
-            128_MB
-        );
+            128_MB);
 
         volumeConfig.ClearExplicitChannelProfiles();
 
@@ -2338,7 +2162,9 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         params.BlocksCountPerPartition = 5 * blocksCount;
         params.PartitionsCount = 1;
         ResizeVolume(*config, params, {}, {}, volumeConfig);
-        UNIT_ASSERT_VALUES_EQUAL(12, volumeConfig.ExplicitChannelProfilesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            12,
+            volumeConfig.ExplicitChannelProfilesSize());
         CHECK_CHANNEL_HDD(3, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(4, "merged", EChannelDataKind::Merged);
         CHECK_CHANNEL_HDD(5, "mixed", EChannelDataKind::Mixed);
@@ -2351,12 +2177,11 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             11,
             config->GetHybridFreshChannelPoolKind(),
             EChannelDataKind::Fresh,
-            128_MB
-        );
+            128_MB);
     }
 
-    #undef CHECK_CHANNEL
-    #undef CHECK_CHANNEL_HDD
+#undef CHECK_CHANNEL
+#undef CHECK_CHANNEL_HDD
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

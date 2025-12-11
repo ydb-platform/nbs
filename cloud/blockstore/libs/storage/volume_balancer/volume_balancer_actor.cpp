@@ -53,9 +53,9 @@ private:
 
 public:
     TRemoteVolumeStatActor(
-            TActorId volumeBalancerActorId,
-            TVector<TString> remoteVolumes,
-            TDuration timeout)
+        TActorId volumeBalancerActorId,
+        TVector<TString> remoteVolumes,
+        TDuration timeout)
         : VolumeBalancerActorId(volumeBalancerActorId)
         , RemoteVolumes(std::move(remoteVolumes))
         , Timeout(timeout)
@@ -66,16 +66,13 @@ public:
         Y_UNUSED(ctx);
 
         for (const auto& v: RemoteVolumes) {
-            auto request = std::make_unique<TEvVolume::TEvGetVolumeLoadInfoRequest>();
+            auto request =
+                std::make_unique<TEvVolume::TEvGetVolumeLoadInfoRequest>();
             request->Record.SetDiskId(v);
         }
         Become(&TThis::StateWork);
 
-        ctx.Schedule(
-            Timeout,
-            new TEvents::TEvWakeup()
-        );
-
+        ctx.Schedule(Timeout, new TEvents::TEvWakeup());
     }
 
 private:
@@ -88,11 +85,15 @@ private:
         const auto* msg = ev->Get();
 
         if (FAILED(msg->GetStatus())) {
-            LOG_ERROR(ctx, TBlockStoreComponents::VOLUME_BALANCER,
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::VOLUME_BALANCER,
                 "Failed to get stats for remote volume %s",
                 msg->Record.GetStats().GetDiskId().c_str());
         } else {
-            LOG_INFO(ctx, TBlockStoreComponents::VOLUME_BALANCER,
+            LOG_INFO(
+                ctx,
+                TBlockStoreComponents::VOLUME_BALANCER,
                 "Got stats for remote volume %s",
                 msg->Record.GetStats().GetDiskId().c_str());
             Stats.push_back(msg->Record.GetStats());
@@ -112,7 +113,8 @@ private:
 
     void ReplyAndDie(const TActorContext& ctx)
     {
-        auto response = std::make_unique<TEvVolumeBalancerPrivate::TEvRemoteVolumeStats>();
+        auto response =
+            std::make_unique<TEvVolumeBalancerPrivate::TEvRemoteVolumeStats>();
         response->Stats = std::move(Stats);
         Die(ctx);
     }
@@ -120,11 +122,12 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
 STFUNC(TRemoteVolumeStatActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvVolume::TEvGetVolumeLoadInfoResponse, HandleGetVolumeLoadInfoResponse);
+        HFunc(
+            TEvVolume::TEvGetVolumeLoadInfoResponse,
+            HandleGetVolumeLoadInfoResponse);
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         default:
@@ -136,24 +139,23 @@ STFUNC(TRemoteVolumeStatActor::StateWork)
     }
 }
 
-}  // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumeBalancerActor::TVolumeBalancerActor(
-        TStorageConfigPtr storageConfig,
-        IVolumeStatsPtr volumeStats,
-        NCloud::NStorage::IStatsFetcherPtr statsFetcher,
-        IVolumeBalancerSwitchPtr volumeBalancerSwitch,
-        TActorId serviceActorId)
+    TStorageConfigPtr storageConfig,
+    IVolumeStatsPtr volumeStats,
+    NCloud::NStorage::IStatsFetcherPtr statsFetcher,
+    IVolumeBalancerSwitchPtr volumeBalancerSwitch,
+    TActorId serviceActorId)
     : StorageConfig(std::move(storageConfig))
     , VolumeStats(std::move(volumeStats))
     , StatsFetcher(std::move(statsFetcher))
     , VolumeBalancerSwitch(std::move(volumeBalancerSwitch))
     , ServiceActorId(serviceActorId)
     , State(std::make_unique<TVolumeBalancerState>(StorageConfig))
-{
-}
+{}
 
 void TVolumeBalancerActor::Bootstrap(const TActorContext& ctx)
 {
@@ -171,8 +173,13 @@ void TVolumeBalancerActor::RegisterPages(const TActorContext& ctx)
     if (mon) {
         auto* rootPage = mon->RegisterIndexPage("blockstore", "BlockStore");
 
-        mon->RegisterActorPage(rootPage, "balancer", "Balancer",
-            false, ctx.ActorSystem(), SelfId());
+        mon->RegisterActorPage(
+            rootPage,
+            "balancer",
+            "Balancer",
+            false,
+            ctx.ActorSystem(),
+            SelfId());
     }
 }
 
@@ -187,7 +194,8 @@ void TVolumeBalancerActor::RegisterCounters(const TActorContext& ctx)
 
     ManuallyPreempted = serviceCounters->GetCounter("ManuallyPreempted", false);
     BalancerPreempted = serviceCounters->GetCounter("BalancerPreempted", false);
-    InitiallyPreempted = serviceCounters->GetCounter("InitiallyPreempted", false);
+    InitiallyPreempted =
+        serviceCounters->GetCounter("InitiallyPreempted", false);
 
     CpuWaitCounter = serverCounters->GetCounter("CpuWait", false);
 
@@ -205,14 +213,18 @@ void TVolumeBalancerActor::PullVolumeFromHive(
     const TActorContext& ctx,
     TString volume)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME_BALANCER,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME_BALANCER,
         "Pull volume %s from hive",
         volume.data());
 
-    auto pullRequest = std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
-        volume,
-        TEvService::TEvChangeVolumeBindingRequest::EChangeBindingOp::ACQUIRE_FROM_HIVE,
-        NProto::EPreemptionSource::SOURCE_BALANCER);
+    auto pullRequest =
+        std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+            volume,
+            TEvService::TEvChangeVolumeBindingRequest::EChangeBindingOp::
+                ACQUIRE_FROM_HIVE,
+            NProto::EPreemptionSource::SOURCE_BALANCER);
     NCloud::Send(ctx, ServiceActorId, std::move(pullRequest));
 
     PullCount->Add(1);
@@ -224,14 +236,18 @@ void TVolumeBalancerActor::SendVolumeToHive(
     const TActorContext& ctx,
     TString volume)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME_BALANCER,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME_BALANCER,
         "Push volume %s to hive",
         volume.data());
 
-    auto pushRequest = std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
-        volume,
-        TEvService::TEvChangeVolumeBindingRequest::EChangeBindingOp::RELEASE_TO_HIVE,
-        NProto::EPreemptionSource::SOURCE_BALANCER);
+    auto pushRequest =
+        std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+            volume,
+            TEvService::TEvChangeVolumeBindingRequest::EChangeBindingOp::
+                RELEASE_TO_HIVE,
+            NProto::EPreemptionSource::SOURCE_BALANCER);
     NCloud::Send(ctx, ServiceActorId, std::move(pushRequest));
 
     PushCount->Add(1);
@@ -260,16 +276,16 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
     const TActorContext& ctx)
 {
     if (State) {
-        const auto *msg = ev->Get();
+        const auto* msg = ev->Get();
 
         auto [cpuWait, error] = StatsFetcher->GetCpuWait();
         if (HasError(error)) {
             auto errorMessage =
                 ReportCpuWaitCounterReadError(FormatError(error));
-                LOG_WARN_S(
-                    ctx,
-                    TBlockStoreComponents::VOLUME_BALANCER,
-                    "Failed to get CpuWait stats: " << errorMessage);
+            LOG_WARN_S(
+                ctx,
+                TBlockStoreComponents::VOLUME_BALANCER,
+                "Failed to get CpuWait stats: " << errorMessage);
         }
 
         auto now = ctx.Monotonic();
@@ -280,7 +296,9 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
             *CpuWaitCounter = cpuLack;
 
             if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
-                LOG_WARN_S(ctx, TBlockStoreComponents::VOLUME_BALANCER,
+                LOG_WARN_S(
+                    ctx,
+                    TBlockStoreComponents::VOLUME_BALANCER,
                     "Cpu wait is " << cpuLack);
             }
         }
@@ -294,9 +312,9 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
             LOG_DEBUG_S(
                 ctx,
                 TBlockStoreComponents::VOLUME_BALANCER,
-                TStringBuilder() << "Disk:" << v.GetDiskId()
-                << " Local:" << v.GetIsLocal()
-                << " Preemption: " << static_cast<ui32>(v.GetPreemptionSource()));
+                TStringBuilder() << "Disk:" << v.GetDiskId() << " Local:"
+                                 << v.GetIsLocal() << " Preemption: "
+                                 << static_cast<ui32>(v.GetPreemptionSource()));
             switch (v.GetPreemptionSource()) {
                 case NProto::EPreemptionSource::SOURCE_MANUAL: {
                     ++numManuallyPreempted;
@@ -357,7 +375,9 @@ void TVolumeBalancerActor::HandleBindingResponse(
     const auto* msg = ev->Get();
 
     if (HasError(msg->GetError())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME_BALANCER,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME_BALANCER,
             "Failed to change volume binding %s",
             msg->DiskId.Quote().data());
     }
@@ -369,7 +389,8 @@ void TVolumeBalancerActor::HandleConfigureVolumeBalancerRequest(
     const TEvVolumeBalancer::TEvConfigureVolumeBalancerRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvVolumeBalancer::TEvConfigureVolumeBalancerResponse>();
+    auto response = std::make_unique<
+        TEvVolumeBalancer::TEvConfigureVolumeBalancerResponse>();
     if (State->GetEnabled()) {
         response->Record.SetOpStatus(NPrivateProto::EBalancerOpStatus::ENABLE);
     } else {
@@ -441,9 +462,15 @@ STFUNC(TVolumeBalancerActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
-        HFunc(TEvService::TEvChangeVolumeBindingResponse, HandleBindingResponse);
-        HFunc(TEvService::TEvGetVolumeStatsResponse, HandleGetVolumeStatsResponse);
-        HFunc(TEvVolumeBalancer::TEvConfigureVolumeBalancerRequest, HandleConfigureVolumeBalancerRequest);
+        HFunc(
+            TEvService::TEvChangeVolumeBindingResponse,
+            HandleBindingResponse);
+        HFunc(
+            TEvService::TEvGetVolumeStatsResponse,
+            HandleGetVolumeStatsResponse);
+        HFunc(
+            TEvVolumeBalancer::TEvConfigureVolumeBalancerRequest,
+            HandleConfigureVolumeBalancerRequest);
 
         HFunc(NMon::TEvHttpInfo, HandleHttpInfo);
 

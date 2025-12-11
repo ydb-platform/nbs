@@ -4,7 +4,8 @@
 
 namespace {
 
-const TString DefaultPath = "/sys/fs/cgroup/cpu/system.slice/nbs.service/cpuacct.wait";
+const TString DefaultPath =
+    "/sys/fs/cgroup/cpu/system.slice/nbs.service/cpuacct.wait";
 constexpr ui32 DefaultPollPeriod = 1;
 constexpr ui32 DefaultNumSamples = 0;
 const TString DefaultComponentName = "STORAGE_CGROUP";

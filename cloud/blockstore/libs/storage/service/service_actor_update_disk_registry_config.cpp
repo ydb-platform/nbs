@@ -16,7 +16,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TAgentConfig CreateAgentConfig(const NProto::TKnownDiskAgent& knownAgent)
+NProto::TAgentConfig CreateAgentConfig(
+    const NProto::TKnownDiskAgent& knownAgent)
 {
     NProto::TAgentConfig config;
 
@@ -26,7 +27,8 @@ NProto::TAgentConfig CreateAgentConfig(const NProto::TKnownDiskAgent& knownAgent
         config.AddDevices()->SetDeviceUUID(uuid);
     }
 
-    for (const NProto::TKnownDevice& knownDevice: knownAgent.GetKnownDevices()) {
+    for (const NProto::TKnownDevice& knownDevice: knownAgent.GetKnownDevices())
+    {
         auto& device = *config.AddDevices();
         device.SetDeviceUUID(knownDevice.GetDeviceUUID());
         device.SetSerialNumber(knownDevice.GetSerialNumber());
@@ -60,7 +62,8 @@ private:
 
     void ReplyAndDie(
         const TActorContext& ctx,
-        std::unique_ptr<TEvService::TEvUpdateDiskRegistryConfigResponse> response);
+        std::unique_ptr<TEvService::TEvUpdateDiskRegistryConfigResponse>
+            response);
 
     auto CreateConfig() const -> TResultOrError<NProto::TDiskRegistryConfig>;
 
@@ -71,8 +74,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TUpdateDiskRegistryConfigActor::TUpdateDiskRegistryConfigActor(
-        TRequestInfoPtr requestInfo,
-        NProto::TUpdateDiskRegistryConfigRequest request)
+    TRequestInfoPtr requestInfo,
+    NProto::TUpdateDiskRegistryConfigRequest request)
     : RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
 {}
@@ -94,8 +97,8 @@ auto TUpdateDiskRegistryConfigActor::CreateConfig() const
         if (agent.DevicesSize() && agent.KnownDevicesSize()) {
             return MakeError(
                 E_ARGUMENT,
-                "Fields Devices and KnownDevices can't be set at the same time."
-            );
+                "Fields Devices and KnownDevices can't be set at the same "
+                "time.");
         }
 
         *config.AddKnownAgents() = CreateAgentConfig(agent);
@@ -147,16 +150,20 @@ void TUpdateDiskRegistryConfigActor::HandleUpdateConfigResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Update Disk Registry config failed: %s. Affected disks: %s",
             FormatError(error).data(),
             JoinSeq(", ", msg->Record.GetAffectedDisks()).c_str());
     }
 
-    auto response = std::make_unique<TEvService::TEvUpdateDiskRegistryConfigResponse>(
-        error);
+    auto response =
+        std::make_unique<TEvService::TEvUpdateDiskRegistryConfigResponse>(
+            error);
 
-    response->Record.MutableAffectedDisks()->Swap(msg->Record.MutableAffectedDisks());
+    response->Record.MutableAffectedDisks()->Swap(
+        msg->Record.MutableAffectedDisks());
 
     ReplyAndDie(ctx, std::move(response));
 }
@@ -174,7 +181,9 @@ void TUpdateDiskRegistryConfigActor::ReplyAndDie(
 STFUNC(TUpdateDiskRegistryConfigActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvDiskRegistry::TEvUpdateConfigResponse, HandleUpdateConfigResponse);
+        HFunc(
+            TEvDiskRegistry::TEvUpdateConfigResponse,
+            HandleUpdateConfigResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -195,12 +204,12 @@ void TServiceActor::HandleUpdateDiskRegistryConfig(
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Update Disk Registry config");
 
     NCloud::Register<TUpdateDiskRegistryConfigActor>(

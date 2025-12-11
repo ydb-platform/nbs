@@ -29,18 +29,18 @@ namespace NCloud::NFileStore::NFuse {
 ////////////////////////////////////////////////////////////////////////////////
 
 #define FILESYSTEM_REPLY_METHOD(xxx, ...) \
-    xxx(None,     __VA_ARGS__)            \
-    xxx(Error,    __VA_ARGS__)            \
-    xxx(Entry,    __VA_ARGS__)            \
-    xxx(Create,   __VA_ARGS__)            \
-    xxx(Attr,     __VA_ARGS__)            \
+    xxx(None, __VA_ARGS__)                \
+    xxx(Error, __VA_ARGS__)               \
+    xxx(Entry, __VA_ARGS__)               \
+    xxx(Create, __VA_ARGS__)              \
+    xxx(Attr, __VA_ARGS__)                \
     xxx(ReadLink, __VA_ARGS__)            \
-    xxx(Open,     __VA_ARGS__)            \
-    xxx(Write,    __VA_ARGS__)            \
-    xxx(Buf,      __VA_ARGS__)            \
-    xxx(StatFs,   __VA_ARGS__)            \
-    xxx(XAttr,    __VA_ARGS__)            \
-    xxx(Lock,     __VA_ARGS__)            \
+    xxx(Open, __VA_ARGS__)                \
+    xxx(Write, __VA_ARGS__)               \
+    xxx(Buf, __VA_ARGS__)                 \
+    xxx(StatFs, __VA_ARGS__)              \
+    xxx(XAttr, __VA_ARGS__)               \
+    xxx(Lock, __VA_ARGS__)
 
 // FILESYSTEM_REPLY_METHOD
 
@@ -65,22 +65,22 @@ int ReplyEntry(
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
     fuse_req_t req,
-    const fuse_entry_param *e);
+    const fuse_entry_param* e);
 int ReplyCreate(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
     fuse_req_t req,
-    const fuse_entry_param *e,
-    const fuse_file_info *fi);
+    const fuse_entry_param* e,
+    const fuse_file_info* fi);
 int ReplyAttr(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
     fuse_req_t req,
-    const struct stat *attr,
+    const struct stat* attr,
     double attr_timeout);
 int ReplyReadLink(
     TLog& log,
@@ -88,14 +88,14 @@ int ReplyReadLink(
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
     fuse_req_t req,
-    const char *link);
+    const char* link);
 int ReplyOpen(
     TLog& log,
     IRequestStats& requestStats,
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
     fuse_req_t req,
-    const fuse_file_info *fi);
+    const fuse_file_info* fi);
 int ReplyWrite(
     TLog& log,
     IRequestStats& requestStats,
@@ -109,7 +109,7 @@ int ReplyBuf(
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
     fuse_req_t req,
-    const char *buf,
+    const char* buf,
     size_t size);
 int ReplyStatFs(
     TLog& log,
@@ -117,7 +117,7 @@ int ReplyStatFs(
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
     fuse_req_t req,
-    const struct statvfs *stbuf);
+    const struct statvfs* stbuf);
 int ReplyXAttr(
     TLog& log,
     IRequestStats& requestStats,
@@ -131,7 +131,7 @@ int ReplyLock(
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
     fuse_req_t req,
-    const struct flock *lock);
+    const struct flock* lock);
 void CancelRequest(
     TLog& log,
     IRequestStats& requestStats,
@@ -140,14 +140,11 @@ void CancelRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ICompletionQueue
-    : public virtual TThrRefBase
+struct ICompletionQueue: public virtual TThrRefBase
 {
     using TCompletionCallback = std::function<int(fuse_req_t)>;
 
-    virtual int Complete(
-        fuse_req_t req,
-        TCompletionCallback cb) = 0;
+    virtual int Complete(fuse_req_t req, TCompletionCallback cb) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -165,10 +162,8 @@ struct IFileSystem
     //
 
     // Get file system statistics
-    virtual void StatFs(
-        TCallContextPtr callContext,
-        fuse_req_t req,
-        fuse_ino_t ino) = 0;
+    virtual void
+    StatFs(TCallContextPtr callContext, fuse_req_t req, fuse_ino_t ino) = 0;
 
     //
     // Nodes
@@ -253,10 +248,8 @@ struct IFileSystem
         TString name) = 0;
 
     // Read the target of a symbolic link
-    virtual void ReadLink(
-        TCallContextPtr callContext,
-        fuse_req_t req,
-        fuse_ino_t ino) = 0;
+    virtual void
+    ReadLink(TCallContextPtr callContext, fuse_req_t req, fuse_ino_t ino) = 0;
 
     //
     // Node attributes

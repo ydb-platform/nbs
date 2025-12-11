@@ -8,8 +8,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCheckpointValidator final
-    : public ICheckpointValidator
+class TCheckpointValidator final: public ICheckpointValidator
 {
 private:
     const TTestConfig& Config;
@@ -52,12 +51,15 @@ void TCheckpointValidator::DoWrite(const void* buf, size_t len)
         }
         const auto& range = Config.GetRanges(RangeReadCount);
         if (RangeValues[RangeReadCount].size() == range.GetRequestCount()) {
-            CurReadPos += (range.GetRequestCount() * range.GetRequestBlockCount() -
-                Config.GetRangeBlockCount()) * Config.GetBlockSize();
+            CurReadPos +=
+                (range.GetRequestCount() * range.GetRequestBlockCount() -
+                 Config.GetRangeBlockCount()) *
+                Config.GetBlockSize();
             ++RangeReadCount;
             continue;
         }
-        const auto* data = reinterpret_cast<const TBlockData*>(ptr + CurReadPos);
+        const auto* data =
+            reinterpret_cast<const TBlockData*>(ptr + CurReadPos);
         if (Config.GetTestId() == data->TestId) {
             RangeValues[RangeReadCount].push_back(data->RequestNumber);
         } else {
@@ -82,9 +84,9 @@ void TCheckpointValidator::DoFinish()
                 STORAGE_ERROR(
                     "Wrong data in checkpoint at block index "
                     << std::distance(values.begin(), actual) *
-                        range.GetRequestBlockCount() + range.GetStartOffset()
-                    << ", expected: " << expected
-                    << ", actual: " << *actual);
+                               range.GetRequestBlockCount() +
+                           range.GetStartOffset()
+                    << ", expected: " << expected << ", actual: " << *actual);
                 Result = false;
             }
 

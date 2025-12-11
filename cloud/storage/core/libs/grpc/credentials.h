@@ -42,7 +42,8 @@ std::shared_ptr<grpc::ChannelCredentials> CreateTcpClientChannelCredentials(
 
         if (const auto& certFile = config.GetCertFile()) {
             sslOptions.pem_cert_chain = ReadFile(certFile);
-            sslOptions.pem_private_key = ReadFile(config.GetCertPrivateKeyFile());
+            sslOptions.pem_private_key =
+                ReadFile(config.GetCertPrivateKeyFile());
         }
 
         credentials = grpc::SslCredentials(sslOptions);

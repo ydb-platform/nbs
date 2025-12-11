@@ -1,7 +1,7 @@
-#include "command.h"
-
-#include "common_filter_params.h"
 #include "public.h"
+
+#include "command.h"
+#include "common_filter_params.h"
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/service/request.h>
@@ -22,8 +22,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEventProcessor
-    : public TProtobufEventProcessor
+class TEventProcessor: public TProtobufEventProcessor
 {
 private:
     const IRequestFilterPtr Filter;
@@ -43,7 +42,7 @@ public:
             const auto filtered_message = Filter->GetFilteredRecord(*message);
             const auto order = GetItemOrder(filtered_message);
 
-            for (const auto i : order) {
+            for (const auto i: order) {
                 DumpRequest(filtered_message, i, out);
             }
         }
@@ -52,8 +51,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDumpEventsCommand final
-    : public TCommand
+class TDumpEventsCommand final: public TCommand
 {
 private:
     const TCommonFilterParams CommonFilterParams;
@@ -98,15 +96,11 @@ public:
             .RequiredArgument("NUMS")
             .SplitHandler(&FilterRequestTypes, ',');
 
-        Opts.AddLongOption(
-                "system-requests",
-                "show internal tablet events")
+        Opts.AddLongOption("system-requests", "show internal tablet events")
             .NoArgument()
             .SetFlag(&FilterSystemRequests);
 
-        Opts.AddLongOption(
-                "external-requests",
-                "show external requests events")
+        Opts.AddLongOption("external-requests", "show external requests events")
             .NoArgument()
             .SetFlag(&FilterExternalRequests);
     }
@@ -115,16 +109,14 @@ public:
     {
         const auto nodeId = CommonFilterParams.GetNodeId(parseResult);
         if (nodeId.Defined()) {
-            Filter = CreateRequestFilterByNodeId(
-                std::move(Filter),
-                nodeId.GetRef());
+            Filter =
+                CreateRequestFilterByNodeId(std::move(Filter), nodeId.GetRef());
         }
 
         const auto handle = CommonFilterParams.GetHandle(parseResult);
         if (handle.Defined()) {
-            Filter = CreateRequestFilterByHandle(
-                std::move(Filter),
-                handle.GetRef());
+            Filter =
+                CreateRequestFilterByHandle(std::move(Filter), handle.GetRef());
         }
 
         for (const auto& name: FilterRequestNames) {
@@ -140,8 +132,8 @@ public:
         if (FilterSystemRequests) {
             TSet<ui32> systemRequests = ::xrange(
                 NStorage::FileStoreSystemRequestStart,
-                NStorage::FileStoreSystemRequestStart
-                    + NStorage::FileStoreSystemRequestCount,
+                NStorage::FileStoreSystemRequestStart +
+                    NStorage::FileStoreSystemRequestCount,
                 1);
 
             Filter = CreateRequestFilterByRequestType(
@@ -150,10 +142,8 @@ public:
         }
 
         if (FilterExternalRequests) {
-            TSet<ui32> systemRequests = ::xrange(
-                0u,
-                static_cast<ui32>(EFileStoreRequest::MAX),
-                1);
+            TSet<ui32> systemRequests =
+                ::xrange(0u, static_cast<ui32>(EFileStoreRequest::MAX), 1);
 
             Filter = CreateRequestFilterByRequestType(
                 std::move(Filter),
@@ -189,11 +179,7 @@ public:
     {
         TEventProcessor processor(Filter);
         const char* path[] = {"", PathToProfileLog.c_str()};
-        return IterateEventLog(
-            NEvClass::Factory(),
-            &processor,
-            2,
-            path);
+        return IterateEventLog(NEvClass::Factory(), &processor, 2, path);
     }
 };
 

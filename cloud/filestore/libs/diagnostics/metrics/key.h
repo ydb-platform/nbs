@@ -10,9 +10,11 @@ namespace NCloud::NFileStore::NMetrics {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-requires requires(T v) {
-    { v++ } -> std::same_as<T>;
-}
+    requires requires(T v) {
+        {
+            v++
+        } -> std::same_as<T>;
+    }
 class TFreeKey
 {
 private:
@@ -34,10 +36,14 @@ using TMetricNextFreeKey = TFreeKey<ui64>;
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-requires requires (T v) {
-    { v == v } -> std::same_as<bool>;
-    { THash<T>()(v) } -> std::same_as<size_t>;
-}
+    requires requires(T v) {
+        {
+            v == v
+        } -> std::same_as<bool>;
+        {
+            THash<T>()(v)
+        } -> std::same_as<size_t>;
+    }
 class TKey
 {
     friend struct THash<TKey>;
@@ -90,7 +96,8 @@ using TMetricKey = TKey<ui64>;
 template <typename T>
 struct THash<NCloud::NFileStore::NMetrics::TKey<T>>
 {
-    size_t operator()(const NCloud::NFileStore::NMetrics::TKey<T>& key) const noexcept
+    size_t operator()(
+        const NCloud::NFileStore::NMetrics::TKey<T>& key) const noexcept
     {
         return MultiHash(key.UniqueId, key.Key);
     }

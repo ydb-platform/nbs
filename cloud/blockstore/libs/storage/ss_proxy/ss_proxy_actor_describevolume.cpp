@@ -87,10 +87,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeVolumeActor::TDescribeVolumeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
-        TString diskId,
-        bool exactDiskIdMatch)
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr config,
+    TString diskId,
+    bool exactDiskIdMatch)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskId(std::move(diskId))
@@ -114,7 +114,9 @@ bool TDescribeVolumeActor::CheckVolume(
     }
 
     if (!blocksCount || !volumeConfig.GetBlockSize()) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
             "Broken config for volume %s",
             GetFullPath().Quote().data());
         return false;
@@ -170,8 +172,8 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
 
     if (HasError(error)) {
         if (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD) {
-            auto status =
-                static_cast<NKikimrScheme::EStatus>(STATUS_FROM_CODE(error.GetCode()));
+            auto status = static_cast<NKikimrScheme::EStatus>(
+                STATUS_FROM_CODE(error.GetCode()));
             // TODO: return E_NOT_FOUND instead of StatusPathDoesNotExist
 
             LOG_TRACE(
@@ -220,7 +222,8 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
             std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
                 MakeError(
                     E_INVALID_STATE,
-                    TStringBuilder() << "Described path is not a blockstore volume: "
+                    TStringBuilder()
+                        << "Described path is not a blockstore volume: "
                         << GetFullPath().Quote()),
                 GetFullPath()));
         return;
@@ -284,7 +287,9 @@ void TDescribeVolumeActor::HandleWakeup(
 {
     Y_UNUSED(ev);
 
-    LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::SS_PROXY,
         "Describe request timed out for volume %s",
         GetFullPath().Quote().data());
 
@@ -292,10 +297,8 @@ void TDescribeVolumeActor::HandleWakeup(
         MakeError(
             E_TIMEOUT,
             TStringBuilder() << "DescribeVolume timeout for volume: "
-                << GetFullPath().Quote()
-        ),
-        GetFullPath()
-    );
+                             << GetFullPath().Quote()),
+        GetFullPath());
 
     ReplyAndDie(ctx, std::move(response));
 }
@@ -303,7 +306,9 @@ void TDescribeVolumeActor::HandleWakeup(
 STFUNC(TDescribeVolumeActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvDescribeSchemeResponse, HandleDescribeSchemeResponse);
+        HFunc(
+            TEvSSProxy::TEvDescribeSchemeResponse,
+            HandleDescribeSchemeResponse);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
@@ -326,10 +331,8 @@ void TSSProxyActor::HandleDescribeVolume(
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     NCloud::Register<TDescribeVolumeActor>(
         ctx,

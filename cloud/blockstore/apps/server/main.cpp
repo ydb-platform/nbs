@@ -37,19 +37,19 @@ int main(int argc, char** argv)
 
     auto serverModuleFactories =
         std::make_shared<NServer::TServerModuleFactories>();
-    serverModuleFactories->LogbrokerServiceFactory = [] (
-        NLogbroker::TLogbrokerConfigPtr config,
-        NCloud::ILoggingServicePtr logging)
+    serverModuleFactories->LogbrokerServiceFactory =
+        [](NLogbroker::TLogbrokerConfigPtr config,
+           NCloud::ILoggingServicePtr logging)
     {
         Y_UNUSED(config);
         return NLogbroker::CreateServiceNull(logging);
     };
 
-    serverModuleFactories->IamClientFactory = [] (
-        NCloud::NIamClient::TIamClientConfigPtr config,
-        NCloud::ILoggingServicePtr logging,
-        NCloud::ISchedulerPtr scheduler,
-        NCloud::ITimerPtr timer)
+    serverModuleFactories->IamClientFactory =
+        [](NCloud::NIamClient::TIamClientConfigPtr config,
+           NCloud::ILoggingServicePtr logging,
+           NCloud::ISchedulerPtr scheduler,
+           NCloud::ITimerPtr timer)
     {
         Y_UNUSED(config);
         Y_UNUSED(logging);
@@ -58,9 +58,8 @@ int main(int argc, char** argv)
         return NCloud::NIamClient::CreateIamTokenClientStub();
     };
 
-    serverModuleFactories->ComputeClientFactory = [] (
-        NProto::TGrpcClientConfig config,
-        NCloud::ILoggingServicePtr logging)
+    serverModuleFactories->ComputeClientFactory =
+        [](NProto::TGrpcClientConfig config, NCloud::ILoggingServicePtr logging)
     {
         if (config.GetAddress()) {
             return NCloud::NBlockStore::CreateComputeClient(
@@ -71,9 +70,8 @@ int main(int argc, char** argv)
         return NCloud::NBlockStore::CreateComputeClientStub();
     };
 
-    serverModuleFactories->KmsClientFactory = [] (
-        NProto::TGrpcClientConfig config,
-        NCloud::ILoggingServicePtr logging)
+    serverModuleFactories->KmsClientFactory =
+        [](NProto::TGrpcClientConfig config, NCloud::ILoggingServicePtr logging)
     {
         if (config.GetAddress()) {
             return NCloud::NBlockStore::CreateKmsClient(
@@ -84,9 +82,9 @@ int main(int argc, char** argv)
         return NCloud::NBlockStore::CreateKmsClientStub();
     };
 
-    serverModuleFactories->RootKmsClientFactory = [] (
-        const NProto::TRootKmsConfig& config,
-        NCloud::ILoggingServicePtr logging)
+    serverModuleFactories->RootKmsClientFactory =
+        [](const NProto::TRootKmsConfig& config,
+           NCloud::ILoggingServicePtr logging)
     {
         if (config.GetAddress()) {
             return NCloud::NBlockStore::CreateRootKmsClient(
@@ -100,9 +98,9 @@ int main(int argc, char** argv)
         return NCloud::NBlockStore::CreateRootKmsClientStub();
     };
 
-    serverModuleFactories->TraceServiceClientFactory = [] (
-        ::NCloud::NProto::TGrpcClientConfig config,
-        NCloud::ILoggingServicePtr logging)
+    serverModuleFactories->TraceServiceClientFactory =
+        [](::NCloud::NProto::TGrpcClientConfig config,
+           NCloud::ILoggingServicePtr logging)
     {
         if (config.GetAddress()) {
             return NCloud::CreateTraceServiceClient(
@@ -113,21 +111,20 @@ int main(int argc, char** argv)
         return NCloud::CreateTraceServiceClientStub();
     };
 
-    serverModuleFactories->SpdkFactory = [] (
-        NSpdk::TSpdkEnvConfigPtr config)
+    serverModuleFactories->SpdkFactory = [](NSpdk::TSpdkEnvConfigPtr config)
     {
         Y_UNUSED(config);
-        return NServer::TSpdkParts {
+        return NServer::TSpdkParts{
             .Env = NSpdk::CreateEnvStub(),
             .VhostCallbacks = {},
             .LogInitializer = {},
         };
     };
 
-    serverModuleFactories->RdmaClientFactory = [] (
-        NCloud::ILoggingServicePtr logging,
-        NCloud::IMonitoringServicePtr monitoring,
-        NRdma::TClientConfigPtr config)
+    serverModuleFactories->RdmaClientFactory =
+        [](NCloud::ILoggingServicePtr logging,
+           NCloud::IMonitoringServicePtr monitoring,
+           NRdma::TClientConfigPtr config)
     {
         return NRdma::CreateClient(
             NRdma::NVerbs::CreateVerbs(),
@@ -136,10 +133,10 @@ int main(int argc, char** argv)
             std::move(config));
     };
 
-    serverModuleFactories->RdmaServerFactory = [] (
-        NCloud::ILoggingServicePtr logging,
-        NCloud::IMonitoringServicePtr monitoring,
-        NRdma::TServerConfigPtr config)
+    serverModuleFactories->RdmaServerFactory =
+        [](NCloud::ILoggingServicePtr logging,
+           NCloud::IMonitoringServicePtr monitoring,
+           NRdma::TServerConfigPtr config)
     {
         return NRdma::CreateServer(
             NRdma::NVerbs::CreateVerbs(),

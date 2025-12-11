@@ -7,11 +7,11 @@
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/logoblob.h>
 #include <contrib/ydb/core/base/tablet.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
+
 #include <library/cpp/json/json_reader.h>
 
 #include <util/string/builder.h>
@@ -42,9 +42,7 @@ private:
     TTabletStorageInfoPtr StorageInfo;
 
 public:
-    TResetTabletActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TResetTabletActionActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -70,8 +68,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TResetTabletActionActor::TResetTabletActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -80,7 +78,9 @@ void TResetTabletActionActor::Bootstrap(const TActorContext& ctx)
 {
     NJson::TJsonValue input;
     if (!NJson::ReadJsonTree(Input, &input, false)) {
-        HandleError(ctx, MakeError(E_ARGUMENT, "Input should be in JSON format"));
+        HandleError(
+            ctx,
+            MakeError(E_ARGUMENT, "Input should be in JSON format"));
         return;
     }
 
@@ -139,7 +139,8 @@ void TResetTabletActionActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(error);
 
     LWTRACK(
         ResponseSent_Service,
@@ -175,10 +176,11 @@ void TResetTabletActionActor::HandleResetTabletResult(
 {
     const auto* msg = ev->Get();
 
-    HandleSuccess(ctx, TStringBuilder()
-        << "{ \"Status\": \""
-        << NKikimrProto::EReplyStatus_Name(msg->Status)
-        << "\" }");
+    HandleSuccess(
+        ctx,
+        TStringBuilder() << "{ \"Status\": \""
+                         << NKikimrProto::EReplyStatus_Name(msg->Status)
+                         << "\" }");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -186,7 +188,9 @@ void TResetTabletActionActor::HandleResetTabletResult(
 STFUNC(TResetTabletActionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvHiveProxy::TEvGetStorageInfoResponse, HandleGetStorageInfoResponse);
+        HFunc(
+            TEvHiveProxy::TEvGetStorageInfoResponse,
+            HandleGetStorageInfoResponse);
         HFunc(TEvTablet::TEvResetTabletResult, HandleResetTabletResult);
 
         default:

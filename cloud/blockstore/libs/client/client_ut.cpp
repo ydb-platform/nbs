@@ -1,11 +1,12 @@
-#include "session.h"
-
 #include "client.h"
+
 #include "config.h"
+#include "session.h"
 
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service_test.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -27,7 +28,8 @@ using namespace NThreading;
 
 Y_UNIT_TEST_SUITE(TClientTest)
 {
-    Y_UNIT_TEST(ShouldReturnNotImplementedErrorStatusCodeForUnsupportedRequestsFromDataEndpoint)
+    Y_UNIT_TEST(
+        ShouldReturnNotImplementedErrorStatusCodeForUnsupportedRequestsFromDataEndpoint)
     {
         TPortManager portManager;
         ui16 dataPort = portManager.GetPort(9001);
@@ -52,10 +54,11 @@ Y_UNIT_TEST_SUITE(TClientTest)
 
         client->Start();
         clientEndpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             clientEndpoint->Stop();
             client->Stop();
-        };
+        }
 
         auto futurePing = clientEndpoint->Ping(
             MakeIntrusive<TCallContext>(),

@@ -60,7 +60,8 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleUpdateTabletBootInfoBackup(
-        const TEvHiveProxyPrivate::TEvUpdateTabletBootInfoBackupRequest::TPtr& ev,
+        const TEvHiveProxyPrivate::TEvUpdateTabletBootInfoBackupRequest::TPtr&
+            ev,
         const NActors::TActorContext& ctx);
 
     void HandleBackupTabletBootInfos(

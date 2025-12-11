@@ -43,14 +43,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
 
-        tablet.UpdateConfig({ .CloudId = "xxx" });
+        tablet.UpdateConfig({.CloudId = "xxx"});
         UNIT_ASSERT_VALUES_EQUAL(0, tabletUpdateConfigCounter->Val());
 
         constexpr ui32 newChannelCount = DefaultChannelCount + 4;
-        tablet.UpdateConfig({
-            .CloudId = "xxx",
-            .ChannelCount = newChannelCount,
-            .StorageMediaKind = NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD});
+        tablet.UpdateConfig(
+            {.CloudId = "xxx",
+             .ChannelCount = newChannelCount,
+             .StorageMediaKind =
+                 NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD});
         UNIT_ASSERT_VALUES_EQUAL(0, tabletUpdateConfigCounter->Val());
         {
             auto stats = GetStorageStats(tablet);
@@ -86,36 +87,36 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
         constexpr ui32 maxWriteIops = 15;
         constexpr ui64 maxReadBandwidth = 20;
         constexpr ui64 maxWriteBandwidth = 25;
-        constexpr ui32 boostTime = 1'000; // 1 second
-        constexpr ui32 boostRefillTime = 5'000; // 5 seconds
+        constexpr ui32 boostTime = 1'000;         // 1 second
+        constexpr ui32 boostRefillTime = 5'000;   // 5 seconds
         constexpr ui32 boostPercentage = 75;
         constexpr ui64 maxPostponedWeight = 16_MB;
         constexpr ui32 maxWriteCostMultiplier = 15;
-        constexpr ui32 maxPostponedTime = 7'000; // 7 seconds
+        constexpr ui32 maxPostponedTime = 7'000;   // 7 seconds
         constexpr ui32 maxPostponedCount = 128;
         constexpr ui32 burstPercentage = 35;
         constexpr ui64 defaultPostponedRequestWeight = 3;
 
-        tablet.UpdateConfig({
-            .FileSystemId = "test_filesystem",
-            .CloudId = "test_cloud",
-            .FolderId = "test_folder",
-            .PerformanceProfile = {
-                .ThrottlingEnabled = throttlingEnabled,
-                .MaxReadIops = maxReadIops,
-                .MaxWriteIops = maxWriteIops,
-                .MaxReadBandwidth = maxReadBandwidth,
-                .MaxWriteBandwidth = maxWriteBandwidth,
-                .BoostTime = boostTime,
-                .BoostRefillTime = boostRefillTime,
-                .BoostPercentage = boostPercentage,
-                .MaxPostponedWeight = maxPostponedWeight,
-                .MaxWriteCostMultiplier = maxWriteCostMultiplier,
-                .MaxPostponedTime = maxPostponedTime,
-                .MaxPostponedCount = maxPostponedCount,
-                .BurstPercentage = burstPercentage,
-                .DefaultPostponedRequestWeight = defaultPostponedRequestWeight
-            }});
+        tablet.UpdateConfig(
+            {.FileSystemId = "test_filesystem",
+             .CloudId = "test_cloud",
+             .FolderId = "test_folder",
+             .PerformanceProfile = {
+                 .ThrottlingEnabled = throttlingEnabled,
+                 .MaxReadIops = maxReadIops,
+                 .MaxWriteIops = maxWriteIops,
+                 .MaxReadBandwidth = maxReadBandwidth,
+                 .MaxWriteBandwidth = maxWriteBandwidth,
+                 .BoostTime = boostTime,
+                 .BoostRefillTime = boostRefillTime,
+                 .BoostPercentage = boostPercentage,
+                 .MaxPostponedWeight = maxPostponedWeight,
+                 .MaxWriteCostMultiplier = maxWriteCostMultiplier,
+                 .MaxPostponedTime = maxPostponedTime,
+                 .MaxPostponedCount = maxPostponedCount,
+                 .BurstPercentage = burstPercentage,
+                 .DefaultPostponedRequestWeight =
+                     defaultPostponedRequestWeight}});
 
         auto performanceProfile =
             GetFileSystemConfig(tablet).GetPerformanceProfile();
@@ -134,9 +135,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
         UNIT_ASSERT_VALUES_EQUAL(
             maxWriteBandwidth,
             performanceProfile.GetMaxWriteBandwidth());
-        UNIT_ASSERT_VALUES_EQUAL(
-            boostTime,
-            performanceProfile.GetBoostTime());
+        UNIT_ASSERT_VALUES_EQUAL(boostTime, performanceProfile.GetBoostTime());
         UNIT_ASSERT_VALUES_EQUAL(
             boostRefillTime,
             performanceProfile.GetBoostRefillTime());
@@ -180,25 +179,22 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
             "AppCriticalEvents/TabletUpdateConfigError",
             true);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId, {
-            .ChannelCount = channelCount
-        });
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            {.ChannelCount = channelCount});
 
         // Should return OK status due to schemeshard exotic behaviour.
-        tablet.UpdateConfig({
-            .BlockSize = 4 * 4096, .ChannelCount = channelCount
-        });
+        tablet.UpdateConfig(
+            {.BlockSize = 4 * 4096, .ChannelCount = channelCount});
         UNIT_ASSERT_VALUES_EQUAL(1, tabletUpdateConfigCounter->Val());
 
         // BlockCount can actually be decreased without problems
-        tablet.UpdateConfig({
-            .BlockCount = 1, .ChannelCount = channelCount
-        });
+        tablet.UpdateConfig({.BlockCount = 1, .ChannelCount = channelCount});
         UNIT_ASSERT_VALUES_EQUAL(1, tabletUpdateConfigCounter->Val());
 
-        tablet.UpdateConfig({
-            .ChannelCount = channelCount - 1
-        });
+        tablet.UpdateConfig({.ChannelCount = channelCount - 1});
         UNIT_ASSERT_VALUES_EQUAL(2, tabletUpdateConfigCounter->Val());
         {
             auto stats = GetStorageStats(tablet);
@@ -227,7 +223,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
         auto response = tablet.GetStorageConfig();
         UNIT_ASSERT_VALUES_EQUAL(
             true,
-            response->Record.GetStorageConfig().GetMultiTabletForwardingEnabled());
+            response->Record.GetStorageConfig()
+                .GetMultiTabletForwardingEnabled());
     }
 
     Y_UNIT_TEST(ShouldNotifyServiceWhenFileSystemConfigChanged)
@@ -254,7 +251,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
                             break;
                         }
                         if (msg->IsShard) {
-                           ++registerShardCount;
+                            ++registerShardCount;
                         } else {
                             ++registerNonShardCount;
                         }

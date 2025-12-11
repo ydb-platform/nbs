@@ -1,6 +1,7 @@
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/storage/api/volume.h>
+
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
 #include <util/string/builder.h>
@@ -83,9 +84,9 @@ TString LogDevice(const NProto::TDeviceConfig& device)
 ////////////////////////////////////////////////////////////////////////////////
 
 TDeviceRequestBuilder::TDeviceRequestBuilder(
-        const TVector<TDeviceRequest>& deviceRequests,
-        const ui32 blockSize,
-        NProto::TWriteBlocksRequest& request)
+    const TVector<TDeviceRequest>& deviceRequests,
+    const ui32 blockSize,
+    NProto::TWriteBlocksRequest& request)
     : DeviceRequests(deviceRequests)
     , BlockSize(blockSize)
     , Request(request)

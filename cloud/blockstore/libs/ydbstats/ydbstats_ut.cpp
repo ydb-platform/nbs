@@ -1,14 +1,13 @@
-#include "ydbauth.h"
-#include "ydbrow.h"
 #include "ydbstats.h"
 
 #include "config.h"
-#include "ydbstorage.h"
+#include "ydbauth.h"
+#include "ydbrow.h"
 #include "ydbscheme.h"
-
-#include <cloud/storage/core/libs/diagnostics/logging.h>
+#include "ydbstorage.h"
 
 #include <cloud/storage/core/libs/common/scheduler_test.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -79,11 +78,10 @@ TStatsTableSchemePtr CreateStatsTestScheme(TDuration ttl)
 {
     TStatsTableSchemeBuilder out;
     static TVector<std::pair<TString, NYdb::EPrimitiveType>> columns = {
-        {"DiskId",      NYdb::EPrimitiveType::Utf8  },
-        {"Timestamp",   NYdb::EPrimitiveType::Utf8  },
-        {"UintField",   NYdb::EPrimitiveType::Uint64},
-        {"DoubleField", NYdb::EPrimitiveType::Double}
-    };
+        {"DiskId", NYdb::EPrimitiveType::Utf8},
+        {"Timestamp", NYdb::EPrimitiveType::Utf8},
+        {"UintField", NYdb::EPrimitiveType::Uint64},
+        {"DoubleField", NYdb::EPrimitiveType::Double}};
     out.SetKeyColumns({"DiskId"});
     out.AddColumns(columns);
     if (ttl) {
@@ -109,8 +107,8 @@ TStatsTableSchemePtr CreateMetricsTestScheme()
 {
     TStatsTableSchemeBuilder out;
     static TVector<std::pair<TString, NYdb::EPrimitiveType>> columns = {
-        {"HostName",       NYdb::EPrimitiveType::String},
-        {"Timestamp",      NYdb::EPrimitiveType::Timestamp},
+        {"HostName", NYdb::EPrimitiveType::String},
+        {"Timestamp", NYdb::EPrimitiveType::Timestamp},
         {"ThroughputData", NYdb::EPrimitiveType::Json},
     };
     out.SetKeyColumns({"DiskId"});
@@ -122,12 +120,11 @@ TStatsTableSchemePtr CreateNewStatsTestScheme(TDuration ttl)
 {
     TStatsTableSchemeBuilder out;
     static TVector<std::pair<TString, NYdb::EPrimitiveType>> columns = {
-        {"DiskId",      NYdb::EPrimitiveType::Utf8  },
-        {"Timestamp",   NYdb::EPrimitiveType::Utf8  },
-        {"UintField",   NYdb::EPrimitiveType::Uint64},
+        {"DiskId", NYdb::EPrimitiveType::Utf8},
+        {"Timestamp", NYdb::EPrimitiveType::Utf8},
+        {"UintField", NYdb::EPrimitiveType::Uint64},
         {"DoubleField", NYdb::EPrimitiveType::Double},
-        {"NewField",    NYdb::EPrimitiveType::Uint64}
-    };
+        {"NewField", NYdb::EPrimitiveType::Uint64}};
     out.SetKeyColumns({"DiskId"});
     out.AddColumns(columns);
     if (ttl) {
@@ -148,12 +145,11 @@ TStatsTableSchemePtr CreateBadStatsTestScheme()
 {
     TStatsTableSchemeBuilder out;
     static TVector<std::pair<TString, NYdb::EPrimitiveType>> columns = {
-        {"DiskId",      NYdb::EPrimitiveType::Utf8  },
-        {"Timestamp",   NYdb::EPrimitiveType::Utf8  },
-        {"UintField",   NYdb::EPrimitiveType::Double},
+        {"DiskId", NYdb::EPrimitiveType::Utf8},
+        {"Timestamp", NYdb::EPrimitiveType::Utf8},
+        {"UintField", NYdb::EPrimitiveType::Double},
         {"DoubleField", NYdb::EPrimitiveType::Double},
-        {"NewField",    NYdb::EPrimitiveType::Uint64}
-    };
+        {"NewField", NYdb::EPrimitiveType::Uint64}};
     out.SetKeyColumns({"DiskId"});
     out.AddColumns(columns);
     return out.Finish();
@@ -168,11 +164,10 @@ TStatsTableSchemePtr CreateHistoryTestScheme()
 {
     TStatsTableSchemeBuilder out;
     static TVector<std::pair<TString, NYdb::EPrimitiveType>> columns = {
-        {"DiskId",      NYdb::EPrimitiveType::Utf8  },
-        {"Timestamp",   NYdb::EPrimitiveType::Utf8  },
-        {"UintField",   NYdb::EPrimitiveType::Uint64},
-        {"DoubleField", NYdb::EPrimitiveType::Double}
-    };
+        {"DiskId", NYdb::EPrimitiveType::Utf8},
+        {"Timestamp", NYdb::EPrimitiveType::Utf8},
+        {"UintField", NYdb::EPrimitiveType::Uint64},
+        {"DoubleField", NYdb::EPrimitiveType::Double}};
     out.SetKeyColumns({"DiskId", "Timestamp"});
     out.AddColumns(columns);
     return out.Finish();
@@ -182,12 +177,11 @@ TStatsTableSchemePtr CreateNewHistoryTestScheme()
 {
     TStatsTableSchemeBuilder out;
     static TVector<std::pair<TString, NYdb::EPrimitiveType>> columns = {
-        {"DiskId",      NYdb::EPrimitiveType::Utf8  },
-        {"Timestamp",   NYdb::EPrimitiveType::Utf8  },
-        {"UintField",   NYdb::EPrimitiveType::Uint64},
+        {"DiskId", NYdb::EPrimitiveType::Utf8},
+        {"Timestamp", NYdb::EPrimitiveType::Utf8},
+        {"UintField", NYdb::EPrimitiveType::Uint64},
         {"DoubleField", NYdb::EPrimitiveType::Double},
-        {"NewField",    NYdb::EPrimitiveType::Uint64}
-    };
+        {"NewField", NYdb::EPrimitiveType::Uint64}};
     out.SetKeyColumns({"DiskId", "Timestamp"});
     out.AddColumns(columns);
     return out.Finish();
@@ -197,12 +191,11 @@ TStatsTableSchemePtr CreateBadHistoryTestScheme()
 {
     TStatsTableSchemeBuilder out;
     static TVector<std::pair<TString, NYdb::EPrimitiveType>> columns = {
-        {"DiskId",      NYdb::EPrimitiveType::Utf8  },
-        {"Timestamp",   NYdb::EPrimitiveType::Utf8  },
-        {"UintField",   NYdb::EPrimitiveType::Double},
+        {"DiskId", NYdb::EPrimitiveType::Utf8},
+        {"Timestamp", NYdb::EPrimitiveType::Utf8},
+        {"UintField", NYdb::EPrimitiveType::Double},
         {"DoubleField", NYdb::EPrimitiveType::Double},
-        {"NewField",    NYdb::EPrimitiveType::Uint64}
-    };
+        {"NewField", NYdb::EPrimitiveType::Uint64}};
     out.SetKeyColumns({"DiskId", "Timestamp"});
     out.AddColumns(columns);
     return out.Finish();
@@ -315,16 +308,15 @@ NYdbStats::TYdbPartitionRow BuildTestPartitions()
 NYdbStats::TYdbRowData BuildTestYdbRowData()
 {
     return {
-        { BuildTestStats() },
-        { BuildTestMetrics() },
-        { BuildTestGroups() },
-        { BuildTestPartitions() }};
+        {BuildTestStats()},
+        {BuildTestMetrics()},
+        {BuildTestGroups()},
+        {BuildTestPartitions()}};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TYdbTestStorage final
-    : public IYdbStorage
+class TYdbTestStorage final: public IYdbStorage
 {
 private:
     TYdbStatsConfigPtr Config;
@@ -347,16 +339,13 @@ public:
 public:
     TYdbTestStorage(TYdbStatsConfigPtr config)
         : Config(std::move(config))
-    {
-    }
+    {}
 
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 
     void AddTable(const TString& name, TStatsTableSchemePtr scheme)
     {
@@ -368,14 +357,18 @@ public:
         const TVector<TTableStat>& historyTables,
         bool statTable)
     {
-        for (const auto& t : historyTables) {
-            Tables.emplace(t.first + "-" + t.second.FormatLocalTime("%F"), tableSchemes.History);
+        for (const auto& t: historyTables) {
+            Tables.emplace(
+                t.first + "-" + t.second.FormatLocalTime("%F"),
+                tableSchemes.History);
         }
         if (statTable) {
             Tables.emplace(Config->GetStatsTableName(), tableSchemes.Stats);
         }
         if (tableSchemes.Metrics) {
-            Tables.emplace(Config->GetBlobLoadMetricsTableName(), tableSchemes.Metrics);
+            Tables.emplace(
+                Config->GetBlobLoadMetricsTableName(),
+                tableSchemes.Metrics);
         }
         if (tableSchemes.Groups) {
             Tables.emplace(Config->GetGroupsTableName(), tableSchemes.Groups);
@@ -391,7 +384,7 @@ public:
     {
         ++GetHistoryTablesCalls;
         TVector<TTableStat> historyTables;
-        for (const auto& e : Tables) {
+        for (const auto& e: Tables) {
             auto time = ExtractTableTime(e.first);
             if (time.Defined()) {
                 historyTables.push_back({e.first, *time});
@@ -406,7 +399,7 @@ public:
         auto it = Tables.find(table);
         if (it != Tables.end()) {
             TVector<NYdb::TColumn> columns;
-            for (const auto& column : it->second->Columns) {
+            for (const auto& column: it->second->Columns) {
                 TTypeBuilder builder;
                 builder.Optional(column.Type);
                 columns.emplace_back(column.Name, builder.Build());
@@ -416,7 +409,8 @@ public:
                 it->second->KeyColumns,
                 it->second->Ttl));
         } else {
-            return MakeFuture(TDescribeTableResponse(MakeError(E_NOT_FOUND, "Table not found")));
+            return MakeFuture(TDescribeTableResponse(
+                MakeError(E_NOT_FOUND, "Table not found")));
         }
     }
 
@@ -442,7 +436,8 @@ public:
             description.GetColumns(),
             description.GetPrimaryKeyColumns(),
             description.GetTtlSettings());
-        std::tie(std::ignore, inserted) = Tables.insert(std::make_pair(table, scheme));
+        std::tie(std::ignore, inserted) =
+            Tables.insert(std::make_pair(table, scheme));
         if (inserted) {
             return MakeFuture(MakeError(S_OK));
         } else {
@@ -461,27 +456,27 @@ public:
         } else {
             auto origColumns = it->second->Columns;
             auto origKeyColumns = it->second->KeyColumns;
-            for (const auto& c : settings.AddColumns_) {
+            for (const auto& c: settings.AddColumns_) {
                 auto it = FindIf(
                     origColumns.begin(),
                     origColumns.end(),
-                    [&] (const NYdb::TColumn& column) {
-                        return c.Name == column.Name;
-                    });
+                    [&](const NYdb::TColumn& column)
+                    { return c.Name == column.Name; });
                 if (it != origColumns.end()) {
-                    return MakeFuture(MakeError(E_ARGUMENT, "Duplicated columns found"));
+                    return MakeFuture(
+                        MakeError(E_ARGUMENT, "Duplicated columns found"));
                 }
                 origColumns.push_back(c);
             }
             Tables.erase(table);
-            Tables.insert({
-                table,
-                std::make_shared<TStatsTableScheme>(
-                    origColumns,
-                    origKeyColumns,
-                    settings.GetAlterTtlSettings().Empty()
-                        ? TMaybe<TTtlSettings>{}
-                        : settings.GetAlterTtlSettings()->GetTtlSettings())});
+            Tables.insert(
+                {table,
+                 std::make_shared<TStatsTableScheme>(
+                     origColumns,
+                     origKeyColumns,
+                     settings.GetAlterTtlSettings().Empty()
+                         ? TMaybe<TTtlSettings>{}
+                         : settings.GetAlterTtlSettings()->GetTtlSettings())});
             return MakeFuture(MakeError(S_OK));
         }
     }
@@ -516,8 +511,7 @@ private:
 
 using TYdbTestStoragePtr = std::shared_ptr<TYdbTestStorage>;
 
-TYdbTestStoragePtr YdbCreateTestStorage(
-    TYdbStatsConfigPtr config)
+TYdbTestStoragePtr YdbCreateTestStorage(TYdbStatsConfigPtr config)
 {
     return std::make_shared<TYdbTestStorage>(std::move(config));
 }
@@ -550,7 +544,7 @@ struct TTestIamTokenClient: public IIamTokenClient
     }
 };
 
-}    // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -568,7 +562,8 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             schemes);
         uploader->Start();
 
-        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
+        auto response =
+            uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(5, ydbTestStorage->CreateTableCalls);
@@ -588,10 +583,13 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
 
         TVector<TTableStat> directory;
         directory.push_back(std::make_pair(TString("test"), TInstant::Now()));
-        directory.push_back(std::make_pair(TString("test"), TInstant::Now() - TDuration::Days(5)));
+        directory.push_back(std::make_pair(
+            TString("test"),
+            TInstant::Now() - TDuration::Days(5)));
         ydbTestStorage->AddTables(schemes, directory, true);
 
-        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
+        auto response =
+            uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == S_OK &&
             ydbTestStorage->CreateTableCalls == 0);
@@ -610,13 +608,13 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         uploader->Start();
 
         TVector<TTableStat> directory;
-        directory.push_back(std::make_pair(TString("test"), TInstant::Now() - TDuration::Days(5)));
-        ydbTestStorage->AddTables(
-            schemes,
-            directory,
-            true);
+        directory.push_back(std::make_pair(
+            TString("test"),
+            TInstant::Now() - TDuration::Days(5)));
+        ydbTestStorage->AddTables(schemes, directory, true);
 
-        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
+        auto response =
+            uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == S_OK &&
             ydbTestStorage->CreateTableCalls == 1);
@@ -637,15 +635,12 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
 
         TVector<TTableStat> directory;
         directory.push_back(std::make_pair(TString("test"), TInstant::Now()));
-        ydbTestStorage->AddTables(
-            schemes,
-            directory,
-            true);
+        ydbTestStorage->AddTables(schemes, directory, true);
 
-        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
+        auto response =
+            uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
         UNIT_ASSERT(
-            response.GetCode() == S_OK &&
-            ydbTestStorage->AlterTableCalls == 2);
+            response.GetCode() == S_OK && ydbTestStorage->AlterTableCalls == 2);
     }
 
     Y_UNIT_TEST(ShouldFailIfAlterChangesTypeOfExistingColumns)
@@ -662,13 +657,13 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         uploader->Start();
 
         TVector<TTableStat> directory;
-        directory.push_back(std::make_pair(TString("test"), TInstant::Now() - TDuration::Days(5)));
-        ydbTestStorage->AddTables(
-            schemes,
-            directory,
-            true);
+        directory.push_back(std::make_pair(
+            TString("test"),
+            TInstant::Now() - TDuration::Days(5)));
+        ydbTestStorage->AddTables(schemes, directory, true);
 
-        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
+        auto response =
+            uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
         UNIT_ASSERT(
             response.GetCode() == E_ARGUMENT &&
             ydbTestStorage->AlterTableCalls == 0);
@@ -687,16 +682,15 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         uploader->Start();
 
         TVector<TTableStat> directory;
-        directory.push_back(std::make_pair(TString("test"), TInstant::Now() - TDuration::Days(5)));
-        ydbTestStorage->AddTables(
-            schemes,
-            directory,
-            true);
+        directory.push_back(std::make_pair(
+            TString("test"),
+            TInstant::Now() - TDuration::Days(5)));
+        ydbTestStorage->AddTables(schemes, directory, true);
 
-        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
+        auto response =
+            uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
         UNIT_ASSERT(
-            response.GetCode() == S_OK &&
-            ydbTestStorage->DropTableCalls == 1);
+            response.GetCode() == S_OK && ydbTestStorage->DropTableCalls == 1);
     }
 
     Y_UNIT_TEST(ShouldUploadData)
@@ -713,7 +707,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             schemes);
         uploader->Start();
 
-        ydbTestStorage->UploadTestFunc = [&] (TString tableName, NYdb::TValue)
+        ydbTestStorage->UploadTestFunc = [&](TString tableName, NYdb::TValue)
         {
             UNIT_ASSERT_C(
                 !tables.contains(tableName),
@@ -723,7 +717,8 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             return MakeFuture(MakeError(S_OK));
         };
 
-        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
+        auto response =
+            uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(6, ydbTestStorage->UpsertCalls);
@@ -731,10 +726,8 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         for (const auto& t: tables) {
             UNIT_ASSERT_C(
                 t.Contains(config->GetDatabaseName()),
-                TStringBuilder() <<
-                    "table path " <<
-                    t <<
-                    " does not contain database name");
+                TStringBuilder()
+                    << "table path " << t << " does not contain database name");
         }
     }
 
@@ -750,7 +743,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             schemes);
         uploader->Start();
 
-        ydbTestStorage->UploadTestFunc = [&] (TString, NYdb::TValue)
+        ydbTestStorage->UploadTestFunc = [&](TString, NYdb::TValue)
         {
             if (ydbTestStorage->UpsertCalls == 1) {
                 return MakeFuture(MakeError(S_OK));
@@ -761,7 +754,8 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             return MakeFuture(MakeError(E_FAIL));
         };
 
-        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
+        auto response =
+            uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(6, ydbTestStorage->UpsertCalls);
@@ -771,9 +765,7 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
     {
         auto statsTtl = TDuration::Seconds(1);
         auto archiveStatsTtl = TDuration::Seconds(2);
-        auto config = CreateTestConfig(
-            statsTtl,
-            archiveStatsTtl);
+        auto config = CreateTestConfig(statsTtl, archiveStatsTtl);
         auto schemes = CreateTestSchemes(statsTtl, archiveStatsTtl);
         auto ydbTestStorage = YdbCreateTestStorage(config);
         auto uploader = CreateYdbVolumesStatsUploader(
@@ -783,39 +775,48 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             schemes);
         uploader->Start();
 
-        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
+        auto response =
+            uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(6, ydbTestStorage->CreateTableCalls);
 
         {
-            auto response = ydbTestStorage->DescribeTable("test").GetValueSync();
+            auto response =
+                ydbTestStorage->DescribeTable("test").GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response.Error.GetCode());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 "DiskId",
-                response.TableScheme.Ttl->GetValueSinceUnixEpoch().GetColumnName());
+                response.TableScheme.Ttl->GetValueSinceUnixEpoch()
+                    .GetColumnName());
             UNIT_ASSERT_VALUES_EQUAL(
                 NTable::TTtlSettings::EUnit::MilliSeconds,
-                response.TableScheme.Ttl->GetValueSinceUnixEpoch().GetColumnUnit());
+                response.TableScheme.Ttl->GetValueSinceUnixEpoch()
+                    .GetColumnUnit());
             UNIT_ASSERT_VALUES_EQUAL(
                 statsTtl,
-                response.TableScheme.Ttl->GetValueSinceUnixEpoch().GetExpireAfter());
+                response.TableScheme.Ttl->GetValueSinceUnixEpoch()
+                    .GetExpireAfter());
         }
 
         {
-            auto response = ydbTestStorage->DescribeTable("arctest").GetValueSync();
+            auto response =
+                ydbTestStorage->DescribeTable("arctest").GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response.Error.GetCode());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 "DiskId",
-                response.TableScheme.Ttl->GetValueSinceUnixEpoch().GetColumnName());
+                response.TableScheme.Ttl->GetValueSinceUnixEpoch()
+                    .GetColumnName());
             UNIT_ASSERT_VALUES_EQUAL(
                 NTable::TTtlSettings::EUnit::MilliSeconds,
-                response.TableScheme.Ttl->GetValueSinceUnixEpoch().GetColumnUnit());
+                response.TableScheme.Ttl->GetValueSinceUnixEpoch()
+                    .GetColumnUnit());
             UNIT_ASSERT_VALUES_EQUAL(
                 archiveStatsTtl,
-                response.TableScheme.Ttl->GetValueSinceUnixEpoch().GetExpireAfter());
+                response.TableScheme.Ttl->GetValueSinceUnixEpoch()
+                    .GetExpireAfter());
         }
     }
 
@@ -823,16 +824,15 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
     {
         auto statsTtl = TDuration::Seconds(1);
         auto archiveStatsTtl = TDuration::Seconds(2);
-        auto config = CreateTestConfig(
-            statsTtl,
-            archiveStatsTtl);
+        auto config = CreateTestConfig(statsTtl, archiveStatsTtl);
 
         auto statsScheme = CreateStatsTestScheme(statsTtl);
         auto historyScheme = CreateHistoryTestScheme();
         auto statsNewScheme = CreateStatsTestScheme();
         auto historyNewScheme = CreateNewHistoryTestScheme();
         auto archiveScheme = CreateNewArchiveStatsTestScheme(statsTtl);
-        auto archiveNewScheme = CreateNewArchiveStatsTestScheme(archiveStatsTtl);
+        auto archiveNewScheme =
+            CreateNewArchiveStatsTestScheme(archiveStatsTtl);
         auto metricsScheme = CreateMetricsTestScheme();
         auto groupsScheme = CreateGroupsTestScheme();
         auto partitionsScheme = CreatePartitionsTestScheme();
@@ -865,39 +865,47 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
             true);
         ydbTestStorage->AddTable("arctest", archiveScheme);
 
-        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
+        auto response =
+            uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
         UNIT_ASSERT(
-            response.GetCode() == S_OK &&
-            ydbTestStorage->AlterTableCalls == 1);
+            response.GetCode() == S_OK && ydbTestStorage->AlterTableCalls == 1);
 
         {
-            auto response = ydbTestStorage->DescribeTable("test").GetValueSync();
+            auto response =
+                ydbTestStorage->DescribeTable("test").GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response.Error.GetCode());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 "DiskId",
-                response.TableScheme.Ttl->GetValueSinceUnixEpoch().GetColumnName());
+                response.TableScheme.Ttl->GetValueSinceUnixEpoch()
+                    .GetColumnName());
             UNIT_ASSERT_VALUES_EQUAL(
                 NTable::TTtlSettings::EUnit::MilliSeconds,
-                response.TableScheme.Ttl->GetValueSinceUnixEpoch().GetColumnUnit());
+                response.TableScheme.Ttl->GetValueSinceUnixEpoch()
+                    .GetColumnUnit());
             UNIT_ASSERT_VALUES_EQUAL(
                 statsTtl,
-                response.TableScheme.Ttl->GetValueSinceUnixEpoch().GetExpireAfter());
+                response.TableScheme.Ttl->GetValueSinceUnixEpoch()
+                    .GetExpireAfter());
         }
 
         {
-            auto response = ydbTestStorage->DescribeTable("arctest").GetValueSync();
+            auto response =
+                ydbTestStorage->DescribeTable("arctest").GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response.Error.GetCode());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 "DiskId",
-                response.TableScheme.Ttl->GetValueSinceUnixEpoch().GetColumnName());
+                response.TableScheme.Ttl->GetValueSinceUnixEpoch()
+                    .GetColumnName());
             UNIT_ASSERT_VALUES_EQUAL(
                 NTable::TTtlSettings::EUnit::MilliSeconds,
-                response.TableScheme.Ttl->GetValueSinceUnixEpoch().GetColumnUnit());
+                response.TableScheme.Ttl->GetValueSinceUnixEpoch()
+                    .GetColumnUnit());
             UNIT_ASSERT_VALUES_EQUAL(
                 statsTtl,
-                response.TableScheme.Ttl->GetValueSinceUnixEpoch().GetExpireAfter());
+                response.TableScheme.Ttl->GetValueSinceUnixEpoch()
+                    .GetExpireAfter());
         }
     }
 }

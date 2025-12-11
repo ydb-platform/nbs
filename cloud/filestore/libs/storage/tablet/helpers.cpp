@@ -19,7 +19,8 @@ const THashSet<TString> AllowedXAttrNamespace = {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TNode CreateAttrs(NProto::ENodeType type, int mode, ui64 size, ui64 uid, ui64 gid)
+NProto::TNode
+CreateAttrs(NProto::ENodeType type, int mode, ui64 size, ui64 uid, ui64 gid)
 {
     ui64 now = MicroSeconds();
 
@@ -37,7 +38,7 @@ NProto::TNode CreateAttrs(NProto::ENodeType type, int mode, ui64 size, ui64 uid,
     return node;
 }
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -146,8 +147,7 @@ NProto::TError ValidateNodeName(const TString& name)
     static constexpr TStringBuf DotDot = "..";
 
     if (name.empty() || name == Dot || name == DotDot ||
-        name.find('\0') != TString::npos ||
-        name.find('/') != TString::npos)
+        name.find('\0') != TString::npos || name.find('/') != TString::npos)
     {
         return ErrorInvalidArgument("invalid name");
     }
@@ -200,9 +200,7 @@ NProto::TError ValidateRange(TByteRange byteRange, ui32 maxFileBlocks)
     return {};
 }
 
-void Convert(
-    const NKikimrFileStore::TConfig& src,
-    NProto::TFileSystem& dst)
+void Convert(const NKikimrFileStore::TConfig& src, NProto::TFileSystem& dst)
 {
     for (size_t i = 0; i < src.ExplicitChannelProfilesSize(); ++i) {
         const auto& tmpSrc = src.GetExplicitChannelProfiles(i);
@@ -239,8 +237,7 @@ void Convert(
             src.GetPerformanceProfileMaxWriteIops());
         performanceProfile.SetMaxWriteBandwidth(
             src.GetPerformanceProfileMaxWriteBandwidth());
-        performanceProfile.SetBoostTime(
-            src.GetPerformanceProfileBoostTime());
+        performanceProfile.SetBoostTime(src.GetPerformanceProfileBoostTime());
         performanceProfile.SetBoostRefillTime(
             src.GetPerformanceProfileBoostRefillTime());
         performanceProfile.SetBoostPercentage(
@@ -324,9 +321,7 @@ void Convert(
     }
 }
 
-bool IsLockingAllowed(
-    const TSessionHandle* handle,
-    const TLockRange& range)
+bool IsLockingAllowed(const TSessionHandle* handle, const TLockRange& range)
 {
     if (range.LockOrigin == ELockOrigin::Flock) {
         return true;
@@ -338,13 +333,11 @@ bool IsLockingAllowed(
             HasFlag(flags, NProto::TCreateHandleRequest::E_WRITE));
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 ELockOrigin ConvertToImpl(NProto::ELockOrigin source, TTag<ELockOrigin>)
 {
-    switch (source)
-    {
+    switch (source) {
         case NProto::E_FLOCK:
             return ELockOrigin::Flock;
         default:
@@ -354,8 +347,7 @@ ELockOrigin ConvertToImpl(NProto::ELockOrigin source, TTag<ELockOrigin>)
 
 NProto::ELockOrigin ConvertToImpl(ELockOrigin source, TTag<NProto::ELockOrigin>)
 {
-    switch (source)
-    {
+    switch (source) {
         case ELockOrigin::Flock:
             return NProto::E_FLOCK;
         case ELockOrigin::Fcntl:
@@ -367,8 +359,7 @@ NProto::ELockOrigin ConvertToImpl(ELockOrigin source, TTag<NProto::ELockOrigin>)
 
 ELockMode ConvertToImpl(NProto::ELockType source, TTag<ELockMode>)
 {
-    switch(source)
-    {
+    switch (source) {
         case NProto::ELockType::E_EXCLUSIVE:
             return ELockMode::Exclusive;
         case NProto::ELockType::E_SHARED:
@@ -382,8 +373,7 @@ ELockMode ConvertToImpl(NProto::ELockType source, TTag<ELockMode>)
 
 NProto::ELockType ConvertToImpl(ELockMode source, TTag<NProto::ELockType>)
 {
-    switch (source)
-    {
+    switch (source) {
         case ELockMode::Shared:
             return NProto::ELockType::E_SHARED;
         case ELockMode::Exclusive:

@@ -1,5 +1,7 @@
 #include "https.h"
 
+#include <contrib/libs/curl/include/curl/curl.h>
+
 #include <library/cpp/http/io/headers.h>
 
 #include <util/datetime/base.h>
@@ -15,8 +17,6 @@
 #include <util/system/thread.h>
 #include <util/thread/factory.h>
 #include <util/thread/lfstack.h>
-
-#include <contrib/libs/curl/include/curl/curl.h>
 
 /*
  *  In case there are some performance issues, try the following:
@@ -44,24 +44,21 @@ public:
         switch (what) {
             case CURL_POLL_IN:
                 Set(cookie, sock, CONT_POLL_READ);
-            break;
+                break;
             case CURL_POLL_OUT:
                 Set(cookie, sock, CONT_POLL_WRITE);
-            break;
+                break;
             case CURL_POLL_INOUT:
                 Set(cookie, sock, CONT_POLL_READ | CONT_POLL_WRITE);
-            break;
+                break;
             case CURL_POLL_REMOVE:
                 Remove(sock);
-            break;
+                break;
         }
     }
 
-    size_t WaitD(
-        void** events,
-        int* filters,
-        size_t len,
-        const TInstant deadline)
+    size_t
+    WaitD(void** events, int* filters, size_t len, const TInstant deadline)
     {
         return DoWait(events, filters, len, deadline);
     }
@@ -84,11 +81,8 @@ private:
         return ret;
     }
 
-    inline size_t DoWait(
-        void** ev,
-        int* filters,
-        size_t len,
-        const TInstant deadline)
+    inline size_t
+    DoWait(void** ev, int* filters, size_t len, const TInstant deadline)
     {
         if (len == 1) {
             TEvent tmp;
@@ -191,8 +185,7 @@ struct TEvent
 
     TEvent(curl_socket_t s)
         : Socket(s)
-    {
-    }
+    {}
 };
 
 enum class EHttpMethod
@@ -242,11 +235,8 @@ public:
             THttpHeaders Headers;
         } WriteDataInfo;
 
-        static size_t ReadFunction(
-            char* buffer,
-            size_t size,
-            size_t nitems,
-            void* userdata)
+        static size_t
+        ReadFunction(char* buffer, size_t size, size_t nitems, void* userdata)
         {
             TPostDataInfo* data = static_cast<TPostDataInfo*>(userdata);
             if (data->Cancelled.load()) {
@@ -255,9 +245,9 @@ public:
             if (!size || !nitems) {
                 return 0;
             }
-            size_t len = Min(
-                Min(size_t(data->End - data->Current), size * nitems),
-                size_t(8192));
+            size_t len =
+                Min(Min(size_t(data->End - data->Current), size * nitems),
+                    size_t(8192));
             memcpy(buffer, data->Current, len);
             data->Current += len;
             return len;
@@ -290,11 +280,14 @@ public:
         static curl_socket_t OpenSocketFunction(
             void*,
             curlsocktype purpose,
-            struct curl_sockaddr *address)
+            struct curl_sockaddr* address)
         {
             Y_DEBUG_ABORT_UNLESS(purpose == CURLSOCKTYPE_IPCXN);
             OpenConnections.fetch_add(1);
-            return socket(address->family, address->socktype, address->protocol);
+            return socket(
+                address->family,
+                address->socktype,
+                address->protocol);
         }
 
         static int CloseSocketFunction(void*, curl_socket_t item)
@@ -303,7 +296,7 @@ public:
             return close(item);
         }
 
-        static int SeekFunction(void *userp, curl_off_t offset, int origin)
+        static int SeekFunction(void* userp, curl_off_t offset, int origin)
         {
             TPostDataInfo* data = static_cast<TPostDataInfo*>(userp);
             Y_DEBUG_ABORT_UNLESS(origin == SEEK_SET);
@@ -324,13 +317,13 @@ public:
         THttpsCallback Callback;
 
         TCurlRequestHandle(
-                ui64 id,
-                TImpl& impl,
-                const TString& url,
-                const TString& data,
-                EHttpMethod httpMethod,
-                const THttpHeaders& headers,
-                const THttpsCallback& callback)
+            ui64 id,
+            TImpl& impl,
+            const TString& url,
+            const TString& data,
+            EHttpMethod httpMethod,
+            const THttpHeaders& headers,
+            const THttpsCallback& callback)
             : Id(id)
             , Impl(impl)
             , Url(url)
@@ -338,14 +331,14 @@ public:
             , HttpMethod(httpMethod)
             , Callback(callback)
         {
-
             Headers = curl_slist_append(Headers, "Expect:");
 
             switch (httpMethod) {
                 case EHttpMethod::Get:
                     break;
                 case EHttpMethod::Post: {
-                    TString contentLength = Sprintf("Content-Length: %zu", Data.size());
+                    TString contentLength =
+                        Sprintf("Content-Length: %zu", Data.size());
                     Headers = curl_slist_append(Headers, contentLength.c_str());
 
                     break;
@@ -405,7 +398,7 @@ public:
                 EasySetOpt(Handle, CURLOPT_CAPATH, Impl.CaPath.c_str());
             }
 
-            EasySetOpt(Handle, CURLOPT_SSL_VERIFYPEER, 0);    // XXX
+            EasySetOpt(Handle, CURLOPT_SSL_VERIFYPEER, 0);   // XXX
             EasySetOpt(Handle, CURLOPT_SSL_VERIFYHOST, Impl.VerifyHost);
 
             EasySetOpt(Handle, CURLOPT_VERBOSE, 0);
@@ -443,7 +436,8 @@ public:
         void Cancel()
         {
             bool expected = false;
-            if (PostDataInfo.Cancelled.compare_exchange_strong(expected, true)) {
+            if (PostDataInfo.Cancelled.compare_exchange_strong(expected, true))
+            {
                 return;
             }
             SetError("cancelled");
@@ -489,10 +483,7 @@ public:
         TUserData* userp,
         TEvent* socketp);
 
-    static int TimerFunction(
-        CURLM* multi,
-        long timeoutMs,
-        TInstant* userp);
+    static int TimerFunction(CURLM* multi, long timeoutMs, TInstant* userp);
 
     void InitMultiHolder();
 
@@ -569,7 +560,8 @@ void THttpsClient::TImpl::InitMultiHolder()
     MultiSetOpt(MultiHolder.Handle, CURLMOPT_TIMERDATA, &MultiHolder.Deadline);
 }
 
-void THttpsClient::TImpl::ProcessAddQueue() {
+void THttpsClient::TImpl::ProcessAddQueue()
+{
     if (AddVector.empty()) {
         AddQueue.DequeueAllSingleConsumer(&AddVector);
     }
@@ -600,8 +592,8 @@ void THttpsClient::TImpl::ProcessAddQueue() {
             SocketPoller->AddWait(SignalSockets[0], CURL_POLL_IN, nullptr);
         }
 
-        if ((MultiHolder.Size > 0 && !MultiHolder.Started)
-                || MultiHolder.Deadline == TInstant::Zero())
+        if ((MultiHolder.Size > 0 && !MultiHolder.Started) ||
+            MultiHolder.Deadline == TInstant::Zero())
         {
             auto status = curl_multi_socket_action(
                 MultiHolder.Handle,
@@ -617,7 +609,8 @@ void THttpsClient::TImpl::ProcessAddQueue() {
 
 void THttpsClient::TImpl::ProcessRemoveQueue()
 {
-    auto releaseReq = [this] (TCurlRequestHandle* req) {
+    auto releaseReq = [this](TCurlRequestHandle* req)
+    {
         auto* e = req->Handle;
 
         auto code = curl_multi_remove_handle(MultiHolder.Handle, e);
@@ -647,7 +640,7 @@ void THttpsClient::TImpl::ProcessRemoveQueue()
 
     if (InFlightHandles.size() > 0) {
         auto it = InFlightHandles.begin();
-        while ( it != InFlightHandles.end() && Now() < deadline) {
+        while (it != InFlightHandles.end() && Now() < deadline) {
             auto req = *it;
             if (Y_UNLIKELY(req->IsCancelled())) {
                 InFlightHandles.erase(it++);
@@ -685,13 +678,15 @@ void THttpsClient::TImpl::Perform()
 
     if (count > 0) {
         // we should read all events beforehand because
-        // curl_multi_socket_action can destroy some of them with socket function call
+        // curl_multi_socket_action can destroy some of them with socket
+        // function call
         TVector<std::pair<TEvent, int>> sockets;
         sockets.reserve(count);
         for (size_t i = 0; i < count; ++i) {
             if (events[i] != nullptr) {
                 sockets.emplace_back(
-                    *static_cast<TEvent*>(events[i]), filters[i]);
+                    *static_cast<TEvent*>(events[i]),
+                    filters[i]);
             }
         }
         for (auto& e: sockets) {
@@ -724,7 +719,9 @@ void THttpsClient::TImpl::Perform()
 void THttpsClient::TImpl::Process()
 {
     int msgsInQueue;
-    while (auto curlMsg = curl_multi_info_read(MultiHolder.Handle, &msgsInQueue)) {
+    while (auto curlMsg =
+               curl_multi_info_read(MultiHolder.Handle, &msgsInQueue))
+    {
         Y_DEBUG_ABORT_UNLESS(curlMsg->msg == CURLMSG_DONE);
 
         TCurlRequestHandle* req = nullptr;
@@ -750,8 +747,9 @@ void THttpsClient::TImpl::Process()
                     &retCode);
                 Y_DEBUG_ABORT_UNLESS(code == CURLE_OK);
                 req->Callback(retCode, req->WriteDataInfo.Data.Str());
-            } else if ((result == CURLE_SEND_ERROR || result == CURLE_RECV_ERROR)
-                    && req->RetryCount < MaxRetryCount)
+            } else if (
+                (result == CURLE_SEND_ERROR || result == CURLE_RECV_ERROR) &&
+                req->RetryCount < MaxRetryCount)
             {
                 auto code = curl_multi_remove_handle(
                     MultiHolder.Handle,
@@ -777,7 +775,8 @@ struct TCurlInit
         Y_ENSURE(res == 0);
     }
 
-    ~TCurlInit() {
+    ~TCurlInit()
+    {
         curl_global_cleanup();
     }
 };
@@ -849,15 +848,19 @@ THttpsClient::TImpl::TImpl()
 
     InFlightHandles.reserve(MaxHandles);
 
-    Thread.Reset(SystemThreadFactory()->Run([this]() {
-        TThread::SetCurrentThreadName("Curl");
-        while (Running.load() || InFlight) {
-            ProcessRemoveQueue();
-            ProcessAddQueue();
-            ResetSignalled();
-            Perform();
-        }
-    }).Release());
+    Thread.Reset(SystemThreadFactory()
+                     ->Run(
+                         [this]()
+                         {
+                             TThread::SetCurrentThreadName("Curl");
+                             while (Running.load() || InFlight) {
+                                 ProcessRemoveQueue();
+                                 ProcessAddQueue();
+                                 ResetSignalled();
+                                 Perform();
+                             }
+                         })
+                     .Release());
 }
 
 THttpsClient::TImpl::~TImpl()
@@ -923,12 +926,10 @@ std::atomic<int> THttpsClient::TImpl::OpenConnections = 0;
 
 THttpsClient::THttpsClient()
     : Impl(std::make_unique<TImpl>())
-{
-}
+{}
 
 THttpsClient::~THttpsClient()
-{
-}
+{}
 
 void THttpsClient::LoadCaCerts(const TString& path)
 {
@@ -945,14 +946,10 @@ void THttpsClient::Post(
     THttpHeaders headers;
     headers.AddHeader(THttpInputHeader("Content-Type", contentType));
     if (!authHeader.empty()) {
-        headers.AddHeader(THttpInputHeader("Authorization", "Bearer " + authHeader));
+        headers.AddHeader(
+            THttpInputHeader("Authorization", "Bearer " + authHeader));
     }
-    Impl->SendRequest(
-        EHttpMethod::Post,
-        endpoint,
-        data,
-        headers,
-        callback);
+    Impl->SendRequest(EHttpMethod::Post, endpoint, data, headers, callback);
 }
 
 }   // namespace NCloud::NBlockStore::NNotify

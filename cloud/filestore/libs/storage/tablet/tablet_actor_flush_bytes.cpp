@@ -39,8 +39,7 @@ public:
         : LogTag(std::move(logTag))
         , BlockSize(blockSize)
         , Block(block)
-    {
-    }
+    {}
 
     void Accept(const TBlock& block, TStringBuf blockData) override
     {
@@ -55,10 +54,8 @@ public:
         }
     }
 
-    void Accept(
-        const TBlock& block,
-        const TPartialBlobId& blobId,
-        ui32 blobOffset)
+    void
+    Accept(const TBlock& block, const TPartialBlobId& blobId, ui32 blobOffset)
     {
         TABLET_VERIFY(!ApplyingByteLayer);
 
@@ -110,21 +107,17 @@ public:
             Block.BytesMinCommitId = bytes.MinCommitId;
             TABLET_VERIFY_C(
                 bytes.Offset - bytesOffset <= BlockSize,
-                "Bytes: " << bytes.Describe()
-                    << ", Block: " << Block.BlockIndex
-                    << ", BlockSize: " << BlockSize);
-            Block.BlockBytes.Intervals.push_back({
-                IntegerCast<ui32>(bytes.Offset - bytesOffset),
-                TString(data)
-            });
+                "Bytes: " << bytes.Describe() << ", Block: " << Block.BlockIndex
+                          << ", BlockSize: " << BlockSize);
+            Block.BlockBytes.Intervals.push_back(
+                {IntegerCast<ui32>(bytes.Offset - bytesOffset), TString(data)});
         }
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFlushBytesActor final
-    : public TActorBootstrapped<TFlushBytesActor>
+class TFlushBytesActor final: public TActorBootstrapped<TFlushBytesActor>
 {
 private:
     const TString LogTag;
@@ -199,20 +192,20 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TFlushBytesActor::TFlushBytesActor(
-        TString logTag,
-        TString fileSystemId,
-        TActorId tablet,
-        TRequestInfoPtr requestInfo,
-        ui64 commitId,
-        ui32 blockSize,
-        ui64 chunkId,
-        IProfileLogPtr profileLog,
-        NProto::TProfileLogRequestInfo profileLogRequest,
-        TVector<TMixedBlobMeta> srcBlobs,
-        TVector<TMixedBlobMeta> srcBlobsToRead,
-        TVector<TVector<ui32>> srcBlobOffsets,
-        TVector<TFlushBytesBlob> dstBlobs,
-        TSet<ui32> mixedBlocksRanges)
+    TString logTag,
+    TString fileSystemId,
+    TActorId tablet,
+    TRequestInfoPtr requestInfo,
+    ui64 commitId,
+    ui32 blockSize,
+    ui64 chunkId,
+    IProfileLogPtr profileLog,
+    NProto::TProfileLogRequestInfo profileLogRequest,
+    TVector<TMixedBlobMeta> srcBlobs,
+    TVector<TMixedBlobMeta> srcBlobsToRead,
+    TVector<TVector<ui32>> srcBlobOffsets,
+    TVector<TFlushBytesBlob> dstBlobs,
+    TSet<ui32> mixedBlocksRanges)
     : LogTag(std::move(logTag))
     , FileSystemId(std::move(fileSystemId))
     , Tablet(tablet)
@@ -272,14 +265,11 @@ void TFlushBytesActor::ReadBlobs(const TActorContext& ctx)
         }
 
         if (blocks) {
-            auto request = std::make_unique<TEvIndexTabletPrivate::TEvReadBlobRequest>(
-                RequestInfo->CallContext
-            );
-            request->Buffer = CreateBlockBuffer(TByteRange(
-                0,
-                blocks.size() * BlockSize,
-                BlockSize
-            ));
+            auto request =
+                std::make_unique<TEvIndexTabletPrivate::TEvReadBlobRequest>(
+                    RequestInfo->CallContext);
+            request->Buffer = CreateBlockBuffer(
+                TByteRange(0, blocks.size() * BlockSize, BlockSize));
             request->Blobs.emplace_back(blobToRead.BlobId, std::move(blocks));
             request->Blobs.back().Async = true;
 
@@ -311,8 +301,7 @@ void TFlushBytesActor::HandleReadBlobResponse(
 void TFlushBytesActor::WriteBlob(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvIndexTabletPrivate::TEvWriteBlobRequest>(
-        RequestInfo->CallContext
-    );
+        RequestInfo->CallContext);
 
     for (const auto& blob: DstBlobs) {
         TString blobContent(Reserve(BlockSize * blob.Blocks.size()));
@@ -328,22 +317,22 @@ void TFlushBytesActor::WriteBlob(const TActorContext& ctx)
                 memcpy(
                     const_cast<char*>(blockContent.data()),
                     buffer->GetBlock(SrcBlobOffset2DstBlobOffset[key]).data(),
-                    BlockSize
-                );
-            } else if (auto* fresh = std::get_if<TOwningFreshBlock>(&block.Block)) {
+                    BlockSize);
+            } else if (
+                auto* fresh = std::get_if<TOwningFreshBlock>(&block.Block))
+            {
                 memcpy(
                     const_cast<char*>(blockContent.data()),
                     fresh->BlockData.data(),
-                    BlockSize
-                );
+                    BlockSize);
             }
 
             for (const auto& interval: block.BlockBytes.Intervals) {
                 memcpy(
-                    const_cast<char*>(blockContent.data()) + interval.OffsetInBlock,
+                    const_cast<char*>(blockContent.data()) +
+                        interval.OffsetInBlock,
                     interval.Data.data(),
-                    interval.Data.size()
-                );
+                    interval.Data.size());
             }
         }
 
@@ -371,8 +360,7 @@ void TFlushBytesActor::HandleWriteBlobResponse(
 void TFlushBytesActor::AddBlob(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvIndexTabletPrivate::TEvAddBlobRequest>(
-        RequestInfo->CallContext
-    );
+        RequestInfo->CallContext);
     request->Mode = EAddBlobMode::FlushBytes;
     request->SrcBlobs = std::move(SrcBlobs);
 
@@ -385,7 +373,9 @@ void TFlushBytesActor::AddBlob(const TActorContext& ctx)
 
             if (auto* ref = std::get_if<TBlockDataRef>(&block.Block)) {
                 maxCommitId = ref->MaxCommitId;
-            } else if (auto* fresh = std::get_if<TOwningFreshBlock>(&block.Block)) {
+            } else if (
+                auto* fresh = std::get_if<TOwningFreshBlock>(&block.Block))
+            {
                 request->SrcBlocks.push_back(*fresh);
                 maxCommitId = fresh->MaxCommitId;
             }
@@ -394,8 +384,7 @@ void TFlushBytesActor::AddBlob(const TActorContext& ctx)
                 block.NodeId,
                 block.BlockIndex,
                 block.BytesMinCommitId,
-                maxCommitId
-            );
+                maxCommitId);
 
             TBlockLocation key{block.NodeId, block.BlockIndex};
             auto& commitId = blockIndex2BytesCommitId[key];
@@ -478,7 +467,8 @@ void TFlushBytesActor::ReplyAndDie(
     if (RequestInfo->Sender != Tablet) {
         // reply to caller
         auto response =
-            std::make_unique<TEvIndexTabletPrivate::TEvFlushBytesResponse>(error);
+            std::make_unique<TEvIndexTabletPrivate::TEvFlushBytesResponse>(
+                error);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
 
@@ -490,8 +480,12 @@ STFUNC(TFlushBytesActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvIndexTabletPrivate::TEvReadBlobResponse, HandleReadBlobResponse);
-        HFunc(TEvIndexTabletPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
+        HFunc(
+            TEvIndexTabletPrivate::TEvReadBlobResponse,
+            HandleReadBlobResponse);
+        HFunc(
+            TEvIndexTabletPrivate::TEvWriteBlobResponse,
+            HandleWriteBlobResponse);
         HFunc(TEvIndexTabletPrivate::TEvAddBlobResponse, HandleAddBlobResponse);
 
         default:
@@ -520,10 +514,8 @@ void TIndexTabletActor::HandleFlushBytes(
         msg->CallContext->FileSystemId,
         GetFileSystem().GetStorageMediaKind());
 
-    auto reply = [] (
-        const TActorContext& ctx,
-        auto& ev,
-        const NProto::TError& error)
+    auto reply =
+        [](const TActorContext& ctx, auto& ev, const NProto::TError& error)
     {
         FILESTORE_TRACK(
             ResponseSent_Tablet,
@@ -533,13 +525,14 @@ void TIndexTabletActor::HandleFlushBytes(
         if (ev.Sender != ctx.SelfID) {
             // reply to caller
             auto response =
-                std::make_unique<TEvIndexTabletPrivate::TEvFlushBytesResponse>(error);
+                std::make_unique<TEvIndexTabletPrivate::TEvFlushBytesResponse>(
+                    error);
             NCloud::Reply(ctx, ev, std::move(response));
         }
     };
 
-    const bool started = ev->Sender == ctx.SelfID
-        ? StartBackgroundBlobIndexOp() : BlobIndexOpState.Start();
+    const bool started = ev->Sender == ctx.SelfID ? StartBackgroundBlobIndexOp()
+                                                  : BlobIndexOpState.Start();
 
     if (!started) {
         if (FlushState.Start()) {
@@ -549,8 +542,7 @@ void TIndexTabletActor::HandleFlushBytes(
         reply(
             ctx,
             *ev,
-            MakeError(E_TRY_AGAIN, "cleanup/compaction is in progress")
-        );
+            MakeError(E_TRY_AGAIN, "cleanup/compaction is in progress"));
 
         return;
     }
@@ -570,20 +562,19 @@ void TIndexTabletActor::HandleFlushBytes(
         reply(
             ctx,
             *ev,
-            MakeError(E_TRY_AGAIN, "compaction state not loaded yet")
-        );
+            MakeError(E_TRY_AGAIN, "compaction state not loaded yet"));
 
         return;
     }
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s FlushBytes started",
         LogTag.c_str());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     TVector<TBytes> bytes;
@@ -605,16 +596,15 @@ void TIndexTabletActor::HandleFlushBytes(
             return;
         }
 
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s FlushBytes: only deletion markers found, trimming",
             LogTag.c_str());
 
         reply(ctx, *ev, {});
 
-        ExecuteTx<TTrimBytes>(
-            ctx,
-            std::move(requestInfo),
-            cleanupInfo.ChunkId);
+        ExecuteTx<TTrimBytes>(ctx, std::move(requestInfo), cleanupInfo.ChunkId);
 
         return;
     }
@@ -624,8 +614,7 @@ void TIndexTabletActor::HandleFlushBytes(
         std::move(requestInfo),
         cleanupInfo.ClosingCommitId,
         cleanupInfo.ChunkId,
-        std::move(bytes)
-    );
+        std::move(bytes));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -641,7 +630,8 @@ bool TIndexTabletActor::PrepareTx_FlushBytes(
 
     bool ready = true;
     for (const auto& bytes: args.Bytes) {
-        ui32 rangeId = GetMixedRangeIndex(bytes.NodeId, bytes.Offset / GetBlockSize());
+        ui32 rangeId =
+            GetMixedRangeIndex(bytes.NodeId, bytes.Offset / GetBlockSize());
         if (!args.MixedBlocksRanges.count(rangeId)) {
             if (LoadMixedBlocks(db, rangeId)) {
                 args.MixedBlocksRanges.insert(rangeId);
@@ -671,10 +661,9 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
     const TActorContext& ctx,
     TTxIndexTablet::TFlushBytes& args)
 {
-    auto replyError = [&] (
-        const TActorContext& ctx,
-        TTxIndexTablet::TFlushBytes& args,
-        const NProto::TError& error)
+    auto replyError = [&](const TActorContext& ctx,
+                          TTxIndexTablet::TFlushBytes& args,
+                          const NProto::TError& error)
     {
         // log request
         FinalizeProfileLogRequestInfo(
@@ -694,12 +683,11 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
         if (args.RequestInfo->Sender != ctx.SelfID) {
             // reply to caller
             auto response =
-                std::make_unique<TEvIndexTabletPrivate::TEvFlushBytesResponse>(error);
+                std::make_unique<TEvIndexTabletPrivate::TEvFlushBytesResponse>(
+                    error);
             NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
         }
     };
-
-
 
     THashMap<TBlockLocation, TBlockWithBytes, TBlockLocationHash> blockMap;
 
@@ -774,13 +762,13 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
 
             auto& srcBlobInfo = srcBlobMap[ref->BlobId];
             if (!srcBlobInfo.SrcBlob.BlobId) {
-                const auto rangeId = GetMixedRangeIndex(bytes.NodeId, blockIndex);
+                const auto rangeId =
+                    GetMixedRangeIndex(bytes.NodeId, blockIndex);
                 srcBlobInfo.SrcBlob = FindBlob(rangeId, ref->BlobId);
                 srcBlobInfo.SrcBlobToRead.BlobId = ref->BlobId;
             }
             srcBlobInfo.SrcBlobToRead.Blocks.push_back(
-                static_cast<const TBlock&>(*ref)
-            );
+                static_cast<const TBlock&>(*ref));
             srcBlobInfo.BlobOffsets.push_back(ref->BlobOffset);
         }
 
@@ -791,11 +779,9 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
     }
 
     if (blockMap.empty()) {
-        // all bytes have been overwritten by full blocks, can trim straight away
-        ExecuteTx<TTrimBytes>(
-            ctx,
-            args.RequestInfo,
-            args.ChunkId);
+        // all bytes have been overwritten by full blocks, can trim straight
+        // away
+        ExecuteTx<TTrimBytes>(ctx, args.RequestInfo, args.ChunkId);
 
         replyError(ctx, args, {});
 
@@ -815,10 +801,7 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
     for (auto& x: blockMap) {
         blocks.push_back(std::move(x.second));
     }
-    Sort(
-        blocks.begin(),
-        blocks.end(),
-        TBlockWithBytesCompare());
+    Sort(blocks.begin(), blocks.end(), TBlockWithBytesCompare());
 
     TFlushBytesBlobBuilder builder(
         GetRangeIdHasher(),
@@ -895,7 +878,9 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s FlushBytes completed (%s)",
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());
@@ -906,10 +891,8 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
 
     Metrics.FlushBytes.Update(1, msg->Size, msg->Time);
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     FILESTORE_TRACK(
@@ -977,20 +960,21 @@ void TIndexTabletActor::CompleteTx_TrimBytes(
         ctx.Now() - args.RequestInfo->StartedTs);
 
     if (!args.TrimmedAll) {
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s TrimBytes partially completed (%lu, %lu)",
             LogTag.c_str(),
             args.ChunkId,
             args.TrimmedBytes);
 
-        ExecuteTx<TTrimBytes>(
-            ctx,
-            args.RequestInfo,
-            args.ChunkId);
+        ExecuteTx<TTrimBytes>(ctx, args.RequestInfo, args.ChunkId);
         return;
     }
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s TrimBytes completed (%lu, %lu)",
         LogTag.c_str(),
         args.ChunkId,

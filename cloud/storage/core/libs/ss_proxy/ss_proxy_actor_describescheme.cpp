@@ -3,7 +3,6 @@
 #include <cloud/storage/core/libs/ss_proxy/ss_proxy_events_private.h>
 
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NStorage {
@@ -58,11 +57,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeSchemeActor::TDescribeSchemeActor(
-        int logComponent,
-        TSSProxyActor::TRequestInfo requestInfo,
-        TString schemeShardDir,
-        TString path,
-        TActorId pathDescriptionBackup)
+    int logComponent,
+    TSSProxyActor::TRequestInfo requestInfo,
+    TString schemeShardDir,
+    TString path,
+    TActorId pathDescriptionBackup)
     : LogComponent(logComponent)
     , RequestInfo(std::move(requestInfo))
     , SchemeShardDir(std::move(schemeShardDir))
@@ -115,16 +114,18 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
     const auto* msg = ev->Get();
     const auto& record = msg->GetRecord();
 
-    if (HandleError(ctx, MakeSchemeShardError(record.GetStatus(), record.GetReason()))) {
+    if (HandleError(
+            ctx,
+            MakeSchemeShardError(record.GetStatus(), record.GetReason())))
+    {
         return;
     }
 
     if (PathDescriptionBackup) {
-        auto updateRequest =
-            std::make_unique<TEvSSProxyPrivate::TEvUpdatePathDescriptionBackupRequest>(
-                record.GetPath(),
-                record.GetPathDescription()
-            );
+        auto updateRequest = std::make_unique<
+            TEvSSProxyPrivate::TEvUpdatePathDescriptionBackupRequest>(
+            record.GetPath(),
+            record.GetPathDescription());
         NCloud::Send(ctx, PathDescriptionBackup, std::move(updateRequest));
     }
 
@@ -138,7 +139,9 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
 STFUNC(TDescribeSchemeActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSchemeShard::TEvDescribeSchemeResult, HandleDescribeSchemeResult);
+        HFunc(
+            TEvSchemeShard::TEvDescribeSchemeResult,
+            HandleDescribeSchemeResult);
 
         default:
             HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);

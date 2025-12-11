@@ -41,7 +41,9 @@ TSession* TIndexTabletActor::AcceptRequest(
         msg->CallContext->FileSystemId,
         GetFileSystem().GetStorageMediaKind());
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s %s: %s",
         LogTag.c_str(),
         TMethod::Name,
@@ -63,13 +65,13 @@ TSession* TIndexTabletActor::AcceptRequest(
     }
 
     auto* session = FindSession(
-         GetClientId(request),
-         GetSessionId(request),
-         GetSessionSeqNo(request));
+        GetClientId(request),
+        GetSessionId(request),
+        GetSessionSeqNo(request));
 
     if (!session) {
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            ErrorInvalidSession(
+        auto response =
+            std::make_unique<typename TMethod::TResponse>(ErrorInvalidSession(
                 GetClientId(request),
                 GetSessionId(request),
                 GetSessionSeqNo(request)));
@@ -86,7 +88,9 @@ void TIndexTabletActor::CompleteResponse(
     const TCallContextPtr& callContext,
     const NActors::TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s %s: #%lu completed (%s)",
         LogTag.c_str(),
         TMethod::Name,
@@ -95,14 +99,12 @@ void TIndexTabletActor::CompleteResponse(
 
     if (HasError(response.GetError())) {
         auto* e = response.MutableError();
-        e->SetMessage(TStringBuilder()
+        e->SetMessage(
+            TStringBuilder()
             << e->GetMessage() << ", request-id: " << callContext->RequestId);
     }
 
-    FILESTORE_TRACK(
-        ResponseSent_Tablet,
-        callContext,
-        TMethod::Name);
+    FILESTORE_TRACK(ResponseSent_Tablet, callContext, TMethod::Name);
 
     BuildTraceInfo(TraceSerializer, callContext, response);
     BuildThrottlerInfo(*callContext, response);
@@ -110,19 +112,20 @@ void TIndexTabletActor::CompleteResponse(
     Metrics.BusyIdleCalc.OnRequestCompleted();
 }
 
-#define FILESTORE_GENERATE_IMPL(name, ns)                                             \
-template TSession* TIndexTabletActor::AcceptRequest<ns::T##name##Method>(             \
-    const ns::T##name##Method::TRequest::TPtr& ev,                                    \
-    const TActorContext& ctx,                                                         \
-    const std::function<NProto::TError(                                               \
-        const typename ns::T##name##Method::TRequest::ProtoRecordType&)>& validator,  \
-    bool validateSession);                                                            \
-                                                                                      \
-template void TIndexTabletActor::CompleteResponse<ns::T##name##Method>(               \
-    ns::TEv##name##Response::ProtoRecordType& response,                               \
-    const TCallContextPtr& callContext,                                               \
-    const NActors::TActorContext& ctx);                                               \
-// FILESTORE_IMPL_VALIDATE
+#define FILESTORE_GENERATE_IMPL(name, ns)                                     \
+    template TSession* TIndexTabletActor::AcceptRequest<ns::T##name##Method>( \
+        const ns::T##name##Method::TRequest::TPtr& ev,                        \
+        const TActorContext& ctx,                                             \
+        const std::function<NProto::TError(                                   \
+            const typename ns::T##name##Method::TRequest::ProtoRecordType&)>& \
+            validator,                                                        \
+        bool validateSession);                                                \
+                                                                              \
+    template void TIndexTabletActor::CompleteResponse<ns::T##name##Method>(   \
+        ns::TEv##name##Response::ProtoRecordType & response,                  \
+        const TCallContextPtr& callContext,                                   \
+        const NActors::TActorContext& ctx);                                   \
+    // FILESTORE_IMPL_VALIDATE
 
 FILESTORE_REMOTE_SERVICE(FILESTORE_GENERATE_IMPL, TEvService)
 FILESTORE_GENERATE_IMPL(DescribeData, TEvIndexTablet)

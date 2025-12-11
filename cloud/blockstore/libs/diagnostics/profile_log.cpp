@@ -43,7 +43,9 @@ void AddRangeWithChecksums(
 }
 
 template <typename TRequest>
-void FillBlockInfos(const TRequest& request, NProto::TProfileLogBlockInfoList& ri)
+void FillBlockInfos(
+    const TRequest& request,
+    NProto::TProfileLogBlockInfoList& ri)
 {
     for (const auto& bi: request.BlockInfos) {
         auto* blockInfo = ri.AddBlockInfos();
@@ -123,15 +125,14 @@ private:
 
 public:
     TProfileLog(
-            TProfileLogSettings settings,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler)
+        TProfileLogSettings settings,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler)
         : EventLog(settings.FilePath, NEvClass::Factory()->CurrentFormat())
         , Settings(std::move(settings))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
-    {
-    }
+    {}
 
     ~TProfileLog() override;
 
@@ -216,37 +217,57 @@ void TProfileLog::DoFlush()
             for (const auto r: x.second) {
                 const auto& record = records[r];
 
-                if (auto* rw = std::get_if<TReadWriteRequest>(&record.Request)) {
-                    auto* ri = AddRequest(record, rw->Duration, rw->PostponedTime, pb);
+                if (auto* rw = std::get_if<TReadWriteRequest>(&record.Request))
+                {
+                    auto* ri =
+                        AddRequest(record, rw->Duration, rw->PostponedTime, pb);
                     AddRange(rw->Range, *ri);
                     ri->SetRequestType(static_cast<ui32>(rw->RequestType));
-                } else if (auto* srw = std::get_if<TSysReadWriteRequest>(&record.Request)) {
+                } else if (
+                    auto* srw =
+                        std::get_if<TSysReadWriteRequest>(&record.Request))
+                {
                     auto* ri = AddRequest(record, srw->Duration, pb);
                     for (const auto& r: srw->Ranges) {
                         AddRange(r, *ri);
                     }
                     ri->SetRequestType(static_cast<ui32>(srw->RequestType));
-                } else if (auto* srw = std::get_if<TSysReadWriteRequestWithChecksums>(&record.Request)) {
+                } else if (
+                    auto* srw = std::get_if<TSysReadWriteRequestWithChecksums>(
+                        &record.Request))
+                {
                     auto* ri = AddRequest(record, srw->Duration, pb);
                     AddRangeWithChecksums(
                         srw->RangeInfo.Range,
                         srw->RangeInfo.ReplicaChecksums,
                         *ri);
                     ri->SetRequestType(static_cast<ui32>(srw->RequestType));
-                } else if (auto* misc = std::get_if<TMiscRequest>(&record.Request)) {
+                } else if (
+                    auto* misc = std::get_if<TMiscRequest>(&record.Request))
+                {
                     auto* ri = AddRequest(record, misc->Duration, pb);
                     ri->SetRequestType(static_cast<ui32>(misc->RequestType));
-                } else if (auto* rwbi = std::get_if<TReadWriteRequestBlockInfos>(&record.Request)) {
+                } else if (
+                    auto* rwbi = std::get_if<TReadWriteRequestBlockInfos>(
+                        &record.Request))
+                {
                     auto* bl = AddBlockInfoList(record, pb);
                     FillBlockInfos(*rwbi, *bl);
                     bl->SetRequestType(static_cast<ui32>(rwbi->RequestType));
                     bl->SetCommitId(rwbi->CommitId);
-                } else if (auto* srwbi = std::get_if<TSysReadWriteRequestBlockInfos>(&record.Request)) {
+                } else if (
+                    auto* srwbi = std::get_if<TSysReadWriteRequestBlockInfos>(
+                        &record.Request))
+                {
                     auto* bl = AddBlockInfoList(record, pb);
                     FillBlockInfos(*srwbi, *bl);
                     bl->SetRequestType(static_cast<ui32>(srwbi->RequestType));
                     bl->SetCommitId(srwbi->CommitId);
-                } else if (auto* srwbc = std::get_if<TSysReadWriteRequestBlockCommitIds>(&record.Request)) {
+                } else if (
+                    auto* srwbc =
+                        std::get_if<TSysReadWriteRequestBlockCommitIds>(
+                            &record.Request))
+                {
                     auto* bl = AddBlockCommitIdList(record, pb);
                     for (const auto& bc: srwbc->BlockCommitIds) {
                         auto* blockCommitId = bl->AddBlockCommitIds();
@@ -258,11 +279,17 @@ void TProfileLog::DoFlush()
                     }
                     bl->SetRequestType(static_cast<ui32>(srwbc->RequestType));
                     bl->SetCommitId(srwbc->CommitId);
-                } else if (auto* req = std::get_if<TDescribeBlocksRequest>(&record.Request)) {
+                } else if (
+                    auto* req =
+                        std::get_if<TDescribeBlocksRequest>(&record.Request))
+                {
                     auto* ri = AddRequest(record, req->Duration, pb);
                     AddRange(req->Range, *ri);
                     ri->SetRequestType(static_cast<ui32>(req->RequestType));
-                } else if (auto* cbu = std::get_if<TCleanupRequestBlobUpdates>(&record.Request)) {
+                } else if (
+                    auto* cbu = std::get_if<TCleanupRequestBlobUpdates>(
+                        &record.Request))
+                {
                     auto* bul = AddBlobUpdateList(record, pb);
                     for (const auto& bu: cbu->BlobUpdates) {
                         auto* blobUpdate = bul->AddBlobUpdates();
@@ -316,8 +343,7 @@ IProfileLogPtr CreateProfileLog(
     return std::make_shared<TProfileLog>(
         std::move(settings),
         std::move(timer),
-        std::move(scheduler)
-    );
+        std::move(scheduler));
 }
 
 IProfileLogPtr CreateProfileLogStub()

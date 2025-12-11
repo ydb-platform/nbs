@@ -10,17 +10,17 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define MAKE_PROXY_COOKIE(cookie)        ((cookie) | (1llu << 63))
-#define VALIDATE_PROXY_COOKIE(cookie)    ((cookie) & (1llu << 63))
+#define MAKE_PROXY_COOKIE(cookie) ((cookie) | (1llu << 63))
+#define VALIDATE_PROXY_COOKIE(cookie) ((cookie) & (1llu << 63))
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TStorageServiceActor::TStorageServiceActor(
-        TStorageConfigPtr storageConfig,
-        IRequestStatsRegistryPtr statsRegistry,
-        IProfileLogPtr profileLog,
-        ITraceSerializerPtr traceSerializer,
-        NCloud::NStorage::IStatsFetcherPtr statsFetcher)
+    TStorageConfigPtr storageConfig,
+    IRequestStatsRegistryPtr statsRegistry,
+    IProfileLogPtr profileLog,
+    ITraceSerializerPtr traceSerializer,
+    NCloud::NStorage::IStatsFetcherPtr statsFetcher)
     : StorageConfig{std::move(storageConfig)}
     , ProfileLog{std::move(profileLog)}
     , TraceSerializer{std::move(traceSerializer)}
@@ -30,8 +30,7 @@ TStorageServiceActor::TStorageServiceActor(
 {}
 
 TStorageServiceActor::~TStorageServiceActor()
-{
-}
+{}
 
 void TStorageServiceActor::Bootstrap(const TActorContext& ctx)
 {
@@ -52,8 +51,13 @@ void TStorageServiceActor::RegisterPages(const NActors::TActorContext& ctx)
     if (mon) {
         auto* rootPage = mon->RegisterIndexPage("filestore", "FileStore");
 
-        mon->RegisterActorPage(rootPage, "service", "Service",
-            false, ctx.ActorSystem(), SelfId());
+        mon->RegisterActorPage(
+            rootPage,
+            "service",
+            "Service",
+            false,
+            ctx.ActorSystem(),
+            SelfId());
     }
 }
 
@@ -67,7 +71,8 @@ void TStorageServiceActor::RegisterCounters(const NActors::TActorContext& ctx)
     CpuWaitCounter = serverCounters->GetCounter("CpuWait", false);
 
     auto serviceCounters = rootGroup->GetSubgroup("component", "service");
-    TotalFileSystemCount = serviceCounters->GetCounter("FileSystemCount", false);
+    TotalFileSystemCount =
+        serviceCounters->GetCounter("FileSystemCount", false);
     TotalTabletCount = serviceCounters->GetCounter("TabletCount", false);
 
     auto hddCounters = serviceCounters->GetSubgroup("type", "hdd");
@@ -79,11 +84,10 @@ void TStorageServiceActor::RegisterCounters(const NActors::TActorContext& ctx)
     SsdTabletCount = hddCounters->GetCounter("TabletCount", false);
 }
 
-void TStorageServiceActor::ScheduleUpdateStats(const NActors::TActorContext& ctx)
+void TStorageServiceActor::ScheduleUpdateStats(
+    const NActors::TActorContext& ctx)
 {
-    ctx.Schedule(
-        UpdateStatsInterval,
-        new TEvServicePrivate::TEvUpdateStats{});
+    ctx.Schedule(UpdateStatsInterval, new TEvServicePrivate::TEvUpdateStats{});
 }
 
 std::pair<ui64, TInFlightRequest*> TStorageServiceActor::CreateInFlightRequest(
@@ -96,11 +100,7 @@ std::pair<ui64, TInFlightRequest*> TStorageServiceActor::CreateInFlightRequest(
     auto [it, inserted] = InFlightRequests.emplace(
         std::piecewise_construct,
         std::forward_as_tuple(cookie),
-        std::forward_as_tuple(
-            info,
-            ProfileLog,
-            media,
-            requestStats));
+        std::forward_as_tuple(info, ProfileLog, media, requestStats));
 
     Y_ABORT_UNLESS(inserted);
     it->second.Start(start);
@@ -123,11 +123,9 @@ TString TStorageServiceActor::LogTag(
     const TString& sessionId,
     ui64 seqNo) const
 {
-    return TStringBuilder() <<
-        "[f:" << fsId << ']' <<
-        "[c:" << clientId << ']' <<
-        "[s:" << sessionId << ']' <<
-        "[n:" << seqNo << ']';
+    return TStringBuilder()
+           << "[f:" << fsId << ']' << "[c:" << clientId << ']'
+           << "[s:" << sessionId << ']' << "[n:" << seqNo << ']';
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -135,17 +133,21 @@ TString TStorageServiceActor::LogTag(
 bool TStorageServiceActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-    #define FILESTORE_HANDLE_REQUEST_RESPONSE(name, ns) \
-        FILESTORE_HANDLE_REQUEST(name, ns)              \
-        FILESTORE_HANDLE_RESPONSE(name, ns)             \
+#define FILESTORE_HANDLE_REQUEST_RESPONSE(name, ns) \
+    FILESTORE_HANDLE_REQUEST(name, ns)              \
+    FILESTORE_HANDLE_RESPONSE(name, ns)
 
         FILESTORE_REMOTE_SERVICE(FILESTORE_HANDLE_REQUEST_RESPONSE, TEvService)
-    #undef FILESTORE_HANDLE_REQUEST_RESPONSE
+#undef FILESTORE_HANDLE_REQUEST_RESPONSE
 
         HFunc(NMon::TEvHttpInfo, HandleHttpInfo);
 
-        HFunc(TEvService::TEvRegisterLocalFileStoreRequest, HandleRegisterLocalFileStore);
-        HFunc(TEvService::TEvUnregisterLocalFileStoreRequest, HandleUnregisterLocalFileStore);
+        HFunc(
+            TEvService::TEvRegisterLocalFileStoreRequest,
+            HandleRegisterLocalFileStore);
+        HFunc(
+            TEvService::TEvUnregisterLocalFileStoreRequest,
+            HandleUnregisterLocalFileStore);
 
         HFunc(TEvServicePrivate::TEvSessionCreated, HandleSessionCreated);
         HFunc(TEvServicePrivate::TEvSessionDestroyed, HandleSessionDestroyed);
@@ -193,9 +195,7 @@ void TStorageServiceActor::HandleUnregisterLocalFileStore(
 {
     auto* msg = ev->Get();
     if (State) {
-        State->UnregisterLocalFileStore(
-            msg->FileStoreId,
-            msg->Generation);
+        State->UnregisterLocalFileStore(msg->FileStoreId, msg->Generation);
     }
 }
 

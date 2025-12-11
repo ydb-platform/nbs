@@ -10,13 +10,13 @@ namespace NCloud::NBlockStore::NStorage {
 
 enum EDeviceStateFlags : uint16_t
 {
-    NONE      = 0,
-    FRESH     = 1 << 0,
-    DISABLED  = 1 << 1,
-    DIRTY     = 1 << 2,
+    NONE = 0,
+    FRESH = 1 << 0,
+    DISABLED = 1 << 1,
+    DIRTY = 1 << 2,
     SUSPENDED = 1 << 3,
-    LAGGING   = 1 << 4,
-    DETACHED  = 1 << 5,
+    LAGGING = 1 << 4,
+    DETACHED = 1 << 5,
 };
 
 inline EDeviceStateFlags operator|(EDeviceStateFlags a, EDeviceStateFlags b)
@@ -32,14 +32,10 @@ inline EDeviceStateFlags& operator|=(EDeviceStateFlags& a, EDeviceStateFlags b)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IOutputStream& DumpAgentState(
-    IOutputStream& out,
-    NProto::EAgentState state,
-    bool connected);
+IOutputStream&
+DumpAgentState(IOutputStream& out, NProto::EAgentState state, bool connected);
 
-IOutputStream& DumpDiskState(
-    IOutputStream& out,
-    NProto::EDiskState state);
+IOutputStream& DumpDiskState(IOutputStream& out, NProto::EDiskState state);
 
 IOutputStream& DumpDeviceState(
     IOutputStream& out,

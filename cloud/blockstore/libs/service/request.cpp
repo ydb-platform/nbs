@@ -6,11 +6,10 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)    #name,
+#define BLOCKSTORE_DECLARE_METHOD(name, ...) #name,
 
 static const TString RequestNames[] = {
-    BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
-};
+    BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)};
 
 #undef BLOCKSTORE_DECLARE_METHOD
 
@@ -49,8 +48,10 @@ TString GetSysRequestName(ESysRequestType requestType)
 TStringBuf GetPrivateRequestName(EPrivateRequestType requestType)
 {
     switch (requestType) {
-        case EPrivateRequestType::DescribeBlocks: return "DescribeBlocks";
-        default: return "unknown";
+        case EPrivateRequestType::DescribeBlocks:
+            return "DescribeBlocks";
+        default:
+            return "unknown";
     }
 }
 

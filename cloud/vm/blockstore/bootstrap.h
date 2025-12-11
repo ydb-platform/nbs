@@ -5,14 +5,14 @@
 #include <cloud/vm/api/blockstore-plugin.h>
 #include <cloud/vm/blockstore/lib/public.h>
 
+#include <cloud/blockstore/config/plugin.pb.h>
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/nbd/public.h>
 #include <cloud/blockstore/libs/throttling/public.h>
-#include <cloud/storage/core/libs/grpc/init.h>
 
-#include <cloud/blockstore/config/plugin.pb.h>
+#include <cloud/storage/core/libs/grpc/init.h>
 
 #include <library/cpp/logger/log.h>
 
@@ -69,7 +69,8 @@ public:
 
     NProto::TPluginMountConfig GetMountConfig(const char* volumeName);
 
-    NClient::TSessionConfig FillSessionConfig(const BlockPlugin_MountOpts* opts);
+    NClient::TSessionConfig FillSessionConfig(
+        const BlockPlugin_MountOpts* opts);
 
 private:
     void InitLWTrace();

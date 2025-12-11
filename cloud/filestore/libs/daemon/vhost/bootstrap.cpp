@@ -71,8 +71,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFileStoreEndpoints final
-    : public IFileStoreEndpoints
+class TFileStoreEndpoints final: public IFileStoreEndpoints
 {
 private:
     using TEndpointsMap = TMap<TString, IFileStoreServicePtr>;
@@ -88,11 +87,11 @@ private:
 
 public:
     TFileStoreEndpoints(
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            ILoggingServicePtr logging,
-            IFileStoreServicePtr localService,
-            IActorSystemPtr actorSystem)
+        ITimerPtr timer,
+        ISchedulerPtr scheduler,
+        ILoggingServicePtr logging,
+        IFileStoreServicePtr localService,
+        IActorSystemPtr actorSystem)
         : Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
@@ -142,18 +141,14 @@ public:
                 if (LocalService) {
                     fileStore = LocalService;
                 } else {
-                    fileStore = NClient::CreateFileStoreClient(
-                        clientConfig,
-                        Logging);
+                    fileStore =
+                        NClient::CreateFileStoreClient(clientConfig, Logging);
                 }
                 break;
             }
         }
 
-        return AddEndpoint(
-            name,
-            std::move(clientConfig),
-            std::move(fileStore));
+        return AddEndpoint(name, std::move(clientConfig), std::move(fileStore));
     }
 
     bool Empty() const
@@ -239,13 +234,13 @@ IFileIOServicePtr CreateFileIOService(const TLocalFileStoreConfig& config)
 ////////////////////////////////////////////////////////////////////////////////
 
 TBootstrapVhost::TBootstrapVhost(
-        std::shared_ptr<NKikimr::TModuleFactories> kikimrFactories,
-        TVhostModuleFactoriesPtr vhostFactories)
+    std::shared_ptr<NKikimr::TModuleFactories> kikimrFactories,
+    TVhostModuleFactoriesPtr vhostFactories)
     : TBootstrapCommon(
-        std::move(kikimrFactories),
-        "NFS_VHOST",
-        "client",
-        NUserStats::CreateUserCounterSupplier())
+          std::move(kikimrFactories),
+          "NFS_VHOST",
+          "client",
+          NUserStats::CreateUserCounterSupplier())
     , VhostModuleFactories(std::move(vhostFactories))
 {}
 
@@ -274,7 +269,8 @@ void TBootstrapVhost::InitComponents()
         case NCloud::NProto::ENDPOINT_STORAGE_DEFAULT:
         case NCloud::NProto::ENDPOINT_STORAGE_KEYRING: {
             const bool notImplementedErrorIsFatal =
-                Configs->VhostServiceConfig->GetEndpointStorageNotImplementedErrorIsFatal();
+                Configs->VhostServiceConfig
+                    ->GetEndpointStorageNotImplementedErrorIsFatal();
             EndpointStorage = CreateKeyringEndpointStorage(
                 Configs->VhostServiceConfig->GetRootKeyringName(),
                 Configs->VhostServiceConfig->GetEndpointsKeyringName(),
@@ -325,7 +321,8 @@ void TBootstrapVhost::InitComponents()
             ProfileLog,
             LocalService);
 
-        STORAGE_INFO("initialized LocalServiceServer: %s",
+        STORAGE_INFO(
+            "initialized LocalServiceServer: %s",
             serverConfigProto.Utf8DebugString().Quote().c_str());
     }
 
@@ -342,8 +339,8 @@ void TBootstrapVhost::InitEndpoints()
     const auto* localServiceConfig =
         Configs->VhostServiceConfig->GetLocalServiceConfig();
     if (localServiceConfig) {
-        auto serviceConfig = std::make_shared<TLocalFileStoreConfig>(
-            *localServiceConfig);
+        auto serviceConfig =
+            std::make_shared<TLocalFileStoreConfig>(*localServiceConfig);
         serviceConfig->SetFeaturesConfig(Configs->FeaturesConfig);
         ThreadPool = CreateThreadPool("svc", serviceConfig->GetNumThreads());
         FileIOService = CreateFileIOService(*serviceConfig);
@@ -356,7 +353,8 @@ void TBootstrapVhost::InitEndpoints()
             ThreadPool,
             ProfileLog);
 
-        STORAGE_INFO("initialized LocalService: %s",
+        STORAGE_INFO(
+            "initialized LocalService: %s",
             localServiceConfig->Utf8DebugString().Quote().c_str());
     }
 
@@ -367,18 +365,22 @@ void TBootstrapVhost::InitEndpoints()
         LocalService,
         ActorSystem);
 
-    for (const auto& endpoint: Configs->VhostServiceConfig->GetServiceEndpoints()) {
+    for (const auto& endpoint:
+         Configs->VhostServiceConfig->GetServiceEndpoints())
+    {
         bool inserted = endpoints->AddEndpoint(
             endpoint.GetName(),
             endpoint.GetClientConfig(),
             Configs->Options->Service);
 
         if (inserted) {
-            STORAGE_INFO("configured endpoint type %s -> %s",
+            STORAGE_INFO(
+                "configured endpoint type %s -> %s",
                 ToString<EServiceKind>(Configs->Options->Service).c_str(),
                 endpoint.ShortDebugString().c_str());
         } else {
-            STORAGE_ERROR("duplicated client config: '" << endpoint.GetName() << "'");
+            STORAGE_ERROR(
+                "duplicated client config: '" << endpoint.GetName() << "'");
         }
     }
 
@@ -394,15 +396,12 @@ void TBootstrapVhost::InitEndpoints()
         Timer,
         Scheduler,
         FileStoreEndpoints,
-        VhostModuleFactories->LoopFactory(
-            Logging,
-            Timer,
-            Scheduler,
-            StatsRegistry,
-            ProfileLog),
+        VhostModuleFactories
+            ->LoopFactory(Logging, Timer, Scheduler, StatsRegistry, ProfileLog),
         THandleOpsQueueConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetHandleOpsQueuePath(),
-            .MaxQueueSize = Configs->VhostServiceConfig->GetHandleOpsQueueSize(),
+            .MaxQueueSize =
+                Configs->VhostServiceConfig->GetHandleOpsQueueSize(),
         },
         TWriteBackCacheConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetWriteBackCachePath(),
@@ -411,9 +410,8 @@ void TBootstrapVhost::InitEndpoints()
             .AutomaticFlushPeriod =
                 Configs->VhostServiceConfig
                     ->GetWriteBackCacheAutomaticFlushPeriod(),
-            .FlushRetryPeriod =
-                Configs->VhostServiceConfig
-                    ->GetWriteBackCacheFlushRetryPeriod(),
+            .FlushRetryPeriod = Configs->VhostServiceConfig
+                                    ->GetWriteBackCacheFlushRetryPeriod(),
             .FlushMaxWriteRequestSize =
                 Configs->VhostServiceConfig
                     ->GetWriteBackCacheFlushMaxWriteRequestSize(),
@@ -422,14 +420,12 @@ void TBootstrapVhost::InitEndpoints()
                     ->GetWriteBackCacheFlushMaxWriteRequestsCount(),
             .FlushMaxSumWriteRequestsSize =
                 Configs->VhostServiceConfig
-                    ->GetWriteBackCacheFlushMaxSumWriteRequestsSize()
-        },
+                    ->GetWriteBackCacheFlushMaxSumWriteRequestsSize()},
         TDirectoryHandlesStorageConfig{
-            .PathPrefix = Configs->VhostServiceConfig->GetDirectoryHandlesStoragePath(),
-            .InitialDataSize =
-                Configs->VhostServiceConfig->GetDirectoryHandlesInitialDataSize()
-        }
-    );
+            .PathPrefix =
+                Configs->VhostServiceConfig->GetDirectoryHandlesStoragePath(),
+            .InitialDataSize = Configs->VhostServiceConfig
+                                   ->GetDirectoryHandlesInitialDataSize()});
 
     EndpointManager = CreateEndpointManager(
         Logging,
@@ -456,7 +452,7 @@ void TBootstrapVhost::InitLWTrace()
     };
 
     const TVector<std::tuple<TString, TString>> probesToTrace = {
-        {"RequestReceived",              "FILESTORE_VFS_PROVIDER"},
+        {"RequestReceived", "FILESTORE_VFS_PROVIDER"},
     };
 
     TBootstrapCommon::InitLWTrace(probes, probesToTrace);

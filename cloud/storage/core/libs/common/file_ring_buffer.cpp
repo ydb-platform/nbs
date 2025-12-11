@@ -161,14 +161,12 @@ struct TEntryInfo
     ui64 GetNextEntryPos() const
     {
         return Header != nullptr && Header->DataSize > 0
-            ? ActualPos + sizeof(TEntryHeader) + Header->DataSize
-            : INVALID_POS;
+                   ? ActualPos + sizeof(TEntryHeader) + Header->DataSize
+                   : INVALID_POS;
     }
 
-    static TEntryInfo Create(
-        ui64 pos,
-        const TEntryHeader* header,
-        const char* data)
+    static TEntryInfo
+    Create(ui64 pos, const TEntryHeader* header, const char* data)
     {
         Y_ABORT_UNLESS(pos != INVALID_POS);
         Y_ABORT_UNLESS(header != nullptr);
@@ -230,9 +228,8 @@ private:
             const auto* eh = Data.GetEntryHeader(pos);
             if (eh != nullptr && eh->DataSize != 0) {
                 const auto* data = Data.GetEntryData(eh);
-                return data != nullptr
-                    ? TEntryInfo::Create(pos, eh, data)
-                    : TEntryInfo::CreateInvalid();
+                return data != nullptr ? TEntryInfo::Create(pos, eh, data)
+                                       : TEntryInfo::CreateInvalid();
             }
             pos = 0;
         }
@@ -243,8 +240,7 @@ private:
 
         Y_ABORT_UNLESS(pos < Header()->WritePos);
 
-        if (pos < Header()->ReadPos &&
-            Header()->ReadPos <= Header()->WritePos)
+        if (pos < Header()->ReadPos && Header()->ReadPos <= Header()->WritePos)
         {
             return TEntryInfo::CreateInvalid();
         }
@@ -274,9 +270,8 @@ private:
 
     TEntryInfo GetNextEntry(const TEntryInfo& e) const
     {
-        return e.HasValue()
-            ? GetEntry(e.GetNextEntryPos())
-            : TEntryInfo::CreateInvalid();
+        return e.HasValue() ? GetEntry(e.GetNextEntryPos())
+                            : TEntryInfo::CreateInvalid();
     }
 
     void SetCorrupted()
@@ -479,15 +474,15 @@ public:
     {
         TVector<TBrokenFileEntry> entries;
 
-        Visit([&] (ui32 checksum, TStringBuf entry) {
-            const ui32 actualChecksum = Crc32c(entry.data(), entry.size());
-            if (actualChecksum != checksum) {
-                entries.push_back({
-                    TString(entry),
-                    checksum,
-                    actualChecksum});
-            }
-        });
+        Visit(
+            [&](ui32 checksum, TStringBuf entry)
+            {
+                const ui32 actualChecksum = Crc32c(entry.data(), entry.size());
+                if (actualChecksum != checksum) {
+                    entries.push_back(
+                        {TString(entry), checksum, actualChecksum});
+                }
+            });
 
         return entries;
     }
@@ -549,9 +544,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TFileRingBuffer::TFileRingBuffer(
-        const TString& filePath,
-        ui64 capacity)
+TFileRingBuffer::TFileRingBuffer(const TString& filePath, ui64 capacity)
     : Impl(new TImpl(filePath, capacity))
 {}
 

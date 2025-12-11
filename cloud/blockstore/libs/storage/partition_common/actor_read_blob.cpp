@@ -13,16 +13,16 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 ////////////////////////////////////////////////////////////////////////////////
 
 TReadBlobActor::TReadBlobActor(
-        TRequestInfoPtr requestInfo,
-        const TActorId& partitionActorId,
-        const TActorId& volumeActorId,
-        ui64 partitionTabletId,
-        ui32 blockSize,
-        bool shouldCalculateChecksums,
-        const EStorageAccessMode storageAccessMode,
-        std::unique_ptr<TRequest> request,
-        TDuration longRunningThreshold,
-        ui64 bsGroupOperationId)
+    TRequestInfoPtr requestInfo,
+    const TActorId& partitionActorId,
+    const TActorId& volumeActorId,
+    ui64 partitionTabletId,
+    ui32 blockSize,
+    bool shouldCalculateChecksums,
+    const EStorageAccessMode storageAccessMode,
+    std::unique_ptr<TRequest> request,
+    TDuration longRunningThreshold,
+    ui64 bsGroupOperationId)
     : TLongRunningOperationCompanion(
           partitionActorId,
           volumeActorId,
@@ -66,9 +66,9 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
     size_t queriesCount = 0;
 
     for (size_t i = 0; i < blocksCount; ++i) {
-        if (i && Request->BlobOffsets[i] == Request->BlobOffsets[i-1] + 1) {
+        if (i && Request->BlobOffsets[i] == Request->BlobOffsets[i - 1] + 1) {
             // extend range
-            queries[queriesCount-1].Size += BlockSize;
+            queries[queriesCount - 1].Size += BlockSize;
         } else {
             queries[queriesCount++].Set(
                 Request->BlobId,
@@ -81,18 +81,14 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
         queries,
         queriesCount,
         Request->Deadline,
-        Request->Async
-            ? NKikimrBlobStorage::AsyncRead
-            : NKikimrBlobStorage::FastRead);
+        Request->Async ? NKikimrBlobStorage::AsyncRead
+                       : NKikimrBlobStorage::FastRead);
 
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
     RequestSent = ctx.Now();
 
-    SendToBSProxy(
-        ctx,
-        Request->Proxy,
-        request.release());
+    SendToBSProxy(ctx, Request->Proxy, request.release());
 }
 
 void TReadBlobActor::NotifyCompleted(
@@ -100,7 +96,8 @@ void TReadBlobActor::NotifyCompleted(
     const NProto::TError& error)
 {
     auto request =
-        std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobCompleted>(error);
+        std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobCompleted>(
+            error);
 
     request->BlobId = Request->BlobId;
     request->BytesCount = Request->BlobOffsets.size() * BlockSize;
@@ -119,9 +116,7 @@ void TReadBlobActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TResponse> response)
 {
-    NotifyCompleted(
-        ctx,
-        response->GetError());
+    NotifyCompleted(ctx, response->GetError());
 
     if (ResponseReceived) {
         LWTRACK(
@@ -142,7 +137,9 @@ void TReadBlobActor::ReplyError(
     const TEvBlobStorage::TEvGetResult& response,
     const TString& description)
 {
-    LOG_ERROR(ctx, TBlockStoreComponents::PARTITION_COMMON,
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION_COMMON,
         "[%lu] TEvBlobStorage::TEvGet failed: %s\n%s",
         PartitionTabletId,
         description.data(),
@@ -188,10 +185,12 @@ void TReadBlobActor::HandleGetResult(
             auto& response = msg->Responses[i];
 
             if (response.Status != NKikimrProto::OK) {
-                if (IsUnrecoverable(response.Status)
-                        && StorageAccessMode == EStorageAccessMode::Repair)
+                if (IsUnrecoverable(response.Status) &&
+                    StorageAccessMode == EStorageAccessMode::Repair)
                 {
-                    LOG_WARN(ctx, TBlockStoreComponents::PARTITION_COMMON,
+                    LOG_WARN(
+                        ctx,
+                        TBlockStoreComponents::PARTITION_COMMON,
                         "[%lu] Repairing TEvBlobStorage::TEvGet %s error (%s)",
                         PartitionTabletId,
                         NKikimrProto::EReplyStatus_Name(response.Status).data(),
@@ -203,13 +202,13 @@ void TReadBlobActor::HandleGetResult(
                     memcpy(
                         const_cast<char*>(block.Data()),
                         marker.data(),
-                        Min(block.Size(), marker.size())
-                    );
+                        Min(block.Size(), marker.size()));
                     ++sglistIndex;
 
                     while (sglistIndex < sglist.size()) {
                         const auto offset = Request->BlobOffsets[sglistIndex];
-                        const auto prevOffset = Request->BlobOffsets[sglistIndex - 1];
+                        const auto prevOffset =
+                            Request->BlobOffsets[sglistIndex - 1];
                         if (offset != prevOffset + 1) {
                             break;
                         }
@@ -219,8 +218,7 @@ void TReadBlobActor::HandleGetResult(
                         memcpy(
                             const_cast<char*>(block.Data()),
                             marker.data(),
-                            Min(block.Size(), marker.size())
-                        );
+                            Min(block.Size(), marker.size()));
 
                         ++sglistIndex;
                     }
@@ -232,15 +230,14 @@ void TReadBlobActor::HandleGetResult(
                 }
             }
 
-            if (response.Id != blobId ||
-                response.Buffer.empty() ||
+            if (response.Id != blobId || response.Buffer.empty() ||
                 response.Buffer.size() % BlockSize != 0)
             {
                 ReplyError(ctx, *msg, "invalid response received");
                 return;
             }
 
-            for (auto iter = response.Buffer.begin(); iter.Valid(); ) {
+            for (auto iter = response.Buffer.begin(); iter.Valid();) {
                 if (sglistIndex >= sglist.size()) {
                     ReplyError(ctx, *msg, "response is out of range");
                     return;
@@ -282,7 +279,7 @@ void TReadBlobActor::HandleGetResult(
 }
 
 void TReadBlobActor::HandleUndelivered(
-    const NActors::TEvents::TEvUndelivered::TPtr &ev,
+    const NActors::TEvents::TEvUndelivered::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     auto response = std::make_unique<TResponse>(
@@ -308,7 +305,9 @@ STFUNC(TReadBlobActor::StateWork)
     TRequestScope timer(*RequestInfo);
 
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvWakeup, TLongRunningOperationCompanion::HandleTimeout);
+        HFunc(
+            TEvents::TEvWakeup,
+            TLongRunningOperationCompanion::HandleTimeout);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         HFunc(TEvBlobStorage::TEvGetResult, HandleGetResult);

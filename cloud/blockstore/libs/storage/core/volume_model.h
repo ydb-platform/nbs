@@ -11,12 +11,12 @@
 #include <util/generic/vector.h>
 
 namespace NKikimrBlockStore {
-    class TVolumeConfig;
-}   // NKikimrBlockStore
+class TVolumeConfig;
+}   // namespace NKikimrBlockStore
 
 namespace NCloud::NBlockStore::NProto {
-    class TVolumePerformanceProfile;
-    class TResizeVolumeRequestFlags;
+class TVolumePerformanceProfile;
+class TResizeVolumeRequestFlags;
 }   // namespace NCloud::NBlockStore::NProto
 
 namespace NCloud::NBlockStore::NStorage {
@@ -39,8 +39,8 @@ struct TVolumeParams
     ui64 MaxWriteBandwidth = 0;
     ui32 MaxReadIops = 0;
     ui32 MaxWriteIops = 0;
-    NCloud::NProto::EStorageMediaKind MediaKind
-        = NCloud::NProto::STORAGE_MEDIA_DEFAULT;
+    NCloud::NProto::EStorageMediaKind MediaKind =
+        NCloud::NProto::STORAGE_MEDIA_DEFAULT;
     NPrivateProto::TVolumeChannelsToPoolsKinds VolumeChannelsToPoolsKinds = {};
 
     ui64 GetBlocksCount() const

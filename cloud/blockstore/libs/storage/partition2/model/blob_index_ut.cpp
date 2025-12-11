@@ -13,23 +13,21 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 bool operator==(const TBlockAndLocation& l, const TBlockAndLocation& r)
 {
-    return l.Block == r.Block
-        && l.Location.BlobId == r.Location.BlobId
-        && l.Location.BlobOffset == r.Location.BlobOffset;
+    return l.Block == r.Block && l.Location.BlobId == r.Location.BlobId &&
+           l.Location.BlobOffset == r.Location.BlobOffset;
 }
 
 bool operator<(const TBlockAndLocation& l, const TBlockAndLocation& r)
 {
     return l.Location.BlobId == r.Location.BlobId
-        ? l.Location.BlobOffset < r.Location.BlobOffset
-        : l.Location.BlobId < r.Location.BlobId;
+               ? l.Location.BlobOffset < r.Location.BlobOffset
+               : l.Location.BlobId < r.Location.BlobId;
 }
 
 bool operator<(const TBlobUpdate& l, const TBlobUpdate& r)
 {
-    return l.CommitId == r.CommitId
-        ? l.BlockRange.Start < r.BlockRange.Start
-        : l.CommitId < r.CommitId;
+    return l.CommitId == r.CommitId ? l.BlockRange.Start < r.BlockRange.Start
+                                    : l.CommitId < r.CommitId;
 }
 
 namespace {
@@ -43,7 +41,8 @@ void AddBlob(
     ui16 checkpointBlockCount = 0)
 {
     // TODO: check return value
-    index.AddBlob(blobId, {blockRange}, blockRange.Size(), checkpointBlockCount);
+    index
+        .AddBlob(blobId, {blockRange}, blockRange.Size(), checkpointBlockCount);
 }
 
 void AddBlockList(
@@ -69,10 +68,9 @@ auto MixedBlocks(
     TVector<TBlockAndLocation> v;
 
     for (ui32 i = blockRange.Start; i <= blockRange.End; ++i) {
-        v.push_back({
-            {i, commitId, maxCommitId, false},
-            {blobId, static_cast<ui16>(i - blockRange.Start + offset)}
-        });
+        v.push_back(
+            {{i, commitId, maxCommitId, false},
+             {blobId, static_cast<ui16>(i - blockRange.Start + offset)}});
     }
 
     return v;
@@ -157,11 +155,11 @@ void InitAllZones(TBlobIndex& index)
 
 Y_UNIT_TEST_SUITE(TBlobIndexTest)
 {
-    static const TPartialBlobId blobId1 = { 1, 0 };
-    static const TPartialBlobId blobId2 = { 2, 0 };
-    static const TPartialBlobId blobId3 = { 3, 0 };
-    static const TPartialBlobId blobId4 = { 4, 0 };
-    static const TPartialBlobId blobId5 = { 5, 0 };
+    static const TPartialBlobId blobId1 = {1, 0};
+    static const TPartialBlobId blobId2 = {2, 0};
+    static const TPartialBlobId blobId3 = {3, 0};
+    static const TPartialBlobId blobId4 = {4, 0};
+    static const TPartialBlobId blobId5 = {5, 0};
 
     Y_UNIT_TEST(ShouldStoreBlobs)
     {
@@ -170,8 +168,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
             ZoneBlockCount,
             BlockListCacheSize,
             MaxBlocksInBlob,
-            DeletedRangesMapMode
-        );
+            DeletedRangesMapMode);
         InitAllZones(index);
 
         AddBlob(index, blobId1, TBlockRange32::WithLength(0, 100), 1);
@@ -186,8 +183,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
                 TBlockRange32::WithLength(45, 10),
             },
             30,
-            0
-        );
+            0);
 
         {
             auto blob1 = index.FindBlob(0, blobId1);
@@ -210,7 +206,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
             UNIT_ASSERT_VALUES_EQUAL(4, blob4.Blob->CheckpointBlockCount);
             UNIT_ASSERT_VALUES_EQUAL(1, blob4.ZoneId);
 
-            UNIT_ASSERT(!index.FindBlob(0, { 111, 0 }).Blob);
+            UNIT_ASSERT(!index.FindBlob(0, {111, 0}).Blob);
         }
 
         {
@@ -220,8 +216,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
                 TVector<TPartialBlobId>({
                     blobId1,
                     blobId2,
-                })
-            );
+                }));
         }
 
         {
@@ -233,8 +228,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
                     blobId1,
                     blobId2,
                     blobId5,
-                })
-            );
+                }));
         }
 
         {
@@ -248,8 +242,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
                     blobId3,
                     blobId4,
                     blobId5,
-                })
-            );
+                }));
         }
 
         {
@@ -259,8 +252,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
                 TVector<TPartialBlobId>({
                     blobId1,
                     blobId4,
-                })
-            );
+                }));
         }
     }
 
@@ -271,8 +263,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
             ZoneBlockCount,
             BlockListCacheSize,
             MaxBlocksInBlob,
-            DeletedRangesMapMode
-        );
+            DeletedRangesMapMode);
         InitAllZones(index);
 
         AddBlob(index, blobId1, TBlockRange32::WithLength(0, 100));
@@ -298,8 +289,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
                 TVector<TPartialBlobId>({
                     blobId2,
                     blobId4,
-                })
-            );
+                }));
             UNIT_ASSERT_VALUES_EQUAL(0, garbage.ZoneId);
         }
 
@@ -314,8 +304,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
                 TVector<TPartialBlobId>({
                     blobId3,
                     blobId1,
-                })
-            );
+                }));
             UNIT_ASSERT_VALUES_EQUAL(GlobalZoneId, garbage.ZoneId);
         }
 
@@ -331,8 +320,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
                 TVector<TPartialBlobId>({
                     blobId1,
                     blobId3,
-                })
-            );
+                }));
             UNIT_ASSERT_VALUES_EQUAL(GlobalZoneId, garbage.ZoneId);
         }
     }
@@ -344,8 +332,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
             ZoneBlockCount,
             BlockListCacheSize,
             MaxBlocksInBlob,
-            DeletedRangesMapMode
-        );
+            DeletedRangesMapMode);
         InitAllZones(index);
 
         AddBlob(index, blobId1, TBlockRange32::WithLength(0, 100));
@@ -360,21 +347,15 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
         UNIT_ASSERT_VALUES_EQUAL(247, index.GetPendingUpdates());
 
         ASSERT_VECTORS_EQUAL(
-            index.FindDeletedBlocks(
-                TBlockRange32::WithLength(0, 200),
-                2),
+            index.FindDeletedBlocks(TBlockRange32::WithLength(0, 200), 2),
             DeletedBlocks({}, {}));
 
         ASSERT_VECTORS_EQUAL(
-            index.FindDeletedBlocks(
-                TBlockRange32::WithLength(0, 200),
-                3),
+            index.FindDeletedBlocks(TBlockRange32::WithLength(0, 200), 3),
             DeletedBlocks({TBlockRange32::WithLength(50, 150)}, {3}));
 
         ASSERT_VECTORS_EQUAL(
-            index.FindDeletedBlocks(
-                TBlockRange32::WithLength(0, 200),
-                4),
+            index.FindDeletedBlocks(TBlockRange32::WithLength(0, 200), 4),
             DeletedBlocks(
                 {TBlockRange32::MakeClosedInterval(25, 70),
                  TBlockRange32::WithLength(50, 150)},
@@ -395,26 +376,20 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
             ZoneBlockCount,
             BlockListCacheSize,
             MaxBlocksInBlob,
-            DeletedRangesMapMode
-        );
+            DeletedRangesMapMode);
         InitAllZones(index);
 
         AddBlob(index, blobId1, TBlockRange32::WithLength(0, 100));
         AddBlob(index, blobId2, TBlockRange32::WithLength(100, 100));
         AddBlob(index, blobId3, TBlockRange32::WithLength(50, 100));
 
-        index.MarkBlocksDeleted(
-            {TBlockRange32::WithLength(20, 30), 4, 1});
-        index.MarkBlocksDeleted(
-            {TBlockRange32::WithLength(60, 30), 5, 2});
+        index.MarkBlocksDeleted({TBlockRange32::WithLength(20, 30), 4, 1});
+        index.MarkBlocksDeleted({TBlockRange32::WithLength(60, 30), 5, 2});
 
         index.OnCheckpoint(6);
-        index.MarkBlocksDeleted(
-            {TBlockRange32::WithLength(110, 40), 7, 3});
-        index.MarkBlocksDeleted(
-            {TBlockRange32::WithLength(60, 20), 8, 4});
-        index.MarkBlocksDeleted(
-            {TBlockRange32::WithLength(40, 45), 9, 5});
+        index.MarkBlocksDeleted({TBlockRange32::WithLength(110, 40), 7, 3});
+        index.MarkBlocksDeleted({TBlockRange32::WithLength(60, 20), 8, 4});
+        index.MarkBlocksDeleted({TBlockRange32::WithLength(40, 45), 9, 5});
 
         //
         //  0   |   1   |   2   |   max
@@ -434,16 +409,14 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
                 blobId1,
                 blobId3,
             }),
-            extracted
-        );
+            extracted);
 
         auto deletionsInfo = index.CleanupDirtyRanges();
         ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TBlobUpdate>({
                 {TBlockRange32::WithLength(60, 30), 5, 2},
             }),
-            deletionsInfo.BlobUpdates
-        );
+            deletionsInfo.BlobUpdates);
 
         UNIT_ASSERT_VALUES_EQUAL(1, deletionsInfo.ZoneId);
 
@@ -464,16 +437,14 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
                 blobId1,
                 blobId3,
             }),
-            extracted
-        );
+            extracted);
 
         deletionsInfo = index.CleanupDirtyRanges();
         ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TBlobUpdate>({
                 {TBlockRange32::WithLength(40, 45), 9, 5},
             }),
-            deletionsInfo.BlobUpdates
-        );
+            deletionsInfo.BlobUpdates);
 
         UNIT_ASSERT_VALUES_EQUAL(GlobalZoneId, deletionsInfo.ZoneId);
 
@@ -493,16 +464,14 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
                 blobId2,
                 blobId3,
             }),
-            extracted
-        );
+            extracted);
 
         deletionsInfo = index.CleanupDirtyRanges();
         ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TBlobUpdate>({
                 {TBlockRange32::WithLength(110, 40), 7, 3},
             }),
-            deletionsInfo.BlobUpdates
-        );
+            deletionsInfo.BlobUpdates);
 
         UNIT_ASSERT_VALUES_EQUAL(2, deletionsInfo.ZoneId);
 
@@ -520,16 +489,14 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
             TVector<TPartialBlobId>({
                 blobId1,
             }),
-            extracted
-        );
+            extracted);
 
         deletionsInfo = index.CleanupDirtyRanges();
         ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TBlobUpdate>({
                 {TBlockRange32::WithLength(20, 30), 4, 1},
             }),
-            deletionsInfo.BlobUpdates
-        );
+            deletionsInfo.BlobUpdates);
 
         UNIT_ASSERT_VALUES_EQUAL(0, deletionsInfo.ZoneId);
 
@@ -548,16 +515,14 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
                 blobId1,
                 blobId3,
             }),
-            extracted
-        );
+            extracted);
 
         deletionsInfo = index.CleanupDirtyRanges();
         ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TBlobUpdate>({
                 {TBlockRange32::WithLength(60, 20), 8, 4},
             }),
-            deletionsInfo.BlobUpdates
-        );
+            deletionsInfo.BlobUpdates);
 
         UNIT_ASSERT_VALUES_EQUAL(1, deletionsInfo.ZoneId);
 
@@ -569,11 +534,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
         UNIT_ASSERT_VALUES_EQUAL(GlobalZoneId, index.SelectZoneToCleanup());
         index.SeparateChunkForCleanup(15);
         extracted = index.ExtractDirtyBlobs();
-        ASSERT_VECTOR_CONTENTS_EQUAL(
-            TVector<TPartialBlobId>({
-            }),
-            extracted
-        );
+        ASSERT_VECTOR_CONTENTS_EQUAL(TVector<TPartialBlobId>({}), extracted);
     }
 
     Y_UNIT_TEST(ShouldFindDirtyBlobsInMixedZones)
@@ -583,8 +544,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
             ZoneBlockCount,
             BlockListCacheSize,
             MaxBlocksInBlob,
-            DeletedRangesMapMode
-        );
+            DeletedRangesMapMode);
         InitAllZones(index);
 
         AddBlob(index, blobId1, TBlockRange32::MakeClosedInterval(0, 40));
@@ -619,16 +579,14 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
             TVector<TPartialBlobId>({
                 blobId2,
             }),
-            extracted
-        );
+            extracted);
 
         auto deletionsInfo = index.CleanupDirtyRanges();
         ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TBlobUpdate>({
                 {TBlockRange32::MakeClosedInterval(60, 70), 2, 2},
             }),
-            deletionsInfo.BlobUpdates
-        );
+            deletionsInfo.BlobUpdates);
 
         UNIT_ASSERT_VALUES_EQUAL(1, deletionsInfo.ZoneId);
 
@@ -640,16 +598,14 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
             TVector<TPartialBlobId>({
                 blobId1,
             }),
-            extracted
-        );
+            extracted);
 
         deletionsInfo = index.CleanupDirtyRanges();
         ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TBlobUpdate>({
                 {TBlockRange32::MakeClosedInterval(10, 20), 1, 1},
             }),
-            deletionsInfo.BlobUpdates
-        );
+            deletionsInfo.BlobUpdates);
 
         UNIT_ASSERT_VALUES_EQUAL(0, deletionsInfo.ZoneId);
 
@@ -657,11 +613,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
         UNIT_ASSERT_VALUES_EQUAL(GlobalZoneId, index.SelectZoneToCleanup());
         index.SeparateChunkForCleanup(blobId3.CommitId());
         extracted = index.ExtractDirtyBlobs();
-        ASSERT_VECTOR_CONTENTS_EQUAL(
-            TVector<TPartialBlobId>({
-            }),
-            extracted
-        );
+        ASSERT_VECTOR_CONTENTS_EQUAL(TVector<TPartialBlobId>({}), extracted);
     }
 
     Y_UNIT_TEST(ShouldFindMixedBlocks)
@@ -671,8 +623,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
             ZoneBlockCount,
             BlockListCacheSize,
             MaxBlocksInBlob,
-            DeletedRangesMapMode
-        );
+            DeletedRangesMapMode);
         InitAllZones(index);
 
         AddBlob(index, blobId1, TBlockRange32::MakeClosedInterval(0, 40));
@@ -808,8 +759,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
             ZoneBlockCount,
             BlockListCacheSize,
             MaxBlocksInBlob,
-            DeletedRangesMapMode
-        );
+            DeletedRangesMapMode);
         InitAllZones(index);
 
         TVector<TBlock> blocks{
@@ -839,9 +789,8 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
         index.MarkBlocksDeleted({TBlockRange32::MakeOneBlock(1), 7, 5});
         index.MarkBlocksDeleted({TBlockRange32::MakeOneBlock(5), 10, 6});
 
-        const ui32 updateCount = index.ApplyUpdates(
-            TBlockRange32::WithLength(0, 6),
-            blocks);
+        const ui32 updateCount =
+            index.ApplyUpdates(TBlockRange32::WithLength(0, 6), blocks);
 
         UNIT_ASSERT_VALUES_EQUAL(2, updateCount);
 
@@ -863,8 +812,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
             ZoneBlockCount,
             30,
             MaxBlocksInBlob,
-            DeletedRangesMapMode
-        );
+            DeletedRangesMapMode);
         InitAllZones(index);
 
         AddBlob(index, blobId1, TBlockRange32::WithLength(1, 10));
@@ -935,37 +883,37 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
             BuildRanges({{1, 0, 0, false}}, 1),
             TBlockRanges({
                 TBlockRange32::MakeOneBlock(1),
-            })
-        );
+            }));
 
         ASSERT_VECTORS_EQUAL(
             BuildRanges({{1, 0, 0, false}}, 100),
             TBlockRanges({
                 TBlockRange32::MakeOneBlock(1),
-            })
-        );
+            }));
 
         ASSERT_VECTORS_EQUAL(
-            BuildRanges({
-                {1, 0, 0, false},
-                {2, 0, 0, false},
-                {3, 0, 0, false},
-            }, 1),
+            BuildRanges(
+                {
+                    {1, 0, 0, false},
+                    {2, 0, 0, false},
+                    {3, 0, 0, false},
+                },
+                1),
             TBlockRanges({
                 TBlockRange32::MakeClosedInterval(1, 3),
-            })
-        );
+            }));
 
         ASSERT_VECTORS_EQUAL(
-            BuildRanges({
-                {1, 0, 0, false},
-                {2, 0, 0, false},
-                {3, 0, 0, false},
-            }, 100),
+            BuildRanges(
+                {
+                    {1, 0, 0, false},
+                    {2, 0, 0, false},
+                    {3, 0, 0, false},
+                },
+                100),
             TBlockRanges({
                 TBlockRange32::MakeClosedInterval(1, 3),
-            })
-        );
+            }));
 
         TVector<TBlock> sparseBlocks = {
             {1, 0, 0, false},
@@ -995,16 +943,14 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
             BuildRanges(sparseBlocks, 1),
             TBlockRanges({
                 TBlockRange32::MakeClosedInterval(1, 108),
-            })
-        );
+            }));
 
         ASSERT_VECTORS_EQUAL(
             BuildRanges(sparseBlocks, 2),
             TBlockRanges({
                 TBlockRange32::MakeClosedInterval(1, 20),
                 TBlockRange32::MakeClosedInterval(100, 108),
-            })
-        );
+            }));
 
         ASSERT_VECTORS_EQUAL(
             BuildRanges(sparseBlocks, 3),
@@ -1012,8 +958,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
                 TBlockRange32::MakeClosedInterval(1, 11),
                 TBlockRange32::MakeClosedInterval(20, 20),
                 TBlockRange32::MakeClosedInterval(100, 108),
-            })
-        );
+            }));
 
         ASSERT_VECTORS_EQUAL(
             BuildRanges(sparseBlocks, 4),
@@ -1022,8 +967,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
                 TBlockRange32::MakeClosedInterval(20, 20),
                 TBlockRange32::MakeClosedInterval(100, 101),
                 TBlockRange32::MakeClosedInterval(106, 108),
-            })
-        );
+            }));
 
         ASSERT_VECTORS_EQUAL(
             BuildRanges(sparseBlocks, 5),
@@ -1033,8 +977,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
                 TBlockRange32::MakeClosedInterval(20, 20),
                 TBlockRange32::MakeClosedInterval(100, 101),
                 TBlockRange32::MakeClosedInterval(106, 108),
-            })
-        );
+            }));
 
         ASSERT_VECTORS_EQUAL(
             BuildRanges(sparseBlocks, 6),
@@ -1045,8 +988,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
                 TBlockRange32::MakeClosedInterval(20, 20),
                 TBlockRange32::MakeClosedInterval(100, 101),
                 TBlockRange32::MakeClosedInterval(106, 108),
-            })
-        );
+            }));
 
         ASSERT_VECTORS_EQUAL(
             BuildRanges(sparseBlocks, 7),
@@ -1057,8 +999,7 @@ Y_UNIT_TEST_SUITE(TBlobIndexTest)
                 TBlockRange32::MakeClosedInterval(20, 20),
                 TBlockRange32::MakeClosedInterval(100, 101),
                 TBlockRange32::MakeClosedInterval(106, 108),
-            })
-        );
+            }));
     }
 }
 
@@ -1085,9 +1026,9 @@ inline void Out<NCloud::NBlockStore::NStorage::NPartition2::TBlockAndLocation>(
     IOutputStream& out,
     const NCloud::NBlockStore::NStorage::NPartition2::TBlockAndLocation& b)
 {
-    out << b.Block.BlockIndex
-        << "@" << b.Block.MinCommitId << "-" << b.Block.MaxCommitId
-        << "/" << b.Location.BlobId << "+" << b.Location.BlobOffset;
+    out << b.Block.BlockIndex << "@" << b.Block.MinCommitId << "-"
+        << b.Block.MaxCommitId << "/" << b.Location.BlobId << "+"
+        << b.Location.BlobOffset;
 }
 
 template <>
@@ -1095,6 +1036,6 @@ inline void Out<NCloud::NBlockStore::NStorage::NPartition2::TBlobUpdate>(
     IOutputStream& out,
     const NCloud::NBlockStore::NStorage::NPartition2::TBlobUpdate& b)
 {
-    out << b.BlockRange.Start << ".." << b.BlockRange.End
-        << "@" << b.CommitId << "+" << b.DeletionId;
+    out << b.BlockRange.Start << ".." << b.BlockRange.End << "@" << b.CommitId
+        << "+" << b.DeletionId;
 }

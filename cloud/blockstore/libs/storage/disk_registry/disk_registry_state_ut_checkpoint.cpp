@@ -1,11 +1,13 @@
-#include "disk_registry_database.h"
 #include "disk_registry_state.h"
+
+#include "disk_registry_database.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry/testlib/test_state.h>
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
@@ -487,8 +489,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             });
         {
             TDiskInfo checkpointDiskInfo;
-            auto error =
-                state.GetDiskInfo(shadowDiskId, checkpointDiskInfo);
+            auto error = state.GetDiskInfo(shadowDiskId, checkpointDiskInfo);
             UNIT_ASSERT_SUCCESS(error);
         }
 
@@ -509,8 +510,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
         // Checkpoints disk deleted.
         {
             TDiskInfo checkpointDiskInfo;
-            auto error =
-                state.GetDiskInfo(shadowDiskId, checkpointDiskInfo);
+            auto error = state.GetDiskInfo(shadowDiskId, checkpointDiskInfo);
             UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, error.GetCode());
         }
     }

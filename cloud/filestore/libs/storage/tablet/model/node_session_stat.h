@@ -35,9 +35,7 @@ private:
     [[nodiscard]] EKind GetKind(
         const TStat::const_iterator& nodeStatIterator) const;
 
-    void Clean(
-        TStat::iterator& nodeStatIterator,
-        const TString& sessionId);
+    void Clean(TStat::iterator& nodeStatIterator, const TString& sessionId);
 };
 
 }   // namespace NCloud::NFileStore::NStorage

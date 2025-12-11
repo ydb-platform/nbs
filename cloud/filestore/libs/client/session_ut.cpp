@@ -45,13 +45,14 @@ struct TBootstrap
 
     TBootstrap()
     {
-        Logging = CreateLoggingService("console", { TLOG_RESOURCES });
+        Logging = CreateLoggingService("console", {TLOG_RESOURCES});
         Timer = CreateWallClockTimer();
         Scheduler = std::make_shared<TTestScheduler>();
 
         FileStore = std::make_shared<TFileStoreTest>();
 
-        FileStore->CreateSessionHandler = [] (auto callContext, auto request) {
+        FileStore->CreateSessionHandler = [](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(callContext->FileSystemId, FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetFileSystemId(*request), FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetClientId(*request), ClientId);
@@ -63,13 +64,15 @@ struct TBootstrap
             return MakeFuture(response);
         };
 
-        FileStore->DestroySessionHandler = [] (auto callContext, auto request) {
+        FileStore->DestroySessionHandler = [](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(callContext->FileSystemId, FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetSessionId(*request), SessionId);
             return MakeFuture(NProto::TDestroySessionResponse());
         };
 
-        FileStore->PingSessionHandler = [] (auto callContext, auto request) {
+        FileStore->PingSessionHandler = [](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(callContext->FileSystemId, FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetSessionId(*request), SessionId);
             return MakeFuture(NProto::TPingSessionResponse());
@@ -152,7 +155,9 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         bootstrap.Start();
 
         ui32 createCalled = 0;
-        bootstrap.FileStore->CreateSessionHandler = [&] (auto callContext, auto request) {
+        bootstrap.FileStore->CreateSessionHandler =
+            [&](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(callContext->FileSystemId, FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetFileSystemId(*request), FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetClientId(*request), ClientId);
@@ -166,7 +171,9 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         };
 
         ui32 pingCalled = 0;
-        bootstrap.FileStore->PingSessionHandler = [&] (auto callContext, auto request) {
+        bootstrap.FileStore->PingSessionHandler =
+            [&](auto callContext, auto request)
+        {
             ++pingCalled;
             UNIT_ASSERT_VALUES_EQUAL(callContext->FileSystemId, FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetSessionId(*request), SessionId);
@@ -174,7 +181,9 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         };
 
         TVector<TPromise<NProto::TCreateNodeResponse>> nodes;
-        bootstrap.FileStore->CreateNodeHandler = [&] (auto callContext, auto request) {
+        bootstrap.FileStore->CreateNodeHandler =
+            [&](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(callContext->FileSystemId, FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetFileSystemId(*request), FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetClientId(*request), ClientId);
@@ -218,7 +227,9 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         bootstrap.Start();
 
         ui32 createCalled = 0;
-        bootstrap.FileStore->CreateSessionHandler = [&] (auto callContext, auto request) {
+        bootstrap.FileStore->CreateSessionHandler =
+            [&](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(callContext->FileSystemId, FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetFileSystemId(*request), FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetClientId(*request), ClientId);
@@ -232,7 +243,9 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         };
 
         TVector<TPromise<NProto::TCreateNodeResponse>> nodes;
-        bootstrap.FileStore->CreateNodeHandler = [&] (auto callContext, auto request) {
+        bootstrap.FileStore->CreateNodeHandler =
+            [&](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(callContext->FileSystemId, FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetFileSystemId(*request), FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetClientId(*request), ClientId);
@@ -245,7 +258,7 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         UNIT_ASSERT(!HasError(bootstrap.Session->CreateSession().GetValue()));
         UNIT_ASSERT_VALUES_EQUAL(createCalled, 1);
 
-        constexpr ui32 count= 5;
+        constexpr ui32 count = 5;
         TVector<TFuture<NProto::TCreateNodeResponse>> futures(count);
         for (ui32 i = 0; i < 5; ++i) {
             futures[i] = bootstrap.Session->CreateNode(
@@ -254,7 +267,9 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         }
 
         auto promise = NewPromise<NProto::TCreateSessionResponse>();
-        bootstrap.FileStore->CreateSessionHandler = [&] (auto callContext, auto request) {
+        bootstrap.FileStore->CreateSessionHandler =
+            [&](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(callContext->FileSystemId, FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetFileSystemId(*request), FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetClientId(*request), ClientId);
@@ -299,7 +314,9 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         TBootstrap bootstrap;
         bootstrap.Start();
 
-        bootstrap.FileStore->CreateSessionHandler = [&] (auto callContext, auto request) {
+        bootstrap.FileStore->CreateSessionHandler =
+            [&](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(callContext->FileSystemId, FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetFileSystemId(*request), FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetClientId(*request), ClientId);
@@ -312,7 +329,9 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         };
 
         TVector<TPromise<NProto::TCreateNodeResponse>> nodes;
-        bootstrap.FileStore->CreateNodeHandler = [&] (auto callContext, auto request) {
+        bootstrap.FileStore->CreateNodeHandler =
+            [&](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(callContext->FileSystemId, FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetFileSystemId(*request), FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetClientId(*request), ClientId);
@@ -324,7 +343,7 @@ Y_UNIT_TEST_SUITE(TSessionTest)
 
         UNIT_ASSERT(!HasError(bootstrap.Session->CreateSession().GetValue()));
 
-        constexpr ui32 count= 5;
+        constexpr ui32 count = 5;
         TVector<TFuture<NProto::TCreateNodeResponse>> futures(count);
         for (ui32 i = 0; i < 5; ++i) {
             futures[i] = bootstrap.Session->CreateNode(
@@ -333,7 +352,9 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         }
 
         TVector<TPromise<NProto::TCreateSessionResponse>> creates;
-        bootstrap.FileStore->CreateSessionHandler = [&] (auto callContext, auto request) {
+        bootstrap.FileStore->CreateSessionHandler =
+            [&](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(callContext->FileSystemId, FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetFileSystemId(*request), FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetClientId(*request), ClientId);
@@ -380,7 +401,9 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         TBootstrap bootstrap;
         bootstrap.Start();
 
-        bootstrap.FileStore->CreateSessionHandler = [&] (auto callContext, auto request) {
+        bootstrap.FileStore->CreateSessionHandler =
+            [&](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(callContext->FileSystemId, FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetFileSystemId(*request), FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetClientId(*request), ClientId);
@@ -420,7 +443,9 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         bool readOnly = 0;
         ui64 mountSeqNumber = 0;
 
-        bootstrap.FileStore->CreateSessionHandler = [&] (auto callContext, auto request) {
+        bootstrap.FileStore->CreateSessionHandler =
+            [&](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(callContext->FileSystemId, FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetFileSystemId(*request), FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetClientId(*request), ClientId);
@@ -452,9 +477,8 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         {
             readOnly = true;
             mountSeqNumber = 10;
-            auto future = bootstrap.Session->AlterSession(
-                readOnly,
-                mountSeqNumber);
+            auto future =
+                bootstrap.Session->AlterSession(readOnly, mountSeqNumber);
             const auto& response = future.GetValue(WaitTimeout);
             UNIT_ASSERT(!HasError(response));
             auto sessionState = GetSessionInternalState(bootstrap.Session);
@@ -495,7 +519,9 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         ui64 mountSeqNumber = 42;
         ui32 createCnt = 0;
 
-        bootstrap.FileStore->CreateSessionHandler = [&] (auto callContext, auto request) {
+        bootstrap.FileStore->CreateSessionHandler =
+            [&](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(callContext->FileSystemId, FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetFileSystemId(*request), FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetClientId(*request), ClientId);
@@ -508,7 +534,9 @@ Y_UNIT_TEST_SUITE(TSessionTest)
             return MakeFuture(response);
         };
 
-        bootstrap.FileStore->CreateNodeHandler = [&] (auto callContext, auto request) {
+        bootstrap.FileStore->CreateNodeHandler =
+            [&](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(callContext->FileSystemId, FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetFileSystemId(*request), FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetClientId(*request), ClientId);
@@ -526,7 +554,9 @@ Y_UNIT_TEST_SUITE(TSessionTest)
             return MakeFuture(NProto::TCreateNodeResponse());
         };
 
-        bootstrap.FileStore->DestroySessionHandler = [&] (auto callContext, auto request) {
+        bootstrap.FileStore->DestroySessionHandler =
+            [&](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(callContext->FileSystemId, FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(GetSessionId(*request), SessionId);
             UNIT_ASSERT_VALUES_EQUAL(
@@ -536,16 +566,14 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         };
 
         {
-            auto future = bootstrap.Session->CreateSession(
-                false,
-                mountSeqNumber);
+            auto future =
+                bootstrap.Session->CreateSession(false, mountSeqNumber);
             UNIT_ASSERT(!HasError(future.GetValueSync()));
         }
 
         {
-            auto future = bootstrap.Session->CreateSession(
-                false,
-                mountSeqNumber);
+            auto future =
+                bootstrap.Session->CreateSession(false, mountSeqNumber);
             UNIT_ASSERT(!HasError(future.GetValueSync()));
         }
 

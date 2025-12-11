@@ -15,15 +15,15 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 TGetDeviceForRangeCompanion::TGetDeviceForRangeCompanion(
-        EAllowedOperation allowedOperation)
+    EAllowedOperation allowedOperation)
     : AllowedOperation(allowedOperation)
 {}
 
 TGetDeviceForRangeCompanion::TGetDeviceForRangeCompanion(
-        EAllowedOperation allowedOperation,
-        TStorageConfigPtr config,
-        TNonreplicatedPartitionConfigPtr partConfig,
-        const TVector<TDeviceStat>* const deviceStats)
+    EAllowedOperation allowedOperation,
+    TStorageConfigPtr config,
+    TNonreplicatedPartitionConfigPtr partConfig,
+    const TVector<TDeviceStat>* const deviceStats)
     : Config(std::move(config))
     , PartConfig(std::move(partConfig))
     , DeviceStats(deviceStats)

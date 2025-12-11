@@ -45,13 +45,8 @@ int main(int argc, char** argv)
         TOptsParseResultException(&opts, argc, argv);
     }
 
-    NDiscovery::TFakeBlockStoreServer server(
-        port,
-        securePort,
-        rootCertsFile,
-        keyFile,
-        certFile
-    );
+    NDiscovery::TFakeBlockStoreServer
+        server(port, securePort, rootCertsFile, keyFile, certFile);
 
     server.Start();
 

@@ -13,8 +13,10 @@ NProto::TAddClusterNodeResponse TLocalFileSystem::AddClusterNode(
 
     with_lock (ClusterLock) {
         if (!Cluster.AddNode(nodeId)) {
-            return TErrorResponse(S_FALSE, TStringBuilder()
-                << "node is already in the cluster: " << nodeId.Quote());
+            return TErrorResponse(
+                S_FALSE,
+                TStringBuilder()
+                    << "node is already in the cluster: " << nodeId.Quote());
         }
     }
 
@@ -28,8 +30,10 @@ NProto::TRemoveClusterNodeResponse TLocalFileSystem::RemoveClusterNode(
 
     with_lock (ClusterLock) {
         if (!Cluster.RemoveNode(nodeId)) {
-            return TErrorResponse(S_FALSE, TStringBuilder()
-                << "node is not in the cluster: " << nodeId.Quote());
+            return TErrorResponse(
+                S_FALSE,
+                TStringBuilder()
+                    << "node is not in the cluster: " << nodeId.Quote());
         }
     }
 
@@ -57,8 +61,10 @@ NProto::TAddClusterClientsResponse TLocalFileSystem::AddClusterClients(
     with_lock (ClusterLock) {
         auto* node = Cluster.FindNode(nodeId);
         if (!node) {
-            return TErrorResponse(E_ARGUMENT, TStringBuilder()
-                << "invalid node specified: " << nodeId.Quote());
+            return TErrorResponse(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "invalid node specified: " << nodeId.Quote());
         }
 
         for (const auto& client: request.GetClients()) {
@@ -77,8 +83,10 @@ NProto::TRemoveClusterClientsResponse TLocalFileSystem::RemoveClusterClients(
     with_lock (ClusterLock) {
         auto* node = Cluster.FindNode(nodeId);
         if (!node) {
-            return TErrorResponse(E_ARGUMENT, TStringBuilder()
-                << "invalid node specified: " << nodeId.Quote());
+            return TErrorResponse(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "invalid node specified: " << nodeId.Quote());
         }
 
         for (const auto& clientId: request.GetClientIds()) {
@@ -98,8 +106,10 @@ NProto::TListClusterClientsResponse TLocalFileSystem::ListClusterClients(
     with_lock (ClusterLock) {
         auto* node = Cluster.FindNode(nodeId);
         if (!node) {
-            return TErrorResponse(E_ARGUMENT, TStringBuilder()
-                << "invalid node specified: " << nodeId.Quote());
+            return TErrorResponse(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "invalid node specified: " << nodeId.Quote());
         }
 
         node->ListClients(response);
@@ -116,13 +126,16 @@ NProto::TUpdateClusterResponse TLocalFileSystem::UpdateCluster(
     with_lock (ClusterLock) {
         auto* node = Cluster.FindNode(nodeId);
         if (!node) {
-            return TErrorResponse(E_ARGUMENT, TStringBuilder()
-                << "invalid node specified: " << nodeId.Quote());
+            return TErrorResponse(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "invalid node specified: " << nodeId.Quote());
         }
 
         switch (request.GetUpdate()) {
             case NProto::TUpdateClusterRequest::E_START_GRACE:
-                node->SetFlags(ProtoFlag(NProto::TClusterNode::F_NEED_RECOVERY));
+                node->SetFlags(
+                    ProtoFlag(NProto::TClusterNode::F_NEED_RECOVERY));
                 break;
 
             case NProto::TUpdateClusterRequest::E_STOP_GRACE:
@@ -132,12 +145,15 @@ NProto::TUpdateClusterResponse TLocalFileSystem::UpdateCluster(
                 break;
 
             case NProto::TUpdateClusterRequest::E_JOIN_GRACE:
-                node->SetFlags(ProtoFlag(NProto::TClusterNode::F_GRACE_ENFORCING));
+                node->SetFlags(
+                    ProtoFlag(NProto::TClusterNode::F_GRACE_ENFORCING));
                 break;
 
             default:
-                return TErrorResponse(E_ARGUMENT, TStringBuilder()
-                    << "invalid update request: " << request.GetUpdate());
+                return TErrorResponse(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "invalid update request: " << request.GetUpdate());
         }
     }
 

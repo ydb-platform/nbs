@@ -14,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestFileIOService final
-    : public IFileIOService
+struct TTestFileIOService final: public IFileIOService
 {
     MOCK_METHOD(void, Start, (), (final));
     MOCK_METHOD(void, Stop, (), (final));
@@ -62,17 +61,22 @@ Y_UNIT_TEST_SUITE(TFileIOServiceTest)
         auto service = CreateFileIOServiceStub();
         service->Start();
 
-        TFileHandle dummy {INVALID_FHANDLE};
+        TFileHandle dummy{INVALID_FHANDLE};
 
-        TArrayRef<char> buffer { nullptr, 1024 };
+        TArrayRef<char> buffer{nullptr, 1024};
 
         {
             NProto::TError error = MakeError(E_FAIL);
 
-            service->AsyncRead(dummy, 0, buffer, [&] (const auto& er, ui32 n) {
-                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), n);
-                error = er;
-            });
+            service->AsyncRead(
+                dummy,
+                0,
+                buffer,
+                [&](const auto& er, ui32 n)
+                {
+                    UNIT_ASSERT_VALUES_EQUAL(buffer.size(), n);
+                    error = er;
+                });
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         }
@@ -80,10 +84,15 @@ Y_UNIT_TEST_SUITE(TFileIOServiceTest)
         {
             NProto::TError error = MakeError(E_FAIL);
 
-            service->AsyncWrite(dummy, 0, buffer, [&] (const auto& er, ui32 n) {
-                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), n);
-                error = er;
-            });
+            service->AsyncWrite(
+                dummy,
+                0,
+                buffer,
+                [&](const auto& er, ui32 n)
+                {
+                    UNIT_ASSERT_VALUES_EQUAL(buffer.size(), n);
+                    error = er;
+                });
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         }
@@ -96,9 +105,9 @@ Y_UNIT_TEST_SUITE(TFileIOServiceTest)
         auto service = CreateFileIOServiceStub();
         service->Start();
 
-        TFileHandle dummy {INVALID_FHANDLE};
+        TFileHandle dummy{INVALID_FHANDLE};
 
-        TArrayRef<char> buffer {nullptr, 1024};
+        TArrayRef<char> buffer{nullptr, 1024};
 
         UNIT_ASSERT_VALUES_EQUAL(
             buffer.size(),
@@ -146,12 +155,11 @@ Y_UNIT_TEST_SUITE(TFileIOServiceTest)
 
         service->Start();
 
-        TFileHandle dummy {INVALID_FHANDLE};
-        TArrayRef<char> buffer {nullptr, 1024};
+        TFileHandle dummy{INVALID_FHANDLE};
+        TArrayRef<char> buffer{nullptr, 1024};
 
-        TFileIOCompletion completion{
-            .Func = [] (auto...) {}
-        };
+        TFileIOCompletion completion{.Func = [](auto...) {
+        }};
 
         for (size_t i = 0; i != RequestsPerService * fileIOs.size(); ++i) {
             service->AsyncRead(dummy, 0, buffer, &completion);
@@ -188,7 +196,8 @@ Y_UNIT_TEST_SUITE(TFileIOServiceTest)
         // totalRequestCount requests of each type
         std::latch done{4 * totalRequestCount};
 
-        auto onRequest = [&done] (auto...) {
+        auto onRequest = [&done](auto...)
+        {
             done.count_down();
         };
 
@@ -211,9 +220,8 @@ Y_UNIT_TEST_SUITE(TFileIOServiceTest)
         TVector<std::thread> clients;
         clients.reserve(clientCount);
 
-        TFileIOCompletion completion{
-            .Func = [] (auto...){}
-        };
+        TFileIOCompletion completion{.Func = [](auto...) {
+        }};
 
         TFileHandle dummy{INVALID_FHANDLE};
         TArrayRef<char> buffer{nullptr, 1024};

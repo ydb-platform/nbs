@@ -17,15 +17,15 @@ void TIndexTabletActor::HandleUnsafeDeleteNode(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvIndexTablet::TUnsafeDeleteNodeMethod>(*requestInfo);
 
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_WARN(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s UnsafeDeleteNode: %s",
         LogTag.c_str(),
         msg->Record.DebugString().Quote().c_str());
@@ -64,7 +64,9 @@ void TIndexTabletActor::ExecuteTx_UnsafeDeleteNode(
     }
 
     if (!args.Node) {
-        LOG_WARN(ctx, TFileStoreComponents::TABLET,
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s UnsafeDeleteNode: %s - node not found",
             LogTag.c_str(),
             args.Request.DebugString().Quote().c_str());
@@ -80,7 +82,9 @@ void TIndexTabletActor::CompleteTx_UnsafeDeleteNode(
 {
     RemoveTransaction(*args.RequestInfo);
 
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_WARN(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s UnsafeDeleteNode: %s, status: %s",
         LogTag.c_str(),
         args.Request.DebugString().Quote().c_str(),
@@ -101,15 +105,15 @@ void TIndexTabletActor::HandleUnsafeUpdateNode(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvIndexTablet::TUnsafeUpdateNodeMethod>(*requestInfo);
 
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_WARN(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s UnsafeUpdateNode: %s",
         LogTag.c_str(),
         msg->Record.DebugString().Quote().c_str());
@@ -156,7 +160,9 @@ void TIndexTabletActor::ExecuteTx_UnsafeUpdateNode(
         node = args.Node->Attrs;
         nodeCommitId = args.Node->MinCommitId;
     } else {
-        LOG_WARN(ctx, TFileStoreComponents::TABLET,
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s UnsafeUpdateNode: %s - node not found, creating",
             LogTag.c_str(),
             args.Request.DebugString().Quote().c_str());
@@ -185,7 +191,9 @@ void TIndexTabletActor::CompleteTx_UnsafeUpdateNode(
     if (args.Node) {
         oldNode = args.Node->Attrs.Utf8DebugString();
     }
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_WARN(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s UnsafeUpdateNode: %s, old node: %s",
         LogTag.c_str(),
         args.Request.DebugString().Quote().c_str(),
@@ -205,15 +213,15 @@ void TIndexTabletActor::HandleUnsafeGetNode(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvIndexTablet::TUnsafeGetNodeMethod>(*requestInfo);
 
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_WARN(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s UnsafeGetNode: %s",
         LogTag.c_str(),
         msg->Record.DebugString().Quote().c_str());
@@ -243,11 +251,7 @@ bool TIndexTabletActor::PrepareTx_UnsafeGetNode(
 {
     Y_UNUSED(ctx);
 
-    return ReadNode(
-        db,
-        args.Request.GetId(),
-        GetCurrentCommitId(),
-        args.Node);
+    return ReadNode(db, args.Request.GetId(), GetCurrentCommitId(), args.Node);
 }
 
 void TIndexTabletActor::CompleteTx_UnsafeGetNode(
@@ -260,7 +264,9 @@ void TIndexTabletActor::CompleteTx_UnsafeGetNode(
     if (args.Node) {
         node = args.Node->Attrs.Utf8DebugString();
     }
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_WARN(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s UnsafeGetNode: %s, node: %s",
         LogTag.c_str(),
         args.Request.DebugString().Quote().c_str(),

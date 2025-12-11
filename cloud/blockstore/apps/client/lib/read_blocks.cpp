@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/encryption/model/utils.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/guarded_sglist.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -43,8 +44,7 @@ struct IReadRangeIterator
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSingleReadRangeIterator final
-    : public IReadRangeIterator
+class TSingleReadRangeIterator final: public IReadRangeIterator
 {
 private:
     const ui64 StartIndex;
@@ -62,7 +62,7 @@ public:
     {
         if (!Completed) {
             Completed = true;
-            return TReadRange { StartIndex, BlocksCount };
+            return TReadRange{StartIndex, BlocksCount};
         }
 
         return Nothing();
@@ -71,8 +71,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMultiReadRangeIterator final
-    : public IReadRangeIterator
+class TMultiReadRangeIterator final: public IReadRangeIterator
 {
 private:
     ui64 StartIndex;
@@ -81,9 +80,9 @@ private:
 
 public:
     TMultiReadRangeIterator(
-            ui64 startIndex,
-            ui64 endIndex,
-            ui32 batchBlocksCount)
+        ui64 startIndex,
+        ui64 endIndex,
+        ui32 batchBlocksCount)
         : StartIndex(startIndex)
         , EndIndex(endIndex)
         , BatchBlocksCount(batchBlocksCount)
@@ -92,10 +91,9 @@ public:
     TMaybe<TReadRange> Next() override
     {
         if (StartIndex < EndIndex) {
-            auto readRange = TReadRange {
+            auto readRange = TReadRange{
                 StartIndex,
-                Min<ui32>(EndIndex - StartIndex, BatchBlocksCount)
-            };
+                Min<ui32>(EndIndex - StartIndex, BatchBlocksCount)};
 
             StartIndex += readRange.BlocksCount;
             return readRange;
@@ -118,8 +116,7 @@ struct IResponseHandler
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TProtoResponseHandler final
-    : public IResponseHandler
+class TProtoResponseHandler final: public IResponseHandler
 {
 private:
     IOutputStream& Out;
@@ -147,8 +144,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRawResponseHandler final
-    : public IResponseHandler
+class TRawResponseHandler final: public IResponseHandler
 {
 private:
     TLog& Log;
@@ -180,15 +176,15 @@ struct TReadResponse
     TString Buffer;
     NProto::TError Error;
 
-    bool operator<(const TReadResponse& response) const {
+    bool operator<(const TReadResponse& response) const
+    {
         return BatchId < response.BatchId;
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReadBlocksCommand final
-    : public TCommand
+class TReadBlocksCommand final: public TCommand
 {
 private:
     TString DiskId;
@@ -235,13 +231,17 @@ public:
             .NoArgument()
             .SetFlag(&MountLocal);
 
-        Opts.AddLongOption("encryption-mode", "encryption mode [no|aes-xts|test]")
+        Opts.AddLongOption(
+                "encryption-mode",
+                "encryption mode [no|aes-xts|test]")
             .RequiredArgument("STR")
-            .Handler1T<TString>([this] (const auto& s) {
-                EncryptionMode = EncryptionModeFromString(s);
-            });
+            .Handler1T<TString>(
+                [this](const auto& s)
+                { EncryptionMode = EncryptionModeFromString(s); });
 
-        Opts.AddLongOption("encryption-key-path", "path to file with encryption key")
+        Opts.AddLongOption(
+                "encryption-key-path",
+                "path to file with encryption key")
             .RequiredArgument("STR")
             .StoreResult(&EncryptionKeyPath);
 
@@ -257,7 +257,9 @@ public:
             .RequiredArgument("NUM")
             .StoreResult(&StartIndex);
 
-        Opts.AddLongOption("blocks-count", "maximum number of blocks stored in volume")
+        Opts.AddLongOption(
+                "blocks-count",
+                "maximum number of blocks stored in volume")
             .RequiredArgument("NUM")
             .StoreResult(&BlocksCount);
 
@@ -265,7 +267,9 @@ public:
             .NoArgument()
             .SetFlag(&ReadAll);
 
-        Opts.AddLongOption("repair", "Repair blocks (fill lost blocks with a specific marker)")
+        Opts.AddLongOption(
+                "repair",
+                "Repair blocks (fill lost blocks with a specific marker)")
             .NoArgument()
             .SetFlag(&Repair);
 
@@ -308,11 +312,11 @@ protected:
             DiskId,
             MountToken,
             Session,
-            Repair ? NProto::VOLUME_ACCESS_REPAIR : NProto::VOLUME_ACCESS_READ_ONLY,
+            Repair ? NProto::VOLUME_ACCESS_REPAIR
+                   : NProto::VOLUME_ACCESS_READ_ONLY,
             MountLocal,
             ThrottlingDisabled,
-            encryptionSpec
-        );
+            encryptionSpec);
         if (HasError(mountResponse)) {
             return false;
         }
@@ -334,18 +338,18 @@ protected:
                 StartIndex,
                 BlocksCount);
 
-            responseHandler = std::make_unique<TProtoResponseHandler>(
-                GetOutputStream());
+            responseHandler =
+                std::make_unique<TProtoResponseHandler>(GetOutputStream());
         } else {
-            batchCount = (BlocksCount + BatchBlocksCount - 1) / BatchBlocksCount;
+            batchCount =
+                (BlocksCount + BatchBlocksCount - 1) / BatchBlocksCount;
             rangeIter = std::make_unique<TMultiReadRangeIterator>(
                 StartIndex,
                 StartIndex + BlocksCount,
                 BatchBlocksCount);
 
-            responseHandler = std::make_unique<TRawResponseHandler>(
-                Log,
-                GetOutputStream());
+            responseHandler =
+                std::make_unique<TRawResponseHandler>(Log, GetOutputStream());
         }
 
         ui32 readBatchId = 0;
@@ -355,7 +359,7 @@ protected:
         TSet<TReadResponse> batches;
         bool result = true;
         while (result && writeBatchId < batchCount &&
-            ShouldContinue.PollState() != TProgramShouldContinue::Stop)
+               ShouldContinue.PollState() != TProgramShouldContinue::Stop)
         {
             if (currentInflight != 0) {
                 ui32 readyCount = batches.size();
@@ -368,7 +372,9 @@ protected:
             if (batches.size() > 2 * IODepth) {
                 STORAGE_WARN("One of requests hangs");
             } else {
-                while (result && readBatchId < batchCount && currentInflight < IODepth) {
+                while (result && readBatchId < batchCount &&
+                       currentInflight < IODepth)
+                {
                     result = ReadBatch(*rangeIter, readBatchId);
                     ++readBatchId;
                     ++currentInflight;
@@ -381,7 +387,8 @@ protected:
                 Ready.WaitI();
                 continue;
             }
-            while (!batches.empty() && writeBatchId == batches.begin()->BatchId) {
+            while (!batches.empty() && writeBatchId == batches.begin()->BatchId)
+            {
                 result = OutputBatch(*batches.begin(), *responseHandler);
                 batches.erase(batches.begin());
                 ++writeBatchId;
@@ -406,17 +413,22 @@ private:
         }
 
         if (ReadAll && Proto) {
-            STORAGE_ERROR("--read-all option cannot be used along with --proto option");
+            STORAGE_ERROR(
+                "--read-all option cannot be used along with --proto option");
             return false;
         }
 
         if (ReadAll && (StartIndex || BlocksCount)) {
-            STORAGE_ERROR("--read-all option cannot be used along with --start-index or --blocks-count options");
+            STORAGE_ERROR(
+                "--read-all option cannot be used along with --start-index or "
+                "--blocks-count options");
             return false;
         }
 
         if (Proto && (StartIndex || BlocksCount)) {
-            STORAGE_ERROR("--proto option cannot be used along with --start-index or --blocks-count options");
+            STORAGE_ERROR(
+                "--proto option cannot be used along with --start-index or "
+                "--blocks-count options");
             return false;
         }
 
@@ -437,68 +449,73 @@ private:
         const TReadResponse& response,
         IResponseHandler& responseHandler)
     {
-       responseHandler.HandleResponse(response.Error, response.Buffer);
-       if (HasError(response.Error)) {
-           return false;
-       }
-       return true;
+        responseHandler.HandleResponse(response.Error, response.Buffer);
+        if (HasError(response.Error)) {
+            return false;
+        }
+        return true;
     }
-
 
     bool ReadBatch(IReadRangeIterator& rangeIter, ui32 batchId)
     {
-        auto error = SafeExecute<NProto::TError>([&] {
-            auto readRange = rangeIter.Next();
+        auto error = SafeExecute<NProto::TError>(
+            [&]
+            {
+                auto readRange = rangeIter.Next();
 
-            TString buffer;
-            buffer.ReserveAndResize(
-                Volume.GetBlockSize() * readRange->BlocksCount);
-            TGuardedBuffer<TString> holder(std::move(buffer));
+                TString buffer;
+                buffer.ReserveAndResize(
+                    Volume.GetBlockSize() * readRange->BlocksCount);
+                TGuardedBuffer<TString> holder(std::move(buffer));
 
-            auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
-            request->SetStartIndex(readRange->StartIndex);
-            request->SetBlocksCount(readRange->BlocksCount);
-            request->SetCheckpointId(CheckpointId);
-            request->BlockSize = Volume.GetBlockSize();
-            request->Sglist = holder.GetGuardedSgList();
-            PrepareHeaders(*request->MutableHeaders());
-            request->MutableHeaders()->SetReplicaIndex(ReplicaIndex);
+                auto request =
+                    std::make_shared<NProto::TReadBlocksLocalRequest>();
+                request->SetStartIndex(readRange->StartIndex);
+                request->SetBlocksCount(readRange->BlocksCount);
+                request->SetCheckpointId(CheckpointId);
+                request->BlockSize = Volume.GetBlockSize();
+                request->Sglist = holder.GetGuardedSgList();
+                PrepareHeaders(*request->MutableHeaders());
+                request->MutableHeaders()->SetReplicaIndex(ReplicaIndex);
 
-            auto future = Session->ReadBlocksLocal(
-                MakeIntrusive<TCallContext>(),
-                std::move(request));
+                auto future = Session->ReadBlocksLocal(
+                    MakeIntrusive<TCallContext>(),
+                    std::move(request));
 
-            future.Subscribe([=, this, holder = std::move(holder)] (const auto& f) mutable {
-                const auto& response = f.GetValue();
-                auto buffer = holder.Extract();
+                future.Subscribe(
+                    [=, this, holder = std::move(holder)](const auto& f) mutable
+                    {
+                        const auto& response = f.GetValue();
+                        auto buffer = holder.Extract();
 
-                auto brokenDataMarker = NStorage::GetBrokenDataMarker();
-                if (brokenDataMarker.size() > Volume.GetBlockSize()) {
-                    brokenDataMarker = brokenDataMarker.SubString(
-                        0,
-                        Volume.GetBlockSize());
-                }
-                for (ui32 i = 0; i < buffer.size(); i += Volume.GetBlockSize()) {
-                    TStringBuf view(buffer);
-                    if (view.SubString(i, brokenDataMarker.size()) == brokenDataMarker) {
-                        with_lock (OutputError) {
-                            GetErrorStream()
-                                << "NODATA@"
-                                << (readRange->StartIndex + (i / Volume.GetBlockSize()))
-                                << Endl;
+                        auto brokenDataMarker = NStorage::GetBrokenDataMarker();
+                        if (brokenDataMarker.size() > Volume.GetBlockSize()) {
+                            brokenDataMarker = brokenDataMarker.SubString(
+                                0,
+                                Volume.GetBlockSize());
                         }
-                    }
-                }
-                ReadyBatches.Enqueue({
-                    batchId,
-                    std::move(buffer),
-                    response.GetError()
-                });
-                Ready.Signal();
-            });
+                        for (ui32 i = 0; i < buffer.size();
+                             i += Volume.GetBlockSize()) {
+                            TStringBuf view(buffer);
+                            if (view.SubString(i, brokenDataMarker.size()) ==
+                                brokenDataMarker)
+                            {
+                                with_lock (OutputError) {
+                                    GetErrorStream()
+                                        << "NODATA@"
+                                        << (readRange->StartIndex +
+                                            (i / Volume.GetBlockSize()))
+                                        << Endl;
+                                }
+                            }
+                        }
+                        ReadyBatches.Enqueue(
+                            {batchId, std::move(buffer), response.GetError()});
+                        Ready.Signal();
+                    });
 
-            return NProto::TError();
-        });
+                return NProto::TError();
+            });
 
         if (HasError(error)) {
             STORAGE_ERROR(FormatError(error));

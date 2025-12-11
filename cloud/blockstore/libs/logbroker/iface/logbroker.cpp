@@ -13,11 +13,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServiceStub final
-    : public IService
+class TServiceStub final: public IService
 {
 public:
-    TFuture<NProto::TError> Write(TVector<TMessage> messages, TInstant now) override
+    TFuture<NProto::TError> Write(
+        TVector<TMessage> messages,
+        TInstant now) override
     {
         Y_UNUSED(messages);
         Y_UNUSED(now);
@@ -34,8 +35,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServiceNull final
-    : public IService
+class TServiceNull final: public IService
 {
 private:
     const ILoggingServicePtr Logging;
@@ -43,10 +43,12 @@ private:
 
 public:
     explicit TServiceNull(ILoggingServicePtr logging)
-         : Logging(std::move(logging))
+        : Logging(std::move(logging))
     {}
 
-    TFuture<NProto::TError> Write(TVector<TMessage> messages, TInstant now) override
+    TFuture<NProto::TError> Write(
+        TVector<TMessage> messages,
+        TInstant now) override
     {
         Y_UNUSED(now);
 

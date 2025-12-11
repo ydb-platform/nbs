@@ -32,8 +32,7 @@ struct TItemDescriptor
     TItemDescriptor(EItemType type, int index)
         : Type(type)
         , Index(index)
-    {
-    }
+    {}
 };
 
 TVector<TItemDescriptor> GetItemOrder(const NProto::TProfileLogRecord& record);

@@ -6,12 +6,11 @@ namespace NCloud::NFileStore::NDaemon {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TOptionsVhost final
-    : public TOptionsCommon
+struct TOptionsVhost final: public TOptionsCommon
 {
     ui32 LocalServicePort = 0;
 
     TOptionsVhost();
 };
 
-}   // namespace NCloud::NFileStore::NServer
+}   // namespace NCloud::NFileStore::NDaemon

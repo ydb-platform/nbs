@@ -6,9 +6,7 @@ namespace NVHost {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TChunkedAllocator::TChunkedAllocator(
-        std::span<char> memory,
-        size_t chunkSize)
+TChunkedAllocator::TChunkedAllocator(std::span<char> memory, size_t chunkSize)
     : Memory(memory)
     , ChunkSize(chunkSize)
 {
@@ -28,7 +26,7 @@ std::span<char> TChunkedAllocator::Allocate(size_t size)
         return {};
     }
 
-    std::unique_lock lock {Mutex};
+    std::unique_lock lock{Mutex};
 
     if (FreeChunks.empty()) {
         return {};
@@ -37,7 +35,7 @@ std::span<char> TChunkedAllocator::Allocate(size_t size)
     const size_t chunkIndex = FreeChunks.front();
     FreeChunks.pop();
 
-    return { Memory.data() + chunkIndex * ChunkSize, size };
+    return {Memory.data() + chunkIndex * ChunkSize, size};
 }
 
 void TChunkedAllocator::Deallocate(std::span<char> buf)
@@ -48,9 +46,9 @@ void TChunkedAllocator::Deallocate(std::span<char> buf)
 
     Y_ABORT_UNLESS(chunkIndex < Memory.size() / ChunkSize);
 
-    std::unique_lock lock {Mutex};
+    std::unique_lock lock{Mutex};
 
     FreeChunks.push(chunkIndex);
 }
 
-} // namespace NVHost
+}   // namespace NVHost

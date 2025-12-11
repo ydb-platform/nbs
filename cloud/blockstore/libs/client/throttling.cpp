@@ -47,8 +47,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThrottlerPolicy final
-    : public IThrottlerPolicy
+class TThrottlerPolicy final: public IThrottlerPolicy
 {
 private:
     TBoostedTimeBucket Bucket;
@@ -58,8 +57,7 @@ public:
     explicit TThrottlerPolicy(const NProto::TClientPerformanceProfile& pp)
         : Bucket(SecondsToDuration(pp.GetBurstTime() / 1'000.))
         , Profile(pp)
-    {
-    }
+    {}
 
     TDuration SuggestDelay(
         TInstant now,
@@ -67,8 +65,8 @@ public:
         EBlockStoreRequest requestType,
         size_t byteCount) override
     {
-        const NProto::TClientMediaKindPerformanceProfile* mediaKindProfile
-            = nullptr;
+        const NProto::TClientMediaKindPerformanceProfile* mediaKindProfile =
+            nullptr;
 
         // For BlobStorage-based disks disable throttling for ZeroBlocks
         // requests, as these requests only perform index operations in the
@@ -145,8 +143,7 @@ public:
             CostPerIO(
                 CalculateThrottlerC1(maxIops, maxBandwidth),
                 CalculateThrottlerC2(maxIops, maxBandwidth),
-                byteCount)
-        );
+                byteCount));
     }
 
     double CalculateCurrentSpentBudgetShare(TInstant ts) const override
@@ -157,52 +154,51 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThrottlerTracker final
-    : public IThrottlerTracker
+class TThrottlerTracker final: public IThrottlerTracker
 {
 public:
-
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    void TrackReceivedRequest(                                                 \
-        TCallContext& callContext,                                             \
-        IVolumeInfo* volumeInfo,                                               \
-        const NProto::T##name##Request& request) override                      \
-    {                                                                          \
-        if (volumeInfo) {                                                      \
-            LWTRACK(                                                           \
-                RequestReceived,                                               \
-                callContext.LWOrbit,                                           \
-                GetBlockStoreRequestName(EBlockStoreRequest::name),            \
-                static_cast<ui32>(volumeInfo->GetInfo().GetStorageMediaKind()),\
-                GetRequestId(request),                                         \
-                GetDiskId(request));                                           \
-        }                                                                      \
-    }                                                                          \
-                                                                               \
-    void TrackPostponedRequest(                                                \
-        TCallContext& callContext,                                             \
-        const NProto::T##name##Request& request) override                      \
-    {                                                                          \
-        LWTRACK(                                                               \
-            RequestPostponed,                                                  \
-            callContext.LWOrbit,                                               \
-            GetBlockStoreRequestName(EBlockStoreRequest::name),                \
-            GetRequestId(request),                                             \
-            GetDiskId(request));                                               \
-   }                                                                           \
-                                                                               \
-    void TrackAdvancedRequest(                                                 \
-        TCallContext& callContext,                                             \
-        const NProto::T##name##Request& request) override                      \
-    {                                                                          \
-        LWTRACK(                                                               \
-            RequestAdvanced,                                                   \
-            callContext.LWOrbit,                                               \
-            GetBlockStoreRequestName(EBlockStoreRequest::name),                \
-            GetRequestId(request),                                             \
-            GetDiskId(request));                                               \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                      \
+    void TrackReceivedRequest(                                      \
+        TCallContext& callContext,                                  \
+        IVolumeInfo* volumeInfo,                                    \
+        const NProto::T##name##Request& request) override           \
+    {                                                               \
+        if (volumeInfo) {                                           \
+            LWTRACK(                                                \
+                RequestReceived,                                    \
+                callContext.LWOrbit,                                \
+                GetBlockStoreRequestName(EBlockStoreRequest::name), \
+                static_cast<ui32>(                                  \
+                    volumeInfo->GetInfo().GetStorageMediaKind()),   \
+                GetRequestId(request),                              \
+                GetDiskId(request));                                \
+        }                                                           \
+    }                                                               \
+                                                                    \
+    void TrackPostponedRequest(                                     \
+        TCallContext& callContext,                                  \
+        const NProto::T##name##Request& request) override           \
+    {                                                               \
+        LWTRACK(                                                    \
+            RequestPostponed,                                       \
+            callContext.LWOrbit,                                    \
+            GetBlockStoreRequestName(EBlockStoreRequest::name),     \
+            GetRequestId(request),                                  \
+            GetDiskId(request));                                    \
+    }                                                               \
+                                                                    \
+    void TrackAdvancedRequest(                                      \
+        TCallContext& callContext,                                  \
+        const NProto::T##name##Request& request) override           \
+    {                                                               \
+        LWTRACK(                                                    \
+            RequestAdvanced,                                        \
+            callContext.LWOrbit,                                    \
+            GetBlockStoreRequestName(EBlockStoreRequest::name),     \
+            GetRequestId(request),                                  \
+            GetDiskId(request));                                    \
+    }                                                               \
+    // BLOCKSTORE_IMPLEMENT_METHOD
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
 
@@ -211,8 +207,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThrottlerLogger final
-    : public IThrottlerLogger
+class TThrottlerLogger final: public IThrottlerLogger
 {
 private:
     const IRequestStatsPtr RequestStats;
@@ -221,79 +216,77 @@ private:
 
 public:
     TThrottlerLogger(
-            IRequestStatsPtr requestStats,
-            ILoggingServicePtr logging,
-            const TString& loggerName)
+        IRequestStatsPtr requestStats,
+        ILoggingServicePtr logging,
+        const TString& loggerName)
         : RequestStats(std::move(requestStats))
         , Log(logging->CreateLog(loggerName))
     {}
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    void LogPostponedRequest(                                                  \
-        ui64 nowCycles,                                                        \
-        TCallContext& callContext,                                             \
-        IVolumeInfo* volumeInfo,                                               \
-        const NProto::T##name##Request& request,                               \
-        TDuration postponeDelay) override                                      \
-    {                                                                          \
-        static constinit auto requestType = EBlockStoreRequest::name;          \
-        RequestStats->RequestPostponed(requestType);                           \
-        if (volumeInfo) {                                                      \
-            volumeInfo->RequestPostponed(requestType);                         \
-        }                                                                      \
-                                                                               \
-        STORAGE_DEBUG(                                                         \
-            TRequestInfo(                                                      \
-                requestType,                                                   \
-                GetRequestId(request),                                         \
-                GetDiskId(request),                                            \
-                GetClientId(request))                                          \
-            << GetRequestDetails(request)                                      \
-            << " request postponed"                                            \
-            << " (delay: " << FormatDuration(postponeDelay) << ")");           \
-                                                                               \
-        callContext.Postpone(nowCycles);                                       \
-    }                                                                          \
-                                                                               \
-    void LogAdvancedRequest(                                                   \
-        ui64 nowCycles,                                                        \
-        TCallContext& callContext,                                             \
-        IVolumeInfo* volumeInfo,                                               \
-        const NProto::T##name##Request& request) override                      \
-    {                                                                          \
-        static constinit auto requestType = EBlockStoreRequest::name;          \
-        RequestStats->RequestAdvanced(requestType);                            \
-        if (volumeInfo) {                                                      \
-            volumeInfo->RequestAdvanced(requestType);                          \
-        }                                                                      \
-                                                                               \
-        STORAGE_DEBUG(                                                         \
-            TRequestInfo(                                                      \
-                requestType,                                                   \
-                GetRequestId(request),                                         \
-                GetDiskId(request),                                            \
-                GetClientId(request))                                          \
-            << GetRequestDetails(request)                                      \
-            << " request advanced");                                           \
-                                                                               \
-        callContext.Advance(nowCycles);                                        \
-    }                                                                          \
-                                                                               \
-    void LogError(                                                             \
-        const NProto::T##name##Request& request,                               \
-        const TString& errorMessage) override                                  \
-    {                                                                          \
-        static constinit auto requestType = EBlockStoreRequest::name;          \
-        STORAGE_ERROR(                                                         \
-            TRequestInfo(                                                      \
-                requestType,                                                   \
-                GetRequestId(request),                                         \
-                GetDiskId(request),                                            \
-                GetClientId(request))                                          \
-            << GetRequestDetails(request)                                      \
-            << " exception in callback: " << errorMessage);                    \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                        \
+    void LogPostponedRequest(                                         \
+        ui64 nowCycles,                                               \
+        TCallContext& callContext,                                    \
+        IVolumeInfo* volumeInfo,                                      \
+        const NProto::T##name##Request& request,                      \
+        TDuration postponeDelay) override                             \
+    {                                                                 \
+        static constinit auto requestType = EBlockStoreRequest::name; \
+        RequestStats->RequestPostponed(requestType);                  \
+        if (volumeInfo) {                                             \
+            volumeInfo->RequestPostponed(requestType);                \
+        }                                                             \
+                                                                      \
+        STORAGE_DEBUG(                                                \
+            TRequestInfo(                                             \
+                requestType,                                          \
+                GetRequestId(request),                                \
+                GetDiskId(request),                                   \
+                GetClientId(request))                                 \
+            << GetRequestDetails(request) << " request postponed"     \
+            << " (delay: " << FormatDuration(postponeDelay) << ")");  \
+                                                                      \
+        callContext.Postpone(nowCycles);                              \
+    }                                                                 \
+                                                                      \
+    void LogAdvancedRequest(                                          \
+        ui64 nowCycles,                                               \
+        TCallContext& callContext,                                    \
+        IVolumeInfo* volumeInfo,                                      \
+        const NProto::T##name##Request& request) override             \
+    {                                                                 \
+        static constinit auto requestType = EBlockStoreRequest::name; \
+        RequestStats->RequestAdvanced(requestType);                   \
+        if (volumeInfo) {                                             \
+            volumeInfo->RequestAdvanced(requestType);                 \
+        }                                                             \
+                                                                      \
+        STORAGE_DEBUG(                                                \
+            TRequestInfo(                                             \
+                requestType,                                          \
+                GetRequestId(request),                                \
+                GetDiskId(request),                                   \
+                GetClientId(request))                                 \
+            << GetRequestDetails(request) << " request advanced");    \
+                                                                      \
+        callContext.Advance(nowCycles);                               \
+    }                                                                 \
+                                                                      \
+    void LogError(                                                    \
+        const NProto::T##name##Request& request,                      \
+        const TString& errorMessage) override                         \
+    {                                                                 \
+        static constinit auto requestType = EBlockStoreRequest::name; \
+        STORAGE_ERROR(                                                \
+            TRequestInfo(                                             \
+                requestType,                                          \
+                GetRequestId(request),                                \
+                GetDiskId(request),                                   \
+                GetClientId(request))                                 \
+            << GetRequestDetails(request)                             \
+            << " exception in callback: " << errorMessage);           \
+    }                                                                 \
+    // BLOCKSTORE_IMPLEMENT_METHOD
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
 
@@ -302,17 +295,14 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThrottlingClient final
-    : public IBlockStore
+class TThrottlingClient final: public IBlockStore
 {
 private:
     IThrottlerPtr Throttler;
     IBlockStorePtr Client;
 
 public:
-    TThrottlingClient(
-            IBlockStorePtr client,
-            IThrottlerPtr throttler)
+    TThrottlingClient(IBlockStorePtr client, IThrottlerPtr throttler)
         : Throttler(std::move(throttler))
         , Client(std::move(client))
     {}
@@ -332,17 +322,17 @@ public:
         return Client->AllocateBuffer(bytesCount);
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        return Throttler->name(                                                \
-            Client,                                                            \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                      \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr callContext,                                \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        return Throttler->name(                                     \
+            Client,                                                 \
+            std::move(callContext),                                 \
+            std::move(request));                                    \
+    }                                                               \
+    // BLOCKSTORE_IMPLEMENT_METHOD
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
 
@@ -351,8 +341,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThrottlerProvider final
-    : public IThrottlerProvider
+class TThrottlerProvider final: public IThrottlerProvider
 {
     struct TThrottlerInfo
     {
@@ -374,13 +363,13 @@ private:
 
 public:
     TThrottlerProvider(
-            THostPerformanceProfile hostProfile,
-            ILoggingServicePtr logging,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            NMonitoring::TDynamicCountersPtr rootGroup,
-            IRequestStatsPtr requestStats,
-            IVolumeStatsPtr volumeStats)
+        THostPerformanceProfile hostProfile,
+        ILoggingServicePtr logging,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler,
+        NMonitoring::TDynamicCountersPtr rootGroup,
+        IRequestStatsPtr requestStats,
+        IVolumeStatsPtr volumeStats)
         : HostProfile(hostProfile)
         , Logging(std::move(logging))
         , Timer(std::move(timer))
@@ -415,7 +404,8 @@ public:
             auto it = Throttlers.find(clientConfig.GetClientId());
             if (it != Throttlers.end()) {
                 auto& info = it->second;
-                if (!ProfilesEqual(info.PerformanceProfile, performanceProfile)) {
+                if (!ProfilesEqual(info.PerformanceProfile, performanceProfile))
+                {
                     info.Throttler->UpdateThrottlerPolicy(
                         CreateClientThrottlerPolicy(performanceProfile));
                     info.PerformanceProfile = performanceProfile;
@@ -432,9 +422,9 @@ public:
 
             info.Throttler->Start();
 
-            auto inserted = Throttlers.emplace(
-                clientConfig.GetClientId(),
-                std::move(info)).second;
+            auto inserted =
+                Throttlers.emplace(clientConfig.GetClientId(), std::move(info))
+                    .second;
 
             STORAGE_VERIFY(
                 inserted,
@@ -480,15 +470,12 @@ private:
     IThrottlerPtr CreateClientThrottler(
         NProto::TClientPerformanceProfile performanceProfile) const
     {
-        auto throttlerPolicy = CreateClientThrottlerPolicy(
-            std::move(performanceProfile));
-        auto throttlerLogger = CreateClientThrottlerLogger(
-            RequestStats,
-            Logging);
-        auto throttlerMetrics = CreateThrottlerMetrics(
-            Timer,
-            RootGroup,
-            "server");
+        auto throttlerPolicy =
+            CreateClientThrottlerPolicy(std::move(performanceProfile));
+        auto throttlerLogger =
+            CreateClientThrottlerLogger(RequestStats, Logging);
+        auto throttlerMetrics =
+            CreateThrottlerMetrics(Timer, RootGroup, "server");
         auto throttlerTracker = CreateClientThrottlerTracker();
 
         return CreateThrottler(
@@ -511,26 +498,35 @@ private:
         const NProto::TClientPerformanceProfile& lft,
         const NProto::TClientPerformanceProfile& rgt)
     {
-        Y_DEBUG_ABORT_UNLESS(7 == GetFieldCount<NProto::TClientPerformanceProfile>());
-        return ProfilesEqual(lft.GetHDDProfile(), rgt.GetHDDProfile())
-            && ProfilesEqual(lft.GetSSDProfile(), rgt.GetSSDProfile())
-            && ProfilesEqual(lft.GetNonreplProfile(), rgt.GetNonreplProfile())
-            && ProfilesEqual(lft.GetHddNonreplProfile(), rgt.GetHddNonreplProfile())
-            && ProfilesEqual(lft.GetMirror2Profile(), rgt.GetMirror2Profile())
-            && ProfilesEqual(lft.GetMirror3Profile(), rgt.GetMirror3Profile())
-            && lft.GetBurstTime() == rgt.GetBurstTime();
+        Y_DEBUG_ABORT_UNLESS(
+            7 == GetFieldCount<NProto::TClientPerformanceProfile>());
+        return ProfilesEqual(lft.GetHDDProfile(), rgt.GetHDDProfile()) &&
+               ProfilesEqual(lft.GetSSDProfile(), rgt.GetSSDProfile()) &&
+               ProfilesEqual(
+                   lft.GetNonreplProfile(),
+                   rgt.GetNonreplProfile()) &&
+               ProfilesEqual(
+                   lft.GetHddNonreplProfile(),
+                   rgt.GetHddNonreplProfile()) &&
+               ProfilesEqual(
+                   lft.GetMirror2Profile(),
+                   rgt.GetMirror2Profile()) &&
+               ProfilesEqual(
+                   lft.GetMirror3Profile(),
+                   rgt.GetMirror3Profile()) &&
+               lft.GetBurstTime() == rgt.GetBurstTime();
     }
 
     bool ProfilesEqual(
         const NProto::TClientMediaKindPerformanceProfile& lft,
         const NProto::TClientMediaKindPerformanceProfile& rgt)
     {
-        Y_DEBUG_ABORT_UNLESS(4 ==
-            GetFieldCount<NProto::TClientMediaKindPerformanceProfile>());
-        return lft.GetMaxReadBandwidth() == rgt.GetMaxReadBandwidth()
-            && lft.GetMaxReadIops() == rgt.GetMaxReadIops()
-            && lft.GetMaxWriteBandwidth() == rgt.GetMaxWriteBandwidth()
-            && lft.GetMaxWriteIops() == rgt.GetMaxWriteIops();
+        Y_DEBUG_ABORT_UNLESS(
+            4 == GetFieldCount<NProto::TClientMediaKindPerformanceProfile>());
+        return lft.GetMaxReadBandwidth() == rgt.GetMaxReadBandwidth() &&
+               lft.GetMaxReadIops() == rgt.GetMaxReadIops() &&
+               lft.GetMaxWriteBandwidth() == rgt.GetMaxWriteBandwidth() &&
+               lft.GetMaxWriteIops() == rgt.GetMaxWriteIops();
     }
 };
 
@@ -562,7 +558,8 @@ bool PrepareMediaKindPerformanceProfile(
     NProto::TClientMediaKindPerformanceProfile& performanceProfile)
 {
     maxIopsPerGuest *= mediaKindConfig.GetHostOvercommitPercentage() / 100.0;
-    maxBandwidthPerGuest *= mediaKindConfig.GetHostOvercommitPercentage() / 100.0;
+    maxBandwidthPerGuest *=
+        mediaKindConfig.GetHostOvercommitPercentage() / 100.0;
 
     const ui32 cpuUnitsPerCore = 100u;
     auto cpuUnitCount = Max(cpuUnitsPerCore, profile.GetCpuUnitCount());
@@ -575,11 +572,8 @@ bool PrepareMediaKindPerformanceProfile(
 
         ui64 maxIops = mediaKindConfig.GetMaxReadIops();
 
-        const auto iops = MinNonzero(
-            cpuUnitCount * iopsPerCpuUnit,
-            maxIopsPerGuest,
-            maxIops
-        );
+        const auto iops =
+            MinNonzero(cpuUnitCount * iopsPerCpuUnit, maxIopsPerGuest, maxIops);
         performanceProfile.SetMaxReadIops(iops);
     }
 
@@ -591,11 +585,8 @@ bool PrepareMediaKindPerformanceProfile(
 
         ui64 maxIops = mediaKindConfig.GetMaxWriteIops();
 
-        const auto iops = MinNonzero(
-            cpuUnitCount * iopsPerCpuUnit,
-            maxIopsPerGuest,
-            maxIops
-        );
+        const auto iops =
+            MinNonzero(cpuUnitCount * iopsPerCpuUnit, maxIopsPerGuest, maxIops);
         performanceProfile.SetMaxWriteIops(iops);
     }
 
@@ -610,13 +601,13 @@ bool PrepareMediaKindPerformanceProfile(
         const auto bw = MinNonzero(
             cpuUnitCount * bandwidthPerCpuUnit * 1_MB,
             maxBandwidthPerGuest,
-            maxBw
-        );
+            maxBw);
         performanceProfile.SetMaxReadBandwidth(bw);
     }
 
     if (!performanceProfile.GetMaxWriteBandwidth()) {
-        ui64 bandwidthPerCpuUnit = mediaKindConfig.GetWriteBandwidthPerCpuUnit();
+        ui64 bandwidthPerCpuUnit =
+            mediaKindConfig.GetWriteBandwidthPerCpuUnit();
         if (!bandwidthPerCpuUnit && useLegacyFallback) {
             bandwidthPerCpuUnit = config.GetBandwidthPerCpuUnit();
         }
@@ -626,15 +617,14 @@ bool PrepareMediaKindPerformanceProfile(
         const auto bw = MinNonzero(
             cpuUnitCount * bandwidthPerCpuUnit * 1_MB,
             maxBandwidthPerGuest,
-            maxBw
-        );
+            maxBw);
         performanceProfile.SetMaxWriteBandwidth(bw);
     }
 
-    return performanceProfile.GetMaxReadIops()
-        && performanceProfile.GetMaxWriteIops()
-        && performanceProfile.GetMaxReadBandwidth()
-        && performanceProfile.GetMaxWriteBandwidth();
+    return performanceProfile.GetMaxReadIops() &&
+           performanceProfile.GetMaxWriteIops() &&
+           performanceProfile.GetMaxReadBandwidth() &&
+           performanceProfile.GetMaxWriteBandwidth();
 }
 
 }   // namespace
@@ -668,19 +658,20 @@ bool PreparePerformanceProfile(
 
     double hostFraction = 0.0;
     if (hostProfile.CpuCount > 0) {
-        hostFraction = profile.GetCpuUnitCount() / (hostProfile.CpuCount * 100.0);
+        hostFraction =
+            profile.GetCpuUnitCount() / (hostProfile.CpuCount * 100.0);
     }
 
-    ui64 networkBandwidth = (hostProfile.NetworkMbitThroughput / 8) * 1_MB
-        * (tc.GetNetworkThroughputPercentage() / 100.0);
+    ui64 networkBandwidth = (hostProfile.NetworkMbitThroughput / 8) * 1_MB *
+                            (tc.GetNetworkThroughputPercentage() / 100.0);
 
     if (!networkBandwidth) {
         networkBandwidth = Max<ui64>();
     }
 
     ui64 maxIopsPerGuest = hostFraction * tc.GetMaxIopsPerHost();
-    ui64 maxBandwidthPerGuest = hostFraction
-        * Min(tc.GetMaxBandwidthPerHost(), networkBandwidth);
+    ui64 maxBandwidthPerGuest =
+        hostFraction * Min(tc.GetMaxBandwidthPerHost(), networkBandwidth);
 
     const auto init = {
         PrepareMediaKindPerformanceProfile(
@@ -690,8 +681,7 @@ bool PreparePerformanceProfile(
             maxIopsPerGuest,
             maxBandwidthPerGuest,
             true,
-            *performanceProfile.MutableHDDProfile()
-        ),
+            *performanceProfile.MutableHDDProfile()),
         PrepareMediaKindPerformanceProfile(
             tc,
             tc.GetSSDThrottlingConfig(),
@@ -699,8 +689,7 @@ bool PreparePerformanceProfile(
             maxIopsPerGuest,
             maxBandwidthPerGuest,
             true,
-            *performanceProfile.MutableSSDProfile()
-        ),
+            *performanceProfile.MutableSSDProfile()),
         PrepareMediaKindPerformanceProfile(
             tc,
             tc.GetNonreplThrottlingConfig(),
@@ -708,8 +697,7 @@ bool PreparePerformanceProfile(
             maxIopsPerGuest,
             maxBandwidthPerGuest,
             false,
-            *performanceProfile.MutableNonreplProfile()
-        ),
+            *performanceProfile.MutableNonreplProfile()),
         PrepareMediaKindPerformanceProfile(
             tc,
             tc.GetHddNonreplThrottlingConfig(),
@@ -717,8 +705,7 @@ bool PreparePerformanceProfile(
             maxIopsPerGuest,
             maxBandwidthPerGuest,
             false,
-            *performanceProfile.MutableHddNonreplProfile()
-        ),
+            *performanceProfile.MutableHddNonreplProfile()),
         PrepareMediaKindPerformanceProfile(
             tc,
             tc.GetMirror2ThrottlingConfig(),
@@ -726,8 +713,7 @@ bool PreparePerformanceProfile(
             maxIopsPerGuest,
             maxBandwidthPerGuest,
             false,
-            *performanceProfile.MutableMirror2Profile()
-        ),
+            *performanceProfile.MutableMirror2Profile()),
         PrepareMediaKindPerformanceProfile(
             tc,
             tc.GetMirror3ThrottlingConfig(),
@@ -735,11 +721,10 @@ bool PreparePerformanceProfile(
             maxIopsPerGuest,
             maxBandwidthPerGuest,
             false,
-            *performanceProfile.MutableMirror3Profile()
-        ),
+            *performanceProfile.MutableMirror3Profile()),
     };
 
-    return std::any_of(init.begin(), init.end(), [] (bool x) {return x;});
+    return std::any_of(init.begin(), init.end(), [](bool x) { return x; });
 }
 
 IThrottlerPolicyPtr CreateClientThrottlerPolicy(

@@ -1,4 +1,5 @@
 #include "service_actor.h"
+
 #include "service.h"
 
 #include <cloud/blockstore/libs/service/context.h>
@@ -16,7 +17,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using EChangeBindingOp = TEvService::TEvChangeVolumeBindingRequest::EChangeBindingOp;
+using EChangeBindingOp =
+    TEvService::TEvChangeVolumeBindingRequest::EChangeBindingOp;
 
 class THttpVolumeBindingActor final
     : public TActorBootstrapped<THttpVolumeBindingActor>
@@ -52,9 +54,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 THttpVolumeBindingActor::THttpVolumeBindingActor(
-        TRequestInfoPtr requestInfo,
-        TString diskId,
-        bool push)
+    TRequestInfoPtr requestInfo,
+    TString diskId,
+    bool push)
     : RequestInfo(std::move(requestInfo))
     , DiskId(std::move(diskId))
     , Push(push)
@@ -74,10 +76,7 @@ void THttpVolumeBindingActor::Bootstrap(const TActorContext& ctx)
         action,
         NProto::EPreemptionSource::SOURCE_MANUAL);
 
-    NCloud::Send(
-        ctx,
-        MakeStorageServiceId(),
-        std::move(request));
+    NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
 
     Become(&TThis::StateWork);
 }
@@ -97,8 +96,7 @@ void THttpVolumeBindingActor::Notify(
     BuildNotifyPageWithRedirect(
         out,
         std::move(message),
-        TStringBuilder()
-            << "../blockstore/service",
+        TStringBuilder() << "../blockstore/service",
         alertLevel);
 
     auto response = std::make_unique<NMon::TEvHttpInfoRes>(out.Str());
@@ -119,9 +117,8 @@ void THttpVolumeBindingActor::HandleChangeVolumeBindingResponse(
         Notify(
             ctx,
             TStringBuilder()
-                << "failed to change volume binding "
-                << DiskId.Quote()
-                << ": " << FormatError(response->GetError()),
+                << "failed to change volume binding " << DiskId.Quote() << ": "
+                << FormatError(response->GetError()),
             EAlertLevel::DANGER);
     }
 
@@ -133,7 +130,9 @@ void THttpVolumeBindingActor::HandleChangeVolumeBindingResponse(
 STFUNC(THttpVolumeBindingActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvService::TEvChangeVolumeBindingResponse, HandleChangeVolumeBindingResponse);
+        HFunc(
+            TEvService::TEvChangeVolumeBindingResponse,
+            HandleChangeVolumeBindingResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -165,15 +164,18 @@ void TServiceActor::HandleHttpInfo_VolumeBinding(
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "Changing volume binding per action from monitoring page: volume %s, action %s",
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "Changing volume binding per action from monitoring page: volume %s, "
+        "action %s",
         diskId.Quote().data(),
         actionType.Quote().data());
 
     auto volume = State.GetVolume(diskId);
     if (!volume) {
-        TString error = TStringBuilder()
-            << "Failed to preempt volume: volume " << diskId << " not found";
+        TString error = TStringBuilder() << "Failed to preempt volume: volume "
+                                         << diskId << " not found";
 
         LOG_ERROR(ctx, TBlockStoreComponents::SERVICE, error.data());
 

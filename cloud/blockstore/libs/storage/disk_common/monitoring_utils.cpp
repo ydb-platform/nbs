@@ -4,10 +4,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IOutputStream& DumpAgentState(
-    IOutputStream& out,
-    NProto::EAgentState state,
-    bool connected)
+IOutputStream&
+DumpAgentState(IOutputStream& out, NProto::EAgentState state, bool connected)
 {
     switch (state) {
         case NProto::AGENT_STATE_ONLINE:
@@ -36,9 +34,7 @@ IOutputStream& DumpAgentState(
     return out;
 }
 
-IOutputStream& DumpDiskState(
-    IOutputStream& out,
-    NProto::EDiskState state)
+IOutputStream& DumpDiskState(IOutputStream& out, NProto::EDiskState state)
 {
     switch (state) {
         case NProto::DISK_STATE_ONLINE:
@@ -50,10 +46,8 @@ IOutputStream& DumpDiskState(
         case NProto::DISK_STATE_ERROR:
             return out << "<font color=red>error</font>";
         default:
-            return out
-                << "(Unknown EDiskState value "
-                << static_cast<int>(state)
-                << ")";
+            return out << "(Unknown EDiskState value "
+                       << static_cast<int>(state) << ")";
     }
 }
 
@@ -74,9 +68,7 @@ IOutputStream& DumpDeviceState(
             out << "<font color=red>error" << suffix << "</font>";
             break;
         default:
-            out
-                << "(Unknown EDeviceState value "
-                << static_cast<int>(state)
+            out << "(Unknown EDeviceState value " << static_cast<int>(state)
                 << ")" << suffix;
     }
     if (flags & EDeviceStateFlags::FRESH) {

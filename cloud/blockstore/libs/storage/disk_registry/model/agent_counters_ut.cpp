@@ -30,9 +30,10 @@ Y_UNIT_TEST_SUITE(TAgentCountersTest)
         TAgentCounters agentCounters;
 
         auto monitoring = CreateMonitoringServiceStub();
-        auto diskRegistryGroup = monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "disk_registry");
+        auto diskRegistryGroup =
+            monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "disk_registry");
 
         NProto::TAgentConfig agentConfig;
         agentConfig.SetAgentId("foo");
@@ -43,9 +44,8 @@ Y_UNIT_TEST_SUITE(TAgentCountersTest)
 
         agentCounters.Register(agentConfig, diskRegistryGroup);
 
-        auto agentGroup = diskRegistryGroup->FindSubgroup(
-            "agent",
-            agentConfig.GetAgentId());
+        auto agentGroup =
+            diskRegistryGroup->FindSubgroup("agent", agentConfig.GetAgentId());
 
         UNIT_ASSERT(agentGroup);
 
@@ -86,50 +86,54 @@ Y_UNIT_TEST_SUITE(TAgentCountersTest)
         NProto::TMeanTimeBetweenFailures tempMtbf;
         tempMtbf.SetWorkTime(100);
         tempMtbf.SetBrokenCount(2);
-        agentCounters.Update("foo", [] {
-            NProto::TAgentStats stats;
-
+        agentCounters.Update(
+            "foo",
+            []
             {
-                auto* d = stats.AddDeviceStats();
-                d->SetDeviceUUID("uuid-1");
-                d->SetDeviceName("dev-a");
+                NProto::TAgentStats stats;
 
-                d->SetNumReadOps(1);
-                d->SetBytesRead(1000);
+                {
+                    auto* d = stats.AddDeviceStats();
+                    d->SetDeviceUUID("uuid-1");
+                    d->SetDeviceName("dev-a");
 
-                d->SetNumWriteOps(10);
-                d->SetBytesWritten(1000);
+                    d->SetNumReadOps(1);
+                    d->SetBytesRead(1000);
 
-                d->SetNumZeroOps(100);
-                d->SetBytesZeroed(1000);
-            }
+                    d->SetNumWriteOps(10);
+                    d->SetBytesWritten(1000);
 
-            {
-                auto* d = stats.AddDeviceStats();
-                d->SetDeviceUUID("uuid-2");
-                d->SetDeviceName("dev-a");
+                    d->SetNumZeroOps(100);
+                    d->SetBytesZeroed(1000);
+                }
 
-                d->SetNumReadOps(2);
-                d->SetBytesRead(2000);
+                {
+                    auto* d = stats.AddDeviceStats();
+                    d->SetDeviceUUID("uuid-2");
+                    d->SetDeviceName("dev-a");
 
-                d->SetNumWriteOps(20);
-                d->SetBytesWritten(2000);
-            }
+                    d->SetNumReadOps(2);
+                    d->SetBytesRead(2000);
 
-            {
-                auto* d = stats.AddDeviceStats();
-                d->SetDeviceUUID("uuid-3");
-                d->SetDeviceName("dev-b");
+                    d->SetNumWriteOps(20);
+                    d->SetBytesWritten(2000);
+                }
 
-                d->SetNumReadOps(4);
-                d->SetBytesRead(4000);
+                {
+                    auto* d = stats.AddDeviceStats();
+                    d->SetDeviceUUID("uuid-3");
+                    d->SetDeviceName("dev-b");
 
-                d->SetNumWriteOps(15);
-                d->SetBytesWritten(1500);
-            }
+                    d->SetNumReadOps(4);
+                    d->SetBytesRead(4000);
 
-            return stats;
-        }(), tempMtbf);
+                    d->SetNumWriteOps(15);
+                    d->SetBytesWritten(1500);
+                }
+
+                return stats;
+            }(),
+            tempMtbf);
 
         UNIT_ASSERT_VALUES_EQUAL(0, daReadCount->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, daReadBytes->Val());
@@ -163,37 +167,45 @@ Y_UNIT_TEST_SUITE(TAgentCountersTest)
         UNIT_ASSERT_VALUES_EQUAL(0, dbZeroBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(50, mtbf->Val());
 
-        agentCounters.Update("foo", [] {
-            NProto::TAgentStats stats;
+        agentCounters.Update(
+            "foo",
+            []
+            {
+                NProto::TAgentStats stats;
 
-            auto* d = stats.AddDeviceStats();
-            d->SetDeviceUUID("uuid-1");
-            d->SetDeviceName("dev-a");
+                auto* d = stats.AddDeviceStats();
+                d->SetDeviceUUID("uuid-1");
+                d->SetDeviceName("dev-a");
 
-            d->SetNumReadOps(1);
-            d->SetBytesRead(1000);
+                d->SetNumReadOps(1);
+                d->SetBytesRead(1000);
 
-            d->SetNumZeroOps(10);
-            d->SetBytesZeroed(100);
+                d->SetNumZeroOps(10);
+                d->SetBytesZeroed(100);
 
-            return stats;
-        }(), {});
+                return stats;
+            }(),
+            {});
 
-        agentCounters.Update("foo", [] {
-            NProto::TAgentStats stats;
+        agentCounters.Update(
+            "foo",
+            []
+            {
+                NProto::TAgentStats stats;
 
-            auto* d = stats.AddDeviceStats();
-            d->SetDeviceUUID("uuid-4");
-            d->SetDeviceName("dev-b");
+                auto* d = stats.AddDeviceStats();
+                d->SetDeviceUUID("uuid-4");
+                d->SetDeviceName("dev-b");
 
-            d->SetNumWriteOps(20);
-            d->SetBytesWritten(2000);
+                d->SetNumWriteOps(20);
+                d->SetBytesWritten(2000);
 
-            d->SetNumZeroOps(200);
-            d->SetBytesZeroed(2000);
+                d->SetNumZeroOps(200);
+                d->SetBytesZeroed(2000);
 
-            return stats;
-        }(), {});
+                return stats;
+            }(),
+            {});
 
         agentCounters.Publish(TInstant::Hours(2));
 

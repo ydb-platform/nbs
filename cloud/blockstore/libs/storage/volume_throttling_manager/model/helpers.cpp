@@ -27,15 +27,13 @@ bool RuleHasInvalidCoefficients(const NProto::TVolumeThrottlingRule& rule)
     {
         return true;
     }
-    if (coefficients.HasMaxReadIops() &&
-        (coefficients.GetMaxReadIops() < 0.0 ||
-         coefficients.GetMaxReadIops() > 1.0))
+    if (coefficients.HasMaxReadIops() && (coefficients.GetMaxReadIops() < 0.0 ||
+                                          coefficients.GetMaxReadIops() > 1.0))
     {
         return true;
     }
-    if (coefficients.HasBoostTime() &&
-        (coefficients.GetBoostTime() < 0.0 ||
-         coefficients.GetBoostTime() > 1.0))
+    if (coefficients.HasBoostTime() && (coefficients.GetBoostTime() < 0.0 ||
+                                        coefficients.GetBoostTime() > 1.0))
     {
         return true;
     }
@@ -76,7 +74,8 @@ bool RuleHasInvalidCoefficients(const NProto::TVolumeThrottlingRule& rule)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError ValidateThrottlingConfig(const NProto::TVolumeThrottlingConfig& config)
+NProto::TError ValidateThrottlingConfig(
+    const NProto::TVolumeThrottlingConfig& config)
 {
     auto it = FindIf(
         config.GetRules().begin(),

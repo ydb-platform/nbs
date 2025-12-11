@@ -10,8 +10,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TUserCounterSupplier
-    : public IUserCounterSupplier
+class TUserCounterSupplier: public IUserCounterSupplier
 {
 private:
     TRWMutex Lock;
@@ -44,10 +43,8 @@ public:
     }
 
     // IUserCounterSupplier
-    void AddUserMetric(
-        TLabels labels,
-        TStringBuf name,
-        TUserCounter metric) override
+    void
+    AddUserMetric(TLabels labels, TStringBuf name, TUserCounter metric) override
     {
         labels.Add("name", name);
 
@@ -64,8 +61,7 @@ public:
     }
 };
 
-class TUserCounterSupplierStub
-    : public IUserCounterSupplier
+class TUserCounterSupplierStub: public IUserCounterSupplier
 {
 public:
     // NMonitoring::IMetricSupplier
@@ -148,14 +144,18 @@ std::shared_ptr<IUserCounterSupplier> CreateUserCounterSupplierStub()
 
 TBucketsWithUnits GetMsBuckets()
 {
-    constexpr auto Identity = [](double data) { return data; };
+    constexpr auto Identity = [](double data)
+    {
+        return data;
+    };
     static const auto Buckets = MakeBuckets<TRequestMsTimeBuckets>(Identity);
     return {Buckets, "msec"};
 }
 
 TBucketsWithUnits GetUsBuckets()
 {
-    constexpr auto UsToMs = [](double data) {
+    constexpr auto UsToMs = [](double data)
+    {
         return data == std::numeric_limits<double>::max() ? data : data / 1000.;
     };
     static const auto Buckets = MakeBuckets<TRequestUsTimeBuckets>(UsToMs);
@@ -172,8 +172,7 @@ TBucketsWithUnits GetTimeBuckets(EHistogramCounterOptions options)
 
 ///////////////////////////////////////////////////////////////////////////////
 
-class TUserSumCounterWrapper
-    : public IUserCounter
+class TUserSumCounterWrapper: public IUserCounter
 {
 private:
     TVector<TIntrusivePtr<NMonitoring::TCounterForPtr>> Counters;
@@ -220,8 +219,7 @@ public:
 
 ///////////////////////////////////////////////////////////////////////////////
 
-class TUserSumHistogramWrapper
-    : public IUserCounter
+class TUserSumHistogramWrapper: public IUserCounter
 {
     using TExplicitHistogramSnapshot = NMonitoring::TExplicitHistogramSnapshot;
 

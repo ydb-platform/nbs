@@ -1,12 +1,11 @@
 #include "service_actor.h"
 
-#include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
-#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
+#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
-
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -16,8 +15,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSetHasXAttrsActor final
-    : public TActorBootstrapped<TSetHasXAttrsActor>
+class TSetHasXAttrsActor final: public TActorBootstrapped<TSetHasXAttrsActor>
 {
 private:
     const bool HasXAttrsValue;
@@ -44,9 +42,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TSetHasXAttrsActor::TSetHasXAttrsActor(
-        bool hasXAttrsValue,
-        const TString& fileSystemId,
-        TRequestInfoPtr RequestInfo)
+    bool hasXAttrsValue,
+    const TString& fileSystemId,
+    TRequestInfoPtr RequestInfo)
     : HasXAttrsValue(hasXAttrsValue)
     , FileSystemId(fileSystemId)
     , RequestInfo(RequestInfo)
@@ -145,7 +143,9 @@ void TStorageServiceActor::ForwardXAttrRequest(
     const ui64 seqNo = GetSessionSeqNo(msg->Record);
     const auto shardNo = ExtractShardNo(ev->Get()->Record.GetNodeId());
 
-    LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
         "[%s][%lu] forward %s #%lu",
         session->SessionId.Quote().c_str(),
         seqNo,
@@ -228,9 +228,7 @@ void TStorageServiceActor::ReplyToXAttrRequest(
     InitProfileLogRequestInfo(inflight.ProfileLogRequest, msg->Record);
     inflight.Start(ctx.Now());
 
-    FinalizeProfileLogRequestInfo(
-        inflight.ProfileLogRequest,
-        response->Record);
+    FinalizeProfileLogRequestInfo(inflight.ProfileLogRequest, response->Record);
     inflight.Complete(ctx.Now(), response->GetError());
 
     TraceSerializer->BuildTraceRequest(
@@ -255,7 +253,9 @@ void TStorageServiceActor::HandleGetNodeXAttr(
     // If there are no extended attributes in the filesystem we don't
     // forward corresponding requests to the tablet and reply from the service
     // actor
-    if (StorageConfig->GetLazyXAttrsEnabled() && !session->FileStore.GetFeatures().GetHasXAttrs()) {
+    if (StorageConfig->GetLazyXAttrsEnabled() &&
+        !session->FileStore.GetFeatures().GetHasXAttrs())
+    {
         auto response =
             std::make_unique<TEvService::TGetNodeXAttrMethod::TResponse>(
                 ErrorAttributeDoesNotExist(
@@ -286,7 +286,9 @@ void TStorageServiceActor::HandleListNodeXAttr(
 
     // if there no extended attributes in the file system we return an empty
     // list
-    if (StorageConfig->GetLazyXAttrsEnabled() && !session->FileStore.GetFeatures().GetHasXAttrs()) {
+    if (StorageConfig->GetLazyXAttrsEnabled() &&
+        !session->FileStore.GetFeatures().GetHasXAttrs())
+    {
         auto response =
             std::make_unique<TEvService::TListNodeXAttrMethod::TResponse>();
 
@@ -314,7 +316,9 @@ void TStorageServiceActor::HandleSetNodeXAttr(
         return;
     }
 
-    if (StorageConfig->GetLazyXAttrsEnabled() && !session->FileStore.GetFeatures().GetHasXAttrs()) {
+    if (StorageConfig->GetLazyXAttrsEnabled() &&
+        !session->FileStore.GetFeatures().GetHasXAttrs())
+    {
         // Send TSetHasXAttrsRequest to the index tablet
         auto* msg = ev->Get();
         LOG_INFO(

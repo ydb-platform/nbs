@@ -6,13 +6,10 @@ using namespace NMonitoring;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TAuthCounters::TAuthCounters(
-    TDynamicCounterPtr counters,
-    TString counterId)
+TAuthCounters::TAuthCounters(TDynamicCounterPtr counters, TString counterId)
 {
-    auto group = counters
-        ->GetSubgroup("counters", counterId)
-        ->GetSubgroup("component", "auth");
+    auto group = counters->GetSubgroup("counters", counterId)
+                     ->GetSubgroup("component", "auth");
 
     for (int i = 0; i < (int)EAuthorizationStatus::MAX; ++i) {
         const EAuthorizationStatus status = (EAuthorizationStatus)i;

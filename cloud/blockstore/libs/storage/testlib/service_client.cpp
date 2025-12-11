@@ -3,7 +3,6 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
-#include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
@@ -32,9 +31,9 @@ using namespace NCloud::NBlockStore::NStorage::NPartition;
 ////////////////////////////////////////////////////////////////////////////////
 
 TServiceClient::TServiceClient(
-        NKikimr::TTestActorRuntime& runtime,
-        ui32 nodeIdx,
-        NProto::ERequestSource requestSource)
+    NKikimr::TTestActorRuntime& runtime,
+    ui32 nodeIdx,
+    NProto::ERequestSource requestSource)
     : Runtime(runtime)
     , NodeIdx(nodeIdx)
     , Sender(runtime.AllocateEdgeActor(nodeIdx))
@@ -42,7 +41,8 @@ TServiceClient::TServiceClient(
     , RequestSource(requestSource)
 {}
 
-std::unique_ptr<TEvService::TEvCreateVolumeRequest> TServiceClient::CreateCreateVolumeRequest(
+std::unique_ptr<TEvService::TEvCreateVolumeRequest>
+TServiceClient::CreateCreateVolumeRequest(
     const TString& diskId,
     ui64 blocksCount,
     ui32 blockSize,
@@ -79,7 +79,8 @@ std::unique_ptr<TEvService::TEvCreateVolumeRequest> TServiceClient::CreateCreate
     return request;
 }
 
-std::unique_ptr<TEvService::TEvDestroyVolumeRequest> TServiceClient::CreateDestroyVolumeRequest(
+std::unique_ptr<TEvService::TEvDestroyVolumeRequest>
+TServiceClient::CreateDestroyVolumeRequest(
     const TString& diskId,
     bool destroyIfBroken,
     bool sync,
@@ -97,7 +98,8 @@ std::unique_ptr<TEvService::TEvDestroyVolumeRequest> TServiceClient::CreateDestr
     return request;
 }
 
-std::unique_ptr<TEvService::TEvAssignVolumeRequest> TServiceClient::CreateAssignVolumeRequest(
+std::unique_ptr<TEvService::TEvAssignVolumeRequest>
+TServiceClient::CreateAssignVolumeRequest(
     const TString& diskId,
     const TString& instanceId,
     const TString& token,
@@ -124,11 +126,13 @@ TServiceClient::CreateDescribeVolumeRequest(
     return request;
 }
 
-std::unique_ptr<TEvService::TEvDescribeVolumeModelRequest> TServiceClient::CreateDescribeVolumeModelRequest(
+std::unique_ptr<TEvService::TEvDescribeVolumeModelRequest>
+TServiceClient::CreateDescribeVolumeModelRequest(
     ui64 blocksCount,
     NCloud::NProto::EStorageMediaKind mediaKind)
 {
-    auto request = std::make_unique<TEvService::TEvDescribeVolumeModelRequest>();
+    auto request =
+        std::make_unique<TEvService::TEvDescribeVolumeModelRequest>();
     PrepareRequestHeaders(*request);
     request->Record.SetBlocksCount(blocksCount);
     request->Record.SetBlockSize(DefaultBlockSize);
@@ -136,14 +140,16 @@ std::unique_ptr<TEvService::TEvDescribeVolumeModelRequest> TServiceClient::Creat
     return request;
 }
 
-std::unique_ptr<TEvService::TEvListVolumesRequest> TServiceClient::CreateListVolumesRequest()
+std::unique_ptr<TEvService::TEvListVolumesRequest>
+TServiceClient::CreateListVolumesRequest()
 {
     auto request = std::make_unique<TEvService::TEvListVolumesRequest>();
     PrepareRequestHeaders(*request);
     return request;
 }
 
-std::unique_ptr<TEvService::TEvMountVolumeRequest> TServiceClient::CreateMountVolumeRequest(
+std::unique_ptr<TEvService::TEvMountVolumeRequest>
+TServiceClient::CreateMountVolumeRequest(
     const TString& diskId,
     const TString& instanceId,
     const TString& token,
@@ -174,7 +180,8 @@ std::unique_ptr<TEvService::TEvMountVolumeRequest> TServiceClient::CreateMountVo
     return request;
 }
 
-std::unique_ptr<TEvService::TEvUnmountVolumeRequest> TServiceClient::CreateUnmountVolumeRequest(
+std::unique_ptr<TEvService::TEvUnmountVolumeRequest>
+TServiceClient::CreateUnmountVolumeRequest(
     const TString& diskId,
     const TString& sessionId)
 {
@@ -185,7 +192,8 @@ std::unique_ptr<TEvService::TEvUnmountVolumeRequest> TServiceClient::CreateUnmou
     return request;
 }
 
-std::unique_ptr<TEvService::TEvUnmountVolumeRequest>  TServiceClient::CreateUnmountVolumeRequest(
+std::unique_ptr<TEvService::TEvUnmountVolumeRequest>
+TServiceClient::CreateUnmountVolumeRequest(
     const TString& diskId,
     const TString& sessionId,
     NProto::EControlRequestSource source)
@@ -197,7 +205,8 @@ std::unique_ptr<TEvService::TEvUnmountVolumeRequest>  TServiceClient::CreateUnmo
     return request;
 }
 
-std::unique_ptr<TEvService::TEvStatVolumeRequest> TServiceClient::CreateStatVolumeRequest(
+std::unique_ptr<TEvService::TEvStatVolumeRequest>
+TServiceClient::CreateStatVolumeRequest(
     const TString& diskId,
     const TVector<TString>& storageConfigFields)
 {
@@ -210,7 +219,8 @@ std::unique_ptr<TEvService::TEvStatVolumeRequest> TServiceClient::CreateStatVolu
     return request;
 }
 
-std::unique_ptr<TEvService::TEvResizeVolumeRequest> TServiceClient::CreateResizeVolumeRequest(
+std::unique_ptr<TEvService::TEvResizeVolumeRequest>
+TServiceClient::CreateResizeVolumeRequest(
     const TString& diskId,
     ui64 blocksCount,
     const NProto::TVolumePerformanceProfile& pp)
@@ -223,7 +233,8 @@ std::unique_ptr<TEvService::TEvResizeVolumeRequest> TServiceClient::CreateResize
     return request;
 }
 
-std::unique_ptr<TEvService::TEvWriteBlocksRequest> TServiceClient::CreateWriteBlocksRequest(
+std::unique_ptr<TEvService::TEvWriteBlocksRequest>
+TServiceClient::CreateWriteBlocksRequest(
     const TString& diskId,
     const TBlockRange64& writeRange,
     const TString& sessionId,
@@ -245,7 +256,8 @@ std::unique_ptr<TEvService::TEvWriteBlocksRequest> TServiceClient::CreateWriteBl
     return request;
 }
 
-std::unique_ptr<TEvService::TEvReadBlocksRequest> TServiceClient::CreateReadBlocksRequest(
+std::unique_ptr<TEvService::TEvReadBlocksRequest>
+TServiceClient::CreateReadBlocksRequest(
     const TString& diskId,
     ui32 blockIndex,
     const TString& sessionId,
@@ -261,7 +273,8 @@ std::unique_ptr<TEvService::TEvReadBlocksRequest> TServiceClient::CreateReadBloc
     return request;
 }
 
-std::unique_ptr<TEvService::TEvZeroBlocksRequest> TServiceClient::CreateZeroBlocksRequest(
+std::unique_ptr<TEvService::TEvZeroBlocksRequest>
+TServiceClient::CreateZeroBlocksRequest(
     const TString& diskId,
     ui32 blockIndex,
     const TString& sessionId)
@@ -275,7 +288,8 @@ std::unique_ptr<TEvService::TEvZeroBlocksRequest> TServiceClient::CreateZeroBloc
     return request;
 }
 
-std::unique_ptr<TEvService::TEvReadBlocksLocalRequest> TServiceClient::CreateReadBlocksLocalRequest(
+std::unique_ptr<TEvService::TEvReadBlocksLocalRequest>
+TServiceClient::CreateReadBlocksLocalRequest(
     const TString& diskId,
     ui32 blockIndex,
     TGuardedSgList sglist,
@@ -294,7 +308,8 @@ std::unique_ptr<TEvService::TEvReadBlocksLocalRequest> TServiceClient::CreateRea
     return request;
 }
 
-std::unique_ptr<TEvService::TEvAlterVolumeRequest> TServiceClient::CreateAlterVolumeRequest(
+std::unique_ptr<TEvService::TEvAlterVolumeRequest>
+TServiceClient::CreateAlterVolumeRequest(
     const TString& diskId,
     const TString& projectId,
     const TString& folderId,
@@ -311,7 +326,8 @@ std::unique_ptr<TEvService::TEvAlterVolumeRequest> TServiceClient::CreateAlterVo
     return request;
 }
 
-std::unique_ptr<TEvService::TEvGetChangedBlocksRequest> TServiceClient::CreateGetChangedBlocksRequest(
+std::unique_ptr<TEvService::TEvGetChangedBlocksRequest>
+TServiceClient::CreateGetChangedBlocksRequest(
     const TString& diskId,
     ui64 startIndex,
     ui32 blocksCount,
@@ -334,9 +350,10 @@ auto TServiceClient::CreateUpdateDiskRegistryConfigRequest(
     TVector<NProto::TDeviceOverride> deviceOverrides,
     TVector<NProto::TKnownDevicePool> devicePools,
     bool ignoreVersion)
-        -> std::unique_ptr<TEvService::TEvUpdateDiskRegistryConfigRequest>
+    -> std::unique_ptr<TEvService::TEvUpdateDiskRegistryConfigRequest>
 {
-    auto request = std::make_unique<TEvService::TEvUpdateDiskRegistryConfigRequest>();
+    auto request =
+        std::make_unique<TEvService::TEvUpdateDiskRegistryConfigRequest>();
     PrepareRequestHeaders(*request);
 
     request->Record.SetVersion(version);
@@ -344,18 +361,15 @@ auto TServiceClient::CreateUpdateDiskRegistryConfigRequest(
 
     request->Record.MutableKnownAgents()->Assign(
         std::make_move_iterator(agents.begin()),
-        std::make_move_iterator(agents.end())
-    );
+        std::make_move_iterator(agents.end()));
 
     request->Record.MutableDeviceOverrides()->Assign(
         std::make_move_iterator(deviceOverrides.begin()),
-        std::make_move_iterator(deviceOverrides.end())
-    );
+        std::make_move_iterator(deviceOverrides.end()));
 
     request->Record.MutableKnownDevicePools()->Assign(
         std::make_move_iterator(devicePools.begin()),
-        std::make_move_iterator(devicePools.end())
-    );
+        std::make_move_iterator(devicePools.end()));
 
     return request;
 }
@@ -363,7 +377,8 @@ auto TServiceClient::CreateUpdateDiskRegistryConfigRequest(
 auto TServiceClient::CreateDescribeDiskRegistryConfigRequest()
     -> std::unique_ptr<TEvService::TEvDescribeDiskRegistryConfigRequest>
 {
-    auto request = std::make_unique<TEvService::TEvDescribeDiskRegistryConfigRequest>();
+    auto request =
+        std::make_unique<TEvService::TEvDescribeDiskRegistryConfigRequest>();
     PrepareRequestHeaders(*request);
 
     return request;
@@ -375,9 +390,10 @@ auto TServiceClient::CreateCreateVolumeFromDeviceRequest(
     const TString& path,
     const TString& folderId,
     const TString& cloudId)
-        -> std::unique_ptr<TEvService::TEvCreateVolumeFromDeviceRequest>
+    -> std::unique_ptr<TEvService::TEvCreateVolumeFromDeviceRequest>
 {
-    auto request = std::make_unique<TEvService::TEvCreateVolumeFromDeviceRequest>();
+    auto request =
+        std::make_unique<TEvService::TEvCreateVolumeFromDeviceRequest>();
     PrepareRequestHeaders(*request);
 
     request->Record.SetDiskId(diskId);
@@ -391,8 +407,7 @@ auto TServiceClient::CreateCreateVolumeFromDeviceRequest(
 
 auto TServiceClient::CreateResumeDeviceRequest(
     const TString& agentId,
-    const TString& path)
-        -> std::unique_ptr<TEvService::TEvResumeDeviceRequest>
+    const TString& path) -> std::unique_ptr<TEvService::TEvResumeDeviceRequest>
 {
     auto request = std::make_unique<TEvService::TEvResumeDeviceRequest>();
     PrepareRequestHeaders(*request);
@@ -403,12 +418,14 @@ auto TServiceClient::CreateResumeDeviceRequest(
     return request;
 }
 
-std::unique_ptr<TEvService::TEvCreatePlacementGroupRequest> TServiceClient::CreateCreatePlacementGroupRequest(
+std::unique_ptr<TEvService::TEvCreatePlacementGroupRequest>
+TServiceClient::CreateCreatePlacementGroupRequest(
     const TString& groupId,
     const NProto::EPlacementStrategy placementStrategy,
     const ui32 placementPartitionCount)
 {
-    auto request = std::make_unique<TEvService::TEvCreatePlacementGroupRequest>();
+    auto request =
+        std::make_unique<TEvService::TEvCreatePlacementGroupRequest>();
     PrepareRequestHeaders(*request);
 
     request->Record.SetGroupId(groupId);
@@ -418,10 +435,11 @@ std::unique_ptr<TEvService::TEvCreatePlacementGroupRequest> TServiceClient::Crea
     return request;
 }
 
-std::unique_ptr<TEvService::TEvDestroyPlacementGroupRequest> TServiceClient::CreateDestroyPlacementGroupRequest(
-    const TString& groupId)
+std::unique_ptr<TEvService::TEvDestroyPlacementGroupRequest>
+TServiceClient::CreateDestroyPlacementGroupRequest(const TString& groupId)
 {
-    auto request = std::make_unique<TEvService::TEvDestroyPlacementGroupRequest>();
+    auto request =
+        std::make_unique<TEvService::TEvDestroyPlacementGroupRequest>();
     PrepareRequestHeaders(*request);
 
     request->Record.SetGroupId(groupId);
@@ -429,12 +447,14 @@ std::unique_ptr<TEvService::TEvDestroyPlacementGroupRequest> TServiceClient::Cre
     return request;
 }
 
-std::unique_ptr<TEvService::TEvAlterPlacementGroupMembershipRequest> TServiceClient::CreateAlterPlacementGroupMembershipRequest(
+std::unique_ptr<TEvService::TEvAlterPlacementGroupMembershipRequest>
+TServiceClient::CreateAlterPlacementGroupMembershipRequest(
     const TString& groupId,
     const TVector<TString>& toAdd,
     const TVector<TString>& toRemove)
 {
-    auto request = std::make_unique<TEvService::TEvAlterPlacementGroupMembershipRequest>();
+    auto request =
+        std::make_unique<TEvService::TEvAlterPlacementGroupMembershipRequest>();
     PrepareRequestHeaders(*request);
 
     request->Record.SetGroupId(groupId);
@@ -449,18 +469,21 @@ std::unique_ptr<TEvService::TEvAlterPlacementGroupMembershipRequest> TServiceCli
     return request;
 }
 
-std::unique_ptr<TEvService::TEvListPlacementGroupsRequest> TServiceClient::CreateListPlacementGroupsRequest()
+std::unique_ptr<TEvService::TEvListPlacementGroupsRequest>
+TServiceClient::CreateListPlacementGroupsRequest()
 {
-    auto request = std::make_unique<TEvService::TEvListPlacementGroupsRequest>();
+    auto request =
+        std::make_unique<TEvService::TEvListPlacementGroupsRequest>();
     PrepareRequestHeaders(*request);
 
     return request;
 }
 
-std::unique_ptr<TEvService::TEvDescribePlacementGroupRequest> TServiceClient::CreateDescribePlacementGroupRequest(
-    const TString& groupId)
+std::unique_ptr<TEvService::TEvDescribePlacementGroupRequest>
+TServiceClient::CreateDescribePlacementGroupRequest(const TString& groupId)
 {
-    auto request = std::make_unique<TEvService::TEvDescribePlacementGroupRequest>();
+    auto request =
+        std::make_unique<TEvService::TEvDescribePlacementGroupRequest>();
     PrepareRequestHeaders(*request);
 
     request->Record.SetGroupId(groupId);
@@ -468,7 +491,8 @@ std::unique_ptr<TEvService::TEvDescribePlacementGroupRequest> TServiceClient::Cr
     return request;
 }
 
-std::unique_ptr<TEvService::TEvExecuteActionRequest> TServiceClient::CreateExecuteActionRequest(
+std::unique_ptr<TEvService::TEvExecuteActionRequest>
+TServiceClient::CreateExecuteActionRequest(
     const TString& action,
     const TString& input)
 {
@@ -481,7 +505,8 @@ std::unique_ptr<TEvService::TEvExecuteActionRequest> TServiceClient::CreateExecu
     return request;
 }
 
-std::unique_ptr<TEvService::TEvCreateCheckpointRequest> TServiceClient::CreateCreateCheckpointRequest(
+std::unique_ptr<TEvService::TEvCreateCheckpointRequest>
+TServiceClient::CreateCreateCheckpointRequest(
     const TString& diskId,
     const TString& checkpointId)
 {
@@ -494,7 +519,8 @@ std::unique_ptr<TEvService::TEvCreateCheckpointRequest> TServiceClient::CreateCr
     return request;
 }
 
-std::unique_ptr<TEvService::TEvDeleteCheckpointRequest> TServiceClient::CreateDeleteCheckpointRequest(
+std::unique_ptr<TEvService::TEvDeleteCheckpointRequest>
+TServiceClient::CreateDeleteCheckpointRequest(
     const TString& diskId,
     const TString& checkpointId)
 {
@@ -507,12 +533,12 @@ std::unique_ptr<TEvService::TEvDeleteCheckpointRequest> TServiceClient::CreateDe
     return request;
 }
 
-std::unique_ptr<TEvService::TEvGetVolumeStatsRequest> TServiceClient::CreateGetVolumeStatsRequest()
+std::unique_ptr<TEvService::TEvGetVolumeStatsRequest>
+TServiceClient::CreateGetVolumeStatsRequest()
 {
     auto request = std::make_unique<TEvService::TEvGetVolumeStatsRequest>();
     return request;
 }
-
 
 std::unique_ptr<TEvService::TEvAddTagsRequest>
 TServiceClient::CreateAddTagsRequest(

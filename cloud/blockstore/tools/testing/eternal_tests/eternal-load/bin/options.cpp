@@ -15,14 +15,12 @@ const THashMap<TString, ECommand> nameToCommand = {
 
 const THashMap<TString, EScenario> nameToScenario = {
     {"aligned", EScenario::Aligned},
-    {"unaligned", EScenario::Unaligned}
-};
+    {"unaligned", EScenario::Unaligned}};
 
 const THashMap<TString, EIoEngine> nameToEngine = {
     {"asyncio", EIoEngine::AsyncIo},
     {"uring", EIoEngine::IoUring},
-    {"sync", EIoEngine::Sync}
-};
+    {"sync", EIoEngine::Sync}};
 
 template <class T>
 struct TMapOption
@@ -72,12 +70,13 @@ void TOptions::Parse(int argc, char** argv)
     opts.AddHelpOption();
 
     opts.AddLongOption(
-        "config-type",
-        "specify type of config:\n"
-        "- file: reads config from specified file\n"
-        "- generated: run test with generated config from specified parameters")
-        .Required()
-        | TMapOption(&Command, nameToCommand, ECommand::UnknownCmd);
+            "config-type",
+            "specify type of config:\n"
+            "- file: reads config from specified file\n"
+            "- generated: run test with generated config from specified "
+            "parameters")
+            .Required() |
+        TMapOption(&Command, nameToCommand, ECommand::UnknownCmd);
 
     opts.AddLongOption(
         "scenario",
@@ -87,28 +86,26 @@ void TOptions::Parse(int argc, char** argv)
         "    preferred options: engine=async_io\n"
         "- unaligned: arbitrary reads and writes\n"
         "    suitable for testing nfs\n"
-        "    preferred options: engine=sync, no_direct\n")
-        | TMapOption(&Scenario, nameToScenario, EScenario::Aligned);
+        "    preferred options: engine=sync, no_direct\n") |
+        TMapOption(&Scenario, nameToScenario, EScenario::Aligned);
 
     opts.AddLongOption(
         "engine",
         "specify the IO engine:\n"
         "- asyncio: AsyncIO\n"
         "- uring: io_uring\n"
-        "- sync: synchronous IO + threads")
-        | TMapOption(&Engine, nameToEngine, EIoEngine::AsyncIo);
+        "- sync: synchronous IO + threads") |
+        TMapOption(&Engine, nameToEngine, EIoEngine::AsyncIo);
 
-    opts.AddLongOption(
-        "no-direct",
-        "do not set O_DIRECT flag")
+    opts.AddLongOption("no-direct", "do not set O_DIRECT flag")
         .StoreTrue(&NoDirect);
 
     opts.AddLongOption(
-        "run-in-callbacks",
-        "run test workers and post IO requests in completion "
-        "callbacks instead of the single submitter thread - "
-        "this may improve performance for engines that use "
-        "multiple threads (like sync)")
+            "run-in-callbacks",
+            "run test workers and post IO requests in completion "
+            "callbacks instead of the single submitter thread - "
+            "this may improve performance for engines that use "
+            "multiple threads (like sync)")
         .StoreTrue(&RunInCallbacks);
 
     opts.AddLongOption("file", "path to file or block device")
@@ -120,15 +117,13 @@ void TOptions::Parse(int argc, char** argv)
         .StoreResult(&FileSize);
 
     opts.AddLongOption(
-        "request-block-count",
-        "specify request size in number of blocks")
+            "request-block-count",
+            "specify request size in number of blocks")
         .RequiredArgument("NUM")
         .StoreResult(&RequestBlockCount)
         .DefaultValue(1);
 
-    opts.AddLongOption(
-        "blocksize",
-        "specify block size in bytes")
+    opts.AddLongOption("blocksize", "specify block size in bytes")
         .RequiredArgument("NUM")
         .StoreResult(&BlockSize)
         .DefaultValue(4096);
@@ -148,85 +143,83 @@ void TOptions::Parse(int argc, char** argv)
         .StoreResult(&WriteParts)
         .DefaultValue(1);
 
-    opts.AddLongOption("alternating-phase",
-            "duration of a phase for tests in which write load is replaced by read load periodically")
+    opts.AddLongOption(
+            "alternating-phase",
+            "duration of a phase for tests in which write load is replaced by "
+            "read load periodically")
         .OptionalArgument("STR")
         .StoreResult(&AlternatingPhase)
         .DefaultValue("");
 
     opts.AddLongOption(
-        "dump-config-path",
-        "dump test configuration to specified file in json format")
+            "dump-config-path",
+            "dump test configuration to specified file in json format")
         .RequiredArgument("STR")
         .StoreResult(&DumpPath)
         .DefaultValue("load-config.json");
 
-    opts.AddLongOption(
-        "restore-config-path",
-        "path to test config")
+    opts.AddLongOption("restore-config-path", "path to test config")
         .RequiredArgument("STR")
         .StoreResult(&RestorePath);
 
     opts.AddLongOption(
-        "min-read-size",
-        "minimum size of read requests in bytes")
+            "min-read-size",
+            "minimum size of read requests in bytes")
         .RequiredArgument("NUM")
         .StoreResult(&MinReadSize);
 
     opts.AddLongOption(
-        "max-read-size",
-        "maximum size of read requests in bytes")
+            "max-read-size",
+            "maximum size of read requests in bytes")
         .RequiredArgument("NUM")
         .StoreResult(&MaxReadSize);
 
     opts.AddLongOption(
-        "read-size",
-        "minimum and maximum size of read requests in bytes")
+            "read-size",
+            "minimum and maximum size of read requests in bytes")
         .RequiredArgument("NUM")
         .StoreResult(&MinReadSize)
         .StoreResult(&MaxReadSize);
 
     opts.AddLongOption(
-        "min-write-size",
-        "minimum size of write requests in bytes")
+            "min-write-size",
+            "minimum size of write requests in bytes")
         .RequiredArgument("NUM")
         .StoreResult(&MinWriteSize);
 
     opts.AddLongOption(
-        "max-write-size",
-        "maximum size of write requests in bytes")
+            "max-write-size",
+            "maximum size of write requests in bytes")
         .RequiredArgument("NUM")
         .StoreResult(&MaxWriteSize);
 
     opts.AddLongOption(
-        "write-size",
-        "minimum and maximum size of write requests in bytes")
+            "write-size",
+            "minimum and maximum size of write requests in bytes")
         .RequiredArgument("NUM")
         .StoreResult(&MinWriteSize)
         .StoreResult(&MaxWriteSize);
 
     opts.AddLongOption(
-        "min-region-size",
-        "minimum size of file region in bytes")
+            "min-region-size",
+            "minimum size of file region in bytes")
         .RequiredArgument("NUM")
         .StoreResult(&MinRegionSize);
 
     opts.AddLongOption(
-        "max-region-size",
-        "maximum size of file region in bytes")
+            "max-region-size",
+            "maximum size of file region in bytes")
         .RequiredArgument("NUM")
         .StoreResult(&MaxRegionSize);
 
     opts.AddLongOption(
-        "region-size",
-        "minimum and maximum size of file region in bytes")
+            "region-size",
+            "minimum and maximum size of file region in bytes")
         .RequiredArgument("NUM")
         .StoreResult(&MinRegionSize)
         .StoreResult(&MaxRegionSize);
 
-    opts.AddLongOption(
-        "debug",
-        "print debug statistics")
+    opts.AddLongOption("debug", "print debug statistics")
         .StoreTrue(&PrintDebugStats);
 
     TOptsParseResultException(&opts, argc, argv);

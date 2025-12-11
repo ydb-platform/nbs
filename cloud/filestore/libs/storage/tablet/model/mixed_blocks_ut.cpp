@@ -10,8 +10,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMixedBlockVisitor final
-    : public IMixedBlockVisitor
+class TMixedBlockVisitor final: public IMixedBlockVisitor
 {
 private:
     TVector<TBlockDataRef> Blocks;
@@ -61,7 +60,10 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
 
         TBlock block(nodeId, blockIndex, minCommitId, maxCommitId);
 
-        auto list = TBlockList::EncodeBlocks(block, blocksCount, TDefaultAllocator::Instance());
+        auto list = TBlockList::EncodeBlocks(
+            block,
+            blocksCount,
+            TDefaultAllocator::Instance());
 
         TMixedBlocks mixedBlocks(TDefaultAllocator::Instance());
         mixedBlocks.RefRange(rangeId);
@@ -102,7 +104,10 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
 
         TBlock block(nodeId, blockIndex, minCommitId, maxCommitId);
 
-        auto list = TBlockList::EncodeBlocks(block, blocksCount, TDefaultAllocator::Instance());
+        auto list = TBlockList::EncodeBlocks(
+            block,
+            blocksCount,
+            TDefaultAllocator::Instance());
 
         TMixedBlocks mixedBlocks(TDefaultAllocator::Instance());
         mixedBlocks.RefRange(rangeId);
@@ -135,22 +140,34 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
             for (size_t i = 0; i < deletionOffset; ++i) {
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].NodeId, nodeId);
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].MinCommitId, minCommitId);
-                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MaxCommitId, InvalidCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    blocks[i].MaxCommitId,
+                    InvalidCommitId);
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].BlockIndex, blockIndex + i);
             }
 
-            for (size_t i = deletionOffset; i < deletionOffset + deletedBlocksCount; ++i) {
+            for (size_t i = deletionOffset;
+                 i < deletionOffset + deletedBlocksCount;
+                 ++i)
+            {
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].NodeId, nodeId);
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].MinCommitId, minCommitId);
-                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MaxCommitId, minCommitId + 2);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    blocks[i].MaxCommitId,
+                    minCommitId + 2);
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].BlockIndex, blockIndex + i);
             }
 
             Y_ABORT_UNLESS(deletionOffset + deletedBlocksCount < blocksCount);
-            for (size_t i = deletionOffset + deletedBlocksCount; i < blocksCount; ++i) {
+            for (size_t i = deletionOffset + deletedBlocksCount;
+                 i < blocksCount;
+                 ++i)
+            {
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].NodeId, nodeId);
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].MinCommitId, minCommitId);
-                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MaxCommitId, InvalidCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    blocks[i].MaxCommitId,
+                    InvalidCommitId);
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].BlockIndex, blockIndex + i);
             }
         }
@@ -161,7 +178,7 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
                 visitor,
                 rangeId,
                 nodeId,
-                minCommitId + 2, // commit id of the deletion
+                minCommitId + 2,   // commit id of the deletion
                 blockIndex,
                 blocksCount);
 
@@ -173,7 +190,9 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
             for (size_t i = 0; i < deletionOffset; ++i) {
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].NodeId, nodeId);
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].MinCommitId, minCommitId);
-                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MaxCommitId, InvalidCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    blocks[i].MaxCommitId,
+                    InvalidCommitId);
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].BlockIndex, blockIndex + i);
             }
 
@@ -203,7 +222,10 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
 
         TBlock block(nodeId, blockIndex, minCommitId, maxCommitId);
 
-        auto list = TBlockList::EncodeBlocks(block, blocksCount, TDefaultAllocator::Instance());
+        auto list = TBlockList::EncodeBlocks(
+            block,
+            blocksCount,
+            TDefaultAllocator::Instance());
 
         TMixedBlocks mixedBlocks(TDefaultAllocator::Instance());
         mixedBlocks.RefRange(rangeId);

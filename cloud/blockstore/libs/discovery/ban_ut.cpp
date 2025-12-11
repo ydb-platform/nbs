@@ -3,6 +3,7 @@
 #include "config.h"
 
 #include <cloud/blockstore/config/discovery.pb.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
@@ -49,8 +50,7 @@ Y_UNIT_TEST_SUITE(BanListTest)
         auto banList = CreateBanList(
             env.Config,
             CreateLoggingService("console"),
-            CreateMonitoringServiceStub()
-        );
+            CreateMonitoringServiceStub());
         banList->Start();
 
         UNIT_ASSERT(!banList->IsBanned("host1", 1));

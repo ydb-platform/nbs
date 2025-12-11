@@ -25,7 +25,7 @@ TSgList SplitBuffer(
     auto p = buffer.data();
     for (int n: blocks) {
         const ui64 len = n * BlockSize;
-        sglist.push_back({ p, len });
+        sglist.push_back({p, len});
         p += len;
     }
 
@@ -44,10 +44,8 @@ NProto::TIOVector CreateIOVector(ui64 blockCount, char data)
     return iov;
 }
 
-TStringBuf SubBuffer(
-    const TVector<char>& buffer,
-    ui64 startBlock,
-    size_t blockCount)
+TStringBuf
+SubBuffer(const TVector<char>& buffer, ui64 startBlock, size_t blockCount)
 {
     return {buffer.data() + startBlock * BlockSize, blockCount * BlockSize};
 }
@@ -74,7 +72,7 @@ Y_UNIT_TEST_SUITE(TIOVectorTest)
     {
         TVector<char> buffer(16 * BlockSize, 'X');
 
-        TSgList sglist = SplitBuffer(buffer, { 4, 4, 6, 2 });
+        TSgList sglist = SplitBuffer(buffer, {4, 4, 6, 2});
 
         {
             NProto::TIOVector iov = CreateIOVector(10, 'A');
@@ -184,12 +182,10 @@ Y_UNIT_TEST_SUITE(TIOVectorTest)
             &ioVector);
         UNIT_ASSERT_VALUES_EQUAL(buffer.size(), handledByteCount);
         for (size_t i = 0; i < blockCount; ++i) {
-            const auto& buf  = ioVector.GetBuffers(i);
-            UNIT_ASSERT_VALUES_EQUAL(
-                i < 8 ? 0 : BlockSize,
-                buf.size());
+            const auto& buf = ioVector.GetBuffers(i);
+            UNIT_ASSERT_VALUES_EQUAL(i < 8 ? 0 : BlockSize, buf.size());
         }
-        UNIT_ASSERT_VALUES_EQUAL(8,CountVoidBuffers(ioVector));
+        UNIT_ASSERT_VALUES_EQUAL(8, CountVoidBuffers(ioVector));
     }
 
     Y_UNIT_TEST(ShouldTrimVoidBuffers)

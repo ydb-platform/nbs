@@ -30,15 +30,17 @@ void FillCheckpoints(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define MERGE_FIELD(name)                                                      \
-    target.Set##name(target.Get##name() + source.Get##name());                 \
-// MERGE_FIELD
+#define MERGE_FIELD(name)                                      \
+    target.Set##name(target.Get##name() + source.Get##name()); \
+    // MERGE_FIELD
 
-#define MERGE_FIELD_MAX(name)                                                  \
-    target.Set##name(Max(target.Get##name(), source.Get##name()));             \
-// MERGE_FIELD_MAX
+#define MERGE_FIELD_MAX(name)                                      \
+    target.Set##name(Max(target.Get##name(), source.Get##name())); \
+    // MERGE_FIELD_MAX
 
-void MergeIOCounters(const NProto::TIOCounters& source, NProto::TIOCounters& target)
+void MergeIOCounters(
+    const NProto::TIOCounters& source,
+    NProto::TIOCounters& target)
 {
     MERGE_FIELD(RequestsCount);
     MERGE_FIELD(BlocksCount);
@@ -51,28 +53,22 @@ void Merge(const NProto::TVolumeStats& source, NProto::TVolumeStats& target)
 {
     MergeIOCounters(
         source.GetUserReadCounters(),
-        *target.MutableUserReadCounters()
-    );
+        *target.MutableUserReadCounters());
     MergeIOCounters(
         source.GetUserWriteCounters(),
-        *target.MutableUserWriteCounters()
-    );
+        *target.MutableUserWriteCounters());
     MergeIOCounters(
         source.GetSysReadCounters(),
-        *target.MutableSysReadCounters()
-    );
+        *target.MutableSysReadCounters());
     MergeIOCounters(
         source.GetSysWriteCounters(),
-        *target.MutableSysWriteCounters()
-    );
+        *target.MutableSysWriteCounters());
     MergeIOCounters(
         source.GetRealSysReadCounters(),
-        *target.MutableRealSysReadCounters()
-    );
+        *target.MutableRealSysReadCounters());
     MergeIOCounters(
         source.GetRealSysWriteCounters(),
-        *target.MutableRealSysWriteCounters()
-    );
+        *target.MutableRealSysWriteCounters());
 
     MERGE_FIELD(MixedBlobsCount);
     MERGE_FIELD(MergedBlobsCount);
@@ -102,8 +98,7 @@ void Merge(const NProto::TVolumeStats& source, NProto::TVolumeStats& target)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStatPartitionActor final
-    : public TActorBootstrapped<TStatPartitionActor>
+class TStatPartitionActor final: public TActorBootstrapped<TStatPartitionActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
@@ -132,10 +127,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TStatPartitionActor::TStatPartitionActor(
-        TRequestInfoPtr requestInfo,
-        TVector<TActorId> partActorIds,
-        NProto::TStatVolumeResponse record,
-        TVector<TString> checkpoints)
+    TRequestInfoPtr requestInfo,
+    TVector<TActorId> partActorIds,
+    NProto::TStatVolumeResponse record,
+    TVector<TString> checkpoints)
     : RequestInfo(std::move(requestInfo))
     , PartActorIds(std::move(partActorIds))
     , Record(std::move(record))
@@ -149,8 +144,7 @@ void TStatPartitionActor::Bootstrap(const TActorContext& ctx)
         NCloud::Send(
             ctx,
             partActorId,
-            std::make_unique<TEvPartition::TEvStatPartitionRequest>()
-        );
+            std::make_unique<TEvPartition::TEvStatPartitionRequest>());
     }
 
     Become(&TThis::StateWork);
@@ -173,9 +167,8 @@ void TStatPartitionActor::HandleStatPartitionResponse(
     }
 
     if (++Responses == PartActorIds.size() || FAILED(msg->GetStatus())) {
-        auto response = std::make_unique<TEvService::TEvStatVolumeResponse>(
-            Record
-        );
+        auto response =
+            std::make_unique<TEvService::TEvStatVolumeResponse>(Record);
         FillCheckpoints(std::move(Checkpoints), response->Record);
 
         LWTRACK(
@@ -195,7 +188,9 @@ void TStatPartitionActor::HandleStatPartitionResponse(
 STFUNC(TStatPartitionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvPartition::TEvStatPartitionResponse, HandleStatPartitionResponse);
+        HFunc(
+            TEvPartition::TEvStatPartitionResponse,
+            HandleStatPartitionResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -242,7 +237,9 @@ void TVolumeActor::HandleStatVolume(
                 "ready",
                 LogTitle.GetWithTime().c_str());
 
-            PendingRequests.emplace_back(NActors::IEventHandlePtr(ev.Release()), requestInfo);
+            PendingRequests.emplace_back(
+                NActors::IEventHandlePtr(ev.Release()),
+                requestInfo);
             return;
         }
     }
@@ -267,8 +264,7 @@ void TVolumeActor::HandleStatVolume(
     }
 
     auto* volume = record.MutableVolume();
-    record.SetMountSeqNumber(
-        State->GetMountSeqNumber());
+    record.SetMountSeqNumber(State->GetMountSeqNumber());
     VolumeConfigToVolume(
         State->GetMeta().GetVolumeConfig(),
         State->GetPrincipalDiskId(),
@@ -288,9 +284,10 @@ void TVolumeActor::HandleStatVolume(
         client->SetDisconnectTimestamp(
             x.second.GetVolumeClientInfo().GetDisconnectTimestamp());
     }
-    SortBy(clients->begin(), clients->end(), [] (const auto& x) {
-        return x.GetClientId();
-    });
+    SortBy(
+        clients->begin(),
+        clients->end(),
+        [](const auto& x) { return x.GetClientId(); });
 
     record.SetTabletHost(FQDNHostName());
 
@@ -302,13 +299,17 @@ void TVolumeActor::HandleStatVolume(
     }
 
     auto* throttlingInfo = record.MutableVolatileThrottlingInfo();
-    throttlingInfo->SetVersion(State->GetThrottlingPolicy().GetVolatileThrottlingVersion());
-    *throttlingInfo->MutableActualPerformanceProfile() = State->GetThrottlingPolicy().GetCurrentPerformanceProfile();
-    *throttlingInfo->MutableAppliedRule() = State->GetThrottlingPolicy().GetVolatileThrottlingRule();
+    throttlingInfo->SetVersion(
+        State->GetThrottlingPolicy().GetVolatileThrottlingVersion());
+    *throttlingInfo->MutableActualPerformanceProfile() =
+        State->GetThrottlingPolicy().GetCurrentPerformanceProfile();
+    *throttlingInfo->MutableAppliedRule() =
+        State->GetThrottlingPolicy().GetVolatileThrottlingRule();
 
-    TActiveCheckpointsMap activeCheckpoints = State->GetCheckpointStore().GetActiveCheckpoints();
+    TActiveCheckpointsMap activeCheckpoints =
+        State->GetCheckpointStore().GetActiveCheckpoints();
     TVector<TString> checkpoints(Reserve(activeCheckpoints.size()));
-    for (const auto& [checkpoint, _] : activeCheckpoints) {
+    for (const auto& [checkpoint, _]: activeCheckpoints) {
         checkpoints.push_back(checkpoint);
     }
 
@@ -367,10 +368,8 @@ void TVolumeActor::HandleGetVolumeInfo(
         *volume);
     volume->SetResyncInProgress(State->IsMirrorResyncNeeded());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        ev->Get()->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
 
     NCloud::Reply(ctx, *requestInfo, std::move(response));
 }

@@ -8,6 +8,7 @@
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
+
 #include <library/cpp/json/json_reader.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -36,9 +37,7 @@ private:
     NProto::TError Error;
 
 public:
-    TUpdateDiskBlockSizeActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TUpdateDiskBlockSizeActionActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -57,8 +56,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TUpdateDiskBlockSizeActionActor::TUpdateDiskBlockSizeActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -72,7 +71,8 @@ void TUpdateDiskBlockSizeActionActor::Bootstrap(const TActorContext& ctx)
 
     NJson::TJsonValue input;
     if (!NJson::ReadJsonTree(Input, &input, false)) {
-        HandleError(ctx,
+        HandleError(
+            ctx,
             MakeError(E_ARGUMENT, "Input should be in JSON format"));
         return;
     }
@@ -115,8 +115,7 @@ void TUpdateDiskBlockSizeActionActor::HandleError(
     Die(ctx);
 }
 
-void TUpdateDiskBlockSizeActionActor::HandleSuccess(
-    const TActorContext& ctx)
+void TUpdateDiskBlockSizeActionActor::HandleSuccess(const TActorContext& ctx)
 {
     auto response = std::make_unique<TEvService::TEvExecuteActionResponse>();
 

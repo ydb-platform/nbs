@@ -1,7 +1,6 @@
 #include "service_ut.h"
 
 #include <cloud/blockstore/config/storage.pb.h>
-
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 
@@ -33,20 +32,17 @@ Y_UNIT_TEST_SUITE(TServicePlacementTest)
                 DefaultBlockSize,
                 "",
                 "",
-                NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
-            );
+                NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
         }
 
         service.CreatePlacementGroup(
             "g1",
             NProto::PLACEMENT_STRATEGY_SPREAD,
-            0
-        );
+            0);
         service.CreatePlacementGroup(
             "g2",
             NProto::PLACEMENT_STRATEGY_SPREAD,
-            0
-        );
+            0);
         {
             auto response = service.ListPlacementGroups();
             auto groupIds = response->Record.GetGroupIds();
@@ -54,21 +50,20 @@ Y_UNIT_TEST_SUITE(TServicePlacementTest)
             UNIT_ASSERT_VALUES_EQUAL(2, groupIds.size());
             UNIT_ASSERT_VALUES_EQUAL("g1", groupIds[0]);
             UNIT_ASSERT_VALUES_EQUAL("g2", groupIds[1]);
-
         }
         service.AlterPlacementGroupMembership(
             "g1",
             TVector<TString>{"d1", "d2"},
-            TVector<TString>{}
-        );
+            TVector<TString>{});
         service.AlterPlacementGroupMembership(
             "g1",
             TVector<TString>{"d3", "d4"},
-            TVector<TString>{"d2"}
-        );
+            TVector<TString>{"d2"});
         {
             auto response = service.DescribePlacementGroup("g1");
-            UNIT_ASSERT_VALUES_EQUAL("g1", response->Record.GetGroup().GetGroupId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "g1",
+                response->Record.GetGroup().GetGroupId());
             auto diskIds = response->Record.GetGroup().GetDiskIds();
             Sort(diskIds.begin(), diskIds.end());
             UNIT_ASSERT_VALUES_EQUAL(3, diskIds.size());
@@ -92,8 +87,7 @@ Y_UNIT_TEST_SUITE(TServicePlacementTest)
         service.CreatePlacementGroup(
             "g1",
             NProto::PLACEMENT_STRATEGY_SPREAD,
-            0
-        );
+            0);
 
         service.CreateVolume(
             "d1",
@@ -103,17 +97,20 @@ Y_UNIT_TEST_SUITE(TServicePlacementTest)
             "",
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             NProto::TVolumePerformanceProfile(),
-            "g1"
-        );
+            "g1");
 
         {
             auto response = service.DescribePlacementGroup("g1");
-            UNIT_ASSERT_VALUES_EQUAL("g1", response->Record.GetGroup().GetGroupId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "g1",
+                response->Record.GetGroup().GetGroupId());
             auto diskIds = response->Record.GetGroup().GetDiskIds();
             Sort(diskIds.begin(), diskIds.end());
             UNIT_ASSERT_VALUES_EQUAL(1, diskIds.size());
             UNIT_ASSERT_VALUES_EQUAL("d1", diskIds[0]);
-            UNIT_ASSERT_VALUES_EQUAL(2, response->Record.GetGroup().GetConfigVersion());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                response->Record.GetGroup().GetConfigVersion());
         }
 
         // TODO: test allocation error

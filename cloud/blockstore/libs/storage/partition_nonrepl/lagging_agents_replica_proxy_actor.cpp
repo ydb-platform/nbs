@@ -78,11 +78,11 @@ private:
 
 template <typename TMethod>
 TSplitRequestSenderActor<TMethod>::TSplitRequestSenderActor(
-        TRequestInfoPtr requestInfo,
-        TVector<TSplitRequest> requests,
-        NActors::TActorId parentActorId,
-        TString diskId,
-        ui64 requestId)
+    TRequestInfoPtr requestInfo,
+    TVector<TSplitRequest> requests,
+    NActors::TActorId parentActorId,
+    TString diskId,
+    ui64 requestId)
     : RequestInfo(std::move(requestInfo))
     , Requests(std::move(requests))
     , ParentActorId(parentActorId)
@@ -291,16 +291,16 @@ STFUNC(TSplitRequestSenderActor<TMethod>::StateWork)
 ////////////////////////////////////////////////////////////////////////////////
 
 TLaggingAgentsReplicaProxyActor::TLaggingAgentsReplicaProxyActor(
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
-        TNonreplicatedPartitionConfigPtr partConfig,
-        google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
-        ui32 replicaIndex,
-        IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        TString rwClientId,
-        TActorId nonreplPartitionActorId,
-        TActorId mirrorPartitionActorId)
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    TNonreplicatedPartitionConfigPtr partConfig,
+    google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
+    ui32 replicaIndex,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    TString rwClientId,
+    TActorId nonreplPartitionActorId,
+    TActorId mirrorPartitionActorId)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PartConfig(std::move(partConfig))
@@ -425,7 +425,8 @@ void TLaggingAgentsReplicaProxyActor::WriteBlocks(
 }
 
 template <typename TMethod>
-TResultOrError<TVector<TSplitRequest>> TLaggingAgentsReplicaProxyActor::SplitRequest(
+TResultOrError<TVector<TSplitRequest>>
+TLaggingAgentsReplicaProxyActor::SplitRequest(
     const TMethod::TRequest::TPtr& ev,
     const TVector<TDeviceRequest>& deviceRequests)
 {
@@ -461,7 +462,8 @@ bool TLaggingAgentsReplicaProxyActor::ShouldSplitWriteRequest(
     return recipientActors.size() > 1;
 }
 
-TResultOrError<TVector<TSplitRequest>> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
+TResultOrError<TVector<TSplitRequest>>
+TLaggingAgentsReplicaProxyActor::DoSplitRequest(
     const TEvService::TEvWriteBlocksRequest::TPtr& ev,
     const TVector<TDeviceRequest>& deviceRequests)
 {
@@ -494,7 +496,8 @@ TResultOrError<TVector<TSplitRequest>> TLaggingAgentsReplicaProxyActor::DoSplitR
     return result;
 }
 
-TResultOrError<TVector<TSplitRequest>> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
+TResultOrError<TVector<TSplitRequest>>
+TLaggingAgentsReplicaProxyActor::DoSplitRequest(
     const TEvService::TEvWriteBlocksLocalRequest::TPtr& ev,
     const TVector<TDeviceRequest>& deviceRequests)
 {
@@ -539,7 +542,8 @@ TResultOrError<TVector<TSplitRequest>> TLaggingAgentsReplicaProxyActor::DoSplitR
     return result;
 }
 
-TResultOrError<TVector<TSplitRequest>> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
+TResultOrError<TVector<TSplitRequest>>
+TLaggingAgentsReplicaProxyActor::DoSplitRequest(
     const TEvService::TEvZeroBlocksRequest::TPtr& ev,
     const TVector<TDeviceRequest>& deviceRequests)
 {
@@ -640,8 +644,7 @@ void TLaggingAgentsReplicaProxyActor::RecalculateBlockRangeDataByBlockRangeEnd()
         // Migration target can also be lagging.
         const auto* migration = FindIfPtr(
             Migrations,
-            [&](const NProto::TDeviceMigration& migration)
-            {
+            [&](const NProto::TDeviceMigration& migration) {
                 return migration.GetSourceDeviceId() == device.GetDeviceUUID();
             });
         if (migration) {
@@ -723,8 +726,7 @@ void TLaggingAgentsReplicaProxyActor::StartLaggingResync(
     state->State = EAgentState::Resyncing;
 }
 
-ui64 TLaggingAgentsReplicaProxyActor::TakeDrainRequestId(
-    const TString& agentId)
+ui64 TLaggingAgentsReplicaProxyActor::TakeDrainRequestId(const TString& agentId)
 {
     DrainRequestCounter++;
     STORAGE_VERIFY(

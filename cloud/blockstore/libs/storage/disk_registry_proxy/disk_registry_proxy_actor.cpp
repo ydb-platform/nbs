@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/tenant.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
+
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 
 #include <contrib/ydb/core/base/appdata.h>
@@ -31,8 +32,8 @@ using namespace NCloud::NStorage;
 ////////////////////////////////////////////////////////////////////////////////
 
 TDiskRegistryProxyActor::TDiskRegistryProxyActor(
-        TStorageConfigPtr config,
-        TDiskRegistryProxyConfigPtr diskRegistryProxyConfig)
+    TStorageConfigPtr config,
+    TDiskRegistryProxyConfigPtr diskRegistryProxyConfig)
     : StorageConfig(std::move(config))
     , Config(std::move(diskRegistryProxyConfig))
 {}
@@ -40,7 +41,9 @@ TDiskRegistryProxyActor::TDiskRegistryProxyActor(
 void TDiskRegistryProxyActor::Bootstrap(const TActorContext& ctx)
 {
     if (!Config->GetOwner()) {
-        LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_PROXY,
             "Disk Registry Proxy not configured");
 
         TThis::Become(&TThis::StateError);
@@ -68,7 +71,9 @@ void TDiskRegistryProxyActor::LookupTablet(const TActorContext& ctx)
 
     const auto hiveTabletId = GetHiveTabletId(StorageConfig, ctx);
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_PROXY,
         "Lookup Disk Registry tablet. Hive: " << hiveTabletId);
 
     const ui64 cookie = ++RequestId;
@@ -86,16 +91,17 @@ void TDiskRegistryProxyActor::LookupTablet(const TActorContext& ctx)
             ctx.SelfID,
             ctx.SelfID,
             new TEvents::TEvWakeup(),
-            0,  // flags
+            0,   // flags
             cookie));
 }
 
-void TDiskRegistryProxyActor::StartWork(
-    ui64 tabletId,
-    const TActorContext& ctx)
+void TDiskRegistryProxyActor::StartWork(ui64 tabletId, const TActorContext& ctx)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
-        "Ready to work. Tablet ID: %lu", tabletId);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_PROXY,
+        "Ready to work. Tablet ID: %lu",
+        tabletId);
 
     TThis::Become(&TThis::StateWork);
 
@@ -109,15 +115,16 @@ void TDiskRegistryProxyActor::CreateClient(const TActorContext& ctx)
     clientConfig.RetryPolicy = {
         .RetryLimitCount = StorageConfig->GetPipeClientRetryCount(),
         .MinRetryTime = StorageConfig->GetPipeClientMinRetryTime(),
-        .MaxRetryTime = StorageConfig->GetPipeClientMaxRetryTime()
-    };
+        .MaxRetryTime = StorageConfig->GetPipeClientMaxRetryTime()};
 
     TabletClientId = ctx.Register(NTabletPipe::CreateClient(
         ctx.SelfID,
         DiskRegistryTabletId,
         clientConfig));
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_PROXY,
         "Tablet client: %lu (remote: %s)",
         DiskRegistryTabletId,
         ToString(TabletClientId).data());
@@ -127,20 +134,23 @@ bool TDiskRegistryProxyActor::ReplyWithError(
     const TActorContext& ctx,
     TAutoPtr<IEventHandle>& ev)
 {
-#define BLOCKSTORE_HANDLE_METHOD(name, ns)                                     \
-    case ns::TEv##name##Request::EventType: {                                  \
-        ReplyWithErrorImpl<ns::T##name##Method>(ctx, ev);                      \
-        return true;                                                           \
-    }                                                                          \
-// BLOCKSTORE_HANDLE_METHOD
+#define BLOCKSTORE_HANDLE_METHOD(name, ns)                \
+    case ns::TEv##name##Request::EventType: {             \
+        ReplyWithErrorImpl<ns::T##name##Method>(ctx, ev); \
+        return true;                                      \
+    }                                                     \
+        // BLOCKSTORE_HANDLE_METHOD
 
     switch (ev->GetTypeRewrite()) {
-        BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO(BLOCKSTORE_HANDLE_METHOD,
-                TEvDiskRegistry)
-        BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE(BLOCKSTORE_HANDLE_METHOD,
-                TEvService)
-        BLOCKSTORE_DISK_REGISTRY_PROXY_REQUESTS(BLOCKSTORE_HANDLE_METHOD,
-                TEvDiskRegistryProxy)
+        BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO(
+            BLOCKSTORE_HANDLE_METHOD,
+            TEvDiskRegistry)
+        BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE(
+            BLOCKSTORE_HANDLE_METHOD,
+            TEvService)
+        BLOCKSTORE_DISK_REGISTRY_PROXY_REQUESTS(
+            BLOCKSTORE_HANDLE_METHOD,
+            TEvDiskRegistryProxy)
         default:
             return false;
     }
@@ -162,7 +172,7 @@ void TDiskRegistryProxyActor::CancelActiveRequests(const TActorContext& ctx)
 {
     TActiveRequests activeRequests = std::move(ActiveRequests);
 
-    for (auto& kv : activeRequests) {
+    for (auto& kv: activeRequests) {
         TAutoPtr<IEventHandle> ev(kv.second.release());
 
         if (!ReplyWithError(ctx, ev)) {
@@ -180,8 +190,13 @@ void TDiskRegistryProxyActor::RegisterPages(const TActorContext& ctx)
     if (mon) {
         auto* rootPage = mon->RegisterIndexPage("blockstore", "BlockStore");
 
-        mon->RegisterActorPage(rootPage, "disk_registry_proxy", "DiskRegistryProxy",
-            false, ctx.ActorSystem(), SelfId());
+        mon->RegisterActorPage(
+            rootPage,
+            "disk_registry_proxy",
+            "DiskRegistryProxy",
+            false,
+            ctx.ActorSystem(),
+            SelfId());
     }
 }
 
@@ -215,17 +230,21 @@ void TDiskRegistryProxyActor::HandleConnected(
 {
     auto* msg = ev->Get();
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
-        "Connection to Disk Registry ready. TabletId: " << msg->TabletId
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_PROXY,
+        "Connection to Disk Registry ready. TabletId: "
+            << msg->TabletId
             << " Status: " << NKikimrProto::EReplyStatus_Name(msg->Status)
-            << " ClientId: " << msg->ClientId
-            << " ServerId: " << msg->ServerId
-            << " Master: " << msg->Leader
-            << " Dead: " << msg->Dead);
+            << " ClientId: " << msg->ClientId << " ServerId: " << msg->ServerId
+            << " Master: " << msg->Leader << " Dead: " << msg->Dead);
 
     if (msg->Status != NKikimrProto::OK) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
-            "Cannot connect to Disk Registry tablet " << msg->TabletId << ": "
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_PROXY,
+            "Cannot connect to Disk Registry tablet "
+                << msg->TabletId << ": "
                 << NKikimrProto::EReplyStatus_Name(msg->Status));
 
         TabletClientId = {};
@@ -245,7 +264,9 @@ void TDiskRegistryProxyActor::HandleDisconnect(
 
     const auto error = MakeError(E_REJECTED, "Connection broken");
 
-    LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_PROXY,
         "Connection to Disk Registry failed: %s",
         FormatError(error).data());
 
@@ -270,8 +291,8 @@ void TDiskRegistryProxyActor::HandleRequest(
         ev->Recipient,
         SelfId(),
         ev->ReleaseBase().Release(),
-        0,          // flags
-        requestId); // cookie
+        0,            // flags
+        requestId);   // cookie
     NCloud::PipeSend(ctx, TabletClientId, std::move(event));
 
     ActiveRequests.emplace(requestId, IEventHandlePtr(ev.Release()));
@@ -321,21 +342,23 @@ void TDiskRegistryProxyActor::HandleResponse(
 bool TDiskRegistryProxyActor::HandleRequests(STFUNC_SIG)
 {
     auto ctx(ActorContext());
-#define BLOCKSTORE_HANDLE_METHOD(name, ns)                                     \
-    case ns::TEv##name##Request::EventType: {                                  \
-        HandleRequest(ctx, ev);                                                \
-        break;                                                                 \
-    }                                                                          \
-    case ns::TEv##name##Response::EventType: {                                 \
-        HandleResponse(ctx, ev);                                               \
-        break;                                                                 \
-    }                                                                          \
-// BLOCKSTORE_HANDLE_METHOD
+#define BLOCKSTORE_HANDLE_METHOD(name, ns)     \
+    case ns::TEv##name##Request::EventType: {  \
+        HandleRequest(ctx, ev);                \
+        break;                                 \
+    }                                          \
+    case ns::TEv##name##Response::EventType: { \
+        HandleResponse(ctx, ev);               \
+        break;                                 \
+    }                                          \
+        // BLOCKSTORE_HANDLE_METHOD
 
     switch (ev->GetTypeRewrite()) {
-        BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO(BLOCKSTORE_HANDLE_METHOD,
+        BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO(
+            BLOCKSTORE_HANDLE_METHOD,
             TEvDiskRegistry)
-        BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE(BLOCKSTORE_HANDLE_METHOD,
+        BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE(
+            BLOCKSTORE_HANDLE_METHOD,
             TEvService)
 
         default:
@@ -350,27 +373,33 @@ bool TDiskRegistryProxyActor::HandleRequests(STFUNC_SIG)
 bool TDiskRegistryProxyActor::LogLateMessage(STFUNC_SIG)
 {
     auto ctx(ActorContext());
-#define BLOCKSTORE_LOG_MESSAGE(name, ns)                                       \
-    case ns::TEv##name##Request::EventType: {                                  \
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,             \
-            "Late request : (0x%08X) %s request",                              \
-            ev->GetTypeRewrite(),                                              \
-            #name);                                                            \
-        break;                                                                 \
-    }                                                                          \
-    case ns::TEv##name##Response::EventType: {                                 \
-        LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,             \
-          "Late response : (0x%08X) %s response",                              \
-          ev->GetTypeRewrite(),                                                \
-          #name);                                                              \
-        break;                                                                 \
-    }                                                                          \
-// BLOCKSTORE_LOG_MESSAGE
+#define BLOCKSTORE_LOG_MESSAGE(name, ns)                \
+    case ns::TEv##name##Request::EventType: {           \
+        LOG_ERROR(                                      \
+            ctx,                                        \
+            TBlockStoreComponents::DISK_REGISTRY_PROXY, \
+            "Late request : (0x%08X) %s request",       \
+            ev->GetTypeRewrite(),                       \
+            #name);                                     \
+        break;                                          \
+    }                                                   \
+    case ns::TEv##name##Response::EventType: {          \
+        LOG_DEBUG(                                      \
+            ctx,                                        \
+            TBlockStoreComponents::DISK_REGISTRY_PROXY, \
+            "Late response : (0x%08X) %s response",     \
+            ev->GetTypeRewrite(),                       \
+            #name);                                     \
+        break;                                          \
+    }                                                   \
+        // BLOCKSTORE_LOG_MESSAGE
 
     switch (ev->GetTypeRewrite()) {
-        BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO(BLOCKSTORE_LOG_MESSAGE,
+        BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO(
+            BLOCKSTORE_LOG_MESSAGE,
             TEvDiskRegistry)
-        BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE(BLOCKSTORE_LOG_MESSAGE,
+        BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE(
+            BLOCKSTORE_LOG_MESSAGE,
             TEvService)
 
         default:
@@ -415,9 +444,11 @@ void TDiskRegistryProxyActor::HandleLookupTabletResponse(
         return;
     }
 
-    LOG_WARN_S(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
+    LOG_WARN_S(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_PROXY,
         "Can't find Disk Registry tablet: " << FormatError(msg->Error)
-            << ". Will try to create it");
+                                            << ". Will try to create it");
 
     CreateTablet(ctx, {});
 }
@@ -426,15 +457,16 @@ void TDiskRegistryProxyActor::RenderHtmlInfo(IOutputStream& out) const
 {
     using namespace NMonitoringUtils;
 
-    HTML(out) {
+    HTML (out) {
         out << "Disk Registry Tablet: ";
         if (DiskRegistryTabletId) {
-            out << "<a href='../tablets?TabletID="
-                << DiskRegistryTabletId << "'>"
-                << DiskRegistryTabletId << "</a>";
+            out << "<a href='../tablets?TabletID=" << DiskRegistryTabletId
+                << "'>" << DiskRegistryTabletId << "</a>";
         }
 
-        TAG(TH3) { out << "Config"; }
+        TAG (TH3) {
+            out << "Config";
+        }
         Config->DumpHtml(out);
     }
 }
@@ -443,16 +475,15 @@ void TDiskRegistryProxyActor::HandleHttpInfo(
     const NMon::TEvHttpInfo::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
+    LOG_DEBUG_S(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_PROXY,
         "HTTP request: " << ev->Get()->Request.GetUri());
 
     TStringStream out;
     RenderHtmlInfo(out);
 
-    NCloud::Reply(
-        ctx,
-        *ev,
-        std::make_unique<NMon::TEvHttpInfoRes>(out.Str()));
+    NCloud::Reply(ctx, *ev, std::make_unique<NMon::TEvHttpInfoRes>(out.Str()));
 }
 
 void TDiskRegistryProxyActor::HandleSubscribe(
@@ -492,8 +523,9 @@ void TDiskRegistryProxyActor::HandleUnsubscribe(
         error.SetCode(S_FALSE);
     }
 
-    auto response = std::make_unique<TEvDiskRegistryProxy::TEvUnsubscribeResponse>(
-        std::move(error));
+    auto response =
+        std::make_unique<TEvDiskRegistryProxy::TEvUnsubscribeResponse>(
+            std::move(error));
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }
@@ -523,8 +555,9 @@ void TDiskRegistryProxyActor::HandleReassign(
     const TActorContext& ctx)
 {
     if (ReassignRequestInfo) {
-        auto response = std::make_unique<TEvDiskRegistryProxy::TEvReassignResponse>(
-            MakeError(E_REJECTED, "Disk Registry reassign is in progress"));
+        auto response =
+            std::make_unique<TEvDiskRegistryProxy::TEvReassignResponse>(
+                MakeError(E_REJECTED, "Disk Registry reassign is in progress"));
 
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
@@ -532,16 +565,15 @@ void TDiskRegistryProxyActor::HandleReassign(
 
     auto* msg = ev->Get();
 
-    ReassignRequestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    ReassignRequestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    CreateTablet(ctx, TDiskRegistryChannelKinds {
-        std::move(msg->SysKind),
-        std::move(msg->LogKind),
-        std::move(msg->IndexKind)
-    });
+    CreateTablet(
+        ctx,
+        TDiskRegistryChannelKinds{
+            std::move(msg->SysKind),
+            std::move(msg->LogKind),
+            std::move(msg->IndexKind)});
 }
 
 void TDiskRegistryProxyActor::HandleGetDrTabletInfo(
@@ -578,7 +610,8 @@ STFUNC(TDiskRegistryProxyActor::StateError)
 
         HFunc(NMon::TEvHttpInfo, HandleHttpInfo);
 
-        HFunc(TEvDiskRegistryProxy::TEvGetDrTabletInfoRequest,
+        HFunc(
+            TEvDiskRegistryProxy::TEvGetDrTabletInfoRequest,
             RejectGetDrTabletInfo);
 
         IgnoreFunc(TEvHiveProxy::TEvLookupTabletResponse);
@@ -600,7 +633,9 @@ STFUNC(TDiskRegistryProxyActor::StateError)
 STFUNC(TDiskRegistryProxyActor::StateLookup)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvHiveProxy::TEvLookupTabletResponse, HandleLookupTabletResponse);
+        HFunc(
+            TEvHiveProxy::TEvLookupTabletResponse,
+            HandleLookupTabletResponse);
         HFunc(
             TEvDiskRegistryProxyPrivate::TEvDiskRegistryCreateResult,
             HandleCreateResult);
@@ -615,7 +650,8 @@ STFUNC(TDiskRegistryProxyActor::StateLookup)
 
         HFunc(NMon::TEvHttpInfo, HandleHttpInfo);
 
-        HFunc(TEvDiskRegistryProxy::TEvGetDrTabletInfoRequest,
+        HFunc(
+            TEvDiskRegistryProxy::TEvGetDrTabletInfoRequest,
             RejectGetDrTabletInfo);
 
         HFunc(TEvDiskRegistryProxy::TEvSubscribeRequest, HandleSubscribe);
@@ -642,7 +678,8 @@ STFUNC(TDiskRegistryProxyActor::StateWork)
 
         HFunc(NMon::TEvHttpInfo, HandleHttpInfo);
 
-        HFunc(TEvDiskRegistryProxy::TEvGetDrTabletInfoRequest,
+        HFunc(
+            TEvDiskRegistryProxy::TEvGetDrTabletInfoRequest,
             HandleGetDrTabletInfo);
 
         IgnoreFunc(TEvHiveProxy::TEvLookupTabletResponse);

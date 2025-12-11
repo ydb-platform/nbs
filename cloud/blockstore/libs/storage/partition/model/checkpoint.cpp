@@ -19,7 +19,8 @@ NJson::TJsonValue TCheckpoint::AsJson() const
         // May throw.
         NProtobufJson::Proto2Json(Stats, stats);
         json["Stats"] = std::move(stats);
-    } catch (...) {}
+    } catch (...) {
+    }
     return json;
 }
 
@@ -44,12 +45,15 @@ void TCheckpointStore::Add(TVector<TCheckpoint>& checkpoints)
 bool TCheckpointStore::AddCheckpointMapping(const TCheckpoint& checkpoint)
 {
     if (Items.find(checkpoint.CheckpointId) == Items.end()) {
-        return CheckpointId2CommitId.try_emplace(checkpoint.CheckpointId, checkpoint.CommitId).second;
+        return CheckpointId2CommitId
+            .try_emplace(checkpoint.CheckpointId, checkpoint.CommitId)
+            .second;
     }
     return false;
 }
 
-void TCheckpointStore::SetCheckpointMappings(const THashMap<TString, ui64>& checkpointId2CommitId)
+void TCheckpointStore::SetCheckpointMappings(
+    const THashMap<TString, ui64>& checkpointId2CommitId)
 {
     CheckpointId2CommitId = checkpointId2CommitId;
 }
@@ -72,7 +76,9 @@ bool TCheckpointStore::DeleteCheckpointMapping(const TString& checkpointId)
     return CheckpointId2CommitId.erase(checkpointId);
 }
 
-ui64 TCheckpointStore::GetCommitId(const TString& checkpointId, bool allowCheckpointWithoutData) const
+ui64 TCheckpointStore::GetCommitId(
+    const TString& checkpointId,
+    bool allowCheckpointWithoutData) const
 {
     auto it = Items.find(checkpointId);
     if (it != Items.end()) {

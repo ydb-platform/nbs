@@ -221,8 +221,8 @@ private:
 
 public:
     explicit TSession(
-            const NProto::TSession& proto,
-            const NProto::TSessionOptions& sessionOptions)
+        const NProto::TSession& proto,
+        const NProto::TSessionOptions& sessionOptions)
         : NProto::TSession(proto)
         , HandleStatsByNode(
               sessionOptions.GetSessionHandleOffloadedStatsCapacity())
@@ -245,10 +245,8 @@ public:
         SetMaxRwSeqNo(SubSessions.GetMaxSeenRwSeqNo());
     }
 
-    NActors::TActorId UpdateSubSession(
-        ui64 seqNo,
-        bool readOnly,
-        const NActors::TActorId& owner)
+    NActors::TActorId
+    UpdateSubSession(ui64 seqNo, bool readOnly, const NActors::TActorId& owner)
     {
         auto result = SubSessions.UpdateSubSession(seqNo, readOnly, owner);
         UpdateSeqNo();
@@ -385,8 +383,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TSessionHistoryEntry
-    : public NProto::TSessionHistoryEntry
+struct TSessionHistoryEntry: public NProto::TSessionHistoryEntry
 {
     enum EUpdateType
     {

@@ -1,6 +1,7 @@
 #include "restore_validator_actor.h"
 
 #include <cloud/blockstore/libs/storage/disk_registry/model/user_notification.h>
+
 #include <cloud/storage/core/libs/actors/helpers.h>
 
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -48,15 +49,16 @@ bool NormalizeLoadState(
     TDiskRegistryStateSnapshot& state,
     int component)
 {
-    auto sortAndTestUnique = [&ctx, component] (auto& container, auto&& getKeyFunction) {
+    auto sortAndTestUnique =
+        [&ctx, component](auto& container, auto&& getKeyFunction)
+    {
         SortBy(container, getKeyFunction);
 
         auto itr = std::adjacent_find(
             container.begin(),
             container.end(),
-            [&] (auto&& left, auto&& right) {
-                return getKeyFunction(left) == getKeyFunction(right);
-            });
+            [&](auto&& left, auto&& right)
+            { return getKeyFunction(left) == getKeyFunction(right); });
 
         if (itr != container.end()) {
             LOG_WARN_S(
@@ -70,50 +72,34 @@ bool NormalizeLoadState(
     };
 
     auto sortAndTestUniqueCmp3Way =
-        [&ctx, component] (auto& container, auto&& cmp3Way) {
-            Sort(container, [&cmp3Way] (const auto& left, const auto& right) {
-                return cmp3Way(left, right) < 0;
-            });
+        [&ctx, component](auto& container, auto&& cmp3Way)
+    {
+        Sort(
+            container,
+            [&cmp3Way](const auto& left, const auto& right)
+            { return cmp3Way(left, right) < 0; });
 
-            auto itr = std::adjacent_find(
-                container.begin(),
-                container.end(),
-                [&cmp3Way] (const auto& left, const auto& right) {
-                    return cmp3Way(left, right) == 0;
-                });
+        auto itr = std::adjacent_find(
+            container.begin(),
+            container.end(),
+            [&cmp3Way](const auto& left, const auto& right)
+            { return cmp3Way(left, right) == 0; });
 
-            if (itr != container.end()) {
-                LOG_WARN_S(
-                    ctx,
-                    component,
-                    RESTORE_PREFIX << " Not unique: " << *itr);
-                return false;
-            }
+        if (itr != container.end()) {
+            LOG_WARN_S(
+                ctx,
+                component,
+                RESTORE_PREFIX << " Not unique: " << *itr);
+            return false;
+        }
 
-            return true;
-        };
+        return true;
+    };
 
     // if new fields are added to TDiskRegistryStateSnapshot
     // there will be a compilation error.
-    auto& [
-        config,
-        dirtyDevices,
-        agents,
-        disks,
-        placementGroups,
-        brokenDisks,
-        disksToReallocate,
-        diskStateChanges,
-        lastDiskStateSeqNo,
-        diskAllocationAllowed,
-        disksToCleanup,
-        errorNotifications,
-        userNotifications,
-        outdatedVolumeConfigs,
-        suspendedDevices,
-        automaticallyReplacedDevices,
-        diskRegistryAgentListParams
-    ] = state;
+    auto& [config, dirtyDevices, agents, disks, placementGroups, brokenDisks, disksToReallocate, diskStateChanges, lastDiskStateSeqNo, diskAllocationAllowed, disksToCleanup, errorNotifications, userNotifications, outdatedVolumeConfigs, suspendedDevices, automaticallyReplacedDevices, diskRegistryAgentListParams] =
+        state;
 
     Y_UNUSED(lastDiskStateSeqNo);
     Y_UNUSED(diskAllocationAllowed);
@@ -124,77 +110,56 @@ bool NormalizeLoadState(
 
     result &= sortAndTestUnique(
         *config.MutableKnownAgents(),
-        [] (const auto& config) {
-            return config.GetAgentId();
-        });
+        [](const auto& config) { return config.GetAgentId(); });
 
     for (auto& agent: *state.Config.MutableKnownAgents()) {
         result &= sortAndTestUnique(
             *agent.MutableDevices(),
-            [] (const auto& config) {
-                return config.GetDeviceUUID();
-            });
+            [](const auto& config) { return config.GetDeviceUUID(); });
     }
 
     result &= sortAndTestUnique(
         dirtyDevices,
-        [] (const auto& device) {
-            return device.Id;
-        });
+        [](const auto& device) { return device.Id; });
 
     result &= sortAndTestUnique(
         agents,
-        [] (const auto& config) {
-            return config.GetAgentId();
-        });
+        [](const auto& config) { return config.GetAgentId(); });
 
     for (auto& agent: agents) {
         result &= sortAndTestUnique(
             *agent.MutableDevices(),
-            [] (const auto& config) {
-                return config.GetDeviceUUID();
-            });
+            [](const auto& config) { return config.GetDeviceUUID(); });
     }
 
     result &= sortAndTestUnique(
         disks,
-        [] (const auto& config) {
-            return config.GetDiskId();
-        });
+        [](const auto& config) { return config.GetDiskId(); });
 
     result &= sortAndTestUnique(
         placementGroups,
-        [] (const auto& config) {
-            return config.GetGroupId();
-        });
+        [](const auto& config) { return config.GetGroupId(); });
 
     result &= sortAndTestUnique(
         brokenDisks,
-        [] (const auto& disk) {
-            return disk.DiskId;
-        });
+        [](const auto& disk) { return disk.DiskId; });
 
     result &= sortAndTestUnique(
         disksToReallocate,
-        [] (const auto& disk) {
-            return disk;
-        });
+        [](const auto& disk) { return disk; });
 
     result &= sortAndTestUnique(
         disksToCleanup,
-        [] (const auto& disk) {
-            return disk;
-        });
+        [](const auto& disk) { return disk; });
 
     result &= sortAndTestUnique(
         errorNotifications,
-        [] (const auto& disk) {
-            return disk;
-        });
+        [](const auto& disk) { return disk; });
 
     result &= sortAndTestUniqueCmp3Way(
         userNotifications,
-        [] (const auto& l, const auto& r) {
+        [](const auto& l, const auto& r)
+        {
             if (l.GetSeqNo() < r.GetSeqNo()) {
                 return -1;
             }
@@ -208,26 +173,21 @@ bool NormalizeLoadState(
 
     result &= sortAndTestUnique(
         outdatedVolumeConfigs,
-        [] (const auto& disk) {
-            return disk;
-        });
+        [](const auto& disk) { return disk; });
 
     result &= sortAndTestUnique(
         suspendedDevices,
-        [] (const auto& device) {
-            return device.GetId();
-        });
+        [](const auto& device) { return device.GetId(); });
 
     result &= sortAndTestUnique(
         automaticallyReplacedDevices,
-        [] (const auto& device) {
-            return device.DeviceId;
-        });
+        [](const auto& device) { return device.DeviceId; });
 
     return result;
 }
 
-TStringBuf NormalizeMirrorId(TStringBuf diskId) {
+TStringBuf NormalizeMirrorId(TStringBuf diskId)
+{
     return diskId.substr(0, diskId.find('/'));
 }
 
@@ -249,17 +209,16 @@ bool CheckMirrorDiskId(
 
     auto itr = FindIf(
         disksInBackup,
-        [&baseDiskId] (const NProto::TDiskConfig& config) {
-            return config.GetDiskId() == baseDiskId;
-        });
+        [&baseDiskId](const NProto::TDiskConfig& config)
+        { return config.GetDiskId() == baseDiskId; });
 
     if (itr == disksInBackup.end()) {
         return false;
     }
 
-    return itr->GetCloudId() == disk.GetCloudId()
-        && itr->GetFolderId() == disk.GetFolderId()
-        && itr->GetBlockSize() == disk.GetBlockSize();
+    return itr->GetCloudId() == disk.GetCloudId() &&
+           itr->GetFolderId() == disk.GetFolderId() &&
+           itr->GetBlockSize() == disk.GetBlockSize();
 }
 
 }   // namespace
@@ -267,10 +226,10 @@ bool CheckMirrorDiskId(
 ////////////////////////////////////////////////////////////////////////////////
 
 TRestoreValidationActor::TRestoreValidationActor(
-        NActors::TActorId owner,
-        TRequestInfoPtr request,
-        int component,
-        TDiskRegistryStateSnapshot snapshot)
+    NActors::TActorId owner,
+    TRequestInfoPtr request,
+    int component,
+    TDiskRegistryStateSnapshot snapshot)
     : Owner(std::move(owner))
     , Request(std::move(request))
     , Component(component)
@@ -297,10 +256,7 @@ void TRestoreValidationActor::Bootstrap(const NActors::TActorContext& ctx)
     Become(&TThis::StateWork);
 
     if (ValidSnapshot.Disks.empty()) {
-        LOG_WARN_S(
-            ctx,
-            Component,
-            RESTORE_PREFIX << " No disk's to restore");
+        LOG_WARN_S(ctx, Component, RESTORE_PREFIX << " No disk's to restore");
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, "No disk's to restore"));
         return;
     }
@@ -328,9 +284,7 @@ void TRestoreValidationActor::ReplyAndDie(
         NCloud::Send(
             ctx,
             Owner,
-            std::make_unique<TValidationResponse>(
-                std::move(error),
-                Request));
+            std::make_unique<TValidationResponse>(std::move(error), Request));
     } else {
         NCloud::Send(
             ctx,
@@ -373,7 +327,8 @@ void TRestoreValidationActor::EraseDiskFromBackup(
     DisksInSS.erase(diskId);
     std::erase_if(
         ValidSnapshot.Disks,
-        [&diskId, now, this] (auto& config) {
+        [&diskId, now, this](auto& config)
+        {
             if (NormalizeMirrorId(config.GetDiskId()) == diskId) {
                 DisksInBackup.erase(config.GetDiskId());
                 SetErrorDevicesInBackup(config.GetDeviceUUIDs(), now);
@@ -395,8 +350,7 @@ void TRestoreValidationActor::NextValidation(const NActors::TActorContext& ctx)
     return (this->*validator)(ctx);
 }
 
-void TRestoreValidationActor::StartDisksCheck(
-    const NActors::TActorContext& ctx)
+void TRestoreValidationActor::StartDisksCheck(const NActors::TActorContext& ctx)
 {
     NCloud::Send(
         ctx,
@@ -407,52 +361,54 @@ void TRestoreValidationActor::StartDisksCheck(
 void TRestoreValidationActor::StartPlacementGroupsCheck(
     const NActors::TActorContext& ctx)
 {
-    EraseIf(ValidSnapshot.PlacementGroups, [&ctx, this] (auto& pg) {
-        bool diskIsRemoved = false;
-        EraseIf(
-            *pg.MutableDisks(),
-            [&pg, &ctx, &diskIsRemoved, this] (const auto& disk)
+    EraseIf(
+        ValidSnapshot.PlacementGroups,
+        [&ctx, this](auto& pg)
         {
-            if (!DisksInBackup.contains(NormalizeMirrorId(disk.GetDiskId()))) {
+            bool diskIsRemoved = false;
+            EraseIf(
+                *pg.MutableDisks(),
+                [&pg, &ctx, &diskIsRemoved, this](const auto& disk)
+                {
+                    if (!DisksInBackup.contains(
+                            NormalizeMirrorId(disk.GetDiskId()))) {
+                        LOG_WARN_S(
+                            ctx,
+                            Component,
+                            RESTORE_PREFIX << " DiskID "
+                                           << disk.GetDiskId().Quote()
+                                           << " removed from PG "
+                                           << pg.GetGroupId().Quote());
+                        diskIsRemoved = true;
+                        return true;
+                    }
+                    return false;
+                });
+            if (pg.GetDisks().size() == 0) {
                 LOG_WARN_S(
                     ctx,
                     Component,
-                    RESTORE_PREFIX
-                        << " DiskID " << disk.GetDiskId().Quote()
-                        << " removed from PG " << pg.GetGroupId().Quote());
-                diskIsRemoved = true;
-                return true;
+                    RESTORE_PREFIX << " PG " << pg.GetGroupId().Quote()
+                                   << " is empty");
+                return diskIsRemoved;
             }
             return false;
         });
-        if (pg.GetDisks().size() == 0) {
-            LOG_WARN_S(
-                ctx,
-                Component,
-                RESTORE_PREFIX
-                    << " PG " << pg.GetGroupId().Quote() << " is empty");
-            return diskIsRemoved;
-        }
-        return false;
-    });
 
     NextValidation(ctx);
 }
 
-void TRestoreValidationActor::StartDeviceCheck(const NActors::TActorContext& ctx)
+void TRestoreValidationActor::StartDeviceCheck(
+    const NActors::TActorContext& ctx)
 {
     DisksWaitedConfirmSize = 0;
     for (auto& diskId: DisksInSS) {
         auto request = std::make_unique<TEvVolume::TEvGetVolumeInfoRequest>();
         request->Record.SetDiskId(diskId);
-        NCloud::Send(
-            ctx,
-            MakeVolumeProxyServiceId(),
-            std::move(request));
+        NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
         ++DisksWaitedConfirmSize;
     }
 }
-
 
 bool TRestoreValidationActor::CompareDiskConfigs(
     const NActors::TActorContext& ctx,
@@ -463,11 +419,10 @@ bool TRestoreValidationActor::CompareDiskConfigs(
         LOG_WARN_S(
             ctx,
             Component,
-            RESTORE_PREFIX
-                << " DiskID " << ssConfig.GetDiskId().Quote()
-                << " block size don't equal. "
-                << "SS: " << ssConfig.GetBlockSize()
-                << " backup: " << backupConfig.GetBlockSize());
+            RESTORE_PREFIX << " DiskID " << ssConfig.GetDiskId().Quote()
+                           << " block size don't equal. "
+                           << "SS: " << ssConfig.GetBlockSize()
+                           << " backup: " << backupConfig.GetBlockSize());
         return false;
     }
 
@@ -475,11 +430,10 @@ bool TRestoreValidationActor::CompareDiskConfigs(
         LOG_WARN_S(
             ctx,
             Component,
-            RESTORE_PREFIX
-                << " DiskID " << ssConfig.GetDiskId().Quote()
-                << " cloud id don't equal. "
-                << "SS: " << ssConfig.GetCloudId().Quote()
-                << " backup: " << backupConfig.GetCloudId().Quote());
+            RESTORE_PREFIX << " DiskID " << ssConfig.GetDiskId().Quote()
+                           << " cloud id don't equal. "
+                           << "SS: " << ssConfig.GetCloudId().Quote()
+                           << " backup: " << backupConfig.GetCloudId().Quote());
         return false;
     }
 
@@ -487,11 +441,10 @@ bool TRestoreValidationActor::CompareDiskConfigs(
         LOG_WARN_S(
             ctx,
             Component,
-            RESTORE_PREFIX
-                << " DiskID " << ssConfig.GetDiskId().Quote()
-                << " folder id don't equal. "
-                << "SS: " << ssConfig.GetFolderId().Quote()
-                << " backup: " << backupConfig.GetFolderId().Quote());
+            RESTORE_PREFIX << " DiskID " << ssConfig.GetDiskId().Quote()
+                           << " folder id don't equal. " << "SS: "
+                           << ssConfig.GetFolderId().Quote() << " backup: "
+                           << backupConfig.GetFolderId().Quote());
         return false;
     }
 
@@ -518,17 +471,12 @@ void TRestoreValidationActor::HandleListVolumesResponse(
         ev->Get()->Record.GetVolumes().end());
 
     for (auto itr = ValidSnapshot.Disks.begin();
-        itr != ValidSnapshot.Disks.end(); )
+         itr != ValidSnapshot.Disks.end();)
     {
-        if (!DisksInSS.contains(itr->GetDiskId())
-            && !CheckMirrorDiskId(
-                DisksInSS,
-                ValidSnapshot.Disks,
-                *itr)
-            && !FindPtr(
-                ValidSnapshot.DisksToCleanup,
-                itr->GetDiskId())
-            && !FindPtr(
+        if (!DisksInSS.contains(itr->GetDiskId()) &&
+            !CheckMirrorDiskId(DisksInSS, ValidSnapshot.Disks, *itr) &&
+            !FindPtr(ValidSnapshot.DisksToCleanup, itr->GetDiskId()) &&
+            !FindPtr(
                 ValidSnapshot.DisksToCleanup,
                 NormalizeMirrorId(itr->GetDiskId())))
         {
@@ -564,7 +512,8 @@ void TRestoreValidationActor::HandleListVolumesResponse(
     }
 
     if (ValidSnapshot.Disks.size() == 0) {
-        ReplyAndDie(ctx,
+        ReplyAndDie(
+            ctx,
             MakeError(E_REJECTED, "Zero count of disks for restore"));
     }
 }
@@ -575,13 +524,16 @@ void TRestoreValidationActor::HandleDescribeVolumeResponse(
 {
     --DisksWaitedConfirmSize;
 
-    auto nextStepIfComplete = [&ctx, this] () {
+    auto nextStepIfComplete = [&ctx, this]()
+    {
         if (ValidSnapshot.Disks.size() == 0) {
-            ReplyAndDie(ctx,
+            ReplyAndDie(
+                ctx,
                 MakeError(E_REJECTED, "Zero count of disks for restore"));
         } else if (DisksWaitedConfirmSize == 0) {
             NextValidation(ctx);
-        }};
+        }
+    };
 
     auto* msg = ev->Get();
     auto& error = msg->GetError();
@@ -590,18 +542,23 @@ void TRestoreValidationActor::HandleDescribeVolumeResponse(
         LOG_ERROR_S(
             ctx,
             Component,
-            RESTORE_PREFIX
-                << " Failed to get disk config from SS: " << FormatError(error));
-        ReplyAndDie(ctx, MakeError(E_REJECTED, "Failed to get disk config from SS"));
+            RESTORE_PREFIX << " Failed to get disk config from SS: "
+                           << FormatError(error));
+        ReplyAndDie(
+            ctx,
+            MakeError(E_REJECTED, "Failed to get disk config from SS"));
         return;
     }
 
     const auto& description = msg->PathDescription;
-    const auto& config = description.GetBlockStoreVolumeDescription().GetVolumeConfig();
+    const auto& config =
+        description.GetBlockStoreVolumeDescription().GetVolumeConfig();
 
     const auto& diskId = config.GetDiskId();
     for (const auto& partition: config.GetPartitions()) {
-        if (partition.GetType() != NKikimrBlockStore::EPartitionType::NonReplicated) {
+        if (partition.GetType() !=
+            NKikimrBlockStore::EPartitionType::NonReplicated)
+        {
             DisksInSS.erase(diskId);
             return nextStepIfComplete();
         }
@@ -611,18 +568,18 @@ void TRestoreValidationActor::HandleDescribeVolumeResponse(
         LOG_WARN_S(
             ctx,
             Component,
-            RESTORE_PREFIX
-                << " DiskID " << diskId.Quote()
-                << " is found in SS but not in backup");
+            RESTORE_PREFIX << " DiskID " << diskId.Quote()
+                           << " is found in SS but not in backup");
         return nextStepIfComplete();
     }
 
     if (!CompareDiskConfigs(
-        ctx,
-        config,
-        *FindIf(
-            ValidSnapshot.Disks,
-            [&diskId] (const auto& disk) { return disk.GetDiskId() == diskId; })))
+            ctx,
+            config,
+            *FindIf(
+                ValidSnapshot.Disks,
+                [&diskId](const auto& disk)
+                { return disk.GetDiskId() == diskId; })))
     {
         EraseDiskFromBackup(diskId, ctx.Now());
     }
@@ -643,8 +600,8 @@ void TRestoreValidationActor::HandleGetVolumeInfoResponse(
         LOG_ERROR_S(
             ctx,
             Component,
-            RESTORE_PREFIX
-                << " Failed to get volume info: " << FormatError(error));
+            RESTORE_PREFIX << " Failed to get volume info: "
+                           << FormatError(error));
         ReplyAndDie(ctx, MakeError(E_REJECTED, "Failed to get volume info"));
         return;
     }
@@ -664,8 +621,8 @@ void TRestoreValidationActor::HandleGetVolumeInfoResponse(
 
     bool removeDisk = false;
     for (auto diskConfigItr = ValidSnapshot.Disks.begin();
-        diskConfigItr != ValidSnapshot.Disks.end();
-        ++diskConfigItr)
+         diskConfigItr != ValidSnapshot.Disks.end();
+         ++diskConfigItr)
     {
         if (NormalizeMirrorId(diskConfigItr->GetDiskId()) == diskId) {
             for (auto& deviceUUID: diskConfigItr->GetDeviceUUIDs()) {
@@ -674,10 +631,10 @@ void TRestoreValidationActor::HandleGetVolumeInfoResponse(
                     LOG_WARN_S(
                         ctx,
                         Component,
-                        RESTORE_PREFIX
-                            << " Device " << deviceUUID.Quote()
-                            << " for disk " << diskConfigItr->GetDiskId().Quote()
-                            << " not found in volume");
+                        RESTORE_PREFIX << " Device " << deviceUUID.Quote()
+                                       << " for disk "
+                                       << diskConfigItr->GetDiskId().Quote()
+                                       << " not found in volume");
                     removeDisk = true;
                 } else {
                     deviceIds.erase(deviceIt);
@@ -690,10 +647,8 @@ void TRestoreValidationActor::HandleGetVolumeInfoResponse(
         LOG_WARN_S(
             ctx,
             Component,
-            RESTORE_PREFIX
-                << " Device " << deviceId.Quote()
-                << " for disk " << diskId.Quote()
-                << " not found in backup");
+            RESTORE_PREFIX << " Device " << deviceId.Quote() << " for disk "
+                           << diskId.Quote() << " not found in backup");
         removeDisk = true;
     }
 
@@ -703,7 +658,8 @@ void TRestoreValidationActor::HandleGetVolumeInfoResponse(
     }
 
     if (ValidSnapshot.Disks.size() == 0) {
-        ReplyAndDie(ctx,
+        ReplyAndDie(
+            ctx,
             MakeError(E_REJECTED, "Zero count of disks for restore"));
     } else if (DisksWaitedConfirmSize == 0) {
         NextValidation(ctx);
@@ -715,19 +671,12 @@ void TRestoreValidationActor::HandleGetVolumeInfoResponse(
 STFUNC(TRestoreValidationActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-
-        HFunc(
-            NActors::TEvents::TEvPoisonPill,
-            HandlePoisonPill)
-        HFunc(
-            TEvService::TEvListVolumesResponse,
-            HandleListVolumesResponse)
+        HFunc(NActors::TEvents::TEvPoisonPill, HandlePoisonPill)
+        HFunc(TEvService::TEvListVolumesResponse, HandleListVolumesResponse)
         HFunc(
             TEvSSProxy::TEvDescribeVolumeResponse,
             HandleDescribeVolumeResponse)
-        HFunc(
-            TEvVolume::TEvGetVolumeInfoResponse,
-            HandleGetVolumeInfoResponse)
+        HFunc(TEvVolume::TEvGetVolumeInfoResponse, HandleGetVolumeInfoResponse)
 
         default:
             HandleUnexpectedEvent(ev, Component, __PRETTY_FUNCTION__);
@@ -735,4 +684,4 @@ STFUNC(TRestoreValidationActor::StateWork)
     }
 }
 
-}   // NCloud::NBlockStore::NStorage::NDiskRegistry
+}   // namespace NCloud::NBlockStore::NStorage::NDiskRegistry

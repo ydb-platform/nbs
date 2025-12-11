@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+
 #include <cloud/storage/core/libs/common/verify.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -35,12 +36,15 @@ void TVolumeActor::ExecuteResetStartPartitionsNeeded(
     STORAGE_VERIFY(State, TWellKnownEntityTypes::TABLET, TabletID());
 
     if (State->GetShouldStartPartitionsForGc(ctx.Now())) {
-        if (PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC) {
+        if (PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC)
+        {
             if (FindPtr(GCCompletedPartitions, args.PartitionTabletId)) {
                 // This partition has already sent GC report
                 return;
             }
-            if (GCCompletedPartitions.size() + 1 != State->GetPartitions().size()) {
+            if (GCCompletedPartitions.size() + 1 !=
+                State->GetPartitions().size())
+            {
                 // Not all partitions completed GC
                 GCCompletedPartitions.push_back(args.PartitionTabletId);
                 return;
@@ -88,8 +92,11 @@ void TVolumeActor::HandleGarbageCollectorCompleted(
             ev->Cookie,
             MakeIntrusive<TCallContext>());
 
-        ExecuteTx(ctx, CreateTx<TResetStartPartitionsNeeded>(
-            requestInfo, partitionTabletId));
+        ExecuteTx(
+            ctx,
+            CreateTx<TResetStartPartitionsNeeded>(
+                requestInfo,
+                partitionTabletId));
     }
 }
 

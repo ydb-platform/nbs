@@ -1,5 +1,4 @@
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
-
 #include <cloud/blockstore/tools/testing/eternal_tests/range-validator/lib/validate.h>
 
 #include <library/cpp/getopt/small/last_getopt.h>
@@ -45,69 +44,85 @@ struct TOptions
             .StoreResult(&DevicePath);
 
         opts.AddLongOption(
-            "log-path",
-            "path to the folder, where you want to save logs of validation")
+                "log-path",
+                "path to the folder, where you want to save logs of validation")
             .RequiredArgument("STR")
             .StoreResult(&LogPath);
 
         opts.AddLongOption(
-            "ranges",
-            "specify range indices for validation, separated by comma")
+                "ranges",
+                "specify range indices for validation, separated by comma")
             .RequiredArgument("STR")
-            .Handler1T<TString>([this] (const auto& s) {
-                TStringBuf buf(s);
-                TStringBuf arg;
-                while (buf.NextTok(',', arg)) {
-                    RangeIndices.push_back(FromString<ui32>(arg));
-                }
-            });
-
-        opts.AddLongOption(
-            "blocks",
-            "specify individual block indices NUM or ranges NUM-NUM for validation, separated by comma")
-            .RequiredArgument("STR")
-            .Handler1T<TString>([this] (const auto& s) {
-                TStringBuf buf(s);
-                TStringBuf firstStr;
-                while (buf.NextTok(',', firstStr)) {
-                    TStringBuf lastStr = firstStr.SplitOff('-');
-                    ui64 first = FromString<ui64>(firstStr);
-                    ui64 last = lastStr.empty() ? first : FromString<ui64>(lastStr);
-                    for (ui64 idx = first; idx <= last; idx++) {
-                        BlockIndices.push_back(idx);
+            .Handler1T<TString>(
+                [this](const auto& s)
+                {
+                    TStringBuf buf(s);
+                    TStringBuf arg;
+                    while (buf.NextTok(',', arg)) {
+                        RangeIndices.push_back(FromString<ui32>(arg));
                     }
-                }
-            });
+                });
 
         opts.AddLongOption(
-            "block-size",
-            "specify block-size (default 4096)")
+                "blocks",
+                "specify individual block indices NUM or ranges NUM-NUM for "
+                "validation, separated by comma")
+            .RequiredArgument("STR")
+            .Handler1T<TString>(
+                [this](const auto& s)
+                {
+                    TStringBuf buf(s);
+                    TStringBuf firstStr;
+                    while (buf.NextTok(',', firstStr)) {
+                        TStringBuf lastStr = firstStr.SplitOff('-');
+                        ui64 first = FromString<ui64>(firstStr);
+                        ui64 last =
+                            lastStr.empty() ? first : FromString<ui64>(lastStr);
+                        for (ui64 idx = first; idx <= last; idx++) {
+                            BlockIndices.push_back(idx);
+                        }
+                    }
+                });
+
+        opts.AddLongOption("block-size", "specify block-size (default 4096)")
             .RequiredArgument("NUM")
             .StoreResult(&BlockSize);
 
         opts.AddLongOption(
-            "mode",
-            "specify checksum (default) or mirror validation mode")
-            .Handler1T<TString>([this] (const auto& s) {
-                if (s == "checksum") {
-                    Mode = EValidationMode::Checksum;
-                } else if (s == "mirror") {
-                    Mode = EValidationMode::Mirror;
-                } else {
-                    Y_ABORT("validation mode must be either checksum or mirror");
-                }
-            });
+                "mode",
+                "specify checksum (default) or mirror validation mode")
+            .Handler1T<TString>(
+                [this](const auto& s)
+                {
+                    if (s == "checksum") {
+                        Mode = EValidationMode::Checksum;
+                    } else if (s == "mirror") {
+                        Mode = EValidationMode::Mirror;
+                    } else {
+                        Y_ABORT(
+                            "validation mode must be either checksum or "
+                            "mirror");
+                    }
+                });
 
         TOptsParseResultException(&opts, argc, argv);
 
         if (Mode == EValidationMode::Checksum) {
-            Y_ENSURE(ConfigPath.size(), "you must specify config-path in checksum validation mode");
-            Y_ENSURE(RangeIndices.size(), "you must specify ranges in checksum validation mode");
-            Y_ENSURE(LogPath.size(), "you must specify log-path in checksum validation mode");
+            Y_ENSURE(
+                ConfigPath.size(),
+                "you must specify config-path in checksum validation mode");
+            Y_ENSURE(
+                RangeIndices.size(),
+                "you must specify ranges in checksum validation mode");
+            Y_ENSURE(
+                LogPath.size(),
+                "you must specify log-path in checksum validation mode");
         }
 
         if (Mode == EValidationMode::Mirror) {
-            Y_ENSURE(BlockIndices.size(), "you must specify blocks in mirror validation mode");
+            Y_ENSURE(
+                BlockIndices.size(),
+                "you must specify blocks in mirror validation mode");
         }
     }
 };
@@ -122,26 +137,29 @@ int main(int argc, const char** argv)
         return 1;
     }
 
-    TFile file(options.DevicePath, EOpenModeFlag::RdOnly | EOpenModeFlag::DirectAligned);
+    TFile file(
+        options.DevicePath,
+        EOpenModeFlag::RdOnly | EOpenModeFlag::DirectAligned);
 
     if (options.Mode == EValidationMode::Checksum) {
         auto configHolder = LoadTestConfig(options.ConfigPath);
-        for (ui32 rangeIdx : options.RangeIndices) {
+        for (ui32 rangeIdx: options.RangeIndices) {
             Cout << "Start validation of " << rangeIdx << " range" << Endl;
 
             auto res = ValidateRange(file, std::move(configHolder), rangeIdx);
-            Cout << "GuessedStep " << res.GuessedStep
-                 << "GuessedLastBlockIdx " << res.GuessedLastBlockIdx
-                 << "GuessedNumberToWrite " << res.GuessedNumberToWrite
-                 << Endl;
+            Cout << "GuessedStep " << res.GuessedStep << "GuessedLastBlockIdx "
+                 << res.GuessedLastBlockIdx << "GuessedNumberToWrite "
+                 << res.GuessedNumberToWrite << Endl;
 
-            TString path = options.LogPath + "range_" + ToString(rangeIdx) + ".log";
-            TFileOutput out(TFile(path, EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly));
+            TString path =
+                options.LogPath + "range_" + ToString(rangeIdx) + ".log";
+            TFileOutput out(TFile(
+                path,
+                EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly));
 
-            for (const auto& block : res.InvalidBlocks) {
-                out << "[" << rangeIdx << "]"
-                    << " Wrong data in block " << block
-                    << Endl;
+            for (const auto& block: res.InvalidBlocks) {
+                out << "[" << rangeIdx << "]" << " Wrong data in block "
+                    << block << Endl;
             }
 
             Cout << "Finish validation of " << rangeIdx << " range" << Endl;
@@ -153,7 +171,7 @@ int main(int argc, const char** argv)
             options.BlockSize,
             std::move(options.BlockIndices));
 
-        for (const auto& block : res) {
+        for (const auto& block: res) {
             Cout << "mismatch in block data " << block << Endl;
         }
     }

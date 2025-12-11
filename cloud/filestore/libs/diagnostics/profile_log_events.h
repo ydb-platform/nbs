@@ -11,7 +11,7 @@ namespace NCloud::NProto {
 
 class TError;
 
-}   // namespace NCloud
+}   // namespace NCloud::NProto
 
 namespace NCloud::NFileStore {
 
@@ -27,19 +27,18 @@ namespace NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_FUSE_REQUESTS(xxx, ...)                                      \
-    xxx(Flush,              __VA_ARGS__)                                       \
-    xxx(Fsync,              __VA_ARGS__)                                       \
-    xxx(FsyncDir,           __VA_ARGS__)                                       \
-// FILESTORE_FUSE_REQUESTS
+#define FILESTORE_FUSE_REQUESTS(xxx, ...) \
+    xxx(Flush, __VA_ARGS__)               \
+    xxx(Fsync, __VA_ARGS__)               \
+    xxx(FsyncDir, __VA_ARGS__)            \
+    // FILESTORE_FUSE_REQUESTS
 
 #define FILESTORE_MATERIALIZE_REQUEST(name, ...) name,
 
 enum class EFileStoreFuseRequest
 {
-    MIN = 1'000,    // to combine with service requests
-    FILESTORE_FUSE_REQUESTS(FILESTORE_MATERIALIZE_REQUEST)
-    MAX
+    MIN = 1'000,   // to combine with service requests
+    FILESTORE_FUSE_REQUESTS(FILESTORE_MATERIALIZE_REQUEST) MAX
 };
 
 #undef FILESTORE_MATERIALIZE_REQUEST
@@ -64,7 +63,7 @@ void FinalizeProfileLogRequestInfo(
     const NCloud::NProto::TError& error,
     IProfileLogPtr profileLog);
 
-}  // namespace NFuse
+}   // namespace NFuse
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -34,8 +34,7 @@ struct TRequest
     {}
 };
 
-class TConfirmBlobsActor final
-    : public TActorBootstrapped<TConfirmBlobsActor>
+class TConfirmBlobsActor final: public TActorBootstrapped<TConfirmBlobsActor>
 {
 private:
     const ui64 StartCycleCount = GetCycleCount();
@@ -74,9 +73,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TConfirmBlobsActor::TConfirmBlobsActor(
-        ui64 tabletId,
-        const TActorId& tablet,
-        TVector<TRequest> requests)
+    ui64 tabletId,
+    const TActorId& tablet,
+    TVector<TRequest> requests)
     : TabletId(tabletId)
     , Tablet(tablet)
     , Requests(std::move(requests))
@@ -89,8 +88,8 @@ void TConfirmBlobsActor::Bootstrap(const TActorContext& ctx)
     for (size_t i = 0; i < Requests.size(); ++i) {
         auto request = std::make_unique<TEvBlobStorage::TEvGet>(
             MakeBlobId(TabletId, Requests[i].BlobId),
-            0,  // shift
-            0,  // size
+            0,   // shift
+            0,   // size
             TInstant::Max(),
             NKikimrBlobStorage::FastRead,
             true,   // mustRestoreFirst
@@ -201,8 +200,8 @@ void TPartitionActor::ConfirmBlobs(const TActorContext& ctx)
         for (const auto& blob: blobs) {
             auto blobId = MakePartialBlobId(commitId, blob.UniqueId);
             auto proxy = Info()->BSProxyIDForChannel(
-                blobId.Channel(), blobId.Generation()
-            );
+                blobId.Channel(),
+                blobId.Generation());
             requests.emplace_back(blobId, proxy);
         }
     }

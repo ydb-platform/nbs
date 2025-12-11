@@ -11,8 +11,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReplyProxyActor final
-    : public TActor<TReplyProxyActor>
+class TReplyProxyActor final: public TActor<TReplyProxyActor>
 {
 private:
     const int LogComponent;
@@ -21,9 +20,9 @@ private:
 
 public:
     TReplyProxyActor(
-            int logComponent,
-            const TActorId& owner,
-            const ui64 tabletId)
+        int logComponent,
+        const TActorId& owner,
+        const ui64 tabletId)
         : TActor(&TThis::StateWork)
         , LogComponent(logComponent)
         , Owner(owner)
@@ -100,7 +99,9 @@ void TSSProxyActor::SendWaitTxRequest(
 {
     auto& state = SchemeShardStates[schemeShard];
     if (!state.ReplyProxy) {
-        LOG_DEBUG(ctx, Config.LogComponent,
+        LOG_DEBUG(
+            ctx,
+            Config.LogComponent,
             "Creating reply proxy actor for schemeshard %lu",
             schemeShard);
 
@@ -112,7 +113,9 @@ void TSSProxyActor::SendWaitTxRequest(
                 schemeShard));
     }
 
-    LOG_DEBUG(ctx, Config.LogComponent,
+    LOG_DEBUG(
+        ctx,
+        Config.LogComponent,
         "Sending NotifyTxCompletion to %lu for txId# %lu",
         schemeShard,
         txId);
@@ -133,7 +136,9 @@ void TSSProxyActor::HandleTxRegistered(
     const auto* msg = ev->Get();
     ui64 txId = msg->Record.GetTxId();
 
-    LOG_DEBUG(ctx, Config.LogComponent,
+    LOG_DEBUG(
+        ctx,
+        Config.LogComponent,
         "Received NotifyTxCompletionRegistered from %lu for txId# %lu",
         schemeShard,
         txId);
@@ -149,14 +154,16 @@ void TSSProxyActor::HandleTxResult(
     const auto* msg = ev->Get();
     ui64 txId = msg->Record.GetTxId();
 
-    LOG_DEBUG(ctx, Config.LogComponent,
+    LOG_DEBUG(
+        ctx,
+        Config.LogComponent,
         "Received NotifyTxCompletionResult from %lu for txId# %lu",
         schemeShard,
         txId);
 
     auto it = state.TxToRequests.find(txId);
     if (it != state.TxToRequests.end()) {
-        for (const auto& request : it->second) {
+        for (const auto& request: it->second) {
             NCloud::Reply(
                 ctx,
                 request,

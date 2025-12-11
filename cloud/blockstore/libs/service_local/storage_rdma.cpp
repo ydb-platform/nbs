@@ -39,8 +39,7 @@ struct IRequestHandler: public NRdma::TNullContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReadBlocksHandler final
-    : public IRequestHandler
+class TReadBlocksHandler final: public IRequestHandler
 {
 public:
     using TRequest = NProto::TReadBlocksLocalRequest;
@@ -52,14 +51,15 @@ private:
 
     NProto::TReadDeviceBlocksRequest Proto;
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TReadBlocksHandler(
-            TCallContextPtr callContext,
-            std::shared_ptr<TRequest> request,
-            TString uuid,
-            size_t blockSize)
+        TCallContextPtr callContext,
+        std::shared_ptr<TRequest> request,
+        TString uuid,
+        size_t blockSize)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
     {
@@ -109,11 +109,13 @@ public:
         }
 
         const auto& response = resultOrError.GetResult();
-        Y_ENSURE(response.MsgId == TBlockStoreProtocol::ReadDeviceBlocksResponse);
+        Y_ENSURE(
+            response.MsgId == TBlockStoreProtocol::ReadDeviceBlocksResponse);
 
         CopyData(Request->Sglist, response.Data);
 
-        auto orig = static_cast<NProto::TReadDeviceBlocksResponse&>(*response.Proto);
+        auto orig =
+            static_cast<NProto::TReadDeviceBlocksResponse&>(*response.Proto);
         TResponse proto;
         proto.MutableError()->Swap(orig.MutableError());
         Response.SetValue(std::move(proto));
@@ -127,7 +129,6 @@ public:
 private:
     static void CopyData(TGuardedSgList& guardedSgList, TStringBuf data)
     {
-
         auto guard = guardedSgList.Acquire();
         Y_ENSURE(guard);
 
@@ -149,8 +150,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWriteBlocksHandler final
-    : public IRequestHandler
+class TWriteBlocksHandler final: public IRequestHandler
 {
 public:
     using TRequest = NProto::TWriteBlocksLocalRequest;
@@ -162,14 +162,15 @@ private:
 
     NProto::TWriteDeviceBlocksRequest Proto;
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TWriteBlocksHandler(
-            TCallContextPtr callContext,
-            std::shared_ptr<TRequest> request,
-            TString uuid,
-            size_t blockSize)
+        TCallContextPtr callContext,
+        std::shared_ptr<TRequest> request,
+        TString uuid,
+        size_t blockSize)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
     {
@@ -226,10 +227,12 @@ public:
         }
 
         const auto& response = resultOrError.GetResult();
-        Y_ENSURE(response.MsgId == TBlockStoreProtocol::WriteDeviceBlocksResponse);
+        Y_ENSURE(
+            response.MsgId == TBlockStoreProtocol::WriteDeviceBlocksResponse);
         Y_ENSURE(response.Data.length() == 0);
 
-        auto orig = static_cast<NProto::TWriteDeviceBlocksResponse&>(*response.Proto);
+        auto orig =
+            static_cast<NProto::TWriteDeviceBlocksResponse&>(*response.Proto);
         TResponse proto;
         proto.MutableError()->Swap(orig.MutableError());
         Response.SetValue(std::move(proto));
@@ -243,8 +246,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TZeroBlocksHandler final
-    : public IRequestHandler
+class TZeroBlocksHandler final: public IRequestHandler
 {
 public:
     using TRequest = NProto::TZeroBlocksRequest;
@@ -256,14 +258,15 @@ private:
 
     NProto::TZeroDeviceBlocksRequest Proto;
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TZeroBlocksHandler(
-            TCallContextPtr callContext,
-            std::shared_ptr<TRequest> request,
-            TString uuid,
-            size_t blockSize)
+        TCallContextPtr callContext,
+        std::shared_ptr<TRequest> request,
+        TString uuid,
+        size_t blockSize)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
     {
@@ -310,10 +313,12 @@ public:
         }
 
         const auto& response = resultOrError.GetResult();
-        Y_ENSURE(response.MsgId == TBlockStoreProtocol::ZeroDeviceBlocksResponse);
+        Y_ENSURE(
+            response.MsgId == TBlockStoreProtocol::ZeroDeviceBlocksResponse);
         Y_ENSURE(response.Data.length() == 0);
 
-        auto orig = static_cast<NProto::TZeroDeviceBlocksResponse&>(*response.Proto);
+        auto orig =
+            static_cast<NProto::TZeroDeviceBlocksResponse&>(*response.Proto);
         TResponse proto;
         proto.MutableError()->Swap(orig.MutableError());
         Response.SetValue(std::move(proto));
@@ -339,11 +344,10 @@ private:
     ITaskQueuePtr TaskQueue;
     NRdma::IClientEndpointPtr Endpoint;
     bool IsAlignedDataEnabled = false;
+
 public:
-    static std::shared_ptr<TRdmaStorage> Create(
-        TString uuid,
-        ui64 blockSize,
-        ITaskQueuePtr taskQueue)
+    static std::shared_ptr<TRdmaStorage>
+    Create(TString uuid, ui64 blockSize, ITaskQueuePtr taskQueue)
     {
         return std::shared_ptr<TRdmaStorage>{
             new TRdmaStorage(std::move(uuid), blockSize, std::move(taskQueue))};
@@ -406,10 +410,7 @@ public:
     }
 
 private:
-    TRdmaStorage(
-            TString uuid,
-            ui64 blockSize,
-            ITaskQueuePtr taskQueue)
+    TRdmaStorage(TString uuid, ui64 blockSize, ITaskQueuePtr taskQueue)
         : Uuid(std::move(uuid))
         , BlockSize(blockSize)
         , TaskQueue(std::move(taskQueue))
@@ -420,9 +421,12 @@ private:
         TCallContextPtr callContext,
         std::shared_ptr<typename T::TRequest> request)
     {
-        return TaskQueue->Execute([=, this] {
-            return DoHandleRequest<T>(std::move(callContext), std::move(request));
-        });
+        return TaskQueue->Execute(
+            [=, this] {
+                return DoHandleRequest<T>(
+                    std::move(callContext),
+                    std::move(request));
+            });
     }
 
     template <typename T>
@@ -459,9 +463,9 @@ private:
         ui32 status,
         size_t responseBytes) override
     {
-        TaskQueue->ExecuteSimple([=, this, req = std::move(req)] () mutable {
-            DoHandleResponse(std::move(req), status, responseBytes);
-        });
+        TaskQueue->ExecuteSimple(
+            [=, this, req = std::move(req)]() mutable
+            { DoHandleResponse(std::move(req), status, responseBytes); });
     }
 
     void DoHandleResponse(
@@ -487,8 +491,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaStorageProvider final
-    : public IStorageProvider
+class TRdmaStorageProvider final: public IStorageProvider
 {
 private:
     struct TEndpoint
@@ -514,9 +517,9 @@ private:
 
 public:
     TRdmaStorageProvider(
-            IServerStatsPtr serverStats,
-            NRdma::IClientPtr client,
-            ITaskQueuePtr taskQueue)
+        IServerStatsPtr serverStats,
+        NRdma::IClientPtr client,
+        ITaskQueuePtr taskQueue)
         : ServerStats(std::move(serverStats))
         , Client(std::move(client))
         , TaskQueue(std::move(taskQueue))
@@ -568,10 +571,14 @@ public:
                         volume.GetBlockSize(),
                         TaskQueue);
 
-                    auto endpoint = Client->StartEndpoint(ep.Host, ep.Port)
-                        .Subscribe([=, this] (const auto& future) {
-                            storage->Init(future.GetValue(), Client->IsAlignedDataEnabled());
-                        });
+                    auto endpoint =
+                        Client->StartEndpoint(ep.Host, ep.Port)
+                            .Subscribe(
+                                [=, this](const auto& future) {
+                                    storage->Init(
+                                        future.GetValue(),
+                                        Client->IsAlignedDataEnabled());
+                                });
 
                     endpoints.emplace_back(std::move(endpoint));
                     Storages.emplace(ep, storage);
@@ -587,31 +594,30 @@ public:
             return MakeFuture<IStoragePtr>(nullptr);
         }
 
-        return WaitAll(endpoints).Apply([
-            endpoints = std::move(endpoints),
-            storages = std::move(storages),
-            offsets = std::move(offsets),
-            volume = volume,
-            clientId = clientId,
-            serverStats = ServerStats] (const auto&)
-        {
-            try {
-                for (auto& endpoint: endpoints) {
-                    endpoint.GetValue();
+        return WaitAll(endpoints).Apply(
+            [endpoints = std::move(endpoints),
+             storages = std::move(storages),
+             offsets = std::move(offsets),
+             volume = volume,
+             clientId = clientId,
+             serverStats = ServerStats](const auto&)
+            {
+                try {
+                    for (auto& endpoint: endpoints) {
+                        endpoint.GetValue();
+                    }
+                } catch (...) {
+                    return IStoragePtr(nullptr);
                 }
-            } catch (...) {
-                return IStoragePtr(nullptr);
-            }
 
-            return CreateCompoundStorage(
-                std::move(storages),
-                std::move(offsets),
-                volume.GetBlockSize(),
-                volume.GetDiskId(),
-                std::move(clientId),
-                serverStats);
-        });
-
+                return CreateCompoundStorage(
+                    std::move(storages),
+                    std::move(offsets),
+                    volume.GetBlockSize(),
+                    volume.GetDiskId(),
+                    std::move(clientId),
+                    serverStats);
+            });
     }
 };
 

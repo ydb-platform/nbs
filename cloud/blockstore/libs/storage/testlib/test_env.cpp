@@ -1,9 +1,8 @@
 #include "test_env.h"
 
-#include "test_runtime.h"
-
 #include "disk_registry_proxy_mock.h"
 #include "root_kms_key_provider_mock.h"
+#include "test_runtime.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -87,12 +86,12 @@ ui64 ChangeDomain(ui64 tabletId, ui32 domainUid)
 ////////////////////////////////////////////////////////////////////////////////
 
 TTestEnv::TTestEnv(
-        ui32 staticNodes,
-        ui32 dynamicNodes,
-        ui32 nchannels,
-        ui32 ngroups,
-        TTestEnvState state,
-        NKikimr::NFake::TCaches cachesConfig)
+    ui32 staticNodes,
+    ui32 dynamicNodes,
+    ui32 nchannels,
+    ui32 ngroups,
+    TTestEnvState state,
+    NKikimr::NFake::TCaches cachesConfig)
     : DomainUid(1)
     , DomainName("local")
     , StaticNodeCount(staticNodes)
@@ -120,8 +119,7 @@ TTestEnv::TTestEnv(
 }
 
 TTestEnv::~TTestEnv()
-{
-}
+{}
 
 ui64 TTestEnv::GetHive()
 {
@@ -139,15 +137,15 @@ ui64 TTestEnv::AllocateTxId()
 
     auto sender = Runtime.AllocateEdgeActor();
 
-    Runtime.SendToPipe(
-        tabletId,
-        sender,
-        new TEvTxAllocator::TEvAllocate(1));
+    Runtime.SendToPipe(tabletId, sender, new TEvTxAllocator::TEvAllocate(1));
 
     TAutoPtr<IEventHandle> handle;
-    auto event = Runtime.GrabEdgeEvent<TEvTxAllocator::TEvAllocateResult>(handle);
+    auto event =
+        Runtime.GrabEdgeEvent<TEvTxAllocator::TEvAllocateResult>(handle);
     UNIT_ASSERT(event);
-    UNIT_ASSERT_EQUAL(event->Record.GetStatus(), NKikimrTx::TEvTxAllocateResult::SUCCESS);
+    UNIT_ASSERT_EQUAL(
+        event->Record.GetStatus(),
+        NKikimrTx::TEvTxAllocateResult::SUCCESS);
     return event->Record.GetRangeBegin();
 }
 
@@ -160,30 +158,35 @@ void TTestEnv::CreateSubDomain(const TString& name)
         txId,
         tabletId);
     auto* tx = evTx->Record.AddTransaction();
-    tx->SetOperationType(NKikimrSchemeOp::EOperationType::ESchemeOpCreateSubDomain);
+    tx->SetOperationType(
+        NKikimrSchemeOp::EOperationType::ESchemeOpCreateSubDomain);
     tx->SetWorkingDir("/" + DomainName);
     tx->MutableSubDomain()->CopyFrom(GetSubDomainDefaultSettings(name));
-    for (const auto& [kind, pool] : Runtime.GetAppData().DomainsInfo->GetDomain(DomainUid).StoragePoolTypes) {
+    for (
+        const auto& [kind, pool]:
+        Runtime.GetAppData().DomainsInfo->GetDomain(DomainUid).StoragePoolTypes)
+    {
         auto* pbPool = tx->MutableSubDomain()->AddStoragePools();
         pbPool->SetKind(kind);
         pbPool->SetName(pool.GetName());
     }
 
     auto sender = Runtime.AllocateEdgeActor();
-    Runtime.SendToPipe(
-        tabletId,
-        sender,
-        evTx.release());
+    Runtime.SendToPipe(tabletId, sender, evTx.release());
 
     TAutoPtr<IEventHandle> handle;
-    auto event = Runtime.GrabEdgeEvent<TEvSchemeShard::TEvModifySchemeTransactionResult>(handle);
+    auto event =
+        Runtime.GrabEdgeEvent<TEvSchemeShard::TEvModifySchemeTransactionResult>(
+            handle);
     UNIT_ASSERT(event);
     UNIT_ASSERT_EQUAL(event->Record.GetTxId(), txId);
 
     if (event->Record.GetStatus() == NKikimrScheme::StatusAccepted) {
         WaitForSchemeShardTx(txId);
     } else {
-        UNIT_ASSERT_EQUAL(event->Record.GetStatus(), NKikimrScheme::StatusAlreadyExists);
+        UNIT_ASSERT_EQUAL(
+            event->Record.GetStatus(),
+            NKikimrScheme::StatusAlreadyExists);
     }
 }
 
@@ -234,7 +237,8 @@ ui32 TTestEnv::CreateBlockStoreNode(
 
     auto subDomainPath = "/local/" + name;
 
-    auto factory = [=, this] (const TActorId& owner, TTabletStorageInfo* storage) {
+    auto factory = [=, this](const TActorId& owner, TTabletStorageInfo* storage)
+    {
         UNIT_ASSERT_EQUAL(storage->TabletType, TTabletTypes::BlockStoreVolume);
         auto actor = CreateVolumeTablet(
             owner,
@@ -254,15 +258,15 @@ ui32 TTestEnv::CreateBlockStoreNode(
 
     TLocalConfig::TPtr localConfig = new TLocalConfig();
     localConfig->TabletClassInfo[TTabletTypes::BlockStoreVolume] =
-        TLocalConfig::TTabletClassInfo(
-            new TTabletSetupInfo(
-                factory,
-                TMailboxType::ReadAsFilled,
-                appData->UserPoolId,
-                TMailboxType::ReadAsFilled,
-                appData->SystemPoolId));
+        TLocalConfig::TTabletClassInfo(new TTabletSetupInfo(
+            factory,
+            TMailboxType::ReadAsFilled,
+            appData->UserPoolId,
+            TMailboxType::ReadAsFilled,
+            appData->SystemPoolId));
 
-    TTenantPoolConfig::TPtr tenantPoolConfig = new TTenantPoolConfig(localConfig);
+    TTenantPoolConfig::TPtr tenantPoolConfig =
+        new TTenantPoolConfig(localConfig);
     tenantPoolConfig->AddStaticSlot(subDomainPath);
 
     auto tenantPoolId = Runtime.Register(
@@ -272,10 +276,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
         TMailboxType::Revolving,
         0);
     Runtime.EnableScheduleForActor(tenantPoolId);
-    Runtime.RegisterService(
-        MakeTenantPoolID(nodeIdx),
-        tenantPoolId,
-        nodeIdx);
+    Runtime.RegisterService(MakeTenantPoolID(nodeIdx), tenantPoolId, nodeIdx);
 
     auto ssProxy = CreateSSProxy(storageConfig);
     auto ssProxyId = Runtime.Register(
@@ -285,10 +286,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
         TMailboxType::Simple,
         0);
     Runtime.EnableScheduleForActor(ssProxyId);
-    Runtime.RegisterService(
-        MakeSSProxyServiceId(),
-        ssProxyId,
-        nodeIdx);
+    Runtime.RegisterService(MakeSSProxyServiceId(), ssProxyId, nodeIdx);
 
     auto hiveProxy = CreateHiveProxy({
         storageConfig->GetPipeClientRetryCount(),
@@ -306,10 +304,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
         TMailboxType::Simple,
         0);
     Runtime.EnableScheduleForActor(hiveProxyId);
-    Runtime.RegisterService(
-        MakeHiveProxyServiceId(),
-        hiveProxyId,
-        nodeIdx);
+    Runtime.RegisterService(MakeHiveProxyServiceId(), hiveProxyId, nodeIdx);
 
     if (State.DiskRegistryState->Devices.empty()) {
         // 256GiB should be enough for all uts
@@ -327,8 +322,8 @@ ui32 TTestEnv::CreateBlockStoreNode(
         }
     }
 
-    auto drProxy = std::make_unique<TDiskRegistryProxyMock>(
-        State.DiskRegistryState);
+    auto drProxy =
+        std::make_unique<TDiskRegistryProxyMock>(State.DiskRegistryState);
     auto drProxyId = Runtime.Register(
         drProxy.release(),
         nodeIdx,
@@ -349,10 +344,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
         TMailboxType::Simple,
         0);
     Runtime.EnableScheduleForActor(volumeProxyId);
-    Runtime.RegisterService(
-        MakeVolumeProxyServiceId(),
-        volumeProxyId,
-        nodeIdx);
+    Runtime.RegisterService(MakeVolumeProxyServiceId(), volumeProxyId, nodeIdx);
 
     auto storageStatsService = CreateStorageStatsService(
         storageConfig,
@@ -393,10 +385,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
         TMailboxType::Simple,
         0);
     Runtime.EnableScheduleForActor(storageServiceId);
-    Runtime.RegisterService(
-        MakeStorageServiceId(),
-        storageServiceId,
-        nodeIdx);
+    Runtime.RegisterService(MakeStorageServiceId(), storageServiceId, nodeIdx);
 
     auto undeliveredHandler = CreateUndeliveredHandler();
     auto undeliveredHandlerId = Runtime.Register(
@@ -427,7 +416,8 @@ ui32 TTestEnv::CreateBlockStoreNode(
     return nodeIdx;
 }
 
-ui64 TTestEnv::GetPrivateCacheSize(ui64 tabletId) {
+ui64 TTestEnv::GetPrivateCacheSize(ui64 tabletId)
+{
     return GetExecutorCacheSize(Runtime, tabletId);
 }
 
@@ -435,12 +425,14 @@ TString TTestEnv::UpdatePrivateCacheSize(ui64 tabletId, ui64 cacheSize)
 {
     NTabletFlatScheme::TSchemeChanges scheme;
     TString err;
-    TString change =  Sprintf(R"___(
+    TString change = Sprintf(
+        R"___(
     Delta {
         DeltaType: UpdateExecutorInfo
         ExecutorCacheSize: %lu
     }
-    )___", cacheSize);
+    )___",
+        cacheSize);
 
     LocalSchemeTx(Runtime, tabletId, change, false, scheme, err);
 
@@ -462,32 +454,45 @@ void TTestEnv::SetupLogging()
 
     // Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
     // Runtime.SetLogPriority(NKikimrServices::WILSON, NLog::PRI_DEBUG);
-    // Runtime.SetLogPriority(NKikimrServices::FLAT_TX_SCHEMESHARD, NLog::PRI_DEBUG);
-    // Runtime.SetLogPriority(NKikimrServices::BS_CONTROLLER, NLog::PRI_DEBUG);
-    // Runtime.SetLogPriority(NKikimrServices::HIVE, NLog::PRI_TRACE);
-    // Runtime.SetLogPriority(NKikimrServices::LOCAL, NLog::PRI_DEBUG);
-    // Runtime.SetLogPriority(NKikimrServices::TX_MEDIATOR, NLog::PRI_DEBUG);
-    // Runtime.SetLogPriority(NKikimrServices::TX_COORDINATOR, NLog::PRI_DEBUG);
-    // Runtime.SetLogPriority(NKikimrServices::TX_PROXY, NLog::PRI_DEBUG);
-    // Runtime.SetLogPriority(NKikimrServices::TX_PROXY_SCHEME_CACHE, NLog::PRI_DEBUG);
+    // Runtime.SetLogPriority(NKikimrServices::FLAT_TX_SCHEMESHARD,
+    // NLog::PRI_DEBUG); Runtime.SetLogPriority(NKikimrServices::BS_CONTROLLER,
+    // NLog::PRI_DEBUG); Runtime.SetLogPriority(NKikimrServices::HIVE,
+    // NLog::PRI_TRACE); Runtime.SetLogPriority(NKikimrServices::LOCAL,
+    // NLog::PRI_DEBUG); Runtime.SetLogPriority(NKikimrServices::TX_MEDIATOR,
+    // NLog::PRI_DEBUG); Runtime.SetLogPriority(NKikimrServices::TX_COORDINATOR,
+    // NLog::PRI_DEBUG); Runtime.SetLogPriority(NKikimrServices::TX_PROXY,
+    // NLog::PRI_DEBUG);
+    // Runtime.SetLogPriority(NKikimrServices::TX_PROXY_SCHEME_CACHE,
+    // NLog::PRI_DEBUG);
     Runtime.SetLogPriority(NKikimrServices::BS_NODE, NLog::PRI_ERROR);
 }
 
 void TTestEnv::SetupDomain(TAppPrepare& app)
 {
     auto domain = TDomainsInfo::TDomain::ConstructDomainWithExplicitTabletIds(
-        DomainName, DomainUid, ChangeDomain(Tests::SchemeRoot, DomainUid),
-        DomainUid, DomainUid, TVector<ui32>{DomainUid},
-        DomainUid, TVector<ui32>{DomainUid},
+        DomainName,
+        DomainUid,
+        ChangeDomain(Tests::SchemeRoot, DomainUid),
+        DomainUid,
+        DomainUid,
+        TVector<ui32>{DomainUid},
+        DomainUid,
+        TVector<ui32>{DomainUid},
         7,
         TVector<ui64>{TDomainsInfo::MakeTxCoordinatorID(DomainUid, 1)},
         TVector<ui64>{TDomainsInfo::MakeTxMediatorID(DomainUid, 1)},
         TVector<ui64>{TDomainsInfo::MakeTxAllocatorID(DomainUid, 1)},
         DefaultPoolKinds(2));
 
-    UNIT_ASSERT_EQUAL(domain->Coordinators.front(), ChangeDomain(Tests::Coordinator, DomainUid));
-    UNIT_ASSERT_EQUAL(domain->Mediators.front(), ChangeDomain(Tests::Mediator, DomainUid));
-    UNIT_ASSERT_EQUAL(domain->TxAllocators.front(), ChangeDomain(Tests::TxAllocator, DomainUid));
+    UNIT_ASSERT_EQUAL(
+        domain->Coordinators.front(),
+        ChangeDomain(Tests::Coordinator, DomainUid));
+    UNIT_ASSERT_EQUAL(
+        domain->Mediators.front(),
+        ChangeDomain(Tests::Mediator, DomainUid));
+    UNIT_ASSERT_EQUAL(
+        domain->TxAllocators.front(),
+        ChangeDomain(Tests::TxAllocator, DomainUid));
 
     app.AddDomain(domain.Release());
 }
@@ -524,7 +529,7 @@ void TTestEnv::BootStandardTablet(
     TTabletTypes::EType type,
     ui32 nodeIdx)
 {
-    std::function<IActor* (const TActorId&, TTabletStorageInfo*)> factory;
+    std::function<IActor*(const TActorId&, TTabletStorageInfo*)> factory;
     switch (type) {
         case TTabletTypes::TxAllocator:
             factory = &CreateTxAllocator;
@@ -562,38 +567,36 @@ void TTestEnv::SetupStorage(ui32 ngroups)
         Runtime,
         Runtime.AllocateEdgeActor(),
         DomainUid,
-        ngroups
-    );
+        ngroups);
 
     auto selectGroups =
         std::make_unique<TEvBlobStorage::TEvControllerSelectGroups>();
     const auto& spTypes =
         Runtime.GetAppData().DomainsInfo->GetDomain(DomainUid).StoragePoolTypes;
-    for (const auto& x : spTypes) {
+    for (const auto& x: spTypes) {
         selectGroups->Record.AddGroupParameters()
-            ->MutableStoragePoolSpecifier()->SetName(x.second.GetName());
+            ->MutableStoragePoolSpecifier()
+            ->SetName(x.second.GetName());
     }
     selectGroups->Record.SetReturnAllMatchingGroups(true);
     Runtime.SendToPipe(
         MakeBSControllerID(DomainUid),
         Runtime.AllocateEdgeActor(),
-        selectGroups.release()
-    );
+        selectGroups.release());
 
     TAutoPtr<IEventHandle> handle;
-    Runtime.GrabEdgeEventRethrow<TEvBlobStorage::TEvControllerSelectGroupsResult>(
-        handle,
-        TDuration::Seconds(5)
-    );
+    Runtime
+        .GrabEdgeEventRethrow<TEvBlobStorage::TEvControllerSelectGroupsResult>(
+            handle,
+            TDuration::Seconds(5));
     UNIT_ASSERT(handle);
 
     std::unique_ptr<TEvBlobStorage::TEvControllerSelectGroupsResult> response(
         handle->Release<TEvBlobStorage::TEvControllerSelectGroupsResult>()
-        .Release()
-    );
+            .Release());
 
-    for (const auto& mg : response->Record.GetMatchingGroups()) {
-        for (const auto& g : mg.GetGroups()) {
+    for (const auto& mg: response->Record.GetMatchingGroups()) {
+        for (const auto& g: mg.GetGroups()) {
             GroupIds.push_back(g.GetGroupID());
         }
     }
@@ -612,9 +615,10 @@ void TTestEnv::SetupLocalService(ui32 nodeIdx)
 {
     TLocalConfig::TPtr localConfig = new TLocalConfig();
     auto& appData = Runtime.GetAppData(nodeIdx);
-    //SetupLocalConfig(*localConfig, appData);
+    // SetupLocalConfig(*localConfig, appData);
 
-    TTenantPoolConfig::TPtr tenantPoolConfig = new TTenantPoolConfig(localConfig);
+    TTenantPoolConfig::TPtr tenantPoolConfig =
+        new TTenantPoolConfig(localConfig);
     tenantPoolConfig->AddStaticSlot(DomainName);
 
     auto tenantPoolActorId = Runtime.Register(
@@ -678,37 +682,55 @@ void TTestEnv::SetupCompileService(ui32 nodeIdx)
 void TTestEnv::InitSchemeShard()
 {
     const ui64 tabletId = ChangeDomain(Tests::SchemeRoot, DomainUid);
-    const TDomainsInfo::TDomain& domain = Runtime.GetAppData().DomainsInfo->GetDomain(DomainUid);
+    const TDomainsInfo::TDomain& domain =
+        Runtime.GetAppData().DomainsInfo->GetDomain(DomainUid);
 
-    auto evTx = MakeHolder<TEvSchemeShard::TEvModifySchemeTransaction>(1, tabletId);
+    auto evTx =
+        MakeHolder<TEvSchemeShard::TEvModifySchemeTransaction>(1, tabletId);
     auto transaction = evTx->Record.AddTransaction();
-    transaction->SetOperationType(NKikimrSchemeOp::EOperationType::ESchemeOpAlterSubDomain);
+    transaction->SetOperationType(
+        NKikimrSchemeOp::EOperationType::ESchemeOpAlterSubDomain);
     transaction->SetWorkingDir("/");
     auto op = transaction->MutableSubDomain();
     op->SetName(domain.Name);
 
-    for (const auto& [kind, pool] : domain.StoragePoolTypes) {
+    for (const auto& [kind, pool]: domain.StoragePoolTypes) {
         auto* p = op->AddStoragePools();
         p->SetKind(kind);
         p->SetName(pool.GetName());
     }
 
     auto sender = Runtime.AllocateEdgeActor();
-    Runtime.SendToPipe(tabletId, sender, evTx.Release(), 0, GetPipeConfigWithRetries());
+    Runtime.SendToPipe(
+        tabletId,
+        sender,
+        evTx.Release(),
+        0,
+        GetPipeConfigWithRetries());
 
     {
         TAutoPtr<IEventHandle> handle;
-        auto event = Runtime.GrabEdgeEvent<TEvSchemeShard::TEvModifySchemeTransactionResult>(handle);
+        auto event = Runtime.GrabEdgeEvent<
+            TEvSchemeShard::TEvModifySchemeTransactionResult>(handle);
         UNIT_ASSERT_VALUES_EQUAL(event->Record.GetSchemeshardId(), tabletId);
-        UNIT_ASSERT_VALUES_EQUAL(event->Record.GetStatus(), NKikimrScheme::EStatus::StatusAccepted);
+        UNIT_ASSERT_VALUES_EQUAL(
+            event->Record.GetStatus(),
+            NKikimrScheme::EStatus::StatusAccepted);
     }
 
     auto evSubscribe = MakeHolder<TEvSchemeShard::TEvNotifyTxCompletion>(1);
-    Runtime.SendToPipe(tabletId, sender, evSubscribe.Release(), 0, GetPipeConfigWithRetries());
+    Runtime.SendToPipe(
+        tabletId,
+        sender,
+        evSubscribe.Release(),
+        0,
+        GetPipeConfigWithRetries());
 
     {
         TAutoPtr<IEventHandle> handle;
-        auto event = Runtime.GrabEdgeEvent<TEvSchemeShard::TEvNotifyTxCompletionResult>(handle);
+        auto event =
+            Runtime.GrabEdgeEvent<TEvSchemeShard::TEvNotifyTxCompletionResult>(
+                handle);
         UNIT_ASSERT_VALUES_EQUAL(event->Record.GetTxId(), 1);
     }
 }
@@ -724,7 +746,9 @@ void TTestEnv::WaitForSchemeShardTx(ui64 txId)
         new TEvSchemeShard::TEvNotifyTxCompletion(txId));
 
     TAutoPtr<IEventHandle> handle;
-    auto event = Runtime.GrabEdgeEvent<TEvSchemeShard::TEvNotifyTxCompletionResult>(handle);
+    auto event =
+        Runtime.GrabEdgeEvent<TEvSchemeShard::TEvNotifyTxCompletionResult>(
+            handle);
     UNIT_ASSERT(event);
 
     ui64 eventTxId = event->Record.GetTxId();

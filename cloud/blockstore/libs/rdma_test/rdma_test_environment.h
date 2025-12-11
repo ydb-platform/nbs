@@ -32,12 +32,14 @@ public:
     std::optional<NProto::TWriteDeviceBlocksRequest> PopInterceptedRequest();
 
     // Implements IMultiAgentWriteHandler
-    NThreading::TFuture<TMultiAgentWriteDeviceBlocksResponse> PerformMultiAgentWrite(
+    NThreading::TFuture<TMultiAgentWriteDeviceBlocksResponse>
+    PerformMultiAgentWrite(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDeviceBlocksRequest> request) override;
 };
 
-using TTestMultiAgentWriteHandlerPtr = std::shared_ptr<TTestMultiAgentWriteHandler>;
+using TTestMultiAgentWriteHandlerPtr =
+    std::shared_ptr<TTestMultiAgentWriteHandler>;
 
 struct TRdmaTestEnvironment
 {
@@ -57,9 +59,8 @@ struct TRdmaTestEnvironment
     NMonitoring::TDynamicCountersPtr Counters{
         new NMonitoring::TDynamicCounters()};
 
-    ILoggingServicePtr Logging = CreateLoggingService(
-        "console",
-        TLogSettings{TLOG_RESOURCES});
+    ILoggingServicePtr Logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
 
     std::shared_ptr<TDeviceClient> DeviceClient;
 

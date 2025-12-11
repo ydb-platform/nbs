@@ -8,11 +8,11 @@
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/viewer/tablet_monitoring.h>
 
+#include <contrib/ydb/library/actors/protos/actors.pb.h>
+
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/protobuf/util/is_equal.h>
 #include <library/cpp/protobuf/util/pb_io.h>
-
-#include <contrib/ydb/library/actors/protos/actors.pb.h>
 
 #include <util/generic/xrange.h>
 #include <util/stream/str.h>
@@ -45,7 +45,7 @@ TCgiParameters GatherHttpParameters(const TEvRemoteHttpInfo& msg)
     if (const auto& ext = msg.ExtendedQuery;
         ext && ext->GetMethod() == HTTP_METHOD_POST)
     {
-        for (const auto& param : ext->GetPostParams()) {
+        for (const auto& param: ext->GetPostParams()) {
             params.emplace(param.GetKey(), param.GetValue());
         }
     }
@@ -63,12 +63,12 @@ TCgiParameters GatherHttpParameters(const TEvRemoteHttpInfo& msg)
     if (const auto& ext = msg.ExtendedQuery;
         ext && ext->GetMethod() == HTTP_METHOD_POST)
     {
-        for (const auto& param : ext->GetPostParams()) {
+        for (const auto& param: ext->GetPostParams()) {
             params.emplace(param.GetKey(), param.GetValue());
         }
     }
 
-   return params;
+    return params;
 }
 
 HTTP_METHOD GetHttpMethodType(const NActors::NMon::TEvRemoteHttpInfo& msg)
@@ -141,9 +141,8 @@ void BuildTabletNotifyPageWithRedirect(
 void BuildMenuButton(IOutputStream& out, const TString& menuItems)
 {
     out << "<span class='glyphicon glyphicon-list'"
-        << " data-toggle='collapse' data-target='#"
-        << menuItems << "' style='padding-right: 5px'>"
-        << "</span>";
+        << " data-toggle='collapse' data-target='#" << menuItems
+        << "' style='padding-right: 5px'>" << "</span>";
 }
 
 void SendHttpResponse(
@@ -155,8 +154,10 @@ void SendHttpResponse(
 {
     TStringStream out;
     BuildTabletNotifyPageWithRedirect(out, message, tablet, alertLevel);
-    NCloud::Reply(ctx, requestInfo, std::make_unique<NMon::TEvRemoteHttpInfoRes>(
-        std::move(out.Str())));
+    NCloud::Reply(
+        ctx,
+        requestInfo,
+        std::make_unique<NMon::TEvRemoteHttpInfoRes>(std::move(out.Str())));
 }
 
 void RejectHttpRequest(
@@ -166,7 +167,12 @@ void RejectHttpRequest(
     TString message)
 {
     LOG_ERROR_S(ctx, TFileStoreComponents::TABLET, message);
-    SendHttpResponse(ctx, tablet, requestInfo, std::move(message), EAlertLevel::DANGER);
+    SendHttpResponse(
+        ctx,
+        tablet,
+        requestInfo,
+        std::move(message),
+        EAlertLevel::DANGER);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -220,12 +226,14 @@ void BuildConfirmActionDialog(
 
 void BuildForceCompactionButton(IOutputStream& out, ui64 tabletId)
 {
-    out << "<p><a href='' data-toggle='modal' data-target='#force-compaction'>Force Full Compaction</a></p>"
+    out << "<p><a href='' data-toggle='modal' "
+           "data-target='#force-compaction'>Force Full Compaction</a></p>"
         << "<form method='POST' name='ForceCompaction' style='display:none'>"
         << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
         << "<input type='hidden' name='action' value='forceOperationAll'/>"
         << "<input type='hidden' name='mode' value='compaction'/>"
-        << "<input class='btn btn-primary' type='button' value='Compact ALL ranges'"
+        << "<input class='btn btn-primary' type='button' value='Compact ALL "
+           "ranges'"
         << " data-toggle='modal' data-target='#force-compaction'/>"
         << "</form>";
 
@@ -244,8 +252,7 @@ void BuildForceCompactionButton(IOutputStream& out, ui64 tabletId)
         << "<input type='hidden' name='mode' value='cleanup'/>"
         << "<input class='btn btn-primary' type='button' value='Cleanup ALL "
            "ranges'"
-        << " data-toggle='modal' data-target='#force-cleanup'/>"
-        << "</form>";
+        << " data-toggle='modal' data-target='#force-cleanup'/>" << "</form>";
 
     BuildConfirmActionDialog(
         out,
@@ -255,14 +262,18 @@ void BuildForceCompactionButton(IOutputStream& out, ui64 tabletId)
         "forceCleanupAll();");
 
     out << "<p><a href='' data-toggle='modal' "
-           "data-target='#force-delete-zero-compaction-ranges'>Force Delete zero compaction ranges</a></p>"
-        << "<form method='POST' name='ForceDeleteZeroCompactionRanges' style='display:none'>"
+           "data-target='#force-delete-zero-compaction-ranges'>Force Delete "
+           "zero compaction ranges</a></p>"
+        << "<form method='POST' name='ForceDeleteZeroCompactionRanges' "
+           "style='display:none'>"
         << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
         << "<input type='hidden' name='action' value='forceOperationAll'/>"
-        << "<input type='hidden' name='mode' value='deleteZeroCompactionRanges'/>"
+        << "<input type='hidden' name='mode' "
+           "value='deleteZeroCompactionRanges'/>"
         << "<input class='btn btn-primary' type='button' value='Delete zero "
            "compaction ranges'"
-        << " data-toggle='modal' data-target='#force-delete-zero-compaction-ranges'/>"
+        << " data-toggle='modal' "
+           "data-target='#force-delete-zero-compaction-ranges'/>"
         << "</form>";
 
     BuildConfirmActionDialog(
@@ -277,14 +288,14 @@ void BuildForceCompactionButton(IOutputStream& out, ui64 tabletId)
 
 void DumpProgress(IOutputStream& out, ui64 progress, ui64 total)
 {
-    HTML(out) {
-        DIV_CLASS("progress") {
+    HTML (out) {
+        DIV_CLASS ("progress") {
             ui32 percents = (progress * 100 / total);
-            out << "<div class='progress-bar' role='progressbar' aria-valuemin='0'"
-                << " style='width: " << percents << "%'"
-                << " aria-valuenow='" << progress
-                << "' aria-valuemax='" << total << "'>"
-                << percents << "%</div>";
+            out << "<div class='progress-bar' role='progressbar' "
+                   "aria-valuemin='0'"
+                << " style='width: " << percents << "%'" << " aria-valuenow='"
+                << progress << "' aria-valuemax='" << total << "'>" << percents
+                << "%</div>";
         }
         out << progress << " of " << total;
     }
@@ -292,31 +303,25 @@ void DumpProgress(IOutputStream& out, ui64 progress, ui64 total)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void DumpDefaultHeader(
-    IOutputStream& out,
-    ui64 tabletId,
-    ui32 nodeId)
+void DumpDefaultHeader(IOutputStream& out, ui64 tabletId, ui32 nodeId)
 {
     TString hostname = HostName();
 
-    HTML(out) {
-        TAG(TH3) {
-            out << "Tablet <a href='../tablets?TabletID=" << tabletId
-                << "'>" << tabletId << "</a>"
-                << " running on node " << hostname << "[" << nodeId << "]"
-                ;
+    HTML (out) {
+        TAG (TH3) {
+            out << "Tablet <a href='../tablets?TabletID=" << tabletId << "'>"
+                << tabletId << "</a>" << " running on node " << hostname << "["
+                << nodeId << "]";
         }
     }
 }
 
-void DumpTabletNotReady(
-    IOutputStream& out,
-    const TTabletStorageInfo& storage)
+void DumpTabletNotReady(IOutputStream& out, const TTabletStorageInfo& storage)
 {
-    HTML(out) {
-        TAG(TH3) {
-            out << "Tablet <a href='../tablets?TabletID="
-                << storage.TabletID << "</a> not ready yet";
+    HTML (out) {
+        TAG (TH3) {
+            out << "Tablet <a href='../tablets?TabletID=" << storage.TabletID
+                << "</a> not ready yet";
         }
     }
 }
@@ -328,8 +333,7 @@ void DumpOperationState(
     const TOperationState& state,
     IOutputStream& out)
 {
-    out << opName
-        << " state: " << static_cast<ui32>(state.GetOperationState())
+    out << opName << " state: " << static_cast<ui32>(state.GetOperationState())
         << ", Timestamp: " << state.GetStateChanged()
         << ", Completed: " << state.GetCompleted()
         << ", Failed: " << state.GetFailed()
@@ -347,11 +351,11 @@ void DumpCompactionInfo(
 
 void DumpRangeId(IOutputStream& out, ui64 tabletId, ui32 rangeId)
 {
-    HTML(out) {
-        DIV_CLASS("col-lg-9") {
+    HTML (out) {
+        DIV_CLASS ("col-lg-9") {
             out << "<a href='../tablets/app?TabletID=" << tabletId
-                << "&action=dumpRange&rangeId=" << rangeId
-                << "'>" << rangeId << "</a>";
+                << "&action=dumpRange&rangeId=" << rangeId << "'>" << rangeId
+                << "</a>";
         }
     }
 }
@@ -361,21 +365,34 @@ void DumpCompactionRangeInfo(
     ui64 tabletId,
     const TVector<TCompactionRangeInfo>& ranges)
 {
-    HTML(out) {
-        TABLE_SORTABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Range"; }
-                    TABLEH() { out << "Blobs"; }
-                    TABLEH() { out << "Deletions"; }
+    HTML (out) {
+        TABLE_SORTABLE_CLASS("table table-bordered")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Range";
+                    }
+                    TABLEH () {
+                        out << "Blobs";
+                    }
+                    TABLEH () {
+                        out << "Deletions";
+                    }
                 }
             }
 
             for (const auto& range: ranges) {
-                TABLER() {
-                    TABLED() { DumpRangeId(out, tabletId, range.RangeId); }
-                    TABLED() { out << range.Stats.BlobsCount; }
-                    TABLED() { out << range.Stats.DeletionsCount; }
+                TABLER () {
+                    TABLED () {
+                        DumpRangeId(out, tabletId, range.RangeId);
+                    }
+                    TABLED () {
+                        out << range.Stats.BlobsCount;
+                    }
+                    TABLED () {
+                        out << range.Stats.DeletionsCount;
+                    }
                 }
             }
         }
@@ -387,47 +404,63 @@ void DumpCompactionMap(
     ui64 tabletId,
     const TCompactionMapStats& stats)
 {
-    HTML(out) {
-        TABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Used ranges count"; }
-                    TABLEH() { out << "Allocated ranges count"; }
-                    TABLEH() { out << "Compaction map density"; }
+    HTML (out) {
+        TABLE_CLASS ("table table-bordered") {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Used ranges count";
+                    }
+                    TABLEH () {
+                        out << "Allocated ranges count";
+                    }
+                    TABLEH () {
+                        out << "Compaction map density";
+                    }
                 }
             }
 
-            TABLER() {
-                TABLED() { out << stats.UsedRangesCount; }
-                TABLED() { out << stats.AllocatedRangesCount; }
-                TABLED() {
-                    DIV_CLASS("progress") {
+            TABLER () {
+                TABLED () {
+                    out << stats.UsedRangesCount;
+                }
+                TABLED () {
+                    out << stats.AllocatedRangesCount;
+                }
+                TABLED () {
+                    DIV_CLASS ("progress") {
                         ui32 percents = 0;
                         if (stats.AllocatedRangesCount) {
-                            percents = (stats.UsedRangesCount * 100 / stats.AllocatedRangesCount);
+                            percents =
+                                (stats.UsedRangesCount * 100 /
+                                 stats.AllocatedRangesCount);
                         }
 
-                        out << "<div class='progress-bar' role='progressbar' aria-valuemin='0'"
+                        out << "<div class='progress-bar' role='progressbar' "
+                               "aria-valuemin='0'"
                             << " style='width: " << percents << "%'"
                             << " aria-valuenow='" << stats.UsedRangesCount
-                            << "' aria-valuemax='" << stats.AllocatedRangesCount << "'>"
-                            << percents << "%</div>";
+                            << "' aria-valuemax='" << stats.AllocatedRangesCount
+                            << "'>" << percents << "%</div>";
                     }
                 }
             }
         }
 
-        TAG(TH4) {
+        TAG (TH4) {
             out << "Top ranges by compaction score";
         }
-        DumpCompactionRangeInfo(out, tabletId, stats.TopRangesByCompactionScore);
+        DumpCompactionRangeInfo(
+            out,
+            tabletId,
+            stats.TopRangesByCompactionScore);
 
-        TAG(TH4) {
+        TAG (TH4) {
             out << "Top ranges by cleanup score";
         }
         DumpCompactionRangeInfo(out, tabletId, stats.TopRangesByCleanupScore);
 
-        TAG(TH4) {
+        TAG (TH4) {
             out << "Top ranges by garbage score";
         }
         DumpCompactionRangeInfo(out, tabletId, stats.TopRangesByGarbageScore);
@@ -440,22 +473,33 @@ void DumpProfillingAllocatorStats(
     const TFileStoreAllocRegistry& registry,
     IOutputStream& out)
 {
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
+    HTML (out) {
+        TABLE_CLASS ("table table-condensed") {
+            TABLEBODY()
+            {
                 ui64 allBytes = 0;
-                for (ui32 i = 0; i < static_cast<ui32>(EAllocatorTag::Max); ++i) {
+                for (ui32 i = 0; i < static_cast<ui32>(EAllocatorTag::Max); ++i)
+                {
                     EAllocatorTag tag = static_cast<EAllocatorTag>(i);
-                    const ui64 bytes = registry.GetAllocator(tag)->GetBytesAllocated();
-                    TABLER() {
-                        TABLED() { out << tag; }
-                        TABLED() { out << FormatByteSize(bytes); }
+                    const ui64 bytes =
+                        registry.GetAllocator(tag)->GetBytesAllocated();
+                    TABLER () {
+                        TABLED () {
+                            out << tag;
+                        }
+                        TABLED () {
+                            out << FormatByteSize(bytes);
+                        }
                     }
                     allBytes += bytes;
                 }
-                TABLER() {
-                    TABLED() { out << "Summary"; }
-                    TABLED() { out << FormatByteSize(allBytes); }
+                TABLER () {
+                    TABLED () {
+                        out << "Summary";
+                    }
+                    TABLED () {
+                        out << FormatByteSize(allBytes);
+                    }
                 }
             }
         }
@@ -469,68 +513,129 @@ void DumpPerformanceProfile(
     const NProto::TFileStorePerformanceProfile& profile,
     IOutputStream& out)
 {
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                TABLER() {
-                    TABLED() { out << "StorageThrottlingEnabled"; }
-                    TABLED() { out << storageThrottlingEnabled; }
+    HTML (out) {
+        TABLE_CLASS ("table table-condensed") {
+            TABLEBODY()
+            {
+                TABLER () {
+                    TABLED () {
+                        out << "StorageThrottlingEnabled";
+                    }
+                    TABLED () {
+                        out << storageThrottlingEnabled;
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "ThrottlingEnabled"; }
-                    TABLED() { out << profile.GetThrottlingEnabled(); }
+                TABLER () {
+                    TABLED () {
+                        out << "ThrottlingEnabled";
+                    }
+                    TABLED () {
+                        out << profile.GetThrottlingEnabled();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "MaxReadIops"; }
-                    TABLED() { out << profile.GetMaxReadIops(); }
+                TABLER () {
+                    TABLED () {
+                        out << "MaxReadIops";
+                    }
+                    TABLED () {
+                        out << profile.GetMaxReadIops();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "MaxWriteIops"; }
-                    TABLED() { out << profile.GetMaxWriteIops(); }
+                TABLER () {
+                    TABLED () {
+                        out << "MaxWriteIops";
+                    }
+                    TABLED () {
+                        out << profile.GetMaxWriteIops();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "MaxReadBandwidth"; }
-                    TABLED() { out << profile.GetMaxReadBandwidth(); }
+                TABLER () {
+                    TABLED () {
+                        out << "MaxReadBandwidth";
+                    }
+                    TABLED () {
+                        out << profile.GetMaxReadBandwidth();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "MaxWriteBandwidth"; }
-                    TABLED() { out << profile.GetMaxWriteBandwidth(); }
+                TABLER () {
+                    TABLED () {
+                        out << "MaxWriteBandwidth";
+                    }
+                    TABLED () {
+                        out << profile.GetMaxWriteBandwidth();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "BoostTime"; }
-                    TABLED() { out << profile.GetBoostTime(); }
+                TABLER () {
+                    TABLED () {
+                        out << "BoostTime";
+                    }
+                    TABLED () {
+                        out << profile.GetBoostTime();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "BoostRefillTime"; }
-                    TABLED() { out << profile.GetBoostRefillTime(); }
+                TABLER () {
+                    TABLED () {
+                        out << "BoostRefillTime";
+                    }
+                    TABLED () {
+                        out << profile.GetBoostRefillTime();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "BoostPercentage"; }
-                    TABLED() { out << profile.GetBoostPercentage(); }
+                TABLER () {
+                    TABLED () {
+                        out << "BoostPercentage";
+                    }
+                    TABLED () {
+                        out << profile.GetBoostPercentage();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "BurstPercentage"; }
-                    TABLED() { out << profile.GetBurstPercentage(); }
+                TABLER () {
+                    TABLED () {
+                        out << "BurstPercentage";
+                    }
+                    TABLED () {
+                        out << profile.GetBurstPercentage();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "DefaultPostponedRequestWeight"; }
-                    TABLED() { out << profile.GetDefaultPostponedRequestWeight(); }
+                TABLER () {
+                    TABLED () {
+                        out << "DefaultPostponedRequestWeight";
+                    }
+                    TABLED () {
+                        out << profile.GetDefaultPostponedRequestWeight();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "MaxPostponedWeight"; }
-                    TABLED() { out << profile.GetMaxPostponedWeight(); }
+                TABLER () {
+                    TABLED () {
+                        out << "MaxPostponedWeight";
+                    }
+                    TABLED () {
+                        out << profile.GetMaxPostponedWeight();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "MaxWriteCostMultiplier"; }
-                    TABLED() { out << profile.GetMaxWriteCostMultiplier(); }
+                TABLER () {
+                    TABLED () {
+                        out << "MaxWriteCostMultiplier";
+                    }
+                    TABLED () {
+                        out << profile.GetMaxWriteCostMultiplier();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "MaxPostponedTime"; }
-                    TABLED() { out << profile.GetMaxPostponedTime(); }
+                TABLER () {
+                    TABLED () {
+                        out << "MaxPostponedTime";
+                    }
+                    TABLED () {
+                        out << profile.GetMaxPostponedTime();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "MaxPostponedCount"; }
-                    TABLED() { out << profile.GetMaxPostponedCount(); }
+                TABLER () {
+                    TABLED () {
+                        out << "MaxPostponedCount";
+                    }
+                    TABLED () {
+                        out << profile.GetMaxPostponedCount();
+                    }
                 }
             }
         }
@@ -545,119 +650,219 @@ void DumpThrottlingState(
     IOutputStream& out)
 {
     const auto& config = policy.GetConfig();
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                TABLER() {
-                    TABLED() { out << "Throttling enabled"; }
-                    TABLED() { out << config.ThrottlingEnabled; }
+    HTML (out) {
+        TABLE_CLASS ("table table-condensed") {
+            TABLEBODY()
+            {
+                TABLER () {
+                    TABLED () {
+                        out << "Throttling enabled";
+                    }
+                    TABLED () {
+                        out << config.ThrottlingEnabled;
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "Config version"; }
-                    TABLED() { out << policy.GetVersion(); }
+                TABLER () {
+                    TABLED () {
+                        out << "Config version";
+                    }
+                    TABLED () {
+                        out << policy.GetVersion();
+                    }
                 }
                 {
                     // Default parameters.
                     const auto& p = config.DefaultParameters;
-                    TABLER() {
-                        TABLED() { out << "MaxReadIops"; }
-                        TABLED() { out << p.MaxReadIops; }
+                    TABLER () {
+                        TABLED () {
+                            out << "MaxReadIops";
+                        }
+                        TABLED () {
+                            out << p.MaxReadIops;
+                        }
                     }
-                    TABLER() {
-                        TABLED() { out << "MaxWriteIops"; }
-                        TABLED() { out << p.MaxWriteIops; }
+                    TABLER () {
+                        TABLED () {
+                            out << "MaxWriteIops";
+                        }
+                        TABLED () {
+                            out << p.MaxWriteIops;
+                        }
                     }
-                    TABLER() {
-                        TABLED() { out << "MaxReadBandwidth"; }
-                        TABLED() { out << p.MaxReadBandwidth; }
+                    TABLER () {
+                        TABLED () {
+                            out << "MaxReadBandwidth";
+                        }
+                        TABLED () {
+                            out << p.MaxReadBandwidth;
+                        }
                     }
-                    TABLER() {
-                        TABLED() { out << "MaxWriteBandwidth"; }
-                        TABLED() { out << p.MaxWriteBandwidth; }
+                    TABLER () {
+                        TABLED () {
+                            out << "MaxWriteBandwidth";
+                        }
+                        TABLED () {
+                            out << p.MaxWriteBandwidth;
+                        }
                     }
                 }
                 {
                     // Boost parameters.
                     const auto& p = config.BoostParameters;
-                    TABLER() {
-                        TABLED() { out << "BoostTime"; }
-                        TABLED() { out << p.BoostTime.MilliSeconds(); }
+                    TABLER () {
+                        TABLED () {
+                            out << "BoostTime";
+                        }
+                        TABLED () {
+                            out << p.BoostTime.MilliSeconds();
+                        }
                     }
-                    TABLER() {
-                        TABLED() { out << "BoostRefillTime"; }
-                        TABLED() { out << p.BoostRefillTime.MilliSeconds(); }
+                    TABLER () {
+                        TABLED () {
+                            out << "BoostRefillTime";
+                        }
+                        TABLED () {
+                            out << p.BoostRefillTime.MilliSeconds();
+                        }
                     }
-                    TABLER() {
-                        TABLED() { out << "BoostPercentage"; }
-                        TABLED() { out << p.BoostPercentage; }
+                    TABLER () {
+                        TABLED () {
+                            out << "BoostPercentage";
+                        }
+                        TABLED () {
+                            out << p.BoostPercentage;
+                        }
                     }
                 }
-                TABLER() {
-                    TABLED() { out << "BurstPercentage"; }
-                    TABLED() { out << config.BurstPercentage; }
+                TABLER () {
+                    TABLED () {
+                        out << "BurstPercentage";
+                    }
+                    TABLED () {
+                        out << config.BurstPercentage;
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "DefaultPostponedRequestWeight"; }
-                    TABLED() { out << config.DefaultPostponedRequestWeight; }
+                TABLER () {
+                    TABLED () {
+                        out << "DefaultPostponedRequestWeight";
+                    }
+                    TABLED () {
+                        out << config.DefaultPostponedRequestWeight;
+                    }
                 }
                 {
                     // Default limits.
                     const auto& l = config.DefaultThresholds;
-                    TABLER() {
-                        TABLED() { out << "MaxPostponedWeight"; }
-                        TABLED() { out << l.MaxPostponedWeight; }
+                    TABLER () {
+                        TABLED () {
+                            out << "MaxPostponedWeight";
+                        }
+                        TABLED () {
+                            out << l.MaxPostponedWeight;
+                        }
                     }
-                    TABLER() {
-                        TABLED() { out << "MaxWriteCostMultiplier"; }
-                        TABLED() { out << l.MaxWriteCostMultiplier; }
+                    TABLER () {
+                        TABLED () {
+                            out << "MaxWriteCostMultiplier";
+                        }
+                        TABLED () {
+                            out << l.MaxWriteCostMultiplier;
+                        }
                     }
-                    TABLER() {
-                        TABLED() { out << "MaxPostponedTime"; }
-                        TABLED() { out << l.MaxPostponedTime.MilliSeconds(); }
+                    TABLER () {
+                        TABLED () {
+                            out << "MaxPostponedTime";
+                        }
+                        TABLED () {
+                            out << l.MaxPostponedTime.MilliSeconds();
+                        }
                     }
-                    TABLER() {
-                        TABLED() { out << "MaxPostponedCount"; }
-                        TABLED() { out << l.MaxPostponedCount; }
+                    TABLER () {
+                        TABLED () {
+                            out << "MaxPostponedCount";
+                        }
+                        TABLED () {
+                            out << l.MaxPostponedCount;
+                        }
                     }
                 }
                 if (throttler) {
-                    TABLER() {
-                        TABLED() { out << "PostponedQueueSize"; }
-                        TABLED() { out << throttler->GetPostponedRequestsCount(); }
+                    TABLER () {
+                        TABLED () {
+                            out << "PostponedQueueSize";
+                        }
+                        TABLED () {
+                            out << throttler->GetPostponedRequestsCount();
+                        }
                     }
                 }
-                TABLER() {
-                    TABLED() { out << "PostponedQueueWeight"; }
-                    TABLED() { out << policy.CalculatePostponedWeight(); }
+                TABLER () {
+                    TABLED () {
+                        out << "PostponedQueueWeight";
+                    }
+                    TABLED () {
+                        out << policy.CalculatePostponedWeight();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "WriteCostMultiplier"; }
-                    TABLED() { out << policy.GetWriteCostMultiplier(); }
+                TABLER () {
+                    TABLED () {
+                        out << "WriteCostMultiplier";
+                    }
+                    TABLED () {
+                        out << policy.GetWriteCostMultiplier();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "CurrentBoostBudget"; }
-                    TABLED() { out << policy.GetCurrentBoostBudget(); }
+                TABLER () {
+                    TABLED () {
+                        out << "CurrentBoostBudget";
+                    }
+                    TABLED () {
+                        out << policy.GetCurrentBoostBudget();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "ThrottlerParams"; }
-                    TABLED() {
-                        TABLE_CLASS("table table-condensed") {
-                            TABLEBODY() {
-                                TABLER() {
-                                    TABLED() { out << "ReadC1"; }
-                                    TABLED() { out << policy.C1(TThrottlingPolicy::EOpType::Read); }
+                TABLER () {
+                    TABLED () {
+                        out << "ThrottlerParams";
+                    }
+                    TABLED () {
+                        TABLE_CLASS ("table table-condensed") {
+                            TABLEBODY()
+                            {
+                                TABLER () {
+                                    TABLED () {
+                                        out << "ReadC1";
+                                    }
+                                    TABLED () {
+                                        out << policy.C1(
+                                            TThrottlingPolicy::EOpType::Read);
+                                    }
                                 }
-                                TABLER() {
-                                    TABLED() { out << "ReadC2"; }
-                                    TABLED() { out << FormatByteSize(policy.C2(TThrottlingPolicy::EOpType::Read)); }
+                                TABLER () {
+                                    TABLED () {
+                                        out << "ReadC2";
+                                    }
+                                    TABLED () {
+                                        out << FormatByteSize(policy.C2(
+                                            TThrottlingPolicy::EOpType::Read));
+                                    }
                                 }
-                                TABLER() {
-                                    TABLED() { out << "WriteC1"; }
-                                    TABLED() { out << policy.C1(TThrottlingPolicy::EOpType::Write); }
+                                TABLER () {
+                                    TABLED () {
+                                        out << "WriteC1";
+                                    }
+                                    TABLED () {
+                                        out << policy.C1(
+                                            TThrottlingPolicy::EOpType::Write);
+                                    }
                                 }
-                                TABLER() {
-                                    TABLED() { out << "WriteC2"; }
-                                    TABLED() { out << FormatByteSize(policy.C2(TThrottlingPolicy::EOpType::Write)); }
+                                TABLER () {
+                                    TABLED () {
+                                        out << "WriteC2";
+                                    }
+                                    TABLED () {
+                                        out << FormatByteSize(policy.C2(
+                                            TThrottlingPolicy::EOpType::Write));
+                                    }
                                 }
                             }
                         }
@@ -678,30 +883,48 @@ void DumpSessionHistory(
     const TSessionHistoryList& sessionHistory,
     size_t limit = 100)
 {
-    HTML(out) {
-        TABLE_SORTABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "ClientId";}
-                    TABLEH() { out << "FQDN"; }
-                    TABLEH() { out << "Timestamp"; }
-                    TABLEH() { out << "SessionId"; }
-                    TABLEH() { out << "ActionType"; }
+    HTML (out) {
+        TABLE_SORTABLE_CLASS("table table-bordered")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "ClientId";
+                    }
+                    TABLEH () {
+                        out << "FQDN";
+                    }
+                    TABLEH () {
+                        out << "Timestamp";
+                    }
+                    TABLEH () {
+                        out << "SessionId";
+                    }
+                    TABLEH () {
+                        out << "ActionType";
+                    }
                 }
             }
             for (auto it = sessionHistory.rbegin();
                  it != sessionHistory.rend() && limit;
                  ++it, --limit)
             {
-                TABLER() {
-                    TABLED() { out << it->GetClientId(); }
-                    TABLED()
-                    {
+                TABLER () {
+                    TABLED () {
+                        out << it->GetClientId();
+                    }
+                    TABLED () {
                         out << it->GetOriginFqdn();
                     }
-                    TABLED() { out << TInstant::MicroSeconds(it->GetTimestampUs()); }
-                    TABLED() { out << it->GetSessionId(); }
-                    TABLED() { out << it->GetEntryTypeString(); }
+                    TABLED () {
+                        out << TInstant::MicroSeconds(it->GetTimestampUs());
+                    }
+                    TABLED () {
+                        out << it->GetSessionId();
+                    }
+                    TABLED () {
+                        out << it->GetEntryTypeString();
+                    }
                 }
             }
         }
@@ -718,18 +941,35 @@ void DumpSessions(
     const TVector<TMonSessionInfo>& sessions,
     bool dumpSessionRegardlessOfSubSessions)
 {
-    HTML(out) {
-        TABLE_SORTABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "ClientId";}
-                    TABLEH() { out << "FQDN";}
-                    TABLEH() { out << "SessionId"; }
-                    TABLEH() { out << "Recovery"; }
-                    TABLEH() { out << "SeqNo"; }
-                    TABLEH() { out << "ReadOnly"; }
-                    TABLEH() { out << "Owner"; }
-                    TABLEH() { out << "Deadline"; }
+    HTML (out) {
+        TABLE_SORTABLE_CLASS("table table-bordered")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "ClientId";
+                    }
+                    TABLEH () {
+                        out << "FQDN";
+                    }
+                    TABLEH () {
+                        out << "SessionId";
+                    }
+                    TABLEH () {
+                        out << "Recovery";
+                    }
+                    TABLEH () {
+                        out << "SeqNo";
+                    }
+                    TABLEH () {
+                        out << "ReadOnly";
+                    }
+                    TABLEH () {
+                        out << "Owner";
+                    }
+                    TABLEH () {
+                        out << "Deadline";
+                    }
                 }
             }
             for (const auto& session: sessions) {
@@ -739,19 +979,37 @@ void DumpSessions(
                 auto dumpSubSession =
                     [&](IOutputStream& out, const TSubSession& ss)
                 {
-                    TABLER() {
-                        TABLED() { out << session.ProtoInfo.GetClientId(); }
-                        TABLED() { out << session.ProtoInfo.GetOriginFqdn(); }
-                        TABLED() { out << session.ProtoInfo.GetSessionId(); }
-                        if (recoveryTimestamp) {
-                            TABLED() { out << recoveryTimestamp; }
-                        } else {
-                            TABLED() { out << ""; }
+                    TABLER () {
+                        TABLED () {
+                            out << session.ProtoInfo.GetClientId();
                         }
-                        TABLED() { out << ss.SeqNo; }
-                        TABLED() { out << (ss.ReadOnly ? "True" : "False"); }
-                        TABLED() { out << ToString(ss.Owner); }
-                        TABLED() { out << session.InactivityDeadline.ToString(); }
+                        TABLED () {
+                            out << session.ProtoInfo.GetOriginFqdn();
+                        }
+                        TABLED () {
+                            out << session.ProtoInfo.GetSessionId();
+                        }
+                        if (recoveryTimestamp) {
+                            TABLED () {
+                                out << recoveryTimestamp;
+                            }
+                        } else {
+                            TABLED () {
+                                out << "";
+                            }
+                        }
+                        TABLED () {
+                            out << ss.SeqNo;
+                        }
+                        TABLED () {
+                            out << (ss.ReadOnly ? "True" : "False");
+                        }
+                        TABLED () {
+                            out << ToString(ss.Owner);
+                        }
+                        TABLED () {
+                            out << session.InactivityDeadline.ToString();
+                        }
                     }
                 };
                 if (session.SubSessions.empty()) {
@@ -780,19 +1038,22 @@ void DumpChannels(
         out,
         channelInfos,
         storage,
-        [&] (ui32 groupId, const TString& storagePool, const TString& dataKind) {
+        [&](ui32 groupId, const TString& storagePool, const TString& dataKind)
+        {
             // TODO: group mon url
             Y_UNUSED(groupId);
             Y_UNUSED(storagePool);
             Y_UNUSED(dataKind);
             return TString();
         },
-        [&] (ui32 groupId) {
+        [&](ui32 groupId)
+        {
             // TODO: dashboard url
             Y_UNUSED(groupId);
             return TString();
         },
-        [&] (IOutputStream& out, ui64 hiveTabletId, ui64 tabletId, ui32 c) {
+        [&](IOutputStream& out, ui64 hiveTabletId, ui64 tabletId, ui32 c)
+        {
             // TODO: reassign button
             Y_UNUSED(out);
             Y_UNUSED(hiveTabletId);
@@ -846,10 +1107,10 @@ struct TIndexTabletMonitoringActor
     std::unique_ptr<T> Request;
 
     TIndexTabletMonitoringActor(
-            TRequestInfoPtr requestInfo,
-            TActorId owner,
-            ui64 tablet,
-            std::unique_ptr<T> request)
+        TRequestInfoPtr requestInfo,
+        TActorId owner,
+        ui64 tablet,
+        std::unique_ptr<T> request)
         : RequestInfo(std::move(requestInfo))
         , Owner(owner)
         , TabletId(tablet)
@@ -865,7 +1126,9 @@ struct TIndexTabletMonitoringActor
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
-            HFunc(TEvIndexTabletPrivate::TEvDumpCompactionRangeResponse, HandleDumpCompactionRange);
+            HFunc(
+                TEvIndexTabletPrivate::TEvDumpCompactionRangeResponse,
+                HandleDumpCompactionRange);
 
             HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
@@ -893,28 +1156,52 @@ struct TIndexTabletMonitoringActor
         IOutputStream& out,
         const TEvIndexTabletPrivate::TEvDumpCompactionRangeResponse& msg)
     {
-        HTML(out) {
+        HTML (out) {
             DumpDefaultHeader(out, TabletId, Owner.NodeId());
-            TAG(TH3) { out << "RangeId: " << msg.RangeId; }
-            TABLE_SORTABLE() {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLED() { out << "# NodeId"; }
-                        TABLED() { out << "BlockIndex"; }
-                        TABLED() { out << "BlobId"; }
-                        TABLED() { out << "MinCommitId"; }
-                        TABLED() { out << "MaxCommitId"; }
+            TAG (TH3) {
+                out << "RangeId: " << msg.RangeId;
+            }
+            TABLE_SORTABLE()
+            {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLED () {
+                            out << "# NodeId";
+                        }
+                        TABLED () {
+                            out << "BlockIndex";
+                        }
+                        TABLED () {
+                            out << "BlobId";
+                        }
+                        TABLED () {
+                            out << "MinCommitId";
+                        }
+                        TABLED () {
+                            out << "MaxCommitId";
+                        }
                     }
                 }
-                TABLEBODY() {
+                TABLEBODY()
+                {
                     for (const auto& blob: msg.Blobs) {
                         for (const auto& block: blob.Blocks) {
-                            TABLER() {
-                                TABLED() { out << block.NodeId; }
-                                TABLED() { out << block.BlockIndex; }
-                                TABLED() { out << blob.BlobId; }
-                                TABLED() { out << block.MinCommitId; }
-                                TABLED() { out << block.MaxCommitId; }
+                            TABLER () {
+                                TABLED () {
+                                    out << block.NodeId;
+                                }
+                                TABLED () {
+                                    out << block.BlockIndex;
+                                }
+                                TABLED () {
+                                    out << blob.BlobId;
+                                }
+                                TABLED () {
+                                    out << block.MinCommitId;
+                                }
+                                TABLED () {
+                                    out << block.MaxCommitId;
+                                }
                             }
                         }
                     }
@@ -966,7 +1253,7 @@ struct TIndexTabletMonitoringActor
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -974,7 +1261,7 @@ void TIndexTabletActor::HandleHttpInfo(
     const NMon::TEvRemoteHttpInfo::TPtr& ev,
     const TActorContext& ctx)
 {
-    using THttpHandler = void(TIndexTabletActor::*)(
+    using THttpHandler = void (TIndexTabletActor::*)(
         const NActors::TActorContext&,
         const TCgiParameters&,
         TRequestInfoPtr);
@@ -986,12 +1273,14 @@ void TIndexTabletActor::HandleHttpInfo(
          &TIndexTabletActor::HandleHttpInfo_ForceOperation},
     }};
 
-    static const THttpHandlers getActions {{
-        {"dumpRange",       &TIndexTabletActor::HandleHttpInfo_DumpCompactionRange },
+    static const THttpHandlers getActions{{
+        {"dumpRange", &TIndexTabletActor::HandleHttpInfo_DumpCompactionRange},
     }};
 
     const auto* msg = ev->Get();
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s HTTP request: %s",
         LogTag.c_str(),
         msg->Query.Quote().c_str());
@@ -1009,7 +1298,11 @@ void TIndexTabletActor::HandleHttpInfo(
 
         if (auto* handler = postActions.FindPtr(action)) {
             if (methodType != HTTP_METHOD_POST) {
-                RejectHttpRequest(ctx, TabletID(), *requestInfo, "Wrong HTTP method");
+                RejectHttpRequest(
+                    ctx,
+                    TabletID(),
+                    *requestInfo,
+                    "Wrong HTTP method");
                 return;
             }
 
@@ -1019,7 +1312,11 @@ void TIndexTabletActor::HandleHttpInfo(
 
         if (auto* handler = getActions.FindPtr(action)) {
             if (methodType != HTTP_METHOD_GET) {
-                RejectHttpRequest(ctx, TabletID(), *requestInfo, "Wrong HTTP method");
+                RejectHttpRequest(
+                    ctx,
+                    TabletID(),
+                    *requestInfo,
+                    "Wrong HTTP method");
                 return;
             }
 
@@ -1028,7 +1325,11 @@ void TIndexTabletActor::HandleHttpInfo(
         }
 
         if (action) {
-            RejectHttpRequest(ctx, TabletID(), *requestInfo, "Wrong action: " + action);
+            RejectHttpRequest(
+                ctx,
+                TabletID(),
+                *requestInfo,
+                "Wrong action: " + action);
             return;
         }
 
@@ -1052,29 +1353,53 @@ void TIndexTabletActor::HandleHttpInfo_Default(
 {
     TStringStream out;
 
-    HTML(out) {
+    HTML (out) {
         DumpDefaultHeader(out, TabletID(), SelfId().NodeId());
 
-        TAG(TH3) { out << "Info"; }
-        DIV() { out << "Filesystem Id: " << GetFileSystemId(); }
-        DIV() { out << "Block size: " << GetBlockSize(); }
-        DIV() { out << "Blocks: " << GetBlocksCount() << " (" <<
-            FormatByteSize(GetBlocksCount() * GetBlockSize()) << ")";
+        TAG (TH3) {
+            out << "Info";
         }
-        DIV() { out << "Tablet host: " << FQDNHostName(); }
+        DIV () {
+            out << "Filesystem Id: " << GetFileSystemId();
+        }
+        DIV () {
+            out << "Block size: " << GetBlockSize();
+        }
+        DIV () {
+            out << "Blocks: " << GetBlocksCount() << " ("
+                << FormatByteSize(GetBlocksCount() * GetBlockSize()) << ")";
+        }
+        DIV () {
+            out << "Tablet host: " << FQDNHostName();
+        }
 
         const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
         if (shardIds.size()) {
-            TAG(TH3) { out << "Shards"; }
-            TABLE_SORTABLE_CLASS("table table-bordered") {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLEH() { out << "ShardNo"; }
-                        TABLEH() { out << "FileSystemId"; }
-                        TABLEH() { out << "UsedBytesCount"; }
-                        TABLEH() { out << "FreeBytesCount"; }
-                        TABLEH() { out << "CurrentLoad"; }
-                        TABLEH() { out << "Suffer"; }
+            TAG (TH3) {
+                out << "Shards";
+            }
+            TABLE_SORTABLE_CLASS("table table-bordered")
+            {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "ShardNo";
+                        }
+                        TABLEH () {
+                            out << "FileSystemId";
+                        }
+                        TABLEH () {
+                            out << "UsedBytesCount";
+                        }
+                        TABLEH () {
+                            out << "FreeBytesCount";
+                        }
+                        TABLEH () {
+                            out << "CurrentLoad";
+                        }
+                        TABLEH () {
+                            out << "Suffer";
+                        }
                     }
                 }
 
@@ -1084,38 +1409,61 @@ void TIndexTabletActor::HandleHttpInfo_Default(
                     if (shardNo < CachedShardStats.size()) {
                         ss = CachedShardStats[shardNo];
                     }
-                    TABLER() {
-                        TABLED() { out << ++shardNo; }
-                        TABLED() {
-                            out << "<a href='../filestore/service?action=search"
-                                << "&Filesystem=" << shardId << "'>"
-                                << shardId << "</a>";
+                    TABLER () {
+                        TABLED () {
+                            out << ++shardNo;
                         }
-                        TABLED() {
+                        TABLED () {
+                            out << "<a href='../filestore/service?action=search"
+                                << "&Filesystem=" << shardId << "'>" << shardId
+                                << "</a>";
+                        }
+                        TABLED () {
                             out << ss.UsedBlocksCount * GetBlockSize();
                         }
-                        TABLED() {
-                            out << (ss.TotalBlocksCount - ss.UsedBlocksCount)
-                                * GetBlockSize();
+                        TABLED () {
+                            out << (ss.TotalBlocksCount - ss.UsedBlocksCount) *
+                                       GetBlockSize();
                         }
-                        TABLED() { out << ss.CurrentLoad; }
-                        TABLED() { out << ss.Suffer; }
+                        TABLED () {
+                            out << ss.CurrentLoad;
+                        }
+                        TABLED () {
+                            out << ss.Suffer;
+                        }
                     }
                 }
             }
         }
 
-        TAG(TH3) { out << "State"; }
-        DIV() { out << "Current commitId: " << GetCurrentCommitId(); }
-        DIV() { DumpOperationState("Flush", FlushState, out); }
-        DIV() { DumpOperationState("BlobIndexOp", BlobIndexOpState, out); }
-        DIV() { DumpOperationState("CollectGarbage", CollectGarbageState, out); }
+        TAG (TH3) {
+            out << "State";
+        }
+        DIV () {
+            out << "Current commitId: " << GetCurrentCommitId();
+        }
+        DIV () {
+            DumpOperationState("Flush", FlushState, out);
+        }
+        DIV () {
+            DumpOperationState("BlobIndexOp", BlobIndexOpState, out);
+        }
+        DIV () {
+            DumpOperationState("CollectGarbage", CollectGarbageState, out);
+        }
 
-        TAG(TH3) { out << "Stats"; }
-        PRE() { DumpStats(out); }
+        TAG (TH3) {
+            out << "Stats";
+        }
+        PRE()
+        {
+            DumpStats(out);
+        }
 
         const ui32 topSize = FromStringWithDefault(params.Get("top-size"), 1);
-        TAG(TH3) { out << "CompactionMap"; }
+        TAG (TH3) {
+            out << "CompactionMap";
+        }
         DumpCompactionMap(out, TabletID(), GetCompactionMapStats(topSize));
 
         const auto backpressureThresholds = BuildBackpressureThresholds();
@@ -1125,44 +1473,58 @@ void TIndexTabletActor::HandleHttpInfo_Default(
             backpressureThresholds,
             backpressureValues,
             &message);
-        TAG(TH3) { out << "Backpressure"; }
+        TAG (TH3) {
+            out << "Backpressure";
+        }
         if (!isWriteAllowed) {
-            DIV_CLASS("alert alert-danger") {
+            DIV_CLASS ("alert alert-danger") {
                 out << "Write NOT allowed: " << message;
             }
         } else {
-            DIV_CLASS("alert") {
+            DIV_CLASS ("alert") {
                 out << "Write allowed";
             }
         }
         if (BackpressurePeriodStart || BackpressureErrorCount) {
-            DIV_CLASS("alert") {
+            DIV_CLASS ("alert") {
                 out << "Backpressure errors: " << BackpressureErrorCount;
             }
-            DIV_CLASS("alert") {
+            DIV_CLASS ("alert") {
                 out << "Backpressure period start: " << BackpressurePeriodStart;
             }
-            DIV_CLASS("alert") {
+            DIV_CLASS ("alert") {
                 out << "Backpressure period: "
                     << (ctx.Now() - BackpressurePeriodStart);
             }
         }
 
-        TABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Name"; }
-                    TABLEH() { out << "Value"; }
-                    TABLEH() { out << "Threshold"; }
+        TABLE_CLASS ("table table-bordered") {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Name";
+                    }
+                    TABLEH () {
+                        out << "Value";
+                    }
+                    TABLEH () {
+                        out << "Threshold";
+                    }
                 }
             }
-#define DUMP_BACKPRESSURE_FIELD(name)                                          \
-            TABLER() {                                                         \
-                TABLED() { out << #name; }                                     \
-                TABLED() { out << backpressureValues.name; }                   \
-                TABLED() { out << backpressureThresholds.name; }               \
-            }                                                                  \
-// DUMP_BACKPRESSURE_FIELD
+#define DUMP_BACKPRESSURE_FIELD(name)           \
+    TABLER () {                                 \
+        TABLED () {                             \
+            out << #name;                       \
+        }                                       \
+        TABLED () {                             \
+            out << backpressureValues.name;     \
+        }                                       \
+        TABLED () {                             \
+            out << backpressureThresholds.name; \
+        }                                       \
+    }                                           \
+    // DUMP_BACKPRESSURE_FIELD
 
             DUMP_BACKPRESSURE_FIELD(Flush);
             DUMP_BACKPRESSURE_FIELD(FlushBytes);
@@ -1172,19 +1534,29 @@ void TIndexTabletActor::HandleHttpInfo_Default(
 #undef DUMP_BACKPRESSURE_FIELD
         }
 
-#define DUMP_INFO_FIELD(info, name)                                            \
-        TABLER() {                                                             \
-            TABLED() { out << #name; }                                         \
-            TABLED() { out << info.name; }                                     \
-        }                                                                      \
-// DUMP_INFO_FIELD
+#define DUMP_INFO_FIELD(info, name) \
+    TABLER () {                     \
+        TABLED () {                 \
+            out << #name;           \
+        }                           \
+        TABLED () {                 \
+            out << info.name;       \
+        }                           \
+    }                               \
+    // DUMP_INFO_FIELD
 
-        TAG(TH3) { out << "CompactionInfo"; }
-        TABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Parameter"; }
-                    TABLEH() { out << "Value"; }
+        TAG (TH3) {
+            out << "CompactionInfo";
+        }
+        TABLE_CLASS ("table table-bordered") {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Parameter";
+                    }
+                    TABLEH () {
+                        out << "Value";
+                    }
                 }
             }
 
@@ -1201,12 +1573,18 @@ void TIndexTabletActor::HandleHttpInfo_Default(
             DUMP_INFO_FIELD(compactionInfo, ShouldCompact);
         }
 
-        TAG(TH3) { out << "CleanupInfo"; }
-        TABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Parameter"; }
-                    TABLEH() { out << "Value"; }
+        TAG (TH3) {
+            out << "CleanupInfo";
+        }
+        TABLE_CLASS ("table table-bordered") {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Parameter";
+                    }
+                    TABLEH () {
+                        out << "Value";
+                    }
                 }
             }
 
@@ -1226,7 +1604,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
 
 #undef DUMP_INFO_FIELD
 
-        TAG(TH3) {
+        TAG (TH3) {
             if (!IsForcedRangeOperationRunning()) {
                 BuildMenuButton(out, "compact-all");
             }
@@ -1241,7 +1619,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
             out << "</div>";
         }
 
-        TAG(TH3) {
+        TAG (TH3) {
             out << "Channels";
         }
 
@@ -1250,56 +1628,60 @@ void TIndexTabletActor::HandleHttpInfo_Default(
             hiveTabletId = NCloud::NStorage::GetHiveTabletId(ctx);
         }
 
-        DumpChannels(
-            out,
-            MakeChannelMonInfos(),
-            *Info(),
-            hiveTabletId);
+        DumpChannels(out, MakeChannelMonInfos(), *Info(), hiveTabletId);
 
-        TAG(TH3) { out << "Profiling allocator stats"; }
+        TAG (TH3) {
+            out << "Profiling allocator stats";
+        }
         DumpProfillingAllocatorStats(GetFileStoreProfilingRegistry(), out);
 
-        TAG(TH3) { out << "Blob index stats"; }
+        TAG (TH3) {
+            out << "Blob index stats";
+        }
 
         const auto storageThrottlingEnabled = Config->GetThrottlingEnabled();
 
         const auto& fsPerfProfile = GetFileSystem().GetPerformanceProfile();
-        TAG(TH3) { out << "Performance profile"; }
+        TAG (TH3) {
+            out << "Performance profile";
+        }
         DumpPerformanceProfile(storageThrottlingEnabled, fsPerfProfile, out);
 
         const auto& usedPerfProfile = GetPerformanceProfile();
         if (!NProtoBuf::IsEqual(fsPerfProfile, usedPerfProfile)) {
-            TAG(TH3) { out << "Used performance profile"; }
+            TAG (TH3) {
+                out << "Used performance profile";
+            }
             DumpPerformanceProfile(
                 storageThrottlingEnabled,
                 usedPerfProfile,
-                out
-            );
+                out);
         }
 
-        TAG(TH3) { out << "Throttler state"; }
+        TAG (TH3) {
+            out << "Throttler state";
+        }
         DumpThrottlingState(Throttler.get(), GetThrottlingPolicy(), out);
 
         if (StorageConfigOverride.ByteSize()) {
-            TAG(TH3) { out << "StorageConfig overrides"; }
+            TAG (TH3) {
+                out << "StorageConfig overrides";
+            }
             TStorageConfig config(StorageConfigOverride);
             config.DumpOverridesHtml(out);
         }
 
-        TAG(TH3)
-        {
+        TAG (TH3) {
             out << "Active Sessions";
         }
         DumpSessions(out, GetActiveSessionInfos(), false);
 
-        TAG(TH3)
-        {
+        TAG (TH3) {
             out << "Orphan Sessions";
         }
         DumpSessions(out, GetOrphanSessionInfos(), true);
 
-        TAG(TH3)
-        {
+        TAG (TH3) {
             out << "Session history";
         }
         DumpSessionHistory(out, GetSessionHistoryList());
@@ -1334,8 +1716,8 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
     } else if (params.Get("mode") == "compaction") {
         mode = TEvIndexTabletPrivate::EForcedRangeOperationMode::Compaction;
     } else if (params.Get("mode") == "deleteZeroCompactionRanges") {
-        mode = TEvIndexTabletPrivate::EForcedRangeOperationMode
-            ::DeleteZeroCompactionRanges;
+        mode = TEvIndexTabletPrivate::EForcedRangeOperationMode ::
+            DeleteZeroCompactionRanges;
     } else {
         RejectHttpRequest(
             ctx,
@@ -1348,25 +1730,34 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
     TVector<ui32> ranges;
     if (params.Has("RangeIndex") && params.Has("RangesCount")) {
         ui64 rangeIndex = 0;
-        if (const auto& param = params.Get("RangeIndex"); !TryFromString(param, rangeIndex)) {
-            RejectHttpRequest(ctx, TabletID(), *requestInfo, "Invalid range index");
+        if (const auto& param = params.Get("RangeIndex");
+            !TryFromString(param, rangeIndex))
+        {
+            RejectHttpRequest(
+                ctx,
+                TabletID(),
+                *requestInfo,
+                "Invalid range index");
             return;
         }
 
         ui32 rangesCount = Max<ui32>();
-        if (const auto& param = params.Get("RangesCount"); !TryFromString(param, rangesCount)) {
-            RejectHttpRequest(ctx, TabletID(), *requestInfo, "Invalid range count");
+        if (const auto& param = params.Get("RangesCount");
+            !TryFromString(param, rangesCount))
+        {
+            RejectHttpRequest(
+                ctx,
+                TabletID(),
+                *requestInfo,
+                "Invalid range count");
             return;
         }
 
-        ranges = TVector<ui32>(
-            ::xrange(
-                rangeIndex,
-                rangeIndex + rangesCount,
-                1));
+        ranges =
+            TVector<ui32>(::xrange(rangeIndex, rangeIndex + rangesCount, 1));
     } else {
-        if (mode == TEvIndexTabletPrivate::EForcedRangeOperationMode
-                ::DeleteZeroCompactionRanges)
+        if (mode == TEvIndexTabletPrivate::EForcedRangeOperationMode ::
+                        DeleteZeroCompactionRanges)
         {
             ranges = GenerateForceDeleteZeroCompactionRanges();
         } else {
@@ -1391,12 +1782,18 @@ void TIndexTabletActor::HandleHttpInfo_DumpCompactionRange(
     TRequestInfoPtr requestInfo)
 {
     if (!params.Has("rangeId")) {
-        RejectHttpRequest(ctx, TabletID(), *requestInfo, "You should specify rangeId");
+        RejectHttpRequest(
+            ctx,
+            TabletID(),
+            *requestInfo,
+            "You should specify rangeId");
         return;
     }
 
     ui32 rangeId = 0;
-    if (const auto& param = params.Get("rangeId"); !TryFromString(param, rangeId)) {
+    if (const auto& param = params.Get("rangeId");
+        !TryFromString(param, rangeId))
+    {
         RejectHttpRequest(ctx, TabletID(), *requestInfo, "Invalid rangeId");
         return;
     }
@@ -1409,8 +1806,7 @@ void TIndexTabletActor::HandleHttpInfo_DumpCompactionRange(
         GetFileSystem().GetStorageMediaKind());
 
     using TRequest = TEvIndexTabletPrivate::TEvDumpCompactionRangeRequest;
-    auto request = std::make_unique<TRequest>(
-        rangeId);
+    auto request = std::make_unique<TRequest>(rangeId);
     request->CallContext = requestInfo->CallContext;
 
     auto actor = std::make_unique<TIndexTabletMonitoringActor<TRequest>>(

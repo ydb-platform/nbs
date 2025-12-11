@@ -8,8 +8,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRegistryVisitor
-    : public IRegistryVisitor
+class TRegistryVisitor: public IRegistryVisitor
 {
 private:
     IOutputStream& Out;
@@ -37,8 +36,8 @@ public:
     {
         Out << '{';
         DumpTime(time);
-        Out << "aggregation_type:'" << aggrType << "',"
-            << "metric_type:'" << metrType << "',";
+        Out << "aggregation_type:'" << aggrType << "'," << "metric_type:'"
+            << metrType << "',";
     }
 
     void OnMetricEnd() override

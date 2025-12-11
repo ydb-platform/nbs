@@ -16,10 +16,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TDeviceConfig CreateDevice(
-    TString id,
-    ui64 size,
-    TString rack = "the-rack")
+NProto::TDeviceConfig
+CreateDevice(TString id, ui64 size, TString rack = "the-rack")
 {
     NProto::TDeviceConfig config;
     config.SetDeviceName("name-" + id);
@@ -48,10 +46,8 @@ TVector<NProto::TAgentConfig> MakeSimpleAgents(ui32 n)
 
         foo.SetAgentId(Sprintf("foo-%u", i));
         foo.SetNodeId((i + 1) * 1000);
-        *foo.AddDevices() = CreateDevice(
-            Sprintf("uuid-%u", i),
-            1_GB,
-            Sprintf("rack-%u", i));
+        *foo.AddDevices() =
+            CreateDevice(Sprintf("uuid-%u", i), 1_GB, Sprintf("rack-%u", i));
 
         agents.push_back(foo);
     }
@@ -64,28 +60,28 @@ struct TAgentListParams
 {
     TAgentListConfig Config;
     TVector<NProto::TAgentConfig> Agents;
-    THashMap<TString, NProto::TDiskRegistryAgentParams> DiskRegistryAgentListParams;
+    THashMap<TString, NProto::TDiskRegistryAgentParams>
+        DiskRegistryAgentListParams;
 };
 
-struct TFixture
-    : public NUnitTest::TBaseFixture
+struct TFixture: public NUnitTest::TBaseFixture
 {
     IMonitoringServicePtr Monitoring = CreateMonitoringServiceStub();
-    NMonitoring::TDynamicCounterPtr Counters = Monitoring->GetCounters()
-        ->GetSubgroup("counters", "blockstore")
-        ->GetSubgroup("component", "disk_registry");
+    NMonitoring::TDynamicCounterPtr Counters =
+        Monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "disk_registry");
 
     ILoggingServicePtr Logging = CreateLoggingService("console");
 
     TAgentList CreateAgentList(TAgentListParams params = {})
     {
-        return TAgentList {
+        return TAgentList{
             std::move(params.Config),
             Counters,
             std::move(params.Agents),
             std::move(params.DiskRegistryAgentListParams),
-            Logging->CreateLog("BLOCKSTORE_DISK_REGISTRY")
-        };
+            Logging->CreateLog("BLOCKSTORE_DISK_REGISTRY")};
     }
 };
 
@@ -115,12 +111,11 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         *expectedConfig.AddDevices() = CreateDevice("uuid-2");
         *expectedConfig.AddDevices() = CreateDevice("uuid-3");
 
-        const TKnownAgent knownAgent {
+        const TKnownAgent knownAgent{
             .Devices = {
-                { "uuid-1", CreateDevice("uuid-1", 0) },
-                { "uuid-2", CreateDevice("uuid-2", 0) },
-                { "uuid-3", CreateDevice("uuid-3", 0) }
-            }};
+                {"uuid-1", CreateDevice("uuid-1", 0)},
+                {"uuid-2", CreateDevice("uuid-2", 0)},
+                {"uuid-3", CreateDevice("uuid-3", 0)}}};
 
         {
             auto r = agentList.RegisterAgent(
@@ -130,22 +125,32 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
 
             NProto::TAgentConfig& agent = r.Agent;
 
-            UNIT_ASSERT_VALUES_EQUAL(expectedConfig.GetAgentId(), agent.GetAgentId());
-            UNIT_ASSERT_VALUES_EQUAL(expectedConfig.GetNodeId(), agent.GetNodeId());
-            UNIT_ASSERT_VALUES_EQUAL(expectedConfig.DevicesSize(), agent.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedConfig.GetAgentId(),
+                agent.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedConfig.GetNodeId(),
+                agent.GetNodeId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedConfig.DevicesSize(),
+                agent.DevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(3, r.NewDeviceIds.size());
         }
 
         auto* agent = agentList.FindAgent(expectedConfig.GetNodeId());
 
         UNIT_ASSERT(agent != nullptr);
-        UNIT_ASSERT_EQUAL(agent, agentList.FindAgent(expectedConfig.GetAgentId()));
+        UNIT_ASSERT_EQUAL(
+            agent,
+            agentList.FindAgent(expectedConfig.GetAgentId()));
 
         UNIT_ASSERT_VALUES_EQUAL(
             expectedConfig.GetNodeId(),
             agentList.FindNodeId(expectedConfig.GetAgentId()));
 
-        UNIT_ASSERT_VALUES_EQUAL(expectedConfig.DevicesSize(), agent->DevicesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedConfig.DevicesSize(),
+            agent->DevicesSize());
     }
 
     Y_UNIT_TEST_F(ShouldRegisterAgentAtNewNode, TFixture)
@@ -158,9 +163,7 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         *config.AddDevices() = CreateDevice("uuid-2");
         *config.AddDevices() = CreateDevice("uuid-3");
 
-        TAgentList agentList = CreateAgentList({
-            .Agents = {config}
-        });
+        TAgentList agentList = CreateAgentList({.Agents = {config}});
 
         UNIT_ASSERT_VALUES_EQUAL(1, agentList.GetAgents().size());
 
@@ -180,7 +183,7 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         auto r = agentList.RegisterAgent(
             config,
             TInstant::FromValue(1),
-            TKnownAgent {});
+            TKnownAgent{});
 
         UNIT_ASSERT_VALUES_EQUAL(0, r.NewDeviceIds.size());
         UNIT_ASSERT_VALUES_EQUAL(1, agentList.GetAgents().size());
@@ -197,7 +200,9 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         }
     }
 
-    Y_UNIT_TEST_F(ShouldKeepRegistryDeviceFieldsUponAgentReRegistration, TFixture)
+    Y_UNIT_TEST_F(
+        ShouldKeepRegistryDeviceFieldsUponAgentReRegistration,
+        TFixture)
     {
         TAgentList agentList = CreateAgentList();
 
@@ -208,9 +213,8 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         *expectedConfig.AddDevices() = CreateDevice("uuid-1", 2_GB);
         *expectedConfig.AddDevices() = CreateDevice("uuid-2", 2_GB);
 
-        const TKnownAgent knownAgent {
-            .Devices = {{ "uuid-1", CreateDevice("uuid-1", 0) }}
-        };
+        const TKnownAgent knownAgent{
+            .Devices = {{"uuid-1", CreateDevice("uuid-1", 0)}}};
 
         {
             auto r = agentList.RegisterAgent(
@@ -220,44 +224,40 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
 
             NProto::TAgentConfig& agent = r.Agent;
 
-            UNIT_ASSERT_VALUES_EQUAL(expectedConfig.GetAgentId(), agent.GetAgentId());
-            UNIT_ASSERT_VALUES_EQUAL(expectedConfig.GetNodeId(), agent.GetNodeId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedConfig.GetAgentId(),
+                agent.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedConfig.GetNodeId(),
+                agent.GetNodeId());
             UNIT_ASSERT_VALUES_EQUAL(1, agent.DevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(1, agent.UnknownDevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(1, r.NewDeviceIds.size());
             UNIT_ASSERT_VALUES_EQUAL(
                 "name-uuid-1",
-                agent.GetDevices(0).GetDeviceName()
-            );
+                agent.GetDevices(0).GetDeviceName());
             UNIT_ASSERT_VALUES_EQUAL(
                 "uuid-1",
-                agent.GetDevices(0).GetDeviceUUID()
-            );
+                agent.GetDevices(0).GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL(
                 2_GB / 4_KB,
-                agent.GetDevices(0).GetBlocksCount()
-            );
+                agent.GetDevices(0).GetBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 2_GB / 4_KB,
-                agent.GetDevices(0).GetUnadjustedBlockCount()
-            );
+                agent.GetDevices(0).GetUnadjustedBlockCount());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 "name-uuid-2",
-                agent.GetUnknownDevices(0).GetDeviceName()
-            );
+                agent.GetUnknownDevices(0).GetDeviceName());
             UNIT_ASSERT_VALUES_EQUAL(
                 "uuid-2",
-                agent.GetUnknownDevices(0).GetDeviceUUID()
-            );
+                agent.GetUnknownDevices(0).GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL(
                 2_GB / 4_KB,
-                agent.GetUnknownDevices(0).GetBlocksCount()
-            );
+                agent.GetUnknownDevices(0).GetBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
-                agent.GetUnknownDevices(0).GetUnadjustedBlockCount()
-            );
+                agent.GetUnknownDevices(0).GetUnadjustedBlockCount());
 
             agent.MutableDevices(0)->SetBlocksCount(1_GB / 4_KB);
             // agent.MutableDevices(0)->SetState(NProto::DEVICE_STATE_WARNING);
@@ -274,78 +274,67 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
 
             NProto::TAgentConfig& agent = r.Agent;
 
-            UNIT_ASSERT_VALUES_EQUAL(expectedConfig.GetAgentId(), agent.GetAgentId());
-            UNIT_ASSERT_VALUES_EQUAL(expectedConfig.GetNodeId(), agent.GetNodeId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedConfig.GetAgentId(),
+                agent.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedConfig.GetNodeId(),
+                agent.GetNodeId());
             UNIT_ASSERT_VALUES_EQUAL(1, agent.DevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(1, agent.UnknownDevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(0, r.NewDeviceIds.size());
             UNIT_ASSERT_VALUES_EQUAL(
                 "uuid-1",
-                agent.GetDevices(0).GetDeviceUUID()
-            );
+                agent.GetDevices(0).GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL(
                 "uuid-1",
-                agent.GetDevices(0).GetDeviceUUID()
-            );
+                agent.GetDevices(0).GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL(
                 1_GB / 4_KB,
-                agent.GetDevices(0).GetBlocksCount()
-            );
+                agent.GetDevices(0).GetBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 2_GB / 4_KB,
-                agent.GetDevices(0).GetUnadjustedBlockCount()
-            );
-            UNIT_ASSERT_VALUES_EQUAL(
-                111,
-                agent.GetDevices(0).GetStateTs()
-            );
-            UNIT_ASSERT_VALUES_EQUAL(
-                222,
-                agent.GetDevices(0).GetCmsTs()
-            );
+                agent.GetDevices(0).GetUnadjustedBlockCount());
+            UNIT_ASSERT_VALUES_EQUAL(111, agent.GetDevices(0).GetStateTs());
+            UNIT_ASSERT_VALUES_EQUAL(222, agent.GetDevices(0).GetCmsTs());
             UNIT_ASSERT_VALUES_EQUAL(
                 "the-message",
-                agent.GetDevices(0).GetStateMessage()
-            );
+                agent.GetDevices(0).GetStateMessage());
 
             // these fields should be taken from agent's data
             UNIT_ASSERT_VALUES_EQUAL("the-rack", agent.GetDevices(0).GetRack());
             UNIT_ASSERT_VALUES_EQUAL(
                 "base-name",
-                agent.GetDevices(0).GetBaseName()
-            );
+                agent.GetDevices(0).GetBaseName());
             UNIT_ASSERT_VALUES_EQUAL(
                 "transport-uuid-1",
-                agent.GetDevices(0).GetTransportId()
-            );
+                agent.GetDevices(0).GetTransportId());
             UNIT_ASSERT_VALUES_EQUAL(
                 "rdma-uuid-1",
-                agent.GetDevices(0).GetRdmaEndpoint().GetHost()
-            );
+                agent.GetDevices(0).GetRdmaEndpoint().GetHost());
         }
     }
 
     Y_UNIT_TEST_F(ShouldUpdateDevicesOnRegisterAgent, TFixture)
     {
-        TAgentList agentList = CreateAgentList({
-            .Agents = [] {
-                NProto::TAgentConfig foo;
+        TAgentList agentList = CreateAgentList(
+            {.Agents = []
+             {
+                 NProto::TAgentConfig foo;
 
-                foo.SetAgentId("foo");
-                foo.SetNodeId(1000);
-                *foo.AddDevices() = CreateDevice("x");
-                *foo.AddDevices() = CreateDevice("y");
+                 foo.SetAgentId("foo");
+                 foo.SetNodeId(1000);
+                 *foo.AddDevices() = CreateDevice("x");
+                 *foo.AddDevices() = CreateDevice("y");
 
-                return TVector{foo};
-            }()
-        });
+                 return TVector{foo};
+             }()});
 
-        const TKnownAgent knownAgent {
+        const TKnownAgent knownAgent{
             .Devices = {
-                { "x", CreateDevice("x", 0) },
-                { "y", CreateDevice("y", 0) },
-                { "z", CreateDevice("z", 0) }
-            }};
+                {"x", CreateDevice("x", 0)},
+                {"y", CreateDevice("y", 0)},
+                {"z", CreateDevice("z", 0)}}};
 
         {
             auto* foo = agentList.FindAgent("foo");
@@ -366,7 +355,9 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         }
 
         {
-            auto r = agentList.RegisterAgent([] {
+            auto r = agentList.RegisterAgent(
+                []
+                {
                     NProto::TAgentConfig foo;
 
                     foo.SetAgentId("foo");
@@ -406,7 +397,9 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         }
 
         {
-            auto r = agentList.RegisterAgent([] {
+            auto r = agentList.RegisterAgent(
+                []
+                {
                     NProto::TAgentConfig foo;
 
                     foo.SetAgentId("foo");
@@ -445,7 +438,9 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         }
 
         {
-            auto r = agentList.RegisterAgent([] {
+            auto r = agentList.RegisterAgent(
+                []
+                {
                     NProto::TAgentConfig foo;
 
                     foo.SetAgentId("foo");
@@ -503,18 +498,20 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         *bar.AddDevices() = CreateDevice("uuid-3");
         *bar.AddDevices() = CreateDevice("uuid-4");
 
-        TAgentList agentList = CreateAgentList({
-            .Agents = {foo, bar}
-        });
+        TAgentList agentList = CreateAgentList({.Agents = {foo, bar}});
 
         auto fooCounters = Counters->GetSubgroup("agent", foo.GetAgentId());
         auto barCounters = Counters->GetSubgroup("agent", bar.GetAgentId());
 
-        auto uuid1Counters = fooCounters->GetSubgroup("device", "foo:name-uuid-1");
-        auto uuid2Counters = fooCounters->GetSubgroup("device", "foo:name-uuid-2");
+        auto uuid1Counters =
+            fooCounters->GetSubgroup("device", "foo:name-uuid-1");
+        auto uuid2Counters =
+            fooCounters->GetSubgroup("device", "foo:name-uuid-2");
 
-        auto uuid3Counters = barCounters->GetSubgroup("device", "bar:name-uuid-3");
-        auto uuid4Counters = barCounters->GetSubgroup("device", "bar:name-uuid-4");
+        auto uuid3Counters =
+            barCounters->GetSubgroup("device", "bar:name-uuid-3");
+        auto uuid4Counters =
+            barCounters->GetSubgroup("device", "bar:name-uuid-4");
 
         auto uuid1ReadCount = uuid1Counters->GetCounter("ReadCount");
         auto uuid1WriteCount = uuid1Counters->GetCounter("WriteCount");
@@ -540,45 +537,53 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         UNIT_ASSERT_VALUES_EQUAL(0, uuid4ReadCount->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, uuid4WriteCount->Val());
 
-        agentList.UpdateCounters("foo", [] {
-            NProto::TAgentStats stats;
+        agentList.UpdateCounters(
+            "foo",
+            []
+            {
+                NProto::TAgentStats stats;
 
-            stats.SetNodeId(1000);
+                stats.SetNodeId(1000);
 
-            auto* uuid1Stats = stats.AddDeviceStats();
-            uuid1Stats->SetDeviceUUID("uuid-1");
-            uuid1Stats->SetDeviceName("name-uuid-1");
-            uuid1Stats->SetNumReadOps(10);
-            uuid1Stats->SetNumWriteOps(20);
+                auto* uuid1Stats = stats.AddDeviceStats();
+                uuid1Stats->SetDeviceUUID("uuid-1");
+                uuid1Stats->SetDeviceName("name-uuid-1");
+                uuid1Stats->SetNumReadOps(10);
+                uuid1Stats->SetNumWriteOps(20);
 
-            auto* uuid2Stats = stats.AddDeviceStats();
-            uuid2Stats->SetDeviceUUID("uuid-2");
-            uuid2Stats->SetDeviceName("name-uuid-2");
-            uuid2Stats->SetNumReadOps(30);
-            uuid2Stats->SetNumWriteOps(40);
+                auto* uuid2Stats = stats.AddDeviceStats();
+                uuid2Stats->SetDeviceUUID("uuid-2");
+                uuid2Stats->SetDeviceName("name-uuid-2");
+                uuid2Stats->SetNumReadOps(30);
+                uuid2Stats->SetNumWriteOps(40);
 
-            return stats;
-        }(), {});
+                return stats;
+            }(),
+            {});
 
-        agentList.UpdateCounters("bar", [] {
-            NProto::TAgentStats stats;
+        agentList.UpdateCounters(
+            "bar",
+            []
+            {
+                NProto::TAgentStats stats;
 
-            stats.SetNodeId(2000);
+                stats.SetNodeId(2000);
 
-            auto* uuid3Stats = stats.AddDeviceStats();
-            uuid3Stats->SetDeviceUUID("uuid-3");
-            uuid3Stats->SetDeviceName("name-uuid-3");
-            uuid3Stats->SetNumReadOps(100);
-            uuid3Stats->SetNumWriteOps(200);
+                auto* uuid3Stats = stats.AddDeviceStats();
+                uuid3Stats->SetDeviceUUID("uuid-3");
+                uuid3Stats->SetDeviceName("name-uuid-3");
+                uuid3Stats->SetNumReadOps(100);
+                uuid3Stats->SetNumWriteOps(200);
 
-            auto* uuid4Stats = stats.AddDeviceStats();
-            uuid4Stats->SetDeviceUUID("uuid-4");
-            uuid4Stats->SetDeviceName("name-uuid-4");
-            uuid4Stats->SetNumReadOps(300);
-            uuid4Stats->SetNumWriteOps(400);
+                auto* uuid4Stats = stats.AddDeviceStats();
+                uuid4Stats->SetDeviceUUID("uuid-4");
+                uuid4Stats->SetDeviceName("name-uuid-4");
+                uuid4Stats->SetNumReadOps(300);
+                uuid4Stats->SetNumWriteOps(400);
 
-            return stats;
-        }(), {});
+                return stats;
+            }(),
+            {});
 
         agentList.PublishCounters(TInstant::Hours(1));
 
@@ -596,45 +601,53 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
 
         agentList.RemoveAgent(1000);
 
-        agentList.UpdateCounters("foo", [] {
-            NProto::TAgentStats stats;
+        agentList.UpdateCounters(
+            "foo",
+            []
+            {
+                NProto::TAgentStats stats;
 
-            stats.SetNodeId(1000);
+                stats.SetNodeId(1000);
 
-            auto* uuid1Stats = stats.AddDeviceStats();
-            uuid1Stats->SetDeviceUUID("uuid-1");
-            uuid1Stats->SetDeviceName("name-uuid-1");
-            uuid1Stats->SetNumReadOps(1000);
-            uuid1Stats->SetNumWriteOps(1000);
+                auto* uuid1Stats = stats.AddDeviceStats();
+                uuid1Stats->SetDeviceUUID("uuid-1");
+                uuid1Stats->SetDeviceName("name-uuid-1");
+                uuid1Stats->SetNumReadOps(1000);
+                uuid1Stats->SetNumWriteOps(1000);
 
-            auto* uuid2Stats = stats.AddDeviceStats();
-            uuid2Stats->SetDeviceUUID("uuid-2");
-            uuid2Stats->SetDeviceName("name-uuid-2");
-            uuid2Stats->SetNumReadOps(1000);
-            uuid2Stats->SetNumWriteOps(1000);
+                auto* uuid2Stats = stats.AddDeviceStats();
+                uuid2Stats->SetDeviceUUID("uuid-2");
+                uuid2Stats->SetDeviceName("name-uuid-2");
+                uuid2Stats->SetNumReadOps(1000);
+                uuid2Stats->SetNumWriteOps(1000);
 
-            return stats;
-        }(), {});
+                return stats;
+            }(),
+            {});
 
-        agentList.UpdateCounters("bar", [] {
-            NProto::TAgentStats stats;
+        agentList.UpdateCounters(
+            "bar",
+            []
+            {
+                NProto::TAgentStats stats;
 
-            stats.SetNodeId(2000);
+                stats.SetNodeId(2000);
 
-            auto* uuid3Stats = stats.AddDeviceStats();
-            uuid3Stats->SetDeviceUUID("uuid-3");
-            uuid3Stats->SetDeviceName("name-uuid-3");
-            uuid3Stats->SetNumReadOps(1000);
-            uuid3Stats->SetNumWriteOps(1000);
+                auto* uuid3Stats = stats.AddDeviceStats();
+                uuid3Stats->SetDeviceUUID("uuid-3");
+                uuid3Stats->SetDeviceName("name-uuid-3");
+                uuid3Stats->SetNumReadOps(1000);
+                uuid3Stats->SetNumWriteOps(1000);
 
-            auto* uuid4Stats = stats.AddDeviceStats();
-            uuid4Stats->SetDeviceUUID("uuid-4");
-            uuid4Stats->SetDeviceName("name-uuid-4");
-            uuid4Stats->SetNumReadOps(1000);
-            uuid4Stats->SetNumWriteOps(1000);
+                auto* uuid4Stats = stats.AddDeviceStats();
+                uuid4Stats->SetDeviceUUID("uuid-4");
+                uuid4Stats->SetDeviceName("name-uuid-4");
+                uuid4Stats->SetNumReadOps(1000);
+                uuid4Stats->SetNumWriteOps(1000);
 
-            return stats;
-        }(), {});
+                return stats;
+            }(),
+            {});
 
         agentList.PublishCounters(TInstant::Hours(2));
 
@@ -653,25 +666,25 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
 
     Y_UNIT_TEST_F(ShouldUpdateSeqNumber, TFixture)
     {
-        TAgentList agentList = CreateAgentList({
-            .Agents = [] {
-                NProto::TAgentConfig foo;
+        TAgentList agentList = CreateAgentList(
+            {.Agents = []
+             {
+                 NProto::TAgentConfig foo;
 
-                foo.SetAgentId("foo");
-                foo.SetNodeId(1000);
-                foo.SetSeqNumber(23);
-                foo.SetDedicatedDiskAgent(false);
-                *foo.AddDevices() = CreateDevice("uuid-1");
-                *foo.AddDevices() = CreateDevice("uuid-2");
+                 foo.SetAgentId("foo");
+                 foo.SetNodeId(1000);
+                 foo.SetSeqNumber(23);
+                 foo.SetDedicatedDiskAgent(false);
+                 *foo.AddDevices() = CreateDevice("uuid-1");
+                 *foo.AddDevices() = CreateDevice("uuid-2");
 
-                return TVector{foo};
-            }()
-        });
+                 return TVector{foo};
+             }()});
 
-        const TKnownAgent knownAgent {
+        const TKnownAgent knownAgent{
             .Devices = {
-                { "uuid-1", CreateDevice("uuid-1", 0) },
-                { "uuid-2", CreateDevice("uuid-2", 0) },
+                {"uuid-1", CreateDevice("uuid-1", 0)},
+                {"uuid-2", CreateDevice("uuid-2", 0)},
             }};
 
         {
@@ -685,7 +698,9 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         }
 
         {
-            auto r = agentList.RegisterAgent([] {
+            auto r = agentList.RegisterAgent(
+                []
+                {
                     NProto::TAgentConfig foo;
 
                     foo.SetAgentId("foo");
@@ -717,12 +732,13 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         auto agents = MakeSimpleAgents(4);
 
         TAgentList agentList = CreateAgentList({
-            .Config = {
-                .TimeoutGrowthFactor = 2,
-                .MinRejectAgentTimeout = 30s,
-                .MaxRejectAgentTimeout = 5min,
-                .DisconnectRecoveryInterval = 1min,
-            },
+            .Config =
+                {
+                    .TimeoutGrowthFactor = 2,
+                    .MinRejectAgentTimeout = 30s,
+                    .MaxRejectAgentTimeout = 5min,
+                    .DisconnectRecoveryInterval = 1min,
+                },
             .Agents = agents,
         });
 
@@ -850,17 +866,20 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         UNIT_ASSERT_VALUES_EQUAL(60'000, c->Val());
     }
 
-    Y_UNIT_TEST_F(ShouldCorrectlyAccumulateRejectAgentTimeoutMultiplier, TFixture)
+    Y_UNIT_TEST_F(
+        ShouldCorrectlyAccumulateRejectAgentTimeoutMultiplier,
+        TFixture)
     {
         auto agents = MakeSimpleAgents(3);
 
         TAgentList agentList = CreateAgentList({
-            .Config = {
-                .TimeoutGrowthFactor = 2,
-                .MinRejectAgentTimeout = 30s,
-                .MaxRejectAgentTimeout = 5min,
-                .DisconnectRecoveryInterval = 1min,
-            },
+            .Config =
+                {
+                    .TimeoutGrowthFactor = 2,
+                    .MinRejectAgentTimeout = 30s,
+                    .MaxRejectAgentTimeout = 5min,
+                    .DisconnectRecoveryInterval = 1min,
+                },
             .Agents = agents,
         });
 
@@ -889,12 +908,13 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         auto agents = MakeSimpleAgents(100);
 
         TAgentList agentList = CreateAgentList({
-            .Config = {
-                .TimeoutGrowthFactor = 2,
-                .MinRejectAgentTimeout = 30s,
-                .MaxRejectAgentTimeout = expectedMaxRejectAgentTimeout,
-                .DisconnectRecoveryInterval = 1min,
-            },
+            .Config =
+                {
+                    .TimeoutGrowthFactor = 2,
+                    .MinRejectAgentTimeout = 30s,
+                    .MaxRejectAgentTimeout = expectedMaxRejectAgentTimeout,
+                    .DisconnectRecoveryInterval = 1min,
+                },
             .Agents = agents,
         });
 
@@ -916,11 +936,11 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
 
     Y_UNIT_TEST_F(ShouldValidateSerialNumbers, TFixture)
     {
-        TAgentList agentList = CreateAgentList({
-            .Config = { .SerialNumberValidationEnabled = true }
-        });
+        TAgentList agentList = CreateAgentList(
+            {.Config = {.SerialNumberValidationEnabled = true}});
 
-        const NProto::TAgentConfig expectedConfig = [] {
+        const NProto::TAgentConfig expectedConfig = []
+        {
             NProto::TAgentConfig config;
 
             config.SetAgentId("foo");
@@ -961,9 +981,15 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
 
             NProto::TAgentConfig& agent = r.Agent;
 
-            UNIT_ASSERT_VALUES_EQUAL(agent.GetAgentId(), expectedConfig.GetAgentId());
-            UNIT_ASSERT_VALUES_EQUAL(agent.GetNodeId(), expectedConfig.GetNodeId());
-            UNIT_ASSERT_VALUES_EQUAL(agent.DevicesSize(), expectedConfig.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agent.GetAgentId(),
+                expectedConfig.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agent.GetNodeId(),
+                expectedConfig.GetNodeId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agent.DevicesSize(),
+                expectedConfig.DevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(3, r.NewDeviceIds.size());
 
             agentList.PublishCounters(TInstant::Minutes(1));
@@ -994,9 +1020,15 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
 
             NProto::TAgentConfig& agent = r.Agent;
 
-            UNIT_ASSERT_VALUES_EQUAL(agent.GetAgentId(), expectedConfig.GetAgentId());
-            UNIT_ASSERT_VALUES_EQUAL(agent.GetNodeId(), expectedConfig.GetNodeId());
-            UNIT_ASSERT_VALUES_EQUAL(agent.DevicesSize(), expectedConfig.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agent.GetAgentId(),
+                expectedConfig.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agent.GetNodeId(),
+                expectedConfig.GetNodeId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agent.DevicesSize(),
+                expectedConfig.DevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(0, r.NewDeviceIds.size());
 
             auto& x = agent.GetDevices(0);
@@ -1023,19 +1055,22 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         auto agents = MakeSimpleAgents(7);
 
         TAgentList agentList = CreateAgentList({
-            .Config = {
-                .TimeoutGrowthFactor = 2,
-                .MinRejectAgentTimeout = 30s,
-                .MaxRejectAgentTimeout = 5min,
-                .DisconnectRecoveryInterval = 1min,
-            },
+            .Config =
+                {
+                    .TimeoutGrowthFactor = 2,
+                    .MinRejectAgentTimeout = 30s,
+                    .MaxRejectAgentTimeout = 5min,
+                    .DisconnectRecoveryInterval = 1min,
+                },
             .Agents = agents,
         });
 
         NProto::TDiskRegistryAgentParams params;
         params.SetNewNonReplicatedAgentMinTimeoutMs(60 * 1000);
         params.SetNewNonReplicatedAgentMaxTimeoutMs(10 * 60 * 1000);
-        agentList.SetDiskRegistryAgentListParams(agents[0].GetAgentId(), params);
+        agentList.SetDiskRegistryAgentListParams(
+            agents[0].GetAgentId(),
+            params);
 
         TInstant now = Now();
 
@@ -1155,18 +1190,15 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
 
         TAgentList agentList = CreateAgentList();
 
-        const TKnownAgent knownAgent {
-            .Devices = {{ "uuid-1", CreateDevice("uuid-1", 0) }}
-        };
+        const TKnownAgent knownAgent{
+            .Devices = {{"uuid-1", CreateDevice("uuid-1", 0)}}};
 
         // Register new agent with one device.
         {
             const auto timestamp = TInstant::FromValue(100000);
 
-            auto r = agentList.RegisterAgent(
-                agentConfig,
-                timestamp,
-                knownAgent);
+            auto r =
+                agentList.RegisterAgent(agentConfig, timestamp, knownAgent);
 
             NProto::TAgentConfig& agent = r.Agent;
 
@@ -1187,10 +1219,7 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         // Register the agent with the broken device.
         // Now we expect to see our device in an error state.
         {
-            auto r = agentList.RegisterAgent(
-                agentConfig,
-                errorTs,
-                knownAgent);
+            auto r = agentList.RegisterAgent(agentConfig, errorTs, knownAgent);
 
             NProto::TAgentConfig& agent = r.Agent;
 
@@ -1212,10 +1241,8 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         {
             const auto timestamp = TInstant::FromValue(300000);
 
-            auto r = agentList.RegisterAgent(
-                agentConfig,
-                timestamp,
-                knownAgent);
+            auto r =
+                agentList.RegisterAgent(agentConfig, timestamp, knownAgent);
 
             NProto::TAgentConfig& agent = r.Agent;
 
@@ -1231,7 +1258,8 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
 
     Y_UNIT_TEST_F(ShouldUpdateDevices, TFixture)
     {
-        auto getIds = [] (const auto& devices) {
+        auto getIds = [](const auto& devices)
+        {
             TVector<TString> ids;
             for (const auto& d: devices) {
                 ids.push_back(d.GetDeviceUUID());
@@ -1247,9 +1275,7 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
             *config.AddDevices() = CreateDevice(id);
         }
 
-        TAgentList agentList = CreateAgentList({
-            .Agents = {config}
-        });
+        TAgentList agentList = CreateAgentList({.Agents = {config}});
 
         {
             auto* agent = agentList.FindAgent("agent-id");

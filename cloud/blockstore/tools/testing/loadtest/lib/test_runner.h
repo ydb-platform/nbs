@@ -5,9 +5,9 @@
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/validation/public.h>
-#include <cloud/storage/core/libs/diagnostics/histogram.h>
-
 #include <cloud/blockstore/tools/testing/loadtest/protos/loadtest.pb.h>
+
+#include <cloud/storage/core/libs/diagnostics/histogram.h>
 
 #include <library/cpp/threading/future/future.h>
 

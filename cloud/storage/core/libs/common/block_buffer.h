@@ -14,8 +14,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBlockBuffer
-    : private TMoveOnly
+class TBlockBuffer: private TMoveOnly
 {
 private:
     IAllocator* Allocator;
@@ -38,7 +37,7 @@ public:
         Clear();
     }
 
-    TBlockBuffer& operator =(TBlockBuffer&& other) noexcept
+    TBlockBuffer& operator=(TBlockBuffer&& other) noexcept
     {
         TBlockBuffer temp(std::move(other));
         Swap(temp);
@@ -115,7 +114,7 @@ public:
 
         auto b = Allocator->Allocate(size);
         memset(b.Data, fill, size);
-        AttachBlock({ (char*)b.Data, size });
+        AttachBlock({(char*)b.Data, size});
     }
 
     void AddBlock(TBlockDataRef block)
@@ -125,7 +124,7 @@ public:
         auto b = Allocator->Allocate(block.Size());
         memcpy(b.Data, block.Data(), block.Size());
 
-        AttachBlock({ (char*)b.Data, block.Size() });
+        AttachBlock({(char*)b.Data, block.Size()});
     }
 
     void AddZeroBlock(size_t size)
@@ -166,7 +165,7 @@ private:
     void ReleaseBlock(TBlockDataRef block)
     {
         if (block.Data()) {
-            Allocator->Release({ (void*)block.Data(), block.Size() });
+            Allocator->Release({(void*)block.Data(), block.Size()});
         }
     }
 };

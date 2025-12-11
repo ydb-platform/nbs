@@ -8,6 +8,7 @@
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
+
 #include <library/cpp/json/json_reader.h>
 
 #include <google/protobuf/util/json_util.h>
@@ -35,9 +36,7 @@ private:
     TString OperationId;
 
 public:
-    TGetCompactionStatusActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TGetCompactionStatusActionActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -68,7 +67,9 @@ void TGetCompactionStatusActionActor::Bootstrap(const TActorContext& ctx)
 {
     NJson::TJsonValue input;
     if (!NJson::ReadJsonTree(Input, &input, false)) {
-        HandleError(ctx, MakeError(E_ARGUMENT, "Input should be in JSON format"));
+        HandleError(
+            ctx,
+            MakeError(E_ARGUMENT, "Input should be in JSON format"));
         return;
     }
 
@@ -86,7 +87,9 @@ void TGetCompactionStatusActionActor::Bootstrap(const TActorContext& ctx)
     }
 
     if (!OperationId) {
-        HandleError(ctx, MakeError(E_ARGUMENT, "OperationId should be defined"));
+        HandleError(
+            ctx,
+            MakeError(E_ARGUMENT, "OperationId should be defined"));
         return;
     }
 
@@ -94,7 +97,8 @@ void TGetCompactionStatusActionActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 }
 
-void TGetCompactionStatusActionActor::GetCompactionStatus(const TActorContext& ctx)
+void TGetCompactionStatusActionActor::GetCompactionStatus(
+    const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvVolume::TEvGetCompactionStatusRequest>(
         RequestInfo->CallContext);
@@ -129,7 +133,8 @@ void TGetCompactionStatusActionActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(error);
 
     LWTRACK(
         ResponseSent_Service,
@@ -161,7 +166,9 @@ void TGetCompactionStatusActionActor::HandleGetCompactionStatusResponse(
 STFUNC(TGetCompactionStatusActionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvVolume::TEvGetCompactionStatusResponse, HandleGetCompactionStatusResponse);
+        HFunc(
+            TEvVolume::TEvGetCompactionStatusResponse,
+            HandleGetCompactionStatusResponse);
 
         default:
             HandleUnexpectedEvent(

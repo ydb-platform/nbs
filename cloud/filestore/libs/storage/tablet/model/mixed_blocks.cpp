@@ -28,10 +28,10 @@ struct TBlobMeta: TIntrusiveListItem<TBlobMeta>
     const size_t Level;
 
     TBlobMeta(
-            const TPartialBlobId& blobId,
-            TBlockList blockList,
-            const TMixedBlobStats& stats,
-            size_t level)
+        const TPartialBlobId& blobId,
+        TBlockList blockList,
+        const TMixedBlobStats& stats,
+        size_t level)
         : BlobId(blobId)
         , BlockList(std::move(blockList))
         , Stats(stats)
@@ -48,7 +48,7 @@ struct TBlobMetaOps
     struct TEqual
     {
         template <typename T1, typename T2>
-        bool operator ()(const T1& l, const T2& r) const
+        bool operator()(const T1& l, const T2& r) const
         {
             return GetBlobId(l) == GetBlobId(r);
         }
@@ -57,7 +57,7 @@ struct TBlobMetaOps
     struct THash
     {
         template <typename T>
-        size_t operator ()(const T& value) const
+        size_t operator()(const T& value) const
         {
             return GetBlobId(value).GetHash();
         }
@@ -78,8 +78,7 @@ using TBlobMetaMap = THashSet<
     TBlobMeta,
     TBlobMetaOps::THash,
     TBlobMetaOps::TEqual,
-    TStlAllocator
->;
+    TStlAllocator>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -191,8 +190,14 @@ void TMixedBlocks::RefRange(ui32 rangeId)
 void TMixedBlocks::UnRefRange(ui32 rangeId)
 {
     auto it = Impl->Ranges.find(rangeId);
-    Y_ABORT_UNLESS(it != Impl->Ranges.end(), "already removed range: %u", rangeId);
-    Y_ABORT_UNLESS(it->second.RefCount, "invalid ref count for range: %u", rangeId);
+    Y_ABORT_UNLESS(
+        it != Impl->Ranges.end(),
+        "already removed range: %u",
+        rangeId);
+    Y_ABORT_UNLESS(
+        it->second.RefCount,
+        "invalid ref count for range: %u",
+        rangeId);
 
     it->second.RefCount--;
 
@@ -220,11 +225,8 @@ bool TMixedBlocks::AddBlocks(
     Y_ABORT_UNLESS(range);
 
     // TODO: pick level
-    auto [it, inserted] = range->Blobs.emplace(
-        blobId,
-        std::move(blockList),
-        stats,
-        0);
+    auto [it, inserted] =
+        range->Blobs.emplace(blobId, std::move(blockList), stats, 0);
 
     if (!inserted) {
         return false;
@@ -279,11 +281,8 @@ void TMixedBlocks::FindBlocks(
 
     // TODO: limit range scan
     for (const auto& blob: range->Blobs) {
-        auto iter = blob.BlockList.FindBlocks(
-            nodeId,
-            commitId,
-            blockIndex,
-            blocksCount);
+        auto iter = blob.BlockList
+                        .FindBlocks(nodeId, commitId, blockIndex, blocksCount);
 
         while (iter.Next()) {
             auto& block = iter.Block;
@@ -308,11 +307,7 @@ void TMixedBlocks::FindBlocks(
                     range->DeletionMarkers.Apply(b);
 
                     if (commitId < b.MaxCommitId) {
-                        visitor.Accept(
-                            b,
-                            blob.BlobId,
-                            iter.BlobOffset + i,
-                            1);
+                        visitor.Accept(b, blob.BlobId, iter.BlobOffset + i, 1);
                     }
                 }
             }
@@ -368,8 +363,8 @@ TVector<TMixedBlobMeta> TMixedBlocks::ApplyDeletionMarkers(ui32 rangeId) const
     return result;
 }
 
-auto TMixedBlocks::ApplyDeletionMarkersAndGetMetas(ui32 rangeId) const
-    -> TVector<TDeletionMarkerApplicationResult>
+auto TMixedBlocks::ApplyDeletionMarkersAndGetMetas(
+    ui32 rangeId) const -> TVector<TDeletionMarkerApplicationResult>
 {
     auto* range = Impl->FindRange(rangeId);
     Y_ABORT_UNLESS(range);

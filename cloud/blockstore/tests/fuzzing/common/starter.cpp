@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/kms/iface/kms_client.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/daemon/app.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/vhost-client/vhost-buffered-client.h>
@@ -55,20 +56,19 @@ TStarter* TStarter::GetStarter(
 
         Impl = std::unique_ptr<TStarter>(new TStarter(*bootstrap));
 
-        std::set_terminate([]{
-            TBackTrace bt;
-            bt.Capture();
-            Cerr << bt.PrintToString() << Endl;
-            abort();
-        });
+        std::set_terminate(
+            []
+            {
+                TBackTrace bt;
+                bt.Capture();
+                Cerr << bt.PrintToString() << Endl;
+                abort();
+            });
 
         Impl->ParseOptions(std::move(options));
         Impl->Start();
 
-        atexit([]()
-        {
-            TStarter::GetStarter(nullptr, {})->Stop();
-        });
+        atexit([]() { TStarter::GetStarter(nullptr, {})->Stop(); });
     }
 
     return Impl.get();
@@ -86,7 +86,7 @@ void TStarter::ParseOptions(TVector<TString> options)
     std::vector<char*> args;
     args.reserve(options.size());
 
-    for(auto& arg: options) {
+    for (auto& arg: options) {
         args.push_back(&arg[0]);
     }
 
@@ -104,16 +104,16 @@ void TStarter::Start()
         throw;
     }
 
-    Thread = SystemThreadFactory()->Run([this](){
-        AppMain(Bootstrap.GetShouldContinue());
-    });
+    Thread = SystemThreadFactory()->Run(
+        [this]() { AppMain(Bootstrap.GetShouldContinue()); });
 
     {
         auto request = std::make_shared<NProto::TCreateVolumeRequest>();
         request->SetDiskId("vol_" + ToString(GetPID()));
         request->SetBlocksCount(BLOCKS_COUNT);
         request->SetBlockSize(BLOCKS_SIZE);
-        request->SetStorageMediaKind(::NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD);
+        request->SetStorageMediaKind(
+            ::NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD);
 
         auto future = Bootstrap.GetBlockStoreService()->CreateVolume(
             MakeIntrusive<TCallContext>(),
@@ -132,7 +132,7 @@ void TStarter::Start()
         request->SetDiskId("vol_" + ToString(GetPID()));
         request->SetIpcType(NProto::IPC_VHOST);
         request->SetClientId("fuzzer");
-        request->SetVhostQueuesCount(2); //max queues count
+        request->SetVhostQueuesCount(2);   // max queues count
         request->SetUnixSocketPath(socket_path);
 
         auto future = Bootstrap.GetBlockStoreService()->StartEndpoint(
@@ -178,16 +178,14 @@ int TStarter::Run(const ui8* data, size_t size)
     }
 
     virtio_blk_req_hdr hdr;
-    if (!ReadData(&hdr.type,     sizeof(hdr.type),     data, size, offset) ||
+    if (!ReadData(&hdr.type, sizeof(hdr.type), data, size, offset) ||
         !ReadData(&hdr.reserved, sizeof(hdr.reserved), data, size, offset) ||
-        !ReadData(&hdr.sector,   sizeof(hdr.sector),   data, size, offset))
+        !ReadData(&hdr.sector, sizeof(hdr.sector), data, size, offset))
     {
         return -1;
     }
 
-    if (hdr.sector >
-        BLOCKS_COUNT * BLOCKS_SIZE / Client->GetBufferSize())
-    {
+    if (hdr.sector > BLOCKS_COUNT * BLOCKS_SIZE / Client->GetBufferSize()) {
         return -1;
     }
 
@@ -203,8 +201,8 @@ int TStarter::Run(const ui8* data, size_t size)
 
     while (size > offset) {
         const size_t bufferSize = (size - offset) > Client->GetBufferSize()
-            ? Client->GetBufferSize()
-            : (size - offset);
+                                      ? Client->GetBufferSize()
+                                      : (size - offset);
 
         if (hdr.type == VIRTIO_BLK_T_OUT) {
             inData.push_back(TVector<char>(bufferSize));

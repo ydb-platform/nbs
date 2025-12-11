@@ -14,13 +14,10 @@ TRequestInBuffer<TWriteBufferRequestData> Req(ui32 start, ui32 end)
 {
     return {
         end - start + 1,
-        {
-            nullptr,
-            TBlockRange32::MakeClosedInterval(start, end),
-            nullptr,
-            false
-        }
-    };
+        {nullptr,
+         TBlockRange32::MakeClosedInterval(start, end),
+         nullptr,
+         false}};
 }
 
 TString ToString(
@@ -34,22 +31,21 @@ TString ToString(
         }
         sb << "GROUP:W=" << group.Weight;
         for (const auto* request: group.Requests) {
-            sb << ";w=" << request->Weight
-                << ",r=" << request->Data.Range.Start
-                << "-" << request->Data.Range.End;
+            sb << ";w=" << request->Weight << ",r=" << request->Data.Range.Start
+               << "-" << request->Data.Range.End;
         }
     }
 
-    for (auto* request = g.FirstUngrouped; request != requests.end(); ++request) {
+    for (auto* request = g.FirstUngrouped; request != requests.end(); ++request)
+    {
         if (request == g.FirstUngrouped) {
             if (g.Groups.size()) {
                 sb << "|";
             }
             sb << "UNGROUPED";
         }
-        sb << ";w=" << request->Weight
-            << ",r=" << request->Data.Range.Start
-            << "-" << request->Data.Range.End;
+        sb << ";w=" << request->Weight << ",r=" << request->Data.Range.Start
+           << "-" << request->Data.Range.End;
     }
 
     return sb;
@@ -63,17 +59,17 @@ Y_UNIT_TEST_SUITE(TWriteBufferRequestTest)
 {
     Y_UNIT_TEST(TestGrouping)
     {
-        TVector<TRequestInBuffer<TWriteBufferRequestData>> requests {
-            Req(0, 5),      // kept intact
-            Req(2, 3),      // deleted      -2
-            Req(7, 11),     // cut          -2
-            Req(10, 15),    // kept intact
-            Req(16, 20),    // kept intact
-            Req(21, 30),    // cut          -6
-            Req(21, 25),    // deleted      -5
-            Req(22, 27),    // deleted      -6
-            Req(25, 32),    // cut          -6
-            Req(27, 35),    // kept intact
+        TVector<TRequestInBuffer<TWriteBufferRequestData>> requests{
+            Req(0, 5),     // kept intact
+            Req(2, 3),     // deleted      -2
+            Req(7, 11),    // cut          -2
+            Req(10, 15),   // kept intact
+            Req(16, 20),   // kept intact
+            Req(21, 30),   // cut          -6
+            Req(21, 25),   // deleted      -5
+            Req(22, 27),   // deleted      -6
+            Req(25, 32),   // cut          -6
+            Req(27, 35),   // kept intact
         };
 
         ui32 totalWeight = 0;
@@ -88,9 +84,9 @@ Y_UNIT_TEST_SUITE(TWriteBufferRequestTest)
             auto g = GroupRequests(
                 requestsCopy,
                 totalWeight,
-                0,              // min weight
-                Max<ui32>(),    // max weight
-                Max<ui32>()     // max range
+                0,             // min weight
+                Max<ui32>(),   // max weight
+                Max<ui32>()    // max range
             );
 
             UNIT_ASSERT_VALUES_EQUAL(
@@ -105,8 +101,7 @@ Y_UNIT_TEST_SUITE(TWriteBufferRequestTest)
                 ";w=0,r=22-27"
                 ";w=2,r=25-26"
                 ";w=9,r=27-35",
-                ToString(requestsCopy, g)
-            );
+                ToString(requestsCopy, g));
         }
 
         // all ungrouped
@@ -116,9 +111,9 @@ Y_UNIT_TEST_SUITE(TWriteBufferRequestTest)
             auto g = GroupRequests(
                 requestsCopy,
                 totalWeight,
-                Max<ui32>(),    // min weight
-                Max<ui32>(),    // max weight
-                Max<ui32>()     // max range
+                Max<ui32>(),   // min weight
+                Max<ui32>(),   // max weight
+                Max<ui32>()    // max range
             );
 
             UNIT_ASSERT_VALUES_EQUAL(
@@ -133,8 +128,7 @@ Y_UNIT_TEST_SUITE(TWriteBufferRequestTest)
                 ";w=0,r=22-27"
                 ";w=2,r=25-26"
                 ";w=9,r=27-35",
-                ToString(requestsCopy, g)
-            );
+                ToString(requestsCopy, g));
         }
 
         // split by max range
@@ -144,9 +138,9 @@ Y_UNIT_TEST_SUITE(TWriteBufferRequestTest)
             auto g = GroupRequests(
                 requestsCopy,
                 totalWeight,
-                10,             // min weight
-                Max<ui32>(),    // max weight
-                11              // max range
+                10,            // min weight
+                Max<ui32>(),   // max weight
+                11             // max range
             );
 
             UNIT_ASSERT_VALUES_EQUAL(
@@ -164,8 +158,7 @@ Y_UNIT_TEST_SUITE(TWriteBufferRequestTest)
                 ";w=8,r=25-32"
                 "|UNGROUPED"
                 ";w=9,r=27-35",
-                ToString(requestsCopy, g)
-            );
+                ToString(requestsCopy, g));
         }
 
         // split by max weight
@@ -175,9 +168,9 @@ Y_UNIT_TEST_SUITE(TWriteBufferRequestTest)
             auto g = GroupRequests(
                 requestsCopy,
                 totalWeight,
-                10,             // min weight
-                11,             // max weight
-                Max<ui32>()     // max range
+                10,           // min weight
+                11,           // max weight
+                Max<ui32>()   // max range
             );
 
             UNIT_ASSERT_VALUES_EQUAL(
@@ -195,8 +188,7 @@ Y_UNIT_TEST_SUITE(TWriteBufferRequestTest)
                 "|GROUP:W=11"
                 ";w=2,r=25-26"
                 ";w=9,r=27-35",
-                ToString(requestsCopy, g)
-            );
+                ToString(requestsCopy, g));
         }
 
         // testing tiny max weight
@@ -206,9 +198,9 @@ Y_UNIT_TEST_SUITE(TWriteBufferRequestTest)
             auto g = GroupRequests(
                 requestsCopy,
                 totalWeight,
-                0,              // min weight
-                2,              // max weight
-                Max<ui32>()     // max range
+                0,            // min weight
+                2,            // max weight
+                Max<ui32>()   // max range
             );
 
             UNIT_ASSERT_VALUES_EQUAL(
@@ -229,14 +221,13 @@ Y_UNIT_TEST_SUITE(TWriteBufferRequestTest)
                 ";w=8,r=25-32"
                 "|GROUP:W=9"
                 ";w=9,r=27-35",
-                ToString(requestsCopy, g)
-            );
+                ToString(requestsCopy, g));
         }
     }
 
     Y_UNIT_TEST(TestGroupingFastPath)
     {
-        TVector<TRequestInBuffer<TWriteBufferRequestData>> requests {
+        TVector<TRequestInBuffer<TWriteBufferRequestData>> requests{
             Req(0, 5),
             Req(7, 9),
             Req(10, 15),
@@ -258,9 +249,9 @@ Y_UNIT_TEST_SUITE(TWriteBufferRequestTest)
             auto g = GroupRequests(
                 requestsCopy,
                 totalWeight,
-                Max<ui32>(),    // min weight
-                Max<ui32>(),    // max weight
-                Max<ui32>()     // max range
+                Max<ui32>(),   // min weight
+                Max<ui32>(),   // max weight
+                Max<ui32>()    // max range
             );
 
             UNIT_ASSERT_VALUES_EQUAL(
@@ -272,8 +263,7 @@ Y_UNIT_TEST_SUITE(TWriteBufferRequestTest)
                 ";w=4,r=21-24"
                 ";w=2,r=25-26"
                 ";w=9,r=27-35",
-                ToString(requestsCopy, g)
-            );
+                ToString(requestsCopy, g));
         }
     }
 }

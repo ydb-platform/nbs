@@ -6,6 +6,7 @@
 #include "ydbstorage.h"
 
 #include <cloud/blockstore/libs/kikimr/events.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -47,8 +48,8 @@ struct TAlterCheckResult
     {}
 
     TAlterCheckResult(
-            THashMap<TString, EPrimitiveType> columns,
-            TMaybe<NYdb::NTable::TTtlSettings> ttl)
+        THashMap<TString, EPrimitiveType> columns,
+        TMaybe<NYdb::NTable::TTtlSettings> ttl)
         : Columns(std::move(columns))
         , Ttl(std::move(ttl))
     {}
@@ -86,9 +87,7 @@ struct TSetupTablesResult
     const NProto::TError Error;
     const TYDBTableNames TableNames;
 
-    TSetupTablesResult(
-            NProto::TError error,
-            TYDBTableNames tableNames)
+    TSetupTablesResult(NProto::TError error, TYDBTableNames tableNames)
         : Error(std::move(error))
         , TableNames(std::move(tableNames))
     {}
@@ -174,10 +173,7 @@ private:
             "TWaitSetup",
             " too many responses while waiting for tables setup");
         if (--ResponsesToWait == 0) {
-            Result.SetValue(
-                TSetupTablesResult(
-                    Error,
-                    TableNames));
+            Result.SetValue(TSetupTablesResult(Error, TableNames));
         }
     }
 };
@@ -258,9 +254,9 @@ class TBulkUpsertExecutor
 
 public:
     TBulkUpsertExecutor(
-            IYdbStoragePtr storage,
-            TString databaseName,
-            TVector<TUploadData> dataToUpload)
+        IYdbStoragePtr storage,
+        TString databaseName,
+        TVector<TUploadData> dataToUpload)
         : Storage{std::move(storage)}
         , DatabaseName{std::move(databaseName)}
         , DataToUpload{std::move(dataToUpload)}
@@ -277,14 +273,15 @@ public:
                 std::move(data.UploadData)));
 
             Responses.back().Subscribe(
-                [pThis = shared_from_this()] (const auto& future) mutable {
+                [pThis = shared_from_this()](const auto& future) mutable
+                {
                     Y_UNUSED(future);
                     with_lock (pThis->ResponseLock) {
                         if (!--pThis->ResponsesToWait) {
                             pThis->SetResponse();
                         }
                     }
-            });
+                });
         }
         return Response.GetFuture();
     }
@@ -297,7 +294,9 @@ private:
         for (const auto& f: Responses) {
             auto error = f.GetValue();
             if (FAILED(error.GetCode())) {
-                if (SUCCEEDED(result.GetCode()) || error.GetCode() == E_NOT_FOUND) {
+                if (SUCCEEDED(result.GetCode()) ||
+                    error.GetCode() == E_NOT_FOUND)
+                {
                     result = std::move(error);
                 }
             }
@@ -352,8 +351,7 @@ public:
     }
 
     void Stop() override
-    {
-    }
+    {}
 
 private:
     TFuture<NProto::TError> DoUploadStats(
@@ -402,10 +400,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TYdbStatsUploader::TYdbStatsUploader(
-        TYdbStatsConfigPtr config,
-        ILoggingServicePtr logging,
-        IYdbStoragePtr dbStorage,
-        TYDBTableSchemes tableSchemes)
+    TYdbStatsConfigPtr config,
+    ILoggingServicePtr logging,
+    IYdbStoragePtr dbStorage,
+    TYDBTableSchemes tableSchemes)
     : Config(std::move(config))
     , Logging(std::move(logging))
     , DbStorage(std::move(dbStorage))
@@ -422,11 +420,10 @@ TFuture<NProto::TError> TYdbStatsUploader::UploadStats(const TYdbRowData& rows)
         return DoUploadStats(rows, response.GetValue());
     }
 
-    auto pThis = shared_from_this();  // will hold reference to this
+    auto pThis = shared_from_this();   // will hold reference to this
     return response.Apply(
-        [=] (const auto& future) {
-            return pThis->DoUploadStats(rows, future.GetValue());
-        });
+        [=](const auto& future)
+        { return pThis->DoUploadStats(rows, future.GetValue()); });
 }
 
 TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
@@ -439,13 +436,15 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
 
     TVector<TUploadData> dataForUpload;
 
-    auto addStatsRows = [&] (TValueBuilder& rowsBuilder) {
+    auto addStatsRows = [&](TValueBuilder& rowsBuilder)
+    {
         for (const auto& row: rows.Stats) {
             rowsBuilder.AddListItem(row.GetYdbValues());
         }
     };
-    auto addMetricsRows = [&] (TValueBuilder& rowsBuilder) {
-        for (const auto& row : rows.Metrics) {
+    auto addMetricsRows = [&](TValueBuilder& rowsBuilder)
+    {
+        for (const auto& row: rows.Metrics) {
             rowsBuilder.AddListItem(row.GetYdbValues());
         }
     };
@@ -462,7 +461,8 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
         }
     };
 
-    auto buildYdbRows = [&] (const std::function<void(TValueBuilder&)>& addRows) {
+    auto buildYdbRows = [&](const std::function<void(TValueBuilder&)>& addRows)
+    {
         TValueBuilder rowsBuilder;
 
         rowsBuilder.BeginList();
@@ -520,9 +520,10 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
         std::move(dataForUpload));
     auto future = executor->Execute();
 
-    auto pThis = shared_from_this();  // will hold reference to this
+    auto pThis = shared_from_this();   // will hold reference to this
     return future.Apply(
-        [pThis] (const auto& future) {
+        [pThis](const auto& future)
+        {
             const auto& result = future.GetValue();
             if (result.GetCode() == E_NOT_FOUND) {
                 with_lock (pThis->StateLock) {
@@ -540,14 +541,14 @@ TFuture<TSetupTablesResult> TYdbStatsUploader::EnsureInitialized()
 {
     with_lock (StateLock) {
         if (State == EState::UNINITIALIZED ||
-           (State == EState::WORKING && IsRotationRequired(HistoryTableTimestamp)))
+            (State == EState::WORKING &&
+             IsRotationRequired(HistoryTableTimestamp)))
         {
             InitResponse = NewPromise<TSetupTablesResult>();
             State = EState::INITIALIZING;
             SetupTables().Subscribe(
-                [=, this] (const auto& future) {
-                    HandleSetupTablesResult(future.GetValue());
-                });
+                [=, this](const auto& future)
+                { HandleSetupTablesResult(future.GetValue()); });
         }
 
         if (State == WORKING) {
@@ -557,9 +558,8 @@ TFuture<TSetupTablesResult> TYdbStatsUploader::EnsureInitialized()
                 CleanupRunning = true;
                 STORAGE_INFO("Going to check for obsolete history tables");
                 RemoveObsoleteTables().Subscribe(
-                    [=, this] (const auto& future) {
-                        HandleRemoveObsoleteTablesResult(future.GetValue());
-                    });
+                    [=, this](const auto& future)
+                    { HandleRemoveObsoleteTablesResult(future.GetValue()); });
             }
         }
 
@@ -595,9 +595,10 @@ void TYdbStatsUploader::HandleRemoveObsoleteTablesResult(
             LastCleanupCheck = TInstant::Now();
         } else {
             auto text = TStringBuilder()
-                << "Unable to remove obsolete history tables, "
-                << " error code: " << error.GetCode()
-                << " with reason:\n" << error.GetMessage();
+                        << "Unable to remove obsolete history tables, "
+                        << " error code: " << error.GetCode()
+                        << " with reason:\n"
+                        << error.GetMessage();
             STORAGE_ERROR(text);
         }
         CleanupRunning = false;
@@ -609,39 +610,33 @@ void TYdbStatsUploader::HandleRemoveObsoleteTablesResult(
 
 TFuture<TSetupTablesResult> TYdbStatsUploader::SetupTables() const
 {
-    auto pThis = shared_from_this();  // will hold reference to this
+    auto pThis = shared_from_this();   // will hold reference to this
 
     auto waitSetup = std::make_shared<TWaitSetup>();
 
     SetupStatsTable().Subscribe(
-        [pThis, waitSetup] (const auto& future) {
-            waitSetup->SetStatsTable(future.GetValue());
-        });
+        [pThis, waitSetup](const auto& future)
+        { waitSetup->SetStatsTable(future.GetValue()); });
 
     SetupHistoryTable().Subscribe(
-        [pThis, waitSetup] (const auto& future) {
-            waitSetup->SetHistoryTable(future.GetValue());
-        });
+        [pThis, waitSetup](const auto& future)
+        { waitSetup->SetHistoryTable(future.GetValue()); });
 
     SetupArchiveStatsTable().Subscribe(
-        [pThis, waitSetup] (const auto& future) {
-            waitSetup->SetArchiveStatsTable(future.GetValue());
-        });
+        [pThis, waitSetup](const auto& future)
+        { waitSetup->SetArchiveStatsTable(future.GetValue()); });
 
     SetupMetricsTable().Subscribe(
-        [pThis, waitSetup] (const auto& future) {
-            waitSetup->SetMetricsTable(future.GetValue());
-        });
+        [pThis, waitSetup](const auto& future)
+        { waitSetup->SetMetricsTable(future.GetValue()); });
 
     SetupGroupsTable().Subscribe(
-        [pThis, waitSetup](const auto& future) {
-            waitSetup->SetGroupsTable(future.GetValue());
-        });
+        [pThis, waitSetup](const auto& future)
+        { waitSetup->SetGroupsTable(future.GetValue()); });
 
     SetupPartitionsTable().Subscribe(
-        [pThis, waitSetup](const auto& future) {
-            waitSetup->SetPartitionsTable(future.GetValue());
-        });
+        [pThis, waitSetup](const auto& future)
+        { waitSetup->SetPartitionsTable(future.GetValue()); });
 
     return waitSetup->GetResult();
 }
@@ -649,10 +644,9 @@ TFuture<TSetupTablesResult> TYdbStatsUploader::SetupTables() const
 TFuture<TSetupTableResult> TYdbStatsUploader::SetupStatsTable() const
 {
     auto tableName = Config->GetStatsTableName();
-    return SetupTable(tableName, TableSchemes.Stats).Apply(
-        [=] (const auto& future) {
-            return TSetupTableResult(future.GetValue(), tableName);
-        });
+    return SetupTable(tableName, TableSchemes.Stats)
+        .Apply([=](const auto& future)
+               { return TSetupTableResult(future.GetValue(), tableName); });
 }
 
 TFuture<TSetupTableResult> TYdbStatsUploader::SetupArchiveStatsTable() const
@@ -661,10 +655,9 @@ TFuture<TSetupTableResult> TYdbStatsUploader::SetupArchiveStatsTable() const
     if (!tableName) {
         return MakeFuture(TSetupTableResult(MakeError(S_OK), tableName));
     }
-    return SetupTable(tableName, TableSchemes.Archive).Apply(
-        [=] (const auto& future) {
-            return TSetupTableResult(future.GetValue(), tableName);
-        });
+    return SetupTable(tableName, TableSchemes.Archive)
+        .Apply([=](const auto& future)
+               { return TSetupTableResult(future.GetValue(), tableName); });
 }
 
 TFuture<TSetupTableResult> TYdbStatsUploader::SetupMetricsTable() const
@@ -673,10 +666,9 @@ TFuture<TSetupTableResult> TYdbStatsUploader::SetupMetricsTable() const
     if (!tableName) {
         return MakeFuture(TSetupTableResult(MakeError(S_OK), tableName));
     }
-    return SetupTable(tableName, TableSchemes.Metrics).Apply(
-        [=] (const auto& future) {
-            return TSetupTableResult(future.GetValue(), tableName);
-        });
+    return SetupTable(tableName, TableSchemes.Metrics)
+        .Apply([=](const auto& future)
+               { return TSetupTableResult(future.GetValue(), tableName); });
 }
 
 TFuture<TSetupTableResult> TYdbStatsUploader::SetupGroupsTable() const
@@ -704,7 +696,8 @@ TFuture<TSetupTableResult> TYdbStatsUploader::SetupPartitionsTable() const
 TFuture<TSetupTableResult> TYdbStatsUploader::SetupHistoryTable() const
 {
     return DbStorage->GetHistoryTables().Apply(
-        [=, this] (const auto& future) {
+        [=, this](const auto& future)
+        {
             const auto& result = future.GetValue();
             if (FAILED(result.Error.GetCode())) {
                 return MakeFuture(TSetupTableResult(result.Error));
@@ -726,10 +719,11 @@ TFuture<TSetupTableResult> TYdbStatsUploader::SetupHistoryTable() const
                 tableName = FormatHistoryTableName(TInstant::Now());
             }
 
-            return SetupTable(tableName, TableSchemes.History).Apply(
-                [=] (const auto& future) {
-                    return TSetupTableResult(future.GetValue(), tableName);
-                });
+            return SetupTable(tableName, TableSchemes.History)
+                .Apply(
+                    [=](const auto& future) {
+                        return TSetupTableResult(future.GetValue(), tableName);
+                    });
         });
 }
 
@@ -738,10 +732,14 @@ TFuture<NProto::TError> TYdbStatsUploader::SetupTable(
     TStatsTableSchemePtr tableScheme) const
 {
     return DbStorage->DescribeTable(tableName).Apply(
-        [=, this] (const auto& future) {
+        [=, this](const auto& future)
+        {
             const auto& response = future.GetValue();
             if (SUCCEEDED(response.Error.GetCode())) {
-                return AlterTable(tableName, *tableScheme, response.TableScheme);
+                return AlterTable(
+                    tableName,
+                    *tableScheme,
+                    response.TableScheme);
             } else if (response.Error.GetCode() == E_NOT_FOUND) {
                 return CreateTable(tableName, *tableScheme);
             } else {
@@ -780,18 +778,20 @@ TFuture<NProto::TError> TYdbStatsUploader::AlterTable(
         return MakeFuture(diff.Error);
     }
 
-    auto areTtlSettingsDifferent = [] (auto&& ttl1, auto&& ttl2) {
-        return ttl1.GetColumnName() != ttl2.GetColumnName()
-            || ttl1.GetColumnUnit() != ttl2.GetColumnUnit()
-            || ttl1.GetExpireAfter() != ttl2.GetExpireAfter();
+    auto areTtlSettingsDifferent = [](auto&& ttl1, auto&& ttl2)
+    {
+        return ttl1.GetColumnName() != ttl2.GetColumnName() ||
+               ttl1.GetColumnUnit() != ttl2.GetColumnUnit() ||
+               ttl1.GetExpireAfter() != ttl2.GetExpireAfter();
     };
 
-    auto areTtlSettingsUpdated = [&] () {
-        return scheme.Ttl.Empty()
-            || diff.Ttl->GetMode() != scheme.Ttl->GetMode()
-            || areTtlSettingsDifferent(
-                diff.Ttl->GetValueSinceUnixEpoch(),
-                scheme.Ttl->GetValueSinceUnixEpoch());
+    auto areTtlSettingsUpdated = [&]()
+    {
+        return scheme.Ttl.Empty() ||
+               diff.Ttl->GetMode() != scheme.Ttl->GetMode() ||
+               areTtlSettingsDifferent(
+                   diff.Ttl->GetValueSinceUnixEpoch(),
+                   scheme.Ttl->GetValueSinceUnixEpoch());
     };
 
     bool shouldUpdateTtl = diff.Ttl.Defined() && areTtlSettingsUpdated();
@@ -813,11 +813,10 @@ TFuture<NProto::TError> TYdbStatsUploader::AlterTable(
 
     if (diff.Ttl.Defined()) {
         const auto& ttl = diff.Ttl->GetValueSinceUnixEpoch();
-        settings.AlterTtlSettings(
-            TAlterTtlSettings::Set(
-                ttl.GetColumnName(),
-                ttl.GetColumnUnit(),
-                ttl.GetExpireAfter()));
+        settings.AlterTtlSettings(TAlterTtlSettings::Set(
+            ttl.GetColumnName(),
+            ttl.GetColumnUnit(),
+            ttl.GetExpireAfter()));
     }
 
     return DbStorage->AlterTable(tableName, settings);
@@ -832,10 +831,8 @@ bool TYdbStatsUploader::IsRotationRequired(TInstant ts) const
 
 TString TYdbStatsUploader::FormatHistoryTableName(TInstant ts) const
 {
-    return TStringBuilder()
-        << Config->GetHistoryTablePrefix()
-        << '-'
-        << ts.FormatLocalTime("%F");
+    return TStringBuilder() << Config->GetHistoryTablePrefix() << '-'
+                            << ts.FormatLocalTime("%F");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -843,10 +840,11 @@ TString TYdbStatsUploader::FormatHistoryTableName(TInstant ts) const
 
 TFuture<NProto::TError> TYdbStatsUploader::RemoveObsoleteTables() const
 {
-    auto pThis = shared_from_this();  // will hold reference to this
+    auto pThis = shared_from_this();   // will hold reference to this
 
     return DbStorage->GetHistoryTables().Apply(
-        [=] (const auto& future) {
+        [=](const auto& future)
+        {
             const auto& response = future.GetValue();
             if (FAILED(response.Error.GetCode())) {
                 return MakeFuture(response.Error);
@@ -869,7 +867,8 @@ TFuture<NProto::TError> TYdbStatsUploader::RemoveObsoleteTables(
         {
             continue;
         }
-        if (now - table.second.Days() >= Config->GetHistoryTableLifetimeDays()) {
+        if (now - table.second.Days() >= Config->GetHistoryTableLifetimeDays())
+        {
             obsoleteTables.push_back(table.first);
             obsoleteStr << table.first.Quote() << '\n';
         }
@@ -885,9 +884,8 @@ TFuture<NProto::TError> TYdbStatsUploader::RemoveObsoleteTables(
     auto waitRemove = std::make_shared<TWaitRemove>(obsoleteTables.size());
     for (const auto& tableName: obsoleteTables) {
         DbStorage->DropTable(tableName).Subscribe(
-            [=] (const auto& future) {
-                waitRemove->SetResult(future.GetValue());
-            });
+            [=](const auto& future)
+            { waitRemove->SetResult(future.GetValue()); });
     }
 
     return waitRemove->GetResult();
@@ -904,9 +902,11 @@ TAlterCheckResult TYdbStatsUploader::CheckForAlter(
         auto typeParser = TTypeParser(column.Type);
         typeParser.OpenOptional();
 
-        if (!columnsSet.emplace(column.Name, typeParser.GetPrimitive()).second) {
-            return MakeError(E_ARGUMENT, TStringBuilder()
-                << "duplicate field: " << column.Name);
+        if (!columnsSet.emplace(column.Name, typeParser.GetPrimitive()).second)
+        {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "duplicate field: " << column.Name);
         }
 
         typeParser.CloseOptional();
@@ -923,8 +923,10 @@ TAlterCheckResult TYdbStatsUploader::CheckForAlter(
             newColumnList << column.Name << '\n';
         } else {
             if (typeParser.GetPrimitive() != it->second) {
-                return MakeError(E_ARGUMENT, TStringBuilder()
-                    << "type of field: " << column.Name << " has changed");
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "type of field: " << column.Name << " has changed");
             }
         }
     }
@@ -938,8 +940,7 @@ TAlterCheckResult TYdbStatsUploader::CheckForAlter(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TYdbStatsUploaderStub final
-    : public IYdbVolumesStatsUploader
+class TYdbStatsUploaderStub final: public IYdbVolumesStatsUploader
 {
 public:
     TFuture<NProto::TError> UploadStats(const TYdbRowData& rows) override
@@ -949,12 +950,10 @@ public:
     }
 
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 };
 
 }   // namespace
@@ -962,12 +961,12 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 TYDBTableSchemes::TYDBTableSchemes(
-        TStatsTableSchemePtr stats,
-        TStatsTableSchemePtr history,
-        TStatsTableSchemePtr archive,
-        TStatsTableSchemePtr metrics,
-        TStatsTableSchemePtr groups,
-        TStatsTableSchemePtr partitions)
+    TStatsTableSchemePtr stats,
+    TStatsTableSchemePtr history,
+    TStatsTableSchemePtr archive,
+    TStatsTableSchemePtr metrics,
+    TStatsTableSchemePtr groups,
+    TStatsTableSchemePtr partitions)
     : Stats(std::move(stats))
     , History(std::move(history))
     , Archive(std::move(archive))

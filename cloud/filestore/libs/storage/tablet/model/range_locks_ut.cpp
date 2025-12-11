@@ -239,7 +239,7 @@ Y_UNIT_TEST_SUITE(TRangeLocksTest)
                 .LockOrigin = ELockOrigin::Fcntl,
             };
 
-            auto result = locks.Acquire( Session1, Lock1, range);
+            auto result = locks.Acquire(Session1, Lock1, range);
             UNIT_ASSERT(result.Succeeded());
             UNIT_ASSERT(result.RemovedLockIds().empty());
         }
@@ -269,7 +269,7 @@ Y_UNIT_TEST_SUITE(TRangeLocksTest)
                 .LockMode = ELockMode::Exclusive,
                 .LockOrigin = ELockOrigin::Fcntl,
             };
-            auto result = locks.Acquire( Session1, Lock3, range);
+            auto result = locks.Acquire(Session1, Lock3, range);
             UNIT_ASSERT(result.Succeeded());
 
             const auto& removedLocks = result.RemovedLockIds();

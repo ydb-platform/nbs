@@ -98,8 +98,7 @@ IReadBlocksHandlerPtr CreateReadHandler(
     return NStorage::CreateReadBlocksHandler(
         readRange,
         blockSize,
-        enableDataIntegrityValidation
-    );
+        enableDataIntegrityValidation);
 }
 
 IReadBlocksHandlerPtr CreateReadHandler(
@@ -112,8 +111,7 @@ IReadBlocksHandlerPtr CreateReadHandler(
         readRange,
         request.Sglist,
         blockSize,
-        enableDataIntegrityValidation
-    );
+        enableDataIntegrityValidation);
 }
 
 IEventBasePtr CreateReadBlocksResponse(
@@ -125,7 +123,8 @@ IEventBasePtr CreateReadBlocksResponse(
     IReadBlocksHandler& handler)
 {
     if (replyLocal) {
-        auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>();
+        auto response =
+            std::make_unique<TEvService::TEvReadBlocksLocalResponse>();
         auto guardedSgList = handler.GetLocalResponse(response->Record);
 
         if (auto guard = guardedSgList.Acquire()) {
@@ -134,8 +133,7 @@ IEventBasePtr CreateReadBlocksResponse(
             for (const auto blockIndex: xrange(readRange)) {
                 const auto digest = blockDigestGenerator.ComputeDigest(
                     blockIndex,
-                    sglist[blockIndex - readRange.Start]
-                );
+                    sglist[blockIndex - readRange.Start]);
 
                 if (digest.Defined()) {
                     blockInfos.push_back({blockIndex, *digest});
@@ -147,15 +145,15 @@ IEventBasePtr CreateReadBlocksResponse(
         auto response = std::make_unique<TEvService::TEvReadBlocksResponse>();
         handler.GetResponse(response->Record);
         for (const auto blockIndex: xrange(readRange)) {
-            const auto& blockContent = response->Record.GetBlocks().GetBuffers(blockIndex - readRange.Start);
+            const auto& blockContent = response->Record.GetBlocks().GetBuffers(
+                blockIndex - readRange.Start);
             TBlockDataRef blockData = TBlockDataRef::CreateZeroBlock(blockSize);
             if (!blockContent.empty()) {
-                blockData = TBlockDataRef(blockContent.data(), blockContent.size());
+                blockData =
+                    TBlockDataRef(blockContent.data(), blockContent.size());
             }
-            const auto digest = blockDigestGenerator.ComputeDigest(
-                blockIndex,
-                blockData
-            );
+            const auto digest =
+                blockDigestGenerator.ComputeDigest(blockIndex, blockData);
 
             if (digest.Defined()) {
                 blockInfos.push_back({blockIndex, *digest});
@@ -215,24 +213,22 @@ TEvPartitionPrivate::TReadBlocksCompleted CreateOperationCompleted(
         requestInfo,
         commitId,
         blocksCount,
-        std::move(blockInfos)
-    );
+        std::move(blockInfos));
     return operation;
 }
 
 struct TCompareByBlobIdAndOffset
 {
-    bool operator() (const TReadBlocksRequest& l, const TReadBlocksRequest& r)
+    bool operator()(const TReadBlocksRequest& l, const TReadBlocksRequest& r)
     {
-        return l.BlobId < r.BlobId
-            || l.BlobId == r.BlobId && l.BlobOffset < r.BlobOffset;
+        return l.BlobId < r.BlobId ||
+               l.BlobId == r.BlobId && l.BlobOffset < r.BlobOffset;
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReadBlocksActor final
-    : public TActorBootstrapped<TReadBlocksActor>
+class TReadBlocksActor final: public TActorBootstrapped<TReadBlocksActor>
 {
 public:
     struct TBatchRequest
@@ -241,19 +237,19 @@ public:
         TActorId Proxy;
         TVector<ui16> BlobOffsets;
         TVector<ui32> Checksums;
-        TVector<ui64> Requests; // block indices, ui64 needed for integration
-                                // with sglist-related code
+        TVector<ui64> Requests;   // block indices, ui64 needed for integration
+                                  // with sglist-related code
         ui32 GroupId = 0;
 
         TBatchRequest() = default;
 
         TBatchRequest(
-                const NKikimr::TLogoBlobID& blobId,
-                TActorId proxy,
-                TVector<ui16> blobOffsets,
-                TVector<ui32> checksums,
-                TVector<ui64> requests,
-                ui32 groupId)
+            const NKikimr::TLogoBlobID& blobId,
+            TActorId proxy,
+            TVector<ui16> blobOffsets,
+            TVector<ui32> checksums,
+            TVector<ui64> requests,
+            ui32 groupId)
             : BlobId(blobId)
             , Proxy(proxy)
             , BlobOffsets(std::move(blobOffsets))
@@ -328,9 +324,7 @@ private:
         const NProto::TError& error,
         const TBatchRequest& batch);
 
-    bool HandleError(
-        const TActorContext& ctx,
-        const NProto::TError& error);
+    bool HandleError(const TActorContext& ctx, const NProto::TError& error);
 
     void ReplyAndDie(
         const TActorContext& ctx,
@@ -361,21 +355,21 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReadBlocksActor::TReadBlocksActor(
-        TString diskId,
-        TRequestInfoPtr requestInfo,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        ui32 blockSize,
-        ui32 compactionRangeSize,
-        const TActorId& tablet,
-        IReadBlocksHandlerPtr readHandler,
-        const TBlockRange32& readRange,
-        bool replyLocal,
-        bool checksumsEnabled,
-        bool reportBlobIdsOnFailure,
-        ui64 commitId,
-        TReadBlocksRequests ownRequests,
-        TVector<IProfileLog::TBlockInfo> blockInfos,
-        bool waitBaseDiskRequests)
+    TString diskId,
+    TRequestInfoPtr requestInfo,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    ui32 blockSize,
+    ui32 compactionRangeSize,
+    const TActorId& tablet,
+    IReadBlocksHandlerPtr readHandler,
+    const TBlockRange32& readRange,
+    bool replyLocal,
+    bool checksumsEnabled,
+    bool reportBlobIdsOnFailure,
+    ui64 commitId,
+    TReadBlocksRequests ownRequests,
+    TVector<IProfileLog::TBlockInfo> blockInfos,
+    bool waitBaseDiskRequests)
     : DiskId(std::move(diskId))
     , RequestInfo(std::move(requestInfo))
     , BlockDigestGenerator(blockDigestGenerator)
@@ -419,8 +413,7 @@ void TReadBlocksActor::ReadBlocks(
     Y_DEBUG_ABORT_UNLESS(IsSorted(
         requests.begin(),
         requests.end(),
-        TCompareByBlobIdAndOffset()
-    ));
+        TCompareByBlobIdAndOffset()));
 
     TBatchRequest current;
     for (auto& r: requests) {
@@ -455,23 +448,27 @@ void TReadBlocksActor::ReadBlocks(
     }
 
     for (ui32 batchIndex = batchRequestsOldSize;
-            batchIndex < BatchRequests.size(); ++batchIndex)
+         batchIndex < BatchRequests.size();
+         ++batchIndex)
     {
         auto& batch = BatchRequests[batchIndex];
 
         RequestsScheduled += batch.Requests.size();
 
-        auto request = std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
-            batch.BlobId,
-            batch.Proxy,
-            batch.BlobOffsets,
-            ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
-            batch.GroupId,
-            false,           // async
-            TInstant::Max(), // deadline
-            ChecksumsEnabled);
+        auto request =
+            std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+                batch.BlobId,
+                batch.Proxy,
+                batch.BlobOffsets,
+                ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
+                batch.GroupId,
+                false,             // async
+                TInstant::Max(),   // deadline
+                ChecksumsEnabled);
 
-        if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
+        if (!RequestInfo->CallContext->LWOrbit.Fork(
+                request->CallContext->LWOrbit))
+        {
             LWTRACK(
                 ForkFailed,
                 RequestInfo->CallContext->LWOrbit,
@@ -481,11 +478,7 @@ void TReadBlocksActor::ReadBlocks(
 
         ForkedCallContexts.emplace_back(request->CallContext);
 
-        NCloud::Send(
-            ctx,
-            Tablet,
-            std::move(request),
-            batchIndex);
+        NCloud::Send(ctx, Tablet, std::move(request), batchIndex);
     }
 }
 
@@ -500,8 +493,7 @@ void TReadBlocksActor::NotifyCompleted(
         RequestInfo,
         CommitId,
         RequestsCompleted,
-        std::move(BlockInfos)
-    );
+        std::move(BlockInfos));
     request->ReadStats = ReadStats;
 
     NCloud::Send(ctx, Tablet, std::move(request));
@@ -633,8 +625,7 @@ void TReadBlocksActor::HandleReadBlobResponse(
         BlockSize,
         ReplyLocal,
         BlockInfos,
-        *ReadHandler
-    );
+        *ReadHandler);
     ReplyAndDie(ctx, std::move(response), {});
 }
 
@@ -680,8 +671,7 @@ void TReadBlocksActor::HandleDescribeBlocksCompleted(
                 BlockSize,
                 ReplyLocal,
                 BlockInfos,
-                *ReadHandler
-            );
+                *ReadHandler);
             ReplyAndDie(ctx, std::move(response), {});
         }
         return;
@@ -710,9 +700,11 @@ STFUNC(TReadBlocksActor::StateWork)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvPartitionCommonPrivate::TEvReadBlobResponse,
+        HFunc(
+            TEvPartitionCommonPrivate::TEvReadBlobResponse,
             HandleReadBlobResponse);
-        HFunc(TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted,
+        HFunc(
+            TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted,
             HandleDescribeBlocksCompleted);
 
         default:
@@ -738,10 +730,10 @@ private:
 
 public:
     TReadBlocksVisitor(
-            IBlockDigestGeneratorPtr blockDigestGenerator,
-            ui32 blockSize,
-            TTabletStorageInfo& tabletInfo,
-            TTxPartition::TReadBlocks& args)
+        IBlockDigestGeneratorPtr blockDigestGenerator,
+        ui32 blockSize,
+        TTabletStorageInfo& tabletInfo,
+        TTxPartition::TReadBlocks& args)
         : BlockDigestGenerator(std::move(blockDigestGenerator))
         , BlockSize(blockSize)
         , TabletInfo(tabletInfo)
@@ -754,15 +746,18 @@ public:
             return false;
         }
 
-        if (Args.MarkBlock(block.Meta.BlockIndex, block.Meta.CommitId, TFreshMark())) {
+        if (Args.MarkBlock(
+                block.Meta.BlockIndex,
+                block.Meta.CommitId,
+                TFreshMark()))
+        {
             TBlockDataRef blockData = TBlockDataRef::CreateZeroBlock(BlockSize);
             if (!block.Content.empty()) {
-                blockData = TBlockDataRef(block.Content.data(), block.Content.size());
+                blockData =
+                    TBlockDataRef(block.Content.data(), block.Content.size());
             }
-            if (!Args.ReadHandler->SetBlock(
-                    block.Meta.BlockIndex,
-                    blockData,
-                    false))
+            if (!Args.ReadHandler
+                     ->SetBlock(block.Meta.BlockIndex, blockData, false))
             {
                 Args.Interrupted = true;
                 return false;
@@ -770,8 +765,7 @@ public:
 
             const auto digest = BlockDigestGenerator->ComputeDigest(
                 block.Meta.BlockIndex,
-                blockData
-            );
+                blockData);
 
             if (digest.Defined()) {
                 Args.BlockInfos.push_back({block.Meta.BlockIndex, *digest});
@@ -794,8 +788,8 @@ public:
         TBlockMark blockMark = TZeroMark();
 
         if (!IsDeletionMarker(blobId)) {
-            const auto group = TabletInfo.GroupFor(
-                blobId.Channel(), blobId.Generation());
+            const auto group =
+                TabletInfo.GroupFor(blobId.Channel(), blobId.Generation());
             const auto logoBlobId = MakeBlobId(TabletInfo.TabletID, blobId);
             blockMark = TBlobMark(logoBlobId, group, blobOffset);
         }
@@ -820,7 +814,8 @@ TMaybe<TBlockRange64> ComputeDescribeBlocksRange(
 {
     Y_DEBUG_ABORT_UNLESS(readRange.Size() == marks.size());
 
-    const auto empty = [] (const auto& mark) {
+    const auto empty = [](const auto& mark)
+    {
         return std::holds_alternative<TEmptyMark>(mark);
     };
 
@@ -838,7 +833,8 @@ TMaybe<TBlockRange64> ComputeDescribeBlocksRange(
 
     const auto startBlockIndex = readRange.Start;
     const auto firstEmptyIndexFromBegin = firstEmptyIter - marks.begin();
-    const auto firstEmptyBlockIndex = startBlockIndex + firstEmptyIndexFromBegin;
+    const auto firstEmptyBlockIndex =
+        startBlockIndex + firstEmptyIndexFromBegin;
     const auto lastEmptyBlockIndex = startBlockIndex + lastEmptyIndexFromBegin;
 
     return TBlockRange64::MakeClosedInterval(
@@ -890,10 +886,8 @@ void TPartitionActor::HandleReadBlocksRequest(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TMethod>(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo<TMethod>(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -908,16 +902,14 @@ void TPartitionActor::HandleReadBlocksRequest(
     auto ok = InitReadWriteBlockRange(
         msg->Record.GetStartIndex(),
         msg->Record.GetBlocksCount(),
-        &readRange
-    );
+        &readRange);
 
     if (!ok) {
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            MakeError(E_ARGUMENT, TStringBuilder()
-                << "invalid block range ["
-                << "index: " << msg->Record.GetStartIndex()
-                << ", count: " << msg->Record.GetBlocksCount()
-                << "]"));
+        auto response = std::make_unique<typename TMethod::TResponse>(MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "invalid block range [" << "index: "
+                             << msg->Record.GetStartIndex() << ", count: "
+                             << msg->Record.GetBlocksCount() << "]"));
 
         LWTRACK(
             ResponseSent_Partition,
@@ -933,7 +925,10 @@ void TPartitionActor::HandleReadBlocksRequest(
 
     if (!commitId) {
         auto result = VerifyReadBlocksCheckpoint(
-            ctx, msg->Record.GetCheckpointId(), *requestInfo, replyLocal);
+            ctx,
+            msg->Record.GetCheckpointId(),
+            *requestInfo,
+            replyLocal);
 
         if (!result.Defined()) {
             return;
@@ -1065,28 +1060,25 @@ bool TPartitionActor::PrepareReadBlocks(
         BlockDigestGenerator,
         State->GetBlockSize(),
         *Info(),
-        args
-    );
+        args);
     State->FindFreshBlocks(visitor, args.ReadRange, commitId);
     auto ready = db.FindMixedBlocks(
         visitor,
         args.ReadRange,
-        false,  // precharge
-        commitId
-    );
+        false,   // precharge
+        commitId);
     ready &= db.FindMergedBlocks(
         visitor,
         args.ReadRange,
-        false,  // precharge
+        false,   // precharge
         State->GetMaxBlocksInBlob(),
-        commitId
-    );
+        commitId);
 
     const ui32 checksumBoundary =
-        Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs()
-        / State->GetBlockSize();
-    args.ChecksumsEnabled = args.ReadRange.Start < checksumBoundary
-        && Config->GetCheckBlockChecksumsInBlobsUponRead();
+        Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs() /
+        State->GetBlockSize();
+    args.ChecksumsEnabled = args.ReadRange.Start < checksumBoundary &&
+                            Config->GetCheckBlockChecksumsInBlobsUponRead();
 
     if (args.ChecksumsEnabled) {
         for (auto& mark: args.BlockMarks) {
@@ -1099,7 +1091,8 @@ bool TPartitionActor::PrepareReadBlocks(
             TMaybe<NProto::TBlobMeta> meta;
             auto blobId = MakePartialBlobId(value.BlobId);
             if (db.ReadBlobMeta(blobId, meta)) {
-                Y_ABORT_UNLESS(meta.Defined(),
+                Y_ABORT_UNLESS(
+                    meta.Defined(),
                     "Could not read blob meta for blob: %s",
                     ToString(value.BlobId).data());
             } else {
@@ -1159,9 +1152,7 @@ void TPartitionActor::CompleteReadBlocks(
                 args.RequestInfo,
                 args.CommitId,
                 args.ReadRange.Size(),
-                {}
-            )
-        );
+                {}));
         return;
     }
 
@@ -1252,8 +1243,7 @@ void TPartitionActor::CompleteReadBlocks(
         State->GetBlockSize(),
         args.ReplyLocal,
         args.BlockInfos,
-        *args.ReadHandler
-    );
+        *args.ReadHandler);
 
     LWTRACK(
         ResponseSent_Partition,
@@ -1269,9 +1259,7 @@ void TPartitionActor::CompleteReadBlocks(
             args.RequestInfo,
             args.CommitId,
             args.ReadRange.Size(),
-            std::move(args.BlockInfos)
-        )
-    );
+            std::move(args.BlockInfos)));
 }
 
 void TPartitionActor::FinalizeReadBlocks(
@@ -1319,8 +1307,7 @@ void TPartitionActor::FinalizeReadBlocks(
         State->GetCompactionMap().RegisterRead(
             stat.BlockIndex,
             stat.BlobCount,
-            stat.BlockCount
-        );
+            stat.BlockCount);
     }
 }
 

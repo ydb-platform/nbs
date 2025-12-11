@@ -4,6 +4,7 @@
 #include "utils.h"
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/datetime/cputimer.h>
@@ -110,8 +111,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TClientHandler final
-    : public IClientHandler
+class TClientHandler final: public IClientHandler
 {
 private:
     const bool StructuredReply;
@@ -119,14 +119,14 @@ private:
 
     TLog Log;
 
-    TExportInfo ExportInfo {};
+    TExportInfo ExportInfo{};
     THashMap<ui64, TClientRequestPtr> RequestsInFlight;
 
 public:
     TClientHandler(
-            ILoggingServicePtr logging,
-            bool structuredReply,
-            bool useNbsErrors)
+        ILoggingServicePtr logging,
+        bool structuredReply,
+        bool useNbsErrors)
         : StructuredReply(structuredReply)
         , UseNbsErrors(useNbsErrors)
     {
@@ -138,9 +138,7 @@ public:
         return ExportInfo;
     }
 
-    bool NegotiateClient(
-        IInputStream& in,
-        IOutputStream& out) override
+    bool NegotiateClient(IInputStream& in, IOutputStream& out) override
     {
         TRequestReader reader(in);
         TRequestWriter writer(out);
@@ -148,9 +146,7 @@ public:
         return NegotiateClient(reader, writer);
     }
 
-    void SendRequest(
-        IOutputStream& out,
-        TClientRequestPtr request) override
+    void SendRequest(IOutputStream& out, TClientRequestPtr request) override
     {
         TRequestWriter writer(out);
 
@@ -178,25 +174,15 @@ public:
     }
 
 private:
-    bool NegotiateClient(
-        TRequestReader& in,
-        TRequestWriter& out);
+    bool NegotiateClient(TRequestReader& in, TRequestWriter& out);
 
-    bool ProcessOption_StructuredReply(
-        TRequestReader& in,
-        TRequestWriter& out);
+    bool ProcessOption_StructuredReply(TRequestReader& in, TRequestWriter& out);
 
-    bool ProcessOption_UseNbsErrors(
-        TRequestReader& in,
-        TRequestWriter& out);
+    bool ProcessOption_UseNbsErrors(TRequestReader& in, TRequestWriter& out);
 
-    bool ProcessOption_Go(
-        TRequestReader& in,
-        TRequestWriter& out);
+    bool ProcessOption_Go(TRequestReader& in, TRequestWriter& out);
 
-    void SendRequest(
-        TRequestWriter& out,
-        TClientRequestPtr request);
+    void SendRequest(TRequestWriter& out, TClientRequestPtr request);
 
     void ProcessRequests_Simple(TRequestReader& in);
     void ProcessRequests_Structured(TRequestReader& in);
@@ -208,15 +194,12 @@ private:
     NProto::TError GetError(ui32 code, TString message);
 
 private:
-    void WriteOption(
-        TRequestWriter& out,
-        ui32 option,
-        TStringBuf optionData = {})
+    void
+    WriteOption(TRequestWriter& out, ui32 option, TStringBuf optionData = {})
     {
-        STORAGE_DEBUG(ExportInfo
-            << " SEND Option"
-            << " option:" << option
-            << " length:" << optionData.length());
+        STORAGE_DEBUG(
+            ExportInfo << " SEND Option" << " option:" << option
+                       << " length:" << optionData.length());
         out.WriteOption(option, optionData);
     }
 
@@ -225,26 +208,21 @@ private:
         const TRequest& request,
         const TSgList& requestData = {})
     {
-        STORAGE_DEBUG(ExportInfo
-            << " SEND Request"
-            << " type:" << request.Type
-            << " handle:" << request.Handle
-            << " from:" << request.From
-            << " length:" << request.Length);
+        STORAGE_DEBUG(
+            ExportInfo << " SEND Request" << " type:" << request.Type
+                       << " handle:" << request.Handle << " from:"
+                       << request.From << " length:" << request.Length);
         out.WriteRequest(request, requestData);
     }
 
-    bool ReadOptionReply(
-        TRequestReader& in,
-        TOptionReply& reply,
-        TBuffer& replyData)
+    bool
+    ReadOptionReply(TRequestReader& in, TOptionReply& reply, TBuffer& replyData)
     {
         if (in.ReadOptionReply(reply, replyData)) {
-            STORAGE_DEBUG(ExportInfo
-                << " RECEIVE OptionReply"
-                << " option:" << reply.Option
-                << " type:" << reply.Type
-                << " length:" << reply.Length);
+            STORAGE_DEBUG(
+                ExportInfo << " RECEIVE OptionReply" << " option:"
+                           << reply.Option << " type:" << reply.Type
+                           << " length:" << reply.Length);
             return true;
         }
 
@@ -254,10 +232,9 @@ private:
     bool ReadSimpleReply(TRequestReader& in, TSimpleReply& reply)
     {
         if (in.ReadSimpleReply(reply)) {
-            STORAGE_DEBUG(ExportInfo
-                << " RECEIVE SimpleReply"
-                << " #" << reply.Handle
-                << " error:" << reply.Error);
+            STORAGE_DEBUG(
+                ExportInfo << " RECEIVE SimpleReply" << " #" << reply.Handle
+                           << " error:" << reply.Error);
             return true;
         }
 
@@ -267,12 +244,10 @@ private:
     bool ReadStructuredReply(TRequestReader& in, TStructuredReply& reply)
     {
         if (in.ReadStructuredReply(reply)) {
-            STORAGE_DEBUG(ExportInfo
-                << " RECEIVE StructuredReply"
-                << " #" << reply.Handle
-                << " flags:" << reply.Flags
-                << " type:" << reply.Type
-                << " length:" << reply.Length);
+            STORAGE_DEBUG(
+                ExportInfo << " RECEIVE StructuredReply" << " #" << reply.Handle
+                           << " flags:" << reply.Flags << " type:" << reply.Type
+                           << " length:" << reply.Length);
             return true;
         }
 
@@ -292,9 +267,9 @@ bool TClientHandler::NegotiateClient(TRequestReader& in, TRequestWriter& out)
 
         out.WriteClientHello(NBD_FLAG_C_FIXED_NEWSTYLE | NBD_FLAG_C_NO_ZEROES);
 
-        return (!StructuredReply || ProcessOption_StructuredReply(in, out))
-            && (!UseNbsErrors || ProcessOption_UseNbsErrors(in, out))
-            && ProcessOption_Go(in, out);
+        return (!StructuredReply || ProcessOption_StructuredReply(in, out)) &&
+               (!UseNbsErrors || ProcessOption_UseNbsErrors(in, out)) &&
+               ProcessOption_Go(in, out);
     }
 
     return false;
@@ -356,12 +331,10 @@ bool TClientHandler::ProcessOption_UseNbsErrors(
     return false;
 }
 
-bool TClientHandler::ProcessOption_Go(
-    TRequestReader& in,
-    TRequestWriter& out)
+bool TClientHandler::ProcessOption_Go(TRequestReader& in, TRequestWriter& out)
 {
     TExportInfoRequest request;
-    request.InfoTypes = { NBD_INFO_NAME, NBD_INFO_EXPORT, NBD_INFO_BLOCK_SIZE };
+    request.InfoTypes = {NBD_INFO_NAME, NBD_INFO_EXPORT, NBD_INFO_BLOCK_SIZE};
 
     TBufferRequestWriter requestOut;
     requestOut.WriteExportInfoRequest(request);
@@ -410,9 +383,7 @@ bool TClientHandler::ProcessOption_Go(
     return false;
 }
 
-void TClientHandler::SendRequest(
-    TRequestWriter& out,
-    TClientRequestPtr request)
+void TClientHandler::SendRequest(TRequestWriter& out, TClientRequestPtr request)
 {
     ui64 requestId = request->RequestId;
     if (!requestId) {
@@ -462,9 +433,8 @@ void TClientHandler::SendRequest(
     if (RequestsInFlight.contains(requestId)) {
         return;
     }
-    auto [it, inserted] = RequestsInFlight.emplace(
-        requestId,
-        std::move(request));
+    auto [it, inserted] =
+        RequestsInFlight.emplace(requestId, std::move(request));
     Y_ABORT_UNLESS(inserted);
 }
 
@@ -475,8 +445,8 @@ void TClientHandler::ProcessRequests_Simple(TRequestReader& in)
     while (ReadSimpleReply(in, reply)) {
         auto it = RequestsInFlight.find(reply.Handle);
         if (it == RequestsInFlight.end()) {
-            STORAGE_ERROR(ExportInfo
-                << " invalid reply handle: " << reply.Handle);
+            STORAGE_ERROR(
+                ExportInfo << " invalid reply handle: " << reply.Handle);
             continue;
         }
 
@@ -496,9 +466,11 @@ void TClientHandler::ProcessRequests_Simple(TRequestReader& in)
                 TBuffer replyData;
                 in.ReadOrFail(replyData, length);
 
-                CompleteRequest(it, TErrorResponse(
-                    E_CANCELLED,
-                    "failed to acquire sglist in NbdClient"));
+                CompleteRequest(
+                    it,
+                    TErrorResponse(
+                        E_CANCELLED,
+                        "failed to acquire sglist in NbdClient"));
                 continue;
             }
 
@@ -518,8 +490,8 @@ void TClientHandler::ProcessRequests_Structured(TRequestReader& in)
 
         auto it = RequestsInFlight.find(reply.Handle);
         if (it == RequestsInFlight.end()) {
-            STORAGE_ERROR(ExportInfo
-                << " invalid reply handle: " << reply.Handle);
+            STORAGE_ERROR(
+                ExportInfo << " invalid reply handle: " << reply.Handle);
 
             replyDataReader.SkipData();
             continue;
@@ -530,8 +502,10 @@ void TClientHandler::ProcessRequests_Structured(TRequestReader& in)
         if (ReplyTypeIsError(reply.Type)) {
             TBuffer replyData;
             replyDataReader.ReadData(replyData);
-            auto error = GetError(reply.Error.Error, TStringBuilder()
-                << "request failed with error: " << AsStringBuf(replyData));
+            auto error = GetError(
+                reply.Error.Error,
+                TStringBuilder()
+                    << "request failed with error: " << AsStringBuf(replyData));
 
             CompleteRequest(it, error);
             continue;
@@ -544,9 +518,11 @@ void TClientHandler::ProcessRequests_Structured(TRequestReader& in)
 
                 auto guard = request->SgList.Acquire();
                 if (!guard) {
-                    CompleteRequest(it, TErrorResponse(
-                        E_CANCELLED,
-                        "failed to acquire sglist in NbdClient"));
+                    CompleteRequest(
+                        it,
+                        TErrorResponse(
+                            E_CANCELLED,
+                            "failed to acquire sglist in NbdClient"));
 
                     replyDataReader.SkipData();
                     continue;
@@ -602,11 +578,11 @@ NProto::TError TClientHandler::GetError(ui32 code, TString message)
 ////////////////////////////////////////////////////////////////////////////////
 
 TClientRequest::TClientRequest(
-        EClientRequestType requestType,
-        ui64 requestId,
-        ui64 blockIndex,
-        ui32 blocksCount,
-        TGuardedSgList sglist)
+    EClientRequestType requestType,
+    ui64 requestId,
+    ui64 blockIndex,
+    ui32 blocksCount,
+    TGuardedSgList sglist)
     : RequestType(requestType)
     , RequestId(requestId)
     , BlockIndex(blockIndex)
@@ -629,7 +605,7 @@ IClientHandlerPtr CreateClientHandler(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IOutputStream& operator <<(IOutputStream& out, const TExportInfo& info)
+IOutputStream& operator<<(IOutputStream& out, const TExportInfo& info)
 {
     if (info.Name) {
         out << "[d:" << info.Name << "] ";

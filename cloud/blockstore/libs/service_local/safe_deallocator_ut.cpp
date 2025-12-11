@@ -31,7 +31,8 @@ struct TTestNvmeManager final: NNvme::INvmeManager
     ITaskQueuePtr TaskQueue;
     TVector<TDeallocateRequest> DeallocateRequests;
 
-    std::function<NProto::TError ()> DeallocateImpl = [] {
+    std::function<NProto::TError()> DeallocateImpl = []
+    {
         return NProto::TError{};
     };
 
@@ -48,10 +49,8 @@ struct TTestNvmeManager final: NNvme::INvmeManager
         return MakeFuture(MakeError(E_NOT_IMPLEMENTED));
     }
 
-    TFuture<NProto::TError> Deallocate(
-        const TString& path,
-        ui64 offsetBytes,
-        ui64 sizeBytes) final
+    TFuture<NProto::TError>
+    Deallocate(const TString& path, ui64 offsetBytes, ui64 sizeBytes) final
     {
         DeallocateRequests.emplace_back(path, offsetBytes, sizeBytes);
 
@@ -116,9 +115,8 @@ struct TTestFileIO final: public IFileIOService
 
         auto [len, error] = ReadImpl(offset, buffer);
 
-        TaskQueue->ExecuteSimple([=] {
-            completion->Func(completion, error, len);
-        });
+        TaskQueue->ExecuteSimple([=]
+                                 { completion->Func(completion, error, len); });
     }
 
     void AsyncReadV(

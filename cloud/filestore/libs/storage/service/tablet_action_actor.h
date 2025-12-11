@@ -15,7 +15,8 @@ namespace NCloud::NFileStore::NStorage {
 
 template <typename TRequest, typename TResponse>
 class TTabletActionActor final
-    : public NActors::TActorBootstrapped<TTabletActionActor<TRequest, TResponse>>
+    : public NActors::TActorBootstrapped<
+          TTabletActionActor<TRequest, TResponse>>
 {
 private:
     const TRequestInfoPtr RequestInfo;
@@ -25,9 +26,7 @@ private:
         NActors::TActorBootstrapped<TTabletActionActor<TRequest, TResponse>>;
 
 public:
-    TTabletActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TTabletActionActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -60,8 +59,8 @@ private:
 
 template <typename TRequest, typename TResponse>
 TTabletActionActor<TRequest, TResponse>::TTabletActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -72,9 +71,7 @@ void TTabletActionActor<TRequest, TResponse>::Bootstrap(
 {
     typename TRequest::ProtoRecordType request;
     if (!google::protobuf::util::JsonStringToMessage(Input, &request).ok()) {
-        ReplyAndDie(
-            ctx,
-            TErrorResponse(E_ARGUMENT, "Failed to parse input"));
+        ReplyAndDie(ctx, TErrorResponse(E_ARGUMENT, "Failed to parse input"));
         return;
     }
 

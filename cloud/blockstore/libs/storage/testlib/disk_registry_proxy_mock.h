@@ -13,6 +13,7 @@
 #include <contrib/ydb/core/mind/local.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 #include <contrib/ydb/library/actors/core/actor.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/hash.h>
@@ -23,7 +24,7 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui32 DefaultDeviceBlockSize = 512;
-constexpr ui64 DefaultDeviceBlockCount = 1024 * 256;  // = 128MiB
+constexpr ui64 DefaultDeviceBlockCount = 1024 * 256;   // = 128MiB
 
 class TDiskRegistryProxyMock final
     : public NActors::TActor<TDiskRegistryProxyMock>
@@ -114,9 +115,7 @@ private:
                 TEvDiskRegistry::TEvStartForceMigrationRequest,
                 HandleStartForceMigration);
 
-            HFunc(
-                TEvService::TEvResumeDeviceRequest,
-                HandleResumeDevice);
+            HFunc(TEvService::TEvResumeDeviceRequest, HandleResumeDevice);
 
             HFunc(
                 TEvDiskRegistry::TEvChangeDiskDeviceRequest,
@@ -142,9 +141,7 @@ private:
                 TEvDiskRegistry::TEvAddOutdatedLaggingDevicesRequest,
                 HandleAddOutdatedLaggingDevices);
 
-            HFunc(
-                TEvService::TEvCmsActionRequest,
-                HandleCmsAction);
+            HFunc(TEvService::TEvCmsActionRequest, HandleCmsAction);
 
             HFunc(
                 TEvDiskRegistryProxy::TEvGetDrTabletInfoRequest,
@@ -169,13 +166,16 @@ private:
     }
 
     template <typename TDiskProto>
-    void ToLogicalBlocks(const TDiskRegistryState::TDisk& disk, TDiskProto& proto)
+    void ToLogicalBlocks(
+        const TDiskRegistryState::TDisk& disk,
+        TDiskProto& proto)
     {
         for (const auto& device: disk.Devices) {
             auto& dst = *proto.AddDevices();
             dst = device;
             dst.SetBlocksCount(
-                device.GetBlocksCount() * device.GetBlockSize() / disk.BlockSize);
+                device.GetBlocksCount() * device.GetBlockSize() /
+                disk.BlockSize);
             dst.SetBlockSize(disk.BlockSize);
         }
 
@@ -184,7 +184,8 @@ private:
             auto& dst = *migration.MutableTargetDevice();
             dst = x.second;
             dst.SetBlocksCount(
-                x.second.GetBlocksCount() * x.second.GetBlockSize() / disk.BlockSize);
+                x.second.GetBlocksCount() * x.second.GetBlockSize() /
+                disk.BlockSize);
             dst.SetBlockSize(disk.BlockSize);
             migration.SetSourceDeviceId(x.first);
         }
@@ -195,7 +196,8 @@ private:
                 auto& dst = *r.AddDevices();
                 dst = device;
                 dst.SetBlocksCount(
-                    device.GetBlocksCount() * device.GetBlockSize() / disk.BlockSize);
+                    device.GetBlocksCount() * device.GetBlockSize() /
+                    disk.BlockSize);
                 dst.SetBlockSize(disk.BlockSize);
             }
         }
@@ -208,8 +210,8 @@ private:
         NCloud::Reply(ctx, *ev, DoHandleAllocateDisk(ev->Get()));
     }
 
-    std::unique_ptr<TEvDiskRegistry::TEvAllocateDiskResponse> DoHandleAllocateDisk(
-        const TEvDiskRegistry::TEvAllocateDiskRequest* msg)
+    std::unique_ptr<TEvDiskRegistry::TEvAllocateDiskResponse>
+    DoHandleAllocateDisk(const TEvDiskRegistry::TEvAllocateDiskRequest* msg)
     {
         TDiskRegistryState::TPlacementGroup* group = nullptr;
         if (msg->Record.GetPlacementGroupId()) {
@@ -236,9 +238,8 @@ private:
         disk.MediaKind = msg->Record.GetStorageMediaKind();
         disk.Replicas.resize(State->ReplicaCount);
         disk.Migrations.clear();
-        ui64 bytes = (1 + State->ReplicaCount)
-            * msg->Record.GetBlocksCount()
-            * msg->Record.GetBlockSize();
+        ui64 bytes = (1 + State->ReplicaCount) * msg->Record.GetBlocksCount() *
+                     msg->Record.GetBlockSize();
 
         ui32 i = 0;
         while (bytes) {
@@ -305,7 +306,8 @@ private:
             ++i;
         }
 
-        auto response = std::make_unique<TEvDiskRegistry::TEvAllocateDiskResponse>();
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvAllocateDiskResponse>();
 
         for (const auto& deviceId: State->DeviceReplacementUUIDs) {
             *response->Record.AddDeviceReplacementUUIDs() = deviceId;
@@ -318,8 +320,7 @@ private:
 
         if (bytes) {
             response->Record.MutableError()->CopyFrom(
-                MakeError(E_BS_OUT_OF_SPACE, "not enough available devices")
-            );
+                MakeError(E_BS_OUT_OF_SPACE, "not enough available devices"));
         } else {
             if (group) {
                 group->DiskIds.insert(msg->Record.GetDiskId());
@@ -335,8 +336,7 @@ private:
         for (const auto& unavailableDeviceUUID: State->UnavailableDeviceUUIDs) {
             bool belongsToDisk = AnyOf(
                 disk.Devices,
-                [&](const auto& diskDevice)
-                {
+                [&](const auto& diskDevice) {
                     return diskDevice.GetDeviceUUID() == unavailableDeviceUUID;
                 });
 
@@ -357,7 +357,9 @@ private:
 
         // TODO: remove disk from pg
 
-        NCloud::Reply(ctx, *ev,
+        NCloud::Reply(
+            ctx,
+            *ev,
             std::make_unique<TEvDiskRegistry::TEvDeallocateDiskResponse>());
     }
 
@@ -367,7 +369,9 @@ private:
     {
         State->DisksMarkedForCleanup.insert(ev->Get()->Record.GetDiskId());
 
-        NCloud::Reply(ctx, *ev,
+        NCloud::Reply(
+            ctx,
+            *ev,
             std::make_unique<TEvDiskRegistry::TEvMarkDiskForCleanupResponse>());
     }
 
@@ -397,7 +401,9 @@ private:
 
         ++State->FinishMigrationRequests;
 
-        NCloud::Reply(ctx, *ev,
+        NCloud::Reply(
+            ctx,
+            *ev,
             std::make_unique<TEvDiskRegistry::TEvFinishMigrationResponse>());
     }
 
@@ -407,35 +413,32 @@ private:
     {
         const auto* msg = ev->Get();
         const auto& clientId = msg->Record.GetHeaders().GetClientId();
-        auto response = std::make_unique<TEvDiskRegistry::TEvAcquireDiskResponse>();
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvAcquireDiskResponse>();
 
         auto* disk = State->Disks.FindPtr(msg->Record.GetDiskId());
 
         if (!disk) {
             response->Record.MutableError()->CopyFrom(
-                MakeError(E_NOT_FOUND, "disk not found")
-            );
+                MakeError(E_NOT_FOUND, "disk not found"));
         } else if (!IsReadWriteMode(msg->Record.GetAccessMode())) {
             auto it = Find(
                 disk->ReaderClientIds.begin(),
                 disk->ReaderClientIds.end(),
-                clientId
-            );
+                clientId);
 
             if (it == disk->ReaderClientIds.end()) {
                 disk->ReaderClientIds.push_back(clientId);
             }
 
             ToLogicalBlocks(*disk, response->Record);
-        } else if (!disk->WriterClientId || disk->WriterClientId == clientId)
-        {
+        } else if (!disk->WriterClientId || disk->WriterClientId == clientId) {
             disk->WriterClientId = clientId;
 
             ToLogicalBlocks(*disk, response->Record);
         } else {
             response->Record.MutableError()->CopyFrom(
-                MakeError(E_INVALID_STATE, "disk already acquired")
-            );
+                MakeError(E_INVALID_STATE, "disk already acquired"));
         }
 
         NCloud::Reply(ctx, *ev, std::move(response));
@@ -447,14 +450,14 @@ private:
     {
         const auto* msg = ev->Get();
         const auto& clientId = msg->Record.GetHeaders().GetClientId();
-        auto response = std::make_unique<TEvDiskRegistry::TEvReleaseDiskResponse>();
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvReleaseDiskResponse>();
 
         auto* disk = State->Disks.FindPtr(msg->Record.GetDiskId());
 
         if (!disk) {
             response->Record.MutableError()->CopyFrom(
-                MakeError(E_NOT_FOUND, "disk not found")
-            );
+                MakeError(E_NOT_FOUND, "disk not found"));
         } else if (
             clientId == disk->WriterClientId || clientId == AnyWriterClientId)
         {
@@ -465,19 +468,14 @@ private:
             auto it = Find(
                 disk->ReaderClientIds.begin(),
                 disk->ReaderClientIds.end(),
-                clientId
-            );
+                clientId);
 
             if (it == disk->ReaderClientIds.end()) {
-                response->Record.MutableError()->CopyFrom(
-                    MakeError(
-                        E_INVALID_STATE,
-                        Sprintf(
-                            "disk not acquired by client %s",
-                            clientId.c_str()
-                        )
-                    )
-                );
+                response->Record.MutableError()->CopyFrom(MakeError(
+                    E_INVALID_STATE,
+                    Sprintf(
+                        "disk not acquired by client %s",
+                        clientId.c_str())));
             } else {
                 disk->ReaderClientIds.erase(it);
             }
@@ -497,8 +495,8 @@ private:
 
         const auto currentVersion = Config.GetVersion();
 
-        if (record.GetIgnoreVersion()
-            || newConfig.GetVersion() == currentVersion)
+        if (record.GetIgnoreVersion() ||
+            newConfig.GetVersion() == currentVersion)
         {
             Config = newConfig;
             Config.SetVersion(currentVersion + 1);
@@ -506,7 +504,9 @@ private:
             error = MakeError(E_FAIL, "Wrong config version");
         }
 
-        NCloud::Reply(ctx, *ev,
+        NCloud::Reply(
+            ctx,
+            *ev,
             std::make_unique<TEvDiskRegistry::TEvUpdateConfigResponse>(error));
     }
 
@@ -514,7 +514,8 @@ private:
         const TEvDiskRegistry::TEvDescribeConfigRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
-        auto response = std::make_unique<TEvDiskRegistry::TEvDescribeConfigResponse>();
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvDescribeConfigResponse>();
 
         *response->Record.MutableConfig() = Config;
 
@@ -527,8 +528,8 @@ private:
     {
         State->WritableState = ev->Get()->Record.GetState();
 
-        auto response = std::make_unique<
-            TEvDiskRegistry::TEvSetWritableStateResponse>();
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvSetWritableStateResponse>();
 
         NCloud::Reply(ctx, *ev, std::move(response));
     }
@@ -543,9 +544,7 @@ private:
                 ctx,
                 *ev,
                 std::make_unique<TEvService::TEvCreatePlacementGroupResponse>(
-                    MakeError(S_ALREADY, "group already exists")
-                )
-            );
+                    MakeError(S_ALREADY, "group already exists")));
             return;
         }
 
@@ -554,8 +553,7 @@ private:
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TEvService::TEvCreatePlacementGroupResponse>()
-        );
+            std::make_unique<TEvService::TEvCreatePlacementGroupResponse>());
     }
 
     void HandleUpdatePlacementGroupSettings(
@@ -569,9 +567,7 @@ private:
                 ctx,
                 *ev,
                 std::make_unique<TEvService::TEvCreatePlacementGroupResponse>(
-                    MakeError(E_NOT_FOUND, "no such group")
-                )
-            );
+                    MakeError(E_NOT_FOUND, "no such group")));
             return;
         }
 
@@ -580,12 +576,7 @@ private:
                 ctx,
                 *ev,
                 std::make_unique<TEvService::TEvCreatePlacementGroupResponse>(
-                    MakeError(
-                        E_ABORTED,
-                        "config version mismatch"
-                    )
-                )
-            );
+                    MakeError(E_ABORTED, "config version mismatch")));
             return;
         }
 
@@ -595,8 +586,8 @@ private:
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TEvDiskRegistry::TEvUpdatePlacementGroupSettingsResponse>()
-        );
+            std::make_unique<
+                TEvDiskRegistry::TEvUpdatePlacementGroupSettingsResponse>());
     }
 
     void HandleChangeDeviceState(
@@ -604,7 +595,8 @@ private:
         const NActors::TActorContext& ctx)
     {
         const auto* msg = ev->Get();
-        auto response = std::make_unique<TEvDiskRegistry::TEvChangeDeviceStateResponse>();
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvChangeDeviceStateResponse>();
 
         bool found = false;
 
@@ -620,8 +612,7 @@ private:
 
         if (!found) {
             response->Record.MutableError()->CopyFrom(
-                MakeError(E_NOT_FOUND, "device not found")
-            );
+                MakeError(E_NOT_FOUND, "device not found"));
         }
 
         NCloud::Reply(ctx, *ev, std::move(response));
@@ -635,10 +626,10 @@ private:
 
         State->AgentStates.push_back(std::make_pair(
             msg->Record.GetAgentId(),
-            msg->Record.GetAgentState()
-        ));
+            msg->Record.GetAgentState()));
 
-        auto response = std::make_unique<TEvDiskRegistry::TEvChangeAgentStateResponse>();
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvChangeAgentStateResponse>();
         NCloud::Reply(ctx, *ev, std::move(response));
     }
 
@@ -652,9 +643,7 @@ private:
                 ctx,
                 *ev,
                 std::make_unique<TEvService::TEvDestroyPlacementGroupResponse>(
-                    MakeError(S_ALREADY, "no such group")
-                )
-            );
+                    MakeError(S_ALREADY, "no such group")));
             return;
         }
 
@@ -663,8 +652,7 @@ private:
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TEvService::TEvDestroyPlacementGroupResponse>()
-        );
+            std::make_unique<TEvService::TEvDestroyPlacementGroupResponse>());
     }
 
     void HandleAlterPlacementGroupMembership(
@@ -677,10 +665,9 @@ private:
             NCloud::Reply(
                 ctx,
                 *ev,
-                std::make_unique<TEvService::TEvAlterPlacementGroupMembershipResponse>(
-                    MakeError(E_NOT_FOUND, "no such group")
-                )
-            );
+                std::make_unique<
+                    TEvService::TEvAlterPlacementGroupMembershipResponse>(
+                    MakeError(E_NOT_FOUND, "no such group")));
             return;
         }
 
@@ -689,13 +676,13 @@ private:
                 NCloud::Reply(
                     ctx,
                     *ev,
-                    std::make_unique<TEvService::TEvAlterPlacementGroupMembershipResponse>(
+                    std::make_unique<
+                        TEvService::TEvAlterPlacementGroupMembershipResponse>(
                         MakeError(
                             E_NOT_FOUND,
-                            Sprintf("DiskToAdd not found: %s", diskId.c_str())
-                        )
-                    )
-                );
+                            Sprintf(
+                                "DiskToAdd not found: %s",
+                                diskId.c_str()))));
                 return;
             }
         }
@@ -705,13 +692,13 @@ private:
                 NCloud::Reply(
                     ctx,
                     *ev,
-                    std::make_unique<TEvService::TEvAlterPlacementGroupMembershipResponse>(
+                    std::make_unique<
+                        TEvService::TEvAlterPlacementGroupMembershipResponse>(
                         MakeError(
                             E_NOT_FOUND,
-                            Sprintf("DiskToRemove not found: %s", diskId.c_str())
-                        )
-                    )
-                );
+                            Sprintf(
+                                "DiskToRemove not found: %s",
+                                diskId.c_str()))));
                 return;
             }
         }
@@ -729,8 +716,8 @@ private:
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TEvService::TEvAlterPlacementGroupMembershipResponse>()
-        );
+            std::make_unique<
+                TEvService::TEvAlterPlacementGroupMembershipResponse>());
     }
 
     void HandleListPlacementGroups(
@@ -739,7 +726,8 @@ private:
     {
         Y_UNUSED(ev);
 
-        auto response = std::make_unique<TEvService::TEvListPlacementGroupsResponse>();
+        auto response =
+            std::make_unique<TEvService::TEvListPlacementGroupsResponse>();
 
         for (const auto& x: State->PlacementGroups) {
             *response->Record.AddGroupIds() = x.first;
@@ -759,13 +747,12 @@ private:
                 ctx,
                 *ev,
                 std::make_unique<TEvService::TEvDescribePlacementGroupResponse>(
-                    MakeError(E_NOT_FOUND, "no such group")
-                )
-            );
+                    MakeError(E_NOT_FOUND, "no such group")));
             return;
         }
 
-        auto response = std::make_unique<TEvService::TEvDescribePlacementGroupResponse>();
+        auto response =
+            std::make_unique<TEvService::TEvDescribePlacementGroupResponse>();
         auto* g = response->Record.MutableGroup();
         g->SetGroupId(record.GetGroupId());
         g->SetConfigVersion(group->ConfigVersion);
@@ -784,13 +771,15 @@ private:
     {
         const auto* msg = ev->Get();
 
-        auto response = std::make_unique<TEvDiskRegistry::TEvDescribeDiskResponse>();
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvDescribeDiskResponse>();
 
         if (State->Disks.find(msg->Record.GetDiskId()) == State->Disks.end()) {
-            *response->Record.MutableError() = MakeError(E_NOT_FOUND, "disk not found");
+            *response->Record.MutableError() =
+                MakeError(E_NOT_FOUND, "disk not found");
         } else {
             const auto& disk = State->Disks[msg->Record.GetDiskId()];
-            for (const auto& device : disk.Devices) {
+            for (const auto& device: disk.Devices) {
                 auto& dev = *response->Record.MutableDevices()->Add();
                 dev = device;
             }
@@ -803,7 +792,8 @@ private:
         const TEvDiskRegistry::TEvBackupDiskRegistryStateRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
-        auto response = std::make_unique<TEvDiskRegistry::TEvBackupDiskRegistryStateResponse>();
+        auto response = std::make_unique<
+            TEvDiskRegistry::TEvBackupDiskRegistryStateResponse>();
 
         auto& backup = *response->Record.MutableBackup();
 
@@ -833,8 +823,10 @@ private:
         }
 
         if (State->Disks.contains(diskId)) {
-            return MakeError(E_ARGUMENT, TStringBuilder() <<
-                "disk " << diskId.Quote() << " already exists");
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "disk " << diskId.Quote() << " already exists");
         }
 
         TVector<NProto::TDeviceConfig> devices;
@@ -844,12 +836,13 @@ private:
         for (const auto& d: req.GetDevices()) {
             auto* config = FindIfPtr(
                 State->Devices,
-                [&] (const auto& x) {
+                [&](const auto& x)
+                {
                     if (d.GetDeviceUUID()) {
                         return x.GetDeviceUUID() == d.GetDeviceUUID();
                     }
-                    return x.GetAgentId() == d.GetAgentId()
-                        && x.GetDeviceName() == d.GetDeviceName();
+                    return x.GetAgentId() == d.GetAgentId() &&
+                           x.GetDeviceName() == d.GetDeviceName();
                 });
 
             if (!config) {
@@ -877,8 +870,9 @@ private:
     {
         auto [bc, error] = CreateDiskFromDevices(ev->Get()->Record);
 
-        auto response = std::make_unique<
-            TEvDiskRegistry::TEvCreateDiskFromDevicesResponse>(error);
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvCreateDiskFromDevicesResponse>(
+                error);
         response->Record.SetBlockCount(bc);
 
         NCloud::Reply(ctx, *ev, std::move(response));
@@ -893,16 +887,16 @@ private:
         const auto& msg = ev->Get()->Record;
 
         for (auto& d: State->Devices) {
-            if (d.GetAgentId() == msg.GetAgentId()
-                && d.GetDeviceName() == msg.GetPath())
+            if (d.GetAgentId() == msg.GetAgentId() &&
+                d.GetDeviceName() == msg.GetPath())
             {
                 error = MakeError(S_OK);
                 break;
             }
         }
 
-        auto response = std::make_unique<
-            TEvService::TEvResumeDeviceResponse>(error);
+        auto response =
+            std::make_unique<TEvService::TEvResumeDeviceResponse>(error);
 
         NCloud::Reply(ctx, *ev, std::move(response));
     }
@@ -917,17 +911,18 @@ private:
 
         if (State->Disks.contains(msg.GetSourceDiskId())) {
             auto& devices = State->Disks[msg.GetSourceDiskId()].Devices;
-            auto itr = FindIf(devices,
-                [&msg] (const auto& device) {
-                    return device.GetDeviceUUID() == msg.GetSourceDeviceId();
-                });
+            auto itr = FindIf(
+                devices,
+                [&msg](const auto& device)
+                { return device.GetDeviceUUID() == msg.GetSourceDeviceId(); });
             if (itr != devices.end()) {
                 error = MakeError(S_OK);
             }
         }
 
-        auto response = std::make_unique<
-            TEvDiskRegistry::TEvStartForceMigrationResponse>(error);
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvStartForceMigrationResponse>(
+                error);
         NCloud::Reply(ctx, *ev, std::move(response));
     }
 
@@ -939,15 +934,16 @@ private:
 
         const bool foundTarget = FindIfPtr(
             State->Devices,
-            [&msg] (const auto& deviceConfig) {
+            [&msg](const auto& deviceConfig) {
                 return deviceConfig.GetDeviceUUID() == msg.GetTargetDeviceId();
             });
 
-        const bool foundSource = State->Disks.contains(msg.GetDiskId()) &&
-            FindIfPtr(State->Disks[msg.GetDiskId()].Devices,
-                [&msg] (const auto& device) {
-                    return device.GetDeviceUUID() == msg.GetSourceDeviceId();
-                });
+        const bool foundSource =
+            State->Disks.contains(msg.GetDiskId()) &&
+            FindIfPtr(
+                State->Disks[msg.GetDiskId()].Devices,
+                [&msg](const auto& device)
+                { return device.GetDeviceUUID() == msg.GetSourceDeviceId(); });
 
         NCloud::Reply(
             ctx,
@@ -957,13 +953,15 @@ private:
     }
 
     void HandleUpdateDiskRegistryAgentListParams(
-        const TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsRequest::TPtr& ev,
+        const TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsRequest::
+            TPtr& ev,
         const NActors::TActorContext& ctx)
     {
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsResponse>(
+            std::make_unique<
+                TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsResponse>(
                 MakeError(S_OK)));
     }
 
@@ -1044,7 +1042,8 @@ private:
             NCloud::Reply(
                 ctx,
                 *ev,
-                std::make_unique<TEvDiskRegistry::TEvAddOutdatedLaggingDevicesResponse>(
+                std::make_unique<
+                    TEvDiskRegistry::TEvAddOutdatedLaggingDevicesResponse>(
                     MakeError(E_NOT_FOUND, "Disk not found")));
             return;
         }
@@ -1057,7 +1056,8 @@ private:
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TEvDiskRegistry::TEvAddOutdatedLaggingDevicesResponse>());
+            std::make_unique<
+                TEvDiskRegistry::TEvAddOutdatedLaggingDevicesResponse>());
     }
 
     void HandleCmsAction(
@@ -1067,8 +1067,7 @@ private:
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<
-                TEvService::TEvCmsActionResponse>());
+            std::make_unique<TEvService::TEvCmsActionResponse>());
     }
 
     void HandleGetDrTabletInfo(

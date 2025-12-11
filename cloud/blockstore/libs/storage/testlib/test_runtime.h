@@ -6,9 +6,8 @@
 #include <cloud/storage/core/config/features.pb.h>
 
 #include <contrib/ydb/core/base/tabletid.h>
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
 #include <contrib/ydb/core/testlib/basics/runtime.h>
-
+#include <contrib/ydb/core/testlib/tablet_helpers.h>
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/event.h>
 
@@ -20,7 +19,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 const ui64 HiveId = NKikimr::MakeDefaultHiveID(0);
 
-const ui64 TestTabletId  = NKikimr::MakeTabletID(0, HiveId, 1);
+const ui64 TestTabletId = NKikimr::MakeTabletID(0, HiveId, 1);
 const ui64 TestTabletId2 = NKikimr::MakeTabletID(0, HiveId, 2);
 
 const ui64 TestVolumeTablets[] = {
@@ -49,7 +48,9 @@ inline void Send(
     NActors::IEventBasePtr event,
     ui32 nodeIdx = 0)
 {
-    runtime.Send(new NActors::IEventHandle(recipient, sender, event.release()), nodeIdx);
+    runtime.Send(
+        new NActors::IEventHandle(recipient, sender, event.release()),
+        nodeIdx);
 }
 
 inline void SendToPipe(

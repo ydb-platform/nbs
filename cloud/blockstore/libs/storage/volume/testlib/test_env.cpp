@@ -38,9 +38,9 @@ private:
 
 public:
     TTabletScheduledEventsGuard(
-            const TVector<ui64>& tablets,
-            TTestActorRuntime& runtime,
-            const TActorId& sender)
+        const TVector<ui64>& tablets,
+        TTestActorRuntime& runtime,
+        const TActorId& sender)
         : Runtime(runtime)
         , PrevObserverFunc(runtime.SetObserverFunc({}))
         , PrevScheduledFilterFunc(runtime.SetScheduledEventFilter({}))
@@ -246,11 +246,8 @@ void TVolumeClient::ReconnectPipe()
 
 void TVolumeClient::RebootTablet()
 {
-    TVector<ui64> tablets = { VolumeTabletId };
-    auto guard = TTabletScheduledEventsGuard(
-        tablets,
-        Runtime,
-        Sender);
+    TVector<ui64> tablets = {VolumeTabletId};
+    auto guard = TTabletScheduledEventsGuard(tablets, Runtime, Sender);
 
     NKikimr::RebootTablet(Runtime, VolumeTabletId, Sender);
 
@@ -261,11 +258,8 @@ void TVolumeClient::RebootTablet()
 
 void TVolumeClient::RebootSysTablet()
 {
-    TVector<ui64> tablets = {VolumeTabletId };
-    auto guard = TTabletScheduledEventsGuard(
-        tablets,
-        Runtime,
-        Sender);
+    TVector<ui64> tablets = {VolumeTabletId};
+    auto guard = TTabletScheduledEventsGuard(tablets, Runtime, Sender);
 
     NKikimr::RebootTablet(Runtime, VolumeTabletId, Sender, 0, true);
 
@@ -355,8 +349,8 @@ TVolumeClient::CreateWaitReadyRequest(TString diskId)
     return request;
 }
 
-std::unique_ptr<TEvVolume::TEvAddClientRequest> TVolumeClient::CreateAddClientRequest(
-    const NProto::TVolumeClientInfo& info)
+std::unique_ptr<TEvVolume::TEvAddClientRequest>
+TVolumeClient::CreateAddClientRequest(const NProto::TVolumeClientInfo& info)
 {
     auto request = std::make_unique<TEvVolume::TEvAddClientRequest>();
     request->Record.MutableHeaders()->SetClientId(info.GetClientId());
@@ -368,15 +362,16 @@ std::unique_ptr<TEvVolume::TEvAddClientRequest> TVolumeClient::CreateAddClientRe
     return request;
 }
 
-std::unique_ptr<TEvVolume::TEvRemoveClientRequest> TVolumeClient::CreateRemoveClientRequest(
-    const TString& clientId)
+std::unique_ptr<TEvVolume::TEvRemoveClientRequest>
+TVolumeClient::CreateRemoveClientRequest(const TString& clientId)
 {
     auto request = std::make_unique<TEvVolume::TEvRemoveClientRequest>();
     request->Record.MutableHeaders()->SetClientId(clientId);
     return request;
 }
 
-std::unique_ptr<TEvService::TEvStatVolumeRequest> TVolumeClient::CreateStatVolumeRequest(
+std::unique_ptr<TEvService::TEvStatVolumeRequest>
+TVolumeClient::CreateStatVolumeRequest(
     const TString& clientId,
     const TVector<TString>& storageConfigFields,
     const bool noPartition)
@@ -390,7 +385,8 @@ std::unique_ptr<TEvService::TEvStatVolumeRequest> TVolumeClient::CreateStatVolum
     return request;
 }
 
-std::unique_ptr<TEvService::TEvReadBlocksRequest> TVolumeClient::CreateReadBlocksRequest(
+std::unique_ptr<TEvService::TEvReadBlocksRequest>
+TVolumeClient::CreateReadBlocksRequest(
     const TBlockRange64& readRange,
     const TString& clientId,
     const TString& checkpointId)
@@ -435,7 +431,8 @@ TVolumeClient::CreateReadBlocksLocalRequest(
     return request;
 }
 
-std::unique_ptr<TEvService::TEvWriteBlocksRequest> TVolumeClient::CreateWriteBlocksRequest(
+std::unique_ptr<TEvService::TEvWriteBlocksRequest>
+TVolumeClient::CreateWriteBlocksRequest(
     const TBlockRange64& writeRange,
     const TString& clientId,
     char fill)
@@ -446,7 +443,8 @@ std::unique_ptr<TEvService::TEvWriteBlocksRequest> TVolumeClient::CreateWriteBlo
         GetBlockContent(fill));
 }
 
-std::unique_ptr<TEvService::TEvWriteBlocksRequest> TVolumeClient::CreateWriteBlocksRequest(
+std::unique_ptr<TEvService::TEvWriteBlocksRequest>
+TVolumeClient::CreateWriteBlocksRequest(
     const TBlockRange64& writeRange,
     const TString& clientId,
     const TString& blockContent)
@@ -470,7 +468,9 @@ TVolumeClient::CreateWriteBlocksLocalRequest(
     const TString& blockContent)
 {
     TSgList sglist;
-    sglist.resize(writeRange.Size(), {blockContent.data(), blockContent.size()});
+    sglist.resize(
+        writeRange.Size(),
+        {blockContent.data(), blockContent.size()});
 
     auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
     request->Record.SetStartIndex(writeRange.Start);
@@ -481,7 +481,8 @@ TVolumeClient::CreateWriteBlocksLocalRequest(
     return request;
 }
 
-std::unique_ptr<TEvService::TEvZeroBlocksRequest> TVolumeClient::CreateZeroBlocksRequest(
+std::unique_ptr<TEvService::TEvZeroBlocksRequest>
+TVolumeClient::CreateZeroBlocksRequest(
     const TBlockRange64& zeroRange,
     const TString& clientId)
 {
@@ -493,7 +494,8 @@ std::unique_ptr<TEvService::TEvZeroBlocksRequest> TVolumeClient::CreateZeroBlock
     return request;
 }
 
-std::unique_ptr<TEvVolume::TEvDescribeBlocksRequest> TVolumeClient::CreateDescribeBlocksRequest(
+std::unique_ptr<TEvVolume::TEvDescribeBlocksRequest>
+TVolumeClient::CreateDescribeBlocksRequest(
     const TBlockRange64& range,
     const TString& clientId,
     ui32 blocksCountToRead)
@@ -518,8 +520,7 @@ TVolumeClient::CreateCreateCheckpointRequest(
 }
 
 std::unique_ptr<TEvService::TEvDeleteCheckpointRequest>
-TVolumeClient::CreateDeleteCheckpointRequest(
-    const TString& checkpointId)
+TVolumeClient::CreateDeleteCheckpointRequest(const TString& checkpointId)
 {
     auto request = std::make_unique<TEvService::TEvDeleteCheckpointRequest>();
     request->Record.SetCheckpointId(checkpointId);
@@ -541,10 +542,10 @@ TVolumeClient::CreateGetChangedBlocksRequest(
 }
 
 std::unique_ptr<TEvVolume::TEvDeleteCheckpointDataRequest>
-TVolumeClient::CreateDeleteCheckpointDataRequest(
-    const TString& checkpointId)
+TVolumeClient::CreateDeleteCheckpointDataRequest(const TString& checkpointId)
 {
-    auto request = std::make_unique<TEvVolume::TEvDeleteCheckpointDataRequest>();
+    auto request =
+        std::make_unique<TEvVolume::TEvDeleteCheckpointDataRequest>();
     request->Record.SetCheckpointId(checkpointId);
     return request;
 }
@@ -559,8 +560,7 @@ TVolumeClient::CreateGetCheckpointStatusRequest(const TString& checkpointId)
 }
 
 std::unique_ptr<TEvPartition::TEvBackpressureReport>
-TVolumeClient::CreateBackpressureReport(
-    const TBackpressureReport& report)
+TVolumeClient::CreateBackpressureReport(const TBackpressureReport& report)
 {
     return std::make_unique<TEvPartition::TEvBackpressureReport>(report);
 }
@@ -578,8 +578,7 @@ TVolumeClient::CreateCompactRangeRequest(
 }
 
 std::unique_ptr<TEvVolume::TEvGetCompactionStatusRequest>
-TVolumeClient::CreateGetCompactionStatusRequest(
-    const TString& operationId)
+TVolumeClient::CreateGetCompactionStatusRequest(const TString& operationId)
 {
     auto request = std::make_unique<TEvVolume::TEvGetCompactionStatusRequest>();
     request->Record.SetOperationId(operationId);
@@ -621,7 +620,8 @@ TVolumeClient::CreateRebuildMetadataRequest(
 std::unique_ptr<TEvVolume::TEvGetRebuildMetadataStatusRequest>
 TVolumeClient::CreateGetRebuildMetadataStatusRequest()
 {
-    auto request = std::make_unique<TEvVolume::TEvGetRebuildMetadataStatusRequest>();
+    auto request =
+        std::make_unique<TEvVolume::TEvGetRebuildMetadataStatusRequest>();
     return request;
 }
 
@@ -653,7 +653,8 @@ TVolumeClient::CreateUpdateVolumeParamsRequest(
     return request;
 }
 
-std::unique_ptr<TEvVolume::TEvChangeStorageConfigRequest> TVolumeClient::CreateChangeStorageConfigRequest(
+std::unique_ptr<TEvVolume::TEvChangeStorageConfigRequest>
+TVolumeClient::CreateChangeStorageConfigRequest(
     NProto::TStorageServiceConfig patch)
 {
     auto request = std::make_unique<TEvVolume::TEvChangeStorageConfigRequest>();
@@ -661,19 +662,18 @@ std::unique_ptr<TEvVolume::TEvChangeStorageConfigRequest> TVolumeClient::CreateC
     return request;
 }
 
-std::unique_ptr<TEvVolume::TEvGetStorageConfigRequest> TVolumeClient::CreateGetStorageConfigRequest()
+std::unique_ptr<TEvVolume::TEvGetStorageConfigRequest>
+TVolumeClient::CreateGetStorageConfigRequest()
 {
     auto request = std::make_unique<TEvVolume::TEvGetStorageConfigRequest>();
     return request;
 }
 
 std::unique_ptr<TEvVolumePrivate::TEvDeviceTimedOutRequest>
-TVolumeClient::CreateDeviceTimedOutRequest(
-    TString deviceUUID)
+TVolumeClient::CreateDeviceTimedOutRequest(TString deviceUUID)
 {
-    auto request =
-        std::make_unique<TEvVolumePrivate::TEvDeviceTimedOutRequest>(
-            std::move(deviceUUID));
+    auto request = std::make_unique<TEvVolumePrivate::TEvDeviceTimedOutRequest>(
+        std::move(deviceUUID));
     return request;
 }
 
@@ -746,14 +746,14 @@ void TVolumeClient::SendRemoteHttpInfo(
     SendToPipe(std::move(request));
 }
 
-void TVolumeClient::SendRemoteHttpInfo(
-    const TString& params)
+void TVolumeClient::SendRemoteHttpInfo(const TString& params)
 {
     auto request = CreateRemoteHttpInfo(params);
     SendToPipe(std::move(request));
 }
 
-std::unique_ptr<NMon::TEvRemoteHttpInfoRes> TVolumeClient::RecvCreateRemoteHttpInfoRes()
+std::unique_ptr<NMon::TEvRemoteHttpInfoRes>
+TVolumeClient::RecvCreateRemoteHttpInfoRes()
 {
     return RecvResponse<NMon::TEvRemoteHttpInfoRes>();
 }
@@ -804,7 +804,9 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
         TBlockStoreComponents::END,
         GetComponentName);
 
-    for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
+    for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END;
+         ++i)
+    {
         runtime->SetLogPriority(i, NLog::PRI_INFO);
     }
     // runtime->SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
@@ -836,18 +838,14 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
         NActors::TActorSetupCmd(
             new TFakeStorageStatsService(),
             NActors::TMailboxType::Simple,
-            0
-        )
-    );
+            0));
 
     runtime->AddLocalService(
         MakeStorageServiceId(),
         NActors::TActorSetupCmd(
             new TFakeStorageService(),
             NActors::TMailboxType::Simple,
-            0
-        )
-    );
+            0));
     runtime->EnableScheduleForActor(MakeStorageServiceId());
 
     runtime->AddLocalService(
@@ -883,10 +881,14 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
         devices.push_back(MakeDevice("uuid1", "dev1", "transport1"));
         devices.push_back(MakeDevice("uuid2", "dev2", "transport2"));
 
-        auto dev0m =
-            MakeDevice("uuid0_migration", "dev0_migration", "transport0_migration");
-        auto dev2m =
-            MakeDevice("uuid2_migration", "dev2_migration", "transport2_migration");
+        auto dev0m = MakeDevice(
+            "uuid0_migration",
+            "dev0_migration",
+            "transport0_migration");
+        auto dev2m = MakeDevice(
+            "uuid2_migration",
+            "dev2_migration",
+            "transport2_migration");
 
         devices.push_back(dev0m);
         devices.push_back(dev2m);
@@ -914,9 +916,7 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
         TActorSetupCmd(
             new TDiskRegistryProxyMock(diskRegistryState),
             TMailboxType::Simple,
-            0
-        )
-    );
+            0));
     runtime->EnableScheduleForActor(MakeDiskRegistryProxyServiceId());
 
     SetupTabletServices(*runtime);
@@ -951,10 +951,7 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
                 },
                 std::move(state)),
             i);
-        runtime->RegisterService(
-            MakeDiskAgentServiceId(nodeId),
-            actorId,
-            i);
+        runtime->RegisterService(MakeDiskAgentServiceId(nodeId), actorId, i);
     }
 
     auto config = CreateTestStorageConfig(
@@ -992,7 +989,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     return runtime;
 }
 
-TTestRuntimeBuilder& TTestRuntimeBuilder::With(NProto::TStorageServiceConfig config)
+TTestRuntimeBuilder& TTestRuntimeBuilder::With(
+    NProto::TStorageServiceConfig config)
 {
     StorageServiceConfig = std::move(config);
 
@@ -1045,12 +1043,12 @@ NProto::TVolumeClientInfo CreateVolumeClientInfo(
         mountSeqNumber);
 }
 
-TString BuildRemoteHttpQuery(ui64 tabletId, const TVector<std::pair<TString, TString>>& keyValues)
+TString BuildRemoteHttpQuery(
+    ui64 tabletId,
+    const TVector<std::pair<TString, TString>>& keyValues)
 {
-    auto res = TStringBuilder()
-        << "/app?TabletID="
-        << tabletId;
-    for (const auto& p : keyValues) {
+    auto res = TStringBuilder() << "/app?TabletID=" << tabletId;
+    for (const auto& p: keyValues) {
         res << "&" << p.first << "=" << p.second;
     }
     return res;
@@ -1069,21 +1067,25 @@ void CheckVolumeSendsStatsEvenIfPartitionsAreDead(
     ui32 partStatsSaved = 0;
     bool stopPartCounters = false;
 
-    auto obs = [&] (TAutoPtr<IEventHandle>& event) {
+    auto obs = [&](TAutoPtr<IEventHandle>& event)
+    {
         if (event->GetTypeRewrite() == TEvStatsService::EvVolumePartCounters &&
-            event->Recipient != MakeStorageStatsServiceId() &&
-            stopPartCounters)
+            event->Recipient != MakeStorageStatsServiceId() && stopPartCounters)
         {
             return TTestActorRuntime::EEventAction::DROP;
-        } else if (event->GetTypeRewrite() == TEvVolumePrivate::EvPartStatsSaved) {
+        } else if (
+            event->GetTypeRewrite() == TEvVolumePrivate::EvPartStatsSaved)
+        {
             ++partStatsSaved;
-        } else if (event->Recipient == MakeStorageStatsServiceId()
-                && event->GetTypeRewrite() == TEvStatsService::EvVolumePartCounters)
+        } else if (
+            event->Recipient == MakeStorageStatsServiceId() &&
+            event->GetTypeRewrite() == TEvStatsService::EvVolumePartCounters)
         {
             auto* msg = event->Get<TEvStatsService::TEvVolumePartCounters>();
 
             bytesCount = msg->DiskCounters->Simple.BytesCount.Value;
-            channelHistorySize = msg->DiskCounters->Simple.ChannelHistorySize.Value;
+            channelHistorySize =
+                msg->DiskCounters->Simple.ChannelHistorySize.Value;
         }
 
         return TTestActorRuntime::DefaultObserverFunc(event);
@@ -1105,9 +1107,7 @@ void CheckVolumeSendsStatsEvenIfPartitionsAreDead(
     runtime->DispatchEvents({}, TDuration::Seconds(1));
 
     UNIT_ASSERT_C(partStatsSaved >= 2, ToString(partStatsSaved));
-    UNIT_ASSERT_VALUES_EQUAL(
-        expectedBytesCount,
-        bytesCount);
+    UNIT_ASSERT_VALUES_EQUAL(expectedBytesCount, bytesCount);
     if (isReplicatedVolume) {
         UNIT_ASSERT_VALUES_UNEQUAL(0, channelHistorySize);
     }
@@ -1117,14 +1117,10 @@ void CheckVolumeSendsStatsEvenIfPartitionsAreDead(
     channelHistorySize = 0;
 
     runtime->SetObserverFunc(obs);
-    volume.SendToPipe(
-        std::make_unique<TEvVolumePrivate::TEvUpdateCounters>()
-    );
+    volume.SendToPipe(std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
     runtime->DispatchEvents({}, TDuration::Seconds(1));
 
-    UNIT_ASSERT_VALUES_EQUAL(
-        expectedBytesCount,
-        bytesCount);
+    UNIT_ASSERT_VALUES_EQUAL(expectedBytesCount, bytesCount);
     if (isReplicatedVolume) {
         UNIT_ASSERT_VALUES_UNEQUAL(0, channelHistorySize);
     }
@@ -1133,14 +1129,10 @@ void CheckVolumeSendsStatsEvenIfPartitionsAreDead(
     bytesCount = 0;
     channelHistorySize = 0;
 
-    volume.SendToPipe(
-        std::make_unique<TEvVolumePrivate::TEvUpdateCounters>()
-    );
+    volume.SendToPipe(std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
     runtime->DispatchEvents({}, TDuration::Seconds(1));
 
-    UNIT_ASSERT_VALUES_EQUAL(
-        expectedBytesCount,
-        bytesCount);
+    UNIT_ASSERT_VALUES_EQUAL(expectedBytesCount, bytesCount);
     if (isReplicatedVolume) {
         UNIT_ASSERT_VALUES_UNEQUAL(0, channelHistorySize);
     }
@@ -1165,9 +1157,8 @@ void CheckRebuildMetadata(ui32 partCount, ui32 blocksPerStripe)
         "vol0",
         "cloud",
         "folder",
-        partCount,          // partition count
-        blocksPerStripe
-    );
+        partCount,   // partition count
+        blocksPerStripe);
 
     volume.WaitReady();
 
@@ -1187,10 +1178,10 @@ void CheckRebuildMetadata(ui32 partCount, ui32 blocksPerStripe)
     volume.WriteBlocksLocal(
         TBlockRange64::WithLength(0, 1024 * partCount * 7),
         clientInfo.GetClientId(),
-        GetBlockContent(1)
-    );
+        GetBlockContent(1));
 
-    auto response = volume.RebuildMetadata(NProto::ERebuildMetadataType::BLOCK_COUNT, 10);
+    auto response =
+        volume.RebuildMetadata(NProto::ERebuildMetadataType::BLOCK_COUNT, 10);
 
     auto progress = volume.GetRebuildMetadataStatus();
     UNIT_ASSERT(progress->Record.GetProgress().GetProcessed() != 0);

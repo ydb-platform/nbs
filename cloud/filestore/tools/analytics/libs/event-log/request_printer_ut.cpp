@@ -13,8 +13,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEnv
-    : public NUnitTest::TBaseFixture
+struct TEnv: public NUnitTest::TBaseFixture
 {
     NProto::TProfileLogRequestInfo Request;
 
@@ -40,7 +39,8 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
         auto printer = CreateRequestPrinter(Request.GetRequestType());
         UNIT_ASSERT_VALUES_EQUAL("{no_info}", printer->DumpInfo(Request));
 
-        Request.SetRequestType(static_cast<ui32>(EFileStoreRequest::CreateNode));
+        Request.SetRequestType(
+            static_cast<ui32>(EFileStoreRequest::CreateNode));
 
         printer = CreateRequestPrinter(Request.GetRequestType());
         UNIT_ASSERT_VALUES_EQUAL("{no_info}", printer->DumpInfo(Request));
@@ -59,14 +59,16 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "{parent_node_id=10, node_name=name_1, new_parent_node_id=20, "
-            "new_node_name=name_2, flags=5, mode=7, node_id=30, handle=40, size=50, type=2}",
+            "new_node_name=name_2, flags=5, mode=7, node_id=30, handle=40, "
+            "size=50, type=2}",
             printer->DumpInfo(Request));
 
         nodeInfo->ClearNewParentNodeId();
         nodeInfo->ClearNewNodeName();
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "{parent_node_id=10, node_name=name_1, flags=5, mode=7, node_id=30, "
+            "{parent_node_id=10, node_name=name_1, flags=5, mode=7, "
+            "node_id=30, "
             "handle=40, size=50, type=2}",
             printer->DumpInfo(Request));
 
@@ -82,9 +84,12 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
         lockInfo->SetConflictedLength(240);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "{parent_node_id=10, node_name=name_1, flags=5, mode=7, node_id=30, "
-            "handle=40, size=50, type=2}\t{node_id=100, handle=110, owner=120, offset=130, "
-            "length=140, type=E_SHARED, conflicted_owner=220, conflicted_offset=230, "
+            "{parent_node_id=10, node_name=name_1, flags=5, mode=7, "
+            "node_id=30, "
+            "handle=40, size=50, type=2}\t{node_id=100, handle=110, owner=120, "
+            "offset=130, "
+            "length=140, type=E_SHARED, conflicted_owner=220, "
+            "conflicted_offset=230, "
             "conflicted_length=240}",
             printer->DumpInfo(Request));
 
@@ -95,8 +100,10 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
         lockInfo->ClearOwner();
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "{parent_node_id=10, node_name=name_1, flags=5, mode=7, node_id=30, "
-            "handle=40, size=50, type=2}\t{node_id=100, handle=110, offset=130, length=140, "
+            "{parent_node_id=10, node_name=name_1, flags=5, mode=7, "
+            "node_id=30, "
+            "handle=40, size=50, type=2}\t{node_id=100, handle=110, "
+            "offset=130, length=140, "
             "type=E_EXCLUSIVE}",
             printer->DumpInfo(Request));
 
@@ -110,8 +117,10 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
         }
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "{parent_node_id=10, node_name=name_1, flags=5, mode=7, node_id=30, "
-            "handle=40, size=50, type=2}\t{node_id=100, handle=110, offset=130, length=140, "
+            "{parent_node_id=10, node_name=name_1, flags=5, mode=7, "
+            "node_id=30, "
+            "handle=40, size=50, type=2}\t{node_id=100, handle=110, "
+            "offset=130, length=140, "
             "type=Unknown}\t[{node_id=300, handle=305, offset=310, bytes=315}, "
             "{node_id=301, handle=306, offset=311, bytes=316}]",
             printer->DumpInfo(Request));
@@ -119,16 +128,20 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
         Request.MutableRanges()->RemoveLast();
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "{parent_node_id=10, node_name=name_1, flags=5, mode=7, node_id=30, "
-            "handle=40, size=50, type=2}\t{node_id=100, handle=110, offset=130, length=140, "
+            "{parent_node_id=10, node_name=name_1, flags=5, mode=7, "
+            "node_id=30, "
+            "handle=40, size=50, type=2}\t{node_id=100, handle=110, "
+            "offset=130, length=140, "
             "type=Unknown}\t[{node_id=300, handle=305, offset=310, bytes=315}]",
             printer->DumpInfo(Request));
 
         Request.ClearLockInfo();
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "{parent_node_id=10, node_name=name_1, flags=5, mode=7, node_id=30, "
-            "handle=40, size=50, type=2}\t[{node_id=300, handle=305, offset=310, bytes=315}]",
+            "{parent_node_id=10, node_name=name_1, flags=5, mode=7, "
+            "node_id=30, "
+            "handle=40, size=50, type=2}\t[{node_id=300, handle=305, "
+            "offset=310, bytes=315}]",
             printer->DumpInfo(Request));
 
         Request.ClearNodeInfo();
@@ -140,7 +153,8 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
 
     Y_UNIT_TEST_F(ShouldPrintRequestInfoForAccessNodeRequestType, TEnv)
     {
-        Request.SetRequestType(static_cast<ui32>(EFileStoreRequest::AccessNode));
+        Request.SetRequestType(
+            static_cast<ui32>(EFileStoreRequest::AccessNode));
 
         auto printer = CreateRequestPrinter(Request.GetRequestType());
         UNIT_ASSERT_VALUES_EQUAL("{no_info}", printer->DumpInfo(Request));
@@ -156,7 +170,8 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
 
     Y_UNIT_TEST_F(ShouldPrintRequestInfoForSetNodeXAttrRequestType, TEnv)
     {
-        Request.SetRequestType(static_cast<ui32>(EFileStoreRequest::SetNodeXAttr));
+        Request.SetRequestType(
+            static_cast<ui32>(EFileStoreRequest::SetNodeXAttr));
 
         auto printer = CreateRequestPrinter(Request.GetRequestType());
         UNIT_ASSERT_VALUES_EQUAL("{no_info}", printer->DumpInfo(Request));
@@ -169,13 +184,15 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
         nodeInfo->SetSize(128);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "{attr_name=attribute, attr_value=value, flags=7, node_id=10, version=128}",
+            "{attr_name=attribute, attr_value=value, flags=7, node_id=10, "
+            "version=128}",
             printer->DumpInfo(Request));
     }
 
     Y_UNIT_TEST_F(ShouldPrintRequestInfoForGetNodeXAttrRequestType, TEnv)
     {
-        Request.SetRequestType(static_cast<ui32>(EFileStoreRequest::GetNodeXAttr));
+        Request.SetRequestType(
+            static_cast<ui32>(EFileStoreRequest::GetNodeXAttr));
 
         auto printer = CreateRequestPrinter(Request.GetRequestType());
         UNIT_ASSERT_VALUES_EQUAL("{no_info}", printer->DumpInfo(Request));
@@ -193,7 +210,8 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
 
     Y_UNIT_TEST_F(ShouldPrintRequestInfoForRemoveNodeXAttrRequestType, TEnv)
     {
-        Request.SetRequestType(static_cast<ui32>(EFileStoreRequest::RemoveNodeXAttr));
+        Request.SetRequestType(
+            static_cast<ui32>(EFileStoreRequest::RemoveNodeXAttr));
 
         auto printer = CreateRequestPrinter(Request.GetRequestType());
         UNIT_ASSERT_VALUES_EQUAL("{no_info}", printer->DumpInfo(Request));
@@ -209,7 +227,8 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
 
     Y_UNIT_TEST_F(ShouldPrintRequestInfoForCreateCheckpointRequestType, TEnv)
     {
-        Request.SetRequestType(static_cast<ui32>(EFileStoreRequest::CreateCheckpoint));
+        Request.SetRequestType(
+            static_cast<ui32>(EFileStoreRequest::CreateCheckpoint));
 
         auto printer = CreateRequestPrinter(Request.GetRequestType());
         UNIT_ASSERT_VALUES_EQUAL("{no_info}", printer->DumpInfo(Request));
@@ -225,7 +244,8 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
 
     Y_UNIT_TEST_F(ShouldPrintRequestInfoForDestroyCheckpointRequestType, TEnv)
     {
-        Request.SetRequestType(static_cast<ui32>(EFileStoreRequest::DestroyCheckpoint));
+        Request.SetRequestType(
+            static_cast<ui32>(EFileStoreRequest::DestroyCheckpoint));
 
         auto printer = CreateRequestPrinter(Request.GetRequestType());
         UNIT_ASSERT_VALUES_EQUAL("{no_info}", printer->DumpInfo(Request));
@@ -267,15 +287,11 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
         auto* nodeInfo = Request.MutableNodeInfo();
         nodeInfo->SetMode(0);
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            "{data_only=0}",
-            printer->DumpInfo(Request));
+        UNIT_ASSERT_VALUES_EQUAL("{data_only=0}", printer->DumpInfo(Request));
 
         nodeInfo->SetMode(1);
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            "{data_only=1}",
-            printer->DumpInfo(Request));
+        UNIT_ASSERT_VALUES_EQUAL("{data_only=1}", printer->DumpInfo(Request));
 
         nodeInfo->SetNodeId(123);
 
@@ -292,8 +308,8 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
 
     Y_UNIT_TEST_F(ShouldPrintRequestInfoForCollectGarbageRequestType, TEnv)
     {
-        Request.SetRequestType(
-            static_cast<ui32>(NStorage::EFileStoreSystemRequest::CollectGarbage));
+        Request.SetRequestType(static_cast<ui32>(
+            NStorage::EFileStoreSystemRequest::CollectGarbage));
 
         auto printer = CreateRequestPrinter(Request.GetRequestType());
         UNIT_ASSERT_VALUES_EQUAL("{no_info}", printer->DumpInfo(Request));
@@ -312,8 +328,8 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
 
     Y_UNIT_TEST_F(ShouldPrintRequestInfoForDeleteGarbageRequestType, TEnv)
     {
-        Request.SetRequestType(
-            static_cast<ui32>(NStorage::EFileStoreSystemRequest::DeleteGarbage));
+        Request.SetRequestType(static_cast<ui32>(
+            NStorage::EFileStoreSystemRequest::DeleteGarbage));
 
         auto printer = CreateRequestPrinter(Request.GetRequestType());
         UNIT_ASSERT_VALUES_EQUAL("{no_info}", printer->DumpInfo(Request));

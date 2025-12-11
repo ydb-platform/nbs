@@ -23,8 +23,7 @@ namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TConfigInitializerCommon
-    : public virtual NCloud::TConfigInitializerBase
+struct TConfigInitializerCommon: public virtual NCloud::TConfigInitializerBase
 {
     const TOptionsCommonPtr Options;
 
@@ -62,7 +61,8 @@ struct TConfigInitializerCommon
 protected:
     std::optional<NJson::TJsonValue> ReadJsonFile(const TString& filename);
 
-    void SetupDiscoveryPorts(NProto::TDiscoveryServiceConfig& discoveryConfig) const;
+    void SetupDiscoveryPorts(
+        NProto::TDiscoveryServiceConfig& discoveryConfig) const;
     void SetupServerPorts(NProto::TServerConfig& config) const;
 };
 

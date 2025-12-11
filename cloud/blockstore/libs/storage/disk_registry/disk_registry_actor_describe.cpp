@@ -26,8 +26,9 @@ void TDiskRegistryActor::HandleDescribeDisk(
         msg->Record.ShortDebugString().c_str());
 
     if (!diskId) {
-        auto response = std::make_unique<TEvDiskRegistry::TEvDescribeDiskResponse>(
-            MakeError(E_ARGUMENT, "empty disk id"));
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvDescribeDiskResponse>(
+                MakeError(E_ARGUMENT, "empty disk id"));
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
@@ -47,8 +48,7 @@ void TDiskRegistryActor::HandleDescribeDisk(
     }
 
     auto response = std::make_unique<TEvDiskRegistry::TEvDescribeDiskResponse>(
-        std::move(error)
-    );
+        std::move(error));
 
     response->Record.SetBlockSize(diskInfo.LogicalBlockSize);
 
@@ -58,14 +58,15 @@ void TDiskRegistryActor::HandleDescribeDisk(
     response->Record.SetCloudId(diskInfo.CloudId);
     response->Record.SetFolderId(diskInfo.FolderId);
 
-    auto onDevice = [&] (NProto::TDeviceConfig& d, ui32 blockSize) {
+    auto onDevice = [&](NProto::TDeviceConfig& d, ui32 blockSize)
+    {
         if (ToLogicalBlocks(d, blockSize)) {
             return;
         }
 
         TStringBuilder error;
         error << "HandleDescribeDisk: ToLogicalBlocks failed, device: "
-            << d.GetDeviceUUID().Quote().c_str();
+              << d.GetDeviceUUID().Quote().c_str();
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
@@ -85,10 +86,7 @@ void TDiskRegistryActor::HandleDescribeDisk(
     response->Record.SetBlocksCount(blockCount);
 
     for (auto& migration: diskInfo.Migrations) {
-        onDevice(
-            *migration.MutableTargetDevice(),
-            diskInfo.LogicalBlockSize
-        );
+        onDevice(*migration.MutableTargetDevice(), diskInfo.LogicalBlockSize);
         *response->Record.AddMigrations() = std::move(migration);
     }
 

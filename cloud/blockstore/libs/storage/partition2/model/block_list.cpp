@@ -82,9 +82,16 @@ struct TBlockEntry
 
 static_assert(sizeof(TBlockEntry) == 8, "");
 
-struct TSingleBlockEntry : TGroupHeader, TBlockEntry
+struct TSingleBlockEntry
+    : TGroupHeader
+    , TBlockEntry
 {
-    TSingleBlockEntry(ui32 gen, ui32 step, ui32 blockIndex, ui16 blobOffset, bool zeroed)
+    TSingleBlockEntry(
+        ui32 gen,
+        ui32 step,
+        ui32 blockIndex,
+        ui16 blobOffset,
+        bool zeroed)
         : TGroupHeader(gen, step, false)
         , TBlockEntry(blockIndex, blobOffset, zeroed)
     {}
@@ -92,9 +99,18 @@ struct TSingleBlockEntry : TGroupHeader, TBlockEntry
 
 static_assert(sizeof(TSingleBlockEntry) == 8 + 8);
 
-struct TMergedBlockEntry : TGroupHeader, TMultiGroupHeader, TBlockEntry
+struct TMergedBlockEntry
+    : TGroupHeader
+    , TMultiGroupHeader
+    , TBlockEntry
 {
-    TMergedBlockEntry(ui32 gen, ui32 step, ui16 count, ui32 blockIndex, ui16 blobOffset, bool zeroed)
+    TMergedBlockEntry(
+        ui32 gen,
+        ui32 step,
+        ui16 count,
+        ui32 blockIndex,
+        ui16 blobOffset,
+        bool zeroed)
         : TGroupHeader(gen, step, true)
         , TMultiGroupHeader(TMultiGroupHeader::MergedGroup, count, true)
         , TBlockEntry(blockIndex, blobOffset, zeroed)
@@ -103,11 +119,16 @@ struct TMergedBlockEntry : TGroupHeader, TMultiGroupHeader, TBlockEntry
 
 static_assert(sizeof(TMergedBlockEntry) == 8 + 4 + 8);
 
-struct TMixedBlockEntry : TGroupHeader, TMultiGroupHeader
+struct TMixedBlockEntry
+    : TGroupHeader
+    , TMultiGroupHeader
 {
     TMixedBlockEntry(ui32 gen, ui32 step, ui16 count, bool withZeroBlocks)
         : TGroupHeader(gen, step, true)
-        , TMultiGroupHeader(TMultiGroupHeader::MixedGroup, count, withZeroBlocks)
+        , TMultiGroupHeader(
+              TMultiGroupHeader::MixedGroup,
+              count,
+              withZeroBlocks)
     {}
 };
 
@@ -128,7 +149,9 @@ struct TDeletedBlockEntry
 
 static_assert(sizeof(TDeletedBlockEntry) == 4);
 
-struct TSingleDeletedBlockEntry : TGroupHeader, TDeletedBlockEntry
+struct TSingleDeletedBlockEntry
+    : TGroupHeader
+    , TDeletedBlockEntry
 {
     TSingleDeletedBlockEntry(ui32 gen, ui32 step, ui16 blobOffset)
         : TGroupHeader(gen, step, false)
@@ -138,7 +161,10 @@ struct TSingleDeletedBlockEntry : TGroupHeader, TDeletedBlockEntry
 
 static_assert(sizeof(TSingleDeletedBlockEntry) == 8 + 4);
 
-struct TMergedDeletedBlockEntry : TGroupHeader, TMultiGroupHeader, TDeletedBlockEntry
+struct TMergedDeletedBlockEntry
+    : TGroupHeader
+    , TMultiGroupHeader
+    , TDeletedBlockEntry
 {
     TMergedDeletedBlockEntry(ui32 gen, ui32 step, ui16 count, ui16 blobOffset)
         : TGroupHeader(gen, step, true)
@@ -149,7 +175,9 @@ struct TMergedDeletedBlockEntry : TGroupHeader, TMultiGroupHeader, TDeletedBlock
 
 static_assert(sizeof(TMergedDeletedBlockEntry) == 8 + 4 + 4);
 
-struct TMixedDeletedBlockEntry : TGroupHeader, TMultiGroupHeader
+struct TMixedDeletedBlockEntry
+    : TGroupHeader
+    , TMultiGroupHeader
 {
     TMixedDeletedBlockEntry(ui32 gen, ui32 step, ui16 count)
         : TGroupHeader(gen, step, true)
@@ -161,8 +189,7 @@ static_assert(sizeof(TMixedDeletedBlockEntry) == 8 + 4);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBinaryWriter
-    : public IOutputStream
+class TBinaryWriter: public IOutputStream
 {
 private:
     TByteVector Buffer{{GetAllocatorByTag(EAllocatorTag::BlobIndexBlockList)}};
@@ -207,8 +234,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBinaryReader
-    : public IInputStream
+class TBinaryReader: public IInputStream
 {
 private:
     const TByteVector& Buffer;
@@ -311,7 +337,7 @@ void WriteBitMap(TBinaryWriter& writer, const TDynBitMap& mask)
     if (written % 4 != 0) {
         auto padding = 4 - written % 4;
         for (size_t i = 0; i < padding; ++i) {
-            writer.Write<ui8>(0);  // padding
+            writer.Write<ui8>(0);   // padding
         }
     }
 }
@@ -323,18 +349,16 @@ void WriteBitMap(TBinaryWriter& writer, const TDynBitMap& mask)
 class TBlockList::TBlockBuilder
 {
 private:
-    TVector<TBlock> Blocks { MaxBlocksCount };
+    TVector<TBlock> Blocks{MaxBlocksCount};
     size_t BlocksCount = 0;
 
 public:
-    void AddBlock(ui16 blobOffset, ui32 blockIndex, ui64 minCommitId, bool zeroed)
+    void
+    AddBlock(ui16 blobOffset, ui32 blockIndex, ui64 minCommitId, bool zeroed)
     {
         Y_ABORT_UNLESS(blobOffset < MaxBlocksCount, "Invalid encoding");
-        Blocks[blobOffset] = TBlock(
-            blockIndex,
-            minCommitId,
-            InvalidCommitId,
-            zeroed);
+        Blocks[blobOffset] =
+            TBlock(blockIndex, minCommitId, InvalidCommitId, zeroed);
         ++BlocksCount;
     }
 
@@ -388,8 +412,7 @@ TMaybe<TBlockMark> TBlockList::FindBlock(
         if (!group.IsMulti) {
             // single block
             const auto& entry = reader.Read<TBlockEntry>();
-            if (groupCommitId <= maxCommitId &&
-                entry.BlockIndex == blockIndex)
+            if (groupCommitId <= maxCommitId && entry.BlockIndex == blockIndex)
             {
                 return TBlockMark(
                     entry.BlobOffset,
@@ -421,7 +444,8 @@ TMaybe<TBlockMark> TBlockList::FindBlock(
                 // mixed blocks
                 case TMultiGroupHeader::MixedGroup: {
                     const auto* blockIndices = reader.Read<ui32>(multi.Count);
-                    const auto* blobOffsets = reader.Read<ui16>(Align2(multi.Count));
+                    const auto* blobOffsets =
+                        reader.Read<ui16>(Align2(multi.Count));
 
                     TDynBitMap zeroed;
                     if (multi.WithZeroBlocks) {
@@ -487,7 +511,8 @@ ui64 TBlockList::FindDeletedBlock(ui16 blobOffset) const
 
                 // mixed blocks
                 case TMultiGroupHeader::MixedGroup: {
-                    const auto* blobOffsets = reader.Read<ui16>(Align2(multi.Count));
+                    const auto* blobOffsets =
+                        reader.Read<ui16>(Align2(multi.Count));
                     size_t i = FindOffset(
                         blobOffsets,
                         blobOffsets + multi.Count,
@@ -610,7 +635,8 @@ void TBlockList::DecodeBlocks(T& builder) const
                 // mixed blocks
                 case TMultiGroupHeader::MixedGroup: {
                     const auto* blockIndices = reader.Read<ui32>(multi.Count);
-                    const auto* blobOffsets = reader.Read<ui16>(Align2(multi.Count));
+                    const auto* blobOffsets =
+                        reader.Read<ui16>(Align2(multi.Count));
 
                     TDynBitMap zeroed;
                     if (multi.WithZeroBlocks) {
@@ -657,14 +683,17 @@ void TBlockList::DecodeDeletedBlocks(T& builder) const
                 case TMultiGroupHeader::MergedGroup: {
                     const auto& entry = reader.Read<TDeletedBlockEntry>();
                     for (size_t i = 0; i < multi.Count; ++i) {
-                        builder.AddDeletedBlock(entry.BlobOffset + i, groupCommitId);
+                        builder.AddDeletedBlock(
+                            entry.BlobOffset + i,
+                            groupCommitId);
                     }
                     break;
                 }
 
                 // mixed blocks
                 case TMultiGroupHeader::MixedGroup: {
-                    const auto* blobOffsets = reader.Read<ui16>(Align2(multi.Count));
+                    const auto* blobOffsets =
+                        reader.Read<ui16>(Align2(multi.Count));
                     for (size_t i = 0; i < multi.Count; ++i) {
                         builder.AddDeletedBlock(blobOffsets[i], groupCommitId);
                     }
@@ -682,23 +711,26 @@ void TBlockList::DecodeDeletedBlocks(T& builder) const
 
 TBlockList TBlockListBuilder::Finish()
 {
-    return { EncodeBlocks(), EncodeDeletedBlocks() };
+    return {EncodeBlocks(), EncodeDeletedBlocks()};
 }
 
 TByteVector TBlockListBuilder::EncodeBlocks()
 {
-    Sort(Blocks, [] (const auto& l, const auto& r) {
-        // order by (MinCommitId DESC, BlockIndex ASC)
-        return l.MinCommitId > r.MinCommitId
-            || (l.MinCommitId == r.MinCommitId && l.BlockIndex < r.BlockIndex);
-    });
+    Sort(
+        Blocks,
+        [](const auto& l, const auto& r)
+        {
+            // order by (MinCommitId DESC, BlockIndex ASC)
+            return l.MinCommitId > r.MinCommitId ||
+                   (l.MinCommitId == r.MinCommitId &&
+                    l.BlockIndex < r.BlockIndex);
+        });
 
     TBinaryWriter writer;
-    writer.Write<TListHeader>({
-        TListHeader::Blocks
-    });
+    writer.Write<TListHeader>({TListHeader::Blocks});
 
-    auto isMerged = [&] (size_t start, size_t end) {
+    auto isMerged = [&](size_t start, size_t end)
+    {
         for (size_t i = start + 1; i < end; ++i) {
             if (Blocks[i].BlockIndex != Blocks[i - 1].BlockIndex + 1 ||
                 Blocks[i].BlobOffset != Blocks[i - 1].BlobOffset + 1 ||
@@ -710,7 +742,8 @@ TByteVector TBlockListBuilder::EncodeBlocks()
         return true;
     };
 
-    auto writeBlocks = [&] (size_t start, size_t end, ui64 commitId) {
+    auto writeBlocks = [&](size_t start, size_t end, ui64 commitId)
+    {
         size_t count = end - start;
         Y_ABORT_UNLESS(count <= MaxBlocksCount);
 
@@ -718,34 +751,28 @@ TByteVector TBlockListBuilder::EncodeBlocks()
         std::tie(gen, step) = ParseCommitId(commitId);
 
         if (count == 1) {
-            writer.Write<TSingleBlockEntry>({
-                gen,
-                step,
-                Blocks[start].BlockIndex,
-                Blocks[start].BlobOffset,
-                Blocks[start].Zeroed
-            });
+            writer.Write<TSingleBlockEntry>(
+                {gen,
+                 step,
+                 Blocks[start].BlockIndex,
+                 Blocks[start].BlobOffset,
+                 Blocks[start].Zeroed});
         } else if (count > 1) {
             if (isMerged(start, end)) {
-                writer.Write<TMergedBlockEntry>({
-                    gen,
-                    step,
-                    static_cast<ui16>(count),
-                    Blocks[start].BlockIndex,
-                    Blocks[start].BlobOffset,
-                    Blocks[start].Zeroed
-                });
+                writer.Write<TMergedBlockEntry>(
+                    {gen,
+                     step,
+                     static_cast<ui16>(count),
+                     Blocks[start].BlockIndex,
+                     Blocks[start].BlobOffset,
+                     Blocks[start].Zeroed});
             } else {
                 bool withZeroBlocks = FindIf(
                     Blocks.begin() + start,
                     Blocks.begin() + end,
                     [](const auto& b) { return b.Zeroed; });
-                writer.Write<TMixedBlockEntry>({
-                    gen,
-                    step,
-                    static_cast<ui16>(count),
-                    withZeroBlocks
-                });
+                writer.Write<TMixedBlockEntry>(
+                    {gen, step, static_cast<ui16>(count), withZeroBlocks});
                 for (size_t i = start; i < end; ++i) {
                     writer.Write<ui32>(Blocks[i].BlockIndex);
                 }
@@ -753,7 +780,7 @@ TByteVector TBlockListBuilder::EncodeBlocks()
                     writer.Write<ui16>(Blocks[i].BlobOffset);
                 }
                 if (count & 1) {
-                    writer.Write<ui16>(0);  // padding
+                    writer.Write<ui16>(0);   // padding
                 }
                 if (withZeroBlocks) {
                     TDynBitMap zeroed;
@@ -790,27 +817,33 @@ TByteVector TBlockListBuilder::EncodeBlocks()
 
 TByteVector TBlockListBuilder::EncodeDeletedBlocks()
 {
-    Sort(DeletedBlocks, [] (const auto& l, const auto& r) {
-        // order by (MaxCommitId DESC, BlobOffset ASC)
-        return l.MaxCommitId > r.MaxCommitId
-            || (l.MaxCommitId == r.MaxCommitId && l.BlobOffset < r.BlobOffset);
-    });
+    Sort(
+        DeletedBlocks,
+        [](const auto& l, const auto& r)
+        {
+            // order by (MaxCommitId DESC, BlobOffset ASC)
+            return l.MaxCommitId > r.MaxCommitId ||
+                   (l.MaxCommitId == r.MaxCommitId &&
+                    l.BlobOffset < r.BlobOffset);
+        });
 
     TBinaryWriter writer;
-    writer.Write<TListHeader>({
-        TListHeader::DeletedBlocks
-    });
+    writer.Write<TListHeader>({TListHeader::DeletedBlocks});
 
-    auto isMerged = [&] (size_t start, size_t end) {
+    auto isMerged = [&](size_t start, size_t end)
+    {
         for (size_t i = start + 1; i < end; ++i) {
-            if (DeletedBlocks[i].BlobOffset != DeletedBlocks[i - 1].BlobOffset + 1) {
+            if (DeletedBlocks[i].BlobOffset !=
+                DeletedBlocks[i - 1].BlobOffset + 1)
+            {
                 return false;
             }
         }
         return true;
     };
 
-    auto writeBlocks = [&] (size_t start, size_t end, ui64 commitId) {
+    auto writeBlocks = [&](size_t start, size_t end, ui64 commitId)
+    {
         size_t count = end - start;
         Y_ABORT_UNLESS(count <= MaxBlocksCount);
 
@@ -818,30 +851,23 @@ TByteVector TBlockListBuilder::EncodeDeletedBlocks()
         std::tie(gen, step) = ParseCommitId(commitId);
 
         if (count == 1) {
-            writer.Write<TSingleDeletedBlockEntry>({
-                gen,
-                step,
-                DeletedBlocks[start].BlobOffset
-            });
+            writer.Write<TSingleDeletedBlockEntry>(
+                {gen, step, DeletedBlocks[start].BlobOffset});
         } else if (count > 1) {
             if (isMerged(start, end)) {
-                writer.Write<TMergedDeletedBlockEntry>({
-                    gen,
-                    step,
-                    static_cast<ui16>(count),
-                    DeletedBlocks[start].BlobOffset
-                });
+                writer.Write<TMergedDeletedBlockEntry>(
+                    {gen,
+                     step,
+                     static_cast<ui16>(count),
+                     DeletedBlocks[start].BlobOffset});
             } else {
-                writer.Write<TMixedDeletedBlockEntry>({
-                    gen,
-                    step,
-                    static_cast<ui16>(count)
-                });
+                writer.Write<TMixedDeletedBlockEntry>(
+                    {gen, step, static_cast<ui16>(count)});
                 for (size_t i = start; i < end; ++i) {
                     writer.Write<ui16>(DeletedBlocks[i].BlobOffset);
                 }
                 if (count & 1) {
-                    writer.Write<ui16>(0);  // padding
+                    writer.Write<ui16>(0);   // padding
                 }
             }
         }
@@ -875,7 +901,11 @@ TBlockList BuildBlockList(const TVector<TBlock>& blocks)
 
     ui16 blobOffset = 0;
     for (const auto& block: blocks) {
-        builder.AddBlock(blobOffset, block.BlockIndex, block.MinCommitId, block.Zeroed);
+        builder.AddBlock(
+            blobOffset,
+            block.BlockIndex,
+            block.MinCommitId,
+            block.Zeroed);
 
         if (block.MaxCommitId != InvalidCommitId) {
             builder.AddDeletedBlock(blobOffset, block.MaxCommitId);

@@ -13,8 +13,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReallocateActor final
-    : public TActorBootstrapped<TReallocateActor>
+class TReallocateActor final: public TActorBootstrapped<TReallocateActor>
 {
 private:
     const TActorId Owner;
@@ -55,11 +54,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReallocateActor::TReallocateActor(
-        const TActorId& owner,
-        TRequestInfoPtr request,
-        TString diskId,
-        NProto::TAllocateDiskRequest record,
-        TChildLogTitle logTitle)
+    const TActorId& owner,
+    TRequestInfoPtr request,
+    TString diskId,
+    NProto::TAllocateDiskRequest record,
+    TChildLogTitle logTitle)
     : Owner(owner)
     , Request(std::move(request))
     , DiskId(std::move(diskId))
@@ -74,10 +73,7 @@ void TReallocateActor::Bootstrap(const TActorContext& ctx)
     auto request = std::make_unique<TEvDiskRegistry::TEvAllocateDiskRequest>();
     request->Record = std::move(Record);
 
-    NCloud::Send(
-        ctx,
-        MakeDiskRegistryProxyServiceId(),
-        std::move(request));
+    NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
 }
 
 void TReallocateActor::ReplyAndDie(
@@ -207,10 +203,8 @@ void TVolumeActor::HandleReallocateDisk(
 
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     auto request = MakeAllocateDiskRequest();
 

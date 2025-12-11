@@ -18,16 +18,16 @@ void TIndexTabletActor::HandleCreateCheckpoint(
     const auto& checkpointId = msg->Record.GetCheckpointId();
     const auto nodeId = msg->Record.GetNodeId();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s CreateCheckpoint started (checkpointId: %s, nodeId: %lu)",
         LogTag.c_str(),
         checkpointId.c_str(),
         nodeId);
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TCreateCheckpointMethod>(*requestInfo);
@@ -67,11 +67,8 @@ void TIndexTabletActor::ExecuteTx_CreateCheckpoint(
         return RebootTabletOnCommitOverflow(ctx, "CreateCheckpoint");
     }
 
-    auto* checkpoint = CreateCheckpoint(
-        db,
-        args.CheckpointId,
-        args.NodeId,
-        args.CommitId);
+    auto* checkpoint =
+        CreateCheckpoint(db, args.CheckpointId, args.NodeId, args.CommitId);
     Y_ABORT_UNLESS(checkpoint);
 }
 
@@ -82,7 +79,8 @@ void TIndexTabletActor::CompleteTx_CreateCheckpoint(
     // TODO(#1146) checkpoint-related tables are not yet supported
     RemoveTransaction(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvCreateCheckpointResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvCreateCheckpointResponse>(args.Error);
     CompleteResponse<TEvService::TCreateCheckpointMethod>(
         response->Record,
         args.RequestInfo->CallContext,

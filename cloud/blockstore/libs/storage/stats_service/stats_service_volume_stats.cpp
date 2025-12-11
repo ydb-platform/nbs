@@ -31,9 +31,9 @@ private:
 
 public:
     TRemoteVolumeStatActor(
-            TActorId volumeBalancerActorId,
-            TVector<NProto::TVolumeBalancerDiskStats> volumes,
-            TDuration timeout)
+        TActorId volumeBalancerActorId,
+        TVector<NProto::TVolumeBalancerDiskStats> volumes,
+        TDuration timeout)
         : VolumeBalancerActorId(volumeBalancerActorId)
         , Volumes(std::move(volumes))
         , Timeout(timeout)
@@ -44,9 +44,14 @@ public:
         for (ui32 i = 0; i < Volumes.size(); ++i) {
             const auto& v = Volumes[i];
             if (!v.GetHost()) {
-                auto request = std::make_unique<TEvVolume::TEvGetVolumeLoadInfoRequest>();
+                auto request =
+                    std::make_unique<TEvVolume::TEvGetVolumeLoadInfoRequest>();
                 request->Record.SetDiskId(v.GetDiskId());
-                NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request), 0);
+                NCloud::Send(
+                    ctx,
+                    MakeVolumeProxyServiceId(),
+                    std::move(request),
+                    0);
                 ++ResponsesToGet;
                 DiskToIdx[v.GetDiskId()] = i;
             }
@@ -57,10 +62,7 @@ public:
             return;
         }
 
-        ctx.Schedule(
-            Timeout,
-            new TEvents::TEvWakeup()
-        );
+        ctx.Schedule(Timeout, new TEvents::TEvWakeup());
 
         Become(&TThis::StateWork);
     }
@@ -75,11 +77,15 @@ private:
         const auto* msg = ev->Get();
 
         if (FAILED(msg->GetStatus())) {
-            LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::SERVICE,
                 "Failed to get stats for remote volume %s",
                 msg->Record.GetStats().GetDiskId().c_str());
         } else {
-            LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::SERVICE,
                 "Got stats for remote volume %s",
                 msg->Record.GetStats().GetDiskId().c_str());
 
@@ -105,12 +111,13 @@ private:
     {
         TVector<NProto::TVolumeBalancerDiskStats> collectedVolumes;
 
-        for (auto& d : Volumes) {
+        for (auto& d: Volumes) {
             collectedVolumes.push_back(std::move(d));
         }
 
-        auto response = std::make_unique<TEvStatsService::TEvGetVolumeStatsResponse>(
-            std::move(collectedVolumes));
+        auto response =
+            std::make_unique<TEvStatsService::TEvGetVolumeStatsResponse>(
+                std::move(collectedVolumes));
 
         NCloud::Send(ctx, VolumeBalancerActorId, std::move(response));
 
@@ -120,11 +127,12 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
 STFUNC(TRemoteVolumeStatActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvVolume::TEvGetVolumeLoadInfoResponse, HandleGetVolumeLoadInfoResponse);
+        HFunc(
+            TEvVolume::TEvGetVolumeLoadInfoResponse,
+            HandleGetVolumeLoadInfoResponse);
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         default:
@@ -136,7 +144,7 @@ STFUNC(TRemoteVolumeStatActor::StateWork)
     }
 }
 
-}    // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -154,8 +162,9 @@ void TStatsServiceActor::HandleGetVolumeStats(
         }
     }
 
-    auto response = std::make_unique<TEvStatsService::TEvGetVolumeStatsResponse>(
-        std::move(ev->Get()->VolumeStats));
+    auto response =
+        std::make_unique<TEvStatsService::TEvGetVolumeStatsResponse>(
+            std::move(ev->Get()->VolumeStats));
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }

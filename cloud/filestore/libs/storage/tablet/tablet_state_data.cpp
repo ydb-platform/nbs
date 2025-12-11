@@ -20,13 +20,10 @@ bool IntersectsWithFresh(
     ui64 nodeId,
     ui32 blockIndex)
 {
-    const bool isFreshBlock =
-        freshBlocks.FindBlock(nodeId, blockIndex);
-    const bool intersectsWithFreshBytes =
-        freshBytes.Intersects(
-            nodeId,
-            TByteRange::BlockRange(blockIndex, blockSize)
-        );
+    const bool isFreshBlock = freshBlocks.FindBlock(nodeId, blockIndex);
+    const bool intersectsWithFreshBytes = freshBytes.Intersects(
+        nodeId,
+        TByteRange::BlockRange(blockIndex, blockSize));
     return isFreshBlock || intersectsWithFreshBytes;
 }
 
@@ -35,7 +32,8 @@ bool IntersectsWithFresh(
 ////////////////////////////////////////////////////////////////////////////////
 // Writes
 
-bool TIndexTabletState::EnqueueWriteBatch(std::unique_ptr<TWriteRequest> request)
+bool TIndexTabletState::EnqueueWriteBatch(
+    std::unique_ptr<TWriteRequest> request)
 {
     bool shouldTriggerWrite = Impl->WriteBatch.Empty();
     Impl->WriteBatch.PushBack(request.release());
@@ -64,13 +62,7 @@ bool TIndexTabletState::GenerateBlobId(
         return false;
     }
 
-    *blobId = TPartialBlobId(
-        gen,
-        step,
-        *channel,
-        blobSize,
-        blobIndex,
-        0);
+    *blobId = TPartialBlobId(gen, step, *channel, blobSize, blobIndex, 0);
 
     return true;
 }
@@ -88,7 +80,8 @@ NProto::TError TIndexTabletState::Truncate(
 
     TByteRange range(targetSize, currentSize - targetSize, GetBlockSize());
 
-    if (TruncateBlocksThreshold && range.BlockCount() > TruncateBlocksThreshold) {
+    if (TruncateBlocksThreshold && range.BlockCount() > TruncateBlocksThreshold)
+    {
         EnqueueTruncateOp(nodeId, range);
         return {};
     }
@@ -113,9 +106,9 @@ NProto::TError TIndexTabletState::TruncateRange(
     }
 
     const TByteRange headBound(
-         range.Offset,
-         range.FirstAlignedBlock() * range.BlockSize - range.Offset,
-         range.BlockSize);
+        range.Offset,
+        range.FirstAlignedBlock() * range.BlockSize - range.Offset,
+        range.BlockSize);
     if (headBound.Length) {
         WriteFreshBytes(
             db,
@@ -143,9 +136,9 @@ NProto::TError TIndexTabletState::ZeroRange(
     }
 
     const TByteRange headBound(
-         range.Offset,
-         range.UnalignedHeadLength(),
-         range.BlockSize);
+        range.Offset,
+        range.UnalignedHeadLength(),
+        range.BlockSize);
     if (headBound.Length) {
         WriteFreshBytes(
             db,
@@ -157,9 +150,9 @@ NProto::TError TIndexTabletState::ZeroRange(
     }
 
     const TByteRange tailBound(
-         range.UnalignedTailOffset(),
-         range.UnalignedTailLength(),
-         range.BlockSize);
+        range.UnalignedTailOffset(),
+        range.UnalignedTailLength(),
+        range.BlockSize);
     if (tailBound.Length) {
         WriteFreshBytes(
             db,
@@ -181,27 +174,31 @@ NProto::TError TIndexTabletState::DeleteRange(
 {
     const ui64 deletedBlockCount = range.AlignedBlockCount();
     if (deletedBlockCount) {
-        const bool useLargeDeletionMarkers = LargeDeletionMarkersEnabled
-            && deletedBlockCount >= LargeDeletionMarkersThreshold;
+        const bool useLargeDeletionMarkers =
+            LargeDeletionMarkersEnabled &&
+            deletedBlockCount >= LargeDeletionMarkersThreshold;
         if (useLargeDeletionMarkers) {
             const auto t = LargeDeletionMarkersThresholdForBackpressure;
             if (GetLargeDeletionMarkersCount() >= t) {
-                return MakeError(E_REJECTED, TStringBuilder()
-                    << "too many large deletion markers: "
-                    << GetLargeDeletionMarkersCount() << " >= " << t);
+                return MakeError(
+                    E_REJECTED,
+                    TStringBuilder()
+                        << "too many large deletion markers: "
+                        << GetLargeDeletionMarkersCount() << " >= " << t);
             }
 
             SplitRange(
                 range.FirstAlignedBlock(),
                 deletedBlockCount,
                 LargeDeletionMarkerBlocks,
-                [&] (ui32 blockOffset, ui32 blocksCount) {
-                    Impl->LargeBlocks.AddDeletionMarker({
-                        nodeId,
-                        commitId,
-                        static_cast<ui32>(
-                            range.FirstAlignedBlock() + blockOffset),
-                        blocksCount});
+                [&](ui32 blockOffset, ui32 blocksCount)
+                {
+                    Impl->LargeBlocks.AddDeletionMarker(
+                        {nodeId,
+                         commitId,
+                         static_cast<ui32>(
+                             range.FirstAlignedBlock() + blockOffset),
+                         blocksCount});
                     db.WriteLargeDeletionMarkers(
                         nodeId,
                         commitId,
@@ -215,7 +212,8 @@ NProto::TError TIndexTabletState::DeleteRange(
                 range.FirstAlignedBlock(),
                 deletedBlockCount,
                 BlockGroupSize,
-                [&] (ui32 blockOffset, ui32 blocksCount) {
+                [&](ui32 blockOffset, ui32 blocksCount)
+                {
                     MarkMixedBlocksDeleted(
                         db,
                         nodeId,
@@ -264,7 +262,10 @@ void TIndexTabletState::CompleteTruncateOp(ui64 nodeId)
     Impl->TruncateQueue.CompleteOperation(nodeId);
 }
 
-void TIndexTabletState::AddTruncate(TIndexTabletDatabase& db, ui64 nodeId, TByteRange range)
+void TIndexTabletState::AddTruncate(
+    TIndexTabletDatabase& db,
+    ui64 nodeId,
+    TByteRange range)
 {
     EnqueueTruncateOp(nodeId, range);
     db.WriteTruncateQueueEntry(nodeId, range);
@@ -323,17 +324,11 @@ void TIndexTabletState::LoadFreshBytes(
         }
 
         if (b.Data) {
-            Impl->FreshBytes.AddBytes(
-                b.NodeId,
-                b.Offset,
-                b.Data,
-                b.MinCommitId);
+            Impl->FreshBytes
+                .AddBytes(b.NodeId, b.Offset, b.Data, b.MinCommitId);
         } else {
-            Impl->FreshBytes.AddDeletionMarker(
-                b.NodeId,
-                b.Offset,
-                b.Len,
-                b.MinCommitId);
+            Impl->FreshBytes
+                .AddDeletionMarker(b.NodeId, b.Offset, b.Len, b.MinCommitId);
         }
     }
 }
@@ -344,11 +339,7 @@ void TIndexTabletState::FindFreshBytes(
     ui64 commitId,
     TByteRange byteRange) const
 {
-    Impl->FreshBytes.FindBytes(
-        visitor,
-        nodeId,
-        byteRange,
-        commitId);
+    Impl->FreshBytes.FindBytes(visitor, nodeId, byteRange, commitId);
 }
 
 NProto::TError TIndexTabletState::CheckFreshBytes(
@@ -357,11 +348,7 @@ NProto::TError TIndexTabletState::CheckFreshBytes(
     ui64 offset,
     TStringBuf data) const
 {
-    return Impl->FreshBytes.CheckBytes(
-        nodeId,
-        offset,
-        data,
-        commitId);
+    return Impl->FreshBytes.CheckBytes(nodeId, offset, data, commitId);
 }
 
 void TIndexTabletState::WriteFreshBytes(
@@ -371,17 +358,9 @@ void TIndexTabletState::WriteFreshBytes(
     ui64 offset,
     TStringBuf data)
 {
-    Impl->FreshBytes.AddBytes(
-        nodeId,
-        offset,
-        data,
-        commitId);
+    Impl->FreshBytes.AddBytes(nodeId, offset, data, commitId);
 
-    db.WriteFreshBytes(
-        nodeId,
-        commitId,
-        offset,
-        data);
+    db.WriteFreshBytes(nodeId, commitId, offset, data);
 
     IncrementFreshBytesCount(db, data.size());
     UpdateFreshBytesItemCount();
@@ -396,17 +375,9 @@ void TIndexTabletState::WriteFreshBytesDeletionMarker(
     ui64 offset,
     ui64 len)
 {
-    Impl->FreshBytes.AddDeletionMarker(
-        nodeId,
-        offset,
-        len,
-        commitId);
+    Impl->FreshBytes.AddDeletionMarker(nodeId, offset, len, commitId);
 
-    db.WriteFreshBytesDeletionMarker(
-        nodeId,
-        commitId,
-        offset,
-        len);
+    db.WriteFreshBytesDeletionMarker(nodeId, commitId, offset, len);
 
     IncrementDeletedFreshBytesCount(db, len);
 
@@ -435,7 +406,8 @@ TFlushBytesStats TIndexTabletState::FinishFlushBytes(
     ui64 deletedCnt = 0;
     Impl->FreshBytes.VisitTop(
         itemLimit,
-        [&] (const TBytes& bytes, bool isDeletionMarker) {
+        [&](const TBytes& bytes, bool isDeletionMarker)
+        {
             db.DeleteFreshBytes(bytes.NodeId, bytes.MinCommitId, bytes.Offset);
             if (isDeletionMarker) {
                 deletedSz += bytes.Length;
@@ -449,12 +421,9 @@ TFlushBytesStats TIndexTabletState::FinishFlushBytes(
             range->SetNodeId(bytes.NodeId);
             range->SetOffset(bytes.Offset);
             range->SetBytes(bytes.Length);
-    });
+        });
 
-    auto completed = Impl->FreshBytes.FinishCleanup(
-        chunkId,
-        cnt,
-        deletedCnt);
+    auto completed = Impl->FreshBytes.FinishCleanup(chunkId, cnt, deletedCnt);
 
     auto freshBytes = Impl->FreshBytes.GetTotalBytes();
     auto deletedFreshBytes = Impl->FreshBytes.GetTotalDeletedBytes();
@@ -506,7 +475,8 @@ void TIndexTabletState::FindFreshBlocks(
     ui32 blockIndex,
     ui32 blocksCount) const
 {
-    Impl->FreshBlocks.FindBlocks(visitor, nodeId, blockIndex, blocksCount, commitId);
+    Impl->FreshBlocks
+        .FindBlocks(visitor, nodeId, blockIndex, blocksCount, commitId);
 }
 
 TMaybe<TFreshBlock> TIndexTabletState::FindFreshBlock(
@@ -524,12 +494,9 @@ void TIndexTabletState::WriteFreshBlock(
     ui32 blockIndex,
     TStringBuf blockData)
 {
-    bool added = Impl->FreshBlocks.AddBlock(
-        nodeId,
-        blockIndex,
-        blockData,
-        GetBlockSize(),
-        commitId);
+    bool added =
+        Impl->FreshBlocks
+            .AddBlock(nodeId, blockIndex, blockData, GetBlockSize(), commitId);
     TABLET_VERIFY(added);
 
     db.WriteFreshBlock(nodeId, commitId, blockIndex, blockData);
@@ -553,11 +520,7 @@ void TIndexTabletState::MarkFreshBlocksDeleted(
         commitId);
 
     for (const auto& [blockIndex, minCommitId]: blocks) {
-        db.MarkFreshBlockDeleted(
-            nodeId,
-            minCommitId,
-            commitId,
-            blockIndex);
+        db.MarkFreshBlockDeleted(nodeId, minCommitId, commitId, blockIndex);
     }
 
     InvalidateReadAheadCache(nodeId);
@@ -573,10 +536,7 @@ void TIndexTabletState::DeleteFreshBlocks(
             block.BlockIndex,
             block.MinCommitId);
 
-        db.DeleteFreshBlock(
-            block.NodeId,
-            block.MinCommitId,
-            block.BlockIndex);
+        db.DeleteFreshBlock(block.NodeId, block.MinCommitId, block.BlockIndex);
     }
 
     DecrementFreshBlocksCount(db, blocks.size());
@@ -595,7 +555,10 @@ bool TIndexTabletState::LoadMixedBlocks(IIndexTabletDatabase& db, ui32 rangeId)
     TVector<TIndexTabletDatabase::IIndexTabletDatabase::TMixedBlob> blobs;
     TVector<TDeletionMarker> deletionMarkers;
 
-    if (!db.ReadMixedBlocks(rangeId, blobs, AllocatorRegistry.GetAllocator(EAllocatorTag::BlockList)) ||
+    if (!db.ReadMixedBlocks(
+            rangeId,
+            blobs,
+            AllocatorRegistry.GetAllocator(EAllocatorTag::BlockList)) ||
         !db.ReadDeletionMarkers(rangeId, deletionMarkers))
     {
         // not ready
@@ -608,10 +571,7 @@ bool TIndexTabletState::LoadMixedBlocks(IIndexTabletDatabase& db, ui32 rangeId)
             rangeId,
             blob.BlobId,
             std::move(blob.BlockList),
-            TMixedBlobStats {
-                blob.GarbageBlocks,
-                blob.CheckpointBlocks
-            });
+            TMixedBlobStats{blob.GarbageBlocks, blob.CheckpointBlocks});
         TABLET_VERIFY(added);
     }
 
@@ -627,8 +587,7 @@ void TIndexTabletState::ReleaseMixedBlocks(ui32 rangeId)
     Impl->MixedBlocks.UnRefRange(rangeId);
 }
 
-void TIndexTabletState::ReleaseMixedBlocks(
-    const TSet<ui32>& ranges)
+void TIndexTabletState::ReleaseMixedBlocks(const TSet<ui32>& ranges)
 {
     for (ui32 rangeId: ranges) {
         ReleaseMixedBlocks(rangeId);
@@ -659,7 +618,8 @@ void TIndexTabletState::WriteMixedBlocks(
     const TBlock& block,
     ui32 blocksCount)
 {
-    ui32 rangeId = GetMixedRangeIndex(block.NodeId, block.BlockIndex, blocksCount);
+    ui32 rangeId =
+        GetMixedRangeIndex(block.NodeId, block.BlockIndex, blocksCount);
 
     auto blockList = TBlockList::EncodeBlocks(
         block,
@@ -671,10 +631,8 @@ void TIndexTabletState::WriteMixedBlocks(
     IncrementMixedBlocksCount(db, blocksCount);
 
     if (Impl->MixedBlocks.IsLoaded(rangeId)) {
-        bool added = Impl->MixedBlocks.AddBlocks(
-            rangeId,
-            blobId,
-            std::move(blockList));
+        bool added =
+            Impl->MixedBlocks.AddBlocks(rangeId, blobId, std::move(blockList));
         TABLET_VERIFY(added);
     }
 
@@ -747,10 +705,9 @@ TWriteMixedBlocksResult TIndexTabletState::WriteMixedBlocks(
             rangeId,
             blobId,
             std::move(blockList),
-            TMixedBlobStats {
+            TMixedBlobStats{
                 rebaseResult.GarbageBlocksCount,
-                rebaseResult.CheckpointBlocksCount
-            });
+                rebaseResult.CheckpointBlocksCount});
         TABLET_VERIFY(added);
     }
 
@@ -758,8 +715,7 @@ TWriteMixedBlocksResult TIndexTabletState::WriteMixedBlocks(
 
     return {
         .GarbageBlocksCount = rebaseResult.GarbageBlocksCount,
-        .NewBlob = true
-    };
+        .NewBlob = true};
 }
 
 void TIndexTabletState::DeleteMixedBlocks(
@@ -800,7 +756,8 @@ TDeleteMixedBlocksResult TIndexTabletState::DeleteMixedBlocks(
     return {.GarbageBlocksCount = stats.GarbageBlocksCount};
 }
 
-TRebaseResult TIndexTabletState::RebaseMixedBlocks(TVector<TBlock>& blocks) const
+TRebaseResult TIndexTabletState::RebaseMixedBlocks(
+    TVector<TBlock>& blocks) const
 {
     return RebaseBlocks(
         blocks,
@@ -814,12 +771,12 @@ TRebaseResult TIndexTabletState::RebaseMixedBlocks(TVector<TBlock>& blocks) cons
                 Impl->FreshBlocks,
                 GetBlockSize(),
                 nodeId,
-                blockIndex
-            );
+                blockIndex);
         });
 }
 
-TVector<TMixedBlobMeta> TIndexTabletState::GetBlobsForCompaction(ui32 rangeId) const
+TVector<TMixedBlobMeta> TIndexTabletState::GetBlobsForCompaction(
+    ui32 rangeId) const
 {
     auto blobs = Impl->MixedBlocks.GetBlobsForCompaction(rangeId);
     for (auto& blob: blobs) {
@@ -829,7 +786,9 @@ TVector<TMixedBlobMeta> TIndexTabletState::GetBlobsForCompaction(ui32 rangeId) c
     return blobs;
 }
 
-TMixedBlobMeta TIndexTabletState::FindBlob(ui32 rangeId, TPartialBlobId blobId) const
+TMixedBlobMeta TIndexTabletState::FindBlob(
+    ui32 rangeId,
+    TPartialBlobId blobId) const
 {
     return Impl->MixedBlocks.FindBlob(rangeId, blobId);
 }
@@ -843,20 +802,15 @@ void TIndexTabletState::MarkMixedBlocksDeleted(
 {
     ui32 rangeId = GetMixedRangeIndex(nodeId, blockIndex, blocksCount);
 
-    db.WriteDeletionMarkers(
-        rangeId,
-        nodeId,
-        commitId,
-        blockIndex,
-        blocksCount);
+    db.WriteDeletionMarkers(rangeId, nodeId, commitId, blockIndex, blocksCount);
 
     // XXX consider incrementing deletion marker count by 1, not by blocksCount
     IncrementDeletionMarkersCount(db, blocksCount);
 
     if (Impl->MixedBlocks.IsLoaded(rangeId)) {
         Impl->MixedBlocks.AddDeletionMarker(
-            rangeId, {nodeId, commitId, blockIndex, blocksCount}
-        );
+            rangeId,
+            {nodeId, commitId, blockIndex, blocksCount});
     }
 
     const auto stats = GetCompactionStats(rangeId);
@@ -1049,7 +1003,9 @@ void TIndexTabletState::RewriteMixedBlocks(
         AddCheckpointBlob(db, checkpointId, rangeId, blob.BlobId);
     }
 
-    auto blockList = TBlockList::EncodeBlocks(blob.Blocks, GetAllocator(EAllocatorTag::BlockList));
+    auto blockList = TBlockList::EncodeBlocks(
+        blob.Blocks,
+        GetAllocator(EAllocatorTag::BlockList));
 
     db.WriteMixedBlocks(
         rangeId,
@@ -1066,10 +1022,9 @@ void TIndexTabletState::RewriteMixedBlocks(
             rangeId,
             blob.BlobId,
             std::move(blockList),
-            TMixedBlobStats {
+            TMixedBlobStats{
                 rebaseResult.GarbageBlocksCount,
-                rebaseResult.CheckpointBlocksCount
-            });
+                rebaseResult.CheckpointBlocksCount});
         TABLET_VERIFY(added);
     }
 }
@@ -1118,12 +1073,10 @@ ui32 TIndexTabletState::CalculateMixedIndexRangeGarbageBlockCount(
     return Impl->MixedBlocks.CalculateGarbageBlockCount(rangeId);
 }
 
-
 TBlobMetaMapStats TIndexTabletState::GetBlobMetaMapStats() const
 {
     return Impl->MixedBlocks.GetBlobMetaMapStats();
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // LargeBlocks
@@ -1135,12 +1088,8 @@ void TIndexTabletState::FindLargeBlocks(
     ui32 blockIndex,
     ui32 blocksCount) const
 {
-    Impl->LargeBlocks.FindBlocks(
-        visitor,
-        nodeId,
-        commitId,
-        blockIndex,
-        blocksCount);
+    Impl->LargeBlocks
+        .FindBlocks(visitor, nodeId, commitId, blockIndex, blocksCount);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1207,12 +1156,14 @@ void TIndexTabletState::AddGarbageBlob(
     IncrementGarbageQueueSize(db, blobId.BlobSize());
 }
 
-TVector<TPartialBlobId> TIndexTabletState::GetNewBlobs(ui64 collectCommitId) const
+TVector<TPartialBlobId> TIndexTabletState::GetNewBlobs(
+    ui64 collectCommitId) const
 {
     return Impl->GarbageQueue.GetNewBlobs(collectCommitId);
 }
 
-TVector<TPartialBlobId> TIndexTabletState::GetGarbageBlobs(ui64 collectCommitId) const
+TVector<TPartialBlobId> TIndexTabletState::GetGarbageBlobs(
+    ui64 collectCommitId) const
 {
     return Impl->GarbageQueue.GetGarbageBlobs(collectCommitId);
 }
@@ -1289,23 +1240,23 @@ TCompactionCounter TIndexTabletState::GetRangeToCompactByGarbage() const
 TMaybe<TIndexTabletState::TPriorityRange>
 TIndexTabletState::NextPriorityRangeForCleanup() const
 {
-    if (PriorityRangesForCleanup.empty()
-            && GetLargeDeletionMarkersCount()
-                >= LargeDeletionMarkersCleanupThreshold)
+    if (PriorityRangesForCleanup.empty() &&
+        GetLargeDeletionMarkersCount() >= LargeDeletionMarkersCleanupThreshold)
     {
         auto one = Impl->LargeBlocks.GetOne();
         SplitRange(
             one.BlockIndex,
             one.BlockCount,
             BlockGroupSize,
-            [&] (ui32 blockOffset, ui32 blocksCount) {
-                PriorityRangesForCleanup.push_back({
-                    one.NodeId,
-                    one.BlockIndex + blockOffset,
-                    blocksCount,
-                    GetMixedRangeIndex(
-                        one.NodeId,
-                        one.BlockIndex + blockOffset)});
+            [&](ui32 blockOffset, ui32 blocksCount)
+            {
+                PriorityRangesForCleanup.push_back(
+                    {one.NodeId,
+                     one.BlockIndex + blockOffset,
+                     blocksCount,
+                     GetMixedRangeIndex(
+                         one.NodeId,
+                         one.BlockIndex + blockOffset)});
             });
     }
 
@@ -1372,8 +1323,8 @@ TString TIndexTabletState::EnqueueForcedRangeOperation(
     return operationId;
 }
 
-TIndexTabletState::TPendingForcedRangeOperation TIndexTabletState::
-    DequeueForcedRangeOperation()
+TIndexTabletState::TPendingForcedRangeOperation
+TIndexTabletState::DequeueForcedRangeOperation()
 {
     if (PendingForcedRangeOperations.empty()) {
         return {};
@@ -1411,8 +1362,8 @@ void TIndexTabletState::CompleteForcedRangeOperation()
 auto TIndexTabletState::FindForcedRangeOperation(
     const TString& operationId) const -> const TForcedRangeOperationState*
 {
-    if (ForcedRangeOperationState
-            && ForcedRangeOperationState->OperationId == operationId)
+    if (ForcedRangeOperationState &&
+        ForcedRangeOperationState->OperationId == operationId)
     {
         return ForcedRangeOperationState.Get();
     }

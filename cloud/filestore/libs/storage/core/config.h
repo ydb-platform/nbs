@@ -278,7 +278,8 @@ public:
 
     const NProto::TStorageConfig& GetStorageConfigProto() const;
 
-    const NProto::TStorageConfig::TFilestoreAliases& GetFilestoreAliases() const;
+    const NProto::TStorageConfig::TFilestoreAliases&
+    GetFilestoreAliases() const;
     const TString* FindFileSystemIdByAlias(const TString& alias) const;
 
     ui32 GetChannelFreeSpaceThreshold() const;
@@ -293,7 +294,8 @@ public:
 
     bool GetMultipleStageRequestThrottlingEnabled() const;
 
-    NCloud::NProto::TConfigDispatcherSettings GetConfigDispatcherSettings() const;
+    NCloud::NProto::TConfigDispatcherSettings
+    GetConfigDispatcherSettings() const;
 
     TString GetPathDescriptionBackupFilePath() const;
 

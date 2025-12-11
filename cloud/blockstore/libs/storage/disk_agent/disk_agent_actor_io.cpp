@@ -88,7 +88,7 @@ void Reply(
         request.Sender,
         replyFrom,
         response.release(),
-        0, // flags
+        0,   // flags
         request.Cookie));
 }
 
@@ -117,18 +117,19 @@ std::pair<ui32, TString> HandleException(
             FormatResultCode(e.GetCode()).c_str(),
             e.what());
 
-        return { e.GetCode(), e.what() };
+        return {e.GetCode(), e.what()};
     } catch (...) {
-        LOG_ERROR(actorSystem, TBlockStoreComponents::DISK_AGENT,
+        LOG_ERROR(
+            actorSystem,
+            TBlockStoreComponents::DISK_AGENT,
             "%s [%s / %s] Unexpected %s error: %s",
             methodName,
             deviceUUID.c_str(),
             clientId.c_str(),
             source,
-            CurrentExceptionMessage().c_str()
-        );
+            CurrentExceptionMessage().c_str());
 
-        return { E_FAIL, CurrentExceptionMessage() };
+        return {E_FAIL, CurrentExceptionMessage()};
     }
 }
 
@@ -155,10 +156,8 @@ void TDiskAgentActor::PerformIO(
             msg->Record.GetBlocksCount());
     }
 
-    auto requestInfo = CreateRequestInfo<TMethod>(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo<TMethod>(ev->Sender, ev->Cookie, msg->CallContext);
 
     const ui64 started = GetCycleCount();
 
@@ -196,7 +195,9 @@ void TDiskAgentActor::PerformIO(
             started);
     };
 
-    LOG_TRACE(ctx, TBlockStoreComponents::DISK_AGENT,
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::DISK_AGENT,
         "%s [%s / %s]",
         TMethod::Name,
         deviceUUID.c_str(),
@@ -382,8 +383,7 @@ void TDiskAgentActor::HandleParsedWriteDeviceBlocks(
     }
 
     // Attach storage to NProto::TWriteBlocksRequest
-    struct TWriteBlocksRequestWithStorage
-        : NProto::TWriteBlocksRequest
+    struct TWriteBlocksRequestWithStorage: NProto::TWriteBlocksRequest
     {
         TStorageBuffer Storage;
     };
@@ -474,18 +474,18 @@ void TDiskAgentActor::HandleWriteOrZeroCompleted(
         recentBlocksTracker.AddRecorded(msg->RequestId, msg->Range);
     }
 
-    auto executeNotOverlappedRequests =
-        [&](TPostponedRequest& postponedRequest) {
-            if (recentBlocksTracker.CheckInflight(
-                    postponedRequest.VolumeRequestId,
-                    postponedRequest.Range))
-            {
-                return false;
-            }
+    auto executeNotOverlappedRequests = [&](TPostponedRequest& postponedRequest)
+    {
+        if (recentBlocksTracker.CheckInflight(
+                postponedRequest.VolumeRequestId,
+                postponedRequest.Range))
+        {
+            return false;
+        }
 
-            ctx.Send(postponedRequest.Event.release());
-            return true;
-        };
+        ctx.Send(postponedRequest.Event.release());
+        return true;
+    };
 
     std::erase_if(PostponedRequests, executeNotOverlappedRequests);
 }

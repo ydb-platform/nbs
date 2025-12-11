@@ -22,22 +22,22 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui32 MAX_EVENTS_BATCH = 32;
-constexpr timespec WAIT_TIMEOUT = {1, 0}; // 1 sec
+constexpr timespec WAIT_TIMEOUT = {1, 0};   // 1 sec
 
 ////////////////////////////////////////////////////////////////////////////////
 
 auto MakeSystemError(int error, TStringBuf message)
 {
-    return MakeError(MAKE_SYSTEM_ERROR(error), TStringBuilder()
-        << "(" << LastSystemErrorText(error) << ") "
-        << message);
+    return MakeError(
+        MAKE_SYSTEM_ERROR(error),
+        TStringBuilder() << "(" << LastSystemErrorText(error) << ") "
+                         << message);
 }
 
 auto MakeIOError(i64 ret)
 {
-    return ret < 0
-        ? MakeSystemError(-ret, "async IO operation failed")
-        : NProto::TError {};
+    return ret < 0 ? MakeSystemError(-ret, "async IO operation failed")
+                   : NProto::TError{};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -58,19 +58,19 @@ public:
             ++iterations;
             code = io_setup(nr, &Context);
             if (code == -EAGAIN) {
-                const auto aioNr =
-                    TIFStream("/proc/sys/fs/aio-nr").ReadLine();
+                const auto aioNr = TIFStream("/proc/sys/fs/aio-nr").ReadLine();
                 const auto aioMaxNr =
                     TIFStream("/proc/sys/fs/aio-max-nr").ReadLine();
-                Cerr << "retrying EAGAIN from io_setup, aio-nr/max: "
-                    << aioNr << "/" << aioMaxNr << Endl;
+                Cerr << "retrying EAGAIN from io_setup, aio-nr/max: " << aioNr
+                     << "/" << aioMaxNr << Endl;
                 Sleep(waitTime);
             } else {
                 break;
             }
         }
 
-        Y_ABORT_UNLESS(code == 0,
+        Y_ABORT_UNLESS(
+            code == 0,
             "unable to initialize context: %s, iterations: %d",
             LastSystemErrorText(-code),
             iterations);
@@ -80,7 +80,8 @@ public:
     {
         if (Context) {
             int ret = io_destroy(Context);
-            Y_ABORT_UNLESS(ret == 0,
+            Y_ABORT_UNLESS(
+                ret == 0,
                 "unable to destroy context: %s",
                 LastSystemErrorText(-ret));
         }
@@ -103,13 +104,15 @@ public:
 
     TArrayRef<io_event> GetEvents(TArrayRef<io_event> events, timespec& timeout)
     {
-        int ret = io_getevents(Context, 1, events.size(), events.data(), &timeout);
+        int ret =
+            io_getevents(Context, 1, events.size(), events.data(), &timeout);
 
         if (ret == -EINTR) {
             return {};
         }
 
-        Y_ABORT_UNLESS(ret >= 0,
+        Y_ABORT_UNLESS(
+            ret >= 0,
             "unable to get async IO completion: %s",
             LastSystemErrorText(-ret));
 
@@ -119,8 +122,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAIOService final
-    : public IFileIOService
+class TAIOService final: public IFileIOService
 {
 private:
     TAsyncIOContext IOContext;
@@ -131,11 +133,10 @@ private:
 public:
     explicit TAIOService(TAioServiceParams params)
         : IOContext(params.MaxEvents)
-        , PollerThread(
-              std::bind_front(
-                  &TAIOService::Run,
-                  this,
-                  std::move(params.CompletionThreadName)))
+        , PollerThread(std::bind_front(
+              &TAIOService::Run,
+              this,
+              std::move(params.CompletionThreadName)))
     {}
 
     // IStartable
@@ -154,7 +155,7 @@ public:
         // unblock the poller thread that may be blocked on io_getevents by
         // initiating a read operation
 
-        TFileHandle file {eventfd(1, EFD_NONBLOCK)};
+        TFileHandle file{eventfd(1, EFD_NONBLOCK)};
 
         ui64 value = 0;
         IFileIOService::AsyncRead(
@@ -176,12 +177,7 @@ public:
     {
         auto req = std::make_unique<iocb>();
 
-        io_prep_pread(
-            req.get(),
-            file,
-            buffer.data(),
-            buffer.size(),
-            offset);
+        io_prep_pread(req.get(), file, buffer.data(), buffer.size(), offset);
 
         req->data = completion;
 
@@ -202,12 +198,7 @@ public:
             iov[i].iov_len = buffers[i].size();
         }
 
-        io_prep_preadv(
-            req.get(),
-            file,
-            iov.data(),
-            iov.size(),
-            offset);
+        io_prep_preadv(req.get(), file, iov.data(), iov.size(), offset);
 
         req->data = completion;
 
@@ -249,12 +240,7 @@ public:
             iov[i].iov_len = buffers[i].size();
         }
 
-        io_prep_pwritev(
-            req.get(),
-            file,
-            iov.data(),
-            iov.size(),
-            offset);
+        io_prep_pwritev(req.get(), file, iov.data(), iov.size(), offset);
 
         req->data = completion;
 
@@ -283,7 +269,7 @@ private:
         if (HasError(error)) {
             Complete(static_cast<TFileIOCompletion*>(ptr->data), error, 0);
         } else {
-            Y_UNUSED(request.release());  // ownership transferred
+            Y_UNUSED(request.release());   // ownership transferred
         }
     }
 
@@ -294,17 +280,18 @@ private:
 
         timespec timeout = WAIT_TIMEOUT;
 
-        io_event events[MAX_EVENTS_BATCH] {};
+        io_event events[MAX_EVENTS_BATCH]{};
 
         while (!ShouldStop.test()) {
             for (auto& ev: IOContext.GetEvents(events, timeout)) {
-                std::unique_ptr<iocb> ptr {ev.obj};
+                std::unique_ptr<iocb> ptr{ev.obj};
 
 #if defined(_tsan_enabled_)
                 // tsan is not aware of barrier between io_submit/io_getevents
                 AtomicGet(*(TAtomicBase*)ptr.get());
 #endif
-                const i64 ret = static_cast<i64>(ev.res); // it is really signed
+                const i64 ret =
+                    static_cast<i64>(ev.res);   // it is really signed
 
                 Complete(
                     static_cast<TFileIOCompletion*>(ev.data),
@@ -317,8 +304,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAIOServiceFactory final
-    : public IFileIOServiceFactory
+class TAIOServiceFactory final: public IFileIOServiceFactory
 {
 private:
     const TAioServiceParams Params;

@@ -17,8 +17,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TInsecureConnector final
-    : public grpc_server_security_connector
+class TInsecureConnector final: public grpc_server_security_connector
 {
 public:
     TInsecureConnector(grpc_core::RefCountedPtr<grpc_server_credentials> creds)
@@ -52,10 +51,11 @@ public:
         // be present.
         tsi_handshaker* handshaker = nullptr;
         bool isClient = false;
-        auto handshakerResult =
-            tsi_local_handshaker_create(&handshaker);
+        auto handshakerResult = tsi_local_handshaker_create(&handshaker);
         if (handshakerResult != TSI_OK) {
-            gpr_log(GPR_ERROR, "Could not create grpc handshaker %s",
+            gpr_log(
+                GPR_ERROR,
+                "Could not create grpc handshaker %s",
                 tsi_result_to_string(handshakerResult));
             return;
         }
@@ -70,22 +70,24 @@ public:
             static_cast<const grpc_server_security_connector*>(other));
     }
 
-    void cancel_check_peer(grpc_closure* /*on_peer_checked*/,
-                           grpc_error_handle /*error*/) override {
-    }
+    void cancel_check_peer(
+        grpc_closure* /*on_peer_checked*/,
+        grpc_error_handle /*error*/) override
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TInsecureServerCredentials final
-    : public grpc_server_credentials
+class TInsecureServerCredentials final: public grpc_server_credentials
 {
 public:
     // see conrib/libs/grpc/src/core/lib/gprpp/unique_type_name.h for details
-    grpc_core::UniqueTypeName type() const override {
-        static grpc_core::UniqueTypeName::Factory kFactory("InsecureServerCredentials");
+    grpc_core::UniqueTypeName type() const override
+    {
+        static grpc_core::UniqueTypeName::Factory kFactory(
+            "InsecureServerCredentials");
         return kFactory.Create();
-  }
+    }
 
     grpc_core::RefCountedPtr<grpc_server_security_connector>
     create_security_connector(const grpc_core::ChannelArgs& /*args*/) override

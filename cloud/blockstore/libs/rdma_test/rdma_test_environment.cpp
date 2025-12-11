@@ -86,9 +86,8 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
 
     constexpr bool rejectLateRequests = true;
 
-    auto rdmaTargetConfig = std::make_shared<TRdmaTargetConfig>(
-        rejectLateRequests,
-        target);
+    auto rdmaTargetConfig =
+        std::make_shared<TRdmaTargetConfig>(rejectLateRequests, target);
 
     TOldRequestCounters oldRequestCounters{
         Counters->GetCounter("Delayed"),

@@ -8,7 +8,6 @@
 
 #include <optional>
 
-
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -34,15 +33,11 @@ public:
         , MaxSeenRwSeqNo(maxSeenRwSeqNo)
     {}
 
-    NActors::TActorId AddSubSession(
-        ui64 seqNo,
-        bool readOnly,
-        const NActors::TActorId& owner);
+    NActors::TActorId
+    AddSubSession(ui64 seqNo, bool readOnly, const NActors::TActorId& owner);
 
-    NActors::TActorId UpdateSubSession(
-        ui64 seqNo,
-        bool readOnly,
-        const NActors::TActorId& owner);
+    NActors::TActorId
+    UpdateSubSession(ui64 seqNo, bool readOnly, const NActors::TActorId& owner);
 
     ui32 DeleteSubSession(const NActors::TActorId& owner);
     ui32 DeleteSubSession(ui64 sessionSeqNo);

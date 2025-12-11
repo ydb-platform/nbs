@@ -22,7 +22,8 @@ void TIndexTabletActor::HandleDeleteCheckpoint(
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TEvIndexTabletPrivate::TEvDeleteCheckpointResponse>(
+            std::make_unique<
+                TEvIndexTabletPrivate::TEvDeleteCheckpointResponse>(
                 std::move(error)));
 
         return;
@@ -30,19 +31,20 @@ void TIndexTabletActor::HandleDeleteCheckpoint(
 
     auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s DeleteCheckpoint started (checkpointId: %s, mode: %s)",
         LogTag.c_str(),
         msg->CheckpointId.c_str(),
         ToString(msg->Mode).c_str());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvIndexTabletPrivate::TDeleteCheckpointMethod>(*requestInfo);
+    AddTransaction<TEvIndexTabletPrivate::TDeleteCheckpointMethod>(
+        *requestInfo);
 
     ExecuteTx<TDeleteCheckpoint>(
         ctx,
@@ -94,11 +96,19 @@ bool TIndexTabletActor::PrepareTx_DeleteCheckpoint(
                         args.Nodes.emplace_back(node.GetRef());
                     }
 
-                    if (!db.ReadNodeAttrVers(nodeId, args.CommitId, args.NodeAttrs)) {
+                    if (!db.ReadNodeAttrVers(
+                            nodeId,
+                            args.CommitId,
+                            args.NodeAttrs))
+                    {
                         ready = false;
                     }
 
-                    if (!db.ReadNodeRefVers(nodeId, args.CommitId, args.NodeRefs)) {
+                    if (!db.ReadNodeRefVers(
+                            nodeId,
+                            args.CommitId,
+                            args.NodeRefs))
+                    {
                         ready = false;
                     }
                 }
@@ -134,7 +144,8 @@ bool TIndexTabletActor::PrepareTx_DeleteCheckpoint(
 
                     if (ready) {
                         TABLET_VERIFY(mixedBlob);
-                        args.MixedBlobs.emplace_back(std::move(mixedBlob.GetRef()));
+                        args.MixedBlobs.emplace_back(
+                            std::move(mixedBlob.GetRef()));
                     }
                 }
             }
@@ -220,16 +231,17 @@ void TIndexTabletActor::ExecuteTx_DeleteCheckpoint(
 
             TABLET_VERIFY(args.Blobs.size() == args.MixedBlobs.size());
             for (size_t i = 0; i < args.Blobs.size(); ++i) {
-                TABLET_VERIFY(args.Blobs[i].BlobId == args.MixedBlobs[i].BlobId);
+                TABLET_VERIFY(
+                    args.Blobs[i].BlobId == args.MixedBlobs[i].BlobId);
 
                 const auto rangeId = args.Blobs[i].RangeId;
 
-                TMixedBlobMeta blob {
+                TMixedBlobMeta blob{
                     args.MixedBlobs[i].BlobId,
                     args.MixedBlobs[i].BlockList.DecodeBlocks(),
                 };
 
-                TMixedBlobStats stats {
+                TMixedBlobStats stats{
                     args.MixedBlobs[i].GarbageBlocks,
                     args.MixedBlobs[i].CheckpointBlocks,
                 };
@@ -253,7 +265,9 @@ void TIndexTabletActor::CompleteTx_DeleteCheckpoint(
     // TODO(#1146) checkpoint-related tables are not yet supported
     RemoveTransaction(*args.RequestInfo);
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s DeleteCheckpoint completed (%s)",
         LogTag.c_str(),
         FormatError(args.Error).c_str());

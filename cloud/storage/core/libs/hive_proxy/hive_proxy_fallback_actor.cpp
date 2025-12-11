@@ -33,14 +33,11 @@ class TReadTabletBootInfoBackupActor final
     : public TActorBootstrapped<TReadTabletBootInfoBackupActor>
 {
 private:
-    using TRequest =
-        TEvHiveProxyPrivate::TEvReadTabletBootInfoBackupRequest;
-    using TResponse =
-        TEvHiveProxyPrivate::TEvReadTabletBootInfoBackupResponse;
+    using TRequest = TEvHiveProxyPrivate::TEvReadTabletBootInfoBackupRequest;
+    using TResponse = TEvHiveProxyPrivate::TEvReadTabletBootInfoBackupResponse;
 
-    using TReply = std::function<
-        void(const TActorContext&, std::unique_ptr<TResponse>)
-    >;
+    using TReply =
+        std::function<void(const TActorContext&, std::unique_ptr<TResponse>)>;
 
     int LogComponent;
     TActorId TabletBootInfoBackup;
@@ -49,10 +46,10 @@ private:
 
 public:
     TReadTabletBootInfoBackupActor(
-            int logComponent,
-            TActorId tabletBootInfoCache,
-            ui64 tabletId,
-            TReply reply)
+        int logComponent,
+        TActorId tabletBootInfoCache,
+        ui64 tabletId,
+        TReply reply)
         : LogComponent(logComponent)
         , TabletBootInfoBackup(std::move(tabletBootInfoCache))
         , TabletId(tabletId)
@@ -72,9 +69,7 @@ private:
         NCloud::Send(ctx, TabletBootInfoBackup, std::move(request));
     }
 
-    void HandleResponse(
-        const TResponse::TPtr& ev,
-        const TActorContext& ctx)
+    void HandleResponse(const TResponse::TPtr& ev, const TActorContext& ctx)
     {
         auto* msg = ev->Get();
 
@@ -85,14 +80,15 @@ private:
                 // should not return fatal error to client
                 error = MakeError(
                     E_REJECTED,
-                    "E_NOT_FOUND from TabletBootInfoBackup converted to E_REJECTED"
-                );
+                    "E_NOT_FOUND from TabletBootInfoBackup converted to "
+                    "E_REJECTED");
             }
 
             response = std::make_unique<TResponse>(std::move(error));
         } else {
             response = std::make_unique<TResponse>(
-                std::move(msg->StorageInfo), msg->SuggestedGeneration);
+                std::move(msg->StorageInfo),
+                msg->SuggestedGeneration);
         }
 
         Reply(ctx, std::move(response));
@@ -132,7 +128,9 @@ void THiveProxyFallbackActor::Bootstrap(const TActorContext& ctx)
             true /* readOnlyMode */
         );
         TabletBootInfoBackup = ctx.Register(
-            cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
+            cache.release(),
+            TMailboxType::HTSwap,
+            AppData()->IOPoolId);
     }
 }
 
@@ -194,13 +192,13 @@ void THiveProxyFallbackActor::HandleGetStorageInfo(
     const auto* msg = ev->Get();
 
     auto requestInfo = TRequestInfo(ev->Sender, ev->Cookie);
-    auto reply = [=](const auto& ctx, auto r) {
+    auto reply = [=](const auto& ctx, auto r)
+    {
         if (HasError(r->Error)) {
             NCloud::Reply(
                 ctx,
                 requestInfo,
-                std::make_unique<TResponse>(r->Error)
-            );
+                std::make_unique<TResponse>(r->Error));
             return;
         }
 
@@ -233,13 +231,13 @@ void THiveProxyFallbackActor::HandleBootExternal(
     const auto* msg = ev->Get();
 
     auto requestInfo = TRequestInfo(ev->Sender, ev->Cookie);
-    auto reply = [=, this](const auto& ctx, auto r) {
+    auto reply = [=, this](const auto& ctx, auto r)
+    {
         if (HasError(r->Error)) {
             NCloud::Reply(
                 ctx,
                 requestInfo,
-                std::make_unique<TResponse>(r->Error)
-            );
+                std::make_unique<TResponse>(r->Error));
             return;
         }
 
@@ -247,16 +245,15 @@ void THiveProxyFallbackActor::HandleBootExternal(
         // stuck with an outdated generation, no matter what
         auto request = std::make_unique<
             TEvHiveProxyPrivate::TEvUpdateTabletBootInfoBackupRequest>(
-               r->StorageInfo,
-               r->SuggestedGeneration + 1
-            );
+            r->StorageInfo,
+            r->SuggestedGeneration + 1);
         NCloud::Send(ctx, TabletBootInfoBackup, std::move(request));
 
         auto response = std::make_unique<TResponse>(
             std::move(r->StorageInfo),
             r->SuggestedGeneration,
             TEvHiveProxy::TEvBootExternalResponse::EBootMode::MASTER,
-            0  // SlaveId
+            0   // SlaveId
         );
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
@@ -304,8 +301,7 @@ void THiveProxyFallbackActor::HandleDrainNode(
     const TActorContext& ctx)
 {
     auto error = MakeError(E_NOT_IMPLEMENTED);
-    auto response =
-        std::make_unique<TEvHiveProxy::TEvDrainNodeResponse>(error);
+    auto response = std::make_unique<TEvHiveProxy::TEvDrainNodeResponse>(error);
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 

@@ -18,8 +18,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFileIOCompletion
-    : TNonCopyable
+struct TFileIOCompletion: TNonCopyable
 {
     using TFunc = void (*)(
         TFileIOCompletion* obj,
@@ -31,8 +30,7 @@ struct TFileIOCompletion
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IFileIOService
-    : IStartable
+struct IFileIOService: IStartable
 {
     virtual void AsyncRead(
         TFileHandle& file,
@@ -73,7 +71,7 @@ struct IFileIOService
 
         AsyncWrite(file, offset, buffer, cb.get());
 
-        Y_UNUSED(cb.release());  // ownership transferred
+        Y_UNUSED(cb.release());   // ownership transferred
     }
 
     template <typename F>
@@ -89,7 +87,7 @@ struct IFileIOService
 
         AsyncWriteV(file, offset, buffers, cb.get());
 
-        Y_UNUSED(cb.release());  // ownership transferred
+        Y_UNUSED(cb.release());   // ownership transferred
     }
 
     template <typename F>
@@ -105,7 +103,7 @@ struct IFileIOService
 
         AsyncRead(file, offset, buffer, cb.get());
 
-        Y_UNUSED(cb.release());  // ownership transferred
+        Y_UNUSED(cb.release());   // ownership transferred
     }
 
     template <typename F>
@@ -121,25 +119,21 @@ struct IFileIOService
 
         AsyncReadV(file, offset, buffers, cb.get());
 
-        Y_UNUSED(cb.release());  // ownership transferred
+        Y_UNUSED(cb.release());   // ownership transferred
     }
 
     // conveniences: futures
 
-    NThreading::TFuture<ui32> AsyncWrite(
-        TFileHandle& file,
-        i64 offset,
-        TArrayRef<const char> buffer);
+    NThreading::TFuture<ui32>
+    AsyncWrite(TFileHandle& file, i64 offset, TArrayRef<const char> buffer);
 
     NThreading::TFuture<ui32> AsyncWriteV(
         TFileHandle& file,
         i64 offset,
         const TVector<TArrayRef<const char>>& buffers);
 
-    NThreading::TFuture<ui32> AsyncRead(
-        TFileHandle& file,
-        i64 offset,
-        TArrayRef<char> buffer);
+    NThreading::TFuture<ui32>
+    AsyncRead(TFileHandle& file, i64 offset, TArrayRef<char> buffer);
 
     NThreading::TFuture<ui32> AsyncReadV(
         TFileHandle& file,
@@ -148,15 +142,14 @@ struct IFileIOService
 
 private:
     template <typename F>
-    struct TCallbackCompletion
-        : TFileIOCompletion
+    struct TCallbackCompletion: TFileIOCompletion
     {
         F Func;
 
         template <typename T>
         explicit TCallbackCompletion(T&& func)
-            : TFileIOCompletion {.Func = &TCallbackCompletion::Complete}
-            , Func {std::forward<T>(func)}
+            : TFileIOCompletion{.Func = &TCallbackCompletion::Complete}
+            , Func{std::forward<T>(func)}
         {}
 
         static void Complete(
@@ -164,9 +157,8 @@ private:
             const NProto::TError& error,
             ui32 bytes)
         {
-            std::unique_ptr<TCallbackCompletion> ptr {
-                static_cast<TCallbackCompletion*>(self)
-            };
+            std::unique_ptr<TCallbackCompletion> ptr{
+                static_cast<TCallbackCompletion*>(self)};
 
             std::invoke(std::move(ptr->Func), error, bytes);
         }

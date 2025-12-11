@@ -8,8 +8,8 @@
 #include "tablet_tx.h"
 
 #include <cloud/filestore/libs/diagnostics/metrics/histogram.h>
-#include <cloud/filestore/libs/diagnostics/metrics/window_calculator.h>
 #include <cloud/filestore/libs/diagnostics/metrics/public.h>
+#include <cloud/filestore/libs/diagnostics/metrics/window_calculator.h>
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/storage/api/service.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
@@ -21,14 +21,13 @@
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
 #include <cloud/storage/core/libs/common/byte_range.h>
-#include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/diagnostics/busy_idle_calculator.h>
+#include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/throttling/public.h>
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
-#include <contrib/ydb/core/mind/local.h>
 #include <contrib/ydb/core/filestore/core/filestore.h>
-
+#include <contrib/ydb/core/mind/local.h>
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -255,8 +254,8 @@ private:
                 }
 
                 const auto requestBytes =
-                    RequestBytes.load(std::memory_order_relaxed)
-                    - PrevRequestBytes;
+                    RequestBytes.load(std::memory_order_relaxed) -
+                    PrevRequestBytes;
                 return requestBytes / requestCount;
             }
 
@@ -482,9 +481,7 @@ private:
     void RegisterCounters(const NActors::TActorContext& ctx);
     void ScheduleUpdateCounters(const NActors::TActorContext& ctx);
     void UpdateCounters();
-    void UpdateDelayCounter(
-        TThrottlingPolicy::EOpType opType,
-        TDuration time);
+    void UpdateDelayCounter(TThrottlingPolicy::EOpType opType, TDuration time);
 
     void ScheduleSyncSessions(const NActors::TActorContext& ctx);
     void ScheduleCleanupSessions(const NActors::TActorContext& ctx);
@@ -501,9 +498,8 @@ private:
         const NActors::TActorContext& ctx,
         std::unique_ptr<TWriteRequest> request)
     {
-        request->RequestInfo->CancelRoutine = [] (
-            const NActors::TActorContext& ctx,
-            TRequestInfo& requestInfo)
+        request->RequestInfo->CancelRoutine =
+            [](const NActors::TActorContext& ctx, TRequestInfo& requestInfo)
         {
             auto response = std::make_unique<typename TMethod::TResponse>(
                 MakeError(E_REJECTED, "tablet is shutting down"));
@@ -513,9 +509,13 @@ private:
 
         if (TIndexTabletState::EnqueueWriteBatch(std::move(request))) {
             if (auto timeout = Config->GetWriteBatchTimeout()) {
-                ctx.Schedule(timeout, new TEvIndexTabletPrivate::TEvWriteBatchRequest());
+                ctx.Schedule(
+                    timeout,
+                    new TEvIndexTabletPrivate::TEvWriteBatchRequest());
             } else {
-                ctx.Send(SelfId(), new TEvIndexTabletPrivate::TEvWriteBatchRequest());
+                ctx.Send(
+                    SelfId(),
+                    new TEvIndexTabletPrivate::TEvWriteBatchRequest());
             }
         }
     }
@@ -541,9 +541,8 @@ private:
     template <typename TMethod>
     void AddTransaction(TRequestInfo& transaction)
     {
-        auto cancelRoutine = [] (
-            const NActors::TActorContext& ctx,
-            TRequestInfo& requestInfo)
+        auto cancelRoutine =
+            [](const NActors::TActorContext& ctx, TRequestInfo& requestInfo)
         {
             auto response = std::make_unique<typename TMethod::TResponse>(
                 MakeError(E_REJECTED, "tablet is shutting down"));
@@ -682,7 +681,8 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx,
         const std::function<NProto::TError(
-            const typename TMethod::TRequest::ProtoRecordType&)>& validator = {},
+            const typename TMethod::TRequest::ProtoRecordType&)>& validator =
+            {},
         bool validateSession = true);
 
     template <typename TMethod>
@@ -815,7 +815,8 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleLoadCompactionMapChunkResponse(
-        const TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse::TPtr& ev,
+        const TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse::TPtr&
+            ev,
         const NActors::TActorContext& ctx);
 
     void HandleEnqueueBlobIndexOpIfNeeded(
@@ -834,8 +835,12 @@ private:
     FILESTORE_TABLET_REQUESTS(FILESTORE_IMPLEMENT_REQUEST, TEvIndexTablet)
     FILESTORE_SERVICE_REQUESTS(FILESTORE_IMPLEMENT_REQUEST, TEvService)
 
-    FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(FILESTORE_IMPLEMENT_REQUEST, TEvIndexTabletPrivate)
-    FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(FILESTORE_IMPLEMENT_ASYNC_REQUEST, TEvIndexTabletPrivate)
+    FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(
+        FILESTORE_IMPLEMENT_REQUEST,
+        TEvIndexTabletPrivate)
+    FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(
+        FILESTORE_IMPLEMENT_ASYNC_REQUEST,
+        TEvIndexTabletPrivate)
 
     FILESTORE_TABLET_RW_TRANSACTIONS(
         FILESTORE_IMPLEMENT_RW_TRANSACTION,

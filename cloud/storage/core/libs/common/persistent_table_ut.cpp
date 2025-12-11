@@ -267,8 +267,9 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
         auto tablePath = dir.Path() / "table";
 
         using TTable = TPersistentTable<THeader, TRecord>;
-        auto getTableHeader = [](auto& table) {
-            auto *userHeader = table.HeaderData();
+        auto getTableHeader = [](auto& table)
+        {
+            auto* userHeader = table.HeaderData();
             auto* tableHeader = reinterpret_cast<TTable::THeader*>(
                 reinterpret_cast<char*>(userHeader) -
                 offsetof(TTable::THeader, Data));
@@ -288,8 +289,12 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
             auto* tableHeader = getTableHeader(table);
 
             UNIT_ASSERT_VALUES_EQUAL(TTable::Version, tableHeader->Version);
-            UNIT_ASSERT_VALUES_EQUAL(TTable::InvalidIndex, tableHeader->CompactedRecordSrcIndex);
-            UNIT_ASSERT_VALUES_EQUAL(TTable::InvalidIndex, tableHeader->CompactedRecordDstIndex);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TTable::InvalidIndex,
+                tableHeader->CompactedRecordSrcIndex);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TTable::InvalidIndex,
+                tableHeader->CompactedRecordDstIndex);
 
             // compaction copied entry 3 to 1 but restarted before setting
             // CompactedRecordSrcIndex/CompactedRecordDstIndex to InvalidIndex
@@ -299,7 +304,8 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
 
             recordValues[tableHeader->CompactedRecordDstIndex] =
                 recordValues[tableHeader->CompactedRecordSrcIndex];
-            recordValues.erase(recordValues.begin() + tableHeader->CompactedRecordSrcIndex);
+            recordValues.erase(
+                recordValues.begin() + tableHeader->CompactedRecordSrcIndex);
         }
 
         {
@@ -315,10 +321,15 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
             auto* tableHeader = getTableHeader(table);
 
             UNIT_ASSERT_VALUES_EQUAL(TTable::Version, tableHeader->Version);
-            UNIT_ASSERT_VALUES_EQUAL(TTable::InvalidIndex, tableHeader->CompactedRecordSrcIndex);
-            UNIT_ASSERT_VALUES_EQUAL(TTable::InvalidIndex, tableHeader->CompactedRecordDstIndex);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TTable::InvalidIndex,
+                tableHeader->CompactedRecordSrcIndex);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TTable::InvalidIndex,
+                tableHeader->CompactedRecordDstIndex);
 
-            // compaction started setting the compacted indexes but restarted before coping the data
+            // compaction started setting the compacted indexes but restarted
+            // before coping the data
             tableHeader->CompactedRecordSrcIndex = 23;
             tableHeader->CompactedRecordDstIndex = TTable::InvalidIndex;
         }
@@ -397,7 +408,7 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
                 UNIT_ASSERT_VALUES_EQUAL(index, ri.AllocRecord());
                 if (index != TPersistentTable<THeader, TRecord>::InvalidIndex) {
                     remainingRecords--;
-                    auto *record = table->RecordData(index);
+                    auto* record = table->RecordData(index);
                     record->Val = RandomNumber<ui64>();
                     ri.CommitRecord(index, record->Val);
                     table->CommitRecord(index);
@@ -431,7 +442,8 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
 
         auto tableSize = 32;
 
-        auto validateFillEmptyTable = [&](auto table) {
+        auto validateFillEmptyTable = [&](auto table)
+        {
             UNIT_ASSERT_VALUES_EQUAL(0, table->CountRecords());
 
             for (auto i = 0; i < tableSize; ++i) {
@@ -490,7 +502,7 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
 
         // validate previous elements remain in the table
         auto it = table->begin();
-        for (auto i = 0; i < initialTableSize ; i++) {
+        for (auto i = 0; i < initialTableSize; i++) {
             UNIT_ASSERT_C(it != table->end(), "index " << i << " not found");
             UNIT_ASSERT_VALUES_EQUAL(i, it.GetIndex());
             UNIT_ASSERT_VALUES_EQUAL(i, it->Index);
@@ -498,8 +510,9 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
             it++;
         }
 
-        // validate that (increasedTableSize - initialTableSize) elements can be added
-        for (auto i = initialTableSize; i < increasedTableSize ; i++) {
+        // validate that (increasedTableSize - initialTableSize) elements can be
+        // added
+        for (auto i = initialTableSize; i < increasedTableSize; i++) {
             auto index = table->AllocRecord();
             UNIT_ASSERT_VALUES_UNEQUAL(table->InvalidIndex, index);
             UNIT_ASSERT_VALUES_EQUAL(table->CountRecords(), index + 1);
@@ -545,7 +558,7 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
 
         // validate previous elements remain in the table
         auto it = table->begin();
-        for (auto i = 0; i < initialTableSize ; i++) {
+        for (auto i = 0; i < initialTableSize; i++) {
             UNIT_ASSERT_C(it != table->end(), "index " << i << " not found");
             UNIT_ASSERT_VALUES_EQUAL(i, it.GetIndex());
             UNIT_ASSERT_VALUES_EQUAL(i, it->Index);
@@ -595,11 +608,11 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
 
         // validate previous elements remain in the table
         auto it = table->begin();
-        for (auto i = 0; i < decreasedTableSize ; i++) {
+        for (auto i = 0; i < decreasedTableSize; i++) {
             UNIT_ASSERT_C(it != table->end(), "index " << i << " not found");
             UNIT_ASSERT_VALUES_EQUAL(i, it.GetIndex());
-            UNIT_ASSERT_VALUES_EQUAL(i*2, it->Index);
-            UNIT_ASSERT_VALUES_EQUAL(indexToVal(i*2), it->Val);
+            UNIT_ASSERT_VALUES_EQUAL(i * 2, it->Index);
+            UNIT_ASSERT_VALUES_EQUAL(indexToVal(i * 2), it->Val);
             it++;
         }
 
@@ -607,9 +620,8 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
         UNIT_ASSERT_VALUES_EQUAL(table->InvalidIndex, table->AllocRecord());
 
         // validate we can allocate after deleting entry
-        table->DeleteRecord(decreasedTableSize-1);
-        UNIT_ASSERT_VALUES_EQUAL(decreasedTableSize-1, table->AllocRecord());
-
+        table->DeleteRecord(decreasedTableSize - 1);
+        UNIT_ASSERT_VALUES_EQUAL(decreasedTableSize - 1, table->AllocRecord());
     }
 }
 

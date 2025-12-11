@@ -41,8 +41,8 @@ const grpc::string AUTH_PROPERTY_SOURCE = "y-auth-source";
 ////////////////////////////////////////////////////////////////////////////////
 
 TAuthMetadataProcessor::TAuthMetadataProcessor(
-        const TRequestSourceKinds& kinds,
-        NProto::ERequestSource source)
+    const TRequestSourceKinds& kinds,
+    NProto::ERequestSource source)
     : RequestSource(source)
 {
     auto requestSourceName = TryGetRequestSourceName(kinds, RequestSource);
@@ -52,7 +52,6 @@ TAuthMetadataProcessor::TAuthMetadataProcessor(
         NProto::ERequestSource_Name(source));
     RequestSourceName = std::move(*requestSourceName);
 }
-
 
 grpc::Status TAuthMetadataProcessor::Process(
     const InputMetadata& authMetadata,
@@ -65,9 +64,7 @@ grpc::Status TAuthMetadataProcessor::Process(
     Y_UNUSED(responseMetadata);
 
     if (context->FindPropertyValues(AUTH_PROPERTY_SOURCE).empty()) {
-        context->AddProperty(
-            AUTH_PROPERTY_SOURCE,
-            RequestSourceName);
+        context->AddProperty(AUTH_PROPERTY_SOURCE, RequestSourceName);
     }
 
     return grpc::Status::OK;
@@ -76,8 +73,8 @@ grpc::Status TAuthMetadataProcessor::Process(
 ////////////////////////////////////////////////////////////////////////////////
 
 TMaybe<NProto::ERequestSource> GetRequestSource(
-        const grpc::AuthContext& context,
-        const TRequestSourceKinds& kinds)
+    const grpc::AuthContext& context,
+    const TRequestSourceKinds& kinds)
 {
     auto values = context.FindPropertyValues(AUTH_PROPERTY_SOURCE);
     if (!values.empty()) {
@@ -86,13 +83,14 @@ TMaybe<NProto::ERequestSource> GetRequestSource(
     return {};
 }
 
-TString GetAuthToken(const std::multimap<grpc::string_ref, grpc::string_ref>& metadata)
+TString GetAuthToken(
+    const std::multimap<grpc::string_ref, grpc::string_ref>& metadata)
 {
     auto range = metadata.equal_range(AUTH_HEADER);
     for (auto it = range.first; it != range.second; ++it) {
         if (it->second.starts_with(AUTH_METHOD)) {
             auto token = it->second.substr(AUTH_METHOD.size());
-            return { token.begin(), token.end() };
+            return {token.begin(), token.end()};
         }
     }
 

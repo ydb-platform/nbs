@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/public/api/protos/disk.pb.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -15,8 +16,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDescribeDiskRegistryConfigCommand final
-    : public TCommand
+class TDescribeDiskRegistryConfigCommand final: public TCommand
 {
 public:
     explicit TDescribeDiskRegistryConfigCommand(IBlockStorePtr client)
@@ -32,7 +32,8 @@ protected:
 
         auto& output = GetOutputStream();
 
-        auto request = std::make_shared<NProto::TDescribeDiskRegistryConfigRequest>();
+        auto request =
+            std::make_shared<NProto::TDescribeDiskRegistryConfigRequest>();
 
         STORAGE_DEBUG("Sending DescribeDiskRegistryConfig request");
         const auto requestId = GetRequestId(*request);

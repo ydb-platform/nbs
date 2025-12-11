@@ -6,7 +6,6 @@
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/stream/str.h>
@@ -28,9 +27,9 @@ struct TWriteBlobRequest
     std::unique_ptr<TEvBlobStorage::TEvPut> Request;
 
     TWriteBlobRequest(
-            const TActorId& proxy,
-            const TLogoBlobID& blobId,
-            std::unique_ptr<TEvBlobStorage::TEvPut> request)
+        const TActorId& proxy,
+        const TLogoBlobID& blobId,
+        std::unique_ptr<TEvBlobStorage::TEvPut> request)
         : Proxy(proxy)
         , BlobId(blobId)
         , Request(std::move(request))
@@ -53,8 +52,7 @@ TString DumpBlobIds(const TVector<TWriteBlobRequest>& requests)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWriteBlobActor final
-    : public TActorBootstrapped<TWriteBlobActor>
+class TWriteBlobActor final: public TActorBootstrapped<TWriteBlobActor>
 {
 private:
     const TString LogTag;
@@ -109,13 +107,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TWriteBlobActor::TWriteBlobActor(
-        TString logTag,
-        TActorId tablet,
-        TRequestInfoPtr requestInfo,
-        TString fileSystemId,
-        IProfileLogPtr profileLog,
-        TVector<TWriteBlobRequest> requests,
-        NProto::TProfileLogRequestInfo profileLogRequest)
+    TString logTag,
+    TActorId tablet,
+    TRequestInfoPtr requestInfo,
+    TString fileSystemId,
+    IProfileLogPtr profileLog,
+    TVector<TWriteBlobRequest> requests,
+    NProto::TProfileLogRequestInfo profileLogRequest)
     : LogTag(std::move(logTag))
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
@@ -188,22 +186,25 @@ void TWriteBlobActor::ReplyError(
     const TEvBlobStorage::TEvPutResult& response,
     const TString reason)
 {
-      LOG_ERROR(ctx, TFileStoreComponents::TABLET,
-          "%s TEvBlobStorage::TEvPut failed: %s\n%s",
-          LogTag.c_str(),
-          reason.c_str(),
-          response.Print(false).data());
+    LOG_ERROR(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s TEvBlobStorage::TEvPut failed: %s\n%s",
+        LogTag.c_str(),
+        reason.c_str(),
+        response.Print(false).data());
 
-      auto error = MakeError(E_REJECTED, "TEvBlobStorage::TEvPut failed: " + reason);
-      ReplyAndDie(ctx, error);
+    auto error =
+        MakeError(E_REJECTED, "TEvBlobStorage::TEvPut failed: " + reason);
+    ReplyAndDie(ctx, error);
 }
 
 void TWriteBlobActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    const auto t = ctx.Now()
-        - TInstant::MicroSeconds(ProfileLogRequest.GetTimestampMcs());
+    const auto t =
+        ctx.Now() - TInstant::MicroSeconds(ProfileLogRequest.GetTimestampMcs());
 
     // log request
     FinalizeProfileLogRequestInfo(
@@ -233,7 +234,8 @@ void TWriteBlobActor::ReplyAndDie(
     if (RequestInfo->Sender != Tablet) {
         // reply to caller
         auto response =
-            std::make_unique<TEvIndexTabletPrivate::TEvWriteBlobResponse>(error);
+            std::make_unique<TEvIndexTabletPrivate::TEvWriteBlobResponse>(
+                error);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
 
@@ -272,10 +274,8 @@ void TIndexTabletActor::HandleWriteBlob(
 
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     FILESTORE_TRACK(
@@ -289,7 +289,9 @@ void TIndexTabletActor::HandleWriteBlob(
             TStringStream ss;
             ss << blob.BlobId;
 
-            LOG_ERROR(ctx, TFileStoreComponents::TABLET,
+            LOG_ERROR(
+                ctx,
+                TFileStoreComponents::TABLET,
                 "%s Too large blob [%s] %lu",
                 LogTag.c_str(),
                 ss.Str().c_str(),
@@ -309,11 +311,12 @@ void TIndexTabletActor::HandleWriteBlob(
             chunk.ReserveAndResize(chunkSize);
 
             const auto& data = blob.BlobContent;
-            for (auto begin = data.begin(); begin < data.end(); begin += chunkSize) {
+            for (auto begin = data.begin(); begin < data.end();
+                 begin += chunkSize)
+            {
                 const auto end = Min(begin + chunkSize, data.end());
-                compressedSize += BlobCodec->Compress(
-                    TStringBuf(begin, end),
-                    chunk.begin());
+                compressedSize +=
+                    BlobCodec->Compress(TStringBuf(begin, end), chunk.begin());
             }
 
             Metrics.UncompressedBytesWritten.fetch_add(
@@ -334,9 +337,8 @@ void TIndexTabletActor::HandleWriteBlob(
             blobId,
             std::move(blob.BlobContent),
             blob.Deadline,
-            blob.Async
-                ? NKikimrBlobStorage::AsyncBlob
-                : NKikimrBlobStorage::UserData);
+            blob.Async ? NKikimrBlobStorage::AsyncBlob
+                       : NKikimrBlobStorage::UserData);
 
         if (!msg->CallContext->LWOrbit.Fork(request->Orbit)) {
             FILESTORE_TRACK(
@@ -354,7 +356,9 @@ void TIndexTabletActor::HandleWriteBlob(
             profileLogRequest);
     }
 
-    LOG_TRACE(ctx, TFileStoreComponents::TABLET,
+    LOG_TRACE(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s WriteBlob started (%s)",
         LogTag.c_str(),
         DumpBlobIds(requests).c_str());
@@ -387,7 +391,9 @@ void TIndexTabletActor::RegisterEvPutResult(
         bool toMove = false;
 
         if (flags.Check(NKikimrBlobStorage::StatusDiskSpaceLightYellowMove)) {
-            LOG_WARN(ctx, TFileStoreComponents::TABLET,
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::TABLET,
                 "%s Yellow move flag received for channel %u and group %u",
                 LogTag.c_str(),
                 channel,
@@ -396,7 +402,9 @@ void TIndexTabletActor::RegisterEvPutResult(
             toMove = true;
         }
         if (flags.Check(NKikimrBlobStorage::StatusDiskSpaceYellowStop)) {
-            LOG_WARN(ctx, TFileStoreComponents::TABLET,
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::TABLET,
                 "%s Yellow stop flag received for channel %u and group %u",
                 LogTag.c_str(),
                 channel,
@@ -417,7 +425,9 @@ void TIndexTabletActor::HandleWriteBlobCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s WriteBlob completed (%s)",
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());
@@ -436,7 +446,9 @@ void TIndexTabletActor::HandleWriteBlobCompleted(
     }
 
     if (FAILED(msg->GetStatus())) {
-        LOG_WARN(ctx, TFileStoreComponents::TABLET,
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s Stop tablet because of WriteBlob error: %s",
             LogTag.c_str(),
             FormatError(msg->GetError()).data());

@@ -41,8 +41,7 @@ public:
     {
         return CountIf(
             Labels,
-            [name, value](const auto& labels)
-            {
+            [name, value](const auto& labels) {
                 return labels.first == name.data() &&
                        labels.second == value.data();
             });
@@ -144,10 +143,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
     Y_UNIT_TEST(ShouldTrackRequestsPerVolume)
     {
         auto monitoring = CreateMonitoringServiceStub();
-        auto counters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server_volume");
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server_volume");
 
         auto volumeStats = CreateVolumeStats(
             monitoring,
@@ -155,19 +153,18 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EVolumeStatsType::EServerStats,
             CreateWallClockTimer());
 
-        auto getCounters = [&] (auto volume, auto instance) {
-            return counters
-                ->GetSubgroup("host", "cluster")
+        auto getCounters = [&](auto volume, auto instance)
+        {
+            return counters->GetSubgroup("host", "cluster")
                 ->GetSubgroup("volume", volume)
                 ->GetSubgroup("instance", instance)
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId);
         };
 
-        auto writeData = [](auto volume, auto type){
-            auto started = volume->RequestStarted(
-                type,
-                1024 * 1024);
+        auto writeData = [](auto volume, auto type)
+        {
+            auto started = volume->RequestStarted(type, 1024 * 1024);
 
             volume->RequestCompleted(
                 type,
@@ -180,10 +177,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 0);
         };
 
-        auto readData = [](auto volume, auto type){
-            auto started = volume->RequestStarted(
-                type,
-                1024 * 1024);
+        auto readData = [](auto volume, auto type)
+        {
+            auto started = volume->RequestStarted(type, 1024 * 1024);
 
             volume->RequestCompleted(
                 type,
@@ -220,22 +216,22 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto volume3 = volumeStats->GetVolumeInfo("test2", "client3");
 
         auto volume1Counters = getCounters("test1", "instance1");
-        auto volume1WriteCount = volume1Counters
-            ->GetSubgroup("request", "WriteBlocks")
-            ->GetCounter("Count");
-        auto volume1ReadCount = volume1Counters
-            ->GetSubgroup("request", "ReadBlocks")
-            ->GetCounter("Count");
+        auto volume1WriteCount =
+            volume1Counters->GetSubgroup("request", "WriteBlocks")
+                ->GetCounter("Count");
+        auto volume1ReadCount =
+            volume1Counters->GetSubgroup("request", "ReadBlocks")
+                ->GetCounter("Count");
 
         auto volume2Counters = getCounters("test2", "instance1");
-        auto volume2WriteCount = volume2Counters
-            ->GetSubgroup("request", "WriteBlocks")
-            ->GetCounter("Count");
+        auto volume2WriteCount =
+            volume2Counters->GetSubgroup("request", "WriteBlocks")
+                ->GetCounter("Count");
 
         auto volume3Counters = getCounters("test2", "instance2");
-        auto volume3WriteCount = volume3Counters
-            ->GetSubgroup("request", "WriteBlocks")
-            ->GetCounter("Count");
+        auto volume3WriteCount =
+            volume3Counters->GetSubgroup("request", "WriteBlocks")
+                ->GetCounter("Count");
 
         UNIT_ASSERT_EQUAL(volume1WriteCount->Val(), 0);
         UNIT_ASSERT_EQUAL(volume1ReadCount->Val(), 0);
@@ -278,10 +274,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto inactivityTimeout = TDuration::MilliSeconds(10);
 
         auto monitoring = CreateMonitoringServiceStub();
-        auto counters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server_volume");
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server_volume");
 
         std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
 
@@ -305,19 +300,17 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             "instance2",
             NCloud::NProto::STORAGE_MEDIA_SSD);
 
-        UNIT_ASSERT(counters
-            ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "test1")
-            ->GetSubgroup("instance", "instance1")
-            ->GetSubgroup("cloud", DefaultCloudId)
-            ->FindSubgroup("folder", DefaultFolderId));
+        UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                        ->GetSubgroup("volume", "test1")
+                        ->GetSubgroup("instance", "instance1")
+                        ->GetSubgroup("cloud", DefaultCloudId)
+                        ->FindSubgroup("folder", DefaultFolderId));
 
-        UNIT_ASSERT(counters
-            ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "test2")
-            ->GetSubgroup("instance", "instance2")
-            ->GetSubgroup("cloud", DefaultCloudId)
-            ->FindSubgroup("folder", DefaultFolderId));
+        UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                        ->GetSubgroup("volume", "test2")
+                        ->GetSubgroup("instance", "instance2")
+                        ->GetSubgroup("cloud", DefaultCloudId)
+                        ->FindSubgroup("folder", DefaultFolderId));
 
         Timer->AdvanceTime(inactivityTimeout * 0.5);
         volumeStats->TrimVolumes();
@@ -329,59 +322,52 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             "instance1",
             NCloud::NProto::STORAGE_MEDIA_SSD);
 
-        UNIT_ASSERT(counters
-            ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "test1")
-            ->GetSubgroup("instance", "instance1")
-            ->GetSubgroup("cloud", DefaultCloudId)
-            ->FindSubgroup("folder", DefaultFolderId));
+        UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                        ->GetSubgroup("volume", "test1")
+                        ->GetSubgroup("instance", "instance1")
+                        ->GetSubgroup("cloud", DefaultCloudId)
+                        ->FindSubgroup("folder", DefaultFolderId));
 
-        UNIT_ASSERT(counters
-            ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "test2")
-            ->GetSubgroup("instance", "instance2")
-            ->GetSubgroup("cloud", DefaultCloudId)
-            ->FindSubgroup("folder", DefaultFolderId));
+        UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                        ->GetSubgroup("volume", "test2")
+                        ->GetSubgroup("instance", "instance2")
+                        ->GetSubgroup("cloud", DefaultCloudId)
+                        ->FindSubgroup("folder", DefaultFolderId));
 
-        UNIT_ASSERT(counters
-            ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "test2")
-            ->GetSubgroup("instance", "instance1")
-            ->GetSubgroup("cloud", DefaultCloudId)
-            ->FindSubgroup("folder", DefaultFolderId));
+        UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                        ->GetSubgroup("volume", "test2")
+                        ->GetSubgroup("instance", "instance1")
+                        ->GetSubgroup("cloud", DefaultCloudId)
+                        ->FindSubgroup("folder", DefaultFolderId));
 
         Timer->AdvanceTime(inactivityTimeout * 0.6);
         volumeStats->TrimVolumes();
 
-        UNIT_ASSERT(!counters
-            ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "test1")
-            ->GetSubgroup("instance", "instance1")
-            ->GetSubgroup("cloud", DefaultCloudId)
-            ->FindSubgroup("folder", DefaultFolderId));
+        UNIT_ASSERT(!counters->GetSubgroup("host", "cluster")
+                         ->GetSubgroup("volume", "test1")
+                         ->GetSubgroup("instance", "instance1")
+                         ->GetSubgroup("cloud", DefaultCloudId)
+                         ->FindSubgroup("folder", DefaultFolderId));
 
-        UNIT_ASSERT(!counters
-            ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "test2")
-            ->GetSubgroup("instance", "instance2")
-            ->GetSubgroup("cloud", DefaultCloudId)
-            ->FindSubgroup("folder", DefaultFolderId));
+        UNIT_ASSERT(!counters->GetSubgroup("host", "cluster")
+                         ->GetSubgroup("volume", "test2")
+                         ->GetSubgroup("instance", "instance2")
+                         ->GetSubgroup("cloud", DefaultCloudId)
+                         ->FindSubgroup("folder", DefaultFolderId));
 
-        UNIT_ASSERT(counters
-            ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "test2")
-            ->GetSubgroup("instance", "instance1")
-            ->GetSubgroup("cloud", DefaultCloudId)
-            ->FindSubgroup("folder", DefaultFolderId));
+        UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                        ->GetSubgroup("volume", "test2")
+                        ->GetSubgroup("instance", "instance1")
+                        ->GetSubgroup("cloud", DefaultCloudId)
+                        ->FindSubgroup("folder", DefaultFolderId));
     }
 
     Y_UNIT_TEST(ShouldTrackSilentErrorsPerVolume)
     {
         auto monitoring = CreateMonitoringServiceStub();
-        auto counters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server_volume");
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server_volume");
 
         auto volumeStats = CreateVolumeStats(
             monitoring,
@@ -389,22 +375,22 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EVolumeStatsType::EServerStats,
             CreateWallClockTimer());
 
-        auto getCounters = [&] (auto volume, auto instance) {
-            auto volumeCounters = counters
-                ->GetSubgroup("host", "cluster")
-                ->GetSubgroup("volume", volume)
-                ->GetSubgroup("instance", instance)
-                ->GetSubgroup("cloud", DefaultCloudId)
-                ->GetSubgroup("folder", DefaultFolderId)
-                ->GetSubgroup("request", "WriteBlocks");
+        auto getCounters = [&](auto volume, auto instance)
+        {
+            auto volumeCounters = counters->GetSubgroup("host", "cluster")
+                                      ->GetSubgroup("volume", volume)
+                                      ->GetSubgroup("instance", instance)
+                                      ->GetSubgroup("cloud", DefaultCloudId)
+                                      ->GetSubgroup("folder", DefaultFolderId)
+                                      ->GetSubgroup("request", "WriteBlocks");
 
             return std::make_pair(
                 volumeCounters->GetCounter("Errors/Fatal"),
-                volumeCounters->GetCounter("Errors/Silent")
-            );
+                volumeCounters->GetCounter("Errors/Silent"));
         };
 
-        auto shoot = [] (auto volume, auto errorKind) {
+        auto shoot = [](auto volume, auto errorKind)
+        {
             auto started = volume->RequestStarted(
                 EBlockStoreRequest::WriteBlocks,
                 1024 * 1024);
@@ -476,10 +462,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
     Y_UNIT_TEST(ShouldTrackHwProblemsPerVolume)
     {
         auto monitoring = CreateMonitoringServiceStub();
-        auto counters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server_volume");
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server_volume");
 
         auto volumeStats = CreateVolumeStats(
             monitoring,
@@ -487,23 +472,22 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EVolumeStatsType::EServerStats,
             CreateWallClockTimer());
 
-        auto getCounters = [&] (auto volume, auto instance) {
-            auto volumeCounters = counters
-                ->GetSubgroup("host", "cluster")
-                ->GetSubgroup("volume", volume)
-                ->GetSubgroup("instance", instance)
-                ->GetSubgroup("cloud", DefaultCloudId)
-                ->GetSubgroup("folder", DefaultFolderId);
+        auto getCounters = [&](auto volume, auto instance)
+        {
+            auto volumeCounters = counters->GetSubgroup("host", "cluster")
+                                      ->GetSubgroup("volume", volume)
+                                      ->GetSubgroup("instance", instance)
+                                      ->GetSubgroup("cloud", DefaultCloudId)
+                                      ->GetSubgroup("folder", DefaultFolderId);
 
             return std::make_tuple(
-                volumeCounters
-                    ->GetSubgroup("request", "WriteBlocks")
+                volumeCounters->GetSubgroup("request", "WriteBlocks")
                     ->GetCounter("Errors/Fatal"),
-                volumeCounters->GetCounter("HwProblems")
-            );
+                volumeCounters->GetCounter("HwProblems"));
         };
 
-        auto shoot = [] (auto volume, auto errorKind, ui32 errorFlags) {
+        auto shoot = [](auto volume, auto errorKind, ui32 errorFlags)
+        {
             auto started = volume->RequestStarted(
                 EBlockStoreRequest::WriteBlocks,
                 1024 * 1024);
@@ -519,19 +503,14 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 0);
         };
 
-        auto mount = [&volumeStats, &getCounters] (
-            const TString& name,
-            NCloud::NProto::EStorageMediaKind mediaKind)
+        auto mount = [&volumeStats, &getCounters](
+                         const TString& name,
+                         NCloud::NProto::EStorageMediaKind mediaKind)
         {
             const auto client = name + "Client";
             const auto instance = name + "Instance";
 
-            Mount(
-                volumeStats,
-                name,
-                client,
-                instance,
-                mediaKind);
+            Mount(volumeStats, name, client, instance, mediaKind);
 
             auto stats = volumeStats->GetVolumeInfo(name, client);
             auto [errors, hwProblems] = getCounters(name, instance);
@@ -546,8 +525,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             mount("local", NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL);
         auto [nonreplStats, nonreplErrors, nonreplHwProblems] =
             mount("nonrepl", NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
-        auto [hddNonreplStats, hddNonreplErrors, hddNonreplHwProblems] =
-            mount("hdd_nonrepl", NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED);
+        auto [hddNonreplStats, hddNonreplErrors, hddNonreplHwProblems] = mount(
+            "hdd_nonrepl",
+            NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED);
         auto [ssdStats, ssdErrors, ssdHwProblems] =
             mount("ssd", NCloud::NProto::STORAGE_MEDIA_SSD);
 
@@ -708,10 +688,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto inactivityTimeout = TDuration::MilliSeconds(10);
 
         auto monitoring = CreateMonitoringServiceStub();
-        auto counters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server");
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server");
 
         NProto::TDiagnosticsConfig cfg;
         cfg.MutableSsdPerfSettings()->MutableWrite()->SetIops(4200);
@@ -739,11 +718,13 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         auto volume = volumeStats->GetVolumeInfo("test1", "client1");
 
-        auto requestDuration = TDuration::MilliSeconds(400) +
-            diagConfig->GetExpectedIoParallelism() * CostPerIO(
-                diagConfig->GetSsdPerfSettings().WriteIops,
-                diagConfig->GetSsdPerfSettings().WriteBandwidth,
-                1_MB);
+        auto requestDuration =
+            TDuration::MilliSeconds(400) +
+            diagConfig->GetExpectedIoParallelism() *
+                CostPerIO(
+                    diagConfig->GetSsdPerfSettings().WriteIops,
+                    diagConfig->GetSsdPerfSettings().WriteBandwidth,
+                    1_MB);
         auto durationInCycles = DurationToCyclesSafe(requestDuration);
         auto now = GetCycleCount();
 
@@ -766,21 +747,25 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         auto disksSufferCounter = counters->GetCounter("DisksSuffer", false);
         auto ssdDisksSufferCounter = counters->GetSubgroup("type", "ssd")
-            ->GetCounter("DisksSuffer", false);
+                                         ->GetCounter("DisksSuffer", false);
         auto hddDisksSufferCounter = counters->GetSubgroup("type", "hdd")
-            ->GetCounter("DisksSuffer", false);
+                                         ->GetCounter("DisksSuffer", false);
         auto smoothDisksSufferCounter =
             counters->GetCounter("SmoothDisksSuffer", false);
-        auto smoothSsdDisksSufferCounter = counters->GetSubgroup("type", "ssd")
-            ->GetCounter("SmoothDisksSuffer", false);
-        auto smoothHddDisksSufferCounter = counters->GetSubgroup("type", "hdd")
-            ->GetCounter("SmoothDisksSuffer", false);
+        auto smoothSsdDisksSufferCounter =
+            counters->GetSubgroup("type", "ssd")
+                ->GetCounter("SmoothDisksSuffer", false);
+        auto smoothHddDisksSufferCounter =
+            counters->GetSubgroup("type", "hdd")
+                ->GetCounter("SmoothDisksSuffer", false);
         auto criticalDisksSufferCounter =
             counters->GetCounter("CriticalDisksSuffer", false);
-        auto criticalSsdDisksSufferCounter = counters->GetSubgroup("type", "ssd")
-            ->GetCounter("CriticalDisksSuffer", false);
-        auto criticalHddDisksSufferCounter = counters->GetSubgroup("type", "hdd")
-            ->GetCounter("CriticalDisksSuffer", false);
+        auto criticalSsdDisksSufferCounter =
+            counters->GetSubgroup("type", "ssd")
+                ->GetCounter("CriticalDisksSuffer", false);
+        auto criticalHddDisksSufferCounter =
+            counters->GetSubgroup("type", "hdd")
+                ->GetCounter("CriticalDisksSuffer", false);
 
         auto strictSLADisksSufferCounter =
             counters->GetCounter("StrictSLADisksSuffer", false);
@@ -908,9 +893,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         const auto postponeDuration = TDuration::Seconds(1);
 
-        volumeInfos[0]->RequestStarted(
-            EBlockStoreRequest::WriteBlocks,
-            1024);
+        volumeInfos[0]->RequestStarted(EBlockStoreRequest::WriteBlocks, 1024);
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::Zero(),
             volumeInfos[0]->GetPossiblePostponeDuration());
@@ -985,10 +968,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             std::make_shared<TDiagnosticsConfig>(NProto::TDiagnosticsConfig());
 
         auto monitoring = CreateMonitoringServiceStub();
-        auto counters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server");
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server");
 
         auto volumeStats = CreateVolumeStats(
             monitoring,
@@ -997,8 +979,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EVolumeStatsType::EServerStats,
             timer);
 
-        TString client {"client1"};
-        TString volume {"test1"};
+        TString client{"client1"};
+        TString volume{"test1"};
         IVolumeInfoPtr volumeInfo;
 
         Mount(
@@ -1026,7 +1008,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             counters->GetSubgroup("type", "ssd")
-                ->GetCounter("DownDisks")->Val());
+                ->GetCounter("DownDisks")
+                ->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             monitoring->GetCounters()
@@ -1045,7 +1028,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             counters->GetSubgroup("type", "ssd")
-                ->GetCounter("DownDisks")->Val());
+                ->GetCounter("DownDisks")
+                ->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             monitoring->GetCounters()
@@ -1067,10 +1051,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             std::make_shared<TDiagnosticsConfig>(NProto::TDiagnosticsConfig());
 
         auto monitoring = CreateMonitoringServiceStub();
-        auto counters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server");
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server");
 
         auto volumeStats = CreateVolumeStats(
             monitoring,
@@ -1079,8 +1062,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EVolumeStatsType::EServerStats,
             timer);
 
-        TString client {"client1"};
-        TString volume {"test1"};
+        TString client{"client1"};
+        TString volume{"test1"};
         IVolumeInfoPtr volumeInfo;
 
         Mount(
@@ -1095,9 +1078,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EBlockStoreRequest::WriteBlocks,
             TRequestTime{
                 .TotalTime = TDuration::Seconds(15),
-                .ExecutionTime = TDuration::Seconds(15)
-            }
-        );
+                .ExecutionTime = TDuration::Seconds(15)});
 
         timer->AdvanceTime(TDuration::Seconds(15));
 
@@ -1106,14 +1087,16 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             counters->GetSubgroup("type", "ssd")
-                ->GetCounter("DownDisks")->Val());
+                ->GetCounter("DownDisks")
+                ->Val());
 
         volumeStats->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(1, counters->GetCounter("DownDisks")->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             counters->GetSubgroup("type", "ssd")
-                ->GetCounter("DownDisks")->Val());
+                ->GetCounter("DownDisks")
+                ->Val());
     }
 
     Y_UNIT_TEST(ShouldAlterVolume)
@@ -1121,10 +1104,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto inactivityTimeout = TDuration::MilliSeconds(10);
 
         auto monitoring = CreateMonitoringServiceStub();
-        auto counters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server_volume");
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server_volume");
 
         std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
 
@@ -1173,10 +1155,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto inactivityTimeout = TDuration::MilliSeconds(10);
 
         auto monitoring = CreateMonitoringServiceStub();
-        auto counters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server_volume");
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server_volume");
 
         std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
 
@@ -1200,12 +1181,11 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             "Instance-1",
             NCloud::NProto::STORAGE_MEDIA_SSD);
 
-        UNIT_ASSERT(counters
-            ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "Disk-1")
-            ->GetSubgroup("instance", "Instance-1")
-            ->GetSubgroup("cloud", DefaultCloudId)
-            ->FindSubgroup("folder", DefaultFolderId));
+        UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                        ->GetSubgroup("volume", "Disk-1")
+                        ->GetSubgroup("instance", "Instance-1")
+                        ->GetSubgroup("cloud", DefaultCloudId)
+                        ->FindSubgroup("folder", DefaultFolderId));
 
         {
             auto client1Info = volumeStats->GetVolumeInfo("Disk-1", "Client-2");
@@ -1226,22 +1206,20 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         Timer->AdvanceTime(inactivityTimeout * 0.6);
         volumeStats->TrimVolumes();
 
-        UNIT_ASSERT(counters
-            ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "Disk-1")
-            ->GetSubgroup("instance", "Instance-1")
-            ->GetSubgroup("cloud", DefaultCloudId)
-            ->FindSubgroup("folder", DefaultFolderId));
+        UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                        ->GetSubgroup("volume", "Disk-1")
+                        ->GetSubgroup("instance", "Instance-1")
+                        ->GetSubgroup("cloud", DefaultCloudId)
+                        ->FindSubgroup("folder", DefaultFolderId));
 
         Timer->AdvanceTime(inactivityTimeout * 1.1);
         volumeStats->TrimVolumes();
 
-        UNIT_ASSERT(!counters
-            ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "Disk-1")
-            ->GetSubgroup("instance", "Instance-1")
-            ->GetSubgroup("cloud", DefaultCloudId)
-            ->FindSubgroup("folder", DefaultFolderId));
+        UNIT_ASSERT(!counters->GetSubgroup("host", "cluster")
+                         ->GetSubgroup("volume", "Disk-1")
+                         ->GetSubgroup("instance", "Instance-1")
+                         ->GetSubgroup("cloud", DefaultCloudId)
+                         ->FindSubgroup("folder", DefaultFolderId));
 
         {
             auto client1Info = volumeStats->GetVolumeInfo("Disk-1", "Client-2");

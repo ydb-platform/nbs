@@ -3,8 +3,8 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
-#include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/core/volume_model.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -39,8 +39,8 @@ NKikimrBlockStore::TVolumeConfig ConvertToVolumeConfig(
 std::unique_ptr<TEvDiskRegistry::TEvCreateDiskFromDevicesRequest> CreateRequest(
     const NProto::TCreateVolumeFromDevicesRequest& inRequest)
 {
-    auto outRequest = std::make_unique<
-        TEvDiskRegistry::TEvCreateDiskFromDevicesRequest>();
+    auto outRequest =
+        std::make_unique<TEvDiskRegistry::TEvCreateDiskFromDevicesRequest>();
 
     for (const auto& deviceUUID: inRequest.GetDeviceUUIDs()) {
         outRequest->Record.MutableDevices()->Add()->SetDeviceUUID(deviceUUID);
@@ -73,9 +73,7 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        const NProto::TError& error);
+    void ReplyAndDie(const TActorContext& ctx, const NProto::TError& error);
 
 private:
     STFUNC(StateWork);
@@ -90,9 +88,9 @@ private:
 };
 
 TCreateDiskFromDevicesActor::TCreateDiskFromDevicesActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr config,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , Input(std::move(input))
@@ -101,11 +99,15 @@ TCreateDiskFromDevicesActor::TCreateDiskFromDevicesActor(
 void TCreateDiskFromDevicesActor::Bootstrap(const TActorContext& ctx)
 {
     if (auto status =
-        google::protobuf::util::JsonStringToMessage(Input, &Request);
-            !status.ok())
+            google::protobuf::util::JsonStringToMessage(Input, &Request);
+        !status.ok())
     {
-        ReplyAndDie(ctx, MakeError(E_ARGUMENT, TStringBuilder()
-            << "Failed to parse input: " << status.ToString()));
+        ReplyAndDie(
+            ctx,
+            MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "Failed to parse input: " << status.ToString()));
         return;
     }
 
@@ -157,9 +159,7 @@ STFUNC(TCreateDiskFromDevicesActor::StateWork)
             TEvDiskRegistry::TEvCreateDiskFromDevicesResponse,
             HandleCreateDiskFromDevicesResponse);
 
-        HFunc(
-            TEvSSProxy::TEvCreateVolumeResponse,
-            HandleCreateVolumeResponse);
+        HFunc(TEvSSProxy::TEvCreateVolumeResponse, HandleCreateVolumeResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -179,31 +179,32 @@ void TCreateDiskFromDevicesActor::HandleCreateDiskFromDevicesResponse(
     auto volumeConfig = ConvertToVolumeConfig(Request);
 
     if (HasError(error)) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::SERVICE,
-            "Creation of disk "
-            << volumeConfig.GetDiskId().Quote()
-            << " failed: "
-            << error.GetMessage());
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Creation of disk " << volumeConfig.GetDiskId().Quote()
+                                << " failed: " << error.GetMessage());
 
         ReplyAndDie(ctx, msg->GetError());
         return;
     }
 
-    TVolumeParams volumeParams {
+    TVolumeParams volumeParams{
         .BlockSize = volumeConfig.GetBlockSize(),
         .BlocksCountPerPartition = msg->Record.GetBlockCount(),
         .PartitionsCount = 1,
         .MediaKind = static_cast<NProto::EStorageMediaKind>(
-            volumeConfig.GetStorageMediaKind())
-    };
+            volumeConfig.GetStorageMediaKind())};
 
     ResizeVolume(*Config, volumeParams, {}, {}, volumeConfig);
 
     volumeConfig.SetCreationTs(ctx.Now().MicroSeconds());
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending createvolume request for volume "
-        << volumeConfig.GetDiskId().Quote());
+            << volumeConfig.GetDiskId().Quote());
 
     NCloud::Send(
         ctx,
@@ -220,11 +221,11 @@ void TCreateDiskFromDevicesActor::HandleCreateVolumeResponse(
     const auto& error = msg->GetError();
 
     if (HasError(error)) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::SERVICE,
-            "Creation of disk "
-            << Request.GetDiskId().Quote()
-            << " failed: "
-            << error.GetMessage());
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Creation of disk " << Request.GetDiskId().Quote()
+                                << " failed: " << error.GetMessage());
     }
 
     ReplyAndDie(ctx, error);

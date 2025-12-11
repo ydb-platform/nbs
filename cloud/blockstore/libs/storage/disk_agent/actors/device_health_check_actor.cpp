@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
+
 #include <cloud/storage/core/libs/actors/helpers.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -90,9 +91,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDeviceHealthCheckActor::TDeviceHealthCheckActor(
-        const TActorId& diskAgent,
-        TVector<NProto::TDeviceConfig> devices,
-        TDuration healthCheckDelay)
+    const TActorId& diskAgent,
+    TVector<NProto::TDeviceConfig> devices,
+    TDuration healthCheckDelay)
     : DiskAgent{diskAgent}
     , Devices(std::move(devices))
     , HealthCheckDelay(healthCheckDelay)
@@ -136,7 +137,8 @@ void TDeviceHealthCheckActor::CheckDevicesHealth(const TActorContext& ctx)
         rec.SetBlocksCount(1);
 
         LOG_DEBUG_S(
-            ctx, TBlockStoreComponents::DISK_AGENT_WORKER,
+            ctx,
+            TBlockStoreComponents::DISK_AGENT_WORKER,
             "Checking device: " << rec.DebugString());
 
         ctx.Send(DiskAgent, request.release(), TEventFlags{}, i);
@@ -238,7 +240,8 @@ STFUNC(TDeviceHealthCheckActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvWakeup, HandleWakeup);
-        HFunc(TEvDiskAgent::TEvReadDeviceBlocksResponse,
+        HFunc(
+            TEvDiskAgent::TEvReadDeviceBlocksResponse,
             HandleReadDeviceBlocksResponse);
 
         default:

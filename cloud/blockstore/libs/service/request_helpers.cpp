@@ -32,7 +32,6 @@ ui64 CreateRequestId()
     return RandInt<ui64, 1>();
 }
 
-
 bool IsReadWriteMode(const NProto::EVolumeAccessMode mode)
 {
     switch (mode) {
@@ -80,7 +79,6 @@ ui64 CalculateBytesCount(
     }
     return bytesInBuffers;
 }
-
 
 ui32 CalculateWriteRequestBlockCount(
     const NProto::TWriteBlocksRequest& request,
@@ -134,6 +132,5 @@ ui32 CalculateWriteRequestBlockCount(
 
     return request.GetBlocksCount();
 }
-
 
 }   // namespace NCloud::NBlockStore

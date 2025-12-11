@@ -6,7 +6,6 @@
 #include <cloud/filestore/libs/storage/core/config.h>
 
 #include <contrib/ydb/core/base/path.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -53,10 +52,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDestroyFileStoreActor::TDestroyFileStoreActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
-        TActorId storageSSProxy,
-        TString fileSystemId)
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr config,
+    TActorId storageSSProxy,
+    TString fileSystemId)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , StorageSSProxy(std::move(storageSSProxy))
@@ -71,18 +70,13 @@ void TDestroyFileStoreActor::Bootstrap(const TActorContext& ctx)
 
 void TDestroyFileStoreActor::ModifyScheme(const TActorContext& ctx)
 {
-    auto path = GetFileSystemPath(
-        Config->GetSchemeShardDir(),
-        FileSystemId);
+    auto path = GetFileSystemPath(Config->GetSchemeShardDir(), FileSystemId);
 
     auto pathItems = SplitPath(std::move(path));
     Y_ABORT_UNLESS(pathItems);
 
     auto name = pathItems.back();
-    auto workingDir = JoinRange(
-        "/",
-        pathItems.begin(),
-        pathItems.end() - 1);
+    auto workingDir = JoinRange("/", pathItems.begin(), pathItems.end() - 1);
 
     NKikimrSchemeOp::TModifyScheme modifyScheme;
     modifyScheme.SetOperationType(NKikimrSchemeOp::ESchemeOpDropFileStore);
@@ -91,7 +85,9 @@ void TDestroyFileStoreActor::ModifyScheme(const TActorContext& ctx)
     auto* op = modifyScheme.MutableDrop();
     op->SetName(TString(name));
 
-    LOG_DEBUG(ctx, TFileStoreComponents::SS_PROXY,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SS_PROXY,
         "FileStore %s: send drop request (dir: %s, name: %s)",
         FileSystemId.Quote().c_str(),
         workingDir.Quote().c_str(),
@@ -108,7 +104,9 @@ void TDestroyFileStoreActor::HandleModifySchemeResponse(
     const TActorContext& ctx)
 {
     NProto::TError error = ev->Get()->GetError();
-    if (error.GetCode() == MAKE_SCHEMESHARD_ERROR(NKikimrScheme::EStatus::StatusPathDoesNotExist)) {
+    if (error.GetCode() ==
+        MAKE_SCHEMESHARD_ERROR(NKikimrScheme::EStatus::StatusPathDoesNotExist))
+    {
         error = MakeError(S_FALSE, FileSystemId.Quote() + " does not exist");
     }
 
@@ -120,17 +118,22 @@ void TDestroyFileStoreActor::ReplyAndDie(
     const NProto::TError& error)
 {
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TFileStoreComponents::SS_PROXY,
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::SS_PROXY,
             "FileStore %s: drop failed - %s",
             FileSystemId.Quote().c_str(),
             FormatError(error).c_str());
     } else {
-        LOG_DEBUG(ctx, TFileStoreComponents::SS_PROXY,
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SS_PROXY,
             "FileStore %s: dropped successfully",
             FileSystemId.Quote().c_str());
     }
 
-    auto response = std::make_unique<TEvSSProxy::TEvDestroyFileStoreResponse>(error);
+    auto response =
+        std::make_unique<TEvSSProxy::TEvDestroyFileStoreResponse>(error);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     Die(ctx);
@@ -139,7 +142,9 @@ void TDestroyFileStoreActor::ReplyAndDie(
 STFUNC(TDestroyFileStoreActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvStorageSSProxy::TEvModifySchemeResponse, HandleModifySchemeResponse);
+        HFunc(
+            TEvStorageSSProxy::TEvModifySchemeResponse,
+            HandleModifySchemeResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -160,10 +165,8 @@ void TSSProxyActor::HandleDestroyFileStore(
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     auto actor = std::make_unique<TDestroyFileStoreActor>(
         std::move(requestInfo),

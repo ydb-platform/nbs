@@ -58,8 +58,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEndpointService final
-    : public TEndpointServiceBase
+class TEndpointService final: public TEndpointServiceBase
 {
 private:
     const TString DiskId;
@@ -110,8 +109,8 @@ public:
         }
 
         return Session->EnsureVolumeMounted().Apply(
-            [lastMountResponse = LastMountResponsePtr]
-            (TFuture<NProto::TMountVolumeResponse> f)
+            [lastMountResponse =
+                 LastMountResponsePtr](TFuture<NProto::TMountVolumeResponse> f)
             {
                 const auto& response = f.GetValue();
                 if (HasError(response) && !HasError(*lastMountResponse)) {
@@ -129,7 +128,8 @@ public:
     {
         Y_UNUSED(callContext);
 
-        auto response = ValidateRequest<NProto::TUnmountVolumeResponse>(*request);
+        auto response =
+            ValidateRequest<NProto::TUnmountVolumeResponse>(*request);
         if (HasError(response)) {
             return MakeFuture(response);
         }
@@ -209,8 +209,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSocketEndpointListener final
-    : public ISocketEndpointListener
+class TSocketEndpointListener final: public ISocketEndpointListener
 {
 private:
     const ui32 SocketBacklog;
@@ -223,9 +222,9 @@ private:
 
 public:
     TSocketEndpointListener(
-            ILoggingServicePtr logging,
-            ui32 socketBacklog,
-            ui32 socketAccessMode)
+        ILoggingServicePtr logging,
+        ui32 socketBacklog,
+        ui32 socketAccessMode)
         : SocketBacklog(socketBacklog)
         , SocketAccessMode(socketAccessMode)
     {
@@ -271,7 +270,7 @@ public:
             request.GetUnixSocketPath(),
             SocketBacklog,
             SocketAccessMode,
-            false,  // multiClient
+            false,   // multiClient
             NProto::SOURCE_FD_DATA_CHANNEL,
             ClientStorageFactory->CreateClientStorage(
                 std::move(sessionService)));
@@ -289,8 +288,7 @@ public:
         return MakeFuture<NProto::TError>();
     }
 
-    TFuture<NProto::TError> StopEndpoint(
-        const TString& socketPath) override
+    TFuture<NProto::TError> StopEndpoint(const TString& socketPath) override
     {
         auto error = EndpointPoller->StopListenEndpoint(socketPath);
         return MakeFuture(std::move(error));
@@ -315,7 +313,6 @@ public:
         Y_UNUSED(session);
         return MakeFuture<NProto::TError>();
     }
-
 };
 
 }   // namespace

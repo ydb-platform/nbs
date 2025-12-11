@@ -13,11 +13,10 @@ namespace NCloud::NBlockStore::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define RDMA_THROW_ERROR(method)                                               \
-    throw TServiceError(MAKE_SYSTEM_ERROR(LastSystemError()))                  \
-        << method << " failed with error " << LastSystemError()                \
-        << ": " << LastSystemErrorText()                                       \
-// RDMA_THROW_ERROR
+#define RDMA_THROW_ERROR(method)                                        \
+    throw TServiceError(MAKE_SYSTEM_ERROR(LastSystemError()))           \
+        << method << " failed with error " << LastSystemError() << ": " \
+        << LastSystemErrorText()   // RDMA_THROW_ERROR
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -98,8 +97,7 @@ void TTimerHandle::Set(TDuration duration)
         .it_value = {
             .tv_sec = static_cast<__time_t>(duration.Seconds()),
             .tv_nsec = duration.NanoSecondsOfSecond(),
-        }
-    };
+        }};
     int res = timerfd_settime(Fd, 0, &spec, nullptr);
     if (res < 0) {
         RDMA_THROW_ERROR("timerfd_settime");
@@ -113,9 +111,8 @@ TDuration TTimerHandle::Get()
     if (res < 0) {
         RDMA_THROW_ERROR("timerfd_gettime");
     }
-    return
-        TDuration::Seconds(spec.it_value.tv_sec) +
-        TDuration::MicroSeconds(spec.it_value.tv_nsec / 1000);
+    return TDuration::Seconds(spec.it_value.tv_sec) +
+           TDuration::MicroSeconds(spec.it_value.tv_nsec / 1000);
 }
 
 void TTimerHandle::Clear()
@@ -148,9 +145,10 @@ void TPollHandle::Attach(int fd, ui32 events, void* data)
 {
     epoll_event event = {
         .events = events,
-        .data = {
-            .ptr = data,
-        },
+        .data =
+            {
+                .ptr = data,
+            },
     };
 
     int res = epoll_ctl(Fd, EPOLL_CTL_ADD, fd, &event);

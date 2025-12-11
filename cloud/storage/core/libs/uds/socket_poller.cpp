@@ -69,7 +69,7 @@ public:
         Zero(ev);
 
         epoll_ctl(Fd, EPOLL_CTL_DEL, sock, &ev);
-        //if epoll_ctl returns a error it means the sock is already unwaited
+        // if epoll_ctl returns a error it means the sock is already unwaited
     }
 
     size_t Wait(void** events, size_t len)

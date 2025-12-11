@@ -61,16 +61,16 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDiskAgentWriteActor::TDiskAgentWriteActor(
-        TRequestInfoPtr requestInfo,
-        NProto::TWriteBlocksRequest request,
-        TRequestTimeoutPolicy timeoutPolicy,
-        TVector<TDeviceRequest> deviceRequests,
-        TNonreplicatedPartitionConfigPtr partConfig,
-        TActorId volumeActorId,
-        const TActorId& part,
-        bool assignVolumeRequestId,
-        bool replyLocal,
-        TChildLogTitle logTitle)
+    TRequestInfoPtr requestInfo,
+    NProto::TWriteBlocksRequest request,
+    TRequestTimeoutPolicy timeoutPolicy,
+    TVector<TDeviceRequest> deviceRequests,
+    TNonreplicatedPartitionConfigPtr partConfig,
+    TActorId volumeActorId,
+    const TActorId& part,
+    bool assignVolumeRequestId,
+    bool replyLocal,
+    TChildLogTitle logTitle)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -152,15 +152,14 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
             request.release(),
             IEventHandle::FlagForwardOnNondelivery,
             index++,
-            &ctx.SelfID // forwardOnNondelivery
+            &ctx.SelfID   // forwardOnNondelivery
         );
 
         ctx.Send(std::move(event));
     }
 }
 
-NActors::IEventBasePtr TDiskAgentWriteActor::MakeResponse(
-    NProto::TError error)
+NActors::IEventBasePtr TDiskAgentWriteActor::MakeResponse(NProto::TError error)
 {
     if (ReplyLocal) {
         return std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
@@ -258,11 +257,11 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         "WriteBlocks",
         requestInfo->CallContext->RequestId);
 
-    auto replyError = [this] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
+    auto replyError = [this](
+                          const TActorContext& ctx,
+                          TRequestInfo& requestInfo,
+                          ui32 errorCode,
+                          TString errorReason)
     {
         auto response = std::make_unique<TEvService::TEvWriteBlocksResponse>(
             PartConfig->MakeError(errorCode, std::move(errorReason)));
@@ -282,17 +281,18 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
                 ctx,
                 *requestInfo,
                 E_ARGUMENT,
-                TStringBuilder() << "buffer not divisible by blockSize: "
-                    << buffer.size() << " % " << PartConfig->GetBlockSize()
-                    << " != 0");
+                TStringBuilder()
+                    << "buffer not divisible by blockSize: " << buffer.size()
+                    << " % " << PartConfig->GetBlockSize() << " != 0");
             return;
         }
     }
 
     const auto blockRange = TBlockRange64::WithLength(
         msg->Record.GetStartIndex(),
-        CalculateWriteRequestBlockCount(msg->Record, PartConfig->GetBlockSize())
-    );
+        CalculateWriteRequestBlockCount(
+            msg->Record,
+            PartConfig->GetBlockSize()));
 
     TVector<TDeviceRequest> deviceRequests;
     TRequestTimeoutPolicy timeoutPolicy;
@@ -345,14 +345,15 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
         "WriteBlocks",
         requestInfo->CallContext->RequestId);
 
-    auto replyError = [this] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
+    auto replyError = [this](
+                          const TActorContext& ctx,
+                          TRequestInfo& requestInfo,
+                          ui32 errorCode,
+                          TString errorReason)
     {
-        auto response = std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
-            PartConfig->MakeError(errorCode, std::move(errorReason)));
+        auto response =
+            std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
+                PartConfig->MakeError(errorCode, std::move(errorReason)));
 
         LWTRACK(
             ResponseSent_Partition,
@@ -398,11 +399,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
         // can happen only if there is a bug in the code of the layers above
         // this one
         ReportEmptyRequestSgList({{"disk", msg->Record.GetDiskId()}});
-        replyError(
-            ctx,
-            *requestInfo,
-            E_ARGUMENT,
-            "empty SgList in request");
+        replyError(ctx, *requestInfo, E_ARGUMENT, "empty SgList in request");
         return;
     }
 
@@ -454,8 +451,9 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksCompleted(
 
     UpdateStats(msg->Stats);
 
-    const auto requestBytes = msg->Stats.GetUserWriteCounters().GetBlocksCount()
-        * PartConfig->GetBlockSize();
+    const auto requestBytes =
+        msg->Stats.GetUserWriteCounters().GetBlocksCount() *
+        PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.WriteBlocks.AddRequest(time, requestBytes);
     PartCounters->Interconnect.WriteBytes.Increment(requestBytes);

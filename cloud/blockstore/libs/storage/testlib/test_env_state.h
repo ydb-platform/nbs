@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/generic/hash_set.h>
@@ -80,13 +81,11 @@ struct TTestEnvState
 
     TTestEnvState(TDiskRegistryStatePtr diskRegistryState)
         : DiskRegistryState(std::move(diskRegistryState))
-    {
-    }
+    {}
 
     TTestEnvState()
         : DiskRegistryState(new TDiskRegistryState)
-    {
-    }
+    {}
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

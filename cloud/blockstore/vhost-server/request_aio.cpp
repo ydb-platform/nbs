@@ -3,6 +3,7 @@
 #include "critical_event.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/strbuf.h>
@@ -105,17 +106,15 @@ void PrepareCompoundIO(
         devices.begin(),
         devices.end(),
         logicalOffset,
-        [] (const TAioDevice& device, ui64 offset) {
-            return device.EndOffset <= offset;
-        });
+        [](const TAioDevice& device, ui64 offset)
+        { return device.EndOffset <= offset; });
 
     const auto end = std::lower_bound(
         it,
         devices.end(),
         logicalOffset + totalBytes,
-        [] (const TAioDevice& device, ui64 offset) {
-            return device.StartOffset < offset;
-        });
+        [](const TAioDevice& device, ui64 offset)
+        { return device.StartOffset < offset; });
 
     const ui32 deviceCount = std::distance(it, end);
     Y_DEBUG_ABORT_UNLESS(deviceCount > 1);
@@ -288,13 +287,12 @@ void PrepareIO(
     const ui64 logicalOffset = bio->first_sector * VHD_SECTOR_SIZE;
     const ui64 totalBytes = bio->total_sectors * VHD_SECTOR_SIZE;
 
-    const auto *it = std::lower_bound(
+    const auto* it = std::lower_bound(
         devices.begin(),
         devices.end(),
         logicalOffset,
-        [] (const TAioDevice& device, ui64 offset) {
-            return device.EndOffset <= offset;
-        });
+        [](const TAioDevice& device, ui64 offset)
+        { return device.EndOffset <= offset; });
 
     Y_ABORT_UNLESS(it != devices.end());
     const TAioDevice& device = *it;
@@ -412,10 +410,10 @@ void TAioRequestDeleter::operator()(TAioRequest* obj)
 }
 
 TAioRequest::TAioRequest(
-        size_t allocatedBufferSize,
-        ui32 blockSize,
-        vhd_io* io,
-        TCpuCycles submitTs)
+    size_t allocatedBufferSize,
+    ui32 blockSize,
+    vhd_io* io,
+    TCpuCycles submitTs)
     : iocb()
     , Io(io)
     , SubmitTs(submitTs)
@@ -457,7 +455,8 @@ TAioSubRequestHolder TAioSubRequest::CreateNew()
 }
 
 // static
-TAioSubRequestHolder TAioSubRequest::FromIocb(iocb* cb) {
+TAioSubRequestHolder TAioSubRequest::FromIocb(iocb* cb)
+{
     NSan::Acquire(cb);
     Y_ABORT_UNLESS(cb->data != nullptr);
     return TAioSubRequestHolder{static_cast<TAioSubRequest*>(cb)};
@@ -483,11 +482,11 @@ TAioCompoundRequestHolder TAioSubRequest::TakeParentRequest()
 ////////////////////////////////////////////////////////////////////////////////
 
 TAioCompoundRequest::TAioCompoundRequest(
-        ui32 inflight,
-        ui32 blockSize,
-        vhd_io* io,
-        size_t bufferSize,
-        TCpuCycles submitTs)
+    ui32 inflight,
+    ui32 blockSize,
+    vhd_io* io,
+    size_t bufferSize,
+    TCpuCycles submitTs)
     : Inflight(inflight)
     , Io(io)
     , SubmitTs(submitTs)

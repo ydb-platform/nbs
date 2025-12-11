@@ -17,7 +17,8 @@ private:
     const NProto::TDiscoveryServiceConfig Config;
 
 public:
-    TDiscoveryConfig(NProto::TDiscoveryServiceConfig discoveryServiceConfig = {});
+    TDiscoveryConfig(
+        NProto::TDiscoveryServiceConfig discoveryServiceConfig = {});
 
     TString GetConductorApiUrl() const;
     TString GetInstanceListFile() const;

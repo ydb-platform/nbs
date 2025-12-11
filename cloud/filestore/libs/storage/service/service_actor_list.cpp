@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/storage/ss_proxy/path.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+
 #include <library/cpp/string_utils/quote/quote.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -18,8 +19,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDescribeActor final
-    : public TActorBootstrapped<TDescribeActor>
+class TDescribeActor final: public TActorBootstrapped<TDescribeActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
@@ -42,11 +42,12 @@ public:
         Become(&TThis::StateWork);
     }
 
-
 private:
     void DescribePath(const TActorContext& ctx, const TString& path)
     {
-        LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
             "Sending describe request for path %s",
             path.Quote().c_str());
 
@@ -74,7 +75,9 @@ private:
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
-            HFunc(TEvStorageSSProxy::TEvDescribeSchemeResponse, HandleDescribeResponse);
+            HFunc(
+                TEvStorageSSProxy::TEvDescribeSchemeResponse,
+                HandleDescribeResponse);
 
             default:
                 HandleUnexpectedEvent(
@@ -94,7 +97,9 @@ private:
         const auto* msg = ev->Get();
         const auto& error = msg->GetError();
         if (FAILED(error.GetCode())) {
-            LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
                 "Path %s: describe failed: %s",
                 Path.Quote().c_str(),
                 FormatError(error).c_str());
@@ -127,7 +132,8 @@ private:
             return;
         }
 
-        auto response = std::make_unique<TEvService::TEvListFileStoresResponse>();
+        auto response =
+            std::make_unique<TEvService::TEvListFileStoresResponse>();
         for (const auto& fs: FileStores) {
             *response->Record.MutableFileStores()->Add() = fs;
         }
@@ -154,12 +160,11 @@ void TStorageServiceActor::HandleListFileStores(
 
     InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
 
-    auto requestInfo = CreateRequestInfo(
-        SelfId(),
-        cookie,
-        msg->CallContext);
+    auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
-    LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
         "Listing filestores: %s",
         StorageConfig->GetSchemeShardDir().Quote().c_str());
 

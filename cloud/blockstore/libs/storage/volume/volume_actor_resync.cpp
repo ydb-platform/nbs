@@ -34,10 +34,8 @@ void TVolumeActor::HandleUpdateResyncState(
         "UpdateResyncState",
         msg->CallContext->RequestId);
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     ExecuteTx<TUpdateResyncState>(
         ctx,
@@ -118,10 +116,8 @@ void TVolumeActor::HandleResyncFinished(
         "%s Resync finished",
         LogTitle.GetWithTime().c_str());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     ExecuteTx<TToggleResync>(
         ctx,

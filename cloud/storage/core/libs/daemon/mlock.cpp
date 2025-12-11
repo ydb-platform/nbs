@@ -18,12 +18,14 @@ static std::pair<const void*, size_t> ParseMemRange(const TString& line)
     char offsetStr[64];
     char devStr[64];
     int inode;
-    if (sscanf(line.c_str(), "%s %s %s %s %d",
-               addressStr,
-               permsStr,
-               offsetStr,
-               devStr,
-               &inode) != 5)
+    if (sscanf(
+            line.c_str(),
+            "%s %s %s %s %d",
+            addressStr,
+            permsStr,
+            offsetStr,
+            devStr,
+            &inode) != 5)
     {
         return {};
     }
@@ -39,17 +41,17 @@ static std::pair<const void*, size_t> ParseMemRange(const TString& line)
     uintptr_t startAddress;
     uintptr_t endAddress;
     if (sscanf(
-        addressStr, "%" PRIx64 "-%" PRIx64,
-        &startAddress,
-        &endAddress) != 2)
+            addressStr,
+            "%" PRIx64 "-%" PRIx64,
+            &startAddress,
+            &endAddress) != 2)
     {
         return {};
     }
 
     return {
         reinterpret_cast<const void*>(startAddress),
-        static_cast<size_t>(endAddress - startAddress)
-    };
+        static_cast<size_t>(endAddress - startAddress)};
 }
 
 void LockProcessMemory(TLog& Log)
@@ -73,15 +75,13 @@ void LockProcessMemory(TLog& Log)
 
                 STORAGE_WARN(
                     "LockProcessMemory: can't lock memory region ("
-                    << size << " bytes), "
-                    << CurrentExceptionMessage());
+                    << size << " bytes), " << CurrentExceptionMessage());
             }
         }
     } catch (...) {
         success = false;
 
-        STORAGE_WARN(
-            "LockProcessMemory: " << CurrentExceptionMessage());
+        STORAGE_WARN("LockProcessMemory: " << CurrentExceptionMessage());
     }
 
     if (!success) {

@@ -37,7 +37,7 @@ namespace NCloud::NBlockStore::NStorage::NDiskRegistryTest {
 const TDuration WaitTimeout = TDuration::Seconds(5);
 
 const ui64 HiveId = NKikimr::MakeDefaultHiveID(0);
-const ui64 TestTabletId  = NKikimr::MakeTabletID(0, HiveId, 1);
+const ui64 TestTabletId = NKikimr::MakeTabletID(0, HiveId, 1);
 
 constexpr ui32 DefaultBlockSize = 512;
 constexpr ui32 DefaultLogicalBlockSize = 4_KB;
@@ -59,7 +59,8 @@ struct TEvRegisterAgent
 
 struct TByUUID
 {
-    const TString& operator () (const NProto::TDeviceConfig& device) const {
+    const TString& operator()(const NProto::TDeviceConfig& device) const
+    {
         return device.GetDeviceUUID();
     }
 };
@@ -95,8 +96,7 @@ NProto::TStorageServiceConfig CreateDefaultStorageConfig();
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestDiskAgent final
-    : public NActors::TActorBootstrapped<TTestDiskAgent>
+class TTestDiskAgent final: public NActors::TActorBootstrapped<TTestDiskAgent>
 {
 private:
     NProto::TAgentConfig Config;
@@ -106,8 +106,7 @@ private:
 public:
     explicit TTestDiskAgent(NProto::TAgentConfig config)
         : Config(std::move(config))
-    {
-    }
+    {}
 
     void Bootstrap(const NActors::TActorContext& ctx)
     {
@@ -118,15 +117,18 @@ public:
 
     std::function<bool(
         const TEvDiskAgent::TEvAcquireDevicesRequest::TPtr&,
-        const NActors::TActorContext&)> HandleAcquireDevicesImpl;
+        const NActors::TActorContext&)>
+        HandleAcquireDevicesImpl;
 
     std::function<void(
         const TEvDiskAgent::TEvReleaseDevicesRequest::TPtr&,
-        const NActors::TActorContext&)> HandleReleaseDevicesImpl;
+        const NActors::TActorContext&)>
+        HandleReleaseDevicesImpl;
 
     std::function<bool(
         const TEvDiskAgent::TEvSecureEraseDeviceRequest::TPtr&,
-        const NActors::TActorContext&)> HandleSecureEraseDeviceImpl;
+        const NActors::TActorContext&)>
+        HandleSecureEraseDeviceImpl;
 
 private:
     void RegisterAgent(const NActors::TActorContext& ctx)
@@ -134,13 +136,10 @@ private:
         NKikimr::NTabletPipe::TClientConfig pipeConfig(
             NKikimr::NTabletPipe::TClientRetryPolicy::WithRetries());
 
-        auto pipe = ctx.Register(
-            NKikimr::NTabletPipe::CreateClient(
-                ctx.SelfID,
-                TestTabletId,
-                pipeConfig
-            )
-        );
+        auto pipe = ctx.Register(NKikimr::NTabletPipe::CreateClient(
+            ctx.SelfID,
+            TestTabletId,
+            pipeConfig));
 
         auto request =
             std::make_unique<TEvDiskRegistry::TEvRegisterAgentRequest>();
@@ -160,18 +159,25 @@ private:
             IgnoreFunc(NKikimr::TEvTabletPipe::TEvClientDestroyed);
             IgnoreFunc(NKikimr::TEvTabletPipe::TEvServerConnected);
 
-            HFunc(TEvDiskRegistry::TEvRegisterAgentResponse, HandleRegisterAgent);
+            HFunc(
+                TEvDiskRegistry::TEvRegisterAgentResponse,
+                HandleRegisterAgent);
 
             HFunc(TEvDiskAgent::TEvWaitReadyRequest, HandleWaitReady)
             HFunc(TEvDiskAgent::TEvAcquireDevicesRequest, HandleAcquireDevices);
             HFunc(TEvDiskAgent::TEvReleaseDevicesRequest, HandleReleaseDevices);
-            HFunc(TEvDiskAgent::TEvSecureEraseDeviceRequest, HandleSecureEraseDevice);
-            HFunc(TEvDiskAgent::TEvEnableAgentDeviceRequest, HandleEnableAgentDevice);
+            HFunc(
+                TEvDiskAgent::TEvSecureEraseDeviceRequest,
+                HandleSecureEraseDevice);
+            HFunc(
+                TEvDiskAgent::TEvEnableAgentDeviceRequest,
+                HandleEnableAgentDevice);
 
             HFunc(TEvRegisterAgent, HandleRegisterAgent)
 
             default:
-                //HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY);
+                // HandleUnexpectedEvent(ev,
+                // TBlockStoreComponents::DISK_REGISTRY);
                 Y_ABORT(
                     "Unexpected event %x %s",
                     ev->GetTypeRewrite(),
@@ -212,7 +218,9 @@ private:
         const NActors::TActorContext& ctx)
     {
         if (!Ready) {
-            PendingRequests.emplace_back(NActors::IEventHandlePtr(ev.Release()), nullptr);
+            PendingRequests.emplace_back(
+                NActors::IEventHandlePtr(ev.Release()),
+                nullptr);
             return;
         }
 
@@ -252,7 +260,8 @@ private:
         const TEvDiskAgent::TEvSecureEraseDeviceRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
-        if (HandleSecureEraseDeviceImpl && HandleSecureEraseDeviceImpl(ev, ctx)) {
+        if (HandleSecureEraseDeviceImpl && HandleSecureEraseDeviceImpl(ev, ctx))
+        {
             return;
         }
 
@@ -282,9 +291,9 @@ inline TTestDiskAgent* CreateBrokenTestDiskAgent(NProto::TAgentConfig config)
 {
     auto agent = new TTestDiskAgent(std::move(config));
 
-    agent->HandleAcquireDevicesImpl = [] (
-        const TEvDiskAgent::TEvAcquireDevicesRequest::TPtr& ev,
-        const NActors::TActorContext& ctx)
+    agent->HandleAcquireDevicesImpl =
+        [](const TEvDiskAgent::TEvAcquireDevicesRequest::TPtr& ev,
+           const NActors::TActorContext& ctx)
     {
         NCloud::Reply(
             ctx,
@@ -303,9 +312,10 @@ inline TTestDiskAgent* CreateSuspendedTestDiskAgent(
 {
     auto agent = new TTestDiskAgent(std::move(config));
 
-    agent->HandleAcquireDevicesImpl = [active] (
-        const TEvDiskAgent::TEvAcquireDevicesRequest::TPtr&,
-        const NActors::TActorContext&) mutable
+    agent->HandleAcquireDevicesImpl =
+        [active](
+            const TEvDiskAgent::TEvAcquireDevicesRequest::TPtr&,
+            const NActors::TActorContext&) mutable
     {
         return !active->load();
     };
@@ -348,13 +358,12 @@ inline NProto::TDeviceConfig Device(
     ui64 totalSize = 10_GB,
     ui32 blockSize = DefaultBlockSize)
 {
-    return CreateDeviceConfig({
-        .Name = std::move(name),
-        .Id = std::move(uuid),
-        .Rack = std::move(rack),
-        .TotalSize = totalSize,
-        .BlockSize = blockSize
-    });
+    return CreateDeviceConfig(
+        {.Name = std::move(name),
+         .Id = std::move(uuid),
+         .Rack = std::move(rack),
+         .TotalSize = totalSize,
+         .BlockSize = blockSize});
 }
 
 inline auto CreateAgentConfig(
@@ -396,8 +405,7 @@ inline auto CreateRegistryConfig(const TVector<NProto::TAgentConfig>& agents)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFakeStorageService final
-    : public NActors::TActor<TFakeStorageService>
+class TFakeStorageService final: public NActors::TActor<TFakeStorageService>
 {
 public:
     TFakeStorageService()
@@ -408,7 +416,9 @@ private:
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
-            HFunc(TEvService::TEvDestroyVolumeRequest, HandleDestroyVolumeRequest);
+            HFunc(
+                TEvService::TEvDestroyVolumeRequest,
+                HandleDestroyVolumeRequest);
 
             default:
                 HandleUnexpectedEvent(
@@ -422,15 +432,15 @@ private:
         const TEvService::TEvDestroyVolumeRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
-        auto response = std::make_unique<TEvService::TEvDestroyVolumeResponse>();
+        auto response =
+            std::make_unique<TEvService::TEvDestroyVolumeResponse>();
         NCloud::Reply(ctx, *ev, std::move(response));
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFakeVolumeProxy final
-    : public NActors::TActor<TFakeVolumeProxy>
+class TFakeVolumeProxy final: public NActors::TActor<TFakeVolumeProxy>
 {
 public:
     TFakeVolumeProxy()
@@ -441,7 +451,9 @@ private:
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
-            HFunc(TEvVolume::TEvReallocateDiskRequest, HandleReallocateDiskRequest);
+            HFunc(
+                TEvVolume::TEvReallocateDiskRequest,
+                HandleReallocateDiskRequest);
 
             default:
                 HandleUnexpectedEvent(
@@ -455,7 +467,8 @@ private:
         const TEvVolume::TEvReallocateDiskRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
-        auto response = std::make_unique<TEvVolume::TEvReallocateDiskResponse>();
+        auto response =
+            std::make_unique<TEvVolume::TEvReallocateDiskResponse>();
         NCloud::Reply(ctx, *ev, std::move(response));
     }
 };
@@ -473,8 +486,10 @@ struct TTestRuntimeBuilder
 
     std::unique_ptr<NActors::TTestActorRuntime> Build();
 
-    TTestRuntimeBuilder& WithAgents(std::initializer_list<NActors::IActor*> agents);
-    TTestRuntimeBuilder& WithAgents(const TVector<NProto::TAgentConfig>& configs);
+    TTestRuntimeBuilder& WithAgents(
+        std::initializer_list<NActors::IActor*> agents);
+    TTestRuntimeBuilder& WithAgents(
+        const TVector<NProto::TAgentConfig>& configs);
     TTestRuntimeBuilder& With(NProto::TStorageServiceConfig config);
     TTestRuntimeBuilder& With(TStorageConfigPtr config);
     TTestRuntimeBuilder& With(NLogbroker::IServicePtr service);
@@ -495,9 +510,9 @@ private:
 
 public:
     TDiskRegistryClient(
-            NActors::TTestActorRuntime& runtime,
-            ui32 nodeIdx = 0,
-            ui64 tabletId = TestTabletId)
+        NActors::TTestActorRuntime& runtime,
+        ui32 nodeIdx = 0,
+        ui64 tabletId = TestTabletId)
         : Runtime(runtime)
         , NodeIdx(nodeIdx)
         , TabletId(tabletId)
@@ -522,11 +537,9 @@ public:
 
     void RebootTablet()
     {
-        TVector<ui64> tablets = { TabletId };
-        auto guard = NKikimr::CreateTabletScheduledEventsGuard(
-            tablets,
-            Runtime,
-            Sender);
+        TVector<ui64> tablets = {TabletId};
+        auto guard =
+            NKikimr::CreateTabletScheduledEventsGuard(tablets, Runtime, Sender);
 
         NKikimr::RebootTablet(Runtime, TabletId, Sender);
 
@@ -551,13 +564,8 @@ public:
     template <typename TRequest>
     void SendRequest(std::unique_ptr<TRequest> request, ui64 cookie = 0)
     {
-        Runtime.SendToPipe(
-            PipeClient,
-            Sender,
-            request.release(),
-            NodeIdx,
-            cookie
-        );
+        Runtime
+            .SendToPipe(PipeClient, Sender, request.release(), NodeIdx, cookie);
     }
 
     template <typename TResponse>
@@ -567,7 +575,8 @@ public:
         Runtime.GrabEdgeEventRethrow<TResponse>(handle, WaitTimeout);
 
         UNIT_ASSERT(handle);
-        return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
+        return std::unique_ptr<TResponse>(
+            handle->Release<TResponse>().Release());
     }
 
     auto CreateWaitReadyRequest()
@@ -577,7 +586,8 @@ public:
 
     auto CreateRegisterAgentRequest(NProto::TAgentConfig config)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvRegisterAgentRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvRegisterAgentRequest>();
 
         request->Record.MutableAgentConfig()->Swap(&config);
 
@@ -596,7 +606,8 @@ public:
         NProto::EStorageMediaKind mediaKind =
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvAllocateDiskRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvAllocateDiskRequest>();
 
         request->Record.SetDiskId(diskId);
         request->Record.SetCloudId(cloudId);
@@ -613,7 +624,8 @@ public:
 
     auto CreateDeallocateDiskRequest(const TString& diskId, bool sync = false)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvDeallocateDiskRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvDeallocateDiskRequest>();
 
         request->Record.SetDiskId(diskId);
         request->Record.SetSync(sync);
@@ -675,8 +687,7 @@ public:
         return request;
     }
 
-    auto CreateGetAgentNodeIdRequest(
-        const TString& agentId)
+    auto CreateGetAgentNodeIdRequest(const TString& agentId)
     {
         auto request =
             std::make_unique<TEvDiskRegistry::TEvGetAgentNodeIdRequest>();
@@ -689,11 +700,13 @@ public:
     auto CreateAcquireDiskRequest(
         const TString& diskId,
         const TString& clientId,
-        const NProto::EVolumeAccessMode accessMode = NProto::VOLUME_ACCESS_READ_WRITE,
+        const NProto::EVolumeAccessMode accessMode =
+            NProto::VOLUME_ACCESS_READ_WRITE,
         const ui64 mountSeqNumber = 0,
         const ui32 volumeGeneration = 0)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvAcquireDiskRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvAcquireDiskRequest>();
 
         request->Record.SetDiskId(diskId);
         request->Record.MutableHeaders()->SetClientId(clientId);
@@ -709,7 +722,8 @@ public:
         const TString& clientId,
         const ui32 volumeGeneration = 0)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvReleaseDiskRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvReleaseDiskRequest>();
 
         request->Record.SetDiskId(diskId);
         request->Record.MutableHeaders()->SetClientId(clientId);
@@ -720,7 +734,8 @@ public:
 
     auto CreateDescribeDiskRequest(const TString& diskId)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvDescribeDiskRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvDescribeDiskRequest>();
 
         request->Record.SetDiskId(diskId);
 
@@ -731,7 +746,8 @@ public:
         NProto::TDiskRegistryConfig config,
         bool ignoreVersion = false)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvUpdateConfigRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvUpdateConfigRequest>();
         auto& r = request->Record;
         *r.MutableConfig() = std::move(config);
 
@@ -742,8 +758,8 @@ public:
 
     auto CreateSetWritableStateRequest(bool value = false)
     {
-        auto request = std::make_unique<
-            TEvDiskRegistry::TEvSetWritableStateRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvSetWritableStateRequest>();
         request->Record.SetState(value);
 
         return request;
@@ -751,17 +767,20 @@ public:
 
     auto CreatePublishDiskStatesRequest()
     {
-        return std::make_unique<TEvDiskRegistryPrivate::TEvPublishDiskStatesRequest>();
+        return std::make_unique<
+            TEvDiskRegistryPrivate::TEvPublishDiskStatesRequest>();
     }
 
     auto CreateListBrokenDisksRequest()
     {
-        return std::make_unique<TEvDiskRegistryPrivate::TEvListBrokenDisksRequest>();
+        return std::make_unique<
+            TEvDiskRegistryPrivate::TEvListBrokenDisksRequest>();
     }
 
     auto CreateListDisksToNotifyRequest()
     {
-        return std::make_unique<TEvDiskRegistryPrivate::TEvListDisksToNotifyRequest>();
+        return std::make_unique<
+            TEvDiskRegistryPrivate::TEvListDisksToNotifyRequest>();
     }
 
     auto CreateDescribeConfigRequest()
@@ -771,7 +790,8 @@ public:
 
     auto CreateCleanupDisksRequest()
     {
-        return std::make_unique<TEvDiskRegistryPrivate::TEvCleanupDisksRequest>();
+        return std::make_unique<
+            TEvDiskRegistryPrivate::TEvCleanupDisksRequest>();
     }
 
     auto CreateSecureEraseRequest(
@@ -786,7 +806,8 @@ public:
 
     auto CreateCleanupDevicesRequest(TVector<TString> devices)
     {
-        return std::make_unique<TEvDiskRegistryPrivate::TEvCleanupDevicesRequest>(
+        return std::make_unique<
+            TEvDiskRegistryPrivate::TEvCleanupDevicesRequest>(
             std::move(devices));
     }
 
@@ -804,7 +825,8 @@ public:
 
     auto CreateUpdateAgentStatsRequest(NProto::TAgentStats stats)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvUpdateAgentStatsRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvUpdateAgentStatsRequest>();
         *request->Record.MutableAgentStats() = std::move(stats);
 
         return request;
@@ -815,7 +837,8 @@ public:
         NProto::EPlacementStrategy placementStrategy,
         ui32 placementPartitionCount)
     {
-        auto request = std::make_unique<TEvService::TEvCreatePlacementGroupRequest>();
+        auto request =
+            std::make_unique<TEvService::TEvCreatePlacementGroupRequest>();
         request->Record.SetGroupId(std::move(groupId));
         request->Record.SetPlacementStrategy(placementStrategy);
         request->Record.SetPlacementPartitionCount(placementPartitionCount);
@@ -827,7 +850,8 @@ public:
         ui32 configVersion,
         NProto::TPlacementGroupSettings settings)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvUpdatePlacementGroupSettingsRequest>();
+        auto request = std::make_unique<
+            TEvDiskRegistry::TEvUpdatePlacementGroupSettingsRequest>();
         request->Record.SetGroupId(std::move(groupId));
         request->Record.SetConfigVersion(configVersion);
         *request->Record.MutableSettings() = std::move(settings);
@@ -837,7 +861,8 @@ public:
 
     auto CreateDestroyPlacementGroupRequest(TString groupId)
     {
-        auto request = std::make_unique<TEvService::TEvDestroyPlacementGroupRequest>();
+        auto request =
+            std::make_unique<TEvService::TEvDestroyPlacementGroupRequest>();
         request->Record.SetGroupId(std::move(groupId));
 
         return request;
@@ -849,7 +874,8 @@ public:
         TVector<TString> disksToAdd,
         TVector<TString> disksToRemove)
     {
-        auto request = std::make_unique<TEvService::TEvAlterPlacementGroupMembershipRequest>();
+        auto request = std::make_unique<
+            TEvService::TEvAlterPlacementGroupMembershipRequest>();
         request->Record.SetGroupId(std::move(groupId));
         request->Record.SetConfigVersion(configVersion);
         for (auto& d: disksToAdd) {
@@ -869,7 +895,8 @@ public:
 
     auto CreateDescribePlacementGroupRequest(TString groupId)
     {
-        auto request = std::make_unique<TEvService::TEvDescribePlacementGroupRequest>();
+        auto request =
+            std::make_unique<TEvService::TEvDescribePlacementGroupRequest>();
         request->Record.SetGroupId(std::move(groupId));
 
         return request;
@@ -877,7 +904,8 @@ public:
 
     auto CreateReplaceDeviceRequest(TString diskId, TString deviceId)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvReplaceDeviceRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvReplaceDeviceRequest>();
         request->Record.SetDiskId(std::move(diskId));
         request->Record.SetDeviceUUID(std::move(deviceId));
 
@@ -898,7 +926,8 @@ public:
         TString agentId,
         NProto::EAgentState state)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvChangeAgentStateRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvChangeAgentStateRequest>();
         request->Record.SetAgentId(std::move(agentId));
         request->Record.SetAgentState(state);
 
@@ -909,7 +938,8 @@ public:
         TString deviceId,
         NProto::EDeviceState state)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvChangeDeviceStateRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvChangeDeviceStateRequest>();
         request->Record.SetDeviceUUID(std::move(deviceId));
         request->Record.SetDeviceState(state);
         request->Record.SetReason("test");
@@ -919,7 +949,8 @@ public:
 
     auto CreateBackupDiskRegistryStateRequest(bool localDB)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvBackupDiskRegistryStateRequest>();
+        auto request = std::make_unique<
+            TEvDiskRegistry::TEvBackupDiskRegistryStateRequest>();
         request->Record.SetBackupLocalDB(localDB);
 
         return request;
@@ -929,7 +960,8 @@ public:
         NProto::TDiskRegistryStateBackup backup,
         bool force)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvRestoreDiskRegistryStateRequest>();
+        auto request = std::make_unique<
+            TEvDiskRegistry::TEvRestoreDiskRegistryStateRequest>();
         request->Record.MutableBackup()->Swap(&backup);
         request->Record.SetForce(force);
 
@@ -941,7 +973,8 @@ public:
         const TString& sourceId,
         const TString& targetId)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvFinishMigrationRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvFinishMigrationRequest>();
 
         request->Record.SetDiskId(diskId);
         auto& m = *request->Record.AddMigrations();
@@ -953,7 +986,8 @@ public:
 
     auto CreateMarkDiskForCleanupRequest(const TString& diskId)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvMarkDiskForCleanupRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvMarkDiskForCleanupRequest>();
         request->Record.SetDiskId(diskId);
         return request;
     }
@@ -971,7 +1005,8 @@ public:
         TString poolName,
         NProto::EStoragePoolKind poolKind)
     {
-        auto request = std::make_unique<TEvService::TEvQueryAvailableStorageRequest>();
+        auto request =
+            std::make_unique<TEvService::TEvQueryAvailableStorageRequest>();
 
         request->Record.SetStoragePoolName(poolName);
         request->Record.SetStoragePoolKind(poolKind);
@@ -987,8 +1022,7 @@ public:
         TString path,
         bool dryRun = false)
     {
-        auto request =
-            std::make_unique<TEvService::TEvResumeDeviceRequest>();
+        auto request = std::make_unique<TEvService::TEvResumeDeviceRequest>();
 
         request->Record.SetAgentId(std::move(agentId));
         request->Record.SetPath(std::move(path));
@@ -997,10 +1031,8 @@ public:
         return request;
     }
 
-    auto CreateUpdateDiskBlockSizeRequest(
-        TString diskId,
-        ui32 blockSize,
-        bool force)
+    auto
+    CreateUpdateDiskBlockSizeRequest(TString diskId, ui32 blockSize, bool force)
     {
         auto request =
             std::make_unique<TEvDiskRegistry::TEvUpdateDiskBlockSizeRequest>();
@@ -1047,7 +1079,9 @@ public:
         request->Record.MutableVolumeConfig()->SetBlockSize(blockSize);
 
         request->Record.SetForce(force);
-        request->Record.MutableDevices()->Assign(devices.begin(), devices.end());
+        request->Record.MutableDevices()->Assign(
+            devices.begin(),
+            devices.end());
 
         return request;
     }
@@ -1057,8 +1091,8 @@ public:
         const TString& sourceDeviceId,
         const TString& targetDeviceId)
     {
-        auto request = std::make_unique<
-            TEvDiskRegistry::TEvStartForceMigrationRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvStartForceMigrationRequest>();
 
         request->Record.SetSourceDiskId(sourceDiskId);
         request->Record.SetSourceDeviceId(sourceDeviceId);
@@ -1088,18 +1122,22 @@ public:
         TDuration newNonReplicatedAgentMaxTimeoutMs,
         TDuration timeout)
     {
-        auto request = std::make_unique<TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsRequest>();
+        auto request = std::make_unique<
+            TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsRequest>();
         auto& params = *request->Record.MutableParams();
 
         params.MutableAgentIds()->Assign(agentIds.begin(), agentIds.end());
-        params.SetNewNonReplicatedAgentMinTimeoutMs(newNonReplicatedAgentMinTimeoutMs.MilliSeconds());
-        params.SetNewNonReplicatedAgentMaxTimeoutMs(newNonReplicatedAgentMaxTimeoutMs.MilliSeconds());
+        params.SetNewNonReplicatedAgentMinTimeoutMs(
+            newNonReplicatedAgentMinTimeoutMs.MilliSeconds());
+        params.SetNewNonReplicatedAgentMaxTimeoutMs(
+            newNonReplicatedAgentMaxTimeoutMs.MilliSeconds());
         params.SetTimeoutMs(timeout.MilliSeconds());
 
         return request;
     }
 
-    auto CreateDisableAgentRequest(const TString& agentId) {
+    auto CreateDisableAgentRequest(const TString& agentId)
+    {
         auto request =
             std::make_unique<TEvDiskRegistry::TEvDisableAgentRequest>();
         request->Record.SetAgentId(agentId);
@@ -1119,36 +1157,42 @@ public:
         return std::make_unique<TEvService::TEvListDiskStatesRequest>();
     }
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
-    template <typename... Args>                                                \
-    void Send##name##Request(Args&&... args)                                   \
-    {                                                                          \
-        auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(std::move(request));                                       \
-    }                                                                          \
-                                                                               \
-    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response()            \
-    {                                                                          \
-        return RecvResponse<ns::TEv##name##Response>();                        \
-    }                                                                          \
-                                                                               \
-    template <typename... Args>                                                \
-    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)              \
-    {                                                                          \
-        auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(std::move(request));                                       \
-                                                                               \
-        auto response = RecvResponse<ns::TEv##name##Response>();               \
-        UNIT_ASSERT_C(                                                         \
-            SUCCEEDED(response->GetStatus()),                                  \
-            response->GetErrorReason());                                       \
-        return response;                                                       \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ns)                                \
+    template <typename... Args>                                            \
+    void Send##name##Request(Args&&... args)                               \
+    {                                                                      \
+        auto request = Create##name##Request(std::forward<Args>(args)...); \
+        SendRequest(std::move(request));                                   \
+    }                                                                      \
+                                                                           \
+    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response()        \
+    {                                                                      \
+        return RecvResponse<ns::TEv##name##Response>();                    \
+    }                                                                      \
+                                                                           \
+    template <typename... Args>                                            \
+    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)          \
+    {                                                                      \
+        auto request = Create##name##Request(std::forward<Args>(args)...); \
+        SendRequest(std::move(request));                                   \
+                                                                           \
+        auto response = RecvResponse<ns::TEv##name##Response>();           \
+        UNIT_ASSERT_C(                                                     \
+            SUCCEEDED(response->GetStatus()),                              \
+            response->GetErrorReason());                                   \
+        return response;                                                   \
+    }                                                                      \
+    // BLOCKSTORE_DECLARE_METHOD
 
-    BLOCKSTORE_DISK_REGISTRY_REQUESTS(BLOCKSTORE_DECLARE_METHOD, TEvDiskRegistry)
-    BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE(BLOCKSTORE_DECLARE_METHOD, TEvService)
-    BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_METHOD, TEvDiskRegistryPrivate)
+    BLOCKSTORE_DISK_REGISTRY_REQUESTS(
+        BLOCKSTORE_DECLARE_METHOD,
+        TEvDiskRegistry)
+    BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE(
+        BLOCKSTORE_DECLARE_METHOD,
+        TEvService)
+    BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE(
+        BLOCKSTORE_DECLARE_METHOD,
+        TEvDiskRegistryPrivate)
 
 #undef BLOCKSTORE_DECLARE_METHOD
 };

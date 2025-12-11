@@ -12,10 +12,8 @@ namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IProfileLog
-    : IStartable
+struct IProfileLog: IStartable
 {
-
     struct TRecord
     {
         TString FileSystemId;

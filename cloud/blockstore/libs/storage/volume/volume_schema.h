@@ -2,9 +2,9 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/blockstore/libs/storage/core/tablet_schema.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
-#include <cloud/blockstore/config/storage.pb.h>
 
 #include <contrib/ydb/core/scheme/scheme_types_defs.h>
 #include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
@@ -13,19 +13,15 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TVolumeSchema
-    : public NKikimr::NIceDb::Schema
+struct TVolumeSchema: public NKikimr::NIceDb::Schema
 {
-    struct Meta
-        : public TTableSchema<1>
+    struct Meta: public TTableSchema<1>
     {
-        struct Id
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
+        struct Id: public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
-        struct VolumeMeta
-            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        struct VolumeMeta: public Column<2, NKikimr::NScheme::NTypeIds::String>
         {
             using Type = NProto::TVolumeMeta;
         };
@@ -42,20 +38,17 @@ struct TVolumeSchema
         };
 
         using TKey = TableKey<Id>;
-        using TColumns = TableColumns<
-            Id, VolumeMeta, StartPartitionsNeeded, StorageConfig>;
+        using TColumns =
+            TableColumns<Id, VolumeMeta, StartPartitionsNeeded, StorageConfig>;
     };
 
-    struct Clients
-        : public TTableSchema<2>
+    struct Clients: public TTableSchema<2>
     {
-        struct ClientId
-            : public Column<1, NKikimr::NScheme::NTypeIds::String>
+        struct ClientId: public Column<1, NKikimr::NScheme::NTypeIds::String>
         {
         };
 
-        struct ClientInfo
-            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        struct ClientInfo: public Column<2, NKikimr::NScheme::NTypeIds::String>
         {
             using Type = NProto::TVolumeClientInfo;
         };
@@ -64,16 +57,13 @@ struct TVolumeSchema
         using TColumns = TableColumns<ClientId, ClientInfo>;
     };
 
-    struct History
-        : public TTableSchema<3>
+    struct History: public TTableSchema<3>
     {
-        struct Timestamp
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint64>
+        struct Timestamp: public Column<1, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
-        struct SeqNo
-            : public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
+        struct SeqNo: public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
@@ -88,16 +78,14 @@ struct TVolumeSchema
         using TColumns = TableColumns<Timestamp, SeqNo, OperationInfo>;
     };
 
-    struct PartStats
-        : public TTableSchema<4>
+    struct PartStats: public TTableSchema<4>
     {
         struct PartTabletId
             : public Column<1, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
-        struct Stats
-            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        struct Stats: public Column<2, NKikimr::NScheme::NTypeIds::String>
         {
             using Type = NProto::TCachedPartStats;
         };
@@ -106,11 +94,9 @@ struct TVolumeSchema
         using TColumns = TableColumns<PartTabletId, Stats>;
     };
 
-    struct CheckpointRequests
-        : public TTableSchema<5>
+    struct CheckpointRequests: public TTableSchema<5>
     {
-        struct RequestId
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint64>
+        struct RequestId: public Column<1, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
@@ -119,18 +105,15 @@ struct TVolumeSchema
         {
         };
 
-        struct Timestamp
-            : public Column<3, NKikimr::NScheme::NTypeIds::Uint64>
+        struct Timestamp: public Column<3, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
-        struct State
-            : public Column<4, NKikimr::NScheme::NTypeIds::Uint32>
+        struct State: public Column<4, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
-        struct ReqType
-            : public Column<5, NKikimr::NScheme::NTypeIds::Uint32>
+        struct ReqType: public Column<5, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
@@ -173,16 +156,13 @@ struct TVolumeSchema
             CheckpointError>;
     };
 
-    struct NonReplPartStats
-        : public TTableSchema<6>
+    struct NonReplPartStats: public TTableSchema<6>
     {
-        struct Id
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint64>
+        struct Id: public Column<1, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
-        struct Stats
-            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        struct Stats: public Column<2, NKikimr::NScheme::NTypeIds::String>
         {
             using Type = NProto::TCachedPartStats;
         };
@@ -191,36 +171,28 @@ struct TVolumeSchema
         using TColumns = TableColumns<Id, Stats>;
     };
 
-    struct UsedBlocks
-        : public TTableSchema<7>
+    struct UsedBlocks: public TTableSchema<7>
     {
-        struct RangeIndex
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
+        struct RangeIndex: public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
-        struct Bitmap
-            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        struct Bitmap: public Column<2, NKikimr::NScheme::NTypeIds::String>
         {
             using Type = TStringBuf;
         };
 
         using TKey = TableKey<RangeIndex>;
-        using TColumns = TableColumns<
-            RangeIndex,
-            Bitmap>;
+        using TColumns = TableColumns<RangeIndex, Bitmap>;
     };
 
-    struct ThrottlerState
-        : public TTableSchema<8>
+    struct ThrottlerState: public TTableSchema<8>
     {
-        struct Id
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
+        struct Id: public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
-        struct Budget
-            : public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
+        struct Budget: public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
@@ -228,21 +200,17 @@ struct TVolumeSchema
         using TColumns = TableColumns<Id, Budget>;
     };
 
-    struct MetaHistory
-        : public TTableSchema<9>
+    struct MetaHistory: public TTableSchema<9>
     {
-        struct Version
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
+        struct Version: public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
-        struct Timestamp
-            : public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
+        struct Timestamp: public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
-        struct VolumeMeta
-            : public Column<3, NKikimr::NScheme::NTypeIds::String>
+        struct VolumeMeta: public Column<3, NKikimr::NScheme::NTypeIds::String>
         {
             using Type = NProto::TVolumeMeta;
         };
@@ -251,21 +219,17 @@ struct TVolumeSchema
         using TColumns = TableColumns<Version, Timestamp, VolumeMeta>;
     };
 
-    struct VolumeParams
-        : public TTableSchema<10>
+    struct VolumeParams: public TTableSchema<10>
     {
-        struct Key
-            : public Column<1, NKikimr::NScheme::NTypeIds::String>
+        struct Key: public Column<1, NKikimr::NScheme::NTypeIds::String>
         {
         };
 
-        struct Value
-            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        struct Value: public Column<2, NKikimr::NScheme::NTypeIds::String>
         {
         };
 
-        struct ValidUntil
-            : public Column<3, NKikimr::NScheme::NTypeIds::Uint64>
+        struct ValidUntil: public Column<3, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 

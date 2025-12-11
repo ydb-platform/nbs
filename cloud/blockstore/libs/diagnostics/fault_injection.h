@@ -3,10 +3,10 @@
 #include "public.h"
 
 namespace NLWTrace {
-    class TCustomAction;
-    class TCustomActionExecutor;
-    class TSession;
-    struct TProbe;
+class TCustomAction;
+class TCustomActionExecutor;
+class TSession;
+struct TProbe;
 }   // namespace NLWTrace
 
 namespace NCloud::NBlockStore {

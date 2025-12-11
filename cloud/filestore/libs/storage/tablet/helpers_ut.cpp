@@ -2,11 +2,11 @@
 
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
-#include <google/protobuf/util/message_differencer.h>
+#include <contrib/ydb/core/protos/filestore_config.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <contrib/ydb/core/protos/filestore_config.pb.h>
+#include <google/protobuf/util/message_differencer.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -14,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TConfigs
-    : public NUnitTest::TBaseFixture
+struct TConfigs: public NUnitTest::TBaseFixture
 {
     NKikimrFileStore::TConfig SrcConfig;
     NProto::TFileSystem SrcFileSystem;
@@ -105,7 +104,8 @@ struct TConfigs
 
         {
             // Performance profile.
-            auto& performanceProfile = *TargetFileSystem.MutablePerformanceProfile();
+            auto& performanceProfile =
+                *TargetFileSystem.MutablePerformanceProfile();
             performanceProfile.SetThrottlingEnabled(
                 SrcConfig.GetPerformanceProfileThrottlingEnabled());
             performanceProfile.SetMaxReadIops(
@@ -138,12 +138,14 @@ struct TConfigs
 
         // Setup SrcFileSystem
         {
-            auto profile = SrcFileSystem.MutableExplicitChannelProfiles()->Add();
+            auto profile =
+                SrcFileSystem.MutableExplicitChannelProfiles()->Add();
             profile->SetDataKind(3);
             profile->SetPoolKind("test_pool_3");
         }
         {
-            auto profile = SrcFileSystem.MutableExplicitChannelProfiles()->Add();
+            auto profile =
+                SrcFileSystem.MutableExplicitChannelProfiles()->Add();
             profile->SetDataKind(4);
             profile->SetPoolKind("test_pool_4");
         }
@@ -158,7 +160,8 @@ struct TConfigs
         SrcFileSystem.SetBlocksCount(23);
         SrcFileSystem.SetNodesCount(24);
         SrcFileSystem.SetRangeIdHasherType(25);
-        SrcFileSystem.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL);
+        SrcFileSystem.SetStorageMediaKind(
+            NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL);
 
         SrcFileSystem.MutablePerformanceProfile()->SetThrottlingEnabled(true);
         SrcFileSystem.MutablePerformanceProfile()->SetMaxReadIops(26);
@@ -170,14 +173,18 @@ struct TConfigs
         SrcFileSystem.MutablePerformanceProfile()->SetBoostPercentage(32);
         SrcFileSystem.MutablePerformanceProfile()->SetBurstPercentage(33);
         SrcFileSystem.MutablePerformanceProfile()->SetMaxPostponedWeight(34);
-        SrcFileSystem.MutablePerformanceProfile()->SetMaxWriteCostMultiplier(35);
-        SrcFileSystem.MutablePerformanceProfile()->SetDefaultPostponedRequestWeight(36);
+        SrcFileSystem.MutablePerformanceProfile()->SetMaxWriteCostMultiplier(
+            35);
+        SrcFileSystem.MutablePerformanceProfile()
+            ->SetDefaultPostponedRequestWeight(36);
         SrcFileSystem.MutablePerformanceProfile()->SetMaxPostponedTime(37);
         SrcFileSystem.MutablePerformanceProfile()->SetMaxPostponedCount(38);
 
-        for (size_t i = 0; i < SrcFileSystem.ExplicitChannelProfilesSize(); ++i) {
+        for (size_t i = 0; i < SrcFileSystem.ExplicitChannelProfilesSize(); ++i)
+        {
             const auto& tmpSrc = SrcFileSystem.GetExplicitChannelProfiles(i);
-            auto& tmpDst = *TargetFileSystemConfig.MutableExplicitChannelProfiles()->Add();
+            auto& tmpDst =
+                *TargetFileSystemConfig.MutableExplicitChannelProfiles()->Add();
 
             tmpDst.SetDataKind(tmpSrc.GetDataKind());
             tmpDst.SetPoolKind(tmpSrc.GetPoolKind());
@@ -191,12 +198,14 @@ struct TConfigs
         TargetFileSystemConfig.SetBlockSize(SrcFileSystem.GetBlockSize());
         TargetFileSystemConfig.SetBlocksCount(SrcFileSystem.GetBlocksCount());
         TargetFileSystemConfig.SetNodesCount(SrcFileSystem.GetNodesCount());
-        TargetFileSystemConfig.SetRangeIdHasherType(SrcFileSystem.GetRangeIdHasherType());
+        TargetFileSystemConfig.SetRangeIdHasherType(
+            SrcFileSystem.GetRangeIdHasherType());
         TargetFileSystemConfig.SetStorageMediaKind(
             static_cast<NCloud::NProto::EStorageMediaKind>(
                 SrcFileSystem.GetStorageMediaKind()));
 
-        TargetFileSystemConfig.MutablePerformanceProfile()->CopyFrom(SrcFileSystem.GetPerformanceProfile());
+        TargetFileSystemConfig.MutablePerformanceProfile()->CopyFrom(
+            SrcFileSystem.GetPerformanceProfile());
 
         // Setup SrcThrottlerConfig
         SrcPerformanceProfile.SetThrottlingEnabled(true);
@@ -236,19 +245,21 @@ struct TConfigs
             auto& p = TargetThrottlerConfig.BoostParameters;
             p.BoostTime =
                 TDuration::MilliSeconds(SrcPerformanceProfile.GetBoostTime());
-            p.BoostRefillTime =
-                TDuration::MilliSeconds(SrcPerformanceProfile.GetBoostRefillTime());
+            p.BoostRefillTime = TDuration::MilliSeconds(
+                SrcPerformanceProfile.GetBoostRefillTime());
             p.BoostPercentage = SrcPerformanceProfile.GetBoostPercentage();
         }
 
         {
             // Default limits.
             auto& l = TargetThrottlerConfig.DefaultThresholds;
-            l.MaxPostponedWeight = SrcPerformanceProfile.GetMaxPostponedWeight();
+            l.MaxPostponedWeight =
+                SrcPerformanceProfile.GetMaxPostponedWeight();
             l.MaxPostponedCount = SrcPerformanceProfile.GetMaxPostponedCount();
-            l.MaxPostponedTime =
-                TDuration::MilliSeconds(SrcPerformanceProfile.GetMaxPostponedTime());
-            l.MaxWriteCostMultiplier = SrcPerformanceProfile.GetMaxWriteCostMultiplier();
+            l.MaxPostponedTime = TDuration::MilliSeconds(
+                SrcPerformanceProfile.GetMaxPostponedTime());
+            l.MaxWriteCostMultiplier =
+                SrcPerformanceProfile.GetMaxWriteCostMultiplier();
         }
     }
 
@@ -280,7 +291,9 @@ Y_UNIT_TEST_SUITE(THelpers)
         UNIT_ASSERT_VALUES_EQUAL("", ReportDiff);
     }
 
-    Y_UNIT_TEST_F(ShouldCorrectlyConvertPerformanceProfileToThrottlerConfig, TConfigs)
+    Y_UNIT_TEST_F(
+        ShouldCorrectlyConvertPerformanceProfileToThrottlerConfig,
+        TConfigs)
     {
         TThrottlerConfig config;
         Convert(SrcPerformanceProfile, config);

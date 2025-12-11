@@ -1,6 +1,7 @@
 #include "profile_log.h"
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
+
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/timer.h>
 
@@ -30,10 +31,8 @@ TString RangesToString(const TRanges& ranges)
             sb << " ";
         }
 
-        sb << ranges[i].GetNodeId()
-            << "," << ranges[i].GetHandle()
-            << "," << ranges[i].GetOffset()
-            << "," << ranges[i].GetBytes();
+        sb << ranges[i].GetNodeId() << "," << ranges[i].GetHandle() << ","
+           << ranges[i].GetOffset() << "," << ranges[i].GetBytes();
     }
 
     return std::move(sb);
@@ -41,35 +40,28 @@ TString RangesToString(const TRanges& ranges)
 
 TString NodeInfoToString(const NProto::TProfileLogNodeInfo& nodeInfo)
 {
-    return TStringBuilder() << nodeInfo.GetParentNodeId()
-        << "," << nodeInfo.GetNodeName()
-        << "," << nodeInfo.GetNewParentNodeId()
-        << "," << nodeInfo.GetNewNodeName()
-        << "," << nodeInfo.GetFlags()
-        << "," << nodeInfo.GetMode()
-        << "," << nodeInfo.GetNodeId()
-        << "," << nodeInfo.GetHandle()
-        << "," << nodeInfo.GetSize()
-        << "," << nodeInfo.GetType();
+    return TStringBuilder()
+           << nodeInfo.GetParentNodeId() << "," << nodeInfo.GetNodeName() << ","
+           << nodeInfo.GetNewParentNodeId() << "," << nodeInfo.GetNewNodeName()
+           << "," << nodeInfo.GetFlags() << "," << nodeInfo.GetMode() << ","
+           << nodeInfo.GetNodeId() << "," << nodeInfo.GetHandle() << ","
+           << nodeInfo.GetSize() << "," << nodeInfo.GetType();
 }
 
 TString LockInfoToString(const NProto::TProfileLogLockInfo& lockInfo)
 {
-    return TStringBuilder() << lockInfo.GetNodeId()
-        << "," << lockInfo.GetHandle()
-        << "," << lockInfo.GetOwner()
-        << "," << lockInfo.GetOffset()
-        << "," << lockInfo.GetLength()
-        << "," << lockInfo.GetType()
-        << "," << lockInfo.GetConflictedOwner()
-        << "," << lockInfo.GetConflictedOffset()
-        << "," << lockInfo.GetConflictedLength();
+    return TStringBuilder()
+           << lockInfo.GetNodeId() << "," << lockInfo.GetHandle() << ","
+           << lockInfo.GetOwner() << "," << lockInfo.GetOffset() << ","
+           << lockInfo.GetLength() << "," << lockInfo.GetType() << ","
+           << lockInfo.GetConflictedOwner() << ","
+           << lockInfo.GetConflictedOffset() << ","
+           << lockInfo.GetConflictedLength();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEventProcessor
-    : TProtobufEventProcessor
+struct TEventProcessor: TProtobufEventProcessor
 {
     TVector<TString> FlatMessages;
     TVector<ui32> MessageCountByRecord;
@@ -93,23 +85,24 @@ struct TEventProcessor
 
             for (const auto& r: message->GetRequests()) {
                 FlatMessages.push_back(
-                    TStringBuilder() << message->GetFileSystemId()
-                        << "\t" << r.GetTimestampMcs()
-                        << "\t" << r.GetRequestType()
-                        << "\t" << r.GetDurationMcs()
-                        << "\t" << r.GetErrorCode()
-                );
+                    TStringBuilder()
+                    << message->GetFileSystemId() << "\t" << r.GetTimestampMcs()
+                    << "\t" << r.GetRequestType() << "\t" << r.GetDurationMcs()
+                    << "\t" << r.GetErrorCode());
                 if (r.HasNodeInfo()) {
-                    FlatMessages.back() += TStringBuilder() <<
-                        "\t" << NodeInfoToString(r.GetNodeInfo());
+                    FlatMessages.back() += TStringBuilder()
+                                           << "\t"
+                                           << NodeInfoToString(r.GetNodeInfo());
                 }
                 if (r.HasLockInfo()) {
-                    FlatMessages.back() += TStringBuilder() <<
-                        "\t" << LockInfoToString(r.GetLockInfo());
+                    FlatMessages.back() += TStringBuilder()
+                                           << "\t"
+                                           << LockInfoToString(r.GetLockInfo());
                 }
                 if (r.RangesSize() > 0) {
-                    FlatMessages.back() += TStringBuilder() <<
-                        "\t" << RangesToString(r.GetRanges());
+                    FlatMessages.back() += TStringBuilder()
+                                           << "\t"
+                                           << RangesToString(r.GetRanges());
                 }
             }
 
@@ -120,8 +113,7 @@ struct TEventProcessor
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEnv
-    : public NUnitTest::TBaseFixture
+struct TEnv: public NUnitTest::TBaseFixture
 {
     const TTempDir TempDir;
     const TFsPath ProfilePath = TempDir.Path() / "profile.log";
@@ -174,8 +166,7 @@ struct TEnv
     }
 };
 
-struct TEnvWithLimits
-    : public TEnv
+struct TEnvWithLimits: public TEnv
 {
     TEnvWithLimits(ui64 maxFlushRecords, ui64 maxFrameFlushRecords)
         : TEnv(maxFlushRecords, maxFrameFlushRecords)
@@ -295,15 +286,14 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
     Y_UNIT_TEST_F(TestSmoke, TEnv)
     {
         for (ui32 i = 1; i <= 100'000; ++i) {
-            ProfileLog->Write({
-                TStringBuilder() << "fs" << (i % 10),
-                TRequestInfoBuilder()
-                    .SetTimestamp(TInstant::MilliSeconds(i))
-                    .SetDuration(TDuration::MilliSeconds(i % 200))
-                    .SetRequestType(i % 3)
-                    .AddRange(i % 1'000, i % 10'000, i, i * 2)
-                    .Build()
-            });
+            ProfileLog->Write(
+                {TStringBuilder() << "fs" << (i % 10),
+                 TRequestInfoBuilder()
+                     .SetTimestamp(TInstant::MilliSeconds(i))
+                     .SetDuration(TDuration::MilliSeconds(i % 200))
+                     .SetRequestType(i % 3)
+                     .AddRange(i % 1'000, i % 10'000, i, i * 2)
+                     .Build()});
         }
 
         ProcessLog();
@@ -313,103 +303,90 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
 
     Y_UNIT_TEST_F(TestDumpMessages, TEnv)
     {
-        ProfileLog->Write({
-            "fs1",
-            TRequestInfoBuilder()
-                .SetTimestamp(TInstant::Seconds(1))
-                .SetDuration(TDuration::MilliSeconds(100))
-                .SetRequestType(1)
-                .SetError(0)
-                .AddRange(111, 23, 200, 10)
-                .AddRange(111, 23, 300, 5)
-                .Build()
-        });
+        ProfileLog->Write(
+            {"fs1",
+             TRequestInfoBuilder()
+                 .SetTimestamp(TInstant::Seconds(1))
+                 .SetDuration(TDuration::MilliSeconds(100))
+                 .SetRequestType(1)
+                 .SetError(0)
+                 .AddRange(111, 23, 200, 10)
+                 .AddRange(111, 23, 300, 5)
+                 .Build()});
 
-        ProfileLog->Write({
-            "fs1",
-            TRequestInfoBuilder()
-                .SetTimestamp(TInstant::Seconds(2))
-                .SetDuration(TDuration::MilliSeconds(200))
-                .SetRequestType(3)
-                .SetError(1)
-                .AddRange(6000, 42, 500, 20)
-                .Build()
-        });
+        ProfileLog->Write(
+            {"fs1",
+             TRequestInfoBuilder()
+                 .SetTimestamp(TInstant::Seconds(2))
+                 .SetDuration(TDuration::MilliSeconds(200))
+                 .SetRequestType(3)
+                 .SetError(1)
+                 .AddRange(6000, 42, 500, 20)
+                 .Build()});
 
-        ProfileLog->Write({
-            "fs2",
-            TRequestInfoBuilder()
-                .SetTimestamp(TInstant::Seconds(3))
-                .SetDuration(TDuration::MilliSeconds(400))
-                .SetRequestType(7)
-                .SetError(0)
-                .Build()
-        });
+        ProfileLog->Write(
+            {"fs2",
+             TRequestInfoBuilder()
+                 .SetTimestamp(TInstant::Seconds(3))
+                 .SetDuration(TDuration::MilliSeconds(400))
+                 .SetRequestType(7)
+                 .SetError(0)
+                 .Build()});
 
-        ProfileLog->Write({
-            "fs2",
-            TRequestInfoBuilder()
-                .SetTimestamp(TInstant::Seconds(4))
-                .SetDuration(TDuration::MilliSeconds(800))
-                .SetRequestType(11)
-                .SetError(1)
-                .AddNodeInfo(1, "node", 2, "new_node", 3, 7, 12, 123, 32, 2)
-                .Build()
-        });
+        ProfileLog->Write(
+            {"fs2",
+             TRequestInfoBuilder()
+                 .SetTimestamp(TInstant::Seconds(4))
+                 .SetDuration(TDuration::MilliSeconds(800))
+                 .SetRequestType(11)
+                 .SetError(1)
+                 .AddNodeInfo(1, "node", 2, "new_node", 3, 7, 12, 123, 32, 2)
+                 .Build()});
 
-        ProfileLog->Write({
-            "fs3",
-            TRequestInfoBuilder()
-                .SetTimestamp(TInstant::Seconds(5))
-                .SetDuration(TDuration::MilliSeconds(1'600))
-                .SetRequestType(11)
-                .SetError(1)
-                .AddLockInfo(1, 2, 3, 7, 12, 123, 32, 33, 34)
-                .Build()
-        });
-
+        ProfileLog->Write(
+            {"fs3",
+             TRequestInfoBuilder()
+                 .SetTimestamp(TInstant::Seconds(5))
+                 .SetDuration(TDuration::MilliSeconds(1'600))
+                 .SetRequestType(11)
+                 .SetError(1)
+                 .AddLockInfo(1, 2, 3, 7, 12, 123, 32, 33, 34)
+                 .Build()});
 
         ProcessLog();
 
         UNIT_ASSERT_VALUES_EQUAL(5, EventProcessor.FlatMessages.size());
         UNIT_ASSERT_VALUES_EQUAL(
             "fs1\t1000000\t1\t100000\t0\t111,23,200,10 111,23,300,5",
-            EventProcessor.FlatMessages[0]
-        );
+            EventProcessor.FlatMessages[0]);
         UNIT_ASSERT_VALUES_EQUAL(
             "fs1\t2000000\t3\t200000\t1\t6000,42,500,20",
-            EventProcessor.FlatMessages[1]
-        );
+            EventProcessor.FlatMessages[1]);
         UNIT_ASSERT_VALUES_EQUAL(
             "fs2\t3000000\t7\t400000\t0",
-            EventProcessor.FlatMessages[2]
-        );
+            EventProcessor.FlatMessages[2]);
         UNIT_ASSERT_VALUES_EQUAL(
             "fs2\t4000000\t11\t800000\t1\t1,node,2,new_node,3,7,12,123,32,2",
-            EventProcessor.FlatMessages[3]
-        );
+            EventProcessor.FlatMessages[3]);
         UNIT_ASSERT_VALUES_EQUAL(
             "fs3\t5000000\t11\t1600000\t1\t1,2,3,7,12,123,32,33,34",
-            EventProcessor.FlatMessages[4]
-        );
+            EventProcessor.FlatMessages[4]);
 
-        ProfileLog->Write({
-            "fs3",
-            TRequestInfoBuilder()
-                .SetTimestamp(TInstant::Seconds(6))
-                .SetDuration(TDuration::MilliSeconds(300))
-                .SetRequestType(4)
-                .SetError(0)
-                .Build()
-        });
+        ProfileLog->Write(
+            {"fs3",
+             TRequestInfoBuilder()
+                 .SetTimestamp(TInstant::Seconds(6))
+                 .SetDuration(TDuration::MilliSeconds(300))
+                 .SetRequestType(4)
+                 .SetError(0)
+                 .Build()});
 
         ProcessLog();
 
         UNIT_ASSERT_VALUES_EQUAL(6, EventProcessor.FlatMessages.size());
         UNIT_ASSERT_VALUES_EQUAL(
             "fs3\t6000000\t4\t300000\t0",
-            EventProcessor.FlatMessages[5]
-        );
+            EventProcessor.FlatMessages[5]);
 
         // Test flush on destruct
         ProfileLog->Write(

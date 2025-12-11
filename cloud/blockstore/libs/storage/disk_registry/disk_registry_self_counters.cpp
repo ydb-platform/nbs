@@ -35,7 +35,8 @@ void TDiskRegistrySelfCounters::Init(
     MaxMigrationTime = counters->GetCounter("MaxMigrationTime");
 
     DevicesInMigrationState = counters->GetCounter("DevicesInMigrationState");
-    DisksInTemporarilyUnavailableState = counters->GetCounter("DisksInTemporarilyUnavailableState");
+    DisksInTemporarilyUnavailableState =
+        counters->GetCounter("DisksInTemporarilyUnavailableState");
     DisksInErrorState = counters->GetCounter("DisksInErrorState");
     PlacementGroups = counters->GetCounter("PlacementGroups");
     FullPlacementGroups = counters->GetCounter("FullPlacementGroups");
@@ -47,10 +48,10 @@ void TDiskRegistrySelfCounters::Init(
     Mirror3DisksMinus1 = counters->GetCounter("Mirror3DisksMinus1");
     Mirror3DisksMinus2 = counters->GetCounter("Mirror3DisksMinus2");
     Mirror3DisksMinus3 = counters->GetCounter("Mirror3DisksMinus3");
-    PlacementGroupsWithRecentlyBrokenSinglePartition =
-        counters->GetCounter("PlacementGroupsWithRecentlyBrokenSinglePartition");
-    PlacementGroupsWithRecentlyBrokenTwoOrMorePartitions =
-        counters->GetCounter("PlacementGroupsWithRecentlyBrokenTwoOrMorePartitions");
+    PlacementGroupsWithRecentlyBrokenSinglePartition = counters->GetCounter(
+        "PlacementGroupsWithRecentlyBrokenSinglePartition");
+    PlacementGroupsWithRecentlyBrokenTwoOrMorePartitions = counters->GetCounter(
+        "PlacementGroupsWithRecentlyBrokenTwoOrMorePartitions");
     PlacementGroupsWithBrokenSinglePartition =
         counters->GetCounter("PlacementGroupsWithBrokenSinglePartition");
     PlacementGroupsWithBrokenTwoOrMorePartitions =
@@ -61,7 +62,9 @@ void TDiskRegistrySelfCounters::Init(
     AutomaticallyReplacedDevices =
         counters->GetCounter("AutomaticallyReplacedDevices");
 
-    QueryAvailableStorageErrors.Register(counters, "QueryAvailableStorageErrors");
+    QueryAvailableStorageErrors.Register(
+        counters,
+        "QueryAvailableStorageErrors");
 
     for (const auto& [poolName, poolKind]: pools) {
         RegisterPool(poolName, PoolKindToString(poolKind), counters);

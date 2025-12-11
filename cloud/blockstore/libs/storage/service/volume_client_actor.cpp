@@ -44,15 +44,13 @@ NTabletPipe::TClientConfig CreateTabletPipeClientConfig(
     clientConfig.RetryPolicy = {
         .RetryLimitCount = config.GetPipeClientRetryCount(),
         .MinRetryTime = config.GetPipeClientMinRetryTime(),
-        .MaxRetryTime = config.GetPipeClientMaxRetryTime()
-    };
+        .MaxRetryTime = config.GetPipeClientMaxRetryTime()};
     return clientConfig;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TVolumeClientActor final
-    : public TActor<TVolumeClientActor>
+class TVolumeClientActor final: public TActor<TVolumeClientActor>
 {
     struct TActiveRequest
     {
@@ -61,9 +59,9 @@ class TVolumeClientActor final
         ui64 SendTime;
 
         TActiveRequest(
-                IEventHandlePtr request,
-                TCallContextPtr callContext,
-                ui64 sendTime)
+            IEventHandlePtr request,
+            TCallContextPtr callContext,
+            ui64 sendTime)
             : Request(std::move(request))
             , CallContext(std::move(callContext))
             , SendTime(sendTime)
@@ -184,13 +182,14 @@ void TVolumeClientActor::OnConnectionError(
 
     CancelActiveRequests();
 
-    auto msg = std::make_unique<TEvServicePrivate::TEvVolumePipeReset>(GetCycleCount());
+    auto msg = std::make_unique<TEvServicePrivate::TEvVolumePipeReset>(
+        GetCycleCount());
     NCloud::Send(ctx, SessionActorId, std::move(msg));
 }
 
 void TVolumeClientActor::CancelActiveRequests()
 {
-    for (auto it = ActiveRequests.begin(); it != ActiveRequests.end(); ) {
+    for (auto it = ActiveRequests.begin(); it != ActiveRequests.end();) {
         TAutoPtr<IEventHandle> handle(it->second.Request.release());
         Receive(handle);
         ActiveRequests.erase(it++);
@@ -261,7 +260,8 @@ void TVolumeClientActor::HandleResetPipeClient(
         "%s Got request to close pipe for tablet",
         LogTitle.GetWithTime().c_str());
 
-    auto msg = std::make_unique<TEvServicePrivate::TEvVolumePipeReset>(GetCycleCount());
+    auto msg = std::make_unique<TEvServicePrivate::TEvVolumePipeReset>(
+        GetCycleCount());
     NCloud::Send(ctx, SessionActorId, std::move(msg));
 
     CancelActiveRequests();
@@ -296,7 +296,8 @@ void TVolumeClientActor::HandleRequest(
             "%s Creating pipe from volume client",
             LogTitle.GetWithTime().c_str());
 
-        PipeClient = ctx.Register(CreateClient(SelfId(), TabletId, ClientConfig));
+        PipeClient =
+            ctx.Register(CreateClient(SelfId(), TabletId, ClientConfig));
         ++Generation;
         LogTitle.SetGeneration(Generation);
     }
@@ -325,7 +326,7 @@ void TVolumeClientActor::HandleRequest(
         SelfId(),
         ev->ReleaseBase().Release(),
         0,          // flags
-        requestId  // cookie
+        requestId   // cookie
     );
 
     ActiveRequests.emplace(
@@ -420,22 +421,24 @@ void TVolumeClientActor::HandlePoisonPill(
 bool TVolumeClientActor::HandleRequests(STFUNC_SIG)
 {
     auto ctx(ActorContext());
-#define BLOCKSTORE_HANDLE_METHOD(name, ns)                                     \
-    case ns::TEv##name##Request::EventType: {                                  \
-        auto* x = reinterpret_cast<ns::TEv##name##Request::TPtr*>(&ev);        \
-        HandleRequest<ns::T##name##Method>(ctx, *x);                           \
-        break;                                                                 \
-    }                                                                          \
-    case ns::TEv##name##Response::EventType: {                                 \
-        auto* x = reinterpret_cast<ns::TEv##name##Response::TPtr*>(&ev);       \
-        HandleResponse<ns::T##name##Method>(ctx, *x);                          \
-        break;                                                                 \
-    }                                                                          \
-// BLOCKSTORE_HANDLE_METHOD
+#define BLOCKSTORE_HANDLE_METHOD(name, ns)                               \
+    case ns::TEv##name##Request::EventType: {                            \
+        auto* x = reinterpret_cast<ns::TEv##name##Request::TPtr*>(&ev);  \
+        HandleRequest<ns::T##name##Method>(ctx, *x);                     \
+        break;                                                           \
+    }                                                                    \
+    case ns::TEv##name##Response::EventType: {                           \
+        auto* x = reinterpret_cast<ns::TEv##name##Response::TPtr*>(&ev); \
+        HandleResponse<ns::T##name##Method>(ctx, *x);                    \
+        break;                                                           \
+    }                                                                    \
+        // BLOCKSTORE_HANDLE_METHOD
 
     switch (ev->GetTypeRewrite()) {
         BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_HANDLE_METHOD, TEvVolume)
-        BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(BLOCKSTORE_HANDLE_METHOD, TEvService)
+        BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(
+            BLOCKSTORE_HANDLE_METHOD,
+            TEvService)
 
         default:
             return false;
@@ -448,28 +451,34 @@ bool TVolumeClientActor::HandleRequests(STFUNC_SIG)
 
 bool TVolumeClientActor::LogLateMessage(ui32 evType, const TActorContext& ctx)
 {
-#define BLOCKSTORE_LOG_MESSAGE(name, ns)                                       \
-    case ns::TEv##name##Request::EventType: {                                  \
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,                         \
-            "%s Late request : (0x%08X) %s request",                           \
-            LogTitle.GetWithTime().c_str(),                                    \
-            evType,                                                            \
-            #name);                                                            \
-        break;                                                                 \
-    }                                                                          \
-    case ns::TEv##name##Response::EventType: {                                 \
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,                         \
-            "%s Late response : (0x%08X) %s response",                         \
-            LogTitle.GetWithTime().c_str(),                                    \
-            evType,                                                            \
-            #name);                                                            \
-        break;                                                                 \
-    }                                                                          \
-// BLOCKSTORE_LOG_MESSAGE
+#define BLOCKSTORE_LOG_MESSAGE(name, ns)               \
+    case ns::TEv##name##Request::EventType: {          \
+        LOG_ERROR(                                     \
+            ctx,                                       \
+            TBlockStoreComponents::SERVICE,            \
+            "%s Late request : (0x%08X) %s request",   \
+            LogTitle.GetWithTime().c_str(),            \
+            evType,                                    \
+            #name);                                    \
+        break;                                         \
+    }                                                  \
+    case ns::TEv##name##Response::EventType: {         \
+        LOG_DEBUG(                                     \
+            ctx,                                       \
+            TBlockStoreComponents::SERVICE,            \
+            "%s Late response : (0x%08X) %s response", \
+            LogTitle.GetWithTime().c_str(),            \
+            evType,                                    \
+            #name);                                    \
+        break;                                         \
+    }                                                  \
+        // BLOCKSTORE_LOG_MESSAGE
 
     switch (evType) {
         BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_LOG_MESSAGE, TEvVolume)
-        BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(BLOCKSTORE_LOG_MESSAGE, TEvService)
+        BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(
+            BLOCKSTORE_LOG_MESSAGE,
+            TEvService)
 
         default:
             return false;
@@ -479,7 +488,6 @@ bool TVolumeClientActor::LogLateMessage(ui32 evType, const TActorContext& ctx)
 
 #undef BLOCKSTORE_LOG_MESSAGE
 }
-
 
 STFUNC(TVolumeClientActor::StateWork)
 {

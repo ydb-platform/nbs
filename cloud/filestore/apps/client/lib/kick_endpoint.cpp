@@ -6,8 +6,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TKickEndpointCommand final
-    : public TEndpointCommand
+class TKickEndpointCommand final: public TEndpointCommand
 {
 private:
     ui32 KeyringId;
@@ -29,9 +28,7 @@ public:
         request->SetKeyringId(KeyringId);
 
         auto response = WaitFor(
-            Client->KickEndpoint(
-                std::move(callContext),
-                std::move(request)));
+            Client->KickEndpoint(std::move(callContext), std::move(request)));
 
         if (HasError(response)) {
             ythrow TServiceError(response.GetError());

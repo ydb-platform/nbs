@@ -89,9 +89,15 @@ static_assert(sizeof(TBlockEntry) == 8, "");
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct Y_PACKED TSingleBlockEntry : TGroupHeader, TBlockEntry
+struct Y_PACKED TSingleBlockEntry
+    : TGroupHeader
+    , TBlockEntry
 {
-    TSingleBlockEntry(ui64 nodeId, ui64 commitId, ui32 blockIndex, ui16 blobOffset)
+    TSingleBlockEntry(
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 blockIndex,
+        ui16 blobOffset)
         : TGroupHeader(nodeId, commitId, false)
         , TBlockEntry(blockIndex, blobOffset)
     {}
@@ -101,9 +107,17 @@ static_assert(sizeof(TSingleBlockEntry) == 16 + 8);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct Y_PACKED TMergedBlockGroup : TGroupHeader, TMultiGroupHeader, TBlockEntry
+struct Y_PACKED TMergedBlockGroup
+    : TGroupHeader
+    , TMultiGroupHeader
+    , TBlockEntry
 {
-    TMergedBlockGroup(ui64 nodeId, ui64 commitId, ui16 count, ui32 blockIndex, ui16 blobOffset)
+    TMergedBlockGroup(
+        ui64 nodeId,
+        ui64 commitId,
+        ui16 count,
+        ui32 blockIndex,
+        ui16 blobOffset)
         : TGroupHeader(nodeId, commitId, true)
         , TMultiGroupHeader(TMultiGroupHeader::MergedGroup, count)
         , TBlockEntry(blockIndex, blobOffset)
@@ -114,7 +128,9 @@ static_assert(sizeof(TMergedBlockGroup) == 16 + 4 + 8);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct Y_PACKED TMixedBlockGroup : TGroupHeader, TMultiGroupHeader
+struct Y_PACKED TMixedBlockGroup
+    : TGroupHeader
+    , TMultiGroupHeader
 {
     TMixedBlockGroup(ui64 nodeId, ui64 commitId, ui16 count)
         : TGroupHeader(nodeId, commitId, true)
@@ -144,7 +160,9 @@ static_assert(sizeof(TDeletionMarker) == 4);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct Y_PACKED TSingleDeletionMarker : TGroupHeader, TDeletionMarker
+struct Y_PACKED TSingleDeletionMarker
+    : TGroupHeader
+    , TDeletionMarker
 {
     TSingleDeletionMarker(ui64 commitId, ui16 blobOffset)
         : TGroupHeader(0, commitId, false)
@@ -156,7 +174,10 @@ static_assert(sizeof(TSingleDeletionMarker) == 16 + 4);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct Y_PACKED TMergedDeletionGroup : TGroupHeader, TMultiGroupHeader, TDeletionMarker
+struct Y_PACKED TMergedDeletionGroup
+    : TGroupHeader
+    , TMultiGroupHeader
+    , TDeletionMarker
 {
     TMergedDeletionGroup(ui64 commitId, ui16 count, ui16 blobOffset)
         : TGroupHeader(0, commitId, true)
@@ -169,7 +190,9 @@ static_assert(sizeof(TMergedDeletionGroup) == 16 + 4 + 4);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct Y_PACKED TMixedDeletionGroup : TGroupHeader, TMultiGroupHeader
+struct Y_PACKED TMixedDeletionGroup
+    : TGroupHeader
+    , TMultiGroupHeader
 {
     TMixedDeletionGroup(ui64 commitId, ui16 count)
         : TGroupHeader(0, commitId, true)

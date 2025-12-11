@@ -3,6 +3,7 @@
 #include "stats.h"
 
 #include <cloud/blockstore/libs/encryption/encryptor.h>
+
 #include <cloud/contrib/vhost/include/vhost/blockdev.h>
 #include <cloud/contrib/vhost/include/vhost/server.h>
 #include <cloud/contrib/vhost/include/vhost/types.h>
@@ -58,14 +59,13 @@ struct TAioDevice
 // The memory for these objects is allocated via std::calloc.
 // The size of the allocated memory is enough so that the Data can keep all the
 // request buffers. Therefore, Data is the last field in the class.
-struct TAioRequest
-    : iocb
+struct TAioRequest: iocb
 {
     vhd_io* Io;
     TCpuCycles SubmitTs;
     bool BufferAllocated = false;
     bool Unaligned = false;
-    iovec Data[ /* Bio->sglist.nbuffers */ ];
+    iovec Data[/* Bio->sglist.nbuffers */];
 
     static TAioRequestHolder CreateNew(
         size_t bufferCount,
@@ -94,7 +94,8 @@ struct TAioSubRequest: public iocb
     [[nodiscard]] TAioCompoundRequestHolder TakeParentRequest();
 
 private:
-    TAioSubRequest() = default;;
+    TAioSubRequest() = default;
+    ;
 };
 
 // Cross-device request shared info.

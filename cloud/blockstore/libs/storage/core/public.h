@@ -10,8 +10,8 @@
 namespace NCloud::NBlockStore {
 
 namespace NProto {
-    class TPartitionConfig;
-    class TStorageServiceConfig;
+class TPartitionConfig;
+class TStorageServiceConfig;
 }   // namespace NProto
 
 namespace NStorage {

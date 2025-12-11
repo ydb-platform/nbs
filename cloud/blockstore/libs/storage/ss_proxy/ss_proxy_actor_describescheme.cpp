@@ -7,7 +7,6 @@
 #include <cloud/storage/core/libs/common/helpers.h>
 
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -84,10 +83,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeSchemeActor::TDescribeSchemeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
-        TString path,
-        TActorId pathDescriptionBackup)
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr config,
+    TString path,
+    TActorId pathDescriptionBackup)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , Path(std::move(path))
@@ -169,8 +168,8 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
         RequestInfo->CallContext->RequestId);
 
     if (HasError(error)) {
-        auto status =
-            static_cast<NKikimrScheme::EStatus>(STATUS_FROM_CODE(error.GetCode()));
+        auto status = static_cast<NKikimrScheme::EStatus>(
+            STATUS_FROM_CODE(error.GetCode()));
 
         if (status == NKikimrScheme::StatusNotAvailable) {
             error.SetCode(E_REJECTED);
@@ -187,11 +186,10 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
     }
 
     if (PathDescriptionBackup) {
-        auto updateRequest =
-            std::make_unique<TEvSSProxyPrivate::TEvUpdatePathDescriptionBackupRequest>(
-                record.GetPath(),
-                record.GetPathDescription()
-            );
+        auto updateRequest = std::make_unique<
+            TEvSSProxyPrivate::TEvUpdatePathDescriptionBackupRequest>(
+            record.GetPath(),
+            record.GetPathDescription());
         NCloud::Send(ctx, PathDescriptionBackup, std::move(updateRequest));
     }
 
@@ -315,8 +313,12 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
 STFUNC(TDescribeSchemeActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSchemeShard::TEvDescribeSchemeResult, HandleDescribeSchemeResult);
-        HFunc(TEvTxProxySchemeCache::TEvNavigateKeySetResult, HandleDescribeSchemeResult);
+        HFunc(
+            TEvSchemeShard::TEvDescribeSchemeResult,
+            HandleDescribeSchemeResult);
+        HFunc(
+            TEvTxProxySchemeCache::TEvNavigateKeySetResult,
+            HandleDescribeSchemeResult);
 
         default:
             HandleUnexpectedEvent(
@@ -337,10 +339,8 @@ void TSSProxyActor::HandleDescribeScheme(
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     NCloud::Register<TDescribeSchemeActor>(
         ctx,

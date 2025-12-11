@@ -10,8 +10,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestFileIOService
-    : IFileIOService
+struct TTestFileIOService: IFileIOService
 {
     int Started = 0;
     int Stopped = 0;
@@ -77,8 +76,7 @@ struct TTestFileIOService
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestProvider
-    : IFileIOServiceProvider
+struct TTestProvider: IFileIOServiceProvider
 {
     int Started = 0;
     int Stopped = 0;
@@ -113,8 +111,7 @@ struct TTestProvider
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestFactory final
-    : public IFileIOServiceFactory
+struct TTestFactory final: public IFileIOServiceFactory
 {
 private:
     TTestProvider& Provider;

@@ -9,5 +9,6 @@ NKikimr::TCompatibilityInfo::MakeCurrent()
 
     return TCurrentConstructor{
         .Application = "nbs",
-    }.ToPB();
+    }
+        .ToPB();
 }

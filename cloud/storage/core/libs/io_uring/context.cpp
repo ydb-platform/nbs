@@ -105,7 +105,9 @@ NProto::TError ApplyAffinityToKernelWorkers(io_uring* ring)
 
     ret = io_uring_register_iowq_aff(ring, sizeof(cpuset), &cpuset);
     if (ret < 0) {
-        return MakeSystemError(-ret, "failed to call io_uring_register_iowq_aff");
+        return MakeSystemError(
+            -ret,
+            "failed to call io_uring_register_iowq_aff");
     }
 
     return {};
@@ -144,11 +146,10 @@ NProto::TError InitRing(io_uring* ring, ui32 entries, io_uring* wqOwner)
 
 TContext::TContext(TParams params)
     : SubmissionThread(CreateThreadPool(params.SubmissionThreadName, 1))
-    , CompletionThread(
-          std::bind_front(
-              &TContext::CompletionThreadProc,
-              this,
-              std::move(params.CompletionThreadName)))
+    , CompletionThread(std::bind_front(
+          &TContext::CompletionThreadProc,
+          this,
+          std::move(params.CompletionThreadName)))
     , PropagateAffinityToKernelWorkers(params.PropagateAffinityToKernelWorkers)
 {
     const auto error = InitRing(
@@ -241,7 +242,8 @@ void TContext::AsyncIO(
 
 void TContext::AsyncNOP(TFileIOCompletion* completion, ui32 flags)
 {
-    SubmissionThread->ExecuteSimple([=, this] { SubmitNOP(completion, flags); });
+    SubmissionThread->ExecuteSimple([=, this]
+                                    { SubmitNOP(completion, flags); });
 }
 
 void TContext::PostCompletion(TFileIOCompletion* completion, int res)

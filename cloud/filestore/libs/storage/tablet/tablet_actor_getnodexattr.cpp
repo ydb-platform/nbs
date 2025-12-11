@@ -32,23 +32,22 @@ void TIndexTabletActor::HandleGetNodeXAttr(
     const TEvService::TEvGetNodeXAttrRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!AcceptRequest<TEvService::TGetNodeXAttrMethod>(ev, ctx, ValidateRequest)) {
+    if (!AcceptRequest<TEvService::TGetNodeXAttrMethod>(
+            ev,
+            ctx,
+            ValidateRequest))
+    {
         return;
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TGetNodeXAttrMethod>(*requestInfo);
 
-    ExecuteTx<TGetNodeXAttr>(
-        ctx,
-        std::move(requestInfo),
-        msg->Record);
+    ExecuteTx<TGetNodeXAttr>(ctx, std::move(requestInfo), msg->Record);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -59,10 +58,8 @@ bool TIndexTabletActor::ValidateTx_GetNodeXAttr(
 {
     Y_UNUSED(ctx);
 
-    auto* session = FindSession(
-        args.ClientId,
-        args.SessionId,
-        args.SessionSeqNo);
+    auto* session =
+        FindSession(args.ClientId, args.SessionId, args.SessionSeqNo);
     if (!session) {
         args.Error = ErrorInvalidSession(
             args.ClientId,
@@ -118,7 +115,8 @@ void TIndexTabletActor::CompleteTx_GetNodeXAttr(
 {
     RemoveTransaction(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvGetNodeXAttrResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvGetNodeXAttrResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         TABLET_VERIFY(args.Attr);
         response->Record.SetValue(args.Attr->Value);

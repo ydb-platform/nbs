@@ -58,7 +58,8 @@ void TIndexTabletActor::HandleSetNodeAttr(
         }
     }
 
-    auto validator = [&] (const NProto::TSetNodeAttrRequest& request) {
+    auto validator = [&](const NProto::TSetNodeAttrRequest& request)
+    {
         return ValidateRequest(
             request,
             GetBlockSize(),
@@ -68,18 +69,13 @@ void TIndexTabletActor::HandleSetNodeAttr(
     if (!AcceptRequest<TEvService::TSetNodeAttrMethod>(ev, ctx, validator)) {
         return;
     }
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TSetNodeAttrMethod>(*requestInfo);
 
-    ExecuteTx<TSetNodeAttr>(
-        ctx,
-        std::move(requestInfo),
-        msg->Record);
+    ExecuteTx<TSetNodeAttr>(ctx, std::move(requestInfo), msg->Record);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -204,7 +200,8 @@ void TIndexTabletActor::CompleteTx_SetNodeAttr(
 
     RemoveTransaction(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvSetNodeAttrResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvSetNodeAttrResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         TABLET_VERIFY(args.Node);
 

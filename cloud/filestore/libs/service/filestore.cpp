@@ -4,8 +4,8 @@
 #include <util/string/builder.h>
 
 // WARNING: DO NOT REPLACE THIS INCLUDE AFTER <fcntl.h>
-#include <linux/falloc.h>
 #include <fcntl.h>
+#include <linux/falloc.h>
 #include <linux/fs.h>
 
 #include <array>
@@ -24,35 +24,39 @@ using TFlag2Proto = std::pair<int, ui32>;
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr std::array SUPPORTED_HANDLE_FLAGS = {
-    TFlag2Proto{O_CREAT,     TCreateHandleRequest::E_CREATE},
-    TFlag2Proto{O_EXCL,      TCreateHandleRequest::E_EXCLUSIVE},
-    TFlag2Proto{O_APPEND,    TCreateHandleRequest::E_APPEND},
-    TFlag2Proto{O_TRUNC,     TCreateHandleRequest::E_TRUNCATE},
+    TFlag2Proto{O_CREAT, TCreateHandleRequest::E_CREATE},
+    TFlag2Proto{O_EXCL, TCreateHandleRequest::E_EXCLUSIVE},
+    TFlag2Proto{O_APPEND, TCreateHandleRequest::E_APPEND},
+    TFlag2Proto{O_TRUNC, TCreateHandleRequest::E_TRUNCATE},
     TFlag2Proto{O_DIRECTORY, TCreateHandleRequest::E_DIRECTORY},
-    TFlag2Proto{O_NOATIME,   TCreateHandleRequest::E_NOATIME},
-    TFlag2Proto{O_NOFOLLOW,  TCreateHandleRequest::E_NOFOLLOW},
-    TFlag2Proto{O_NONBLOCK,  TCreateHandleRequest::E_NONBLOCK},
-    TFlag2Proto{O_PATH,      TCreateHandleRequest::E_PATH},
-    TFlag2Proto{O_DIRECT,    TCreateHandleRequest::E_DIRECT},
+    TFlag2Proto{O_NOATIME, TCreateHandleRequest::E_NOATIME},
+    TFlag2Proto{O_NOFOLLOW, TCreateHandleRequest::E_NOFOLLOW},
+    TFlag2Proto{O_NONBLOCK, TCreateHandleRequest::E_NONBLOCK},
+    TFlag2Proto{O_PATH, TCreateHandleRequest::E_PATH},
+    TFlag2Proto{O_DIRECT, TCreateHandleRequest::E_DIRECT},
 };
 
 constexpr std::array SUPPORTED_RENAME_FLAGS = {
-    TFlag2Proto{RENAME_EXCHANGE,   TRenameNodeRequest::F_EXCHANGE},
-    TFlag2Proto{RENAME_NOREPLACE,  TRenameNodeRequest::F_NOREPLACE},
+    TFlag2Proto{RENAME_EXCHANGE, TRenameNodeRequest::F_EXCHANGE},
+    TFlag2Proto{RENAME_NOREPLACE, TRenameNodeRequest::F_NOREPLACE},
 };
 
 constexpr std::array SUPPORTED_FALLOCATE_FLAGS = {
-    TFlag2Proto{FALLOC_FL_KEEP_SIZE,      TAllocateDataRequest::F_KEEP_SIZE},
-    TFlag2Proto{FALLOC_FL_PUNCH_HOLE,     TAllocateDataRequest::F_PUNCH_HOLE},
-    TFlag2Proto{FALLOC_FL_COLLAPSE_RANGE, TAllocateDataRequest::F_COLLAPSE_RANGE},
-    TFlag2Proto{FALLOC_FL_ZERO_RANGE,     TAllocateDataRequest::F_ZERO_RANGE},
-    TFlag2Proto{FALLOC_FL_INSERT_RANGE,   TAllocateDataRequest::F_INSERT_RANGE},
-    TFlag2Proto{FALLOC_FL_UNSHARE_RANGE,  TAllocateDataRequest::F_UNSHARE_RANGE},
+    TFlag2Proto{FALLOC_FL_KEEP_SIZE, TAllocateDataRequest::F_KEEP_SIZE},
+    TFlag2Proto{FALLOC_FL_PUNCH_HOLE, TAllocateDataRequest::F_PUNCH_HOLE},
+    TFlag2Proto{
+        FALLOC_FL_COLLAPSE_RANGE,
+        TAllocateDataRequest::F_COLLAPSE_RANGE},
+    TFlag2Proto{FALLOC_FL_ZERO_RANGE, TAllocateDataRequest::F_ZERO_RANGE},
+    TFlag2Proto{FALLOC_FL_INSERT_RANGE, TAllocateDataRequest::F_INSERT_RANGE},
+    TFlag2Proto{FALLOC_FL_UNSHARE_RANGE, TAllocateDataRequest::F_UNSHARE_RANGE},
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui32 SystemFlagsToRequest(int flags, std::span<const TFlag2Proto> supportedFlags)
+ui32 SystemFlagsToRequest(
+    int flags,
+    std::span<const TFlag2Proto> supportedFlags)
 {
     ui32 value = 0;
     for (const auto& [flag, proto]: supportedFlags) {
@@ -64,7 +68,9 @@ ui32 SystemFlagsToRequest(int flags, std::span<const TFlag2Proto> supportedFlags
     return value;
 }
 
-int RequestFlagsToSystem(ui32 flags, std::span<const TFlag2Proto> supportedFlags)
+int RequestFlagsToSystem(
+    ui32 flags,
+    std::span<const TFlag2Proto> supportedFlags)
 {
     int value = 0;
     for (const auto& [flag, proto]: supportedFlags) {
@@ -79,9 +85,13 @@ template <typename TRequest>
 TString RequestFlagsToString(ui32 flags)
 {
     TStringBuilder ss;
-    for (ui32 flag = TRequest::EFlags_MIN; flag < TRequest::EFlags_ARRAYSIZE; ++flag) {
+    for (ui32 flag = TRequest::EFlags_MIN; flag < TRequest::EFlags_ARRAYSIZE;
+         ++flag)
+    {
         if (HasFlag(flags, flag)) {
-            ss << TRequest::EFlags_Name(static_cast<typename TRequest::EFlags>(flag)) << "|";
+            ss << TRequest::EFlags_Name(
+                      static_cast<typename TRequest::EFlags>(flag))
+               << "|";
         }
     }
     if (ss.EndsWith("|")) {
@@ -102,7 +112,8 @@ std::pair<ui32, int> SystemFlagsToHandle(int flags)
     ui32 value = SystemFlagsToRequest(flags, SUPPORTED_HANDLE_FLAGS);
 
     if (mode == O_RDWR) {
-        value |= ProtoFlag(TCreateHandleRequest::E_READ) | ProtoFlag(TCreateHandleRequest::E_WRITE);
+        value |= ProtoFlag(TCreateHandleRequest::E_READ) |
+                 ProtoFlag(TCreateHandleRequest::E_WRITE);
     } else if (mode == O_WRONLY) {
         value |= ProtoFlag(TCreateHandleRequest::E_WRITE);
     } else if (mode == O_RDONLY) {
@@ -133,7 +144,6 @@ int HandleFlagsToSystem(ui32 flags)
 TString HandleFlagsToString(ui32 flags)
 {
     return RequestFlagsToString<TCreateHandleRequest>(flags);
-
 }
 
 ////////////////////////////////////////////////////////////////////////////////

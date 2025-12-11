@@ -110,8 +110,8 @@ private:
 
 public:
     TTraceServiceClient(
-            ILoggingServicePtr logging,
-            NProto::TGrpcClientConfig config)
+        ILoggingServicePtr logging,
+        NProto::TGrpcClientConfig config)
         : Logging(std::move(logging))
         , Config(std::move(config))
         , Log(Logging->CreateLog("BLOCKSTORE_SERVER"))

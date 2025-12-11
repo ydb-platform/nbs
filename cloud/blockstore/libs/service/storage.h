@@ -22,11 +22,13 @@ struct IStorage
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TZeroBlocksRequest> request) = 0;
 
-    virtual NThreading::TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
+    virtual NThreading::TFuture<NProto::TReadBlocksLocalResponse>
+    ReadBlocksLocal(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadBlocksLocalRequest> request) = 0;
 
-    virtual NThreading::TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
+    virtual NThreading::TFuture<NProto::TWriteBlocksLocalResponse>
+    WriteBlocksLocal(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) = 0;
 

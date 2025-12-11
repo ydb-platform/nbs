@@ -38,10 +38,9 @@ constexpr TDuration ReportInterval = TDuration::Seconds(5);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDummyThreadPool final
-    : public ITaskQueue
+class TDummyThreadPool final: public ITaskQueue
 {
-    struct TWorkerThread : ISimpleThread
+    struct TWorkerThread: ISimpleThread
     {
         TDummyThreadPool& ThreadPool;
         TString Name;
@@ -128,7 +127,9 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ITaskQueuePtr CreateDummyThreadPool(const TString& threadName, size_t numWorkers)
+ITaskQueuePtr CreateDummyThreadPool(
+    const TString& threadName,
+    size_t numWorkers)
 {
     return std::make_shared<TDummyThreadPool>(threadName, numWorkers);
 }
@@ -168,9 +169,7 @@ struct TOptions
             .DefaultValue(ToString(BusyWork))
             .StoreResult(&BusyWork);
 
-        opts.AddLongOption("dummy")
-            .NoArgument()
-            .SetFlag(&DummyQueue);
+        opts.AddLongOption("dummy").NoArgument().SetFlag(&DummyQueue);
 
         TOptsParseResultException res(&opts, argc, argv);
     }
@@ -182,7 +181,7 @@ class TStats
 {
 private:
     TAtomic RequestCount = 0;
-    THistogramBase RequestTime { 1, 10000000, 3 };
+    THistogramBase RequestTime{1, 10000000, 3};
 
 public:
     void ReportStats(ui64 cyclesCount)
@@ -207,25 +206,27 @@ private:
     static void DumpHistogram(const THistogramBase& hist)
     {
         static const TVector<TPercentileDesc> Percentiles = {
-            { 0.01,   "    1" },
-            { 0.10,   "   10" },
-            { 0.25,   "   25" },
-            { 0.50,   "   50" },
-            { 0.75,   "   75" },
-            { 0.90,   "   90" },
-            { 0.95,   "   95" },
-            { 0.98,   "   98" },
-            { 0.99,   "   99" },
-            { 0.995,  " 99.5" },
-            { 0.999,  " 99.9" },
-            { 0.9999, "99.99" },
-            { 1.0000, "100.0" },
+            {0.01, "    1"},
+            {0.10, "   10"},
+            {0.25, "   25"},
+            {0.50, "   50"},
+            {0.75, "   75"},
+            {0.90, "   90"},
+            {0.95, "   95"},
+            {0.98, "   98"},
+            {0.99, "   99"},
+            {0.995, " 99.5"},
+            {0.999, " 99.9"},
+            {0.9999, "99.99"},
+            {1.0000, "100.0"},
         };
 
         auto cyclesPerNanoSecond = GetCyclesPerMillisecond() / 1000000.;
         for (const auto& [p, name]: Percentiles) {
             Cout << name << " : "
-                 << round(hist.GetValueAtPercentile(100 * p) / cyclesPerNanoSecond)
+                 << round(
+                        hist.GetValueAtPercentile(100 * p) /
+                        cyclesPerNanoSecond)
                  << Endl;
         }
     }
@@ -233,8 +234,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TClientThread final
-    : public ISimpleThread
+class TClientThread final: public ISimpleThread
 {
     struct Y_CACHE_ALIGNED TRequest
     {
@@ -256,15 +256,16 @@ private:
 
 public:
     TClientThread(
-            TString name,
-            ITaskQueuePtr threadPool,
-            TOptionsPtr options,
-            TStatsPtr stats)
+        TString name,
+        ITaskQueuePtr threadPool,
+        TOptionsPtr options,
+        TStatsPtr stats)
         : Name(std::move(name))
         , ThreadPool(std::move(threadPool))
         , Options(std::move(options))
         , Stats(std::move(stats))
-        , SpinCycles(DurationToCyclesSafe(TDuration::MicroSeconds(Options->BusyWork)))
+        , SpinCycles(
+              DurationToCyclesSafe(TDuration::MicroSeconds(Options->BusyWork)))
         , Requests(Options->IoDepth)
     {}
 
@@ -303,9 +304,7 @@ private:
         AtomicSet(request.RecvTs, 0);
         AtomicSet(request.SendTs, GetCycleCount());
 
-        ThreadPool->ExecuteSimple([&] {
-            HandleRequest(request);
-        });
+        ThreadPool->ExecuteSimple([&] { HandleRequest(request); });
     }
 
     void HandleRequest(TRequest& request)
@@ -313,7 +312,8 @@ private:
         ui64 recvTs = GetCycleCount();
 
         if (SpinCycles) {
-            ui64 deadLine = NDateTimeHelpers::SumWithSaturation(recvTs, SpinCycles);
+            ui64 deadLine =
+                NDateTimeHelpers::SumWithSaturation(recvTs, SpinCycles);
 
             size_t spin = 0;
             for (;;) {
@@ -355,10 +355,10 @@ private:
 
 public:
     TClientThreads(
-            const TString& threadName,
-            ITaskQueuePtr threadPool,
-            TOptionsPtr options,
-            TStatsPtr stats)
+        const TString& threadName,
+        ITaskQueuePtr threadPool,
+        TOptionsPtr options,
+        TStatsPtr stats)
         : Threads(options->ClientThreads)
     {
         int i = 1;
@@ -407,9 +407,10 @@ public:
     {
         auto stats = std::make_shared<TStats>();
 
-        auto threadPool = options->DummyQueue
-            ? CreateDummyThreadPool("srv", options->ServerThreads)
-            : CreateThreadPool("srv", options->ServerThreads);
+        auto threadPool =
+            options->DummyQueue
+                ? CreateDummyThreadPool("srv", options->ServerThreads)
+                : CreateThreadPool("srv", options->ServerThreads);
 
         auto clientThreads = TClientThreads("cli", threadPool, options, stats);
 

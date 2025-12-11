@@ -13,7 +13,9 @@ void TPartitionActor::HandleWaitReady(
     const TActorContext& ctx)
 {
     if (CurrentState != STATE_WORK) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             "[%lu] WaitReady request delayed until partition is ready",
             TabletID());
 
@@ -22,11 +24,15 @@ void TPartitionActor::HandleWaitReady(
             ev->Cookie,
             ev->Get()->CallContext);
 
-        PendingRequests.emplace_back(NActors::IEventHandlePtr(ev.Release()), requestInfo);
+        PendingRequests.emplace_back(
+            NActors::IEventHandlePtr(ev.Release()),
+            requestInfo);
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] Received WaitReady request",
         TabletID());
 

@@ -13,57 +13,57 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS(xxx, ...)                        \
-    xxx(InitSchema,                         __VA_ARGS__)                       \
-    xxx(LoadState,                          __VA_ARGS__)                       \
-    xxx(AddDisk,                            __VA_ARGS__)                       \
-    xxx(RemoveDisk,                         __VA_ARGS__)                       \
-    xxx(AddAgent,                           __VA_ARGS__)                       \
-    xxx(RemoveAgent,                        __VA_ARGS__)                       \
-    xxx(UpdateConfig,                       __VA_ARGS__)                       \
-    xxx(CleanupDevices,                     __VA_ARGS__)                       \
-    xxx(CreatePlacementGroup,               __VA_ARGS__)                       \
-    xxx(DestroyPlacementGroup,              __VA_ARGS__)                       \
-    xxx(AlterPlacementGroupMembership,      __VA_ARGS__)                       \
-    xxx(DeleteBrokenDisks,                  __VA_ARGS__)                       \
-    xxx(AddNotifiedDisks,                   __VA_ARGS__)                       \
-    xxx(DeleteNotifiedDisks,                __VA_ARGS__)                       \
-    xxx(UpdateAgentState,                   __VA_ARGS__)                       \
-    xxx(UpdateDeviceState,                  __VA_ARGS__)                       \
-    xxx(ReplaceDevice,                      __VA_ARGS__)                       \
-    xxx(UpdateCmsHostDeviceState,           __VA_ARGS__)                       \
-    xxx(UpdateCmsHostState,                 __VA_ARGS__)                       \
-    xxx(DeleteDiskStateUpdates,             __VA_ARGS__)                       \
-    xxx(WritableState,                      __VA_ARGS__)                       \
-    xxx(StartMigration,                     __VA_ARGS__)                       \
-    xxx(StartForceMigration,                __VA_ARGS__)                       \
-    xxx(FinishMigration,                    __VA_ARGS__)                       \
-    xxx(MarkDiskForCleanup,                 __VA_ARGS__)                       \
-    xxx(BackupDiskRegistryState,            __VA_ARGS__)                       \
-    xxx(DeleteUserNotifications,            __VA_ARGS__)                       \
-    xxx(SetUserId,                          __VA_ARGS__)                       \
-    xxx(FinishVolumeConfigUpdate,           __VA_ARGS__)                       \
-    xxx(UpdateDiskBlockSize,                __VA_ARGS__)                       \
-    xxx(UpdateDiskReplicaCount,             __VA_ARGS__)                       \
-    xxx(MarkReplacementDevice,              __VA_ARGS__)                       \
-    xxx(SuspendDevice,                      __VA_ARGS__)                       \
-    xxx(ResumeDevices,                      __VA_ARGS__)                       \
-    xxx(UpdatePlacementGroupSettings,       __VA_ARGS__)                       \
-    xxx(RestoreDiskRegistryState,           __VA_ARGS__)                       \
-    xxx(CreateDiskFromDevices,              __VA_ARGS__)                       \
-    xxx(ChangeDiskDevice,                   __VA_ARGS__)                       \
-    xxx(RestoreDiskRegistryPart,            __VA_ARGS__)                       \
-    xxx(ProcessAutomaticallyReplacedDevices,__VA_ARGS__)                       \
-    xxx(UpdateDiskRegistryAgentListParams,  __VA_ARGS__)                       \
-    xxx(CleanupExpiredAgentListParams,      __VA_ARGS__)                       \
-    xxx(SwitchAgentDisksToReadOnly,         __VA_ARGS__)                       \
-    xxx(AllocateCheckpoint,                 __VA_ARGS__)                       \
-    xxx(DeallocateCheckpoint,               __VA_ARGS__)                       \
-    xxx(SetCheckpointDataState,             __VA_ARGS__)                       \
-    xxx(PurgeHostCms,                       __VA_ARGS__)                       \
-    xxx(RemoveOrphanDevices,                __VA_ARGS__)                       \
-    xxx(AddOutdatedLaggingDevices,          __VA_ARGS__)                       \
-// BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
+#define BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS(xxx, ...)   \
+    xxx(InitSchema, __VA_ARGS__)                          \
+    xxx(LoadState, __VA_ARGS__)                           \
+    xxx(AddDisk, __VA_ARGS__)                             \
+    xxx(RemoveDisk, __VA_ARGS__)                          \
+    xxx(AddAgent, __VA_ARGS__)                            \
+    xxx(RemoveAgent, __VA_ARGS__)                         \
+    xxx(UpdateConfig, __VA_ARGS__)                        \
+    xxx(CleanupDevices, __VA_ARGS__)                      \
+    xxx(CreatePlacementGroup, __VA_ARGS__)                \
+    xxx(DestroyPlacementGroup, __VA_ARGS__)               \
+    xxx(AlterPlacementGroupMembership, __VA_ARGS__)       \
+    xxx(DeleteBrokenDisks, __VA_ARGS__)                   \
+    xxx(AddNotifiedDisks, __VA_ARGS__)                    \
+    xxx(DeleteNotifiedDisks, __VA_ARGS__)                 \
+    xxx(UpdateAgentState, __VA_ARGS__)                    \
+    xxx(UpdateDeviceState, __VA_ARGS__)                   \
+    xxx(ReplaceDevice, __VA_ARGS__)                       \
+    xxx(UpdateCmsHostDeviceState, __VA_ARGS__)            \
+    xxx(UpdateCmsHostState, __VA_ARGS__)                  \
+    xxx(DeleteDiskStateUpdates, __VA_ARGS__)              \
+    xxx(WritableState, __VA_ARGS__)                       \
+    xxx(StartMigration, __VA_ARGS__)                      \
+    xxx(StartForceMigration, __VA_ARGS__)                 \
+    xxx(FinishMigration, __VA_ARGS__)                     \
+    xxx(MarkDiskForCleanup, __VA_ARGS__)                  \
+    xxx(BackupDiskRegistryState, __VA_ARGS__)             \
+    xxx(DeleteUserNotifications, __VA_ARGS__)             \
+    xxx(SetUserId, __VA_ARGS__)                           \
+    xxx(FinishVolumeConfigUpdate, __VA_ARGS__)            \
+    xxx(UpdateDiskBlockSize, __VA_ARGS__)                 \
+    xxx(UpdateDiskReplicaCount, __VA_ARGS__)              \
+    xxx(MarkReplacementDevice, __VA_ARGS__)               \
+    xxx(SuspendDevice, __VA_ARGS__)                       \
+    xxx(ResumeDevices, __VA_ARGS__)                       \
+    xxx(UpdatePlacementGroupSettings, __VA_ARGS__)        \
+    xxx(RestoreDiskRegistryState, __VA_ARGS__)            \
+    xxx(CreateDiskFromDevices, __VA_ARGS__)               \
+    xxx(ChangeDiskDevice, __VA_ARGS__)                    \
+    xxx(RestoreDiskRegistryPart, __VA_ARGS__)             \
+    xxx(ProcessAutomaticallyReplacedDevices, __VA_ARGS__) \
+    xxx(UpdateDiskRegistryAgentListParams, __VA_ARGS__)   \
+    xxx(CleanupExpiredAgentListParams, __VA_ARGS__)       \
+    xxx(SwitchAgentDisksToReadOnly, __VA_ARGS__)          \
+    xxx(AllocateCheckpoint, __VA_ARGS__)                  \
+    xxx(DeallocateCheckpoint, __VA_ARGS__)                \
+    xxx(SetCheckpointDataState, __VA_ARGS__)              \
+    xxx(PurgeHostCms, __VA_ARGS__)                        \
+    xxx(RemoveOrphanDevices, __VA_ARGS__)                 \
+    xxx(AddOutdatedLaggingDevices, __VA_ARGS__)           \
+    // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -138,18 +138,18 @@ struct TTxDiskRegistry
         bool MuteIOErrors = false;
 
         TAddDisk(
-                TRequestInfoPtr requestInfo,
-                TString diskId,
-                TString cloudId,
-                TString folderId,
-                TString placementGroupId,
-                ui32 placementPartitionIndex,
-                ui32 blockSize,
-                ui64 blocksCount,
-                ui32 replicaCount,
-                TVector<TString> agentIds,
-                TString poolName,
-                NProto::EStorageMediaKind mediaKind)
+            TRequestInfoPtr requestInfo,
+            TString diskId,
+            TString cloudId,
+            TString folderId,
+            TString placementGroupId,
+            ui32 placementPartitionIndex,
+            ui32 blockSize,
+            ui64 blocksCount,
+            ui32 replicaCount,
+            TVector<TString> agentIds,
+            TString poolName,
+            NProto::EStorageMediaKind mediaKind)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , CloudId(std::move(cloudId))
@@ -190,10 +190,7 @@ struct TTxDiskRegistry
 
         NProto::TError Error;
 
-        TRemoveDisk(
-                TRequestInfoPtr requestInfo,
-                TString diskId,
-                bool sync)
+        TRemoveDisk(TRequestInfoPtr requestInfo, TString diskId, bool sync)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , Sync(sync)
@@ -222,10 +219,10 @@ struct TTxDiskRegistry
         TVector<TString> DevicesToDisableIO;
 
         TAddAgent(
-                TRequestInfoPtr requestInfo,
-                NProto::TAgentConfig config,
-                TInstant timestamp,
-                NActors::TActorId registerActorId)
+            TRequestInfoPtr requestInfo,
+            NProto::TAgentConfig config,
+            TInstant timestamp,
+            NActors::TActorId registerActorId)
             : RequestInfo(std::move(requestInfo))
             , Config(std::move(config))
             , Timestamp(timestamp)
@@ -255,9 +252,9 @@ struct TTxDiskRegistry
         TVector<TString> AffectedDisks;
 
         TRemoveAgent(
-                TRequestInfoPtr requestInfo,
-                ui32 nodeId,
-                TInstant timestamp)
+            TRequestInfoPtr requestInfo,
+            ui32 nodeId,
+            TInstant timestamp)
             : RequestInfo(std::move(requestInfo))
             , NodeId(nodeId)
             , Timestamp(timestamp)
@@ -285,9 +282,9 @@ struct TTxDiskRegistry
         TVector<TString> AffectedDisks;
 
         TUpdateConfig(
-                TRequestInfoPtr requestInfo,
-                NProto::TDiskRegistryConfig config,
-                bool ignoreVersion)
+            TRequestInfoPtr requestInfo,
+            NProto::TDiskRegistryConfig config,
+            bool ignoreVersion)
             : RequestInfo(std::move(requestInfo))
             , Config(std::move(config))
             , IgnoreVersion(ignoreVersion)
@@ -312,8 +309,8 @@ struct TTxDiskRegistry
         TVector<TString> SyncDeallocatedDisks;
 
         explicit TCleanupDevices(
-                TRequestInfoPtr requestInfo,
-                TVector<TString> devices)
+            TRequestInfoPtr requestInfo,
+            TVector<TString> devices)
             : RequestInfo(std::move(requestInfo))
             , Devices(std::move(devices))
         {}
@@ -337,10 +334,10 @@ struct TTxDiskRegistry
         NProto::TError Error;
 
         explicit TCreatePlacementGroup(
-                TRequestInfoPtr requestInfo,
-                TString groupId,
-                NProto::EPlacementStrategy placementStrategy,
-                ui32 placementPartitionCount)
+            TRequestInfoPtr requestInfo,
+            TString groupId,
+            NProto::EPlacementStrategy placementStrategy,
+            ui32 placementPartitionCount)
             : RequestInfo(std::move(requestInfo))
             , GroupId(std::move(groupId))
             , PlacementStrategy(placementStrategy)
@@ -365,8 +362,8 @@ struct TTxDiskRegistry
         TVector<TString> AffectedDisks;
 
         explicit TDestroyPlacementGroup(
-                TRequestInfoPtr requestInfo,
-                TString groupId)
+            TRequestInfoPtr requestInfo,
+            TString groupId)
             : RequestInfo(std::move(requestInfo))
             , GroupId(std::move(groupId))
         {}
@@ -395,12 +392,12 @@ struct TTxDiskRegistry
         NProto::TError Error;
 
         explicit TAlterPlacementGroupMembership(
-                TRequestInfoPtr requestInfo,
-                TString groupId,
-                ui32 placementPartitionIndex,
-                ui32 configVersion,
-                TVector<TString> diskIdsToAdd,
-                TVector<TString> diskIdsToRemove)
+            TRequestInfoPtr requestInfo,
+            TString groupId,
+            ui32 placementPartitionIndex,
+            ui32 configVersion,
+            TVector<TString> diskIdsToAdd,
+            TVector<TString> diskIdsToRemove)
             : RequestInfo(std::move(requestInfo))
             , GroupId(std::move(groupId))
             , PlacementPartitionIndex(placementPartitionIndex)
@@ -424,9 +421,7 @@ struct TTxDiskRegistry
         const TRequestInfoPtr RequestInfo;
         const TVector<TString> Disks;
 
-        TDeleteBrokenDisks(
-                TRequestInfoPtr requestInfo,
-                TVector<TString> disks)
+        TDeleteBrokenDisks(TRequestInfoPtr requestInfo, TVector<TString> disks)
             : RequestInfo(std::move(requestInfo))
             , Disks(std::move(disks))
         {}
@@ -446,18 +441,14 @@ struct TTxDiskRegistry
         const TRequestInfoPtr RequestInfo;
         const TVector<TString> DiskIds;
 
-        TAddNotifiedDisks(
-                TRequestInfoPtr requestInfo,
-                TVector<TString> diskIds)
+        TAddNotifiedDisks(TRequestInfoPtr requestInfo, TVector<TString> diskIds)
             : RequestInfo(std::move(requestInfo))
             , DiskIds(std::move(diskIds))
         {}
 
-        TAddNotifiedDisks(
-                TRequestInfoPtr requestInfo,
-                TString diskId)
+        TAddNotifiedDisks(TRequestInfoPtr requestInfo, TString diskId)
             : RequestInfo(std::move(requestInfo))
-            , DiskIds({ std::move(diskId) })
+            , DiskIds({std::move(diskId)})
         {}
 
         void Clear()
@@ -476,8 +467,8 @@ struct TTxDiskRegistry
         TVector<TDiskNotificationResult> DiskNotifications;
 
         TDeleteNotifiedDisks(
-                TRequestInfoPtr requestInfo,
-                TVector<TDiskNotificationResult> diskNotifications)
+            TRequestInfoPtr requestInfo,
+            TVector<TDiskNotificationResult> diskNotifications)
             : RequestInfo(std::move(requestInfo))
             , DiskNotifications(std::move(diskNotifications))
         {}
@@ -497,9 +488,7 @@ struct TTxDiskRegistry
         const TRequestInfoPtr RequestInfo;
         const ui64 MaxSeqNo;
 
-        TDeleteDiskStateUpdates(
-                TRequestInfoPtr requestInfo,
-                ui64 maxSeqNo)
+        TDeleteDiskStateUpdates(TRequestInfoPtr requestInfo, ui64 maxSeqNo)
             : RequestInfo(std::move(requestInfo))
             , MaxSeqNo(maxSeqNo)
         {}
@@ -527,12 +516,12 @@ struct TTxDiskRegistry
         NProto::TError Error;
 
         TUpdateAgentState(
-                TRequestInfoPtr requestInfo,
-                TString agentId,
-                NProto::EAgentState state,
-                TInstant stateTs,
-                TString reason,
-                bool isDisableAgentRequest)
+            TRequestInfoPtr requestInfo,
+            TString agentId,
+            NProto::EAgentState state,
+            TInstant stateTs,
+            TString reason,
+            bool isDisableAgentRequest)
             : RequestInfo(std::move(requestInfo))
             , AgentId(std::move(agentId))
             , State(state)
@@ -564,11 +553,11 @@ struct TTxDiskRegistry
         NProto::TError Error;
 
         TUpdateDeviceState(
-                TRequestInfoPtr requestInfo,
-                TString deviceId,
-                NProto::EDeviceState state,
-                TInstant stateTs,
-                TString reason)
+            TRequestInfoPtr requestInfo,
+            TString deviceId,
+            NProto::EDeviceState state,
+            TInstant stateTs,
+            TString reason)
             : RequestInfo(std::move(requestInfo))
             , DeviceId(std::move(deviceId))
             , State(state)
@@ -598,11 +587,11 @@ struct TTxDiskRegistry
         NProto::TError Error;
 
         TReplaceDevice(
-                TRequestInfoPtr requestInfo,
-                TString diskId,
-                TString deviceId,
-                TString deviceReplacementId,
-                TInstant timestamp)
+            TRequestInfoPtr requestInfo,
+            TString diskId,
+            TString deviceId,
+            TString deviceReplacementId,
+            TInstant timestamp)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , DeviceId(std::move(deviceId))
@@ -635,12 +624,12 @@ struct TTxDiskRegistry
         TDuration Timeout;
 
         TUpdateCmsHostDeviceState(
-                TRequestInfoPtr requestInfo,
-                TString host,
-                TString path,
-                NProto::EDeviceState state,
-                bool shouldResumeDevice,
-                bool dryRun)
+            TRequestInfoPtr requestInfo,
+            TString host,
+            TString path,
+            NProto::EDeviceState state,
+            bool shouldResumeDevice,
+            bool dryRun)
             : RequestInfo(std::move(requestInfo))
             , Host(std::move(host))
             , Path(std::move(path))
@@ -673,10 +662,10 @@ struct TTxDiskRegistry
         TDuration Timeout;
 
         TUpdateCmsHostState(
-                TRequestInfoPtr requestInfo,
-                TString host,
-                NProto::EAgentState state,
-                bool dryRun)
+            TRequestInfoPtr requestInfo,
+            TString host,
+            NProto::EAgentState state,
+            bool dryRun)
             : RequestInfo(std::move(requestInfo))
             , Host(std::move(host))
             , State(state)
@@ -703,10 +692,7 @@ struct TTxDiskRegistry
         NProto::TError Error;
         TVector<TString> AffectedDisks;
 
-        TPurgeHostCms(
-                TRequestInfoPtr requestInfo,
-                TString host,
-                bool dryRun)
+        TPurgeHostCms(TRequestInfoPtr requestInfo, TString host, bool dryRun)
             : RequestInfo(std::move(requestInfo))
             , Host(std::move(host))
             , DryRun(dryRun)
@@ -730,9 +716,7 @@ struct TTxDiskRegistry
 
         NProto::TError Error;
 
-        TWritableState(
-                TRequestInfoPtr requestInfo,
-                bool state)
+        TWritableState(TRequestInfoPtr requestInfo, bool state)
             : RequestInfo(std::move(requestInfo))
             , State(state)
         {}
@@ -749,8 +733,8 @@ struct TTxDiskRegistry
 
     struct TFinishMigration
     {
-        using TMigrations = google::protobuf::RepeatedPtrField<
-            NProto::TDeviceMigrationIds>;
+        using TMigrations =
+            google::protobuf::RepeatedPtrField<NProto::TDeviceMigrationIds>;
 
         const TRequestInfoPtr RequestInfo;
 
@@ -761,10 +745,10 @@ struct TTxDiskRegistry
         NProto::TError Error;
 
         TFinishMigration(
-                TRequestInfoPtr requestInfo,
-                TString diskId,
-                TMigrations migrations,
-                TInstant timestamp)
+            TRequestInfoPtr requestInfo,
+            TString diskId,
+            TMigrations migrations,
+            TInstant timestamp)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , Migrations(std::move(migrations))
@@ -786,8 +770,7 @@ struct TTxDiskRegistry
         const TRequestInfoPtr RequestInfo;
         ui32 StartedDeviceMigrationsCount = 0;
 
-        explicit TStartMigration(
-                TRequestInfoPtr requestInfo)
+        explicit TStartMigration(TRequestInfoPtr requestInfo)
             : RequestInfo(std::move(requestInfo))
         {}
 
@@ -812,10 +795,10 @@ struct TTxDiskRegistry
         NProto::TError Error;
 
         TStartForceMigration(
-                TRequestInfoPtr requestInfo,
-                TString sourceDiskId,
-                TString sourceDeviceId,
-                TString targetDeviceId)
+            TRequestInfoPtr requestInfo,
+            TString sourceDiskId,
+            TString sourceDeviceId,
+            TString targetDeviceId)
             : RequestInfo(std::move(requestInfo))
             , SourceDiskId(std::move(sourceDiskId))
             , SourceDeviceId(std::move(sourceDeviceId))
@@ -839,9 +822,7 @@ struct TTxDiskRegistry
 
         NProto::TError Error;
 
-        TMarkDiskForCleanup(
-                TRequestInfoPtr requestInfo,
-                TString diskId)
+        TMarkDiskForCleanup(TRequestInfoPtr requestInfo, TString diskId)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
         {}
@@ -856,15 +837,14 @@ struct TTxDiskRegistry
     // BackupDiskRegistryState
     //
 
-    struct TBackupDiskRegistryState
-        : TLoadState
+    struct TBackupDiskRegistryState: TLoadState
     {
         const TString BackupFilePath;
 
         TBackupDiskRegistryState() = default;
         TBackupDiskRegistryState(
-                TRequestInfoPtr requestInfo,
-                TString backupFilePath)
+            TRequestInfoPtr requestInfo,
+            TString backupFilePath)
             : TLoadState{std::move(requestInfo)}
             , BackupFilePath{std::move(backupFilePath)}
         {}
@@ -884,8 +864,8 @@ struct TTxDiskRegistry
         TRestoreDiskRegistryState() = default;
 
         TRestoreDiskRegistryState(
-                TRequestInfoPtr requestInfo,
-                TDiskRegistryStateSnapshot newState)
+            TRequestInfoPtr requestInfo,
+            TDiskRegistryStateSnapshot newState)
             : RequestInfo{std::move(requestInfo)}
             , NewState{std::move(newState)}
         {}
@@ -912,9 +892,9 @@ struct TTxDiskRegistry
         TRestoreDiskRegistryPart() = default;
 
         TRestoreDiskRegistryPart(
-                TRequestInfoPtr requestInfo,
-                TRequestInfoPtr partRequestInfo,
-                TQueue<TFunction> operations)
+            TRequestInfoPtr requestInfo,
+            TRequestInfoPtr partRequestInfo,
+            TQueue<TFunction> operations)
             : RequestInfo{std::move(requestInfo)}
             , PartRequestInfo{std::move(partRequestInfo)}
             , Operations{std::move(operations)}
@@ -934,8 +914,8 @@ struct TTxDiskRegistry
         const TVector<TUserNotificationKey> Notifications;
 
         TDeleteUserNotifications(
-                TRequestInfoPtr requestInfo,
-                TVector<TUserNotificationKey> notifications)
+            TRequestInfoPtr requestInfo,
+            TVector<TUserNotificationKey> notifications)
             : RequestInfo(std::move(requestInfo))
             , Notifications(std::move(notifications))
         {}
@@ -958,10 +938,7 @@ struct TTxDiskRegistry
 
         NProto::TError Error;
 
-        TSetUserId(
-                TRequestInfoPtr requestInfo,
-                TString diskId,
-                TString userId)
+        TSetUserId(TRequestInfoPtr requestInfo, TString diskId, TString userId)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , UserId(std::move(userId))
@@ -982,9 +959,7 @@ struct TTxDiskRegistry
         const TRequestInfoPtr RequestInfo;
         const TString DiskId;
 
-        TFinishVolumeConfigUpdate(
-                TRequestInfoPtr requestInfo,
-                TString diskId)
+        TFinishVolumeConfigUpdate(TRequestInfoPtr requestInfo, TString diskId)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
         {}
@@ -1010,10 +985,10 @@ struct TTxDiskRegistry
         NProto::TError Error;
 
         TUpdateDiskBlockSize(
-                TRequestInfoPtr requestInfo,
-                TString diskId,
-                ui32 blockSize,
-                bool force)
+            TRequestInfoPtr requestInfo,
+            TString diskId,
+            ui32 blockSize,
+            bool force)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , BlockSize(blockSize)
@@ -1040,9 +1015,9 @@ struct TTxDiskRegistry
         NProto::TError Error;
 
         TUpdateDiskReplicaCount(
-                TRequestInfoPtr requestInfo,
-                TString masterDiskId,
-                ui32 replicaCount)
+            TRequestInfoPtr requestInfo,
+            TString masterDiskId,
+            ui32 replicaCount)
             : RequestInfo(std::move(requestInfo))
             , MasterDiskId(std::move(masterDiskId))
             , ReplicaCount(replicaCount)
@@ -1069,10 +1044,10 @@ struct TTxDiskRegistry
         NProto::TError Error;
 
         TMarkReplacementDevice(
-                TRequestInfoPtr requestInfo,
-                TString diskId,
-                TString deviceId,
-                bool isReplacement)
+            TRequestInfoPtr requestInfo,
+            TString diskId,
+            TString deviceId,
+            bool isReplacement)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , DeviceId(std::move(deviceId))
@@ -1087,9 +1062,8 @@ struct TTxDiskRegistry
         TString ToString() const
         {
             return TStringBuilder()
-                << "DiskId=" << DiskId
-                << " DeviceId=" << DeviceId
-                << " IsReplacement=" << IsReplacement;
+                   << "DiskId=" << DiskId << " DeviceId=" << DeviceId
+                   << " IsReplacement=" << IsReplacement;
         }
     };
 
@@ -1105,9 +1079,7 @@ struct TTxDiskRegistry
 
         NProto::TError Error;
 
-        TSuspendDevice(
-                TRequestInfoPtr requestInfo,
-                TString deviceId)
+        TSuspendDevice(TRequestInfoPtr requestInfo, TString deviceId)
             : RequestInfo(std::move(requestInfo))
             , DeviceId(std::move(deviceId))
         {}
@@ -1128,9 +1100,7 @@ struct TTxDiskRegistry
 
         const TVector<TString> DeviceIds;
 
-        TResumeDevices(
-                TRequestInfoPtr requestInfo,
-                TVector<TString> deviceIds)
+        TResumeDevices(TRequestInfoPtr requestInfo, TVector<TString> deviceIds)
             : RequestInfo(std::move(requestInfo))
             , DeviceIds(std::move(deviceIds))
         {}
@@ -1155,10 +1125,10 @@ struct TTxDiskRegistry
         NProto::TError Error;
 
         explicit TUpdatePlacementGroupSettings(
-                TRequestInfoPtr requestInfo,
-                TString groupId,
-                ui32 configVersion,
-                NProto::TPlacementGroupSettings settings)
+            TRequestInfoPtr requestInfo,
+            TString groupId,
+            ui32 configVersion,
+            NProto::TPlacementGroupSettings settings)
             : RequestInfo(std::move(requestInfo))
             , GroupId(std::move(groupId))
             , ConfigVersion(configVersion)
@@ -1189,12 +1159,12 @@ struct TTxDiskRegistry
         ui64 LogicalBlockCount = 0;
 
         TCreateDiskFromDevices(
-                TRequestInfoPtr requestInfo,
-                bool force,
-                TString diskId,
-                ui32 blockSize,
-                NProto::EStorageMediaKind mediaKind,
-                TVector<NProto::TDeviceConfig> devices)
+            TRequestInfoPtr requestInfo,
+            bool force,
+            TString diskId,
+            ui32 blockSize,
+            NProto::EStorageMediaKind mediaKind,
+            TVector<NProto::TDeviceConfig> devices)
             : RequestInfo(std::move(requestInfo))
             , Force(force)
             , DiskId(std::move(diskId))
@@ -1213,15 +1183,10 @@ struct TTxDiskRegistry
         {
             TStringStream ss;
 
-            ss << "Force=" << Force
-                << " DiskId=" << DiskId
-                << " BlockSize=" << BlockSize
-                << " Devices=[ ";
+            ss << "Force=" << Force << " DiskId=" << DiskId
+               << " BlockSize=" << BlockSize << " Devices=[ ";
             for (auto& d: Devices) {
-                ss << "("
-                    << d.GetAgentId() << " "
-                    << d.GetDeviceName()
-                    << ") ";
+                ss << "(" << d.GetAgentId() << " " << d.GetDeviceName() << ") ";
             }
             ss << "]";
             return ss.Str();
@@ -1243,10 +1208,10 @@ struct TTxDiskRegistry
         NProto::TError Error;
 
         TChangeDiskDevice(
-                TRequestInfoPtr requestInfo,
-                TString diskId,
-                TString sourceDeviceId,
-                TString targetDeviceId)
+            TRequestInfoPtr requestInfo,
+            TString diskId,
+            TString sourceDeviceId,
+            TString targetDeviceId)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , SourceDeviceId(std::move(sourceDeviceId))
@@ -1270,8 +1235,8 @@ struct TTxDiskRegistry
         ui32 ProcessedCount = 0;
 
         explicit TProcessAutomaticallyReplacedDevices(
-                TRequestInfoPtr requestInfo,
-                TInstant until)
+            TRequestInfoPtr requestInfo,
+            TInstant until)
             : RequestInfo(std::move(requestInfo))
             , Until(until)
         {}
@@ -1296,17 +1261,16 @@ struct TTxDiskRegistry
         NProto::TError Error;
 
         explicit TUpdateDiskRegistryAgentListParams(
-                TRequestInfoPtr requestInfo,
-                const TVector<TString>& agentIds,
-                const NProto::TDiskRegistryAgentParams& params)
+            TRequestInfoPtr requestInfo,
+            const TVector<TString>& agentIds,
+            const NProto::TDiskRegistryAgentParams& params)
             : RequestInfo(std::move(requestInfo))
             , AgentIds(agentIds)
             , Params(params)
         {}
 
         void Clear()
-        {
-        }
+        {}
     };
 
     //
@@ -1317,14 +1281,12 @@ struct TTxDiskRegistry
     {
         const TRequestInfoPtr RequestInfo;
 
-        explicit TCleanupExpiredAgentListParams(
-                TRequestInfoPtr requestInfo)
+        explicit TCleanupExpiredAgentListParams(TRequestInfoPtr requestInfo)
             : RequestInfo(std::move(requestInfo))
         {}
 
         void Clear()
-        {
-        }
+        {}
     };
 
     //
@@ -1339,8 +1301,8 @@ struct TTxDiskRegistry
         NProto::TError Error;
 
         TSwitchAgentDisksToReadOnly(
-                TRequestInfoPtr requestInfo,
-                TString agentId)
+            TRequestInfoPtr requestInfo,
+            TString agentId)
             : RequestInfo(std::move(requestInfo))
             , AgentId(std::move(agentId))
         {}
@@ -1364,8 +1326,8 @@ struct TTxDiskRegistry
         TString ShadowDiskId;
 
         TAllocateCheckpoint(
-                TRequestInfoPtr requestInfo,
-                NProto::TCheckpointReplica checkpointReplica)
+            TRequestInfoPtr requestInfo,
+            NProto::TCheckpointReplica checkpointReplica)
             : RequestInfo(std::move(requestInfo))
             , CheckpointReplica(std::move(checkpointReplica))
         {}
@@ -1391,9 +1353,9 @@ struct TTxDiskRegistry
         TString ShadowDiskId;
 
         TDeallocateCheckpoint(
-                TRequestInfoPtr requestInfo,
-                TString sourceDiskId,
-                TString checkpointId)
+            TRequestInfoPtr requestInfo,
+            TString sourceDiskId,
+            TString checkpointId)
             : RequestInfo(std::move(requestInfo))
             , SourceDiskId(std::move(sourceDiskId))
             , CheckpointId(std::move(checkpointId))
@@ -1419,10 +1381,10 @@ struct TTxDiskRegistry
         NProto::TError Error;
 
         TSetCheckpointDataState(
-                TRequestInfoPtr requestInfo,
-                TString sourceDiskId,
-                TString checkpointId,
-                NProto::ECheckpointState checkpointState)
+            TRequestInfoPtr requestInfo,
+            TString sourceDiskId,
+            TString checkpointId,
+            NProto::ECheckpointState checkpointState)
             : RequestInfo(std::move(requestInfo))
             , SourceDiskId(std::move(sourceDiskId))
             , CheckpointId(std::move(checkpointId))
@@ -1466,9 +1428,9 @@ struct TTxDiskRegistry
         NProto::TError Error;
 
         TAddOutdatedLaggingDevices(
-                TRequestInfoPtr requestInfo,
-                TString diskId,
-                TVector<NProto::TLaggingDevice> volumeLaggingDevices)
+            TRequestInfoPtr requestInfo,
+            TString diskId,
+            TVector<NProto::TLaggingDevice> volumeLaggingDevices)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , VolumeOutdatedDevices(std::move(volumeLaggingDevices))

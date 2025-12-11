@@ -30,8 +30,7 @@ void TDiskRegistryActor::HandleChangeDiskDevice(
         CreateRequestInfo<TEvDiskRegistry::TChangeDiskDeviceMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext
-        ),
+            ev->Get()->CallContext),
         record.GetDiskId(),
         record.GetSourceDeviceId(),
         record.GetTargetDeviceId());
@@ -96,7 +95,7 @@ void TDiskRegistryActor::CompleteChangeDiskDevice(
         std::make_unique<TEvDiskRegistry::TEvChangeDiskDeviceResponse>(
             std::move(args.Error)));
 
-     ReallocateDisks(ctx);
+    ReallocateDisks(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

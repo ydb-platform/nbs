@@ -24,9 +24,8 @@ void RestoreConfig(
 {
     Y_UNUSED(currentConfig);
     operations.push(
-        [newConfig = std::move(newConfig)](TDiskRegistryDatabase& db) {
-            db.WriteDiskRegistryConfig(newConfig);
-        });
+        [newConfig = std::move(newConfig)](TDiskRegistryDatabase& db)
+        { db.WriteDiskRegistryConfig(newConfig); });
 }
 
 void RestoreDirtyDevices(
@@ -35,16 +34,12 @@ void RestoreDirtyDevices(
     TOperations& operations)
 {
     for (auto&& [uuid, diskId]: currentDirtyDevices) {
-        operations.push(
-            [uuid = std::move(uuid)] (TDiskRegistryDatabase& db) {
-                db.DeleteDirtyDevice(uuid);
-            });
+        operations.push([uuid = std::move(uuid)](TDiskRegistryDatabase& db)
+                        { db.DeleteDirtyDevice(uuid); });
     }
     for (auto&& dd: newDirtyDevices) {
-        operations.push(
-            [dd = std::move(dd)] (TDiskRegistryDatabase& db) {
-                db.UpdateDirtyDevice(dd.Id, dd.DiskId);
-            });
+        operations.push([dd = std::move(dd)](TDiskRegistryDatabase& db)
+                        { db.UpdateDirtyDevice(dd.Id, dd.DiskId); });
     }
 }
 
@@ -54,16 +49,12 @@ void RestoreAgents(
     TOperations& operations)
 {
     for (auto&& agent: currentAgents) {
-        operations.push(
-            [agent = std::move(agent)](TDiskRegistryDatabase& db) {
-                db.DeleteAgent(agent.GetAgentId());
-            });
+        operations.push([agent = std::move(agent)](TDiskRegistryDatabase& db)
+                        { db.DeleteAgent(agent.GetAgentId()); });
     }
     for (auto&& agent: newAgents) {
-        operations.push(
-            [agent = std::move(agent)](TDiskRegistryDatabase& db) {
-                db.UpdateAgent(agent);
-            });
+        operations.push([agent = std::move(agent)](TDiskRegistryDatabase& db)
+                        { db.UpdateAgent(agent); });
     }
 }
 
@@ -73,16 +64,12 @@ void RestoreDisks(
     TOperations& operations)
 {
     for (auto&& disk: currentDisks) {
-        operations.push(
-            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.DeleteDisk(disk.GetDiskId());
-            });
+        operations.push([disk = std::move(disk)](TDiskRegistryDatabase& db)
+                        { db.DeleteDisk(disk.GetDiskId()); });
     }
     for (auto&& disk: newDisks) {
-        operations.push(
-            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.UpdateDisk(disk);
-            });
+        operations.push([disk = std::move(disk)](TDiskRegistryDatabase& db)
+                        { db.UpdateDisk(disk); });
     }
 }
 
@@ -92,16 +79,12 @@ void RestorePlacementGroups(
     TOperations& operations)
 {
     for (auto&& group: currentPlacementGroups) {
-        operations.push(
-            [group = std::move(group)](TDiskRegistryDatabase& db) {
-                db.DeletePlacementGroup(group.GetGroupId());
-            });
+        operations.push([group = std::move(group)](TDiskRegistryDatabase& db)
+                        { db.DeletePlacementGroup(group.GetGroupId()); });
     }
     for (auto&& group: newPlacementGroups) {
-        operations.push(
-            [group = std::move(group)](TDiskRegistryDatabase& db) {
-                db.UpdatePlacementGroup(group);
-            });
+        operations.push([group = std::move(group)](TDiskRegistryDatabase& db)
+                        { db.UpdatePlacementGroup(group); });
     }
 }
 
@@ -111,16 +94,12 @@ void RestoreBrokenDisks(
     TOperations& operations)
 {
     for (auto&& disk: currentBrokenDisks) {
-        operations.push(
-            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.DeleteBrokenDisk(disk.DiskId);
-            });
+        operations.push([disk = std::move(disk)](TDiskRegistryDatabase& db)
+                        { db.DeleteBrokenDisk(disk.DiskId); });
     }
     for (auto&& disk: newBrokenDisks) {
-        operations.push(
-            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.AddBrokenDisk(disk);
-            });
+        operations.push([disk = std::move(disk)](TDiskRegistryDatabase& db)
+                        { db.AddBrokenDisk(disk); });
     }
 }
 
@@ -130,16 +109,12 @@ void RestoreDisksToNotify(
     TOperations& operations)
 {
     for (auto&& disk: currentDisksToNotify) {
-        operations.push(
-            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.DeleteDiskToReallocate(disk);
-            });
+        operations.push([disk = std::move(disk)](TDiskRegistryDatabase& db)
+                        { db.DeleteDiskToReallocate(disk); });
     }
     for (auto&& disk: newDisksToNotify) {
-        operations.push(
-            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.AddDiskToReallocate(disk);
-            });
+        operations.push([disk = std::move(disk)](TDiskRegistryDatabase& db)
+                        { db.AddDiskToReallocate(disk); });
     }
 }
 
@@ -150,15 +125,12 @@ void RestoreDiskStateChanges(
 {
     for (auto&& disk: currentDiskStateChanges) {
         operations.push(
-            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.DeleteDiskStateChanges(disk.State.GetDiskId(), disk.SeqNo);
-            });
+            [disk = std::move(disk)](TDiskRegistryDatabase& db)
+            { db.DeleteDiskStateChanges(disk.State.GetDiskId(), disk.SeqNo); });
     }
     for (auto&& disk: newDiskStateChanges) {
-        operations.push(
-            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.UpdateDiskState(disk.State, disk.SeqNo);
-            });
+        operations.push([disk = std::move(disk)](TDiskRegistryDatabase& db)
+                        { db.UpdateDiskState(disk.State, disk.SeqNo); });
     }
 }
 
@@ -168,11 +140,9 @@ void RestoreLastDiskStateSeqNo(
     TOperations& operations)
 {
     Y_UNUSED(currentLastDiskStateSeqNo);
-    operations.push(
-        [newLastDiskStateSeqNo = std::move(newLastDiskStateSeqNo)]
-        (TDiskRegistryDatabase& db) {
-            db.WriteLastDiskStateSeqNo(newLastDiskStateSeqNo);
-        });
+    operations.push([newLastDiskStateSeqNo = std::move(newLastDiskStateSeqNo)](
+                        TDiskRegistryDatabase& db)
+                    { db.WriteLastDiskStateSeqNo(newLastDiskStateSeqNo); });
 }
 
 void RestoreWritableState(
@@ -181,11 +151,9 @@ void RestoreWritableState(
     TOperations& operations)
 {
     Y_UNUSED(currentWritableState);
-    operations.push(
-        [newWritableState = std::move(newWritableState)]
-        (TDiskRegistryDatabase& db) {
-            db.WriteWritableState(newWritableState);
-        });
+    operations.push([newWritableState =
+                         std::move(newWritableState)](TDiskRegistryDatabase& db)
+                    { db.WriteWritableState(newWritableState); });
 }
 
 void RestoreDisksToCleanup(
@@ -194,16 +162,12 @@ void RestoreDisksToCleanup(
     TOperations& operations)
 {
     for (auto&& disk: currentDisksToCleanup) {
-        operations.push(
-            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.DeleteDiskToCleanup(disk);
-            });
+        operations.push([disk = std::move(disk)](TDiskRegistryDatabase& db)
+                        { db.DeleteDiskToCleanup(disk); });
     }
     for (auto&& disk: newDisksToCleanup) {
-        operations.push(
-            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.AddDiskToCleanup(disk);
-            });
+        operations.push([disk = std::move(disk)](TDiskRegistryDatabase& db)
+                        { db.AddDiskToCleanup(disk); });
     }
 }
 
@@ -213,16 +177,12 @@ void RestoreErrorNotifications(
     TOperations& operations)
 {
     for (auto&& disk: currentErrorNotifications) {
-        operations.push(
-            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.DeleteErrorNotification(disk);
-            });
+        operations.push([disk = std::move(disk)](TDiskRegistryDatabase& db)
+                        { db.DeleteErrorNotification(disk); });
     }
     for (auto&& disk: newErrorNotifications) {
-        operations.push(
-            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.AddErrorNotification(disk);
-            });
+        operations.push([disk = std::move(disk)](TDiskRegistryDatabase& db)
+                        { db.AddErrorNotification(disk); });
     }
 }
 
@@ -232,17 +192,12 @@ void RestoreUserNotifications(
     TOperations& operations)
 {
     for (auto&& notif: currentUserNotifications) {
-        operations.push(
-            [seqNo = notif.GetSeqNo()] (TDiskRegistryDatabase& db)
-            {
-                db.DeleteUserNotification(seqNo);
-            });
+        operations.push([seqNo = notif.GetSeqNo()](TDiskRegistryDatabase& db)
+                        { db.DeleteUserNotification(seqNo); });
     }
     for (auto&& notif: newUserNotifications) {
-        operations.push(
-            [notif = std::move(notif)] (TDiskRegistryDatabase& db) {
-                db.AddUserNotification(notif);
-            });
+        operations.push([notif = std::move(notif)](TDiskRegistryDatabase& db)
+                        { db.AddUserNotification(notif); });
     }
 }
 
@@ -252,16 +207,12 @@ void RestoreOutdatedVolumeConfigs(
     TOperations& operations)
 {
     for (auto&& disk: currentOutdatedVolumeConfigs) {
-        operations.push(
-            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.DeleteOutdatedVolumeConfig(disk);
-            });
+        operations.push([disk = std::move(disk)](TDiskRegistryDatabase& db)
+                        { db.DeleteOutdatedVolumeConfig(disk); });
     }
     for (auto&& disk: newOutdatedVolumeConfigs) {
-        operations.push(
-            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.AddOutdatedVolumeConfig(disk);
-            });
+        operations.push([disk = std::move(disk)](TDiskRegistryDatabase& db)
+                        { db.AddOutdatedVolumeConfig(disk); });
     }
 }
 
@@ -271,54 +222,47 @@ void RestoreSuspendedDevices(
     TOperations& operations)
 {
     for (auto& device: currentSuspendedDevices) {
-        operations.push(
-            [uuid = device.GetId()](TDiskRegistryDatabase& db) {
-                db.DeleteSuspendedDevice(uuid);
-            });
+        operations.push([uuid = device.GetId()](TDiskRegistryDatabase& db)
+                        { db.DeleteSuspendedDevice(uuid); });
     }
     for (auto&& device: newSuspendedDevices) {
-        operations.push(
-            [device = std::move(device)](TDiskRegistryDatabase& db) {
-                db.UpdateSuspendedDevice(device);
-            });
+        operations.push([device = std::move(device)](TDiskRegistryDatabase& db)
+                        { db.UpdateSuspendedDevice(device); });
     }
 }
 
 void RestoreAutomaticallyReplacedDevices(
     TDeque<TAutomaticallyReplacedDeviceInfo> newAutomaticallyReplacedDevices,
-    TDeque<TAutomaticallyReplacedDeviceInfo> currentAutomaticallyReplacedDevices,
+    TDeque<TAutomaticallyReplacedDeviceInfo>
+        currentAutomaticallyReplacedDevices,
     TOperations& operations)
 {
     for (auto&& device: currentAutomaticallyReplacedDevices) {
         operations.push(
-            [device = std::move(device)](TDiskRegistryDatabase& db) {
-                db.DeleteAutomaticallyReplacedDevice(device.DeviceId);
-            });
+            [device = std::move(device)](TDiskRegistryDatabase& db)
+            { db.DeleteAutomaticallyReplacedDevice(device.DeviceId); });
     }
     for (auto&& device: newAutomaticallyReplacedDevices) {
-        operations.push(
-            [device = std::move(device)](TDiskRegistryDatabase& db) {
-                db.AddAutomaticallyReplacedDevice(device);
-            });
+        operations.push([device = std::move(device)](TDiskRegistryDatabase& db)
+                        { db.AddAutomaticallyReplacedDevice(device); });
     }
 }
 
 void RestoreDiskRegistryAgentListParams(
-    THashMap<TString, NProto::TDiskRegistryAgentParams> newDiskRegistryAgentListParams,
-    THashMap<TString, NProto::TDiskRegistryAgentParams> currentDiskRegistryAgentListParams,
+    THashMap<TString, NProto::TDiskRegistryAgentParams>
+        newDiskRegistryAgentListParams,
+    THashMap<TString, NProto::TDiskRegistryAgentParams>
+        currentDiskRegistryAgentListParams,
     TOperations& operations)
 {
     for (auto&& disk: currentDiskRegistryAgentListParams) {
-        operations.push(
-            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.DeleteDiskRegistryAgentListParams(disk.first);
-            });
+        operations.push([disk = std::move(disk)](TDiskRegistryDatabase& db)
+                        { db.DeleteDiskRegistryAgentListParams(disk.first); });
     }
     for (auto&& disk: newDiskRegistryAgentListParams) {
         operations.push(
-            [disk = std::move(disk)](TDiskRegistryDatabase& db) {
-                db.AddDiskRegistryAgentListParams(disk.first, disk.second);
-            });
+            [disk = std::move(disk)](TDiskRegistryDatabase& db)
+            { db.AddDiskRegistryAgentListParams(disk.first, disk.second); });
     }
 }
 
@@ -329,7 +273,8 @@ void RestoreDiskRegistryAgentListParams(
 TDiskRegistryStateSnapshot MakeNewLoadState(
     NProto::TDiskRegistryStateBackup&& backup)
 {
-    auto move = [] (auto& src, auto& dst) {
+    auto move = [](auto& src, auto& dst)
+    {
         dst.reserve(src.size());
         dst.assign(
             std::make_move_iterator(src.begin()),
@@ -337,7 +282,8 @@ TDiskRegistryStateSnapshot MakeNewLoadState(
         src.Clear();
     };
 
-    auto transform = [] (auto& src, auto& dst, auto func) {
+    auto transform = [](auto& src, auto& dst, auto func)
+    {
         dst.resize(src.size());
         for (int i = 0; i < src.size(); ++i) {
             func(src[i], dst[i]);
@@ -348,31 +294,15 @@ TDiskRegistryStateSnapshot MakeNewLoadState(
     TDiskRegistryStateSnapshot newLoadState;
     // if new fields are added to TDiskRegistryStateSnapshot
     // there will be a compilation error.
-    auto& [
-        config,
-        dirtyDevices,
-        agents,
-        disks,
-        placementGroups,
-        brokenDisks,
-        disksToReallocate,
-        diskStateChanges,
-        lastDiskStateSeqNo,
-        writableState,
-        disksToCleanup,
-        errorNotifications,
-        userNotifications,
-        outdatedVolumeConfigs,
-        suspendedDevices,
-        automaticallyReplacedDevices,
-        diskRegistryAgentListParams
-    ] = newLoadState;
+    auto& [config, dirtyDevices, agents, disks, placementGroups, brokenDisks, disksToReallocate, diskStateChanges, lastDiskStateSeqNo, writableState, disksToCleanup, errorNotifications, userNotifications, outdatedVolumeConfigs, suspendedDevices, automaticallyReplacedDevices, diskRegistryAgentListParams] =
+        newLoadState;
 
     if (backup.DirtyDevicesSize()) {
         transform(
             *backup.MutableDirtyDevices(),
             dirtyDevices,
-            [] (auto& src, auto& dst) {
+            [](auto& src, auto& dst)
+            {
                 dst.Id = src.GetId();
                 dst.DiskId = src.GetDiskId();
             });
@@ -380,9 +310,7 @@ TDiskRegistryStateSnapshot MakeNewLoadState(
         transform(
             *backup.MutableOldDirtyDevices(),
             dirtyDevices,
-            [] (auto& src, auto& dst) {
-                dst.Id = src;
-            });
+            [](auto& src, auto& dst) { dst.Id = src; });
     }
 
     move(*backup.MutableAgents(), agents);
@@ -394,9 +322,12 @@ TDiskRegistryStateSnapshot MakeNewLoadState(
     move(*backup.MutableErrorNotifications(), errorNotifications);
     move(*backup.MutableUserNotifications(), userNotifications);
     // Filter out unknown events for future version rollback compatibility
-    std::erase_if(userNotifications, [] (const auto& notif) {
-            return notif.GetEventCase()
-                == NProto::TUserNotification::EventCase::EVENT_NOT_SET;
+    std::erase_if(
+        userNotifications,
+        [](const auto& notif)
+        {
+            return notif.GetEventCase() ==
+                   NProto::TUserNotification::EventCase::EVENT_NOT_SET;
         });
 
     move(*backup.MutableOutdatedVolumeConfigs(), outdatedVolumeConfigs);
@@ -405,14 +336,16 @@ TDiskRegistryStateSnapshot MakeNewLoadState(
     transform(
         *backup.MutableBrokenDisks(),
         brokenDisks,
-        [] (auto& src, auto& dst) {
+        [](auto& src, auto& dst)
+        {
             dst.DiskId = src.GetDiskId();
             dst.TsToDestroy = TInstant::MicroSeconds(src.GetTsToDestroy());
         });
     transform(
         *backup.MutableDiskStateChanges(),
         diskStateChanges,
-        [] (auto& src, auto& dst) {
+        [](auto& src, auto& dst)
+        {
             if (src.HasState()) {
                 dst.State.Swap(src.MutableState());
             }
@@ -421,7 +354,8 @@ TDiskRegistryStateSnapshot MakeNewLoadState(
     transform(
         *backup.MutableAutomaticallyReplacedDevices(),
         automaticallyReplacedDevices,
-        [] (auto& src, auto& dst) {
+        [](auto& src, auto& dst)
+        {
             dst.DeviceId = src.GetDeviceId();
             dst.ReplacementTs = TInstant::MicroSeconds(src.GetReplacementTs());
         });
@@ -457,10 +391,8 @@ void TDiskRegistryActor::HandleRestoreDiskRegistryState(
         LogTitle.GetWithTime().c_str(),
         msg->Record.ShortDebugString().c_str());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        ev->Get()->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
 
     TDiskRegistryStateSnapshot snapshot =
         MakeNewLoadState(std::move(*ev->Get()->Record.MutableBackup()));
@@ -487,7 +419,8 @@ void TDiskRegistryActor::HandleRestoreDiskRegistryState(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryActor::HandleRestoreDiskRegistryValidationResponse(
-    const TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse::TPtr& ev,
+    const TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse::
+        TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     Actors.erase(ev->Sender);
@@ -541,62 +474,19 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
 {
     TOperations operations;
 
-    auto&& [
-        newConfig,
-        newDirtyDevices,
-        newAgents,
-        newDisks,
-        newPlacementGroups,
-        newBrokenDisks,
-        newDisksToNotify,
-        newDiskStateChanges,
-        newLastDiskStateSeqNo,
-        newWritableState,
-        newDisksToCleanup,
-        newErrorNotifications,
-        newUserNotifications,
-        newOutdatedVolumeConfigs,
-        newSuspendedDevices,
-        newAutomaticallyReplacedDevices,
-        newDiskRegistryAgentListParams
-    ] = std::move(args.NewState);
+    auto&& [newConfig, newDirtyDevices, newAgents, newDisks, newPlacementGroups, newBrokenDisks, newDisksToNotify, newDiskStateChanges, newLastDiskStateSeqNo, newWritableState, newDisksToCleanup, newErrorNotifications, newUserNotifications, newOutdatedVolumeConfigs, newSuspendedDevices, newAutomaticallyReplacedDevices, newDiskRegistryAgentListParams] =
+        std::move(args.NewState);
 
-    auto&& [
-        currentConfig,
-        currentDirtyDevices,
-        currentAgents,
-        currentDisks,
-        currentPlacementGroups,
-        currentBrokenDisks,
-        currentDisksToNotify,
-        currentDiskStateChanges,
-        currentLastDiskStateSeqNo,
-        currentWritableState,
-        currentDisksToCleanup,
-        currentErrorNotifications,
-        currentUserNotifications,
-        currentOutdatedVolumeConfigs,
-        currentSuspendedDevices,
-        currentAutomaticallyReplacedDevices,
-        currentDiskRegistryAgentListParams
-    ] = std::move(args.CurrentState);
+    auto&& [currentConfig, currentDirtyDevices, currentAgents, currentDisks, currentPlacementGroups, currentBrokenDisks, currentDisksToNotify, currentDiskStateChanges, currentLastDiskStateSeqNo, currentWritableState, currentDisksToCleanup, currentErrorNotifications, currentUserNotifications, currentOutdatedVolumeConfigs, currentSuspendedDevices, currentAutomaticallyReplacedDevices, currentDiskRegistryAgentListParams] =
+        std::move(args.CurrentState);
 
-    RestoreConfig(
-        std::move(newConfig),
-        std::move(currentConfig),
-        operations);
+    RestoreConfig(std::move(newConfig), std::move(currentConfig), operations);
     RestoreDirtyDevices(
         std::move(newDirtyDevices),
         std::move(currentDirtyDevices),
         operations);
-    RestoreAgents(
-        std::move(newAgents),
-        std::move(currentAgents),
-        operations);
-    RestoreDisks(
-        std::move(newDisks),
-        std::move(currentDisks),
-        operations);
+    RestoreAgents(std::move(newAgents), std::move(currentAgents), operations);
+    RestoreDisks(std::move(newDisks), std::move(currentDisks), operations);
     RestorePlacementGroups(
         std::move(newPlacementGroups),
         std::move(currentPlacementGroups),
@@ -617,10 +507,7 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
         newLastDiskStateSeqNo,
         currentLastDiskStateSeqNo,
         operations);
-    RestoreWritableState(
-        newWritableState,
-        currentWritableState,
-        operations);
+    RestoreWritableState(newWritableState, currentWritableState, operations);
     RestoreDisksToCleanup(
         std::move(newDisksToCleanup),
         std::move(currentDisksToCleanup),
@@ -652,8 +539,8 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
 
     auto request = std::make_unique<
         TEvDiskRegistryPrivate::TEvRestoreDiskRegistryPartRequest>(
-            std::move(args.RequestInfo),
-            std::move(operations));
+        std::move(args.RequestInfo),
+        std::move(operations));
 
     NCloud::Send(ctx, ctx.SelfID, std::move(request));
 }
@@ -673,10 +560,8 @@ void TDiskRegistryActor::HandleRestoreDiskRegistryPart(
 
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     ExecuteTx<TRestoreDiskRegistryPart>(
         ctx,
@@ -702,8 +587,8 @@ void TDiskRegistryActor::HandleRestoreDiskRegistryPartResponse(
     } else {
         auto request = std::make_unique<
             TEvDiskRegistryPrivate::TEvRestoreDiskRegistryPartRequest>(
-                std::move(msg->RequestInfo),
-                std::move(msg->Operations));
+            std::move(msg->RequestInfo),
+            std::move(msg->Operations));
 
         NCloud::Send(ctx, ctx.SelfID, std::move(request));
     }
@@ -752,9 +637,9 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryPart(
 {
     auto response = std::make_unique<
         TEvDiskRegistryPrivate::TEvRestoreDiskRegistryPartResponse>(
-            args.RequestInfo,
-            args.PartRequestInfo,
-            std::move(args.Operations));
+        args.RequestInfo,
+        args.PartRequestInfo,
+        std::move(args.Operations));
 
     NCloud::Reply(ctx, *args.PartRequestInfo, std::move(response));
 }

@@ -201,19 +201,25 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         {
             NProto::TDescribeVolumeResponse msg;
-            (*msg.MutableVolume()->MutableTags())[TString(SourceDiskIdTagName)] = "source_disk_id";
+            (*msg.MutableVolume()
+                  ->MutableTags())[TString(SourceDiskIdTagName)] =
+                "source_disk_id";
             s1h1Client->DescribeVolumePromise.SetValue(std::move(msg));
         }
 
         {
             NProto::TDescribeVolumeResponse msg;
-            (*msg.MutableVolume()->MutableTags())[TString(SourceDiskIdTagName)] = "source_disk_id";
+            (*msg.MutableVolume()
+                  ->MutableTags())[TString(SourceDiskIdTagName)] =
+                "source_disk_id";
             s2h1Client->DescribeVolumePromise.SetValue(std::move(msg));
         }
 
         {
             NProto::TDescribeVolumeResponse msg;
-            (*msg.MutableVolume()->MutableTags())[TString(SourceDiskIdTagName)] = "source_disk_id";
+            (*msg.MutableVolume()
+                  ->MutableTags())[TString(SourceDiskIdTagName)] =
+                "source_disk_id";
             localService->DescribeVolumePromise.SetValue(std::move(msg));
         }
 

@@ -43,11 +43,8 @@ struct TTestEnv
     TDiskAgentStatePtr DiskAgentState;
     IBlockDigestGeneratorPtr BlockDigestGenerator;
 
-    static void AddDevice(
-        ui32 nodeId,
-        ui32 blockCount,
-        TString name,
-        TDevices& devices)
+    static void
+    AddDevice(ui32 nodeId, ui32 blockCount, TString name, TDevices& devices)
     {
         const auto k = DefaultBlockSize / DefaultDeviceBlockSize;
 
@@ -72,16 +69,14 @@ struct TTestEnv
         : TTestEnv(runtime, NProto::VOLUME_IO_OK)
     {}
 
-    TTestEnv(
-            TTestActorRuntime& runtime,
-            NProto::EVolumeIOMode ioMode)
+    TTestEnv(TTestActorRuntime& runtime, NProto::EVolumeIOMode ioMode)
         : TTestEnv(runtime, ioMode, DefaultDevices(runtime.GetNodeId(0)))
     {}
 
     TTestEnv(
-            TTestActorRuntime& runtime,
-            NProto::EVolumeIOMode ioMode,
-            TDevices devices)
+        TTestActorRuntime& runtime,
+        NProto::EVolumeIOMode ioMode,
+        TDevices devices)
         : Runtime(runtime)
         , VolumeActorId(0, "VVV")
         , StorageStatsServiceState(MakeIntrusive<TStorageStatsServiceState>())
@@ -98,15 +93,14 @@ struct TTestEnv
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         Runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
+            [](auto& runtime, const auto& parentId, const auto& actorId)
+            {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
 
         auto nodeId = Runtime.GetNodeId(0);
 
@@ -115,9 +109,7 @@ struct TTestEnv
             TActorSetupCmd(
                 new TDiskAgentMock(devices, DiskAgentState),
                 TMailboxType::Simple,
-                0
-            )
-        );
+                0));
 
         for (int i = 0; i < devices.size(); ++i) {
             TDevices replicaDevices;
@@ -145,14 +137,12 @@ struct TTestEnv
                 CreateDiagnosticsConfig(),
                 std::move(partConfig),
                 VolumeActorId,
-                VolumeActorId
-            );
+                VolumeActorId);
 
             TActorId actorId(0, Sprintf("YYY%d", i));
             Runtime.AddLocalService(
                 actorId,
-                TActorSetupCmd(part.release(), TMailboxType::Simple, 0)
-            );
+                TActorSetupCmd(part.release(), TMailboxType::Simple, 0));
             Replicas.push_back({name, static_cast<ui32>(i), actorId});
         }
 
@@ -160,17 +150,14 @@ struct TTestEnv
 
         Runtime.AddLocalService(
             VolumeActorId,
-            TActorSetupCmd(dummy.release(), TMailboxType::Simple, 0)
-        );
+            TActorSetupCmd(dummy.release(), TMailboxType::Simple, 0));
 
         Runtime.AddLocalService(
             MakeStorageStatsServiceId(),
             TActorSetupCmd(
                 new TStorageStatsServiceMock(StorageStatsServiceState),
                 TMailboxType::Simple,
-                0
-            )
-        );
+                0));
 
         SetupTabletServices(Runtime);
     }
@@ -182,7 +169,8 @@ struct TTestEnv
             TBlockStoreComponents::END,
             GetComponentName);
 
-        // for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
+        // for (ui32 i = TBlockStoreComponents::START; i <
+        // TBlockStoreComponents::END; ++i) {
         //    Runtime.SetLogPriority(i, NLog::PRI_DEBUG);
         // }
         // Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
@@ -212,11 +200,8 @@ struct TTestEnv
     {
         auto sender = Runtime.AllocateEdgeActor(0);
 
-        auto requestInfo = CreateRequestInfo(
-            sender,
-            0,
-            MakeIntrusive<TCallContext>()
-        );
+        auto requestInfo =
+            CreateRequestInfo(sender, 0, MakeIntrusive<TCallContext>());
 
         TVector<TReplicaDescriptor> replicas;
         for (int idx: idxs) {
@@ -238,12 +223,14 @@ struct TTestEnv
         Runtime.Register(actor.release(), 0);
 
         TAutoPtr<IEventHandle> handle;
-        Runtime.GrabEdgeEventRethrow<
-            TEvNonreplPartitionPrivate::TEvRangeResynced>(handle);
+        Runtime
+            .GrabEdgeEventRethrow<TEvNonreplPartitionPrivate::TEvRangeResynced>(
+                handle);
         UNIT_ASSERT(handle);
 
         return std::unique_ptr<TEvNonreplPartitionPrivate::TEvRangeResynced>(
-            handle->Release<TEvNonreplPartitionPrivate::TEvRangeResynced>().Release());
+            handle->Release<TEvNonreplPartitionPrivate::TEvRangeResynced>()
+                .Release());
     }
 
     TVector<TString> ReadReplica(int idx, ui64 start, ui64 end)
@@ -258,8 +245,7 @@ struct TTestEnv
             TGuardedSgList(ResizeBlocks(
                 blocks,
                 range.Size(),
-                TString(DefaultBlockSize, '\0')
-            )));
+                TString(DefaultBlockSize, '\0'))));
 
         return blocks;
     }
@@ -276,8 +262,7 @@ struct TTestEnv
 
         client.SendRequest(
             Replicas[idx].ActorId,
-            std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>()
-        );
+            std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>());
 
         Runtime.DispatchEvents({}, TDuration::Seconds(1));
 
@@ -287,24 +272,25 @@ struct TTestEnv
     template <typename TEvent>
     void InjectError(ui32 errorCode, TString errorMessage)
     {
-        Runtime.SetEventFilter([=] (auto& runtime, auto& event) {
-            if (event->GetTypeRewrite() == TEvent::EventType) {
-                auto response = std::make_unique<TEvent>(
-                    MakeError(errorCode, errorMessage));
+        Runtime.SetEventFilter(
+            [=](auto& runtime, auto& event)
+            {
+                if (event->GetTypeRewrite() == TEvent::EventType) {
+                    auto response = std::make_unique<TEvent>(
+                        MakeError(errorCode, errorMessage));
 
-                runtime.Send(
-                    new IEventHandle(
+                    runtime.Send(new IEventHandle(
                         event->Recipient,
                         event->Sender,
                         response.release(),
                         0,
                         event->Cookie));
 
-                return true;
-            }
+                    return true;
+                }
 
-            return false;
-        });
+                return false;
+            });
     }
 };
 
@@ -324,9 +310,15 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
 
         for (int idx: {0, 1}) {
             auto counters = env.GetReplicaCounters(idx);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(0, counters.RequestCounters.ReadBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(0, counters.RequestCounters.WriteBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                counters.RequestCounters.ChecksumBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                counters.RequestCounters.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                counters.RequestCounters.WriteBlocks.Count);
         }
     }
 
@@ -344,9 +336,15 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         // Check replica 0
         {
             auto counters = env.GetReplicaCounters(0);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ReadBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.WriteBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                counters.RequestCounters.ChecksumBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                counters.RequestCounters.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                counters.RequestCounters.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(0, 0, 3071);
             for (const auto& block: blocks) {
@@ -357,9 +355,15 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         // Check replica 1
         {
             auto counters = env.GetReplicaCounters(1);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(0, counters.RequestCounters.ReadBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(2, counters.RequestCounters.WriteBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                counters.RequestCounters.ChecksumBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                counters.RequestCounters.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                counters.RequestCounters.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(1, 0, 3071);
             for (const auto& block: blocks) {
@@ -383,9 +387,15 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         // Check replica 0
         {
             auto counters = env.GetReplicaCounters(0);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(0, counters.RequestCounters.ReadBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.WriteBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                counters.RequestCounters.ChecksumBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                counters.RequestCounters.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                counters.RequestCounters.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(0, 0, 3071);
             for (const auto& block: blocks) {
@@ -396,9 +406,15 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         // Check replica 1
         {
             auto counters = env.GetReplicaCounters(1);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(0, counters.RequestCounters.ReadBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(2, counters.RequestCounters.WriteBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                counters.RequestCounters.ChecksumBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                counters.RequestCounters.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                counters.RequestCounters.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(1, 0, 3071);
             for (const auto& block: blocks) {
@@ -409,9 +425,15 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         // Check replica 2
         {
             auto counters = env.GetReplicaCounters(2);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ReadBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.WriteBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                counters.RequestCounters.ChecksumBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                counters.RequestCounters.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                counters.RequestCounters.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(2, 0, 3071);
             for (const auto& block: blocks) {
@@ -435,9 +457,15 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         // Check replica 0
         {
             auto counters = env.GetReplicaCounters(0);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ReadBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.WriteBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                counters.RequestCounters.ChecksumBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                counters.RequestCounters.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                counters.RequestCounters.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(0, 0, 3071);
             for (const auto& block: blocks) {
@@ -448,9 +476,15 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         // Check replica 1
         {
             auto counters = env.GetReplicaCounters(1);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(0, counters.RequestCounters.ReadBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(2, counters.RequestCounters.WriteBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                counters.RequestCounters.ChecksumBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                counters.RequestCounters.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                counters.RequestCounters.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(1, 0, 3071);
             for (const auto& block: blocks) {
@@ -461,9 +495,15 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         // Check replica 2
         {
             auto counters = env.GetReplicaCounters(2);
-            UNIT_ASSERT_VALUES_EQUAL(1, counters.RequestCounters.ChecksumBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(0, counters.RequestCounters.ReadBlocks.Count);
-            UNIT_ASSERT_VALUES_EQUAL(2, counters.RequestCounters.WriteBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                counters.RequestCounters.ChecksumBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                counters.RequestCounters.ReadBlocks.Count);
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                counters.RequestCounters.WriteBlocks.Count);
 
             auto blocks = env.ReadReplica(2, 0, 3071);
             for (const auto& block: blocks) {
@@ -497,9 +537,13 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
             auto blocks = env.ReadReplica(1, 0, 3071);
             for (size_t i = 0; i < blocks.size(); ++i) {
                 if (i >= 1024 && i <= 2047) {
-                    UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), blocks[i]);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        TString(DefaultBlockSize, 'A'),
+                        blocks[i]);
                 } else {
-                    UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), blocks[i]);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        TString(DefaultBlockSize, 'B'),
+                        blocks[i]);
                 }
             }
         }
@@ -523,16 +567,18 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
 
         runtime.UpdateCurrentTime(TInstant::Seconds(10));
 
-        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
-            switch (event->GetTypeRewrite()) {
-                case TEvNonreplPartitionPrivate::EvChecksumBlocksCompleted:
-                case TEvNonreplPartitionPrivate::EvReadBlocksCompleted:
-                case TEvNonreplPartitionPrivate::EvWriteBlocksCompleted:
-                    runtime.AdvanceCurrentTime(TDuration::Seconds(1));
-            }
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvNonreplPartitionPrivate::EvChecksumBlocksCompleted:
+                    case TEvNonreplPartitionPrivate::EvReadBlocksCompleted:
+                    case TEvNonreplPartitionPrivate::EvWriteBlocksCompleted:
+                        runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+                }
 
-            return false;
-        });
+                return false;
+            });
 
         auto response = env.ResyncRange(1024, 2047, {0, 1});
         UNIT_ASSERT(!HasError(response->GetError()));
@@ -554,10 +600,15 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
             ui64 index = 1024 + i;
             TString data(DefaultBlockSize, 'A');
             ui64 digest = *env.BlockDigestGenerator->ComputeDigest(
-                index, TBlockDataRef(data.data(), data.size()));
+                index,
+                TBlockDataRef(data.data(), data.size()));
 
-            UNIT_ASSERT_VALUES_EQUAL(index, response->AffectedBlockInfos[i].BlockIndex);
-            UNIT_ASSERT_VALUES_EQUAL(digest, response->AffectedBlockInfos[i].Checksum);
+            UNIT_ASSERT_VALUES_EQUAL(
+                index,
+                response->AffectedBlockInfos[i].BlockIndex);
+            UNIT_ASSERT_VALUES_EQUAL(
+                digest,
+                response->AffectedBlockInfos[i].Checksum);
         }
     }
 
@@ -570,30 +621,40 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
         env.WriteReplica(1, 0, 3071, 'B');
 
         {
-            env.InjectError<TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse>(
-                E_REJECTED, "checksum error");
+            env.InjectError<
+                TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse>(
+                E_REJECTED,
+                "checksum error");
 
             auto response = env.ResyncRange(0, 3071, {0, 1});
             UNIT_ASSERT(HasError(response->GetError()));
-            UNIT_ASSERT_VALUES_EQUAL("checksum error", response->GetError().GetMessage());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "checksum error",
+                response->GetError().GetMessage());
         }
 
         {
             env.InjectError<TEvService::TEvReadBlocksLocalResponse>(
-                E_REJECTED, "read error");
+                E_REJECTED,
+                "read error");
 
             auto response = env.ResyncRange(0, 3071, {0, 1});
             UNIT_ASSERT(HasError(response->GetError()));
-            UNIT_ASSERT_VALUES_EQUAL("read error", response->GetError().GetMessage());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "read error",
+                response->GetError().GetMessage());
         }
 
         {
             env.InjectError<TEvService::TEvWriteBlocksLocalResponse>(
-                E_REJECTED, "write error");
+                E_REJECTED,
+                "write error");
 
             auto response = env.ResyncRange(0, 3071, {0, 1});
             UNIT_ASSERT(HasError(response->GetError()));
-            UNIT_ASSERT_VALUES_EQUAL("write error", response->GetError().GetMessage());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "write error",
+                response->GetError().GetMessage());
         }
     }
 
@@ -667,7 +728,9 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
             int i = 0;
             for (const auto& block: blocks) {
                 char expected = i == blockWithMajorError ? 'x' : 'A';
-                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, expected), block);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, expected),
+                    block);
                 ++i;
             }
         }
@@ -678,7 +741,9 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
             int i = 0;
             for (const auto& block: blocks) {
                 char expected = i == blockWithMajorError ? 'y' : 'A';
-                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, expected), block);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, expected),
+                    block);
                 ++i;
             }
         }
@@ -698,7 +763,8 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
             NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB);
     }
 
-    Y_UNIT_TEST(ShouldNotReplaceMajorBlocksMismatchAccordingToPolicyBlockByBlock)
+    Y_UNIT_TEST(
+        ShouldNotReplaceMajorBlocksMismatchAccordingToPolicyBlockByBlock)
     {
         DoShouldNotReplaceMajorBlocksMismatchAccordingToPolicy(
             NProto::EResyncPolicy::RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK);
@@ -730,7 +796,8 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
             0,
             1023,
             {0, 1, 2},
-            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
+            NProto::EResyncPolicy::
+                RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
         UNIT_ASSERT(!HasError(response->GetError()));
 
         // Check replica 0
@@ -786,7 +853,8 @@ Y_UNIT_TEST_SUITE(TResyncRangeTest)
             0,
             1023,
             {0, 1, 2},
-            NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
+            NProto::EResyncPolicy::
+                RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK);
         UNIT_ASSERT(!HasError(response->GetError()));
 
         // Check replica 0

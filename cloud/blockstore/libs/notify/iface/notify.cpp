@@ -19,8 +19,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServiceStub final
-    : public IService
+class TServiceStub final: public IService
 {
 public:
     void Start() override
@@ -39,8 +38,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServiceNull final
-    : public IService
+class TServiceNull final: public IService
 {
 private:
     const ILoggingServicePtr Logging;

@@ -19,8 +19,7 @@ auto CreateTabletPipeClientCache(const TSSProxyConfig& config)
     clientConfig.RetryPolicy = {
         .RetryLimitCount = config.PipeClientRetryCount,
         .MinRetryTime = config.PipeClientMinRetryTime,
-        .MaxRetryTime = config.PipeClientMaxRetryTime
-    };
+        .MaxRetryTime = config.PipeClientMaxRetryTime};
     return NTabletPipe::CreateUnboundedClientCache(clientConfig);
 }
 
@@ -41,7 +40,7 @@ void TSSProxyActor::Bootstrap(const TActorContext& ctx)
         auto cache = std::make_unique<TPathDescriptionBackup>(
             Config.LogComponent,
             Config.PathDescriptionBackupFilePath,
-            false); // readOnlyMode
+            false);   // readOnlyMode
         PathDescriptionBackup = ctx.Register(
             cache.release(),
             TMailboxType::HTSwap,
@@ -58,8 +57,10 @@ void TSSProxyActor::HandleConnect(
     const auto* msg = ev->Get();
 
     if (!ClientCache->OnConnect(ev)) {
-        auto error = MakeKikimrError(msg->Status, TStringBuilder()
-            << "Connect to schemeshard " << msg->TabletId << " failed");
+        auto error = MakeKikimrError(
+            msg->Status,
+            TStringBuilder()
+                << "Connect to schemeshard " << msg->TabletId << " failed");
 
         OnConnectionError(ctx, error, msg->TabletId);
     }
@@ -73,8 +74,9 @@ void TSSProxyActor::HandleDisconnect(
 
     ClientCache->OnDisconnect(ev);
 
-    auto error = MakeError(E_REJECTED, TStringBuilder()
-        << "Disconnected from schemeshard " << msg->TabletId);
+    auto error = MakeError(
+        E_REJECTED,
+        TStringBuilder() << "Disconnected from schemeshard " << msg->TabletId);
 
     OnConnectionError(ctx, error, msg->TabletId);
 }
@@ -89,7 +91,7 @@ void TSSProxyActor::OnConnectionError(
     // SchemeShard is a tablet, so it should eventually get up
     // Re-send all outstanding requests
     if (auto* state = SchemeShardStates.FindPtr(schemeShard)) {
-        for (const auto& kv : state->TxToRequests) {
+        for (const auto& kv: state->TxToRequests) {
             ui64 txId = kv.first;
             SendWaitTxRequest(ctx, schemeShard, txId);
         }
@@ -116,7 +118,9 @@ STFUNC(TSSProxyActor::StateWork)
         HFunc(TEvTabletPipe::TEvClientConnected, HandleConnect);
         HFunc(TEvTabletPipe::TEvClientDestroyed, HandleDisconnect);
 
-        HFunc(TEvSchemeShard::TEvNotifyTxCompletionRegistered, HandleTxRegistered);
+        HFunc(
+            TEvSchemeShard::TEvNotifyTxCompletionRegistered,
+            HandleTxRegistered);
         HFunc(TEvSchemeShard::TEvNotifyTxCompletionResult, HandleTxResult);
 
         default:

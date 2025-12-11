@@ -6,8 +6,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStartEndpointCommand final
-    : public TEndpointCommand
+class TStartEndpointCommand final: public TEndpointCommand
 {
 private:
     TString FileSystemId;
@@ -48,9 +47,7 @@ public:
             .RequiredArgument("NUM")
             .StoreResult(&MountSeqNo);
 
-        Opts.AddLongOption("persistent")
-            .NoArgument()
-            .SetFlag(&Persistent);
+        Opts.AddLongOption("persistent").NoArgument().SetFlag(&Persistent);
     }
 
     bool Execute() override
@@ -69,9 +66,7 @@ public:
         config->SetPersistent(Persistent);
 
         auto response = WaitFor(
-            Client->StartEndpoint(
-                std::move(callContext),
-                std::move(request)));
+            Client->StartEndpoint(std::move(callContext), std::move(request)));
 
         if (HasError(response)) {
             ythrow TServiceError(response.GetError());

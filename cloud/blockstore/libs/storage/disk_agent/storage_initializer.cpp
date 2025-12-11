@@ -2,22 +2,22 @@
 
 #include "hash_table_storage.h"
 
-#include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/common/proto_helpers.h>
-#include <cloud/storage/core/libs/diagnostics/logging.h>
-
 #include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
-#include <cloud/blockstore/libs/service_local/broken_storage.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
+#include <cloud/blockstore/libs/service_local/broken_storage.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/compare_configs.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_generator.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_scanner.h>
 #include <cloud/blockstore/public/api/protos/mount.pb.h>
+
+#include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/proto_helpers.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -47,9 +47,7 @@ const TString& GetDeviceId(const NProto::TFileDeviceArgs& file)
 
 ui64 GetFileLength(const TString& path)
 {
-    TFileHandle file(path,
-          EOpenModeFlag::RdOnly
-        | EOpenModeFlag::OpenExisting);
+    TFileHandle file(path, EOpenModeFlag::RdOnly | EOpenModeFlag::OpenExisting);
 
     if (!file.IsOpen()) {
         ythrow TServiceError(E_ARGUMENT)
@@ -194,11 +192,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TInitializer::TInitializer(
-        TLog log,
-        TStorageConfigPtr storageConfig,
-        TDiskAgentConfigPtr agentConfig,
-        IStorageProviderPtr storageProvider,
-        NNvme::INvmeManagerPtr nvmeManager)
+    TLog log,
+    TStorageConfigPtr storageConfig,
+    TDiskAgentConfigPtr agentConfig,
+    IStorageProviderPtr storageProvider,
+    NNvme::INvmeManagerPtr nvmeManager)
     : Log{std::move(log)}
     , StorageConfig(std::move(storageConfig))
     , AgentConfig(std::move(agentConfig))
@@ -237,12 +235,14 @@ TFuture<IStoragePtr> TInitializer::CreateFileStorage(
         AgentConfig->GetAgentId(),
         NProto::VOLUME_ACCESS_READ_WRITE);
 
-    return storage.Apply([=] (const auto& future) mutable {
-        return CreateStorageWithIoStats(
-            future.GetValue(),
-            std::move(stats),
-            blockSize);
-    });
+    return storage.Apply(
+        [=](const auto& future) mutable
+        {
+            return CreateStorageWithIoStats(
+                future.GetValue(),
+                std::move(stats),
+                blockSize);
+        });
 }
 
 TFuture<IStoragePtr> TInitializer::CreateMemoryStorage(
@@ -254,8 +254,7 @@ TFuture<IStoragePtr> TInitializer::CreateMemoryStorage(
     return MakeFuture(CreateStorageWithIoStats(
         CreateHashTableStorage(blockSize, config.GetBlocksCount()),
         std::move(stats),
-        blockSize
-    ));
+        blockSize));
 }
 
 void TInitializer::OnError(int i, const TString& error)
@@ -264,16 +263,17 @@ void TInitializer::OnError(int i, const TString& error)
 
     if (i < std::ssize(FileDevices)) {
         with_lock (Lock) {
-            Errors.push_back(TStringBuilder()
-                << "FileDevice " << FileDevices[i].GetPath()
-                << " initialization failed: " << error);
+            Errors.push_back(
+                TStringBuilder() << "FileDevice " << FileDevices[i].GetPath()
+                                 << " initialization failed: " << error);
         }
     } else {
         i -= FileDevices.size();
         Y_ABORT_UNLESS(i < memoryDevices.size());
 
         with_lock (Lock) {
-            Errors.push_back(TStringBuilder()
+            Errors.push_back(
+                TStringBuilder()
                 << "MemoryDevice " << memoryDevices[i].GetName()
                 << " initialization failed: " << error);
         }
@@ -292,18 +292,21 @@ bool TInitializer::ValidateStorageDiscoveryConfig() const
                 if (!layout.GetDeviceSize()) {
                     STORAGE_WARN(
                         "Bad pool configuration: the device size is not set. "
-                        "Config: " << pool);
+                        "Config: "
+                        << pool);
 
                     return false;
                 }
 
-                if (pool.GetMinSize() && pool.GetMinSize() <
-                    layout.GetHeaderSize() + layout.GetDeviceSize())
+                if (pool.GetMinSize() &&
+                    pool.GetMinSize() <
+                        layout.GetHeaderSize() + layout.GetDeviceSize())
                 {
                     STORAGE_WARN(
                         "Bad pool configuration: the min size is less than the "
                         "minimum layout. "
-                        "Config: " << pool);
+                        "Config: "
+                        << pool);
 
                     return false;
                 }
@@ -325,12 +328,11 @@ bool TInitializer::ValidateGeneratedConfigs(
 
         it = std::next(it);
 
-        const auto& rhs = it != fileDevices.end()
-            ? it->GetPath()
-            : "?";
+        const auto& rhs = it != fileDevices.end() ? it->GetPath() : "?";
 
-        STORAGE_WARN("Two files '" << lhs << "' and '" << rhs
-            << "' have the same uuid: " << uuid);
+        STORAGE_WARN(
+            "Two files '" << lhs << "' and '" << rhs
+                          << "' have the same uuid: " << uuid);
 
         return false;
     }
@@ -387,7 +389,8 @@ void TInitializer::ScanFileDevices(const THashSet<TString>& allowedPaths)
             std::ref(gen));
         HasError(error))
     {
-        ReportDiskAgentConfigMismatchEvent(TStringBuilder()
+        ReportDiskAgentConfigMismatchEvent(
+            TStringBuilder()
             << "Can't generate config: " << FormatError(error));
         return;
     }
@@ -418,7 +421,7 @@ void TInitializer::ScanFileDevices(const THashSet<TString>& allowedPaths)
     if (auto error = CompareConfigs(FileDevices, files); HasError(error)) {
         TStringStream ss;
         ss << "Generated config doesn't match the static one:"
-            << FormatError(error) << ". Static:\n";
+           << FormatError(error) << ". Static:\n";
         for (auto& d: FileDevices) {
             ss << d << "\n";
         }
@@ -453,7 +456,8 @@ void TInitializer::SaveCurrentConfig()
 
     auto error = SaveDiskAgentConfig(path, proto);
     if (HasError(error)) {
-        Errors.push_back(TStringBuilder()
+        Errors.push_back(
+            TStringBuilder()
             << "can't save the current config: " << FormatError(error));
     }
 }
@@ -493,8 +497,8 @@ bool TInitializer::TryToAcceptCurrentConfigs(
     }
 
     TStringStream ss;
-    ss << "Current config doesn't match the cached one: "
-        << FormatError(error) << ". Current:\n";
+    ss << "Current config doesn't match the cached one: " << FormatError(error)
+       << ". Current:\n";
     for (auto& d: FileDevices) {
         ss << d << "\n";
     }
@@ -509,8 +513,8 @@ bool TInitializer::TryToAcceptCurrentConfigs(
     FileDevices = cachedDevices;
     SetupSerialNumbers(FileDevices);
 
-    Errors.push_back(TStringBuilder()
-        << "broken config: " << FormatError(error));
+    Errors.push_back(
+        TStringBuilder() << "broken config: " << FormatError(error));
 
     return false;
 }
@@ -549,9 +553,7 @@ auto TInitializer::ProcessConfigCache(const THashSet<TString>& allowedPaths)
             { return !allowedPaths.contains(fileArg.GetPath()); });
     }
 
-    SortBy(devices, [] (const auto& d) {
-        return d.GetDeviceId();
-    });
+    SortBy(devices, [](const auto& d) { return d.GetDeviceId(); });
 
     for (const auto& d: devices) {
         const auto currentSerialNumber = GetSerialNumber(d.GetPath());
@@ -559,10 +561,9 @@ auto TInitializer::ProcessConfigCache(const THashSet<TString>& allowedPaths)
         if (currentSerialNumber != d.GetSerialNumber()) {
             STORAGE_WARN(
                 "Device " << d.GetDeviceId() << " [" << d.GetPath()
-                        << "] has new serial number "
-                        << TString(currentSerialNumber).Quote()
-                        << " (was " << d.GetSerialNumber().Quote()
-                        << ")");
+                          << "] has new serial number "
+                          << TString(currentSerialNumber).Quote() << " (was "
+                          << d.GetSerialNumber().Quote() << ")");
             DevicesWithSuspendedIO.push_back(d.GetDeviceId());
         }
     }
@@ -575,9 +576,10 @@ auto TInitializer::ProcessConfigCache(const THashSet<TString>& allowedPaths)
 TFuture<TInitializeStorageResult> TInitializer::InitializePaths(
     const THashSet<TString>& allowedPaths)
 {
-    std::erase_if(FileDevices, [&](const auto& fileArg) {
-        return !allowedPaths.contains(fileArg.GetPath());
-    });
+    std::erase_if(
+        FileDevices,
+        [&](const auto& fileArg)
+        { return !allowedPaths.contains(fileArg.GetPath()); });
 
     ScanFileDevices(allowedPaths);
 
@@ -629,7 +631,8 @@ TFuture<TInitializeStorageResult> TInitializer::CreateStorages()
         Configs[i] = CreateConfig(device);
         Stats[i] = std::make_shared<TStorageIoStats>();
 
-        auto onInitError = [i, this] () {
+        auto onInitError = [i, this]()
+        {
             OnError(i, CurrentExceptionMessage());
 
             Configs[i].SetState(NProto::DEVICE_STATE_ERROR);
@@ -644,22 +647,23 @@ TFuture<TInitializeStorageResult> TInitializer::CreateStorages()
                 !Guard.Lock(Configs[i].GetDeviceName()))
             {
                 ythrow TServiceError(E_ARGUMENT)
-                    << "unable to lock file "
-                    << Configs[i].GetDeviceName();
+                    << "unable to lock file " << Configs[i].GetDeviceName();
             }
 
             auto result = CreateFileStorage(
-                device.GetPath(),
-                device.GetOffset() / device.GetBlockSize(),
-                Configs[i],
-                Stats[i]
-            ).Subscribe([=, this] (const auto& future) {
-                    try {
-                        Devices[i] = future.GetValue();
-                    } catch (...) {
-                        onInitError();
-                    }
-                });
+                              device.GetPath(),
+                              device.GetOffset() / device.GetBlockSize(),
+                              Configs[i],
+                              Stats[i])
+                              .Subscribe(
+                                  [=, this](const auto& future)
+                                  {
+                                      try {
+                                          Devices[i] = future.GetValue();
+                                      } catch (...) {
+                                          onInitError();
+                                      }
+                                  });
 
             futures.push_back(result);
         } catch (...) {
@@ -681,13 +685,15 @@ TFuture<TInitializeStorageResult> TInitializer::CreateStorages()
 
         try {
             auto result = CreateMemoryStorage(Configs[i], Stats[i])
-                .Subscribe([=, this] (const auto& future) {
-                    try {
-                        Devices[i] = future.GetValue();
-                    } catch (...) {
-                        OnError(i, CurrentExceptionMessage());
-                    }
-                });
+                              .Subscribe(
+                                  [=, this](const auto& future)
+                                  {
+                                      try {
+                                          Devices[i] = future.GetValue();
+                                      } catch (...) {
+                                          OnError(i, CurrentExceptionMessage());
+                                      }
+                                  });
 
             futures.push_back(result);
         } catch (...) {
@@ -764,7 +770,8 @@ TInitializeStorageResult TInitializer::GetResult()
     return r;
 }
 
-void TInitializer::ReportDiskAgentConfigMismatchEvent(const TString& error) {
+void TInitializer::ReportDiskAgentConfigMismatchEvent(const TString& error)
+{
     ReportDiskAgentConfigMismatch(error);
     ConfigMismatchErrors.push_back(error);
 }

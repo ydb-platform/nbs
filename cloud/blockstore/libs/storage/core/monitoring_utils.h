@@ -86,10 +86,7 @@ void BuildRebuildMetadataButton(
     ui64 tabletId,
     ui32 rangesPerBatch);
 
-void BuildScanDiskButton(
-    IOutputStream& out,
-    ui64 tabletId,
-    ui32 blobsPerBatch);
+void BuildScanDiskButton(IOutputStream& out, ui64 tabletId, ui32 blobsPerBatch);
 
 void BuildConfirmActionDialog(
     IOutputStream& out,
@@ -137,9 +134,7 @@ void DumpBlobs(
     const NKikimr::TTabletStorageInfo& storage,
     const TVector<TPartialBlobId>& blobs);
 
-void DumpStatsCounters(
-    IOutputStream& out,
-    const NProto::TIOCounters& counters);
+void DumpStatsCounters(IOutputStream& out, const NProto::TIOCounters& counters);
 
 void DumpPartitionStats(
     IOutputStream& out,
@@ -187,8 +182,10 @@ void DumpLatency(
     const TTransactionTimeTracker& transactionTimeTracker,
     size_t columnCount);
 
-TCgiParameters GatherHttpParameters(const NActors::NMon::TEvRemoteHttpInfo& msg);
-TCgiParameters GetHttpMethodParameters(const NActors::NMon::TEvRemoteHttpInfo& msg);
+TCgiParameters GatherHttpParameters(
+    const NActors::NMon::TEvRemoteHttpInfo& msg);
+TCgiParameters GetHttpMethodParameters(
+    const NActors::NMon::TEvRemoteHttpInfo& msg);
 HTTP_METHOD GetHttpMethodType(const NActors::NMon::TEvRemoteHttpInfo& msg);
 
 void RenderAutoRefreshToggle(

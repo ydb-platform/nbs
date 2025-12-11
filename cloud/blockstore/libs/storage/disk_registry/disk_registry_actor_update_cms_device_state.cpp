@@ -18,10 +18,8 @@ void TDiskRegistryActor::HandleUpdateCmsHostDeviceState(
 
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LOG_INFO(
         ctx,
@@ -104,7 +102,8 @@ void TDiskRegistryActor::CompleteUpdateCmsHostDeviceState(
     SecureErase(ctx);
     StartMigration(ctx);
 
-    using TResponse = TEvDiskRegistryPrivate::TEvUpdateCmsHostDeviceStateResponse;
+    using TResponse =
+        TEvDiskRegistryPrivate::TEvUpdateCmsHostDeviceStateResponse;
 
     auto response = std::make_unique<TResponse>(
         std::move(args.Error),

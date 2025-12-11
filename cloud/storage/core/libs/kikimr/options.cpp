@@ -18,7 +18,9 @@ TOptionsYdbBase::TOptionsYdbBase()
         .RequiredArgument("PATH")
         .StoreResult(&RestartsCountFile);
 
-    Opts.AddLongOption("suppress-version-check", "Suppress version compatibility checking via IC")
+    Opts.AddLongOption(
+            "suppress-version-check",
+            "Suppress version compatibility checking via IC")
         .NoArgument()
         .StoreTrue(&SuppressVersionCheck);
 
@@ -38,21 +40,17 @@ TOptionsYdbBase::TOptionsYdbBase()
         .RequiredArgument("FILE")
         .StoreResult(&DomainsConfig);
 
-    Opts.AddLongOption("ic-file")
-        .RequiredArgument("PATH")
-        .StoreResult(&InterconnectConfig);
+    Opts.AddLongOption("ic-file").RequiredArgument("PATH").StoreResult(
+        &InterconnectConfig);
 
-    Opts.AddLongOption("ic-port")
-        .RequiredArgument("NUM")
-        .StoreResult(&InterconnectPort);
+    Opts.AddLongOption("ic-port").RequiredArgument("NUM").StoreResult(
+        &InterconnectPort);
 
     Opts.AddLongOption("mon-file")
         .RequiredArgument("PATH")
         .StoreResult(&MonitoringConfig);
 
-    Opts.AddLongOption("domain")
-        .RequiredArgument("STR")
-        .StoreResult(&Domain);
+    Opts.AddLongOption("domain").RequiredArgument("STR").StoreResult(&Domain);
 
     Opts.AddLongOption("scheme-shard-dir")
         .RequiredArgument("STR")
@@ -71,8 +69,8 @@ TOptionsYdbBase::TOptionsYdbBase()
         .StoreResult(&NodeBrokerSecurePort);
 
     Opts.AddLongOption(
-        "use-secure-registration",
-        "Use secure connection to node broker")
+            "use-secure-registration",
+            "Use secure connection to node broker")
         .NoArgument()
         .StoreTrue(&UseNodeBrokerSsl);
 

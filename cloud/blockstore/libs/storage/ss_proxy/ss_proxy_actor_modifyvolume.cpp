@@ -16,8 +16,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TModifyVolumeActor final
-    : public TActorBootstrapped<TModifyVolumeActor>
+class TModifyVolumeActor final: public TActorBootstrapped<TModifyVolumeActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
@@ -57,13 +56,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TModifyVolumeActor::TModifyVolumeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
-        EOpType opType,
-        TString diskId,
-        TString newMountToken,
-        ui64 tokenVersion,
-        ui64 fillGeneration)
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr config,
+    EOpType opType,
+    TString diskId,
+    TString newMountToken,
+    ui64 tokenVersion,
+    ui64 fillGeneration)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , OpType(opType)
@@ -86,15 +85,12 @@ void TModifyVolumeActor::TryModifyScheme(const TActorContext& ctx)
     TString volumeName;
 
     if (!FallbackRequest) {
-        std::tie(volumeDir, volumeName)  =
-            DiskIdToVolumeDirAndNameDeprecated(
-                Config->GetSchemeShardDir(),
-                DiskId);
+        std::tie(volumeDir, volumeName) = DiskIdToVolumeDirAndNameDeprecated(
+            Config->GetSchemeShardDir(),
+            DiskId);
     } else {
         std::tie(volumeDir, volumeName) =
-            DiskIdToVolumeDirAndName(
-                Config->GetSchemeShardDir(),
-                DiskId);
+            DiskIdToVolumeDirAndName(Config->GetSchemeShardDir(), DiskId);
     }
 
     NKikimrSchemeOp::TModifyScheme modifyScheme;
@@ -143,8 +139,10 @@ void TModifyVolumeActor::HandleModifySchemeResponse(
     ui32 errorCode = error.GetCode();
 
     // TODO: use E_NOT_FOUND instead of StatusPathDoesNotExist
-    if (FAILED(errorCode) && FACILITY_FROM_CODE(errorCode) == FACILITY_SCHEMESHARD) {
-        switch ((NKikimrScheme::EStatus) STATUS_FROM_CODE(errorCode)) {
+    if (FAILED(errorCode) &&
+        FACILITY_FROM_CODE(errorCode) == FACILITY_SCHEMESHARD)
+    {
+        switch ((NKikimrScheme::EStatus)STATUS_FROM_CODE(errorCode)) {
             case NKikimrScheme::StatusPathDoesNotExist:
                 if (!FallbackRequest) {
                     FallbackRequest = true;
@@ -163,7 +161,7 @@ void TModifyVolumeActor::HandleModifySchemeResponse(
         }
     }
 
-    const auto status = (NKikimrScheme::EStatus) msg.Status;
+    const auto status = (NKikimrScheme::EStatus)msg.Status;
     const auto reason = msg.Reason;
 
     auto response = std::make_unique<TEvSSProxy::TEvModifyVolumeResponse>(
@@ -200,10 +198,8 @@ void TSSProxyActor::HandleModifyVolume(
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     NCloud::Register<TModifyVolumeActor>(
         ctx,

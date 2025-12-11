@@ -8,8 +8,8 @@
 #include <cloud/storage/core/libs/common/byte_vector.h>
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <util/generic/map.h>
 #include <util/generic/deque.h>
+#include <util/generic/map.h>
 #include <util/generic/strbuf.h>
 #include <util/memory/alloc.h>
 
@@ -33,8 +33,7 @@ public:
         bool operator<(const TKey& rhs) const
         {
             // (NodeId, End) ASC
-            return NodeId < rhs.NodeId
-                || NodeId == rhs.NodeId && End < rhs.End;
+            return NodeId < rhs.NodeId || NodeId == rhs.NodeId && End < rhs.End;
         }
     };
 
@@ -109,11 +108,8 @@ public:
         LogTag = std::move(logTag);
     }
 
-    NProto::TError CheckBytes(
-        ui64 nodeId,
-        ui64 offset,
-        TStringBuf data,
-        ui64 commitId) const;
+    NProto::TError
+    CheckBytes(ui64 nodeId, ui64 offset, TStringBuf data, ui64 commitId) const;
     void AddBytes(ui64 nodeId, ui64 offset, TStringBuf data, ui64 commitId);
     void AddDeletionMarker(ui64 nodeId, ui64 offset, ui64 len, ui64 commitId);
 
@@ -124,10 +120,8 @@ public:
         TVector<TBytes>* entries,
         TVector<TBytes>* deletionMarkers);
     void VisitTop(ui64 itemLimit, const TChunkVisitor& visitor);
-    bool FinishCleanup(
-        ui64 chunkId,
-        ui64 dataItemCount,
-        ui64 deletionMarkerCount);
+    bool
+    FinishCleanup(ui64 chunkId, ui64 dataItemCount, ui64 deletionMarkerCount);
 
     void FindBytes(
         IFreshBytesVisitor& visitor,
@@ -138,7 +132,8 @@ public:
     bool Intersects(ui64 nodeId, TByteRange byteRange) const;
 
 private:
-    void DeleteBytes(TChunk& c, ui64 nodeId, ui64 offset, ui64 len, ui64 commitId);
+    void
+    DeleteBytes(TChunk& c, ui64 nodeId, ui64 offset, ui64 len, ui64 commitId);
 
     void Barrier(ui64 commitId);
 

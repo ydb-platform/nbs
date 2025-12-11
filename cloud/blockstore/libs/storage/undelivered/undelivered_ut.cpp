@@ -1,15 +1,14 @@
 #include "undelivered.h"
 
-#include <cloud/blockstore/public/api/protos/volume.pb.h>
-
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/public/api/protos/volume.pb.h>
 
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
-#include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/testlib/basics/appdata.h>
+#include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <contrib/ydb/core/testlib/tablet_helpers.h>
 #include <contrib/ydb/core/testlib/test_client.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -61,7 +60,8 @@ public:
         Runtime.GrabEdgeEventRethrow<TResponse>(handle, WaitTimeout);
 
         UNIT_ASSERT(handle);
-        return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
+        return std::unique_ptr<TResponse>(
+            handle->Release<TResponse>().Release());
     }
 
     std::unique_ptr<TEvService::TEvStatVolumeRequest> CreateStatVolumeRequest()
@@ -76,7 +76,8 @@ public:
         return request;
     }
 
-    std::unique_ptr<TEvService::TEvWriteBlocksRequest> CreateWriteBlocksRequest()
+    std::unique_ptr<TEvService::TEvWriteBlocksRequest>
+    CreateWriteBlocksRequest()
     {
         auto request = std::make_unique<TEvService::TEvWriteBlocksRequest>();
         return request;
@@ -99,27 +100,26 @@ public:
         Runtime.Send(ev, 0);
     }
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
-    template <typename... Args>                                                \
-    void Send##name##Request(Args&&... args)                                   \
-    {                                                                          \
-        SendRequest(                                                           \
-            Create##name##Request(std::forward<Args>(args)...));               \
-    }                                                                          \
-                                                                               \
-    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response()            \
-    {                                                                          \
-        return RecvResponse<ns::TEv##name##Response>();                        \
-    }                                                                          \
-                                                                               \
-    template <typename... Args>                                                \
-    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)              \
-    {                                                                          \
-        Send##name##Request(std::forward<Args>(args)...);                      \
-        auto response = Recv##name##Response();                                \
-        return response;                                                       \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ns)                              \
+    template <typename... Args>                                          \
+    void Send##name##Request(Args&&... args)                             \
+    {                                                                    \
+        SendRequest(Create##name##Request(std::forward<Args>(args)...)); \
+    }                                                                    \
+                                                                         \
+    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response()      \
+    {                                                                    \
+        return RecvResponse<ns::TEv##name##Response>();                  \
+    }                                                                    \
+                                                                         \
+    template <typename... Args>                                          \
+    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)        \
+    {                                                                    \
+        Send##name##Request(std::forward<Args>(args)...);                \
+        auto response = Recv##name##Response();                          \
+        return response;                                                 \
+    }                                                                    \
+    // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_GRPC_STORAGE_SERVICE(BLOCKSTORE_DECLARE_METHOD, TEvService)
     BLOCKSTORE_SERVICE_REQUESTS(BLOCKSTORE_DECLARE_METHOD, TEvService)
@@ -138,10 +138,7 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime()
 
     runtime->AddLocalService(
         NStorage::MakeUndeliveredHandlerServiceId(),
-        TActorSetupCmd(
-            undeliveredHandler.release(),
-            TMailboxType::Simple,
-            0));
+        TActorSetupCmd(undeliveredHandler.release(), TMailboxType::Simple, 0));
 
     SetupTabletServices(*runtime);
 

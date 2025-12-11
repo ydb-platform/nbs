@@ -10,8 +10,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBlockBuffer final
-    : public IBlockBuffer
+class TBlockBuffer final: public IBlockBuffer
 {
 private:
     const TByteRange ByteRange;
@@ -21,27 +20,26 @@ public:
     TBlockBuffer(TByteRange byteRange, TString buffer)
         : ByteRange(byteRange)
         , Buffer(std::move(buffer))
-    {
-    }
+    {}
 
     TStringBuf GetUnalignedHead() override
     {
         const char* ptr = Buffer.data();
-        return { ptr, ByteRange.UnalignedHeadLength() };
+        return {ptr, ByteRange.UnalignedHeadLength()};
     }
 
     TStringBuf GetUnalignedTail() override
     {
         const auto offset = ByteRange.RelativeUnalignedTailOffset();
         const char* ptr = Buffer.data() + offset;
-        return { ptr, ByteRange.UnalignedTailLength() };
+        return {ptr, ByteRange.UnalignedTailLength()};
     }
 
     TStringBuf GetBlock(size_t index) override
     {
         const auto offset = ByteRange.RelativeAlignedBlockOffset(index);
         const char* ptr = Buffer.data() + offset;
-        return { ptr, ByteRange.BlockSize };
+        return {ptr, ByteRange.BlockSize};
     }
 
     void SetBlock(size_t index, TStringBuf block) override
@@ -63,8 +61,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TLazyBlockBuffer final
-    : public IBlockBuffer
+class TLazyBlockBuffer final: public IBlockBuffer
 {
 private:
     const TByteRange ByteRange;
@@ -76,8 +73,7 @@ public:
     explicit TLazyBlockBuffer(TByteRange byteRange)
         : ByteRange(byteRange)
         , Blocks(ByteRange.BlockCount())
-    {
-    }
+    {}
 
     TStringBuf GetUnalignedHead() override
     {

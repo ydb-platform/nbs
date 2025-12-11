@@ -26,7 +26,11 @@ namespace NCloud::NFileStore::NStorage {
 
 [[nodiscard]] inline ui64 SafeIncrement(ui64 value, size_t delta)
 {
-    Y_ABORT_UNLESS(value <= Max<ui64>() - delta, "v: %lu, d: %lu", value, Max<ui64>() - delta);
+    Y_ABORT_UNLESS(
+        value <= Max<ui64>() - delta,
+        "v: %lu, d: %lu",
+        value,
+        Max<ui64>() - delta);
     return value + delta;
 }
 
@@ -38,7 +42,9 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-[[nodiscard]] inline NKikimr::TLogoBlobID MakeBlobId(ui64 tabletId, const TPartialBlobId& blobId)
+[[nodiscard]] inline NKikimr::TLogoBlobID MakeBlobId(
+    ui64 tabletId,
+    const TPartialBlobId& blobId)
 {
     return NKikimr::TLogoBlobID(
         tabletId,
@@ -56,26 +62,27 @@ namespace NCloud::NFileStore::NStorage {
     return AlignUp<ui64>(size, block) / block;
 }
 
-[[nodiscard]] inline i64 GetBlocksDifference(ui64 prevSize, ui64 curSize, ui32 block)
+[[nodiscard]] inline i64
+GetBlocksDifference(ui64 prevSize, ui64 curSize, ui32 block)
 {
     return static_cast<i64>(SizeToBlocks(curSize, block)) -
-        static_cast<i64>(SizeToBlocks(prevSize, block));
+           static_cast<i64>(SizeToBlocks(prevSize, block));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 enum ECopyAttrsMode
 {
-    E_CM_CTIME = 1,     // CTime
+    E_CM_CTIME = 1,   // CTime
 
-    E_CM_MTIME = 2,     // MTime
-    E_CM_CMTIME = 3,    // CTime + MTime
+    E_CM_MTIME = 2,    // MTime
+    E_CM_CMTIME = 3,   // CTime + MTime
 
-    E_CM_ATIME = 4,     // ATime
-    E_CM_CATIME = 5,    // CTime + ATime
+    E_CM_ATIME = 4,    // ATime
+    E_CM_CATIME = 5,   // CTime + ATime
 
-    E_CM_REF = 8,       // Links +1
-    E_CM_UNREF = 16,    // Links -1
+    E_CM_REF = 8,      // Links +1
+    E_CM_UNREF = 16,   // Links -1
 };
 
 NProto::TNode CreateRegularAttrs(ui32 mode, ui32 uid, ui32 gid);
@@ -120,8 +127,8 @@ struct TTag
  * @param sources
  * @return TDestination
  */
-template<typename TDestination, typename... TSources>
-TDestination ConvertTo(TSources&& ...sources)
+template <typename TDestination, typename... TSources>
+TDestination ConvertTo(TSources&&... sources)
 {
     return ConvertToImpl(
         std::forward<TSources>(sources)...,
@@ -131,7 +138,9 @@ TDestination ConvertTo(TSources&& ...sources)
 ////////////////////////////////////////////////////////////////////////////////
 
 ELockOrigin ConvertToImpl(NProto::ELockOrigin source, TTag<ELockOrigin>);
-NProto::ELockOrigin ConvertToImpl(ELockOrigin source, TTag<NProto::ELockOrigin>);
+NProto::ELockOrigin ConvertToImpl(
+    ELockOrigin source,
+    TTag<NProto::ELockOrigin>);
 ELockMode ConvertToImpl(NProto::ELockType source, TTag<ELockMode>);
 NProto::ELockType ConvertToImpl(ELockMode source, TTag<NProto::ELockType>);
 
@@ -144,9 +153,7 @@ NProto::TError ValidateRange(TByteRange byteRange, ui32 maxFileBlocks);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void Convert(
-    const NKikimrFileStore::TConfig& src,
-    NProto::TFileSystem& dst);
+void Convert(const NKikimrFileStore::TConfig& src, NProto::TFileSystem& dst);
 
 void Convert(
     const NProto::TFileSystem& src,
@@ -181,10 +188,12 @@ bool IsLockingAllowed(const TSessionHandle* handle, const TLockRange& range);
 
 template <typename T>
 concept HasGetLockType = requires(T t) {
-    { t.GetLockType() } -> std::same_as<NProto::ELockType>;
+    {
+        t.GetLockType()
+    } -> std::same_as<NProto::ELockType>;
 };
 
-template<typename TRequest>
+template <typename TRequest>
 TLockRange MakeLockRange(const TRequest& request, ui64 nodeId)
 {
     TLockRange range{

@@ -25,7 +25,7 @@ void PutFile(const TFsPath& path, const TString& text)
     TOFStream(path.GetPath()).Write(text);
 }
 
-TString GetDefaultConfig() 
+TString GetDefaultConfig()
 {
     NProto::TClientAppConfig clientAppConfig;
     auto& clientConfig = *clientAppConfig.MutableClientConfig();
@@ -33,7 +33,7 @@ TString GetDefaultConfig()
     return clientAppConfig.DebugString();
 }
 
-TString GetFallbackConfig() 
+TString GetFallbackConfig()
 {
     NProto::TClientAppConfig clientAppConfig;
     auto& clientConfig = *clientAppConfig.MutableClientConfig();
@@ -41,61 +41,65 @@ TString GetFallbackConfig()
     return clientAppConfig.DebugString();
 }
 
-}  // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TClientAppConfigParseTest) 
+Y_UNIT_TEST_SUITE(TClientAppConfigParseTest)
 {
     Y_UNIT_TEST(ShouldParseDefaultConfig)
     {
         TTempDir dir;
         auto defaultConfigPath = dir.Path() / DefaultConfigFileName;
         PutFile(defaultConfigPath, GetDefaultConfig());
-        
+
         auto fallbackConfigPath = dir.Path() / FallbackConfigFileName;
         PutFile(fallbackConfigPath, GetFallbackConfig());
-        
+
         NProto::TPluginConfig pluginConfig;
         NProto::TClientAppConfig appConfig = ParseClientAppConfig(
-            pluginConfig, 
-            defaultConfigPath.GetPath(), 
+            pluginConfig,
+            defaultConfigPath.GetPath(),
             fallbackConfigPath.GetPath());
-    
-        UNIT_ASSERT_VALUES_EQUAL(DefaultConfigHost, appConfig.GetClientConfig().GetHost());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            DefaultConfigHost,
+            appConfig.GetClientConfig().GetHost());
     }
-    
+
     Y_UNIT_TEST(ShouldParseDefaultConfigFromPluginConfig)
     {
         TTempDir dir;
         auto defaultConfigPath = dir.Path() / DefaultConfigFileName;
         PutFile(defaultConfigPath, GetDefaultConfig());
-        
+
         NProto::TPluginConfig pluginConfig;
         pluginConfig.SetClientConfig(defaultConfigPath.GetPath());
-        NProto::TClientAppConfig appConfig = ParseClientAppConfig(
-            pluginConfig, 
-            "", 
-            "");
-    
-        UNIT_ASSERT_VALUES_EQUAL(DefaultConfigHost, appConfig.GetClientConfig().GetHost());
+        NProto::TClientAppConfig appConfig =
+            ParseClientAppConfig(pluginConfig, "", "");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            DefaultConfigHost,
+            appConfig.GetClientConfig().GetHost());
     }
-    
+
     Y_UNIT_TEST(ShouldParseFallbackConfig)
     {
         TTempDir dir;
         auto fallbackConfigPath = dir.Path() / FallbackConfigFileName;
         PutFile(fallbackConfigPath, GetFallbackConfig());
-        
+
         NProto::TPluginConfig pluginConfig;
         NProto::TClientAppConfig appConfig = ParseClientAppConfig(
-            pluginConfig, 
-            DefaultConfigFileName, 
+            pluginConfig,
+            DefaultConfigFileName,
             fallbackConfigPath.GetPath());
-    
-        UNIT_ASSERT_VALUES_EQUAL(FallbackConfigHost, appConfig.GetClientConfig().GetHost());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            FallbackConfigHost,
+            appConfig.GetClientConfig().GetHost());
     }
-    
+
     Y_UNIT_TEST(ShouldFailIfNoFile)
     {
         NProto::TPluginConfig pluginConfig;

@@ -1,5 +1,6 @@
 #include <cloud/blockstore/libs/kms/iface/kms_client.h>
 #include <cloud/blockstore/libs/kms/impl/kms_client.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -15,16 +16,11 @@ int main(int argc, char** argv)
     using namespace NCloud;
 
     NLastGetopt::TOpts opts;
-    opts.AddLongOption("address", "kms server address")
-        .Required();
-    opts.AddLongOption("key-id", "kms key id")
-        .Required();
-    opts.AddLongOption("ciphertext", "base64 of encrypted dek")
-        .Required();
-    opts.AddLongOption("token", "IAM token")
-        .Required();
-    opts.AddLongOption("insecure", "disable TLS")
-        .NoArgument();
+    opts.AddLongOption("address", "kms server address").Required();
+    opts.AddLongOption("key-id", "kms key id").Required();
+    opts.AddLongOption("ciphertext", "base64 of encrypted dek").Required();
+    opts.AddLongOption("token", "IAM token").Required();
+    opts.AddLongOption("insecure", "disable TLS").NoArgument();
     opts.AddLongOption("target-name", "ssl target name override")
         .DefaultValue("");
     opts.AddHelpOption();
@@ -60,9 +56,10 @@ int main(int argc, char** argv)
     auto client = NBlockStore::CreateKmsClient(logging, config);
 
     client->Start();
-    Y_DEFER {
+    Y_DEFER
+    {
         client->Stop();
-    };
+    }
 
     auto future = client->Decrypt(keyId, ciphertext, token);
     auto response = future.GetValueSync();

@@ -8,23 +8,19 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_COUNTER_NAME(name, category, ...)    #category "/" #name,
+#define BLOCKSTORE_COUNTER_NAME(name, category, ...) #category "/" #name,
 
 const char* const TVolumeCounters::SimpleCounterNames[] = {
-    BLOCKSTORE_VOLUME_SIMPLE_COUNTERS(BLOCKSTORE_COUNTER_NAME)
-};
+    BLOCKSTORE_VOLUME_SIMPLE_COUNTERS(BLOCKSTORE_COUNTER_NAME)};
 
 const char* const TVolumeCounters::CumulativeCounterNames[] = {
-    BLOCKSTORE_VOLUME_CUMULATIVE_COUNTERS(BLOCKSTORE_COUNTER_NAME)
-};
+    BLOCKSTORE_VOLUME_CUMULATIVE_COUNTERS(BLOCKSTORE_COUNTER_NAME)};
 
 const char* const TVolumeCounters::PercentileCounterNames[] = {
-    BLOCKSTORE_VOLUME_PERCENTILE_COUNTERS(BLOCKSTORE_COUNTER_NAME)
-};
+    BLOCKSTORE_VOLUME_PERCENTILE_COUNTERS(BLOCKSTORE_COUNTER_NAME)};
 
 const char* const TVolumeCounters::TransactionTypeNames[] = {
-    BLOCKSTORE_VOLUME_TRANSACTIONS(BLOCKSTORE_COUNTER_NAME, Tx)
-};
+    BLOCKSTORE_VOLUME_TRANSACTIONS(BLOCKSTORE_COUNTER_NAME, Tx)};
 
 #undef BLOCKSTORE_COUNTER_NAME
 

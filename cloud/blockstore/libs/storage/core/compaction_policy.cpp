@@ -13,11 +13,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-float RequestCost(
-    ui32 maxIops,
-    ui64 maxBandwidth,
-    double bytes,
-    double count)
+float RequestCost(ui32 maxIops, ui64 maxBandwidth, double bytes, double count)
 {
     if (!bytes) {
         return 0;
@@ -34,15 +30,13 @@ auto OrDefault(const T t, const T def)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDefaultPolicy
-    : ICompactionPolicy
+struct TDefaultPolicy: ICompactionPolicy
 {
     const ui32 CompactionThreshold;
 
     TDefaultPolicy(ui32 compactionThreshold)
         : CompactionThreshold(compactionThreshold)
-    {
-    }
+    {}
 
     TCompactionScore CalculateScore(const TRangeStat& stat) const override
     {
@@ -65,15 +59,14 @@ const ui64 DefaultMaxReadBandwidth = 30_MB;
 const ui32 DefaultMaxWriteIops = 300;
 const ui64 DefaultMaxWriteBandwidth = 30_MB;
 
-struct TLoadOptimizationPolicy
-    : ICompactionPolicy
+struct TLoadOptimizationPolicy: ICompactionPolicy
 {
     TLoadOptimizationCompactionPolicyConfig Config;
 
-    TLoadOptimizationPolicy(const TLoadOptimizationCompactionPolicyConfig& config)
+    TLoadOptimizationPolicy(
+        const TLoadOptimizationCompactionPolicyConfig& config)
         : Config(config)
-    {
-    }
+    {}
 
     TCompactionScore CalculateScore(const TRangeStat& stat) const override
     {
@@ -89,43 +82,42 @@ struct TLoadOptimizationPolicy
             OrDefault(Config.MaxReadIops, DefaultMaxReadIops),
             OrDefault(Config.MaxReadBandwidth, DefaultMaxReadBandwidth),
             stat.ReadRequestBlockCount * Config.BlockSize,
-            stat.ReadRequestBlobCount
-        );
+            stat.ReadRequestBlobCount);
 
         auto compactedReadCost = RequestCost(
             OrDefault(Config.MaxReadIops, DefaultMaxReadIops),
             OrDefault(Config.MaxReadBandwidth, DefaultMaxReadBandwidth),
             stat.ReadRequestBlockCount * Config.BlockSize,
-            stat.ReadRequestCount
-        );
+            stat.ReadRequestCount);
 
-        const auto dataSize = Min(
-            stat.UsedBlockCount * Config.BlockSize,
-            Config.MaxBlobSize
-        );
+        const auto dataSize =
+            Min(stat.UsedBlockCount * Config.BlockSize, Config.MaxBlobSize);
 
         float compactionCost = 0;
         if (dataSize) {
-            const auto averageBlobSize = stat.BlockCount * Config.BlockSize
-                / double(stat.BlobCount);
+            const auto averageBlobSize =
+                stat.BlockCount * Config.BlockSize / double(stat.BlobCount);
 
-            const auto maxBlobs = stat.BlockCount
-                ? dataSize / averageBlobSize
-                : double(stat.BlobCount);
+            const auto maxBlobs = stat.BlockCount ? dataSize / averageBlobSize
+                                                  : double(stat.BlobCount);
 
-            compactionCost = RequestCost(
-                OrDefault(Config.MaxReadIops, DefaultMaxReadIops),
-                OrDefault(Config.MaxReadBandwidth, DefaultMaxReadBandwidth),
-                dataSize,
-                maxBlobs
-            ) + RequestCost(
-                OrDefault(Config.MaxWriteIops, DefaultMaxWriteIops),
-                OrDefault(Config.MaxWriteBandwidth, DefaultMaxWriteBandwidth),
-                Min(stat.UsedBlockCount * Config.BlockSize, Config.MaxBlobSize),
-                1
-            );
+            compactionCost =
+                RequestCost(
+                    OrDefault(Config.MaxReadIops, DefaultMaxReadIops),
+                    OrDefault(Config.MaxReadBandwidth, DefaultMaxReadBandwidth),
+                    dataSize,
+                    maxBlobs) +
+                RequestCost(
+                    OrDefault(Config.MaxWriteIops, DefaultMaxWriteIops),
+                    OrDefault(
+                        Config.MaxWriteBandwidth,
+                        DefaultMaxWriteBandwidth),
+                    Min(stat.UsedBlockCount * Config.BlockSize,
+                        Config.MaxBlobSize),
+                    1);
         }
-        return {readCost - compactedReadCost - compactionCost,
+        return {
+            readCost - compactedReadCost - compactionCost,
             TCompactionScore::EType::Read};
     }
 
@@ -145,14 +137,14 @@ ui32 GetMaxBlobsPerRange(
     const ui32 siblingCount)
 {
     auto maxBlobsPerRange = IntegerCast<ui32>(
-        partitionConfig.GetStorageMediaKind() == NCloud::NProto::STORAGE_MEDIA_SSD
+        partitionConfig.GetStorageMediaKind() ==
+                NCloud::NProto::STORAGE_MEDIA_SSD
             ? partitionConfig.GetTabletVersion() == 2
-                ? storageConfig.GetSSDV2MaxBlobsPerRange()
-                : storageConfig.GetSSDMaxBlobsPerRange()
-            : partitionConfig.GetTabletVersion() == 2
-                ? storageConfig.GetHDDV2MaxBlobsPerRange()
-                : storageConfig.GetHDDMaxBlobsPerRange()
-    );
+                  ? storageConfig.GetSSDV2MaxBlobsPerRange()
+                  : storageConfig.GetSSDMaxBlobsPerRange()
+        : partitionConfig.GetTabletVersion() == 2
+            ? storageConfig.GetHDDV2MaxBlobsPerRange()
+            : storageConfig.GetHDDMaxBlobsPerRange());
 
     maxBlobsPerRange = Max(maxBlobsPerRange / siblingCount, 1u);
     return maxBlobsPerRange;
@@ -171,37 +163,38 @@ ICompactionPolicyPtr BuildLoadOptimizationCompactionPolicy(
     return std::make_shared<TLoadOptimizationPolicy>(config);
 }
 
-TLoadOptimizationCompactionPolicyConfig BuildLoadOptimizationCompactionPolicyConfig(
+TLoadOptimizationCompactionPolicyConfig
+BuildLoadOptimizationCompactionPolicyConfig(
     const NProto::TPartitionConfig& partitionConfig,
     const TStorageConfig& storageConfig,
     const ui32 maxBlobsPerRange)
 {
     const auto blockSize = partitionConfig.GetBlockSize();
     const auto maxBlocksInBlob = partitionConfig.GetMaxBlocksInBlob()
-        ? partitionConfig.GetMaxBlocksInBlob()
-        : MaxBlocksCount;
+                                     ? partitionConfig.GetMaxBlocksInBlob()
+                                     : MaxBlocksCount;
 
-    const auto maxReadIops =
-        partitionConfig.GetStorageMediaKind() == NCloud::NProto::STORAGE_MEDIA_SSD
-            ? storageConfig.GetRealSSDUnitReadIops()
-            : storageConfig.GetRealHDDUnitReadIops();
+    const auto maxReadIops = partitionConfig.GetStorageMediaKind() ==
+                                     NCloud::NProto::STORAGE_MEDIA_SSD
+                                 ? storageConfig.GetRealSSDUnitReadIops()
+                                 : storageConfig.GetRealHDDUnitReadIops();
 
     const auto maxReadBandwidth = IntegerCast<ui32>(
-        partitionConfig.GetStorageMediaKind() == NCloud::NProto::STORAGE_MEDIA_SSD
+        partitionConfig.GetStorageMediaKind() ==
+                NCloud::NProto::STORAGE_MEDIA_SSD
             ? storageConfig.GetRealSSDUnitReadBandwidth() * 1_MB
-            : storageConfig.GetRealHDDUnitReadBandwidth() * 1_MB
-    );
+            : storageConfig.GetRealHDDUnitReadBandwidth() * 1_MB);
 
-    const auto maxWriteIops =
-        partitionConfig.GetStorageMediaKind() == NCloud::NProto::STORAGE_MEDIA_SSD
-            ? storageConfig.GetRealSSDUnitWriteIops()
-            : storageConfig.GetRealHDDUnitWriteIops();
+    const auto maxWriteIops = partitionConfig.GetStorageMediaKind() ==
+                                      NCloud::NProto::STORAGE_MEDIA_SSD
+                                  ? storageConfig.GetRealSSDUnitWriteIops()
+                                  : storageConfig.GetRealHDDUnitWriteIops();
 
     const auto maxWriteBandwidth = IntegerCast<ui32>(
-        partitionConfig.GetStorageMediaKind() == NCloud::NProto::STORAGE_MEDIA_SSD
+        partitionConfig.GetStorageMediaKind() ==
+                NCloud::NProto::STORAGE_MEDIA_SSD
             ? storageConfig.GetRealSSDUnitWriteBandwidth() * 1_MB
-            : storageConfig.GetRealHDDUnitWriteBandwidth() * 1_MB
-    );
+            : storageConfig.GetRealHDDUnitWriteBandwidth() * 1_MB);
 
     return {
         maxBlocksInBlob * blockSize,
@@ -210,8 +203,7 @@ TLoadOptimizationCompactionPolicyConfig BuildLoadOptimizationCompactionPolicyCon
         maxReadBandwidth,
         maxWriteIops,
         maxWriteBandwidth,
-        maxBlobsPerRange
-    };
+        maxBlobsPerRange};
 }
 
 ICompactionPolicyPtr BuildCompactionPolicy(
@@ -221,10 +213,8 @@ ICompactionPolicyPtr BuildCompactionPolicy(
 {
     Y_ABORT_UNLESS(siblingCount > 0);
 
-    const auto maxBlobsPerRange = GetMaxBlobsPerRange(
-        partitionConfig,
-        storageConfig,
-        siblingCount);
+    const auto maxBlobsPerRange =
+        GetMaxBlobsPerRange(partitionConfig, storageConfig, siblingCount);
 
     NProto::ECompactionType ct = NProto::ECompactionType::CT_DEFAULT;
     switch (partitionConfig.GetStorageMediaKind()) {
@@ -253,12 +243,11 @@ ICompactionPolicyPtr BuildCompactionPolicy(
                 BuildLoadOptimizationCompactionPolicyConfig(
                     partitionConfig,
                     storageConfig,
-                    maxBlobsPerRange
-                )
-            );
+                    maxBlobsPerRange));
         }
 
-        default: Y_ABORT_UNLESS(0);
+        default:
+            Y_ABORT_UNLESS(0);
     }
 }
 

@@ -1,12 +1,12 @@
 #include "composite_task_waiter.h"
 
-#include <contrib/ydb/core/testlib/basics/runtime.h>
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
-
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
+#include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <contrib/ydb/core/testlib/tablet_helpers.h>
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 using namespace NActors;
@@ -158,4 +158,4 @@ Y_UNIT_TEST_SUITE(TCompositeTaskListTest)
     }
 }
 
-} // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore::NStorage

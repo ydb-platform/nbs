@@ -7,7 +7,6 @@
 
 #include <util/generic/ptr.h>
 
-
 namespace NCloud {
 
 using namespace NMonitoring;
@@ -27,7 +26,9 @@ enum EState
 
 template <typename T>
 concept TBusyIdleTimeStorage = requires(T t) {
-    { t.IncrementState(std::declval<ui64>(), std::declval<EState>()) } -> std::same_as<void>;
+    {
+        t.IncrementState(std::declval<ui64>(), std::declval<EState>())
+    } -> std::same_as<void>;
 } && std::is_default_constructible<T>::value;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -109,7 +110,7 @@ class TBusyIdleTimeCalculator
 public:
     TBusyIdleTimeCalculator()
     {
-        for (auto& e : State) {
+        for (auto& e: State) {
             AtomicSet(e, 0);
         }
         StartState(IDLE);

@@ -40,7 +40,7 @@ class TProtoMessageSerializer
     using IProtoFactoryPtr = std::unique_ptr<IProtoFactory>;
 
     template <typename T>
-    struct TProtoFactory : IProtoFactory
+    struct TProtoFactory: IProtoFactory
     {
         TProtoMessagePtr Create() const override
         {

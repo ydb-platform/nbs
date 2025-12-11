@@ -19,8 +19,7 @@ bool CheckSortedWithGaps(const TVector<TBlock>& blocks)
             continue;
         }
 
-        if (prevBlock.MinCommitId != prevBlock.MaxCommitId
-                && block < prevBlock)
+        if (prevBlock.MinCommitId != prevBlock.MaxCommitId && block < prevBlock)
         {
             return false;
         }
@@ -80,15 +79,12 @@ TBlockCounts RebaseBlocks(
         const bool markedDeleted = minCommitId == maxCommitId;
 
         if (!markedDeleted) {
-            minCommitId =
-                pivotalCommitStorage.RebaseCommitId(minCommitId);
+            minCommitId = pivotalCommitStorage.RebaseCommitId(minCommitId);
             if (minCommitId == InvalidCommitId) {
                 minCommitId = lastCommitId;
             }
 
-            if (maxCommitId != InvalidCommitId
-                    && minCommitId < maxCommitId)
-            {
+            if (maxCommitId != InvalidCommitId && minCommitId < maxCommitId) {
                 visibleAtPivot = true;
                 pivotalCommitIds.insert(minCommitId);
 
@@ -96,8 +92,7 @@ TBlockCounts RebaseBlocks(
             }
 
             if (maxCommitId != InvalidCommitId) {
-                maxCommitId =
-                    pivotalCommitStorage.RebaseCommitId(maxCommitId);
+                maxCommitId = pivotalCommitStorage.RebaseCommitId(maxCommitId);
                 if (maxCommitId == InvalidCommitId) {
                     maxCommitId = lastCommitId;
                 }

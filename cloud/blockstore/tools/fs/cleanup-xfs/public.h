@@ -31,6 +31,7 @@ struct TFreeList
 struct IDev
 {
     virtual ~IDev() = default;
-    virtual void Pwrite(const void* buffer, ui32 byteCount, i64 offset) const = 0;
+    virtual void
+    Pwrite(const void* buffer, ui32 byteCount, i64 offset) const = 0;
     virtual void Pload(void* buffer, ui32 byteCount, i64 offset) const = 0;
 };

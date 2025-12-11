@@ -19,9 +19,12 @@ void TStorageServiceActor::HandleGetSessionEvents(
     const auto sessionId = GetSessionId(msg->Record);
 
     auto* session = State->FindSession(sessionId, seqNo);
-    if (!session || session->ClientId != clientId || sessionId != session->SessionId) {
-        auto response = std::make_unique<TEvService::TEvGetSessionEventsResponse>(
-            ErrorInvalidSession(clientId, sessionId, seqNo));
+    if (!session || session->ClientId != clientId ||
+        sessionId != session->SessionId)
+    {
+        auto response =
+            std::make_unique<TEvService::TEvGetSessionEventsResponse>(
+                ErrorInvalidSession(clientId, sessionId, seqNo));
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
 

@@ -80,10 +80,12 @@ void TVolumeActor::HandleChangeStorageConfig(
         MakeIntrusive<TCallContext>());
 
     const auto* msg = ev->Get();
-    ExecuteTx(ctx, CreateTx<TChangeStorageConfig>(
-        requestInfo,
-        msg->Record.GetStorageConfig(),
-        msg->Record.GetMergeWithStorageConfigFromVolumeDB()));
+    ExecuteTx(
+        ctx,
+        CreateTx<TChangeStorageConfig>(
+            requestInfo,
+            msg->Record.GetStorageConfig(),
+            msg->Record.GetMergeWithStorageConfigFromVolumeDB()));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

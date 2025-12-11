@@ -35,11 +35,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_SubSessions)
         tclient1.WithSessionSeqNo(0);
         tclient2.WithSessionSeqNo(1);
 
-        auto id1 = CreateNode(tclient1, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto id1 =
+            CreateNode(tclient1, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle1 = CreateHandle(tclient1, id1);
         tclient1.AcquireLock(handle1, 1, 0, 1_KB);
 
-        auto id2 = CreateNode(tclient2, TCreateNodeArgs::File(RootNodeId, "xxx"));
+        auto id2 =
+            CreateNode(tclient2, TCreateNodeArgs::File(RootNodeId, "xxx"));
         CreateHandle(tclient2, id2);
         tclient2.UnlinkNode(RootNodeId, "xxx", false);
     }
@@ -66,7 +68,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_SubSessions)
         tclient1.WithSessionSeqNo(0);
         tclient2.WithSessionSeqNo(1);
 
-        auto id = CreateNode(tclient1, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto id =
+            CreateNode(tclient1, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tclient1, id);
         tclient1.WriteData(handle, 0, 4_KB, '0');
         tclient1.WriteData(handle, 100, 10, 'a');
@@ -84,7 +87,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_SubSessions)
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
 
-        auto id1 = CreateNode(tclient2, TCreateNodeArgs::File(RootNodeId, "test1"));
+        auto id1 =
+            CreateNode(tclient2, TCreateNodeArgs::File(RootNodeId, "test1"));
         auto handle1 = CreateHandle(tclient2, id1);
         tclient2.AcquireLock(handle1, 1, 0, 1_KB);
     }
@@ -113,13 +117,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_SubSessions)
         tclient2.WithSessionSeqNo(1);
 
         {
-            auto id1 = CreateNode(tclient1, TCreateNodeArgs::File(RootNodeId, "aaa"));
+            auto id1 =
+                CreateNode(tclient1, TCreateNodeArgs::File(RootNodeId, "aaa"));
             auto handle1 = CreateHandle(tclient1, id1);
             tclient1.AcquireLock(handle1, 1, 0, 1_KB);
         }
 
         {
-            auto id1 = CreateNode(tclient1, TCreateNodeArgs::File(RootNodeId, "bbb"));
+            auto id1 =
+                CreateNode(tclient1, TCreateNodeArgs::File(RootNodeId, "bbb"));
             auto handle1 = CreateHandle(tclient1, id1);
             tclient1.AcquireLock(handle1, 1, 0, 1_KB);
         }
@@ -129,13 +135,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_SubSessions)
         tclient3.WithSessionSeqNo(2);
 
         {
-            auto id1 = CreateNode(tclient3, TCreateNodeArgs::File(RootNodeId, "ccc"));
+            auto id1 =
+                CreateNode(tclient3, TCreateNodeArgs::File(RootNodeId, "ccc"));
             auto handle1 = CreateHandle(tclient3, id1);
             tclient3.AcquireLock(handle1, 1, 0, 1_KB);
         }
 
         {
-            tclient1.SendCreateNodeRequest(TCreateNodeArgs::File(RootNodeId, "ddd"));
+            tclient1.SendCreateNodeRequest(
+                TCreateNodeArgs::File(RootNodeId, "ddd"));
             auto response = tclient1.RecvCreateNodeResponse();
             UNIT_ASSERT_VALUES_EQUAL(FAILED(response->GetStatus()), true);
         }
@@ -163,7 +171,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_SubSessions)
         tclient1.WithSessionSeqNo(0);
         tclient2.WithSessionSeqNo(1);
 
-        auto id = CreateNode(tclient1, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto id =
+            CreateNode(tclient1, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tclient1, id);
         tclient1.WriteData(handle, 0, 4_KB, '0');
         tclient1.WriteData(handle, 100, 10, 'a');
@@ -181,7 +190,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_SubSessions)
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
 
-        auto id1 = CreateNode(tclient2, TCreateNodeArgs::File(RootNodeId, "test1"));
+        auto id1 =
+            CreateNode(tclient2, TCreateNodeArgs::File(RootNodeId, "test1"));
         auto handle1 = CreateHandle(tclient2, id1);
         tclient2.AcquireLock(handle1, 1, 0, 1_KB);
     }
@@ -208,7 +218,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_SubSessions)
         tclient1.WithSessionSeqNo(1);
         tclient2.WithSessionSeqNo(2);
 
-        auto id = CreateNode(tclient1, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto id =
+            CreateNode(tclient1, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tclient1, id);
         tclient1.WriteData(handle, 0, 4_KB, '0');
         tclient1.WriteData(handle, 100, 10, 'a');
@@ -250,7 +261,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_SubSessions)
         tclient1.WithSessionSeqNo(1);
         tclient2.WithSessionSeqNo(2);
 
-        auto id = CreateNode(tclient1, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto id =
+            CreateNode(tclient1, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tclient1, id);
         tclient1.WriteData(handle, 0, 4_KB, '0');
         tclient1.WriteData(handle, 100, 10, 'a');
@@ -272,4 +284,3 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_SubSessions)
 }
 
 }   // namespace NCloud::NFileStore::NStorage
-

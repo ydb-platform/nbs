@@ -76,7 +76,8 @@ void VolumeConfigToVolumeModelFields(
                 break;
             }
 
-            default: {}
+            default: {
+            }
         }
     }
     volumeModel.SetMergedChannelsCount(mergedChannels);
@@ -85,8 +86,10 @@ void VolumeConfigToVolumeModelFields(
 
     NCloud::NProto::EStorageMediaKind storageMediaKind =
         NCloud::NProto::STORAGE_MEDIA_DEFAULT;
-    if (volumeConfig.GetStorageMediaKind() >= NCloud::NProto::EStorageMediaKind_MIN &&
-        volumeConfig.GetStorageMediaKind() <= NCloud::NProto::EStorageMediaKind_MAX)
+    if (volumeConfig.GetStorageMediaKind() >=
+            NCloud::NProto::EStorageMediaKind_MIN &&
+        volumeConfig.GetStorageMediaKind() <=
+            NCloud::NProto::EStorageMediaKind_MAX)
     {
         storageMediaKind = static_cast<NCloud::NProto::EStorageMediaKind>(
             volumeConfig.GetStorageMediaKind());
@@ -137,12 +140,12 @@ bool CompareExplicitChannelProfiles(
     for (int i = 0; i < prevProfiles.size(); ++i) {
         const auto& p = prevProfiles[i];
         const auto& n = newProfiles[i];
-        if (p.GetDataKind() != n.GetDataKind()
-                || p.GetPoolKind() != n.GetPoolKind()
-                || p.GetReadIops() != n.GetReadIops()
-                || p.GetWriteIops() != n.GetWriteIops()
-                || p.GetReadBandwidth() != n.GetReadBandwidth()
-                || p.GetWriteBandwidth() != n.GetWriteBandwidth())
+        if (p.GetDataKind() != n.GetDataKind() ||
+            p.GetPoolKind() != n.GetPoolKind() ||
+            p.GetReadIops() != n.GetReadIops() ||
+            p.GetWriteIops() != n.GetWriteIops() ||
+            p.GetReadBandwidth() != n.GetReadBandwidth() ||
+            p.GetWriteBandwidth() != n.GetWriteBandwidth())
         {
             return false;
         }
@@ -205,7 +208,8 @@ void VolumeConfigToVolume(
     volume.SetCreationTs(volumeConfig.GetCreationTs());
     volume.SetAlterTs(volumeConfig.GetAlterTs());
     volume.SetPlacementGroupId(volumeConfig.GetPlacementGroupId());
-    volume.SetPlacementPartitionIndex(volumeConfig.GetPlacementPartitionIndex());
+    volume.SetPlacementPartitionIndex(
+        volumeConfig.GetPlacementPartitionIndex());
     volume.MutableEncryptionDesc()->CopyFrom(
         ConvertToEncryptionDesc(volumeConfig.GetEncryptionDesc()));
     volume.SetBaseDiskId(volumeConfig.GetBaseDiskId());
@@ -228,7 +232,8 @@ void VolumeConfigToVolumeModel(
 
 void FillDeviceInfo(
     const google::protobuf::RepeatedPtrField<NProto::TDeviceConfig>& devices,
-    const google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>& migrations,
+    const google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>&
+        migrations,
     const google::protobuf::RepeatedPtrField<NProto::TReplica>& replicas,
     const google::protobuf::RepeatedPtrField<TString>& freshDeviceIds,
     NProto::TVolume& volume)
@@ -239,10 +244,8 @@ void FillDeviceInfo(
         auto* m = volume.AddMigrations();
         auto* source = FindIfPtr(
             devices,
-            [&] (const NProto::TDeviceConfig& d) {
-                return d.GetDeviceUUID() == migration.GetSourceDeviceId();
-            }
-        );
+            [&](const NProto::TDeviceConfig& d)
+            { return d.GetDeviceUUID() == migration.GetSourceDeviceId(); });
 
         for (auto& replica: replicas) {
             if (source) {
@@ -251,10 +254,8 @@ void FillDeviceInfo(
 
             source = FindIfPtr(
                 replica.GetDevices(),
-                [&] (const NProto::TDeviceConfig& d) {
-                    return d.GetDeviceUUID() == migration.GetSourceDeviceId();
-                }
-            );
+                [&](const NProto::TDeviceConfig& d)
+                { return d.GetDeviceUUID() == migration.GetSourceDeviceId(); });
         }
 
         m->SetSourceDeviceId(migration.GetSourceDeviceId());
@@ -343,36 +344,36 @@ bool CompareVolumeConfigs(
     }
 
     for (ui32 i = 0; i < static_cast<ui32>(prevPartitions.size()); ++i) {
-        if (prevPartitions[i].GetBlockCount()
-                != newPartitions[i].GetBlockCount())
+        if (prevPartitions[i].GetBlockCount() !=
+            newPartitions[i].GetBlockCount())
         {
             return false;
         }
     }
 
     return CompareExplicitChannelProfiles(
-            prevConfig.GetExplicitChannelProfiles(),
-            newConfig.GetExplicitChannelProfiles())
-        && prevConfig.GetPerformanceProfileThrottlingEnabled()
-            == newConfig.GetPerformanceProfileThrottlingEnabled()
-        && prevConfig.GetPerformanceProfileMaxReadBandwidth()
-            == newConfig.GetPerformanceProfileMaxReadBandwidth()
-        && prevConfig.GetPerformanceProfileMaxWriteBandwidth()
-            == newConfig.GetPerformanceProfileMaxWriteBandwidth()
-        && prevConfig.GetPerformanceProfileMaxReadIops()
-            == newConfig.GetPerformanceProfileMaxReadIops()
-        && prevConfig.GetPerformanceProfileMaxWriteIops()
-            == newConfig.GetPerformanceProfileMaxWriteIops()
-        && prevConfig.GetPerformanceProfileBurstPercentage()
-            == newConfig.GetPerformanceProfileBurstPercentage()
-        && prevConfig.GetPerformanceProfileMaxPostponedWeight()
-            == newConfig.GetPerformanceProfileMaxPostponedWeight()
-        && prevConfig.GetPerformanceProfileBoostTime()
-            == newConfig.GetPerformanceProfileBoostTime()
-        && prevConfig.GetPerformanceProfileBoostRefillTime()
-            == newConfig.GetPerformanceProfileBoostRefillTime()
-        && prevConfig.GetPerformanceProfileBoostPercentage()
-            == newConfig.GetPerformanceProfileBoostPercentage();
+               prevConfig.GetExplicitChannelProfiles(),
+               newConfig.GetExplicitChannelProfiles()) &&
+           prevConfig.GetPerformanceProfileThrottlingEnabled() ==
+               newConfig.GetPerformanceProfileThrottlingEnabled() &&
+           prevConfig.GetPerformanceProfileMaxReadBandwidth() ==
+               newConfig.GetPerformanceProfileMaxReadBandwidth() &&
+           prevConfig.GetPerformanceProfileMaxWriteBandwidth() ==
+               newConfig.GetPerformanceProfileMaxWriteBandwidth() &&
+           prevConfig.GetPerformanceProfileMaxReadIops() ==
+               newConfig.GetPerformanceProfileMaxReadIops() &&
+           prevConfig.GetPerformanceProfileMaxWriteIops() ==
+               newConfig.GetPerformanceProfileMaxWriteIops() &&
+           prevConfig.GetPerformanceProfileBurstPercentage() ==
+               newConfig.GetPerformanceProfileBurstPercentage() &&
+           prevConfig.GetPerformanceProfileMaxPostponedWeight() ==
+               newConfig.GetPerformanceProfileMaxPostponedWeight() &&
+           prevConfig.GetPerformanceProfileBoostTime() ==
+               newConfig.GetPerformanceProfileBoostTime() &&
+           prevConfig.GetPerformanceProfileBoostRefillTime() ==
+               newConfig.GetPerformanceProfileBoostRefillTime() &&
+           prevConfig.GetPerformanceProfileBoostPercentage() ==
+               newConfig.GetPerformanceProfileBoostPercentage();
 }
 
 TBlockRange64 BuildRequestBlockRange(

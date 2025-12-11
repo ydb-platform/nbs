@@ -1,13 +1,11 @@
-#include "tablet_state_impl.h"
-
 #include "helpers.h"
+#include "tablet_state_impl.h"
 
 #include <cloud/filestore/libs/storage/model/utils.h>
 
 namespace NCloud::NFileStore::NStorage {
 
-namespace
-{
+namespace {
 
 ui64 SizeSum(const TString& v1, const TString& v2)
 {
@@ -19,7 +17,7 @@ ui64 SizeDiff(const TString& v1, const TString& v2)
     return v1.size() - v2.size();
 }
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 // Nodes
@@ -88,12 +86,8 @@ NProto::TError TIndexTabletState::RemoveNode(
     // SymLinks have size (equal to TargetPath) but store no real data so there
     // is no need to write deletion markers upon SymLink removal
     if (!node.Attrs.GetSymLink()) {
-        auto e = Truncate(
-            db,
-            node.NodeId,
-            maxCommitId,
-            node.Attrs.GetSize(),
-            0);
+        auto e =
+            Truncate(db, node.NodeId, maxCommitId, node.Attrs.GetSize(), 0);
 
         if (HasError(e)) {
             return e;
@@ -105,7 +99,8 @@ NProto::TError TIndexTabletState::RemoveNode(
 
     UpdateUsedBlocksCount(db, 0, node.Attrs.GetSize());
 
-    ui64 checkpointId = Impl->Checkpoints.FindCheckpoint(node.NodeId, minCommitId);
+    ui64 checkpointId =
+        Impl->Checkpoints.FindCheckpoint(node.NodeId, minCommitId);
     if (checkpointId != InvalidCommitId) {
         // keep history version
         db.WriteNodeVer(node.NodeId, checkpointId, maxCommitId, node.Attrs);
@@ -136,11 +131,7 @@ NProto::TError TIndexTabletState::UnlinkNode(
             attrs,
             node.Attrs);
     } else {
-        auto e = RemoveNode(
-            db,
-            node,
-            minCommitId,
-            maxCommitId);
+        auto e = RemoveNode(db, node, minCommitId, maxCommitId);
 
         if (HasError(e)) {
             return e;
@@ -158,8 +149,8 @@ NProto::TError TIndexTabletState::UnlinkNode(
         maxCommitId,
         name,
         node.NodeId,
-        "", // shardId
-        "" // shardNodeName
+        "",   // shardId
+        ""    // shardNodeName
     );
 
     return {};
@@ -180,7 +171,7 @@ void TIndexTabletState::UnlinkExternalNode(
         minCommitId,
         maxCommitId,
         name,
-        InvalidNodeId, // prevChildNodeId
+        InvalidNodeId,   // prevChildNodeId
         shardId,
         shardNodeName);
 }
@@ -240,7 +231,8 @@ void TIndexTabletState::WriteOrphanNode(
     Impl->OrphanNodeIds.insert(nodeId);
 }
 
-bool TIndexTabletState::HasPendingNodeCreateInShard(const TString& nodeName) const
+bool TIndexTabletState::HasPendingNodeCreateInShard(
+    const TString& nodeName) const
 {
     return Impl->PendingNodeCreateInShardNames.contains(nodeName);
 }
@@ -254,7 +246,6 @@ void TIndexTabletState::EndNodeCreateInShard(const TString& nodeName)
 {
     Impl->PendingNodeCreateInShardNames.erase(nodeName);
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // NodeAttrs
@@ -504,7 +495,8 @@ bool TIndexTabletState::ReadNodeRefs(
     ui32 maxBytes,
     TString* next)
 {
-    bool ready = db.ReadNodeRefs(nodeId, commitId, cookie, refs, maxBytes, next);
+    bool ready =
+        db.ReadNodeRefs(nodeId, commitId, cookie, refs, maxBytes, next);
 
     ui64 checkpointId = Impl->Checkpoints.FindCheckpoint(nodeId, commitId);
     if (checkpointId != InvalidCommitId) {

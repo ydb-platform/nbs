@@ -14,9 +14,9 @@ using namespace NMonitoring;
 
 void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
 {
-#define FILESTORE_INIT_CRITICAL_EVENT_COUNTER(name)                            \
-    *counters->GetCounter("AppCriticalEvents/"#name, true) = 0;                \
-// FILESTORE_INIT_CRITICAL_EVENT_COUNTER
+#define FILESTORE_INIT_CRITICAL_EVENT_COUNTER(name)              \
+    *counters->GetCounter("AppCriticalEvents/" #name, true) = 0; \
+    // FILESTORE_INIT_CRITICAL_EVENT_COUNTER
 
     FILESTORE_CRITICAL_EVENTS(FILESTORE_INIT_CRITICAL_EVENT_COUNTER)
     FILESTORE_IMPOSSIBLE_EVENTS(FILESTORE_INIT_CRITICAL_EVENT_COUNTER)
@@ -25,40 +25,40 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
     NCloud::InitCriticalEventsCounter(std::move(counters));
 }
 
-#define FILESTORE_DEFINE_CRITICAL_EVENT_ROUTINE(name)                          \
-    TString Report##name(const TString& message)                               \
-    {                                                                          \
-        return ReportCriticalEvent(                                            \
-            GetCriticalEventFor##name(),                                       \
-            message,                                                           \
-            false);                                                            \
-    }                                                                          \
-                                                                               \
-    const TString GetCriticalEventFor##name()                                  \
-    {                                                                          \
-        return "AppCriticalEvents/"#name;                                      \
-    }                                                                        \
-// FILESTORE_DEFINE_CRITICAL_EVENT_ROUTINE
+#define FILESTORE_DEFINE_CRITICAL_EVENT_ROUTINE(name) \
+    TString Report##name(const TString& message)      \
+    {                                                 \
+        return ReportCriticalEvent(                   \
+            GetCriticalEventFor##name(),              \
+            message,                                  \
+            false);                                   \
+    }                                                 \
+                                                      \
+    const TString GetCriticalEventFor##name()         \
+    {                                                 \
+        return "AppCriticalEvents/" #name;            \
+    }                                                 \
+    // FILESTORE_DEFINE_CRITICAL_EVENT_ROUTINE
 
-    FILESTORE_CRITICAL_EVENTS(FILESTORE_DEFINE_CRITICAL_EVENT_ROUTINE)
+FILESTORE_CRITICAL_EVENTS(FILESTORE_DEFINE_CRITICAL_EVENT_ROUTINE)
 #undef FILESTORE_DEFINE_CRITICAL_EVENT_ROUTINE
 
-#define FILESTORE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE(name)                        \
-    TString Report##name(const TString& message)                               \
-    {                                                                          \
-        return ReportCriticalEvent(                                            \
-            GetCriticalEventFor##name(),                                       \
-            message,                                                           \
-            true);                                                             \
-    }                                                                          \
-                                                                               \
-    const TString GetCriticalEventFor##name()                                  \
-    {                                                                          \
-        return "AppCriticalEvents/"#name;                                      \
-    }                                                                          \
-// FILESTORE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE
+#define FILESTORE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE(name) \
+    TString Report##name(const TString& message)        \
+    {                                                   \
+        return ReportCriticalEvent(                     \
+            GetCriticalEventFor##name(),                \
+            message,                                    \
+            true);                                      \
+    }                                                   \
+                                                        \
+    const TString GetCriticalEventFor##name()           \
+    {                                                   \
+        return "AppCriticalEvents/" #name;              \
+    }                                                   \
+    // FILESTORE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE
 
-    FILESTORE_IMPOSSIBLE_EVENTS(FILESTORE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE)
+FILESTORE_IMPOSSIBLE_EVENTS(FILESTORE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE)
 #undef FILESTORE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE
 
 }   // namespace NCloud::NFileStore

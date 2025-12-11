@@ -175,10 +175,11 @@ TResultOrError<TSgList> SgListNormalize(TBlockDataRef buffer, ui32 blockSize)
     TSgList result;
 
     if (!AppendBufferToSgList(result, buffer, blockSize)) {
-        return MakeError(E_ARGUMENT, TStringBuilder()
-            << "failed to normalize buffer."
-            << " BufferSize = " << buffer.Size()
-            << " BlockSize = " << blockSize);
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "failed to normalize buffer."
+                             << " BufferSize = " << buffer.Size()
+                             << " BlockSize = " << blockSize);
     }
 
     return result;
@@ -203,10 +204,11 @@ TResultOrError<TSgList> SgListNormalize(TSgList sglist, ui32 blockSize)
 
     for (const auto& buffer: sglist) {
         if (!AppendBufferToSgList(result, buffer, blockSize)) {
-            return MakeError(E_ARGUMENT, TStringBuilder()
-                << "failed to normalize buffer."
-                << " BufferSize = " << buffer.Size()
-                << " BlockSize = " << blockSize);
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "failed to normalize buffer."
+                                 << " BufferSize = " << buffer.Size()
+                                 << " BlockSize = " << blockSize);
         }
     }
 

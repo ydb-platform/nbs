@@ -8,7 +8,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 struct TGarbageQueue::TImpl
 {
-    struct TBlobs : TSet<TPartialBlobId>
+    struct TBlobs: TSet<TPartialBlobId>
     {
         bool Add(const TPartialBlobId& blobId)
         {
@@ -48,7 +48,7 @@ struct TGarbageQueue::TImpl
         using is_transparent = void;
 
         template <typename T1, typename T2>
-        bool operator ()(const T1& l, const T2& r) const
+        bool operator()(const T1& l, const T2& r) const
         {
             return GetCommitId(l) < GetCommitId(r);
         }
@@ -205,7 +205,7 @@ void TGarbageQueue::ReleaseCollectBarrier(ui64 commitId)
     }
 
     // we have to release barriers in order
-    for (auto it = Impl->Barriers.begin(); it != Impl->Barriers.end(); ) {
+    for (auto it = Impl->Barriers.begin(); it != Impl->Barriers.end();) {
         auto& barrier = const_cast<TImpl::TBarrier&>(*it);
         if (barrier.RefCount) {
             break;

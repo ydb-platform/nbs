@@ -89,14 +89,13 @@ private:
     std::unique_ptr<TBatch> Batch;
     std::optional<TContinuationToken> ContinuationToken;
 
-    std::shared_ptr<NYdbICredentialsProviderFactory>
-        CredentialsProviderFactory;
+    std::shared_ptr<NYdbICredentialsProviderFactory> CredentialsProviderFactory;
 
 public:
     TService(
-            TLogbrokerConfigPtr config,
-            ILoggingServicePtr logging,
-            std::shared_ptr<NYdbICredentialsProviderFactory>
+        TLogbrokerConfigPtr config,
+        ILoggingServicePtr logging,
+        std::shared_ptr<NYdbICredentialsProviderFactory>
             credentialsProviderFactory)
         : Config(std::move(config))
         , Logging(std::move(logging))
@@ -233,19 +232,20 @@ private:
 
         while (TVector events = Session->GetEvents()) {
             for (TWriteSessionEvent::TEvent& event: events) {
-                std::visit(TOverloaded {
-                    [&] (TWriteSessionEvent::TReadyToAcceptEvent& e) {
-                        ReadyToAcceptHander(*Batch, e);
+                std::visit(
+                    TOverloaded{
+                        [&](TWriteSessionEvent::TReadyToAcceptEvent& e)
+                        { ReadyToAcceptHander(*Batch, e); },
+                        [&](TWriteSessionEvent::TAcksEvent& e)
+                        {
+                            if (AcksHandler(*Batch, e)) {
+                                error.emplace();
+                            }
+                        },
+                        [&](const TSessionClosedEvent& e)
+                        { error = SessionClosedHandler(e); },
                     },
-                    [&] (TWriteSessionEvent::TAcksEvent& e) {
-                        if (AcksHandler(*Batch, e)) {
-                            error.emplace();
-                        }
-                    },
-                    [&] (const TSessionClosedEvent& e) {
-                        error = SessionClosedHandler(e);
-                    },
-                }, event);
+                    event);
             }
 
             if (error.has_value()) {
@@ -279,14 +279,17 @@ private:
 
     NYdb::TDriverConfig CreateDriverConfig() const
     {
-        auto cfg = NYdb::TDriverConfig()
-            .SetEndpoint(TStringBuilder()
-                << Config->GetAddress() << ":" << Config->GetPort())
-            .SetDatabase(Config->GetDatabase())
-            .SetLog(Logging->CreateLog("BLOCKSTORE_LOGBROKER").ReleaseBackend())
-            .SetDiscoveryMode(NYdb::EDiscoveryMode::Async)
-            .SetDrainOnDtors(true)
-            .SetCredentialsProviderFactory(CredentialsProviderFactory);
+        auto cfg =
+            NYdb::TDriverConfig()
+                .SetEndpoint(
+                    TStringBuilder()
+                    << Config->GetAddress() << ":" << Config->GetPort())
+                .SetDatabase(Config->GetDatabase())
+                .SetLog(
+                    Logging->CreateLog("BLOCKSTORE_LOGBROKER").ReleaseBackend())
+                .SetDiscoveryMode(NYdb::EDiscoveryMode::Async)
+                .SetDrainOnDtors(true)
+                .SetCredentialsProviderFactory(CredentialsProviderFactory);
 
         if (Config->GetCaCertFilename()) {
             cfg.UseSecureConnection(
@@ -306,8 +309,7 @@ private:
 IServicePtr CreateTopicAPIService(
     TLogbrokerConfigPtr config,
     ILoggingServicePtr logging,
-    std::shared_ptr<NYdbICredentialsProviderFactory>
-        credentialsProviderFactory)
+    std::shared_ptr<NYdbICredentialsProviderFactory> credentialsProviderFactory)
 {
     return std::make_shared<TService>(
         std::move(config),

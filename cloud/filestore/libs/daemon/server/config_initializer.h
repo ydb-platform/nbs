@@ -10,8 +10,7 @@ namespace NCloud::NFileStore::NDaemon {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TConfigInitializerServer
-    : public TConfigInitializerCommon
+class TConfigInitializerServer: public TConfigInitializerCommon
 {
 public:
     const TOptionsServerPtr Options;

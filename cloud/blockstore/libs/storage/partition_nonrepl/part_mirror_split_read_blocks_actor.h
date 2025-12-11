@@ -36,11 +36,11 @@ private:
 
 public:
     TSplitReadBlocksActor(
-            TRequestInfoPtr requestInfo,
-            TVector<TRequestProtoType> requests,
-            NActors::TActorId parentActorId,
-            ui64 blockSize,
-            ui64 requestIdentityKey)
+        TRequestInfoPtr requestInfo,
+        TVector<TRequestProtoType> requests,
+        NActors::TActorId parentActorId,
+        ui64 blockSize,
+        ui64 requestIdentityKey)
         : RequestInfo(std::move(requestInfo))
         , Requests(std::move(requests))
         , ParentActorId(parentActorId)

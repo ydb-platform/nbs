@@ -40,7 +40,7 @@ void SendUndeliverableRequest(
         nodeIdx);
 }
 
-};  // namespace
+};   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -62,10 +62,13 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
             sessionId = response->Record.GetSessionId();
         }
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvWriteBlobResponse: {
-                        auto* msg = event->Get<TEvPartitionPrivate::TEvWriteBlobResponse>();
+                        auto* msg = event->Get<
+                            TEvPartitionPrivate::TEvWriteBlobResponse>();
                         auto& e = const_cast<NProto::TError&>(msg->Error);
                         e.SetCode(E_REJECTED);
                         break;
@@ -80,8 +83,8 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
             sessionId);
         auto response = service.RecvWriteBlocksResponse();
         UNIT_ASSERT_C(
-           FAILED(response->GetStatus()),
-           response->GetErrorReason());
+            FAILED(response->GetStatus()),
+            response->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldHandleWriteErrorsWhenUsingPipe)
@@ -103,10 +106,13 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
 
         TServiceClient service2(runtime, nodeIdx2);
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvWriteBlobResponse: {
-                        auto* msg = event->Get<TEvPartitionPrivate::TEvWriteBlobResponse>();
+                        auto* msg = event->Get<
+                            TEvPartitionPrivate::TEvWriteBlobResponse>();
                         auto& e = const_cast<NProto::TError&>(msg->Error);
                         e.SetCode(E_REJECTED);
                         break;
@@ -156,25 +162,21 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
 
         {
-            service.SendZeroBlocksRequest(
-                DefaultDiskId,
-                0,
-                sessionId);
+            service.SendZeroBlocksRequest(DefaultDiskId, 0, sessionId);
             auto response = service.RecvZeroBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
     }
 
-    Y_UNIT_TEST(ShouldNotConvertReadBlocksRequestsToLocalRequestsForRemotelyMountedVolumeTablet)
+    Y_UNIT_TEST(
+        ShouldNotConvertReadBlocksRequestsToLocalRequestsForRemotelyMountedVolumeTablet)
     {
         TTestEnv env(1, 2);
         ui32 nodeIdx1 = SetupTestEnv(env);
@@ -187,10 +189,13 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         service1.CreateVolume();
         service1.AssignVolume(DefaultDiskId, "foo", "bar");
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
-                        auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
+                        auto* msg = event->Get<
+                            TEvServicePrivate::TEvVolumeTabletStatus>();
                         volumeActorId = msg->VolumeActor;
                         break;
                     }
@@ -246,11 +251,14 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         bool detectedReadBlocksLocalResponseFromVolumeActor = false;
         TActorId readBlocksLocalRequestSenderId;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvReadBlocksLocalRequest: {
                         if (event->Recipient == volumeActorId) {
-                            detectedReadBlocksLocalRequestSentToVolumeActor = true;
+                            detectedReadBlocksLocalRequestSentToVolumeActor =
+                                true;
                             readBlocksLocalRequestSenderId = event->Sender;
                         }
                         break;
@@ -259,7 +267,8 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
                         if (readBlocksLocalRequestSenderId &&
                             event->Recipient == readBlocksLocalRequestSenderId)
                         {
-                            detectedReadBlocksLocalResponseFromVolumeActor = true;
+                            detectedReadBlocksLocalResponseFromVolumeActor =
+                                true;
                         }
                         break;
                     }
@@ -273,7 +282,8 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         UNIT_ASSERT(!detectedReadBlocksLocalResponseFromVolumeActor);
     }
 
-    Y_UNIT_TEST(ShouldNotConvertWriteBlocksRequestsToLocalRequestsForRemotelyMountedVolumeTablet)
+    Y_UNIT_TEST(
+        ShouldNotConvertWriteBlocksRequestsToLocalRequestsForRemotelyMountedVolumeTablet)
     {
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env);
@@ -300,7 +310,9 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         }
 
         bool detectedWriteBlocksLocalRequestSentToVolumeActor = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvWriteBlocksLocalRequest: {
                         detectedWriteBlocksLocalRequestSentToVolumeActor = true;
@@ -319,7 +331,8 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         UNIT_ASSERT(!detectedWriteBlocksLocalRequestSentToVolumeActor);
     }
 
-    Y_UNIT_TEST(ShouldConvertWriteBlocksLocalToGrpcForRemotelyMountedVolumeTablet)
+    Y_UNIT_TEST(
+        ShouldConvertWriteBlocksLocalToGrpcForRemotelyMountedVolumeTablet)
     {
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env);
@@ -332,7 +345,9 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         service.CreateVolume();
         service.AssignVolume(DefaultDiskId, "foo", "bar");
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 // non-matching recipient and recipient rewrite mean
                 // the event went through pipe i.e. it has reached
                 // volume or partition actor
@@ -366,29 +381,38 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
             sessionId = response->Record.GetSessionId();
         }
 
-        auto writeBlocksRequest = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
+        auto writeBlocksRequest =
+            std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
         writeBlocksRequest->Record.SetDiskId(DefaultDiskId);
         writeBlocksRequest->Record.SetSessionId(sessionId);
         writeBlocksRequest->Record.SetStartIndex(0);
-        writeBlocksRequest->Record.MutableHeaders()->SetClientId(service.GetClientId());
+        writeBlocksRequest->Record.MutableHeaders()->SetClientId(
+            service.GetClientId());
 
         ui32 blocksCount = 1024;
         auto writeBlockContent = GetBlockContent(char(1));
         TSgList sglist;
-        sglist.resize(blocksCount, {writeBlockContent.data(), writeBlockContent.size()});
+        sglist.resize(
+            blocksCount,
+            {writeBlockContent.data(), writeBlockContent.size()});
         writeBlocksRequest->Record.Sglist = TGuardedSgList(std::move(sglist));
         writeBlocksRequest->Record.BlocksCount = blocksCount;
         writeBlocksRequest->Record.BlockSize = DefaultBlockSize;
 
-        service.SendRequest(MakeStorageServiceId(), std::move(writeBlocksRequest));
+        service.SendRequest(
+            MakeStorageServiceId(),
+            std::move(writeBlocksRequest));
         auto response = service.RecvWriteBlocksLocalResponse();
 
-        UNIT_ASSERT_C(SUCCEEDED(response->GetStatus()), response->GetErrorReason());
+        UNIT_ASSERT_C(
+            SUCCEEDED(response->GetStatus()),
+            response->GetErrorReason());
         UNIT_ASSERT(writeBlocksRequestUsingLocalIpcCount == 1);
         UNIT_ASSERT(writeBlocksRequestUsingGrpcIpcCount > 0);
     }
 
-    Y_UNIT_TEST(ShouldConvertReadBlocksLocalToGrpcForRemotelyMountedVolumeTablet)
+    Y_UNIT_TEST(
+        ShouldConvertReadBlocksLocalToGrpcForRemotelyMountedVolumeTablet)
     {
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env);
@@ -415,7 +439,9 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
             sessionId);
         service.UnmountVolume(DefaultDiskId, sessionId);
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvReadBlocksResponse: {
                         ++readBlocksResponseNotUsingLocalIpcCount;
@@ -443,23 +469,31 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
             sessionId = response->Record.GetSessionId();
         }
 
-        auto readBlocksRequest = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
+        auto readBlocksRequest =
+            std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
         readBlocksRequest->Record.SetDiskId(DefaultDiskId);
         readBlocksRequest->Record.SetSessionId(sessionId);
         readBlocksRequest->Record.SetStartIndex(0);
         readBlocksRequest->Record.SetBlocksCount(1);
-        readBlocksRequest->Record.MutableHeaders()->SetClientId(service.GetClientId());
+        readBlocksRequest->Record.MutableHeaders()->SetClientId(
+            service.GetClientId());
 
         auto block = TString::Uninitialized(DefaultBlockSize);
         auto buffer = TGuardedBuffer(std::move(block));
         readBlocksRequest->Record.Sglist = buffer.GetGuardedSgList();
         readBlocksRequest->Record.BlockSize = DefaultBlockSize;
 
-        service.SendRequest(MakeStorageServiceId(), std::move(readBlocksRequest));
+        service.SendRequest(
+            MakeStorageServiceId(),
+            std::move(readBlocksRequest));
         auto response = service.RecvReadBlocksLocalResponse();
 
-        UNIT_ASSERT_C(SUCCEEDED(response->GetStatus()), response->GetErrorReason());
-        UNIT_ASSERT_VALUES_EQUAL(8, response->Record.GetUnencryptedBlockMask().size());
+        UNIT_ASSERT_C(
+            SUCCEEDED(response->GetStatus()),
+            response->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL(
+            8,
+            response->Record.GetUnencryptedBlockMask().size());
 
         UNIT_ASSERT(readBlocksResponseUsingLocalIpcCount > 0);
 
@@ -469,7 +503,8 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         UNIT_ASSERT(readBlocksResponseNotUsingLocalIpcCount == 3);
     }
 
-    Y_UNIT_TEST(ShouldAllowReadWriteZeroBlocksRequestsFromRemotelyMountedService)
+    Y_UNIT_TEST(
+        ShouldAllowReadWriteZeroBlocksRequestsFromRemotelyMountedService)
     {
         TTestEnv env(1, 2);
         ui32 nodeIdx1 = SetupTestEnv(env);
@@ -532,7 +567,8 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         // Write something to be read further
         TString sessionId;
         {
-            auto response = service.MountVolume(DefaultDiskId,
+            auto response = service.MountVolume(
+                DefaultDiskId,
                 "foo",
                 "bar",
                 NProto::IPC_GRPC,
@@ -542,13 +578,17 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         }
 
         bool patchRequest = true;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                if (event->GetTypeRewrite() == TEvService::EvReadBlocksRequest &&
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvService::EvReadBlocksRequest &&
                     event->Sender.NodeId() == event->Recipient.NodeId())
                 {
                     if (patchRequest) {
                         patchRequest = false;
-                        SendUndeliverableRequest<TEvService::TEvReadBlocksRequest>(
+                        SendUndeliverableRequest<
+                            TEvService::TEvReadBlocksRequest>(
                             runtime,
                             nodeIdx,
                             event);
@@ -558,19 +598,23 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        auto readBlocksRequest = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
+        auto readBlocksRequest =
+            std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
         readBlocksRequest->Record.SetDiskId(DefaultDiskId);
         readBlocksRequest->Record.SetSessionId(sessionId);
         readBlocksRequest->Record.SetStartIndex(0);
         readBlocksRequest->Record.SetBlocksCount(1);
-        readBlocksRequest->Record.MutableHeaders()->SetClientId(service.GetClientId());
+        readBlocksRequest->Record.MutableHeaders()->SetClientId(
+            service.GetClientId());
 
         auto block = TString::Uninitialized(DefaultBlockSize);
         auto buffer = TGuardedBuffer(std::move(block));
         readBlocksRequest->Record.Sglist = buffer.GetGuardedSgList();
         readBlocksRequest->Record.BlockSize = DefaultBlockSize;
 
-        service.SendRequest(MakeStorageServiceId(), std::move(readBlocksRequest));
+        service.SendRequest(
+            MakeStorageServiceId(),
+            std::move(readBlocksRequest));
         auto response = service.RecvReadBlocksLocalResponse();
 
         UNIT_ASSERT(FAILED(response->GetStatus()));
@@ -611,20 +655,25 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
             UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetThrottlerDelay());
         }
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvWriteBlocksResponse: {
-                        auto* msg = event->Get<TEvService::TEvWriteBlocksResponse>();
+                        auto* msg =
+                            event->Get<TEvService::TEvWriteBlocksResponse>();
                         msg->Record.SetThrottlerDelay(1e6);
                         break;
                     }
                     case TEvService::EvReadBlocksResponse: {
-                        auto* msg = event->Get<TEvService::TEvReadBlocksResponse>();
+                        auto* msg =
+                            event->Get<TEvService::TEvReadBlocksResponse>();
                         msg->Record.SetThrottlerDelay(1e6);
                         break;
                     }
                     case TEvVolume::EvDescribeBlocksResponse: {
-                        auto* msg = event->Get<TEvVolume::TEvDescribeBlocksResponse>();
+                        auto* msg =
+                            event->Get<TEvVolume::TEvDescribeBlocksResponse>();
                         msg->Record.SetThrottlerDelay(1e6);
                         break;
                     }
@@ -633,7 +682,8 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
             });
 
         {
-            auto request = service.CreateReadBlocksRequest(DefaultDiskId, 0, sessionId);
+            auto request =
+                service.CreateReadBlocksRequest(DefaultDiskId, 0, sessionId);
             auto callContext = request->CallContext;
             callContext->SetPossiblePostponeDuration(
                 TDuration::MicroSeconds(1'234));

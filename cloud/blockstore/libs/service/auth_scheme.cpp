@@ -36,7 +36,7 @@ TPermissionList CreatePermissionList(
     std::initializer_list<EPermission> permissions)
 {
     TPermissionList result;
-    for (EPermission permission : permissions) {
+    for (EPermission permission: permissions) {
         result.Set(static_cast<size_t>(permission));
     }
     return result;
@@ -45,7 +45,8 @@ TPermissionList CreatePermissionList(
 TVector<TString> GetPermissionStrings(const TPermissionList& permissions)
 {
     TVector<TString> result;
-    Y_FOR_EACH_BIT(permission, permissions) {
+    Y_FOR_EACH_BIT(permission, permissions)
+    {
         result.push_back(ToString(static_cast<EPermission>(permission)));
     }
     return result;
@@ -97,13 +98,11 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
         case EBlockStoreRequest::StatVolume:
             return CreatePermissionList({EPermission::Get});
         case EBlockStoreRequest::CreateCheckpoint:
-            return CreatePermissionList({
-                EPermission::Read,
-                EPermission::Write});
+            return CreatePermissionList(
+                {EPermission::Read, EPermission::Write});
         case EBlockStoreRequest::DeleteCheckpoint:
-            return CreatePermissionList({
-                EPermission::Read,
-                EPermission::Write});
+            return CreatePermissionList(
+                {EPermission::Read, EPermission::Write});
         case EBlockStoreRequest::GetChangedBlocks:
         case EBlockStoreRequest::GetCheckpointStatus:
             return CreatePermissionList({EPermission::Read});
@@ -116,9 +115,8 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
             return CreatePermissionList({EPermission::List});
 
         case EBlockStoreRequest::StartEndpoint:
-            return CreatePermissionList({
-                EPermission::Read,
-                EPermission::Write});
+            return CreatePermissionList(
+                {EPermission::Read, EPermission::Write});
         case EBlockStoreRequest::StopEndpoint:
         case EBlockStoreRequest::KickEndpoint:
         case EBlockStoreRequest::RefreshEndpoint:
@@ -133,11 +131,11 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
         case EBlockStoreRequest::DescribeDiskRegistryConfig:
         case EBlockStoreRequest::UpdateDiskRegistryConfig:
         case EBlockStoreRequest::UpdateVolumeThrottlingConfig:
-            return TPermissionList().Flip();  // Require admin permissions.
+            return TPermissionList().Flip();   // Require admin permissions.
 
         case EBlockStoreRequest::CreateVolumeLink:
         case EBlockStoreRequest::DestroyVolumeLink:
-                return CreatePermissionList({EPermission::Update});
+            return CreatePermissionList({EPermission::Update});
 
         case EBlockStoreRequest::RemoveVolumeClient:
             return CreatePermissionList({EPermission::Delete});
@@ -147,8 +145,7 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
     }
 }
 
-TPermissionList GetMountPermissions(
-    const NProto::TMountVolumeRequest& request)
+TPermissionList GetMountPermissions(const NProto::TMountVolumeRequest& request)
 {
     const auto mode = request.GetVolumeAccessMode();
     switch (mode) {
@@ -157,9 +154,8 @@ TPermissionList GetMountPermissions(
             return CreatePermissionList({EPermission::Read});
         case NProto::VOLUME_ACCESS_READ_WRITE:
         case NProto::VOLUME_ACCESS_REPAIR:
-            return CreatePermissionList({
-                EPermission::Read,
-                EPermission::Write});
+            return CreatePermissionList(
+                {EPermission::Read, EPermission::Write});
         default:
             // In case we get unknown volume access mode, assume
             // read-only permission.
@@ -180,8 +176,9 @@ TPermissionList GetRequestPermissions(
     TString action = request.GetAction();
     action.to_lower();
 
-    auto perms = [] (TString name, std::initializer_list<EPermission> lst) {
-        return std::pair {name, NCloud::CreatePermissionList(lst)};
+    auto perms = [](TString name, std::initializer_list<EPermission> lst)
+    {
+        return std::pair{name, NCloud::CreatePermissionList(lst)};
     };
 
     static const THashMap<TString, TPermissionList> actions = {
@@ -220,4 +217,4 @@ TPermissionList GetRequestPermissions(
     return TPermissionList().Flip();
 }
 
-}  // namespace NCloud::NBlockStore
+}   // namespace NCloud::NBlockStore

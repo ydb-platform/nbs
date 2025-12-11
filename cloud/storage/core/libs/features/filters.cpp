@@ -25,7 +25,7 @@ bool RegexpMatchItemInSet(const THashSet<TString>& set, const TString& item)
         });
 }
 
-}  // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

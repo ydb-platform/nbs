@@ -20,8 +20,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEnv
-    : public NUnitTest::TBaseFixture
+struct TEnv: public NUnitTest::TBaseFixture
 {
     std::shared_ptr<TTestTimer> Timer;
     ISchedulerPtr Scheduler;
@@ -170,7 +169,9 @@ Y_UNIT_TEST_SUITE(TMetricsServiceTest)
         Data.Clear();
     }
 
-    Y_UNIT_TEST_F(ShouldNotCrushOnUpdateIfMetricsServiceDestroyedBeforeStop, TEnv)
+    Y_UNIT_TEST_F(
+        ShouldNotCrushOnUpdateIfMetricsServiceDestroyedBeforeStop,
+        TEnv)
     {
         std::atomic<i64> value(42);
         Service->GetRegistry()->Register({CreateSensor("test")}, value);

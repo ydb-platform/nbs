@@ -53,8 +53,8 @@ TVolumePerfSettings TVolumePerformanceCalculator::GetConfigSettings(
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumePerformanceCalculator::TVolumePerformanceCalculator(
-        const NProto::TVolume& volume,
-        TDiagnosticsConfigPtr diagnosticsConfig)
+    const NProto::TVolume& volume,
+    TDiagnosticsConfigPtr diagnosticsConfig)
     : MediaKind(volume.GetStorageMediaKind())
     , ConfigSettings(GetConfigSettings(diagnosticsConfig))
     , ExpectedIoParallelism(diagnosticsConfig->GetExpectedIoParallelism())
@@ -81,9 +81,11 @@ void TVolumePerformanceCalculator::Register(const NProto::TVolume& volume)
         if (clientSettings.IsValid() && old != clientSettings) {
             newSettings = new TVolumePerfSettings(
                 Min(ConfigSettings.ReadIops, profile.GetMaxReadIops()),
-                Min(ConfigSettings.ReadBandwidth, profile.GetMaxReadBandwidth()),
+                Min(ConfigSettings.ReadBandwidth,
+                    profile.GetMaxReadBandwidth()),
                 Min(ConfigSettings.WriteIops, profile.GetMaxWriteIops()),
-                Min(ConfigSettings.WriteBandwidth, profile.GetMaxWriteBandwidth()),
+                Min(ConfigSettings.WriteBandwidth,
+                    profile.GetMaxWriteBandwidth()),
                 ConfigSettings.CriticalFactor);
 
             PerfSettings.AtomicStore(newSettings);
@@ -141,8 +143,8 @@ bool TVolumePerformanceCalculator::DidSuffer(
     long expectedScore,
     long actualScore) const
 {
-    return (expectedScore < ExpectedIoParallelism * 1e6)
-        && (actualScore > expectedScore);
+    return (expectedScore < ExpectedIoParallelism * 1e6) &&
+           (actualScore > expectedScore);
 }
 
 bool TVolumePerformanceCalculator::UpdateStats()
@@ -201,9 +203,8 @@ ui64 TSufferCounters::UpdateCounter(
     ui64 value)
 {
     if (!counter) {
-        counter = Counters
-            ->GetSubgroup("type", diskType)
-            ->GetCounter(DisksSufferCounterName, false);
+        counter = Counters->GetSubgroup("type", diskType)
+                      ->GetCounter(DisksSufferCounterName, false);
     }
     *counter = value;
     return value;
@@ -271,20 +272,16 @@ TDuration TVolumePerformanceCalculator::GetExpectedReadCost(
     ui32 requestBytes) const
 {
     auto perf = PerfSettings.AtomicLoad();
-    return ExpectedIoParallelism * CostPerIO(
-        perf->ReadIops,
-        perf->ReadBandwidth,
-        requestBytes);
+    return ExpectedIoParallelism *
+           CostPerIO(perf->ReadIops, perf->ReadBandwidth, requestBytes);
 }
 
 TDuration TVolumePerformanceCalculator::GetExpectedWriteCost(
     ui32 requestBytes) const
 {
     auto perf = PerfSettings.AtomicLoad();
-    return ExpectedIoParallelism * CostPerIO(
-        perf->WriteIops,
-        perf->WriteBandwidth,
-        requestBytes);
+    return ExpectedIoParallelism *
+           CostPerIO(perf->WriteIops, perf->WriteBandwidth, requestBytes);
 }
 
 TDuration TVolumePerformanceCalculator::GetExpectedCost() const
@@ -296,6 +293,5 @@ TDuration TVolumePerformanceCalculator::GetCurrentCost() const
 {
     return TDuration::MicroSeconds(AtomicGet(CurrentScore));
 }
-
 
 }   // namespace NCloud::NBlockStore

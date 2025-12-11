@@ -2,8 +2,8 @@
 
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/service/context.h>
-#include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/service/storage.h>
+#include <cloud/blockstore/libs/service/storage_provider.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/sglist.h>
@@ -40,9 +40,8 @@ auto ReadBlocksLocal(IStorage& storage, TGuardedSgList sglist)
     request->BlockSize = DefaultBlockSize;
     request->Sglist = std::move(sglist);
 
-    return storage.ReadBlocksLocal(
-        std::move(context),
-        std::move(request)).GetValue(WaitTimeout);
+    return storage.ReadBlocksLocal(std::move(context), std::move(request))
+        .GetValue(WaitTimeout);
 }
 
 auto WriteBlocksLocal(IStorage& storage, TGuardedSgList sglist)
@@ -55,9 +54,8 @@ auto WriteBlocksLocal(IStorage& storage, TGuardedSgList sglist)
     request->BlockSize = DefaultBlockSize;
     request->Sglist = std::move(sglist);
 
-    return storage.WriteBlocksLocal(
-        std::move(context),
-        std::move(request)).GetValue(WaitTimeout);
+    return storage.WriteBlocksLocal(std::move(context), std::move(request))
+        .GetValue(WaitTimeout);
 }
 
 auto ZeroBlocks(IStorage& storage)
@@ -68,19 +66,17 @@ auto ZeroBlocks(IStorage& storage)
     request->SetStartIndex(0);
     request->SetBlocksCount(1);
 
-    return storage.ZeroBlocks(
-        std::move(context),
-        std::move(request)).GetValue(WaitTimeout);
+    return storage.ZeroBlocks(std::move(context), std::move(request))
+        .GetValue(WaitTimeout);
 }
 
 auto CreateStorage()
 {
     auto provider = CreateNullStorageProvider();
 
-    return provider->CreateStorage(
-        NProto::TVolume(),
-        "",
-        NProto::VOLUME_ACCESS_READ_WRITE).GetValue();
+    return provider
+        ->CreateStorage(NProto::TVolume(), "", NProto::VOLUME_ACCESS_READ_WRITE)
+        .GetValue();
 }
 
 }   // namespace
@@ -99,7 +95,8 @@ Y_UNIT_TEST_SUITE(TNullStorageTest)
         auto writeResponse = WriteBlocksLocal(*storage, std::move(writeSglist));
         UNIT_ASSERT_SUCCEEDED(writeResponse.GetError());
 
-        auto readBuffer = TGuardedBuffer(TString::Uninitialized(DefaultBlockSize));
+        auto readBuffer =
+            TGuardedBuffer(TString::Uninitialized(DefaultBlockSize));
         auto readSglist = readBuffer.GetGuardedSgList();
 
         auto readResponse = ReadBlocksLocal(*storage, std::move(readSglist));

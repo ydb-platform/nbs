@@ -57,9 +57,12 @@ enum class EOperation
 TStringBuf GetOperationString(EOperation op)
 {
     switch (op) {
-        case EOperation::Read:  return "read";
-        case EOperation::Write: return "write";
-        case EOperation::Zero:  return "zero";
+        case EOperation::Read:
+            return "read";
+        case EOperation::Write:
+            return "write";
+        case EOperation::Zero:
+            return "zero";
     }
 }
 
@@ -85,8 +88,7 @@ struct TOperationRange
         , End(end)
         , Op(op)
         , RaceDetected(false)
-    {
-    }
+    {}
 
     ui32 Size() const
     {
@@ -98,7 +100,7 @@ struct TOperationRange
         return Begin <= other.End && other.Begin <= End;
     }
 
-    bool operator ==(const TOperationRange& other) const
+    bool operator==(const TOperationRange& other) const
     {
         return Id == other.Id;
     }
@@ -175,7 +177,8 @@ class TValidationService final
     class TMonPage;
 
 private:
-    static constexpr ui32 MaxBlockIndex = 25*1024*1024;   // 100GB in 4K blocks
+    static constexpr ui32 MaxBlockIndex =
+        25 * 1024 * 1024;   // 100GB in 4K blocks
     static_assert(MaxBlockIndex < InvalidBlockIndex, "");
 
     mutable TLog Log;
@@ -259,23 +262,17 @@ private:
         TDuration remountTimeout);
 
     void DoUnmountVolume(const TString& diskId, const TString& clientId);
-    TVolumePtr GetVolume(
-        const TString& diskId,
-        const TString& clientId);
+    TVolumePtr GetVolume(const TString& diskId, const TString& clientId);
 
-    static TMaybe<TOperationRange> CreateRange(
-        ui64 startIndex,
-        ui32 blocksCount,
-        EOperation op);
+    static TMaybe<TOperationRange>
+    CreateRange(ui64 startIndex, ui32 blocksCount, EOperation op);
 
     void EnterRange(TVolume& volume, TOperationRange range);
     void LeaveRange(TVolume& volume, TRequestsInFlight::iterator range);
 
     void OnError(TVolume& volume, const TOperationRange& range);
 
-    TVector<ui64> PrepareRead(
-        TVolume& volume,
-        const TOperationRange& range);
+    TVector<ui64> PrepareRead(TVolume& volume, const TOperationRange& range);
 
     void CompleteRead(
         TVolume& volume,
@@ -283,22 +280,16 @@ private:
         const TVector<ui64>& blocksWritten,
         const TVector<ui64>& blocksRead);
 
-    void PrepareWrite(
-        TVolume& volume,
-        const TOperationRange& range);
+    void PrepareWrite(TVolume& volume, const TOperationRange& range);
 
     void CompleteWrite(
         TVolume& volume,
         const TOperationRange& range,
         const TVector<ui64>& blocks);
 
-    void PrepareZero(
-        TVolume& volume,
-        const TOperationRange& range);
+    void PrepareZero(TVolume& volume, const TOperationRange& range);
 
-    void CompleteZero(
-        TVolume& volume,
-        const TOperationRange& range);
+    void CompleteZero(TVolume& volume, const TOperationRange& range);
 
     bool HandleRequest(
         TCallContextPtr ctx,
@@ -350,8 +341,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TValidationService::TMonPage final
-    : public THtmlMonPage
+class TValidationService::TMonPage final: public THtmlMonPage
 {
 private:
     TValidationService& Service;
@@ -371,12 +361,12 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 TValidationService::TValidationService(
-        ILoggingServicePtr logging,
-        IMonitoringServicePtr monitoring,
-        IBlockStorePtr service,
-        IBlockDigestCalculatorPtr digestCalculator,
-        TDuration inactiveClientsTimeout,
-        IValidationCallbackPtr callback)
+    ILoggingServicePtr logging,
+    IMonitoringServicePtr monitoring,
+    IBlockStorePtr service,
+    IBlockDigestCalculatorPtr digestCalculator,
+    TDuration inactiveClientsTimeout,
+    IValidationCallbackPtr callback)
     : Log(logging->CreateLog("BLOCKSTORE_SERVER"))
     , Service(std::move(service))
     , DigestCalculator(std::move(digestCalculator))
@@ -398,8 +388,10 @@ void TValidationService::OutputHtml(
 {
     Y_UNUSED(request);
 
-    HTML(out) {
-        TAG(TH3) { out << "Counters"; }
+    HTML (out) {
+        TAG (TH3) {
+            out << "Counters";
+        }
         Counters->OutputHtml(out);
     }
 }
@@ -425,10 +417,10 @@ void TValidationService::ReportIncompleteRead(
     ui32 requestedCount,
     ui32 reportedCount) const
 {
-    ReportError(TStringBuilder()
-        << "[" << volume.DiskId << "] "
-        << "read " << requestedCount << " blocks but "
-        << reportedCount << " returned");
+    ReportError(
+        TStringBuilder() << "[" << volume.DiskId << "] " << "read "
+                         << requestedCount << " blocks but " << reportedCount
+                         << " returned");
 }
 
 void TValidationService::ReportInconsistentRead(
@@ -439,10 +431,10 @@ void TValidationService::ReportInconsistentRead(
 {
     RequestCounters.InconsistentRead->Inc();
 
-    ReportError(TStringBuilder()
-        << "[" << volume.DiskId << "] "
-        << "read inconsistency in block " << blockIndex
-        << " written " << prevHash << " read " << newHash);
+    ReportError(
+        TStringBuilder() << "[" << volume.DiskId << "] "
+                         << "read inconsistency in block " << blockIndex
+                         << " written " << prevHash << " read " << newHash);
 }
 
 void TValidationService::ReportRace(
@@ -456,9 +448,9 @@ void TValidationService::ReportRace(
         RequestCounters.WriteWriteRace->Inc();
     }
 
-    ReportError(TStringBuilder()
-        << "[" << volume.DiskId << "] "
-        << newRange << " overlaps with " << oldRange);
+    ReportError(
+        TStringBuilder() << "[" << volume.DiskId << "] " << newRange
+                         << " overlaps with " << oldRange);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -476,11 +468,7 @@ TVolumePtr TValidationService::DoMountVolume(
         TVector<char> buffer(blockSize);
         auto zeroBlockDigest = DigestCalculator->Calculate(
             InvalidBlockIndex,
-            {
-                buffer.data(),
-                buffer.size()
-            }
-        );
+            {buffer.data(), buffer.size()});
 
         std::tie(it, inserted) = Volumes.emplace(
             diskId,
@@ -518,8 +506,7 @@ void TValidationService::DoUnmountVolume(
                 RequestCounters.MountedVolumes->Dec();
             }
         } else {
-            ReportWarning(TStringBuilder()
-                << "unknown volume: " << diskId);
+            ReportWarning(TStringBuilder() << "unknown volume: " << diskId);
         }
     }
 }
@@ -531,20 +518,20 @@ TVolumePtr TValidationService::GetVolume(
     with_lock (Lock) {
         auto it = Volumes.find(diskId);
         if (it == Volumes.end()) {
-            ReportWarning(TStringBuilder()
-                << "unknown volume: " << diskId);
+            ReportWarning(TStringBuilder() << "unknown volume: " << diskId);
             return {};
         }
 
         auto clientIt = it->second->ClientIds.find(clientId);
         if (clientIt == it->second->ClientIds.end()) {
-            ReportError(TStringBuilder()
-                << "unknown client: " << clientId
-                << " for volume: " << diskId);
+            ReportError(
+                TStringBuilder()
+                << "unknown client: " << clientId << " for volume: " << diskId);
         } else {
             auto deadline = clientIt->second.first + clientIt->second.second;
             if (deadline < Now()) {
-                ReportError(TStringBuilder()
+                ReportError(
+                    TStringBuilder()
                     << "request after automatic unmount. client: " << clientId
                     << " for volume: " << diskId);
             }
@@ -573,17 +560,10 @@ TMaybe<TOperationRange> TValidationService::CreateRange(
         endIndex = MaxBlockIndex;
     }
 
-    return TOperationRange {
-        GenerateRequestId(),
-        startIndex,
-        endIndex,
-        op
-    };
+    return TOperationRange{GenerateRequestId(), startIndex, endIndex, op};
 }
 
-void TValidationService::EnterRange(
-    TVolume& volume,
-    TOperationRange range)
+void TValidationService::EnterRange(TVolume& volume, TOperationRange range)
 {
     for (auto& r: volume.Requests) {
         if (range.Overlaps(r)) {
@@ -611,12 +591,11 @@ void TValidationService::LeaveRange(
     volume.Requests.erase(it);
 }
 
-void TValidationService::OnError(
-    TVolume& volume,
-    const TOperationRange& range)
+void TValidationService::OnError(TVolume& volume, const TOperationRange& range)
 {
     with_lock (volume.Lock) {
-        auto it = std::find(volume.Requests.begin(), volume.Requests.end(), range);
+        auto it =
+            std::find(volume.Requests.begin(), volume.Requests.end(), range);
         Y_ABORT_UNLESS(it != volume.Requests.end());
         LeaveRange(volume, it);
     }
@@ -651,7 +630,8 @@ void TValidationService::CompleteRead(
     const TVector<ui64>& blocksRead)
 {
     with_lock (volume.Lock) {
-        auto it = std::find(volume.Requests.begin(), volume.Requests.end(), range);
+        auto it =
+            std::find(volume.Requests.begin(), volume.Requests.end(), range);
         Y_ABORT_UNLESS(it != volume.Requests.end());
 
         if (blocksWritten.size() != blocksRead.size()) {
@@ -662,7 +642,9 @@ void TValidationService::CompleteRead(
         }
 
         if (!it->RaceDetected) {
-            for (ui32 i = 0; i < Min(blocksWritten.size(), blocksRead.size()); ++i) {
+            for (ui32 i = 0; i < Min(blocksWritten.size(), blocksRead.size());
+                 ++i)
+            {
                 if (!blocksWritten[i]) {
                     // did not see this block before -> skip
                     continue;
@@ -697,7 +679,8 @@ void TValidationService::CompleteWrite(
     const TVector<ui64>& blocks)
 {
     with_lock (volume.Lock) {
-        auto it = std::find(volume.Requests.begin(), volume.Requests.end(), range);
+        auto it =
+            std::find(volume.Requests.begin(), volume.Requests.end(), range);
         Y_ABORT_UNLESS(it != volume.Requests.end());
 
         auto oldSize = volume.Blocks.size();
@@ -729,7 +712,8 @@ void TValidationService::CompleteZero(
     const TOperationRange& range)
 {
     with_lock (volume.Lock) {
-        auto it = std::find(volume.Requests.begin(), volume.Requests.end(), range);
+        auto it =
+            std::find(volume.Requests.begin(), volume.Requests.end(), range);
         Y_ABORT_UNLESS(it != volume.Requests.end());
 
         auto oldSize = volume.Blocks.size();
@@ -754,18 +738,20 @@ bool TValidationService::HandleRequest(
 
     auto diskId = request->GetDiskId();
     auto clientId = request->GetHeaders().GetClientId();
-    response = Service->MountVolume(std::move(ctx), std::move(request)).Subscribe(
-            [=, this] (const auto& future) {
-            if (!IsRequestFailed(future)) {
-                const auto& response = future.GetValue();
-                auto timeout = InactiveClientsTimeout * 1.05;
-                auto volume = DoMountVolume(
-                    diskId,
-                    clientId,
-                    response.GetVolume().GetBlockSize(),
-                    timeout);
-            }
-        });
+    response = Service->MountVolume(std::move(ctx), std::move(request))
+                   .Subscribe(
+                       [=, this](const auto& future)
+                       {
+                           if (!IsRequestFailed(future)) {
+                               const auto& response = future.GetValue();
+                               auto timeout = InactiveClientsTimeout * 1.05;
+                               auto volume = DoMountVolume(
+                                   diskId,
+                                   clientId,
+                                   response.GetVolume().GetBlockSize(),
+                                   timeout);
+                           }
+                       });
     return true;
 }
 
@@ -778,12 +764,14 @@ bool TValidationService::HandleRequest(
 
     auto diskId = request->GetDiskId();
     auto clientId = request->GetHeaders().GetClientId();
-    response = Service->UnmountVolume(std::move(ctx), std::move(request)).Subscribe(
-        [=, this] (const auto& future) {
-            if (!IsRequestFailed(future)) {
-                DoUnmountVolume(diskId, clientId);
-            }
-        });
+    response = Service->UnmountVolume(std::move(ctx), std::move(request))
+                   .Subscribe(
+                       [=, this](const auto& future)
+                       {
+                           if (!IsRequestFailed(future)) {
+                               DoUnmountVolume(diskId, clientId);
+                           }
+                       });
     return true;
 }
 
@@ -822,31 +810,34 @@ bool TValidationService::HandleRequest(
     auto blocks = PrepareRead(*volume, *range);
     Y_ABORT_UNLESS(blocks.size() == range->Size());
 
-    response = Service->ReadBlocks(std::move(ctx), std::move(request)).Subscribe(
-        [=, this, blocks_ = std::move(blocks)] (const auto& future) {
-            if (!IsRequestFailed(future)) {
-                const auto& response = future.GetValue();
+    response =
+        Service->ReadBlocks(std::move(ctx), std::move(request))
+            .Subscribe(
+                [=, this, blocks_ = std::move(blocks)](const auto& future)
+                {
+                    if (!IsRequestFailed(future)) {
+                        const auto& response = future.GetValue();
 
-                auto sgListOrError = GetSgList(response, volume->BlockSize);
-                if (HasError(sgListOrError)) {
-                    OnError(*volume, *range);
-                    return;
-                }
+                        auto sgListOrError =
+                            GetSgList(response, volume->BlockSize);
+                        if (HasError(sgListOrError)) {
+                            OnError(*volume, *range);
+                            return;
+                        }
 
-                auto blocksRead = CalculateBlocksDigest(
-                    sgListOrError.GetResult(),
-                    *DigestCalculator,
-                    volume->BlockSize,
-                    range->Begin,
-                    range->Size(),
-                    zeroBlockDigest
-                );
+                        auto blocksRead = CalculateBlocksDigest(
+                            sgListOrError.GetResult(),
+                            *DigestCalculator,
+                            volume->BlockSize,
+                            range->Begin,
+                            range->Size(),
+                            zeroBlockDigest);
 
-                CompleteRead(*volume, *range, blocks_, blocksRead);
-            } else {
-                OnError(*volume, *range);
-            }
-        });
+                        CompleteRead(*volume, *range, blocks_, blocksRead);
+                    } else {
+                        OnError(*volume, *range);
+                    }
+                });
     return true;
 }
 
@@ -885,28 +876,30 @@ bool TValidationService::HandleRequest(
     auto blocks = PrepareRead(*volume, *range);
     Y_ABORT_UNLESS(blocks.size() == range->Size());
 
-    response = Service->ReadBlocksLocal(std::move(ctx), request).Subscribe(
-        [=, this, blocks_ = std::move(blocks)] (const auto& future) {
-            if (!IsRequestFailed(future)) {
-                auto guard = request->Sglist.Acquire();
+    response =
+        Service->ReadBlocksLocal(std::move(ctx), request)
+            .Subscribe(
+                [=, this, blocks_ = std::move(blocks)](const auto& future)
+                {
+                    if (!IsRequestFailed(future)) {
+                        auto guard = request->Sglist.Acquire();
 
-                if (guard) {
-                    auto blocksRead = CalculateBlocksDigest(
-                        guard.Get(),
-                        *DigestCalculator,
-                        volume->BlockSize,
-                        range->Begin,
-                        range->Size(),
-                        zeroBlockDigest
-                    );
+                        if (guard) {
+                            auto blocksRead = CalculateBlocksDigest(
+                                guard.Get(),
+                                *DigestCalculator,
+                                volume->BlockSize,
+                                range->Begin,
+                                range->Size(),
+                                zeroBlockDigest);
 
-                    CompleteRead(*volume, *range, blocks_, blocksRead);
-                    return;
-                }
-            }
+                            CompleteRead(*volume, *range, blocks_, blocksRead);
+                            return;
+                        }
+                    }
 
-            OnError(*volume, *range);
-        });
+                    OnError(*volume, *range);
+                });
 
     return true;
 }
@@ -926,9 +919,8 @@ bool TValidationService::HandleRequest(
         return false;
     }
 
-    auto sgListOrError = SgListNormalize(
-        GetSgList(*request),
-        volume->BlockSize);
+    auto sgListOrError =
+        SgListNormalize(GetSgList(*request), volume->BlockSize);
 
     if (HasError(sgListOrError)) {
         // ignore invalid buffer
@@ -937,10 +929,8 @@ bool TValidationService::HandleRequest(
 
     const auto& sglist = sgListOrError.GetResult();
 
-    auto range = CreateRange(
-        request->GetStartIndex(),
-        sglist.size(),
-        EOperation::Write);
+    auto range =
+        CreateRange(request->GetStartIndex(), sglist.size(), EOperation::Write);
 
     if (!range) {
         // ignore invalid range
@@ -953,19 +943,21 @@ bool TValidationService::HandleRequest(
         volume->BlockSize,
         range->Begin,
         range->Size(),
-        AtomicGet(volume->ZeroBlockDigest)
-    );
+        AtomicGet(volume->ZeroBlockDigest));
 
     PrepareWrite(*volume, *range);
 
-    response = Service->WriteBlocks(std::move(ctx), std::move(request)).Subscribe(
-        [=, this, blocks_ = std::move(blocks)] (const auto& future) {
-            if (!IsRequestFailed(future)) {
-                CompleteWrite(*volume, *range, blocks_);
-            } else {
-                OnError(*volume, *range);
-            }
-        });
+    response =
+        Service->WriteBlocks(std::move(ctx), std::move(request))
+            .Subscribe(
+                [=, this, blocks_ = std::move(blocks)](const auto& future)
+                {
+                    if (!IsRequestFailed(future)) {
+                        CompleteWrite(*volume, *range, blocks_);
+                    } else {
+                        OnError(*volume, *range);
+                    }
+                });
     return true;
 }
 
@@ -1003,19 +995,21 @@ bool TValidationService::HandleRequest(
         volume->BlockSize,
         range->Begin,
         range->Size(),
-        AtomicGet(volume->ZeroBlockDigest)
-    );
+        AtomicGet(volume->ZeroBlockDigest));
 
     PrepareWrite(*volume, *range);
 
-    response = Service->WriteBlocksLocal(std::move(ctx), std::move(request))
-        .Subscribe([=, this, blocks_ = std::move(blocks)] (const auto& future) {
-            if (!IsRequestFailed(future)) {
-                CompleteWrite(*volume, *range, blocks_);
-            } else {
-                OnError(*volume, *range);
-            }
-        });
+    response =
+        Service->WriteBlocksLocal(std::move(ctx), std::move(request))
+            .Subscribe(
+                [=, this, blocks_ = std::move(blocks)](const auto& future)
+                {
+                    if (!IsRequestFailed(future)) {
+                        CompleteWrite(*volume, *range, blocks_);
+                    } else {
+                        OnError(*volume, *range);
+                    }
+                });
     return true;
 }
 
@@ -1046,14 +1040,16 @@ bool TValidationService::HandleRequest(
 
     PrepareZero(*volume, *range);
 
-    response = Service->ZeroBlocks(std::move(ctx), std::move(request)).Subscribe(
-        [=, this] (const auto& future) {
-            if (!IsRequestFailed(future)) {
-                CompleteZero(*volume, *range);
-            } else {
-                OnError(*volume, *range);
-            }
-        });
+    response = Service->ZeroBlocks(std::move(ctx), std::move(request))
+                   .Subscribe(
+                       [=, this](const auto& future)
+                       {
+                           if (!IsRequestFailed(future)) {
+                               CompleteZero(*volume, *range);
+                           } else {
+                               OnError(*volume, *range);
+                           }
+                       });
     return true;
 }
 
@@ -1087,6 +1083,6 @@ void Out<NCloud::NBlockStore::NServer::TOperationRange>(
     IOutputStream& out,
     const NCloud::NBlockStore::NServer::TOperationRange& range)
 {
-    out << NCloud::NBlockStore::NServer::GetOperationString(range.Op)
-        << "(" << range.Begin << ", " << range.End << ")";
+    out << NCloud::NBlockStore::NServer::GetOperationString(range.Op) << "("
+        << range.Begin << ", " << range.End << ")";
 }

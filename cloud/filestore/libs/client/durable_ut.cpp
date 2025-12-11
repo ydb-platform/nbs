@@ -4,6 +4,7 @@
 
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
@@ -35,24 +36,21 @@ struct TTestBootstrap
     ITimerPtr Timer = CreateWallClockTimer();
     ISchedulerPtr Scheduler = CreateScheduler();
     ILoggingServicePtr Logging = CreateLoggingService("console");
-    TClientConfigPtr Config = std::make_shared<TClientConfig>(NProto::TClientConfig{});
+    TClientConfigPtr Config =
+        std::make_shared<TClientConfig>(NProto::TClientConfig{});
     IRetryPolicyPtr Policy = CreateRetryPolicy(Config);
 
     std::shared_ptr<TFileStoreTest> Client = std::make_shared<TFileStoreTest>();
     IFileStoreServicePtr Durable;
 
     TTestBootstrap(
-            ITimerPtr timer = CreateWallClockTimer(),
-            ISchedulerPtr scheduler = CreateScheduler())
+        ITimerPtr timer = CreateWallClockTimer(),
+        ISchedulerPtr scheduler = CreateScheduler())
         : Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
     {
-        Durable = CreateDurableClient(
-            Logging,
-            Timer,
-            Scheduler,
-            Policy,
-            Client);
+        Durable =
+            CreateDurableClient(Logging, Timer, Scheduler, Policy, Client);
 
         Start();
     }
@@ -60,12 +58,8 @@ struct TTestBootstrap
     TTestBootstrap(TClientConfigPtr config)
         : Config(std::move(config))
     {
-        Durable = CreateDurableClient(
-            Logging,
-            Timer,
-            Scheduler,
-            Policy,
-            Client);
+        Durable =
+            CreateDurableClient(Logging, Timer, Scheduler, Policy, Client);
 
         Start();
     }
@@ -117,7 +111,8 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         TTestBootstrap bootstrap;
 
         size_t requestsCount = 0;
-        bootstrap.Client->PingHandler = [&] (auto, auto) {
+        bootstrap.Client->PingHandler = [&](auto, auto)
+        {
             NProto::TPingResponse response;
             if (++requestsCount < MaxRetryCount) {
                 auto& error = *response.MutableError();
@@ -141,7 +136,8 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         TTestBootstrap bootstrap;
 
         size_t requestsCount = 0;
-        bootstrap.Client->PingHandler = [&] (auto, auto) {
+        bootstrap.Client->PingHandler = [&](auto, auto)
+        {
             ++requestsCount;
 
             NProto::TPingResponse response;
@@ -166,7 +162,8 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         TTestBootstrap bootstrap;
 
         auto promise = NewPromise<NProto::TPingResponse>();
-        bootstrap.Client->PingHandler = [&] (auto, auto) {
+        bootstrap.Client->PingHandler = [&](auto, auto)
+        {
             return promise;
         };
 
@@ -196,7 +193,8 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto scheduler = std::make_shared<TTestScheduler>();
         TTestBootstrap bootstrap(CreateWallClockTimer(), scheduler);
 
-        bootstrap.Client->PingHandler = [&] (auto, auto) {
+        bootstrap.Client->PingHandler = [&](auto, auto)
+        {
             NProto::TPingResponse response;
             auto& error = *response.MutableError();
             error.SetCode(E_GRPC_ABORTED);
@@ -356,8 +354,10 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto config = std::make_shared<TClientConfig>(proto);
 
         TTestBootstrap bootstrap(config);
-        bootstrap.Client->PingHandler = [&] (auto, auto) {
-            return MakeFuture<NProto::TPingResponse>(TErrorResponse(E_REJECTED));
+        bootstrap.Client->PingHandler = [&](auto, auto)
+        {
+            return MakeFuture<NProto::TPingResponse>(
+                TErrorResponse(E_REJECTED));
         };
 
         auto future = bootstrap.Durable->Ping(
@@ -370,7 +370,8 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             response.GetError());
 
         TRetryState retryState;
-        auto retry = bootstrap.Policy->ShouldRetry(retryState, response.GetError());
+        auto retry =
+            bootstrap.Policy->ShouldRetry(retryState, response.GetError());
         UNIT_ASSERT(!retry);
     }
 }

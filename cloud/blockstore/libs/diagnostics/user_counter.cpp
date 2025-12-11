@@ -15,30 +15,35 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TStringBuf DISK_READ_OPS                    = "disk.read_ops";
-constexpr TStringBuf DISK_READ_OPS_BURST              = "disk.read_ops_burst";
-constexpr TStringBuf DISK_READ_OPS_IN_FLIGHT          = "disk.read_ops_in_flight";
-constexpr TStringBuf DISK_READ_OPS_IN_FLIGHT_BURST    = "disk.read_ops_in_flight_burst";
-constexpr TStringBuf DISK_READ_BYTES                  = "disk.read_bytes";
-constexpr TStringBuf DISK_READ_BYTES_BURST            = "disk.read_bytes_burst";
-constexpr TStringBuf DISK_READ_BYTES_IN_FLIGHT        = "disk.read_bytes_in_flight";
-constexpr TStringBuf DISK_READ_BYTES_IN_FLIGHT_BURST  = "disk.read_bytes_in_flight_burst";
-constexpr TStringBuf DISK_READ_ERRORS                 = "disk.read_errors";
-constexpr TStringBuf DISK_READ_LATENCY                = "disk.read_latency";
-constexpr TStringBuf DISK_READ_THROTTLER_DELAY        = "disk.read_throttler_delay";
-constexpr TStringBuf DISK_WRITE_OPS                   = "disk.write_ops";
-constexpr TStringBuf DISK_WRITE_OPS_BURST             = "disk.write_ops_burst";
-constexpr TStringBuf DISK_WRITE_OPS_IN_FLIGHT         = "disk.write_ops_in_flight";
-constexpr TStringBuf DISK_WRITE_OPS_IN_FLIGHT_BURST   = "disk.write_ops_in_flight_burst";
-constexpr TStringBuf DISK_WRITE_BYTES                 = "disk.write_bytes";
-constexpr TStringBuf DISK_WRITE_BYTES_BURST           = "disk.write_bytes_burst";
-constexpr TStringBuf DISK_WRITE_BYTES_IN_FLIGHT       = "disk.write_bytes_in_flight";
-constexpr TStringBuf DISK_WRITE_BYTES_IN_FLIGHT_BURST = "disk.write_bytes_in_flight_burst";
-constexpr TStringBuf DISK_WRITE_ERRORS                = "disk.write_errors";
-constexpr TStringBuf DISK_WRITE_LATENCY               = "disk.write_latency";
-constexpr TStringBuf DISK_WRITE_THROTTLER_DELAY       = "disk.write_throttler_delay";
-constexpr TStringBuf DISK_IO_QUOTA                    = "disk.io_quota_utilization_percentage";
-constexpr TStringBuf DISK_IO_QUOTA_BURST              = "disk.io_quota_utilization_percentage_burst";
+constexpr TStringBuf DISK_READ_OPS = "disk.read_ops";
+constexpr TStringBuf DISK_READ_OPS_BURST = "disk.read_ops_burst";
+constexpr TStringBuf DISK_READ_OPS_IN_FLIGHT = "disk.read_ops_in_flight";
+constexpr TStringBuf DISK_READ_OPS_IN_FLIGHT_BURST =
+    "disk.read_ops_in_flight_burst";
+constexpr TStringBuf DISK_READ_BYTES = "disk.read_bytes";
+constexpr TStringBuf DISK_READ_BYTES_BURST = "disk.read_bytes_burst";
+constexpr TStringBuf DISK_READ_BYTES_IN_FLIGHT = "disk.read_bytes_in_flight";
+constexpr TStringBuf DISK_READ_BYTES_IN_FLIGHT_BURST =
+    "disk.read_bytes_in_flight_burst";
+constexpr TStringBuf DISK_READ_ERRORS = "disk.read_errors";
+constexpr TStringBuf DISK_READ_LATENCY = "disk.read_latency";
+constexpr TStringBuf DISK_READ_THROTTLER_DELAY = "disk.read_throttler_delay";
+constexpr TStringBuf DISK_WRITE_OPS = "disk.write_ops";
+constexpr TStringBuf DISK_WRITE_OPS_BURST = "disk.write_ops_burst";
+constexpr TStringBuf DISK_WRITE_OPS_IN_FLIGHT = "disk.write_ops_in_flight";
+constexpr TStringBuf DISK_WRITE_OPS_IN_FLIGHT_BURST =
+    "disk.write_ops_in_flight_burst";
+constexpr TStringBuf DISK_WRITE_BYTES = "disk.write_bytes";
+constexpr TStringBuf DISK_WRITE_BYTES_BURST = "disk.write_bytes_burst";
+constexpr TStringBuf DISK_WRITE_BYTES_IN_FLIGHT = "disk.write_bytes_in_flight";
+constexpr TStringBuf DISK_WRITE_BYTES_IN_FLIGHT_BURST =
+    "disk.write_bytes_in_flight_burst";
+constexpr TStringBuf DISK_WRITE_ERRORS = "disk.write_errors";
+constexpr TStringBuf DISK_WRITE_LATENCY = "disk.write_latency";
+constexpr TStringBuf DISK_WRITE_THROTTLER_DELAY = "disk.write_throttler_delay";
+constexpr TStringBuf DISK_IO_QUOTA = "disk.io_quota_utilization_percentage";
+constexpr TStringBuf DISK_IO_QUOTA_BURST =
+    "disk.io_quota_utilization_percentage_burst";
 
 TLabels MakeVolumeLabels(
     const TString& cloudId,
@@ -58,16 +63,13 @@ TLabels MakeVolumeInstanceLabels(
     const TString& diskId,
     const TString& instanceId)
 {
-    auto volumeLabels = MakeVolumeLabels(
-        cloudId,
-        folderId,
-        diskId);
+    auto volumeLabels = MakeVolumeLabels(cloudId, folderId, diskId);
     volumeLabels.Add("instance", instanceId);
 
     return volumeLabels;
 }
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -79,14 +81,9 @@ void RegisterServiceVolume(
     EHistogramCounterOptions histogramCounterOptions,
     TDynamicCounterPtr src)
 {
-    const auto commonLabels =
-        MakeVolumeLabels(cloudId, folderId, diskId);
+    const auto commonLabels = MakeVolumeLabels(cloudId, folderId, diskId);
 
-    AddUserMetric(
-        dsc,
-        commonLabels,
-        {{src, "UsedQuota"}},
-        DISK_IO_QUOTA);
+    AddUserMetric(dsc, commonLabels, {{src, "UsedQuota"}}, DISK_IO_QUOTA);
     AddUserMetric(
         dsc,
         commonLabels,
@@ -117,8 +114,7 @@ void UnregisterServiceVolume(
     const TString& folderId,
     const TString& diskId)
 {
-    const auto commonLabels =
-        MakeVolumeLabels(cloudId, folderId, diskId);
+    const auto commonLabels = MakeVolumeLabels(cloudId, folderId, diskId);
 
     dsc.RemoveUserMetric(commonLabels, DISK_READ_THROTTLER_DELAY);
     dsc.RemoveUserMetric(commonLabels, DISK_WRITE_THROTTLER_DELAY);
@@ -194,7 +190,8 @@ void RegisterServerVolumeInstance(
 
     auto writeSubgroup = src->FindSubgroup("request", "WriteBlocks");
     auto zeroSubgroup = src->FindSubgroup("request", "ZeroBlocks");
-    auto getWriteCounters = [&](const TString& name) {
+    auto getWriteCounters = [&](const TString& name)
+    {
         auto counters = TVector<TBaseDynamicCounters>({{writeSubgroup, name}});
         if (reportZeroBlocksMetrics) {
             counters.push_back({zeroSubgroup, name});
@@ -288,4 +285,4 @@ void UnregisterServerVolumeInstance(
     dsc.RemoveUserMetric(commonLabels, DISK_WRITE_LATENCY);
 }
 
-}  // namespace NCloud::NBlockStore::NUserCounter
+}   // namespace NCloud::NBlockStore::NUserCounter

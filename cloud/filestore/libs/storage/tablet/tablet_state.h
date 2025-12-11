@@ -44,7 +44,7 @@ namespace NCloud::NFileStore::NProto {
 
 class TProfileLogRequestInfo;
 
-} // namespace NCloud::NFileStore::NProto
+}   // namespace NCloud::NFileStore::NProto
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -64,16 +64,16 @@ struct TCompactionInfo
     const bool ShouldCompact;
 
     TCompactionInfo(
-            ui32 threshold,
-            ui32 thresholdAverage,
-            ui32 garbageThreshold,
-            ui32 garbageThresholdAverage,
-            ui32 score,
-            ui32 rangeId,
-            double garbagePercentage,
-            double averageScore,
-            bool newCompactionEnabled,
-            bool shouldCompact)
+        ui32 threshold,
+        ui32 thresholdAverage,
+        ui32 garbageThreshold,
+        ui32 garbageThresholdAverage,
+        ui32 score,
+        ui32 rangeId,
+        double garbagePercentage,
+        double averageScore,
+        bool newCompactionEnabled,
+        bool shouldCompact)
         : Threshold(threshold)
         , ThresholdAverage(thresholdAverage)
         , GarbageThreshold(garbageThreshold)
@@ -84,8 +84,7 @@ struct TCompactionInfo
         , AverageScore(averageScore)
         , NewCompactionEnabled(newCompactionEnabled)
         , ShouldCompact(shouldCompact)
-    {
-    }
+    {}
 };
 
 struct TCleanupInfo
@@ -103,17 +102,17 @@ struct TCleanupInfo
     const bool ShouldCleanup;
 
     TCleanupInfo(
-            ui32 threshold,
-            ui32 thresholdAverage,
-            ui32 score,
-            ui32 rangeId,
-            double averageScore,
-            ui64 largeDeletionMarkersThreshold,
-            ui64 largeDeletionMarkerCount,
-            ui32 priorityRangeIdCount,
-            bool isPriority,
-            bool newCleanupEnabled,
-            bool shouldCleanup)
+        ui32 threshold,
+        ui32 thresholdAverage,
+        ui32 score,
+        ui32 rangeId,
+        double averageScore,
+        ui64 largeDeletionMarkersThreshold,
+        ui64 largeDeletionMarkerCount,
+        ui32 priorityRangeIdCount,
+        bool isPriority,
+        bool newCleanupEnabled,
+        bool shouldCleanup)
         : Threshold(threshold)
         , ThresholdAverage(thresholdAverage)
         , Score(score)
@@ -125,8 +124,7 @@ struct TCleanupInfo
         , IsPriority(isPriority)
         , NewCleanupEnabled(newCleanupEnabled)
         , ShouldCleanup(shouldCleanup)
-    {
-    }
+    {}
 };
 
 struct TFlushBytesStats
@@ -181,16 +179,15 @@ struct TBackgroundOpsBackpressureStatus
     const EBackgroundOpBackpressureStatus Cleanup;
 
     TBackgroundOpsBackpressureStatus(
-            EBackgroundOpBackpressureStatus flush,
-            EBackgroundOpBackpressureStatus flushBytes,
-            EBackgroundOpBackpressureStatus compaction,
-            EBackgroundOpBackpressureStatus cleanup)
+        EBackgroundOpBackpressureStatus flush,
+        EBackgroundOpBackpressureStatus flushBytes,
+        EBackgroundOpBackpressureStatus compaction,
+        EBackgroundOpBackpressureStatus cleanup)
         : Flush(flush)
         , FlushBytes(flushBytes)
         , Compaction(compaction)
         , Cleanup(cleanup)
-    {
-    }
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -336,10 +333,9 @@ public:
 
     void UpdateMinDeletionMarkersCountSinceTabletStart()
     {
-        MinDeletionMarkersCountSinceTabletStart = Min(
-            MinDeletionMarkersCountSinceTabletStart,
-            FileSystemStats.GetDeletionMarkersCount()
-        );
+        MinDeletionMarkersCountSinceTabletStart =
+            Min(MinDeletionMarkersCountSinceTabletStart,
+                FileSystemStats.GetDeletionMarkersCount());
     }
 
     const TNodeToSessionCounters& GetNodeToSessionCounters() const
@@ -375,39 +371,42 @@ public:
 public:
     void DumpStats(IOutputStream& os) const;
 
-#define FILESTORE_DECLARE_COUNTER(name, ...)                                   \
-public:                                                                        \
-    ui64 Get##name() const                                                     \
-    {                                                                          \
-        return FileSystemStats.Get##name();                                    \
-    }                                                                          \
-private:                                                                       \
-    void Set##name(TIndexTabletDatabase& db, ui64 value)                       \
-    {                                                                          \
-        FileSystemStats.Set##name(value);                                      \
-        db.Write##name(value);                                                 \
-    }                                                                          \
-    ui64 Increment##name(TIndexTabletDatabase& db, size_t delta = 1)           \
-    {                                                                          \
-        ui64 value = SafeIncrement(FileSystemStats.Get##name(), delta);        \
-        FileSystemStats.Set##name(value);                                      \
-        db.Write##name(value);                                                 \
-        return value;                                                          \
-    }                                                                          \
-    ui64 Decrement##name(TIndexTabletDatabase& db, size_t delta = 1)           \
-    {                                                                          \
-        ui64 value = SafeDecrement(FileSystemStats.Get##name(), delta);        \
-        FileSystemStats.Set##name(value);                                      \
-        db.Write##name(value);                                                 \
-        return value;                                                          \
-    }                                                                          \
-// FILESTORE_DECLARE_COUNTER
+#define FILESTORE_DECLARE_COUNTER(name, ...)                            \
+public:                                                                 \
+    ui64 Get##name() const                                              \
+    {                                                                   \
+        return FileSystemStats.Get##name();                             \
+    }                                                                   \
+                                                                        \
+private:                                                                \
+    void Set##name(TIndexTabletDatabase& db, ui64 value)                \
+    {                                                                   \
+        FileSystemStats.Set##name(value);                               \
+        db.Write##name(value);                                          \
+    }                                                                   \
+    ui64 Increment##name(TIndexTabletDatabase& db, size_t delta = 1)    \
+    {                                                                   \
+        ui64 value = SafeIncrement(FileSystemStats.Get##name(), delta); \
+        FileSystemStats.Set##name(value);                               \
+        db.Write##name(value);                                          \
+        return value;                                                   \
+    }                                                                   \
+    ui64 Decrement##name(TIndexTabletDatabase& db, size_t delta = 1)    \
+    {                                                                   \
+        ui64 value = SafeDecrement(FileSystemStats.Get##name(), delta); \
+        FileSystemStats.Set##name(value);                               \
+        db.Write##name(value);                                          \
+        return value;                                                   \
+    }                                                                   \
+    // FILESTORE_DECLARE_COUNTER
 
-FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_COUNTER)
+    FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_COUNTER)
 
 #undef FILESTORE_DECLARE_COUNTER
 
-    void ChangeNodeCounters(const TNodeToSessionStat::EKind nodeKind, i64 amount);
+    void ChangeNodeCounters(
+        const TNodeToSessionStat::EKind nodeKind,
+        i64 amount);
 
     //
     // Throttling
@@ -562,13 +561,13 @@ public:
         ui64 maxCommitId,
         const IIndexTabletDatabase::TNodeAttr& attr);
 
-
     //
     // hasXAttrs
     //
 
 public:
-    enum class EHasXAttrs : ui64 {
+    enum class EHasXAttrs : ui64
+    {
         Unknown = 0,
         True = 1,
         False = 2
@@ -670,9 +669,7 @@ public:
         const NActors::TActorId& owner,
         const NProto::TSessionOptions& sessionOptions);
 
-    void RemoveSession(
-        TIndexTabletDatabase& db,
-        const TString& sessionId);
+    void RemoveSession(TIndexTabletDatabase& db, const TString& sessionId);
 
     TSession* FindSession(const TString& sessionId) const;
     TSession* FindSessionByClientId(const TString& clientId) const;
@@ -686,17 +683,24 @@ public:
         ui64 sessionSeqNo,
         bool readOnly,
         const NActors::TActorId& owner);
-    void OrphanSession(const NActors::TActorId& owner, TInstant inactivityDeadline);
-    void ResetSession(TIndexTabletDatabase& db, TSession* session, const TMaybe<TString>& state);
+    void OrphanSession(
+        const NActors::TActorId& owner,
+        TInstant inactivityDeadline);
+    void ResetSession(
+        TIndexTabletDatabase& db,
+        TSession* session,
+        const TMaybe<TString>& state);
 
     TVector<TSession*> GetTimedOutSessions(TInstant now) const;
-    TVector<TSession*> GetSessionsToNotify(const NProto::TSessionEvent& event) const;
+    TVector<TSession*> GetSessionsToNotify(
+        const NProto::TSessionEvent& event) const;
     TVector<NProtoPrivate::TTabletSessionInfo> DescribeSessions() const;
 
     const TSessionHistoryList& GetSessionHistoryList() const;
     void AddSessionHistoryEntry(
         TIndexTabletDatabase& db,
-        const TSessionHistoryEntry& entry, size_t maxEntryCount);
+        const TSessionHistoryEntry& entry,
+        size_t maxEntryCount);
 
     using TCreateSessionRequests =
         TVector<NProtoPrivate::TCreateSessionRequest>;
@@ -733,9 +737,7 @@ public:
         ui64 commitId,
         ui32 flags);
 
-    void DestroyHandle(
-        TIndexTabletDatabase& db,
-        TSessionHandle* handle);
+    void DestroyHandle(TIndexTabletDatabase& db, TSessionHandle* handle);
 
     TSessionHandle* FindHandle(ui64 handle) const;
 
@@ -787,21 +789,21 @@ private:
     // DupCache
     //
 
-#define FILESTORE_DECLARE_DUPCACHE(name, ...)                                   \
-public:                                                                         \
-    void AddDupCacheEntry(                                                      \
-        TIndexTabletDatabase& db,                                               \
-        TSession* session,                                                      \
-        ui64 requestId,                                                         \
-        const NProto::T##name##Response& response,                              \
-        ui32 maxEntries);                                                       \
-                                                                                \
-    bool GetDupCacheEntry(                                                      \
-        const TDupCacheEntry* entry,                                            \
-        NProto::T##name##Response& response);                                   \
-// FILESTORE_DECLARE_DUPCACHE
+#define FILESTORE_DECLARE_DUPCACHE(name, ...)      \
+public:                                            \
+    void AddDupCacheEntry(                         \
+        TIndexTabletDatabase& db,                  \
+        TSession* session,                         \
+        ui64 requestId,                            \
+        const NProto::T##name##Response& response, \
+        ui32 maxEntries);                          \
+                                                   \
+    bool GetDupCacheEntry(                         \
+        const TDupCacheEntry* entry,               \
+        NProto::T##name##Response& response);      \
+    // FILESTORE_DECLARE_DUPCACHE
 
-FILESTORE_DUPCACHE_REQUESTS(FILESTORE_DECLARE_DUPCACHE)
+    FILESTORE_DUPCACHE_REQUESTS(FILESTORE_DECLARE_DUPCACHE)
 
 #undef FILESTORE_DECLARE_DUPCACHE
 
@@ -817,9 +819,7 @@ FILESTORE_DUPCACHE_REQUESTS(FILESTORE_DECLARE_DUPCACHE)
         ui64 requestId,
         NProto::TRenameNodeResponse response);
 
-    void CommitDupCacheEntry(
-        const TString& sessionId,
-        ui64 requestId);
+    void CommitDupCacheEntry(const TString& sessionId, ui64 requestId);
 
     //
     // Writes
@@ -843,16 +843,15 @@ public:
         ui64 CleanupScore;
 
         TBackpressureThresholds(
-                const ui64 flush,
-                const ui64 flushBytes,
-                const ui64 compactionScore,
-                const ui64 cleanupScore)
+            const ui64 flush,
+            const ui64 flushBytes,
+            const ui64 compactionScore,
+            const ui64 cleanupScore)
             : Flush(flush)
             , FlushBytes(flushBytes)
             , CompactionScore(compactionScore)
             , CleanupScore(cleanupScore)
-        {
-        }
+        {}
     };
 
     using TBackpressureValues = TBackpressureThresholds;
@@ -927,10 +926,8 @@ public:
         ui32 blockIndex,
         ui32 blocksCount) const;
 
-    TMaybe<TFreshBlock> FindFreshBlock(
-        ui64 nodeId,
-        ui64 commitId,
-        ui32 blockIndex) const;
+    TMaybe<TFreshBlock>
+    FindFreshBlock(ui64 nodeId, ui64 commitId, ui32 blockIndex) const;
 
     void WriteFreshBlock(
         TIndexTabletDatabase& db,
@@ -999,9 +996,7 @@ public:
         ui32 rangeId,
         NProto::TProfileLogRequestInfo& profileLogRequest);
 
-    bool UpdateBlockLists(
-        TIndexTabletDatabase& db,
-        TMixedBlobMeta& blob);
+    bool UpdateBlockLists(TIndexTabletDatabase& db, TMixedBlobMeta& blob);
 
     void RewriteMixedBlocks(
         TIndexTabletDatabase& db,
@@ -1012,7 +1007,8 @@ public:
     TBlobMetaMapStats GetBlobMetaMapStats() const;
 
     ui32 GetMixedRangeIndex(ui64 nodeId, ui32 blockIndex) const;
-    ui32 GetMixedRangeIndex(ui64 nodeId, ui32 blockIndex, ui32 blocksCount) const;
+    ui32
+    GetMixedRangeIndex(ui64 nodeId, ui32 blockIndex, ui32 blocksCount) const;
     ui32 GetMixedRangeIndex(const TVector<TBlock>& blocks) const;
     const IBlockLocation2RangeIndex& GetRangeIdHasher() const;
 
@@ -1122,15 +1118,11 @@ public:
         ui32 rangeId,
         const TPartialBlobId& blobId);
 
-    void RemoveCheckpoint(
-        TIndexTabletDatabase& db,
-        TCheckpoint* checkpoint);
+    void RemoveCheckpoint(TIndexTabletDatabase& db, TCheckpoint* checkpoint);
 
 private:
-    void AddCheckpointNode(
-        TIndexTabletDatabase& db,
-        ui64 checkpointId,
-        ui64 nodeId);
+    void
+    AddCheckpointNode(TIndexTabletDatabase& db, ui64 checkpointId, ui64 nodeId);
 
     void AddCheckpointBlob(
         TIndexTabletDatabase& db,
@@ -1269,9 +1261,9 @@ public:
         ui32 Current = 0;
 
         TForcedRangeOperationState(
-                TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
-                TVector<ui32> ranges,
-                TString operationId)
+            TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
+            TVector<ui32> ranges,
+            TString operationId)
             : Mode(mode)
             , RangesToCompact(std::move(ranges))
             , OperationId(std::move(operationId))
@@ -1286,8 +1278,8 @@ public:
 
         ui32 GetCurrentRange() const
         {
-            return Current < RangesToCompact.size()
-                ? RangesToCompact[Current] : 0;
+            return Current < RangesToCompact.size() ? RangesToCompact[Current]
+                                                    : 0;
         }
     };
 
@@ -1387,7 +1379,6 @@ private:
         const TByteRange& range);
 
 public:
-
     ////////////////////////////////////////////////////////////////////////////
     // Caching: ReadAhead, NodeIndexCache, InMemoryIndexState
     ////////////////////////////////////////////////////////////////////////////
@@ -1405,10 +1396,8 @@ public:
         ui64 handle,
         const TByteRange& range,
         NProtoPrivate::TDescribeDataResponse* response);
-    TMaybe<TByteRange> RegisterDescribe(
-        ui64 nodeId,
-        ui64 handle,
-        const TByteRange inputRange);
+    TMaybe<TByteRange>
+    RegisterDescribe(ui64 nodeId, ui64 handle, const TByteRange inputRange);
     void InvalidateReadAheadCache(ui64 nodeId);
     void RegisterReadAheadResult(
         ui64 nodeId,

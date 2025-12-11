@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/encryption/model/utils.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/sglist.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -37,8 +38,7 @@ struct IWriteRangeIterator
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSingleWriteRangeIterator final
-    : public IWriteRangeIterator
+class TSingleWriteRangeIterator final: public IWriteRangeIterator
 {
 private:
     TLog& Log;
@@ -50,10 +50,10 @@ private:
 
 public:
     TSingleWriteRangeIterator(
-            TLog& log,
-            ui64 startIndex,
-            ui32 blockSize,
-            TGuardedBuffer<NProto::TWriteBlocksRequest> blocksHolder)
+        TLog& log,
+        ui64 startIndex,
+        ui32 blockSize,
+        TGuardedBuffer<NProto::TWriteBlocksRequest> blocksHolder)
         : Log(log)
         , StartIndex(startIndex)
         , BlockSize(blockSize)
@@ -65,12 +65,12 @@ public:
         if (!Completed) {
             Completed = true;
 
-            auto sgListOrError = SgListNormalize(
-                GetSgList(BlocksHolder.Get()),
-                BlockSize);
+            auto sgListOrError =
+                SgListNormalize(GetSgList(BlocksHolder.Get()), BlockSize);
 
             if (HasError(sgListOrError)) {
-                STORAGE_ERROR("Failed to get sglist from buffer: "
+                STORAGE_ERROR(
+                    "Failed to get sglist from buffer: "
                     << FormatError(sgListOrError.GetError()));
                 return Nothing();
             }
@@ -78,11 +78,10 @@ public:
             auto sglist = sgListOrError.ExtractResult();
             auto blocksCount = static_cast<ui32>(sglist.size());
 
-            return TWriteRange {
+            return TWriteRange{
                 StartIndex,
                 blocksCount,
-                BlocksHolder.CreateGuardedSgList(std::move(sglist))
-            };
+                BlocksHolder.CreateGuardedSgList(std::move(sglist))};
         }
 
         return Nothing();
@@ -91,8 +90,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMultiWriteRangeIterator final
-    : public IWriteRangeIterator
+class TMultiWriteRangeIterator final: public IWriteRangeIterator
 {
 private:
     ui64 StartIndex;
@@ -103,10 +101,10 @@ private:
 
 public:
     TMultiWriteRangeIterator(
-            ui64 startIndex,
-            IInputStream& input,
-            ui32 blockSize,
-            ui32 batchBlocksCount)
+        ui64 startIndex,
+        IInputStream& input,
+        ui32 blockSize,
+        ui32 batchBlocksCount)
         : StartIndex(startIndex)
         , Input(input)
         , BlockSize(blockSize)
@@ -126,13 +124,12 @@ public:
         Y_ENSURE(bytesRead % BlockSize == 0);
 
         BufferHolder = TGuardedBuffer(std::move(buffer));
-        TSgList sglist = {{ BufferHolder.Get().data(), bytesRead }};
+        TSgList sglist = {{BufferHolder.Get().data(), bytesRead}};
 
-        auto writeRange = TWriteRange {
+        auto writeRange = TWriteRange{
             StartIndex,
             static_cast<ui32>(bytesRead / BlockSize),
-            BufferHolder.CreateGuardedSgList(std::move(sglist))
-        };
+            BufferHolder.CreateGuardedSgList(std::move(sglist))};
 
         StartIndex += writeRange.BlocksCount;
         return writeRange;
@@ -150,8 +147,7 @@ struct IResponseHandler
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TProtoResponseHandler final
-    : public IResponseHandler
+class TProtoResponseHandler final: public IResponseHandler
 {
 private:
     IOutputStream& Out;
@@ -172,8 +168,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRawResponseHandler final
-    : public IResponseHandler
+class TRawResponseHandler final: public IResponseHandler
 {
 private:
     TLog& Log;
@@ -197,8 +192,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWriteBlocksCommand final
-    : public TCommand
+class TWriteBlocksCommand final: public TCommand
 {
 private:
     TString DiskId;
@@ -235,13 +229,17 @@ public:
             .NoArgument()
             .SetFlag(&MountLocal);
 
-        Opts.AddLongOption("encryption-mode", "encryption mode [no|aes-xts|test]")
+        Opts.AddLongOption(
+                "encryption-mode",
+                "encryption mode [no|aes-xts|test]")
             .RequiredArgument("STR")
-            .Handler1T<TString>([this] (const auto& s) {
-                EncryptionMode = EncryptionModeFromString(s);
-            });
+            .Handler1T<TString>(
+                [this](const auto& s)
+                { EncryptionMode = EncryptionModeFromString(s); });
 
-        Opts.AddLongOption("encryption-key-path", "path to file with encryption key")
+        Opts.AddLongOption(
+                "encryption-key-path",
+                "path to file with encryption key")
             .RequiredArgument("STR")
             .StoreResult(&EncryptionKeyPath);
 
@@ -281,8 +279,7 @@ protected:
             NProto::VOLUME_ACCESS_READ_WRITE,
             MountLocal,
             ThrottlingDisabled,
-            encryptionSpec
-        );
+            encryptionSpec);
         if (HasError(mountResponse)) {
             return false;
         }
@@ -301,8 +298,8 @@ protected:
                 Volume.GetBlockSize(),
                 std::move(blocksHolder));
 
-            responseHandler = std::make_unique<TProtoResponseHandler>(
-                GetOutputStream());
+            responseHandler =
+                std::make_unique<TProtoResponseHandler>(GetOutputStream());
         } else {
             rangeIter = std::make_unique<TMultiWriteRangeIterator>(
                 StartIndex,
@@ -310,9 +307,8 @@ protected:
                 Volume.GetBlockSize(),
                 BatchBlocksCount);
 
-            responseHandler = std::make_unique<TRawResponseHandler>(
-                Log,
-                GetOutputStream());
+            responseHandler =
+                std::make_unique<TRawResponseHandler>(Log, GetOutputStream());
         }
 
         bool result = WriteBlocks(*rangeIter, *responseHandler);
@@ -329,7 +325,9 @@ private:
         }
 
         if (Proto && StartIndex) {
-            STORAGE_ERROR("--proto option cannot be used along with --start-index option");
+            STORAGE_ERROR(
+                "--proto option cannot be used along with --start-index "
+                "option");
             return false;
         }
 
@@ -346,20 +344,23 @@ private:
                 return true;
             }
 
-            auto error = SafeExecute<NProto::TError>([&] {
-                auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
-                request->SetStartIndex(writeRange->StartIndex);
-                request->BlocksCount = writeRange->BlocksCount;
-                request->BlockSize = Volume.GetBlockSize();
-                request->Sglist = writeRange->SgList;
-                PrepareHeaders(*request->MutableHeaders());
+            auto error = SafeExecute<NProto::TError>(
+                [&]
+                {
+                    auto request =
+                        std::make_shared<NProto::TWriteBlocksLocalRequest>();
+                    request->SetStartIndex(writeRange->StartIndex);
+                    request->BlocksCount = writeRange->BlocksCount;
+                    request->BlockSize = Volume.GetBlockSize();
+                    request->Sglist = writeRange->SgList;
+                    PrepareHeaders(*request->MutableHeaders());
 
-                auto future = Session->WriteBlocksLocal(
-                    MakeIntrusive<TCallContext>(),
-                    std::move(request));
-                auto response = WaitFor(std::move(future));
-                return response.GetError();
-            });
+                    auto future = Session->WriteBlocksLocal(
+                        MakeIntrusive<TCallContext>(),
+                        std::move(request));
+                    auto response = WaitFor(std::move(future));
+                    return response.GetError();
+                });
 
             responseHandler.HandleResponse(error);
 

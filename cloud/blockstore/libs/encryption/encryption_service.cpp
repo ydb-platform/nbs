@@ -84,9 +84,9 @@ private:
 
 public:
     TMultipleEncryptionService(
-            IBlockStorePtr service,
-            ILoggingServicePtr logging,
-            IEncryptionClientFactoryPtr encryptionClientFactory)
+        IBlockStorePtr service,
+        ILoggingServicePtr logging,
+        IEncryptionClientFactoryPtr encryptionClientFactory)
         : TEncryptionServiceWrapper(std::move(service))
         , EncryptionClientFactory(std::move(encryptionClientFactory))
     {
@@ -137,44 +137,45 @@ public:
                 request->GetDiskId());
         }
 
-        return future.Apply([
-            weakPtr = weak_from_this(),
-            ctx = std::move(ctx),
-            request = std::move(request)] (const auto& f)
-        {
-            auto ptr = weakPtr.lock();
-            if (!ptr) {
-                return MakeFuture<NProto::TMountVolumeResponse>(TErrorResponse(
-                    E_REJECTED,
-                    "Multiple encryption service is destroyed"));
-            }
+        return future.Apply(
+            [weakPtr = weak_from_this(),
+             ctx = std::move(ctx),
+             request = std::move(request)](const auto& f)
+            {
+                auto ptr = weakPtr.lock();
+                if (!ptr) {
+                    return MakeFuture<NProto::TMountVolumeResponse>(
+                        TErrorResponse(
+                            E_REJECTED,
+                            "Multiple encryption service is destroyed"));
+                }
 
-            auto& Log = ptr->Log;
+                auto& Log = ptr->Log;
 
-            const auto& sessionOrError = f.GetValue();
+                const auto& sessionOrError = f.GetValue();
 
-            ELogPriority logPriority = HasError(sessionOrError)
-                                           ? ELogPriority::TLOG_ERR
-                                           : ELogPriority::TLOG_INFO;
-            STORAGE_LOG(
-                logPriority,
-                TRequestInfo(
-                    EBlockStoreRequest::MountVolume,
-                    ctx->RequestId,
-                    request->GetDiskId(),
-                    request->GetHeaders().GetClientId())
-                << " finish creating encryption client: "
-                << FormatError(sessionOrError.GetError()));
+                ELogPriority logPriority = HasError(sessionOrError)
+                                               ? ELogPriority::TLOG_ERR
+                                               : ELogPriority::TLOG_INFO;
+                STORAGE_LOG(
+                    logPriority,
+                    TRequestInfo(
+                        EBlockStoreRequest::MountVolume,
+                        ctx->RequestId,
+                        request->GetDiskId(),
+                        request->GetHeaders().GetClientId())
+                        << " finish creating encryption client: "
+                        << FormatError(sessionOrError.GetError()));
 
-            if (HasError(sessionOrError)) {
-                return MakeFuture<NProto::TMountVolumeResponse>(TErrorResponse(
-                    sessionOrError.GetError()));
-            }
+                if (HasError(sessionOrError)) {
+                    return MakeFuture<NProto::TMountVolumeResponse>(
+                        TErrorResponse(sessionOrError.GetError()));
+                }
 
-            auto session = sessionOrError.GetResult();
-            ptr->AddSession(*request, session);
-            return session->MountVolume(std::move(ctx), std::move(request));
-        });
+                auto session = sessionOrError.GetResult();
+                ptr->AddSession(*request, session);
+                return session->MountVolume(std::move(ctx), std::move(request));
+            });
     }
 
     TFuture<NProto::TUnmountVolumeResponse> UnmountVolume(
@@ -187,27 +188,28 @@ public:
         }
 
         auto req = *request;
-        auto future = session->UnmountVolume(std::move(ctx), std::move(request));
+        auto future =
+            session->UnmountVolume(std::move(ctx), std::move(request));
 
-        return future.Apply([
-            weakPtr = weak_from_this(),
-            req = std::move(req)] (const auto& f)
-        {
-            const auto& response = f.GetValue();
-            if (HasError(response)) {
+        return future.Apply(
+            [weakPtr = weak_from_this(), req = std::move(req)](const auto& f)
+            {
+                const auto& response = f.GetValue();
+                if (HasError(response)) {
+                    return response;
+                }
+
+                auto ptr = weakPtr.lock();
+                if (!ptr) {
+                    return static_cast<NProto::TUnmountVolumeResponse>(
+                        TErrorResponse(
+                            E_REJECTED,
+                            "Multiple encryption service is destroyed"));
+                }
+
+                ptr->RemoveSession(req);
                 return response;
-            }
-
-            auto ptr = weakPtr.lock();
-            if (!ptr) {
-                return static_cast<NProto::TUnmountVolumeResponse>(
-                    TErrorResponse(E_REJECTED,
-                        "Multiple encryption service is destroyed"));
-            }
-
-            ptr->RemoveSession(req);
-            return response;
-        });
+            });
     }
 
 private:
@@ -228,21 +230,20 @@ private:
         IBlockStorePtr session)
     {
         const auto& clientId = request.GetHeaders().GetClientId();
-        STORAGE_INFO("Add new encryption session"
-            << " [d: " << request.GetDiskId() << "]"
-            << " [c: " << clientId << "]");
+        STORAGE_INFO(
+            "Add new encryption session" << " [d: " << request.GetDiskId()
+                                         << "]" << " [c: " << clientId << "]");
 
         TWriteGuard writeGuard(SessionLock);
         EncryptedSessions.insert_or_assign(clientId, std::move(session));
     }
 
-    void RemoveSession(
-        const NProto::TUnmountVolumeRequest& request)
+    void RemoveSession(const NProto::TUnmountVolumeRequest& request)
     {
         const auto& clientId = request.GetHeaders().GetClientId();
-        STORAGE_INFO("Remove encryption session"
-            << ", [d: " << request.GetDiskId() << "]"
-            << ", [c: " << clientId << "]");
+        STORAGE_INFO(
+            "Remove encryption session" << ", [d: " << request.GetDiskId()
+                                        << "]" << ", [c: " << clientId << "]");
 
         TWriteGuard writeGuard(SessionLock);
         EncryptedSessions.erase(clientId);

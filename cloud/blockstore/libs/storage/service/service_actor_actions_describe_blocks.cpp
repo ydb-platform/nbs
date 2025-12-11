@@ -5,11 +5,11 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
 #include <contrib/ydb/core/base/logoblob.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
+
 #include <library/cpp/json/json_reader.h>
 
 #include <google/protobuf/util/json_util.h>
@@ -58,8 +58,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeBlocksActionActor::TDescribeBlocksActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -68,7 +68,9 @@ void TDescribeBlocksActionActor::Bootstrap(const TActorContext& ctx)
 {
     NJson::TJsonValue input;
     if (!NJson::ReadJsonTree(Input, &input, false)) {
-        HandleError(ctx, MakeError(E_ARGUMENT, "Input should be in JSON format"));
+        HandleError(
+            ctx,
+            MakeError(E_ARGUMENT, "Input should be in JSON format"));
         return;
     }
 
@@ -90,7 +92,9 @@ void TDescribeBlocksActionActor::Bootstrap(const TActorContext& ctx)
     }
 
     if (!BlocksCount) {
-        HandleError(ctx, MakeError(E_ARGUMENT, "BlocksCount should be defined"));
+        HandleError(
+            ctx,
+            MakeError(E_ARGUMENT, "BlocksCount should be defined"));
         return;
     }
 
@@ -139,7 +143,8 @@ void TDescribeBlocksActionActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(error);
 
     LWTRACK(
         ResponseSent_Service,
@@ -156,7 +161,9 @@ void TDescribeBlocksActionActor::HandleError(
 STFUNC(TDescribeBlocksActionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvVolume::TEvDescribeBlocksResponse, HandleDescribeBlocksResponse);
+        HFunc(
+            TEvVolume::TEvDescribeBlocksResponse,
+            HandleDescribeBlocksResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -186,7 +193,9 @@ void TDescribeBlocksActionActor::HandleDescribeBlocksResponse(
     TString response;
     google::protobuf::util::MessageToJsonString(msg->Record, &response);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Execute action private API: describe blocks response: %s",
         response.data());
 

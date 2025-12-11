@@ -46,13 +46,13 @@ public:
     void Add(TFunction&& function)
     {
         Workers.push_back(SystemThreadFactory()->Run(
-            [this, function = std::forward<TFunction>(function)] {
+            [this, function = std::forward<TFunction>(function)]
+            {
                 with_lock (Mutex) {
                     StartedCV.Wait(Mutex, [&] { return Started; });
                 }
                 function();
-            }
-        ));
+            }));
     }
 };
 

@@ -23,8 +23,8 @@ private:
 
 public:
     TFilteredService(
-            IBlockStorePtr service,
-            TSet<EBlockStoreRequest> allowedRequests)
+        IBlockStorePtr service,
+        TSet<EBlockStoreRequest> allowedRequests)
         : Service(std::move(service))
         , AllowedRequests(std::move(allowedRequests))
         , ErrorResponse(E_UNAUTHORIZED, "forbidden request")

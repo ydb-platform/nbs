@@ -30,17 +30,14 @@ private:
     NProto::TError Error;
 
 public:
-    TRestoreDiskRegistryStateActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TRestoreDiskRegistryStateActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
     void ReplyAndDie(
         const TActorContext& ctx,
-        NProto::TRestoreDiskRegistryStateResponse proto
-    );
+        NProto::TRestoreDiskRegistryStateResponse proto);
 
 private:
     STFUNC(StateWork);
@@ -53,16 +50,16 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TRestoreDiskRegistryStateActor::TRestoreDiskRegistryStateActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
 
 void TRestoreDiskRegistryStateActor::Bootstrap(const TActorContext& ctx)
 {
-    auto request = std::make_unique<
-        TEvDiskRegistry::TEvRestoreDiskRegistryStateRequest>();
+    auto request =
+        std::make_unique<TEvDiskRegistry::TEvRestoreDiskRegistryStateRequest>();
 
     auto status = JsonStringToMessage(Input, &request->Record);
     if (!status.ok()) {

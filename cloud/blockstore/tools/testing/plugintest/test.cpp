@@ -21,7 +21,7 @@ BlockPluginHost PluginHost;
 
 struct TCompletion
 {
-    BlockPlugin_Completion C {};
+    BlockPlugin_Completion C{};
 
     TManualEvent Event;
 
@@ -49,8 +49,8 @@ struct TCompletion
 
 struct TIOVector
 {
-    BlockPlugin_IOVector V {};
-    BlockPlugin_Buffer B {};
+    BlockPlugin_IOVector V{};
+    BlockPlugin_Buffer B{};
 
     TString Data;
 
@@ -120,11 +120,11 @@ void RunLengthEncode(const TString& s, IOutputStream& out)
 ////////////////////////////////////////////////////////////////////////////////
 
 TPluginTest::TPluginTest(
-        TString path,
-        TString options,
-        ui32 hostMajor,
-        ui32 hostMinor,
-        TString endpointFolder)
+    TString path,
+    TString options,
+    ui32 hostMajor,
+    ui32 hostMinor,
+    TString endpointFolder)
     : Path(std::move(path))
     , Options(std::move(options))
     , EndpointFolder(std::move(endpointFolder))
@@ -145,7 +145,8 @@ TPluginTest::TPluginTest(
     PluginHost.instance_id = "plugin_test";
 }
 
-TPluginTest::~TPluginTest() {
+TPluginTest::~TPluginTest()
+{
     Y_ASSERT(PluginHost.state == this);
     PluginHost.state = nullptr;
 }
@@ -153,16 +154,17 @@ TPluginTest::~TPluginTest() {
 void TPluginTest::Start()
 {
     PluginLib.Open(Path.c_str(), RTLD_NOW);
-    PluginLib.SetUnloadable(false); // otherwise asan finds 3 8-byte memory leaks
+    PluginLib.SetUnloadable(
+        false);   // otherwise asan finds 3 8-byte memory leaks
 
-    GetPluginFunc = (BlockPlugin_GetPlugin_t)
-        PluginLib.Sym(BLOCK_PLUGIN_GET_PLUGIN_SYMBOL_NAME);
+    GetPluginFunc = (BlockPlugin_GetPlugin_t)PluginLib.Sym(
+        BLOCK_PLUGIN_GET_PLUGIN_SYMBOL_NAME);
 
-    PutPluginFunc = (BlockPlugin_PutPlugin_t)
-        PluginLib.Sym(BLOCK_PLUGIN_PUT_PLUGIN_SYMBOL_NAME);
+    PutPluginFunc = (BlockPlugin_PutPlugin_t)PluginLib.Sym(
+        BLOCK_PLUGIN_PUT_PLUGIN_SYMBOL_NAME);
 
-    GetVersionFunc = (BlockPlugin_GetVersion_t)
-        PluginLib.Sym(BLOCK_PLUGIN_GET_VERSION_SYMBOL_NAME);
+    GetVersionFunc = (BlockPlugin_GetVersion_t)PluginLib.Sym(
+        BLOCK_PLUGIN_GET_VERSION_SYMBOL_NAME);
 
     Plugin = (*GetPluginFunc)(&PluginHost, Options.c_str());
 }
@@ -208,15 +210,14 @@ void TPluginTest::MountVolume(
     opts.volume_name = volumeName.c_str();
     opts.mount_token = request.GetToken().c_str();
     opts.instance_id = request.GetInstanceId().c_str();
-    opts.access_mode = static_cast<BlockPlugin_AccessMode>(
-        request.GetVolumeAccessMode());
-    opts.mount_mode = static_cast<BlockPlugin_MountMode>(
-        request.GetVolumeMountMode());
+    opts.access_mode =
+        static_cast<BlockPlugin_AccessMode>(request.GetVolumeAccessMode());
+    opts.mount_mode =
+        static_cast<BlockPlugin_MountMode>(request.GetVolumeMountMode());
     opts.mount_seq_number = request.GetMountSeqNumber();
 
     TCompletion completion;
-    completion.Wait(
-        Plugin->mount_async(Plugin, &opts, volume, &completion.C));
+    completion.Wait(Plugin->mount_async(Plugin, &opts, volume, &completion.C));
 
     configFile.DeleteIfExists();
 }
@@ -228,8 +229,7 @@ void TPluginTest::UnmountVolume(
     Y_UNUSED(request);
 
     TCompletion completion;
-    completion.Wait(
-        Plugin->umount_async(Plugin, volume, &completion.C));
+    completion.Wait(Plugin->umount_async(Plugin, volume, &completion.C));
 }
 
 void TPluginTest::ReadBlocks(

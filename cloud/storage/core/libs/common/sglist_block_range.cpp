@@ -10,7 +10,8 @@ TSgListBlockRange::TSgListBlockRange(const TSgList& sglist, ui32 blockSize)
     , It(sglist.begin())
 {}
 
-[[nodiscard]] bool TSgListBlockRange::HasNext() const {
+[[nodiscard]] bool TSgListBlockRange::HasNext() const
+{
     return It != End;
 }
 

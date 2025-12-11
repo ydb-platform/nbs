@@ -162,15 +162,14 @@ private:
         return cookie == MainFileStoreCookie ||
                cookie < FileStoreConfig.ShardConfigs.size();
     }
-
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TAlterFileStoreActor::TAlterFileStoreActor(
-        TStorageConfigPtr storageConfig,
-        TRequestInfoPtr requestInfo,
-        const NProto::TAlterFileStoreRequest& request)
+    TStorageConfigPtr storageConfig,
+    TRequestInfoPtr requestInfo,
+    const NProto::TAlterFileStoreRequest& request)
     : StorageConfig(std::move(storageConfig))
     , RequestInfo(std::move(requestInfo))
     , FileSystemId(request.GetFileSystemId())
@@ -185,9 +184,9 @@ TAlterFileStoreActor::TAlterFileStoreActor(
 }
 
 TAlterFileStoreActor::TAlterFileStoreActor(
-        TStorageConfigPtr storageConfig,
-        TRequestInfoPtr requestInfo,
-        const NProto::TResizeFileStoreRequest& request)
+    TStorageConfigPtr storageConfig,
+    TRequestInfoPtr requestInfo,
+    const NProto::TResizeFileStoreRequest& request)
     : StorageConfig(std::move(storageConfig))
     , RequestInfo(std::move(requestInfo))
     , FileSystemId(request.GetFileSystemId())
@@ -217,8 +216,8 @@ void TAlterFileStoreActor::Bootstrap(const TActorContext& ctx)
 
 void TAlterFileStoreActor::DescribeMainFileStore(const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(
-        FileSystemId);
+    auto request =
+        std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(FileSystemId);
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
@@ -303,15 +302,15 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
     GetFileSystemTopology(ctx);
 }
 
-void TAlterFileStoreActor::FillMultiShardFileStoreConfig(const TActorContext& ctx)
+void TAlterFileStoreActor::FillMultiShardFileStoreConfig(
+    const TActorContext& ctx)
 {
     NKikimrFileStore::TConfig currentConfig = MainFileStoreOriginalConfig;
 
     // Allocate legacy mixed0 channel in case it was already present
     Y_ABORT_UNLESS(currentConfig.ExplicitChannelProfilesSize() >= 4);
     const auto thirdChannelDataKind = static_cast<EChannelDataKind>(
-        currentConfig.GetExplicitChannelProfiles(3)
-            .GetDataKind());
+        currentConfig.GetExplicitChannelProfiles(3).GetDataKind());
     const bool allocateMixed0 =
         thirdChannelDataKind == EChannelDataKind::Mixed0;
 
@@ -330,9 +329,7 @@ void TAlterFileStoreActor::FillMultiShardFileStoreConfig(const TActorContext& ct
         TargetConfig.GetProjectId().empty());
 
     currentConfig.SetBlocksCount(TargetConfig.GetBlocksCount());
-    if (!allocateMixed0
-            && StorageConfig->GetAutomaticShardCreationEnabled())
-    {
+    if (!allocateMixed0 && StorageConfig->GetAutomaticShardCreationEnabled()) {
         FileStoreConfig = SetupMultiShardFileStorePerformanceAndChannels(
             *StorageConfig,
             currentConfig,
@@ -432,10 +429,7 @@ void TAlterFileStoreActor::GetFileSystemTopology(const TActorContext& ctx)
         std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyRequest>();
     request->Record.SetFileSystemId(FileSystemId);
 
-    NCloud::Send(
-        ctx,
-        MakeIndexTabletProxyServiceId(),
-        std::move(request));
+    NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
 }
 
 void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
@@ -585,7 +579,8 @@ void TAlterFileStoreActor::CreateShards(const TActorContext& ctx)
     }
 
     for (ui32 i = ExistingShardIds.size();
-            i < FileStoreConfig.ShardConfigs.size(); ++i)
+         i < FileStoreConfig.ShardConfigs.size();
+         ++i)
     {
         auto request = std::make_unique<TEvSSProxy::TEvCreateFileStoreRequest>(
             FileStoreConfig.ShardConfigs[i]);
@@ -601,7 +596,7 @@ void TAlterFileStoreActor::CreateShards(const TActorContext& ctx)
             ctx,
             MakeSSProxyServiceId(),
             std::move(request),
-            i // cookie
+            i   // cookie
         );
     }
 }
@@ -681,7 +676,7 @@ void TAlterFileStoreActor::ConfigureShards(const TActorContext& ctx)
             ctx,
             MakeIndexTabletProxyServiceId(),
             std::move(request),
-            i // cookie
+            i   // cookie
         );
     }
 }
@@ -755,10 +750,7 @@ void TAlterFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
         FileSystemId.c_str(),
         request->Record.Utf8DebugString().Quote().c_str());
 
-    NCloud::Send(
-        ctx,
-        MakeIndexTabletProxyServiceId(),
-        std::move(request));
+    NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
 }
 
 void TAlterFileStoreActor::HandleConfigureMainFileStoreResponse(
@@ -839,7 +831,9 @@ void TAlterFileStoreActor::HandleAlterFileStoreForAlterResponse(
 
     NProto::TError error = msg->GetError();
     if (HasError(error)) {
-        LOG_ERROR(ctx, TFileStoreComponents::SERVICE,
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::SERVICE,
             "[%s] Altering of main filestore failed: %s",
             GetOperationString(),
             FileSystemId.Quote().c_str(),
@@ -878,7 +872,9 @@ void TAlterFileStoreActor::ReplyAndDie(
     Die(ctx);
 }
 
-void TAlterFileStoreActor::ReportInvaildCookieAndDie(const TActorContext& ctx, ui64 cookie)
+void TAlterFileStoreActor::ReportInvaildCookieAndDie(
+    const TActorContext& ctx,
+    ui64 cookie)
 {
     ReplyAndDie(
         ctx,
@@ -959,10 +955,7 @@ void TStorageServiceActor::HandleAlterFileStore(
 
     InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
 
-    auto requestInfo = CreateRequestInfo(
-        SelfId(),
-        cookie,
-        msg->CallContext);
+    auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
     auto actor = std::make_unique<TAlterFileStoreActor>(
         StorageConfig,
@@ -985,10 +978,7 @@ void TStorageServiceActor::HandleResizeFileStore(
 
     InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
 
-    auto requestInfo = CreateRequestInfo(
-        SelfId(),
-        cookie,
-        msg->CallContext);
+    auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
     auto actor = std::make_unique<TAlterFileStoreActor>(
         StorageConfig,

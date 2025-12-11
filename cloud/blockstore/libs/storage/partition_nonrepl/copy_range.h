@@ -17,8 +17,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCopyRangeActor final
-    : public NActors::TActorBootstrapped<TCopyRangeActor>
+class TCopyRangeActor final: public NActors::TActorBootstrapped<TCopyRangeActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;

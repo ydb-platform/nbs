@@ -115,7 +115,8 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
     // For unit tests
-    void SetRequestIdentityKey(ui64 value) {
+    void SetRequestIdentityKey(ui64 value)
+    {
         WriteAndZeroRequestsInProgress.SetRequestIdentityKey(value);
     }
 
@@ -180,7 +181,8 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleReadResyncFastPathResponse(
-        const TEvNonreplPartitionPrivate::TEvReadResyncFastPathResponse::TPtr& ev,
+        const TEvNonreplPartitionPrivate::TEvReadResyncFastPathResponse::TPtr&
+            ev,
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>

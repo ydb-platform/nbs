@@ -147,16 +147,16 @@ IProfileLog::TReplicaChecksums MakeChecksums(
 ////////////////////////////////////////////////////////////////////////////////
 
 TResyncRangeBlockByBlockActor::TResyncRangeBlockByBlockActor(
-        TRequestInfoPtr requestInfo,
-        ui32 blockSize,
-        TBlockRange64 range,
-        TVector<TReplicaDescriptor> replicas,
-        TString writerClientId,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        NProto::EResyncPolicy resyncPolicy,
-        bool performChecksumPreliminaryCheck,
-        NActors::TActorId volumeActorId,
-        bool assignVolumeRequestId)
+    TRequestInfoPtr requestInfo,
+    ui32 blockSize,
+    TBlockRange64 range,
+    TVector<TReplicaDescriptor> replicas,
+    TString writerClientId,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    NProto::EResyncPolicy resyncPolicy,
+    bool performChecksumPreliminaryCheck,
+    NActors::TActorId volumeActorId,
+    bool assignVolumeRequestId)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , Range(range)
@@ -198,7 +198,7 @@ void TResyncRangeBlockByBlockActor::CompareChecksums(const TActorContext& ctx)
 {
     const auto& checksums = ChecksumRangeActorCompanion.GetChecksums();
     THashMap<ui64, ui32> checksumCount;
-    for (auto checksum : checksums) {
+    for (auto checksum: checksums) {
         ++checksumCount[checksum];
     }
 
@@ -262,7 +262,8 @@ void TResyncRangeBlockByBlockActor::PrepareWriteBuffers(
             ++healStat[replica].FoundMajorErrorCount;
             rangesBuilder.OnBlock(Range.Start + blockIndex);
             if (ResyncPolicy ==
-                NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK)
+                NProto::EResyncPolicy::
+                    RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK)
             {
                 // Replace block.
                 replicaBlock = donorBlock;
@@ -444,8 +445,8 @@ void TResyncRangeBlockByBlockActor::WriteReplicaBlocks(
         ctx.SelfID,
         request.release(),
         IEventHandle::FlagForwardOnNondelivery,
-        replicaIndex,          // cookie
-        &ctx.SelfID   // forwardOnNondelivery
+        replicaIndex,   // cookie
+        &ctx.SelfID     // forwardOnNondelivery
     );
 
     LOG_WARN(

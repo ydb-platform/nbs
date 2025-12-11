@@ -2,7 +2,6 @@
 
 #include <mutex>
 #include <queue>
-
 #include <span>
 
 namespace NVHost {
@@ -27,4 +26,4 @@ public:
     void Deallocate(std::span<char> chunk);
 };
 
-} // namespace NVHost
+}   // namespace NVHost

@@ -30,7 +30,8 @@ struct TReassignTabletActionActor final
     void Bootstrap(const TActorContext& ctx)
     {
         NProtoPrivate::TReassignTabletRequest request;
-        if (!google::protobuf::util::JsonStringToMessage(Input, &request).ok()) {
+        if (!google::protobuf::util::JsonStringToMessage(Input, &request).ok())
+        {
             ReplyWithError(ctx, MakeError(E_ARGUMENT, "Failed to parse input"));
             return;
         }
@@ -44,7 +45,9 @@ struct TReassignTabletActionActor final
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
-            HFunc(TEvHiveProxy::TEvReassignTabletResponse, HandleReassignResponse);
+            HFunc(
+                TEvHiveProxy::TEvReassignTabletResponse,
+                HandleReassignResponse);
 
             default:
                 HandleUnexpectedEvent(
@@ -74,7 +77,8 @@ struct TReassignTabletActionActor final
         TEvHiveProxy::TEvReassignTabletResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        if (const auto& error = ev->Get()->GetError(); FAILED(error.GetCode())) {
+        if (const auto& error = ev->Get()->GetError(); FAILED(error.GetCode()))
+        {
             ReplyWithError(ctx, error);
             return;
         }
@@ -90,7 +94,8 @@ struct TReassignTabletActionActor final
 
     void ReplyWithSuccess(const TActorContext& ctx)
     {
-        auto response = std::make_unique<TEvService::TEvExecuteActionResponse>();
+        auto response =
+            std::make_unique<TEvService::TEvExecuteActionResponse>();
         google::protobuf::util::MessageToJsonString(
             NProtoPrivate::TReassignTabletResponse(),
             response->Record.MutableOutput());

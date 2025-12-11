@@ -17,8 +17,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRequestHandler
-    : public TIntrusiveListItem<TRequestHandler>
+struct TRequestHandler: public TIntrusiveListItem<TRequestHandler>
 {
     TCallContextPtr CallContext;
     TMetricRequest MetricRequest;
@@ -72,8 +71,7 @@ struct TConverter<T, std::enable_if_t<!IsControlRequest<T>()>>
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-struct TRequestHandlerImpl final
-    : public TRequestHandler
+struct TRequestHandlerImpl final: public TRequestHandler
 {
     using TRequest = typename TMethod::TRequest;
     using TResponse = typename TMethod::TResponse;
@@ -86,14 +84,15 @@ private:
 
 public:
     TRequestHandlerImpl(
-            TAppContext& appCtx,
-            TCallContextPtr callContext,
-            const TRequest& request)
+        TAppContext& appCtx,
+        TCallContextPtr callContext,
+        const TRequest& request)
         : TRequestHandler(TMethod::BlockStoreRequest, std::move(callContext))
         , AppCtx(appCtx)
     {
         auto calculateBytesCount = [](const TRequest& request,
-                                      ui32 blockSize) -> ui64 {
+                                      ui32 blockSize) -> ui64
+        {
             if constexpr (requires { CalculateBytesCount(request, blockSize); })
             {
                 return CalculateBytesCount(request, blockSize);
@@ -101,7 +100,8 @@ public:
                 return 0;
             }
         };
-        auto getStartIndex = [](const TRequest& request) -> ui64 {
+        auto getStartIndex = [](const TRequest& request) -> ui64
+        {
             if constexpr (requires { GetStartIndex(request); }) {
                 return GetStartIndex(request);
             } else {
@@ -168,9 +168,9 @@ protected:
 
 public:
     TMetricClient(
-            IBlockStorePtr client,
-            ILoggingServicePtr logging,
-            IServerStatsPtr serverStats)
+        IBlockStorePtr client,
+        ILoggingServicePtr logging,
+        IServerStatsPtr serverStats)
         : Client(std::move(client))
     {
         Log = logging->CreateLog("BLOCKSTORE_SERVER");
@@ -260,12 +260,15 @@ private:
 
         auto weak_ptr = weak_from_this();
 
-        result.Subscribe([h = std::move(handler), weak_ptr = std::move(weak_ptr)] (const auto& f) {
-            if (auto p = weak_ptr.lock()) {
-                h->CompleteRequest(f.GetValue());
-                p->UnregisterRequestHandler(h.get());
-            }
-        });
+        result.Subscribe(
+            [h = std::move(handler),
+             weak_ptr = std::move(weak_ptr)](const auto& f)
+            {
+                if (auto p = weak_ptr.lock()) {
+                    h->CompleteRequest(f.GetValue());
+                    p->UnregisterRequestHandler(h.get());
+                }
+            });
 
         return future;
     }

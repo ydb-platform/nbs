@@ -3,7 +3,6 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -22,8 +21,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TScanDiskActor final
-    : public TActorBootstrapped<TScanDiskActor>
+class TScanDiskActor final: public TActorBootstrapped<TScanDiskActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
@@ -52,9 +50,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TScanDiskActor::TScanDiskActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+TScanDiskActor::TScanDiskActor(TRequestInfoPtr requestInfo, TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -62,23 +58,19 @@ TScanDiskActor::TScanDiskActor(
 void TScanDiskActor::Bootstrap(const TActorContext& ctx)
 {
     if (!google::protobuf::util::JsonStringToMessage(Input, &Request).ok()) {
-        ReplyAndDie(ctx, MakeError(
-            E_ARGUMENT,
-            "Failed to parse input"));
+        ReplyAndDie(ctx, MakeError(E_ARGUMENT, "Failed to parse input"));
         return;
     }
 
     if (!Request.GetDiskId()) {
-        ReplyAndDie(ctx, MakeError(
-            E_ARGUMENT,
-            "DiskId should be supplied"));
+        ReplyAndDie(ctx, MakeError(E_ARGUMENT, "DiskId should be supplied"));
         return;
     }
 
     if (!Request.GetBatchSize()) {
-        ReplyAndDie(ctx, MakeError(
-            E_ARGUMENT,
-            "Batch size should be supplied"));
+        ReplyAndDie(
+            ctx,
+            MakeError(E_ARGUMENT, "Batch size should be supplied"));
         return;
     }
 
@@ -86,7 +78,9 @@ void TScanDiskActor::Bootstrap(const TActorContext& ctx)
     request->Record.SetDiskId(Request.GetDiskId());
     request->Record.SetBatchSize(Request.GetBatchSize());
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Start scan disk %s",
         Request.GetDiskId().c_str());
 
@@ -99,16 +93,13 @@ void TScanDiskActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 }
 
-void TScanDiskActor::ReplyAndDie(
-    const TActorContext& ctx,
-    NProto::TError error)
+void TScanDiskActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)
 {
     auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
 
     google::protobuf::util::MessageToJsonString(
         NPrivateProto::TScanDiskResponse(),
-        msg->Record.MutableOutput()
-    );
+        msg->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,
@@ -129,8 +120,7 @@ void TScanDiskActor::ReplyAndDie(
 
     google::protobuf::util::MessageToJsonString(
         NPrivateProto::TScanDiskResponse(),
-        msg->Record.MutableOutput()
-    );
+        msg->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,
@@ -156,9 +146,7 @@ void TScanDiskActor::HandleScanDiskResponse(
 STFUNC(TScanDiskActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(
-            TEvVolume::TEvScanDiskResponse,
-            HandleScanDiskResponse);
+        HFunc(TEvVolume::TEvScanDiskResponse, HandleScanDiskResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -181,9 +169,7 @@ private:
     NPrivateProto::TGetScanDiskStatusRequest Request;
 
 public:
-    TScanDiskStatusActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TScanDiskStatusActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -204,33 +190,30 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TScanDiskStatusActor::TScanDiskStatusActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-}
+{}
 
 void TScanDiskStatusActor::Bootstrap(const TActorContext& ctx)
 {
     if (!google::protobuf::util::JsonStringToMessage(Input, &Request).ok()) {
-        ReplyAndDie(ctx, MakeError(
-            E_ARGUMENT,
-            "Failed to parse input"));
+        ReplyAndDie(ctx, MakeError(E_ARGUMENT, "Failed to parse input"));
         return;
     }
 
     if (!Request.GetDiskId()) {
-        ReplyAndDie(ctx, MakeError(
-            E_ARGUMENT,
-            "DiskId should be supplied"));
+        ReplyAndDie(ctx, MakeError(E_ARGUMENT, "DiskId should be supplied"));
         return;
     }
 
     auto request = std::make_unique<TEvVolume::TEvGetScanDiskStatusRequest>();
     request->Record.SetDiskId(Request.GetDiskId());
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Query scan disk progress for %s disk",
         Request.GetDiskId().c_str());
 
@@ -251,8 +234,7 @@ void TScanDiskStatusActor::ReplyAndDie(
 
     google::protobuf::util::MessageToJsonString(
         NPrivateProto::TGetScanDiskStatusResponse(),
-        msg->Record.MutableOutput()
-    );
+        msg->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,
@@ -288,8 +270,7 @@ void TScanDiskStatusActor::ReplyAndDie(
 
     google::protobuf::util::MessageToJsonString(
         actionResponse,
-        msg->Record.MutableOutput()
-    );
+        msg->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,
@@ -336,10 +317,9 @@ TResultOrError<IActorPtr> TServiceActor::CreateScanDiskActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
-    return {
-        std::make_unique<TScanDiskActor>(
-            std::move(requestInfo),
-            std::move(input))};
+    return {std::make_unique<TScanDiskActor>(
+        std::move(requestInfo),
+        std::move(input))};
 }
 
 TResultOrError<IActorPtr> TServiceActor::CreateScanDiskStatusActionActor(

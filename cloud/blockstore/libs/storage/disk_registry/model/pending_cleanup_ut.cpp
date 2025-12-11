@@ -13,7 +13,7 @@ Y_UNIT_TEST_SUITE(TPendingCleanupTest)
         TPendingCleanup cleanup;
 
         UNIT_ASSERT(cleanup.IsEmpty());
-        auto error = cleanup.Insert("foo", TVector<TString> {});
+        auto error = cleanup.Insert("foo", TVector<TString>{});
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
         UNIT_ASSERT(cleanup.IsEmpty());
         UNIT_ASSERT(!cleanup.Contains("foo"));
@@ -23,7 +23,7 @@ Y_UNIT_TEST_SUITE(TPendingCleanupTest)
         UNIT_ASSERT(cleanup.IsEmpty());
         UNIT_ASSERT(!cleanup.Contains("foo"));
 
-        error = cleanup.Insert("foo", TVector<TString> {"x", "y"});
+        error = cleanup.Insert("foo", TVector<TString>{"x", "y"});
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         UNIT_ASSERT(!cleanup.IsEmpty());
         UNIT_ASSERT(cleanup.Contains("foo"));

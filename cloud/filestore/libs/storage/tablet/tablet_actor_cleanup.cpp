@@ -24,12 +24,9 @@ void TIndexTabletActor::HandleCleanup(
         msg->CallContext->FileSystemId,
         GetFileSystem().GetStorageMediaKind());
 
-    auto replyError = [&] (const NProto::TError& error)
+    auto replyError = [&](const NProto::TError& error)
     {
-        FILESTORE_TRACK(
-            ResponseSent_Tablet,
-            msg->CallContext,
-            "Cleanup");
+        FILESTORE_TRACK(ResponseSent_Tablet, msg->CallContext, "Cleanup");
 
         if (ev->Sender == ctx.SelfID) {
             // nothing to do
@@ -41,15 +38,13 @@ void TIndexTabletActor::HandleCleanup(
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
-    const bool started = ev->Sender == ctx.SelfID
-        ? StartBackgroundBlobIndexOp() : BlobIndexOpState.Start();
+    const bool started = ev->Sender == ctx.SelfID ? StartBackgroundBlobIndexOp()
+                                                  : BlobIndexOpState.Start();
 
     if (!started) {
-        replyError(
-            MakeError(E_TRY_AGAIN, "cleanup/compaction is in progress"));
+        replyError(MakeError(E_TRY_AGAIN, "cleanup/compaction is in progress"));
         return;
     }
-
 
     if (!CompactionStateLoadStatus.Finished) {
         CompleteBlobIndexOp();
@@ -58,7 +53,9 @@ void TIndexTabletActor::HandleCleanup(
         return;
     }
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s Cleanup started (range: #%u, priority queue size: %u"
         ", large marker count: %lu / large cleanup threshold: %lu)",
         LogTag.c_str(),
@@ -67,10 +64,8 @@ void TIndexTabletActor::HandleCleanup(
         GetLargeDeletionMarkersCount(),
         Config->GetLargeDeletionMarkersCleanupThreshold());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     ui64 collectBarrier = GenerateCommitId();
@@ -130,9 +125,12 @@ void TIndexTabletActor::CompleteTx_Cleanup(
         {},
         ProfileLog);
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s Cleanup completed (range: #%u)",
-        LogTag.c_str(), args.RangeId);
+        LogTag.c_str(),
+        args.RangeId);
 
     CompleteBlobIndexOp();
     ReleaseMixedBlocks(args.RangeId);
@@ -145,7 +143,8 @@ void TIndexTabletActor::CompleteTx_Cleanup(
 
     if (args.RequestInfo->Sender != ctx.SelfID) {
         // reply to caller
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvCleanupResponse>();
+        auto response =
+            std::make_unique<TEvIndexTabletPrivate::TEvCleanupResponse>();
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
     }
 

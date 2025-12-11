@@ -316,12 +316,12 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDataIntegrityClient::TDataIntegrityClient(
-        ILoggingServicePtr logging,
-        IMonitoringServicePtr monitoring,
-        IBlockStorePtr client,
-        TString diskId,
-        ui32 blockSize,
-        bool copiedDataValidationEnabled)
+    ILoggingServicePtr logging,
+    IMonitoringServicePtr monitoring,
+    IBlockStorePtr client,
+    TString diskId,
+    ui32 blockSize,
+    bool copiedDataValidationEnabled)
     : Log(logging->CreateLog("BLOCKSTORE_CLIENT"))
     , Client(std::move(client))
     , DiskId(std::move(diskId))
@@ -442,7 +442,7 @@ bool TDataIntegrityClient::HandleRequest(
                 copyGuardedSgList.Close();
                 copyBuffer.reset();
             }
-        };
+        }
 
         NProto::TReadBlocksLocalResponse response{result.ExtractValue()};
         if (HasError(response)) {

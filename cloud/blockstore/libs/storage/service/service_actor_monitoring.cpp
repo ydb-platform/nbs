@@ -1,12 +1,13 @@
 #include "service_actor.h"
 
+#include <cloud/blockstore/libs   //diagnostics/hostname.h>
 #include <cloud/blockstore/libs/diagnostics/diag_down_graph.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
-#include <cloud/blockstore/libs//diagnostics/hostname.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/media.h>
 
@@ -27,12 +28,12 @@ namespace {
 
 void BuildSearchButton(IOutputStream& out)
 {
-    out <<
-        "<form method=\"GET\" id=\"volSearch\" name=\"volSearch\">\n"
-        "Volume: <input type=\"text\" id=\"Volume\" name=\"Volume\"/>\n"
-        "<input class=\"btn btn-primary\" type=\"submit\" value=\"Search\"/>\n"
-        "<input type='hidden' name='action' value='search'/>"
-        "</form>\n";
+    out << "<form method=\"GET\" id=\"volSearch\" name=\"volSearch\">\n"
+           "Volume: <input type=\"text\" id=\"Volume\" name=\"Volume\"/>\n"
+           "<input class=\"btn btn-primary\" type=\"submit\" "
+           "value=\"Search\"/>\n"
+           "<input type='hidden' name='action' value='search'/>"
+           "</form>\n";
 }
 
 void BuildVolumePreemptionButton(IOutputStream& out, const TVolumeInfo& volume)
@@ -47,18 +48,21 @@ void BuildVolumePreemptionButton(IOutputStream& out, const TVolumeInfo& volume)
     }
 
     out << "<form method='POST' name='volPreempt" << volume.DiskId << "'>\n";
-    out << "<input class='btn btn-primary' type='button' value='" << buttonName << "'"
-        << " data-toggle='modal' data-target='#toggle-preemption" << volume.DiskId << "'/>";
+    out << "<input class='btn btn-primary' type='button' value='" << buttonName
+        << "'" << " data-toggle='modal' data-target='#toggle-preemption"
+        << volume.DiskId << "'/>";
     out << "<input type='hidden' name='action' value='togglePreemption'/>";
     out << "<input type='hidden' name='type' value='" << buttonName << "'/>";
-    out << "<input type='hidden' name='Volume' value='" << volume.DiskId << "'/>";
+    out << "<input type='hidden' name='Volume' value='" << volume.DiskId
+        << "'/>";
     out << "</form>\n";
 
     BuildConfirmActionDialog(
         out,
         TStringBuilder() << "toggle-preemption" << volume.DiskId,
         "toggle-preemption",
-        TStringBuilder() << "Are you sure you want to " << buttonName << " volume?",
+        TStringBuilder() << "Are you sure you want to " << buttonName
+                         << " volume?",
         TStringBuilder() << "togglePreemption(\"" << volume.DiskId << "\");");
 }
 
@@ -81,38 +85,44 @@ void TServiceActor::HandleHttpInfo(
     const NMon::TEvHttpInfo::TPtr& ev,
     const TActorContext& ctx)
 {
-    using THttpHandler = void(TServiceActor::*)(
+    using THttpHandler = void (TServiceActor::*)(
         const NActors::TActorContext&,
         const TCgiParameters&,
         TRequestInfoPtr);
 
     using THttpHandlers = THashMap<TString, THttpHandler>;
 
-    static const THttpHandlers postActions {{
-        {"unmount",           &TServiceActor::HandleHttpInfo_Unmount       },
-        {"togglePreemption",  &TServiceActor::HandleHttpInfo_VolumeBinding },
+    static const THttpHandlers postActions{{
+        {"unmount", &TServiceActor::HandleHttpInfo_Unmount},
+        {"togglePreemption", &TServiceActor::HandleHttpInfo_VolumeBinding},
     }};
 
-    static const THttpHandlers getActions {{
-        {"listclients",       &TServiceActor::HandleHttpInfo_Clients       },
-        {"search",            &TServiceActor::HandleHttpInfo_Search        },
+    static const THttpHandlers getActions{{
+        {"listclients", &TServiceActor::HandleHttpInfo_Clients},
+        {"search", &TServiceActor::HandleHttpInfo_Search},
     }};
 
     const auto& request = ev->Get()->Request;
     TString uri{request.GetUri()};
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "HTTP request: %s", uri.c_str());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "HTTP request: %s",
+        uri.c_str());
 
-    const auto& params =
-        (request.GetMethod() != HTTP_METHOD_POST)
-        ? request.GetParams()
-        : request.GetPostParams();
+    const auto& params = (request.GetMethod() != HTTP_METHOD_POST)
+                             ? request.GetParams()
+                             : request.GetPostParams();
 
     const auto& action = params.Get("action");
     const auto& diskId = params.Get("Volume");
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "HTTP request action: %s disk: %s", action.c_str(), diskId.c_str());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "HTTP request action: %s disk: %s",
+        action.c_str(),
+        diskId.c_str());
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
@@ -148,8 +158,10 @@ void TServiceActor::HandleHttpInfo(
 
 void TServiceActor::RenderHtmlInfo(IOutputStream& out) const
 {
-    HTML(out) {
-        TAG(TH3) { out << "Search Volume"; }
+    HTML (out) {
+        TAG (TH3) {
+            out << "Search Volume";
+        }
         BuildSearchButton(out);
 
         TAG (TH3) {
@@ -166,15 +178,21 @@ void TServiceActor::RenderHtmlInfo(IOutputStream& out) const
         RenderVolumeList(out);
 
         if (RdmaClient) {
-            TAG(TH3) { out << "RdmaClient"; }
+            TAG (TH3) {
+                out << "RdmaClient";
+            }
             RdmaClient->DumpHtml(out);
         }
 
-        TAG(TH3) { out << "Config"; }
+        TAG (TH3) {
+            out << "Config";
+        }
         Config->DumpHtml(out);
 
         if (Counters) {
-            TAG(TH3) { out << "Counters"; }
+            TAG (TH3) {
+                out << "Counters";
+            }
             Counters->OutputHtml(out);
         }
         GenerateServiceActionsJS(out);
@@ -183,17 +201,17 @@ void TServiceActor::RenderHtmlInfo(IOutputStream& out) const
 
 void TServiceActor::RenderDownDisks(IOutputStream& out) const
 {
-    HTML(out)
-    {
+    HTML (out) {
         TABLE_SORTABLE_CLASS("table table-bordered")
         {
-            TABLEHEAD()
-            {
-                TABLER()
-                {
-                    TABLEH() { out << "Volume"; }
-                    TABLEH() { out << "Downtime"; }
-
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Volume";
+                    }
+                    TABLEH () {
+                        out << "Downtime";
+                    }
                 }
             }
 
@@ -209,12 +227,12 @@ void TServiceActor::RenderDownDisks(IOutputStream& out) const
                     }
                 }
                 if (hasDowntimes) {
-                    TABLER() {
-                        TABLEH() {
+                    TABLER () {
+                        TABLEH () {
                             out << "<a href='../tablets?TabletID="
                                 << volume.TabletId << "'>" << diskId << "</a>";
                         }
-                        TABLEH() {
+                        TABLEH () {
                             TSvgWithDownGraph svg(out);
                             for (const auto& [time, state]: history) {
                                 svg.AddEvent(
@@ -238,20 +256,41 @@ void TServiceActor::RenderVolumeList(IOutputStream& out) const
     auto status = VolumeStats->GatherVolumePerfStatuses();
     THashMap<TString, ui32> statusMap(status.begin(), status.end());
 
-    HTML(out) {
-        TABLE_SORTABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Volume"; }
-                    TABLEH() { out << "Tablet"; }
-                    TABLEH() { out << "Size"; }
-                    TABLEH() { out << "PartitionCount"; }
-                    TABLEH() { out << "MediaKind"; }
-                    TABLEH() { out << "HasStorageConfigPatch"; }
-                    TABLEH() { out << "Status"; }
-                    TABLEH() { out << "Clients"; }
-                    TABLEH() { out << "Meets perf guarantees"; }
-                    TABLEH() { out << "Action"; }
+    HTML (out) {
+        TABLE_SORTABLE_CLASS("table table-bordered")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Volume";
+                    }
+                    TABLEH () {
+                        out << "Tablet";
+                    }
+                    TABLEH () {
+                        out << "Size";
+                    }
+                    TABLEH () {
+                        out << "PartitionCount";
+                    }
+                    TABLEH () {
+                        out << "MediaKind";
+                    }
+                    TABLEH () {
+                        out << "HasStorageConfigPatch";
+                    }
+                    TABLEH () {
+                        out << "Status";
+                    }
+                    TABLEH () {
+                        out << "Clients";
+                    }
+                    TABLEH () {
+                        out << "Meets perf guarantees";
+                    }
+                    TABLEH () {
+                        out << "Action";
+                    }
                 }
             }
 
@@ -261,37 +300,34 @@ void TServiceActor::RenderVolumeList(IOutputStream& out) const
                     continue;
                 }
                 const auto& diskId = volume.VolumeInfo->GetDiskId();
-                TABLER() {
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
                         out << "<a href='../tablets?TabletID="
-                            << volume.TabletId
-                            << "'>"
-                            << diskId
+                            << volume.TabletId << "'>" << diskId << "</a>";
+                    }
+                    TABLED () {
+                        out << "<a href='../tablets?TabletID="
+                            << volume.TabletId << "'>" << volume.TabletId
                             << "</a>";
                     }
-                    TABLED() {
-                        out << "<a href='../tablets?TabletID="
-                            << volume.TabletId
-                            << "'>"
-                            << volume.TabletId
-                            << "</a>";
-                    }
-                    TABLED() {
+                    TABLED () {
                         out << FormatByteSize(
-                            volume.VolumeInfo->GetBlocksCount() * volume.VolumeInfo->GetBlockSize());
+                            volume.VolumeInfo->GetBlocksCount() *
+                            volume.VolumeInfo->GetBlockSize());
                     }
-                    TABLED() {
+                    TABLED () {
                         out << volume.VolumeInfo->GetPartitionsCount();
                     }
-                    TABLED() {
-                        out << MediaKindToString(volume.VolumeInfo->GetStorageMediaKind());
+                    TABLED () {
+                        out << MediaKindToString(
+                            volume.VolumeInfo->GetStorageMediaKind());
                     }
-                    TABLED() {
+                    TABLED () {
                         if (VolumeStats->HasStorageConfigPatch(diskId)) {
                             out << "patched";
                         }
                     }
-                    TABLED() {
+                    TABLED () {
                         TString statusText = "Online";
                         TString cssClass = "label-info";
 
@@ -309,7 +345,8 @@ void TServiceActor::RenderVolumeList(IOutputStream& out) const
                                         break;
                                     }
                                     case NProto::SOURCE_MANUAL: {
-                                        statusText = "Mounted (manually preempted)";
+                                        statusText =
+                                            "Mounted (manually preempted)";
                                         break;
                                     }
                                     default: {
@@ -324,39 +361,38 @@ void TServiceActor::RenderVolumeList(IOutputStream& out) const
                             statusText = "Mounted (preempted)";
                         }
 
-                        SPAN_CLASS("label " + cssClass) {
+                        SPAN_CLASS ("label " + cssClass) {
                             out << statusText;
                         }
                     }
-                    TABLED() {
+                    TABLED () {
                         out << "<a href='../blockstore/service?Volume="
-                            << volume.VolumeInfo->GetDiskId() << "&action=listclients'>"
-                            << volume.ClientInfos.Size()
-                            << "</a>";
+                            << volume.VolumeInfo->GetDiskId()
+                            << "&action=listclients'>"
+                            << volume.ClientInfos.Size() << "</a>";
                     }
-                    TABLED() {
+                    TABLED () {
                         TString statusText = "Unknown";
                         TString cssClass = "label-default";
 
-                        auto it = statusMap.find(volume.VolumeInfo->GetDiskId());
+                        auto it =
+                            statusMap.find(volume.VolumeInfo->GetDiskId());
                         if (it != statusMap.end()) {
                             if (!it->second) {
                                 statusText = "Yes";
                                 cssClass = "label-success";
                             } else {
-                                statusText = TStringBuilder() <<
-                                    "No(" <<
-                                    it->second
-                                    << " s)";
+                                statusText = TStringBuilder()
+                                             << "No(" << it->second << " s)";
                                 cssClass = "label-warning";
                             }
                         }
 
-                        SPAN_CLASS("label " + cssClass) {
+                        SPAN_CLASS ("label " + cssClass) {
                             out << statusText;
                         }
                     }
-                    TABLED() {
+                    TABLED () {
                         if (volume.GetLocalMountClientInfo() &&
                             !IsDiskRegistryLocalMediaKind(
                                 volume.StorageMediaKind))
@@ -412,6 +448,5 @@ void TServiceActor::SendHttpResponse(
         requestInfo,
         std::make_unique<NMon::TEvHttpInfoRes>(std::move(message.Str())));
 }
-
 
 }   // namespace NCloud::NBlockStore::NStorage

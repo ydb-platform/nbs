@@ -14,6 +14,7 @@
 #include <cloud/storage/core/protos/media.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
+
 #include <library/cpp/threading/atomic/bool.h>
 
 #include <util/datetime/base.h>
@@ -26,8 +27,7 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TInFlightRequest
-    : public TRequestInfo
+struct TInFlightRequest: public TRequestInfo
 {
 public:
     NProto::TProfileLogRequestInfo ProfileLogRequest;
@@ -41,10 +41,10 @@ private:
 
 public:
     TInFlightRequest(
-            const TRequestInfo& info,
-            IProfileLogPtr profileLog,
-            NCloud::NProto::EStorageMediaKind mediaKind,
-            IRequestStatsPtr requestStats)
+        const TRequestInfo& info,
+        IProfileLogPtr profileLog,
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        IRequestStatsPtr requestStats)
         : TRequestInfo(info.Sender, info.Cookie, info.CallContext)
         , MediaKind(mediaKind)
         , RequestStats(std::move(requestStats))
@@ -73,8 +73,7 @@ enum class ESessionCreateDestroyState
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TSessionInfo
-    : public TIntrusiveListItem<TSessionInfo>
+struct TSessionInfo: public TIntrusiveListItem<TSessionInfo>
 {
     TString ClientId;
     NProto::TFileStore FileStore;
@@ -161,11 +160,11 @@ struct TLocalFileStore
     NProtoPrivate::TFileSystemConfig Config;
 
     TLocalFileStore(
-            TString id,
-            ui64 tablet,
-            ui32 generation,
-            bool isShard,
-            NProtoPrivate::TFileSystemConfig config)
+        TString id,
+        ui64 tablet,
+        ui32 generation,
+        bool isShard,
+        NProtoPrivate::TFileSystemConfig config)
         : FileStoreId(std::move(id))
         , TabletId(tablet)
         , Generation(generation)
@@ -208,15 +207,11 @@ public:
     // removes session with sessionid and seqno
     // returns false if there are no more sessions
     // with given sessionid remain
-    bool RemoveSession(
-        const TString& sessionId,
-        ui64 seqNo);
+    bool RemoveSession(const TString& sessionId, ui64 seqNo);
 
     void RemoveSession(const TString& sessionId);
 
-    bool IsLastSubSession(
-        const TString& sessionId,
-        ui64 seqNo);
+    bool IsLastSubSession(const TString& sessionId, ui64 seqNo);
 
     void VisitSessions(const TSessionVisitor& visitor) const;
 
@@ -226,9 +221,7 @@ public:
         ui32 generation,
         bool isShard,
         NProtoPrivate::TFileSystemConfig config);
-    void UnregisterLocalFileStore(
-        const TString& id,
-        ui32 generation);
+    void UnregisterLocalFileStore(const TString& id, ui32 generation);
 
     const TLocalFileStoreMap& GetLocalFileStores() const
     {

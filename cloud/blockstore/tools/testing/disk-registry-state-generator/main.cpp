@@ -109,9 +109,7 @@ struct TOptions
             .RequiredArgument()
             .StoreResult(&BackupPath);
 
-        opts.AddLongOption("seed")
-            .OptionalArgument("NUM")
-            .StoreResult(&Seed);
+        opts.AddLongOption("seed").OptionalArgument("NUM").StoreResult(&Seed);
 
         NLastGetopt::TOptsParseResultException res(&opts, argc, argv);
     }
@@ -298,8 +296,7 @@ std::unique_ptr<TDiskRegistryState> GenerateAll(ui64 seed)
     const auto totalNrdCount = Accumulate(
         Disks,
         size_t{},
-        [](size_t acc, const TEntityInfo<EVolumeType>& diskInfo)
-        {
+        [](size_t acc, const TEntityInfo<EVolumeType>& diskInfo) {
             return acc +
                    (diskInfo.Tag == EVolumeType::Nrd ? diskInfo.Count : 0);
         });

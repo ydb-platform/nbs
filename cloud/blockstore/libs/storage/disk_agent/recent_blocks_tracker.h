@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/blockstore/libs/common/block_range.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/ring_buffer.h>
 
@@ -62,8 +63,9 @@ public:
     void AddRecorded(ui64 requestId, const TBlockRange64& range);
 
     // Check overlapping among the inflight requests.
-    [[nodiscard]] bool CheckInflight(ui64 requestId, const TBlockRange64& range)
-        const;
+    [[nodiscard]] bool CheckInflight(
+        ui64 requestId,
+        const TBlockRange64& range) const;
 
     // Has inflight request tracked.
     [[nodiscard]] bool HasInflight() const;
@@ -81,8 +83,9 @@ public:
     void Reset();
 
 private:
-    void ReportRepeatedRequestId(ui64 requestId, const TBlockRange64& range)
-        const;
+    void ReportRepeatedRequestId(
+        ui64 requestId,
+        const TBlockRange64& range) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

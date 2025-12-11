@@ -16,8 +16,7 @@ namespace NCloud::NFileStore::NVhost {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFuseVirtioClient
-    : public std::enable_shared_from_this<TFuseVirtioClient>
+class TFuseVirtioClient: public std::enable_shared_from_this<TFuseVirtioClient>
 {
 private:
     using TThread = THolder<IThreadFactory::IThread>;
@@ -28,7 +27,9 @@ private:
     ITaskQueuePtr ThreadPool;
 
 public:
-    TFuseVirtioClient(const TString& SocketPath, const TDuration& timeout = TDuration::MilliSeconds(1000))
+    TFuseVirtioClient(
+        const TString& SocketPath,
+        const TDuration& timeout = TDuration::MilliSeconds(1000))
         : WaitTimeout(timeout)
         , ThreadPool(CreateThreadPool("reqs", 4))
     {
@@ -50,17 +51,19 @@ public:
 
         auto weakPtr = weak_from_this();
 
-        ThreadPool->Execute([weakPtr, request] {
-            if (auto p = weakPtr.lock()) {
-                p->SendRequestImpl(request);
-            }
-        });
+        ThreadPool->Execute(
+            [weakPtr, request]
+            {
+                if (auto p = weakPtr.lock()) {
+                    p->SendRequestImpl(request);
+                }
+            });
 
         return future;
     }
 
-    template <typename T, typename ...TArgs>
-    auto SendRequest(TArgs&& ...args)
+    template <typename T, typename... TArgs>
+    auto SendRequest(TArgs&&... args)
     {
         return SendRequest(std::make_shared<T>(std::forward<TArgs>(args)...));
     }

@@ -14,7 +14,8 @@ struct TClientFactories
         NIamClient::TIamClientConfigPtr config,
         ILoggingServicePtr logging,
         ISchedulerPtr scheduler,
-        ITimerPtr timer)> IamClientFactory;
+        ITimerPtr timer)>
+        IamClientFactory;
 };
 
 }   // namespace NCloud::NBlockStore::NClient

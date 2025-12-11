@@ -6,8 +6,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDestroyCommand final
-    : public TFileStoreCommand
+class TDestroyCommand final: public TFileStoreCommand
 {
 private:
     bool ForceDestroy = false;
@@ -26,10 +25,9 @@ public:
         request->SetFileSystemId(FileSystemId);
         request->SetForceDestroy(ForceDestroy);
 
-        auto response = WaitFor(
-            Client->DestroyFileStore(
-                std::move(callContext),
-                std::move(request)));
+        auto response = WaitFor(Client->DestroyFileStore(
+            std::move(callContext),
+            std::move(request)));
 
         if (HasError(response)) {
             ythrow TServiceError(response.GetError());

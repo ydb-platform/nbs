@@ -87,8 +87,7 @@ struct TRackInfo
         TAgentInfo(TString agentId, ui32 nodeId)
             : AgentId(std::move(agentId))
             , NodeId(nodeId)
-        {
-        }
+        {}
     };
 
     TString Name;
@@ -102,8 +101,7 @@ struct TRackInfo
 
     explicit TRackInfo(TString name)
         : Name(std::move(name))
-    {
-    }
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -118,7 +116,9 @@ public:
     void Increment(const TString& diskId, ui32 partitionIndex)
     {
         BrokenDisks.insert(diskId);
-        if (Strategy == NProto::EPlacementStrategy::PLACEMENT_STRATEGY_PARTITION) {
+        if (Strategy ==
+            NProto::EPlacementStrategy::PLACEMENT_STRATEGY_PARTITION)
+        {
             BrokenPartitions.insert(partitionIndex);
         }
     }
@@ -174,9 +174,9 @@ struct TCheckpointInfo
     TCheckpointInfo() = default;
 
     TCheckpointInfo(
-            TString sourceDiskId,
-            TString checkpointId,
-            TString shadowDiskId)
+        TString sourceDiskId,
+        TString checkpointId,
+        TString shadowDiskId)
         : SourceDiskId(std::move(sourceDiskId))
         , CheckpointId(std::move(checkpointId))
         , ShadowDiskId(std::move(shadowDiskId))
@@ -204,8 +204,7 @@ struct TPlacementGroupInfo
 
     TPlacementGroupInfo(NProto::TPlacementGroupConfig config)
         : Config(std::move(config))
-    {
-    }
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -313,7 +312,7 @@ private:
 
     struct TDeviceMigrationCompare
     {
-        bool operator ()(
+        bool operator()(
             const TDeviceMigration& lhs,
             const TDeviceMigration& rhs) const
         {
@@ -358,7 +357,8 @@ public:
         TVector<TString> outdatedVolumeConfigs,
         TVector<NProto::TSuspendedDevice> suspendedDevices,
         TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices,
-        THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams);
+        THashMap<TString, NProto::TDiskRegistryAgentParams>
+            diskRegistryAgentListParams);
 
     ~TDiskRegistryState();
 
@@ -377,9 +377,7 @@ public:
         NProto::TAgentConfig config,
         TInstant timestamp) -> TResultOrError<TAgentRegistrationResult>;
 
-    NProto::TError UnregisterAgent(
-        TDiskRegistryDatabase& db,
-        ui32 nodeId);
+    NProto::TError UnregisterAgent(TDiskRegistryDatabase& db, ui32 nodeId);
 
     struct TAllocateDiskParams
     {
@@ -457,7 +455,9 @@ public:
         const TDiskId& diskId,
         TVector<NProto::TDeviceConfig>& devices) const;
 
-    NProto::TError GetDiskInfo(const TDiskId& diskId, TDiskInfo& diskInfo) const;
+    NProto::TError GetDiskInfo(
+        const TDiskId& diskId,
+        TDiskInfo& diskInfo) const;
     NProto::EDiskState GetDiskState(const TDiskId& diskId) const;
 
     NProto::TError GetShadowDiskId(
@@ -468,9 +468,7 @@ public:
     bool FilterDevicesForAcquire(TDiskInfo& diskInfo) const;
     bool FilterDevicesForRelease(TDiskInfo& diskInfo) const;
 
-    NProto::TError StartAcquireDisk(
-        const TString& diskId,
-        TDiskInfo& diskInfo);
+    NProto::TError StartAcquireDisk(const TString& diskId, TDiskInfo& diskInfo);
 
     NProto::TError MarkDiskForCleanup(
         TDiskRegistryDatabase& db,
@@ -502,7 +500,9 @@ public:
     bool IsMasterDisk(const TString& diskId) const;
 
     NProto::TDeviceConfig GetDevice(const TString& id) const;
-    TVector<TString> GetDeviceIds(const TString& agentId, const TString& path) const;
+    TVector<TString> GetDeviceIds(
+        const TString& agentId,
+        const TString& path) const;
     NProto::EDeviceState GetDeviceState(const TString& deviceId) const;
 
     NProto::TError GetDependentDisks(
@@ -557,16 +557,15 @@ public:
     {
         return PlacementGroups;
     }
-    const NProto::TPlacementGroupConfig* FindPlacementGroup(const TString& groupId) const;
+    const NProto::TPlacementGroupConfig* FindPlacementGroup(
+        const TString& groupId) const;
 
     const TVector<TBrokenDiskInfo>& GetBrokenDisks() const
     {
         return BrokenDisks;
     }
 
-    void DeleteBrokenDisks(
-        TDiskRegistryDatabase& db,
-        TVector<TDiskId> ids);
+    void DeleteBrokenDisks(TDiskRegistryDatabase& db, TVector<TDiskId> ids);
 
     const THashMap<TString, ui64>& GetDisksToReallocate() const;
     ui64 AddReallocateRequest(TDiskRegistryDatabase& db, const TString& diskId);
@@ -596,7 +595,8 @@ public:
         return NotificationSystem.GetUserNotifications();
     }
 
-    TVector<TString> CollectBrokenDevices(const NProto::TAgentStats& stats) const;
+    TVector<TString> CollectBrokenDevices(
+        const NProto::TAgentStats& stats) const;
     NProto::TError UpdateAgentCounters(const NProto::TAgentStats& stats);
     void PublishCounters(TInstant now);
 
@@ -689,7 +689,8 @@ public:
         return AgentList.FindAgent(nodeId);
     }
 
-    const NProto::TAgentConfig* FindDeviceAgent(const TDeviceId& uuid) const {
+    const NProto::TAgentConfig* FindDeviceAgent(const TDeviceId& uuid) const
+    {
         return FindDeviceLocation(uuid).first;
     }
 
@@ -742,9 +743,12 @@ public:
 
     TVector<TDiskId> GetOutdatedVolumeConfigs() const;
 
-    std::pair<TVolumeConfig, ui64> GetVolumeConfigUpdate(const TDiskId& diskId) const;
+    std::pair<TVolumeConfig, ui64> GetVolumeConfigUpdate(
+        const TDiskId& diskId) const;
 
-    void DeleteOutdatedVolumeConfig(TDiskRegistryDatabase& db, const TDiskId& diskId);
+    void DeleteOutdatedVolumeConfig(
+        TDiskRegistryDatabase& db,
+        const TDiskId& diskId);
 
     NProto::TError UpdateDiskBlockSize(
         TInstant now,
@@ -787,16 +791,16 @@ public:
         const TDiskId& diskId,
         TVector<NProto::TLaggingDevice> outdatedDevices);
 
-    NProto::TError SuspendDevice(TDiskRegistryDatabase& db, const TDeviceId& id);
+    NProto::TError SuspendDevice(
+        TDiskRegistryDatabase& db,
+        const TDeviceId& id);
 
     void SuspendDeviceIfNeeded(
         TDiskRegistryDatabase& db,
         NProto::TDeviceConfig& device);
 
-    void ResumeDevice(
-        TInstant now,
-        TDiskRegistryDatabase& db,
-        const TDeviceId& id);
+    void
+    ResumeDevice(TInstant now, TDiskRegistryDatabase& db, const TDeviceId& id);
     void ResumeDevices(
         TInstant now,
         TDiskRegistryDatabase& db,
@@ -805,7 +809,8 @@ public:
     bool IsDirtyDevice(const TDeviceId& id) const;
     TVector<NProto::TSuspendedDevice> GetSuspendedDevices() const;
 
-    const TDeque<TAutomaticallyReplacedDeviceInfo>& GetAutomaticallyReplacedDevices() const
+    const TDeque<TAutomaticallyReplacedDeviceInfo>&
+    GetAutomaticallyReplacedDevices() const
     {
         return AutomaticallyReplacedDevices;
     }
@@ -880,9 +885,7 @@ public:
         const TString& agentId,
         const NProto::TDiskRegistryAgentParams& params);
 
-    void CleanupExpiredAgentListParams(
-        TDiskRegistryDatabase& db,
-        TInstant now);
+    void CleanupExpiredAgentListParams(TDiskRegistryDatabase& db, TInstant now);
 
     TVector<TString> GetPoolNames(
         std::optional<NProto::EDevicePoolKind> kind = std::nullopt) const;
@@ -909,7 +912,8 @@ private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);
     void ProcessCheckpoints();
-    void ProcessPlacementGroups(TVector<NProto::TPlacementGroupConfig> placementGroups);
+    void ProcessPlacementGroups(
+        TVector<NProto::TPlacementGroupConfig> placementGroups);
     void ProcessAgents();
     void ProcessDisksToCleanup(TVector<TString> diskIds);
     void ProcessDirtyDevices(TVector<TDirtyDevice> dirtyDevices);
@@ -924,9 +928,7 @@ private:
     TDiskState* AccessDiskState(const TDiskId& diskId);
 
     template <typename T>
-    bool RemoveAgent(
-        TDiskRegistryDatabase& db,
-        const T& id);
+    bool RemoveAgent(TDiskRegistryDatabase& db, const T& id);
 
     void RemoveAgent(
         TDiskRegistryDatabase& db,
@@ -1213,9 +1215,7 @@ private:
         TDiskRegistryDatabase& db,
         const TDiskId& diskId);
 
-    void ForgetDevices(
-        TDiskRegistryDatabase& db,
-        const TVector<TString>& ids);
+    void ForgetDevices(TDiskRegistryDatabase& db, const TVector<TString>& ids);
 
     void AddToBrokenDisks(
         TInstant now,
@@ -1263,8 +1263,11 @@ private:
         TInstant now,
         TString stateMessage);
 
-    bool IsMirroredDiskAlreadyAllocated(const TAllocateDiskParams& params) const;
-    void UpdateReplicaTable(const TDiskId& diskId, const TAllocateDiskResult& r);
+    bool IsMirroredDiskAlreadyAllocated(
+        const TAllocateDiskParams& params) const;
+    void UpdateReplicaTable(
+        const TDiskId& diskId,
+        const TAllocateDiskResult& r);
     void CleanupMirroredDisk(
         TInstant now,
         TDiskRegistryDatabase& db,

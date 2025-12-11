@@ -63,7 +63,8 @@ public:
     {
         auto requestGroup = counters.GetSubgroup("request", request);
 
-        auto executionTimeGroup = requestGroup->GetSubgroup("percentiles", "ExecutionTime");
+        auto executionTimeGroup =
+            requestGroup->GetSubgroup("percentiles", "ExecutionTime");
         Register(*executionTimeGroup, CountersExecutionTime);
 
         auto totalTimeGroup = requestGroup->GetSubgroup("percentiles", "Time");
@@ -89,7 +90,9 @@ public:
         Update(CountersSize, SizeHist);
         Update(CountersExecutionTime, ExecutionTimeHist);
         for (auto& [_, item]: ExecutionTimeSizeClasses) {
-            Update(item.Value.CountersExecutionTime, *item.Value.ExecutionTimeHist);
+            Update(
+                item.Value.CountersExecutionTime,
+                *item.Value.ExecutionTimeHist);
         }
     }
 
@@ -104,8 +107,7 @@ public:
         ExecutionTimeSizeClasses.VisitOverlapping(
             requestBytes,
             requestBytes + 1,
-            [&](TDisjointIntervalMap<ui64, TSizeClassCounters>::TIterator it)
-            {
+            [&](TDisjointIntervalMap<ui64, TSizeClassCounters>::TIterator it) {
                 it->second.Value.ExecutionTimeHist->RecordValue(
                     requestExecutionTime);
             });
@@ -135,15 +137,19 @@ private:
     {
         const auto& percentiles = GetDefaultPercentiles();
         for (ui32 i = 0; i < percentiles.size(); ++i) {
-            counters.emplace_back(countersGroup.GetCounter(percentiles[i].second));
+            counters.emplace_back(
+                countersGroup.GetCounter(percentiles[i].second));
         }
     }
 
-    void Update(TVector<TDynamicCounterPtr>& counters, THistogramBase& histogram)
+    void Update(
+        TVector<TDynamicCounterPtr>& counters,
+        THistogramBase& histogram)
     {
         const auto& percentiles = GetDefaultPercentiles();
         for (ui32 i = 0; i < counters.size(); ++i) {
-            *counters[i] = histogram.GetValueAtPercentile(percentiles[i].first * 100);
+            *counters[i] =
+                histogram.GetValueAtPercentile(percentiles[i].first * 100);
         }
         histogram.Reset();
     }
@@ -160,7 +166,7 @@ private:
 
 public:
     explicit THdrPercentiles(
-            const TVector<TSizeInterval>& executionTimeSizeClasses)
+        const TVector<TSizeInterval>& executionTimeSizeClasses)
         : ReadBlocksPercentiles(executionTimeSizeClasses)
         , WriteBlocksPercentiles(executionTimeSizeClasses)
         , ZeroBlocksPercentiles(executionTimeSizeClasses)
@@ -203,8 +209,7 @@ public:
         std::span<IRequestStats::TTimeBucket> timeHist,
         std::span<IRequestStats::TSizeBucket> sizeHist)
     {
-        GetPercentiles(requestType)
-            .BatchCompleted(timeHist, sizeHist);
+        GetPercentiles(requestType).BatchCompleted(timeHist, sizeHist);
     }
 
 private:
@@ -241,17 +246,17 @@ constexpr TRequestCounters::EOptions SSDOrHDDOptions =
     TRequestCounters::EOption::ReportDataPlaneHistogram |
     TRequestCounters::EOption::OnlyReadWriteRequests;
 
-#define BLOCKSTORE_MEDIA_KIND(xxx, ...)                                        \
-    xxx(,                  GeneralOptions                      __VA_ARGS__    )\
-    xxx(SSD,               SSDOrHDDOptions                     __VA_ARGS__    )\
-    xxx(HDD,               SSDOrHDDOptions                     __VA_ARGS__    )\
-    xxx(SSDNonrepl,        DefaultOptions,                     __VA_ARGS__    )\
-    xxx(SSDMirror2,        DefaultOptions,                     __VA_ARGS__    )\
-    xxx(SSDMirror3,        DefaultOptions,                     __VA_ARGS__    )\
-    xxx(SSDLocal,          DefaultOptions,                     __VA_ARGS__    )\
-    xxx(HDDLocal,          DefaultOptions,                     __VA_ARGS__    )\
-    xxx(HDDNonrepl,        DefaultOptions,                     __VA_ARGS__    )\
-// BLOCKSTORE_MEDIA_KIND
+#define BLOCKSTORE_MEDIA_KIND(xxx, ...)          \
+    xxx(, GeneralOptions __VA_ARGS__)            \
+    xxx(SSD, SSDOrHDDOptions __VA_ARGS__)        \
+    xxx(HDD, SSDOrHDDOptions __VA_ARGS__)        \
+    xxx(SSDNonrepl, DefaultOptions, __VA_ARGS__) \
+    xxx(SSDMirror2, DefaultOptions, __VA_ARGS__) \
+    xxx(SSDMirror3, DefaultOptions, __VA_ARGS__) \
+    xxx(SSDLocal, DefaultOptions, __VA_ARGS__)   \
+    xxx(HDDLocal, DefaultOptions, __VA_ARGS__)   \
+    xxx(HDDNonrepl, DefaultOptions, __VA_ARGS__) \
+    // BLOCKSTORE_MEDIA_KIND
 
 class TRequestStats final
     : public IRequestStats
@@ -282,30 +287,26 @@ private:
     THdrPercentiles HdrTotalHDDNonrepl;
 
 public:
+#define INITIALIZE_REQUEST_COUNTERS(name, options, ...) \
+    , Total##name(MakeRequestCounters(                  \
+          timer,                                        \
+          options,                                      \
+          histogramCounterOptions,                      \
+          executionTimeSizeClasses))   // INITIALIZE_REQUEST_COUNTERS
 
-#define INITIALIZE_REQUEST_COUNTERS(name, options, ...)                        \
-    , Total##name(MakeRequestCounters(                                         \
-          timer,                                                               \
-          options,                                                             \
-          histogramCounterOptions,                                             \
-          executionTimeSizeClasses))                                           \
-// INITIALIZE_REQUEST_COUNTERS
-
-#define INITIALIZE_HDR_PERCENTILES(name, ...)                                  \
-    , HdrTotal##name(                                                          \
-          executionTimeSizeClasses)                                            \
-// INITIALIZE_HDR_PERCENTILES
+#define INITIALIZE_HDR_PERCENTILES(name, ...) \
+    , HdrTotal##name(executionTimeSizeClasses)   // INITIALIZE_HDR_PERCENTILES
 
     TRequestStats(
-            TDynamicCountersPtr counters,
-            bool isServerSide,
-            ITimerPtr timer,
-            EHistogramCounterOptions histogramCounterOptions,
-            const TVector<TSizeInterval>& executionTimeSizeClasses)
+        TDynamicCountersPtr counters,
+        bool isServerSide,
+        ITimerPtr timer,
+        EHistogramCounterOptions histogramCounterOptions,
+        const TVector<TSizeInterval>& executionTimeSizeClasses)
         : Counters(std::move(counters))
         , IsServerSide(isServerSide)
-        BLOCKSTORE_MEDIA_KIND(INITIALIZE_REQUEST_COUNTERS)
-        BLOCKSTORE_MEDIA_KIND(INITIALIZE_HDR_PERCENTILES)
+              BLOCKSTORE_MEDIA_KIND(INITIALIZE_REQUEST_COUNTERS)
+                  BLOCKSTORE_MEDIA_KIND(INITIALIZE_HDR_PERCENTILES)
     {
         Total.Register(*Counters);
 
@@ -478,9 +479,8 @@ public:
 
     void RequestPostponed(EBlockStoreRequest requestType) override
     {
-        Total.RequestPostponed(
-            static_cast<TRequestCounters::TRequestType>(
-                TranslateLocalRequestType(requestType)));
+        Total.RequestPostponed(static_cast<TRequestCounters::TRequestType>(
+            TranslateLocalRequestType(requestType)));
     }
 
     void RequestPostponedServer(EBlockStoreRequest requestType) override
@@ -492,23 +492,20 @@ public:
 
     void RequestAdvanced(EBlockStoreRequest requestType) override
     {
-        Total.RequestAdvanced(
-            static_cast<TRequestCounters::TRequestType>(
-                TranslateLocalRequestType(requestType)));
+        Total.RequestAdvanced(static_cast<TRequestCounters::TRequestType>(
+            TranslateLocalRequestType(requestType)));
     }
 
     void RequestAdvancedServer(EBlockStoreRequest requestType) override
     {
-        Total.RequestAdvancedServer(
-            static_cast<TRequestCounters::TRequestType>(
-                TranslateLocalRequestType(requestType)));
+        Total.RequestAdvancedServer(static_cast<TRequestCounters::TRequestType>(
+            TranslateLocalRequestType(requestType)));
     }
 
     void RequestFastPathHit(EBlockStoreRequest requestType) override
     {
-        Total.RequestFastPathHit(
-            static_cast<TRequestCounters::TRequestType>(
-                TranslateLocalRequestType(requestType)));
+        Total.RequestFastPathHit(static_cast<TRequestCounters::TRequestType>(
+            TranslateLocalRequestType(requestType)));
     }
 
     void BatchCompleted(
@@ -542,10 +539,7 @@ public:
                 sizeHist);
 
             if (IsServerSide) {
-                HdrTotal.BatchCompleted(
-                    requestType,
-                    timeHist,
-                    sizeHist);
+                HdrTotal.BatchCompleted(requestType, timeHist, sizeHist);
 
                 GetHdrPercentiles(mediaKind).BatchCompleted(
                     requestType,
@@ -630,8 +624,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRequestStatsStub final
-    : public IRequestStats
+struct TRequestStatsStub final: public IRequestStats
 {
     ui64 RequestStarted(
         NCloud::NProto::EStorageMediaKind mediaKind,

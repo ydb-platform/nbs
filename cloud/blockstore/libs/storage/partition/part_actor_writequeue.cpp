@@ -14,9 +14,7 @@ void TPartitionActor::EnqueueProcessWriteQueueIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    NCloud::Send<TEvPartitionPrivate::TEvProcessWriteQueue>(
-        ctx,
-        SelfId());
+    NCloud::Send<TEvPartitionPrivate::TEvProcessWriteQueue>(ctx, SelfId());
 }
 
 void TPartitionActor::HandleProcessWriteQueue(
@@ -48,8 +46,7 @@ void TPartitionActor::HandleProcessWriteQueue(
         totalWeight,
         writeBlobThreshold / State->GetBlockSize(),
         State->GetMaxBlocksInBlob(),
-        Config->GetMaxBlobRangeSize() / State->GetBlockSize()
-    );
+        Config->GetMaxBlobRangeSize() / State->GetBlockSize());
 
     if (!WriteMixedBlocks(ctx, g.Groups)) {
         for (auto& request: requests) {

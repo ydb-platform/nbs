@@ -8,7 +8,6 @@
 #include <contrib/ydb/core/base/hive.h>
 #include <contrib/ydb/core/base/tablet.h>
 #include <contrib/ydb/core/tablet/tablet_setup.h>
-
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
@@ -30,7 +29,9 @@ void IgnoreEvent(const TAutoPtr<T>& ev, const TActorContext& ctx)
 {
     const auto* event = ev->Get();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::BOOTSTRAPPER,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::BOOTSTRAPPER,
         "Ignored event: (0x%08X) %s",
         ev->GetTypeRewrite(),
         event->ToStringHeader().data());
@@ -38,8 +39,7 @@ void IgnoreEvent(const TAutoPtr<T>& ev, const TActorContext& ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBootstrapperActor final
-    : public TActor<TBootstrapperActor>
+class TBootstrapperActor final: public TActor<TBootstrapperActor>
 {
 private:
     const TBootstrapperConfig Config;
@@ -79,16 +79,16 @@ private:
     bool ShouldRestartTablet(TEvTablet::TEvTabletDead::EReason reason) const
     {
         if (Config.SuggestedGeneration) {
-            return false; // never restart when we have specific generation
+            return false;   // never restart when we have specific generation
         }
-        return Config.RestartAlways
-            || reason <= TEvTablet::TEvTabletDead::ReasonBootReservedValue;
+        return Config.RestartAlways ||
+               reason <= TEvTablet::TEvTabletDead::ReasonBootReservedValue;
     }
 
     bool BootAttemptsExceeded() const
     {
-        return Config.BootAttemptsThreshold
-            && BootAttempts >= Config.BootAttemptsThreshold;
+        return Config.BootAttemptsThreshold &&
+               BootAttempts >= Config.BootAttemptsThreshold;
     }
 
 private:
@@ -129,10 +129,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TBootstrapperActor::TBootstrapperActor(
-        const TBootstrapperConfig& config,
-        const TActorId& owner,
-        TTabletStorageInfoPtr tabletStorageInfo,
-        TTabletSetupInfoPtr tabletSetupInfo)
+    const TBootstrapperConfig& config,
+    const TActorId& owner,
+    TTabletStorageInfoPtr tabletStorageInfo,
+    TTabletSetupInfoPtr tabletSetupInfo)
     : TActor(&TThis::StateInit)
     , Config(config)
     , Owner(owner)
@@ -142,15 +142,14 @@ TBootstrapperActor::TBootstrapperActor(
 
 void TBootstrapperActor::StartTablet(const TActorContext& ctx)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::BOOTSTRAPPER,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::BOOTSTRAPPER,
         "[%lu] Starting tablet",
         TabletStorageInfo->TabletID);
 
     if (TabletSys) {
-        ReportStatus(
-            ctx,
-            TEvBootstrapper::STARTED,
-            "Tablet already started");
+        ReportStatus(ctx, TEvBootstrapper::STARTED, "Tablet already started");
         return;
     }
 
@@ -166,7 +165,9 @@ void TBootstrapperActor::StartTablet(const TActorContext& ctx)
 
 void TBootstrapperActor::StopTablet(const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::BOOTSTRAPPER,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::BOOTSTRAPPER,
         "[%lu] Stopping tablet",
         TabletStorageInfo->TabletID);
 
@@ -203,7 +204,9 @@ void TBootstrapperActor::ReportStatusAndDie(
     TEvBootstrapper::ETabletStatus status,
     TString message)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::BOOTSTRAPPER,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::BOOTSTRAPPER,
         "[%lu] Exiting tablet (reason: %s)",
         TabletStorageInfo->TabletID,
         message.data());
@@ -236,7 +239,8 @@ void TBootstrapperActor::HandleRestored(
 {
     const auto* msg = ev->Get();
 
-    Y_ABORT_UNLESS(TabletStorageInfo->TabletID == msg->TabletID,
+    Y_ABORT_UNLESS(
+        TabletStorageInfo->TabletID == msg->TabletID,
         "Tablet IDs mismatch: %lu vs %lu",
         TabletStorageInfo->TabletID,
         msg->TabletID);
@@ -247,7 +251,9 @@ void TBootstrapperActor::HandleRestored(
     BootAttempts = 0;
     Timeout = TDuration::Zero();
 
-    LOG_INFO(ctx, TBlockStoreComponents::BOOTSTRAPPER,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::BOOTSTRAPPER,
         "[%lu] Tablet started (gen: %u, system: %s, user: %s)",
         msg->TabletID,
         Generation,
@@ -265,15 +271,13 @@ void TBootstrapperActor::HandleTabletDead(
 {
     const auto* msg = ev->Get();
 
-    Y_ABORT_UNLESS(TabletStorageInfo->TabletID == msg->TabletID,
+    Y_ABORT_UNLESS(
+        TabletStorageInfo->TabletID == msg->TabletID,
         "Tablet IDs mismatch: %lu vs %lu",
         TabletStorageInfo->TabletID,
         msg->TabletID);
 
-    ReportStatusAndDie(
-        ctx,
-        TEvBootstrapper::STOPPED,
-        "Tablet stopped");
+    ReportStatusAndDie(ctx, TEvBootstrapper::STOPPED, "Tablet stopped");
 }
 
 void TBootstrapperActor::HandleTabletDead_Unexpected(
@@ -282,13 +286,16 @@ void TBootstrapperActor::HandleTabletDead_Unexpected(
 {
     const auto* msg = ev->Get();
 
-    Y_ABORT_UNLESS(TabletStorageInfo->TabletID == msg->TabletID,
+    Y_ABORT_UNLESS(
+        TabletStorageInfo->TabletID == msg->TabletID,
         "Tablet IDs mismatch: %lu vs %lu",
         TabletStorageInfo->TabletID,
         msg->TabletID);
 
     ++BootAttempts;
-    LOG_ERROR(ctx, TBlockStoreComponents::BOOTSTRAPPER,
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::BOOTSTRAPPER,
         "[%lu] Tablet failed: %s (gen: %u, attempts: %u, threshold: %u)",
         msg->TabletID,
         TEvTablet::TEvTabletDead::Str(msg->Reason),
@@ -300,14 +307,17 @@ void TBootstrapperActor::HandleTabletDead_Unexpected(
     TabletUser = {};
 
     if (ShouldRestartTablet(msg->Reason)) {
-        // try tablet restarts upon boot as it may take some time for system to come up
+        // try tablet restarts upon boot as it may take some time for system to
+        // come up
         if (!BootAttemptsExceeded()) {
             Timeout = ClampVal(
                 Timeout + Config.CoolDownTimeout,
                 Config.CoolDownTimeout,
                 Config.CoolDownTimeout * 5);
 
-            LOG_DEBUG(ctx, TBlockStoreComponents::BOOTSTRAPPER,
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::BOOTSTRAPPER,
                 "[%lu] Wait before restart (timeout: %s)",
                 TabletStorageInfo->TabletID,
                 ToString(Timeout).data());
@@ -331,10 +341,7 @@ void TBootstrapperActor::HandleTabletDead_Unexpected(
             break;
     }
 
-    ReportStatusAndDie(
-        ctx,
-        status,
-        TEvTablet::TEvTabletDead::Str(msg->Reason));
+    ReportStatusAndDie(ctx, status, TEvTablet::TEvTabletDead::Str(msg->Reason));
 }
 
 void TBootstrapperActor::HandleWakeUp(

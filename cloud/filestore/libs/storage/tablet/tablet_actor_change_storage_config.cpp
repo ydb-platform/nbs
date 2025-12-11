@@ -1,4 +1,5 @@
 #include "tablet_actor.h"
+
 #include "tablet_database.h"
 
 namespace NCloud::NFileStore::NStorage {
@@ -47,8 +48,7 @@ void TIndexTabletActor::CompleteTx_ChangeStorageConfig(
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvChangeStorageConfigResponse>();
-    *response->Record.MutableStorageConfig() =
-        args.ResultStorageConfig;
+    *response->Record.MutableStorageConfig() = args.ResultStorageConfig;
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

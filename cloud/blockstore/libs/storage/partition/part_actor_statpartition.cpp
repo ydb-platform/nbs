@@ -14,7 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define COPY_FIELD(l, r, name)      l.Set##name(r.Get##name());
+#define COPY_FIELD(l, r, name) l.Set##name(r.Get##name());
 
 template <typename T1, typename T2>
 void CopyPartitionConfig(T1& l, const T2& r)
@@ -46,10 +46,8 @@ void TPartitionActor::HandleStatPartition(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -59,13 +57,9 @@ void TPartitionActor::HandleStatPartition(
 
     auto response = std::make_unique<TEvPartition::TEvStatPartitionResponse>();
 
-    CopyPartitionConfig(
-        *response->Record.MutableVolume(),
-        State->GetConfig());
+    CopyPartitionConfig(*response->Record.MutableVolume(), State->GetConfig());
 
-    CopyPartitionStats(
-        *response->Record.MutableStats(),
-        State->GetStats());
+    CopyPartitionStats(*response->Record.MutableStats(), State->GetStats());
 
     UpdatePartitionCounters(
         *response->Record.MutableStats(),

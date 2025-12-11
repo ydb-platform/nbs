@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/tablet/model/sparse_segment.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
+
 #include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
@@ -26,10 +27,11 @@ namespace {
 
 bool IsTwoStageReadEnabled(const NProto::TFileStore& fs)
 {
-    const auto isHdd = fs.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HYBRID
-        || fs.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HDD;
-    const auto disabledAsHdd = isHdd &&
-        fs.GetFeatures().GetTwoStageReadDisabledForHDD();
+    const auto isHdd =
+        fs.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HYBRID ||
+        fs.GetStorageMediaKind() == NProto::STORAGE_MEDIA_HDD;
+    const auto disabledAsHdd =
+        isHdd && fs.GetFeatures().GetTwoStageReadDisabledForHDD();
     return !disabledAsHdd && fs.GetFeatures().GetTwoStageReadEnabled();
 }
 
@@ -111,22 +113,22 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReadDataActor::TReadDataActor(
-        TRequestInfoPtr requestInfo,
-        NProto::TReadDataRequest readRequest,
-        TString logTag,
-        ui32 blockSize,
-        IRequestStatsPtr requestStats,
-        IProfileLogPtr profileLog,
-        NCloud::NProto::EStorageMediaKind mediaKind,
-        bool useTwoStageRead)
+    TRequestInfoPtr requestInfo,
+    NProto::TReadDataRequest readRequest,
+    TString logTag,
+    ui32 blockSize,
+    IRequestStatsPtr requestStats,
+    IProfileLogPtr profileLog,
+    NCloud::NProto::EStorageMediaKind mediaKind,
+    bool useTwoStageRead)
     : RequestInfo(std::move(requestInfo))
     , ReadRequest(std::move(readRequest))
     , LogTag(std::move(logTag))
     , BlockSize(blockSize)
     , OriginByteRange(
-        ReadRequest.GetOffset(),
-        ReadRequest.GetLength(),
-        BlockSize)
+          ReadRequest.GetOffset(),
+          ReadRequest.GetLength(),
+          BlockSize)
     , AlignedByteRange(OriginByteRange.AlignedSuperRange())
     , BlockBuffer(std::make_unique<TString>())
     , ZeroIntervals(TDefaultAllocator::Instance(), 0, AlignedByteRange.Length)
@@ -134,8 +136,7 @@ TReadDataActor::TReadDataActor(
     , ProfileLog(std::move(profileLog))
     , MediaKind(mediaKind)
     , UseTwoStageRead(useTwoStageRead)
-{
-}
+{}
 
 void TReadDataActor::Bootstrap(const TActorContext& ctx)
 {
@@ -628,8 +629,7 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
 
     // we apply fresh data ranges to the buffer only after all blobs are
     // read and applied
-    for (const auto& freshDataRange: DescribeResponse.GetFreshDataRanges())
-    {
+    for (const auto& freshDataRange: DescribeResponse.GetFreshDataRanges()) {
         ui64 offset = freshDataRange.GetOffset();
         const TString& content = freshDataRange.GetContent();
 
@@ -753,8 +753,8 @@ void TStorageServiceActor::HandleReadData(
         shardNo);
 
     if (HasError(error)) {
-        auto response = std::make_unique<TEvService::TEvReadDataResponse>(
-            std::move(error));
+        auto response =
+            std::make_unique<TEvService::TEvReadDataResponse>(std::move(error));
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
 
@@ -768,15 +768,18 @@ void TStorageServiceActor::HandleReadData(
             totalIovecLength += iovec.GetLength();
         }
         if (totalIovecLength < msg->Record.GetLength()) {
-            auto response = std::make_unique<TEvService::TEvReadDataResponse>(
-                ErrorInvalidArgument(Sprintf("Total iovec length %lu is less than requested read length %lu",
-                    totalIovecLength, msg->Record.GetLength())));
+            auto response = std::make_unique<
+                TEvService::TEvReadDataResponse>(ErrorInvalidArgument(Sprintf(
+                "Total iovec length %lu is less than requested read length %lu",
+                totalIovecLength,
+                msg->Record.GetLength())));
             return NCloud::Reply(ctx, *ev, std::move(response));
         }
     }
 
-    const bool useTwoStageRead = IsTwoStageReadEnabled(filestore)
-        && msg->Record.GetLength() >= StorageConfig->GetTwoStageReadThreshold();
+    const bool useTwoStageRead =
+        IsTwoStageReadEnabled(filestore) &&
+        msg->Record.GetLength() >= StorageConfig->GetTwoStageReadThreshold();
 
     LOG_DEBUG(
         ctx,

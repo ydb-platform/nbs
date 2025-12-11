@@ -18,19 +18,23 @@ Y_UNIT_TEST_SUITE(TMetricStressTest)
         auto counter = CreateMetric(value);
         NTests::TScopedTasks tasks;
 
-        tasks.Add([&value, counter] {
-            for (size_t i = 0; i * 2 < COUNT; ++i) {
-                counter->Get();
-                ++value;
-            }
-        });
+        tasks.Add(
+            [&value, counter]
+            {
+                for (size_t i = 0; i * 2 < COUNT; ++i) {
+                    counter->Get();
+                    ++value;
+                }
+            });
 
-        tasks.Add([&value, counter] {
-            for (size_t i = 0; i * 2 < COUNT; ++i) {
-                counter->Get();
-                ++value;
-            }
-        });
+        tasks.Add(
+            [&value, counter]
+            {
+                for (size_t i = 0; i * 2 < COUNT; ++i) {
+                    counter->Get();
+                    ++value;
+                }
+            });
 
         tasks.Start();
         tasks.Stop();
@@ -47,19 +51,23 @@ Y_UNIT_TEST_SUITE(TMetricStressTest)
         auto counter = CreateMetric(value);
         NTests::TScopedTasks tasks;
 
-        tasks.Add([&value, counter] {
-            for (size_t i = 0; i * 2 < COUNT; ++i) {
-                counter->Get();
-                AtomicGetAndIncrement(value);
-            }
-        });
+        tasks.Add(
+            [&value, counter]
+            {
+                for (size_t i = 0; i * 2 < COUNT; ++i) {
+                    counter->Get();
+                    AtomicGetAndIncrement(value);
+                }
+            });
 
-        tasks.Add([&value, counter] {
-            for (size_t i = 0; i * 2 < COUNT; ++i) {
-                counter->Get();
-                AtomicGetAndIncrement(value);
-            }
-        });
+        tasks.Add(
+            [&value, counter]
+            {
+                for (size_t i = 0; i * 2 < COUNT; ++i) {
+                    counter->Get();
+                    AtomicGetAndIncrement(value);
+                }
+            });
 
         tasks.Start();
         tasks.Stop();

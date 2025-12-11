@@ -47,8 +47,8 @@ void THiveProxyActor::HandleGetTabletStorageInfoResult(
     TTabletStorageInfoPtr storageInfo;
 
     if (msg->Record.GetStatus() != NKikimrProto::OK) {
-        error = MakeKikimrError(
-            msg->Record.GetStatus(), "GetStorageInfo failed");
+        error =
+            MakeKikimrError(msg->Record.GetStatus(), "GetStorageInfo failed");
     } else {
         storageInfo = TabletStorageInfoFromProto(msg->Record.GetInfo());
     }
@@ -56,9 +56,10 @@ void THiveProxyActor::HandleGetTabletStorageInfoResult(
     auto& states = HiveStates[hive];
     auto& requests = states.GetInfoRequests[tabletId];
     while (!requests.empty()) {
-        auto response = std::make_unique<TEvHiveProxy::TEvGetStorageInfoResponse>(
-            error,
-            storageInfo);
+        auto response =
+            std::make_unique<TEvHiveProxy::TEvGetStorageInfoResponse>(
+                error,
+                storageInfo);
 
         NCloud::Reply(ctx, requests.front(), std::move(response));
         requests.pop_front();

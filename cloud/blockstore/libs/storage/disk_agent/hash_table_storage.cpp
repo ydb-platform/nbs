@@ -1,6 +1,7 @@
 #include "hash_table_storage.h"
 
 #include <cloud/blockstore/libs/service/storage.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/generic/hash.h>
@@ -13,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct THashTableStorage final
-    : public IStorage
+struct THashTableStorage final: public IStorage
 {
     THashMap<ui64, TString> Blocks;
     ui32 BlockSize;
@@ -71,8 +71,7 @@ struct THashTableStorage final
 
         if (e > BlockCount) {
             response.MutableError()->CopyFrom(
-                MakeError(E_ARGUMENT, "index out of bounds")
-            );
+                MakeError(E_ARGUMENT, "index out of bounds"));
             return MakeFuture(std::move(response));
         }
 
@@ -83,7 +82,10 @@ struct THashTableStorage final
                 memset(const_cast<char*>(target.Data()), 0, target.Size());
             } else {
                 Y_ABORT_UNLESS(target.Size() == BlockSize);
-                memcpy(const_cast<char*>(target.Data()), data->data(), BlockSize);
+                memcpy(
+                    const_cast<char*>(target.Data()),
+                    data->data(),
+                    BlockSize);
             }
 
             ++b;
@@ -115,8 +117,7 @@ struct THashTableStorage final
 
         if (e > BlockCount) {
             response.MutableError()->CopyFrom(
-                MakeError(E_ARGUMENT, "index out of bounds")
-            );
+                MakeError(E_ARGUMENT, "index out of bounds"));
             return MakeFuture(std::move(response));
         }
 
@@ -137,19 +138,20 @@ struct THashTableStorage final
         NProto::EDeviceEraseMethod method) override
     {
         switch (method) {
-        case NProto::DEVICE_ERASE_METHOD_DEALLOCATE:
-        case NProto::DEVICE_ERASE_METHOD_ZERO_FILL:
-        case NProto::DEVICE_ERASE_METHOD_USER_DATA_ERASE:
-            for (ui64 i = 0; i < BlockCount; i++) {
-                Blocks[i].clear();
-            }
-            return MakeFuture(NProto::TError());
+            case NProto::DEVICE_ERASE_METHOD_DEALLOCATE:
+            case NProto::DEVICE_ERASE_METHOD_ZERO_FILL:
+            case NProto::DEVICE_ERASE_METHOD_USER_DATA_ERASE:
+                for (ui64 i = 0; i < BlockCount; i++) {
+                    Blocks[i].clear();
+                }
+                return MakeFuture(NProto::TError());
 
-        case NProto::DEVICE_ERASE_METHOD_CRYPTO_ERASE:
-            return MakeFuture(MakeError(E_FAIL, "unsupported erase method"));
+            case NProto::DEVICE_ERASE_METHOD_CRYPTO_ERASE:
+                return MakeFuture(
+                    MakeError(E_FAIL, "unsupported erase method"));
 
-        case NProto::DEVICE_ERASE_METHOD_NONE:
-            return MakeFuture(NProto::TError());
+            case NProto::DEVICE_ERASE_METHOD_NONE:
+                return MakeFuture(NProto::TError());
         }
     }
 

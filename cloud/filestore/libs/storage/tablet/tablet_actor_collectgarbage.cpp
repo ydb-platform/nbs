@@ -94,30 +94,29 @@ private:
 
     bool ShouldDeleteGarbage() const
     {
-        return !RequestsInFlight
-            && !HasError(Error)
-            && (NewBlobs.size() || GarbageBlobs.size());
+        return !RequestsInFlight && !HasError(Error) &&
+               (NewBlobs.size() || GarbageBlobs.size());
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TCollectGarbageActor::TCollectGarbageActor(
-        TString logTag,
-        TActorId tablet,
-        TRequestInfoPtr requestInfo,
-        IProfileLogPtr profileLog,
-        TString fileSystemId,
-        TTabletStorageInfoPtr tabletInfo,
-        TVector<ui32> channels,
-        TVector<TPartialBlobId> newBlobs,
-        TVector<TPartialBlobId> garbageBlobs,
-        ui64 lastCollectCommitId,
-        ui64 collectCommitId,
-        ui32 recordGeneration,
-        ui32 perGenerationCounter,
-        bool cleanupWholeHistory,
-        NProto::TProfileLogRequestInfo profileLogRequest)
+    TString logTag,
+    TActorId tablet,
+    TRequestInfoPtr requestInfo,
+    IProfileLogPtr profileLog,
+    TString fileSystemId,
+    TTabletStorageInfoPtr tabletInfo,
+    TVector<ui32> channels,
+    TVector<TPartialBlobId> newBlobs,
+    TVector<TPartialBlobId> garbageBlobs,
+    ui64 lastCollectCommitId,
+    ui64 collectCommitId,
+    ui32 recordGeneration,
+    ui32 perGenerationCounter,
+    bool cleanupWholeHistory,
+    NProto::TProfileLogRequestInfo profileLogRequest)
     : LogTag(std::move(logTag))
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
@@ -185,20 +184,22 @@ void TCollectGarbageActor::CollectGarbage(const TActorContext& ctx)
     for (ui32 channel: Channels) {
         for (auto& [proxyId, req]: requests.GetRequests(channel)) {
             auto request = std::make_unique<TEvBlobStorage::TEvCollectGarbage>(
-                TabletInfo->TabletID,       // tablet
-                RecordGeneration,           // record generation
-                PerGenerationCounter,       // per generation counter
-                channel,                    // collect channel
-                true,                       // yes, collect
-                collectGen,                 // collect generation
-                collectStep,                // collect step
-                req.Keep.release(),         // keep list
-                req.DoNotKeep.release(),    // do not keep list
-                TInstant::Max(),            // deadline
-                false,                      // multi collect not allowed
-                false);                     // soft barrier
+                TabletInfo->TabletID,      // tablet
+                RecordGeneration,          // record generation
+                PerGenerationCounter,      // per generation counter
+                channel,                   // collect channel
+                true,                      // yes, collect
+                collectGen,                // collect generation
+                collectStep,               // collect step
+                req.Keep.release(),        // keep list
+                req.DoNotKeep.release(),   // do not keep list
+                TInstant::Max(),           // deadline
+                false,                     // multi collect not allowed
+                false);                    // soft barrier
 
-            LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::TABLET_WORKER,
                 "%s %s",
                 LogTag.c_str(),
                 request->Print(true).c_str());
@@ -232,17 +233,20 @@ void TCollectGarbageActor::HandleCollectGarbageResult(
 
 void TCollectGarbageActor::DeleteGarbage(const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
         "%s deleting garbage: %lu %lu",
         LogTag.c_str(),
         NewBlobs.size(),
         GarbageBlobs.size());
 
-    auto request = std::make_unique<TEvIndexTabletPrivate::TEvDeleteGarbageRequest>(
-        RequestInfo->CallContext,
-        CollectCommitId,
-        std::move(NewBlobs),
-        std::move(GarbageBlobs));
+    auto request =
+        std::make_unique<TEvIndexTabletPrivate::TEvDeleteGarbageRequest>(
+            RequestInfo->CallContext,
+            CollectCommitId,
+            std::move(NewBlobs),
+            std::move(GarbageBlobs));
 
     NCloud::Send(ctx, Tablet, std::move(request));
 }
@@ -301,7 +305,9 @@ void TCollectGarbageActor::ReplyAndDie(
 
     if (RequestInfo->Sender != Tablet) {
         // reply to caller
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvCollectGarbageResponse>(error);
+        auto response =
+            std::make_unique<TEvIndexTabletPrivate::TEvCollectGarbageResponse>(
+                error);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
 
@@ -313,8 +319,12 @@ STFUNC(TCollectGarbageActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvBlobStorage::TEvCollectGarbageResult, HandleCollectGarbageResult);
-        HFunc(TEvIndexTabletPrivate::TEvDeleteGarbageResponse, HandleDeleteGarbageResponse);
+        HFunc(
+            TEvBlobStorage::TEvCollectGarbageResult,
+            HandleCollectGarbageResult);
+        HFunc(
+            TEvIndexTabletPrivate::TEvDeleteGarbageResponse,
+            HandleDeleteGarbageResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -332,15 +342,17 @@ STFUNC(TCollectGarbageActor::StateWork)
 void TIndexTabletActor::EnqueueCollectGarbageIfNeeded(const TActorContext& ctx)
 {
     const ui64 garbageQueueSize = GetGarbageQueueSize();
-    if (garbageQueueSize < Config->GetCollectGarbageThreshold()
-            && GetStartupGcExecuted())
+    if (garbageQueueSize < Config->GetCollectGarbageThreshold() &&
+        GetStartupGcExecuted())
     {
         return;
     }
 
     if (CollectGarbageState.Enqueue()) {
         if (!CollectGarbageState.GetBackoffTimeout()) {
-            LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::TABLET,
                 "%s CollectGarbage request sent",
                 LogTag.c_str());
 
@@ -348,7 +360,9 @@ void TIndexTabletActor::EnqueueCollectGarbageIfNeeded(const TActorContext& ctx)
                 SelfId(),
                 new TEvIndexTabletPrivate::TEvCollectGarbageRequest());
         } else {
-            LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::TABLET,
                 "%s CollectGarbage request scheduled: %s",
                 LogTag.c_str(),
                 CollectGarbageState.GetBackoffTimeout().ToString().data());
@@ -379,11 +393,10 @@ void TIndexTabletActor::HandleCollectGarbage(
         msg->CallContext->FileSystemId,
         GetFileSystem().GetStorageMediaKind());
 
-    auto replyError = [&] (
-        const TActorContext& ctx,
-        auto& ev,
-        NProto::TProfileLogRequestInfo profileLogRequest,
-        const NProto::TError& error)
+    auto replyError = [&](const TActorContext& ctx,
+                          auto& ev,
+                          NProto::TProfileLogRequestInfo profileLogRequest,
+                          const NProto::TError& error)
     {
         // log request
         FinalizeProfileLogRequestInfo(
@@ -399,8 +412,8 @@ void TIndexTabletActor::HandleCollectGarbage(
             "CollectGarbage");
 
         if (ev.Sender != ctx.SelfID) {
-            auto response = std::make_unique<TEvIndexTabletPrivate::TEvCollectGarbageResponse>(
-                error);
+            auto response = std::make_unique<
+                TEvIndexTabletPrivate::TEvCollectGarbageResponse>(error);
             NCloud::Reply(ctx, ev, std::move(response));
         }
     };
@@ -435,17 +448,17 @@ void TIndexTabletActor::HandleCollectGarbage(
     // use tablet generation as record generation
     const ui32 recordGeneration = Executor()->Generation();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s CollectGarbage started (collect: %lu, new: %u, garbage: %u)",
         LogTag.c_str(),
         collectCommitId,
         static_cast<ui32>(newBlobs.size()),
         static_cast<ui32>(garbageBlobs.size()));
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     auto channels = GetChannels(EChannelDataKind::Mixed);
@@ -483,12 +496,16 @@ void TIndexTabletActor::HandleCollectGarbageCompleted(
             SetStartupGcExecuted();
         }
 
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s CollectGarbage completed",
             LogTag.c_str());
     } else {
         CollectGarbageState.Fail();
-        LOG_ERROR(ctx, TFileStoreComponents::TABLET,
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s CollectGarbage failed: %s",
             LogTag.c_str(),
             FormatError(msg->GetError()).c_str());

@@ -34,8 +34,8 @@ namespace {
 
 bool IsReadWriteRequest(EFileStoreRequest rt)
 {
-    return rt == EFileStoreRequest::WriteData
-        || rt == EFileStoreRequest::ReadData;
+    return rt == EFileStoreRequest::WriteData ||
+           rt == EFileStoreRequest::ReadData;
 }
 
 const auto REQUEST_COUNTERS_OPTIONS =
@@ -51,22 +51,19 @@ TRequestCountersPtr MakeRequestCounters(
     auto requestCounters = std::make_shared<TRequestCounters>(
         std::move(timer),
         FileStoreRequestCount,
-        [] (TRequestCounters::TRequestType t) -> const TString& {
-            return GetFileStoreRequestName(static_cast<EFileStoreRequest>(t));
-        },
-        [] (TRequestCounters::TRequestType t) {
-            return IsReadWriteRequest(static_cast<EFileStoreRequest>(t));
-        },
+        [](TRequestCounters::TRequestType t) -> const TString&
+        { return GetFileStoreRequestName(static_cast<EFileStoreRequest>(t)); },
+        [](TRequestCounters::TRequestType t)
+        { return IsReadWriteRequest(static_cast<EFileStoreRequest>(t)); },
         options,
         histogramCounterOptions,
-        TVector<TSizeInterval>{}
-    );
+        TVector<TSizeInterval>{});
     requestCounters->Register(counters);
     return requestCounters;
 }
 
 template <typename T>
-requires requires { T::RequestType; }
+    requires requires { T::RequestType; }
 TRequestCounters::TRequestType GetRequestType(const T& obj)
 {
     return static_cast<TRequestCounters::TRequestType>(obj.RequestType);
@@ -82,8 +79,8 @@ private:
 
 public:
     TRequestLogger(
-            TDuration executionTimeThreshold,
-            TDuration totalTimeThreshold)
+        TDuration executionTimeThreshold,
+        TDuration totalTimeThreshold)
         : ExecutionTimeThreshold(executionTimeThreshold)
         , TotalTimeThreshold(totalTimeThreshold)
     {}
@@ -104,12 +101,13 @@ public:
         TStringBuf message;
 
         const auto predictedTime = callContext.GetPossiblePostponeDuration();
-        const auto postponedTime = callContext.Time(EProcessingStage::Postponed);
+        const auto postponedTime =
+            callContext.Time(EProcessingStage::Postponed);
         const auto backoffTime = callContext.Time(EProcessingStage::Backoff);
         const auto executionTime = totalTime - postponedTime - backoffTime;
 
-        if (executionTime >= ExecutionTimeThreshold
-                || totalTime >= TotalTimeThreshold)
+        if (executionTime >= ExecutionTimeThreshold ||
+            totalTime >= TotalTimeThreshold)
         {
             logPriority = TLOG_WARNING;
             message = "request too slow";
@@ -121,15 +119,18 @@ public:
             message = "request completed";
         }
 
-        STORAGE_LOG(logPriority, LogHeader(callContext)
-            << " RESPONSE " << message
-            << "(total_time: " << FormatDuration(totalTime)
-            << ", execution_time: " << FormatDuration(executionTime)
-            << ", predicted_postponed_time: " << FormatDuration(predictedTime)
-            << ", postponed_time: " << FormatDuration(postponedTime)
-            << ", backoff_time: " << FormatDuration(backoffTime)
-            << ", size: " << FormatByteSize(callContext.RequestSize)
-            << ", error: " << FormatError(error) << ")");
+        STORAGE_LOG(
+            logPriority,
+            LogHeader(callContext)
+                << " RESPONSE " << message
+                << "(total_time: " << FormatDuration(totalTime)
+                << ", execution_time: " << FormatDuration(executionTime)
+                << ", predicted_postponed_time: "
+                << FormatDuration(predictedTime)
+                << ", postponed_time: " << FormatDuration(postponedTime)
+                << ", backoff_time: " << FormatDuration(backoffTime)
+                << ", size: " << FormatByteSize(callContext.RequestSize)
+                << ", error: " << FormatError(error) << ")");
     }
 
     virtual TString LogHeader(const TCallContext& callcontext) const = 0;
@@ -158,34 +159,33 @@ class TRequestStats final
 
 public:
     TRequestStats(
-            TDynamicCountersPtr counters,
-            ITimerPtr timer,
-            TDuration executionTimeThreshold,
-            TDuration totalTimeThreshold,
-            EHistogramCounterOptions histogramCounterOptions)
+        TDynamicCountersPtr counters,
+        ITimerPtr timer,
+        TDuration executionTimeThreshold,
+        TDuration totalTimeThreshold,
+        EHistogramCounterOptions histogramCounterOptions)
         : TRequestLogger(executionTimeThreshold, totalTimeThreshold)
         , RootCounters(std::move(counters))
         , TotalCounters(MakeRequestCounters(
-            timer,
-            *RootCounters,
-            REQUEST_COUNTERS_OPTIONS,
-            histogramCounterOptions))
+              timer,
+              *RootCounters,
+              REQUEST_COUNTERS_OPTIONS,
+              histogramCounterOptions))
         , SsdCounters(MakeRequestCounters(
-            timer,
-            *RootCounters->GetSubgroup("type", "ssd"),
-            REQUEST_COUNTERS_OPTIONS,
-            histogramCounterOptions))
+              timer,
+              *RootCounters->GetSubgroup("type", "ssd"),
+              REQUEST_COUNTERS_OPTIONS,
+              histogramCounterOptions))
         , HddCounters(MakeRequestCounters(
-            timer,
-            *RootCounters->GetSubgroup("type", "hdd"),
-            REQUEST_COUNTERS_OPTIONS,
-            histogramCounterOptions))
+              timer,
+              *RootCounters->GetSubgroup("type", "hdd"),
+              REQUEST_COUNTERS_OPTIONS,
+              histogramCounterOptions))
     {
         auto revisionGroup =
             RootCounters->GetSubgroup("revision", GetFullVersionString());
 
-        auto versionCounter =
-            revisionGroup->GetCounter("version", false);
+        auto versionCounter = revisionGroup->GetCounter("version", false);
         *versionCounter = 1;
 
         InitCriticalEventsCounter(RootCounters);
@@ -214,9 +214,7 @@ public:
         TCallContext& callContext,
         const NCloud::NProto::TError& error) override
     {
-        RequestCompleted(
-            callContext,
-            GetDiagnosticsErrorKind(error));
+        RequestCompleted(callContext, GetDiagnosticsErrorKind(error));
     }
 
     void RequestStarted(TLog& log, TCallContext& callContext) override
@@ -230,8 +228,7 @@ public:
         TCallContext& callContext,
         const NCloud::NProto::TError& error) override
     {
-        const auto errorKind =
-            GetDiagnosticsErrorKind(error);
+        const auto errorKind = GetDiagnosticsErrorKind(error);
         const auto requestTime = RequestCompleted(callContext, errorKind);
         LogCompleted(log, callContext, requestTime, errorKind, error);
     }
@@ -277,11 +274,12 @@ public:
             req.TotalTime,
             ECalcMaxTime::ENABLE);
         if (req.MediaKind != NProto::STORAGE_MEDIA_DEFAULT) {
-            GetCounters(req.MediaKind)->AddIncompleteStats(
-                GetRequestType(req),
-                req.ExecutionTime,
-                req.TotalTime,
-                ECalcMaxTime::ENABLE);
+            GetCounters(req.MediaKind)
+                ->AddIncompleteStats(
+                    GetRequestType(req),
+                    req.ExecutionTime,
+                    req.TotalTime,
+                    ECalcMaxTime::ENABLE);
         }
     }
 
@@ -293,8 +291,10 @@ public:
     TRequestCountersPtr GetCounters(NProto::EStorageMediaKind media) const
     {
         switch (media) {
-            case NProto::STORAGE_MEDIA_SSD: return SsdCounters;
-            default: return HddCounters;
+            case NProto::STORAGE_MEDIA_SSD:
+                return SsdCounters;
+            default:
+                return HddCounters;
         }
     }
 
@@ -313,7 +313,7 @@ private:
 
         TReadGuard g(FsLock);
         if (const auto it = FileSystems.find(ctx.FileSystemId);
-                it != FileSystems.end())
+            it != FileSystems.end())
         {
             media = it->second;
         }
@@ -328,7 +328,8 @@ private:
         const auto type = GetRequestType(callContext);
         const auto media = GetMediaKind(callContext);
         const auto startedCycles = callContext.GetRequestStartedCycles();
-        const auto postponedTime = callContext.Time(EProcessingStage::Postponed);
+        const auto postponedTime =
+            callContext.Time(EProcessingStage::Postponed);
         const auto backoffTime = callContext.Time(EProcessingStage::Backoff);
         const auto waitTime = postponedTime + backoffTime;
         if (media != NProto::STORAGE_MEDIA_DEFAULT) {
@@ -345,16 +346,18 @@ private:
         }
         BusyIdleCalc.OnRequestCompleted();
 
-        return TotalCounters->RequestCompleted(
-            type,
-            startedCycles,
-            waitTime,
-            callContext.RequestSize,
-            errorKind,
-            NCloud::NProto::EF_NONE,
-            callContext.Unaligned,
-            ECalcMaxTime::ENABLE,
-            0).Time;
+        return TotalCounters
+            ->RequestCompleted(
+                type,
+                startedCycles,
+                waitTime,
+                callContext.RequestSize,
+                errorKind,
+                NCloud::NProto::EF_NONE,
+                callContext.Unaligned,
+                ECalcMaxTime::ENABLE,
+                0)
+            .Time;
     }
 
     TString LogHeader(const TCallContext& callContext) const override
@@ -376,8 +379,8 @@ class TPostponeTimePredictorStats
 
 public:
     TPostponeTimePredictorStats(
-            TDynamicCountersPtr rootCounters,
-            ITimerPtr timer)
+        TDynamicCountersPtr rootCounters,
+        ITimerPtr timer)
         : RootCounters(std::move(rootCounters))
         , Counter(RootCounters->GetCounter(COUNTER_LABEL.data()))
         , MaxCalc(std::move(timer))
@@ -429,27 +432,27 @@ private:
 
 public:
     TFileSystemStats(
-            TString fileSystemId,
-            TString clientId,
-            TString cloudId,
-            TString folderId,
-            ITimerPtr timer,
-            TDynamicCountersPtr counters,
-            IPostponeTimePredictorPtr predictor,
-            TDuration executionTimeThreshold,
-            TDuration totalTimeThreshold,
-            EHistogramCounterOptions histogramCounterOptions)
+        TString fileSystemId,
+        TString clientId,
+        TString cloudId,
+        TString folderId,
+        ITimerPtr timer,
+        TDynamicCountersPtr counters,
+        IPostponeTimePredictorPtr predictor,
+        TDuration executionTimeThreshold,
+        TDuration totalTimeThreshold,
+        EHistogramCounterOptions histogramCounterOptions)
         : TRequestLogger{executionTimeThreshold, totalTimeThreshold}
         , FileSystemId{std::move(fileSystemId)}
         , ClientId{std::move(clientId)}
         , CloudId{std::move(cloudId)}
         , FolderId{std::move(folderId)}
         , Counters{MakeRequestCounters(
-            timer,
-            *counters,
-            REQUEST_COUNTERS_OPTIONS
-                | TRequestCounters::EOption::LazyRequestInitialization,
-            histogramCounterOptions)}
+              timer,
+              *counters,
+              REQUEST_COUNTERS_OPTIONS |
+                  TRequestCounters::EOption::LazyRequestInitialization,
+              histogramCounterOptions)}
         , Predictor{std::move(predictor)}
         , PredictorStats{counters, std::move(timer)}
     {}
@@ -482,9 +485,7 @@ public:
         TCallContext& callContext,
         const NCloud::NProto::TError& error) override
     {
-        RequestCompleted(
-            callContext,
-            GetDiagnosticsErrorKind(error));
+        RequestCompleted(callContext, GetDiagnosticsErrorKind(error));
 
         PredictionCompleted(callContext);
     }
@@ -502,8 +503,7 @@ public:
         TCallContext& callContext,
         const NCloud::NProto::TError& error) override
     {
-        const auto errorKind =
-            GetDiagnosticsErrorKind(error);
+        const auto errorKind = GetDiagnosticsErrorKind(error);
         const auto requestTime = RequestCompleted(callContext, errorKind);
         LogCompleted(log, callContext, requestTime, errorKind, error);
 
@@ -551,11 +551,13 @@ public:
         }
     }
 
-    TString GetCloudId() const {
+    TString GetCloudId() const
+    {
         return CloudId;
     }
 
-    TString GetFolderId() const {
+    TString GetFolderId() const
+    {
         return FolderId;
     }
 
@@ -566,26 +568,30 @@ private:
     {
         const auto type = GetRequestType(callContext);
         const auto startedCycles = callContext.GetRequestStartedCycles();
-        const auto postponedTime = callContext.Time(EProcessingStage::Postponed);
+        const auto postponedTime =
+            callContext.Time(EProcessingStage::Postponed);
         const auto backoffTime = callContext.Time(EProcessingStage::Backoff);
         const auto waitTime = postponedTime + backoffTime;
-        return Counters->RequestCompleted(
-            type,
-            startedCycles,
-            waitTime,
-            callContext.RequestSize,
-            errorKind,
-            NCloud::NProto::EF_NONE,
-            callContext.Unaligned,
-            ECalcMaxTime::ENABLE,
-            0).Time;
+        return Counters
+            ->RequestCompleted(
+                type,
+                startedCycles,
+                waitTime,
+                callContext.RequestSize,
+                errorKind,
+                NCloud::NProto::EF_NONE,
+                callContext.Unaligned,
+                ECalcMaxTime::ENABLE,
+                0)
+            .Time;
     }
 
     void PredictionStarted(TCallContext& callContext)
     {
         if (IsReadWriteRequest(callContext.RequestType)) {
             const auto possibleDelay = Predictor->GetPossiblePostponeDuration();
-            // TODO: Remove if condition after split RequestStats to Server and Service parts.
+            // TODO: Remove if condition after split RequestStats to Server and
+            // Service parts.
             if (possibleDelay > callContext.GetPossiblePostponeDuration()) {
                 callContext.SetPossiblePostponeDuration(possibleDelay);
             }
@@ -605,15 +611,13 @@ private:
     TString LogHeader(const TCallContext& callContext) const override
     {
         return TStringBuilder()
-            << callContext.LogString()
-            << "[c:" << ClientId << "]";
+               << callContext.LogString() << "[c:" << ClientId << "]";
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestStatsStub final
-    : public IRequestStats
+class TRequestStatsStub final: public IRequestStats
 {
 public:
     void RequestStarted(TCallContext& callContext) override
@@ -667,8 +671,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestStatsRegistry final
-    : public IRequestStatsRegistry
+class TRequestStatsRegistry final: public IRequestStatsRegistry
 {
 private:
     struct TFileSystemStatsHolder
@@ -707,18 +710,17 @@ private:
 
 public:
     TRequestStatsRegistry(
-            TString component,
-            TDiagnosticsConfigPtr diagnosticsConfig,
-            NMonitoring::TDynamicCountersPtr rootCounters,
-            ITimerPtr timer,
-            std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters)
+        TString component,
+        TDiagnosticsConfigPtr diagnosticsConfig,
+        NMonitoring::TDynamicCountersPtr rootCounters,
+        ITimerPtr timer,
+        std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters)
         : DiagnosticsConfig(std::move(diagnosticsConfig))
         , RootCounters(std::move(rootCounters))
         , Timer(std::move(timer))
         , UserCounters(std::move(userCounters))
     {
-        auto totalCounters = RootCounters
-            ->GetSubgroup("component", component);
+        auto totalCounters = RootCounters->GetSubgroup("component", component);
 
         RequestStats = std::make_shared<TRequestStats>(
             std::move(totalCounters),
@@ -727,9 +729,8 @@ public:
             DiagnosticsConfig->GetSlowTotalTimeRequestThreshold(),
             DiagnosticsConfig->GetHistogramCounterOptions());
 
-        FsCounters = RootCounters
-            ->GetSubgroup("component", component + "_fs")
-            ->GetSubgroup("host", "cluster");
+        FsCounters = RootCounters->GetSubgroup("component", component + "_fs")
+                         ->GetSubgroup("host", "cluster");
     }
 
     IRequestStatsPtr GetFileSystemStats(
@@ -738,18 +739,17 @@ public:
         const TString& cloudId,
         const TString& folderId) override
     {
-        std::pair<TString, TString> key = std::make_pair(fileSystemId, clientId);
+        std::pair<TString, TString> key =
+            std::make_pair(fileSystemId, clientId);
 
         TWriteGuard guard(Lock);
 
         auto it = StatsMap.find(key);
-        if (it == StatsMap.end())
-        {
-            auto counters = FsCounters
-                ->GetSubgroup("filesystem", fileSystemId)
-                ->GetSubgroup("client", clientId)
-                ->GetSubgroup("cloud", cloudId)
-                ->GetSubgroup("folder", folderId);
+        if (it == StatsMap.end()) {
+            auto counters = FsCounters->GetSubgroup("filesystem", fileSystemId)
+                                ->GetSubgroup("client", clientId)
+                                ->GetSubgroup("cloud", cloudId)
+                                ->GetSubgroup("folder", folderId);
 
             auto stats = CreateRequestStats(
                 fileSystemId,
@@ -788,7 +788,7 @@ public:
         Y_ENSURE(
             it != StatsMap.end(),
             "unable to find (filesystem, client) to set media kind:"
-            << " (" << fileSystemId << ", " << clientId << ")");
+                << " (" << fileSystemId << ", " << clientId << ")");
         it->second.Stats->Subscribe(RequestStats->GetCounters(media));
         RequestStats->SetFileSystemMediaKind(fileSystemId, media);
     }
@@ -799,19 +799,19 @@ public:
         const TString& cloudId,
         const TString& folderId) override
     {
-        std::pair<TString, TString> key = std::make_pair(fileSystemId, clientId);
+        std::pair<TString, TString> key =
+            std::make_pair(fileSystemId, clientId);
 
         TWriteGuard guard(Lock);
-        if (auto it = StatsMap.find(key); it != StatsMap.end() && UserCounters) {
-
+        if (auto it = StatsMap.find(key); it != StatsMap.end() && UserCounters)
+        {
             it->second.Stats->SetUserMetadata(
                 {.CloudId = cloudId, .FolderId = folderId});
 
-            auto counters = FsCounters
-                ->GetSubgroup("filesystem", fileSystemId)
-                ->GetSubgroup("client", clientId)
-                ->GetSubgroup("cloud", cloudId)
-                ->GetSubgroup("folder", folderId);
+            auto counters = FsCounters->GetSubgroup("filesystem", fileSystemId)
+                                ->GetSubgroup("client", clientId)
+                                ->GetSubgroup("cloud", cloudId)
+                                ->GetSubgroup("folder", folderId);
 
             NUserCounter::RegisterFilestore(
                 *UserCounters,
@@ -833,7 +833,8 @@ public:
         const TString& fileSystemId,
         const TString& clientId) override
     {
-        std::pair<TString, TString> key = std::make_pair(fileSystemId, clientId);
+        std::pair<TString, TString> key =
+            std::make_pair(fileSystemId, clientId);
 
         TWriteGuard guard(Lock);
         auto it = StatsMap.find(key);
@@ -877,7 +878,8 @@ public:
         const TString& cloudId,
         const TString& folderId) override
     {
-        std::pair<TString, TString> key = std::make_pair(fileSystemId, clientId);
+        std::pair<TString, TString> key =
+            std::make_pair(fileSystemId, clientId);
 
         TWriteGuard guard(Lock);
 
@@ -944,16 +946,13 @@ private:
             return;
         }
 
-        auto fsCounters = FsCounters
-            ->GetSubgroup("filesystem", fileSystemId)
-            ->GetSubgroup("client", clientId)
-            ->GetSubgroup("cloud", currentCloudId)
-            ->GetSubgroup("folder", currentFolderId);
+        auto fsCounters = FsCounters->GetSubgroup("filesystem", fileSystemId)
+                              ->GetSubgroup("client", clientId)
+                              ->GetSubgroup("cloud", currentCloudId)
+                              ->GetSubgroup("folder", currentFolderId);
 
-        FsCounters->RemoveSubgroupChain({
-            {"filesystem", fileSystemId},
-            {"client", clientId}
-        });
+        FsCounters->RemoveSubgroupChain(
+            {{"filesystem", fileSystemId}, {"client", clientId}});
 
         // GetSubgroup is used to create all neccessary subgroups
         FsCounters->GetSubgroup("filesystem", fileSystemId)
@@ -961,8 +960,7 @@ private:
             ->GetSubgroup("cloud", newCloudId)
             ->GetSubgroup("folder", newFolderId);
 
-        FsCounters
-            ->GetSubgroup("filesystem", fileSystemId)
+        FsCounters->GetSubgroup("filesystem", fileSystemId)
             ->GetSubgroup("client", clientId)
             ->GetSubgroup("cloud", newCloudId)
             ->ReplaceSubgroup("folder", newFolderId, fsCounters);
@@ -971,8 +969,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestStatsRegistryStub final
-    : public IRequestStatsRegistry
+class TRequestStatsRegistryStub final: public IRequestStatsRegistry
 {
 public:
     TRequestStatsRegistryStub() = default;

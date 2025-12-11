@@ -40,10 +40,10 @@ class TPostponeTimePredictorStats final
 
 public:
     TPostponeTimePredictorStats(
-            TDynamicCountersPtr volumeGroup,
-            ITimerPtr timer)
+        TDynamicCountersPtr volumeGroup,
+        ITimerPtr timer)
         : MaxPredictedPostponeTimeCounter(
-            volumeGroup->GetCounter("MaxPredictedPostponeTime"))
+              volumeGroup->GetCounter("MaxPredictedPostponeTime"))
         , MaxPredictedPostponeTimeCalc(std::move(timer))
     {}
 
@@ -75,9 +75,9 @@ private:
 
 public:
     TDowntimeCalculator(
-            TDiagnosticsConfigPtr diagnosticsConfig,
-            const NProto::TVolume& volume,
-            ITimerPtr timer)
+        TDiagnosticsConfigPtr diagnosticsConfig,
+        const NProto::TVolume& volume,
+        ITimerPtr timer)
         : DiagnosticsConfig(std::move(diagnosticsConfig))
         , MediaKind(volume.GetStorageMediaKind())
         , Read(timer)
@@ -141,7 +141,10 @@ private:
                 return Zero;
             }
             default: {
-                Y_DEBUG_ABORT_UNLESS(0, "Unexpected requestType %d", requestType);
+                Y_DEBUG_ABORT_UNLESS(
+                    0,
+                    "Unexpected requestType %d",
+                    requestType);
                 return Read;
             }
         }
@@ -165,11 +168,11 @@ struct TVolumeInfoBase
     TDynamicCounters::TCounterPtr HasStorageConfigPatchCounter;
 
     TVolumeInfoBase(
-            NProto::TVolume volume,
-            TDiagnosticsConfigPtr diagnosticsConfig,
-            IPostponeTimePredictorPtr postponeTimePredictor,
-            TDynamicCountersPtr volumeGroup,
-            ITimerPtr timer)
+        NProto::TVolume volume,
+        TDiagnosticsConfigPtr diagnosticsConfig,
+        IPostponeTimePredictorPtr postponeTimePredictor,
+        TDynamicCountersPtr volumeGroup,
+        ITimerPtr timer)
         : Timer(timer)
         , Volume(std::move(volume))
         , PerfCalc(Volume, diagnosticsConfig)
@@ -179,7 +182,7 @@ struct TVolumeInfoBase
         , ThrottlerRejects(timer)
         , CheckpointRejects(timer)
         , HasStorageConfigPatchCounter(
-            volumeGroup->GetCounter("HasStorageConfigPatch"))
+              volumeGroup->GetCounter("HasStorageConfigPatch"))
     {
         BusyIdleCalc.Register(volumeGroup);
         PerfCalc.Register(*volumeGroup, Volume);
@@ -201,9 +204,7 @@ public:
         , InstanceId(std::move(instanceId))
         // in case of multi mount for empty instance, centers override itself
         // to avoid it use client ID for subgroup
-        , RealInstanceId(InstanceId.empty()
-            ? ClientId
-            : InstanceId)
+        , RealInstanceId(InstanceId.empty() ? ClientId : InstanceId)
     {}
 
     const TString& GetClientId() const
@@ -232,14 +233,15 @@ struct TRealInstanceKeyHash
 
 struct TRealInstanceKeyEqual
 {
-    bool operator()(const TRealInstanceId& lhs, const TRealInstanceId& rhs) const
+    bool operator()(
+        const TRealInstanceId& lhs,
+        const TRealInstanceId& rhs) const
     {
-       return lhs.GetRealInstanceId() == rhs.GetRealInstanceId();
+        return lhs.GetRealInstanceId() == rhs.GetRealInstanceId();
     }
 };
 
-class TVolumeInfo final
-    : public IVolumeInfo
+class TVolumeInfo final: public IVolumeInfo
 {
     friend class TVolumeStats;
 
@@ -269,11 +271,11 @@ private:
 
 public:
     TVolumeInfo(
-            std::shared_ptr<TVolumeInfoBase> volumeBase,
-            ITimerPtr timer,
-            TRealInstanceId realInstanceId,
-            EHistogramCounterOptions histogramCounterOptions,
-            const TVector<TSizeInterval>& executionTimeSizeClasses)
+        std::shared_ptr<TVolumeInfoBase> volumeBase,
+        ITimerPtr timer,
+        TRealInstanceId realInstanceId,
+        EHistogramCounterOptions histogramCounterOptions,
+        const TVector<TSizeInterval>& executionTimeSizeClasses)
         : VolumeBase(std::move(volumeBase))
         , RealInstanceId(std::move(realInstanceId))
         , RequestCounters(MakeRequestCounters(
@@ -329,23 +331,26 @@ public:
             requestStarted,
             postponedTime);
 
-        if (errorKind == EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint) {
+        if (errorKind == EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint)
+        {
             VolumeBase->CheckpointRejects.Add(1);
         } else if (errorKind == EDiagnosticsErrorKind::ErrorThrottling) {
             VolumeBase->ThrottlerRejects.Add(1);
         }
 
-        return RequestCounters.RequestCompleted(
-            static_cast<TRequestCounters::TRequestType>(
-                TranslateLocalRequestType(requestType)),
-            requestStarted,
-            postponedTime,
-            requestBytes,
-            errorKind,
-            errorFlags,
-            unaligned,
-            ECalcMaxTime::ENABLE,
-            responseSent).Time;
+        return RequestCounters
+            .RequestCompleted(
+                static_cast<TRequestCounters::TRequestType>(
+                    TranslateLocalRequestType(requestType)),
+                requestStarted,
+                postponedTime,
+                requestBytes,
+                errorKind,
+                errorFlags,
+                unaligned,
+                ECalcMaxTime::ENABLE,
+                responseSent)
+            .Time;
     }
 
     void AddIncompleteStats(
@@ -368,7 +373,8 @@ public:
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags) override
     {
-        if (errorKind == EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint) {
+        if (errorKind == EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint)
+        {
             VolumeBase->CheckpointRejects.Add(1);
         } else if (errorKind == EDiagnosticsErrorKind::ErrorThrottling) {
             VolumeBase->ThrottlerRejects.Add(1);
@@ -437,8 +443,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TVolumeStats final
-    : public IVolumeStats
+class TVolumeStats final: public IVolumeStats
 {
     using TVolumeBasePtr = std::shared_ptr<TVolumeInfoBase>;
     using TVolumeInfoPtr = std::shared_ptr<TVolumeInfo>;
@@ -480,26 +485,27 @@ private:
 
     using TDownDisksCounters = std::array<
         TDynamicCounters::TCounterPtr,
-        NProto::EStorageMediaKind_ARRAYSIZE
-    >;
+        NProto::EStorageMediaKind_ARRAYSIZE>;
     TDownDisksCounters DownDisksCounters;
     TDynamicCounters::TCounterPtr TotalDownDisksCounter;
 
 public:
     TVolumeStats(
-            IMonitoringServicePtr monitoring,
-            TDuration inactiveClientsTimeout,
-            TDiagnosticsConfigPtr diagnosticsConfig,
-            EVolumeStatsType type,
-            ITimerPtr timer)
+        IMonitoringServicePtr monitoring,
+        TDuration inactiveClientsTimeout,
+        TDiagnosticsConfigPtr diagnosticsConfig,
+        EVolumeStatsType type,
+        ITimerPtr timer)
         : Monitoring(std::move(monitoring))
         , InactiveClientsTimeout(inactiveClientsTimeout)
         , DiagnosticsConfig(std::move(diagnosticsConfig))
         , Type(type)
         , Timer(std::move(timer))
-        , CloudIdsWithStrictSLA([] (const TVector<TString>& v) {
-            return THashSet<TString>(v.begin(), v.end());
-        }(DiagnosticsConfig->GetCloudIdsWithStrictSLA()))
+        , CloudIdsWithStrictSLA(
+              [](const TVector<TString>& v)
+              {
+                  return THashSet<TString>(v.begin(), v.end());
+              }(DiagnosticsConfig->GetCloudIdsWithStrictSLA()))
         , UserCounters(CreateUserCounterSupplier())
     {}
 
@@ -511,20 +517,22 @@ public:
 
         auto volumeIt = Volumes.find(volume.GetDiskId());
         if (volumeIt == Volumes.end()) {
-            volumeIt = Volumes.emplace(
-                volume.GetDiskId(),
-                RegisterVolume(volume)).first;
+            volumeIt =
+                Volumes.emplace(volume.GetDiskId(), RegisterVolume(volume))
+                    .first;
         }
 
         TVolumeMap& infos = volumeIt->second.VolumeInfos;
 
         auto instanceIt = infos.find(realInstanceId);
         if (instanceIt == infos.end()) {
-            instanceIt = infos.emplace(
-                realInstanceId,
-                RegisterInstance(
-                    volumeIt->second.VolumeBase,
-                    realInstanceId)).first;
+            instanceIt = infos
+                             .emplace(
+                                 realInstanceId,
+                                 RegisterInstance(
+                                     volumeIt->second.VolumeBase,
+                                     realInstanceId))
+                             .first;
             inserted = true;
         }
 
@@ -548,17 +556,13 @@ public:
     {
         TWriteGuard guard(Lock);
 
-        auto [itr, result] = ClientToRealInstance.try_emplace(
-            clientId,
-            clientId,
-            instanceId);
+        auto [itr, result] =
+            ClientToRealInstance.try_emplace(clientId, clientId, instanceId);
 
         return MountVolumeImpl(volume, itr->second);
     }
 
-    void UnmountVolume(
-        const TString& diskId,
-        const TString& clientId) override
+    void UnmountVolume(const TString& diskId, const TString& clientId) override
     {
         Y_UNUSED(clientId);
         Y_UNUSED(diskId);
@@ -648,29 +652,33 @@ public:
 
         const auto volumeIt = Volumes.find(diskId);
         return volumeIt != Volumes.end()
-            ? volumeIt->second.VolumeBase->Volume.GetBlockSize()
-            : DefaultBlockSize;
+                   ? volumeIt->second.VolumeBase->Volume.GetBlockSize()
+                   : DefaultBlockSize;
     }
 
     bool TrimInstance(TInstant now, TVolumeMap& infos)
     {
-        std::erase_if(infos, [this, now] (const auto& item){
-            const TVolumeInfo& info = *item.second;
-            if (info.InactivityTimeout &&
-                now - info.LastRemountTime > info.InactivityTimeout)
+        std::erase_if(
+            infos,
+            [this, now](const auto& item)
             {
-                UnregisterInstance(
-                    info.VolumeBase,
-                    info.RealInstanceId);
-                std::erase_if(ClientToRealInstance, [&info](const auto& client){
-                    return TRealInstanceKeyEqual().operator()(
-                        client.second,
-                        info.RealInstanceId);
-                });
-                return true;
-            }
-            return false;
-        });
+                const TVolumeInfo& info = *item.second;
+                if (info.InactivityTimeout &&
+                    now - info.LastRemountTime > info.InactivityTimeout)
+                {
+                    UnregisterInstance(info.VolumeBase, info.RealInstanceId);
+                    std::erase_if(
+                        ClientToRealInstance,
+                        [&info](const auto& client)
+                        {
+                            return TRealInstanceKeyEqual().operator()(
+                                client.second,
+                                info.RealInstanceId);
+                        });
+                    return true;
+                }
+                return false;
+            });
         return infos.empty();
     }
 
@@ -680,14 +688,17 @@ public:
 
         const auto now = Timer->Now();
 
-        std::erase_if(Volumes, [this, now] (auto& item) {
-            TVolumeInfoHolder& holder = item.second;
-            if (TrimInstance(now, holder.VolumeInfos)) {
-                UnregisterVolume(holder.VolumeBase);
-                return true;
-            }
-            return false;
-        });
+        std::erase_if(
+            Volumes,
+            [this, now](auto& item)
+            {
+                TVolumeInfoHolder& holder = item.second;
+                if (TrimInstance(now, holder.VolumeInfos)) {
+                    UnregisterVolume(holder.VolumeBase);
+                    return true;
+                }
+                return false;
+            });
     }
 
     void UpdateStats(bool updateIntervalFinished) override
@@ -695,7 +706,8 @@ public:
         TReadGuard guard(Lock);
 
         ui32 totalDownDisks = 0;
-        std::array<ui32, NProto::EStorageMediaKind_ARRAYSIZE> downDisksCounters{};
+        std::array<ui32, NProto::EStorageMediaKind_ARRAYSIZE>
+            downDisksCounters{};
 
         for (auto& item: Volumes) {
             TVolumeInfoHolder& holder = item.second;
@@ -705,7 +717,8 @@ public:
             volumeBase.BusyIdleCalc.OnUpdateStats();
             volumeBase.PerfCalc.UpdateStats();
 
-            const auto hasDowntime = volumeBase.DowntimeCalculator.OnUpdateStats();
+            const auto hasDowntime =
+                volumeBase.DowntimeCalculator.OnUpdateStats();
             if (hasDowntime) {
                 ++totalDownDisks;
                 ++downDisksCounters[volumeBase.Volume.GetStorageMediaKind()];
@@ -714,9 +727,8 @@ public:
             if (updateIntervalFinished) {
                 volumeBase.DowntimeHistory.PushBack(
                     Timer->Now(),
-                    hasDowntime
-                    ? EDowntimeStateChange::DOWN
-                    : EDowntimeStateChange::UP);
+                    hasDowntime ? EDowntimeStateChange::DOWN
+                                : EDowntimeStateChange::UP);
             }
 
             for (auto& [key, instance]: holder.VolumeInfos) {
@@ -728,21 +740,18 @@ public:
                     }
                 }
             }
-            if (SufferCounters &&
-                volumeBase.PerfCalc.IsSuffering())
-            {
+            if (SufferCounters && volumeBase.PerfCalc.IsSuffering()) {
                 SufferCounters->OnDiskSuffer(
                     volumeBase.Volume.GetStorageMediaKind());
             }
-            if (SmoothSufferCounters &&
-                volumeBase.PerfCalc.IsSufferingSmooth())
+            if (SmoothSufferCounters && volumeBase.PerfCalc.IsSufferingSmooth())
             {
                 SmoothSufferCounters->OnDiskSuffer(
                     volumeBase.Volume.GetStorageMediaKind());
 
                 const auto& cloudId = volumeBase.Volume.GetCloudId();
-                if (StrictSLASufferCounters
-                        && CloudIdsWithStrictSLA.contains(cloudId))
+                if (StrictSLASufferCounters &&
+                    CloudIdsWithStrictSLA.contains(cloudId))
                 {
                     StrictSLASufferCounters->OnDiskSuffer(
                         volumeBase.Volume.GetStorageMediaKind());
@@ -835,9 +844,7 @@ private:
     {
         // in case of multi mount for empty instance, centers override itself
         // to avoid it use client ID for subgroup
-        return instanceId.empty()
-            ? clientId
-            : instanceId;
+        return instanceId.empty() ? clientId : instanceId;
     }
 
     TVolumeInfoHolder RegisterVolume(NProto::TVolume volume)
@@ -881,9 +888,8 @@ private:
 
         const NProto::TVolume& volumeConfig = volumeBase->Volume;
 
-        auto volumeGroup = Counters->GetSubgroup(
-            "volume",
-            volumeConfig.GetDiskId());
+        auto volumeGroup =
+            Counters->GetSubgroup("volume", volumeConfig.GetDiskId());
         auto countersGroup =
             volumeGroup
                 ->GetSubgroup("instance", realInstanceId.GetRealInstanceId())
@@ -917,8 +923,8 @@ private:
             InitCounters();
         }
 
-        Counters->GetSubgroup("volume", volumeBase->Volume.GetDiskId())->
-            RemoveSubgroup("instance", realInstanceId.GetRealInstanceId());
+        Counters->GetSubgroup("volume", volumeBase->Volume.GetDiskId())
+            ->RemoveSubgroup("instance", realInstanceId.GetRealInstanceId());
 
         NUserCounter::UnregisterServerVolumeInstance(
             *UserCounters,
@@ -968,8 +974,10 @@ private:
                 while (mk < NProto::EStorageMediaKind_ARRAYSIZE) {
                     DownDisksCounters[mk] =
                         Counters->GetSubgroup("component", "server")
-                            ->GetSubgroup("type", MediaKindToStatsString(
-                                static_cast<NProto::EStorageMediaKind>(mk)))
+                            ->GetSubgroup(
+                                "type",
+                                MediaKindToStatsString(
+                                    static_cast<NProto::EStorageMediaKind>(mk)))
                             ->GetCounter("DownDisks");
                     ++mk;
                 }
@@ -989,8 +997,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TVolumeStatsStub final
-    : public IVolumeStats
+struct TVolumeStatsStub final: public IVolumeStats
 {
     bool MountVolume(
         const NProto::TVolume& volume,
@@ -1004,9 +1011,7 @@ struct TVolumeStatsStub final
         return true;
     }
 
-    void UnmountVolume(
-        const TString& diskId,
-        const TString& clientId) override
+    void UnmountVolume(const TString& diskId, const TString& clientId) override
     {
         Y_UNUSED(clientId);
         Y_UNUSED(diskId);
@@ -1048,8 +1053,7 @@ struct TVolumeStatsStub final
     }
 
     void TrimVolumes() override
-    {
-    }
+    {}
 
     void UpdateStats(bool updateIntervalFinished) override
     {
@@ -1072,7 +1076,6 @@ struct TVolumeStatsStub final
         Y_UNUSED(diskId);
         return {};
     }
-
 };
 
 }   // namespace
@@ -1109,7 +1112,6 @@ IVolumeStatsPtr CreateVolumeStats(
         type,
         std::move(timer));
 }
-
 
 IVolumeStatsPtr CreateVolumeStatsStub()
 {

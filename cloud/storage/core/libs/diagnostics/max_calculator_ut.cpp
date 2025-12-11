@@ -21,16 +21,12 @@ Y_UNIT_TEST_SUITE(TMaxCalculatorTest)
 
         for (size_t i = 1; i <= DEFAULT_BUCKET_COUNT; ++i) {
             calculator.Add(value);
-            UNIT_ASSERT_VALUES_EQUAL(
-                value,
-                calculator.NextValue());
+            UNIT_ASSERT_VALUES_EQUAL(value, calculator.NextValue());
         }
 
         for (size_t i = 1; i < DEFAULT_BUCKET_COUNT; ++i) {
             calculator.Add(value - i);
-            UNIT_ASSERT_VALUES_EQUAL(
-                value,
-                calculator.NextValue());
+            UNIT_ASSERT_VALUES_EQUAL(value, calculator.NextValue());
         }
 
         for (size_t i = value - DEFAULT_BUCKET_COUNT; i > 0; --i) {
@@ -57,9 +53,7 @@ Y_UNIT_TEST_SUITE(TMaxCalculatorTest)
             for (size_t j = 0; j < i; ++j) {
                 calculator.Add(value);
             }
-            UNIT_ASSERT_VALUES_EQUAL(
-                value * i,
-                calculator.NextValue());
+            UNIT_ASSERT_VALUES_EQUAL(value * i, calculator.NextValue());
             timer->AdvanceTime(TDuration::Seconds(1));
         }
 
@@ -72,9 +66,7 @@ Y_UNIT_TEST_SUITE(TMaxCalculatorTest)
         }
 
         calculator.Add(0);
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            calculator.NextValue());
+        UNIT_ASSERT_VALUES_EQUAL(1, calculator.NextValue());
     }
 
     Y_UNIT_TEST(ShouldRoundUpValues)

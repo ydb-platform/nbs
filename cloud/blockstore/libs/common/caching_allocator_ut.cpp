@@ -10,9 +10,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 DefaultPageSize = 4*1024*1024;
+constexpr ui32 DefaultPageSize = 4 * 1024 * 1024;
 constexpr ui32 DefaultPageCount = 256;
-constexpr ui32 DefaultPageDropSize = 512*1024;
+constexpr ui32 DefaultPageDropSize = 512 * 1024;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -64,7 +64,9 @@ Y_UNIT_TEST_SUITE(TCachingAllocatorTest)
         UNIT_ASSERT(b.Data);
         UNIT_ASSERT(!b.Node);
         UNIT_ASSERT_VALUES_EQUAL(b.Len, DefaultPageSize + 1);
-        UNIT_ASSERT_VALUES_EQUAL(upstream.GetBytesAllocated(), DefaultPageSize + 1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            upstream.GetBytesAllocated(),
+            DefaultPageSize + 1);
 
         allocator->Release(b);
         UNIT_ASSERT_VALUES_EQUAL(upstream.GetBytesAllocated(), 0);

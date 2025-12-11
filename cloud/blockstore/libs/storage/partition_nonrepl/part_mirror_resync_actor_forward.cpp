@@ -35,24 +35,25 @@ void TMirrorPartitionResyncActor::ForwardRequest(
     const typename TMethod::TRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    auto replyError = [&] (ui32 errorCode, TString errorMessage)
+    auto replyError = [&](ui32 errorCode, TString errorMessage)
     {
         auto response = std::make_unique<typename TMethod::TResponse>(
             MakeError(errorCode, std::move(errorMessage)));
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
-    const auto range = BuildRequestBlockRange(
-        *ev->Get(),
-        PartConfig->GetBlockSize());
+    const auto range =
+        BuildRequestBlockRange(*ev->Get(), PartConfig->GetBlockSize());
 
     for (const auto activeRangeId: State.GetActiveResyncRangeSet()) {
         const auto resyncRange =
             RangeId2BlockRange(activeRangeId, PartConfig->GetBlockSize());
         if (range.Overlaps(resyncRange)) {
-            replyError(E_REJECTED, TStringBuilder()
-                << "Request " << TMethod::Name
-                << " intersects with currently resyncing range");
+            replyError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Request " << TMethod::Name
+                    << " intersects with currently resyncing range");
             return;
         }
     }

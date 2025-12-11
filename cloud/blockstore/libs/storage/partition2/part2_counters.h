@@ -16,29 +16,29 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, ...)                           \
-    xxx(RequestsCount,                  __VA_ARGS__)                           \
-    xxx(BlocksCount,                    __VA_ARGS__)                           \
-    xxx(ExecTime,                       __VA_ARGS__)                           \
-    xxx(WaitTime,                       __VA_ARGS__)                           \
-// BLOCKSTORE_PARTITION2_IO_COUNTERS_
+#define BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, ...) \
+    xxx(RequestsCount, __VA_ARGS__)                  \
+    xxx(BlocksCount, __VA_ARGS__)                    \
+    xxx(ExecTime, __VA_ARGS__)                       \
+    xxx(WaitTime, __VA_ARGS__)                       \
+    // BLOCKSTORE_PARTITION2_IO_COUNTERS_
 
-#define BLOCKSTORE_PARTITION2_IO_COUNTERS(xxx)                                 \
-    BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, UserRead)                          \
-    BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, UserWrite)                         \
-    BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, SysRead)                           \
-    BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, SysWrite)                          \
-// BLOCKSTORE_PARTITION2_IO_COUNTERS
+#define BLOCKSTORE_PARTITION2_IO_COUNTERS(xxx)         \
+    BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, UserRead)  \
+    BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, UserWrite) \
+    BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, SysRead)   \
+    BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, SysWrite)  \
+    // BLOCKSTORE_PARTITION2_IO_COUNTERS
 
-#define BLOCKSTORE_PARTITION2_SIMPLE_COUNTERS(xxx)                             \
-// BLOCKSTORE_PARTITION2_SIMPLE_COUNTERS
+#define BLOCKSTORE_PARTITION2_SIMPLE_COUNTERS(xxx) \
+    // BLOCKSTORE_PARTITION2_SIMPLE_COUNTERS
 
-#define BLOCKSTORE_PARTITION2_CUMULATIVE_COUNTERS(xxx)                         \
-    BLOCKSTORE_PARTITION2_IO_COUNTERS(xxx)                                     \
-// BLOCKSTORE_PARTITION2_CUMULATIVE_COUNTERS
+#define BLOCKSTORE_PARTITION2_CUMULATIVE_COUNTERS(xxx) \
+    BLOCKSTORE_PARTITION2_IO_COUNTERS(xxx)             \
+    // BLOCKSTORE_PARTITION2_CUMULATIVE_COUNTERS
 
-#define BLOCKSTORE_PARTITION2_PERCENTILE_COUNTERS(xxx)                         \
-// BLOCKSTORE_PARTITION2_PERCENTILE_COUNTERS
+#define BLOCKSTORE_PARTITION2_PERCENTILE_COUNTERS(xxx) \
+    // BLOCKSTORE_PARTITION2_PERCENTILE_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -82,10 +82,9 @@ struct TPartitionCounters
 
     enum ETransactionType
     {
-#define BLOCKSTORE_TRANSACTION_TYPE(name, ...)      TX_##name,
+#define BLOCKSTORE_TRANSACTION_TYPE(name, ...) TX_##name,
 
-        BLOCKSTORE_PARTITION2_TRANSACTIONS(BLOCKSTORE_TRANSACTION_TYPE)
-        TX_SIZE
+        BLOCKSTORE_PARTITION2_TRANSACTIONS(BLOCKSTORE_TRANSACTION_TYPE) TX_SIZE
 
 #undef BLOCKSTORE_TRANSACTION_TYPE
     };
@@ -97,6 +96,8 @@ struct TPartitionCounters
 std::unique_ptr<NKikimr::TTabletCountersWithTxTypes> CreatePartitionCounters();
 
 template <typename TCounters>
-void UpdatePartitionCounters(TCounters& dst, const NProto::TPartitionStats& src);
+void UpdatePartitionCounters(
+    TCounters& dst,
+    const NProto::TPartitionStats& src);
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

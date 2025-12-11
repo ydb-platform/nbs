@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -14,8 +15,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDestroyPlacementGroupCommand final
-    : public TCommand
+class TDestroyPlacementGroupCommand final: public TCommand
 {
 private:
     TString GroupId;
@@ -40,7 +40,8 @@ protected:
         auto& output = GetOutputStream();
 
         STORAGE_DEBUG("Reading DestroyPlacementGroup request");
-        auto request = std::make_shared<NProto::TDestroyPlacementGroupRequest>();
+        auto request =
+            std::make_shared<NProto::TDestroyPlacementGroupRequest>();
         if (Proto) {
             ParseFromTextFormat(input, *request);
         } else {
@@ -71,7 +72,8 @@ protected:
 private:
     bool CheckOpts() const
     {
-        const auto* groupId = ParseResultPtr->FindLongOptParseResult("group-id");
+        const auto* groupId =
+            ParseResultPtr->FindLongOptParseResult("group-id");
         if (!groupId) {
             STORAGE_ERROR("Group id is required");
             return false;
@@ -81,7 +83,7 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

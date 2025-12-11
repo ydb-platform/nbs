@@ -14,23 +14,18 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
         constexpr ui64 commitId = 1234;
         constexpr bool isStoredInDb = false;
 
-        for (const ui32 blockSize: { 4096, 4096 * 4, 4096 * 16 }) {
+        for (const ui32 blockSize: {4096, 4096 * 4, 4096 * 16}) {
             const auto buffers = GetBuffers(blockSize);
             const auto blockRanges = GetBlockRanges();
             const auto blockIndices = GetBlockIndices(blockRanges);
             const auto holders = GetHolders(buffers);
 
-            const auto blobContent = BuildWriteFreshBlocksBlobContent(
-                blockRanges,
-                holders
-            );
+            const auto blobContent =
+                BuildWriteFreshBlocksBlobContent(blockRanges, holders);
 
             TVector<TOwningFreshBlock> result;
-            auto error = ParseFreshBlobContent(
-                commitId,
-                blockSize,
-                blobContent,
-                result);
+            auto error =
+                ParseFreshBlobContent(commitId, blockSize, blobContent, result);
 
             UNIT_ASSERT(SUCCEEDED(error.GetCode()));
             UNIT_ASSERT_VALUES_EQUAL(15, result.size());
@@ -65,16 +60,12 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
         constexpr bool isStoredInDb = false;
         constexpr ui32 blockSize = 4;
 
-        const TString blobContent = BuildZeroFreshBlocksBlobContent(
-            ZeroFreshBlocksRange
-        );
+        const TString blobContent =
+            BuildZeroFreshBlocksBlobContent(ZeroFreshBlocksRange);
 
         TVector<TOwningFreshBlock> result;
-        auto error = ParseFreshBlobContent(
-            commitId,
-            blockSize,
-            blobContent,
-            result);
+        auto error =
+            ParseFreshBlobContent(commitId, blockSize, blobContent, result);
 
         UNIT_ASSERT(SUCCEEDED(error.GetCode()));
         UNIT_ASSERT_VALUES_EQUAL(5, result.size());
@@ -103,11 +94,8 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
         auto oldBlobContent = NResource::Find("fresh_write.blob");
 
         TVector<TOwningFreshBlock> result;
-        auto error = ParseFreshBlobContent(
-            commitId,
-            blockSize,
-            oldBlobContent,
-            result);
+        auto error =
+            ParseFreshBlobContent(commitId, blockSize, oldBlobContent, result);
 
         UNIT_ASSERT(SUCCEEDED(error.GetCode()));
         UNIT_ASSERT_VALUES_EQUAL(15, result.size());
@@ -134,9 +122,8 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
             ++blockIndex;
         }
 
-        auto newBlobContent = BuildWriteFreshBlocksBlobContent(
-            blockRanges,
-            holders);
+        auto newBlobContent =
+            BuildWriteFreshBlocksBlobContent(blockRanges, holders);
 
         UNIT_ASSERT_VALUES_EQUAL(oldBlobContent.size(), newBlobContent.size());
         for (size_t i = 0; i < oldBlobContent.size(); ++i) {
@@ -153,11 +140,8 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
         auto oldBlobContent = NResource::Find("fresh_zero.blob");
 
         TVector<TOwningFreshBlock> result;
-        auto error = ParseFreshBlobContent(
-            commitId,
-            blockSize,
-            oldBlobContent,
-            result);
+        auto error =
+            ParseFreshBlobContent(commitId, blockSize, oldBlobContent, result);
 
         UNIT_ASSERT(SUCCEEDED(error.GetCode()));
         UNIT_ASSERT_VALUES_EQUAL(5, result.size());
@@ -171,9 +155,8 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
             UNIT_ASSERT_VALUES_EQUAL(isStoredInDb, block.IsStoredInDb);
         }
 
-        auto newBlobContent = BuildZeroFreshBlocksBlobContent(
-            ZeroFreshBlocksRange
-        );
+        auto newBlobContent =
+            BuildZeroFreshBlocksBlobContent(ZeroFreshBlocksRange);
 
         UNIT_ASSERT_VALUES_EQUAL(oldBlobContent.size(), newBlobContent.size());
         for (size_t i = 0; i < oldBlobContent.size(); ++i) {

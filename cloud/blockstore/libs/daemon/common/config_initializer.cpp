@@ -1,4 +1,5 @@
 #include "config_initializer.h"
+
 #include "options.h"
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
@@ -110,8 +111,7 @@ void TConfigInitializerCommon::InitRdmaConfig()
         }
     }
 
-    RdmaConfig =
-        std::make_shared<NRdma::TRdmaConfig>(rdmaConfig);
+    RdmaConfig = std::make_shared<NRdma::TRdmaConfig>(rdmaConfig);
 }
 
 void TConfigInitializerCommon::InitCellsConfig()
@@ -133,8 +133,8 @@ void TConfigInitializerCommon::InitDiskRegistryProxyConfig()
         ParseProtoTextFromFileRobust(Options->DiskRegistryProxyConfig, config);
     }
 
-    DiskRegistryProxyConfig = std::make_shared<NStorage::TDiskRegistryProxyConfig>(
-        std::move(config));
+    DiskRegistryProxyConfig =
+        std::make_shared<NStorage::TDiskRegistryProxyConfig>(std::move(config));
 }
 
 void TConfigInitializerCommon::InitServerConfig()
@@ -172,8 +172,9 @@ std::optional<NJson::TJsonValue> TConfigInitializerCommon::ReadJsonFile(
         TFileInput in(filename);
         return NJson::ReadJsonTree(&in, true);
     } catch (...) {
-        STORAGE_ERROR("Failed to read file: " << filename.Quote()
-            << " with error: " << CurrentExceptionMessage().c_str());
+        STORAGE_ERROR(
+            "Failed to read file: " << filename.Quote() << " with error: "
+                                    << CurrentExceptionMessage().c_str());
         return {};
     }
 }
@@ -186,11 +187,13 @@ void TConfigInitializerCommon::InitHostPerformanceProfile()
 
     if (auto json = ReadJsonFile(tc.GetInfraThrottlingConfigPath())) {
         try {
-            if (auto* value = json->GetValueByPath("interfaces.[0].eth0.speed")) {
+            if (auto* value = json->GetValueByPath("interfaces.[0].eth0.speed"))
+            {
                 networkThroughput = FromString<ui64>(value->GetStringSafe());
             }
         } catch (...) {
-            STORAGE_ERROR("Failed to read NetworkMbitThroughput. Error: "
+            STORAGE_ERROR(
+                "Failed to read NetworkMbitThroughput. Error: "
                 << CurrentExceptionMessage().c_str());
         }
 
@@ -199,7 +202,8 @@ void TConfigInitializerCommon::InitHostPerformanceProfile()
                 hostCpuCount = value->GetUIntegerSafe();
             }
         } catch (...) {
-            STORAGE_ERROR("Failed to read HostCpuCount. Error: "
+            STORAGE_ERROR(
+                "Failed to read HostCpuCount. Error: "
                 << CurrentExceptionMessage().c_str());
         }
     }
@@ -226,7 +230,8 @@ void TConfigInitializerCommon::SetupDiscoveryPorts(
     }
 
     if (!discoveryConfig.GetConductorSecureInstancePort()) {
-        discoveryConfig.SetConductorSecureInstancePort(ServerConfig->GetSecurePort());
+        discoveryConfig.SetConductorSecureInstancePort(
+            ServerConfig->GetSecurePort());
     }
 }
 

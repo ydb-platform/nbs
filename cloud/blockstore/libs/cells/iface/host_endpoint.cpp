@@ -21,9 +21,9 @@ TString TCellHostEndpoint::BuildLogTag(
     const NClient::TClientAppConfigPtr& clientConfig,
     const TString& fqdn)
 {
-    return TStringBuilder() << "[h:" << fqdn << "]"
-                            << "[i:" << clientConfig->GetInstanceId() << "]"
-                            << "[c:" << clientConfig->GetClientId() << "]";
+    return TStringBuilder()
+           << "[h:" << fqdn << "]" << "[i:" << clientConfig->GetInstanceId()
+           << "]" << "[c:" << clientConfig->GetClientId() << "]";
 }
 
 }   // namespace NCloud::NBlockStore::NCells

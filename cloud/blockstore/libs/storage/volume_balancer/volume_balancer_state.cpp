@@ -34,8 +34,7 @@ void TVolumeBalancerState::UpdateVolumeStats(
 {
     CpuLack = cpuLack;
 
-    bool emergencyCpu =
-        cpuLack >= StorageConfig->GetCpuLackThreshold();
+    bool emergencyCpu = cpuLack >= StorageConfig->GetCpuLackThreshold();
 
     THashSet<TString> knownDisks;
     for (const auto& d: Volumes) {
@@ -43,7 +42,11 @@ void TVolumeBalancerState::UpdateVolumeStats(
     }
 
     for (auto& v: stats) {
-        auto it = Volumes.emplace(v.GetDiskId(), TVolumeInfo(StorageConfig->GetInitialPullDelay())).first;
+        auto it = Volumes
+                      .emplace(
+                          v.GetDiskId(),
+                          TVolumeInfo(StorageConfig->GetInitialPullDelay()))
+                      .first;
 
         auto& info = it->second;
 
@@ -94,25 +97,34 @@ TString TVolumeBalancerState::GetVolumeToPull() const
 
 void TVolumeBalancerState::RenderLocalVolumes(TStringStream& out) const
 {
-    HTML(out) {
-        TABLE_SORTABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Volume"; }
-                    TABLEH() { out << "Preemption allowed"; }
-                    TABLEH() { out << "Suffer Count"; }
+    HTML (out) {
+        TABLE_SORTABLE_CLASS("table table-bordered")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Volume";
+                    }
+                    TABLEH () {
+                        out << "Preemption allowed";
+                    }
+                    TABLEH () {
+                        out << "Suffer Count";
+                    }
                 }
             }
             for (const auto& v: Volumes) {
                 if (v.second.IsLocal) {
-                    TABLER() {
-                        TABLED() { out << v.first; }
-                        TABLED() {
+                    TABLER () {
+                        TABLED () {
+                            out << v.first;
+                        }
+                        TABLED () {
                             const bool enabled =
                                 IsVolumePreemptible(v.first, v.second);
                             out << (enabled ? "Yes" : "No");
                         }
-                        TABLED() {
+                        TABLED () {
                             out << v.second.SufferCount;
                         }
                     }
@@ -126,24 +138,37 @@ void TVolumeBalancerState::RenderPreemptedVolumes(
     TStringStream& out,
     TInstant now) const
 {
-    HTML(out) {
-        TABLE_SORTABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Volume"; }
-                    TABLEH() { out << "Next pull delay timeout"; }
-                    TABLEH() { out << "Estimated time to pull back"; }
+    HTML (out) {
+        TABLE_SORTABLE_CLASS("table table-bordered")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Volume";
+                    }
+                    TABLEH () {
+                        out << "Next pull delay timeout";
+                    }
+                    TABLEH () {
+                        out << "Estimated time to pull back";
+                    }
                 }
             }
             for (const auto& v: Volumes) {
                 if (!v.second.IsLocal) {
-                    auto cls = (v.second.NextPullAttempt <= now)
-                        ? "success"
-                        : "danger";
-                    TABLER_CLASS(cls) {
-                        TABLED() { out << v.first; }
-                        TABLED() { out << v.second.PullInterval; }
-                        TABLED() { out << v.second.NextPullAttempt; }
+                    auto cls = (v.second.NextPullAttempt <= now) ? "success"
+                                                                 : "danger";
+                    TABLER_CLASS(cls)
+                    {
+                        TABLED () {
+                            out << v.first;
+                        }
+                        TABLED () {
+                            out << v.second.PullInterval;
+                        }
+                        TABLED () {
+                            out << v.second.NextPullAttempt;
+                        }
                     }
                 }
             }
@@ -153,23 +178,34 @@ void TVolumeBalancerState::RenderPreemptedVolumes(
 
 void TVolumeBalancerState::RenderConfig(TStringStream& out) const
 {
-    HTML(out) {
-        TABLE_SORTABLE_CLASS("table table-condensed") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLED() { out << "Volume preemption type"; }
-                    TABLED() {
+    HTML (out) {
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLED () {
+                        out << "Volume preemption type";
+                    }
+                    TABLED () {
                         out << EVolumePreemptionType_Name(
                             StorageConfig->GetVolumePreemptionType());
                     }
                 }
-                TABLER() {
-                    TABLED() { out << "CpuLackThreshold"; }
-                    TABLED() { out << StorageConfig->GetCpuLackThreshold(); }
+                TABLER () {
+                    TABLED () {
+                        out << "CpuLackThreshold";
+                    }
+                    TABLED () {
+                        out << StorageConfig->GetCpuLackThreshold();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "Initial pull delay"; }
-                    TABLED() { out << StorageConfig->GetInitialPullDelay(); }
+                TABLER () {
+                    TABLED () {
+                        out << "Initial pull delay";
+                    }
+                    TABLED () {
+                        out << StorageConfig->GetInitialPullDelay();
+                    }
                 }
             }
         }
@@ -178,16 +214,25 @@ void TVolumeBalancerState::RenderConfig(TStringStream& out) const
 
 void TVolumeBalancerState::RenderState(TStringStream& out) const
 {
-    HTML(out) {
-        TABLE_SORTABLE_CLASS("table table-condensed") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLED() { out << "Enabled"; }
-                    TABLED() { out << ToString(IsEnabled); }
+    HTML (out) {
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLED () {
+                        out << "Enabled";
+                    }
+                    TABLED () {
+                        out << ToString(IsEnabled);
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "CPUs needed"; }
-                    TABLED() { out << CpuLack; }
+                TABLER () {
+                    TABLED () {
+                        out << "CPUs needed";
+                    }
+                    TABLED () {
+                        out << CpuLack;
+                    }
                 }
             }
         }
@@ -196,17 +241,25 @@ void TVolumeBalancerState::RenderState(TStringStream& out) const
 
 void TVolumeBalancerState::RenderHtml(TStringStream& out, TInstant now) const
 {
-    HTML(out) {
-        TAG(TH3) { out << "State"; }
+    HTML (out) {
+        TAG (TH3) {
+            out << "State";
+        }
         RenderState(out);
 
-        TAG(TH3) { out << "Config"; }
+        TAG (TH3) {
+            out << "Config";
+        }
         RenderConfig(out);
 
-        TAG(TH3) { out << "Local Volumes"; }
+        TAG (TH3) {
+            out << "Local Volumes";
+        }
         RenderLocalVolumes(out);
 
-        TAG(TH3) { out << "Preempted Volumes"; }
+        TAG (TH3) {
+            out << "Preempted Volumes";
+        }
         RenderPreemptedVolumes(out, now);
     }
 }
@@ -216,7 +269,7 @@ void TVolumeBalancerState::RenderHtml(TStringStream& out, TInstant now) const
 void TVolumeBalancerState::UpdateVolumeToPush()
 {
     const bool moveMostHeavy = StorageConfig->GetVolumePreemptionType() ==
-        NProto::PREEMPTION_MOVE_MOST_HEAVY;
+                               NProto::PREEMPTION_MOVE_MOST_HEAVY;
 
     VolumeToPush = {};
 
@@ -246,7 +299,8 @@ void TVolumeBalancerState::UpdateVolumeToPull(TInstant now)
 
     for (const auto& v: Volumes) {
         if (!v.second.IsLocal &&
-            v.second.PreemptionSource == NProto::EPreemptionSource::SOURCE_BALANCER &&
+            v.second.PreemptionSource ==
+                NProto::EPreemptionSource::SOURCE_BALANCER &&
             v.second.NextPullAttempt <= now &&
             !VolumesInProgress.count(v.first))
         {
@@ -254,17 +308,17 @@ void TVolumeBalancerState::UpdateVolumeToPull(TInstant now)
             return;
         }
     }
-
 }
 
 bool TVolumeBalancerState::IsVolumePreemptible(
     const TString& diskId,
     const TVolumeInfo& volume) const
 {
-    const bool isFeatureEnabledForFolder = StorageConfig->IsBalancerFeatureEnabled(
-        volume.CloudId,
-        volume.FolderId,
-        diskId);
+    const bool isFeatureEnabledForFolder =
+        StorageConfig->IsBalancerFeatureEnabled(
+            volume.CloudId,
+            volume.FolderId,
+            diskId);
 
     const bool balancerEnabled = isFeatureEnabledForFolder || GetEnabled();
 
@@ -275,10 +329,8 @@ bool TVolumeBalancerState::IsVolumePreemptible(
         (volume.MediaKind != NProto::STORAGE_MEDIA_DEFAULT) &&
         !IsDiskRegistryMediaKind(volume.MediaKind);
 
-    return volume.IsLocal &&
-        balancerEnabled &&
-        isSuitableMediaKind &&
-        !VolumesInProgress.count(diskId);
+    return volume.IsLocal && balancerEnabled && isSuitableMediaKind &&
+           !VolumesInProgress.count(diskId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

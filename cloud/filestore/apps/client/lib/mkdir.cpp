@@ -11,8 +11,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMkDirCommand final
-    : public TFileStoreCommand
+class TMkDirCommand final: public TFileStoreCommand
 {
 private:
     TString Path;
@@ -36,15 +35,15 @@ public:
         auto sessionGuard = CreateSession();
         auto& session = sessionGuard.AccessSession();
 
-        auto makeDir = [&] (ui64 nodeId, TStringBuf name) {
+        auto makeDir = [&](ui64 nodeId, TStringBuf name)
+        {
             auto request = CreateRequest<NProto::TCreateNodeRequest>();
             request->SetNodeId(nodeId);
             request->SetName(ToString(name));
             request->MutableDirectory()->SetMode(MODE0777);
 
-            auto response = WaitFor(session.CreateNode(
-                PrepareCallContext(),
-                std::move(request)));
+            auto response = WaitFor(
+                session.CreateNode(PrepareCallContext(), std::move(request)));
 
             CheckResponse(response);
 
@@ -72,15 +71,13 @@ public:
 
         Y_ENSURE(
             resolved.back().Node.GetType() == NProto::E_INVALID_NODE,
-            "target node already exists"
-        );
+            "target node already exists");
 
         const auto& parent = resolved[resolved.size() - 2];
 
         Y_ENSURE(
             parent.Node.GetType() == NProto::E_DIRECTORY_NODE,
-            TStringBuilder() << "target parent is not a directory"
-        );
+            TStringBuilder() << "target parent is not a directory");
 
         makeDir(parent.Node.GetId(), resolved.back().Name);
 

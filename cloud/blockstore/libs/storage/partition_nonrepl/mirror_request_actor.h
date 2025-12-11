@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+
 #include <cloud/storage/core/protos/error.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -81,12 +82,12 @@ private:
 
 template <typename TMethod>
 TMirrorRequestActor<TMethod>::TMirrorRequestActor(
-        TRequestInfoPtr requestInfo,
-        TVector<NActors::TActorId> replicas,
-        typename TMethod::TRequest::ProtoRecordType request,
-        TString diskId,
-        NActors::TActorId parentActorId,
-        ui64 nonreplicatedRequestCounter)
+    TRequestInfoPtr requestInfo,
+    TVector<NActors::TActorId> replicas,
+    typename TMethod::TRequest::ProtoRecordType request,
+    TString diskId,
+    NActors::TActorId parentActorId,
+    ui64 nonreplicatedRequestCounter)
     : RequestInfo(std::move(requestInfo))
     , Replicas(std::move(replicas))
     , Request(std::move(request))
@@ -114,7 +115,8 @@ void TMirrorRequestActor<TMethod>::Bootstrap(const NActors::TActorContext& ctx)
 }
 
 template <typename TMethod>
-void TMirrorRequestActor<TMethod>::SendRequests(const NActors::TActorContext& ctx)
+void TMirrorRequestActor<TMethod>::SendRequests(
+    const NActors::TActorContext& ctx)
 {
     for (const auto& actorId: Replicas) {
         auto request = std::make_unique<typename TMethod::TRequest>();
@@ -191,7 +193,9 @@ void TMirrorRequestActor<TMethod>::HandleUndelivery(
 {
     Y_UNUSED(ev);
 
-    LOG_WARN(ctx, TBlockStoreComponents::PARTITION_WORKER,
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
         "[%s] %s request undelivered to some nonrepl partitions",
         DiskId.c_str(),
         TMethod::Name);
@@ -216,7 +220,9 @@ void TMirrorRequestActor<TMethod>::HandleResponse(
     auto* msg = ev->Get();
 
     if (HasError(msg->Record)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::PARTITION_WORKER,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION_WORKER,
             "[%s] %s got error from nonreplicated partition: %s",
             DiskId.c_str(),
             TMethod::Name,

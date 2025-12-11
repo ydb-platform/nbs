@@ -33,18 +33,13 @@ void TIndexTabletActor::HandleReadLink(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TReadLinkMethod>(*requestInfo);
 
-    ExecuteTx<TReadLink>(
-        ctx,
-        std::move(requestInfo),
-        msg->Record);
+    ExecuteTx<TReadLink>(ctx, std::move(requestInfo), msg->Record);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -55,10 +50,8 @@ bool TIndexTabletActor::ValidateTx_ReadLink(
 {
     Y_UNUSED(ctx);
 
-    auto* session = FindSession(
-        args.ClientId,
-        args.SessionId,
-        args.SessionSeqNo);
+    auto* session =
+        FindSession(args.ClientId, args.SessionId, args.SessionSeqNo);
     if (!session) {
         args.Error = ErrorInvalidSession(
             args.ClientId,
@@ -100,7 +93,8 @@ void TIndexTabletActor::CompleteTx_ReadLink(
 {
     RemoveTransaction(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvReadLinkResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvReadLinkResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         response->Record.SetSymLink(args.Node->Attrs.GetSymLink());
     }

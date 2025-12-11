@@ -5,10 +5,12 @@
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/encryption/encryptor.h>
-#include <cloud/contrib/vhost/virtio/virtio_blk_spec.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/vhost-client/monotonic_buffer_resource.h>
 #include <cloud/storage/core/libs/vhost-client/vhost-client.h>
+
+#include <cloud/contrib/vhost/virtio/virtio_blk_spec.h>
 
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/json/writer/json_value.h>
@@ -39,7 +41,6 @@ IOutputStream& operator<<(
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace NCloud::NBlockStore::NVHostServer {
-
 
 using NVHost::TMonotonicBufferResource;
 
@@ -81,10 +82,8 @@ public:
         : Behaviour(behaviour)
     {}
 
-    NProto::TError Encrypt(
-        TBlockDataRef src,
-        TBlockDataRef dst,
-        ui64 blockIndex) override
+    NProto::TError
+    Encrypt(TBlockDataRef src, TBlockDataRef dst, ui64 blockIndex) override
     {
         Y_UNUSED(src);
         Y_UNUSED(blockIndex);
@@ -92,17 +91,15 @@ public:
             case EBehaviour::ReturnError: {
                 return MakeError(E_FAIL, "Oh no!");
             }
-            case EBehaviour::EncryptToAllZeroes:{
+            case EBehaviour::EncryptToAllZeroes: {
                 memset(const_cast<char*>(dst.Data()), 0, dst.Size());
                 return {};
             }
         }
     }
 
-    NProto::TError Decrypt(
-        TBlockDataRef src,
-        TBlockDataRef dst,
-        ui64 blockIndex) override
+    NProto::TError
+    Decrypt(TBlockDataRef src, TBlockDataRef dst, ui64 blockIndex) override
     {
         Y_UNUSED(src);
         Y_UNUSED(dst);
@@ -111,8 +108,7 @@ public:
     }
 };
 
-class TServerTest
-    : public testing::TestWithParam<TTestParams>
+class TServerTest: public testing::TestWithParam<TTestParams>
 {
 public:
     static constexpr ui32 QueueCount = 8;
@@ -143,7 +139,7 @@ public:
     TVector<TTempFileHandle> Files;
     IEncryptorPtr Encryptor;
 
-    TOptions Options {
+    TOptions Options{
         .SocketPath = SocketPath,
         .Serial = Serial,
         .NoSync = true,
@@ -152,7 +148,7 @@ public:
         .QueueCount = QueueCount,
     };
 
-    NVHost::TClient Client {SocketPath, { .QueueCount = QueueCount }};
+    NVHost::TClient Client{SocketPath, {.QueueCount = QueueCount}};
 
     TMonotonicBufferResource Memory;
 
@@ -181,10 +177,8 @@ public:
         for (ui32 i = 0; i != ChunkCount - addNonExistingDevice; ++i) {
             auto& file = Files.emplace_back(MakeTempName());
 
-            Options.Layout.push_back({
-                .DevicePath = file.GetName(),
-                .ByteCount = ChunkByteCount
-            });
+            Options.Layout.push_back(
+                {.DevicePath = file.GetName(), .ByteCount = ChunkByteCount});
 
             file.Resize(ChunkByteCount);
         }
@@ -193,7 +187,7 @@ public:
 
         ASSERT_TRUE(Client.Init());
 
-        Memory = TMonotonicBufferResource {Client.GetMemory()};
+        Memory = TMonotonicBufferResource{Client.GetMemory()};
     }
 
     void StartServerWithSplitDevices()
@@ -210,17 +204,18 @@ public:
         std::generate_n(
             offsets.begin(),
             ChunkCount,
-            [&, offset = HeaderSize] () mutable {
-                return std::exchange(offset, offset + PaddingSize + ChunkByteCount);
+            [&, offset = HeaderSize]() mutable {
+                return std::exchange(
+                    offset,
+                    offset + PaddingSize + ChunkByteCount);
             });
 
         std::swap(offsets.front(), offsets.back());
 
         auto& file = Files.emplace_back(MakeTempName());
 
-        const size_t fileSize = HeaderSize
-            + ChunkCount * ChunkByteCount
-            + PaddingSize * (ChunkCount - 1);
+        const size_t fileSize = HeaderSize + ChunkCount * ChunkByteCount +
+                                PaddingSize * (ChunkCount - 1);
 
         file.Resize(fileSize);
 
@@ -247,18 +242,17 @@ public:
         Options.Layout.reserve(ChunkCount);
 
         for (ui32 i = 0; i != ChunkCount; ++i) {
-            Options.Layout.push_back({
-                .DevicePath = file.GetName(),
-                .ByteCount = ChunkByteCount,
-                .Offset = offsets[i]
-            });
+            Options.Layout.push_back(
+                {.DevicePath = file.GetName(),
+                 .ByteCount = ChunkByteCount,
+                 .Offset = offsets[i]});
         }
 
         Server->Start(Options);
 
         ASSERT_TRUE(Client.Init());
 
-        Memory = TMonotonicBufferResource {Client.GetMemory()};
+        Memory = TMonotonicBufferResource{Client.GetMemory()};
     }
 
     void SetUp() override
@@ -334,7 +328,7 @@ public:
         if (it == Files.end()) {
             return "File " + chunkLayout.DevicePath + " not found";
         }
-        auto & file = *it;
+        auto& file = *it;
 
         const ui64 fileOffset =
             chunkLayout.Offset + (block % BlocksPerChunk) * BlockSize;
@@ -374,7 +368,7 @@ public:
         if (it == Files.end()) {
             return false;
         }
-        auto & file = *it;
+        auto& file = *it;
 
         const ui64 fileOffset =
             chunkLayout.Offset + (block % BlocksPerChunk) * BlockSize;
@@ -404,15 +398,15 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename T, typename ... Ts>
-std::span<char> Create(TMonotonicBufferResource& mem, Ts&& ... args)
+template <typename T, typename... Ts>
+std::span<char> Create(TMonotonicBufferResource& mem, Ts&&... args)
 {
     std::span buf = mem.Allocate(sizeof(T), alignof(T));
     if (buf.empty()) {
         return {};
     }
 
-    new (buf.data()) T {std::forward<Ts>(args)...};
+    new (buf.data()) T{std::forward<Ts>(args)...};
 
     return buf;
 }
@@ -422,7 +416,8 @@ auto Hdr(TMonotonicBufferResource& mem, virtio_blk_req_hdr hdr)
     return Create<virtio_blk_req_hdr>(mem, hdr);
 }
 
-TString MakeRandomPattern(size_t size) {
+TString MakeRandomPattern(size_t size)
+{
     TString result;
     result.resize(size);
 
@@ -460,9 +455,8 @@ TEST_P(TServerTest, ShouldReadAndWrite)
     size_t writesCount = 0;
     {
         std::span hdr = Hdr(Memory, {.type = VIRTIO_BLK_T_OUT});
-        std::span writeBuffer = Memory.Allocate(
-            RequestSize,
-            Unaligned ? 1 : BlockSize);
+        std::span writeBuffer =
+            Memory.Allocate(RequestSize, Unaligned ? 1 : BlockSize);
         std::span status = Memory.Allocate(1);
 
         for (ui64 i = 0; i <= TotalBlockCount - BlocksPerRequest; ++i) {
@@ -1038,7 +1032,8 @@ TEST_P(TServerTest, ShouldStatAllZeroesBlocks)
 
     // validate stats
     const auto completeStats = GetStats(
-        [](const TCompleteStats& stats) {
+        [](const TCompleteStats& stats)
+        {
             return stats.CriticalEvents.size() != 0 &&
                    stats.SimpleStats.EncryptorErrors != 0;
         });

@@ -10,6 +10,7 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
+
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -41,8 +42,7 @@ TString Capitalize(TString str)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServerStats final
-    : public IServerStats
+class TServerStats final: public IServerStats
 {
     class TMonPage;
 
@@ -56,7 +56,8 @@ private:
 
     TDynamicCountersPtr Counters;
     TExecutorCounters ExecutorCounters;
-    TDynamicCounters::TCounterPtr EndpointCounters[NProto::EClientIpcType_ARRAYSIZE];
+    TDynamicCounters::TCounterPtr
+        EndpointCounters[NProto::EClientIpcType_ARRAYSIZE];
 
 public:
     TServerStats(
@@ -71,16 +72,15 @@ public:
 
     TExecutorCounters::TExecutorScope StartExecutor() override;
 
-    TDynamicCounters::TCounterPtr GetEndpointCounter(NProto::EClientIpcType ipcType) override;
+    TDynamicCounters::TCounterPtr GetEndpointCounter(
+        NProto::EClientIpcType ipcType) override;
 
     bool MountVolume(
         const NProto::TVolume& volume,
         const TString& clientId,
         const TString& instanceId) override;
 
-    void UnmountVolume(
-        const TString& diskId,
-        const TString& clientId) override;
+    void UnmountVolume(const TString& diskId, const TString& clientId) override;
 
     void AlterVolume(
         const TString& diskId,
@@ -107,17 +107,13 @@ public:
         TMetricRequest& req,
         TCallContext& callContext) override;
 
-    void RequestSent(
-        TMetricRequest& req,
-        TCallContext& callContext) override;
+    void RequestSent(TMetricRequest& req, TCallContext& callContext) override;
 
     void ResponseReceived(
         TMetricRequest& req,
         TCallContext& callContext) override;
 
-    void ResponseSent(
-        TMetricRequest& req,
-        TCallContext& callContext) override;
+    void ResponseSent(TMetricRequest& req, TCallContext& callContext) override;
 
     void RequestCompleted(
         TLog& Log,
@@ -170,8 +166,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServerStats::TMonPage final
-    : public THtmlMonPage
+class TServerStats::TMonPage final: public THtmlMonPage
 {
 private:
     TServerStats& ServerStats;
@@ -191,14 +186,14 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 TServerStats::TServerStats(
-        IDumpablePtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
-        IMonitoringServicePtr monitoring,
-        IProfileLogPtr profileLog,
-        IRequestStatsPtr requestStats,
-        IVolumeStatsPtr volumeStats,
-        const TString& componentName,
-        TString requestInstanceId)
+    IDumpablePtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    IMonitoringServicePtr monitoring,
+    IProfileLogPtr profileLog,
+    IRequestStatsPtr requestStats,
+    IVolumeStatsPtr volumeStats,
+    const TString& componentName,
+    TString requestInstanceId)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
@@ -213,7 +208,8 @@ TServerStats::TServerStats(
 
     for (ui32 i = 0; i < NProto::EClientIpcType_ARRAYSIZE; ++i) {
         auto ipcType = static_cast<NProto::EClientIpcType>(i);
-        EndpointCounters[ipcType] = MakeIntrusive<NMonitoring::TCounterForPtr>();
+        EndpointCounters[ipcType] =
+            MakeIntrusive<NMonitoring::TCounterForPtr>();
     }
 
     auto rootPage = monitoring->RegisterIndexPage("blockstore", "BlockStore");
@@ -225,7 +221,8 @@ void TServerStats::InitEndpointCounters()
 {
     for (ui32 i = 0; i < NProto::EClientIpcType_ARRAYSIZE; ++i) {
         auto ipcType = static_cast<NProto::EClientIpcType>(i);
-        auto ipcGroup = Counters->GetSubgroup("ipcType", GetIpcTypeString(ipcType));
+        auto ipcGroup =
+            Counters->GetSubgroup("ipcType", GetIpcTypeString(ipcType));
         EndpointCounters[ipcType] = ipcGroup->GetCounter("EndpointCount");
     }
 }
@@ -252,9 +249,7 @@ bool TServerStats::MountVolume(
     return VolumeStats->MountVolume(volume, clientId, instanceId);
 }
 
-void TServerStats::UnmountVolume(
-    const TString& diskId,
-    const TString& clientId)
+void TServerStats::UnmountVolume(const TString& diskId, const TString& clientId)
 {
     VolumeStats->UnmountVolume(diskId, clientId);
 }
@@ -287,10 +282,9 @@ void TServerStats::PrepareMetricRequest(
     metricRequest.Unaligned = unaligned;
 
     if (metricRequest.DiskId) {
-        auto volumeInfo =
-            VolumeStats->GetVolumeInfo(
-                metricRequest.DiskId,
-                metricRequest.ClientId);
+        auto volumeInfo = VolumeStats->GetVolumeInfo(
+            metricRequest.DiskId,
+            metricRequest.ClientId);
 
         if (volumeInfo) {
             const auto& volume = volumeInfo->GetInfo();
@@ -306,15 +300,17 @@ void TServerStats::RequestStarted(
     TCallContext& callContext,
     const TString& message)
 {
-    auto logPriority = IsControlRequest(req.RequestType) ? TLOG_INFO : TLOG_RESOURCES;
-    STORAGE_LOG(logPriority,
+    auto logPriority =
+        IsControlRequest(req.RequestType) ? TLOG_INFO : TLOG_RESOURCES;
+    STORAGE_LOG(
+        logPriority,
         TRequestInfo(
             req.RequestType,
             callContext.RequestId,
             req.DiskId,
             req.ClientId,
             RequestInstanceId)
-        << " REQUEST " << message);
+            << " REQUEST " << message);
 
     LWTRACK(
         RequestStarted,
@@ -354,9 +350,7 @@ void TServerStats::RequestAcquired(
         req.DiskId);
 }
 
-void TServerStats::RequestSent(
-    TMetricRequest& req,
-    TCallContext& callContext)
+void TServerStats::RequestSent(TMetricRequest& req, TCallContext& callContext)
 {
     LWTRACK(
         RequestSent,
@@ -378,9 +372,7 @@ void TServerStats::ResponseReceived(
         req.DiskId);
 }
 
-void TServerStats::ResponseSent(
-    TMetricRequest& req,
-    TCallContext& callContext)
+void TServerStats::ResponseSent(TMetricRequest& req, TCallContext& callContext)
 {
     auto responseSentCycles = GetCycleCount();
     callContext.SetResponseSentCycles(responseSentCycles);
@@ -455,7 +447,8 @@ void TServerStats::RequestCompleted(
             responseSentCycles);
 
         if (calcMaxTime == ECalcMaxTime::DISABLE) {
-            maxTimeSuppressedMessage = ", Warning! MaxTime calculation suppressed";
+            maxTimeSuppressedMessage =
+                ", Warning! MaxTime calculation suppressed";
         }
     }
 
@@ -469,12 +462,9 @@ void TServerStats::RequestCompleted(
                     req.RequestType,
                     requestTime,
                     waitTime,
-                    {
-                        TBlockRange64::WithLength(
-                            req.StartIndex,
-                            req.RequestBytes / blockSize
-                        )
-                    },
+                    {TBlockRange64::WithLength(
+                        req.StartIndex,
+                        req.RequestBytes / blockSize)},
                 };
                 requestSet = true;
             }
@@ -523,8 +513,10 @@ void TServerStats::RequestCompleted(
     } else if (requestTime >= RequestTimeWarnThreshold) {
         logPriority = TLOG_WARNING;
         message = "request too slow";
-    } else if (errorKind == EDiagnosticsErrorKind::ErrorFatal ||
-               errorKind == EDiagnosticsErrorKind::ErrorAborted) {
+    } else if (
+        errorKind == EDiagnosticsErrorKind::ErrorFatal ||
+        errorKind == EDiagnosticsErrorKind::ErrorAborted)
+    {
         logPriority = TLOG_ERR;
         message = "request failed";
     } else if (
@@ -541,24 +533,22 @@ void TServerStats::RequestCompleted(
         logPriority = TLOG_DEBUG;
     }
 
-    STORAGE_LOG(logPriority,
+    STORAGE_LOG(
+        logPriority,
         TRequestInfo(
             req.RequestType,
             callContext.RequestId,
             req.DiskId,
             req.ClientId,
             RequestInstanceId)
-        << " RESPONSE"
-        << " " << message
-        << " (execution: " << FormatDuration(execTime)
-        << ", postponed: " << FormatDuration(postponedTime)
-        << ", predicted: " << FormatDuration(predictedTime)
-        << ", backoff: " << FormatDuration(backoffTime)
-        << ", size: " << FormatByteSize(req.RequestBytes)
-        << ", unaligned: " << req.Unaligned
-        << maxTimeSuppressedMessage
-        << ", error: " << FormatError(error)
-        << ")");
+            << " RESPONSE" << " " << message
+            << " (execution: " << FormatDuration(execTime)
+            << ", postponed: " << FormatDuration(postponedTime)
+            << ", predicted: " << FormatDuration(predictedTime)
+            << ", backoff: " << FormatDuration(backoffTime)
+            << ", size: " << FormatByteSize(req.RequestBytes)
+            << ", unaligned: " << req.Unaligned << maxTimeSuppressedMessage
+            << ", error: " << FormatError(error) << ")");
 }
 
 void TServerStats::RequestFastPathHit(
@@ -609,33 +599,39 @@ void TServerStats::ReportInfo(
         << " " << message);
 }
 
-void TServerStats::OutputHtml(IOutputStream& out, const IMonHttpRequest& request)
+void TServerStats::OutputHtml(
+    IOutputStream& out,
+    const IMonHttpRequest& request)
 {
     Y_UNUSED(request);
 
-    HTML(out) {
+    HTML (out) {
         if (DiagnosticsConfig) {
-            TAG(TH3) {
+            TAG (TH3) {
                 out << "<a href='"
                     << GetMonitoringNBSAlertsUrl(*DiagnosticsConfig)
                     << "'>NBS Alerts dashboard</a>";
             };
 
-            TAG(TH3) {
+            TAG (TH3) {
                 out << "<a href='"
                     << GetMonitoringNBSOverviewToTVUrl(*DiagnosticsConfig)
                     << "'>NBS overview To TV</a>";
             }
         }
 
-        TAG(TH3) { out << "Config"; }
+        TAG (TH3) {
+            out << "Config";
+        }
         Config->DumpHtml(out);
 
         if (DiagnosticsConfig) {
             DiagnosticsConfig->DumpHtml(out);
         }
 
-        TAG(TH3) { out << "Counters"; }
+        TAG (TH3) {
+            out << "Counters";
+        }
         Counters->OutputHtml(out);
     }
 }
@@ -651,16 +647,10 @@ void TServerStats::AddIncompleteRequest(
                            ? ECalcMaxTime::DISABLE
                            : ECalcMaxTime::ENABLE;
 
-    RequestStats->AddIncompleteStats(
-        mediaKind,
-        requestType,
-        time,
-        calcMaxTime);
+    RequestStats->AddIncompleteStats(mediaKind, requestType, time, calcMaxTime);
 
     if (volumeInfo) {
-        volumeInfo->AddIncompleteStats(
-            requestType,
-            time);
+        volumeInfo->AddIncompleteStats(requestType, time);
     }
 }
 
@@ -704,8 +694,7 @@ void TServerStats::UpdateStats(bool updateIntervalFinished)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServerStatsStub final
-    : public IServerStats
+class TServerStatsStub final: public IServerStats
 {
 private:
     TExecutorCounters ExecutorCounters;
@@ -744,9 +733,7 @@ public:
         return true;
     }
 
-    void UnmountVolume(
-        const TString& diskId,
-        const TString& clientId) override
+    void UnmountVolume(const TString& diskId, const TString& clientId) override
     {
         Y_UNUSED(clientId);
         Y_UNUSED(diskId);

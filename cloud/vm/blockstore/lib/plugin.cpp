@@ -1,7 +1,5 @@
 #include "plugin.h"
 
-#include <cloud/blockstore/public/api/protos/volume.pb.h>
-
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
@@ -15,9 +13,11 @@
 #include <cloud/blockstore/libs/nbd/client.h>
 #include <cloud/blockstore/libs/nbd/client_handler.h>
 #include <cloud/blockstore/libs/service/context.h>
-#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/request.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/public/api/protos/volume.pb.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -92,8 +92,7 @@ void DestroyVolume(BlockPlugin_Volume* volume)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRequestHandler
-    : public TIntrusiveListItem<TRequestHandler>
+struct TRequestHandler: public TIntrusiveListItem<TRequestHandler>
 {
     TMetricRequest MetricRequest;
     TCallContextPtr CallContext;
@@ -105,8 +104,7 @@ struct TRequestHandler
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPlugin final
-    : public IPlugin
+class TPlugin final: public IPlugin
 {
 private:
     BlockPluginHost* const Host;
@@ -168,7 +166,7 @@ public:
 
     TString GetCountersJson() const override;
 
-   size_t CollectRequests(
+    size_t CollectRequests(
         const TIncompleteRequestsCollector& collector) override;
 
 private:
@@ -218,18 +216,18 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TPlugin::TPlugin(
-        BlockPluginHost* host,
-        ITimerPtr timer,
-        ISchedulerPtr scheduler,
-        ILoggingServicePtr logging,
-        IMonitoringServicePtr monitoring,
-        IRequestStatsPtr requestStats,
-        IVolumeStatsPtr volumeStats,
-        IServerStatsPtr clientStats,
-        IThrottlerPtr throttler,
-        IClientPtr client,
-        NBD::IClientPtr nbdClient,
-        TClientAppConfigPtr config)
+    BlockPluginHost* host,
+    ITimerPtr timer,
+    ISchedulerPtr scheduler,
+    ILoggingServicePtr logging,
+    IMonitoringServicePtr monitoring,
+    IRequestStatsPtr requestStats,
+    IVolumeStatsPtr volumeStats,
+    IServerStatsPtr clientStats,
+    IThrottlerPtr throttler,
+    IClientPtr client,
+    NBD::IClientPtr nbdClient,
+    TClientAppConfigPtr config)
     : Host(host)
     , Timer(std::move(timer))
     , Scheduler(std::move(scheduler))
@@ -267,17 +265,17 @@ int TPlugin::MountVolume(
         0u      // blocksCount
     );
 
-    auto session = CreateSessionIfNeeded(
-        mountConfig,
-        sessionConfig,
-        volume);
+    auto session = CreateSessionIfNeeded(mountConfig, sessionConfig, volume);
     auto maxTransfer = session->GetMaxTransfer();
 
     NProto::THeaders headers;
     SetupHeaders(headers, requestId);
 
     STORAGE_DEBUG(
-        TRequestInfo(EBlockStoreRequest::MountVolume, requestId, sessionConfig.DiskId)
+        TRequestInfo(
+            EBlockStoreRequest::MountVolume,
+            requestId,
+            sessionConfig.DiskId)
         << " submit request");
 
     auto future = session->MountVolume(
@@ -302,12 +300,18 @@ int TPlugin::MountVolume(
     if (HasError(response)) {
         const auto& error = response.GetError();
         STORAGE_ERROR(
-            TRequestInfo(EBlockStoreRequest::MountVolume, requestId, sessionConfig.DiskId)
+            TRequestInfo(
+                EBlockStoreRequest::MountVolume,
+                requestId,
+                sessionConfig.DiskId)
             << " request failed: " << FormatError(error));
         result = BLOCK_PLUGIN_E_FAIL;
     } else {
         STORAGE_DEBUG(
-            TRequestInfo(EBlockStoreRequest::MountVolume, requestId, sessionConfig.DiskId)
+            TRequestInfo(
+                EBlockStoreRequest::MountVolume,
+                requestId,
+                sessionConfig.DiskId)
             << " request completed");
 
         UpdateVolume(volume, response.GetVolume(), maxTransfer);
@@ -335,14 +339,14 @@ int TPlugin::MountVolumeAsync(
         0u      // blocksCount
     );
 
-    auto session = CreateSessionIfNeeded(
-        mountConfig,
-        sessionConfig,
-        volume);
+    auto session = CreateSessionIfNeeded(mountConfig, sessionConfig, volume);
     auto maxTransfer = session->GetMaxTransfer();
 
     STORAGE_DEBUG(
-        TRequestInfo(EBlockStoreRequest::MountVolume, comp->id, sessionConfig.DiskId)
+        TRequestInfo(
+            EBlockStoreRequest::MountVolume,
+            comp->id,
+            sessionConfig.DiskId)
         << " submit request");
 
     NProto::THeaders headers;
@@ -360,9 +364,10 @@ int TPlugin::MountVolumeAsync(
         *requestHandler->CallContext);
 
     future.Subscribe(
-        [=, this,
-        diskId = sessionConfig.DiskId,
-        requestHandler = std::move(requestHandler)] (const auto& future)
+        [=,
+         this,
+         diskId = sessionConfig.DiskId,
+         requestHandler = std::move(requestHandler)](const auto& future)
         {
             ClientStats->ResponseReceived(
                 requestHandler->MetricRequest,
@@ -372,12 +377,18 @@ int TPlugin::MountVolumeAsync(
             if (HasError(response)) {
                 const auto& error = response.GetError();
                 STORAGE_ERROR(
-                    TRequestInfo(EBlockStoreRequest::MountVolume, comp->id, diskId)
+                    TRequestInfo(
+                        EBlockStoreRequest::MountVolume,
+                        comp->id,
+                        diskId)
                     << " request failed: " << FormatError(error));
                 comp->status = BP_COMPLETION_ERROR;
             } else {
                 STORAGE_DEBUG(
-                    TRequestInfo(EBlockStoreRequest::MountVolume, comp->id, diskId)
+                    TRequestInfo(
+                        EBlockStoreRequest::MountVolume,
+                        comp->id,
+                        diskId)
                     << " request completed");
                 comp->status = BP_COMPLETION_MOUNT_FINISHED;
                 UpdateVolume(volume, response.GetVolume(), maxTransfer);
@@ -408,7 +419,10 @@ int TPlugin::UnmountVolume(BlockPlugin_Volume* volume)
     );
 
     STORAGE_DEBUG(
-        TRequestInfo(EBlockStoreRequest::UnmountVolume, requestId, state->DiskId)
+        TRequestInfo(
+            EBlockStoreRequest::UnmountVolume,
+            requestId,
+            state->DiskId)
         << " submit request");
 
     NProto::THeaders headers;
@@ -433,12 +447,18 @@ int TPlugin::UnmountVolume(BlockPlugin_Volume* volume)
     if (HasError(response)) {
         const auto& error = response.GetError();
         STORAGE_ERROR(
-            TRequestInfo(EBlockStoreRequest::UnmountVolume, requestId, state->DiskId)
+            TRequestInfo(
+                EBlockStoreRequest::UnmountVolume,
+                requestId,
+                state->DiskId)
             << " request failed: " << FormatError(error));
         result = BLOCK_PLUGIN_E_FAIL;
     } else {
         STORAGE_DEBUG(
-            TRequestInfo(EBlockStoreRequest::UnmountVolume, requestId, state->DiskId)
+            TRequestInfo(
+                EBlockStoreRequest::UnmountVolume,
+                requestId,
+                state->DiskId)
             << " request completed");
 
         DestroyVolume(volume);
@@ -484,8 +504,8 @@ int TPlugin::UnmountVolumeAsync(
         *requestHandler->CallContext);
 
     future.Subscribe(
-        [=, this,
-        requestHandler = std::move(requestHandler)] (const auto& future)
+        [=, this, requestHandler = std::move(requestHandler)](
+            const auto& future)
         {
             ClientStats->ResponseReceived(
                 requestHandler->MetricRequest,
@@ -495,12 +515,18 @@ int TPlugin::UnmountVolumeAsync(
             if (HasError(response)) {
                 const auto& error = response.GetError();
                 STORAGE_ERROR(
-                    TRequestInfo(EBlockStoreRequest::UnmountVolume, comp->id, state->DiskId)
+                    TRequestInfo(
+                        EBlockStoreRequest::UnmountVolume,
+                        comp->id,
+                        state->DiskId)
                     << " request failed: " << FormatError(error));
                 comp->status = BP_COMPLETION_ERROR;
             } else {
                 STORAGE_DEBUG(
-                    TRequestInfo(EBlockStoreRequest::UnmountVolume, comp->id, state->DiskId)
+                    TRequestInfo(
+                        EBlockStoreRequest::UnmountVolume,
+                        comp->id,
+                        state->DiskId)
                     << " request completed");
                 comp->status = BP_COMPLETION_UNMOUNT_FINISHED;
                 DestroyVolume(volume);
@@ -594,9 +620,10 @@ void TPlugin::HandleReadBlocks(
         *requestHandler->CallContext);
 
     future.Subscribe(
-        [=, this,
-        sglist = std::move(guardedSgList),
-        requestHandler = std::move(requestHandler)] (const auto& f) mutable
+        [=,
+         this,
+         sglist = std::move(guardedSgList),
+         requestHandler = std::move(requestHandler)](const auto& f) mutable
         {
             ClientStats->ResponseReceived(
                 requestHandler->MetricRequest,
@@ -606,12 +633,18 @@ void TPlugin::HandleReadBlocks(
             if (HasError(response)) {
                 const auto& error = response.GetError();
                 STORAGE_ERROR(
-                    TRequestInfo(EBlockStoreRequest::ReadBlocks, comp->id, state->DiskId)
+                    TRequestInfo(
+                        EBlockStoreRequest::ReadBlocks,
+                        comp->id,
+                        state->DiskId)
                     << " request failed: " << FormatError(error));
                 comp->status = BP_COMPLETION_ERROR;
             } else {
                 STORAGE_TRACE(
-                    TRequestInfo(EBlockStoreRequest::ReadBlocks, comp->id, state->DiskId)
+                    TRequestInfo(
+                        EBlockStoreRequest::ReadBlocks,
+                        comp->id,
+                        state->DiskId)
                     << " request completed");
                 comp->status = BP_COMPLETION_READ_FINISHED;
             }
@@ -662,9 +695,10 @@ void TPlugin::HandleWriteBlocks(
         *requestHandler->CallContext);
 
     future.Subscribe(
-        [=, this,
-        sglist = std::move(guardedSgList),
-        requestHandler = std::move(requestHandler)] (const auto& f) mutable
+        [=,
+         this,
+         sglist = std::move(guardedSgList),
+         requestHandler = std::move(requestHandler)](const auto& f) mutable
         {
             ClientStats->ResponseReceived(
                 requestHandler->MetricRequest,
@@ -674,12 +708,18 @@ void TPlugin::HandleWriteBlocks(
             if (HasError(response)) {
                 const auto& error = response.GetError();
                 STORAGE_ERROR(
-                    TRequestInfo(EBlockStoreRequest::WriteBlocks, comp->id, state->DiskId)
+                    TRequestInfo(
+                        EBlockStoreRequest::WriteBlocks,
+                        comp->id,
+                        state->DiskId)
                     << " request failed: " << FormatError(error));
                 comp->status = BP_COMPLETION_ERROR;
             } else {
                 STORAGE_TRACE(
-                    TRequestInfo(EBlockStoreRequest::WriteBlocks, comp->id, state->DiskId)
+                    TRequestInfo(
+                        EBlockStoreRequest::WriteBlocks,
+                        comp->id,
+                        state->DiskId)
                     << " request completed");
                 comp->status = BP_COMPLETION_WRITE_FINISHED;
             }
@@ -726,7 +766,8 @@ void TPlugin::HandleZeroBlocks(
         *requestHandler->CallContext);
 
     future.Subscribe(
-        [=, this, requestHandler = std::move(requestHandler)] (const auto& f) {
+        [=, this, requestHandler = std::move(requestHandler)](const auto& f)
+        {
             ClientStats->ResponseReceived(
                 requestHandler->MetricRequest,
                 *requestHandler->CallContext);
@@ -735,12 +776,18 @@ void TPlugin::HandleZeroBlocks(
             if (HasError(response)) {
                 const auto& error = response.GetError();
                 STORAGE_ERROR(
-                    TRequestInfo(EBlockStoreRequest::ZeroBlocks, comp->id, state->DiskId)
+                    TRequestInfo(
+                        EBlockStoreRequest::ZeroBlocks,
+                        comp->id,
+                        state->DiskId)
                     << " request failed: " << FormatError(error));
                 comp->status = BP_COMPLETION_ERROR;
             } else {
                 STORAGE_TRACE(
-                    TRequestInfo(EBlockStoreRequest::ZeroBlocks, comp->id, state->DiskId)
+                    TRequestInfo(
+                        EBlockStoreRequest::ZeroBlocks,
+                        comp->id,
+                        state->DiskId)
                     << " request completed");
                 comp->status = BP_COMPLETION_ZERO_FINISHED;
             }
@@ -761,9 +808,8 @@ ISessionPtr TPlugin::CreateSessionIfNeeded(
     if (volumeState) {
         session = volumeState->Session;
     } else {
-        auto clientEndpoint = CreateClientEndpoint(
-            mountConfig,
-            sessionConfig.DiskId);
+        auto clientEndpoint =
+            CreateClientEndpoint(mountConfig, sessionConfig.DiskId);
         clientEndpoint->Start();
 
         session = CreateSession(
@@ -806,7 +852,8 @@ IBlockStorePtr TPlugin::CreateClientEndpoint(
                     Config->GetNbdStructuredReply(),
                     Config->GetNbdUseNbsErrors());
 
-                auto grpcClientEndpoint = Client->CreateDataEndpoint(socketPath);
+                auto grpcClientEndpoint =
+                    Client->CreateDataEndpoint(socketPath);
 
                 Y_ENSURE(NbdClient, "NBD client is not initialized");
                 clientEndpoint = NbdClient->CreateEndpoint(
@@ -819,7 +866,7 @@ IBlockStorePtr TPlugin::CreateClientEndpoint(
             default:
                 ythrow yexception()
                     << "Unsupported ipc type: "
-                    << static_cast<ui32>(Config->GetIpcType());
+                    << static_cast<ui32>(Config -> GetIpcType());
         }
     } else {
         STORAGE_INFO("Creating grpc/tcp connection");
@@ -839,7 +886,7 @@ IBlockStorePtr TPlugin::CreateClientEndpoint(
         RequestStats,
         VolumeStats);
 
-    if (socketPath.empty() // unix-socket requests are handled on server side
+    if (socketPath.empty()   // unix-socket requests are handled on server side
         && mountConfig.HasEncryptionSpec())
     {
         auto future = EncryptionClientFactory->CreateEncryptionClient(
@@ -857,9 +904,8 @@ IBlockStorePtr TPlugin::CreateClientEndpoint(
     }
 
     if (Throttler) {
-        clientEndpoint = CreateThrottlingClient(
-            std::move(clientEndpoint),
-            Throttler);
+        clientEndpoint =
+            CreateThrottlingClient(std::move(clientEndpoint), Throttler);
     }
 
     return clientEndpoint;
@@ -882,7 +928,7 @@ std::shared_ptr<TRequestHandler> TPlugin::RegisterRequest(
         diskId,
         startIndex,
         ClientStats->GetBlockSize(diskId) * blocksCount,
-        false // unaligned
+        false   // unaligned
     );
 
     ClientStats->RequestStarted(

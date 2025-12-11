@@ -32,8 +32,7 @@ bool IsTokenValid(TInstant now, const TResultOrError<TTokenInfo>& tokenInfo);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IIamTokenAsyncClient
-    : public IStartable
+struct IIamTokenAsyncClient: public IStartable
 {
     using TResponse = TResultOrError<TTokenInfo>;
 
@@ -42,8 +41,7 @@ struct IIamTokenAsyncClient
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IIamTokenClient
-    : public IStartable
+struct IIamTokenClient: public IStartable
 {
     using TResponse = TResultOrError<TTokenInfo>;
 

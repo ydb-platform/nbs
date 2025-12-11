@@ -8,8 +8,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TVolumeThrottlerLogger final
-    : public ITabletThrottlerLogger
+class TVolumeThrottlerLogger final: public ITabletThrottlerLogger
 {
 private:
     struct TImpl;

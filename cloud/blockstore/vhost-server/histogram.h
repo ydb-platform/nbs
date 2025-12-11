@@ -29,7 +29,7 @@ public:
         Buckets[(range << BucketShift) + index] += count;
     }
 
-    THistogram& operator += (const THistogram& rhs) noexcept
+    THistogram& operator+=(const THistogram& rhs) noexcept
     {
         for (ui64 i = 0; i != THistogram::NumBuckets; ++i) {
             Buckets[i] += rhs.Buckets[i];
@@ -38,7 +38,7 @@ public:
         return *this;
     }
 
-    THistogram& operator -= (const THistogram& rhs) noexcept
+    THistogram& operator-=(const THistogram& rhs) noexcept
     {
         for (ui64 i = 0; i != THistogram::NumBuckets; ++i) {
             if (Buckets[i]) {
@@ -103,16 +103,12 @@ private:
 
         const ui32 clz = __builtin_clzll(value);
 
-        return (clz <= BucketLsb)
-            ? (BucketLsb - clz)
-            : 0;
+        return (clz <= BucketLsb) ? (BucketLsb - clz) : 0;
     }
 
     [[nodiscard]] static ui32 GetBucketIndex(ui64 value, ui32 range) noexcept
     {
-        const ui32 shift = range
-            ? range - 1
-            : 0;
+        const ui32 shift = range ? range - 1 : 0;
 
         return (value >> shift) & BucketMask;
     }

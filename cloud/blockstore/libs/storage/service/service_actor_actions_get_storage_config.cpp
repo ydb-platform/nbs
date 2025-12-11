@@ -4,7 +4,6 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -56,9 +55,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TGetStorageConfigActor::TGetStorageConfigActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr storageConfig,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr storageConfig,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , StorageConfig(std::move(storageConfig))
     , Input(std::move(input))
@@ -69,9 +68,7 @@ void TGetStorageConfigActor::Bootstrap(const TActorContext& ctx)
     NProto::TGetStorageConfigRequest proto;
 
     if (!google::protobuf::util::JsonStringToMessage(Input, &proto).ok()) {
-        HandleError(
-            ctx,
-            MakeError(E_ARGUMENT, "Failed to parse input"));
+        HandleError(ctx, MakeError(E_ARGUMENT, "Failed to parse input"));
         return;
     }
 
@@ -80,8 +77,7 @@ void TGetStorageConfigActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    auto request =
-        std::make_unique<TEvVolume::TEvGetStorageConfigRequest>();
+    auto request = std::make_unique<TEvVolume::TEvGetStorageConfigRequest>();
     request->Record.SetDiskId(std::move(*proto.MutableDiskId()));
 
     Become(&TThis::StateWork);
@@ -93,11 +89,11 @@ void TGetStorageConfigActor::HandleError(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(error);
     google::protobuf::util::MessageToJsonString(
         NProto::TGetStorageConfigResponse(),
-        response->Record.MutableOutput()
-    );
+        response->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,
@@ -116,8 +112,8 @@ void TGetStorageConfigActor::HandleSuccess(
     auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>();
 
     google::protobuf::util::MessageToJsonString(
-        std::move(config), msg->Record.MutableOutput()
-    );
+        std::move(config),
+        msg->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,

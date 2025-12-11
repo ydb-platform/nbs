@@ -22,8 +22,8 @@ private:
 
 public:
     TImpl(
-            ui64 tabletId,
-            std::function<void(ui32, TDuration)> updateDelayCounter)
+        ui64 tabletId,
+        std::function<void(ui32, TDuration)> updateDelayCounter)
         : TabletId(tabletId)
         , UpdateDelayCounterFunc(std::move(updateDelayCounter))
     {}
@@ -41,7 +41,9 @@ public:
     {
         TrackPostponedRequest(callContext, methodName);
 
-        LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::VOLUME,
             "[%lu] Postponed %s request %lu by %lu us",
             TabletId,
             methodName,
@@ -57,8 +59,11 @@ public:
     {
         TrackPostponedRequest(callContext, methodName);
 
-        LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Added %s request %lu to the postponed queue, queue size: %lu",
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "[%lu] Added %s request %lu to the postponed queue, queue size: "
+            "%lu",
             TabletId,
             methodName,
             callContext.RequestId,
@@ -75,7 +80,9 @@ public:
         TrackAdvancedRequest(callContext, methodName);
         UpdateDelayCounterFunc(opType, delay);
 
-        LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::VOLUME,
             "[%lu] Advanced %s request %lu, with delay: %lu us",
             TabletId,
             methodName,
@@ -110,8 +117,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumeThrottlerLogger::TVolumeThrottlerLogger(
-        ui64 tabletId,
-        std::function<void(ui32, TDuration)> updateDelayCounter)
+    ui64 tabletId,
+    std::function<void(ui32, TDuration)> updateDelayCounter)
     : Impl(std::make_unique<TImpl>(tabletId, std::move(updateDelayCounter)))
 {}
 

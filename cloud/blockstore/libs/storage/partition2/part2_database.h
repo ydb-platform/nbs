@@ -21,8 +21,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPartitionDatabase
-    : public NKikimr::NIceDb::TNiceDb
+class TPartitionDatabase: public NKikimr::NIceDb::TNiceDb
 {
 public:
     TPartitionDatabase(NKikimr::NTable::TDatabase& database)
@@ -62,8 +61,7 @@ public:
         TBlobMeta(TPartialBlobId blobId, NProto::TBlobMeta2 blobMeta)
             : BlobId(std::move(blobId))
             , BlobMeta(std::move(blobMeta))
-        {
-        }
+        {}
     };
 
     void WriteGlobalBlob(
@@ -74,9 +72,7 @@ public:
         ui32 zoneId,
         const TPartialBlobId& blobId,
         const NProto::TBlobMeta2& meta);
-    void DeleteZoneBlob(
-        ui32 zoneId,
-        const TPartialBlobId& blobId);
+    void DeleteZoneBlob(ui32 zoneId, const TPartialBlobId& blobId);
 
     bool ReadGlobalBlobs(TVector<TBlobMeta>& blobs);
     bool ReadZoneBlobs(ui32 zoneId, TVector<TBlobMeta>& blobs);
@@ -88,10 +84,14 @@ public:
     // BlockLists
     //
 
-    void WriteBlockList(const TPartialBlobId& blobId, const TBlockList& blockList);
+    void WriteBlockList(
+        const TPartialBlobId& blobId,
+        const TBlockList& blockList);
     void DeleteBlockList(const TPartialBlobId& blobId);
 
-    bool ReadBlockList(const TPartialBlobId& blobId, TMaybe<TBlockList>& blockList);
+    bool ReadBlockList(
+        const TPartialBlobId& blobId,
+        TMaybe<TBlockList>& blockList);
 
     //
     // BlobUpdates
@@ -107,9 +107,7 @@ public:
         ui64 deletionId,
         ui64 commitId,
         const TBlockRange32& blockRange);
-    void DeleteZoneBlobUpdate(
-        ui32 zoneId,
-        ui64 deletionId);
+    void DeleteZoneBlobUpdate(ui32 zoneId, ui64 deletionId);
 
     bool ReadGlobalBlobUpdates(TVector<TBlobUpdate>& updates);
     bool ReadZoneBlobUpdates(ui32 zoneId, TVector<TBlobUpdate>& updates);
@@ -128,18 +126,13 @@ public:
         TBlobGarbage(TPartialBlobId blobId, ui16 blockCount)
             : BlobId(std::move(blobId))
             , BlockCount(blockCount)
-        {
-        }
+        {}
     };
 
     void WriteGlobalBlobGarbage(const TBlobGarbage& garbage);
     void DeleteGlobalBlobGarbage(const TPartialBlobId& blobId);
-    void WriteZoneBlobGarbage(
-        ui32 zoneId,
-        const TBlobGarbage& garbage);
-    void DeleteZoneBlobGarbage(
-        ui32 zoneId,
-        const TPartialBlobId& blobId);
+    void WriteZoneBlobGarbage(ui32 zoneId, const TBlobGarbage& garbage);
+    void DeleteZoneBlobGarbage(ui32 zoneId, const TPartialBlobId& blobId);
 
     bool ReadGlobalBlobGarbage(TVector<TBlobGarbage>& garbage);
     bool ReadZoneBlobGarbage(ui32 zoneId, TVector<TBlobGarbage>& garbage);

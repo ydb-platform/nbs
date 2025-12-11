@@ -10,19 +10,17 @@ namespace NCloud::NBlockStore::NLoadTest {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCachingDigestCalculator final
-    : IBlockDigestCalculator
+struct TCachingDigestCalculator final: IBlockDigestCalculator
 {
     IBlockDigestCalculatorPtr Parent;
     TTestContext::TBlockChecksums& Checksums;
 
     TCachingDigestCalculator(
-            IBlockDigestCalculatorPtr parent,
-            TTestContext::TBlockChecksums& checksums)
+        IBlockDigestCalculatorPtr parent,
+        TTestContext::TBlockChecksums& checksums)
         : Parent(std::move(parent))
         , Checksums(checksums)
-    {
-    }
+    {}
 
     ui64 Calculate(ui64 blockIndex, const TStringBuf block) const override
     {
@@ -37,12 +35,12 @@ struct TCachingDigestCalculator final
 ////////////////////////////////////////////////////////////////////////////////
 
 TSuiteRunner::TSuiteRunner(
-        TAppContext& appContext,
-        ILoggingServicePtr logging,
-        const TVector<ui32>& successOnError,
-        const TString& checkpointId,
-        const TString& testName,
-        TTestContext& testContext)
+    TAppContext& appContext,
+    ILoggingServicePtr logging,
+    const TVector<ui32>& successOnError,
+    const TString& checkpointId,
+    const TString& testName,
+    TTestContext& testContext)
     : AppContext(appContext)
     , Logging(std::move(logging))
     , SuccessOnError(successOnError)
@@ -50,8 +48,7 @@ TSuiteRunner::TSuiteRunner(
     , LoggingTag(MakeLoggingTag(testName))
     , TestContext(testContext)
     , StartTime(Now())
-{
-}
+{}
 
 void TSuiteRunner::StartSubtest(const NProto::TRangeTest& range)
 {
@@ -66,9 +63,9 @@ void TSuiteRunner::StartSubtest(const NProto::TRangeTest& range)
         SuccessOnError,
         TestContext.DigestCalculator
             ? std::make_shared<TCachingDigestCalculator>(
-                TestContext.DigestCalculator,
-                TestContext.BlockChecksums
-            ) : nullptr,
+                  TestContext.DigestCalculator,
+                  TestContext.BlockChecksums)
+            : nullptr,
         TestContext.ShouldStop);
 
     RegisterSubtest(std::move(runner));
@@ -96,8 +93,7 @@ void TSuiteRunner::StartReplay(
             endTime,
             fullSpeed,
             maxRequestsInMemory,
-            TestContext.ShouldStop
-        ),
+            TestContext.ShouldStop),
         CheckpointId,
         maxIoDepth,
         SuccessOnError,
@@ -109,41 +105,43 @@ void TSuiteRunner::StartReplay(
 
 void TSuiteRunner::RegisterSubtest(ITestRunnerPtr runner)
 {
-    runner->Run().Subscribe([&] (const auto& future) mutable {
-        const auto& testResults = future.GetValue();
+    runner->Run().Subscribe(
+        [&](const auto& future) mutable
+        {
+            const auto& testResults = future.GetValue();
 
-        with_lock (TestContext.WaitMutex) {
-            ++CompletedSubtests;
+            with_lock (TestContext.WaitMutex) {
+                ++CompletedSubtests;
 
-            if (Results.Status == NProto::TEST_STATUS_OK) {
-                Results.Status = testResults->Status;
+                if (Results.Status == NProto::TEST_STATUS_OK) {
+                    Results.Status = testResults->Status;
+                }
+
+                Results.RequestsCompleted += testResults->RequestsCompleted;
+
+                Results.BlocksRead += testResults->BlocksRead;
+                Results.BlocksWritten += testResults->BlocksWritten;
+                Results.BlocksZeroed += testResults->BlocksZeroed;
+
+                Results.ReadHist.Add(testResults->ReadHist);
+                Results.WriteHist.Add(testResults->WriteHist);
+                Results.ZeroHist.Add(testResults->ZeroHist);
+
+                switch (testResults->Status) {
+                    case NProto::TEST_STATUS_FAILURE:
+                        AppContext.FailedTests.fetch_add(1);
+                        break;
+                    case NProto::TEST_STATUS_EXPECTED_ERROR:
+                        StopTest(TestContext);
+                        break;
+                    default:
+                        break;
+                }
+
+                TestContext.WaitCondVar.Signal();
+                TestContext.Finished.store(true, std::memory_order_release);
             }
-
-            Results.RequestsCompleted += testResults->RequestsCompleted;
-
-            Results.BlocksRead += testResults->BlocksRead;
-            Results.BlocksWritten += testResults->BlocksWritten;
-            Results.BlocksZeroed += testResults->BlocksZeroed;
-
-            Results.ReadHist.Add(testResults->ReadHist);
-            Results.WriteHist.Add(testResults->WriteHist);
-            Results.ZeroHist.Add(testResults->ZeroHist);
-
-            switch (testResults->Status) {
-                case NProto::TEST_STATUS_FAILURE:
-                    AppContext.FailedTests.fetch_add(1);
-                    break;
-                case NProto::TEST_STATUS_EXPECTED_ERROR:
-                    StopTest(TestContext);
-                    break;
-                default:
-                    break;
-            }
-
-            TestContext.WaitCondVar.Signal();
-            TestContext.Finished.store(true, std::memory_order_release);
-        }
-    });
+        });
 
     Subtests.push_back(std::move(runner));
 }
@@ -157,10 +155,9 @@ void TSuiteRunner::Wait(ui64 duration)
 
     with_lock (TestContext.WaitMutex) {
         while (CompletedSubtests < Subtests.size()) {
-            TestContext.WaitCondVar.WaitD(
-                TestContext.WaitMutex, expectedEnd);
-            if (TInstant::Now() > expectedEnd
-                    && !AppContext.ShouldStop.load(std::memory_order_acquire))
+            TestContext.WaitCondVar.WaitD(TestContext.WaitMutex, expectedEnd);
+            if (TInstant::Now() > expectedEnd &&
+                !AppContext.ShouldStop.load(std::memory_order_acquire))
             {
                 StopTest(TestContext);
             }

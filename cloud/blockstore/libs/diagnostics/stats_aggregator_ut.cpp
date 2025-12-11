@@ -26,8 +26,22 @@ constexpr ui32 WriteBlocksPerVolumeCount = 42;
 constexpr ui32 WriteBlocksPerVolumeInProgress = 21;
 
 constexpr size_t BUCKETS_COUNT = 15;
-constexpr std::array<ui32, BUCKETS_COUNT> TimeBuckets =
-    {1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 35000, Max<ui32>()};
+constexpr std::array<ui32, BUCKETS_COUNT> TimeBuckets = {
+    1,
+    2,
+    5,
+    10,
+    20,
+    50,
+    100,
+    200,
+    500,
+    1000,
+    2000,
+    5000,
+    10000,
+    35000,
+    Max<ui32>()};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -46,22 +60,19 @@ void BuildClientVersion(
 {
     switch (clientVersionOption) {
         case EClientVersion::OldClient: {
-            auto versionCounter = clientGroup->GetNamedCounter(
-                "version",
-                "xxx",
-                false);
+            auto versionCounter =
+                clientGroup->GetNamedCounter("version", "xxx", false);
             *versionCounter += 1;
             break;
         }
         case EClientVersion::NewClient: {
             auto revisionGroup = clientGroup->GetSubgroup("revision", "xxx");
-            auto versionCounter = revisionGroup->GetCounter(
-                "version",
-                false);
+            auto versionCounter = revisionGroup->GetCounter("version", false);
             *versionCounter += 1;
             break;
         }
-        default: break;
+        default:
+            break;
     }
 }
 
@@ -85,7 +96,8 @@ TDynamicCounterPtr SetupTestClientCounters(
         auto clientGroup = rootGroup->GetSubgroup("component", "client");
         {
             BuildClientVersion(clientGroup, clientVersionOption);
-            auto writeBlocksGroup = clientGroup->GetSubgroup("request", "WriteBlocks");
+            auto writeBlocksGroup =
+                clientGroup->GetSubgroup("request", "WriteBlocks");
 
             auto countCounter = writeBlocksGroup->GetCounter("Count", true);
             *countCounter = sum * WriteBlocksCount;
@@ -96,26 +108,33 @@ TDynamicCounterPtr SetupTestClientCounters(
             auto timeGroup = writeBlocksGroup->GetSubgroup("histogram", "Time");
             timeGroup = timeGroup->GetSubgroup("units", "usec");
 
-            for (auto bucket : TimeBuckets) {
-                auto bucketCounter = timeGroup->GetCounter(ToString(bucket)+"ms", true);
+            for (auto bucket: TimeBuckets) {
+                auto bucketCounter =
+                    timeGroup->GetCounter(ToString(bucket) + "ms", true);
                 *bucketCounter = sum;
             }
         }
 
         for (ui32 i = 0; i < diskIds.size(); ++i) {
-            auto clientVolumeGroup = rootGroup->GetSubgroup("component", "client_volume");
+            auto clientVolumeGroup =
+                rootGroup->GetSubgroup("component", "client_volume");
             {
                 if (insertHostLabel) {
-                    clientVolumeGroup = clientVolumeGroup->GetSubgroup("host", "cluster");
+                    clientVolumeGroup =
+                        clientVolumeGroup->GetSubgroup("host", "cluster");
                 }
-                auto volumeGroup = clientVolumeGroup->GetSubgroup("volume", diskIds[i]);
-                auto writeBlocksGroup = volumeGroup->GetSubgroup("request", "WriteBlocks");
+                auto volumeGroup =
+                    clientVolumeGroup->GetSubgroup("volume", diskIds[i]);
+                auto writeBlocksGroup =
+                    volumeGroup->GetSubgroup("request", "WriteBlocks");
 
                 auto countCounter = writeBlocksGroup->GetCounter("Count", true);
                 *countCounter = multipliers[i] * WriteBlocksPerVolumeCount;
 
-                auto inProgressCounter = writeBlocksGroup->GetCounter("InProgress");
-                *inProgressCounter = multipliers[i] * WriteBlocksPerVolumeInProgress;
+                auto inProgressCounter =
+                    writeBlocksGroup->GetCounter("InProgress");
+                *inProgressCounter =
+                    multipliers[i] * WriteBlocksPerVolumeInProgress;
             }
         }
     }
@@ -161,7 +180,8 @@ bool CheckClientPercentileCounters(
         }
     }
 
-    countersToCheck = countersToCheck->FindSubgroup("percentiles", percentilesName);
+    countersToCheck =
+        countersToCheck->FindSubgroup("percentiles", percentilesName);
     return (bool)countersToCheck;
 }
 
@@ -180,7 +200,7 @@ bool CompareCounters(TDynamicCounterPtr lhs, TDynamicCounterPtr rhs)
     return EncodeCounters(lhs) == EncodeCounters(rhs);
 }
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -247,7 +267,8 @@ Y_UNIT_TEST_SUITE(TStatsAggregatorTest)
 
         // Counters with all values equal to the sum of first + second clients'
         // counters
-        auto referenceCounters = SetupTestClientCounters({diskId1, diskId2}, {1, 2});
+        auto referenceCounters =
+            SetupTestClientCounters({diskId1, diskId2}, {1, 2});
 
         auto counters = monitoring->GetCounters();
         UNIT_ASSERT(CompareCounters(counters, referenceCounters));
@@ -275,7 +296,7 @@ Y_UNIT_TEST_SUITE(TStatsAggregatorTest)
         statsAggregator->AddStats(
             diskId1,
             encodedFirstClientCounters,
-            TInstant::Now() - 3*UpdateCountersInterval);
+            TInstant::Now() - 3 * UpdateCountersInterval);
 
         auto diskId2 = CreateGuidAsString();
         auto secondClientCounters = SetupTestClientCounters({diskId2}, {2});
@@ -291,7 +312,8 @@ Y_UNIT_TEST_SUITE(TStatsAggregatorTest)
 
         // Counters with all values equal to the sum of second + third clients'
         // counters (first client should be considered expired)
-        auto referenceCounters = SetupTestClientCounters({diskId2, diskId3}, {2, 3});
+        auto referenceCounters =
+            SetupTestClientCounters({diskId2, diskId3}, {2, 3});
 
         auto counters = monitoring->GetCounters();
         UNIT_ASSERT(CompareCounters(counters, referenceCounters));
@@ -310,8 +332,7 @@ Y_UNIT_TEST_SUITE(TStatsAggregatorTest)
             scheduler,
             logging,
             monitoring,
-            [=] (
-                NMonitoring::TDynamicCountersPtr updatedCounters,
+            [=](NMonitoring::TDynamicCountersPtr updatedCounters,
                 NMonitoring::TDynamicCountersPtr baseCounters)
             {
                 percentiles->CalculatePercentiles(updatedCounters);
@@ -333,7 +354,12 @@ Y_UNIT_TEST_SUITE(TStatsAggregatorTest)
         scheduler->RunAllScheduledTasks();
 
         auto counters = monitoring->GetCounters();
-        UNIT_ASSERT(CheckClientPercentileCounters(counters, {}, "WriteBlocks", {}, "Time"));
+        UNIT_ASSERT(CheckClientPercentileCounters(
+            counters,
+            {},
+            "WriteBlocks",
+            {},
+            "Time"));
     }
 
     Y_UNIT_TEST(ShouldAddHostLabelIfNecessary)
@@ -353,12 +379,14 @@ Y_UNIT_TEST_SUITE(TStatsAggregatorTest)
         statsAggregator->Start();
 
         auto diskId1 = CreateGuidAsString();
-        auto firstClientCounters = SetupTestClientCounters({diskId1}, {1}, false);
+        auto firstClientCounters =
+            SetupTestClientCounters({diskId1}, {1}, false);
         auto encodedFirstClientCounters = EncodeCounters(firstClientCounters);
         statsAggregator->AddStats(diskId1, encodedFirstClientCounters);
 
         auto diskId2 = CreateGuidAsString();
-        auto secondClientCounters = SetupTestClientCounters({diskId2}, {2}, false);
+        auto secondClientCounters =
+            SetupTestClientCounters({diskId2}, {2}, false);
         auto encodedSecondClientCounters = EncodeCounters(secondClientCounters);
         statsAggregator->AddStats(diskId2, encodedSecondClientCounters);
 
@@ -368,7 +396,8 @@ Y_UNIT_TEST_SUITE(TStatsAggregatorTest)
 
         // Counters with all values equal to the sum of first + second clients'
         // counters
-        auto referenceCounters = SetupTestClientCounters({diskId1, diskId2}, {1, 2});
+        auto referenceCounters =
+            SetupTestClientCounters({diskId1, diskId2}, {1, 2});
 
         auto counters = monitoring->GetCounters();
         UNIT_ASSERT(CompareCounters(counters, referenceCounters));
@@ -396,7 +425,8 @@ Y_UNIT_TEST_SUITE(TStatsAggregatorTest)
         statsAggregator->AddStats(diskId1, encodedFirstClientCounters);
 
         auto diskId2 = CreateGuidAsString();
-        auto secondClientCounters = SetupTestClientCounters({diskId2}, {2}, false);
+        auto secondClientCounters =
+            SetupTestClientCounters({diskId2}, {2}, false);
         auto encodedSecondClientCounters = EncodeCounters(secondClientCounters);
         statsAggregator->AddStats(diskId2, encodedSecondClientCounters);
 
@@ -406,7 +436,8 @@ Y_UNIT_TEST_SUITE(TStatsAggregatorTest)
 
         // Counters with all values equal to the sum of first + second clients'
         // counters
-        auto referenceCounters = SetupTestClientCounters({diskId1, diskId2}, {1, 2});
+        auto referenceCounters =
+            SetupTestClientCounters({diskId1, diskId2}, {1, 2});
 
         auto counters = monitoring->GetCounters();
         UNIT_ASSERT(CompareCounters(counters, referenceCounters));
@@ -429,12 +460,17 @@ Y_UNIT_TEST_SUITE(TStatsAggregatorTest)
         statsAggregator->Start();
 
         auto diskId1 = CreateGuidAsString();
-        auto firstClientCounters = SetupTestClientCounters({diskId1}, {1}, true, EClientVersion::None);
+        auto firstClientCounters =
+            SetupTestClientCounters({diskId1}, {1}, true, EClientVersion::None);
         auto encodedFirstClientCounters = EncodeCounters(firstClientCounters);
         statsAggregator->AddStats(diskId1, encodedFirstClientCounters);
 
         auto diskId2 = CreateGuidAsString();
-        auto secondClientCounters = SetupTestClientCounters({diskId2}, {2}, false, EClientVersion::OldClient);
+        auto secondClientCounters = SetupTestClientCounters(
+            {diskId2},
+            {2},
+            false,
+            EClientVersion::OldClient);
         auto encodedSecondClientCounters = EncodeCounters(secondClientCounters);
         statsAggregator->AddStats(diskId2, encodedSecondClientCounters);
 
@@ -444,7 +480,11 @@ Y_UNIT_TEST_SUITE(TStatsAggregatorTest)
 
         // Counters with all values equal to the sum of first + second clients'
         // counters
-        auto referenceCounters = SetupTestClientCounters({diskId1, diskId2}, {1, 2}, true, EClientVersion::NewClient);
+        auto referenceCounters = SetupTestClientCounters(
+            {diskId1, diskId2},
+            {1, 2},
+            true,
+            EClientVersion::NewClient);
 
         auto counters = monitoring->GetCounters();
         UNIT_ASSERT(CompareCounters(counters, referenceCounters));
@@ -467,12 +507,17 @@ Y_UNIT_TEST_SUITE(TStatsAggregatorTest)
         statsAggregator->Start();
 
         auto diskId1 = CreateGuidAsString();
-        auto firstClientCounters = SetupTestClientCounters({diskId1}, {1}, true, EClientVersion::None);
+        auto firstClientCounters =
+            SetupTestClientCounters({diskId1}, {1}, true, EClientVersion::None);
         auto encodedFirstClientCounters = EncodeCounters(firstClientCounters);
         statsAggregator->AddStats(diskId1, encodedFirstClientCounters);
 
         auto diskId2 = CreateGuidAsString();
-        auto secondClientCounters = SetupTestClientCounters({diskId2}, {2}, false, EClientVersion::OldClient);
+        auto secondClientCounters = SetupTestClientCounters(
+            {diskId2},
+            {2},
+            false,
+            EClientVersion::OldClient);
         auto encodedSecondClientCounters = EncodeCounters(secondClientCounters);
         statsAggregator->AddStats(diskId2, encodedSecondClientCounters);
 
@@ -482,12 +527,15 @@ Y_UNIT_TEST_SUITE(TStatsAggregatorTest)
 
         // Counters with all values equal to the sum of first + second clients'
         // counters
-        auto referenceCounters = SetupTestClientCounters({diskId1, diskId2}, {1, 2}, true, EClientVersion::NewClient);
+        auto referenceCounters = SetupTestClientCounters(
+            {diskId1, diskId2},
+            {1, 2},
+            true,
+            EClientVersion::NewClient);
 
         auto counters = monitoring->GetCounters();
         UNIT_ASSERT(CompareCounters(counters, referenceCounters));
     }
-
 }
 
 }   // namespace NCloud::NBlockStore

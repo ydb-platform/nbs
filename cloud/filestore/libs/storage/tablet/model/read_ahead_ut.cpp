@@ -103,10 +103,8 @@ TString FillResult(
     ui32 len)
 {
     NProtoPrivate::TDescribeDataResponse result;
-    const bool filled = cache.TryFillResult(
-        nodeId,
-        handle,
-        MakeRange(offset, len), &result);
+    const bool filled =
+        cache.TryFillResult(nodeId, handle, MakeRange(offset, len), &result);
 
     if (filled) {
         const auto& bps = result.GetBlobPieces();
@@ -331,9 +329,7 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
         RegisterResult(cache, 111, Handle2, 5_MB, 1_MB);
 
         // first 2 results already evicted from the per-node state
-        UNIT_ASSERT_VALUES_EQUAL(
-            "",
-            FillResult(cache, 111, Handle3, 0, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL("", FillResult(cache, 111, Handle3, 0, 1_MB));
         UNIT_ASSERT_VALUES_EQUAL(
             "",
             FillResult(cache, 111, Handle3, 1_MB, 1_MB));
@@ -412,7 +408,9 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
         ui64 nodeId = 1;
         while (nodeId < TDefaultCache::MaxNodes + 1) {
             for (ui32 rangeId = 0;
-                    rangeId < 2 * TDefaultCache::MaxResultsPerNode; ++rangeId) {
+                 rangeId < 2 * TDefaultCache::MaxResultsPerNode;
+                 ++rangeId)
+            {
                 RegisterResult(cache, nodeId, rangeId * 1_MB, 1_MB);
             }
 
@@ -425,7 +423,9 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
 
         while (nodeId < 2 * TDefaultCache::MaxNodes + 1) {
             for (ui32 rangeId = 0;
-                    rangeId < 2 * TDefaultCache::MaxResultsPerNode; ++rangeId) {
+                 rangeId < 2 * TDefaultCache::MaxResultsPerNode;
+                 ++rangeId)
+            {
                 RegisterResult(cache, nodeId, rangeId * 1_MB, 1_MB);
             }
 
@@ -439,26 +439,20 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
             (2 * TDefaultCache::MaxResultsPerNode - 1) * 1_MB;
 
         // nothing should be cached for the nodes with id < firstNodeId
-        UNIT_ASSERT_VALUES_EQUAL(
-            "",
-            FillResult(cache, 1, lastOffset, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL("", FillResult(cache, 1, lastOffset, 1_MB));
         UNIT_ASSERT_VALUES_EQUAL(
             "",
             FillResult(cache, firstNodeId - 1, lastOffset, 1_MB));
 
         // nothing should be cached for the ranges with offsets < firstOffset
         UNIT_ASSERT_VALUES_EQUAL("", FillResult(cache, firstNodeId, 0, 1_MB));
-        UNIT_ASSERT_VALUES_EQUAL("", FillResult(
-            cache,
-            firstNodeId,
-            (firstOffset - 1_MB),
-            1_MB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            FillResult(cache, firstNodeId, (firstOffset - 1_MB), 1_MB));
         UNIT_ASSERT_VALUES_EQUAL("", FillResult(cache, lastNodeId, 0, 1_MB));
-        UNIT_ASSERT_VALUES_EQUAL("", FillResult(
-            cache,
-            lastNodeId,
-            (firstOffset - 1_MB),
-            1_MB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            FillResult(cache, lastNodeId, (firstOffset - 1_MB), 1_MB));
 
         // ranges with offsets >= firstOffsets for the nodes with
         // id >= firstNodeId should be cached
@@ -523,7 +517,8 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
 
     Y_UNIT_TEST(ShouldFilterResult)
     {
-        auto makeContent = [] (ui64 offset, ui32 len) {
+        auto makeContent = [](ui64 offset, ui32 len)
+        {
             TString content(len, 0);
             for (ui32 i = 0; i < len; ++i) {
                 content[i] = 'a' + (offset + i) % ('z' - 'a' + 1);
@@ -531,7 +526,8 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
             return content;
         };
 
-        auto makeFresh = [=] (ui64 offset, ui32 len) {
+        auto makeFresh = [=](ui64 offset, ui32 len)
+        {
             NProtoPrivate::TFreshDataRange fresh;
             fresh.SetOffset(offset);
             *fresh.MutableContent() = makeContent(offset, len);
@@ -546,7 +542,8 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
         *src.AddFreshDataRanges() = makeFresh(10_MB + 127_KB, 3_KB);
         *src.AddFreshDataRanges() = makeFresh(10_MB + 512_KB, 64_KB);
 
-        auto makeBlobPiece = [] (ui32 x1, ui32 x2, ui32 x3, ui32 groupId) {
+        auto makeBlobPiece = [](ui32 x1, ui32 x2, ui32 x3, ui32 groupId)
+        {
             NProtoPrivate::TBlobPiece piece;
             piece.SetBSGroupId(groupId);
             auto* blobId = piece.MutableBlobId();
@@ -556,7 +553,7 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
             return piece;
         };
 
-        auto makeBlobRange = [] (ui64 offset, ui32 len, ui32 blobOffset)
+        auto makeBlobRange = [](ui64 offset, ui32 len, ui32 blobOffset)
         {
             NProtoPrivate::TRangeInBlob blobRange;
             blobRange.SetOffset(offset);
@@ -586,9 +583,7 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
 
             const auto& freshRanges = dst.GetFreshDataRanges();
             UNIT_ASSERT_VALUES_EQUAL(3, freshRanges.size());
-            UNIT_ASSERT_VALUES_EQUAL(
-                10_MB + 10_KB,
-                freshRanges[0].GetOffset());
+            UNIT_ASSERT_VALUES_EQUAL(10_MB + 10_KB, freshRanges[0].GetOffset());
             UNIT_ASSERT_VALUES_EQUAL(
                 makeContent(10_MB + 10_KB, 1_KB),
                 freshRanges[0].GetContent());

@@ -14,19 +14,16 @@ TFuture<NProto::TError> TTestLogbrokerService::Write(
 
     for (auto& [payload, seqNo]: messages) {
         NProto::TDiskState state;
-        const bool ok = state.ParseFromArray(
-            payload.data(),
-            payload.size());
+        const bool ok = state.ParseFromArray(payload.data(), payload.size());
 
         Y_ABORT_UNLESS(ok);
 
         with_lock (ItemsMtx) {
-            Items.push_back(TItem {
+            Items.push_back(TItem{
                 .DiskId = state.GetDiskId(),
                 .State = state.GetState(),
                 .Message = state.GetStateMessage(),
-                .SeqNo = seqNo
-            });
+                .SeqNo = seqNo});
         }
     }
 

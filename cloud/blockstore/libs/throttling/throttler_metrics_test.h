@@ -8,8 +8,7 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestThrottlerMetrics final
-    : public IThrottlerMetrics
+struct TTestThrottlerMetrics final: public IThrottlerMetrics
 {
     using TRegisterHandler =
         std::function<void(const TString&, const TString&)>;
@@ -25,16 +24,12 @@ struct TTestThrottlerMetrics final
     TUpdateUsedQuotaHandler UpdateUsedQuotaHandler;
     TUpdateMaxUsedQuotaHandler UpdateMaxUsedQuotaHandler;
 
-    void Register(
-        const TString& diskId,
-        const TString& clientId) override
+    void Register(const TString& diskId, const TString& clientId) override
     {
         RegisterHandler(diskId, clientId);
     }
 
-    void Unregister(
-        const TString& diskId,
-        const TString& clientId) override
+    void Unregister(const TString& diskId, const TString& clientId) override
     {
         UnregisterHandler(diskId, clientId);
     }

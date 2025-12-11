@@ -12,8 +12,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEnv
-    : public NUnitTest::TBaseFixture
+struct TEnv: public NUnitTest::TBaseFixture
 {
     TStringStream Data;
     NMonitoring::TDynamicCountersPtr Counters;
@@ -56,16 +55,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'sum',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'0',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'sum',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'0',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -75,16 +74,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'sum',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'0',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'sum',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'0',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -106,16 +105,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'sum',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'45',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'sum',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'45',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -127,21 +126,22 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
             TDefaultWindowCalculator calc;
             calc.Register(
                 Registry,
-                {CreateLabel("filesystem", "test_fs"), CreateSensor("MaxQuota")});
+                {CreateLabel("filesystem", "test_fs"),
+                 CreateSensor("MaxQuota")});
 
             Registry->Visit(TInstant::Zero(), *Visitor);
             UNIT_ASSERT_VALUES_EQUAL(
                 "metrics:["
-                    "{"
-                        "time:'1970-01-01T00:00:00Z',"
-                        "aggregation_type:'sum',"
-                        "metric_type:'absolute',"
-                        "labels:["
-                            "{name:'filesystem',value:'test_fs'},"
-                            "{name:'sensor',value:'MaxQuota'},"
-                        "],"
-                        "value:'0',"
-                    "},"
+                "{"
+                "time:'1970-01-01T00:00:00Z',"
+                "aggregation_type:'sum',"
+                "metric_type:'absolute',"
+                "labels:["
+                "{name:'filesystem',value:'test_fs'},"
+                "{name:'sensor',value:'MaxQuota'},"
+                "],"
+                "value:'0',"
+                "},"
                 "]",
                 Data.Str());
             Data.Clear();
@@ -164,16 +164,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'sum',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'15',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'sum',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'15',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -186,16 +186,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'sum',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'65',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'sum',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'65',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -209,16 +209,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'sum',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'105',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'sum',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'105',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -232,16 +232,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'sum',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'120',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'sum',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'120',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -252,16 +252,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'sum',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'105',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'sum',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'105',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -274,16 +274,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'sum',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'0',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'sum',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'0',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -293,16 +293,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'sum',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'15',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'sum',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'15',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -321,16 +321,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'average',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'1',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'average',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'1',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -343,16 +343,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'average',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'4',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'average',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'4',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -366,16 +366,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'average',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'7',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'average',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'7',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -389,16 +389,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'average',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'8',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'average',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'8',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -409,16 +409,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'average',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'7',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'average',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'7',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -431,16 +431,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'average',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'0',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'average',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'0',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -450,16 +450,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'average',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'1',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'average',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'1',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -478,16 +478,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'min',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'15',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'min',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'15',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -500,16 +500,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'min',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'11',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'min',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'11',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -523,16 +523,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'min',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'6',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'min',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'6',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -546,16 +546,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'min',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'1',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'min',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'1',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -566,16 +566,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'min',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'0',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'min',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'0',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -588,16 +588,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'min',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'0',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'min',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'0',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -607,16 +607,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'min',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'0',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'min',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'0',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -635,16 +635,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'max',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'15',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'max',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'15',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -657,16 +657,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'max',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'15',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'max',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'15',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -680,16 +680,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'max',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'15',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'max',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'15',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -703,16 +703,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'max',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'15',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'max',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'15',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -723,16 +723,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'max',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'14',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'max',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'14',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -745,16 +745,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'max',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'0',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'max',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'0',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();
@@ -764,16 +764,16 @@ Y_UNIT_TEST_SUITE(TCalculatorTest)
         Registry->Visit(TInstant::Zero(), *Visitor);
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'1970-01-01T00:00:00Z',"
-                    "aggregation_type:'max',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'filesystem',value:'test_fs'},"
-                        "{name:'sensor',value:'MaxQuota'},"
-                    "],"
-                    "value:'15',"
-                "},"
+            "{"
+            "time:'1970-01-01T00:00:00Z',"
+            "aggregation_type:'max',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'filesystem',value:'test_fs'},"
+            "{name:'sensor',value:'MaxQuota'},"
+            "],"
+            "value:'15',"
+            "},"
             "]",
             Data.Str());
         Data.Clear();

@@ -1,4 +1,5 @@
 #include "stats.h"
+
 #include "critical_event.h"
 
 #include <library/cpp/json/json_reader.h>
@@ -27,7 +28,8 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         TSimpleStats completionStats;
         std::array<TAtomicStats, 2> queueStats;
 
-        auto dump = [&] (auto dt) {
+        auto dump = [&](auto dt)
+        {
             TStringStream ss;
 
             auto curStats = TCompleteStats{
@@ -45,7 +47,8 @@ Y_UNIT_TEST_SUITE(TStatsTest)
             return stats;
         };
 
-        auto completed = [&] (int req, ui64 size, TDuration dt) {
+        auto completed = [&](int req, ui64 size, TDuration dt)
+        {
             queueStats[req].Dequeued += 1;
             queueStats[req].Submitted += 1;
 
@@ -56,18 +59,21 @@ Y_UNIT_TEST_SUITE(TStatsTest)
             completionStats.Sizes[req].Increment(size);
         };
 
-        auto read = [&] (ui64 size, auto dt) {
+        auto read = [&](ui64 size, auto dt)
+        {
             completed(0, size, dt);
         };
 
-        auto write = [&] (ui64 size, auto dt) {
+        auto write = [&](ui64 size, auto dt)
+        {
             completed(1, size, dt);
         };
 
-        auto bucket = [] (auto& v) {
+        auto bucket = [](auto& v)
+        {
             auto& b = v.GetArray();
             UNIT_ASSERT_VALUES_EQUAL(2, b.size());
-            return std::tuple {b[0].GetInteger(), b[1].GetInteger()};
+            return std::tuple{b[0].GetInteger(), b[1].GetInteger()};
         };
 
         completionStats.Requests[0].Unaligned = 12;
@@ -108,7 +114,9 @@ Y_UNIT_TEST_SUITE(TStatsTest)
             UNIT_ASSERT_VALUES_EQUAL(1000, stats["elapsed_ms"].GetInteger());
             UNIT_ASSERT_VALUES_EQUAL(1500, stats["dequeued"].GetInteger());
             UNIT_ASSERT_VALUES_EQUAL(1500, stats["submitted"].GetInteger());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats["submission_failed"].GetInteger());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                stats["submission_failed"].GetInteger());
             UNIT_ASSERT_VALUES_EQUAL(1500, stats["completed"].GetInteger());
             UNIT_ASSERT_VALUES_EQUAL(0, stats["failed"].GetInteger());
 
@@ -239,7 +247,9 @@ Y_UNIT_TEST_SUITE(TStatsTest)
             UNIT_ASSERT_VALUES_EQUAL(5000, stats["elapsed_ms"].GetInteger());
             UNIT_ASSERT_VALUES_EQUAL(2103, stats["dequeued"].GetInteger());
             UNIT_ASSERT_VALUES_EQUAL(2103, stats["submitted"].GetInteger());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats["submission_failed"].GetInteger());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                stats["submission_failed"].GetInteger());
             UNIT_ASSERT_VALUES_EQUAL(2103, stats["completed"].GetInteger());
             UNIT_ASSERT_VALUES_EQUAL(0, stats["failed"].GetInteger());
 

@@ -8,8 +8,8 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
-#include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
+#include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/env_stub.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
@@ -42,7 +42,7 @@ namespace {
 
 constexpr TDuration WaitTimeout = 5s;
 constexpr ui32 DefaultDeviceBlockSize = 4_KB;
-constexpr ui64 DefaultBlocksCount = 1024*1024;
+constexpr ui64 DefaultBlocksCount = 1024 * 1024;
 constexpr bool LockingEnabled = true;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -58,8 +58,7 @@ struct TByDeviceUUID
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestNvmeManager
-    : NNvme::INvmeManager
+struct TTestNvmeManager: NNvme::INvmeManager
 {
     TFuture<NProto::TError> Format(
         const TString& path,
@@ -71,10 +70,8 @@ struct TTestNvmeManager
         return MakeFuture<NProto::TError>();
     }
 
-    TFuture<NProto::TError> Deallocate(
-        const TString& path,
-        ui64 offsetBytes,
-        ui64 sizeBytes) override
+    TFuture<NProto::TError>
+    Deallocate(const TString& path, ui64 offsetBytes, ui64 sizeBytes) override
     {
         Y_UNUSED(path);
         Y_UNUSED(offsetBytes);
@@ -197,8 +194,7 @@ struct TTestStorage: IStorage
 
     TTestStorage(TTestStorageStatePtr storageState)
         : StorageState(std::move(storageState))
-    {
-    }
+    {}
 
     TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
         TCallContextPtr callContext,
@@ -274,8 +270,7 @@ struct TTestStorageProvider: IStorageProvider
 
     TTestStorageProvider(TTestStorageStatePtr storageState)
         : StorageState(std::move(storageState))
-    {
-    }
+    {}
 
     TFuture<IStoragePtr> CreateStorage(
         const NProto::TVolume& volume,
@@ -299,8 +294,7 @@ struct TStorageProvider: IStorageProvider
 
     TStorageProvider(THashSet<TString> paths)
         : Paths(std::move(paths))
-    {
-    }
+    {}
 
     TFuture<IStoragePtr> CreateStorage(
         const NProto::TVolume& volume,
@@ -315,26 +309,24 @@ struct TStorageProvider: IStorageProvider
         }
 
         return MakeErrorFuture<IStoragePtr>(
-            std::make_exception_ptr(yexception() << "oops")
-        );
+            std::make_exception_ptr(yexception() << "oops"));
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFiles
-    : public NUnitTest::TBaseFixture
+struct TFiles: public NUnitTest::TBaseFixture
 {
     const TTempDir TempDir;
     const TFsPath Nvme3 = TempDir.Path() / "nvme3";
     const TVector<TFsPath> Nvme3s = {
         TempDir.Path() / "nvme3n1",
         TempDir.Path() / "nvme3n2",
-        TempDir.Path() / "nvme3n3"
-    };
+        TempDir.Path() / "nvme3n3"};
 
     const TString CachedConfigPath = TempDir.Path() / "nbs-disk-agent.txt";
-    const TString CachedSessionsPath = TempDir.Path() / "nbs-disk-agent-sessions.txt";
+    const TString CachedSessionsPath =
+        TempDir.Path() / "nbs-disk-agent-sessions.txt";
 
     const ui64 DefaultFileSize = DefaultDeviceBlockSize * DefaultBlocksCount;
 
@@ -413,7 +405,7 @@ void CheckLockedPaths(
 
 Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 {
-    void ShouldInitialize(TDiskAgentState& state, bool checkSerialNumbers)
+    void ShouldInitialize(TDiskAgentState & state, bool checkSerialNumbers)
     {
         auto future = state.Initialize();
         const auto& r = future.GetValue(WaitTimeout);
@@ -453,8 +445,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             request.SetBlockSize(4096);
             request.SetBlocksCount(10);
 
-            auto response = state.Read(Now(), std::move(request))
-                .GetValue(WaitTimeout);
+            auto response =
+                state.Read(Now(), std::move(request)).GetValue(WaitTimeout);
 
             UNIT_ASSERT(!HasError(response));
             UNIT_ASSERT_VALUES_EQUAL(10, response.GetBlocks().BuffersSize());
@@ -471,8 +463,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
             ResizeIOVector(*request.MutableBlocks(), 10, 4096);
 
-            auto response = state.Write(Now(), std::move(request))
-                .GetValue(WaitTimeout);
+            auto response =
+                state.Write(Now(), std::move(request)).GetValue(WaitTimeout);
 
             UNIT_ASSERT(!HasError(response));
         }
@@ -485,7 +477,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             request.SetBlocksCount(10);
 
             auto response = state.WriteZeroes(Now(), std::move(request))
-                .GetValue(WaitTimeout);
+                                .GetValue(WaitTimeout);
 
             UNIT_ASSERT(!HasError(response));
         }
@@ -498,12 +490,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
     Y_UNIT_TEST(ShouldInitializeWithSpdk)
     {
-        auto state = CreateDiskAgentStateSpdk(
-            CreateSpdkConfig());
+        auto state = CreateDiskAgentStateSpdk(CreateSpdkConfig());
 
-        ShouldInitialize(
-            *state,
-            false); // checkSerialNumbers
+        ShouldInitialize(*state,
+                         false);   // checkSerialNumbers
     }
 
     Y_UNIT_TEST_F(ShouldReportDeviceGeneratedConfigMismatch, TFiles)
@@ -524,22 +514,18 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         // the IDs of the generated devices will differ from those in the config
         pool.SetHashSuffix("random");
 
-        auto state = CreateDiskAgentStateNull(
-            CreateNullConfig({
-                .Files = Nvme3s,
-                .DiscoveryConfig = std::move(discoveryConfig)
-            }));
+        auto state = CreateDiskAgentStateNull(CreateNullConfig(
+            {.Files = Nvme3s, .DiscoveryConfig = std::move(discoveryConfig)}));
 
-        ShouldInitialize(
-            *state,
-            false); // checkSerialNumbers
+        ShouldInitialize(*state,
+                         false);   // checkSerialNumbers
 
         UNIT_ASSERT_EQUAL(1, *mismatch);
     }
 
     Y_UNIT_TEST_F(ShouldProperlyProcessRequestsToUninitializedDevices, TFiles)
     {
-        auto config = CreateNullConfig({ .Files = Nvme3s });
+        auto config = CreateNullConfig({.Files = Nvme3s});
 
         TDiskAgentState state(
             CreateStorageConfig(),
@@ -609,8 +595,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             request.SetBlocksCount(10);
             request.MutableHeaders()->SetClientId(clientId);
 
-            auto response = state.Read(Now(), std::move(request))
-                .GetValue(WaitTimeout);
+            auto response =
+                state.Read(Now(), std::move(request)).GetValue(WaitTimeout);
 
             UNIT_ASSERT(!HasError(response));
             UNIT_ASSERT_VALUES_EQUAL(10, response.GetBlocks().BuffersSize());
@@ -628,8 +614,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
             ResizeIOVector(*request.MutableBlocks(), 10, 4096);
 
-            auto response = state.Write(Now(), std::move(request))
-                .GetValue(WaitTimeout);
+            auto response =
+                state.Write(Now(), std::move(request)).GetValue(WaitTimeout);
 
             UNIT_ASSERT(!HasError(response));
         }
@@ -643,7 +629,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             request.MutableHeaders()->SetClientId(clientId);
 
             auto response = state.WriteZeroes(Now(), std::move(request))
-                .GetValue(WaitTimeout);
+                                .GetValue(WaitTimeout);
 
             UNIT_ASSERT(!HasError(response));
         }
@@ -671,11 +657,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
             UNIT_ASSERT(false);
         } catch (const TServiceError& e) {
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_IO,
-                e.GetCode(),
-                e.GetMessage()
-            );
+            UNIT_ASSERT_VALUES_EQUAL_C(E_IO, e.GetCode(), e.GetMessage());
         }
 
         try {
@@ -691,11 +673,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
             UNIT_ASSERT(false);
         } catch (const TServiceError& e) {
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_IO,
-                e.GetCode(),
-                e.GetMessage()
-            );
+            UNIT_ASSERT_VALUES_EQUAL_C(E_IO, e.GetCode(), e.GetMessage());
         }
 
         try {
@@ -710,11 +688,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
             UNIT_ASSERT(false);
         } catch (const TServiceError& e) {
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_IO,
-                e.GetCode(),
-                e.GetMessage()
-            );
+            UNIT_ASSERT_VALUES_EQUAL_C(E_IO, e.GetCode(), e.GetMessage());
         }
 
         try {
@@ -728,11 +702,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
             UNIT_ASSERT(false);
         } catch (const TServiceError& e) {
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_IO,
-                e.GetCode(),
-                e.GetMessage()
-            );
+            UNIT_ASSERT_VALUES_EQUAL_C(E_IO, e.GetCode(), e.GetMessage());
         }
     }
 
@@ -748,50 +718,48 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             device.SetDeviceId("uuid-" + ToString(i + 1));
         }
 
-        const auto testState =
-            [&](
-                NProto::TDiskAgentConfig cfg,
-                bool lockingEnabled,
-                size_t errors,
-                bool checkLockedDevices)
-            {
-                auto config = std::make_shared<TDiskAgentConfig>(cfg, "rack", 1000);
+        const auto testState = [&](NProto::TDiskAgentConfig cfg,
+                                   bool lockingEnabled,
+                                   size_t errors,
+                                   bool checkLockedDevices)
+        {
+            auto config = std::make_shared<TDiskAgentConfig>(cfg, "rack", 1000);
 
-                TDiskAgentState state(
-                    CreateStorageConfig(),
-                    config,
-                    nullptr,   // spdk
-                    CreateTestAllocator(),
-                    std::make_shared<TStorageProvider>(THashSet<TString>{
-                        config->GetFileDevices()[0].GetPath(),
-                        config->GetFileDevices()[1].GetPath(),
-                        config->GetFileDevices()[2].GetPath()}),
-                    CreateProfileLogStub(),
-                    CreateBlockDigestGeneratorStub(),
-                    CreateLoggingService("console"),
-                    nullptr,   // rdmaServer
-                    NvmeManager,
-                    nullptr,   // rdmaTargetConfig
-                    TOldRequestCounters(),
-                    nullptr,   // multiAgentWriteHandler
-                    nullptr    // backgroundThreadPool
-                );
+            TDiskAgentState state(
+                CreateStorageConfig(),
+                config,
+                nullptr,   // spdk
+                CreateTestAllocator(),
+                std::make_shared<TStorageProvider>(THashSet<TString>{
+                    config->GetFileDevices()[0].GetPath(),
+                    config->GetFileDevices()[1].GetPath(),
+                    config->GetFileDevices()[2].GetPath()}),
+                CreateProfileLogStub(),
+                CreateBlockDigestGeneratorStub(),
+                CreateLoggingService("console"),
+                nullptr,   // rdmaServer
+                NvmeManager,
+                nullptr,   // rdmaTargetConfig
+                TOldRequestCounters(),
+                nullptr,   // multiAgentWriteHandler
+                nullptr    // backgroundThreadPool
+            );
 
-                auto future = state.Initialize();
-                const auto& r = future.GetValue(WaitTimeout);
+            auto future = state.Initialize();
+            const auto& r = future.GetValue(WaitTimeout);
 
-                if (checkLockedDevices) {
-                    CheckLockedPaths(r.Configs, lockingEnabled);
-                }
+            if (checkLockedDevices) {
+                CheckLockedPaths(r.Configs, lockingEnabled);
+            }
 
-                UNIT_ASSERT_VALUES_EQUAL(errors, r.Errors.size());
-                UNIT_ASSERT_VALUES_EQUAL(3, r.Configs.size());
+            UNIT_ASSERT_VALUES_EQUAL(errors, r.Errors.size());
+            UNIT_ASSERT_VALUES_EQUAL(3, r.Configs.size());
 
-                auto stats = state.CollectStats().GetValue(WaitTimeout);
+            auto stats = state.CollectStats().GetValue(WaitTimeout);
 
-                UNIT_ASSERT_VALUES_EQUAL(errors, stats.GetInitErrorsCount());
-                UNIT_ASSERT_VALUES_EQUAL(3, stats.GetDeviceStats().size());
-            };
+            UNIT_ASSERT_VALUES_EQUAL(errors, stats.GetInitErrorsCount());
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetDeviceStats().size());
+        };
 
         testState(protoCfg, !LockingEnabled, 0, true);
 
@@ -863,195 +831,167 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
     Y_UNIT_TEST_F(ShouldAcquireDevices, TFiles)
     {
         auto state = CreateDiskAgentStateNull(
-            CreateNullConfig({ .Files = Nvme3s, .AcquireRequired = true })
-        );
+            CreateNullConfig({.Files = Nvme3s, .AcquireRequired = true}));
 
         auto future = state->Initialize();
         const auto& r = future.GetValue(WaitTimeout);
         UNIT_ASSERT(r.Errors.empty());
 
-#define TEST_SHOULD_READ(clientId)                                             \
-        try {                                                                  \
-            NProto::TReadDeviceBlocksRequest request;                          \
-            request.SetDeviceUUID("uuid-1");                                   \
-            request.SetStartIndex(1);                                          \
-            request.SetBlockSize(4096);                                        \
-            request.SetBlocksCount(10);                                        \
-            request.MutableHeaders()->SetClientId(clientId);                   \
-                                                                               \
-            auto response =                                                    \
-                state->Read(                                                   \
-                    Now(),                                                     \
-                    std::move(request)                                         \
-                ).GetValue(WaitTimeout);                                       \
-            UNIT_ASSERT_VALUES_EQUAL_C(                                        \
-                S_OK,                                                          \
-                response.GetError().GetCode(),                                 \
-                response.GetError().GetMessage()                               \
-            );                                                                 \
-        } catch (const TServiceError& e) {                                     \
-            UNIT_ASSERT_C(false, e.GetMessage());                              \
-        }                                                                      \
-// TEST_SHOULD_READ
+#define TEST_SHOULD_READ(clientId)                                        \
+    try {                                                                 \
+        NProto::TReadDeviceBlocksRequest request;                         \
+        request.SetDeviceUUID("uuid-1");                                  \
+        request.SetStartIndex(1);                                         \
+        request.SetBlockSize(4096);                                       \
+        request.SetBlocksCount(10);                                       \
+        request.MutableHeaders()->SetClientId(clientId);                  \
+                                                                          \
+        auto response =                                                   \
+            state->Read(Now(), std::move(request)).GetValue(WaitTimeout); \
+        UNIT_ASSERT_VALUES_EQUAL_C(                                       \
+            S_OK,                                                         \
+            response.GetError().GetCode(),                                \
+            response.GetError().GetMessage());                            \
+    } catch (const TServiceError& e) {                                    \
+        UNIT_ASSERT_C(false, e.GetMessage());                             \
+    }                                                                     \
+    // TEST_SHOULD_READ
 
-#define TEST_SHOULD_WRITE(clientId)                                            \
-        try {                                                                  \
-            NProto::TWriteDeviceBlocksRequest request;                         \
-            request.SetDeviceUUID("uuid-1");                                   \
-            request.SetStartIndex(1);                                          \
-            request.SetBlockSize(4096);                                        \
-            request.MutableHeaders()->SetClientId(clientId);                   \
-                                                                               \
-            ResizeIOVector(*request.MutableBlocks(), 10, 4096);                \
-                                                                               \
-            auto response =                                                    \
-                state->Write(                                                  \
-                    Now(),                                                     \
-                    std::move(request)                                         \
-                ).GetValue(WaitTimeout);                                       \
-            UNIT_ASSERT_VALUES_EQUAL_C(                                        \
-                S_OK,                                                          \
-                response.GetError().GetCode(),                                 \
-                response.GetError().GetMessage()                               \
-            );                                                                 \
-        } catch (const TServiceError& e) {                                     \
-            UNIT_ASSERT_C(false, e.GetMessage());                              \
-        }                                                                      \
-// TEST_SHOULD_WRITE
+#define TEST_SHOULD_WRITE(clientId)                                        \
+    try {                                                                  \
+        NProto::TWriteDeviceBlocksRequest request;                         \
+        request.SetDeviceUUID("uuid-1");                                   \
+        request.SetStartIndex(1);                                          \
+        request.SetBlockSize(4096);                                        \
+        request.MutableHeaders()->SetClientId(clientId);                   \
+                                                                           \
+        ResizeIOVector(*request.MutableBlocks(), 10, 4096);                \
+                                                                           \
+        auto response =                                                    \
+            state->Write(Now(), std::move(request)).GetValue(WaitTimeout); \
+        UNIT_ASSERT_VALUES_EQUAL_C(                                        \
+            S_OK,                                                          \
+            response.GetError().GetCode(),                                 \
+            response.GetError().GetMessage());                             \
+    } catch (const TServiceError& e) {                                     \
+        UNIT_ASSERT_C(false, e.GetMessage());                              \
+    }                                                                      \
+    // TEST_SHOULD_WRITE
 
-#define TEST_SHOULD_ZERO(clientId)                                             \
-        try {                                                                  \
-            NProto::TZeroDeviceBlocksRequest request;                          \
-            request.SetDeviceUUID("uuid-1");                                   \
-            request.SetStartIndex(1);                                          \
-            request.SetBlockSize(4096);                                        \
-            request.SetBlocksCount(10);                                        \
-            request.MutableHeaders()->SetClientId(clientId);                   \
-                                                                               \
-            auto response =                                                    \
-                state->WriteZeroes(                                            \
-                    Now(),                                                     \
-                    std::move(request)                                         \
-                ).GetValue(WaitTimeout);                                       \
-            UNIT_ASSERT_VALUES_EQUAL_C(                                        \
-                S_OK,                                                          \
-                response.GetError().GetCode(),                                 \
-                response.GetError().GetMessage()                               \
-            );                                                                 \
-        } catch (const TServiceError& e) {                                     \
-            UNIT_ASSERT_C(false, e.GetMessage());                              \
-        }                                                                      \
-// TEST_SHOULD_ZERO
+#define TEST_SHOULD_ZERO(clientId)                                    \
+    try {                                                             \
+        NProto::TZeroDeviceBlocksRequest request;                     \
+        request.SetDeviceUUID("uuid-1");                              \
+        request.SetStartIndex(1);                                     \
+        request.SetBlockSize(4096);                                   \
+        request.SetBlocksCount(10);                                   \
+        request.MutableHeaders()->SetClientId(clientId);              \
+                                                                      \
+        auto response = state->WriteZeroes(Now(), std::move(request)) \
+                            .GetValue(WaitTimeout);                   \
+        UNIT_ASSERT_VALUES_EQUAL_C(                                   \
+            S_OK,                                                     \
+            response.GetError().GetCode(),                            \
+            response.GetError().GetMessage());                        \
+    } catch (const TServiceError& e) {                                \
+        UNIT_ASSERT_C(false, e.GetMessage());                         \
+    }                                                                 \
+    // TEST_SHOULD_ZERO
 
-#define TEST_SHOULD_NOT_READ(clientId)                                         \
-        try {                                                                  \
-            NProto::TReadDeviceBlocksRequest request;                          \
-            request.SetDeviceUUID("uuid-1");                                   \
-            request.SetStartIndex(1);                                          \
-            request.SetBlockSize(4096);                                        \
-            request.SetBlocksCount(10);                                        \
-            request.MutableHeaders()->SetClientId(clientId);                   \
-                                                                               \
-            auto response =                                                    \
-                state->Read(                                                   \
-                    Now(),                                                     \
-                    std::move(request)                                         \
-                ).GetValue(WaitTimeout);                                       \
-            UNIT_ASSERT(false);                                                \
-        } catch (const TServiceError& e) {                                     \
-            UNIT_ASSERT_VALUES_EQUAL_C(                                        \
-                E_BS_INVALID_SESSION,                                          \
-                e.GetCode(),                                                   \
-                e.GetMessage()                                                 \
-            );                                                                 \
-        }                                                                      \
-// TEST_SHOULD_NOT_READ
+#define TEST_SHOULD_NOT_READ(clientId)                                    \
+    try {                                                                 \
+        NProto::TReadDeviceBlocksRequest request;                         \
+        request.SetDeviceUUID("uuid-1");                                  \
+        request.SetStartIndex(1);                                         \
+        request.SetBlockSize(4096);                                       \
+        request.SetBlocksCount(10);                                       \
+        request.MutableHeaders()->SetClientId(clientId);                  \
+                                                                          \
+        auto response =                                                   \
+            state->Read(Now(), std::move(request)).GetValue(WaitTimeout); \
+        UNIT_ASSERT(false);                                               \
+    } catch (const TServiceError& e) {                                    \
+        UNIT_ASSERT_VALUES_EQUAL_C(                                       \
+            E_BS_INVALID_SESSION,                                         \
+            e.GetCode(),                                                  \
+            e.GetMessage());                                              \
+    }                                                                     \
+    // TEST_SHOULD_NOT_READ
 
-#define TEST_SHOULD_NOT_WRITE(clientId)                                        \
-        try {                                                                  \
-            NProto::TWriteDeviceBlocksRequest request;                         \
-            request.SetDeviceUUID("uuid-1");                                   \
-            request.SetStartIndex(1);                                          \
-            request.SetBlockSize(4096);                                        \
-            request.MutableHeaders()->SetClientId(clientId);                   \
-                                                                               \
-            ResizeIOVector(*request.MutableBlocks(), 10, 4096);                \
-                                                                               \
-            auto response =                                                    \
-                state->Write(                                                  \
-                    Now(),                                                     \
-                    std::move(request)                                         \
-                ).GetValue(WaitTimeout);                                       \
-            UNIT_ASSERT(false);                                                \
-        } catch (const TServiceError& e) {                                     \
-            UNIT_ASSERT_VALUES_EQUAL_C(                                        \
-                E_BS_INVALID_SESSION,                                          \
-                e.GetCode(),                                                   \
-                e.GetMessage()                                                 \
-            );                                                                 \
-        }                                                                      \
-// TEST_SHOULD_NOT_WRITE
+#define TEST_SHOULD_NOT_WRITE(clientId)                                    \
+    try {                                                                  \
+        NProto::TWriteDeviceBlocksRequest request;                         \
+        request.SetDeviceUUID("uuid-1");                                   \
+        request.SetStartIndex(1);                                          \
+        request.SetBlockSize(4096);                                        \
+        request.MutableHeaders()->SetClientId(clientId);                   \
+                                                                           \
+        ResizeIOVector(*request.MutableBlocks(), 10, 4096);                \
+                                                                           \
+        auto response =                                                    \
+            state->Write(Now(), std::move(request)).GetValue(WaitTimeout); \
+        UNIT_ASSERT(false);                                                \
+    } catch (const TServiceError& e) {                                     \
+        UNIT_ASSERT_VALUES_EQUAL_C(                                        \
+            E_BS_INVALID_SESSION,                                          \
+            e.GetCode(),                                                   \
+            e.GetMessage());                                               \
+    }                                                                      \
+    // TEST_SHOULD_NOT_WRITE
 
-#define TEST_SHOULD_NOT_ZERO(clientId)                                         \
-        try {                                                                  \
-            NProto::TZeroDeviceBlocksRequest request;                          \
-            request.SetDeviceUUID("uuid-1");                                   \
-            request.SetStartIndex(1);                                          \
-            request.SetBlockSize(4096);                                        \
-            request.SetBlocksCount(10);                                        \
-            request.MutableHeaders()->SetClientId(clientId);                   \
-                                                                               \
-            auto response =                                                    \
-                state->WriteZeroes(                                            \
-                    Now(),                                                     \
-                    std::move(request)                                         \
-                ).GetValue(WaitTimeout);                                       \
-            UNIT_ASSERT(false);                                                \
-        } catch (const TServiceError& e) {                                     \
-            UNIT_ASSERT_VALUES_EQUAL_C(                                        \
-                E_BS_INVALID_SESSION,                                          \
-                e.GetCode(),                                                   \
-                e.GetMessage()                                                 \
-            );                                                                 \
-        }                                                                      \
-// TEST_SHOULD_NOT_READ
+#define TEST_SHOULD_NOT_ZERO(clientId)                                \
+    try {                                                             \
+        NProto::TZeroDeviceBlocksRequest request;                     \
+        request.SetDeviceUUID("uuid-1");                              \
+        request.SetStartIndex(1);                                     \
+        request.SetBlockSize(4096);                                   \
+        request.SetBlocksCount(10);                                   \
+        request.MutableHeaders()->SetClientId(clientId);              \
+                                                                      \
+        auto response = state->WriteZeroes(Now(), std::move(request)) \
+                            .GetValue(WaitTimeout);                   \
+        UNIT_ASSERT(false);                                           \
+    } catch (const TServiceError& e) {                                \
+        UNIT_ASSERT_VALUES_EQUAL_C(                                   \
+            E_BS_INVALID_SESSION,                                     \
+            e.GetCode(),                                              \
+            e.GetMessage());                                          \
+    }                                                                 \
+    // TEST_SHOULD_NOT_READ
 
-#define TEST_SHOULD_ACQUIRE(clientId, ts, mode, seqNo)                         \
-        try {                                                                  \
-            state->AcquireDevices(                                             \
-                {"uuid-1"},                                                    \
-                clientId,                                                      \
-                ts,                                                            \
-                mode,                                                          \
-                seqNo,                                                         \
-                "vol0",                                                        \
-                0                                                              \
-            );                                                                 \
-        } catch (const TServiceError& e) {                                     \
-            UNIT_ASSERT_C(false, e.GetMessage());                              \
-        }                                                                      \
-// TEST_SHOULD_ACQUIRE
+#define TEST_SHOULD_ACQUIRE(clientId, ts, mode, seqNo) \
+    try {                                              \
+        state->AcquireDevices(                         \
+            {"uuid-1"},                                \
+            clientId,                                  \
+            ts,                                        \
+            mode,                                      \
+            seqNo,                                     \
+            "vol0",                                    \
+            0);                                        \
+    } catch (const TServiceError& e) {                 \
+        UNIT_ASSERT_C(false, e.GetMessage());          \
+    }                                                  \
+    // TEST_SHOULD_ACQUIRE
 
-#define TEST_SHOULD_NOT_ACQUIRE(clientId, ts, mode, seqNo)                     \
-        try {                                                                  \
-            state->AcquireDevices(                                             \
-                {"uuid-1"},                                                    \
-                clientId,                                                      \
-                ts,                                                            \
-                mode,                                                          \
-                seqNo,                                                         \
-                "vol0",                                                        \
-                0                                                              \
-            );                                                                 \
-            UNIT_ASSERT(false);                                                \
-        } catch (const TServiceError& e) {                                     \
-            UNIT_ASSERT_VALUES_EQUAL_C(                                        \
-                E_BS_MOUNT_CONFLICT,                                           \
-                e.GetCode(),                                                   \
-                e.GetMessage()                                                 \
-            );                                                                 \
-        }                                                                      \
-// TEST_SHOULD_NOT_ACQUIRE
+#define TEST_SHOULD_NOT_ACQUIRE(clientId, ts, mode, seqNo) \
+    try {                                                  \
+        state->AcquireDevices(                             \
+            {"uuid-1"},                                    \
+            clientId,                                      \
+            ts,                                            \
+            mode,                                          \
+            seqNo,                                         \
+            "vol0",                                        \
+            0);                                            \
+        UNIT_ASSERT(false);                                \
+    } catch (const TServiceError& e) {                     \
+        UNIT_ASSERT_VALUES_EQUAL_C(                        \
+            E_BS_MOUNT_CONFLICT,                           \
+            e.GetCode(),                                   \
+            e.GetMessage());                               \
+    }                                                      \
+    // TEST_SHOULD_NOT_ACQUIRE
 
         // read requests should fail for unregistered clients
         TEST_SHOULD_NOT_READ("some-client");
@@ -1073,8 +1013,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             "writer",
             TInstant::Seconds(1),
             NProto::VOLUME_ACCESS_READ_WRITE,
-            0
-        );
+            0);
 
         // there is an active rw client already - second writer should be
         // rejected
@@ -1082,24 +1021,21 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             "writer2",
             TInstant::Seconds(1),
             NProto::VOLUME_ACCESS_READ_WRITE,
-            0
-        );
+            0);
 
         // but readers can register
         TEST_SHOULD_ACQUIRE(
             "reader1",
             TInstant::Seconds(1),
             NProto::VOLUME_ACCESS_READ_ONLY,
-            0
-        );
+            0);
 
         // the number of readers is not limited by anything
         TEST_SHOULD_ACQUIRE(
             "reader2",
             TInstant::Seconds(1),
             NProto::VOLUME_ACCESS_READ_ONLY,
-            0
-        );
+            0);
 
         // all clients should be able to read
         for (auto sessId: {"writer", "reader1", "reader2"}) {
@@ -1122,26 +1058,21 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
         // secure erase should fail - there are active clients
         try {
-            auto error = state->SecureErase(
-                "uuid-1",
-                TInstant::Seconds(1)
-            ).GetValue(WaitTimeout);
+            auto error = state->SecureErase("uuid-1", TInstant::Seconds(1))
+                             .GetValue(WaitTimeout);
             UNIT_ASSERT(false);
         } catch (const TServiceError& e) {
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_INVALID_STATE,
                 e.GetCode(),
-                e.GetMessage()
-            );
+                e.GetMessage());
         }
 
         // after the inactivity period secure erase should succeed - our
         // clients are no longer considered 'active'
         try {
-            auto error = state->SecureErase(
-                "uuid-1",
-                TInstant::Seconds(111)
-            ).GetValue(WaitTimeout);
+            auto error = state->SecureErase("uuid-1", TInstant::Seconds(111))
+                             .GetValue(WaitTimeout);
         } catch (const TServiceError& e) {
             UNIT_ASSERT_C(false, e.GetMessage());
         }
@@ -1152,24 +1083,21 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             "writer2",
             TInstant::Seconds(11),
             NProto::VOLUME_ACCESS_READ_WRITE,
-            0
-        );
+            0);
 
         // reacquire should succeed
         TEST_SHOULD_ACQUIRE(
             "writer2",
             TInstant::Seconds(16),
             NProto::VOLUME_ACCESS_READ_WRITE,
-            0
-        );
+            0);
 
         // previous writer cannot register - there is a new writer already
         TEST_SHOULD_NOT_ACQUIRE(
             "writer",
             TInstant::Seconds(21),
             NProto::VOLUME_ACCESS_READ_WRITE,
-            0
-        );
+            0);
 
         // new writer should be able to write
         TEST_SHOULD_WRITE("writer2");
@@ -1179,8 +1107,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             "writer2",
             TInstant::Seconds(21),
             NProto::VOLUME_ACCESS_READ_ONLY,
-            0
-        );
+            0);
 
         // writer2 should be unable to write/zero now
         TEST_SHOULD_NOT_WRITE("writer2");
@@ -1191,8 +1118,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             "writer",
             TInstant::Seconds(22),
             NProto::VOLUME_ACCESS_READ_WRITE,
-            0
-        );
+            0);
 
         // and should be able to write
         TEST_SHOULD_WRITE("writer");
@@ -1204,8 +1130,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             "writer2",
             TInstant::Seconds(32),
             NProto::VOLUME_ACCESS_READ_WRITE,
-            0
-        );
+            0);
 
         // and should be able to write
         TEST_SHOULD_WRITE("writer2");
@@ -1220,38 +1145,34 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             "writer3",
             TInstant::Seconds(33),
             NProto::VOLUME_ACCESS_READ_WRITE,
-            1
-        );
+            1);
 
         // writer4 should be able to acquire client with a greater seqno
         TEST_SHOULD_ACQUIRE(
             "writer4",
             TInstant::Seconds(34),
             NProto::VOLUME_ACCESS_READ_WRITE,
-            2
-        );
+            2);
 
         // writer3 should not be able to acquire client with a lower seqno
         TEST_SHOULD_NOT_ACQUIRE(
             "writer3",
             TInstant::Seconds(35),
             NProto::VOLUME_ACCESS_READ_WRITE,
-            1
-        );
+            1);
 
         // writer4 should be able to reacquire client with same seqno
         TEST_SHOULD_ACQUIRE(
             "writer4",
             TInstant::Seconds(36),
             NProto::VOLUME_ACCESS_READ_WRITE,
-            2
-        );
+            2);
     }
 
     Y_UNIT_TEST_F(ShouldConvertIOTimeoutsToErrors, TFiles)
     {
         // using default io timeout - expecting it to be equal to 1 minute
-        auto config = CreateNullConfig({ .Files = Nvme3s });
+        auto config = CreateNullConfig({.Files = Nvme3s});
 
         TTestStorageStatePtr storageState = MakeIntrusive<TTestStorageState>();
 
@@ -1292,8 +1213,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             request.SetBlockSize(4096);
             request.SetBlocksCount(10);
 
-            auto response = state.Read(now, std::move(request))
-                .GetValue(WaitTimeout);
+            auto response =
+                state.Read(now, std::move(request)).GetValue(WaitTimeout);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -1309,8 +1230,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
             ResizeIOVector(*request.MutableBlocks(), 10, 4096);
 
-            auto response = state.Write(now, std::move(request))
-                .GetValue(WaitTimeout);
+            auto response =
+                state.Write(now, std::move(request)).GetValue(WaitTimeout);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -1326,7 +1247,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             request.SetBlocksCount(10);
 
             auto response = state.WriteZeroes(now, std::move(request))
-                .GetValue(WaitTimeout);
+                                .GetValue(WaitTimeout);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -1405,17 +1326,18 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
     {
         TTestStorageStatePtr storageState = MakeIntrusive<TTestStorageState>();
 
-        auto config = CreateNullConfig({
-            .DiscoveryConfig = [&] {
-                NProto::TStorageDiscoveryConfig discovery;
-                auto& path = *discovery.AddPathConfigs();
-                path.SetPathRegExp(TempDir.Path() / "nvme3n([0-9])");
-                path.AddPoolConfigs();
+        auto config = CreateNullConfig(
+            {.DiscoveryConfig =
+                 [&]
+             {
+                 NProto::TStorageDiscoveryConfig discovery;
+                 auto& path = *discovery.AddPathConfigs();
+                 path.SetPathRegExp(TempDir.Path() / "nvme3n([0-9])");
+                 path.AddPoolConfigs();
 
-                return discovery;
-            }(),
-            .CachedConfigPath = CachedConfigPath
-        });
+                 return discovery;
+             }(),
+             .CachedConfigPath = CachedConfigPath});
 
         auto state = std::make_unique<TDiskAgentState>(
             CreateStorageConfig(),
@@ -1437,13 +1359,18 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         auto future = state->Initialize();
         const auto& result = future.GetValue(WaitTimeout);
 
-        UNIT_ASSERT_VALUES_EQUAL_C(0, result.Errors.size(), JoinSeq(", ", result.Errors));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            0,
+            result.Errors.size(),
+            JoinSeq(", ", result.Errors));
         UNIT_ASSERT_VALUES_EQUAL(3, result.Configs.size());
 
         NProto::TDiskAgentConfig proto;
         ParseFromTextFormat(CachedConfigPath, proto);
 
-        UNIT_ASSERT_VALUES_EQUAL(result.Configs.size(), proto.FileDevicesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            result.Configs.size(),
+            proto.FileDevicesSize());
         for (size_t i = 0; i != result.Configs.size(); ++i) {
             const auto& lhs = result.Configs[i];
             const auto& rhs = proto.GetFileDevices(i);
@@ -1460,8 +1387,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         const char* ids[] = {
             "d1dd53cfe76c762edb977b68de3783f4",
             "6cf62448aa025469fc16f494461177ff",
-            "b272fa66254fd0410f26a12414813f5c"
-        };
+            "b272fa66254fd0410f26a12414813f5c"};
 
         UNIT_ASSERT_VALUES_EQUAL(std::size(ids), Nvme3s.size());
 
@@ -1477,29 +1403,29 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         std::sort(
             cachedConfig.MutableFileDevices()->begin(),
             cachedConfig.MutableFileDevices()->end(),
-            [] (const auto& lhs, const auto& rhs) {
-                return lhs.GetDeviceId() < rhs.GetDeviceId();
-            });
+            [](const auto& lhs, const auto& rhs)
+            { return lhs.GetDeviceId() < rhs.GetDeviceId(); });
 
         // there are 3 devices in the cached config
         SerializeToTextFormat(cachedConfig, CachedConfigPath);
 
         TTestStorageStatePtr storageState = MakeIntrusive<TTestStorageState>();
 
-        auto config = CreateNullConfig({
-            .DiscoveryConfig = [&] {
-                NProto::TStorageDiscoveryConfig discovery;
-                auto& path = *discovery.AddPathConfigs();
+        auto config = CreateNullConfig(
+            {.DiscoveryConfig =
+                 [&]
+             {
+                 NProto::TStorageDiscoveryConfig discovery;
+                 auto& path = *discovery.AddPathConfigs();
 
-                // limit the number of devices to one
-                path.SetPathRegExp(TempDir.Path() / "nvme3n(1)");
-                auto& pool = *path.AddPoolConfigs();
-                pool.SetPoolName("foo");
+                 // limit the number of devices to one
+                 path.SetPathRegExp(TempDir.Path() / "nvme3n(1)");
+                 auto& pool = *path.AddPoolConfigs();
+                 pool.SetPoolName("foo");
 
-                return discovery;
-            }(),
-            .CachedConfigPath = CachedConfigPath
-        });
+                 return discovery;
+             }(),
+             .CachedConfigPath = CachedConfigPath});
 
         auto state = std::make_unique<TDiskAgentState>(
             CreateStorageConfig(),
@@ -1523,7 +1449,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, result.Errors.size());
         UNIT_ASSERT_STRING_CONTAINS_C(
-            result.Errors[0], "has been lost", result.Errors[0]);
+            result.Errors[0],
+            "has been lost",
+            result.Errors[0]);
         UNIT_ASSERT_VALUES_EQUAL(3, result.Configs.size());
         UNIT_ASSERT_VALUES_EQUAL(3, cachedConfig.FileDevicesSize());
 
@@ -1542,10 +1470,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
     Y_UNIT_TEST_F(ShouldFailOnBrokenCachedConfigs, TFiles)
     {
-        auto config = CreateNullConfig({
-            .Files = Nvme3s,
-            .CachedConfigPath = CachedConfigPath
-        });
+        auto config = CreateNullConfig(
+            {.Files = Nvme3s, .CachedConfigPath = CachedConfigPath});
         auto state = CreateDiskAgentStateNull(config);
 
         {
@@ -1557,7 +1483,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
         UNIT_ASSERT_EXCEPTION_CONTAINS(
             future.GetValue(),
-            yexception, "Error parsing text-format");
+            yexception,
+            "Error parsing text-format");
     }
 
     Y_UNIT_TEST_F(ShouldAllowNewDevice, TFiles)
@@ -1609,19 +1536,28 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             auto future = state->Initialize();
             const auto& result = future.GetValue(WaitTimeout);
 
-            UNIT_ASSERT_VALUES_EQUAL_C(0, result.Errors.size(), JoinSeq(", ", result.Errors));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                0,
+                result.Errors.size(),
+                JoinSeq(", ", result.Errors));
             UNIT_ASSERT_VALUES_EQUAL(8, result.Configs.size());
 
             NProto::TDiskAgentConfig proto;
             ParseFromTextFormat(CachedConfigPath, proto);
 
-            UNIT_ASSERT_VALUES_EQUAL(result.Configs.size(), proto.FileDevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                result.Configs.size(),
+                proto.FileDevicesSize());
             for (size_t i = 0; i != result.Configs.size(); ++i) {
                 const auto& lhs = result.Configs[i];
                 const auto& rhs = proto.GetFileDevices(i);
-                UNIT_ASSERT_VALUES_EQUAL(lhs.GetDeviceUUID(), rhs.GetDeviceId());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    lhs.GetDeviceUUID(),
+                    rhs.GetDeviceId());
                 UNIT_ASSERT_VALUES_EQUAL(lhs.GetDeviceName(), rhs.GetPath());
-                UNIT_ASSERT_VALUES_EQUAL(lhs.GetBlockSize(), rhs.GetBlockSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    lhs.GetBlockSize(),
+                    rhs.GetBlockSize());
                 UNIT_ASSERT_VALUES_EQUAL(DefaultFileSize, rhs.GetFileSize());
                 UNIT_ASSERT_VALUES_EQUAL(lhs.GetPoolName(), rhs.GetPoolName());
             }
@@ -1636,19 +1572,28 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             auto future = state->Initialize();
             const auto& result = future.GetValue(WaitTimeout);
 
-            UNIT_ASSERT_VALUES_EQUAL_C(0, result.Errors.size(), JoinSeq(", ", result.Errors));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                0,
+                result.Errors.size(),
+                JoinSeq(", ", result.Errors));
             UNIT_ASSERT_VALUES_EQUAL(10, result.Configs.size());
 
             NProto::TDiskAgentConfig proto;
             ParseFromTextFormat(CachedConfigPath, proto);
 
-            UNIT_ASSERT_VALUES_EQUAL(result.Configs.size(), proto.FileDevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                result.Configs.size(),
+                proto.FileDevicesSize());
             for (size_t i = 0; i != result.Configs.size(); ++i) {
                 const auto& lhs = result.Configs[i];
                 const auto& rhs = proto.GetFileDevices(i);
-                UNIT_ASSERT_VALUES_EQUAL(lhs.GetDeviceUUID(), rhs.GetDeviceId());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    lhs.GetDeviceUUID(),
+                    rhs.GetDeviceId());
                 UNIT_ASSERT_VALUES_EQUAL(lhs.GetDeviceName(), rhs.GetPath());
-                UNIT_ASSERT_VALUES_EQUAL(lhs.GetBlockSize(), rhs.GetBlockSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    lhs.GetBlockSize(),
+                    rhs.GetBlockSize());
                 UNIT_ASSERT_VALUES_EQUAL(DefaultFileSize, rhs.GetFileSize());
                 UNIT_ASSERT_VALUES_EQUAL(lhs.GetPoolName(), rhs.GetPoolName());
             }
@@ -1671,21 +1616,20 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
         UNIT_ASSERT_EQUAL(0, *restoreError);
 
-        auto createState = [&] {
+        auto createState = [&]
+        {
             NProto::TStorageDiscoveryConfig discovery;
             auto& path = *discovery.AddPathConfigs();
             path.SetPathRegExp(TempDir.Path() / "NVMENBS([0-9]+)");
 
             path.AddPoolConfigs();
 
-            auto state = CreateDiskAgentStateNull(
-                CreateNullConfig({
-                    .AcquireRequired = true,
-                    .DiscoveryConfig = discovery,
-                    .CachedConfigPath = CachedConfigPath,
-                    .CachedSessionsPath = CachedSessionsPath,
-                })
-            );
+            auto state = CreateDiskAgentStateNull(CreateNullConfig({
+                .AcquireRequired = true,
+                .DiscoveryConfig = discovery,
+                .CachedConfigPath = CachedConfigPath,
+                .CachedSessionsPath = CachedSessionsPath,
+            }));
 
             auto future = state->Initialize();
             const auto& r = future.GetValue(WaitTimeout);
@@ -1698,7 +1642,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
         UNIT_ASSERT_EQUAL(0, *restoreError);
 
-        auto dumpSessionsToFile = [&] {
+        auto dumpSessionsToFile = [&]
+        {
             auto sessions = state->GetSessions();
             NProto::TDiskAgentDeviceSessionCache cache;
             cache.MutableSessions()->Assign(
@@ -1719,31 +1664,31 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         // acquire a bunch of devices
 
         state->AcquireDevices(
-            { devices[0], devices[1] },
+            {devices[0], devices[1]},
             "writer-1",
             TInstant::FromValue(1),
             NProto::VOLUME_ACCESS_READ_WRITE,
-            42,     // MountSeqNumber
+            42,   // MountSeqNumber
             "vol0",
-            1000);  // VolumeGeneration
+            1000);   // VolumeGeneration
 
         state->AcquireDevices(
-            { devices[0], devices[1] },
+            {devices[0], devices[1]},
             "reader-1",
             TInstant::FromValue(2),
             NProto::VOLUME_ACCESS_READ_ONLY,
-            -1,     // MountSeqNumber
+            -1,   // MountSeqNumber
             "vol0",
-            1001);  // VolumeGeneration
+            1001);   // VolumeGeneration
 
         state->AcquireDevices(
-            { devices[2], devices[3] },
+            {devices[2], devices[3]},
             "reader-2",
             TInstant::FromValue(3),
             NProto::VOLUME_ACCESS_READ_ONLY,
-            -1,     // MountSeqNumber
+            -1,   // MountSeqNumber
             "vol1",
-            2000);  // VolumeGeneration
+            2000);   // VolumeGeneration
 
         UNIT_ASSERT_VALUES_EQUAL(3, state->GetSessions().size());
 
@@ -1757,7 +1702,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         // [writer-1, reader-1, reader-2]
         UNIT_ASSERT_VALUES_EQUAL(3, state->GetSessions().size());
 
-        auto write = [&] (auto clientId, auto uuid) {
+        auto write = [&](auto clientId, auto uuid)
+        {
             NProto::TWriteDeviceBlocksRequest request;
             request.MutableHeaders()->SetClientId(clientId);
             request.SetDeviceUUID(uuid);
@@ -1770,7 +1716,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 .GetValue(WaitTimeout);
         };
 
-        auto read = [&] (auto clientId, auto uuid) {
+        auto read = [&](auto clientId, auto uuid)
+        {
             NProto::TReadDeviceBlocksRequest request;
             request.MutableHeaders()->SetClientId(clientId);
             request.SetDeviceUUID(uuid);
@@ -1778,41 +1725,32 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             request.SetBlockSize(4096);
             request.SetBlocksCount(10);
 
-            return state->Read(Now(), std::move(request))
-                .GetValue(WaitTimeout);
+            return state->Read(Now(), std::move(request)).GetValue(WaitTimeout);
         };
 
         // should reject a request with a wrong client id
         UNIT_ASSERT_EXCEPTION_SATISFIES(
             write("unknown", devices[1]),
             TServiceError,
-            [] (auto& e) {
-                return e.GetCode() == E_BS_INVALID_SESSION;
-            });
+            [](auto& e) { return e.GetCode() == E_BS_INVALID_SESSION; });
 
         // should reject a request with a wrong client id
         UNIT_ASSERT_EXCEPTION_SATISFIES(
             write("reader-2", devices[0]),
             TServiceError,
-            [] (auto& e) {
-                return e.GetCode() == E_BS_INVALID_SESSION;
-            });
+            [](auto& e) { return e.GetCode() == E_BS_INVALID_SESSION; });
 
         // should reject a request with a wrong client id
         UNIT_ASSERT_EXCEPTION_SATISFIES(
             read("reader-2", devices[1]),
             TServiceError,
-            [] (auto& e) {
-                return e.GetCode() == E_BS_INVALID_SESSION;
-            });
+            [](auto& e) { return e.GetCode() == E_BS_INVALID_SESSION; });
 
         // should reject a write request for the read only session
         UNIT_ASSERT_EXCEPTION_SATISFIES(
             write("reader-1", devices[1]),
             TServiceError,
-            [] (auto& e) {
-                return e.GetCode() == E_BS_INVALID_SESSION;
-            });
+            [](auto& e) { return e.GetCode() == E_BS_INVALID_SESSION; });
 
         // should be ok
 
@@ -1847,10 +1785,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         }
 
         state->ReleaseDevices(
-            { devices[0], devices[1] },
+            {devices[0], devices[1]},
             "writer-1",
             "vol0",
-            1001);  // VolumeGeneration
+            1001);   // VolumeGeneration
 
         // [reader-1, reader-2]
         UNIT_ASSERT_VALUES_EQUAL(2, state->GetSessions().size());
@@ -1858,7 +1796,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         dumpSessionsToFile();
 
         // remove reader-2's file
-        TFsPath { state->GetDeviceName(devices[3]) }.DeleteIfExists();
+        TFsPath{state->GetDeviceName(devices[3])}.DeleteIfExists();
 
         // restart
         state = createState();
@@ -1873,27 +1811,21 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             UNIT_ASSERT_EXCEPTION_SATISFIES(
                 write("writer-1", devices[0]),
                 TServiceError,
-                [] (auto& e) {
-                    return e.GetCode() == E_BS_INVALID_SESSION;
-                });
+                [](auto& e) { return e.GetCode() == E_BS_INVALID_SESSION; });
         }
 
         {
             UNIT_ASSERT_EXCEPTION_SATISFIES(
                 write("writer-1", devices[1]),
                 TServiceError,
-                [] (auto& e) {
-                    return e.GetCode() == E_BS_INVALID_SESSION;
-                });
+                [](auto& e) { return e.GetCode() == E_BS_INVALID_SESSION; });
         }
 
         {
             UNIT_ASSERT_EXCEPTION_SATISFIES(
                 read("reader-2", devices[3]),
                 TServiceError,
-                [] (auto& e) {
-                    return e.GetCode() == E_NOT_FOUND;
-                });
+                [](auto& e) { return e.GetCode() == E_NOT_FOUND; });
         }
 
         // should be ok
@@ -1917,8 +1849,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
     Y_UNIT_TEST_F(ShouldDisableDevice, TFiles)
     {
         auto state = CreateDiskAgentStateNull(
-            CreateNullConfig({ .Files = Nvme3s, .AcquireRequired = true })
-        );
+            CreateNullConfig({.Files = Nvme3s, .AcquireRequired = true}));
 
         auto read = [&]
         {
@@ -2005,7 +1936,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         Sort(*stats.MutableDeviceStats(), TByDeviceUUID());
 
         UNIT_ASSERT_VALUES_EQUAL(3, stats.DeviceStatsSize());
-        UNIT_ASSERT_VALUES_EQUAL(3, stats.GetDeviceStats(0).GetErrors()); // uuid-1
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            stats.GetDeviceStats(0).GetErrors());   // uuid-1
         UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeviceStats(1).GetErrors());
         UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeviceStats(2).GetErrors());
 
@@ -2030,7 +1963,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         Sort(*stats.MutableDeviceStats(), TByDeviceUUID());
 
         UNIT_ASSERT_VALUES_EQUAL(3, stats.DeviceStatsSize());
-        UNIT_ASSERT_VALUES_EQUAL(3, stats.GetDeviceStats(0).GetErrors()); // uuid-1
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            stats.GetDeviceStats(0).GetErrors());   // uuid-1
         UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeviceStats(1).GetErrors());
         UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeviceStats(2).GetErrors());
 
@@ -2067,7 +2002,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         Sort(*stats.MutableDeviceStats(), TByDeviceUUID());
 
         UNIT_ASSERT_VALUES_EQUAL(3, stats.DeviceStatsSize());
-        UNIT_ASSERT_VALUES_EQUAL(3, stats.GetDeviceStats(0).GetErrors()); // uuid-1
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            stats.GetDeviceStats(0).GetErrors());   // uuid-1
         UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeviceStats(1).GetErrors());
         UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeviceStats(2).GetErrors());
     }
@@ -2075,8 +2012,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
     Y_UNIT_TEST_F(ShouldFilterOutDisableDevice, TFiles)
     {
         auto state = CreateDiskAgentStateNull(
-            CreateNullConfig({ .Files = Nvme3s, .AcquireRequired = true })
-        );
+            CreateNullConfig({.Files = Nvme3s, .AcquireRequired = true}));
 
         auto future = state->Initialize();
         const auto& r = future.GetValueSync();
@@ -2147,7 +2083,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
     Y_UNIT_TEST_F(ShouldConvertSystemIoErrorsToE_IO, TFiles)
     {
-        auto config = CreateNullConfig({ .Files = Nvme3s });
+        auto config = CreateNullConfig({.Files = Nvme3s});
 
         TTestStorageStatePtr storageState = MakeIntrusive<TTestStorageState>();
 

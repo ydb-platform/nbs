@@ -15,23 +15,23 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_VOLUME_ACTOR_COUNTERS(xxx, ...)                             \
-    xxx(ActorQueue,                     __VA_ARGS__)                           \
-    xxx(MailboxQueue,                   __VA_ARGS__)                           \
-// BLOCKSTORE_VOLUME_ACTOR_COUNTERS
+#define BLOCKSTORE_VOLUME_ACTOR_COUNTERS(xxx, ...) \
+    xxx(ActorQueue, __VA_ARGS__)                   \
+    xxx(MailboxQueue, __VA_ARGS__)                 \
+    // BLOCKSTORE_VOLUME_ACTOR_COUNTERS
 
-#define BLOCKSTORE_VOLUME_SIMPLE_COUNTERS(xxx)                                 \
-// BLOCKSTORE_VOLUME_SIMPLE_COUNTERS
+#define BLOCKSTORE_VOLUME_SIMPLE_COUNTERS(xxx) \
+    // BLOCKSTORE_VOLUME_SIMPLE_COUNTERS
 
-#define BLOCKSTORE_VOLUME_CUMULATIVE_COUNTERS(xxx)                             \
-    BLOCKSTORE_VOLUME_REQUESTS(xxx, Request)                                   \
-    BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(xxx, Request)                           \
-    BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(xxx, Request)                       \
-// BLOCKSTORE_VOLUME_CUMULATIVE_COUNTERS
+#define BLOCKSTORE_VOLUME_CUMULATIVE_COUNTERS(xxx)       \
+    BLOCKSTORE_VOLUME_REQUESTS(xxx, Request)             \
+    BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(xxx, Request)     \
+    BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(xxx, Request) \
+    // BLOCKSTORE_VOLUME_CUMULATIVE_COUNTERS
 
-#define BLOCKSTORE_VOLUME_PERCENTILE_COUNTERS(xxx)                             \
-    BLOCKSTORE_VOLUME_ACTOR_COUNTERS(xxx, Actor)                               \
-// BLOCKSTORE_VOLUME_PERCENTILE_COUNTERS
+#define BLOCKSTORE_VOLUME_PERCENTILE_COUNTERS(xxx) \
+    BLOCKSTORE_VOLUME_ACTOR_COUNTERS(xxx, Actor)   \
+    // BLOCKSTORE_VOLUME_PERCENTILE_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -75,10 +75,9 @@ struct TVolumeCounters
 
     enum ETransactionType
     {
-#define BLOCKSTORE_TRANSACTION_TYPE(name, ...)      TX_##name,
+#define BLOCKSTORE_TRANSACTION_TYPE(name, ...) TX_##name,
 
-        BLOCKSTORE_VOLUME_TRANSACTIONS(BLOCKSTORE_TRANSACTION_TYPE)
-        TX_SIZE
+        BLOCKSTORE_VOLUME_TRANSACTIONS(BLOCKSTORE_TRANSACTION_TYPE) TX_SIZE
 
 #undef BLOCKSTORE_TRANSACTION_TYPE
     };

@@ -28,23 +28,23 @@ struct TRequestEvent
     : public NActors::TEventLocal<TRequestEvent<TArgs, EventId>, EventId>
     , public TArgs
 {
-    TCallContextPtr CallContext = MakeIntrusive<TCallContext>(RandomNumber<ui64>());
+    TCallContextPtr CallContext =
+        MakeIntrusive<TCallContext>(RandomNumber<ui64>());
 
     TRequestEvent() = default;
 
-    template <typename ...Args>
-    TRequestEvent(TCallContextPtr callContext, Args&& ...args)
+    template <typename... Args>
+    TRequestEvent(TCallContextPtr callContext, Args&&... args)
         : TArgs(std::forward<Args>(args)...)
         , CallContext(std::move(callContext))
     {
         Y_DEBUG_ABORT_UNLESS(CallContext);
     }
 
-    template <typename ...Args>
-    TRequestEvent(Args&& ...args)
+    template <typename... Args>
+    TRequestEvent(Args&&... args)
         : TArgs(std::forward<Args>(args)...)
-    {
-    }
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -58,13 +58,17 @@ struct TResponseEvent
 
     TResponseEvent() = default;
 
-    template <typename T1, typename = std::enable_if_t<!std::is_convertible<T1, NProto::TError>::value>, typename ...Args>
-    TResponseEvent(T1&& a1, Args&& ...args)
+    template <
+        typename T1,
+        typename =
+            std::enable_if_t<!std::is_convertible<T1, NProto::TError>::value>,
+        typename... Args>
+    TResponseEvent(T1&& a1, Args&&... args)
         : TArgs(std::forward<T1>(a1), std::forward<Args>(args)...)
     {}
 
-    template <typename ...Args>
-    TResponseEvent(const NProto::TError& error, Args&& ...args)
+    template <typename... Args>
+    TResponseEvent(const NProto::TError& error, Args&&... args)
         : TArgs(std::forward<Args>(args)...)
         , Error(error)
     {}
@@ -89,7 +93,8 @@ struct TResponseEvent
 
 template <typename TArgs, ui32 EventId>
 struct TProtoRequestEvent
-    : public NActors::TEventPB<TProtoRequestEvent<TArgs, EventId>, TArgs, EventId>
+    : public NActors::
+          TEventPB<TProtoRequestEvent<TArgs, EventId>, TArgs, EventId>
 {
     TCallContextPtr CallContext = MakeIntrusive<TCallContext>();
 
@@ -114,11 +119,15 @@ struct TProtoRequestEvent
 
 template <typename TArgs, ui32 EventId>
 struct TProtoResponseEvent
-    : public NActors::TEventPB<TProtoResponseEvent<TArgs, EventId>, TArgs, EventId>
+    : public NActors::
+          TEventPB<TProtoResponseEvent<TArgs, EventId>, TArgs, EventId>
 {
     TProtoResponseEvent() = default;
 
-    template <typename T, typename = std::enable_if_t<!std::is_convertible<T, NProto::TError>::value>>
+    template <
+        typename T,
+        typename =
+            std::enable_if_t<!std::is_convertible<T, NProto::TError>::value>>
     TProtoResponseEvent(T&& proto)
     {
         TProtoResponseEvent::Record = std::forward<T>(proto);
@@ -149,87 +158,77 @@ struct TProtoResponseEvent
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_DECLARE_EVENT_IDS(name, ...)                                 \
-        Ev##name##Request,                                                     \
-        Ev##name##Response,                                                    \
-// FILESTORE_DECLARE_EVENT_IDS
+#define FILESTORE_DECLARE_EVENT_IDS(name, ...) \
+    Ev##name##Request, Ev##name##Response,   // FILESTORE_DECLARE_EVENT_IDS
 
-#define FILESTORE_DECLARE_REQUEST(name, ...)                                   \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        static constexpr const char* Name = #name;                             \
-                                                                               \
-        using TRequest = TEv##name##Request;                                   \
-        using TResponse = TEv##name##Response;                                 \
-    };                                                                         \
-// FILESTORE_DECLARE_REQUEST
+#define FILESTORE_DECLARE_REQUEST(name, ...)       \
+    struct T##name##Method                         \
+    {                                              \
+        static constexpr const char* Name = #name; \
+                                                   \
+        using TRequest = TEv##name##Request;       \
+        using TResponse = TEv##name##Response;     \
+    };                                             \
+    // FILESTORE_DECLARE_REQUEST
 
-#define FILESTORE_DECLARE_EVENTS(name, ...)                                    \
-    using TEv##name##Request = TRequestEvent<                                  \
-        T##name##Request,                                                      \
-        Ev##name##Request                                                      \
-    >;                                                                         \
-                                                                               \
-    using TEv##name##Response = TResponseEvent<                                \
-        T##name##Response,                                                     \
-        Ev##name##Response                                                     \
-    >;                                                                         \
-                                                                               \
-    FILESTORE_DECLARE_REQUEST(name, __VA_ARGS__)                               \
-// FILESTORE_DECLARE_EVENTS
+#define FILESTORE_DECLARE_EVENTS(name, ...)                    \
+    using TEv##name##Request =                                 \
+        TRequestEvent<T##name##Request, Ev##name##Request>;    \
+                                                               \
+    using TEv##name##Response =                                \
+        TResponseEvent<T##name##Response, Ev##name##Response>; \
+                                                               \
+    FILESTORE_DECLARE_REQUEST(name, __VA_ARGS__)               \
+    // FILESTORE_DECLARE_EVENTS
 
-#define FILESTORE_DECLARE_PROTO_EVENTS(name, ns, ...)                          \
-    using TEv##name##Request = TProtoRequestEvent<                             \
-        ns::T##name##Request,                                                  \
-        Ev##name##Request                                                      \
-    >;                                                                         \
-                                                                               \
-    using TEv##name##Response = TProtoResponseEvent<                           \
-        ns::T##name##Response,                                                 \
-        Ev##name##Response                                                     \
-    >;                                                                         \
-                                                                               \
-    FILESTORE_DECLARE_REQUEST(name, __VA_ARGS__)                               \
-// FILESTORE_DECLARE_PROTO_EVENTS
+#define FILESTORE_DECLARE_PROTO_EVENTS(name, ns, ...)                   \
+    using TEv##name##Request =                                          \
+        TProtoRequestEvent<ns::T##name##Request, Ev##name##Request>;    \
+                                                                        \
+    using TEv##name##Response =                                         \
+        TProtoResponseEvent<ns::T##name##Response, Ev##name##Response>; \
+                                                                        \
+    FILESTORE_DECLARE_REQUEST(name, __VA_ARGS__)                        \
+    // FILESTORE_DECLARE_PROTO_EVENTS
 
-#define FILESTORE_IMPLEMENT_REQUEST(name, ns)                                  \
-    void Handle##name(                                                         \
-        const ns::TEv##name##Request::TPtr& ev,                                \
-        const NActors::TActorContext& ctx);                                    \
-                                                                               \
-    void Reject##name(                                                         \
-        const ns::TEv##name##Request::TPtr& ev,                                \
-        const NActors::TActorContext& ctx)                                     \
-    {                                                                          \
-        auto response = std::make_unique<ns::TEv##name##Response>(             \
-            MakeError(E_REJECTED, #name " request rejected"));                 \
-        NCloud::Reply(ctx, *ev, std::move(response));                          \
-    }                                                                          \
-                                                                               \
-    void Reject##name##ByBrokenTablet(                                         \
-        const ns::TEv##name##Request::TPtr& ev,                                \
-        const NActors::TActorContext& ctx)                                     \
-    {                                                                          \
-        auto response = std::make_unique<ns::TEv##name##Response>(             \
-            MakeError(E_REJECTED, #name " request rejected: broken tablet"));  \
-        NCloud::Reply(ctx, *ev, std::move(response));                          \
-    }                                                                          \
-// FILESTORE_IMPLEMENT_REQUEST
+#define FILESTORE_IMPLEMENT_REQUEST(name, ns)                                 \
+    void Handle##name(                                                        \
+        const ns::TEv##name##Request::TPtr& ev,                               \
+        const NActors::TActorContext& ctx);                                   \
+                                                                              \
+    void Reject##name(                                                        \
+        const ns::TEv##name##Request::TPtr& ev,                               \
+        const NActors::TActorContext& ctx)                                    \
+    {                                                                         \
+        auto response = std::make_unique<ns::TEv##name##Response>(            \
+            MakeError(E_REJECTED, #name " request rejected"));                \
+        NCloud::Reply(ctx, *ev, std::move(response));                         \
+    }                                                                         \
+                                                                              \
+    void Reject##name##ByBrokenTablet(                                        \
+        const ns::TEv##name##Request::TPtr& ev,                               \
+        const NActors::TActorContext& ctx)                                    \
+    {                                                                         \
+        auto response = std::make_unique<ns::TEv##name##Response>(            \
+            MakeError(E_REJECTED, #name " request rejected: broken tablet")); \
+        NCloud::Reply(ctx, *ev, std::move(response));                         \
+    }                                                                         \
+    // FILESTORE_IMPLEMENT_REQUEST
 
-#define FILESTORE_HANDLE_REQUEST(name, ns)                                     \
-    HFunc(ns::TEv##name##Request, Handle##name);                               \
-// FILESTORE_HANDLE_REQUEST
+#define FILESTORE_HANDLE_REQUEST(name, ns)       \
+    HFunc(ns::TEv##name##Request, Handle##name); \
+    // FILESTORE_HANDLE_REQUEST
 
-#define FILESTORE_HANDLE_RESPONSE(name, ns)                                    \
-    HFunc(ns::TEv##name##Response, Handle##name);                              \
-// FILESTORE_HANDLE_RESPONSE
+#define FILESTORE_HANDLE_RESPONSE(name, ns)       \
+    HFunc(ns::TEv##name##Response, Handle##name); \
+    // FILESTORE_HANDLE_RESPONSE
 
-#define FILESTORE_REJECT_REQUEST(name, ns)                                     \
-    HFunc(ns::TEv##name##Request, Reject##name);                               \
-// FILESTORE_REJECT_REQUEST
+#define FILESTORE_REJECT_REQUEST(name, ns)       \
+    HFunc(ns::TEv##name##Request, Reject##name); \
+    // FILESTORE_REJECT_REQUEST
 
-#define FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET(name, ns)                    \
-    HFunc(ns::TEv##name##Request, Reject##name##ByBrokenTablet);               \
-// FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET
+#define FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET(name, ns)      \
+    HFunc(ns::TEv##name##Request, Reject##name##ByBrokenTablet); \
+    // FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET
 
 }   // namespace NCloud::NFileStore::NStorage

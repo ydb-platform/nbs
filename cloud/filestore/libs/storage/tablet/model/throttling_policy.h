@@ -54,8 +54,7 @@ struct TThrottlerConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThrottlingPolicy final
-    : public ITabletThrottlerPolicy
+class TThrottlingPolicy final: public ITabletThrottlerPolicy
 {
 public:
     enum class EOpType

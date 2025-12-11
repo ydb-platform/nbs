@@ -41,9 +41,9 @@ struct TRequestInfo
     TRequestInfo() = default;
 
     TRequestInfo(
-            const NActors::TActorId& sender,
-            ui64 cookie,
-            TCallContextPtr callContext)
+        const NActors::TActorId& sender,
+        ui64 cookie,
+        TCallContextPtr callContext)
         : Sender(sender)
         , Cookie(cookie)
         , CallContext(std::move(callContext))
@@ -109,10 +109,7 @@ inline TRequestInfoPtr CreateRequestInfo(
     ui64 cookie,
     TCallContextPtr callContext)
 {
-    return MakeIntrusive<TRequestInfo>(
-        sender,
-        cookie,
-        std::move(callContext));
+    return MakeIntrusive<TRequestInfo>(sender, cookie, std::move(callContext));
 }
 
 template <typename TMethod>
@@ -121,14 +118,11 @@ TRequestInfoPtr CreateRequestInfo(
     ui64 cookie,
     TCallContextPtr callContext)
 {
-    auto requestInfo = MakeIntrusive<TRequestInfo>(
-        sender,
-        cookie,
-        std::move(callContext));
+    auto requestInfo =
+        MakeIntrusive<TRequestInfo>(sender, cookie, std::move(callContext));
 
-    requestInfo->CancelRoutine = [] (
-        const NActors::TActorContext& ctx,
-        TRequestInfo& requestInfo)
+    requestInfo->CancelRoutine =
+        [](const NActors::TActorContext& ctx, TRequestInfo& requestInfo)
     {
         auto response = std::make_unique<typename TMethod::TResponse>(
             MakeError(E_REJECTED, "tablet is shutting down"));

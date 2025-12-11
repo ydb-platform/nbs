@@ -11,11 +11,12 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/validation/validation.h>
+
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/histogram.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
-#include <cloud/storage/core/libs/endpoints/iface/endpoints.h>
 #include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
+#include <cloud/storage/core/libs/endpoints/iface/endpoints.h>
 
 #include <library/cpp/json/json_writer.h>
 #include <library/cpp/protobuf/json/proto2json.h>
@@ -55,8 +56,7 @@ bool NeedSocketPath(NProto::EClientIpcType ipcType)
 
 TString GetFreeSocketPath(const TString dirPath, const TString& name)
 {
-    TString fileName = TStringBuilder()
-        << CreateGuidAsString() << "_" << name;
+    TString fileName = TStringBuilder() << CreateGuidAsString() << "_" << name;
     TString socketPath = JoinFsPaths(dirPath, fileName);
 
     // Chop path because it's limited in some environments.
@@ -78,17 +78,17 @@ TString GetFreeSocketPath(const TString dirPath, const TString& name)
 ////////////////////////////////////////////////////////////////////////////////
 
 TLoadTestRunner::TLoadTestRunner(
-        TLog& log,
-        TAppContext& appContext,
-        TAliasedVolumes& aliasedVolumes,
-        NClient::TClientAppConfigPtr clientConfig,
-        ITimerPtr timer,
-        ISchedulerPtr scheduler,
-        ILoggingServicePtr logging,
-        IRequestStatsPtr requestStats,
-        IVolumeStatsPtr volumeStats,
-        IClientFactory& clientFactory,
-        TTestContext& testContext)
+    TLog& log,
+    TAppContext& appContext,
+    TAliasedVolumes& aliasedVolumes,
+    NClient::TClientAppConfigPtr clientConfig,
+    ITimerPtr timer,
+    ISchedulerPtr scheduler,
+    ILoggingServicePtr logging,
+    IRequestStatsPtr requestStats,
+    IVolumeStatsPtr volumeStats,
+    IClientFactory& clientFactory,
+    TTestContext& testContext)
     : Log(log)
     , AppContext(appContext)
     , AliasedVolumes(aliasedVolumes)
@@ -111,8 +111,7 @@ TVector<ui32> TLoadTestRunner::SuccessOnError(const NProto::TLoadTest& test)
 {
     TVector<ui32> successOnError(
         test.GetSuccessOnError().begin(),
-        test.GetSuccessOnError().end()
-    );
+        test.GetSuccessOnError().end());
 
     return successOnError;
 }
@@ -150,8 +149,8 @@ int TLoadTestRunner::Run(
 
         TeardownTest(test, SuccessOnError(test));
     } catch (...) {
-        STORAGE_ERROR("Exception during test execution: "
-            << CurrentExceptionMessage());
+        STORAGE_ERROR(
+            "Exception during test execution: " << CurrentExceptionMessage());
         AppContext.FailedTests.fetch_add(1);
         return EC_LOAD_TEST_FAILED;
     }
@@ -196,7 +195,8 @@ void TLoadTestRunner::SetupTest(
             request->SetDiskId(volumeName);
         }
 
-        request->SetBaseDiskId(AliasedVolumes.ResolveAlias(request->GetBaseDiskId()));
+        request->SetBaseDiskId(
+            AliasedVolumes.ResolveAlias(request->GetBaseDiskId()));
 
         isEmptyVolume = !request->GetBaseDiskId();
 
@@ -251,7 +251,8 @@ void TLoadTestRunner::SetupTest(
 
         const auto requestId = GetRequestId(*request);
 
-        STORAGE_INFO("Start endpoint"
+        STORAGE_INFO(
+            "Start endpoint"
             << ", ipcType: " << static_cast<int>(request->GetIpcType())
             << ", volume: " << request->GetDiskId()
             << ", socket: " << request->GetUnixSocketPath()
@@ -277,7 +278,8 @@ void TLoadTestRunner::SetupTest(
                 request),
             successOnError);
 
-        STORAGE_INFO("Create endpoint client, ipcType: "
+        STORAGE_INFO(
+            "Create endpoint client, ipcType: "
             << static_cast<int>(clientIpcType));
 
         TestContext.DataClient = ClientFactory.CreateEndpointDataClient(
@@ -303,8 +305,7 @@ void TLoadTestRunner::SetupTest(
         if (test.GetValidationRangeBlockCount()) {
             validationRange = TBlockRange64::WithLength(
                 test.GetValidationRangeStart(),
-                test.GetValidationRangeBlockCount()
-            );
+                test.GetValidationRangeBlockCount());
         }
 
         auto client = ClientFactory.CreateValidationClient(
@@ -319,8 +320,7 @@ void TLoadTestRunner::SetupTest(
     if (test.HasClientPerformanceProfile()) {
         TestContext.DataClient = ClientFactory.CreateThrottlingClient(
             std::move(TestContext.DataClient),
-            test.GetClientPerformanceProfile()
-        );
+            test.GetClientPerformanceProfile());
     }
 
     TestContext.DataClient->Start();
@@ -345,9 +345,9 @@ void TLoadTestRunner::SetupTest(
 
     if (validationClient) {
         STORAGE_INFO(
-            "Initialize validation client block crcs" <<
-            " for test: " << test.GetName() <<
-            " and volume: " << volumeName);
+            "Initialize validation client block crcs"
+            << " for test: " << test.GetName()
+            << " and volume: " << volumeName);
 
         if (isEmptyVolume) {
             validationClient->InitializeBlockChecksums(volumeName);
@@ -358,8 +358,8 @@ void TLoadTestRunner::SetupTest(
 
             for (const auto* dependency: dependencies) {
                 if (!dependency->Finished.load(std::memory_order_acquire)) {
-                    throw yexception() << "dependency for test " << test.GetName()
-                        << " still running";
+                    throw yexception() << "dependency for test "
+                                       << test.GetName() << " still running";
                 }
 
                 for (const auto& x: dependency->BlockChecksums) {
@@ -383,14 +383,17 @@ void TLoadTestRunner::SetupTest(
 
                 if (AppContext.ShouldStop.load(std::memory_order_acquire)) {
                     STORAGE_INFO(
-                        "Cancelled block crcs initialization for volume: " << volumeName);
+                        "Cancelled block crcs initialization for volume: "
+                        << volumeName);
                     return;
                 }
 
-                const auto requestSize = Min(chunkSize, blocksCount - blockIndex);
+                const auto requestSize =
+                    Min(chunkSize, blocksCount - blockIndex);
                 auto sglist = TSgList{{buffer.data(), blockSize * requestSize}};
 
-                auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
+                auto request =
+                    std::make_shared<NProto::TReadBlocksLocalRequest>();
                 request->SetStartIndex(blockIndex);
                 request->SetBlocksCount(requestSize);
                 request->SetCheckpointId(test.GetCheckpointId());
@@ -407,12 +410,11 @@ void TLoadTestRunner::SetupTest(
                 if (HasError(response)) {
                     const auto& error = response.GetError();
                     STORAGE_ERROR(
-                        "Validation client initialization failed" <<
-                        " for disk " << volumeName <<
-                        " at block " << blockIndex <<
-                        " range " << requestSize <<
-                        " with error " << error.GetCode() <<
-                        " , message " << error.GetMessage());
+                        "Validation client initialization failed"
+                        << " for disk " << volumeName << " at block "
+                        << blockIndex << " range " << requestSize
+                        << " with error " << error.GetCode() << " , message "
+                        << error.GetMessage());
                     throw yexception()
                         << "Failed to initialize validation client: "
                         << FormatError(error);
@@ -437,8 +439,7 @@ NProto::ETestStatus TLoadTestRunner::RunTest(
         successOnError,
         test.GetCheckpointId(),
         test.GetName(),
-        TestContext
-    );
+        TestContext);
 
     if (test.HasArtificialLoadSpec()) {
         for (const auto& range: test.GetArtificialLoadSpec().GetRanges()) {
@@ -453,8 +454,7 @@ NProto::ETestStatus TLoadTestRunner::RunTest(
             rls.GetDiskId(),
             rls.GetStartTime(),
             rls.GetEndTime(),
-            rls.GetMaxRequestsInMemory()
-        );
+            rls.GetMaxRequestsInMemory());
     }
 
     suiteRunner.Wait(test.GetTestDuration());
@@ -472,10 +472,8 @@ NProto::ETestStatus TLoadTestRunner::RunTest(
         "StatVolume",
         TestContext.Client->StatVolume(
             MakeIntrusive<TCallContext>(GetRequestId(*request)),
-            request
-        ),
-        {}
-    );
+            request),
+        {});
 
     NProtobufJson::TProto2JsonConfig config;
     config.AddStringTransform(new NProtobufJson::TBase64EncodeBytesTransform);
@@ -532,8 +530,8 @@ void TLoadTestRunner::TeardownTest(
         auto request = std::make_shared<NProto::TStopEndpointRequest>();
         request->SetUnixSocketPath(EndpointSocketPath);
 
-        STORAGE_INFO("Stop endpoint"
-            << ", socket: " << request->GetUnixSocketPath());
+        STORAGE_INFO(
+            "Stop endpoint" << ", socket: " << request->GetUnixSocketPath());
 
         WaitForCompletion(
             "StopEndpoint",

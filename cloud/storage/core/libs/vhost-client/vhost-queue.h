@@ -14,7 +14,6 @@
 #include <array>
 #include <mutex>
 #include <queue>
-
 #include <span>
 
 namespace NVHost {
@@ -37,7 +36,7 @@ private:
     std::mutex Mutex;
     std::queue<uint32_t> FreeBuffers;   // TODO: use buffer chain
 
-    uint16_t LastSeenUsed = 0; // type same is virtq_used.idx
+    uint16_t LastSeenUsed = 0;   // type same is virtq_used.idx
 
     TVector<NThreading::TPromise<uint32_t>> InFlights;
 
@@ -47,8 +46,8 @@ public:
     TQueue(const TQueue&) = delete;
     TQueue(TQueue&& other);
 
-    TQueue& operator = (const TQueue&) = delete;
-    TQueue& operator = (TQueue&& other) = delete;
+    TQueue& operator=(const TQueue&) = delete;
+    TQueue& operator=(TQueue&& other) = delete;
 
     uint64_t GetDescriptorsAddr() const;
     uint64_t GetAvailableRingsAddr() const;
@@ -70,4 +69,4 @@ private:
     bool WaitCallEvent(TDuration timeout = TDuration::Max());
 };
 
-} // namespace NVHost
+}   // namespace NVHost

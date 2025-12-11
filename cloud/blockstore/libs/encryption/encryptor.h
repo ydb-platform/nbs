@@ -15,15 +15,11 @@ struct IEncryptor
 {
     virtual ~IEncryptor() = default;
 
-    virtual NProto::TError Encrypt(
-        TBlockDataRef src,
-        TBlockDataRef dst,
-        ui64 blockIndex) = 0;
+    virtual NProto::TError
+    Encrypt(TBlockDataRef src, TBlockDataRef dst, ui64 blockIndex) = 0;
 
-    virtual NProto::TError Decrypt(
-        TBlockDataRef src,
-        TBlockDataRef dst,
-        ui64 blockIndex) = 0;
+    virtual NProto::TError
+    Decrypt(TBlockDataRef src, TBlockDataRef dst, ui64 blockIndex) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

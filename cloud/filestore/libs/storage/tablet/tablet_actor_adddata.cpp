@@ -350,12 +350,9 @@ void TIndexTabletActor::HandleAddData(
         msg->Record,
         ctx.Now());
 
-    auto replyError = [&] (const NProto::TError& error)
+    auto replyError = [&](const NProto::TError& error)
     {
-        FILESTORE_TRACK(
-            ResponseSent_Tablet,
-            msg->CallContext,
-            "AddData");
+        FILESTORE_TRACK(ResponseSent_Tablet, msg->CallContext, "AddData");
 
         auto response =
             std::make_unique<TEvIndexTablet::TEvAddDataResponse>(error);
@@ -397,7 +394,7 @@ void TIndexTabletActor::HandleAddData(
             // possible.
             TryReleaseCollectBarrier(commitId);
         }
-    };
+    }
 
     const TByteRange range(
         msg->Record.GetOffset(),
@@ -442,9 +439,7 @@ void TIndexTabletActor::HandleAddData(
     TVector<TBlockBytesMeta> unalignedDataParts;
     for (auto& part: *msg->Record.MutableUnalignedDataRanges()) {
         if (part.GetContent().empty()) {
-            replyError(MakeError(
-                E_ARGUMENT,
-                "empty unaligned data part"));
+            replyError(MakeError(E_ARGUMENT, "empty unaligned data part"));
             return;
         }
 
@@ -455,31 +450,31 @@ void TIndexTabletActor::HandleAddData(
             replyError(MakeError(
                 E_ARGUMENT,
                 TStringBuilder() << "unaligned part spanning more than one"
-                    << " block: " << part.GetOffset() << ":"
-                    << part.GetContent().size()));
+                                 << " block: " << part.GetOffset() << ":"
+                                 << part.GetContent().size()));
             return;
         }
 
         const ui32 offsetInBlock =
             part.GetOffset() - static_cast<ui64>(blockIndex) * GetBlockSize();
 
-        unalignedDataParts.push_back({
-            0, // NodeId is not known at this point
-            blockIndex,
-            offsetInBlock,
-            std::move(*part.MutableContent())});
+        unalignedDataParts.push_back(
+            {0,   // NodeId is not known at this point
+             blockIndex,
+             offsetInBlock,
+             std::move(*part.MutableContent())});
     }
 
-    auto unalignedMsg = [&] () {
+    auto unalignedMsg = [&]()
+    {
         TStringBuilder sb;
         for (auto& part: unalignedDataParts) {
             if (sb.size()) {
                 sb << ", ";
             }
 
-            sb << part.BlockIndex
-                << ":" << part.OffsetInBlock
-                << ":" << part.Data.size();
+            sb << part.BlockIndex << ":" << part.OffsetInBlock << ":"
+               << part.Data.size();
         }
         return sb;
     };
@@ -499,8 +494,8 @@ void TIndexTabletActor::HandleAddData(
     for (ui32 i = 0; i < evPutResultCount; ++i) {
         const double approximateFreeSpaceShare =
             i < msg->Record.ApproximateFreeSpaceSharesSize()
-            ? msg->Record.GetApproximateFreeSpaceShares(i)
-            : 0;
+                ? msg->Record.GetApproximateFreeSpaceShares(i)
+                : 0;
         RegisterEvPutResult(
             ctx,
             blobIds[i].Generation(),

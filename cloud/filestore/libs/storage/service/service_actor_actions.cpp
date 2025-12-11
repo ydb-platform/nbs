@@ -32,91 +32,47 @@ void TStorageServiceActor::HandleExecuteAction(
     using TActorBuilderMethod =
         NActors::IActorPtr (TStorageServiceActor::*)(TRequestInfoPtr, TString);
     static const THashMap<TString, TActorBuilderMethod> actions = {
-        {
-            "draintablets",
-            &TStorageServiceActor::CreateDrainTabletActionActor
-        },
-        {
-            "getstorageconfigfields",
-            &TStorageServiceActor::CreateGetStorageConfigFieldsActionActor
-        },
-        {
-            "changestorageconfig",
-            &TStorageServiceActor::CreateChangeStorageConfigActionActor
-        },
-        {
-            "describesessions",
-            &TStorageServiceActor::CreateDescribeSessionsActionActor
-        },
-        {
-            "forcedoperation",
-            &TStorageServiceActor::CreateForcedOperationActionActor
-        },
-        {
-            "forcedoperationstatus",
-            &TStorageServiceActor::CreateForcedOperationStatusActionActor
-        },
-        {
-            "reassigntablet",
-            &TStorageServiceActor::CreateReassignTabletActionActor
-        },
-        {
-            "configureshards",
-            &TStorageServiceActor::CreateConfigureShardsActionActor
-        },
-        {
-            "configureasshard",
-            &TStorageServiceActor::CreateConfigureAsShardActionActor
-        },
-        {
-            "getstorageconfig",
-            &TStorageServiceActor::CreateGetStorageConfigActionActor
-        },
-        {
-            "writecompactionmap",
-            &TStorageServiceActor::CreateWriteCompactionMapActionActor
-        },
-        {
-            "unsafedeletenode",
-            &TStorageServiceActor::CreateUnsafeDeleteNodeActionActor
-        },
-        {
-            "unsafeupdatenode",
-            &TStorageServiceActor::CreateUnsafeUpdateNodeActionActor
-        },
-        {
-            "unsafegetnode",
-            &TStorageServiceActor::CreateUnsafeGetNodeActionActor
-        },
-        {
-            "getstoragestats",
-            &TStorageServiceActor::CreateGetStorageStatsActionActor
-        },
+        {"draintablets", &TStorageServiceActor::CreateDrainTabletActionActor},
+        {"getstorageconfigfields",
+         &TStorageServiceActor::CreateGetStorageConfigFieldsActionActor},
+        {"changestorageconfig",
+         &TStorageServiceActor::CreateChangeStorageConfigActionActor},
+        {"describesessions",
+         &TStorageServiceActor::CreateDescribeSessionsActionActor},
+        {"forcedoperation",
+         &TStorageServiceActor::CreateForcedOperationActionActor},
+        {"forcedoperationstatus",
+         &TStorageServiceActor::CreateForcedOperationStatusActionActor},
+        {"reassigntablet",
+         &TStorageServiceActor::CreateReassignTabletActionActor},
+        {"configureshards",
+         &TStorageServiceActor::CreateConfigureShardsActionActor},
+        {"configureasshard",
+         &TStorageServiceActor::CreateConfigureAsShardActionActor},
+        {"getstorageconfig",
+         &TStorageServiceActor::CreateGetStorageConfigActionActor},
+        {"writecompactionmap",
+         &TStorageServiceActor::CreateWriteCompactionMapActionActor},
+        {"unsafedeletenode",
+         &TStorageServiceActor::CreateUnsafeDeleteNodeActionActor},
+        {"unsafeupdatenode",
+         &TStorageServiceActor::CreateUnsafeUpdateNodeActionActor},
+        {"unsafegetnode",
+         &TStorageServiceActor::CreateUnsafeGetNodeActionActor},
+        {"getstoragestats",
+         &TStorageServiceActor::CreateGetStorageStatsActionActor},
         {
             "listlocalfilestores",
             &TStorageServiceActor::CreateListLocalFileStoresActionActor,
         },
-        {
-            "restarttablet",
-            &TStorageServiceActor::CreateRestartTabletActionActor
-        },
-        {
-            "getfilesystemtopology",
-            &TStorageServiceActor::CreateGetFileSystemTopologyActionActor
-        },
-        {
-            "readnoderefs",
-            &TStorageServiceActor::CreateReadNodeRefsActionActor
-        },
-        {
-            "sethasxattrs",
-            &TStorageServiceActor::CreateSetHasXAttrsActionActor
-        },
-        {
-            "marknoderefsexhaustive",
-            &TStorageServiceActor::CreateMarkNodeRefsExhaustiveActionActor
-        }
-    };
+        {"restarttablet",
+         &TStorageServiceActor::CreateRestartTabletActionActor},
+        {"getfilesystemtopology",
+         &TStorageServiceActor::CreateGetFileSystemTopologyActionActor},
+        {"readnoderefs", &TStorageServiceActor::CreateReadNodeRefsActionActor},
+        {"sethasxattrs", &TStorageServiceActor::CreateSetHasXAttrsActionActor},
+        {"marknoderefsexhaustive",
+         &TStorageServiceActor::CreateMarkNodeRefsExhaustiveActionActor}};
 
     using TInstantAction = void (TStorageServiceActor::*)(
         const NActors::TActorContext&,
@@ -124,11 +80,8 @@ void TStorageServiceActor::HandleExecuteAction(
         TString);
 
     static const THashMap<TString, TInstantAction> instantActions = {
-        {
-            "toggleservicestate",
-            &TStorageServiceActor::PerformToggleServiceStateAction
-        }
-    };
+        {"toggleservicestate",
+         &TStorageServiceActor::PerformToggleServiceStateAction}};
 
     auto it = actions.find(action);
     if (it != actions.end()) {

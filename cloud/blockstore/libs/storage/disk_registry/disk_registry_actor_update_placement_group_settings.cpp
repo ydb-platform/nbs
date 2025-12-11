@@ -26,10 +26,8 @@ void TDiskRegistryActor::HandleUpdatePlacementGroupSettings(
         record.ShortDebugString().c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     ExecuteTx<TUpdatePlacementGroupSettings>(
         ctx,

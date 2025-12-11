@@ -63,7 +63,8 @@ public:
     TFSyncCache(TString logTag, ILoggingServicePtr logging);
 
     void AddRequest(const TRequest& request);
-    NThreading::TFuture<NProto::TError> AddFSyncRequest(const TRequest& request);
+    NThreading::TFuture<NProto::TError> AddFSyncRequest(
+        const TRequest& request);
 
     void RemoveRequest(const TRequest& request);
 
@@ -84,10 +85,8 @@ struct IFSyncQueue
 
     virtual ~IFSyncQueue() = default;
 
-    virtual void Enqueue(
-        TRequestId reqId,
-        TNodeId nodeId,
-        THandle handle = {}) = 0;
+    virtual void
+    Enqueue(TRequestId reqId, TNodeId nodeId, THandle handle = {}) = 0;
     virtual void Dequeue(
         TRequestId reqId,
         const NProto::TError& error,
@@ -100,15 +99,13 @@ struct IFSyncQueue
         TNodeId nodeId = {}) = 0;
 
     // Data requests.
-    virtual NThreading::TFuture<NProto::TError> WaitForDataRequests(TRequestId reqId) = 0;
     virtual NThreading::TFuture<NProto::TError> WaitForDataRequests(
-        TRequestId reqId,
-        TNodeId nodeId,
-        THandle handle) = 0;
+        TRequestId reqId) = 0;
+    virtual NThreading::TFuture<NProto::TError>
+    WaitForDataRequests(TRequestId reqId, TNodeId nodeId, THandle handle) = 0;
 };
 
-class TFSyncQueue final
-    : public IFSyncQueue
+class TFSyncQueue final: public IFSyncQueue
 {
     using TRequestId = TFSyncCache::TRequestId;
     using TRequest = TFSyncCache::TRequest;
@@ -124,10 +121,8 @@ private:
 public:
     TFSyncQueue(const TString& fileSystemId, ILoggingServicePtr logging);
 
-    void Enqueue(
-        TRequestId reqId,
-        TNodeId nodeId,
-        THandle handle = {}) override;
+    void
+    Enqueue(TRequestId reqId, TNodeId nodeId, THandle handle = {}) override;
     void Dequeue(
         TRequestId reqId,
         const NProto::TError& error,
@@ -140,24 +135,22 @@ public:
         TNodeId nodeId = {}) override;
 
     // Data requests.
-    NThreading::TFuture<NProto::TError> WaitForDataRequests(TRequestId reqId) override;
+    NThreading::TFuture<NProto::TError> WaitForDataRequests(
+        TRequestId reqId) override;
     NThreading::TFuture<NProto::TError> WaitForDataRequests(
         TRequestId reqId,
         TNodeId nodeId,
         THandle handle) override;
 };
 
-class TFSyncQueueStub final
-    : public IFSyncQueue
+class TFSyncQueueStub final: public IFSyncQueue
 {
     using TRequestId = TFSyncCache::TRequestId;
     using TRequest = TFSyncCache::TRequest;
 
 public:
-    void Enqueue(
-        TRequestId reqId,
-        TNodeId nodeId,
-        THandle handle = {}) override;
+    void
+    Enqueue(TRequestId reqId, TNodeId nodeId, THandle handle = {}) override;
     void Dequeue(
         TRequestId reqId,
         const NProto::TError& error,
@@ -170,7 +163,8 @@ public:
         TNodeId nodeId = {}) override;
 
     // Data requests.
-    NThreading::TFuture<NProto::TError> WaitForDataRequests(TRequestId reqId) override;
+    NThreading::TFuture<NProto::TError> WaitForDataRequests(
+        TRequestId reqId) override;
     NThreading::TFuture<NProto::TError> WaitForDataRequests(
         TRequestId reqId,
         TNodeId nodeId,

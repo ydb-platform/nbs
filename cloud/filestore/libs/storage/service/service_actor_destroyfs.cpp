@@ -70,15 +70,15 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDestroyFileStoreActor::TDestroyFileStoreActor(
-        TRequestInfoPtr requestInfo,
-        TString fileSystemId,
-        bool forceDestroy,
-        bool allowFileStoreDestroyWithOrphanSessions)
+    TRequestInfoPtr requestInfo,
+    TString fileSystemId,
+    bool forceDestroy,
+    bool allowFileStoreDestroyWithOrphanSessions)
     : RequestInfo(std::move(requestInfo))
     , FileSystemId(std::move(fileSystemId))
     , ForceDestroy(forceDestroy)
     , AllowFileStoreDestroyWithOrphanSessions(
-        allowFileStoreDestroyWithOrphanSessions)
+          allowFileStoreDestroyWithOrphanSessions)
 {}
 
 void TDestroyFileStoreActor::Bootstrap(const TActorContext& ctx)
@@ -99,10 +99,7 @@ void TDestroyFileStoreActor::DescribeSessions(const TActorContext& ctx)
         std::make_unique<TEvIndexTablet::TEvDescribeSessionsRequest>();
     request->Record.SetFileSystemId(FileSystemId);
 
-    NCloud::Send(
-        ctx,
-        MakeIndexTabletProxyServiceId(),
-        std::move(request));
+    NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
 }
 
 void TDestroyFileStoreActor::HandleDescribeSessionsResponse(
@@ -155,10 +152,7 @@ void TDestroyFileStoreActor::GetFileSystemTopology(const TActorContext& ctx)
         std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyRequest>();
     request->Record.SetFileSystemId(FileSystemId);
 
-    NCloud::Send(
-        ctx,
-        MakeIndexTabletProxyServiceId(),
-        std::move(request));
+    NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
 }
 
 void TDestroyFileStoreActor::HandleGetFileSystemTopologyResponse(
@@ -204,18 +198,14 @@ void TDestroyFileStoreActor::DestroyShards(const TActorContext& ctx)
         auto request = std::make_unique<TEvSSProxy::TEvDestroyFileStoreRequest>(
             ShardIds[i]);
 
-        NCloud::Send(
-            ctx,
-            MakeSSProxyServiceId(),
-            std::move(request),
-            i + 1);
+        NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request), i + 1);
     }
 }
 
 void TDestroyFileStoreActor::DestroyFileStore(const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvSSProxy::TEvDestroyFileStoreRequest>(
-        FileSystemId);
+    auto request =
+        std::make_unique<TEvSSProxy::TEvDestroyFileStoreRequest>(FileSystemId);
 
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
 }
@@ -335,10 +325,7 @@ void TStorageServiceActor::HandleDestroyFileStore(
 
     InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
 
-    auto requestInfo = CreateRequestInfo(
-        SelfId(),
-        cookie,
-        msg->CallContext);
+    auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
     if (Count(
             StorageConfig->GetDestroyFilestoreDenyList(),

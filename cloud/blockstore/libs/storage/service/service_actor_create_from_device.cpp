@@ -76,9 +76,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCreateVolumeFromDeviceActor::TCreateVolumeFromDeviceActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
-        NProto::TCreateVolumeFromDeviceRequest request)
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr config,
+    NProto::TCreateVolumeFromDeviceRequest request)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , Request(std::move(request))
@@ -109,7 +109,8 @@ void TCreateVolumeFromDeviceActor::Bootstrap(const TActorContext& ctx)
 void TCreateVolumeFromDeviceActor::CreateVolumeFromDevice(
     const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvDiskRegistry::TEvCreateDiskFromDevicesRequest>();
+    auto request =
+        std::make_unique<TEvDiskRegistry::TEvCreateDiskFromDevicesRequest>();
 
     auto* device = request->Record.MutableDevices()->Add();
     device->SetAgentId(Request.GetAgentId());
@@ -156,7 +157,9 @@ void TCreateVolumeFromDeviceActor::HandleCreateDiskFromDevicesResponse(
     const auto& error = msg->GetError();
 
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Creation of disk %s failed: %s",
             Request.GetDiskId().Quote().c_str(),
             error.GetMessage().c_str());
@@ -180,7 +183,9 @@ void TCreateVolumeFromDeviceActor::HandleCreateDiskFromDevicesResponse(
 
     volumeConfig.SetCreationTs(ctx.Now().MicroSeconds());
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending createvolume request for volume %s",
         volumeConfig.GetDiskId().Quote().c_str());
 
@@ -202,7 +207,9 @@ void TCreateVolumeFromDeviceActor::HandleCreateVolumeResponse(
     const auto& error = msg->GetError();
 
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Creation of volume %s failed: %s",
             Request.GetDiskId().Quote().c_str(),
             error.GetMessage().c_str());
@@ -220,9 +227,7 @@ STFUNC(TCreateVolumeFromDeviceActor::StateWork)
             TEvDiskRegistry::TEvCreateDiskFromDevicesResponse,
             HandleCreateDiskFromDevicesResponse);
 
-        HFunc(
-            TEvSSProxy::TEvCreateVolumeResponse,
-            HandleCreateVolumeResponse);
+        HFunc(TEvSSProxy::TEvCreateVolumeResponse, HandleCreateVolumeResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -244,12 +249,12 @@ void TServiceActor::HandleCreateVolumeFromDevice(
     const auto* msg = ev->Get();
     const auto& request = msg->Record;
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Creating volume from device: %s, %s, %s, %s, %s, %s",
         request.GetDiskId().Quote().c_str(),
         request.GetProjectId().Quote().c_str(),

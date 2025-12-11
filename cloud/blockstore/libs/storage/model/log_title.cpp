@@ -31,7 +31,7 @@ TStringBuilder& operator<<(TStringBuilder& stream, TOptional<T> opt)
         } else {
             stream << "?";
         }
-    } else{
+    } else {
         stream << opt.Value;
     }
 
@@ -40,20 +40,14 @@ TStringBuilder& operator<<(TStringBuilder& stream, TOptional<T> opt)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template<typename T>
-concept HasDiskId = requires(T t) {
-    t.DiskId = TString();
-};
+template <typename T>
+concept HasDiskId = requires(T t) { t.DiskId = TString(); };
 
-template<typename T>
-concept HasGeneration = requires(T t) {
-    t.Generation = ui32();
-};
+template <typename T>
+concept HasGeneration = requires(T t) { t.Generation = ui32(); };
 
-template<typename T>
-concept HasTabletId = requires(T t) {
-    t.TabletId = ui64();
-};
+template <typename T>
+concept HasTabletId = requires(T t) { t.TabletId = ui64(); };
 
 ////////////////////////////////////////////////////////////////////////////////
 

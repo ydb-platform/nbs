@@ -28,10 +28,10 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(xxx, ...)             \
-    xxx(ChecksumBlocks, __VA_ARGS__)                                        \
-    xxx(MultiAgentWrite, __VA_ARGS__)                                       \
-// BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE
+#define BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(xxx, ...) \
+    xxx(ChecksumBlocks, __VA_ARGS__)                            \
+    xxx(MultiAgentWrite, __VA_ARGS__)                           \
+    // BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -61,16 +61,16 @@ struct TEvNonreplPartitionPrivate
         ui64 ExecCycles;
 
         TRangeMigrated(
-                EExecutionSide executionSide,
-                TBlockRange64 range,
-                TInstant readStartTs,
-                TDuration readDuration,
-                TInstant writeStartTs,
-                TDuration writeDuration,
-                TVector<IProfileLog::TBlockInfo> affectedBlockInfos,
-                ui64 recommendedBandwidth,
-                bool allZeroes,
-                ui64 execCycles)
+            EExecutionSide executionSide,
+            TBlockRange64 range,
+            TInstant readStartTs,
+            TDuration readDuration,
+            TInstant writeStartTs,
+            TDuration writeDuration,
+            TVector<IProfileLog::TBlockInfo> affectedBlockInfos,
+            ui64 recommendedBandwidth,
+            bool allZeroes,
+            ui64 execCycles)
             : Range(range)
             , ReadStartTs(readStartTs)
             , ReadDuration(readDuration)
@@ -108,9 +108,9 @@ struct TEvNonreplPartitionPrivate
         const bool FollowerGotNonRetriableError;
 
         TWriteOrZeroCompleted(
-                ui64 requestId,
-                ui64 totalCycles,
-                bool followerGotNonRetriableError)
+            ui64 requestId,
+            ui64 totalCycles,
+            bool followerGotNonRetriableError)
             : RequestId(requestId)
             , TotalCycles(totalCycles)
             , FollowerGotNonRetriableError(followerGotNonRetriableError)
@@ -127,12 +127,11 @@ struct TEvNonreplPartitionPrivate
         const bool ChecksumMismatchObserved;
 
         TMirroredReadCompleted(
-                ui64 requestCounter,
-                bool checksumMismatchObserved)
+            ui64 requestCounter,
+            bool checksumMismatchObserved)
             : RequestCounter(requestCounter)
             , ChecksumMismatchObserved(checksumMismatchObserved)
-        {
-        }
+        {}
     };
 
     //
@@ -173,19 +172,19 @@ struct TEvNonreplPartitionPrivate
         EStatus Status;
 
         TRangeResynced(
-                TBlockRange64 range,
-                TInstant checksumStartTs,
-                TDuration checksumDuration,
-                IProfileLog::TRangeInfo checksumRangeInfo,
-                TInstant readStartTs,
-                TDuration readDuration,
-                IProfileLog::TRangeInfo readRangeInfo,
-                TInstant writeStartTs,
-                TDuration writeDuration,
-                IProfileLog::TRangeInfo writeRangeInfo,
-                ui64 execCycles,
-                TVector<IProfileLog::TBlockInfo> affectedBlockInfos,
-                EStatus status)
+            TBlockRange64 range,
+            TInstant checksumStartTs,
+            TDuration checksumDuration,
+            IProfileLog::TRangeInfo checksumRangeInfo,
+            TInstant readStartTs,
+            TDuration readDuration,
+            IProfileLog::TRangeInfo readRangeInfo,
+            TInstant writeStartTs,
+            TDuration writeDuration,
+            IProfileLog::TRangeInfo writeRangeInfo,
+            ui64 execCycles,
+            TVector<IProfileLog::TBlockInfo> affectedBlockInfos,
+            EStatus status)
             : Range(range)
             , ChecksumStartTs(checksumStartTs)
             , ChecksumDuration(checksumDuration)
@@ -199,8 +198,7 @@ struct TEvNonreplPartitionPrivate
             , ExecCycles(execCycles)
             , AffectedBlockInfos(std::move(affectedBlockInfos))
             , Status(status)
-        {
-        }
+        {}
     };
 
     //
@@ -286,7 +284,8 @@ struct TEvNonreplPartitionPrivate
 
     struct TCancelRequest
     {
-        enum class EReason {
+        enum class EReason
+        {
             TimedOut,
             Canceled
         };
@@ -423,108 +422,84 @@ struct TEvNonreplPartitionPrivate
         EvLaggingMigrationEnabled,
         EvInconsistentDiskAgent,
 
-        BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENT_IDS)
+        BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(
+            BLOCKSTORE_DECLARE_EVENT_IDS)
 
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStorePrivateEvents::PARTITION_NONREPL_END,
-        "EvEnd expected to be < TBlockStorePrivateEvents::PARTITION_NONREPL_END");
+    static_assert(
+        EvEnd < (int)TBlockStorePrivateEvents::PARTITION_NONREPL_END,
+        "EvEnd expected to be < "
+        "TBlockStorePrivateEvents::PARTITION_NONREPL_END");
 
     using TEvUpdateCounters = TResponseEvent<TEmpty, EvUpdateCounters>;
     using TEvScrubbingNextRange = TResponseEvent<TEmpty, EvScrubbingNextRange>;
-    using TEvReadBlocksCompleted = TResponseEvent<TOperationCompleted, EvReadBlocksCompleted>;
-    using TEvWriteBlocksCompleted = TResponseEvent<TOperationCompleted, EvWriteBlocksCompleted>;
-    using TEvMultiAgentWriteBlocksCompleted = TResponseEvent<TOperationCompleted, EvMultiAgentWriteBlocksCompleted>;
-    using TEvZeroBlocksCompleted = TResponseEvent<TOperationCompleted, EvZeroBlocksCompleted>;
-    using TEvChecksumBlocksCompleted = TResponseEvent<TOperationCompleted, EvChecksumBlocksCompleted>;
+    using TEvReadBlocksCompleted =
+        TResponseEvent<TOperationCompleted, EvReadBlocksCompleted>;
+    using TEvWriteBlocksCompleted =
+        TResponseEvent<TOperationCompleted, EvWriteBlocksCompleted>;
+    using TEvMultiAgentWriteBlocksCompleted =
+        TResponseEvent<TOperationCompleted, EvMultiAgentWriteBlocksCompleted>;
+    using TEvZeroBlocksCompleted =
+        TResponseEvent<TOperationCompleted, EvZeroBlocksCompleted>;
+    using TEvChecksumBlocksCompleted =
+        TResponseEvent<TOperationCompleted, EvChecksumBlocksCompleted>;
 
-    using TEvRangeMigrated = TResponseEvent<
-        TRangeMigrated,
-        EvRangeMigrated
-    >;
+    using TEvRangeMigrated = TResponseEvent<TRangeMigrated, EvRangeMigrated>;
 
-    using TEvMigrateNextRange = TResponseEvent<
-        TMigrateNextRange,
-        EvMigrateNextRange
-    >;
+    using TEvMigrateNextRange =
+        TResponseEvent<TMigrateNextRange, EvMigrateNextRange>;
 
-    using TEvWriteOrZeroCompleted = TResponseEvent<
-        TWriteOrZeroCompleted,
-        EvWriteOrZeroCompleted
-    >;
+    using TEvWriteOrZeroCompleted =
+        TResponseEvent<TWriteOrZeroCompleted, EvWriteOrZeroCompleted>;
 
-    using TEvMirroredReadCompleted = TResponseEvent<
-        TMirroredReadCompleted,
-        EvMirroredReadCompleted
-    >;
+    using TEvMirroredReadCompleted =
+        TResponseEvent<TMirroredReadCompleted, EvMirroredReadCompleted>;
 
-    using TEvResyncNextRange = TResponseEvent<
-        TResyncNextRange,
-        EvResyncNextRange
-    >;
+    using TEvResyncNextRange =
+        TResponseEvent<TResyncNextRange, EvResyncNextRange>;
 
-    using TEvRangeResynced = TResponseEvent<
-        TRangeResynced,
-        EvRangeResynced
-    >;
+    using TEvRangeResynced = TResponseEvent<TRangeResynced, EvRangeResynced>;
 
     using TEvReadResyncFastPathResponse = TResponseEvent<
         TReadResyncFastPathResponse,
-        EvReadResyncFastPathResponse
-    >;
+        EvReadResyncFastPathResponse>;
 
-    using TEvGetDeviceForRangeRequest = TResponseEvent<
-        TGetDeviceForRangeRequest,
-        EvGetDeviceForRangeRequest
-    >;
-    using TEvGetDeviceForRangeResponse = TResponseEvent<
-        TGetDeviceForRangeResponse,
-        EvGetDeviceForRangeResponse
-    >;
+    using TEvGetDeviceForRangeRequest =
+        TResponseEvent<TGetDeviceForRangeRequest, EvGetDeviceForRangeRequest>;
+    using TEvGetDeviceForRangeResponse =
+        TResponseEvent<TGetDeviceForRangeResponse, EvGetDeviceForRangeResponse>;
 
     using TEvCancelRequest = TRequestEvent<TCancelRequest, EvCancelRequest>;
 
-    using TEvAddLaggingAgentRequest = TRequestEvent<
-        TAddLaggingAgentRequest,
-        EvAddLaggingAgentRequest
-    >;
+    using TEvAddLaggingAgentRequest =
+        TRequestEvent<TAddLaggingAgentRequest, EvAddLaggingAgentRequest>;
 
-    using TEvRemoveLaggingAgentRequest = TRequestEvent<
-        TRemoveLaggingAgentRequest,
-        EvRemoveLaggingAgentRequest
-    >;
+    using TEvRemoveLaggingAgentRequest =
+        TRequestEvent<TRemoveLaggingAgentRequest, EvRemoveLaggingAgentRequest>;
 
-    using TEvAgentIsUnavailable = TRequestEvent<
-        TAgentIsUnavailable,
-        EvAgentIsUnavailable
-    >;
+    using TEvAgentIsUnavailable =
+        TRequestEvent<TAgentIsUnavailable, EvAgentIsUnavailable>;
 
-    using TEvAgentIsBackOnline = TRequestEvent<
-        TAgentIsBackOnline,
-        EvAgentIsBackOnline
-    >;
+    using TEvAgentIsBackOnline =
+        TRequestEvent<TAgentIsBackOnline, EvAgentIsBackOnline>;
 
     using TEvStartLaggingAgentMigration = TRequestEvent<
         TStartLaggingAgentMigration,
-        EvStartLaggingAgentMigration
-    >;
+        EvStartLaggingAgentMigration>;
 
-    using TEvLaggingMigrationDisabled = TRequestEvent<
-        TLaggingMigrationDisabled,
-        EvLaggingMigrationDisabled
-    >;
+    using TEvLaggingMigrationDisabled =
+        TRequestEvent<TLaggingMigrationDisabled, EvLaggingMigrationDisabled>;
 
-    using TEvLaggingMigrationEnabled = TRequestEvent<
-        TLaggingMigrationEnabled,
-        EvLaggingMigrationEnabled
-    >;
+    using TEvLaggingMigrationEnabled =
+        TRequestEvent<TLaggingMigrationEnabled, EvLaggingMigrationEnabled>;
 
     using TEvInconsistentDiskAgent =
         TRequestEvent<TInconsistentDiskAgent, EvInconsistentDiskAgent>;
 
-    BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_PROTO_EVENTS)
-
+    BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(
+        BLOCKSTORE_DECLARE_PROTO_EVENTS)
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

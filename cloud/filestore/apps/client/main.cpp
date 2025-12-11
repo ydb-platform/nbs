@@ -1,5 +1,6 @@
 #include <cloud/filestore/apps/client/lib/app.h>
 #include <cloud/filestore/apps/client/lib/bootstrap.h>
+
 #include <cloud/storage/core/libs/iam/iface/client.h>
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -10,11 +11,11 @@ int main(int argc, char** argv)
 
     auto clientFactories = std::make_shared<TClientFactories>();
 
-    clientFactories->IamClientFactory = [] (
-        NCloud::NIamClient::TIamClientConfigPtr config,
-        NCloud::ILoggingServicePtr logging,
-        NCloud::ISchedulerPtr scheduler,
-        NCloud::ITimerPtr timer)
+    clientFactories->IamClientFactory =
+        [](NCloud::NIamClient::TIamClientConfigPtr config,
+           NCloud::ILoggingServicePtr logging,
+           NCloud::ISchedulerPtr scheduler,
+           NCloud::ITimerPtr timer)
     {
         Y_UNUSED(config);
         Y_UNUSED(logging);

@@ -73,8 +73,10 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
 
     if (session) {
         if (session->ClientId != clientId) {
-            return TErrorResponse(E_FS_INVALID_SESSION, TStringBuilder()
-                << "cannot restore session: " << sessionId.Quote());
+            return TErrorResponse(
+                E_FS_INVALID_SESSION,
+                TStringBuilder()
+                    << "cannot restore session: " << sessionId.Quote());
         }
 
         session->AddSubSession(sessionSeqNo, readOnly);
@@ -83,8 +85,9 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
     }
 
     if (sessionId) {
-        return TErrorResponse(E_FS_INVALID_SESSION, TStringBuilder()
-            << "invalid session: " << sessionId.Quote());
+        return TErrorResponse(
+            E_FS_INVALID_SESSION,
+            TStringBuilder() << "invalid session: " << sessionId.Quote());
     }
 
     auto it = SessionsByClient.find(clientId);
@@ -172,8 +175,10 @@ TSessionPtr TLocalFileSystem::GetSession(
     ui64 seqNo)
 {
     auto session = FindSession(clientId, sessionId, seqNo);
-    Y_ENSURE_EX(session, TServiceError(E_FS_INVALID_SESSION)
-        << "invalid session: " << sessionId.Quote());
+    Y_ENSURE_EX(
+        session,
+        TServiceError(E_FS_INVALID_SESSION)
+            << "invalid session: " << sessionId.Quote());
 
     return session;
 }
@@ -184,7 +189,7 @@ TSessionPtr TLocalFileSystem::FindSession(
     ui64 seqNo)
 {
     auto it = SessionsById.find(sessionId);
-    if(it == SessionsById.end()) {
+    if (it == SessionsById.end()) {
         return {};
     };
 
@@ -196,20 +201,22 @@ TSessionPtr TLocalFileSystem::FindSession(
     return session;
 }
 
-void TLocalFileSystem::RemoveSession(
-    const TString& sessionId,
-    ui64 seqNo)
+void TLocalFileSystem::RemoveSession(const TString& sessionId, ui64 seqNo)
 {
     auto it = SessionsById.find(sessionId);
-    Y_ENSURE_EX(it != SessionsById.end(), TServiceError(E_FS_INVALID_SESSION)
-        << "invalid session: " << sessionId.Quote());
+    Y_ENSURE_EX(
+        it != SessionsById.end(),
+        TServiceError(E_FS_INVALID_SESSION)
+            << "invalid session: " << sessionId.Quote());
 
     TSessionPtr session = *it->second;
 
-    Y_ENSURE_EX(session->HasSubSession(seqNo), TServiceError(E_FS_INVALID_SESSION)
-        << "invalid session: " << sessionId.Quote());
+    Y_ENSURE_EX(
+        session->HasSubSession(seqNo),
+        TServiceError(E_FS_INVALID_SESSION)
+            << "invalid session: " << sessionId.Quote());
 
-    if(!session->RemoveSubSession(seqNo)) {
+    if (!session->RemoveSubSession(seqNo)) {
         SessionsByClient.erase(session->ClientId);
         SessionsList.erase(it->second);
         SessionsById.erase(it);
@@ -221,8 +228,9 @@ void TLocalFileSystem::RemoveSession(
 void TLocalFileSystem::ScheduleCleanupSessions()
 {
     Scheduler->Schedule(
-        Timer->Now() + TDuration::Seconds(1),  // TODO
-        [weakPtr = weak_from_this()] () {
+        Timer->Now() + TDuration::Seconds(1),   // TODO
+        [weakPtr = weak_from_this()]()
+        {
             if (auto self = weakPtr.lock()) {
                 self->CleanupSessions();
             }

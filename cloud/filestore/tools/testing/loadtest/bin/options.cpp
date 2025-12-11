@@ -55,13 +55,13 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("STR")
         .StoreResult(&TestsConfig);
 
-    opts.AddLongOption("results")
-        .RequiredArgument("STR")
-        .StoreResult(&OutputFile);
+    opts.AddLongOption("results").RequiredArgument("STR").StoreResult(
+        &OutputFile);
 
-    const auto& verbose = opts.AddLongOption("verbose", "output level for diagnostics messages")
-        .OptionalArgument("STR")
-        .StoreResult(&VerboseLevel);
+    const auto& verbose =
+        opts.AddLongOption("verbose", "output level for diagnostics messages")
+            .OptionalArgument("STR")
+            .StoreResult(&VerboseLevel);
 
     opts.AddLongOption("timeout", "timeout in seconds")
         .OptionalArgument("NUM")
@@ -81,7 +81,7 @@ void TOptions::Parse(int argc, char** argv)
 IOutputStream& TOptions::GetOutputStream()
 {
     if (OutputFile && OutputFile != "-") {
-        if(!OutputStream) {
+        if (!OutputStream) {
             OutputStream.reset(new TOFStream(OutputFile));
         }
 

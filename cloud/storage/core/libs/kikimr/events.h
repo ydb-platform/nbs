@@ -31,11 +31,10 @@ struct TRequestEvent
 {
     TRequestEvent() = default;
 
-    template <typename ...Args>
-    TRequestEvent(Args&& ...args)
+    template <typename... Args>
+    TRequestEvent(Args&&... args)
         : TArgs(std::forward<Args>(args)...)
-    {
-    }
+    {}
 
     static TString Name()
     {
@@ -94,33 +93,27 @@ struct TResponseEvent
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define STORAGE_DECLARE_EVENT_IDS(name, ...)                                   \
-        Ev##name##Request,                                                     \
-        Ev##name##Response,                                                    \
-// BLOCKSTORE_DECLARE_EVENT_IDS
+#define STORAGE_DECLARE_EVENT_IDS(name, ...) \
+    Ev##name##Request, Ev##name##Response,   // BLOCKSTORE_DECLARE_EVENT_IDS
 
-#define STORAGE_DECLARE_REQUEST(name, ...)                                     \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        static constexpr const char* Name = #name;                             \
-                                                                               \
-        using TRequest = TEv##name##Request;                                   \
-        using TResponse = TEv##name##Response;                                 \
-    };                                                                         \
-// STORAGE_DECLARE_REQUEST
+#define STORAGE_DECLARE_REQUEST(name, ...)         \
+    struct T##name##Method                         \
+    {                                              \
+        static constexpr const char* Name = #name; \
+                                                   \
+        using TRequest = TEv##name##Request;       \
+        using TResponse = TEv##name##Response;     \
+    };                                             \
+    // STORAGE_DECLARE_REQUEST
 
-#define STORAGE_DECLARE_EVENTS(name, ...)                                      \
-    using TEv##name##Request = TRequestEvent<                                  \
-        T##name##Request,                                                      \
-        Ev##name##Request                                                      \
-    >;                                                                         \
-                                                                               \
-    using TEv##name##Response = TResponseEvent<                                \
-        T##name##Response,                                                     \
-        Ev##name##Response                                                     \
-    >;                                                                         \
-                                                                               \
-    STORAGE_DECLARE_REQUEST(name, __VA_ARGS__)                                 \
-// STORAGE_DECLARE_EVENTS
+#define STORAGE_DECLARE_EVENTS(name, ...)                      \
+    using TEv##name##Request =                                 \
+        TRequestEvent<T##name##Request, Ev##name##Request>;    \
+                                                               \
+    using TEv##name##Response =                                \
+        TResponseEvent<T##name##Response, Ev##name##Response>; \
+                                                               \
+    STORAGE_DECLARE_REQUEST(name, __VA_ARGS__)                 \
+    // STORAGE_DECLARE_EVENTS
 
 }   // namespace NCloud

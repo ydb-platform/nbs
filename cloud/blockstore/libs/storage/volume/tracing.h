@@ -13,9 +13,9 @@ struct TRequestTraceInfo
     const ITraceSerializerPtr TraceSerializer;
 
     TRequestTraceInfo(
-            bool isTraced,
-            ui64 traceTs,
-            ITraceSerializerPtr traceSerializer)
+        bool isTraced,
+        ui64 traceTs,
+        ITraceSerializerPtr traceSerializer)
         : IsTraced(isTraced)
         , ReceiveTime(traceTs)
         , TraceSerializer(std::move(traceSerializer))

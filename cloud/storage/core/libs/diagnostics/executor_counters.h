@@ -36,8 +36,7 @@ public:
     // Activity
     //
 
-    class TActivityScope
-        : private TNonCopyable
+    class TActivityScope: private TNonCopyable
     {
     private:
         TExecutorCounters* const Counters;
@@ -45,7 +44,10 @@ public:
         const int Index;
 
     public:
-        TActivityScope(TExecutorCounters* counters, TExecutor* executor, int index)
+        TActivityScope(
+            TExecutorCounters* counters,
+            TExecutor* executor,
+            int index)
             : Counters(counters)
             , Executor(executor)
             , Index(index)
@@ -63,8 +65,7 @@ public:
     // Executor
     //
 
-    class TExecutorScope
-        : private TNonCopyable
+    class TExecutorScope: private TNonCopyable
     {
     private:
         // TExecutorCounters* const Counters;
@@ -98,18 +99,18 @@ public:
 
         TActivityScope StartWait()
         {
-            return { Counters, Executor, WAIT };
+            return {Counters, Executor, WAIT};
         }
 
         TActivityScope StartExecute()
         {
-            return { Counters, Executor, EXECUTE };
+            return {Counters, Executor, EXECUTE};
         }
     };
 
     TExecutorScope StartExecutor()
     {
-        return { this, AllocExecutor() };
+        return {this, AllocExecutor()};
     }
 
 private:
@@ -120,4 +121,4 @@ private:
     void ActivityCompleted(TExecutor* executor, int index);
 };
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud

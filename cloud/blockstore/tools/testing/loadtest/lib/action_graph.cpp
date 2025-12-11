@@ -15,7 +15,7 @@ TGraphExecutor::TGraphExecutor(TGraph graph)
     Y_ENSURE(Graph.Vertices.size() == Graph.Edges.size());
 
     for (TVertexId i = 0; i < Graph.Edges.size(); ++i) {
-        for (TVertexId j : Graph.Edges[i]) {
+        for (TVertexId j: Graph.Edges[i]) {
             OutgoingEdges[j].push_back(i);
         }
         Vertex2DepCount[i] = Graph.Edges[i].size();
@@ -43,21 +43,23 @@ void TGraphExecutor::Run()
             Ready.swap(ready);
         }
 
-        for (TVertexId vertexId : ready) {
-            RunVertex(vertexId).Subscribe([=, this] (auto) {
-                with_lock (Lock) {
-                    for (const auto other : OutgoingEdges[vertexId]) {
-                        auto& depCount = Vertex2DepCount[other];
-                        Y_DEBUG_ABORT_UNLESS(depCount > 0);
-                        if (!--depCount) {
-                            Ready.push_back(other);
+        for (TVertexId vertexId: ready) {
+            RunVertex(vertexId).Subscribe(
+                [=, this](auto)
+                {
+                    with_lock (Lock) {
+                        for (const auto other: OutgoingEdges[vertexId]) {
+                            auto& depCount = Vertex2DepCount[other];
+                            Y_DEBUG_ABORT_UNLESS(depCount > 0);
+                            if (!--depCount) {
+                                Ready.push_back(other);
+                            }
                         }
+                        ++DoneCount;
                     }
-                    ++DoneCount;
-                }
 
-                ReadyEvent.Signal();
-            });
+                    ReadyEvent.Signal();
+                });
         }
 
         ReadyEvent.WaitI();
@@ -70,11 +72,11 @@ TFuture<void> TGraphExecutor::RunVertex(TVertexId vertexId)
     TPromise<void> promise = NewPromise();
 
     ThreadPool.SafeAddFunc(
-        [=, this] () mutable {
+        [=, this]() mutable
+        {
             Graph.Vertices[vertexId]();
             promise.SetValue();
-        }
-    );
+        });
 
     return promise;
 }

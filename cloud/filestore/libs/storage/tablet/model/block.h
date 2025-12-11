@@ -40,10 +40,9 @@ struct TBlock
 
     bool operator==(const TBlock& other) const
     {
-        return NodeId == other.NodeId
-            && BlockIndex == other.BlockIndex
-            && MinCommitId == other.MinCommitId
-            && MaxCommitId == other.MaxCommitId;
+        return NodeId == other.NodeId && BlockIndex == other.BlockIndex &&
+               MinCommitId == other.MinCommitId &&
+               MaxCommitId == other.MaxCommitId;
     }
 };
 
@@ -97,11 +96,11 @@ struct TBytes
     TBytes() = default;
 
     TBytes(
-            ui64 nodeId,
-            ui64 offset,
-            ui64 length,
-            ui64 minCommitId,
-            ui64 maxCommitId)
+        ui64 nodeId,
+        ui64 offset,
+        ui64 length,
+        ui64 minCommitId,
+        ui64 maxCommitId)
         : NodeId(nodeId)
         , Offset(offset)
         , Length(length)
@@ -138,7 +137,9 @@ struct TBlockBytes
 
 struct TBlockWithBytes
 {
-    struct TNoBlock {};
+    struct TNoBlock
+    {
+    };
 
     ui64 NodeId = 0;
     ui32 BlockIndex = 0;
@@ -170,11 +171,13 @@ struct TFlushBytesCleanupInfo
 
 struct TBlockCompare
 {
-    bool operator ()(const TBlock& l, const TBlock& r) const
+    bool operator()(const TBlock& l, const TBlock& r) const
     {
-        return (l.NodeId < r.NodeId || (l.NodeId == r.NodeId
-            && (l.BlockIndex < r.BlockIndex || (l.BlockIndex == r.BlockIndex
-            && (l.MinCommitId > r.MinCommitId)))));
+        return (
+            l.NodeId < r.NodeId ||
+            (l.NodeId == r.NodeId && (l.BlockIndex < r.BlockIndex ||
+                                      (l.BlockIndex == r.BlockIndex &&
+                                       (l.MinCommitId > r.MinCommitId)))));
     }
 };
 
@@ -182,12 +185,11 @@ struct TBlockCompare
 
 struct TBlockWithBytesCompare
 {
-    bool operator ()(const TBlockWithBytes& l, const TBlockWithBytes& r) const
+    bool operator()(const TBlockWithBytes& l, const TBlockWithBytes& r) const
     {
         return TBlockCompare()(
             {l.NodeId, l.BlockIndex, l.BytesMinCommitId, InvalidCommitId},
-            {r.NodeId, r.BlockIndex, r.BytesMinCommitId, InvalidCommitId}
-        );
+            {r.NodeId, r.BlockIndex, r.BytesMinCommitId, InvalidCommitId});
     }
 };
 
@@ -208,7 +210,7 @@ struct TBlockLocation
 
 struct TBlockLocationHash
 {
-    size_t operator ()(const TBlockLocation& bl) const
+    size_t operator()(const TBlockLocation& bl) const
     {
         return CombineHashes(
             IntHash<ui64>(bl.NodeId),
@@ -233,7 +235,7 @@ struct TBlockLocationInBlob
 
 struct TBlockLocationInBlobHash
 {
-    size_t operator ()(const TBlockLocationInBlob& bl) const
+    size_t operator()(const TBlockLocationInBlob& bl) const
     {
         return CombineHashes(
             TPartialBlobIdHash()(bl.BlobId),
@@ -271,8 +273,7 @@ struct ILargeBlockVisitor
 {
     virtual ~ILargeBlockVisitor() = default;
 
-    virtual void Accept(
-        const TBlockDeletion& marker) = 0;
+    virtual void Accept(const TBlockDeletion& marker) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -317,13 +318,17 @@ inline ui32 GetMixedRangeIndex(
 
     Y_IF_DEBUG({
         // sanity check
-        ui32 nextRangeId = GetMixedRangeIndex(
-            hasher,
-            nodeId,
-            blockIndex + blocksCount - 1);
+        ui32 nextRangeId =
+            GetMixedRangeIndex(hasher, nodeId, blockIndex + blocksCount - 1);
 
-        Y_ABORT_UNLESS(nextRangeId == rangeId, "node %lu: rangeId %u vs nextRangeId %u at (index %u, count %u)",
-            nodeId, rangeId, nextRangeId, blockIndex, blocksCount);
+        Y_ABORT_UNLESS(
+            nextRangeId == rangeId,
+            "node %lu: rangeId %u vs nextRangeId %u at (index %u, count %u)",
+            nodeId,
+            rangeId,
+            nextRangeId,
+            blockIndex,
+            blocksCount);
     });
 
     return rangeId;
@@ -335,10 +340,8 @@ inline ui32 GetMixedRangeIndex(
 {
     Y_ABORT_UNLESS(blocks && blocks.size() <= MaxBlocksCount);
 
-    ui32 rangeId = GetMixedRangeIndex(
-        hasher,
-        blocks[0].NodeId,
-        blocks[0].BlockIndex);
+    ui32 rangeId =
+        GetMixedRangeIndex(hasher, blocks[0].NodeId, blocks[0].BlockIndex);
 
     Y_IF_DEBUG({
         // sanity check

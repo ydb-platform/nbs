@@ -1,18 +1,18 @@
 #include "trace_processor_mon.h"
+
 #include "trace_processor.h"
 #include "trace_reader.h"
 
-#include <cloud/storage/core/protos/media.pb.h>
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/protos/media.pb.h>
 
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/logger/backend.h>
 #include <library/cpp/lwtrace/all.h>
-
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/stream/str.h>
@@ -25,32 +25,28 @@
 
 namespace NCloud {
 
-#define LWTRACE_UT_PROVIDER(PROBE, EVENT, GROUPS, TYPES, NAMES)                \
-    PROBE(                                                                     \
-        InitialProbe,                                                          \
-        GROUPS("Group"),                                                       \
-        TYPES(TString, ui32, ui64),                                            \
-        NAMES("requestType", NProbeParam::MediaKind, "requestId")              \
-    )                                                                          \
-    PROBE(                                                                     \
-        SomeProbe,                                                             \
-        GROUPS("Group"),                                                       \
-        TYPES(TString, ui64),                                                  \
-        NAMES("requestType", "requestId")                                      \
-    )                                                                          \
-    PROBE(                                                                     \
-        SomeOtherProbe,                                                        \
-        GROUPS("Group"),                                                       \
-        TYPES(TString, ui64),                                                  \
-        NAMES("requestType", "requestId")                                      \
-    )                                                                          \
-    PROBE(                                                                     \
-        SomeProbeWithExecutionTime,                                            \
-        GROUPS("Group"),                                                       \
-        TYPES(TString, ui64, ui64),                                            \
-        NAMES("requestType", "requestId", NProbeParam::RequestExecutionTime)   \
-    )                                                                          \
-// LWTRACE_UT_PROVIDER
+#define LWTRACE_UT_PROVIDER(PROBE, EVENT, GROUPS, TYPES, NAMES)               \
+    PROBE(                                                                    \
+        InitialProbe,                                                         \
+        GROUPS("Group"),                                                      \
+        TYPES(TString, ui32, ui64),                                           \
+        NAMES("requestType", NProbeParam::MediaKind, "requestId"))            \
+    PROBE(                                                                    \
+        SomeProbe,                                                            \
+        GROUPS("Group"),                                                      \
+        TYPES(TString, ui64),                                                 \
+        NAMES("requestType", "requestId"))                                    \
+    PROBE(                                                                    \
+        SomeOtherProbe,                                                       \
+        GROUPS("Group"),                                                      \
+        TYPES(TString, ui64),                                                 \
+        NAMES("requestType", "requestId"))                                    \
+    PROBE(                                                                    \
+        SomeProbeWithExecutionTime,                                           \
+        GROUPS("Group"),                                                      \
+        TYPES(TString, ui64, ui64),                                           \
+        NAMES("requestType", "requestId", NProbeParam::RequestExecutionTime)) \
+    // LWTRACE_UT_PROVIDER
 
 LWTRACE_DECLARE_PROVIDER(LWTRACE_UT_PROVIDER)
 LWTRACE_DEFINE_PROVIDER(LWTRACE_UT_PROVIDER)
@@ -60,8 +56,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TLogBackendImpl
-    : TLogBackend
+struct TLogBackendImpl: TLogBackend
 {
     TVector<std::pair<ELogPriority, TString>> Recs;
     TAdaptiveLock Lock;
@@ -74,8 +69,7 @@ struct TLogBackendImpl
     }
 
     void ReopenLog() override
-    {
-    }
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -98,7 +92,8 @@ struct TEnv
     void RebuildLWManager()
     {
         LWManager = std::make_unique<NLWTrace::TManager>(
-            *Singleton<NLWTrace::TProbeRegistry>(), false);
+            *Singleton<NLWTrace::TProbeRegistry>(),
+            false);
         NLWTrace::TQuery q;
         auto* block = q.AddBlocks();
         auto* pd = block->MutableProbeDesc();
@@ -113,14 +108,12 @@ struct TEnv
     {
         auto monitoring = CreateMonitoringServiceStub();
         auto logging = CreateLoggingService(LogBackend);
-        TVector<ITraceReaderPtr> readers{
-            SetupTraceReaderForSlowRequests(
-                "filter",
-                logging,
-                "STORAGE_TRACE",
-                requestThresholds,
-                "SlowRequests"
-        )};
+        TVector<ITraceReaderPtr> readers{SetupTraceReaderForSlowRequests(
+            "filter",
+            logging,
+            "STORAGE_TRACE",
+            requestThresholds,
+            "SlowRequests")};
         return NCloud::CreateTraceProcessorMon(
             monitoring,
             NCloud::CreateTraceProcessor(
@@ -129,8 +122,7 @@ struct TEnv
                 logging,
                 "STORAGE_TRACE",
                 *LWManager,
-                std::move(readers))
-        );
+                std::move(readers)));
     }
 };
 
@@ -154,8 +146,7 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
                 orbits[requestId],
                 "Compaction",
                 static_cast<ui32>(mediaKind),
-                requestId
-            );
+                requestId);
         }
 
         for (ui64 requestId = 0; requestId < orbits.size(); ++requestId) {
@@ -169,20 +160,19 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
                     orbits[requestId],
                     "s2",
                     requestId,
-                    executionTime
-                );
+                    executionTime);
             } else {
                 LWTRACK(SomeOtherProbe, orbits[requestId], "s2", requestId);
             }
         }
     }
 
-    void Check(TEnv& env, ui32 requestCount, ui64 executionTime = 0)
+    void Check(TEnv & env, ui32 requestCount, ui64 executionTime = 0)
     {
         env.Scheduler->RunAllScheduledTasks();
 
         ui32 count = 0;
-        for (const auto& rec : env.LogBackend->Recs) {
+        for (const auto& rec: env.LogBackend->Recs) {
             Cdbg << int(rec.first) << "\t" << rec.second;
 
             TVector<TString> parts;
@@ -203,14 +193,14 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
             if (executionTime) {
                 UNIT_ASSERT_VALUES_EQUAL(
                     "SomeProbeWithExecutionTime",
-                    arr[2][0].GetString()
-                );
+                    arr[2][0].GetString());
                 UNIT_ASSERT_VALUES_EQUAL(
                     executionTime,
-                    FromString<ui64>(arr[2][4].GetString())
-                );
+                    FromString<ui64>(arr[2][4].GetString()));
             } else {
-                UNIT_ASSERT_VALUES_EQUAL("SomeOtherProbe", arr[2][0].GetString());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "SomeOtherProbe",
+                    arr[2][0].GetString());
             }
             UNIT_ASSERT_VALUES_EQUAL("SlowRequests", arr[3][0].GetString());
         }
@@ -225,9 +215,8 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
     Y_UNIT_TEST(ShouldCollectAllOverlappingTracks)
     {
         TEnv env;
-        auto tp = env.CreateTraceProcessor({
-            {NProto::STORAGE_MEDIA_DEFAULT, {{}, {}, {}}}
-        });
+        auto tp = env.CreateTraceProcessor(
+            {{NProto::STORAGE_MEDIA_DEFAULT, {{}, {}, {}}}});
         tp->Start();
 
         Track();
@@ -237,9 +226,8 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
     Y_UNIT_TEST(ShouldProcessLotsOfTracks)
     {
         TEnv env;
-        auto tp = env.CreateTraceProcessor({
-            {NProto::STORAGE_MEDIA_DEFAULT, {{}, {}, {}}}
-        });
+        auto tp = env.CreateTraceProcessor(
+            {{NProto::STORAGE_MEDIA_DEFAULT, {{}, {}, {}}}});
         tp->Start();
 
         auto threadPool = CreateThreadPool(20);
@@ -260,7 +248,6 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
                         enqueued.count_down();
                     });
             }
-
 
             enqueued.wait();
         };
@@ -286,18 +273,12 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
         // => will have to test only max+zero and zero+max thresholds
         TEnv env;
         auto tp = env.CreateTraceProcessor(
-            {
-                {NProto::STORAGE_MEDIA_HDD, {{}, {}, {}}},
-                {NProto::STORAGE_MEDIA_DEFAULT, {{}, {}, {}}},
-                {NProto::STORAGE_MEDIA_SSD, {TDuration::Max(), {}, {}}},
-                {
-                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-                    {TDuration::Max(), {}, {}}
-                }
-            }
-        );
+            {{NProto::STORAGE_MEDIA_HDD, {{}, {}, {}}},
+             {NProto::STORAGE_MEDIA_DEFAULT, {{}, {}, {}}},
+             {NProto::STORAGE_MEDIA_SSD, {TDuration::Max(), {}, {}}},
+             {NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+              {TDuration::Max(), {}, {}}}});
         tp->Start();
-
 
         Track(NProto::STORAGE_MEDIA_HYBRID);
         Check(env, REQUEST_COUNT);
@@ -310,16 +291,11 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
 
         env.RebuildLWManager();
         tp = env.CreateTraceProcessor(
-            {
-                {NProto::STORAGE_MEDIA_HDD, {TDuration::Max(), {}, {}}},
-                {NProto::STORAGE_MEDIA_SSD, {{}, {}, {}}},
-                {
-                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-                    {TDuration::Max(), {}, {}}
-                },
-                {NProto::STORAGE_MEDIA_DEFAULT, {TDuration::Max(), {}, {}}}
-            }
-        );
+            {{NProto::STORAGE_MEDIA_HDD, {TDuration::Max(), {}, {}}},
+             {NProto::STORAGE_MEDIA_SSD, {{}, {}, {}}},
+             {NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+              {TDuration::Max(), {}, {}}},
+             {NProto::STORAGE_MEDIA_DEFAULT, {TDuration::Max(), {}, {}}}});
         tp->Start();
 
         Track(NProto::STORAGE_MEDIA_HYBRID);
@@ -333,16 +309,10 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
 
         env.RebuildLWManager();
         tp = env.CreateTraceProcessor(
-            {
-                {NProto::STORAGE_MEDIA_HDD, {TDuration::Max(), {}, {}}},
-                {NProto::STORAGE_MEDIA_SSD, {TDuration::Max(), {}, {}}},
-                {
-                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-                    {{}, {}, {}}
-                },
-                {NProto::STORAGE_MEDIA_DEFAULT, {TDuration::Max(), {}, {}}}
-            }
-        );
+            {{NProto::STORAGE_MEDIA_HDD, {TDuration::Max(), {}, {}}},
+             {NProto::STORAGE_MEDIA_SSD, {TDuration::Max(), {}, {}}},
+             {NProto::STORAGE_MEDIA_SSD_NONREPLICATED, {{}, {}, {}}},
+             {NProto::STORAGE_MEDIA_DEFAULT, {TDuration::Max(), {}, {}}}});
         tp->Start();
 
         Track(NProto::STORAGE_MEDIA_HYBRID);
@@ -359,19 +329,11 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
     {
         TEnv env;
         auto tp = env.CreateTraceProcessor(
-            {
-                {NProto::STORAGE_MEDIA_HDD, {TDuration::Seconds(20), {}, {}}},
-                {
-                    NProto::STORAGE_MEDIA_DEFAULT,
-                    {TDuration::Seconds(20), {}, {}}
-                },
-                {NProto::STORAGE_MEDIA_SSD, {TDuration::Seconds(20), {}, {}}},
-                {
-                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-                    {TDuration::Seconds(20), {}, {}}
-                }
-            }
-        );
+            {{NProto::STORAGE_MEDIA_HDD, {TDuration::Seconds(20), {}, {}}},
+             {NProto::STORAGE_MEDIA_DEFAULT, {TDuration::Seconds(20), {}, {}}},
+             {NProto::STORAGE_MEDIA_SSD, {TDuration::Seconds(20), {}, {}}},
+             {NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+              {TDuration::Seconds(20), {}, {}}}});
         tp->Start();
 
         Track(NProto::STORAGE_MEDIA_HYBRID, 15'000'000);
@@ -386,24 +348,15 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
             TEnv env;
             TRequestThresholds thresholds = {
                 {NProto::STORAGE_MEDIA_DEFAULT, {{}, {}, {}}},
-                {
-                    NProto::STORAGE_MEDIA_HYBRID,
-                    {
-                        {},
-                        {},
-                        {
-                            {"Compaction", TDuration::Seconds(50)},
-                            {"Other", TDuration::Seconds(60)}
-                        }
-                    }
-                },
+                {NProto::STORAGE_MEDIA_HYBRID,
+                 {{},
+                  {},
+                  {{"Compaction", TDuration::Seconds(50)},
+                   {"Other", TDuration::Seconds(60)}}}},
                 {NProto::STORAGE_MEDIA_HDD, {TDuration::Seconds(20), {}, {}}},
                 {NProto::STORAGE_MEDIA_SSD, {TDuration::Seconds(20), {}, {}}},
-                {
-                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-                    {TDuration::Seconds(20), {}, {}}
-                }
-            };
+                {NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                 {TDuration::Seconds(20), {}, {}}}};
 
             auto tp = env.CreateTraceProcessor(thresholds);
             tp->Start();
@@ -418,27 +371,12 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
             TRequestThresholds thresholds = {
                 {NProto::STORAGE_MEDIA_HDD, {TDuration::Seconds(20), {}, {}}},
                 {NProto::STORAGE_MEDIA_SSD, {TDuration::Seconds(20), {}, {}}},
-                {
-                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-                    {TDuration::Seconds(20), {}, {}}
-                },
-                {
-                    NProto::STORAGE_MEDIA_DEFAULT,
-                    {
-                        {},
-                        {},
-                        {{"Compaction", TDuration::Seconds(40)}}
-                    }
-                },
-                {
-                    NProto::STORAGE_MEDIA_HYBRID,
-                    {
-                        {},
-                        {},
-                        {{"Compaction", TDuration::Seconds(50)}}
-                    }
-                }
-            };
+                {NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                 {TDuration::Seconds(20), {}, {}}},
+                {NProto::STORAGE_MEDIA_DEFAULT,
+                 {{}, {}, {{"Compaction", TDuration::Seconds(40)}}}},
+                {NProto::STORAGE_MEDIA_HYBRID,
+                 {{}, {}, {{"Compaction", TDuration::Seconds(50)}}}}};
 
             auto tp = env.CreateTraceProcessor(thresholds);
             tp->Start();
@@ -448,24 +386,14 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
         }
 
         {
-
             TEnv env;
             TRequestThresholds thresholds = {
                 {NProto::STORAGE_MEDIA_HDD, {TDuration::Seconds(20), {}, {}}},
                 {NProto::STORAGE_MEDIA_SSD, {TDuration::Seconds(20), {}, {}}},
-                {
-                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-                    {TDuration::Seconds(20), {}, {}}
-                },
-                {
-                    NProto::STORAGE_MEDIA_HYBRID,
-                    {
-                        {},
-                        {},
-                        {{"Compaction", TDuration::Seconds(50)}}
-                    }
-                }
-            };
+                {NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                 {TDuration::Seconds(20), {}, {}}},
+                {NProto::STORAGE_MEDIA_HYBRID,
+                 {{}, {}, {{"Compaction", TDuration::Seconds(50)}}}}};
 
             auto tp = env.CreateTraceProcessor(thresholds);
             tp->Start();
@@ -478,8 +406,7 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
             TEnv env;
             // Check if no mediaKind and default thresholds
             TRequestThresholds thresholds = {
-                {NProto::STORAGE_MEDIA_HDD, {TDuration::Seconds(20), {}, {}}}
-            };
+                {NProto::STORAGE_MEDIA_HDD, {TDuration::Seconds(20), {}, {}}}};
 
             auto tp = env.CreateTraceProcessor(thresholds);
             tp->Start();
@@ -516,21 +443,19 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
 
             auto& mirrorResult = result[NProto::STORAGE_MEDIA_SSD_MIRROR3];
             UNIT_ASSERT_VALUES_EQUAL(
-                mirrorResult.Default, TDuration::MilliSeconds(1000));
+                mirrorResult.Default,
+                TDuration::MilliSeconds(1000));
             UNIT_ASSERT_VALUES_EQUAL(
                 mirrorResult.ByRequestType["type_first"],
-                TDuration::MilliSeconds(100)
-            );
+                TDuration::MilliSeconds(100));
             UNIT_ASSERT_VALUES_EQUAL(
                 mirrorResult.ByRequestType["type_second"],
-                TDuration::MilliSeconds(200)
-            );
+                TDuration::MilliSeconds(200));
 
             auto localResult = result[NProto::STORAGE_MEDIA_SSD_LOCAL];
             UNIT_ASSERT_VALUES_EQUAL(
                 localResult.Default,
-                TDuration::MilliSeconds(1)
-            );
+                TDuration::MilliSeconds(1));
             UNIT_ASSERT(localResult.ByRequestType.empty());
         }
         {
@@ -544,24 +469,17 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
     {
         TStringStream out;
         TRequestThresholds requestThresholds{
-            {
-                NProto::STORAGE_MEDIA_DEFAULT,
-                {TDuration::MilliSeconds(200), {}, {}}},
-            {
-                NProto::STORAGE_MEDIA_HYBRID,
-                {
-                    TDuration::Seconds(10),
-                    {},
-                    {
-                        {"Compaction", TDuration::Seconds(50)}
-                    }
-                }
-            }
-        };
+            {NProto::STORAGE_MEDIA_DEFAULT,
+             {TDuration::MilliSeconds(200), {}, {}}},
+            {NProto::STORAGE_MEDIA_HYBRID,
+             {TDuration::Seconds(10),
+              {},
+              {{"Compaction", TDuration::Seconds(50)}}}}};
 
         OutRequestThresholds(out, requestThresholds);
 
-        const char* first = "Default: 10000\n"
+        const char* first =
+            "Default: 10000\n"
             "ByRequestType {\n"
             "  key: \"Compaction\"\n"
             "  value: 50000\n"
@@ -581,27 +499,21 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
         {
             auto duration = GetThresholdByRequestType(
                 NProto::STORAGE_MEDIA_HYBRID,
-                {
-                    {
-                        NProto::STORAGE_MEDIA_DEFAULT,
-                        {TDuration::MilliSeconds(200), {}, {}}
-                    }
-                }, nullptr, nullptr);
+                {{NProto::STORAGE_MEDIA_DEFAULT,
+                  {TDuration::MilliSeconds(200), {}, {}}}},
+                nullptr,
+                nullptr);
             UNIT_ASSERT_VALUES_EQUAL(duration, TDuration::MilliSeconds(200));
         }
         {
             auto duration = GetThresholdByRequestType(
                 NProto::STORAGE_MEDIA_HYBRID,
-                {
-                    {
-                        NProto::STORAGE_MEDIA_HYBRID,
-                        {TDuration::MilliSeconds(200), {}, {}}
-                    },
-                    {
-                        NProto::STORAGE_MEDIA_DEFAULT,
-                        {TDuration::MilliSeconds(220), {}, {}}
-                    }
-                }, nullptr, nullptr);
+                {{NProto::STORAGE_MEDIA_HYBRID,
+                  {TDuration::MilliSeconds(200), {}, {}}},
+                 {NProto::STORAGE_MEDIA_DEFAULT,
+                  {TDuration::MilliSeconds(220), {}, {}}}},
+                nullptr,
+                nullptr);
             UNIT_ASSERT_VALUES_EQUAL(duration, TDuration::MilliSeconds(200));
         }
         {
@@ -613,47 +525,31 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
 
             auto duration = GetThresholdByRequestType(
                 NProto::STORAGE_MEDIA_HYBRID,
-                {
-                    {
-                        NProto::STORAGE_MEDIA_HYBRID,
-                        {TDuration::MilliSeconds(200), {}, {}}
-                    },
-                    {
-                        NProto::STORAGE_MEDIA_DEFAULT,
-                        {
-                            TDuration::MilliSeconds(220),
-                            {},
-                            {{"Compaction", TDuration::MilliSeconds(230)}}
-                        }
-                    }
-                }, &param, nullptr);
+                {{NProto::STORAGE_MEDIA_HYBRID,
+                  {TDuration::MilliSeconds(200), {}, {}}},
+                 {NProto::STORAGE_MEDIA_DEFAULT,
+                  {TDuration::MilliSeconds(220),
+                   {},
+                   {{"Compaction", TDuration::MilliSeconds(230)}}}}},
+                &param,
+                nullptr);
             UNIT_ASSERT_VALUES_EQUAL(duration, TDuration::MilliSeconds(200));
 
             duration = GetThresholdByRequestType(
                 NProto::STORAGE_MEDIA_HYBRID,
-                {
-                    {
-                        NProto::STORAGE_MEDIA_HYBRID,
-                        {
-                            TDuration::MilliSeconds(200),
-                            {},
-                            {
-                                {
-                                    {"Compaction", TDuration::MilliSeconds(230)},
-                                    {"NotCompaction", TDuration::MilliSeconds(250)},
-                                }
-                            }
-                        }
-                    },
-                    {
-                        NProto::STORAGE_MEDIA_DEFAULT,
-                        {
-                            TDuration::MilliSeconds(220),
-                            {},
-                            {{"Compaction", TDuration::MilliSeconds(240)}}
-                        }
-                    }
-                }, &param, nullptr);
+                {{NProto::STORAGE_MEDIA_HYBRID,
+                  {TDuration::MilliSeconds(200),
+                   {},
+                   {{
+                       {"Compaction", TDuration::MilliSeconds(230)},
+                       {"NotCompaction", TDuration::MilliSeconds(250)},
+                   }}}},
+                 {NProto::STORAGE_MEDIA_DEFAULT,
+                  {TDuration::MilliSeconds(220),
+                   {},
+                   {{"Compaction", TDuration::MilliSeconds(240)}}}}},
+                &param,
+                nullptr);
             UNIT_ASSERT_VALUES_EQUAL(duration, TDuration::MilliSeconds(230));
 
             param.Destruct<TString>();
@@ -668,14 +564,8 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
         NLWTrace::LoadParamFromPb<ui64>(traceParam, param);
 
         TRequestThresholds thresholds = {
-            {
-                NProto::STORAGE_MEDIA_HYBRID,
-                {
-                    TDuration::MilliSeconds(100),
-                    TDuration::MilliSeconds(1),
-                    {}
-                }
-            },
+            {NProto::STORAGE_MEDIA_HYBRID,
+             {TDuration::MilliSeconds(100), TDuration::MilliSeconds(1), {}}},
         };
 
         auto duration = GetThresholdByRequestType(

@@ -29,16 +29,12 @@ private:
     const TString Input;
 
 public:
-    TPartiallySuspendDiskAgentActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TPartiallySuspendDiskAgentActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        const NProto::TError& error);
+    void ReplyAndDie(const TActorContext& ctx, const NProto::TError& error);
 
 private:
     STFUNC(StateWork);
@@ -46,22 +42,24 @@ private:
     void HandleSuspendDiskAgentResponse(
         const TEvDiskAgent::TEvPartiallySuspendAgentResponse::TPtr& ev,
         const TActorContext& ctx);
-
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TPartiallySuspendDiskAgentActor::TPartiallySuspendDiskAgentActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
 
 void TPartiallySuspendDiskAgentActor::Bootstrap(const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvDiskAgent::TEvPartiallySuspendAgentRequest>();
-    if (!google::protobuf::util::JsonStringToMessage(Input, &request->Record).ok()) {
+    auto request =
+        std::make_unique<TEvDiskAgent::TEvPartiallySuspendAgentRequest>();
+    if (!google::protobuf::util::JsonStringToMessage(Input, &request->Record)
+             .ok())
+    {
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, "Failed to parse input."));
         return;
     }
@@ -126,8 +124,7 @@ STFUNC(TPartiallySuspendDiskAgentActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<IActorPtr>
-TServiceActor::CreatePartiallySuspendDiskAgentActor(
+TResultOrError<IActorPtr> TServiceActor::CreatePartiallySuspendDiskAgentActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {

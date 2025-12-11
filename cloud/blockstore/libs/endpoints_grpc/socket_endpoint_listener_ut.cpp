@@ -13,6 +13,7 @@
 #include <cloud/blockstore/libs/server/server_test.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_test.h>
+
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -21,12 +22,12 @@
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
 
-#include <google/protobuf/util/message_differencer.h>
-
 #include <util/folder/path.h>
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
 #include <util/system/mutex.h>
+
+#include <google/protobuf/util/message_differencer.h>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -82,7 +83,8 @@ public:
         }
     }
 
-    void WaitForSessionCount(ui32 sessionCount) {
+    void WaitForSessionCount(ui32 sessionCount)
+    {
         while (true) {
             with_lock (Lock) {
                 if (Sessions.size() == sessionCount) {
@@ -139,13 +141,13 @@ private:
 
 public:
     TBootstrap(
-            IServerPtr server,
-            ISocketEndpointListenerPtr endpointListener,
-            IClientPtr client,
-            IBlockStorePtr clientEndpoint,
-            std::shared_ptr<TTestSession> testSession,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler)
+        IServerPtr server,
+        ISocketEndpointListenerPtr endpointListener,
+        IClientPtr client,
+        IBlockStorePtr clientEndpoint,
+        std::shared_ptr<TTestSession> testSession,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler)
         : Server(std::move(server))
         , EndpointListener(std::move(endpointListener))
         , Client(std::move(client))
@@ -266,10 +268,10 @@ TBootstrap CreateBootstrap(const TOptions& options)
 {
     auto testSession = std::make_shared<TTestSession>();
 
-    testSession->EnsureVolumeMountedHandler =
-        [=] () {
-            return MakeFuture(CreateMountVolumeResponse(options));
-        };
+    testSession->EnsureVolumeMountedHandler = [=]()
+    {
+        return MakeFuture(CreateMountVolumeResponse(options));
+    };
 
     TPortManager portManager;
     ui16 port = portManager.GetPort(9001);
@@ -278,9 +280,9 @@ TBootstrap CreateBootstrap(const TOptions& options)
     TTestFactory testFactory;
 
     auto server = testFactory.CreateServerBuilder()
-        .SetPort(port)
-        .SetDataPort(dataPort)
-        .BuildServer(std::make_shared<TTestService>());
+                      .SetPort(port)
+                      .SetDataPort(dataPort)
+                      .BuildServer(std::make_shared<TTestService>());
 
     auto endpointListener = CreateSocketEndpointListener(
         testFactory.Logging,
@@ -299,20 +301,18 @@ TBootstrap CreateBootstrap(const TOptions& options)
     volume.SetBlocksCount(options.BlocksCount);
 
     {
-        auto future = endpointListener->StartEndpoint(
-            request,
-            volume,
-            testSession);
+        auto future =
+            endpointListener->StartEndpoint(request, volume, testSession);
         const auto& error = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(!HasError(error), error);
     }
 
     auto client = testFactory.CreateClientBuilder()
-        .SetUnixSocketPath(options.UnixSocketPath)
-        .SetPort(port)
-        .SetDataPort(dataPort)
-        .SetClientId(options.ClientId)
-        .BuildClient();
+                      .SetUnixSocketPath(options.UnixSocketPath)
+                      .SetPort(port)
+                      .SetDataPort(dataPort)
+                      .SetClientId(options.ClientId)
+                      .BuildClient();
 
     auto clientEndpoint = client->CreateDataEndpoint(options.UnixSocketPath);
 
@@ -324,7 +324,7 @@ TBootstrap CreateBootstrap(const TOptions& options)
         std::move(testSession),
         CreateWallClockTimer(),
         CreateScheduler());
-};
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -333,9 +333,8 @@ NProto::TError ReadBlocksLocal(IBlockStorePtr client, const TString& diskId)
     auto request = std::make_shared<NProto::TReadBlocksRequest>();
     request->SetDiskId(diskId);
 
-    auto future = client->ReadBlocks(
-        MakeIntrusive<TCallContext>(),
-        std::move(request));
+    auto future =
+        client->ReadBlocks(MakeIntrusive<TCallContext>(), std::move(request));
 
     const auto& response = future.GetValue(TDuration::Seconds(5));
     return response.GetError();
@@ -356,9 +355,10 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         auto listener = CreateSocketEndpointListener(logging, 16, MODE0660);
         listener->SetClientStorageFactory(clientStorage);
         listener->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             listener->Stop();
-        };
+        }
 
         {
             NProto::TStartEndpointRequest request;
@@ -374,10 +374,11 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
 
         client->Start();
         clientEndpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             clientEndpoint->Stop();
             client->Stop();
-        };
+        }
 
         clientStorage->WaitForSessionCount(1);
 
@@ -399,9 +400,10 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         auto listener = CreateSocketEndpointListener(logging, 16, MODE0660);
         listener->SetClientStorageFactory(clientStorage);
         listener->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             listener->Stop();
-        };
+        }
 
         NProto::TStartEndpointRequest request;
         request.SetUnixSocketPath(unixSocket.GetPath());
@@ -411,19 +413,21 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
 
         auto client = CreateClient(logging, unixSocket.GetPath());
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             if (client) {
                 client->Stop();
             }
-        };
+        }
 
         auto clientEndpoint = client->CreateEndpoint();
         clientEndpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             if (clientEndpoint) {
                 clientEndpoint->Stop();
             }
-        };
+        }
 
         clientStorage->WaitForSessionCount(1);
 
@@ -441,9 +445,10 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         TOptions options;
         auto bootstrap = CreateBootstrap(options);
         bootstrap.Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             bootstrap.Stop();
-        };
+        }
 
         bootstrap.GetServer()->Stop();
 
@@ -462,9 +467,10 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         TOptions options;
         auto bootstrap = CreateBootstrap(options);
         bootstrap.Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             bootstrap.Stop();
-        };
+        }
 
         auto client = bootstrap.GetClientEndpoint();
         const auto& clientId = options.ClientId;
@@ -508,9 +514,10 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         TOptions options;
         auto bootstrap = CreateBootstrap(options);
         bootstrap.Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             bootstrap.Stop();
-        };
+        }
 
         auto client = bootstrap.GetClientEndpoint();
         auto session = bootstrap.GetTestSession();
@@ -519,20 +526,20 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         {
             ui32 requestCounter = 0;
             session->ReadBlocksHandler =
-                [&] (
-                    TCallContextPtr ctx,
+                [&](TCallContextPtr ctx,
                     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
-                {
-                    Y_UNUSED(ctx);
+            {
+                Y_UNUSED(ctx);
 
-                    UNIT_ASSERT_VALUES_EQUAL(
-                        int(NProto::SOURCE_FD_DATA_CHANNEL),
-                        int(request->GetHeaders().GetInternal().GetRequestSource())
-                    );
+                UNIT_ASSERT_VALUES_EQUAL(
+                    int(NProto::SOURCE_FD_DATA_CHANNEL),
+                    int(request->GetHeaders()
+                            .GetInternal()
+                            .GetRequestSource()));
 
-                    ++requestCounter;
-                    return MakeFuture<NProto::TReadBlocksLocalResponse>();
-                };
+                ++requestCounter;
+                return MakeFuture<NProto::TReadBlocksLocalResponse>();
+            };
 
             auto request = std::make_shared<NProto::TReadBlocksRequest>();
             request->SetDiskId(diskId);
@@ -549,20 +556,20 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         {
             ui32 requestCounter = 0;
             session->WriteBlocksHandler =
-                [&] (
-                    TCallContextPtr ctx,
+                [&](TCallContextPtr ctx,
                     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
-                {
-                    Y_UNUSED(ctx);
+            {
+                Y_UNUSED(ctx);
 
-                    UNIT_ASSERT_VALUES_EQUAL(
-                        int(NProto::SOURCE_FD_DATA_CHANNEL),
-                        int(request->GetHeaders().GetInternal().GetRequestSource())
-                    );
+                UNIT_ASSERT_VALUES_EQUAL(
+                    int(NProto::SOURCE_FD_DATA_CHANNEL),
+                    int(request->GetHeaders()
+                            .GetInternal()
+                            .GetRequestSource()));
 
-                    ++requestCounter;
-                    return MakeFuture<NProto::TWriteBlocksLocalResponse>();
-                };
+                ++requestCounter;
+                return MakeFuture<NProto::TWriteBlocksLocalResponse>();
+            };
 
             auto request = std::make_shared<NProto::TWriteBlocksRequest>();
             request->SetDiskId(diskId);
@@ -579,20 +586,20 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         {
             ui32 requestCounter = 0;
             session->ZeroBlocksHandler =
-                [&] (
-                    TCallContextPtr ctx,
+                [&](TCallContextPtr ctx,
                     std::shared_ptr<NProto::TZeroBlocksRequest> request)
-                {
-                    Y_UNUSED(ctx);
+            {
+                Y_UNUSED(ctx);
 
-                    UNIT_ASSERT_VALUES_EQUAL(
-                        int(NProto::SOURCE_FD_DATA_CHANNEL),
-                        int(request->GetHeaders().GetInternal().GetRequestSource())
-                    );
+                UNIT_ASSERT_VALUES_EQUAL(
+                    int(NProto::SOURCE_FD_DATA_CHANNEL),
+                    int(request->GetHeaders()
+                            .GetInternal()
+                            .GetRequestSource()));
 
-                    ++requestCounter;
-                    return MakeFuture<NProto::TZeroBlocksResponse>();
-                };
+                ++requestCounter;
+                return MakeFuture<NProto::TZeroBlocksResponse>();
+            };
 
             auto request = std::make_shared<NProto::TZeroBlocksRequest>();
             request->SetDiskId(diskId);
@@ -612,9 +619,10 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         TOptions options;
         auto bootstrap = CreateBootstrap(options);
         bootstrap.Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             bootstrap.Stop();
-        };
+        }
 
         auto client = bootstrap.GetClient()->CreateEndpoint();
 
@@ -636,9 +644,10 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         TOptions options;
         auto bootstrap = CreateBootstrap(options);
         bootstrap.Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             bootstrap.Stop();
-        };
+        }
 
         auto clientEndpoint = bootstrap.GetClientEndpoint();
         auto session = bootstrap.GetTestSession();
@@ -647,15 +656,14 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         {
             ui32 requestCounter = 0;
             session->ReadBlocksHandler =
-                [&] (
-                    TCallContextPtr ctx,
+                [&](TCallContextPtr ctx,
                     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
-                {
-                    Y_UNUSED(ctx);
-                    Y_UNUSED(request);
-                    ++requestCounter;
-                    return MakeFuture<NProto::TReadBlocksLocalResponse>();
-                };
+            {
+                Y_UNUSED(ctx);
+                Y_UNUSED(request);
+                ++requestCounter;
+                return MakeFuture<NProto::TReadBlocksLocalResponse>();
+            };
 
             auto request = std::make_shared<NProto::TReadBlocksRequest>();
             request->SetDiskId(diskId);
@@ -670,21 +678,21 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         }
 
         auto client = bootstrap.GetClient();
-        auto clientEndpoint2 = client->CreateDataEndpoint(options.UnixSocketPath);
+        auto clientEndpoint2 =
+            client->CreateDataEndpoint(options.UnixSocketPath);
         clientEndpoint2->Start();
 
         {
             ui32 requestCounter = 0;
             session->ReadBlocksHandler =
-                [&] (
-                    TCallContextPtr ctx,
+                [&](TCallContextPtr ctx,
                     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
-                {
-                    Y_UNUSED(ctx);
-                    Y_UNUSED(request);
-                    ++requestCounter;
-                    return MakeFuture<NProto::TReadBlocksLocalResponse>();
-                };
+            {
+                Y_UNUSED(ctx);
+                Y_UNUSED(request);
+                ++requestCounter;
+                return MakeFuture<NProto::TReadBlocksLocalResponse>();
+            };
 
             auto request = std::make_shared<NProto::TReadBlocksRequest>();
             request->SetDiskId(diskId);
@@ -701,15 +709,14 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         {
             ui32 requestCounter = 0;
             session->ReadBlocksHandler =
-                [&] (
-                    TCallContextPtr ctx,
+                [&](TCallContextPtr ctx,
                     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
-                {
-                    Y_UNUSED(ctx);
-                    Y_UNUSED(request);
-                    ++requestCounter;
-                    return MakeFuture<NProto::TReadBlocksLocalResponse>();
-                };
+            {
+                Y_UNUSED(ctx);
+                Y_UNUSED(request);
+                ++requestCounter;
+                return MakeFuture<NProto::TReadBlocksLocalResponse>();
+            };
 
             auto request = std::make_shared<NProto::TReadBlocksRequest>();
             request->SetDiskId(diskId);
@@ -731,9 +738,10 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         TOptions options;
         auto bootstrap = CreateBootstrap(options);
         bootstrap.Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             bootstrap.Stop();
-        };
+        }
 
         auto client = bootstrap.GetClientEndpoint();
         auto session = bootstrap.GetTestSession();
@@ -742,15 +750,14 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         auto trigger = NewPromise<NProto::TZeroBlocksResponse>();
 
         session->ZeroBlocksHandler =
-            [&] (
-                TCallContextPtr ctx,
+            [&](TCallContextPtr ctx,
                 std::shared_ptr<NProto::TZeroBlocksRequest> request)
-            {
-                Y_UNUSED(ctx);
-                Y_UNUSED(request);
-                event.Signal();
-                return trigger.GetFuture();
-            };
+        {
+            Y_UNUSED(ctx);
+            Y_UNUSED(request);
+            event.Signal();
+            return trigger.GetFuture();
+        };
 
         TFuture<NProto::TZeroBlocksResponse> firstFuture;
         {
@@ -801,13 +808,15 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         TOptions options;
         auto bootstrap = CreateBootstrap(options);
         bootstrap.Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             bootstrap.Stop();
-        };
+        }
 
         NProto::TClientAppConfig clientConfig;
         clientConfig.MutableClientConfig()->SetRetryTimeoutIncrement(100);
-        auto config = std::make_shared<TClientAppConfig>(std::move(clientConfig));
+        auto config =
+            std::make_shared<TClientAppConfig>(std::move(clientConfig));
 
         auto clientEndpoint = CreateDurableClient(
             config,
@@ -824,15 +833,14 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
 
         auto session = bootstrap.GetTestSession();
         session->ZeroBlocksHandler =
-            [&] (
-                TCallContextPtr ctx,
+            [&](TCallContextPtr ctx,
                 std::shared_ptr<NProto::TZeroBlocksRequest> request)
-            {
-                Y_UNUSED(ctx);
-                Y_UNUSED(request);
-                event.Signal();
-                return trigger.GetFuture();
-            };
+        {
+            Y_UNUSED(ctx);
+            Y_UNUSED(request);
+            event.Signal();
+            return trigger.GetFuture();
+        };
 
         TFuture<NProto::TZeroBlocksResponse> firstFuture;
         {
@@ -870,20 +878,19 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
 
             auto newSession = std::make_shared<TTestSession>();
 
-            newSession->EnsureVolumeMountedHandler =
-                [=] () {
-                    return MakeFuture(CreateMountVolumeResponse(options));
-                };
+            newSession->EnsureVolumeMountedHandler = [=]()
+            {
+                return MakeFuture(CreateMountVolumeResponse(options));
+            };
 
             newSession->ZeroBlocksHandler =
-                [&] (
-                    TCallContextPtr ctx,
+                [&](TCallContextPtr ctx,
                     std::shared_ptr<NProto::TZeroBlocksRequest> request)
-                {
-                    Y_UNUSED(ctx);
-                    Y_UNUSED(request);
-                    return MakeFuture(NProto::TZeroBlocksResponse());
-                };
+            {
+                Y_UNUSED(ctx);
+                Y_UNUSED(request);
+                return MakeFuture(NProto::TZeroBlocksResponse());
+            };
 
             auto future = bootstrap.GetEndpointListener()->StartEndpoint(
                 request,
@@ -901,25 +908,27 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
     {
         TFsPath unixSocket(CreateGuidAsString() + ".sock");
         unixSocket.Touch();
-        Y_DEFER {
+        Y_DEFER
+        {
             unixSocket.DeleteIfExists();
-        };
+        }
 
         TOptions options;
         options.UnixSocketPath = unixSocket.GetPath();
 
         auto bootstrap = CreateBootstrap(options);
         bootstrap.Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             bootstrap.Stop();
-        };
+        }
 
         auto client = bootstrap.GetClientEndpoint();
         auto session = bootstrap.GetTestSession();
         const auto& diskId = options.DiskId;
-        session->ReadBlocksHandler = [&] (
-            TCallContextPtr ctx,
-            std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        session->ReadBlocksHandler =
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
         {
             Y_UNUSED(ctx);
             Y_UNUSED(request);
@@ -935,16 +944,17 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         TOptions options;
         auto bootstrap = CreateBootstrap(options);
         bootstrap.Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             bootstrap.Stop();
-        };
+        }
 
         auto client = bootstrap.GetClientEndpoint();
         auto session = bootstrap.GetTestSession();
         const auto& diskId = options.DiskId;
-        session->ReadBlocksHandler = [&] (
-            TCallContextPtr ctx,
-            std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        session->ReadBlocksHandler =
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
         {
             Y_UNUSED(ctx);
             Y_UNUSED(request);
@@ -968,38 +978,42 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
 
         auto bootstrap1 = CreateBootstrap(options);
         bootstrap1.Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             bootstrap1.Stop();
-        };
+        }
 
         auto client1 = bootstrap1.GetClientEndpoint();
         auto session1 = bootstrap1.GetTestSession();
-        session1->ReadBlocksHandler = [&] (
-            TCallContextPtr ctx,
-            std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        session1->ReadBlocksHandler =
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
         {
             Y_UNUSED(ctx);
             Y_UNUSED(request);
-            return MakeFuture<NProto::TReadBlocksLocalResponse>(TErrorResponse(serverCode1));
+            return MakeFuture<NProto::TReadBlocksLocalResponse>(
+                TErrorResponse(serverCode1));
         };
 
         UNIT_ASSERT(serverCode1 == ReadBlocksLocal(client1, diskId).GetCode());
 
         auto bootstrap2 = CreateBootstrap(options);
         bootstrap2.Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             bootstrap2.Stop();
-        };
+        }
 
         auto client2 = bootstrap2.GetClientEndpoint();
         auto session2 = bootstrap2.GetTestSession();
-        session2->ReadBlocksHandler = [&] (
-            TCallContextPtr ctx,
-            std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        session2->ReadBlocksHandler =
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
         {
             Y_UNUSED(ctx);
             Y_UNUSED(request);
-            return MakeFuture<NProto::TReadBlocksLocalResponse>(TErrorResponse(serverCode2));
+            return MakeFuture<NProto::TReadBlocksLocalResponse>(
+                TErrorResponse(serverCode2));
         };
 
         UNIT_ASSERT(serverCode1 == ReadBlocksLocal(client1, diskId).GetCode());
@@ -1032,9 +1046,10 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         TOptions options;
         auto bootstrap = CreateBootstrap(options);
         bootstrap.Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             bootstrap.Stop();
-        };
+        }
 
         auto client = bootstrap.GetClientEndpoint();
         auto session = bootstrap.GetTestSession();
@@ -1051,31 +1066,37 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         google::protobuf::util::MessageDifferencer comparator;
 
         {
-            session->EnsureVolumeMountedHandler = [=] () {
+            session->EnsureVolumeMountedHandler = [=]()
+            {
                 return MakeFuture(failedResponse);
             };
 
-            auto future = client->MountVolume(MakeIntrusive<TCallContext>(), request);
+            auto future =
+                client->MountVolume(MakeIntrusive<TCallContext>(), request);
             const auto& response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(comparator.Equals(failedResponse, response));
         }
 
         {
-            session->EnsureVolumeMountedHandler = [=] () {
+            session->EnsureVolumeMountedHandler = [=]()
+            {
                 return MakeFuture(successfulResponse);
             };
 
-            auto future = client->MountVolume(MakeIntrusive<TCallContext>(), request);
+            auto future =
+                client->MountVolume(MakeIntrusive<TCallContext>(), request);
             const auto& response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(comparator.Equals(successfulResponse, response));
         }
 
         {
-            session->EnsureVolumeMountedHandler = [=] () {
+            session->EnsureVolumeMountedHandler = [=]()
+            {
                 return MakeFuture(failedResponse);
             };
 
-            auto future = client->MountVolume(MakeIntrusive<TCallContext>(), request);
+            auto future =
+                client->MountVolume(MakeIntrusive<TCallContext>(), request);
             const auto& response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(comparator.Equals(successfulResponse, response));
         }
@@ -1090,9 +1111,10 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         auto listener = CreateSocketEndpointListener(logging, 16, MODE0660);
         listener->SetClientStorageFactory(clientStorage);
         listener->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             listener->Stop();
-        };
+        }
 
         {
             NProto::TStartEndpointRequest request;

@@ -67,4 +67,4 @@ NKikimrConfig::TStaticNameserviceConfig_TNode CreateStaticNodeInfo(
     return node;
 }
 
-}   // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NStorage

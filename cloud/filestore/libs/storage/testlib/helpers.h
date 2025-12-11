@@ -54,10 +54,10 @@ struct TCreateNodeArgs
     ui64 DevId = 0;
 
     TCreateNodeArgs(
-            ENodeType nodeType,
-            ui64 parent,
-            TString name,
-            TString shardId = "")
+        ENodeType nodeType,
+        ui64 parent,
+        TString name,
+        TString shardId = "")
         : NodeType(nodeType)
         , ParentNode(parent)
         , Name(std::move(name))
@@ -123,7 +123,8 @@ struct TCreateNodeArgs
         }
     }
 
-    static TCreateNodeArgs Directory(ui64 parent, const TString& name, ui32 mode = 0)
+    static TCreateNodeArgs
+    Directory(ui64 parent, const TString& name, ui32 mode = 0)
     {
         TCreateNodeArgs args(ENodeType::Directory, parent, name);
         args.Mode = mode;
@@ -148,14 +149,16 @@ struct TCreateNodeArgs
         return args;
     }
 
-    static TCreateNodeArgs Link(ui64 parent, const TString& name, ui64 targetNode)
+    static TCreateNodeArgs
+    Link(ui64 parent, const TString& name, ui64 targetNode)
     {
         TCreateNodeArgs args(ENodeType::Link, parent, name);
         args.TargetNode = targetNode;
         return args;
     }
 
-    static TCreateNodeArgs SymLink(ui64 parent, const TString& name, const TString& targetPath)
+    static TCreateNodeArgs
+    SymLink(ui64 parent, const TString& name, const TString& targetPath)
     {
         TCreateNodeArgs args(ENodeType::SymLink, parent, name);
         args.TargetPath = targetPath;
@@ -267,32 +270,32 @@ struct TSetNodeAttrArgs
 
 struct TCreateHandleArgs
 {
-    static constexpr ui32 RDNLY
-        = ProtoFlag(NProto::TCreateHandleRequest::E_READ);
+    static constexpr ui32 RDNLY =
+        ProtoFlag(NProto::TCreateHandleRequest::E_READ);
 
-    static constexpr ui32 WRNLY
-        = ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
+    static constexpr ui32 WRNLY =
+        ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
 
-    static constexpr ui32 RDWR
-        = ProtoFlag(NProto::TCreateHandleRequest::E_READ)
-        | ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
+    static constexpr ui32 RDWR =
+        ProtoFlag(NProto::TCreateHandleRequest::E_READ) |
+        ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
 
-    static constexpr ui32 CREATE
-        = ProtoFlag(NProto::TCreateHandleRequest::E_CREATE)
-        | ProtoFlag(NProto::TCreateHandleRequest::E_READ)
-        | ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
+    static constexpr ui32 CREATE =
+        ProtoFlag(NProto::TCreateHandleRequest::E_CREATE) |
+        ProtoFlag(NProto::TCreateHandleRequest::E_READ) |
+        ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
 
-    static constexpr ui32 CREATE_EXL
-        = ProtoFlag(NProto::TCreateHandleRequest::E_CREATE)
-        | ProtoFlag(NProto::TCreateHandleRequest::E_EXCLUSIVE)
-        | ProtoFlag(NProto::TCreateHandleRequest::E_READ)
-        | ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
+    static constexpr ui32 CREATE_EXL =
+        ProtoFlag(NProto::TCreateHandleRequest::E_CREATE) |
+        ProtoFlag(NProto::TCreateHandleRequest::E_EXCLUSIVE) |
+        ProtoFlag(NProto::TCreateHandleRequest::E_READ) |
+        ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
 
-    static constexpr ui32 TRUNC
-        = ProtoFlag(NProto::TCreateHandleRequest::E_TRUNCATE);
+    static constexpr ui32 TRUNC =
+        ProtoFlag(NProto::TCreateHandleRequest::E_TRUNCATE);
 
-    static constexpr ui32 DIRECT
-        = ProtoFlag(NProto::TCreateHandleRequest::E_DIRECT);
+    static constexpr ui32 DIRECT =
+        ProtoFlag(NProto::TCreateHandleRequest::E_DIRECT);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

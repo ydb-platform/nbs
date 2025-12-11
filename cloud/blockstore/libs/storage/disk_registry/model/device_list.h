@@ -71,7 +71,7 @@ private:
     const bool AlwaysAllocateLocalDisks;
 
 public:
-    using TNodeRankingFunc = std::function<void (std::span<ui32> nodeIds)>;
+    using TNodeRankingFunc = std::function<void(std::span<ui32> nodeIds)>;
 
     struct TAllocationQuery
     {
@@ -126,7 +126,8 @@ public:
 
     [[nodiscard]] TString FindRack(const TDeviceId& id) const;
     [[nodiscard]] TDiskId FindDiskId(const TDeviceId& id) const;
-    [[nodiscard]] const NProto::TDeviceConfig* FindDevice(const TDeviceId& id) const;
+    [[nodiscard]] const NProto::TDeviceConfig* FindDevice(
+        const TDeviceId& id) const;
 
     [[nodiscard]] TVector<NProto::TDeviceConfig> GetBrokenDevices() const;
     [[nodiscard]] TVector<NProto::TDeviceConfig> GetDirtyDevices() const;
@@ -161,7 +162,8 @@ public:
     void MarkDeviceAsDirty(const TDeviceId& uuid);
 
     [[nodiscard]] bool IsDirtyDevice(const TDeviceId& uuid) const;
-    [[nodiscard]] NProto::EDeviceState GetDeviceState(const TDeviceId& uuid) const;
+    [[nodiscard]] NProto::EDeviceState GetDeviceState(
+        const TDeviceId& uuid) const;
 
     void SuspendDevice(const TDeviceId& ids);
     void ResumeDevice(const TDeviceId& id);

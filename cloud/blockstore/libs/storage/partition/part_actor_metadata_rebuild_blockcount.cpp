@@ -22,23 +22,22 @@ constexpr ui64 MaxUniqueId = std::numeric_limits<ui64>::max();
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString StringifyMetadataTx(const TTxPartition::TMetadataRebuildBlockCount& args)
+TString StringifyMetadataTx(
+    const TTxPartition::TMetadataRebuildBlockCount& args)
 {
     return TStringBuilder()
-        << " StartBlobId: ["
-        <<  args.StartBlobId.CommitId() << ':' << args.StartBlobId.UniqueId() << ']'
-        << " BlobCountToRead: " << args.BlobCountToRead
-        << " FinalBlobId: ["
-        << args.FinalBlobId.CommitId() << ':' << args.FinalBlobId.UniqueId() << ']'
-        << " ReadCount: " << args.ReadCount
-        << " LastReadBlobId: ["
-        << args.LastReadBlobId.CommitId() << ':' << args.LastReadBlobId.UniqueId() << ']';
+           << " StartBlobId: [" << args.StartBlobId.CommitId() << ':'
+           << args.StartBlobId.UniqueId() << ']'
+           << " BlobCountToRead: " << args.BlobCountToRead << " FinalBlobId: ["
+           << args.FinalBlobId.CommitId() << ':' << args.FinalBlobId.UniqueId()
+           << ']' << " ReadCount: " << args.ReadCount << " LastReadBlobId: ["
+           << args.LastReadBlobId.CommitId() << ':'
+           << args.LastReadBlobId.UniqueId() << ']';
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMetadataRebuildBlockCountVisitor final
-    : public IBlobsIndexVisitor
+class TMetadataRebuildBlockCountVisitor final: public IBlobsIndexVisitor
 {
 private:
     TTxPartition::TMetadataRebuildBlockCount& Args;
@@ -46,7 +45,8 @@ private:
     ui32 BlobCount = 0;
 
 public:
-    TMetadataRebuildBlockCountVisitor(TTxPartition::TMetadataRebuildBlockCount& args)
+    TMetadataRebuildBlockCountVisitor(
+        TTxPartition::TMetadataRebuildBlockCount& args)
         : Args(args)
     {}
 
@@ -89,8 +89,8 @@ private:
         if (blobMeta.HasMixedBlocks()) {
             Args.MixedBlockCount += blobMeta.GetMixedBlocks().BlocksSize();
         } else {
-            auto delta =
-                blobMeta.GetMergedBlocks().GetEnd() - blobMeta.GetMergedBlocks().GetStart() + 1;
+            auto delta = blobMeta.GetMergedBlocks().GetEnd() -
+                         blobMeta.GetMergedBlocks().GetStart() + 1;
             delta -= blobMeta.GetMergedBlocks().GetSkipped();
             Args.MergedBlockCount += delta;
         }
@@ -142,19 +142,20 @@ private:
         const TActorContext& ctx);
 
     void HandleMetadataRebuildResponse(
-        const TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse::TPtr& ev,
+        const TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse::TPtr&
+            ev,
         const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TMetadataRebuildBlockCountActor::TMetadataRebuildBlockCountActor(
-        const TActorId& tablet,
-        ui32 blobsPerBatch,
-        ui64 finalCommitId,
-        ui64 mixedBlocksCount,
-        ui64 mergedBlocksCount,
-        const TDuration retryTimeout)
+    const TActorId& tablet,
+    ui32 blobsPerBatch,
+    ui64 finalCommitId,
+    ui64 mixedBlocksCount,
+    ui64 mergedBlocksCount,
+    const TDuration retryTimeout)
     : Tablet(tablet)
     , BlobsPerBatch(blobsPerBatch)
     , FinalBlobId(MakePartialBlobId(finalCommitId, Max()))
@@ -168,9 +169,11 @@ void TMetadataRebuildBlockCountActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 }
 
-void TMetadataRebuildBlockCountActor::SendMetadataRebuildRequest(const TActorContext& ctx)
+void TMetadataRebuildBlockCountActor::SendMetadataRebuildRequest(
+    const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvPartitionPrivate::TEvMetadataRebuildBlockCountRequest>(
+    auto request = std::make_unique<
+        TEvPartitionPrivate::TEvMetadataRebuildBlockCountRequest>(
         MakeIntrusive<TCallContext>(),
         BlobIdToRead,
         BlobsPerBatch,
@@ -184,7 +187,9 @@ void TMetadataRebuildBlockCountActor::NotifyCompleted(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvPartitionPrivate::TEvMetadataRebuildCompleted>(error);
+    auto response =
+        std::make_unique<TEvPartitionPrivate::TEvMetadataRebuildCompleted>(
+            error);
 
     NCloud::Send(ctx, Tablet, std::move(response));
     Die(ctx);
@@ -197,7 +202,9 @@ STFUNC(TMetadataRebuildBlockCountActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse, HandleMetadataRebuildResponse);
+        HFunc(
+            TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse,
+            HandleMetadataRebuildResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -264,10 +271,8 @@ void TPartitionActor::HandleMetadataRebuildBlockCount(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -277,15 +282,14 @@ void TPartitionActor::HandleMetadataRebuildBlockCount(
         "MetadataRebuild",
         requestInfo->CallContext->RequestId);
 
-    auto replyError = [=] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
+    auto replyError = [=](const TActorContext& ctx,
+                          TRequestInfo& requestInfo,
+                          ui32 errorCode,
+                          TString errorReason)
     {
-        auto response =
-            std::make_unique<TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse>(
-                MakeError(errorCode, std::move(errorReason)));
+        auto response = std::make_unique<
+            TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse>(
+            MakeError(errorCode, std::move(errorReason)));
 
         LWTRACK(
             ResponseSent_Partition,
@@ -297,7 +301,11 @@ void TPartitionActor::HandleMetadataRebuildBlockCount(
     };
 
     if (State->GetCommitQueue().GetMinCommitId() <= msg->BlobId.CommitId()) {
-        replyError(ctx, *requestInfo, E_REJECTED, "There are pending write commits");
+        replyError(
+            ctx,
+            *requestInfo,
+            E_REJECTED,
+            "There are pending write commits");
         return;
     }
 
@@ -348,7 +356,8 @@ bool TPartitionActor::PrepareMetadataRebuildBlockCount(
         args.StartBlobId,
         args.FinalBlobId,
         args.BlobCountToRead);
-    auto ready = progress != TPartitionDatabase::EBlobIndexScanProgress::NotReady;
+    auto ready =
+        progress != TPartitionDatabase::EBlobIndexScanProgress::NotReady;
     if (ready) {
         visitor.UpdateTx();
     }
@@ -379,12 +388,12 @@ void TPartitionActor::ExecuteMetadataRebuildBlockCount(
         TPartitionDatabase db(tx.DB);
 
         auto mixed = State->GetMixedBlocksCount() -
-            args.RebuildState.InitialMixedBlocks +
-            args.RebuildState.MixedBlocks;
+                     args.RebuildState.InitialMixedBlocks +
+                     args.RebuildState.MixedBlocks;
 
         auto merged = State->GetMergedBlocksCount() -
-            args.RebuildState.InitialMergedBlocks +
-            args.RebuildState.MergedBlocks;
+                      args.RebuildState.InitialMergedBlocks +
+                      args.RebuildState.MergedBlocks;
 
         State->UpdateBlocksCountersAfterMetadataRebuild(mixed, merged);
 
@@ -405,7 +414,8 @@ void TPartitionActor::CompleteMetadataRebuildBlockCount(
     NCloud::Reply(
         ctx,
         *args.RequestInfo,
-        std::make_unique<TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse>(
+        std::make_unique<
+            TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse>(
             args.LastReadBlobId,
             args.RebuildState));
 }

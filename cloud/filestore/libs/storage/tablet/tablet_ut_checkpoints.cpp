@@ -37,9 +37,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session1");
 
-        auto id1 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
-        auto id2 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
-        auto id3 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test3"));
+        auto id1 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
+        auto id2 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        auto id3 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test3"));
 
         tablet.AccessNode(id1);
         tablet.AccessNode(id2);
@@ -64,7 +67,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedNodesCount(), 2);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetCheckpointNodesCount(), 2);   // TODO
+            UNIT_ASSERT_VALUES_EQUAL(
+                stats.GetCheckpointNodesCount(),
+                2);   // TODO
         }
 
         tablet.InitSession("client", "session2", "checkpoint");
@@ -207,8 +212,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
 
-        auto id1 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
-        auto id2 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        auto id1 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
+        auto id2 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
         ui64 handle1 = CreateHandle(tablet, id1);
         ui64 handle2 = CreateHandle(tablet, id2);
 
@@ -251,7 +258,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
             UNIT_ASSERT_VALUES_EQUAL(expected2, buffer);
         }
 
-        // Flushed blob will contain only garbage blocks and won't be added at all
+        // Flushed blob will contain only garbage blocks and won't be added at
+        // all
         tablet.Flush();
 
         {

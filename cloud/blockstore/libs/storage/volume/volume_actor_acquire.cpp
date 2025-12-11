@@ -1,9 +1,8 @@
 #include "volume_actor.h"
 
-#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
-
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
 #include <util/generic/cast.h>
 #include <util/string/join.h>
@@ -108,16 +107,16 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TAcquireDevicesActor::TAcquireDevicesActor(
-        const TActorId& owner,
-        TChildLogTitle logTitle,
-        TVector<NProto::TDeviceConfig> devices,
-        TString diskId,
-        TString clientId,
-        NProto::EVolumeAccessMode accessMode,
-        ui64 mountSeqNumber,
-        ui32 volumeGeneration,
-        TDuration requestTimeout,
-        bool muteIOErrors)
+    const TActorId& owner,
+    TChildLogTitle logTitle,
+    TVector<NProto::TDeviceConfig> devices,
+    TString diskId,
+    TString clientId,
+    NProto::EVolumeAccessMode accessMode,
+    ui64 mountSeqNumber,
+    ui32 volumeGeneration,
+    TDuration requestTimeout,
+    bool muteIOErrors)
     : Owner(owner)
     , Devices(std::move(devices))
     , DiskId(std::move(diskId))
@@ -231,7 +230,8 @@ void TAcquireDevicesActor::SendRequests(
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s Send an acquire request for client: %s to node #%d. Devices: [%s]",
+            "%s Send an acquire request for client: %s to node #%d. Devices: "
+            "[%s]",
             LogTitle.GetWithTime().c_str(),
             ClientId.Quote().c_str(),
             r.NodeId,

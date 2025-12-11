@@ -46,14 +46,14 @@ TBackpressureFeaturesConfig DefaultBPConfig()
 {
     return {
         {
-            30,     // compaction score limit
-            10,     // compaction score threshold
-            10,     // compaction score feature max value
+            30,   // compaction score limit
+            10,   // compaction score threshold
+            10,   // compaction score feature max value
         },
         {
-            1600_KB,// fresh byte count limit
-            400_KB, // fresh byte count threshold
-            10,     // fresh byte count feature max value
+            1600_KB,   // fresh byte count limit
+            400_KB,    // fresh byte count threshold
+            10,        // fresh byte count feature max value
         },
         {
             8_MB,   // cleanup queue size limit
@@ -73,8 +73,7 @@ TFreeSpaceConfig DefaultFreeSpaceConfig()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TNoBackpressurePolicy
-    : ICompactionPolicy
+struct TNoBackpressurePolicy: ICompactionPolicy
 {
     TCompactionScore CalculateScore(const TRangeStat& stat) const override
     {
@@ -93,40 +92,40 @@ struct TNoBackpressurePolicy
 
 Y_UNIT_TEST_SUITE(TPartitionStateTest)
 {
-
-#define CHECK_DISK_SPACE_SCORE(expected)                                \
-            UNIT_ASSERT_DOUBLES_EQUAL(                                  \
-                expected,                                               \
-                state.CalculateCurrentBackpressure().DiskSpaceScore,    \
-                1e-5                                                    \
-            )                                                           \
-// CHECK_DISK_SPACE_SCORE
+#define CHECK_DISK_SPACE_SCORE(expected)                     \
+    UNIT_ASSERT_DOUBLES_EQUAL(                               \
+        expected,                                            \
+        state.CalculateCurrentBackpressure().DiskSpaceScore, \
+        1e-5)                                                \
+    // CHECK_DISK_SPACE_SCORE
 
     Y_UNIT_TEST(UpdatePermissions)
     {
         const size_t maxChannelCount = 3;
 
-        for (size_t channelCount = 1; channelCount <= maxChannelCount; ++channelCount) {
+        for (size_t channelCount = 1; channelCount <= maxChannelCount;
+             ++channelCount)
+        {
             TPartitionState state(
                 DefaultConfig(channelCount, DefaultBlockCount),
-                0,  // generation
+                0,   // generation
                 BuildDefaultCompactionPolicy(5),
-                0,  // compactionScoreHistorySize
-                0,  // cleanupScoreHistorySize
+                0,   // compactionScoreHistorySize
+                0,   // cleanupScoreHistorySize
                 DefaultBPConfig(),
                 DefaultFreeSpaceConfig(),
-                Max(),  // maxIORequestsInFlight
-                0,      // reassignChannelsPercentageThreshold
-                100,    // reassignFreshChannelsPercentageThreshold
-                100,    // reassignMixedChannelsPercentageThreshold
-                false,  // reassignSystemChannelsImmediately
-                0,      // lastCommitId
-                channelCount + 4,  // channelCount
-                0,      // mixedIndexCacheSize
-                10000,  // allocationUnit
-                100,    // maxBlobsPerUnit
-                10,     // maxBlobsPerRange,
-                1       // compactionRangeCountPerRun
+                Max(),              // maxIORequestsInFlight
+                0,                  // reassignChannelsPercentageThreshold
+                100,                // reassignFreshChannelsPercentageThreshold
+                100,                // reassignMixedChannelsPercentageThreshold
+                false,              // reassignSystemChannelsImmediately
+                0,                  // lastCommitId
+                channelCount + 4,   // channelCount
+                0,                  // mixedIndexCacheSize
+                10000,              // allocationUnit
+                100,                // maxBlobsPerUnit
+                10,                 // maxBlobsPerRange,
+                1                   // compactionRangeCountPerRun
             );
 
             UNIT_ASSERT(state.IsCompactionAllowed());
@@ -138,23 +137,20 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             while (channelId < 3) {
                 UNIT_ASSERT(!state.UpdatePermissions(
                     channelId,
-                    EChannelPermission::SystemWritesAllowed
-                    | EChannelPermission::UserWritesAllowed
-                ));
+                    EChannelPermission::SystemWritesAllowed |
+                        EChannelPermission::UserWritesAllowed));
                 UNIT_ASSERT(state.IsCompactionAllowed());
                 CHECK_DISK_SPACE_SCORE(baseScore);
 
-                UNIT_ASSERT(
-                    !state.UpdatePermissions(
-                        channelId, EChannelPermission::SystemWritesAllowed
-                    )
-                );
+                UNIT_ASSERT(!state.UpdatePermissions(
+                    channelId,
+                    EChannelPermission::SystemWritesAllowed));
                 UNIT_ASSERT(state.IsCompactionAllowed());
                 CHECK_DISK_SPACE_SCORE(baseScore);
 
                 UNIT_ASSERT(state.UpdatePermissions(
-                    channelId, EChannelPermission::UserWritesAllowed
-                ));
+                    channelId,
+                    EChannelPermission::UserWritesAllowed));
                 UNIT_ASSERT(!state.IsCompactionAllowed());
                 CHECK_DISK_SPACE_SCORE(maxScore);
 
@@ -164,9 +160,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
                 UNIT_ASSERT(state.UpdatePermissions(
                     channelId,
-                    EChannelPermission::SystemWritesAllowed
-                    | EChannelPermission::UserWritesAllowed
-                ));
+                    EChannelPermission::SystemWritesAllowed |
+                        EChannelPermission::UserWritesAllowed));
                 CHECK_DISK_SPACE_SCORE(baseScore);
 
                 ++channelId;
@@ -185,30 +180,29 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
                 UNIT_ASSERT(!state.UpdatePermissions(
                     channelId,
-                    EChannelPermission::SystemWritesAllowed
-                    | EChannelPermission::UserWritesAllowed
-                ));
+                    EChannelPermission::SystemWritesAllowed |
+                        EChannelPermission::UserWritesAllowed));
                 UNIT_ASSERT(state.IsCompactionAllowed());
                 CHECK_DISK_SPACE_SCORE(currentScore);
 
                 UNIT_ASSERT(state.UpdatePermissions(
-                    channelId, EChannelPermission::SystemWritesAllowed
-                ));
+                    channelId,
+                    EChannelPermission::SystemWritesAllowed));
                 UNIT_ASSERT(state.IsCompactionAllowed());
                 CHECK_DISK_SPACE_SCORE(nextScore);
 
                 UNIT_ASSERT(state.UpdatePermissions(
-                    channelId, EChannelPermission::UserWritesAllowed
-                ));
+                    channelId,
+                    EChannelPermission::UserWritesAllowed));
                 UNIT_ASSERT_VALUES_EQUAL(
-                    channelId < 2 + channelCount, state.IsCompactionAllowed()
-                );
+                    channelId < 2 + channelCount,
+                    state.IsCompactionAllowed());
                 CHECK_DISK_SPACE_SCORE(currentScore);
 
                 UNIT_ASSERT(state.UpdatePermissions(channelId, {}));
                 UNIT_ASSERT_VALUES_EQUAL(
-                    channelId < 2 + channelCount, state.IsCompactionAllowed()
-                );
+                    channelId < 2 + channelCount,
+                    state.IsCompactionAllowed());
                 CHECK_DISK_SPACE_SCORE(nextScore);
 
                 ++channelId;
@@ -222,51 +216,46 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     {
         TPartitionState state(
             DefaultConfig(2, DefaultBlockCount),
-            0,  // generation
+            0,   // generation
             BuildDefaultCompactionPolicy(5),
-            0,  // compactionScoreHistorySize
-            0,  // cleanupScoreHistorySize
+            0,   // compactionScoreHistorySize
+            0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            Max(),  // maxIORequestsInFlight
-            0,      // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            100,    // reassignMixedChannelsPercentageThreshold
-            false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
-            6,      // channelCount
-            0,      // mixedIndexCacheSize
-            10000,  // allocationUnit
-            100,    // maxBlobsPerUnit
-            10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            Max(),   // maxIORequestsInFlight
+            0,       // reassignChannelsPercentageThreshold
+            100,     // reassignFreshChannelsPercentageThreshold
+            100,     // reassignMixedChannelsPercentageThreshold
+            false,   // reassignSystemChannelsImmediately
+            0,       // lastCommitId
+            6,       // channelCount
+            0,       // mixedIndexCacheSize
+            10000,   // allocationUnit
+            100,     // maxBlobsPerUnit
+            10,      // maxBlobsPerRange,
+            1        // compactionRangeCountPerRun
         );
 
         UNIT_ASSERT(
-            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
+            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed));
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
 
         state.UpdatePermissions(
             DataChannelStart,
-            EChannelPermission::SystemWritesAllowed
-        );
+            EChannelPermission::SystemWritesAllowed);
 
         UNIT_ASSERT(
-            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
+            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed));
         auto channelsToReassign = state.GetChannelsToReassign();
         UNIT_ASSERT_VALUES_EQUAL(1, channelsToReassign.size());
         UNIT_ASSERT_VALUES_EQUAL(DataChannelStart, channelsToReassign[0]);
 
         state.UpdatePermissions(
             DataChannelStart + 1,
-            EChannelPermission::SystemWritesAllowed
-        );
+            EChannelPermission::SystemWritesAllowed);
 
         UNIT_ASSERT(
-            !state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
+            !state.IsWriteAllowed(EChannelPermission::UserWritesAllowed));
         channelsToReassign = state.GetChannelsToReassign();
         UNIT_ASSERT_VALUES_EQUAL(2, channelsToReassign.size());
         UNIT_ASSERT_VALUES_EQUAL(DataChannelStart, channelsToReassign[0]);
@@ -284,52 +273,47 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     {
         TPartitionState state(
             DefaultConfig(96, DefaultBlockCount),
-            0,  // generation
+            0,   // generation
             BuildDefaultCompactionPolicy(5),
-            0,  // compactionScoreHistorySize
-            0,  // cleanupScoreHistorySize
+            0,   // compactionScoreHistorySize
+            0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            Max(),  // maxIORequestsInFlight
-            10,     // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            100,    // reassignMixedChannelsPercentageThreshold
-            false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
-            100,    // channelCount
-            0,      // mixedIndexCacheSize
-            10000,  // allocationUnit
-            100,    // maxBlobsPerUnit
-            10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            Max(),   // maxIORequestsInFlight
+            10,      // reassignChannelsPercentageThreshold
+            100,     // reassignFreshChannelsPercentageThreshold
+            100,     // reassignMixedChannelsPercentageThreshold
+            false,   // reassignSystemChannelsImmediately
+            0,       // lastCommitId
+            100,     // channelCount
+            0,       // mixedIndexCacheSize
+            10000,   // allocationUnit
+            100,     // maxBlobsPerUnit
+            10,      // maxBlobsPerRange,
+            1        // compactionRangeCountPerRun
         );
 
         UNIT_ASSERT(
-            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
+            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed));
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
 
         for (ui32 i = 0; i < 9; ++i) {
             state.UpdatePermissions(
                 DataChannelStart + i,
-                EChannelPermission::SystemWritesAllowed
-            );
+                EChannelPermission::SystemWritesAllowed);
         }
 
         UNIT_ASSERT(
-            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
+            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed));
         auto channelsToReassign = state.GetChannelsToReassign();
         UNIT_ASSERT_VALUES_EQUAL(0, channelsToReassign.size());
 
         state.UpdatePermissions(
             DataChannelStart + 9,
-            EChannelPermission::SystemWritesAllowed
-        );
+            EChannelPermission::SystemWritesAllowed);
 
         UNIT_ASSERT(
-            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
+            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed));
         channelsToReassign = state.GetChannelsToReassign();
         UNIT_ASSERT_VALUES_EQUAL(10, channelsToReassign.size());
         UNIT_ASSERT_VALUES_EQUAL(DataChannelStart, channelsToReassign[0]);
@@ -338,24 +322,18 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         for (ui32 i = 0; i < 10; ++i) {
             state.UpdatePermissions(
                 DataChannelStart + i,
-                EChannelPermission::UserWritesAllowed
-                    | EChannelPermission::SystemWritesAllowed
-            );
+                EChannelPermission::UserWritesAllowed |
+                    EChannelPermission::SystemWritesAllowed);
         }
 
         UNIT_ASSERT(
-            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
+            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed));
         channelsToReassign = state.GetChannelsToReassign();
         UNIT_ASSERT_VALUES_EQUAL(0, channelsToReassign.size());
 
-        state.UpdatePermissions(
-            0,
-            EChannelPermission::SystemWritesAllowed
-        );
+        state.UpdatePermissions(0, EChannelPermission::SystemWritesAllowed);
         UNIT_ASSERT(
-            !state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
+            !state.IsWriteAllowed(EChannelPermission::UserWritesAllowed));
         channelsToReassign = state.GetChannelsToReassign();
         UNIT_ASSERT_VALUES_EQUAL(1, channelsToReassign.size());
         UNIT_ASSERT_VALUES_EQUAL(0, channelsToReassign[0]);
@@ -365,27 +343,29 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     {
         const size_t maxChannelCount = 3;
 
-        for (size_t channelCount = 1; channelCount <= maxChannelCount; ++channelCount) {
+        for (size_t channelCount = 1; channelCount <= maxChannelCount;
+             ++channelCount)
+        {
             TPartitionState state(
                 DefaultConfig(channelCount, DefaultBlockCount),
-                0,  // generation
+                0,   // generation
                 BuildDefaultCompactionPolicy(5),
-                0,  // compactionScoreHistorySize
-                0,  // cleanupScoreHistorySize
+                0,   // compactionScoreHistorySize
+                0,   // cleanupScoreHistorySize
                 DefaultBPConfig(),
                 DefaultFreeSpaceConfig(),
-                Max(),  // maxIORequestsInFlight
-                0,      // reassignChannelsPercentageThreshold
-                100,    // reassignFreshChannelsPercentageThreshold
-                100,    // reassignMixedChannelsPercentageThreshold
-                false,  // reassignSystemChannelsImmediately
-                0,      // lastCommitId
-                channelCount + 4,  // channelCount
-                0,      // mixedIndexCacheSize
-                10000,  // allocationUnit
-                100,    // maxBlobsPerUnit
-                10,     // maxBlobsPerRange,
-                1       // compactionRangeCountPerRun
+                Max(),              // maxIORequestsInFlight
+                0,                  // reassignChannelsPercentageThreshold
+                100,                // reassignFreshChannelsPercentageThreshold
+                100,                // reassignMixedChannelsPercentageThreshold
+                false,              // reassignSystemChannelsImmediately
+                0,                  // lastCommitId
+                channelCount + 4,   // channelCount
+                0,                  // mixedIndexCacheSize
+                10000,              // allocationUnit
+                100,                // maxBlobsPerUnit
+                10,                 // maxBlobsPerRange,
+                1                   // compactionRangeCountPerRun
             );
 
             const double baseScore = 1;
@@ -398,13 +378,16 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                     case EChannelDataKind::Log:
                     case EChannelDataKind::Index: {
                         UNIT_ASSERT(!state.UpdateChannelFreeSpaceShare(ch, 0));
-                        UNIT_ASSERT(!state.UpdateChannelFreeSpaceShare(ch, 0.25));
+                        UNIT_ASSERT(
+                            !state.UpdateChannelFreeSpaceShare(ch, 0.25));
                         CHECK_DISK_SPACE_SCORE(baseScore);
 
-                        UNIT_ASSERT(state.UpdateChannelFreeSpaceShare(ch, 0.20));
+                        UNIT_ASSERT(
+                            state.UpdateChannelFreeSpaceShare(ch, 0.20));
                         CHECK_DISK_SPACE_SCORE(2);
 
-                        UNIT_ASSERT(state.UpdateChannelFreeSpaceShare(ch, 0.15));
+                        UNIT_ASSERT(
+                            state.UpdateChannelFreeSpaceShare(ch, 0.15));
                         CHECK_DISK_SPACE_SCORE(maxScore);
 
                         UNIT_ASSERT(!state.UpdateChannelFreeSpaceShare(ch, 0));
@@ -420,8 +403,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
                         constexpr ui32 FirstDataChannel = 3;
                         CHECK_DISK_SPACE_SCORE(
-                            1 / (1 - 0.5 * (ch - FirstDataChannel + 1) / channelCount)
-                        );
+                            1 / (1 - 0.5 * (ch - FirstDataChannel + 1) /
+                                         channelCount));
                         break;
                     }
 
@@ -432,7 +415,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                     }
 
                     default: {
-                        Y_ABORT("unsupported kind: %u", static_cast<ui32>(kind));
+                        Y_ABORT(
+                            "unsupported kind: %u",
+                            static_cast<ui32>(kind));
                     }
                 }
             }
@@ -444,24 +429,24 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         for (auto kind: {EChannelDataKind::Mixed, EChannelDataKind::Merged}) {
             TPartitionState state(
                 DefaultConfig(MaxMergedChannelCount, DefaultBlockCount),
-                0,  // generation
+                0,   // generation
                 BuildDefaultCompactionPolicy(5),
-                0,  // compactionScoreHistorySize
-                0,  // cleanupScoreHistorySize
+                0,   // compactionScoreHistorySize
+                0,   // cleanupScoreHistorySize
                 DefaultBPConfig(),
                 DefaultFreeSpaceConfig(),
-                Max(),  // maxIORequestsInFlight
-                0,      // reassignChannelsPercentageThreshold
-                100,    // reassignFreshChannelsPercentageThreshold
-                100,    // reassignMixedChannelsPercentageThreshold
-                false,  // reassignSystemChannelsImmediately
-                0,      // lastCommitId
-                MaxDataChannelCount,  // channelCount
-                0,      // mixedIndexCacheSize
-                10000,  // allocationUnit
-                100,    // maxBlobsPerUnit
-                10,     // maxBlobsPerRange,
-                1       // compactionRangeCountPerRun
+                Max(),   // maxIORequestsInFlight
+                0,       // reassignChannelsPercentageThreshold
+                100,     // reassignFreshChannelsPercentageThreshold
+                100,     // reassignMixedChannelsPercentageThreshold
+                false,   // reassignSystemChannelsImmediately
+                0,       // lastCommitId
+                MaxDataChannelCount,   // channelCount
+                0,                     // mixedIndexCacheSize
+                10000,                 // allocationUnit
+                100,                   // maxBlobsPerUnit
+                10,                    // maxBlobsPerRange,
+                1                      // compactionRangeCountPerRun
             );
             auto blobId = state.GenerateBlobId(
                 kind,
@@ -493,24 +478,24 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         TPartitionState state(
             meta,
-            0,  // generation
+            0,   // generation
             BuildDefaultCompactionPolicy(5),
-            0,  // compactionScoreHistorySize
-            0,  // cleanupScoreHistorySize
+            0,   // compactionScoreHistorySize
+            0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            Max(),  // maxIORequestsInFlight
-            0,      // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            100,    // reassignMixedChannelsPercentageThreshold
-            false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
+            Max(),   // maxIORequestsInFlight
+            0,       // reassignChannelsPercentageThreshold
+            100,     // reassignFreshChannelsPercentageThreshold
+            100,     // reassignMixedChannelsPercentageThreshold
+            false,   // reassignSystemChannelsImmediately
+            0,       // lastCommitId
             config.ExplicitChannelProfilesSize(),
-            0,      // mixedIndexCacheSize
-            10000,  // allocationUnit
-            100,    // maxBlobsPerUnit
-            10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            0,       // mixedIndexCacheSize
+            10000,   // allocationUnit
+            100,     // maxBlobsPerUnit
+            10,      // maxBlobsPerRange,
+            1        // compactionRangeCountPerRun
         );
 
         const auto perm = EChannelPermission::UserWritesAllowed;
@@ -549,24 +534,24 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         for (auto kind: {EChannelDataKind::Mixed, EChannelDataKind::Merged}) {
             TPartitionState state(
                 DefaultConfig(2, DefaultBlockCount),
-                0,  // generation
+                0,   // generation
                 BuildDefaultCompactionPolicy(5),
-                0,  // compactionScoreHistorySize
-                0,  // cleanupScoreHistorySize
+                0,   // compactionScoreHistorySize
+                0,   // cleanupScoreHistorySize
                 DefaultBPConfig(),
                 DefaultFreeSpaceConfig(),
-                Max(),  // maxIORequestsInFlight
-                0,      // reassignChannelsPercentageThreshold
-                100,    // reassignFreshChannelsPercentageThreshold
-                100,    // reassignMixedChannelsPercentageThreshold
-                false,  // reassignSystemChannelsImmediately
-                0,      // lastCommitId
-                6,      // channelCount
-                0,      // mixedIndexCacheSize
-                10000,  // allocationUnit
-                100,    // maxBlobsPerUnit
-                10,     // maxBlobsPerRange,
-                1       // compactionRangeCountPerRun
+                Max(),   // maxIORequestsInFlight
+                0,       // reassignChannelsPercentageThreshold
+                100,     // reassignFreshChannelsPercentageThreshold
+                100,     // reassignMixedChannelsPercentageThreshold
+                false,   // reassignSystemChannelsImmediately
+                0,       // lastCommitId
+                6,       // channelCount
+                0,       // mixedIndexCacheSize
+                10000,   // allocationUnit
+                100,     // maxBlobsPerUnit
+                10,      // maxBlobsPerRange,
+                1        // compactionRangeCountPerRun
             );
 
             {
@@ -574,29 +559,24 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                     kind,
                     EChannelPermission::UserWritesAllowed,
                     1,
-                    1024
-                );
+                    1024);
                 UNIT_ASSERT_VALUES_EQUAL(
                     ui32(TPartitionSchema::FirstDataChannel),
-                    blobId.Channel()
-                );
+                    blobId.Channel());
                 auto blobId2 = state.GenerateBlobId(
                     kind,
                     EChannelPermission::UserWritesAllowed,
                     1,
-                    1024
-                );
+                    1024);
                 UNIT_ASSERT_VALUES_EQUAL(
                     ui32(TPartitionSchema::FirstDataChannel + 1),
-                    blobId2.Channel()
-                );
+                    blobId2.Channel());
             }
 
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetAlmostFullChannelCount());
             state.UpdateChannelFreeSpaceShare(
                 TPartitionSchema::FirstDataChannel,
-                0.15
-            );
+                0.15);
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetAlmostFullChannelCount());
 
             for (ui32 i = 0; i < 10; ++i) {
@@ -604,18 +584,15 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                     kind,
                     EChannelPermission::UserWritesAllowed,
                     1,
-                    1024
-                );
+                    1024);
                 UNIT_ASSERT_VALUES_EQUAL(
                     ui32(TPartitionSchema::FirstDataChannel + 1),
-                    blobId.Channel()
-                );
+                    blobId.Channel());
             }
 
             state.UpdateChannelFreeSpaceShare(
                 TPartitionSchema::FirstDataChannel,
-                0.16
-            );
+                0.16);
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetAlmostFullChannelCount());
 
             ui32 firstChannelSelected = 0;
@@ -624,28 +601,25 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                     kind,
                     EChannelPermission::UserWritesAllowed,
                     1,
-                    1024
-                );
+                    1024);
                 if (blobId.Channel() == TPartitionSchema::FirstDataChannel) {
                     ++firstChannelSelected;
                 } else {
                     UNIT_ASSERT_VALUES_EQUAL(
                         ui32(TPartitionSchema::FirstDataChannel + 1),
-                        blobId.Channel()
-                    );
+                        blobId.Channel());
                 }
             }
 
-            UNIT_ASSERT(firstChannelSelected < 150 && firstChannelSelected > 50);
+            UNIT_ASSERT(
+                firstChannelSelected < 150 && firstChannelSelected > 50);
 
             state.UpdateChannelFreeSpaceShare(
                 TPartitionSchema::FirstDataChannel,
-                0.16
-            );
+                0.16);
             state.UpdateChannelFreeSpaceShare(
                 TPartitionSchema::FirstDataChannel + 1,
-                0.161
-            );
+                0.161);
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetAlmostFullChannelCount());
 
             firstChannelSelected = 0;
@@ -654,19 +628,18 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                     kind,
                     EChannelPermission::UserWritesAllowed,
                     1,
-                    1024
-                );
+                    1024);
                 if (blobId.Channel() == TPartitionSchema::FirstDataChannel) {
                     ++firstChannelSelected;
                 } else {
                     UNIT_ASSERT_VALUES_EQUAL(
                         ui32(TPartitionSchema::FirstDataChannel + 1),
-                        blobId.Channel()
-                    );
+                        blobId.Channel());
                 }
             }
 
-            UNIT_ASSERT(firstChannelSelected < 150 && firstChannelSelected > 50);
+            UNIT_ASSERT(
+                firstChannelSelected < 150 && firstChannelSelected > 50);
         }
     }
 
@@ -689,24 +662,24 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         TPartitionState state(
             meta,
-            0,  // generation
+            0,   // generation
             BuildDefaultCompactionPolicy(5),
-            0,  // compactionScoreHistorySize
-            0,  // cleanupScoreHistorySize
+            0,   // compactionScoreHistorySize
+            0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            Max(),  // maxIORequestsInFlight
-            0,      // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            100,    // reassignMixedChannelsPercentageThreshold
-            false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
+            Max(),   // maxIORequestsInFlight
+            0,       // reassignChannelsPercentageThreshold
+            100,     // reassignFreshChannelsPercentageThreshold
+            100,     // reassignMixedChannelsPercentageThreshold
+            false,   // reassignSystemChannelsImmediately
+            0,       // lastCommitId
             config.ExplicitChannelProfilesSize(),
-            0,      // mixedIndexCacheSize
-            10000,  // allocationUnit
-            100,    // maxBlobsPerUnit
-            10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            0,       // mixedIndexCacheSize
+            10000,   // allocationUnit
+            100,     // maxBlobsPerUnit
+            10,      // maxBlobsPerRange,
+            1        // compactionRangeCountPerRun
         );
 
         {
@@ -714,22 +687,18 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 EChannelDataKind::Mixed,
                 EChannelPermission::UserWritesAllowed,
                 1,
-                1024
-            );
+                1024);
             UNIT_ASSERT_VALUES_EQUAL(
                 ui32(TPartitionSchema::FirstDataChannel),
-                mixedBlobId.Channel()
-            );
+                mixedBlobId.Channel());
             auto mergedBlobId = state.GenerateBlobId(
                 EChannelDataKind::Merged,
                 EChannelPermission::UserWritesAllowed,
                 1,
-                1024
-            );
+                1024);
             UNIT_ASSERT_VALUES_EQUAL(
                 ui32(TPartitionSchema::FirstDataChannel + 1),
-                mergedBlobId.Channel()
-            );
+                mergedBlobId.Channel());
         }
 
         state.UpdatePermissions(TPartitionSchema::FirstDataChannel, {});
@@ -739,12 +708,10 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 EChannelDataKind::Mixed,
                 EChannelPermission::UserWritesAllowed,
                 1,
-                1024
-            );
+                1024);
             UNIT_ASSERT_VALUES_EQUAL(
                 ui32(TPartitionSchema::FirstDataChannel + 1),
-                mixedBlobId.Channel()
-            );
+                mixedBlobId.Channel());
         }
     }
 
@@ -752,24 +719,24 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     {
         TPartitionState state(
             DefaultConfig(1, 1000),
-            0,  // generation
+            0,   // generation
             BuildDefaultCompactionPolicy(5),
-            0,  // compactionScoreHistorySize
-            0,  // cleanupScoreHistorySize
+            0,   // compactionScoreHistorySize
+            0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            Max(),  // maxIORequestsInFlight
-            0,      // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            100,    // reassignMixedChannelsPercentageThreshold
-            false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
-            5,      // channelCount
-            0,      // mixedIndexCacheSize
-            10000,  // allocationUnit
-            100,    // maxBlobsPerUnit
-            10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            Max(),   // maxIORequestsInFlight
+            0,       // reassignChannelsPercentageThreshold
+            100,     // reassignFreshChannelsPercentageThreshold
+            100,     // reassignMixedChannelsPercentageThreshold
+            false,   // reassignSystemChannelsImmediately
+            0,       // lastCommitId
+            5,       // channelCount
+            0,       // mixedIndexCacheSize
+            10000,   // allocationUnit
+            100,     // maxBlobsPerUnit
+            10,      // maxBlobsPerRange,
+            1        // compactionRangeCountPerRun
         );
 
         const auto initialBackpressure = state.CalculateCurrentBackpressure();
@@ -783,13 +750,19 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         state.GetCleanupQueue().Add({{1, 1, 4, 4_MB, 0, 0}, 111});
 
         const auto marginalBackpressure = state.CalculateCurrentBackpressure();
-        UNIT_ASSERT_DOUBLES_EQUAL(1, marginalBackpressure.FreshIndexScore, 1e-5);
-        UNIT_ASSERT_DOUBLES_EQUAL(1, marginalBackpressure.CompactionScore, 1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            1,
+            marginalBackpressure.FreshIndexScore,
+            1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            1,
+            marginalBackpressure.CompactionScore,
+            1e-5);
         UNIT_ASSERT_DOUBLES_EQUAL(1, marginalBackpressure.CleanupScore, 1e-5);
 
         // Backpressure caused by increased FreshBlobByteCount
         {
-            state.AddFreshBlob({ 1, 50 * 4096 });
+            state.AddFreshBlob({1, 50 * 4096});
 
             const auto bp = state.CalculateCurrentBackpressure();
             UNIT_ASSERT_DOUBLES_EQUAL(2.5, bp.FreshIndexScore, 1e-5);
@@ -821,24 +794,24 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     {
         TPartitionState state(
             DefaultConfig(1, 1000),
-            0,  // generation
+            0,   // generation
             std::make_shared<TNoBackpressurePolicy>(),
-            0,  // compactionScoreHistorySize
-            0,  // cleanupScoreHistorySize
+            0,   // compactionScoreHistorySize
+            0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            Max(),  // maxIORequestsInFlight
-            0,      // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            100,    // reassignMixedChannelsPercentageThreshold
-            false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
-            5,      // channelCount
-            0,      // mixedIndexCacheSize
-            10000,  // allocationUnit
-            100,    // maxBlobsPerUnit
-            10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            Max(),   // maxIORequestsInFlight
+            0,       // reassignChannelsPercentageThreshold
+            100,     // reassignFreshChannelsPercentageThreshold
+            100,     // reassignMixedChannelsPercentageThreshold
+            false,   // reassignSystemChannelsImmediately
+            0,       // lastCommitId
+            5,       // channelCount
+            0,       // mixedIndexCacheSize
+            10000,   // allocationUnit
+            100,     // maxBlobsPerUnit
+            10,      // maxBlobsPerRange,
+            1        // compactionRangeCountPerRun
         );
 
         state.GetCompactionMap().Update(0, 30, 30, 30, false);
@@ -851,30 +824,28 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     {
         TPartitionState state(
             DefaultConfig(1, DefaultBlockCount),
-            0,  // generation
+            0,   // generation
             BuildDefaultCompactionPolicy(5),
-            0,  // compactionScoreHistorySize
-            0,  // cleanupScoreHistorySize
+            0,   // compactionScoreHistorySize
+            0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            Max(),  // maxIORequestsInFlight
-            0,      // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            100,    // reassignMixedChannelsPercentageThreshold
-            false,  // reassignSystemChannelsImmediately
-            Max(),  // lastCommitId
-            5,      // channelCount
-            0,      // mixedIndexCacheSize
-            10000,  // allocationUnit
-            100,    // maxBlobsPerUnit
-            10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            Max(),   // maxIORequestsInFlight
+            0,       // reassignChannelsPercentageThreshold
+            100,     // reassignFreshChannelsPercentageThreshold
+            100,     // reassignMixedChannelsPercentageThreshold
+            false,   // reassignSystemChannelsImmediately
+            Max(),   // lastCommitId
+            5,       // channelCount
+            0,       // mixedIndexCacheSize
+            10000,   // allocationUnit
+            100,     // maxBlobsPerUnit
+            10,      // maxBlobsPerRange,
+            1        // compactionRangeCountPerRun
         );
 
         UNIT_ASSERT(state.GenerateCommitId() == InvalidCommitId);
     }
-
-
 
     Y_UNIT_TEST(ShouldCorrectlyCalculateUsedBlocksCount)
     {
@@ -885,33 +856,31 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         TPartitionState state(
             config,
-            0,  // generation
+            0,   // generation
             BuildDefaultCompactionPolicy(5),
-            0,  // compactionScoreHistorySize
-            0,  // cleanupScoreHistorySize
+            0,   // compactionScoreHistorySize
+            0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            Max(),  // maxIORequestsInFlight
-            0,      // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            100,    // reassignMixedChannelsPercentageThreshold
-            false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
-            5,      // channelCount
-            0,      // mixedIndexCacheSize
-            10000,  // allocationUnit
-            100,    // maxBlobsPerUnit
-            10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            Max(),   // maxIORequestsInFlight
+            0,       // reassignChannelsPercentageThreshold
+            100,     // reassignFreshChannelsPercentageThreshold
+            100,     // reassignMixedChannelsPercentageThreshold
+            false,   // reassignSystemChannelsImmediately
+            0,       // lastCommitId
+            5,       // channelCount
+            0,       // mixedIndexCacheSize
+            10000,   // allocationUnit
+            100,     // maxBlobsPerUnit
+            10,      // maxBlobsPerRange,
+            1        // compactionRangeCountPerRun
         );
 
         state.GetLogicalUsedBlocks().Set(0, 9);
         state.IncrementLogicalUsedBlocksCount(10);
 
         TTestExecutor executor;
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.InitSchema();
-        });
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
 
         executor.WriteTx(
             [&](TPartitionDatabase db) {
@@ -951,15 +920,14 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT_EQUAL(21, state.GetUsedBlocksCount());
         UNIT_ASSERT_EQUAL(31, state.GetLogicalUsedBlocksCount());
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.SetUsedBlocks(db, {101, 102, 103, 106, 108});
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { state.SetUsedBlocks(db, {101, 102, 103, 106, 108}); });
         UNIT_ASSERT_EQUAL(23, state.GetUsedBlocksCount());
         UNIT_ASSERT_EQUAL(33, state.GetLogicalUsedBlocksCount());
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.UnsetUsedBlocks(db, {108, 120, 250});
-        });
+        executor.WriteTx([&](TPartitionDatabase db)
+                         { state.UnsetUsedBlocks(db, {108, 120, 250}); });
         UNIT_ASSERT_EQUAL(21, state.GetUsedBlocksCount());
         UNIT_ASSERT_EQUAL(31, state.GetLogicalUsedBlocksCount());
     }
@@ -968,24 +936,24 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     {
         TPartitionState state(
             DefaultConfig(1, DefaultBlockCount),
-            0,  // generation
+            0,   // generation
             BuildDefaultCompactionPolicy(5),
-            0,  // compactionScoreHistorySize
-            0,  // cleanupScoreHistorySize
+            0,   // compactionScoreHistorySize
+            0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            Max(),  // maxIORequestsInFlight
-            0,      // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            100,    // reassignMixedChannelsPercentageThreshold
-            false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
-            5,      // channelCount
-            0,      // mixedIndexCacheSize
-            10000,  // allocationUnit
-            100,    // maxBlobsPerUnit
-            10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            Max(),   // maxIORequestsInFlight
+            0,       // reassignChannelsPercentageThreshold
+            100,     // reassignFreshChannelsPercentageThreshold
+            100,     // reassignMixedChannelsPercentageThreshold
+            false,   // reassignSystemChannelsImmediately
+            0,       // lastCommitId
+            5,       // channelCount
+            0,       // mixedIndexCacheSize
+            10000,   // allocationUnit
+            100,     // maxBlobsPerUnit
+            10,      // maxBlobsPerRange,
+            1        // compactionRangeCountPerRun
         );
 
         state.AddFreshBlob({1, 10});
@@ -1015,24 +983,24 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         TPartitionState state(
             config,
-            0,  // generation
+            0,   // generation
             BuildDefaultCompactionPolicy(5),
-            0,  // compactionScoreHistorySize
-            0,  // cleanupScoreHistorySize
+            0,   // compactionScoreHistorySize
+            0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            Max(),  // maxIORequestsInFlight
-            0,      // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            100,    // reassignMixedChannelsPercentageThreshold
-            false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
-            1,      // channelCount
-            0,      // mixedIndexCacheSize
-            10000,  // allocationUnit
-            100,    // maxBlobsPerUnit
-            10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            Max(),   // maxIORequestsInFlight
+            0,       // reassignChannelsPercentageThreshold
+            100,     // reassignFreshChannelsPercentageThreshold
+            100,     // reassignMixedChannelsPercentageThreshold
+            false,   // reassignSystemChannelsImmediately
+            0,       // lastCommitId
+            1,       // channelCount
+            0,       // mixedIndexCacheSize
+            10000,   // allocationUnit
+            100,     // maxBlobsPerUnit
+            10,      // maxBlobsPerRange,
+            1        // compactionRangeCountPerRun
         );
 
         state.IncrementMergedBlocksCount(5_GB / DefaultBlockSize);
@@ -1058,56 +1026,55 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         TPartitionState state(
             config,
-            0,  // generation
+            0,   // generation
             BuildDefaultCompactionPolicy(5),
-            0,  // compactionScoreHistorySize
-            0,  // cleanupScoreHistorySize
+            0,   // compactionScoreHistorySize
+            0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            Max(),  // maxIORequestsInFlight
-            0,      // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            100,    // reassignMixedChannelsPercentageThreshold
-            false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
-            5,      // channelCount
-            1,      // mixedIndexCacheSize
-            10000,  // allocationUnit
-            100,    // maxBlobsPerUnit
-            10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            Max(),   // maxIORequestsInFlight
+            0,       // reassignChannelsPercentageThreshold
+            100,     // reassignFreshChannelsPercentageThreshold
+            100,     // reassignMixedChannelsPercentageThreshold
+            false,   // reassignSystemChannelsImmediately
+            0,       // lastCommitId
+            5,       // channelCount
+            1,       // mixedIndexCacheSize
+            10000,   // allocationUnit
+            100,     // maxBlobsPerUnit
+            10,      // maxBlobsPerRange,
+            1        // compactionRangeCountPerRun
         );
 
         TTestExecutor executor;
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.InitSchema();
-        });
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
 
         constexpr ui32 rangeIdx = 0;
         TVector<TMixedBlock> blocks = {
-            { {1, 1}, 1, 1, 1 },
-            { {2, 2}, 2, 2, 2 },
-            { {3, 3}, 3, 3, 3 },
-            { {4, 4}, 4, 4, 4 },
-            { {5, 5}, 5, 5, 5 }
-        };
+            {{1, 1}, 1, 1, 1},
+            {{2, 2}, 2, 2, 2},
+            {{3, 3}, 3, 3, 3},
+            {{4, 4}, 4, 4, 4},
+            {{5, 5}, 5, 5, 5}};
 
-        auto mixedBlocksCompatator = [](const auto& lhs, const auto& rhs) {
+        auto mixedBlocksCompatator = [](const auto& lhs, const auto& rhs)
+        {
             return lhs.BlockIndex < rhs.BlockIndex;
         };
 
         // range is warm now: mixed blocks are not cached
         state.RaiseRangeTemperature(rangeIdx);
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.WriteMixedBlock(db, blocks[0]);
-            state.WriteMixedBlock(db, blocks[1]);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                state.WriteMixedBlock(db, blocks[0]);
+                state.WriteMixedBlock(db, blocks[1]);
+            });
 
         TVector<TMixedBlock> actual;
 
-        struct TVisitor final
-            : public IBlocksIndexVisitor
+        struct TVisitor final: public IBlocksIndexVisitor
         {
             TVector<TMixedBlock>& Blocks;
 
@@ -1128,57 +1095,64 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         } visitor{actual};
 
         // should read mixed blocks from db and place them into cache
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.FindMixedBlocksForCompaction(db, visitor, rangeIdx);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { state.FindMixedBlocksForCompaction(db, visitor, rangeIdx); });
 
         Sort(actual, mixedBlocksCompatator);
         ASSERT_VECTORS_EQUAL(
             TVector<TMixedBlock>({blocks[0], blocks[1]}),
-            actual
-        );
+            actual);
 
         // range is hot now
         state.RaiseRangeTemperature(rangeIdx);
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.DeleteMixedBlock(db, blocks[1].BlockIndex, blocks[1].CommitId);
-            state.WriteMixedBlock(db, blocks[2]);
-            state.WriteMixedBlock(db, blocks[3]);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                state.DeleteMixedBlock(
+                    db,
+                    blocks[1].BlockIndex,
+                    blocks[1].CommitId);
+                state.WriteMixedBlock(db, blocks[2]);
+                state.WriteMixedBlock(db, blocks[3]);
+            });
 
         actual.clear();
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.FindMixedBlocksForCompaction(db, visitor, rangeIdx);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { state.FindMixedBlocksForCompaction(db, visitor, rangeIdx); });
 
         Sort(actual, mixedBlocksCompatator);
         ASSERT_VECTORS_EQUAL(
             TVector<TMixedBlock>({blocks[0], blocks[2], blocks[3]}),
-            actual
-        );
+            actual);
 
         // kick range from cache
         state.RaiseRangeTemperature(rangeIdx + 1);
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.DeleteMixedBlock(db, blocks[2].BlockIndex, blocks[2].CommitId);
-            state.WriteMixedBlock(db, blocks[4]);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                state.DeleteMixedBlock(
+                    db,
+                    blocks[2].BlockIndex,
+                    blocks[2].CommitId);
+                state.WriteMixedBlock(db, blocks[4]);
+            });
 
         actual.clear();
 
         // should read from db
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.FindMixedBlocksForCompaction(db, visitor, rangeIdx);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { state.FindMixedBlocksForCompaction(db, visitor, rangeIdx); });
 
         Sort(actual, mixedBlocksCompatator);
         ASSERT_VECTORS_EQUAL(
             TVector<TMixedBlock>({blocks[0], blocks[3], blocks[4]}),
-            actual
-        );
+            actual);
     }
 
     void CheckMaxBlobsPerDisk(
@@ -1191,24 +1165,24 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         TPartitionState state(
             config,
-            0,  // generation
+            0,   // generation
             BuildDefaultCompactionPolicy(5),
-            0,  // compactionScoreHistorySize
-            0,  // cleanupScoreHistorySize
+            0,   // compactionScoreHistorySize
+            0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            Max(),  // maxIORequestsInFlight
-            0,      // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            100,    // reassignMixedChannelsPercentageThreshold
-            false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
-            5,      // channelCount
-            1,      // mixedIndexCacheSize
-            allocationUnit,  // allocationUnit
-            maxBlobsPerUnit, // maxBlobsPerUnit
-            10,  // maxBlobsPerRange,
-            1    // compactionRangeCountPerRun
+            Max(),             // maxIORequestsInFlight
+            0,                 // reassignChannelsPercentageThreshold
+            100,               // reassignFreshChannelsPercentageThreshold
+            100,               // reassignMixedChannelsPercentageThreshold
+            false,             // reassignSystemChannelsImmediately
+            0,                 // lastCommitId
+            5,                 // channelCount
+            1,                 // mixedIndexCacheSize
+            allocationUnit,    // allocationUnit
+            maxBlobsPerUnit,   // maxBlobsPerUnit
+            10,                // maxBlobsPerRange,
+            1                  // compactionRangeCountPerRun
         );
         UNIT_ASSERT_VALUES_EQUAL(maxBlobsPerDisk, state.GetMaxBlobsPerDisk());
     }
@@ -1226,24 +1200,24 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         TPartitionState state(
             config,
-            0,  // generation
+            0,   // generation
             BuildDefaultCompactionPolicy(5),
-            0,  // compactionScoreHistorySize
-            0,  // cleanupScoreHistorySize
+            0,   // compactionScoreHistorySize
+            0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            Max(),  // maxIORequestsInFlight
-            0,      // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            100,    // reassignMixedChannelsPercentageThreshold
-            false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
-            1,      // channelCount
-            0,      // mixedIndexCacheSize
-            10000,  // allocationUnit
-            100,    // maxBlobsPerUnit
-            10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            Max(),   // maxIORequestsInFlight
+            0,       // reassignChannelsPercentageThreshold
+            100,     // reassignFreshChannelsPercentageThreshold
+            100,     // reassignMixedChannelsPercentageThreshold
+            false,   // reassignSystemChannelsImmediately
+            0,       // lastCommitId
+            1,       // channelCount
+            0,       // mixedIndexCacheSize
+            10000,   // allocationUnit
+            100,     // maxBlobsPerUnit
+            10,      // maxBlobsPerRange,
+            1        // compactionRangeCountPerRun
         );
 
         const auto& dts = state.GetGroupId2Downtimes();
@@ -1310,28 +1284,28 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     {
         TPartitionState state(
             DefaultConfig(1, 1000),
-            0,  // generation
+            0,   // generation
             BuildDefaultCompactionPolicy(5),
-            0,  // compactionScoreHistorySize
-            0,  // cleanupScoreHistorySize
+            0,   // compactionScoreHistorySize
+            0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            Max(),  // maxIORequestsInFlight
-            0,      // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            100,    // reassignMixedChannelsPercentageThreshold
-            false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
-            5,      // channelCount
-            0,      // mixedIndexCacheSize
-            10000,  // allocationUnit
-            100,    // maxBlobsPerUnit
-            10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            Max(),   // maxIORequestsInFlight
+            0,       // reassignChannelsPercentageThreshold
+            100,     // reassignFreshChannelsPercentageThreshold
+            100,     // reassignMixedChannelsPercentageThreshold
+            false,   // reassignSystemChannelsImmediately
+            0,       // lastCommitId
+            5,       // channelCount
+            0,       // mixedIndexCacheSize
+            10000,   // allocationUnit
+            100,     // maxBlobsPerUnit
+            10,      // maxBlobsPerRange,
+            1        // compactionRangeCountPerRun
         );
 
-        TCleanupQueueItem b1 {{1, 1, 4, 4_MB, 0, 0}, 111};
-        TCleanupQueueItem b2 {{1, 2, 4, 4096, 0, 0}, 112};
+        TCleanupQueueItem b1{{1, 1, 4, 4_MB, 0, 0}, 111};
+        TCleanupQueueItem b2{{1, 2, 4, 4096, 0, 0}, 112};
 
         state.GetCleanupQueue().Add(b2);
         state.GetCleanupQueue().Add(b1);
@@ -1341,14 +1315,10 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             state.GetCleanupQueue().GetQueueBlocks());
 
         state.GetCleanupQueue().Remove(b1);
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            state.GetCleanupQueue().GetQueueBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetCleanupQueue().GetQueueBlocks());
 
         state.GetCleanupQueue().Remove(b2);
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            state.GetCleanupQueue().GetQueueBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetCleanupQueue().GetQueueBlocks());
     }
 
     Y_UNIT_TEST(TestReassignedMixedChannelsPercentageThreshold)
@@ -1368,7 +1338,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Log));
         cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Index));
         for (ui32 i = 0; i < mergedChannelCount; ++i) {
-            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
+            cps->Add()->SetDataKind(
+                static_cast<ui32>(EChannelDataKind::Merged));
         }
         for (ui32 i = 0; i < mixedChannelCount; ++i) {
             cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Mixed));
@@ -1377,24 +1348,25 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         TPartitionState state(
             meta,
-            0,  // generation
+            0,   // generation
             BuildDefaultCompactionPolicy(5),
-            0,  // compactionScoreHistorySize
-            0,  // cleanupScoreHistorySize
+            0,   // compactionScoreHistorySize
+            0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            Max(),  // maxIORequestsInFlight
-            100,    // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            reassignMixedChannelsPercentageThreshold, // reassignMixedChannelsPercentageThreshold
-            false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
-            mixedChannelCount + mergedChannelCount + DataChannelStart + 1, // channelCount
-            0,      // mixedIndexCacheSize
-            10000,  // allocationUnit
-            100,    // maxBlobsPerUnit
-            10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            Max(),   // maxIORequestsInFlight
+            100,     // reassignChannelsPercentageThreshold
+            100,     // reassignFreshChannelsPercentageThreshold
+            reassignMixedChannelsPercentageThreshold,   // reassignMixedChannelsPercentageThreshold
+            false,   // reassignSystemChannelsImmediately
+            0,       // lastCommitId
+            mixedChannelCount + mergedChannelCount + DataChannelStart +
+                1,   // channelCount
+            0,       // mixedIndexCacheSize
+            10000,   // allocationUnit
+            100,     // maxBlobsPerUnit
+            10,      // maxBlobsPerRange,
+            1        // compactionRangeCountPerRun
         );
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
@@ -1449,7 +1421,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Log));
         cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Index));
         for (ui32 i = 0; i < mergedChannelCount; ++i) {
-            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
+            cps->Add()->SetDataKind(
+                static_cast<ui32>(EChannelDataKind::Merged));
         }
         for (ui32 i = 0; i < mixedChannelCount; ++i) {
             cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Mixed));
@@ -1458,38 +1431,37 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         TPartitionState state(
             meta,
-            0,      // generation
+            0,   // generation
             BuildDefaultCompactionPolicy(5),
-            0,      // compactionScoreHistorySize
-            0,      // cleanupScoreHistorySize
+            0,   // compactionScoreHistorySize
+            0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            Max(),  // maxIORequestsInFlight
-            100,    // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            100,    // reassignMixedChannelsPercentageThreshold
-            true,   // reassignSystemChannelsImmediately
-            0,      // lastCommitId
-            mixedChannelCount + mergedChannelCount + DataChannelStart + 1, // channelCount
-            0,      // mixedIndexCacheSize
-            10000,  // allocationUnit
-            100,    // maxBlobsPerUnit
-            10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            Max(),   // maxIORequestsInFlight
+            100,     // reassignChannelsPercentageThreshold
+            100,     // reassignFreshChannelsPercentageThreshold
+            100,     // reassignMixedChannelsPercentageThreshold
+            true,    // reassignSystemChannelsImmediately
+            0,       // lastCommitId
+            mixedChannelCount + mergedChannelCount + DataChannelStart +
+                1,   // channelCount
+            0,       // mixedIndexCacheSize
+            10000,   // allocationUnit
+            100,     // maxBlobsPerUnit
+            10,      // maxBlobsPerRange,
+            1        // compactionRangeCountPerRun
         );
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
 
         {
             state.UpdatePermissions(
-                1, // Log
+                1,   // Log
                 EChannelPermission::SystemWritesAllowed);
 
             const auto channelsToReassign = state.GetChannelsToReassign();
             UNIT_ASSERT_VALUES_EQUAL(1, channelsToReassign.size());
-            UNIT_ASSERT_VALUES_EQUAL(
-                1,
-                channelsToReassign[0]);
+            UNIT_ASSERT_VALUES_EQUAL(1, channelsToReassign[0]);
         }
 
         {
@@ -1519,7 +1491,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Log));
         cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Index));
         for (ui32 i = 0; i < mergedChannelCount; ++i) {
-            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
+            cps->Add()->SetDataKind(
+                static_cast<ui32>(EChannelDataKind::Merged));
         }
         for (ui32 i = 0; i < mixedChannelCount; ++i) {
             cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Mixed));
@@ -1530,24 +1503,25 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         TPartitionState state(
             meta,
-            0,      // generation
+            0,   // generation
             BuildDefaultCompactionPolicy(5),
-            0,      // compactionScoreHistorySize
-            0,      // cleanupScoreHistorySize
+            0,   // compactionScoreHistorySize
+            0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            Max(),  // maxIORequestsInFlight
-            100,                                      // reassignChannelsPercentageThreshold
-            reassignFreshChannelsPercentageThreshold, // reassignFreshChannelsPercentageThreshold
-            100,                                      // reassignMixedChannelsPercentageThreshold
-            false,                                    // reassignSystemChannelsImmediately
-            0,      // lastCommitId
-            mixedChannelCount + mergedChannelCount + DataChannelStart + freshChannelCount, // channelCount
-            0,      // mixedIndexCacheSize
-            10000,  // allocationUnit
-            100,    // maxBlobsPerUnit
-            10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            Max(),   // maxIORequestsInFlight
+            100,     // reassignChannelsPercentageThreshold
+            reassignFreshChannelsPercentageThreshold,   // reassignFreshChannelsPercentageThreshold
+            100,     // reassignMixedChannelsPercentageThreshold
+            false,   // reassignSystemChannelsImmediately
+            0,       // lastCommitId
+            mixedChannelCount + mergedChannelCount + DataChannelStart +
+                freshChannelCount,   // channelCount
+            0,                       // mixedIndexCacheSize
+            10000,                   // allocationUnit
+            100,                     // maxBlobsPerUnit
+            10,                      // maxBlobsPerRange,
+            1                        // compactionRangeCountPerRun
         );
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
@@ -1594,6 +1568,6 @@ inline void Out<NCloud::NBlockStore::NStorage::NPartition::TMixedBlock>(
     IOutputStream& out,
     const NCloud::NBlockStore::NStorage::NPartition::TMixedBlock& b)
 {
-    out << "[" << b.BlockIndex << ", " << b.CommitId << ", "
-        << b.BlobId << ", " << b.BlobOffset << "]";
+    out << "[" << b.BlockIndex << ", " << b.CommitId << ", " << b.BlobId << ", "
+        << b.BlobOffset << "]";
 }

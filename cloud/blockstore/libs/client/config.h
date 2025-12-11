@@ -18,8 +18,7 @@ namespace NCloud::NBlockStore::NClient {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TClientAppConfig
-    : public IDumpable
+class TClientAppConfig: public IDumpable
 {
 private:
     const NProto::TClientAppConfig AppConfig;

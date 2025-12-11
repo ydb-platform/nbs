@@ -67,14 +67,14 @@ TBackpressureFeaturesConfig DefaultBPConfig()
 {
     return {
         {
-            30,     // compaction score limit
-            10,     // compaction score threshold
-            10,     // compaction score feature max value
+            30,   // compaction score limit
+            10,   // compaction score threshold
+            10,   // compaction score feature max value
         },
         {
-            1600_KB,// fresh byte count limit
-            400_KB, // fresh byte count threshold
-            10,     // fresh byte count feature max value
+            1600_KB,   // fresh byte count limit
+            400_KB,    // fresh byte count threshold
+            10,        // fresh byte count feature max value
         },
         {
             8_MB,   // cleanup queue size limit
@@ -103,8 +103,7 @@ TIndexCachingConfig DefaultIndexCachingConfig()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TNoBackpressurePolicy
-    : ICompactionPolicy
+struct TNoBackpressurePolicy: ICompactionPolicy
 {
     TCompactionScore CalculateScore(const TRangeStat& stat) const override
     {
@@ -119,8 +118,7 @@ struct TNoBackpressurePolicy
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFreshBlockVisitor final
-    : public IFreshBlockVisitor
+class TFreshBlockVisitor final: public IFreshBlockVisitor
 {
     using TBlockMap = TMap<TBlock, TString, TBlockCompare>;
 
@@ -142,8 +140,7 @@ public:
         for (const auto& kv: Blocks) {
             out << "BlockIndex: " << kv.first.BlockIndex
                 << ", MinCommitId: " << kv.first.MinCommitId
-                << ", MaxCommitId: " << kv.first.MaxCommitId
-                << Endl;
+                << ", MaxCommitId: " << kv.first.MaxCommitId << Endl;
         }
     }
 
@@ -158,7 +155,7 @@ public:
 
     TString GetBlockContent(ui32 blockIndex, ui64 commitId) const
     {
-        auto it = Blocks.find(TBlockKey{ blockIndex, commitId });
+        auto it = Blocks.find(TBlockKey{blockIndex, commitId});
         if (it != Blocks.end()) {
             return it->second;
         }
@@ -176,8 +173,7 @@ struct TBlobRef
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMergedBlockVisitor final
-    : public IMergedBlockVisitor
+class TMergedBlockVisitor final: public IMergedBlockVisitor
 {
     using TBlockMap = TMap<TBlock, TBlobRef, TBlockCompare>;
 
@@ -193,9 +189,8 @@ public:
         TBlockMap::iterator it;
         bool inserted;
 
-        std::tie(it, inserted) = Blocks.emplace(
-            block,
-            TBlobRef{ blobId, blobOffset });
+        std::tie(it, inserted) =
+            Blocks.emplace(block, TBlobRef{blobId, blobOffset});
         UNIT_ASSERT(inserted);
     }
 
@@ -204,8 +199,7 @@ public:
         for (const auto& kv: Blocks) {
             out << "BlockIndex: " << kv.first.BlockIndex
                 << ", MinCommitId: " << kv.first.MinCommitId
-                << ", MaxCommitId: " << kv.first.MaxCommitId
-                << Endl;
+                << ", MaxCommitId: " << kv.first.MaxCommitId << Endl;
         }
     }
 
@@ -220,7 +214,7 @@ public:
 
     TBlobRef GetBlockContent(ui32 blockIndex, ui64 commitId) const
     {
-        auto it = Blocks.find(TBlockKey{ blockIndex, commitId });
+        auto it = Blocks.find(TBlockKey{blockIndex, commitId});
         if (it != Blocks.end()) {
             return it->second;
         }
@@ -242,15 +236,14 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultConfig(),
             TestTabletId,
             0,
-            5,  // channelCount
+            5,   // channelCount
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
             BuildDefaultCompactionPolicy(5),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
+            DefaultIndexCachingConfig());
 
         ui64 commitId = state.GenerateCommitId();
         {
@@ -267,13 +260,19 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             state.FindFreshBlocks(visitor);
 
             auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId, InvalidCommitId, false),
-                TBlock(2, commitId, InvalidCommitId, false),
-            }));
+            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(
+                result,
+                TVector<TBlock>({
+                    TBlock(1, commitId, InvalidCommitId, false),
+                    TBlock(2, commitId, InvalidCommitId, false),
+                }));
 
-            UNIT_ASSERT_EQUAL(visitor.GetBlockContent(1, commitId), GetBlockContent(1));
-            UNIT_ASSERT_EQUAL(visitor.GetBlockContent(2, commitId), GetBlockContent(2));
+            UNIT_ASSERT_EQUAL(
+                visitor.GetBlockContent(1, commitId),
+                GetBlockContent(1));
+            UNIT_ASSERT_EQUAL(
+                visitor.GetBlockContent(2, commitId),
+                GetBlockContent(2));
         };
     }
 
@@ -283,23 +282,20 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultConfig(),
             TestTabletId,
             0,
-            5,  // channelCount
+            5,   // channelCount
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
             BuildDefaultCompactionPolicy(5),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
+            DefaultIndexCachingConfig());
 
         TTestExecutor executor;
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.InitSchema();
-        });
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.InitIndex(db, TBlockRange32::WithLength(0, 1024));
-        });
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { state.InitIndex(db, TBlockRange32::WithLength(0, 1024)); });
 
         ui64 commitId1 = state.GenerateCommitId();
         {
@@ -314,12 +310,16 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
         };
 
         ui64 commitId2 = state.GenerateCommitId();
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.AddFreshBlockUpdate(
-                db, {commitId2, TBlockRange32::MakeOneBlock(1)});
-            state.AddFreshBlockUpdate(
-                db, {commitId2, TBlockRange32::MakeOneBlock(2)});
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                state.AddFreshBlockUpdate(
+                    db,
+                    {commitId2, TBlockRange32::MakeOneBlock(1)});
+                state.AddFreshBlockUpdate(
+                    db,
+                    {commitId2, TBlockRange32::MakeOneBlock(2)});
+            });
 
         {
             auto block1 = TBlock(1, commitId2, InvalidCommitId, false);
@@ -340,13 +340,19 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                 visitor);
 
             auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId1, InvalidCommitId, false),
-                TBlock(2, commitId1, InvalidCommitId, false),
-            }));
+            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(
+                result,
+                TVector<TBlock>({
+                    TBlock(1, commitId1, InvalidCommitId, false),
+                    TBlock(2, commitId1, InvalidCommitId, false),
+                }));
 
-            UNIT_ASSERT_EQUAL(visitor.GetBlockContent(1, commitId1), GetBlockContent(1));
-            UNIT_ASSERT_EQUAL(visitor.GetBlockContent(2, commitId1), GetBlockContent(2));
+            UNIT_ASSERT_EQUAL(
+                visitor.GetBlockContent(1, commitId1),
+                GetBlockContent(1));
+            UNIT_ASSERT_EQUAL(
+                visitor.GetBlockContent(2, commitId1),
+                GetBlockContent(2));
         };
 
         {
@@ -354,15 +360,21 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             state.FindFreshBlocks(visitor);
 
             auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId2, InvalidCommitId, false),
-                TBlock(1, commitId1, commitId2, false),
-                TBlock(2, commitId2, InvalidCommitId, false),
-                TBlock(2, commitId1, commitId2, false),
-            }));
+            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(
+                result,
+                TVector<TBlock>({
+                    TBlock(1, commitId2, InvalidCommitId, false),
+                    TBlock(1, commitId1, commitId2, false),
+                    TBlock(2, commitId2, InvalidCommitId, false),
+                    TBlock(2, commitId1, commitId2, false),
+                }));
 
-            UNIT_ASSERT_EQUAL(visitor.GetBlockContent(1, commitId2), GetBlockContent(11));
-            UNIT_ASSERT_EQUAL(visitor.GetBlockContent(2, commitId2), GetBlockContent(22));
+            UNIT_ASSERT_EQUAL(
+                visitor.GetBlockContent(1, commitId2),
+                GetBlockContent(11));
+            UNIT_ASSERT_EQUAL(
+                visitor.GetBlockContent(2, commitId2),
+                GetBlockContent(22));
         };
     }
 
@@ -372,15 +384,14 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultConfig(),
             TestTabletId,
             0,
-            5,  // channelCount
+            5,   // channelCount
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
             BuildDefaultCompactionPolicy(5),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
+            DefaultIndexCachingConfig());
 
         ui64 commitId1 = state.GenerateCommitId();
         {
@@ -425,13 +436,19 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             state.FindFreshBlocks(visitor);
 
             auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId2, InvalidCommitId, false),
-                TBlock(2, commitId2, InvalidCommitId, false),
-            }));
+            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(
+                result,
+                TVector<TBlock>({
+                    TBlock(1, commitId2, InvalidCommitId, false),
+                    TBlock(2, commitId2, InvalidCommitId, false),
+                }));
 
-            UNIT_ASSERT_EQUAL(visitor.GetBlockContent(1, commitId2), GetBlockContent(11));
-            UNIT_ASSERT_EQUAL(visitor.GetBlockContent(2, commitId2), GetBlockContent(22));
+            UNIT_ASSERT_EQUAL(
+                visitor.GetBlockContent(1, commitId2),
+                GetBlockContent(11));
+            UNIT_ASSERT_EQUAL(
+                visitor.GetBlockContent(2, commitId2),
+                GetBlockContent(22));
         };
     }
 
@@ -441,57 +458,60 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultConfig(),
             TestTabletId,
             0,
-            5,  // channelCount
+            5,   // channelCount
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
             BuildDefaultCompactionPolicy(5),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
+            DefaultIndexCachingConfig());
 
         TTestExecutor executor;
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.InitSchema();
-        });
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.InitIndex(db, TBlockRange32::WithLength(0, 1024));
-        });
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { state.InitIndex(db, TBlockRange32::WithLength(0, 1024)); });
 
         TBlockRange32 blockRange;
         TPartialBlobId blobId;
 
         ui64 commitId = state.GenerateCommitId();
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            TVector<TBlock> blocks = {
-                TBlock(1, commitId, InvalidCommitId, false),
-                TBlock(2, commitId, InvalidCommitId, false),
-            };
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                TVector<TBlock> blocks = {
+                    TBlock(1, commitId, InvalidCommitId, false),
+                    TBlock(2, commitId, InvalidCommitId, false),
+                };
 
-            blockRange = TBlockRange32::MakeClosedInterval(
-                blocks.front().BlockIndex,
-                blocks.back().BlockIndex);
+                blockRange = TBlockRange32::MakeClosedInterval(
+                    blocks.front().BlockIndex,
+                    blocks.back().BlockIndex);
 
-            blobId = state.GenerateBlobId(
-                EChannelDataKind::Merged,
-                EChannelPermission::UserWritesAllowed,
-                commitId,
-                blockRange.Size() * DefaultBlockSize);
+                blobId = state.GenerateBlobId(
+                    EChannelDataKind::Merged,
+                    EChannelPermission::UserWritesAllowed,
+                    commitId,
+                    blockRange.Size() * DefaultBlockSize);
 
-            state.WriteBlob(db, blobId, blocks);
-        });
+                state.WriteBlob(db, blobId, blocks);
+            });
 
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TMergedBlockVisitor visitor;
-            UNIT_ASSERT(state.FindMergedBlocks(db, blockRange, visitor));
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                TMergedBlockVisitor visitor;
+                UNIT_ASSERT(state.FindMergedBlocks(db, blockRange, visitor));
 
-            auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId, InvalidCommitId, false),
-                TBlock(2, commitId, InvalidCommitId, false),
-            }));
-        });
+                auto result = visitor.GetBlocks();
+                ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(
+                    result,
+                    TVector<TBlock>({
+                        TBlock(1, commitId, InvalidCommitId, false),
+                        TBlock(2, commitId, InvalidCommitId, false),
+                    }));
+            });
     }
 
     Y_UNIT_TEST(ShouldStoreMergedBlocksInMixedIndex)
@@ -500,63 +520,65 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultConfig(),
             TestTabletId,
             0,
-            5,  // channelCount
+            5,   // channelCount
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
             BuildDefaultCompactionPolicy(5),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            {1024, 0, 0}
-        );
+            {1024, 0, 0});
 
         TTestExecutor executor;
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.InitSchema();
-        });
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.InitIndex(db, TBlockRange32::WithLength(0, 1024));
-        });
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { state.InitIndex(db, TBlockRange32::WithLength(0, 1024)); });
 
         TBlockRange32 blockRange;
         TPartialBlobId blobId;
 
         ui64 commitId = state.GenerateCommitId();
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.UpdateIndexStructures(
-                db,
-                TInstant::Seconds(1),
-                TBlockRange32::WithLength(0, 100)
-            );
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                state.UpdateIndexStructures(
+                    db,
+                    TInstant::Seconds(1),
+                    TBlockRange32::WithLength(0, 100));
 
-            TVector<TBlock> blocks = {
-                TBlock(1, commitId, InvalidCommitId, false),
-                TBlock(2, commitId, InvalidCommitId, false),
-            };
+                TVector<TBlock> blocks = {
+                    TBlock(1, commitId, InvalidCommitId, false),
+                    TBlock(2, commitId, InvalidCommitId, false),
+                };
 
-            blockRange = TBlockRange32::MakeClosedInterval(
-                blocks.front().BlockIndex,
-                blocks.back().BlockIndex);
+                blockRange = TBlockRange32::MakeClosedInterval(
+                    blocks.front().BlockIndex,
+                    blocks.back().BlockIndex);
 
-            blobId = state.GenerateBlobId(
-                EChannelDataKind::Merged,
-                EChannelPermission::UserWritesAllowed,
-                commitId,
-                blockRange.Size() * DefaultBlockSize);
+                blobId = state.GenerateBlobId(
+                    EChannelDataKind::Merged,
+                    EChannelPermission::UserWritesAllowed,
+                    commitId,
+                    blockRange.Size() * DefaultBlockSize);
 
-            state.WriteBlob(db, blobId, blocks);
-        });
+                state.WriteBlob(db, blobId, blocks);
+            });
 
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TMergedBlockVisitor visitor;
-            UNIT_ASSERT(state.FindMergedBlocks(db, blockRange, visitor));
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                TMergedBlockVisitor visitor;
+                UNIT_ASSERT(state.FindMergedBlocks(db, blockRange, visitor));
 
-            auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId, InvalidCommitId, false),
-                TBlock(2, commitId, InvalidCommitId, false),
-            }));
-        });
+                auto result = visitor.GetBlocks();
+                ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(
+                    result,
+                    TVector<TBlock>({
+                        TBlock(1, commitId, InvalidCommitId, false),
+                        TBlock(2, commitId, InvalidCommitId, false),
+                    }));
+            });
     }
 
     // TODO: test with mixed index
@@ -566,133 +588,160 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultConfig(),
             TestTabletId,
             0,
-            5,  // channelCount
+            5,   // channelCount
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
             BuildDefaultCompactionPolicy(5),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
+            DefaultIndexCachingConfig());
 
         TTestExecutor executor;
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.InitSchema();
-        });
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.InitIndex(db, TBlockRange32::WithLength(0, 1024));
-        });
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { state.InitIndex(db, TBlockRange32::WithLength(0, 1024)); });
 
         auto blockRange1 = TBlockRange32::MakeClosedInterval(1, 3);
         TPartialBlobId blobId1;
 
         ui64 commitId1 = state.GenerateCommitId();
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            auto blocks = Blocks(blockRange1, commitId1);
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                auto blocks = Blocks(blockRange1, commitId1);
 
-            blobId1 = state.GenerateBlobId(
-                EChannelDataKind::Merged,
-                EChannelPermission::UserWritesAllowed,
-                commitId1,
-                blockRange1.Size() * DefaultBlockSize);
+                blobId1 = state.GenerateBlobId(
+                    EChannelDataKind::Merged,
+                    EChannelPermission::UserWritesAllowed,
+                    commitId1,
+                    blockRange1.Size() * DefaultBlockSize);
 
-            state.WriteBlob(db, blobId1, blocks);
-        });
+                state.WriteBlob(db, blobId1, blocks);
+            });
 
         auto blockRange2 = TBlockRange32::MakeClosedInterval(1, 2);
         TPartialBlobId blobId2;
 
         ui64 commitId2 = state.GenerateCommitId();
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.MarkMergedBlocksDeleted(db, blockRange2, commitId2);
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                state.MarkMergedBlocksDeleted(db, blockRange2, commitId2);
 
-            auto blocks = Blocks(blockRange2, commitId2);
+                auto blocks = Blocks(blockRange2, commitId2);
 
-            blobId2 = state.GenerateBlobId(
-                EChannelDataKind::Merged,
-                EChannelPermission::UserWritesAllowed,
-                commitId2,
-                blockRange2.Size() * DefaultBlockSize);
+                blobId2 = state.GenerateBlobId(
+                    EChannelDataKind::Merged,
+                    EChannelPermission::UserWritesAllowed,
+                    commitId2,
+                    blockRange2.Size() * DefaultBlockSize);
 
-            state.WriteBlob(db, blobId2, blocks);
-        });
+                state.WriteBlob(db, blobId2, blocks);
+            });
 
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TMergedBlockVisitor visitor;
-            UNIT_ASSERT(state.FindMergedBlocks(db, commitId1, blockRange1, visitor));
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                TMergedBlockVisitor visitor;
+                UNIT_ASSERT(
+                    state
+                        .FindMergedBlocks(db, commitId1, blockRange1, visitor));
 
-            auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId1, InvalidCommitId, false),
-                TBlock(2, commitId1, InvalidCommitId, false),
-                TBlock(3, commitId1, InvalidCommitId, false),
-            }));
-        });
+                auto result = visitor.GetBlocks();
+                ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(
+                    result,
+                    TVector<TBlock>({
+                        TBlock(1, commitId1, InvalidCommitId, false),
+                        TBlock(2, commitId1, InvalidCommitId, false),
+                        TBlock(3, commitId1, InvalidCommitId, false),
+                    }));
+            });
 
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TMergedBlockVisitor visitor;
-            UNIT_ASSERT(state.FindMergedBlocks(db, blockRange1, visitor));
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                TMergedBlockVisitor visitor;
+                UNIT_ASSERT(state.FindMergedBlocks(db, blockRange1, visitor));
 
-            auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId2, InvalidCommitId, false),
-                TBlock(1, commitId1, commitId2, false),
-                TBlock(2, commitId2, InvalidCommitId, false),
-                TBlock(2, commitId1, commitId2, false),
-                TBlock(3, commitId1, InvalidCommitId, false),
-            }));
-        });
+                auto result = visitor.GetBlocks();
+                ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(
+                    result,
+                    TVector<TBlock>({
+                        TBlock(1, commitId2, InvalidCommitId, false),
+                        TBlock(1, commitId1, commitId2, false),
+                        TBlock(2, commitId2, InvalidCommitId, false),
+                        TBlock(2, commitId1, commitId2, false),
+                        TBlock(3, commitId1, InvalidCommitId, false),
+                    }));
+            });
 
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TVector<TBlock> blocks1 = {
-                TBlock(1, commitId1, InvalidCommitId, false),
-                TBlock(2, commitId1, InvalidCommitId, false),
-                TBlock(3, commitId1, InvalidCommitId, false),
-            };
-            state.UpdateBlob(db, blobId1, true, blocks1);
-            TVector<TBlock> blocks2 = {
-                TBlock(1, commitId2, InvalidCommitId, false),
-                TBlock(2, commitId2, InvalidCommitId, false),
-            };
-            state.UpdateBlob(db, blobId2, true, blocks2);
-        });
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                TVector<TBlock> blocks1 = {
+                    TBlock(1, commitId1, InvalidCommitId, false),
+                    TBlock(2, commitId1, InvalidCommitId, false),
+                    TBlock(3, commitId1, InvalidCommitId, false),
+                };
+                state.UpdateBlob(db, blobId1, true, blocks1);
+                TVector<TBlock> blocks2 = {
+                    TBlock(1, commitId2, InvalidCommitId, false),
+                    TBlock(2, commitId2, InvalidCommitId, false),
+                };
+                state.UpdateBlob(db, blobId2, true, blocks2);
+            });
 
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TMergedBlockVisitor visitor;
-            UNIT_ASSERT(state.FindMergedBlocks(db, commitId1, blockRange1, visitor));
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                TMergedBlockVisitor visitor;
+                UNIT_ASSERT(
+                    state
+                        .FindMergedBlocks(db, commitId1, blockRange1, visitor));
 
-            auto result = visitor.GetBlocks();
-            // block 3 commit id was rebased to commitId2 => we should get an
-            // empty block list here
-            UNIT_ASSERT_VALUES_EQUAL(result.size(), 0);
-        });
+                auto result = visitor.GetBlocks();
+                // block 3 commit id was rebased to commitId2 => we should get
+                // an empty block list here
+                UNIT_ASSERT_VALUES_EQUAL(result.size(), 0);
+            });
 
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TMergedBlockVisitor visitor;
-            UNIT_ASSERT(state.FindMergedBlocks(db, commitId2, blockRange1, visitor));
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                TMergedBlockVisitor visitor;
+                UNIT_ASSERT(
+                    state
+                        .FindMergedBlocks(db, commitId2, blockRange1, visitor));
 
-            auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId2, InvalidCommitId, false),
-                TBlock(2, commitId2, InvalidCommitId, false),
-                TBlock(3, commitId2, InvalidCommitId, false),
-            }));
-        });
+                auto result = visitor.GetBlocks();
+                ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(
+                    result,
+                    TVector<TBlock>({
+                        TBlock(1, commitId2, InvalidCommitId, false),
+                        TBlock(2, commitId2, InvalidCommitId, false),
+                        TBlock(3, commitId2, InvalidCommitId, false),
+                    }));
+            });
 
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TMergedBlockVisitor visitor;
-            UNIT_ASSERT(state.FindMergedBlocks(db, blockRange1, visitor));
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                TMergedBlockVisitor visitor;
+                UNIT_ASSERT(state.FindMergedBlocks(db, blockRange1, visitor));
 
-            auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId2, InvalidCommitId, false),
-                TBlock(1, 0, 0, false),
-                TBlock(2, commitId2, InvalidCommitId, false),
-                TBlock(2, 0, 0, false),
-                TBlock(3, commitId2, InvalidCommitId, false),
-            }));
-        });
+                auto result = visitor.GetBlocks();
+                ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(
+                    result,
+                    TVector<TBlock>({
+                        TBlock(1, commitId2, InvalidCommitId, false),
+                        TBlock(1, 0, 0, false),
+                        TBlock(2, commitId2, InvalidCommitId, false),
+                        TBlock(2, 0, 0, false),
+                        TBlock(3, commitId2, InvalidCommitId, false),
+                    }));
+            });
     }
 
     // TODO: test with mixed index
@@ -702,90 +751,99 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultConfig(),
             TestTabletId,
             0,
-            5,  // channelCount
+            5,   // channelCount
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
             BuildDefaultCompactionPolicy(5),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
+            DefaultIndexCachingConfig());
 
         TTestExecutor executor;
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.InitSchema();
-        });
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.InitIndex(db, TBlockRange32::WithLength(0, 1024));
-        });
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { state.InitIndex(db, TBlockRange32::WithLength(0, 1024)); });
 
         TBlockRange32 blockRange1;
         TPartialBlobId blobId1;
 
         ui64 commitId1 = state.GenerateCommitId();
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            TVector<TBlock> blocks = {
-                TBlock(1, commitId1, InvalidCommitId, false),
-                TBlock(2, commitId1, InvalidCommitId, false),
-            };
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                TVector<TBlock> blocks = {
+                    TBlock(1, commitId1, InvalidCommitId, false),
+                    TBlock(2, commitId1, InvalidCommitId, false),
+                };
 
-            blockRange1 = TBlockRange32::MakeClosedInterval(
-                blocks.front().BlockIndex,
-                blocks.back().BlockIndex);
+                blockRange1 = TBlockRange32::MakeClosedInterval(
+                    blocks.front().BlockIndex,
+                    blocks.back().BlockIndex);
 
-            blobId1 = state.GenerateBlobId(
-                EChannelDataKind::Merged,
-                EChannelPermission::UserWritesAllowed,
-                commitId1,
-                blockRange1.Size() * DefaultBlockSize);
+                blobId1 = state.GenerateBlobId(
+                    EChannelDataKind::Merged,
+                    EChannelPermission::UserWritesAllowed,
+                    commitId1,
+                    blockRange1.Size() * DefaultBlockSize);
 
-            state.WriteBlob(db, blobId1, blocks);
-        });
+                state.WriteBlob(db, blobId1, blocks);
+            });
 
         TBlockRange32 blockRange2;
         TPartialBlobId blobId2;
 
         ui64 commitId2 = state.GenerateCommitId();
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.DeleteBlob(db, blobId1);
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                state.DeleteBlob(db, blobId1);
 
-            TVector<TBlock> blocks = {
-                TBlock(1, commitId2, InvalidCommitId, false),
-                TBlock(2, commitId2, InvalidCommitId, false),
-            };
+                TVector<TBlock> blocks = {
+                    TBlock(1, commitId2, InvalidCommitId, false),
+                    TBlock(2, commitId2, InvalidCommitId, false),
+                };
 
-            blockRange2 = TBlockRange32::MakeClosedInterval(
-                blocks.front().BlockIndex,
-                blocks.back().BlockIndex);
+                blockRange2 = TBlockRange32::MakeClosedInterval(
+                    blocks.front().BlockIndex,
+                    blocks.back().BlockIndex);
 
-            blobId2 = state.GenerateBlobId(
-                EChannelDataKind::Merged,
-                EChannelPermission::UserWritesAllowed,
-                commitId2,
-                blockRange2.Size() * DefaultBlockSize);
+                blobId2 = state.GenerateBlobId(
+                    EChannelDataKind::Merged,
+                    EChannelPermission::UserWritesAllowed,
+                    commitId2,
+                    blockRange2.Size() * DefaultBlockSize);
 
-            state.WriteBlob(db, blobId2, blocks);
-        });
+                state.WriteBlob(db, blobId2, blocks);
+            });
 
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TMergedBlockVisitor visitor;
-            UNIT_ASSERT(state.FindMergedBlocks(db, commitId1, blockRange1, visitor));
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                TMergedBlockVisitor visitor;
+                UNIT_ASSERT(
+                    state
+                        .FindMergedBlocks(db, commitId1, blockRange1, visitor));
 
-            auto result = visitor.GetBlocks();
-            UNIT_ASSERT(!result);
-        });
+                auto result = visitor.GetBlocks();
+                UNIT_ASSERT(!result);
+            });
 
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TMergedBlockVisitor visitor;
-            UNIT_ASSERT(state.FindMergedBlocks(db, blockRange2, visitor));
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                TMergedBlockVisitor visitor;
+                UNIT_ASSERT(state.FindMergedBlocks(db, blockRange2, visitor));
 
-            auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId2, InvalidCommitId, false),
-                TBlock(2, commitId2, InvalidCommitId, false),
-            }));
-        });
+                auto result = visitor.GetBlocks();
+                ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(
+                    result,
+                    TVector<TBlock>({
+                        TBlock(1, commitId2, InvalidCommitId, false),
+                        TBlock(2, commitId2, InvalidCommitId, false),
+                    }));
+            });
     }
 
     Y_UNIT_TEST(UpdatePermissions)
@@ -802,8 +860,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                 BuildDefaultCompactionPolicy(5),
                 DefaultBPConfig(),
                 DefaultFreeSpaceConfig(),
-                DefaultIndexCachingConfig()
-            );
+                DefaultIndexCachingConfig());
 
             UNIT_ASSERT(state.IsCompactionAllowed());
 
@@ -811,34 +868,30 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             const double baseScore = 1;
             const double maxScore = 100;
 
-#define CHECK_DISK_SPACE_SCORE(expected)                                \
-            UNIT_ASSERT_DOUBLES_EQUAL(                                  \
-                expected,                                               \
-                state.CalculateCurrentBackpressure().DiskSpaceScore,    \
-                1e-5                                                    \
-            )                                                           \
-// CHECK_DISK_SPACE_SCORE
+#define CHECK_DISK_SPACE_SCORE(expected)                     \
+    UNIT_ASSERT_DOUBLES_EQUAL(                               \
+        expected,                                            \
+        state.CalculateCurrentBackpressure().DiskSpaceScore, \
+        1e-5)                                                \
+    // CHECK_DISK_SPACE_SCORE
 
             while (channelId < 3) {
                 UNIT_ASSERT(!state.UpdatePermissions(
                     channelId,
-                    EChannelPermission::SystemWritesAllowed
-                    | EChannelPermission::UserWritesAllowed
-                ));
+                    EChannelPermission::SystemWritesAllowed |
+                        EChannelPermission::UserWritesAllowed));
                 UNIT_ASSERT(state.IsCompactionAllowed());
                 CHECK_DISK_SPACE_SCORE(baseScore);
 
-                UNIT_ASSERT(
-                    !state.UpdatePermissions(
-                        channelId, EChannelPermission::SystemWritesAllowed
-                    )
-                );
+                UNIT_ASSERT(!state.UpdatePermissions(
+                    channelId,
+                    EChannelPermission::SystemWritesAllowed));
                 UNIT_ASSERT(state.IsCompactionAllowed());
                 CHECK_DISK_SPACE_SCORE(baseScore);
 
                 UNIT_ASSERT(state.UpdatePermissions(
-                    channelId, EChannelPermission::UserWritesAllowed
-                ));
+                    channelId,
+                    EChannelPermission::UserWritesAllowed));
                 UNIT_ASSERT(!state.IsCompactionAllowed());
                 CHECK_DISK_SPACE_SCORE(maxScore);
 
@@ -848,9 +901,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
 
                 UNIT_ASSERT(state.UpdatePermissions(
                     channelId,
-                    EChannelPermission::SystemWritesAllowed
-                    | EChannelPermission::UserWritesAllowed
-                ));
+                    EChannelPermission::SystemWritesAllowed |
+                        EChannelPermission::UserWritesAllowed));
                 CHECK_DISK_SPACE_SCORE(baseScore);
 
                 ++channelId;
@@ -869,30 +921,29 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
 
                 UNIT_ASSERT(!state.UpdatePermissions(
                     channelId,
-                    EChannelPermission::SystemWritesAllowed
-                    | EChannelPermission::UserWritesAllowed
-                ));
+                    EChannelPermission::SystemWritesAllowed |
+                        EChannelPermission::UserWritesAllowed));
                 UNIT_ASSERT(state.IsCompactionAllowed());
                 CHECK_DISK_SPACE_SCORE(currentScore);
 
                 UNIT_ASSERT(state.UpdatePermissions(
-                    channelId, EChannelPermission::SystemWritesAllowed
-                ));
+                    channelId,
+                    EChannelPermission::SystemWritesAllowed));
                 UNIT_ASSERT(state.IsCompactionAllowed());
                 CHECK_DISK_SPACE_SCORE(nextScore);
 
                 UNIT_ASSERT(state.UpdatePermissions(
-                    channelId, EChannelPermission::UserWritesAllowed
-                ));
+                    channelId,
+                    EChannelPermission::UserWritesAllowed));
                 UNIT_ASSERT_VALUES_EQUAL(
-                    channelId < 2 + channelCount, state.IsCompactionAllowed()
-                );
+                    channelId < 2 + channelCount,
+                    state.IsCompactionAllowed());
                 CHECK_DISK_SPACE_SCORE(currentScore);
 
                 UNIT_ASSERT(state.UpdatePermissions(channelId, {}));
                 UNIT_ASSERT_VALUES_EQUAL(
-                    channelId < 2 + channelCount, state.IsCompactionAllowed()
-                );
+                    channelId < 2 + channelCount,
+                    state.IsCompactionAllowed());
                 CHECK_DISK_SPACE_SCORE(nextScore);
 
                 ++channelId;
@@ -908,41 +959,35 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultConfig(1024, DefaultBlockSize, 2),
             TestTabletId,
             0,
-            6,  // channelCount
+            6,   // channelCount
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
             BuildDefaultCompactionPolicy(5),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
+            DefaultIndexCachingConfig());
 
         UNIT_ASSERT(
-            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
+            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed));
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
 
         state.UpdatePermissions(
             DataChannelStart,
-            EChannelPermission::SystemWritesAllowed
-        );
+            EChannelPermission::SystemWritesAllowed);
 
         UNIT_ASSERT(
-            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
+            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed));
         auto channelsToReassign = state.GetChannelsToReassign();
         UNIT_ASSERT_VALUES_EQUAL(1, channelsToReassign.size());
         UNIT_ASSERT_VALUES_EQUAL(DataChannelStart, channelsToReassign[0]);
 
         state.UpdatePermissions(
             DataChannelStart + 1,
-            EChannelPermission::SystemWritesAllowed
-        );
+            EChannelPermission::SystemWritesAllowed);
 
         UNIT_ASSERT(
-            !state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
+            !state.IsWriteAllowed(EChannelPermission::UserWritesAllowed));
         channelsToReassign = state.GetChannelsToReassign();
         UNIT_ASSERT_VALUES_EQUAL(2, channelsToReassign.size());
         UNIT_ASSERT_VALUES_EQUAL(DataChannelStart, channelsToReassign[0]);
@@ -962,7 +1007,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultConfig(1024, DefaultBlockSize, 96),
             TestTabletId,
             0,
-            100,  // channelCount
+            100,   // channelCount
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
@@ -970,36 +1015,31 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig(),
-            Max(),  // maxIORequestsInFlight
-            10      // reassignChannelsPercentageThreshold
+            Max(),   // maxIORequestsInFlight
+            10       // reassignChannelsPercentageThreshold
         );
 
         UNIT_ASSERT(
-            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
+            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed));
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
 
         for (ui32 i = 0; i < 9; ++i) {
             state.UpdatePermissions(
                 DataChannelStart + i,
-                EChannelPermission::SystemWritesAllowed
-            );
+                EChannelPermission::SystemWritesAllowed);
         }
 
         UNIT_ASSERT(
-            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
+            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed));
         auto channelsToReassign = state.GetChannelsToReassign();
         UNIT_ASSERT_VALUES_EQUAL(0, channelsToReassign.size());
 
         state.UpdatePermissions(
             DataChannelStart + 9,
-            EChannelPermission::SystemWritesAllowed
-        );
+            EChannelPermission::SystemWritesAllowed);
 
         UNIT_ASSERT(
-            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
+            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed));
         channelsToReassign = state.GetChannelsToReassign();
         UNIT_ASSERT_VALUES_EQUAL(10, channelsToReassign.size());
         UNIT_ASSERT_VALUES_EQUAL(DataChannelStart, channelsToReassign[0]);
@@ -1008,24 +1048,18 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
         for (ui32 i = 0; i < 10; ++i) {
             state.UpdatePermissions(
                 DataChannelStart + i,
-                EChannelPermission::UserWritesAllowed
-                    | EChannelPermission::SystemWritesAllowed
-            );
+                EChannelPermission::UserWritesAllowed |
+                    EChannelPermission::SystemWritesAllowed);
         }
 
         UNIT_ASSERT(
-            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
+            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed));
         channelsToReassign = state.GetChannelsToReassign();
         UNIT_ASSERT_VALUES_EQUAL(0, channelsToReassign.size());
 
-        state.UpdatePermissions(
-            0,
-            EChannelPermission::SystemWritesAllowed
-        );
+        state.UpdatePermissions(0, EChannelPermission::SystemWritesAllowed);
         UNIT_ASSERT(
-            !state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
+            !state.IsWriteAllowed(EChannelPermission::UserWritesAllowed));
         channelsToReassign = state.GetChannelsToReassign();
         UNIT_ASSERT_VALUES_EQUAL(1, channelsToReassign.size());
         UNIT_ASSERT_VALUES_EQUAL(0, channelsToReassign[0]);
@@ -1035,7 +1069,9 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
     {
         const size_t maxChannelCount = 3;
 
-        for (size_t channelCount = 1; channelCount <= maxChannelCount; ++channelCount) {
+        for (size_t channelCount = 1; channelCount <= maxChannelCount;
+             ++channelCount)
+        {
             TPartitionState state(
                 DefaultConfig(1024, DefaultBlockSize, channelCount),
                 TestTabletId,
@@ -1047,8 +1083,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                 BuildDefaultCompactionPolicy(5),
                 DefaultBPConfig(),
                 DefaultFreeSpaceConfig(),
-                DefaultIndexCachingConfig()
-            );
+                DefaultIndexCachingConfig());
 
             const double baseScore = 1;
             const double maxScore = 100;
@@ -1060,13 +1095,16 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                     case EChannelDataKind::Log:
                     case EChannelDataKind::Index: {
                         UNIT_ASSERT(!state.UpdateChannelFreeSpaceShare(ch, 0));
-                        UNIT_ASSERT(!state.UpdateChannelFreeSpaceShare(ch, 0.25));
+                        UNIT_ASSERT(
+                            !state.UpdateChannelFreeSpaceShare(ch, 0.25));
                         CHECK_DISK_SPACE_SCORE(baseScore);
 
-                        UNIT_ASSERT(state.UpdateChannelFreeSpaceShare(ch, 0.20));
+                        UNIT_ASSERT(
+                            state.UpdateChannelFreeSpaceShare(ch, 0.20));
                         CHECK_DISK_SPACE_SCORE(2);
 
-                        UNIT_ASSERT(state.UpdateChannelFreeSpaceShare(ch, 0.15));
+                        UNIT_ASSERT(
+                            state.UpdateChannelFreeSpaceShare(ch, 0.15));
                         CHECK_DISK_SPACE_SCORE(maxScore);
 
                         UNIT_ASSERT(!state.UpdateChannelFreeSpaceShare(ch, 0));
@@ -1082,8 +1120,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
 
                         constexpr ui32 FirstDataChannel = 3;
                         CHECK_DISK_SPACE_SCORE(
-                            1 / (1 - 0.5 * (ch - FirstDataChannel + 1) / channelCount)
-                        );
+                            1 / (1 - 0.5 * (ch - FirstDataChannel + 1) /
+                                         channelCount));
                         break;
                     }
 
@@ -1094,7 +1132,9 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                     }
 
                     default: {
-                        Y_ABORT("unsupported kind: %u", static_cast<ui32>(kind));
+                        Y_ABORT(
+                            "unsupported kind: %u",
+                            static_cast<ui32>(kind));
                     }
                 }
             }
@@ -1103,7 +1143,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
 
     Y_UNIT_TEST(ShouldPickProperNextChannel)
     {
-        auto meta = DefaultConfig(1024, DefaultBlockSize, MaxMergedChannelCount);
+        auto meta =
+            DefaultConfig(1024, DefaultBlockSize, MaxMergedChannelCount);
 
         for (auto kind: {EChannelDataKind::Mixed, EChannelDataKind::Merged}) {
             TPartitionState state(
@@ -1117,8 +1158,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                 BuildDefaultCompactionPolicy(5),
                 DefaultBPConfig(),
                 DefaultFreeSpaceConfig(),
-                DefaultIndexCachingConfig()
-            );
+                DefaultIndexCachingConfig());
 
             auto blobId = state.GenerateBlobId(
                 kind,
@@ -1161,8 +1201,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             BuildDefaultCompactionPolicy(5),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
+            DefaultIndexCachingConfig());
 
         const auto perm = EChannelPermission::UserWritesAllowed;
         auto kind = EChannelDataKind::Merged;
@@ -1204,44 +1243,38 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                 meta,
                 TestTabletId,
                 0,
-                6,  // channelCount
+                6,   // channelCount
                 MaxBlobSize,
                 MaxRangesPerBlob,
                 EOptimizationMode::OptimizeForLongRanges,
                 BuildDefaultCompactionPolicy(5),
                 DefaultBPConfig(),
                 DefaultFreeSpaceConfig(),
-                DefaultIndexCachingConfig()
-            );
+                DefaultIndexCachingConfig());
 
             {
                 auto blobId = state.GenerateBlobId(
                     kind,
                     EChannelPermission::UserWritesAllowed,
                     1,
-                    1024
-                );
+                    1024);
                 UNIT_ASSERT_VALUES_EQUAL(
                     ui32(TPartitionSchema::FirstDataChannel),
-                    blobId.Channel()
-                );
+                    blobId.Channel());
                 auto blobId2 = state.GenerateBlobId(
                     kind,
                     EChannelPermission::UserWritesAllowed,
                     1,
-                    1024
-                );
+                    1024);
                 UNIT_ASSERT_VALUES_EQUAL(
                     ui32(TPartitionSchema::FirstDataChannel + 1),
-                    blobId2.Channel()
-                );
+                    blobId2.Channel());
             }
 
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetAlmostFullChannelCount());
             state.UpdateChannelFreeSpaceShare(
                 TPartitionSchema::FirstDataChannel,
-                0.15
-            );
+                0.15);
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetAlmostFullChannelCount());
 
             for (ui32 i = 0; i < 10; ++i) {
@@ -1249,18 +1282,15 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                     kind,
                     EChannelPermission::UserWritesAllowed,
                     1,
-                    1024
-                );
+                    1024);
                 UNIT_ASSERT_VALUES_EQUAL(
                     ui32(TPartitionSchema::FirstDataChannel + 1),
-                    blobId.Channel()
-                );
+                    blobId.Channel());
             }
 
             state.UpdateChannelFreeSpaceShare(
                 TPartitionSchema::FirstDataChannel,
-                0.16
-            );
+                0.16);
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetAlmostFullChannelCount());
 
             ui32 firstChannelSelected = 0;
@@ -1269,28 +1299,25 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                     kind,
                     EChannelPermission::UserWritesAllowed,
                     1,
-                    1024
-                );
+                    1024);
                 if (blobId.Channel() == TPartitionSchema::FirstDataChannel) {
                     ++firstChannelSelected;
                 } else {
                     UNIT_ASSERT_VALUES_EQUAL(
                         ui32(TPartitionSchema::FirstDataChannel + 1),
-                        blobId.Channel()
-                    );
+                        blobId.Channel());
                 }
             }
 
-            UNIT_ASSERT(firstChannelSelected < 150 && firstChannelSelected > 50);
+            UNIT_ASSERT(
+                firstChannelSelected < 150 && firstChannelSelected > 50);
 
             state.UpdateChannelFreeSpaceShare(
                 TPartitionSchema::FirstDataChannel,
-                0.16
-            );
+                0.16);
             state.UpdateChannelFreeSpaceShare(
                 TPartitionSchema::FirstDataChannel + 1,
-                0.161
-            );
+                0.161);
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetAlmostFullChannelCount());
 
             firstChannelSelected = 0;
@@ -1299,19 +1326,18 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                     kind,
                     EChannelPermission::UserWritesAllowed,
                     1,
-                    1024
-                );
+                    1024);
                 if (blobId.Channel() == TPartitionSchema::FirstDataChannel) {
                     ++firstChannelSelected;
                 } else {
                     UNIT_ASSERT_VALUES_EQUAL(
                         ui32(TPartitionSchema::FirstDataChannel + 1),
-                        blobId.Channel()
-                    );
+                        blobId.Channel());
                 }
             }
 
-            UNIT_ASSERT(firstChannelSelected < 150 && firstChannelSelected > 50);
+            UNIT_ASSERT(
+                firstChannelSelected < 150 && firstChannelSelected > 50);
         }
     }
 
@@ -1345,30 +1371,25 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             BuildDefaultCompactionPolicy(5),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
+            DefaultIndexCachingConfig());
 
         {
             auto mixedBlobId = state.GenerateBlobId(
                 EChannelDataKind::Mixed,
                 EChannelPermission::UserWritesAllowed,
                 1,
-                1024
-            );
+                1024);
             UNIT_ASSERT_VALUES_EQUAL(
                 ui32(TPartitionSchema::FirstDataChannel),
-                mixedBlobId.Channel()
-            );
+                mixedBlobId.Channel());
             auto mergedBlobId = state.GenerateBlobId(
                 EChannelDataKind::Merged,
                 EChannelPermission::UserWritesAllowed,
                 1,
-                1024
-            );
+                1024);
             UNIT_ASSERT_VALUES_EQUAL(
                 ui32(TPartitionSchema::FirstDataChannel + 1),
-                mergedBlobId.Channel()
-            );
+                mergedBlobId.Channel());
         }
 
         state.UpdatePermissions(TPartitionSchema::FirstDataChannel, {});
@@ -1378,12 +1399,10 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                 EChannelDataKind::Mixed,
                 EChannelPermission::UserWritesAllowed,
                 1,
-                1024
-            );
+                1024);
             UNIT_ASSERT_VALUES_EQUAL(
                 ui32(TPartitionSchema::FirstDataChannel + 1),
-                mixedBlobId.Channel()
-            );
+                mixedBlobId.Channel());
         }
     }
 
@@ -1393,15 +1412,14 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultConfig(1000),
             TestTabletId,
             0,
-            5,  // channelCount
+            5,   // channelCount
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
             BuildDefaultCompactionPolicy(5),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
+            DefaultIndexCachingConfig());
 
         state.GetBlobs().InitializeZone(0);
 
@@ -1420,8 +1438,14 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
         state.AddBlobUpdateByFresh({TBlockRange32::WithLength(0, 1024), 1, 1});
 
         const auto marginalBackpressure = state.CalculateCurrentBackpressure();
-        UNIT_ASSERT_DOUBLES_EQUAL(1, marginalBackpressure.FreshIndexScore, 1e-5);
-        UNIT_ASSERT_DOUBLES_EQUAL(1, marginalBackpressure.CompactionScore, 1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            1,
+            marginalBackpressure.FreshIndexScore,
+            1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            1,
+            marginalBackpressure.CompactionScore,
+            1e-5);
         UNIT_ASSERT_DOUBLES_EQUAL(1, marginalBackpressure.CleanupScore, 1e-5);
 
         freshBlocks.clear();
@@ -1430,7 +1454,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
         }
         state.InitFreshBlocks(freshBlocks);
         state.GetCompactionMap().Update(0, 30, 30, 30, false);
-        state.AddBlobUpdateByFresh({TBlockRange32::WithLength(1024, 1024), 2, 2});
+        state.AddBlobUpdateByFresh(
+            {TBlockRange32::WithLength(1024, 1024), 2, 2});
 
         const auto maxBackpressure = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure.FreshIndexScore, 1e-5);
@@ -1449,15 +1474,14 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultConfig(1000),
             TestTabletId,
             0,
-            5,  // channelCount
+            5,   // channelCount
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
             std::make_shared<TNoBackpressurePolicy>(),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
+            DefaultIndexCachingConfig());
 
         state.GetCompactionMap().Update(0, 30, 30, 30, false);
 
@@ -1494,12 +1518,12 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig(),
-            Max<ui32>(),  // maxIORequestsInFlight
-            0,            // reassignChannelsPercentageThreshold
-            100,          // reassignFreshChannelsPercentageThreshold
-            100,          // reassignMixedChannelsPercentageThreshold
-            false,        // reassignSystemChannelsImmediately
-            Max<ui32>()   // lastStep
+            Max<ui32>(),   // maxIORequestsInFlight
+            0,             // reassignChannelsPercentageThreshold
+            100,           // reassignFreshChannelsPercentageThreshold
+            100,           // reassignMixedChannelsPercentageThreshold
+            false,         // reassignSystemChannelsImmediately
+            Max<ui32>()    // lastStep
         );
 
         UNIT_ASSERT(state.GenerateCommitId() == InvalidCommitId);
@@ -1511,64 +1535,66 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultConfig(),
             TestTabletId,
             0,
-            5,  // channelCount
+            5,   // channelCount
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
             BuildDefaultCompactionPolicy(5),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
+            DefaultIndexCachingConfig());
 
         TTestExecutor executor;
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.InitSchema();
-        });
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.InitIndex(db, TBlockRange32::WithLength(0, 1024));
-        });
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { state.InitIndex(db, TBlockRange32::WithLength(0, 1024)); });
 
         ui64 commitId1 = state.GenerateCommitId();
         ui64 commitId2 = state.GenerateCommitId();
         ui64 commitId3 = state.GenerateCommitId();
 
         TFreshBlockUpdates updates = {
-            { commitId1, TBlockRange32::MakeClosedInterval(1, 4) },
-            { commitId2, TBlockRange32::MakeClosedInterval(3, 5) },
-            { commitId2, TBlockRange32::MakeClosedInterval(8, 9) },
-            { commitId3, TBlockRange32::MakeClosedInterval(2, 6) },
-            { commitId3, TBlockRange32::MakeClosedInterval(4, 8) },
+            {commitId1, TBlockRange32::MakeClosedInterval(1, 4)},
+            {commitId2, TBlockRange32::MakeClosedInterval(3, 5)},
+            {commitId2, TBlockRange32::MakeClosedInterval(8, 9)},
+            {commitId3, TBlockRange32::MakeClosedInterval(2, 6)},
+            {commitId3, TBlockRange32::MakeClosedInterval(4, 8)},
         };
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            for (const auto update: updates) {
-                state.AddFreshBlockUpdate(db, update);
-            }
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                for (const auto update: updates) {
+                    state.AddFreshBlockUpdate(db, update);
+                }
+            });
 
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TFreshBlockUpdates actual;
-            db.ReadFreshBlockUpdates(actual);
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                TFreshBlockUpdates actual;
+                db.ReadFreshBlockUpdates(actual);
 
-            UNIT_ASSERT_VALUES_EQUAL(5, actual.size());
-            UNIT_ASSERT_VALUES_EQUAL(actual, updates);
-        });
+                UNIT_ASSERT_VALUES_EQUAL(5, actual.size());
+                UNIT_ASSERT_VALUES_EQUAL(actual, updates);
+            });
 
         state.SetLastFlushCommitId(commitId2);
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.TrimFreshBlockUpdates(db);
-        });
+        executor.WriteTx([&](TPartitionDatabase db)
+                         { state.TrimFreshBlockUpdates(db); });
 
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TFreshBlockUpdates actual;
-            db.ReadFreshBlockUpdates(actual);
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                TFreshBlockUpdates actual;
+                db.ReadFreshBlockUpdates(actual);
 
-            UNIT_ASSERT_VALUES_EQUAL(2, actual.size());
-            UNIT_ASSERT_VALUES_EQUAL(actual[0], updates[3]);
-            UNIT_ASSERT_VALUES_EQUAL(actual[1], updates[4]);
-        });
+                UNIT_ASSERT_VALUES_EQUAL(2, actual.size());
+                UNIT_ASSERT_VALUES_EQUAL(actual[0], updates[3]);
+                UNIT_ASSERT_VALUES_EQUAL(actual[1], updates[4]);
+            });
     }
 
     Y_UNIT_TEST(TestReassignedMixedChannelsPercentageThreshold)
@@ -1589,7 +1615,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
         cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Log));
         cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Index));
         for (ui32 i = 0; i < mergedChannelCount; ++i) {
-            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
+            cps->Add()->SetDataKind(
+                static_cast<ui32>(EChannelDataKind::Merged));
         }
         for (ui32 i = 0; i < mixedChannelCount; ++i) {
             cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Mixed));
@@ -1600,7 +1627,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             meta,
             TestTabletId,
             0,
-            mixedChannelCount + mergedChannelCount + DataChannelStart + 1, // channelCount
+            mixedChannelCount + mergedChannelCount + DataChannelStart +
+                1,   // channelCount
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
@@ -1608,11 +1636,10 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig(),
-            Max(),  // maxIORequestsInFlight
-            100,    // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            reassignMixedChannelsPercentageThreshold
-        );
+            Max(),   // maxIORequestsInFlight
+            100,     // reassignChannelsPercentageThreshold
+            100,     // reassignFreshChannelsPercentageThreshold
+            reassignMixedChannelsPercentageThreshold);
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
 
@@ -1667,7 +1694,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
         cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Log));
         cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Index));
         for (ui32 i = 0; i < mergedChannelCount; ++i) {
-            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
+            cps->Add()->SetDataKind(
+                static_cast<ui32>(EChannelDataKind::Merged));
         }
         for (ui32 i = 0; i < mixedChannelCount; ++i) {
             cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Mixed));
@@ -1678,7 +1706,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             meta,
             TestTabletId,
             0,
-            mixedChannelCount + mergedChannelCount + DataChannelStart + 1, // channelCount
+            mixedChannelCount + mergedChannelCount + DataChannelStart +
+                1,   // channelCount
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
@@ -1686,25 +1715,23 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig(),
-            Max(), // maxIORequestsInFlight
-            100,   // reassignChannelsPercentageThreshold
-            100,   // reassignFreshChannelsPercentageThreshold
-            100,   // reassignMixedChannelsPercentageThreshold
-            true   // reassignSystemChannelsImmediately
+            Max(),   // maxIORequestsInFlight
+            100,     // reassignChannelsPercentageThreshold
+            100,     // reassignFreshChannelsPercentageThreshold
+            100,     // reassignMixedChannelsPercentageThreshold
+            true     // reassignSystemChannelsImmediately
         );
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
 
         {
             state.UpdatePermissions(
-                1, // Log
+                1,   // Log
                 EChannelPermission::SystemWritesAllowed);
 
             const auto channelsToReassign = state.GetChannelsToReassign();
             UNIT_ASSERT_VALUES_EQUAL(1, channelsToReassign.size());
-            UNIT_ASSERT_VALUES_EQUAL(
-                1,
-                channelsToReassign[0]);
+            UNIT_ASSERT_VALUES_EQUAL(1, channelsToReassign[0]);
         }
 
         {
@@ -1735,7 +1762,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
         cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Log));
         cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Index));
         for (ui32 i = 0; i < mergedChannelCount; ++i) {
-            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
+            cps->Add()->SetDataKind(
+                static_cast<ui32>(EChannelDataKind::Merged));
         }
         for (ui32 i = 0; i < mixedChannelCount; ++i) {
             cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Mixed));
@@ -1748,7 +1776,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             meta,
             TestTabletId,
             0,
-            mixedChannelCount + mergedChannelCount + DataChannelStart + freshChannelCount, // channelCount
+            mixedChannelCount + mergedChannelCount + DataChannelStart +
+                freshChannelCount,   // channelCount
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
@@ -1756,9 +1785,9 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig(),
-            Max(),  // maxIORequestsInFlight
-            100,                                      // reassignChannelsPercentageThreshold
-            reassignFreshChannelsPercentageThreshold  // reassignFreshChannelsPercentageThreshold
+            Max(),   // maxIORequestsInFlight
+            100,     // reassignChannelsPercentageThreshold
+            reassignFreshChannelsPercentageThreshold   // reassignFreshChannelsPercentageThreshold
         );
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());

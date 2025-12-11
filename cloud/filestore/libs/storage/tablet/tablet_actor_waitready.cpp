@@ -13,7 +13,9 @@ void TIndexTabletActor::HandleWaitReady(
     const TActorContext& ctx)
 {
     if (CurrentState != STATE_WORK) {
-        LOG_TRACE(ctx, TFileStoreComponents::TABLET,
+        LOG_TRACE(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s WaitReady request delayed until partition is ready",
             LogTag.c_str());
 
@@ -21,7 +23,9 @@ void TIndexTabletActor::HandleWaitReady(
         return;
     }
 
-    LOG_TRACE(ctx, TFileStoreComponents::TABLET,
+    LOG_TRACE(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s Received WaitReady request",
         LogTag.c_str());
 

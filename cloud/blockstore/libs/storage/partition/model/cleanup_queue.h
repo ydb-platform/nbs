@@ -28,8 +28,7 @@ struct TCleanupQueueItem
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCleanupQueue
-    : public TBarriers
+class TCleanupQueue: public TBarriers
 {
 private:
     struct TImpl;

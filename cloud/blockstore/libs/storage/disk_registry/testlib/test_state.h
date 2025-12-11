@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/testlib/common_properties.h>
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -16,18 +17,18 @@
 #include <util/generic/guid.h>
 #include <util/generic/size_literals.h>
 
-#define UNIT_ASSERT_DISK_STATE(diskId, state, update)                          \
-    UNIT_ASSERT_VALUES_EQUAL(diskId, (update).State.GetDiskId());              \
-    UNIT_ASSERT_VALUES_EQUAL_C(                                                \
-        NProto::EDiskState_Name(NProto::state),                                \
-        NProto::EDiskState_Name((update).State.GetState()),                    \
-        diskId                                                                 \
-    );                                                                         \
+#define UNIT_ASSERT_DISK_STATE(diskId, state, update)             \
+    UNIT_ASSERT_VALUES_EQUAL(diskId, (update).State.GetDiskId()); \
+    UNIT_ASSERT_VALUES_EQUAL_C(                                   \
+        NProto::EDiskState_Name(NProto::state),                   \
+        NProto::EDiskState_Name((update).State.GetState()),       \
+        diskId);
 
-#define UNIT_ASSERT_SUCCESS(expr)                                              \
-    [error = (expr)] () {                                                      \
-        UNIT_ASSERT_C(!HasError(error), error);                                \
-    }()                                                                        \
+#define UNIT_ASSERT_SUCCESS(expr)               \
+    [error = (expr)]()                          \
+    {                                           \
+        UNIT_ASSERT_C(!HasError(error), error); \
+    }()
 
 namespace NCloud::NBlockStore::NStorage::NDiskRegistryStateTest {
 
@@ -44,7 +45,7 @@ constexpr ui64 DefaultDeviceSize = 10_GB;
 struct TByDeviceUUID
 {
     template <typename T>
-    bool operator () (const T& lhs, const T& rhs) const
+    bool operator()(const T& lhs, const T& rhs) const
     {
         return lhs.GetDeviceUUID() < rhs.GetDeviceUUID();
     }
@@ -52,12 +53,12 @@ struct TByDeviceUUID
 
 struct TByDiskId
 {
-    bool operator () (const auto& lhs, const auto& rhs) const
+    bool operator()(const auto& lhs, const auto& rhs) const
     {
         return lhs.GetDiskId() < rhs.GetDiskId();
     }
 
-    bool operator () (
+    bool operator()(
         const TDiskStateUpdate& lhs,
         const TDiskStateUpdate& rhs) const
     {
@@ -67,7 +68,7 @@ struct TByDiskId
 
 struct TByNodeId
 {
-    bool operator () (const auto& lhs, const auto& rhs) const
+    bool operator()(const auto& lhs, const auto& rhs) const
     {
         return lhs.GetNodeId() < rhs.GetNodeId();
     }
@@ -75,7 +76,7 @@ struct TByNodeId
 
 struct TByAgentId
 {
-    bool operator () (const auto& lhs, const auto& rhs) const
+    bool operator()(const auto& lhs, const auto& rhs) const
     {
         return lhs.GetAgentId() < rhs.GetAgentId();
     }
@@ -93,10 +94,7 @@ TDeviceConfig Device(
     NProto::EDeviceState state = NProto::DEVICE_STATE_ONLINE,
     NProto::TRdmaEndpoint rdmaEndpoint = {});
 
-TDeviceConfig Device(
-    TString name,
-    TString uuid,
-    NProto::EDeviceState state);
+TDeviceConfig Device(TString name, TString uuid, NProto::EDeviceState state);
 
 NProto::TAgentConfig AgentConfig(
     ui32 nodeId,
@@ -113,10 +111,8 @@ NProto::TAgentConfig AgentConfig(
     ui64 seqNumber,
     TVector<TDeviceConfig> devices);
 
-NProto::TAgentConfig AgentConfig(
-    ui32 nodeId,
-    TString agentId,
-    TVector<TDeviceConfig> devices);
+NProto::TAgentConfig
+AgentConfig(ui32 nodeId, TString agentId, TVector<TDeviceConfig> devices);
 
 NProto::TDiskRegistryConfig MakeConfig(
     const TVector<NProto::TAgentConfig>& agents,
@@ -252,7 +248,8 @@ struct TDiskRegistryStateBuilder
     TVector<TString> OutdatedVolumeConfigs;
     TVector<NProto::TSuspendedDevice> SuspendedDevices;
     TDeque<TAutomaticallyReplacedDeviceInfo> AutomaticallyReplacedDevices;
-    THashMap<TString, NProto::TDiskRegistryAgentParams> DiskRegistryAgentListParams;
+    THashMap<TString, NProto::TDiskRegistryAgentParams>
+        DiskRegistryAgentListParams;
 
     static TDiskRegistryStateBuilder LoadState(TDiskRegistryDatabase& db);
 
@@ -284,7 +281,8 @@ struct TDiskRegistryStateBuilder
 
     TDiskRegistryStateBuilder& WithDisks(TVector<NProto::TDiskConfig> disks);
 
-    TDiskRegistryStateBuilder& WithDirtyDevices(TVector<TDirtyDevice> dirtyDevices);
+    TDiskRegistryStateBuilder& WithDirtyDevices(
+        TVector<TDirtyDevice> dirtyDevices);
 
     TDiskRegistryStateBuilder& WithSuspendedDevices(
         TVector<TString> suspendedDevices);

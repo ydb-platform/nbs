@@ -67,7 +67,8 @@ ReportHistogramAsMultipleCounters: false
         TDiagnosticsConfig config(protoConfig);
 
         UNIT_ASSERT(!HasField(protoConfig, "ReportHistogramAsSingleCounter"));
-        UNIT_ASSERT(!HasField(protoConfig, "ReportHistogramAsMultipleCounters"));
+        UNIT_ASSERT(
+            !HasField(protoConfig, "ReportHistogramAsMultipleCounters"));
 
         UNIT_ASSERT_VALUES_EQUAL(
             config.GetReportHistogramAsSingleCounter(),
@@ -121,9 +122,15 @@ CloudIdsWithStrictSLA: "cloud3"
 
         UNIT_ASSERT(HasField(protoConfig, "CloudIdsWithStrictSLA"));
         UNIT_ASSERT_VALUES_EQUAL(config.GetCloudIdsWithStrictSLA().size(), 3);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetCloudIdsWithStrictSLA()[0], "cloud1");
-        UNIT_ASSERT_VALUES_EQUAL(config.GetCloudIdsWithStrictSLA()[1], "cloud2");
-        UNIT_ASSERT_VALUES_EQUAL(config.GetCloudIdsWithStrictSLA()[2], "cloud3");
+        UNIT_ASSERT_VALUES_EQUAL(
+            config.GetCloudIdsWithStrictSLA()[0],
+            "cloud1");
+        UNIT_ASSERT_VALUES_EQUAL(
+            config.GetCloudIdsWithStrictSLA()[1],
+            "cloud2");
+        UNIT_ASSERT_VALUES_EQUAL(
+            config.GetCloudIdsWithStrictSLA()[2],
+            "cloud3");
     }
 
     Y_UNIT_TEST(TestRepeatedFieldDefaultValue)

@@ -34,17 +34,15 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     void SetUp(NUnitTest::TTestContext& /*testContext*/) override
     {
-        Executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            db.InitSchema();
-        });
+        Executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
 
         AgentConfigs = CreateAgentConfigs();
 
         State = TDiskRegistryStateBuilder()
-            .With(CreateStorageConfig())
-            .WithAgents(AgentConfigs)
-            .WithConfig(AgentConfigs)
-            .Build();
+                    .With(CreateStorageConfig())
+                    .WithAgents(AgentConfigs)
+                    .WithConfig(AgentConfigs)
+                    .Build();
     }
 
     auto AllocateDisk(TDiskRegistryState::TAllocateDiskParams params)
@@ -52,13 +50,9 @@ struct TFixture: public NUnitTest::TBaseFixture
     {
         TDiskRegistryState::TAllocateDiskResult result;
         NProto::TError error;
-        Executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            error = State->AllocateDisk(
-                Now(),
-                db,
-                params,
-                &result);
-        });
+        Executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            { error = State->AllocateDisk(Now(), db, params, &result); });
 
         if (HasError(error)) {
             return error;
@@ -160,9 +154,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateRankingTest)
         const auto& agent6 = AgentConfigs[5].GetAgentId();
 
         AllocateDevices("vol0", 12, {agent2});
-        AllocateDevices("vol1",  6, {agent3});
+        AllocateDevices("vol1", 6, {agent3});
         AllocateDevices("vol2", 12, {agent4});
-        AllocateDevices("vol3",  9, {agent5});
+        AllocateDevices("vol3", 9, {agent5});
         AllocateDevices("vol4", 12, {agent6});
 
         {
@@ -331,8 +325,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateRankingTest)
         const auto& agent2 = AgentConfigs[1].GetAgentId();
 
         AllocateDevices("vol0", 10, {agent1});
-        AllocateDevices("vol1",  1, {agent1});
-        AllocateDevices("vol2",  1, {agent2});
+        AllocateDevices("vol1", 1, {agent1});
+        AllocateDevices("vol2", 1, {agent2});
 
         // rack1 agent1[vol0 vol1]:  4 agent2[vol2]: 14  18
         // rack2 agent3[]:          15 agent4[]:     15  30
@@ -373,8 +367,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateRankingTest)
         const auto& agent1 = AgentConfigs[0].GetAgentId();
         const auto& agent2 = AgentConfigs[1].GetAgentId();
 
-        AllocateDevices("vol0",  1, {agent1});
-        AllocateDevices("vol1",  1, {agent2});
+        AllocateDevices("vol0", 1, {agent1});
+        AllocateDevices("vol1", 1, {agent2});
         auto vol2 = AllocateDevices("vol2", 10, {agent2});
 
         // rack1 agent1[vol0]: 14 agent2[vol1, vol2]:  4  18
@@ -400,8 +394,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateRankingTest)
         const auto& agent1 = AgentConfigs[0].GetAgentId();
         const auto& agent2 = AgentConfigs[1].GetAgentId();
 
-        AllocateDevices("vol0",  1, {agent1});
-        auto vol1 = AllocateDevices("vol1",  2, {agent2});
+        AllocateDevices("vol0", 1, {agent1});
+        auto vol1 = AllocateDevices("vol1", 2, {agent2});
 
         // rack1 agent1[vol0]: 14 agent2[vol1]:  13  17
         // rack2 agent3[]:     15 agent4[]:      15  30

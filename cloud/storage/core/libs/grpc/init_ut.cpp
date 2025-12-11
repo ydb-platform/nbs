@@ -24,8 +24,7 @@ struct TTestLogCounters
     std::atomic_int Writes;
 };
 
-struct TTestLogBackend
-    : public TLogBackend
+struct TTestLogBackend: public TLogBackend
 {
     TTestLogCounters& Counters;
 
@@ -63,12 +62,9 @@ struct TFixture
 {
     void SetTestGrpcLogger()
     {
-        GrpcLoggerInit(
-            TLog{MakeHolder<TTestLogBackend>(*this)},
-            true);
+        GrpcLoggerInit(TLog{MakeHolder<TTestLogBackend>(*this)}, true);
     }
 };
-
 
 }   // namespace
 
@@ -157,18 +153,20 @@ Y_UNIT_TEST_SUITE(TInitTest)
         threads.reserve(threadCount);
 
         for (int i = 0; i != threadCount; ++i) {
-            threads.emplace_back([&execute, &start, &stop, i, this] {
-                TGrpcInitializer grpcInitializer;
+            threads.emplace_back(
+                [&execute, &start, &stop, i, this]
+                {
+                    TGrpcInitializer grpcInitializer;
 
-                SetTestGrpcLogger();
+                    SetTestGrpcLogger();
 
-                start.arrive_and_wait();
-                execute.arrive_and_wait();
+                    start.arrive_and_wait();
+                    execute.arrive_and_wait();
 
-                gpr_log("ut", i, GPR_LOG_SEVERITY_INFO, "custom logger");
+                    gpr_log("ut", i, GPR_LOG_SEVERITY_INFO, "custom logger");
 
-                stop.arrive_and_wait();
-            });
+                    stop.arrive_and_wait();
+                });
         }
 
         start.arrive_and_wait();

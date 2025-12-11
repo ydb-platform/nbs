@@ -2,22 +2,20 @@
 
 #include "options.h"
 
-#include <cloud/filestore/tools/testing/loadtest/lib/client.h>
-
 #include <cloud/filestore/libs/client/client.h>
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/durable.h>
 #include <cloud/filestore/libs/service/filestore.h>
+#include <cloud/filestore/tools/testing/loadtest/lib/client.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
-#include <cloud/storage/core/libs/grpc/init.h>
-#include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/grpc/init.h>
+#include <cloud/storage/core/libs/grpc/utils.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
-
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -32,8 +30,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TClientFactory final
-    : public IClientFactory
+class TClientFactory final: public IClientFactory
 {
 private:
     const ILoggingServicePtr Logging;
@@ -45,10 +42,10 @@ private:
 
 public:
     TClientFactory(
-            ILoggingServicePtr logging,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            NClient::TClientConfigPtr clientConfig)
+        ILoggingServicePtr logging,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler,
+        NClient::TClientConfigPtr clientConfig)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
@@ -71,9 +68,7 @@ public:
 
     IFileStoreServicePtr CreateClient() override
     {
-        auto client = NClient::CreateFileStoreClient(
-            ClientConfig,
-            Logging);
+        auto client = NClient::CreateFileStoreClient(ClientConfig, Logging);
 
         client = NClient::CreateDurableClient(
             Logging,
@@ -208,4 +203,4 @@ void TBootstrap::InitClientConfig()
     STORAGE_INFO("client config:\n" << ss.Str());
 }
 
-}   // namespace NCloud::NFileStore::NServer
+}   // namespace NCloud::NFileStore::NLoadTest

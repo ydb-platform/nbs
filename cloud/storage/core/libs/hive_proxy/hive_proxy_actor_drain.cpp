@@ -24,11 +24,11 @@ private:
 
 public:
     TDrainNodeRequestActor(
-            const TActorId& owner,
-            const bool keepDown,
-            const int logComponent,
-            THiveProxyActor::TRequestInfo request,
-            TActorId clientId)
+        const TActorId& owner,
+        const bool keepDown,
+        const int logComponent,
+        THiveProxyActor::TRequestInfo request,
+        TActorId clientId)
         : Owner(owner)
         , KeepDown(keepDown)
         , LogComponent(logComponent)
@@ -56,14 +56,9 @@ private:
 
 void TDrainNodeRequestActor::Bootstrap(const TActorContext& ctx)
 {
-
     auto ev = std::make_unique<NKikimr::TEvHive::TEvDrainNode>(Owner.NodeId());
     ev->Record.SetKeepDown(KeepDown);
-    NKikimr::NTabletPipe::SendData(
-        ctx,
-        ClientId,
-        ev.release()
-    );
+    NKikimr::NTabletPipe::SendData(ctx, ClientId, ev.release());
 
     Become(&TThis::StateWork);
 }
@@ -72,11 +67,10 @@ void TDrainNodeRequestActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    auto response = std::make_unique<TEvHiveProxy::TEvDrainNodeResponse>(
-        std::move(error));
+    auto response =
+        std::make_unique<TEvHiveProxy::TEvDrainNodeResponse>(std::move(error));
     NCloud::Reply(ctx, Request, std::move(response));
-    NCloud::Send<TEvHiveProxyPrivate::TEvRequestFinished>(
-        ctx, Owner, 0, 0);
+    NCloud::Send<TEvHiveProxyPrivate::TEvRequestFinished>(ctx, Owner, 0, 0);
     Die(ctx);
 }
 
@@ -97,8 +91,10 @@ void TDrainNodeRequestActor::HandleDrainNodeResult(
 
     const auto status = ev->Get()->Record.GetStatus();
     if (status != NKikimrProto::OK) {
-        error = MakeError(E_FAIL, TStringBuilder()
-            << "unexpected status: " << static_cast<ui32>(status));
+        error = MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "unexpected status: " << static_cast<ui32>(status));
     }
 
     ReplyAndDie(ctx, std::move(error));
@@ -109,7 +105,9 @@ void TDrainNodeRequestActor::HandleDrainNodeResult(
 STFUNC(TDrainNodeRequestActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvHiveProxyPrivate::TEvChangeTabletClient, HandleChangeTabletClient);
+        HFunc(
+            TEvHiveProxyPrivate::TEvChangeTabletClient,
+            HandleChangeTabletClient);
         HFunc(NKikimr::TEvHive::TEvDrainNodeResult, HandleDrainNodeResult);
 
         default:
@@ -135,8 +133,7 @@ void THiveProxyActor::HandleDrainNode(
         ev->Get()->KeepDown,
         LogComponent,
         TRequestInfo(ev->Sender, ev->Cookie),
-        clientId
-    ));
+        clientId));
 }
 
 }   // namespace NCloud::NStorage

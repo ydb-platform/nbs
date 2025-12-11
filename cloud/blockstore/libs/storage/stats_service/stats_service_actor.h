@@ -15,8 +15,8 @@
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/tablet_counters.h>
-#include <cloud/blockstore/libs/ydbstats/ydbstats.h>
 #include <cloud/blockstore/libs/ydbstats/ydbrow.h>
+#include <cloud/blockstore/libs/ydbstats/ydbstats.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -57,7 +57,8 @@ private:
 
     std::shared_ptr<TActorSystemHolder> ActorSystemHolder;
 
-    struct TLoadCounters {
+    struct TLoadCounters
+    {
         ui64 Bytes = 0;
         ui64 Requests = 0;
     };
@@ -88,7 +89,9 @@ public:
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
-    void Registered(NActors::TActorSystem* sys, const NActors::TActorId& owner) override;
+    void Registered(
+        NActors::TActorSystem* sys,
+        const NActors::TActorId& owner) override;
 
 private:
     void RegisterCounters(const NActors::TActorContext& ctx);

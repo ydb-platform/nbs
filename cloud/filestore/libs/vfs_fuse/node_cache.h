@@ -16,8 +16,7 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TNode
-    : private TNonCopyable
+struct TNode: private TNonCopyable
 {
     NProto::TNodeAttr Attrs;
     ui64 RefCount = 1;
@@ -56,7 +55,7 @@ struct TNodeOps
     struct THash
     {
         template <typename T>
-        size_t operator ()(const T& value) const
+        size_t operator()(const T& value) const
         {
             return IntHash(GetNodeId(value));
         }
@@ -65,7 +64,7 @@ struct TNodeOps
     struct TEqual
     {
         template <typename T1, typename T2>
-        bool operator ()(const T1& l, const T2& r) const
+        bool operator()(const T1& l, const T2& r) const
         {
             return GetNodeId(l) == GetNodeId(r);
         }
@@ -109,16 +108,19 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TXAttr {
+struct TXAttr
+{
     TString Name;
     TMaybe<TString> Value;
     ui64 Version;
     TInstant UpdateTime;
 };
 
-class TXAttrCache {
+class TXAttrCache
+{
 private:
-    struct TWeighter {
+    struct TWeighter
+    {
         static TInstant Weight(const TXAttr& value)
         {
             return value.UpdateTime;
@@ -133,20 +135,13 @@ private:
     TDuration Timeout;
 
 public:
-    TXAttrCache(
-            ITimerPtr timer,
-            ui32 maxSize,
-            TDuration timeout)
+    TXAttrCache(ITimerPtr timer, ui32 maxSize, TDuration timeout)
         : Timer{std::move(timer)}
         , Cache{maxSize}
         , Timeout{timeout}
     {}
 
-    void Add(
-        ui64 ino,
-        const TString& name,
-        const TString& value,
-        ui64 version);
+    void Add(ui64 ino, const TString& name, const TString& value, ui64 version);
     void AddAbsent(ui64 ino, const TString& name);
     const TXAttr* Get(ui64 ino, const TString& name);
     void Forget(ui64 ino, const TString& name);

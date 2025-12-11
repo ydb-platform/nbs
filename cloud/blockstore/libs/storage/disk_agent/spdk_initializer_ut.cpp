@@ -21,21 +21,19 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBrokenTarget final
-    : public NSpdk::TTestSpdkTarget
+class TBrokenTarget final: public NSpdk::TTestSpdkTarget
 {
 public:
     TFuture<void> StartAsync() override
     {
-        return MakeErrorFuture<void>(std::make_exception_ptr(
-            yexception() << "can't start target"));
+        return MakeErrorFuture<void>(
+            std::make_exception_ptr(yexception() << "can't start target"));
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestEnv final
-    : public NSpdk::TTestSpdkEnv
+class TTestEnv final: public NSpdk::TTestSpdkEnv
 {
 private:
     NSpdk::ISpdkEnvPtr Stub = NSpdk::CreateEnvStub();
@@ -57,42 +55,43 @@ public:
                 yexception() << "can't register " << name.Quote()));
         }
 
-        return Async([=] {
-            return Stub->RegisterMemoryDevice(name, blockCount, blockSize);
-        }, Queue);
+        return Async(
+            [=]
+            { return Stub->RegisterMemoryDevice(name, blockCount, blockSize); },
+            Queue);
     }
 
     TFuture<NSpdk::TDeviceStats> QueryDeviceStats(const TString& name) override
     {
-        return Async([=] {
-            return Stub->QueryDeviceStats(name);
-        }, Queue);
+        return Async([=] { return Stub->QueryDeviceStats(name); }, Queue);
     }
 
     TFuture<void> EnableHistogram(const TString& name, bool enable) override
     {
-        return Async([=] {
-            return Stub->EnableHistogram(name, enable);
-        }, Queue);
+        return Async(
+            [=] { return Stub->EnableHistogram(name, enable); },
+            Queue);
     }
 
     TFuture<void> AddTransport(const TString& transportId) override
     {
-        return Async([=] {
-            return Stub->AddTransport(transportId);
-        }, Queue);
+        return Async([=] { return Stub->AddTransport(transportId); }, Queue);
     }
 
     TFuture<void> StartListen(const TString& transportId) override
     {
-        return Async([=] {
-            if (transportId.Contains("broken")) {
-                return MakeErrorFuture<void>(std::make_exception_ptr(
-                    yexception() << "can't start listen " << transportId.Quote()));
-            }
+        return Async(
+            [=]
+            {
+                if (transportId.Contains("broken")) {
+                    return MakeErrorFuture<void>(std::make_exception_ptr(
+                        yexception()
+                        << "can't start listen " << transportId.Quote()));
+                }
 
-            return Stub->StartListen(transportId);
-        }, Queue);
+                return Stub->StartListen(transportId);
+            },
+            Queue);
     }
 
     TFuture<NSpdk::ISpdkTargetPtr> CreateNVMeTarget(
@@ -100,26 +99,26 @@ public:
         const TVector<TString>& devices,
         const TVector<TString>& transportIds) override
     {
-        return Async([=] {
-            if (nqn.Contains("broken")) {
-                return MakeFuture<NSpdk::ISpdkTargetPtr>(
-                    std::make_shared<TBrokenTarget>());
-            }
+        return Async(
+            [=]
+            {
+                if (nqn.Contains("broken")) {
+                    return MakeFuture<NSpdk::ISpdkTargetPtr>(
+                        std::make_shared<TBrokenTarget>());
+                }
 
-            return Stub->CreateNVMeTarget(nqn, devices, transportIds);
-        }, Queue);
+                return Stub->CreateNVMeTarget(nqn, devices, transportIds);
+            },
+            Queue);
     }
 
     TFuture<void> UnregisterDevice(const TString& name) override
     {
-        return Async([=] {
-            return Stub->UnregisterDevice(name);
-        }, Queue);
+        return Async([=] { return Stub->UnregisterDevice(name); }, Queue);
     }
 };
 
-TInitializeSpdkResult InitializeSpdkSync(
-    NProto::TDiskAgentConfig config)
+TInitializeSpdkResult InitializeSpdkSync(NProto::TDiskAgentConfig config)
 {
     return InitializeSpdk(
                std::make_shared<NStorage::TDiskAgentConfig>(
@@ -159,8 +158,8 @@ Y_UNIT_TEST_SUITE(TSpdkInitializerTest)
             mem.SetDeviceId("uuid-3");
         }
 
-        auto [target, configs, devices, errors] = InitializeSpdkSync(
-            std::move(config));
+        auto [target, configs, devices, errors] =
+            InitializeSpdkSync(std::move(config));
 
         UNIT_ASSERT(target);
         UNIT_ASSERT_VALUES_EQUAL(3, configs.size());
@@ -196,8 +195,8 @@ Y_UNIT_TEST_SUITE(TSpdkInitializerTest)
             target.AddTransportIds("transport-id");
         }
 
-        auto [target, configs, devices, errors] = InitializeSpdkSync(
-            std::move(config));
+        auto [target, configs, devices, errors] =
+            InitializeSpdkSync(std::move(config));
 
         UNIT_ASSERT(target);
         UNIT_ASSERT_VALUES_EQUAL(2, configs.size());
@@ -233,8 +232,8 @@ Y_UNIT_TEST_SUITE(TSpdkInitializerTest)
             target.AddTransportIds("transport-id");
         }
 
-        auto [target, configs, devices, errors] = InitializeSpdkSync(
-            std::move(config));
+        auto [target, configs, devices, errors] =
+            InitializeSpdkSync(std::move(config));
 
         UNIT_ASSERT(!target);
         UNIT_ASSERT_VALUES_EQUAL(2, configs.size());
@@ -267,8 +266,8 @@ Y_UNIT_TEST_SUITE(TSpdkInitializerTest)
             target.AddTransportIds("broken");
         }
 
-        auto [target, configs, devices, errors] = InitializeSpdkSync(
-            std::move(config));
+        auto [target, configs, devices, errors] =
+            InitializeSpdkSync(std::move(config));
 
         UNIT_ASSERT(target);
         UNIT_ASSERT_VALUES_EQUAL(2, configs.size());

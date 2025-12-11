@@ -54,9 +54,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TChangeStorageConfigActionActor::TChangeStorageConfigActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input,
-        TStorageConfigPtr config)
+    TRequestInfoPtr requestInfo,
+    TString input,
+    TStorageConfigPtr config)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
     , Config(config)
@@ -66,9 +66,7 @@ void TChangeStorageConfigActionActor::Bootstrap(const TActorContext& ctx)
 {
     NProtoPrivate::TChangeStorageConfigRequest request;
     if (!google::protobuf::util::JsonStringToMessage(Input, &request).ok()) {
-        ReplyAndDie(
-            ctx,
-            TErrorResponse(E_ARGUMENT, "Failed to parse input"));
+        ReplyAndDie(ctx, TErrorResponse(E_ARGUMENT, "Failed to parse input"));
         return;
     }
 
@@ -79,7 +77,9 @@ void TChangeStorageConfigActionActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    LOG_INFO(ctx, TFileStoreComponents::SERVICE,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE,
         "Start to change storage config of %s",
         request.GetFileSystemId().Quote().c_str());
 

@@ -44,17 +44,20 @@ private:
 
     PNextBlockFunc NextBlock = nullptr;
 
-    struct {
+    struct
+    {
         ui32 Index;
         ui32 Count;
 
         union {
-            struct {
+            struct
+            {
                 ui32 BlockIndex;
                 ui32 BlobOffset;
             } Merged;
 
-            struct {
+            struct
+            {
                 const ui32* BlockIndices;
                 const ui16* BlobOffsets;
             } Mixed;
@@ -113,8 +116,9 @@ public:
         return EncodedDeletionMarkers;
     }
 
-    // Performance of FindBlocks is slightly better if TBlockIterator is allocated
-    // on stack (not on heap). See https://github.com/ydb-platform/nbs/pull/4244
+    // Performance of FindBlocks is slightly better if TBlockIterator is
+    // allocated on stack (not on heap). See
+    // https://github.com/ydb-platform/nbs/pull/4244
     TBlockIterator FindBlocks(
         ui64 nodeId,
         ui64 commitId,
@@ -134,10 +138,8 @@ public:
 
     TVector<TBlock> DecodeBlocks() const;
 
-    static TBlockList EncodeBlocks(
-        const TBlock& block,
-        ui32 blocksCount,
-        IAllocator* alloc);
+    static TBlockList
+    EncodeBlocks(const TBlock& block, ui32 blocksCount, IAllocator* alloc);
 
     static TBlockList EncodeBlocks(
         const TVector<TBlock>& blocks,

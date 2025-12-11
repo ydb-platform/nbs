@@ -48,7 +48,6 @@ void HandleUnexpectedEvent(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
 void HandleUnexpectedEvent(
     const TAutoPtr<IEventHandle>& ev,
     int component,

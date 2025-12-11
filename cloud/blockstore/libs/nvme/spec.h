@@ -6,7 +6,8 @@ namespace NCloud::NBlockStore::NNvme {
 
 union nvme_vs_register {
     uint32_t raw;
-    struct {
+    struct
+    {
         /** indicates the tertiary version */
         uint32_t ter : 8;
         /** indicates the minor version */
@@ -19,7 +20,8 @@ union nvme_vs_register {
 /**
  * Admin opcodes
  */
-enum nvme_admin_opcode {
+enum nvme_admin_opcode
+{
     NVME_OPC_DELETE_IO_SQ = 0x00,
     NVME_OPC_CREATE_IO_SQ = 0x01,
     NVME_OPC_GET_LOG_PAGE = 0x02,
@@ -60,12 +62,13 @@ enum nvme_admin_opcode {
     NVME_OPC_GET_LBA_STATUS = 0x86,
 };
 
-struct nvme_power_state {
+struct nvme_power_state
+{
     uint16_t mp; /* bits 15:00: maximum power */
 
     uint8_t reserved1;
 
-    uint8_t mps : 1; /* bit 24: max power scale */
+    uint8_t mps : 1;  /* bit 24: max power scale */
     uint8_t nops : 1; /* bit 25: non-operational state */
     uint8_t reserved2 : 6;
 
@@ -88,7 +91,8 @@ struct nvme_power_state {
 };
 
 /** Identify command CNS value */
-enum nvme_identify_cns {
+enum nvme_identify_cns
+{
     /** Identify namespace indicated in CDW1.NSID */
     NVME_IDENTIFY_NS = 0x00,
 
@@ -116,7 +120,8 @@ enum nvme_identify_cns {
     /** Identify namespace if CDW1.NSID is allocated */
     NVME_IDENTIFY_NS_ALLOCATED = 0x11,
 
-    /** Get list of controllers starting at CDW10.CNTID that are attached to CDW1.NSID */
+    /** Get list of controllers starting at CDW10.CNTID that are attached to
+     * CDW1.NSID */
     NVME_IDENTIFY_NS_ATTACHED_CTRLR_LIST = 0x12,
 
     /** Get list of controllers starting at CDW10.CNTID */
@@ -145,7 +150,8 @@ enum nvme_identify_cns {
 #define NVME_NQN_FIELD_SIZE 256
 
 /** Identify Controller data NVMe over Fabrics-specific fields */
-struct nvme_cdata_nvmf_specific {
+struct nvme_cdata_nvmf_specific
+{
     /** I/O queue command capsule supported size (16-byte units) */
     uint32_t ioccsz;
 
@@ -156,7 +162,8 @@ struct nvme_cdata_nvmf_specific {
     uint16_t icdoff;
 
     /** Controller attributes */
-    struct {
+    struct
+    {
         /** Controller model: \ref nvmf_ctrlr_model */
         uint8_t ctrlr_model : 1;
         uint8_t reserved : 7;
@@ -169,7 +176,8 @@ struct nvme_cdata_nvmf_specific {
 };
 
 /** Identify Controller data SGL support */
-struct nvme_cdata_sgls {
+struct nvme_cdata_sgls
+{
     uint32_t supported : 2;
     uint32_t keyed_sgl : 1;
     uint32_t reserved1 : 13;
@@ -182,7 +190,8 @@ struct nvme_cdata_sgls {
     uint32_t reserved2 : 10;
 };
 
-struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data {
+struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data
+{
     /* bytes 0-255: controller capabilities and features */
 
     /** pci vendor id */
@@ -207,7 +216,8 @@ struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data {
     uint8_t ieee[3];
 
     /** controller multi-path I/O and namespace sharing capabilities */
-    struct {
+    struct
+    {
         uint8_t multi_port : 1;
         uint8_t multi_host : 1;
         uint8_t sr_iov : 1;
@@ -231,7 +241,8 @@ struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data {
     uint32_t rtd3e;
 
     /** optional asynchronous events supported */
-    struct {
+    struct
+    {
         uint32_t reserved1 : 8;
 
         /** Supports sending Namespace Attribute Notices. */
@@ -247,20 +258,22 @@ struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data {
 
         uint32_t reserved3 : 19;
 
-        /** Supports Discovery log change notices (refer to the NVMe over Fabrics specification) */
+        /** Supports Discovery log change notices (refer to the NVMe over
+         * Fabrics specification) */
         uint32_t discovery_log_change_notices : 1;
 
     } oaes;
 
     /** controller attributes */
-    struct {
+    struct
+    {
         /** Supports 128-bit host identifier */
-        uint32_t host_id_exhid_supported: 1;
+        uint32_t host_id_exhid_supported : 1;
 
         /** Supports non-operational power state permissive mode */
-        uint32_t non_operational_power_state_permissive_mode: 1;
+        uint32_t non_operational_power_state_permissive_mode : 1;
 
-        uint32_t reserved: 30;
+        uint32_t reserved : 30;
     } ctratt;
 
     uint8_t reserved_100[12];
@@ -276,7 +289,8 @@ struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data {
     /* bytes 256-511: admin command set attributes */
 
     /** optional admin command support */
-    struct {
+    struct
+    {
         /* supports security send/receive commands */
         uint16_t security : 1;
 
@@ -295,7 +309,8 @@ struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data {
         /** Supports NVME_OPC_DIRECTIVE_SEND and NVME_OPC_DIRECTIVE_RECEIVE */
         uint16_t directives : 1;
 
-        /** Supports NVMe-MI (NVME_OPC_NVME_MI_SEND, NVME_OPC_NVME_MI_RECEIVE) */
+        /** Supports NVMe-MI (NVME_OPC_NVME_MI_SEND, NVME_OPC_NVME_MI_RECEIVE)
+         */
         uint16_t nvme_mi : 1;
 
         /** Supports NVME_OPC_VIRTUALIZATION_MANAGEMENT */
@@ -317,7 +332,8 @@ struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data {
     uint8_t aerl;
 
     /** firmware updates */
-    struct {
+    struct
+    {
         /* first slot is read-only */
         uint8_t slot1_ro : 1;
 
@@ -331,13 +347,14 @@ struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data {
     } frmw;
 
     /** log page attributes */
-    struct {
+    struct
+    {
         /* per namespace smart/health log page */
         uint8_t ns_smart : 1;
         /* command effects log page */
         uint8_t celp : 1;
         /* extended data for get log page */
-        uint8_t edlp: 1;
+        uint8_t edlp : 1;
         /** telemetry log pages and notices */
         uint8_t telemetry : 1;
         uint8_t lpa_rsvd : 4;
@@ -350,7 +367,8 @@ struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data {
     uint8_t npss;
 
     /** admin vendor specific command configuration */
-    struct {
+    struct
+    {
         /* admin vendor specific commands use disk format */
         uint8_t spec_format : 1;
 
@@ -358,7 +376,8 @@ struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data {
     } avscc;
 
     /** autonomous power state transition attributes */
-    struct {
+    struct
+    {
         /** controller supports autonomous power state transitions */
         uint8_t supported : 1;
 
@@ -387,7 +406,8 @@ struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data {
     uint64_t unvmcap[2];
 
     /** replay protected memory block support */
-    struct {
+    struct
+    {
         uint8_t num_rpmb_units : 3;
         uint8_t auth_method : 3;
         uint8_t reserved1 : 2;
@@ -404,7 +424,8 @@ struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data {
     /** device self-test options */
     union {
         uint8_t raw;
-        struct {
+        struct
+        {
             /** Device supports only one device self-test operation at a time */
             uint8_t one_only : 1;
 
@@ -432,7 +453,8 @@ struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data {
     /** Host controlled thermal management attributes */
     union {
         uint16_t raw;
-        struct {
+        struct
+        {
             uint16_t supported : 1;
             uint16_t reserved : 15;
         } bits;
@@ -447,7 +469,8 @@ struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data {
     /** Sanitize capabilities */
     union {
         uint32_t raw;
-        struct {
+        struct
+        {
             uint32_t crypto_erase : 1;
             uint32_t block_erase : 1;
             uint32_t overwrite : 1;
@@ -462,7 +485,8 @@ struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data {
     uint8_t anatt;
 
     /* bytes 343: Asymmetric namespace access capabilities */
-    struct {
+    struct
+    {
         uint8_t ana_optimized_state : 1;
         uint8_t ana_non_optimized_state : 1;
         uint8_t ana_inaccessible_state : 1;
@@ -484,13 +508,15 @@ struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data {
     /* bytes 512-703: nvm command set attributes */
 
     /** submission queue entry size */
-    struct {
+    struct
+    {
         uint8_t min : 4;
         uint8_t max : 4;
     } sqes;
 
     /** completion queue entry size */
-    struct {
+    struct
+    {
         uint8_t min : 4;
         uint8_t max : 4;
     } cqes;
@@ -501,33 +527,37 @@ struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data {
     uint32_t nn;
 
     /** optional nvm command support */
-    struct {
+    struct
+    {
         uint16_t compare : 1;
         uint16_t write_unc : 1;
-        uint16_t dsm: 1;
-        uint16_t write_zeroes: 1;
-        uint16_t set_features_save: 1;
-        uint16_t reservations: 1;
-        uint16_t timestamp: 1;
-        uint16_t reserved: 9;
+        uint16_t dsm : 1;
+        uint16_t write_zeroes : 1;
+        uint16_t set_features_save : 1;
+        uint16_t reservations : 1;
+        uint16_t timestamp : 1;
+        uint16_t reserved : 9;
     } oncs;
 
     /** fused operation support */
-    struct {
+    struct
+    {
         uint16_t compare_and_write : 1;
         uint16_t reserved : 15;
     } fuses;
 
     /** format nvm attributes */
-    struct {
-        uint8_t format_all_ns: 1;
-        uint8_t erase_all_ns: 1;
-        uint8_t crypto_erase_supported: 1;
-        uint8_t reserved: 5;
+    struct
+    {
+        uint8_t format_all_ns : 1;
+        uint8_t erase_all_ns : 1;
+        uint8_t crypto_erase_supported : 1;
+        uint8_t reserved : 5;
     } fna;
 
     /** volatile write cache */
-    struct {
+    struct
+    {
         uint8_t present : 1;
         uint8_t flush_broadcast : 2;
         uint8_t reserved : 5;
@@ -569,7 +599,8 @@ struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data {
     uint8_t vs[1024];
 };
 
-struct nvme_ns_data {
+struct nvme_ns_data
+{
     /** namespace size */
     uint64_t nsze;
 
@@ -580,7 +611,8 @@ struct nvme_ns_data {
     uint64_t nuse;
 
     /** namespace features */
-    struct {
+    struct
+    {
         /** thin provisioning */
         uint8_t thin_prov : 1;
 
@@ -603,14 +635,16 @@ struct nvme_ns_data {
     uint8_t nlbaf;
 
     /** formatted lba size */
-    struct {
+    struct
+    {
         uint8_t format : 4;
         uint8_t extended : 1;
         uint8_t reserved2 : 3;
     } flbas;
 
     /** metadata capabilities */
-    struct {
+    struct
+    {
         /** metadata can be transferred as part of data prp list */
         uint8_t extended : 1;
 
@@ -622,7 +656,8 @@ struct nvme_ns_data {
     } mc;
 
     /** end-to-end data protection capabilities */
-    struct {
+    struct
+    {
         /** protection information type 1 */
         uint8_t pit1 : 1;
 
@@ -640,7 +675,8 @@ struct nvme_ns_data {
     } dpc;
 
     /** end-to-end data protection type settings */
-    struct {
+    struct
+    {
         /** protection information type */
         uint8_t pit : 3;
 
@@ -652,14 +688,16 @@ struct nvme_ns_data {
     } dps;
 
     /** namespace multi-path I/O and namespace sharing capabilities */
-    struct {
+    struct
+    {
         uint8_t can_share : 1;
         uint8_t reserved : 7;
     } nmic;
 
     /** reservation capabilities */
     union {
-        struct {
+        struct
+        {
             /** supports persist through power loss */
             uint8_t persist : 1;
 
@@ -687,7 +725,8 @@ struct nvme_ns_data {
         uint8_t raw;
     } nsrescap;
     /** format progress indicator */
-    struct {
+    struct
+    {
         uint8_t percentage_remaining : 7;
         uint8_t fpi_supported : 1;
     } fpi;
@@ -695,7 +734,8 @@ struct nvme_ns_data {
     /** deallocate logical features */
     union {
         uint8_t raw;
-        struct {
+        struct
+        {
             /**
              * Value read from deallocated blocks
              *
@@ -774,7 +814,8 @@ struct nvme_ns_data {
     uint64_t eui64;
 
     /** lba format support */
-    struct {
+    struct
+    {
         /** metadata size */
         uint32_t ms : 16;
 
@@ -792,13 +833,15 @@ struct nvme_ns_data {
     uint8_t vendor_specific[3712];
 };
 
-enum nvme_secure_erase_setting {
+enum nvme_secure_erase_setting
+{
     NVME_FMT_NVM_SES_NO_SECURE_ERASE = 0x0,
     NVME_FMT_NVM_SES_USER_DATA_ERASE = 0x1,
     NVME_FMT_NVM_SES_CRYPTO_ERASE = 0x2,
 };
 
-struct nvme_format {
+struct nvme_format
+{
     uint32_t lbaf : 4;
     uint32_t ms : 1;
     uint32_t pi : 3;

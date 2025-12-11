@@ -6,8 +6,7 @@ namespace NCloud::NFileStore::NDaemon {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TOptionsServer final
-    : public TOptionsCommon
+struct TOptionsServer final: public TOptionsCommon
 {
     TOptionsServer();
 };

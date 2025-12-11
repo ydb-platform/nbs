@@ -32,9 +32,9 @@ private:
 
 public:
     TReadBlocksRemoteRequestActor(
-            TEvService::TEvReadBlocksLocalRequest::TPtr request,
-            ui64 blockSize,
-            TActorId volumeClient)
+        TEvService::TEvReadBlocksLocalRequest::TPtr request,
+        ui64 blockSize,
+        TActorId volumeClient)
         : Request(request)
         , BlockSize(blockSize)
         , VolumeClient(volumeClient)
@@ -55,8 +55,11 @@ private:
 
         auto request = CreateRemoteRequest();
 
-        LOG_TRACE(ctx, TBlockStoreComponents::SERVICE,
-            "Converted Local to gRPC ReadBlocks request for client %s to volume %s",
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Converted Local to gRPC ReadBlocks request for client %s to "
+            "volume %s",
             clientId.Quote().data(),
             diskId.Quote().data());
 
@@ -66,9 +69,9 @@ private:
             VolumeClient,
             SelfId(),
             request.release(),
-            Request->Flags | IEventHandle::FlagForwardOnNondelivery,  // flags
-            Request->Cookie,  // cookie
-            &undeliveredActor    // forwardOnNondelivery
+            Request->Flags | IEventHandle::FlagForwardOnNondelivery,   // flags
+            Request->Cookie,                                           // cookie
+            &undeliveredActor   // forwardOnNondelivery
         );
 
         ctx.Send(event.release());
@@ -107,8 +110,9 @@ private:
         const TEvService::TEvReadBlocksRequest::TPtr&,
         const TActorContext& ctx)
     {
-        auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
-            MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
+        auto response =
+            std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
+                MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
 
         NCloud::Reply(ctx, *Request, std::move(response));
         Die(ctx);
@@ -130,19 +134,24 @@ private:
             } else if (auto guard = Request->Get()->Record.Sglist.Acquire()) {
                 const auto& src = sgListOrError.GetResult();
                 size_t bytesCopied = SgListCopy(src, guard.Get());
-                Y_ABORT_UNLESS(bytesCopied == Request->Get()->Record.GetBlocksCount() * BlockSize);
+                Y_ABORT_UNLESS(
+                    bytesCopied ==
+                    Request->Get()->Record.GetBlocksCount() * BlockSize);
             } else {
                 error.SetCode(E_REJECTED);
                 error.SetMessage("failed to fill output buffer");
             }
         }
 
-        LOG_TRACE(ctx, TBlockStoreComponents::SERVICE,
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Converted ReadBlocks response using gRPC IPC to Local IPC");
 
         msg->Record.ClearBlocks();
-        auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
-            NProto::TReadBlocksLocalResponse(std::move(msg->Record)));
+        auto response =
+            std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
+                NProto::TReadBlocksLocalResponse(std::move(msg->Record)));
 
         NCloud::Reply(ctx, *Request, std::move(response));
 

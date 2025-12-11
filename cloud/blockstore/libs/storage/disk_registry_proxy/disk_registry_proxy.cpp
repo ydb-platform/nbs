@@ -15,5 +15,4 @@ NActors::IActorPtr CreateDiskRegistryProxy(
         std::move(proxyConfig));
 }
 
-
 }   // namespace NCloud::NBlockStore::NStorage

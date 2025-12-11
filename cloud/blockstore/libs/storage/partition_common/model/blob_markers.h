@@ -7,40 +7,48 @@
 
 #include <contrib/ydb/core/base/logoblob.h>
 
-
 namespace NCloud::NBlockStore::NStorage::NBlobMarkers {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TUsedMark {};
+struct TUsedMark
+{
+};
 
-struct TEmptyMark {};
+struct TEmptyMark
+{
+};
 
-struct TFreshMark {};
+struct TFreshMark
+{
+};
 
-struct TFreshMarkOnBaseDisk {
+struct TFreshMarkOnBaseDisk
+{
     std::shared_ptr<NProto::TFreshBlockRange> Data;
     TBlockDataRef RefToData;
     ui64 BlockIndex;
 
     TFreshMarkOnBaseDisk(
-            std::shared_ptr<NProto::TFreshBlockRange> data,
-            TBlockDataRef refToData,
-            ui64 blockIndex)
+        std::shared_ptr<NProto::TFreshBlockRange> data,
+        TBlockDataRef refToData,
+        ui64 blockIndex)
         : Data(std::move(data))
         , RefToData(std::move(refToData))
         , BlockIndex(blockIndex)
     {}
 };
 
-struct TZeroMark {};
+struct TZeroMark
+{
+};
 
 struct TBlobMark
 {
     TBlobMark(
-            const NKikimr::TLogoBlobID& blobId,
-            ui32 bSGroupId,
-            ui16 blobOffset)
+        const NKikimr::TLogoBlobID& blobId,
+        ui32 bSGroupId,
+        ui16 blobOffset)
         : BlobId(blobId)
         , BSGroupId(bSGroupId)
         , BlobOffset(blobOffset)
@@ -51,17 +59,18 @@ struct TBlobMark
     ui16 BlobOffset;
 };
 
-struct TBlobMarkOnBaseDisk {
+struct TBlobMarkOnBaseDisk
+{
     NKikimr::TLogoBlobID BlobId;
     ui64 BlockIndex;
     ui32 BSGroupId;
     ui16 BlobOffset;
 
     TBlobMarkOnBaseDisk(
-            const NKikimr::TLogoBlobID& blobId,
-            ui64 blockIndex,
-            ui32 bSGroupId,
-            ui16 blobOffset)
+        const NKikimr::TLogoBlobID& blobId,
+        ui64 blockIndex,
+        ui32 bSGroupId,
+        ui16 blobOffset)
         : BlobId(blobId)
         , BlockIndex(blockIndex)
         , BSGroupId(bSGroupId)

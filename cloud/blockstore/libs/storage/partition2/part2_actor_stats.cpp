@@ -16,9 +16,8 @@ using namespace NActors;
 
 void TPartitionActor::UpdateStats(const NProto::TPartitionStats& update)
 {
-    State->UpdateStats([&] (NProto::TPartitionStats& stats) {
-        UpdatePartitionCounters(stats, update);
-    });
+    State->UpdateStats([&](NProto::TPartitionStats& stats)
+                       { UpdatePartitionCounters(stats, update); });
 
     auto blockSize = State->GetBlockSize();
     PartCounters->Cumulative.BytesWritten.Increment(

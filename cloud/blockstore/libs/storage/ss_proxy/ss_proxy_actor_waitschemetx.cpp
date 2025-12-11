@@ -11,17 +11,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReplyProxyActor final
-    : public TActor<TReplyProxyActor>
+class TReplyProxyActor final: public TActor<TReplyProxyActor>
 {
 private:
     const TActorId Owner;
     const ui64 TabletId;
 
 public:
-    TReplyProxyActor(
-            const TActorId& owner,
-            const ui64 tabletId)
+    TReplyProxyActor(const TActorId& owner, const ui64 tabletId)
         : TActor(&TThis::StateWork)
         , Owner(owner)
         , TabletId(tabletId)
@@ -84,8 +81,8 @@ void TSSProxyActor::HandleWaitSchemeTx(
 
     auto& state = SchemeShardStates[msg->SchemeShardTabletId];
     auto& requests = state.TxToRequests[msg->TxId];
-    requests.emplace_back(CreateRequestInfo(
-        ev->Sender, ev->Cookie, msg->CallContext));
+    requests.emplace_back(
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext));
 
     if (requests.size() == 1) {
         // This is the first request for this tabletId/txId
@@ -100,17 +97,19 @@ void TSSProxyActor::SendWaitTxRequest(
 {
     auto& state = SchemeShardStates[schemeShard];
     if (!state.ReplyProxy) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
             "Creating reply proxy actor for schemeshard %lu",
             schemeShard);
 
-        state.ReplyProxy = NCloud::Register<TReplyProxyActor>(
-            ctx,
-            ctx.SelfID,
-            schemeShard);
+        state.ReplyProxy =
+            NCloud::Register<TReplyProxyActor>(ctx, ctx.SelfID, schemeShard);
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SS_PROXY,
         "Sending NotifyTxCompletion to %lu for txId# %lu",
         schemeShard,
         txId);
@@ -131,7 +130,9 @@ void TSSProxyActor::HandleTxRegistered(
     const auto* msg = ev->Get();
     ui64 txId = msg->Record.GetTxId();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SS_PROXY,
         "Received NotifyTxCompletionRegistered from %lu for txId# %lu",
         schemeShard,
         txId);
@@ -147,14 +148,16 @@ void TSSProxyActor::HandleTxResult(
     const auto* msg = ev->Get();
     ui64 txId = msg->Record.GetTxId();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SS_PROXY,
         "Received NotifyTxCompletionResult from %lu for txId# %lu",
         schemeShard,
         txId);
 
     auto it = state.TxToRequests.find(txId);
     if (it != state.TxToRequests.end()) {
-        for (const auto& request : it->second) {
+        for (const auto& request: it->second) {
             NCloud::Reply(
                 ctx,
                 *request,

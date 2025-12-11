@@ -15,17 +15,11 @@ struct TRequestUsTimeBuckets
 {
     static constexpr size_t BUCKETS_COUNT = 25;
 
-    static constexpr std::array<double, BUCKETS_COUNT> Buckets = {{
-        1,
-        100, 200, 300,
-        400, 500, 600,
-        700, 800, 900,
-        1000, 2000, 5000,
-        10000, 20000, 50000,
-        100000, 200000, 500000,
-        1000000, 2000000, 5000000,
-        10000000, 35000000, Max<double>()
-    }};
+    static constexpr std::array<double, BUCKETS_COUNT> Buckets = {
+        {1,       100,      200,      300,          400,    500,     600,
+         700,     800,      900,      1000,         2000,   5000,    10000,
+         20000,   50000,    100000,   200000,       500000, 1000000, 2000000,
+         5000000, 10000000, 35000000, Max<double>()}};
 
     static constexpr TStringBuf Units = "usec";
     static constexpr double PercentileMultiplier = 1.0;
@@ -49,13 +43,22 @@ struct TRequestUsTimeBucketsLowResolution
 {
     static constexpr size_t BUCKETS_COUNT = 15;
 
-    static constexpr std::array<double, BUCKETS_COUNT> Buckets = {{
-        1000, 2000, 5000,
-        10000, 20000, 50000,
-        100000, 200000, 500000,
-        1000000, 2000000, 5000000,
-        10000000, 35000000, Max<double>()
-    }};
+    static constexpr std::array<double, BUCKETS_COUNT> Buckets = {
+        {1000,
+         2000,
+         5000,
+         10000,
+         20000,
+         50000,
+         100000,
+         200000,
+         500000,
+         1000000,
+         2000000,
+         5000000,
+         10000000,
+         35000000,
+         Max<double>()}};
 
     static constexpr TStringBuf Units = "usec";
     static constexpr double PercentileMultiplier = 1.0;
@@ -97,13 +100,22 @@ struct TQueueSizeBuckets
 {
     static constexpr size_t BUCKETS_COUNT = 15;
 
-    static constexpr std::array<double, BUCKETS_COUNT> Buckets = {{
-        1, 2, 5,
-        10, 20, 50,
-        100, 200, 500,
-        1000, 2000, 5000,
-        10000, 35000, Max<double>()
-    }};
+    static constexpr std::array<double, BUCKETS_COUNT> Buckets = {
+        {1,
+         2,
+         5,
+         10,
+         20,
+         50,
+         100,
+         200,
+         500,
+         1000,
+         2000,
+         5000,
+         10000,
+         35000,
+         Max<double>()}};
 
     static constexpr TStringBuf Units = "";
     static constexpr double PercentileMultiplier = 1.0;
@@ -117,9 +129,8 @@ struct TKbSizeBuckets
 {
     static constexpr size_t BUCKETS_COUNT = 12;
 
-    static constexpr std::array<double, BUCKETS_COUNT> Buckets = {{
-        4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, Max<double>()
-    }};
+    static constexpr std::array<double, BUCKETS_COUNT> Buckets = {
+        {4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, Max<double>()}};
 
     static constexpr TStringBuf Units = "KB";
     // NOTE: maybe should be using multiplier of 1024 to increase the
@@ -129,8 +140,9 @@ struct TKbSizeBuckets
     static TVector<TString> MakeNames();
 };
 
-template<class TBucketsType>
-inline TVector<double> ConvertToHistBounds(const TBucketsType& buckets) {
+template <class TBucketsType>
+inline TVector<double> ConvertToHistBounds(const TBucketsType& buckets)
+{
     return {buckets.begin(), std::prev(buckets.end())};
 }
 

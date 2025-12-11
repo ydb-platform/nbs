@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
+
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -82,12 +83,12 @@ constexpr bool RejectRequestIfNotReady =
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template<class TMethod>
+template <class TMethod>
 concept ReadRequest = IsReadMethod<TMethod>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template<class TMethod>
+template <class TMethod>
 concept WriteRequest = IsWriteMethod<TMethod>;
 
 ////////////////////////////////////////////////////////////////////////////////

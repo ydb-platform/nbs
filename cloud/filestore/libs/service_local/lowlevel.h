@@ -13,7 +13,8 @@ namespace NLowLevel {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class UnixCredentialsGuard {
+class UnixCredentialsGuard
+{
 private:
     uid_t OriginalUid = -1;
     gid_t OriginalGid = -1;
@@ -93,7 +94,8 @@ struct TFileSystemStat
 
 // We do need to extend TFileStat to include device ID
 // to enable correct population of TNodeAttr protobuf message DevId field.
-struct TFileStatEx : public TFileStat {
+struct TFileStatEx: public TFileStat
+{
     using TFileStat::TFileStat;
     ui64 Dev = 0;
     static_assert(
@@ -115,11 +117,8 @@ struct TListDirResult
 
 TFileHandle Open(const TString& path, int flags, int mode);
 TFileHandle Open(const TFileHandle& handle, int flags, int mode);
-TFileHandle OpenAt(
-    const TFileHandle& handle,
-    const TString& name,
-    int flags,
-    int mode);
+TFileHandle
+OpenAt(const TFileHandle& handle, const TString& name, int flags, int mode);
 
 void MkDirAt(const TFileHandle& handle, const TString& name, int mode);
 void MkSockAt(const TFileHandle& handle, const TString& name, int mode);

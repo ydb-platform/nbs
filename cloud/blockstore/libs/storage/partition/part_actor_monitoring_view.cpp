@@ -24,8 +24,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class THttpReadBlockActor final
-    : public TActorBootstrapped<THttpReadBlockActor>
+class THttpReadBlockActor final: public TActorBootstrapped<THttpReadBlockActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
@@ -55,9 +54,7 @@ private:
     void ReplyAndDie(const TActorContext& ctx, const TString& buffer);
     void ReplyAndDie(const TActorContext& ctx, const NProto::TError& error);
 
-    void SendBinaryResponse(
-        const TActorContext& ctx,
-        const TString& buffer);
+    void SendBinaryResponse(const TActorContext& ctx, const TString& buffer);
 
     void SendHttpResponse(
         const TActorContext& ctx,
@@ -83,13 +80,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 THttpReadBlockActor::THttpReadBlockActor(
-        TRequestInfoPtr requestInfo,
-        bool dataDumpAllowed,
-        const TActorId& tablet,
-        ui32 blockSize,
-        ui32 blockIndex,
-        ui64 commitId,
-        bool binary)
+    TRequestInfoPtr requestInfo,
+    bool dataDumpAllowed,
+    const TActorId& tablet,
+    ui32 blockSize,
+    ui32 blockIndex,
+    ui64 commitId,
+    bool binary)
     : RequestInfo(std::move(requestInfo))
     , DataDumpAllowed(dataDumpAllowed)
     , Tablet(tablet)
@@ -121,10 +118,7 @@ void THttpReadBlockActor::ReadBlocks(const TActorContext& ctx)
     request->Record.CommitId = CommitId;
     request->Record.BlockSize = BufferHolder.Get().size();
 
-    NCloud::SendWithUndeliveryTracking(
-        ctx,
-        Tablet,
-        std::move(request));
+    NCloud::SendWithUndeliveryTracking(ctx, Tablet, std::move(request));
 }
 
 void THttpReadBlockActor::ReplyAndDie(
@@ -156,8 +150,8 @@ void THttpReadBlockActor::SendBinaryResponse(
 
     out << "HTTP/1.1 200 OK\r\n"
         << "Content-Type: application/octet-stream\r\n"
-        << "Content-Disposition: attachment; filename=\"Block_"
-        << BlockIndex << "_" << CommitId << "\"\r\n"
+        << "Content-Disposition: attachment; filename=\"Block_" << BlockIndex
+        << "_" << CommitId << "\"\r\n"
         << "Connection: close\r\n"
         << "\r\n";
     out << buffer;
@@ -180,27 +174,30 @@ void THttpReadBlockActor::SendHttpResponse(
 {
     TStringStream out;
 
-    HTML(out) {
-        DIV_CLASS("panel panel-info") {
-            DIV_CLASS("panel-heading") {
+    HTML (out) {
+        DIV_CLASS ("panel panel-info") {
+            DIV_CLASS ("panel-heading") {
                 out << "Block Content";
             }
-            DIV_CLASS("panel-body") {
-                DIV() {
+            DIV_CLASS ("panel-body") {
+                DIV () {
                     out << "BlockIndex: ";
-                    STRONG() {
+                    STRONG()
+                    {
                         out << BlockIndex;
                     }
                 }
-                DIV() {
+                DIV () {
                     out << "CommitId: ";
-                    STRONG() {
+                    STRONG()
+                    {
                         out << CommitId;
                     }
                 }
-                DIV() {
+                DIV () {
                     out << "Status: ";
-                    STRONG() {
+                    STRONG()
+                    {
                         out << FormatError(error);
                     }
                 }
@@ -290,8 +287,8 @@ void TPartitionActor::HandleHttpInfo_View(
         ui64 commitId = 0;
 
         if (TryFromString(params.Get("block"), blockIndex) &&
-            TryFromString(params.Get("commitid"), commitId)) {
-
+            TryFromString(params.Get("commitid"), commitId))
+        {
             NCloud::Register<THttpReadBlockActor>(
                 ctx,
                 std::move(requestInfo),
@@ -302,10 +299,7 @@ void TPartitionActor::HandleHttpInfo_View(
                 commitId,
                 params.Has("binary"));
         } else {
-            RejectHttpRequest(
-                ctx,
-                *requestInfo,
-                "invalid index specified");
+            RejectHttpRequest(ctx, *requestInfo, "invalid index specified");
         }
         return;
     }

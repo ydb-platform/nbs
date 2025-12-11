@@ -26,41 +26,34 @@ Y_UNIT_TEST_SUITE(TRuntimeVolumeParamsTest)
         const TString timeoutKey = "max-timed-out-device-state-duration";
 
         const TVector<TTestParam> testParams{
-            {
-                .Key = "key",
-                .Value = "10s",
-                .ValidUntil = now + 1min,
-                .Now = now,
-                .ExpectedValue = {},
-                .Id = "unknown key"
-            },
-            {
-                .Key = timeoutKey,
-                .Value = "10s",
-                .ValidUntil = now + 1min,
-                .Now = now,
-                .ExpectedValue = 10s,
-                .Id = "valid value"
-            },
-            {
-                .Key = timeoutKey,
-                .Value = "10s",
-                .ValidUntil = now + 1min,
-                .Now = now + 2min,
-                .ExpectedValue = {},
-                .Id = "expired value"
-            },
-            {
-                .Key = timeoutKey,
-                .Value = "invalid value",
-                .ValidUntil = now + 1min,
-                .Now = now,
-                .ExpectedValue = {},
-                .Id = "invalid value"
-            },
+            {.Key = "key",
+             .Value = "10s",
+             .ValidUntil = now + 1min,
+             .Now = now,
+             .ExpectedValue = {},
+             .Id = "unknown key"},
+            {.Key = timeoutKey,
+             .Value = "10s",
+             .ValidUntil = now + 1min,
+             .Now = now,
+             .ExpectedValue = 10s,
+             .Id = "valid value"},
+            {.Key = timeoutKey,
+             .Value = "10s",
+             .ValidUntil = now + 1min,
+             .Now = now + 2min,
+             .ExpectedValue = {},
+             .Id = "expired value"},
+            {.Key = timeoutKey,
+             .Value = "invalid value",
+             .ValidUntil = now + 1min,
+             .Now = now,
+             .ExpectedValue = {},
+             .Id = "invalid value"},
         };
 
-        const auto performTest = [&](const auto& testParam) {
+        const auto performTest = [&](const auto& testParam)
+        {
             Cerr << "Test id: " << testParam.Id << "\n";
 
             TRuntimeVolumeParams params{{{
@@ -71,7 +64,8 @@ Y_UNIT_TEST_SUITE(TRuntimeVolumeParamsTest)
 
             UNIT_ASSERT_VALUES_EQUAL(
                 testParam.ExpectedValue,
-                params.GetMaxTimedOutDeviceStateDurationOverride(testParam.Now));
+                params.GetMaxTimedOutDeviceStateDurationOverride(
+                    testParam.Now));
         };
 
         for (const auto& testParam: testParams) {
@@ -92,47 +86,38 @@ Y_UNIT_TEST_SUITE(TRuntimeVolumeParamsTest)
         now += 1min;
 
         const TVector<TTestParam> testParams{
-            {
-                .ParamValues = {},
-                .ExpectedDelay = Nothing(),
-                .Id = "no values"
-            },
-            {
-                .ParamValues = {{
-                    {
-                        .Key = "closest expiration",
-                        .Value = {},
-                        .ValidUntil = now + 1min,
-                    },
-                    {
-                        .Key = "farest expiration",
-                        .Value = {},
-                        .ValidUntil = now + 2min,
-                    }
-                }},
-                .ExpectedDelay = 1min,
-                .Id = "delay in future"
-            },
-            {
-                .ParamValues = {{
-                    {
-                        .Key = "not expired",
-                        .Value = {},
-                        .ValidUntil = now + 1min,
-                    },
-                    {
-                        .Key = "expired",
-                        .Value = {},
-                        .ValidUntil = now - 30s,
-                    }
-                }},
-                .ExpectedDelay = 1ms,
-                .Id = "delay in past"
-            }
-        };
+            {.ParamValues = {}, .ExpectedDelay = Nothing(), .Id = "no values"},
+            {.ParamValues =
+                 {{{
+                       .Key = "closest expiration",
+                       .Value = {},
+                       .ValidUntil = now + 1min,
+                   },
+                   {
+                       .Key = "farest expiration",
+                       .Value = {},
+                       .ValidUntil = now + 2min,
+                   }}},
+             .ExpectedDelay = 1min,
+             .Id = "delay in future"},
+            {.ParamValues =
+                 {{{
+                       .Key = "not expired",
+                       .Value = {},
+                       .ValidUntil = now + 1min,
+                   },
+                   {
+                       .Key = "expired",
+                       .Value = {},
+                       .ValidUntil = now - 30s,
+                   }}},
+             .ExpectedDelay = 1ms,
+             .Id = "delay in past"}};
 
-        const auto performTest = [&](const auto& testParam) {
-            Cerr << "Test id: " << testParam.Id << "\n";;
+        const auto performTest = [&](const auto& testParam)
+        {
+            Cerr << "Test id: " << testParam.Id << "\n";
+            ;
 
             TRuntimeVolumeParams params(testParam.ParamValues);
 
@@ -145,7 +130,6 @@ Y_UNIT_TEST_SUITE(TRuntimeVolumeParamsTest)
             performTest(testParam);
         }
     }
-
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

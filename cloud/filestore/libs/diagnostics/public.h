@@ -20,7 +20,8 @@ struct IRequestStats;
 using IRequestStatsPtr = std::shared_ptr<IRequestStats>;
 
 struct IIncompleteRequestProvider;
-using IIncompleteRequestProviderPtr = std::shared_ptr<IIncompleteRequestProvider>;
+using IIncompleteRequestProviderPtr =
+    std::shared_ptr<IIncompleteRequestProvider>;
 
 struct IRequestStatsRegistry;
 using IRequestStatsRegistryPtr = std::shared_ptr<IRequestStatsRegistry>;

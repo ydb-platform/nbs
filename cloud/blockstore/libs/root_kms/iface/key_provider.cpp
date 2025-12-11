@@ -3,6 +3,7 @@
 #include "client.h"
 
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
+
 #include <cloud/storage/core/libs/coroutine/executor.h>
 
 #include <library/cpp/string_utils/base64/base64.h>
@@ -18,17 +19,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRootKmsKeyProvider
-    : public IRootKmsKeyProvider
+class TRootKmsKeyProvider: public IRootKmsKeyProvider
 {
 private:
     const IRootKmsClientPtr Client;
     const TString KeyId;
 
 public:
-    TRootKmsKeyProvider(
-            IRootKmsClientPtr client,
-            TString keyId)
+    TRootKmsKeyProvider(IRootKmsClientPtr client, TString keyId)
         : Client(std::move(client))
         , KeyId(std::move(keyId))
     {}

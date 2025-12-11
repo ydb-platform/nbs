@@ -12,24 +12,26 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Read/Write counters
-constexpr TStringBuf FILESTORE_READ_OPS          = "filestore.read_ops";
-constexpr TStringBuf FILESTORE_READ_OPS_BURST    = "filestore.read_ops_burst";
-constexpr TStringBuf FILESTORE_READ_BYTES        = "filestore.read_bytes";
-constexpr TStringBuf FILESTORE_READ_BYTES_BURST  = "filestore.read_bytes_burst";
-constexpr TStringBuf FILESTORE_READ_LATENCY      = "filestore.read_latency";
-constexpr TStringBuf FILESTORE_READ_ERRORS       = "filestore.read_errors";
-constexpr TStringBuf FILESTORE_WRITE_OPS         = "filestore.write_ops";
-constexpr TStringBuf FILESTORE_WRITE_OPS_BURST   = "filestore.write_ops_burst";
-constexpr TStringBuf FILESTORE_WRITE_BYTES       = "filestore.write_bytes";
-constexpr TStringBuf FILESTORE_WRITE_BYTES_BURST = "filestore.write_bytes_burst";
-constexpr TStringBuf FILESTORE_WRITE_LATENCY     = "filestore.write_latency";
-constexpr TStringBuf FILESTORE_WRITE_ERRORS      = "filestore.write_errors";
+constexpr TStringBuf FILESTORE_READ_OPS = "filestore.read_ops";
+constexpr TStringBuf FILESTORE_READ_OPS_BURST = "filestore.read_ops_burst";
+constexpr TStringBuf FILESTORE_READ_BYTES = "filestore.read_bytes";
+constexpr TStringBuf FILESTORE_READ_BYTES_BURST = "filestore.read_bytes_burst";
+constexpr TStringBuf FILESTORE_READ_LATENCY = "filestore.read_latency";
+constexpr TStringBuf FILESTORE_READ_ERRORS = "filestore.read_errors";
+constexpr TStringBuf FILESTORE_WRITE_OPS = "filestore.write_ops";
+constexpr TStringBuf FILESTORE_WRITE_OPS_BURST = "filestore.write_ops_burst";
+constexpr TStringBuf FILESTORE_WRITE_BYTES = "filestore.write_bytes";
+constexpr TStringBuf FILESTORE_WRITE_BYTES_BURST =
+    "filestore.write_bytes_burst";
+constexpr TStringBuf FILESTORE_WRITE_LATENCY = "filestore.write_latency";
+constexpr TStringBuf FILESTORE_WRITE_ERRORS = "filestore.write_errors";
 
 // Index operation counters
-constexpr TStringBuf FILESTORE_INDEX_OPS             = "filestore.index_ops";
-constexpr TStringBuf FILESTORE_INDEX_LATENCY         = "filestore.index_latency";
-constexpr TStringBuf FILESTORE_INDEX_ERRORS          = "filestore.index_errors";
-constexpr TStringBuf FILESTORE_INDEX_CUMULATIVE_TIME = "filestore.index_cumulative_time";
+constexpr TStringBuf FILESTORE_INDEX_OPS = "filestore.index_ops";
+constexpr TStringBuf FILESTORE_INDEX_LATENCY = "filestore.index_latency";
+constexpr TStringBuf FILESTORE_INDEX_ERRORS = "filestore.index_errors";
+constexpr TStringBuf FILESTORE_INDEX_CUMULATIVE_TIME =
+    "filestore.index_cumulative_time";
 
 TLabels MakeFilestoreLabels(
     const TString& cloudId,
@@ -104,69 +106,65 @@ void RegisterFilestore(
         MakeFilestoreLabels(cloudId, folderId, filestoreId, instanceId);
 
     auto readSub = src->FindSubgroup("request", "ReadData");
+    AddUserMetric(dsc, commonLabels, {{readSub, "Count"}}, FILESTORE_READ_OPS);
     AddUserMetric(
         dsc,
         commonLabels,
-        { { readSub, "Count" } },
-        FILESTORE_READ_OPS);
-    AddUserMetric(
-        dsc,
-        commonLabels,
-        { { readSub, "MaxCount" } },
+        {{readSub, "MaxCount"}},
         FILESTORE_READ_OPS_BURST);
     AddUserMetric(
         dsc,
         commonLabels,
-        { { readSub, "RequestBytes" } },
+        {{readSub, "RequestBytes"}},
         FILESTORE_READ_BYTES);
     AddUserMetric(
         dsc,
         commonLabels,
-        { { readSub, "MaxRequestBytes" } },
+        {{readSub, "MaxRequestBytes"}},
         FILESTORE_READ_BYTES_BURST);
     AddUserMetric(
         dsc,
         commonLabels,
-        { { readSub, "Errors/Fatal" } },
+        {{readSub, "Errors/Fatal"}},
         FILESTORE_READ_ERRORS);
     AddHistogramUserMetric(
         GetTimeBuckets(histogramCounterOptions),
         dsc,
         commonLabels,
-        { { readSub, "Time" } },
+        {{readSub, "Time"}},
         FILESTORE_READ_LATENCY);
 
     auto writeSub = src->FindSubgroup("request", "WriteData");
     AddUserMetric(
         dsc,
         commonLabels,
-        { { writeSub, "Count" } },
+        {{writeSub, "Count"}},
         FILESTORE_WRITE_OPS);
     AddUserMetric(
         dsc,
         commonLabels,
-        { { writeSub, "MaxCount" } },
+        {{writeSub, "MaxCount"}},
         FILESTORE_WRITE_OPS_BURST);
     AddUserMetric(
         dsc,
         commonLabels,
-        { { writeSub, "RequestBytes" } },
+        {{writeSub, "RequestBytes"}},
         FILESTORE_WRITE_BYTES);
     AddUserMetric(
         dsc,
         commonLabels,
-        { { writeSub, "MaxRequestBytes" } },
+        {{writeSub, "MaxRequestBytes"}},
         FILESTORE_WRITE_BYTES_BURST);
     AddUserMetric(
         dsc,
         commonLabels,
-        { { writeSub, "Errors/Fatal" } },
+        {{writeSub, "Errors/Fatal"}},
         FILESTORE_WRITE_ERRORS);
     AddHistogramUserMetric(
         GetTimeBuckets(histogramCounterOptions),
         dsc,
         commonLabels,
-        { { writeSub, "Time" } },
+        {{writeSub, "Time"}},
         FILESTORE_WRITE_LATENCY);
 
     TVector<TBaseDynamicCounters> indexOpsCounters;
@@ -184,8 +182,7 @@ void RegisterFilestore(
             indexOpsCounters.emplace_back(indexSubgroup, "Count");
             indexErrorCounters.emplace_back(indexSubgroup, "Errors/Fatal");
 
-            auto metricName =
-                GetIndexOpsNames().find(request.first.LabelValue);
+            auto metricName = GetIndexOpsNames().find(request.first.LabelValue);
             if (metricName) {
                 const auto labels = MakeFilestoreLabelsWithRequestName(
                     cloudId,
@@ -196,35 +193,29 @@ void RegisterFilestore(
                 AddUserMetric(
                     dsc,
                     labels,
-                    { { indexSubgroup, "Count" } },
+                    {{indexSubgroup, "Count"}},
                     FILESTORE_INDEX_OPS);
                 AddUserMetric(
                     dsc,
                     labels,
-                    { { indexSubgroup, "Time" } },
-                    FILESTORE_INDEX_CUMULATIVE_TIME
-                );
+                    {{indexSubgroup, "Time"}},
+                    FILESTORE_INDEX_CUMULATIVE_TIME);
                 AddHistogramUserMetric(
                     GetTimeBuckets(histogramCounterOptions),
                     dsc,
                     labels,
-                    {{ indexSubgroup, "Time" }},
+                    {{indexSubgroup, "Time"}},
                     FILESTORE_INDEX_LATENCY);
                 AddUserMetric(
                     dsc,
                     labels,
-                    { { indexSubgroup, "Errors/Fatal" } },
-                    FILESTORE_INDEX_ERRORS
-                );
+                    {{indexSubgroup, "Errors/Fatal"}},
+                    FILESTORE_INDEX_ERRORS);
             }
         }
     }
 
-    AddUserMetric(
-        dsc,
-        commonLabels,
-        indexOpsCounters,
-        FILESTORE_INDEX_OPS);
+    AddUserMetric(dsc, commonLabels, indexOpsCounters, FILESTORE_INDEX_OPS);
     AddUserMetric(
         dsc,
         commonLabels,
@@ -273,4 +264,4 @@ void UnregisterFilestore(
     }
 }
 
-}  // namespace NCloud::NFileStore::NUserCounter
+}   // namespace NCloud::NFileStore::NUserCounter

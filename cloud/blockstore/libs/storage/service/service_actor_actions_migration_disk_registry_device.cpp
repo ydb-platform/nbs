@@ -32,9 +32,7 @@ private:
     NProto::TError Error;
 
 public:
-    TForceMigrationActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TForceMigrationActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -54,16 +52,16 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TForceMigrationActor::TForceMigrationActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
 
 void TForceMigrationActor::Bootstrap(const TActorContext& ctx)
 {
-    auto request = std::make_unique<
-        TEvDiskRegistry::TEvStartForceMigrationRequest>();
+    auto request =
+        std::make_unique<TEvDiskRegistry::TEvStartForceMigrationRequest>();
 
     auto status = JsonStringToMessage(Input, &request->Record);
     if (!status.ok()) {
@@ -85,8 +83,7 @@ void TForceMigrationActor::ReplyAndDie(
 {
     auto response =
         std::make_unique<TEvService::TEvExecuteActionResponse>(Error);
-    MessageToJsonString(
-        proto, response->Record.MutableOutput());
+    MessageToJsonString(proto, response->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,

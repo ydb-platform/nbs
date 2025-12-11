@@ -40,12 +40,10 @@ TOptionsCommon::TOptionsCommon()
 
     Opts.AddLongOption("service")
         .RequiredArgument("{" + GetEnumAllNames<EServiceKind>() + "}")
-        .Handler1T<TString>([this] (const auto& s) {
-            Service = FromString<EServiceKind>(s);
-        });
+        .Handler1T<TString>([this](const auto& s)
+                            { Service = FromString<EServiceKind>(s); });
 
-    Opts.AddLongOption("disable-local-service")
-        .StoreTrue(&DisableLocalService);
+    Opts.AddLongOption("disable-local-service").StoreTrue(&DisableLocalService);
 }
 
 void TOptionsCommon::Parse(int argc, char** argv)
@@ -56,15 +54,19 @@ void TOptionsCommon::Parse(int argc, char** argv)
     }
 
     if (Service == EServiceKind::Kikimr) {
-        Y_ENSURE(res->FindLongOptParseResult("ic-port"),
-        "'--ic-port' option is required for kikimr service");
+        Y_ENSURE(
+            res->FindLongOptParseResult("ic-port"),
+            "'--ic-port' option is required for kikimr service");
 
-        Y_ENSURE(res->FindLongOptParseResult("domain"),
-        "'--domain' option is required for kikimr service");
+        Y_ENSURE(
+            res->FindLongOptParseResult("domain"),
+            "'--domain' option is required for kikimr service");
 
-        Y_ENSURE(SysConfig && DomainsConfig,
-        "sys-file and domains-file options are required if load-configs-from-cms is not set");
+        Y_ENSURE(
+            SysConfig && DomainsConfig,
+            "sys-file and domains-file options are required if "
+            "load-configs-from-cms is not set");
     }
 }
 
-} // NCloud::NFileStore::NDaemon
+}   // namespace NCloud::NFileStore::NDaemon

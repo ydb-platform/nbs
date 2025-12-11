@@ -19,10 +19,8 @@ void TPartitionActor::HandleDeleteGarbage(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -80,7 +78,9 @@ void TPartitionActor::ExecuteDeleteGarbage(
     for (const auto& blobId: args.GarbageBlobs) {
         garbageBlobBytes += blobId.BlobSize();
 
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             "[%lu] Delete garbage blob: %s",
             TabletID(),
             ToString(MakeBlobId(TabletID(), blobId)).data());
@@ -105,7 +105,9 @@ void TPartitionActor::CompleteDeleteGarbage(
     TRequestScope timer(*args.RequestInfo);
     RemoveTransaction(*args.RequestInfo);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] Complete delete garbage @%lu",
         TabletID(),
         args.CommitId);
@@ -122,7 +124,8 @@ void TPartitionActor::CompleteDeleteGarbage(
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-    auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
+    auto time =
+        CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.DeleteGarbage.AddRequest(time);
 }
 

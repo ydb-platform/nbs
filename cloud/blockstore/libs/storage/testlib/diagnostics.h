@@ -7,4 +7,4 @@ namespace NCloud::NBlockStore {
 
 TDiagnosticsConfigPtr CreateDiagnosticsConfig();
 
-} // namespace NCloud::NBlockStore
+}   // namespace NCloud::NBlockStore

@@ -24,7 +24,7 @@ TRangeDefs ParseRanges(const TCounterOptions* counterOpts)
         ranges.reserve(counterOpts->RangesSize());
 
         for (const auto& range: counterOpts->GetRanges()) {
-            ranges.push_back({ range.GetValue(), range.GetName().data() });
+            ranges.push_back({range.GetValue(), range.GetName().data()});
         }
     }
 
@@ -35,13 +35,15 @@ TTxCountersDesc ParseTxCounters(const NProtoBuf::EnumDescriptor* enumDesc)
 {
     TTxCountersDesc desc;
 
-    const auto* globalCounterOpts = GetExtension(enumDesc->options(), GlobalCounterOpts);
+    const auto* globalCounterOpts =
+        GetExtension(enumDesc->options(), GlobalCounterOpts);
     const auto globalRanges = ParseRanges(globalCounterOpts);
 
     for (int i = 0; i < enumDesc->value_count(); ++i) {
         const auto* valueDesc = enumDesc->value(i);
 
-        const auto* counterOpts = GetExtension(valueDesc->options(), CounterOpts);
+        const auto* counterOpts =
+            GetExtension(valueDesc->options(), CounterOpts);
         if (!counterOpts) {
             // Values without CounterOpts should not be reported, but we still
             // need to occupy an array slot. Mark with an empty name for later
@@ -66,49 +68,50 @@ TTxCountersDesc ParseTxCounters(const NProtoBuf::EnumDescriptor* enumDesc)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTabletCountersImpl final
-    : public TTabletCountersBase
+class TTabletCountersImpl final: public TTabletCountersBase
 {
 public:
     TTabletCountersImpl(
-            ui32 simpleCounters,
-            ui32 cumulativeCounters,
-            ui32 percentileCounters,
-            const char* const simpleCounterNames[],
-            const char* const cumulativeCounterNames[],
-            const char* const percentileCounterNames[])
+        ui32 simpleCounters,
+        ui32 cumulativeCounters,
+        ui32 percentileCounters,
+        const char* const simpleCounterNames[],
+        const char* const cumulativeCounterNames[],
+        const char* const percentileCounterNames[])
         : TTabletCountersBase(
-            simpleCounters,
-            cumulativeCounters,
-            percentileCounters,
-            simpleCounterNames,
-            cumulativeCounterNames,
-            percentileCounterNames)
+              simpleCounters,
+              cumulativeCounters,
+              percentileCounters,
+              simpleCounterNames,
+              cumulativeCounterNames,
+              percentileCounterNames)
     {
         const auto& rangeDefs = DefaultRangeDefs();
         for (size_t i = 0; i < percentileCounters; ++i) {
-            Percentile()[i].Initialize(rangeDefs.size(), rangeDefs.begin(), false);
+            Percentile()[i].Initialize(
+                rangeDefs.size(),
+                rangeDefs.begin(),
+                false);
         }
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTabletCountersWithTxTypesImpl final
-    : public TTabletCountersWithTxTypes
+class TTabletCountersWithTxTypesImpl final: public TTabletCountersWithTxTypes
 {
 public:
     TTabletCountersWithTxTypesImpl(
-            const TTabletCountersDesc& simpleCounters,
-            const TTabletCountersDesc& cumulativeCounters,
-            const TTabletCountersDesc& percentileCounters)
+        const TTabletCountersDesc& simpleCounters,
+        const TTabletCountersDesc& cumulativeCounters,
+        const TTabletCountersDesc& percentileCounters)
         : TTabletCountersWithTxTypes(
-            simpleCounters.Size,
-            cumulativeCounters.Size,
-            percentileCounters.Size,
-            simpleCounters.NamePtrs.begin(),
-            cumulativeCounters.NamePtrs.begin(),
-            percentileCounters.NamePtrs.begin())
+              simpleCounters.Size,
+              cumulativeCounters.Size,
+              percentileCounters.Size,
+              simpleCounters.NamePtrs.begin(),
+              cumulativeCounters.NamePtrs.begin(),
+              percentileCounters.NamePtrs.begin())
     {
         InitCounters(CT_SIMPLE, simpleCounters);
         InitCounters(CT_CUMULATIVE, cumulativeCounters);
@@ -141,24 +144,24 @@ const TRangeDefs& DefaultRangeDefs()
     struct TInitializer
     {
         TRangeDefs RangeDefs = {{
-            {        0,          "0" },
-            {      100,        "100" },
-            {      200,        "200" },
-            {      500,        "500" },
-            {     1000,       "1000" },
-            {     2000,       "2000" },
-            {     5000,       "5000" },
-            {    10000,      "10000" },
-            {    20000,      "20000" },
-            {    50000,      "50000" },
-            {   100000,     "100000" },
-            {   200000,     "200000" },
-            {   500000,     "500000" },
-            {  1000000,    "1000000" },
-            {  2000000,    "2000000" },
-            {  5000000,    "5000000" },
-            { 10000000,   "10000000" },
-            { 35000000,   "35000000" },
+            {0, "0"},
+            {100, "100"},
+            {200, "200"},
+            {500, "500"},
+            {1000, "1000"},
+            {2000, "2000"},
+            {5000, "5000"},
+            {10000, "10000"},
+            {20000, "20000"},
+            {50000, "50000"},
+            {100000, "100000"},
+            {200000, "200000"},
+            {500000, "500000"},
+            {1000000, "1000000"},
+            {2000000, "2000000"},
+            {5000000, "5000000"},
+            {10000000, "10000000"},
+            {35000000, "35000000"},
         }};
     };
     return Singleton<TInitializer>()->RangeDefs;
@@ -178,8 +181,8 @@ const TTxCountersDesc& TxSimpleCounters()
 {
     struct TInitializer
     {
-        TTxCountersDesc Counters = ParseTxCounters(
-            ETxTypeSimpleCounters_descriptor());
+        TTxCountersDesc Counters =
+            ParseTxCounters(ETxTypeSimpleCounters_descriptor());
     };
     return Singleton<TInitializer>()->Counters;
 }
@@ -188,8 +191,8 @@ const TTxCountersDesc& TxCumulativeCounters()
 {
     struct TInitializer
     {
-        TTxCountersDesc Counters = ParseTxCounters(
-            ETxTypeCumulativeCounters_descriptor());
+        TTxCountersDesc Counters =
+            ParseTxCounters(ETxTypeCumulativeCounters_descriptor());
     };
     return Singleton<TInitializer>()->Counters;
 }
@@ -198,8 +201,8 @@ const TTxCountersDesc& TxPercentileCounters()
 {
     struct TInitializer
     {
-        TTxCountersDesc Counters = ParseTxCounters(
-            ETxTypePercentileCounters_descriptor());
+        TTxCountersDesc Counters =
+            ParseTxCounters(ETxTypePercentileCounters_descriptor());
     };
     return Singleton<TInitializer>()->Counters;
 }
@@ -234,7 +237,8 @@ TTabletCountersDesc BuildTabletCounters(
     }
 
     for (const auto& name: desc.Names) {
-        // Set name pointer to nullptr for array slots that should not be reported
+        // Set name pointer to nullptr for array slots that should not be
+        // reported
         desc.NamePtrs.push_back(name.empty() ? nullptr : name.data());
     }
 

@@ -75,8 +75,8 @@ public:
         return false;
     }
 
-    template <typename ...TArgs>
-    void ReadOrFail(TArgs&& ...args)
+    template <typename... TArgs>
+    void ReadOrFail(TArgs&&... args)
     {
         if (!Read(std::forward<TArgs>(args)...)) {
             ythrow yexception() << "Unexpected end of stream";

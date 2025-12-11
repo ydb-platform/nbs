@@ -19,9 +19,9 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_STATS_SERVICE_REQUESTS(xxx, ...)                            \
-    xxx(GetVolumeStats,                   __VA_ARGS__)                         \
-// BLOCKSTORE_SERVICE_REQUESTS
+#define BLOCKSTORE_STATS_SERVICE_REQUESTS(xxx, ...) \
+    xxx(GetVolumeStats, __VA_ARGS__)                \
+    // BLOCKSTORE_SERVICE_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -37,10 +37,7 @@ struct TEvStatsService
         const ui64 TabletId;
         const NProto::TVolume Config;
 
-        TRegisterVolume(
-                TString diskId,
-                ui64 tabletId,
-                NProto::TVolume config)
+        TRegisterVolume(TString diskId, ui64 tabletId, NProto::TVolume config)
             : DiskId(std::move(diskId))
             , TabletId(tabletId)
             , Config(std::move(config))
@@ -71,9 +68,7 @@ struct TEvStatsService
         const TString DiskId;
         const NProto::TVolume Config;
 
-        TVolumeConfigUpdated(
-                TString diskId,
-                NProto::TVolume config)
+        TVolumeConfigUpdated(TString diskId, NProto::TVolume config)
             : DiskId(std::move(diskId))
             , Config(std::move(config))
         {}
@@ -90,9 +85,9 @@ struct TEvStatsService
         TVector<NKikimr::TTabletChannelInfo> ChannelInfos;
 
         TPartitionBootExternalCompleted(
-                TString diskId,
-                ui64 partitionTabletId,
-                TVector<NKikimr::TTabletChannelInfo> channelInfos)
+            TString diskId,
+            ui64 partitionTabletId,
+            TVector<NKikimr::TTabletChannelInfo> channelInfos)
             : DiskId(std::move(diskId))
             , PartitionTabletId(partitionTabletId)
             , ChannelInfos(std::move(channelInfos))
@@ -114,13 +109,13 @@ struct TEvStatsService
         NKikimrTabletBase::TMetrics TabletMetrics;
 
         TVolumePartCounters(
-                TString diskId,
-                TPartitionDiskCountersPtr diskCounters,
-                ui64 volumeSystemCpu,
-                ui64 volumeUserCpu,
-                bool hasCheckpoint,
-                NBlobMetrics::TBlobLoadMetrics metrics,
-                NKikimrTabletBase::TMetrics tabletMetrics)
+            TString diskId,
+            TPartitionDiskCountersPtr diskCounters,
+            ui64 volumeSystemCpu,
+            ui64 volumeUserCpu,
+            bool hasCheckpoint,
+            NBlobMetrics::TBlobLoadMetrics metrics,
+            NKikimrTabletBase::TMetrics tabletMetrics)
             : DiskId(std::move(diskId))
             , DiskCounters(std::move(diskCounters))
             , VolumeSystemCpu(volumeSystemCpu)
@@ -145,12 +140,12 @@ struct TEvStatsService
         const ui32 FailedBoots;
 
         TVolumeSelfCounters(
-                TString diskId,
-                bool isLocalMount,
-                bool hasClients,
-                bool isPreempted,
-                TVolumeSelfCountersPtr volumeCounters,
-                ui32 failedBoots)
+            TString diskId,
+            bool isLocalMount,
+            bool hasClients,
+            bool isPreempted,
+            TVolumeSelfCountersPtr volumeCounters,
+            ui32 failedBoots)
             : DiskId(std::move(diskId))
             , IsLocalMount(isLocalMount)
             , HasClients(hasClients)
@@ -160,18 +155,18 @@ struct TEvStatsService
         {}
 
         TVolumeSelfCounters(
-                TString diskId,
-                bool isLocalMount,
-                bool hasClients,
-                bool isPreempted,
-                TVolumeSelfCountersPtr volumeCounters)
+            TString diskId,
+            bool isLocalMount,
+            bool hasClients,
+            bool isPreempted,
+            TVolumeSelfCountersPtr volumeCounters)
             : TVolumeSelfCounters(
-                std::move(diskId),
-                isLocalMount,
-                hasClients,
-                isPreempted,
-                std::move(volumeCounters),
-                0)
+                  std::move(diskId),
+                  isLocalMount,
+                  hasClients,
+                  isPreempted,
+                  std::move(volumeCounters),
+                  0)
         {}
     };
 
@@ -185,7 +180,8 @@ struct TEvStatsService
 
         TGetVolumeStatsRequest() = default;
 
-        TGetVolumeStatsRequest(TVector<NProto::TVolumeBalancerDiskStats> volumeStats)
+        TGetVolumeStatsRequest(
+            TVector<NProto::TVolumeBalancerDiskStats> volumeStats)
             : VolumeStats(std::move(volumeStats))
         {}
     };
@@ -196,7 +192,8 @@ struct TEvStatsService
 
         TGetVolumeStatsResponse() = default;
 
-        TGetVolumeStatsResponse(TVector<NProto::TVolumeBalancerDiskStats> volumeStats)
+        TGetVolumeStatsResponse(
+            TVector<NProto::TVolumeBalancerDiskStats> volumeStats)
             : VolumeStats(std::move(volumeStats))
         {}
     };
@@ -221,43 +218,30 @@ struct TEvStatsService
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStoreEvents::STATS_SERVICE_END,
+    static_assert(
+        EvEnd < (int)TBlockStoreEvents::STATS_SERVICE_END,
         "EvEnd expected to be < TBlockStoreEvents::STATS_SERVICE_END");
 
     BLOCKSTORE_STATS_SERVICE_REQUESTS(BLOCKSTORE_DECLARE_EVENTS)
 
-    using TEvRegisterVolume = TRequestEvent<
-        TRegisterVolume,
-        EvRegisterVolume
-    >;
+    using TEvRegisterVolume = TRequestEvent<TRegisterVolume, EvRegisterVolume>;
 
-    using TEvUnregisterVolume = TRequestEvent<
-        TUnregisterVolume,
-        EvUnregisterVolume
-    >;
+    using TEvUnregisterVolume =
+        TRequestEvent<TUnregisterVolume, EvUnregisterVolume>;
 
-    using TEvVolumeConfigUpdated = TRequestEvent<
-        TVolumeConfigUpdated,
-        EvVolumeConfigUpdated
-    >;
+    using TEvVolumeConfigUpdated =
+        TRequestEvent<TVolumeConfigUpdated, EvVolumeConfigUpdated>;
 
     using TEvPartitionBootExternalCompleted = TRequestEvent<
         TPartitionBootExternalCompleted,
-        EvPartitionBootExternalCompleted
-    >;
+        EvPartitionBootExternalCompleted>;
 
-    using TEvVolumePartCounters = TRequestEvent<
-        TVolumePartCounters,
-        EvVolumePartCounters
-    >;
+    using TEvVolumePartCounters =
+        TRequestEvent<TVolumePartCounters, EvVolumePartCounters>;
 
-    using TEvVolumeSelfCounters = TRequestEvent<
-        TVolumeSelfCounters,
-        EvVolumeSelfCounters
-    >;
-
+    using TEvVolumeSelfCounters =
+        TRequestEvent<TVolumeSelfCounters, EvVolumeSelfCounters>;
 };
-
 
 ////////////////////////////////////////////////////////////////////////////////
 

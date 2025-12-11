@@ -12,8 +12,7 @@ using namespace NBlobMarkers;
 
 Y_UNIT_TEST_SUITE(TForwardReadTests)
 {
-    struct TActorSystem
-        : NActors::TTestActorRuntimeBase
+    struct TActorSystem: NActors::TTestActorRuntimeBase
     {
         void Start()
         {
@@ -26,8 +25,7 @@ Y_UNIT_TEST_SUITE(TForwardReadTests)
         }
     };
 
-    struct TSetupEnvironment
-        : public TCurrentTestCase
+    struct TSetupEnvironment: public TCurrentTestCase
     {
         NActors::TActorId EdgeActor;
         TActorSystem ActorSystem;

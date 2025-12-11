@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/copy_range.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/direct_copy_range.h>
+
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -299,7 +300,9 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
     Y_DEBUG_ABORT_UNLESS(erased);
 
     if (HasError(msg->GetError())) {
-        LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             "[%s] Range migration failed: %s, error: %s",
             DiskId.c_str(),
             DescribeRange(msg->Range).c_str(),

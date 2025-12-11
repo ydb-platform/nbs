@@ -93,11 +93,11 @@ struct TClient: TClientBase
     static const ui32 BlockSize = 4_KB;
 
     TClient(
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            ILoggingServicePtr logging,
-            IMonitoringServicePtr monitoring,
-            IServerStatsPtr clientStats)
+        ITimerPtr timer,
+        ISchedulerPtr scheduler,
+        ILoggingServicePtr logging,
+        IMonitoringServicePtr monitoring,
+        IServerStatsPtr clientStats)
         : Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Monitoring(std::move(monitoring))
@@ -107,8 +107,7 @@ struct TClient: TClientBase
     }
 
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
     {
@@ -136,8 +135,9 @@ struct TClient: TClientBase
                     EOpenModeFlag::DirectAligned | EOpenModeFlag::RdWr);
 
                 if (!handle->IsOpen() && errno == EINVAL) {
-                    STORAGE_WARN(TStringBuilder() << "Failed to open file "
-                        << request->GetDiskId()
+                    STORAGE_WARN(
+                        TStringBuilder()
+                        << "Failed to open file " << request->GetDiskId()
                         << " with O_DIRECT, opening without it");
 
                     handle = std::make_shared<TFileHandle>(
@@ -146,17 +146,20 @@ struct TClient: TClientBase
                 }
 
                 if (handle->IsOpen()) {
-                    STORAGE_INFO(TStringBuilder() << "Mounted volume "
-                        << request->GetDiskId()
+                    STORAGE_INFO(
+                        TStringBuilder()
+                        << "Mounted volume " << request->GetDiskId()
                         << ", fd = " << FHANDLE(*handle));
 
                     Files.Insert(request->GetDiskId(), handle);
                     FilePaths.push_back(request->GetDiskId());
                 } else {
                     return MakeFuture<NProto::TMountVolumeResponse>(
-                        TErrorResponse(E_IO, TStringBuilder() << "Failed to open file "
-                            << request->GetDiskId()
-                            << ", errno=" << errno));
+                        TErrorResponse(
+                            E_IO,
+                            TStringBuilder() << "Failed to open file "
+                                             << request->GetDiskId()
+                                             << ", errno=" << errno));
                 }
             }
         }
@@ -195,8 +198,7 @@ struct TClient: TClientBase
         if (!Files.Has(request->GetDiskId())) {
             error = MakeError(
                 E_NOT_FOUND,
-                TStringBuilder() << "no such volume: "
-                    << request->GetDiskId());
+                TStringBuilder() << "no such volume: " << request->GetDiskId());
         }
 
         return MakeFuture<NProto::TStatVolumeResponse>(
@@ -235,31 +237,32 @@ struct TClient: TClientBase
             dataSize,
             request->GetStartIndex() * BlockSize);
 
-        return future.Apply([=] (NThreading::TFuture<ui32> f) {
-            try {
-                if (f.GetValue() < dataSize) {
+        return future.Apply(
+            [=](NThreading::TFuture<ui32> f)
+            {
+                try {
+                    if (f.GetValue() < dataSize) {
+                        return NProto::TReadBlocksLocalResponse(TErrorResponse(
+                            E_REJECTED,
+                            TStringBuilder()
+                                << "read less than expected: " << f.GetValue()
+                                << " < " << dataSize));
+                    }
+                } catch (...) {
                     return NProto::TReadBlocksLocalResponse(
-                        TErrorResponse(E_REJECTED, TStringBuilder()
-                            << "read less than expected: " << f.GetValue()
-                            << " < " << dataSize));
+                        TErrorResponse(E_IO, CurrentExceptionMessage()));
                 }
-            } catch (...) {
-                return NProto::TReadBlocksLocalResponse(
-                    TErrorResponse(E_IO, CurrentExceptionMessage()));
-            }
 
-            auto sglist = request->Sglist.Acquire();
-            if (!sglist) {
-                return NProto::TReadBlocksLocalResponse(
-                    TErrorResponse(E_REJECTED));
-            }
+                auto sglist = request->Sglist.Acquire();
+                if (!sglist) {
+                    return NProto::TReadBlocksLocalResponse(
+                        TErrorResponse(E_REJECTED));
+                }
 
-            SgListCopy(
-                TBlockDataRef(buffer.get(), dataSize),
-                sglist.Get());
+                SgListCopy(TBlockDataRef(buffer.get(), dataSize), sglist.Get());
 
-            return NProto::TReadBlocksLocalResponse();
-        });
+                return NProto::TReadBlocksLocalResponse();
+            });
     }
 
     TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
@@ -296,21 +299,24 @@ struct TClient: TClientBase
             dataSize,
             request->GetStartIndex() * BlockSize);
 
-        return future.Apply([dataSize, buffer] (NThreading::TFuture<ui32> f) {
-            try {
-                if (f.GetValue() < dataSize) {
+        return future.Apply(
+            [dataSize, buffer](NThreading::TFuture<ui32> f)
+            {
+                try {
+                    if (f.GetValue() < dataSize) {
+                        return NProto::TWriteBlocksLocalResponse(TErrorResponse(
+                            E_REJECTED,
+                            TStringBuilder()
+                                << "written less than expected: "
+                                << f.GetValue() << " < " << dataSize));
+                    }
+                } catch (...) {
                     return NProto::TWriteBlocksLocalResponse(
-                        TErrorResponse(E_REJECTED, TStringBuilder()
-                            << "written less than expected: " << f.GetValue()
-                            << " < " << dataSize));
+                        TErrorResponse(E_IO, CurrentExceptionMessage()));
                 }
-            } catch (...) {
-                return NProto::TWriteBlocksLocalResponse(
-                    TErrorResponse(E_IO, CurrentExceptionMessage()));
-            }
 
-            return NProto::TWriteBlocksLocalResponse();
-        });
+                return NProto::TWriteBlocksLocalResponse();
+            });
     }
 
     TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
@@ -335,28 +341,32 @@ struct TClient: TClientBase
             dataSize,
             request->GetStartIndex() * BlockSize);
 
-        return future.Apply([dataSize, buffer] (NThreading::TFuture<ui32> f) {
-            try {
-                if (f.GetValue() < dataSize) {
+        return future.Apply(
+            [dataSize, buffer](NThreading::TFuture<ui32> f)
+            {
+                try {
+                    if (f.GetValue() < dataSize) {
+                        return NProto::TZeroBlocksResponse(TErrorResponse(
+                            E_REJECTED,
+                            TStringBuilder()
+                                << "written less than expected: "
+                                << f.GetValue() << " < " << dataSize));
+                    }
+                } catch (...) {
                     return NProto::TZeroBlocksResponse(
-                        TErrorResponse(E_REJECTED, TStringBuilder()
-                            << "written less than expected: " << f.GetValue()
-                            << " < " << dataSize));
+                        TErrorResponse(E_IO, CurrentExceptionMessage()));
                 }
-            } catch (...) {
-                return NProto::TZeroBlocksResponse(
-                    TErrorResponse(E_IO, CurrentExceptionMessage()));
-            }
 
-            return NProto::TZeroBlocksResponse();
-        });
+                return NProto::TZeroBlocksResponse();
+            });
     }
 
     std::shared_ptr<char> Acalloc(ui64 dataSize)
     {
         std::shared_ptr<char> buffer = {
             static_cast<char*>(aligned_alloc(BlockSize, dataSize)),
-            [] (auto* p) {
+            [](auto* p)
+            {
                 free(p);
             }};
         memset(buffer.get(), 0, dataSize);
@@ -384,4 +394,4 @@ IBlockStorePtr CreateClient(
         std::move(clientStats));
 }
 
-}   // namespace NCloud::NBlockStore::NClient
+}   // namespace NCloud::NBlockStore::NFilesystemClient

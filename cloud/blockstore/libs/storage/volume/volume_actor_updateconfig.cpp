@@ -53,15 +53,16 @@ auto BuildNewMeta(
     partitionConfig.SetDiskId(volumeConfig.GetDiskId());
     partitionConfig.SetBaseDiskId(volumeConfig.GetBaseDiskId());
     partitionConfig.SetBaseDiskTabletId(volumeConfig.GetBaseDiskTabletId());
-    partitionConfig.SetBaseDiskCheckpointId(volumeConfig.GetBaseDiskCheckpointId());
+    partitionConfig.SetBaseDiskCheckpointId(
+        volumeConfig.GetBaseDiskCheckpointId());
     partitionConfig.SetBlocksCount(blockCount);
     partitionConfig.SetBlockSize(volumeConfig.GetBlockSize());
     partitionConfig.SetMaxBlocksInBlob(volumeConfig.GetMaxBlocksInBlob());
     partitionConfig.SetZoneBlockCount(volumeConfig.GetZoneBlockCount());
     partitionConfig.SetStorageMediaKind(mediaKind);
     partitionConfig.SetIsSystem(volumeConfig.GetIsSystem());
-    while (partitionConfig.ExplicitChannelProfilesSize()
-            < volumeConfig.ExplicitChannelProfilesSize())
+    while (partitionConfig.ExplicitChannelProfilesSize() <
+           volumeConfig.ExplicitChannelProfilesSize())
     {
         partitionConfig.AddExplicitChannelProfiles();
     }
@@ -165,7 +166,8 @@ bool TVolumeActor::UpdateVolumeConfig(
 
     ui32 configVersion = msg->Record.GetVolumeConfig().GetVersion();
     if (configVersion <= NextVolumeConfigVersion) {
-        auto response = std::make_unique<TEvBlockStore::TEvUpdateVolumeConfigResponse>();
+        auto response =
+            std::make_unique<TEvBlockStore::TEvUpdateVolumeConfigResponse>();
         response->Record.SetTxId(msg->Record.GetTxId());
         response->Record.SetOrigin(TabletID());
 
@@ -204,7 +206,9 @@ bool TVolumeActor::UpdateVolumeConfig(
 void TVolumeActor::ScheduleProcessUpdateVolumeConfig(const TActorContext& ctx)
 {
     if (PendingVolumeConfigUpdates && !ProcessUpdateVolumeConfigScheduled) {
-        ctx.Send(ctx.SelfID, new TEvVolumePrivate::TEvProcessUpdateVolumeConfig());
+        ctx.Send(
+            ctx.SelfID,
+            new TEvVolumePrivate::TEvProcessUpdateVolumeConfig());
         ProcessUpdateVolumeConfigScheduled = true;
     }
 }
@@ -236,8 +240,7 @@ void TVolumeActor::FinishUpdateVolumeConfig(const TActorContext& ctx)
 {
     auto newMeta = BuildNewMeta(
         UnfinishedUpdateVolumeConfig.Record,
-        State ? State->GetMeta() : NProto::TVolumeMeta()
-    );
+        State ? State->GetMeta() : NProto::TVolumeMeta());
 
     *newMeta.MutableDevices() = std::move(UnfinishedUpdateVolumeConfig.Devices);
     *newMeta.MutableMigrations() =
@@ -338,7 +341,8 @@ void TVolumeActor::CompleteUpdateConfig(
         LogTitle.GetWithTime().c_str(),
         args.Meta.GetVersion());
 
-    auto response = std::make_unique<TEvBlockStore::TEvUpdateVolumeConfigResponse>();
+    auto response =
+        std::make_unique<TEvBlockStore::TEvUpdateVolumeConfigResponse>();
     response->Record.SetTxId(args.TxId);
     response->Record.SetOrigin(TabletID());
     response->Record.SetStatus(NKikimrBlockStore::OK);

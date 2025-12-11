@@ -27,8 +27,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDiskAgentReadLocalActor final
-    : public TDiskAgentBaseRequestActor
+class TDiskAgentReadLocalActor final: public TDiskAgentBaseRequestActor
 {
 private:
     const NProto::TReadBlocksLocalRequest Request;
@@ -74,16 +73,16 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDiskAgentReadLocalActor::TDiskAgentReadLocalActor(
-        TRequestInfoPtr requestInfo,
-        NProto::TReadBlocksLocalRequest request,
-        TRequestTimeoutPolicy timeoutPolicy,
-        TVector<TDeviceRequest> deviceRequests,
-        TNonreplicatedPartitionConfigPtr partConfig,
-        TBlockRange64 range,
-        bool shouldReportBlockRangeOnFailure,
-        TActorId volumeActorId,
-        const TActorId& part,
-        TChildLogTitle logTitle)
+    TRequestInfoPtr requestInfo,
+    NProto::TReadBlocksLocalRequest request,
+    TRequestTimeoutPolicy timeoutPolicy,
+    TVector<TDeviceRequest> deviceRequests,
+    TNonreplicatedPartitionConfigPtr partConfig,
+    TBlockRange64 range,
+    bool shouldReportBlockRangeOnFailure,
+    TActorId volumeActorId,
+    const TActorId& part,
+    TChildLogTitle logTitle)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),

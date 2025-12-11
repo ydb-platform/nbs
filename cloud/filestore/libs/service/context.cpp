@@ -17,8 +17,7 @@ TString TCallContext::LogString() const
 {
     TStringBuilder sb;
 
-    sb << GetFileStoreRequestName(RequestType)
-        << " #" << RequestId;
+    sb << GetFileStoreRequestName(RequestType) << " #" << RequestId;
     if (!FileSystemId.empty()) {
         sb << " [f:" << FileSystemId << "]";
     }
@@ -26,4 +25,4 @@ TString TCallContext::LogString() const
     return std::move(sb);
 }
 
-} // namespace NCloud::NFileStore
+}   // namespace NCloud::NFileStore

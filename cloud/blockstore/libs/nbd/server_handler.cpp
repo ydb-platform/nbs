@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -38,8 +39,7 @@ inline TRequestInfo CreateRequestInfo(const TRequestContext& ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServerHandler final
-    : public IServerHandler
+class TServerHandler final: public IServerHandler
 {
 private:
     const ILoggingServicePtr Logging;
@@ -57,11 +57,11 @@ private:
 
 public:
     TServerHandler(
-            ILoggingServicePtr logging,
-            IServerStatsPtr serverStats,
-            IDeviceHandlerPtr deviceHandler,
-            IErrorHandlerPtr errorHandler,
-            const TStorageOptions& options)
+        ILoggingServicePtr logging,
+        IServerStatsPtr serverStats,
+        IDeviceHandlerPtr deviceHandler,
+        IErrorHandlerPtr errorHandler,
+        const TStorageOptions& options)
         : Logging(std::move(logging))
         , ServerStats(std::move(serverStats))
         , DeviceHandler(std::move(deviceHandler))
@@ -79,18 +79,12 @@ public:
         return NegotiateClient(reader, writer);
     }
 
-    void SendResponse(
-        IOutputStream& out,
-        TServerResponse& response) override
+    void SendResponse(IOutputStream& out, TServerResponse& response) override
     {
-        out.Write(
-            response.HeaderBuffer.Data(),
-            response.HeaderBuffer.Size());
+        out.Write(response.HeaderBuffer.Data(), response.HeaderBuffer.Size());
 
         if (response.DataBuffer) {
-            out.Write(
-                response.DataBuffer.get(),
-                response.RequestBytes);
+            out.Write(response.DataBuffer.get(), response.RequestBytes);
         }
 
         UnregisterRequest(response.RequestContext, response.Error);
@@ -121,9 +115,7 @@ private:
 
     bool ProcessOptions(TRequestReader& in, TRequestWriter& out);
 
-    void ProcessExportListRequest(
-        const TOption& option,
-        TRequestWriter& out);
+    void ProcessExportListRequest(const TOption& option, TRequestWriter& out);
 
     void ProcessExportInfoRequest(
         const TOption& option,
@@ -169,11 +161,9 @@ private:
         ui32 type,
         TStringBuf replyData = {})
     {
-        STORAGE_DEBUG(Options
-            << " SEND OptionReply"
-            << " option:" << option
-            << " type:" << type
-            << " length:" << replyData.size());
+        STORAGE_DEBUG(
+            Options << " SEND OptionReply" << " option:" << option
+                    << " type:" << type << " length:" << replyData.size());
         out.WriteOptionReply(option, type, replyData);
     }
 
@@ -183,11 +173,9 @@ private:
         ui32 type,
         TStringBuf message)
     {
-        STORAGE_DEBUG(Options
-            << " SEND OptionReply"
-            << " option:" << option
-            << " type:" << type
-            << " message:" << TString(message).Quote());
+        STORAGE_DEBUG(
+            Options << " SEND OptionReply" << " option:" << option << " type:"
+                    << type << " message:" << TString(message).Quote());
         out.WriteOptionReply(option, type, message);
     }
 
@@ -198,11 +186,9 @@ private:
         TStringBuf message)
     {
         if (error) {
-            STORAGE_ERROR(Options
-                << " SEND SimpleReply"
-                << " #" << handle
-                << " error:" << error
-                << " message:" << TString(message).Quote());
+            STORAGE_ERROR(
+                Options << " SEND SimpleReply" << " #" << handle << " error:"
+                        << error << " message:" << TString(message).Quote());
         } else {
             STORAGE_DEBUG(Options << " SEND SimpleReply #" << handle);
         }
@@ -215,19 +201,15 @@ private:
         ui32 error,
         TStringBuf message)
     {
-        STORAGE_ERROR(Options
-            << " SEND StructuredError"
-            << " #" << handle
-            << " error:" << error
-            << " message:" << TString(message).Quote());
+        STORAGE_ERROR(
+            Options << " SEND StructuredError" << " #" << handle << " error:"
+                    << error << " message:" << TString(message).Quote());
         out.WriteStructuredError(handle, error, message);
     }
 
     void WriteStructuredDone(TRequestWriter& out, ui64 handle)
     {
-        STORAGE_DEBUG(Options
-            << " SEND StructuredDone"
-            << " #" << handle);
+        STORAGE_DEBUG(Options << " SEND StructuredDone" << " #" << handle);
         out.WriteStructuredDone(handle);
     }
 
@@ -238,12 +220,10 @@ private:
         ui32 length,
         bool final)
     {
-        STORAGE_DEBUG(Options
-            << " SEND StructuredReadData"
-            << " #" << handle
-            << " offset:" << offset
-            << " length:" << length
-            << " final:" << final);
+        STORAGE_DEBUG(
+            Options << " SEND StructuredReadData" << " #" << handle
+                    << " offset:" << offset << " length:" << length
+                    << " final:" << final);
         out.WriteStructuredReadData(handle, offset, length, final);
     }
 
@@ -269,16 +249,12 @@ private:
         }
     }
 
-    bool ReadOption(
-        TRequestReader& in,
-        TOption& option,
-        TBuffer& optionData)
+    bool ReadOption(TRequestReader& in, TOption& option, TBuffer& optionData)
     {
         if (in.ReadOption(option, optionData)) {
-            STORAGE_DEBUG(Options
-                << " RECEIVE Option"
-                << " option:" << option.Option
-                << " length:" << option.Length);
+            STORAGE_DEBUG(
+                Options << " RECEIVE Option" << " option:" << option.Option
+                        << " length:" << option.Length);
             return true;
         }
 
@@ -288,11 +264,10 @@ private:
     bool ReadRequest(TRequestReader& in, TRequest& request)
     {
         if (in.ReadRequest(request)) {
-            STORAGE_DEBUG(Options
-                << " RECEIVE Request"
-                << " #" << request.Handle
-                << " type:" << request.Type
-                << " length:" << request.Length);
+            STORAGE_DEBUG(
+                Options << " RECEIVE Request" << " #" << request.Handle
+                        << " type:" << request.Type
+                        << " length:" << request.Length);
             return true;
         }
 
@@ -310,7 +285,8 @@ bool TServerHandler::NegotiateClient(TRequestReader& in, TRequestWriter& out)
 
     TClientHello client;
     if (in.ReadClientHello(client)) {
-        Y_ENSURE(client.Flags == (NBD_FLAG_C_FIXED_NEWSTYLE | NBD_FLAG_C_NO_ZEROES));
+        Y_ENSURE(
+            client.Flags == (NBD_FLAG_C_FIXED_NEWSTYLE | NBD_FLAG_C_NO_ZEROES));
 
         if (ProcessOptions(in, out)) {
             return true;
@@ -325,23 +301,23 @@ bool TServerHandler::ProcessOptions(TRequestReader& in, TRequestWriter& out)
     TOption option;
     TBuffer optionData;
 
-    auto replyExceptionError = [&] (const std::exception& e) {
+    auto replyExceptionError = [&](const std::exception& e)
+    {
         WriteOptionError(
             out,
             option.Option,
             NBD_REP_ERR_INVALID,
-            TStringBuilder()
-                << "invalid option request: " << e.what());
+            TStringBuilder() << "invalid option request: " << e.what());
     };
 
-    auto replyUnsupportedError = [&] {
+    auto replyUnsupportedError = [&]
+    {
         WriteOptionError(
             out,
             option.Option,
             NBD_REP_ERR_UNSUP,
-            TStringBuilder()
-                << "unsupported option request: " << option.Option
-                << " (dataSize = " << optionData.Size() << ")");
+            TStringBuilder() << "unsupported option request: " << option.Option
+                             << " (dataSize = " << optionData.Size() << ")");
     };
 
     while (ReadOption(in, option, optionData)) {
@@ -411,7 +387,7 @@ void TServerHandler::ProcessExportListRequest(
     const TOption& option,
     TRequestWriter& out)
 {
-    TExportInfo exp {};
+    TExportInfo exp{};
     exp.Name = Options.DiskId;
 
     TBufferRequestWriter response;
@@ -441,8 +417,7 @@ void TServerHandler::ProcessExportInfoRequest(
             out,
             option.Option,
             NBD_REP_ERR_UNKNOWN,
-            TStringBuilder()
-                << "unknown export: " << request.Name);
+            TStringBuilder() << "unknown export: " << request.Name);
         return;
     }
 
@@ -461,16 +436,16 @@ void TServerHandler::ProcessExportInfoRequest(
         }
     }
 
-    TExportInfo exp {};
+    TExportInfo exp{};
     exp.Name = Options.DiskId;
     exp.Size = Options.BlocksCount * Options.BlockSize;
-    exp.MinBlockSize = Options.UnalignedRequestsDisabled ? Options.BlockSize : 512;
+    exp.MinBlockSize =
+        Options.UnalignedRequestsDisabled ? Options.BlockSize : 512;
     exp.OptBlockSize = DefaultBlockSize;
     exp.MaxBlockSize = NBD_MAX_BUFFER_SIZE;
 
-    exp.Flags = NBD_FLAG_HAS_FLAGS
-              | NBD_FLAG_SEND_TRIM
-              | NBD_FLAG_SEND_WRITE_ZEROES;
+    exp.Flags =
+        NBD_FLAG_HAS_FLAGS | NBD_FLAG_SEND_TRIM | NBD_FLAG_SEND_WRITE_ZEROES;
 
     if (Options.CheckpointId) {
         exp.Flags |= NBD_FLAG_READ_ONLY;
@@ -524,7 +499,8 @@ void TServerHandler::ProcessRequests(
 {
     TRequest request;
 
-    auto replyError = [&] (int error, const TString& message) {
+    auto replyError = [&](int error, const TString& message)
+    {
         WriteGenericError(out, request.Handle, GetNbdErrorCode(error), message);
     };
 
@@ -533,9 +509,8 @@ void TServerHandler::ProcessRequests(
     while (ReadRequest(in, request)) {
         switch (request.Type) {
             case NBD_CMD_READ: {
-                auto requestCtx = RegisterRequest(
-                    request,
-                    EBlockStoreRequest::ReadBlocks);
+                auto requestCtx =
+                    RegisterRequest(request, EBlockStoreRequest::ReadBlocks);
 
                 if (!ctx->AcquireRequest(request.Length)) {
                     // no need to reply, cause server is shutting down
@@ -547,12 +522,13 @@ void TServerHandler::ProcessRequests(
                     requestCtx->MetricRequest,
                     *requestCtx->CallContext);
 
-                ctx->ExecuteSimple([=, this] () mutable {
-                    ProcessReadRequest(
-                        std::move(ctx),
-                        std::move(requestCtx),
-                        request);
-                });
+                ctx->ExecuteSimple(
+                    [=, this]() mutable {
+                        ProcessReadRequest(
+                            std::move(ctx),
+                            std::move(requestCtx),
+                            request);
+                    });
                 break;
             }
 
@@ -562,9 +538,8 @@ void TServerHandler::ProcessRequests(
                     break;
                 }
 
-                auto requestCtx = RegisterRequest(
-                    request,
-                    EBlockStoreRequest::WriteBlocks);
+                auto requestCtx =
+                    RegisterRequest(request, EBlockStoreRequest::WriteBlocks);
 
                 if (!ctx->AcquireRequest(request.Length)) {
                     // no need to reply, cause server is shutting down
@@ -576,13 +551,15 @@ void TServerHandler::ProcessRequests(
                     requestCtx->MetricRequest,
                     *requestCtx->CallContext);
 
-                auto requestData = DeviceHandler->AllocateBuffer(request.Length);
+                auto requestData =
+                    DeviceHandler->AllocateBuffer(request.Length);
                 if (request.Length) {
                     in.ReadOrFail(requestData.get(), request.Length);
                 }
 
                 ctx->ExecuteSimple(
-                    [=, this, data = std::move(requestData)] () mutable {
+                    [=, this, data = std::move(requestData)]() mutable
+                    {
                         ProcessWriteRequest(
                             std::move(ctx),
                             std::move(requestCtx),
@@ -599,9 +576,8 @@ void TServerHandler::ProcessRequests(
                     break;
                 }
 
-                auto requestCtx = RegisterRequest(
-                    request,
-                    EBlockStoreRequest::ZeroBlocks);
+                auto requestCtx =
+                    RegisterRequest(request, EBlockStoreRequest::ZeroBlocks);
 
                 if (!ctx->AcquireRequest(request.Length)) {
                     // no need to reply, cause server is shutting down
@@ -613,12 +589,13 @@ void TServerHandler::ProcessRequests(
                     requestCtx->MetricRequest,
                     *requestCtx->CallContext);
 
-                ctx->ExecuteSimple([=, this] () mutable {
-                    ProcessZeroRequest(
-                        std::move(ctx),
-                        std::move(requestCtx),
-                        request);
-                });
+                ctx->ExecuteSimple(
+                    [=, this]() mutable {
+                        ProcessZeroRequest(
+                            std::move(ctx),
+                            std::move(requestCtx),
+                            request);
+                    });
                 break;
             }
 
@@ -627,8 +604,10 @@ void TServerHandler::ProcessRequests(
                 return;
 
             default:
-                replyError(E_ARGUMENT, TStringBuilder()
-                    << "unsupported request type: " << request.Type);
+                replyError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "unsupported request type: " << request.Type);
                 break;
         }
 
@@ -643,19 +622,17 @@ void TServerHandler::ProcessReadRequest(
     TRequestContextPtr requestCtx,
     const TRequest& request)
 {
-    STORAGE_DEBUG(CreateRequestInfo(*requestCtx)
-        << " PROCESS ReadRequest"
-        << " #" << request.Handle
-        << " offset:" << request.From
-        << " length:" << request.Length);
+    STORAGE_DEBUG(
+        CreateRequestInfo(*requestCtx)
+        << " PROCESS ReadRequest" << " #" << request.Handle
+        << " offset:" << request.From << " length:" << request.Length);
 
     auto responseData = DeviceHandler->AllocateBuffer(request.Length);
 
     NProto::TError error;
     if (request.Length) {
-        auto guardedSgList = TGuardedSgList({
-            { responseData.get(), request.Length }
-        });
+        auto guardedSgList =
+            TGuardedSgList({{responseData.get(), request.Length}});
 
         auto future = DeviceHandler->Read(
             requestCtx->CallContext,
@@ -670,12 +647,13 @@ void TServerHandler::ProcessReadRequest(
         guardedSgList.Close();
     }
 
-    ServerStats->ResponseSent(requestCtx->MetricRequest, *requestCtx->CallContext);
-    STORAGE_DEBUG(CreateRequestInfo(*requestCtx)
-        << " PROCESS ReadResponse"
-        << " #" << request.Handle
-        << " offset:" << request.From
-        << " length:" << request.Length);
+    ServerStats->ResponseSent(
+        requestCtx->MetricRequest,
+        *requestCtx->CallContext);
+    STORAGE_DEBUG(
+        CreateRequestInfo(*requestCtx)
+        << " PROCESS ReadResponse" << " #" << request.Handle
+        << " offset:" << request.From << " length:" << request.Length);
 
     TBufferRequestWriter out;
     if (!HasError(error)) {
@@ -694,8 +672,7 @@ void TServerHandler::ProcessReadRequest(
             out,
             request.Handle,
             GetNbdErrorCode(error.GetCode()),
-            TStringBuilder()
-                << "read request failed: " << FormatError(error));
+            TStringBuilder() << "read request failed: " << FormatError(error));
         responseData = {};
     }
 
@@ -715,17 +692,15 @@ void TServerHandler::ProcessWriteRequest(
     const TRequest& request,
     TStorageBuffer requestData)
 {
-    STORAGE_DEBUG(CreateRequestInfo(*requestCtx)
-        << " PROCESS WriteRequest"
-        << " #" << request.Handle
-        << " offset:" << request.From
-        << " length:" << request.Length);
+    STORAGE_DEBUG(
+        CreateRequestInfo(*requestCtx)
+        << " PROCESS WriteRequest" << " #" << request.Handle
+        << " offset:" << request.From << " length:" << request.Length);
 
     NProto::TError error;
     if (request.Length) {
-        auto guardedSgList = TGuardedSgList({
-            { requestData.get(), request.Length }
-        });
+        auto guardedSgList =
+            TGuardedSgList({{requestData.get(), request.Length}});
 
         auto future = DeviceHandler->Write(
             requestCtx->CallContext,
@@ -740,12 +715,13 @@ void TServerHandler::ProcessWriteRequest(
         requestData.reset();
     }
 
-    ServerStats->ResponseSent(requestCtx->MetricRequest, *requestCtx->CallContext);
-    STORAGE_DEBUG(CreateRequestInfo(*requestCtx)
-        << " PROCESS WriteResponse"
-        << " #" << request.Handle
-        << " offset:" << request.From
-        << " length:" << request.Length);
+    ServerStats->ResponseSent(
+        requestCtx->MetricRequest,
+        *requestCtx->CallContext);
+    STORAGE_DEBUG(
+        CreateRequestInfo(*requestCtx)
+        << " PROCESS WriteResponse" << " #" << request.Handle
+        << " offset:" << request.From << " length:" << request.Length);
 
     TBufferRequestWriter out;
     if (!HasError(error)) {
@@ -755,8 +731,7 @@ void TServerHandler::ProcessWriteRequest(
             out,
             request.Handle,
             GetNbdErrorCode(error.GetCode()),
-            TStringBuilder()
-                << "write request failed: " << FormatError(error));
+            TStringBuilder() << "write request failed: " << FormatError(error));
     }
 
     auto serverResponse = MakeIntrusive<TServerResponse>(
@@ -773,11 +748,10 @@ void TServerHandler::ProcessZeroRequest(
     TRequestContextPtr requestCtx,
     const TRequest& request)
 {
-    STORAGE_DEBUG(CreateRequestInfo(*requestCtx)
-        << " PROCESS ZeroRequest"
-        << " #" << request.Handle
-        << " offset:" << request.From
-        << " length:" << request.Length);
+    STORAGE_DEBUG(
+        CreateRequestInfo(*requestCtx)
+        << " PROCESS ZeroRequest" << " #" << request.Handle
+        << " offset:" << request.From << " length:" << request.Length);
 
     NProto::TError error;
     if (request.Length) {
@@ -790,12 +764,13 @@ void TServerHandler::ProcessZeroRequest(
         error = response.GetError();
     }
 
-    ServerStats->ResponseSent(requestCtx->MetricRequest, *requestCtx->CallContext);
-    STORAGE_DEBUG(CreateRequestInfo(*requestCtx)
-        << " PROCESS ZeroResponse"
-        << " #" << request.Handle
-        << " offset:" << request.From
-        << " length:" << request.Length);
+    ServerStats->ResponseSent(
+        requestCtx->MetricRequest,
+        *requestCtx->CallContext);
+    STORAGE_DEBUG(
+        CreateRequestInfo(*requestCtx)
+        << " PROCESS ZeroResponse" << " #" << request.Handle
+        << " offset:" << request.From << " length:" << request.Length);
 
     TBufferRequestWriter out;
     if (!HasError(error)) {
@@ -805,8 +780,7 @@ void TServerHandler::ProcessZeroRequest(
             out,
             request.Handle,
             GetNbdErrorCode(error.GetCode()),
-            TStringBuilder()
-                << "zero request failed: " << FormatError(error));
+            TStringBuilder() << "zero request failed: " << FormatError(error));
     }
 
     auto serverResponse = MakeIntrusive<TServerResponse>(
@@ -831,7 +805,8 @@ TRequestContextPtr TServerHandler::RegisterRequest(
         startIndex * Options.BlockSize != request.From ||
         endIndex * Options.BlockSize != request.From + request.Length;
 
-    auto requestCtx = MakeIntrusive<TRequestContext>(request.Handle, requestType);
+    auto requestCtx =
+        MakeIntrusive<TRequestContext>(request.Handle, requestType);
 
     ServerStats->PrepareMetricRequest(
         requestCtx->MetricRequest,
@@ -869,7 +844,7 @@ size_t TServerHandler::CollectRequests(
 {
     ui64 now = GetCycleCount();
     size_t count = 0;
-    for (auto& request : RequestsInFlight) {
+    for (auto& request: RequestsInFlight) {
         ++count;
         auto requestTime = request.CallContext->CalcRequestTime(now);
         if (requestTime) {
@@ -902,8 +877,7 @@ ui32 TServerHandler::GetNbdErrorCode(ui32 nbsCode)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServerHandlerFactory final
-    : public IServerHandlerFactory
+class TServerHandlerFactory final: public IServerHandlerFactory
 {
 private:
     const ILoggingServicePtr Logging;
@@ -914,11 +888,11 @@ private:
 
 public:
     TServerHandlerFactory(
-            ILoggingServicePtr logging,
-            IServerStatsPtr serverStats,
-            IDeviceHandlerPtr deviceHandler,
-            IErrorHandlerPtr errorHandler,
-            const TStorageOptions& options)
+        ILoggingServicePtr logging,
+        IServerStatsPtr serverStats,
+        IDeviceHandlerPtr deviceHandler,
+        IErrorHandlerPtr errorHandler,
+        const TStorageOptions& options)
         : Logging(std::move(logging))
         , ServerStats(std::move(serverStats))
         , DeviceHandler(std::move(deviceHandler))
@@ -973,7 +947,7 @@ IServerHandlerFactoryPtr CreateServerHandlerFactory(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IOutputStream& operator <<(IOutputStream& out, const TStorageOptions& options)
+IOutputStream& operator<<(IOutputStream& out, const TStorageOptions& options)
 {
     if (options.DiskId) {
         out << "[d:" << options.DiskId << "] ";

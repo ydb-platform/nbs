@@ -1,6 +1,5 @@
-#include "stats_fetcher.h"
-
 #include "critical_events.h"
+#include "stats_fetcher.h"
 
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
@@ -25,9 +24,7 @@ Y_UNIT_TEST_SUITE(TaskStatsFetcherTest)
 {
     Y_UNIT_TEST(ShouldGetCpuWait)
     {
-        auto fetcher = CreateTaskStatsFetcher(
-            ComponentName,
-            getpid());
+        auto fetcher = CreateTaskStatsFetcher(ComponentName, getpid());
         auto [cpuWait, error] = fetcher->GetCpuWait();
         UNIT_ASSERT_C(!HasError(error), error);
     }

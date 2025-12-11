@@ -48,4 +48,4 @@ Y_UNIT_TEST_SUITE(TCompositeIdTest)
     }
 }
 
-} // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore::NStorage

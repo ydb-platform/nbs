@@ -13,31 +13,28 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    using T##name##Handler = std::function<                                    \
-        NThreading::TFuture<NProto::T##name##Response>(                        \
-            TCallContextPtr callContext,                                       \
-            std::shared_ptr<NProto::T##name##Request>)                         \
-        >;                                                                     \
-                                                                               \
-    T##name##Handler name##Handler;                                            \
-                                                                               \
-    NThreading::TFuture<NProto::T##name##Response> name(                       \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        return name##Handler(std::move(callContext), std::move(request));      \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                              \
+    using T##name##Handler =                                              \
+        std::function<NThreading::TFuture<NProto::T##name##Response>(     \
+            TCallContextPtr callContext,                                  \
+            std::shared_ptr<NProto::T##name##Request>)>;                  \
+                                                                          \
+    T##name##Handler name##Handler;                                       \
+                                                                          \
+    NThreading::TFuture<NProto::T##name##Response> name(                  \
+        TCallContextPtr callContext,                                      \
+        std::shared_ptr<NProto::T##name##Request> request) override       \
+    {                                                                     \
+        return name##Handler(std::move(callContext), std::move(request)); \
+    }                                                                     \
+    // BLOCKSTORE_DECLARE_METHOD
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestStorage
-    : public IStorage
+struct TTestStorage: public IStorage
 {
     ui32 ErrorCount = 0;
     bool DoAllocations = false;
-
 
     BLOCKSTORE_DECLARE_METHOD(ZeroBlocks)
     BLOCKSTORE_DECLARE_METHOD(ReadBlocksLocal)

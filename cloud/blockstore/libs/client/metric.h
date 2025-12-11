@@ -14,7 +14,8 @@ namespace NCloud::NBlockStore::NClient {
 struct IMetricClient
     : public IBlockStore
     , public IIncompleteRequestProvider
-{};
+{
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 

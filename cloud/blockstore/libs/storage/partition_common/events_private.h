@@ -15,10 +15,10 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(xxx, ...)                 \
-    xxx(ReadBlob,                  __VA_ARGS__)                                \
-    xxx(TrimFreshLog,              __VA_ARGS__)                                \
-// BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE
+#define BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(xxx, ...) \
+    xxx(ReadBlob, __VA_ARGS__)                                 \
+    xxx(TrimFreshLog, __VA_ARGS__)                             \
+    // BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -79,14 +79,14 @@ struct TEvPartitionCommonPrivate
         TReadBlobRequest() = default;
 
         TReadBlobRequest(
-                const NKikimr::TLogoBlobID& blobId,
-                NActors::TActorId proxy,
-                TVector<ui16> blobOffsets,
-                TGuardedSgList sglist,
-                ui32 groupId,
-                bool async,
-                TInstant deadline,
-                bool shouldCalculateChecksums)
+            const NKikimr::TLogoBlobID& blobId,
+            NActors::TActorId proxy,
+            TVector<ui16> blobOffsets,
+            TGuardedSgList sglist,
+            ui32 groupId,
+            bool async,
+            TInstant deadline,
+            bool shouldCalculateChecksums)
             : BlobId(blobId)
             , Proxy(proxy)
             , BlobOffsets(std::move(blobOffsets))
@@ -118,10 +118,10 @@ struct TEvPartitionCommonPrivate
         TReadBlobCompleted() = default;
 
         TReadBlobCompleted(
-                const NKikimr::TLogoBlobID& blobId,
-                ui32 bytesCount,
-                TDuration requestTime,
-                ui32 groupId)
+            const NKikimr::TLogoBlobID& blobId,
+            ui32 bytesCount,
+            TDuration requestTime,
+            ui32 groupId)
             : BlobId(blobId)
             , BytesCount(bytesCount)
             , RequestTime(requestTime)
@@ -137,8 +137,7 @@ struct TEvPartitionCommonPrivate
     {
         NBlobMarkers::TBlockMarks BlockMarks;
 
-        TDescribeBlocksCompleted(
-                NBlobMarkers::TBlockMarks blockMarks)
+        TDescribeBlocksCompleted(NBlobMarkers::TBlockMarks blockMarks)
             : BlockMarks(std::move(blockMarks))
         {}
     };
@@ -171,12 +170,12 @@ struct TEvPartitionCommonPrivate
         const NProto::TError Error;
 
         TLongRunningOperation(
-                EOperation operation,
-                bool firstNotify,
-                TDuration duration,
-                ui32 groupId,
-                EReason reason,
-                const NProto::TError& error)
+            EOperation operation,
+            bool firstNotify,
+            TDuration duration,
+            ui32 groupId,
+            EReason reason,
+            const NProto::TError& error)
             : Operation(operation)
             , FirstNotify(firstNotify)
             , Reason(reason)
@@ -207,12 +206,12 @@ struct TEvPartitionCommonPrivate
         TGetPartCountersResponse() = default;
 
         TGetPartCountersResponse(
-                NActors::TActorId partActorId,
-                ui64 volumeSystemCpu,
-                ui64 volumeUserCpu,
-                TPartitionDiskCountersPtr diskCounters,
-                NBlobMetrics::TBlobLoadMetrics metrics,
-                NKikimrTabletBase::TMetrics tabletMetrics)
+            NActors::TActorId partActorId,
+            ui64 volumeSystemCpu,
+            ui64 volumeUserCpu,
+            TPartitionDiskCountersPtr diskCounters,
+            NBlobMetrics::TBlobLoadMetrics metrics,
+            NKikimrTabletBase::TMetrics tabletMetrics)
             : PartActorId(partActorId)
             , VolumeSystemCpu(volumeSystemCpu)
             , VolumeUserCpu(volumeUserCpu)
@@ -237,7 +236,8 @@ struct TEvPartitionCommonPrivate
     {
         EvBegin = TBlockStorePrivateEvents::PARTITION_COMMON_START,
 
-        BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENT_IDS)
+        BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(
+            BLOCKSTORE_DECLARE_EVENT_IDS)
 
         EvLoadFreshBlobsCompleted,
         EvTrimFreshLogCompleted,
@@ -251,16 +251,23 @@ struct TEvPartitionCommonPrivate
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStorePrivateEvents::PARTITION_COMMON_END,
-        "EvEnd expected to be < TBlockStorePrivateEvents::PARTITION_COMMON_END");
+    static_assert(
+        EvEnd < (int)TBlockStorePrivateEvents::PARTITION_COMMON_END,
+        "EvEnd expected to be < "
+        "TBlockStorePrivateEvents::PARTITION_COMMON_END");
 
     BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENTS)
 
-    using TEvLoadFreshBlobsCompleted = TResponseEvent<TLoadFreshBlobsCompleted, EvLoadFreshBlobsCompleted>;
-    using TEvTrimFreshLogCompleted = TResponseEvent<TOperationCompleted, EvTrimFreshLogCompleted>;
-    using TEvReadBlobCompleted = TResponseEvent<TReadBlobCompleted, EvReadBlobCompleted>;
-    using TEvDescribeBlocksCompleted = TResponseEvent<TDescribeBlocksCompleted, EvTDescribeBlocksCompleted>;
-    using TEvLongRunningOperation = TRequestEvent<TLongRunningOperation, EvLongRunningOperation>;
+    using TEvLoadFreshBlobsCompleted =
+        TResponseEvent<TLoadFreshBlobsCompleted, EvLoadFreshBlobsCompleted>;
+    using TEvTrimFreshLogCompleted =
+        TResponseEvent<TOperationCompleted, EvTrimFreshLogCompleted>;
+    using TEvReadBlobCompleted =
+        TResponseEvent<TReadBlobCompleted, EvReadBlobCompleted>;
+    using TEvDescribeBlocksCompleted =
+        TResponseEvent<TDescribeBlocksCompleted, EvTDescribeBlocksCompleted>;
+    using TEvLongRunningOperation =
+        TRequestEvent<TLongRunningOperation, EvLongRunningOperation>;
     using TEvGetPartCountersRequest =
         TRequestEvent<TGetPartCountersRequest, EvGetPartCountersRequest>;
     using TEvGetPartCountersResponse =

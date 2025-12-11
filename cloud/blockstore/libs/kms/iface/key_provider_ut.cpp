@@ -3,9 +3,9 @@
 #include "compute_client.h"
 #include "kms_client.h"
 
+#include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/public/api/protos/encryption.pb.h>
 
-#include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
@@ -24,8 +24,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestIamTokenClient
-    : public IIamTokenClient
+struct TTestIamTokenClient: public IIamTokenClient
 {
     const TResultOrError<TTokenInfo> Response;
 
@@ -35,8 +34,10 @@ struct TTestIamTokenClient
         : Response(std::move(response))
     {}
 
-    void Start() override {}
-    void Stop() override {}
+    void Start() override
+    {}
+    void Stop() override
+    {}
 
     TResponse GetToken() override
     {
@@ -55,8 +56,7 @@ struct TTestIamTokenClient
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestComputeClient
-    : public IComputeClient
+struct TTestComputeClient: public IComputeClient
 {
     const TResultOrError<TString> Response;
 
@@ -69,8 +69,10 @@ struct TTestComputeClient
         : Response(std::move(response))
     {}
 
-    void Start() override {}
-    void Stop() override {}
+    void Start() override
+    {}
+    void Stop() override
+    {}
 
     TFuture<TResponse> CreateTokenForDEK(
         const TString& diskId,
@@ -89,8 +91,7 @@ struct TTestComputeClient
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestKmsClient
-    : public IKmsClient
+struct TTestKmsClient: public IKmsClient
 {
     const TResultOrError<TString> Response;
 
@@ -103,8 +104,10 @@ struct TTestKmsClient
         : Response(std::move(response))
     {}
 
-    void Start() override {}
-    void Stop() override {}
+    void Start() override
+    {}
+    void Stop() override
+    {}
 
     TFuture<TResponse> Decrypt(
         const TString& keyId,
@@ -161,9 +164,10 @@ Y_UNIT_TEST_SUITE(TKmsKeyProviderTest)
             kmsClient);
 
         executor->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             executor->Stop();
-        };
+        }
 
         auto future = kmsKeyProvider->GetKey(kmsKey, diskId);
 

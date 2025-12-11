@@ -36,16 +36,13 @@ struct TSegment
 
 static_assert(sizeof(TSegment) <= SEGMENT_SIZE);
 
-bool Compare(
-    const TSegment& expected,
-    const TSegment& actual,
-    TString* message)
+bool Compare(const TSegment& expected, const TSegment& actual, TString* message)
 {
     TStringBuilder sb;
 
     if (expected.Handle != actual.Handle) {
-        sb << "expected.Handle != actual.Handle: "
-            << expected.Handle << " != " << actual.Handle;
+        sb << "expected.Handle != actual.Handle: " << expected.Handle
+           << " != " << actual.Handle;
     }
 
     if (expected.LastWriteRequestId != actual.LastWriteRequestId) {
@@ -54,8 +51,8 @@ bool Compare(
         }
 
         sb << "expected.LastWriteRequestId != actual.LastWriteRequestId: "
-            << expected.LastWriteRequestId
-            << " != " << actual.LastWriteRequestId;
+           << expected.LastWriteRequestId
+           << " != " << actual.LastWriteRequestId;
     }
 
     *message = sb;
@@ -63,7 +60,9 @@ bool Compare(
     return sb.empty();
 }
 
-struct TSegments: TVector<TSegment>, TAtomicRefCount<TSegments>
+struct TSegments
+    : TVector<TSegment>
+    , TAtomicRefCount<TSegments>
 {
 };
 
@@ -82,10 +81,10 @@ struct THandleInfo
     THandleInfo() = default;
 
     THandleInfo(
-            TString name,
-            ui64 handle,
-            ui64 size,
-            TSegmentsPtr segments) noexcept
+        TString name,
+        ui64 handle,
+        ui64 size,
+        TSegmentsPtr segments) noexcept
         : Name(std::move(name))
         , Handle(handle)
         , Size(size)
@@ -129,11 +128,11 @@ private:
 
 public:
     TDataRequestGenerator(
-            NProto::TDataLoadSpec spec,
-            ILoggingServicePtr logging,
-            ISessionPtr session,
-            TString filesystemId,
-            NProto::THeaders headers)
+        NProto::TDataLoadSpec spec,
+        ILoggingServicePtr logging,
+        ISessionPtr session,
+        TString filesystemId,
+        NProto::THeaders headers)
         : Spec(std::move(spec))
         , FileSystemId(std::move(filesystemId))
         , Headers(std::move(headers))
@@ -163,37 +162,35 @@ public:
                 Sprintf(
                     "InitialFileSize (%lu) %% SEGMENT_SIZE (%lu) != 0",
                     InitialFileSize,
-                    SEGMENT_SIZE
-                )
-            );
+                    SEGMENT_SIZE));
 
             Y_ENSURE(
                 WriteBytes % SEGMENT_SIZE == 0,
                 Sprintf(
                     "WriteBytes (%lu) %% SEGMENT_SIZE (%lu) != 0",
                     WriteBytes,
-                    SEGMENT_SIZE
-                )
-            );
+                    SEGMENT_SIZE));
 
             Y_ENSURE(
                 ReadBytes % SEGMENT_SIZE == 0,
                 Sprintf(
                     "ReadBytes (%lu) %% SEGMENT_SIZE (%lu) != 0",
                     ReadBytes,
-                    SEGMENT_SIZE
-                )
-            );
+                    SEGMENT_SIZE));
         }
 
         for (const auto& action: Spec.GetActions()) {
-            Y_ENSURE(action.GetRate() > 0, "please specify positive action rate");
+            Y_ENSURE(
+                action.GetRate() > 0,
+                "please specify positive action rate");
 
             TotalRate += action.GetRate();
             Actions.emplace_back(std::make_pair(TotalRate, action.GetAction()));
         }
 
-        Y_ENSURE(!Actions.empty(), "please specify at least one action for the test spec");
+        Y_ENSURE(
+            !Actions.empty(),
+            "please specify at least one action for the test spec");
     }
 
     bool HasNextRequest() override
@@ -205,12 +202,12 @@ public:
     {
         const auto& action = PeekNextAction();
         switch (action) {
-        case NProto::ACTION_READ:
-            return DoRead();
-        case NProto::ACTION_WRITE:
-            return DoWrite();
-        default:
-            Y_ABORT("unexpected action: %u", (ui32)action);
+            case NProto::ACTION_READ:
+                return DoRead();
+            case NProto::ACTION_WRITE:
+                return DoWrite();
+            default:
+                Y_ABORT("unexpected action: %u", (ui32)action);
         }
     }
 
@@ -222,7 +219,7 @@ private:
             Actions.begin(),
             Actions.end(),
             number,
-            [] (const auto& pair, ui64 b) { return pair.first < b; });
+            [](const auto& pair, ui64 b) { return pair.first < b; });
 
         Y_ABORT_UNLESS(it != Actions.end());
         return it->second;
@@ -230,10 +227,11 @@ private:
 
     TFuture<TCompletedRequest> DoCreateHandle()
     {
-        static const int flags = ProtoFlag(NProto::TCreateHandleRequest::E_CREATE)
-            | ProtoFlag(NProto::TCreateHandleRequest::E_EXCLUSIVE)
-            | ProtoFlag(NProto::TCreateHandleRequest::E_READ)
-            | ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
+        static const int flags =
+            ProtoFlag(NProto::TCreateHandleRequest::E_CREATE) |
+            ProtoFlag(NProto::TCreateHandleRequest::E_EXCLUSIVE) |
+            ProtoFlag(NProto::TCreateHandleRequest::E_READ) |
+            ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
 
         auto started = TInstant::Now();
         TGuard<TMutex> guard(StateLock);
@@ -245,17 +243,20 @@ private:
         request->SetFlags(flags);
 
         auto self = weak_from_this();
-        return Session->CreateHandle(CreateCallContext(), std::move(request)).Apply(
-            [=, name = std::move(name)] (const TFuture<NProto::TCreateHandleResponse>& future) {
-                if (auto ptr = self.lock()) {
-                    return ptr->HandleCreateHandle(future, name, started);
-                }
+        return Session->CreateHandle(CreateCallContext(), std::move(request))
+            .Apply(
+                [=, name = std::move(name)](
+                    const TFuture<NProto::TCreateHandleResponse>& future)
+                {
+                    if (auto ptr = self.lock()) {
+                        return ptr->HandleCreateHandle(future, name, started);
+                    }
 
-                return MakeFuture(TCompletedRequest{
-                    NProto::ACTION_CREATE_HANDLE,
-                    started,
-                    MakeError(E_FAIL, "cancelled")});
-            });
+                    return MakeFuture(TCompletedRequest{
+                        NProto::ACTION_CREATE_HANDLE,
+                        started,
+                        MakeError(E_FAIL, "cancelled")});
+                });
     }
 
     TFuture<TCompletedRequest> HandleCreateHandle(
@@ -291,26 +292,28 @@ private:
                 request->SetFlags(flags);
                 request->MutableUpdate()->SetSize(InitialFileSize);
 
-                setAttr = Session->SetNodeAttr(CreateCallContext(), std::move(request));
+                setAttr = Session->SetNodeAttr(
+                    CreateCallContext(),
+                    std::move(request));
             } else {
-                setAttr = NThreading::MakeFuture(NProto::TSetNodeAttrResponse());
+                setAttr =
+                    NThreading::MakeFuture(NProto::TSetNodeAttrResponse());
             }
 
             return setAttr.Apply(
-                [=, this] (const TFuture<NProto::TSetNodeAttrResponse>& f) {
-                    return HandleResizeAfterCreateHandle(f, name, started);
-                });
-        } catch (const TServiceError& e)  {
+                [=, this](const TFuture<NProto::TSetNodeAttrResponse>& f)
+                { return HandleResizeAfterCreateHandle(f, name, started); });
+        } catch (const TServiceError& e) {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
-            STORAGE_ERROR("create handle for %s has failed: %s",
+            STORAGE_ERROR(
+                "create handle for %s has failed: %s",
                 name.Quote().c_str(),
                 FormatError(error).c_str());
 
             return NThreading::MakeFuture(TCompletedRequest{
                 NProto::ACTION_CREATE_HANDLE,
                 started,
-                error
-            });
+                error});
         }
     }
 
@@ -330,9 +333,8 @@ private:
                     if (hinfo.Name == name) {
                         handleFound = true;
 
-                        hinfo.Size = Max(
-                            hinfo.Size,
-                            response.GetNode().GetSize());
+                        hinfo.Size =
+                            Max(hinfo.Size, response.GetNode().GetSize());
 
                         STORAGE_INFO(
                             "updated file size for handle %lu and file %s"
@@ -360,26 +362,20 @@ private:
             }
 
             if (!handleFound) {
-                STORAGE_WARN("handle for file %s not found",
+                STORAGE_WARN(
+                    "handle for file %s not found",
                     name.Quote().c_str());
             }
 
-            return {
-                NProto::ACTION_CREATE_HANDLE,
-                started,
-                response.GetError()
-            };
-        } catch (const TServiceError& e)  {
+            return {NProto::ACTION_CREATE_HANDLE, started, response.GetError()};
+        } catch (const TServiceError& e) {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
-            STORAGE_ERROR("set node attr handle for %s has failed: %s",
+            STORAGE_ERROR(
+                "set node attr handle for %s has failed: %s",
                 name.Quote().c_str(),
                 FormatError(error).c_str());
 
-            return {
-                NProto::ACTION_CREATE_HANDLE,
-                started,
-                error
-            };
+            return {NProto::ACTION_CREATE_HANDLE, started, error};
         }
     }
 
@@ -405,22 +401,23 @@ private:
         request->SetLength(ReadBytes);
 
         auto self = weak_from_this();
-        return Session->ReadData(CreateCallContext(), std::move(request)).Apply(
-            [=] (const TFuture<NProto::TReadDataResponse>& future){
-                if (auto ptr = self.lock()) {
-                    return ptr->HandleRead(
-                        future,
-                        handleInfo,
-                        started,
-                        byteOffset
-                    );
-                }
+        return Session->ReadData(CreateCallContext(), std::move(request))
+            .Apply(
+                [=](const TFuture<NProto::TReadDataResponse>& future)
+                {
+                    if (auto ptr = self.lock()) {
+                        return ptr->HandleRead(
+                            future,
+                            handleInfo,
+                            started,
+                            byteOffset);
+                    }
 
-                return TCompletedRequest{
-                    NProto::ACTION_READ,
-                    started,
-                    MakeError(E_FAIL, "cancelled")};
-            });
+                    return TCompletedRequest{
+                        NProto::ACTION_READ,
+                        started,
+                        MakeError(E_FAIL, "cancelled")};
+                });
     }
 
     TCompletedRequest HandleRead(
@@ -453,8 +450,9 @@ private:
 
                     TString message;
                     if (!Compare(segments[segmentId], *segment, &message)) {
-                        throw TServiceError(E_FAIL)
-                            << Sprintf("Validation failed: %s", message.c_str());
+                        throw TServiceError(E_FAIL) << Sprintf(
+                            "Validation failed: %s",
+                            message.c_str());
                     }
                 }
 
@@ -466,9 +464,10 @@ private:
             }
 
             return {NProto::ACTION_READ, started, response.GetError()};
-        } catch (const TServiceError& e)  {
+        } catch (const TServiceError& e) {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
-            STORAGE_ERROR("read for %s has failed: %s",
+            STORAGE_ERROR(
+                "read for %s has failed: %s",
                 handleInfo.Name.Quote().c_str(),
                 FormatError(error).c_str());
 
@@ -527,18 +526,19 @@ private:
         *request->MutableBuffer() = std::move(buffer);
 
         auto self = weak_from_this();
-        return Session->WriteData(CreateCallContext(), std::move(request)).Apply(
-            [=] (const TFuture<NProto::TWriteDataResponse>& future){
-                if (auto ptr = self.lock()) {
-                    return ptr->HandleWrite(future, handleInfo, started);
-                }
+        return Session->WriteData(CreateCallContext(), std::move(request))
+            .Apply(
+                [=](const TFuture<NProto::TWriteDataResponse>& future)
+                {
+                    if (auto ptr = self.lock()) {
+                        return ptr->HandleWrite(future, handleInfo, started);
+                    }
 
-                return TCompletedRequest{
-                    NProto::ACTION_WRITE,
-                    started,
-                    MakeError(E_FAIL, "cancelled")};
-            });
-
+                    return TCompletedRequest{
+                        NProto::ACTION_WRITE,
+                        started,
+                        MakeError(E_FAIL, "cancelled")};
+                });
     }
 
     TCompletedRequest HandleWrite(
@@ -555,9 +555,10 @@ private:
             }
 
             return {NProto::ACTION_WRITE, started, response.GetError()};
-        } catch (const TServiceError& e)  {
+        } catch (const TServiceError& e) {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
-            STORAGE_ERROR("write on %s has failed: %s",
+            STORAGE_ERROR(
+                "write on %s has failed: %s",
                 handleInfo.Name.Quote().c_str(),
                 FormatError(error).c_str());
 
@@ -577,7 +578,8 @@ private:
 
     TString GenerateNodeName()
     {
-        return TStringBuilder() << Headers.GetClientId() << ":" << CreateGuidAsString();
+        return TStringBuilder()
+               << Headers.GetClientId() << ":" << CreateGuidAsString();
     }
 
     THandleInfo GetHandleInfo()

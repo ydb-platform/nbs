@@ -250,8 +250,8 @@ private:
 
 public:
     TChaosStorageProvider(
-            IStorageProviderPtr storageProvider,
-            NProto::TChaosConfig chaosConfig)
+        IStorageProviderPtr storageProvider,
+        NProto::TChaosConfig chaosConfig)
         : StorageProvider(std::move(storageProvider))
         , ChaosConfig(std::move(chaosConfig))
     {}

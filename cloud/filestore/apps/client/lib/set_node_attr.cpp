@@ -1,12 +1,12 @@
 #include "command.h"
 
-#include <optional>
-
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
 #include <util/datetime/base.h>
 #include <util/stream/file.h>
 #include <util/system/sysstat.h>
+
+#include <optional>
 
 namespace NCloud::NFileStore::NClient {
 
@@ -29,37 +29,21 @@ private:
 public:
     TSetNodeAttrCommand()
     {
-        Opts.AddLongOption("node-id")
-            .Required()
-            .StoreResult(&NodeId);
+        Opts.AddLongOption("node-id").Required().StoreResult(&NodeId);
 
-        Opts.AddLongOption("mode")
-            .Optional()
-            .StoreResult(&ModeAttr);
+        Opts.AddLongOption("mode").Optional().StoreResult(&ModeAttr);
 
-        Opts.AddLongOption("uid")
-            .Optional()
-            .StoreResult(&UidAttr);
+        Opts.AddLongOption("uid").Optional().StoreResult(&UidAttr);
 
-        Opts.AddLongOption("gid")
-            .Optional()
-            .StoreResult(&GidAttr);
+        Opts.AddLongOption("gid").Optional().StoreResult(&GidAttr);
 
-        Opts.AddLongOption("size")
-            .Optional()
-            .StoreResult(&SizeAttr);
+        Opts.AddLongOption("size").Optional().StoreResult(&SizeAttr);
 
-        Opts.AddLongOption("atime")
-            .Optional()
-            .StoreResult(&ATimeAttr);
+        Opts.AddLongOption("atime").Optional().StoreResult(&ATimeAttr);
 
-        Opts.AddLongOption("mtime")
-            .Optional()
-            .StoreResult(&MTimeAttr);
+        Opts.AddLongOption("mtime").Optional().StoreResult(&MTimeAttr);
 
-        Opts.AddLongOption("ctime")
-            .Optional()
-            .StoreResult(&CTimeAttr);
+        Opts.AddLongOption("ctime").Optional().StoreResult(&CTimeAttr);
     }
 
     bool Execute() override
@@ -76,8 +60,7 @@ public:
                 request->GetFlags() | NCloud::NFileStore::ProtoFlag(flag));
         };
 
-        if (ModeAttr)
-        {
+        if (ModeAttr) {
             addFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_MODE);
             request->MutableUpdate()->SetMode(*ModeAttr);
         }

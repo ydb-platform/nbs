@@ -45,8 +45,8 @@ struct TOptions
             .AppendTo(&Blocks);
 
         opts.AddLongOption(
-            "output-non-io-requests",
-            "include non-io requests in the output")
+                "output-non-io-requests",
+                "include non-io requests in the output")
             .NoArgument()
             .SetFlag(&OutputNonIORequests);
 
@@ -77,16 +77,14 @@ struct TOptions
             TStringBuf(s).Split(',', l, r);
             BlockRanges.push_back(TBlockRange64::WithLength(
                 FromString<ui64>(l),
-                FromString<ui32>(r)
-            ));
+                FromString<ui32>(r)));
         }
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEventProcessor final
-    : public TProtobufEventProcessor
+class TEventProcessor final: public TProtobufEventProcessor
 {
 private:
     const TOptions& Options;
@@ -94,15 +92,16 @@ private:
 public:
     TEventProcessor(const TOptions& options)
         : Options(options)
-    {
-    }
+    {}
 
 protected:
     void DoProcessEvent(const TEvent* ev, IOutputStream* out) override
     {
         auto* message =
             dynamic_cast<const NProto::TProfileLogRecord*>(ev->GetProto());
-        if (message && (message->GetDiskId() == Options.DiskId || !Options.DiskId)) {
+        if (message &&
+            (message->GetDiskId() == Options.DiskId || !Options.DiskId))
+        {
             auto order = GetItemOrder(*message);
 
             for (const auto& id: order) {
@@ -138,13 +137,11 @@ private:
         IOutputStream* out)
     {
         const auto& r = record.GetRequests(i);
-        if (r.GetRequestType()
-                < static_cast<int>(EBlockStoreRequest::MAX))
-        {
+        if (r.GetRequestType() < static_cast<int>(EBlockStoreRequest::MAX)) {
             const auto t = static_cast<EBlockStoreRequest>(r.GetRequestType());
-            if (t == EBlockStoreRequest::CreateCheckpoint
-                    || t == EBlockStoreRequest::DeleteCheckpoint
-                    || t == EBlockStoreRequest::MountVolume)
+            if (t == EBlockStoreRequest::CreateCheckpoint ||
+                t == EBlockStoreRequest::DeleteCheckpoint ||
+                t == EBlockStoreRequest::MountVolume)
             {
                 if (Options.OutputNonIORequests) {
                     DumpRequest(record, i, out);
@@ -162,8 +159,7 @@ private:
                 if (r.GetBlockCount()) {
                     auto reqRange = TBlockRange64::WithLength(
                         r.GetBlockIndex(),
-                        r.GetBlockCount()
-                    );
+                        r.GetBlockCount());
                     if (reqRange.Overlaps(blockRange)) {
                         found = true;
                     }
@@ -172,8 +168,7 @@ private:
                 for (const auto& range: r.GetRanges()) {
                     auto reqRange = TBlockRange64::WithLength(
                         range.GetBlockIndex(),
-                        range.GetBlockCount()
-                    );
+                        range.GetBlockCount());
                     if (reqRange.Overlaps(blockRange)) {
                         found = true;
                         break;
@@ -244,8 +239,7 @@ private:
             bool found = false;
             auto blobUpdateRange = TBlockRange64::WithLength(
                 blobUpdate.GetBlockRange().GetBlockIndex(),
-                blobUpdate.GetBlockRange().GetBlockCount()
-            );
+                blobUpdate.GetBlockRange().GetBlockCount());
 
             for (const auto& blockRange: Options.BlockRanges) {
                 if (blockRange.Overlaps(blobUpdateRange)) {
@@ -260,7 +254,6 @@ private:
             }
         }
     }
-
 };
 
 }   // namespace
@@ -276,6 +269,5 @@ int main(int argc, const char** argv)
         NEvClass::Factory(),
         &processor,
         options.EvlogDumperArgv.size(),
-        options.EvlogDumperArgv.begin()
-    );
+        options.EvlogDumperArgv.begin());
 }

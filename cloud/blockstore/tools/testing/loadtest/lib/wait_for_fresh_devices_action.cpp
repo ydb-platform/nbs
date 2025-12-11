@@ -13,11 +13,11 @@ namespace NCloud::NBlockStore::NLoadTest {
 ////////////////////////////////////////////////////////////////////////////////
 
 TWaitForFreshDevicesActionRunner::TWaitForFreshDevicesActionRunner(
-        TLog& log,
-        const TAliasedVolumes& aliasedVolumes,
-        ILoggingServicePtr logging,
-        IClientFactory& clientFactory,
-        TTestContext& testContext)
+    TLog& log,
+    const TAliasedVolumes& aliasedVolumes,
+    ILoggingServicePtr logging,
+    IClientFactory& clientFactory,
+    TTestContext& testContext)
     : Log(log)
     , AliasedVolumes(aliasedVolumes)
     , Logging(std::move(logging))
@@ -58,7 +58,8 @@ int TWaitForFreshDevicesActionRunner::Run(
             return EC_WAIT_FRESH_DEVICES_ACTION_FAILED;
         }
 
-        const ui32 freshDevicesCount = response.GetVolume().FreshDeviceIdsSize();
+        const ui32 freshDevicesCount =
+            response.GetVolume().FreshDeviceIdsSize();
         STORAGE_INFO("fresh devices count: " << freshDevicesCount);
 
         if (!freshDevicesCount) {

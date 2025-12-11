@@ -79,7 +79,8 @@ public:
 
     // Visit each interval that intersects with [begin, end)
     // Note: it is allowed to remove the current element from the visitor
-    void VisitOverlapping(TKey begin, TKey end, const TConstVisitor& visitor) const
+    void
+    VisitOverlapping(TKey begin, TKey end, const TConstVisitor& visitor) const
     {
         // Find first TItem with .End > begin
         auto it = Data.upper_bound(begin);

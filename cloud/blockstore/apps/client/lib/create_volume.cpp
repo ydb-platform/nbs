@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -19,8 +20,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCreateVolumeCommand final
-    : public TCommand
+class TCreateVolumeCommand final: public TCommand
 {
 private:
     TVolumeId VolumeId;
@@ -77,7 +77,9 @@ public:
             .RequiredArgument("STR")
             .StoreResult(&BaseDiskCheckpointId);
 
-        Opts.AddLongOption("placement-group-id", "allowed only for nonreplicated disks")
+        Opts.AddLongOption(
+                "placement-group-id",
+                "allowed only for nonreplicated disks")
             .RequiredArgument("STR")
             .StoreResult(&PlacementGroupId);
 
@@ -87,7 +89,9 @@ public:
             .RequiredArgument("NUM")
             .StoreResult(&PlacementPartitionIndex);
 
-        Opts.AddLongOption("partitions-count", "explicitly specifies the number of partitions")
+        Opts.AddLongOption(
+                "partitions-count",
+                "explicitly specifies the number of partitions")
             .RequiredArgument("NUM")
             .StoreResult(&PartitionsCount);
 
@@ -95,11 +99,13 @@ public:
                 "encryption-mode",
                 "encryption mode [no|aes-xts|default|test]")
             .RequiredArgument("STR")
-            .Handler1T<TString>([this] (const auto& s) {
-                EncryptionMode = EncryptionModeFromString(s);
-            });
+            .Handler1T<TString>(
+                [this](const auto& s)
+                { EncryptionMode = EncryptionModeFromString(s); });
 
-        Opts.AddLongOption("encryption-key-path", "path to file with encryption key")
+        Opts.AddLongOption(
+                "encryption-key-path",
+                "path to file with encryption key")
             .RequiredArgument("STR")
             .StoreResult(&EncryptionKeyPath);
 
@@ -148,8 +154,7 @@ protected:
             ParseStorageMediaKind(
                 *ParseResultPtr,
                 StorageMediaKindArg,
-                StorageMediaKind
-            );
+                StorageMediaKind);
             request->SetStorageMediaKind(StorageMediaKind);
 
             request->SetBaseDiskId(BaseDiskId);
@@ -165,11 +170,10 @@ protected:
                 std::make_move_iterator(AgentIds.begin()),
                 std::make_move_iterator(AgentIds.end()));
 
-            request->MutableEncryptionSpec()->CopyFrom(
-                CreateEncryptionSpec(
-                    EncryptionMode,
-                    EncryptionKeyPath,
-                    EncryptionKeyHash));
+            request->MutableEncryptionSpec()->CopyFrom(CreateEncryptionSpec(
+                EncryptionMode,
+                EncryptionKeyPath,
+                EncryptionKeyHash));
         }
 
         STORAGE_DEBUG("Sending CreateVolume request");
@@ -184,12 +188,12 @@ protected:
             return true;
         }
 
-        if (JsonOutput){
+        if (JsonOutput) {
             // We don't use result.PrintJSON(), because TError.PrintJSON()
             // writes only code, and it is more reliable to use formatted
             // error in tests and scripts.
             NJson::TJsonValue resultJson;
-            if (HasError(result)){
+            if (HasError(result)) {
                 resultJson["Error"] = FormatErrorJson(result.GetError());
             }
             NJson::WriteJson(&output, &resultJson, false, true, true);
@@ -214,24 +218,24 @@ private:
             return false;
         }
 
-        const auto* tabletVersion = ParseResultPtr->FindLongOptParseResult("tablet-version");
+        const auto* tabletVersion =
+            ParseResultPtr->FindLongOptParseResult("tablet-version");
         if (tabletVersion && TabletVersion != 1 && TabletVersion != 2) {
             STORAGE_ERROR("Tablet version should be either 1 or 2");
             return false;
         }
 
-        const auto* pgId = ParseResultPtr->FindLongOptParseResult("placement-group-id");
+        const auto* pgId =
+            ParseResultPtr->FindLongOptParseResult("placement-group-id");
         NCloud::NProto::EStorageMediaKind mediaKind;
-        ParseStorageMediaKind(
-            *ParseResultPtr,
-            StorageMediaKindArg,
-            mediaKind
-        );
-        if (pgId
-                && mediaKind != NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
-                && mediaKind != NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED)
+        ParseStorageMediaKind(*ParseResultPtr, StorageMediaKindArg, mediaKind);
+        if (pgId &&
+            mediaKind != NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED &&
+            mediaKind != NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED)
         {
-            STORAGE_ERROR("Placement group id can be specified only for nonreplicated disks");
+            STORAGE_ERROR(
+                "Placement group id can be specified only for nonreplicated "
+                "disks");
             return false;
         }
 
@@ -239,7 +243,7 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

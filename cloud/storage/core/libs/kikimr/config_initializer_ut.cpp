@@ -1,4 +1,5 @@
 #include "config_initializer.h"
+
 #include "options.h"
 
 #include <cloud/storage/core/libs/common/affinity.h>
@@ -20,8 +21,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TOptionsYdb
-    : public TOptionsYdbBase
+struct TOptionsYdb: public TOptionsYdbBase
 {
     void Parse(int argc, char** argv) override
     {
@@ -36,8 +36,7 @@ TOptionsYdbBasePtr CreateOptions()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TConfigInitializerYdb
-    : public TConfigInitializerYdbBase
+struct TConfigInitializerYdb: public TConfigInitializerYdbBase
 {
     explicit TConfigInitializerYdb(TOptionsYdbBasePtr options)
         : TConfigInitializerYdbBase(std::move(options))
@@ -159,8 +158,8 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
 
         char programName[] = "./program";
         char flagName[] = "--actor-system-available-cpu-cores-percentage";
-        TString availableCpuCoresPercentageStr =
-            TStringBuilder() << availableCoresPercentage;
+        TString availableCpuCoresPercentageStr = TStringBuilder()
+                                                 << availableCoresPercentage;
         char* argv[] = {
             programName,
             flagName,
@@ -205,71 +204,151 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         // should not affect configuration with available cores percentage set
         // to zero
         TestShouldAdjustActorSystemThreadsAccordingToAvailableCpuCores(
-            12, 12, 1, 1, 12,  // System, User, Batch, IO, IC
-            12, 12, 1, 1, 12,  // System, User, Batch, IO, IC
-            36,                // availableCores
-            0                  // availableCoresPercentage
+            12,
+            12,
+            1,
+            1,
+            12,   // System, User, Batch, IO, IC
+            12,
+            12,
+            1,
+            1,
+            12,   // System, User, Batch, IO, IC
+            36,   // availableCores
+            0     // availableCoresPercentage
         );
         TestShouldAdjustActorSystemThreadsAccordingToAvailableCpuCores(
-            12, 12, 1, 1, 12,  // System, User, Batch, IO, IC
-            12, 12, 1, 1, 12,  // System, User, Batch, IO, IC
-            36,                // availableCores
-            100                // availableCoresPercentage
+            12,
+            12,
+            1,
+            1,
+            12,   // System, User, Batch, IO, IC
+            12,
+            12,
+            1,
+            1,
+            12,   // System, User, Batch, IO, IC
+            36,   // availableCores
+            100   // availableCoresPercentage
         );
         TestShouldAdjustActorSystemThreadsAccordingToAvailableCpuCores(
-            12, 12, 1, 1, 12,  // System, User, Batch, IO, IC
-            6,   6, 1, 1,  6,  // System, User, Batch, IO, IC
-            36,                // availableCores
-            50                 // availableCoresPercentage
+            12,
+            12,
+            1,
+            1,
+            12,   // System, User, Batch, IO, IC
+            6,
+            6,
+            1,
+            1,
+            6,    // System, User, Batch, IO, IC
+            36,   // availableCores
+            50    // availableCoresPercentage
         );
         TestShouldAdjustActorSystemThreadsAccordingToAvailableCpuCores(
-            10, 10, 1, 1, 10,  // System, User, Batch, IO, IC
-            10, 10, 1, 1, 10,  // System, User, Batch, IO, IC
-            58,                // availableCores
-            50                 // availableCoresPercentage
+            10,
+            10,
+            1,
+            1,
+            10,   // System, User, Batch, IO, IC
+            10,
+            10,
+            1,
+            1,
+            10,   // System, User, Batch, IO, IC
+            58,   // availableCores
+            50    // availableCoresPercentage
         );
         TestShouldAdjustActorSystemThreadsAccordingToAvailableCpuCores(
-            10, 10, 1, 1, 10,  // System, User, Batch, IO, IC
-            7,   7, 1, 1,  7,  // System, User, Batch, IO, IC
-            40,                // availableCores
-            50                 // availableCoresPercentage
+            10,
+            10,
+            1,
+            1,
+            10,   // System, User, Batch, IO, IC
+            7,
+            7,
+            1,
+            1,
+            7,    // System, User, Batch, IO, IC
+            40,   // availableCores
+            50    // availableCoresPercentage
         );
         TestShouldAdjustActorSystemThreadsAccordingToAvailableCpuCores(
-            10, 10, 1, 1, 10,  // System, User, Batch, IO, IC
-            6,   6, 1, 1,  6,  // System, User, Batch, IO, IC
-            32,                // availableCores
-            50                 // availableCoresPercentage
+            10,
+            10,
+            1,
+            1,
+            10,   // System, User, Batch, IO, IC
+            6,
+            6,
+            1,
+            1,
+            6,    // System, User, Batch, IO, IC
+            32,   // availableCores
+            50    // availableCoresPercentage
         );
         // should not set thread count to zero
         TestShouldAdjustActorSystemThreadsAccordingToAvailableCpuCores(
-            1, 1, 1, 1, 1,  // System, User, Batch, IO, IC
-            1, 1, 1, 1, 1,  // System, User, Batch, IO, IC
-            1,              // availableCores
-            1               // availableCoresPercentage
+            1,
+            1,
+            1,
+            1,
+            1,   // System, User, Batch, IO, IC
+            1,
+            1,
+            1,
+            1,
+            1,   // System, User, Batch, IO, IC
+            1,   // availableCores
+            1    // availableCoresPercentage
         );
         // should not affect configuration with non equal-sized
         // System, User, IC thread pools
         TestShouldAdjustActorSystemThreadsAccordingToAvailableCpuCores(
-            11, 12, 1, 1, 12,  // System, User, Batch, IO, IC
-            11, 12, 1, 1, 12,  // System, User, Batch, IO, IC
-            36,                // availableCores
-            50                 // availableCoresPercentage
+            11,
+            12,
+            1,
+            1,
+            12,   // System, User, Batch, IO, IC
+            11,
+            12,
+            1,
+            1,
+            12,   // System, User, Batch, IO, IC
+            36,   // availableCores
+            50    // availableCoresPercentage
         );
         // should not affect configuration with non equal-sized
         // System, User, IC thread pools
         TestShouldAdjustActorSystemThreadsAccordingToAvailableCpuCores(
-            12, 12, 1, 1, 11,  // System, User, Batch, IO, IC
-            12, 12, 1, 1, 11,  // System, User, Batch, IO, IC
-            36,                // availableCores
-            50                 // availableCoresPercentage
+            12,
+            12,
+            1,
+            1,
+            11,   // System, User, Batch, IO, IC
+            12,
+            12,
+            1,
+            1,
+            11,   // System, User, Batch, IO, IC
+            36,   // availableCores
+            50    // availableCoresPercentage
         );
         // should not affect configuration with non equal-sized
         // System, User, IC thread pools
         TestShouldAdjustActorSystemThreadsAccordingToAvailableCpuCores(
-            12, 11, 1, 1, 11,  // System, User, Batch, IO, IC
-            12, 11, 1, 1, 11,  // System, User, Batch, IO, IC
-            36,                // availableCores
-            50                 // availableCoresPercentage
+            12,
+            11,
+            1,
+            1,
+            11,   // System, User, Batch, IO, IC
+            12,
+            11,
+            1,
+            1,
+            11,   // System, User, Batch, IO, IC
+            36,   // availableCores
+            50    // availableCoresPercentage
         );
     }
 }

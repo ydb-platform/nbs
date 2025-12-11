@@ -54,14 +54,18 @@ void TOptionsYdb::Parse(int argc, char** argv)
     }
 
     if (ServiceKind == EServiceKind::Ydb) {
-        Y_ENSURE(res->FindLongOptParseResult("ic-port"),
+        Y_ENSURE(
+            res->FindLongOptParseResult("ic-port"),
             "'--ic-port' option is required for kikimr service");
 
-        Y_ENSURE(res->FindLongOptParseResult("domain"),
+        Y_ENSURE(
+            res->FindLongOptParseResult("domain"),
             "'--domain' option is required for kikimr service");
 
-        Y_ENSURE(SysConfig && DomainsConfig || LoadCmsConfigs,
-            "sys-file and domains-file options are required if load-configs-from-cms is not set");
+        Y_ENSURE(
+            SysConfig && DomainsConfig || LoadCmsConfigs,
+            "sys-file and domains-file options are required if "
+            "load-configs-from-cms is not set");
     }
 }
 

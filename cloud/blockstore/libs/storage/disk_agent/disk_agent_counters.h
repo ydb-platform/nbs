@@ -13,22 +13,22 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DISK_AGENT_ACTOR_COUNTERS(xxx, ...)                         \
-    xxx(ActorQueue,                     __VA_ARGS__)                           \
-    xxx(MailboxQueue,                   __VA_ARGS__)                           \
-// BLOCKSTORE_DISK_AGENT_ACTOR_COUNTERS
+#define BLOCKSTORE_DISK_AGENT_ACTOR_COUNTERS(xxx, ...) \
+    xxx(ActorQueue, __VA_ARGS__)                       \
+    xxx(MailboxQueue, __VA_ARGS__)                     \
+    // BLOCKSTORE_DISK_AGENT_ACTOR_COUNTERS
 
-#define BLOCKSTORE_DISK_AGENT_SIMPLE_COUNTERS(xxx)                             \
-// BLOCKSTORE_DISK_AGENT_SIMPLE_COUNTERS
+#define BLOCKSTORE_DISK_AGENT_SIMPLE_COUNTERS(xxx) \
+    // BLOCKSTORE_DISK_AGENT_SIMPLE_COUNTERS
 
-#define BLOCKSTORE_DISK_AGENT_CUMULATIVE_COUNTERS(xxx)                         \
-    BLOCKSTORE_DISK_AGENT_REQUESTS(xxx, Request)                               \
-    BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE(xxx, Request)                       \
-// BLOCKSTORE_DISK_AGENT_CUMULATIVE_COUNTERS
+#define BLOCKSTORE_DISK_AGENT_CUMULATIVE_COUNTERS(xxx)   \
+    BLOCKSTORE_DISK_AGENT_REQUESTS(xxx, Request)         \
+    BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE(xxx, Request) \
+    // BLOCKSTORE_DISK_AGENT_CUMULATIVE_COUNTERS
 
-#define BLOCKSTORE_DISK_AGENT_PERCENTILE_COUNTERS(xxx)                         \
-    BLOCKSTORE_DISK_AGENT_ACTOR_COUNTERS(xxx, Actor)                           \
-// BLOCKSTORE_DISK_AGENT_PERCENTILE_COUNTERS
+#define BLOCKSTORE_DISK_AGENT_PERCENTILE_COUNTERS(xxx) \
+    BLOCKSTORE_DISK_AGENT_ACTOR_COUNTERS(xxx, Actor)   \
+    // BLOCKSTORE_DISK_AGENT_PERCENTILE_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////
 

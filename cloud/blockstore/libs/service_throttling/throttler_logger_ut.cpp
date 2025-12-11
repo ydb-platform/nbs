@@ -26,11 +26,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestService final
-    : public IBlockStore
+struct TTestService final: public IBlockStore
 {
-    void Start() override {}
-    void Stop() override {}
+    void Start() override
+    {}
+    void Stop() override
+    {}
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
@@ -38,22 +39,21 @@ struct TTestService final
         return nullptr;
     }
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    using T##name##Handler = std::function<                                    \
-        NThreading::TFuture<NProto::T##name##Response>(                        \
-            TCallContextPtr callContext,                                       \
-            std::shared_ptr<NProto::T##name##Request> request)                 \
-        >;                                                                     \
-                                                                               \
-    T##name##Handler name##Handler;                                            \
-                                                                               \
-    NThreading::TFuture<NProto::T##name##Response> name(                       \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        return name##Handler(std::move(callContext),std::move(request));       \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                              \
+    using T##name##Handler =                                              \
+        std::function<NThreading::TFuture<NProto::T##name##Response>(     \
+            TCallContextPtr callContext,                                  \
+            std::shared_ptr<NProto::T##name##Request> request)>;          \
+                                                                          \
+    T##name##Handler name##Handler;                                       \
+                                                                          \
+    NThreading::TFuture<NProto::T##name##Response> name(                  \
+        TCallContextPtr callContext,                                      \
+        std::shared_ptr<NProto::T##name##Request> request) override       \
+    {                                                                     \
+        return name##Handler(std::move(callContext), std::move(request)); \
+    }                                                                     \
+    // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
@@ -62,8 +62,7 @@ struct TTestService final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThrottlerPolicy final
-    : public IThrottlerPolicy
+class TThrottlerPolicy final: public IThrottlerPolicy
 {
 public:
     TDuration PostponeTimeout;
@@ -126,8 +125,8 @@ struct TRequestCountingPolicy
 
 struct TVolumeProcessingPolicy
 {
-    std::shared_ptr<TTestVolumeInfo<TRequestCountingPolicy>> VolumeInfo
-        = std::make_shared<TTestVolumeInfo<TRequestCountingPolicy>>();
+    std::shared_ptr<TTestVolumeInfo<TRequestCountingPolicy>> VolumeInfo =
+        std::make_shared<TTestVolumeInfo<TRequestCountingPolicy>>();
 
     bool MountVolume(
         const NProto::TVolume& volume,
@@ -141,9 +140,7 @@ struct TVolumeProcessingPolicy
         return true;
     }
 
-    void UnmountVolume(
-        const TString& diskId,
-        const TString& clientId)
+    void UnmountVolume(const TString& diskId, const TString& clientId)
     {
         Y_UNUSED(diskId);
         Y_UNUSED(clientId);
@@ -165,19 +162,17 @@ struct TVolumeProcessingPolicy
     {
         Y_UNUSED(clientId);
 
-        return diskId == VolumeInfo->Volume.GetDiskId()
-            ? VolumeInfo
-            : nullptr;
+        return diskId == VolumeInfo->Volume.GetDiskId() ? VolumeInfo : nullptr;
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRequestStats final
-    : public IRequestStats
+struct TRequestStats final: public IRequestStats
 {
     ui32 PostponedCount[static_cast<size_t>(EBlockStoreRequest::MAX)] = {};
-    ui32 PostponedServerCount[static_cast<size_t>(EBlockStoreRequest::MAX)] = {};
+    ui32 PostponedServerCount[static_cast<size_t>(EBlockStoreRequest::MAX)] =
+        {};
     ui32 AdvancedCount[static_cast<size_t>(EBlockStoreRequest::MAX)] = {};
     ui32 AdvancedServerCount[static_cast<size_t>(EBlockStoreRequest::MAX)] = {};
 
@@ -292,14 +287,14 @@ struct TRequestStats final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    std::shared_ptr<NProto::T##name##Request> Create##name##Request()          \
-    {                                                                          \
-        return std::make_shared<NProto::T##name##Request>();                   \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                          \
+    std::shared_ptr<NProto::T##name##Request> Create##name##Request() \
+    {                                                                 \
+        return std::make_shared<NProto::T##name##Request>();          \
+    }                                                                 \
+    // BLOCKSTORE_DECLARE_METHOD
 
-    BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
+BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
 #undef BLOCKSTORE_DECLARE_METHOD
 
@@ -336,12 +331,12 @@ Y_UNIT_TEST_SUITE(TServiceThrotterLoggerTest)
         policy->PostponeTimeout = TDuration::Max();
         constexpr auto requestCount = 7;
 
-#define DO_REQUEST(name, ...)                                                  \
-    throttler->name(                                                           \
-        client,                                                                \
-        MakeIntrusive<TCallContext>(),                                         \
-        Create##name##Request());                                              \
-// DO_REQUEST
+#define DO_REQUEST(name, ...)          \
+    throttler->name(                   \
+        client,                        \
+        MakeIntrusive<TCallContext>(), \
+        Create##name##Request());      \
+    // DO_REQUEST
 
         for (ui32 i = 0; i < requestCount; ++i) {
             BLOCKSTORE_SERVICE(DO_REQUEST)
@@ -349,44 +344,40 @@ Y_UNIT_TEST_SUITE(TServiceThrotterLoggerTest)
 
 #undef DO_REQUEST
 
-#define DO_TEST(name, ...)                                                     \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        volumeStats->VolumeInfo->PostponedCount[                               \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        ShouldBeThrottled<NProto::T##name##Request>()                          \
-            ? __VA_ARGS__                                                      \
-            : 0,                                                               \
-        volumeStats->VolumeInfo->PostponedServerCount[                         \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        volumeStats->VolumeInfo->AdvancedCount[                                \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        volumeStats->VolumeInfo->AdvancedServerCount[                          \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        requestStats->PostponedCount[                                          \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        ShouldBeThrottled<NProto::T##name##Request>()                          \
-            ? __VA_ARGS__                                                      \
-            : 0,                                                               \
-        requestStats->PostponedServerCount[                                    \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        requestStats->AdvancedCount[                                           \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        requestStats->AdvancedServerCount[                                     \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-// DO_TEST
+#define DO_TEST(name, ...)                                                    \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        volumeStats->VolumeInfo                                               \
+            ->PostponedCount[static_cast<size_t>(EBlockStoreRequest::name)]); \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        ShouldBeThrottled<NProto::T##name##Request>() ? __VA_ARGS__ : 0,      \
+        volumeStats->VolumeInfo->PostponedServerCount[static_cast<size_t>(    \
+            EBlockStoreRequest::name)]);                                      \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        volumeStats->VolumeInfo                                               \
+            ->AdvancedCount[static_cast<size_t>(EBlockStoreRequest::name)]);  \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        volumeStats->VolumeInfo->AdvancedServerCount[static_cast<size_t>(     \
+            EBlockStoreRequest::name)]);                                      \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        requestStats                                                          \
+            ->PostponedCount[static_cast<size_t>(EBlockStoreRequest::name)]); \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        ShouldBeThrottled<NProto::T##name##Request>() ? __VA_ARGS__ : 0,      \
+        requestStats->PostponedServerCount[static_cast<size_t>(               \
+            EBlockStoreRequest::name)]);                                      \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        requestStats                                                          \
+            ->AdvancedCount[static_cast<size_t>(EBlockStoreRequest::name)]);  \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        requestStats->AdvancedServerCount[static_cast<size_t>(                \
+            EBlockStoreRequest::name)]);                                      \
+    // DO_TEST
 
         BLOCKSTORE_SERVICE(DO_TEST, requestCount);
 
@@ -399,48 +390,40 @@ Y_UNIT_TEST_SUITE(TServiceThrotterLoggerTest)
         policy->PostponeTimeout = TDuration::Zero();
         scheduler->RunAllScheduledTasks();
 
-#define DO_TEST(name, ...)                                                     \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        volumeStats->VolumeInfo->PostponedCount[                               \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        ShouldBeThrottled<NProto::T##name##Request>()                          \
-            ? __VA_ARGS__                                                      \
-            : 0,                                                               \
-        volumeStats->VolumeInfo->PostponedServerCount[                         \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        volumeStats->VolumeInfo->AdvancedCount[                                \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        ShouldBeThrottled<NProto::T##name##Request>()                          \
-            ? __VA_ARGS__                                                      \
-            : 0,                                                               \
-        volumeStats->VolumeInfo->AdvancedServerCount[                          \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        requestStats->PostponedCount[                                          \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        ShouldBeThrottled<NProto::T##name##Request>()                          \
-            ? __VA_ARGS__                                                      \
-            : 0,                                                               \
-        requestStats->PostponedServerCount[                                    \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        requestStats->AdvancedCount[                                           \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        ShouldBeThrottled<NProto::T##name##Request>()                          \
-            ? __VA_ARGS__                                                      \
-            : 0,                                                               \
-        requestStats->AdvancedServerCount[                                     \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-// DO_TEST
+#define DO_TEST(name, ...)                                                    \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        volumeStats->VolumeInfo                                               \
+            ->PostponedCount[static_cast<size_t>(EBlockStoreRequest::name)]); \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        ShouldBeThrottled<NProto::T##name##Request>() ? __VA_ARGS__ : 0,      \
+        volumeStats->VolumeInfo->PostponedServerCount[static_cast<size_t>(    \
+            EBlockStoreRequest::name)]);                                      \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        volumeStats->VolumeInfo                                               \
+            ->AdvancedCount[static_cast<size_t>(EBlockStoreRequest::name)]);  \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        ShouldBeThrottled<NProto::T##name##Request>() ? __VA_ARGS__ : 0,      \
+        volumeStats->VolumeInfo->AdvancedServerCount[static_cast<size_t>(     \
+            EBlockStoreRequest::name)]);                                      \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        requestStats                                                          \
+            ->PostponedCount[static_cast<size_t>(EBlockStoreRequest::name)]); \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        ShouldBeThrottled<NProto::T##name##Request>() ? __VA_ARGS__ : 0,      \
+        requestStats->PostponedServerCount[static_cast<size_t>(               \
+            EBlockStoreRequest::name)]);                                      \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        requestStats                                                          \
+            ->AdvancedCount[static_cast<size_t>(EBlockStoreRequest::name)]);  \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        ShouldBeThrottled<NProto::T##name##Request>() ? __VA_ARGS__ : 0,      \
+        requestStats->AdvancedServerCount[static_cast<size_t>(                \
+            EBlockStoreRequest::name)]);                                      \
+    // DO_TEST
 
         BLOCKSTORE_SERVICE(DO_TEST, requestCount);
 
@@ -475,7 +458,7 @@ Y_UNIT_TEST_SUITE(TServiceThrotterLoggerTest)
             NProto::TWriteBlocksRequest());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            CyclesToDurationSafe(1'250), // 2'250 - 1'000
+            CyclesToDurationSafe(1'250),   // 2'250 - 1'000
             ctx.Time(EProcessingStage::Postponed));
 
         logger->LogPostponedRequest(
@@ -496,7 +479,7 @@ Y_UNIT_TEST_SUITE(TServiceThrotterLoggerTest)
             NProto::TWriteBlocksRequest());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            CyclesToDurationSafe(2'650), // 1'250 + (4'400 - 3'000)
+            CyclesToDurationSafe(2'650),   // 1'250 + (4'400 - 3'000)
             ctx.Time(EProcessingStage::Postponed));
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -536,9 +519,10 @@ Y_UNIT_TEST_SUITE(TServiceThrotterLoggerTest)
         volumeStats->MountVolume(vol, clientId, "test_instance");
 
         auto client = std::make_shared<TTestService>();
-        client->WriteBlocksHandler = [volumeThrottlerDelay] (
-            TCallContextPtr callContext,
-            std::shared_ptr<NProto::TWriteBlocksRequest> request)
+        client->WriteBlocksHandler =
+            [volumeThrottlerDelay](
+                TCallContextPtr callContext,
+                std::shared_ptr<NProto::TWriteBlocksRequest> request)
         {
             Y_UNUSED(request);
             callContext->AddTime(
@@ -563,7 +547,8 @@ Y_UNIT_TEST_SUITE(TServiceThrotterLoggerTest)
         UNIT_ASSERT_C(
             callContext->Time(EProcessingStage::Postponed) >
                 volumeThrottlerDelay,
-            "Request didn't pass LogPostponedRequest() and LogAdvancedRequest() methods");
+            "Request didn't pass LogPostponedRequest() and "
+            "LogAdvancedRequest() methods");
     }
 }
 

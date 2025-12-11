@@ -34,12 +34,11 @@ public:
         Throttler = std::move(throttler);
     }
 
-    STRICT_STFUNC(
-        StateWork, HFunc(NActors::TEvents::TEvWakeup, HandleWakeUp);
-        HFunc(NActors::TEvents::TEvFlushLog, HandleFlush));
+    STRICT_STFUNC(StateWork, HFunc(NActors::TEvents::TEvWakeup, HandleWakeUp);
+                  HFunc(NActors::TEvents::TEvFlushLog, HandleFlush));
 
-    STRICT_STFUNC(
-        StateZombie, HFunc(NActors::TEvents::TEvWakeup, RejectRequest);)
+    STRICT_STFUNC(StateZombie,
+                  HFunc(NActors::TEvents::TEvWakeup, RejectRequest);)
 
     void HandleWakeUp(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
@@ -182,18 +181,16 @@ Y_UNIT_TEST_SUITE(TTabletThrottlerTest)
         auto actorId = runtime.Register(actor.release());
 
         // One request is postponed
-        runtime.Send(
-            TAutoPtr<IEventHandle>(new IEventHandle(
-                actorId,
-                senderId,
-                new NActors::TEvents::TEvWakeup())));
+        runtime.Send(TAutoPtr<IEventHandle>(new IEventHandle(
+            actorId,
+            senderId,
+            new NActors::TEvents::TEvWakeup())));
 
         // Flush is initiated
-        runtime.Send(
-            TAutoPtr<IEventHandle>(new IEventHandle(
-                actorId,
-                senderId,
-                new NActors::TEvents::TEvFlushLog())));
+        runtime.Send(TAutoPtr<IEventHandle>(new IEventHandle(
+            actorId,
+            senderId,
+            new NActors::TEvents::TEvFlushLog())));
     }
 }
 

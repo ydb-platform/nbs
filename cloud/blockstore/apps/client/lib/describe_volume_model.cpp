@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -16,8 +17,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDescribeVolumeModelCommand final
-    : public TCommand
+class TDescribeVolumeModelCommand final: public TCommand
 {
 private:
     ui64 BlocksCount = 0;
@@ -33,7 +33,9 @@ public:
     TDescribeVolumeModelCommand(IBlockStorePtr client)
         : TCommand(std::move(client))
     {
-        Opts.AddLongOption("blocks-count", "maximum number of blocks stored in volume")
+        Opts.AddLongOption(
+                "blocks-count",
+                "maximum number of blocks stored in volume")
             .RequiredArgument("NUM")
             .StoreResult(&BlocksCount);
 
@@ -68,8 +70,7 @@ protected:
             ParseStorageMediaKind(
                 *ParseResultPtr,
                 StorageMediaKindArg,
-                StorageMediaKind
-            );
+                StorageMediaKind);
             request->SetStorageMediaKind(StorageMediaKind);
         }
 
@@ -96,7 +97,7 @@ protected:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

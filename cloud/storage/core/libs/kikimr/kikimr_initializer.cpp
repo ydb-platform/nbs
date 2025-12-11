@@ -15,8 +15,7 @@ void TKikimrServicesInitializer::InitializeServices(
     // GRPC proxy actor required for monitoring authorization
     //
 
-    IActorPtr grpcReqProxy {
-        NGRpcService::CreateGRpcRequestProxy(*Config, {})};
+    IActorPtr grpcReqProxy{NGRpcService::CreateGRpcRequestProxy(*Config, {})};
     setup->LocalServices.emplace_back(
         NGRpcService::CreateGRpcRequestProxyId(0),
         TActorSetupCmd(

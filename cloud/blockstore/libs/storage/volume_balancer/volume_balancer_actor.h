@@ -70,13 +70,9 @@ private:
 
     bool IsBalancerEnabled() const;
 
-    void PullVolumeFromHive(
-        const NActors::TActorContext& ctx,
-        TString volume);
+    void PullVolumeFromHive(const NActors::TActorContext& ctx, TString volume);
 
-    void SendVolumeToHive(
-        const NActors::TActorContext& ctx,
-        TString volume);
+    void SendVolumeToHive(const NActors::TActorContext& ctx, TString volume);
 
     void SendConfigSubscriptionRequest(const NActors::TActorContext& ctx);
 

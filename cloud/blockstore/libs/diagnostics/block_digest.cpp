@@ -26,8 +26,7 @@ ui32 ComputeDefaultDigest(TBlockDataRef blockContent)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TExt4BlockDigestGenerator final
-    : IBlockDigestGenerator
+struct TExt4BlockDigestGenerator final: IBlockDigestGenerator
 {
     const ui32 DigestedBlocksPercentage;
     TVector<ui32> ZeroBlockDigests;
@@ -53,14 +52,14 @@ struct TExt4BlockDigestGenerator final
         return ComputeDigestForce(blockContent);
     }
 
-    TMaybe<ui32> ComputeDigestForce(
-        TBlockDataRef blockContent) const override
+    TMaybe<ui32> ComputeDigestForce(TBlockDataRef blockContent) const override
     {
         if (blockContent.Data() != nullptr) {
             return ComputeDefaultDigest(blockContent);
         }
 
-        double idx = log2(static_cast<double>(blockContent.Size()) / DefaultBlockSize);
+        double idx =
+            log2(static_cast<double>(blockContent.Size()) / DefaultBlockSize);
         auto intIdx = static_cast<int>(idx);
         if (intIdx < 0 || intIdx >= ZeroBlockDigests.ysize() || idx != intIdx) {
             return Nothing();
@@ -99,15 +98,14 @@ struct TExt4BlockDigestGenerator final
         ui32 blockCount,
         ui32 blockSize) const override
     {
-        return ShouldProcess(blockIndex, blockSize)
-            || ShouldProcess(blockIndex + blockCount - 1, blockSize);
+        return ShouldProcess(blockIndex, blockSize) ||
+               ShouldProcess(blockIndex + blockCount - 1, blockSize);
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestBlockDigestGenerator final
-    : IBlockDigestGenerator
+struct TTestBlockDigestGenerator final: IBlockDigestGenerator
 {
     TMaybe<ui32> ComputeDigest(
         ui64 blockIndex,
@@ -118,8 +116,7 @@ struct TTestBlockDigestGenerator final
         return ComputeDigestForce(blockContent);
     }
 
-    TMaybe<ui32> ComputeDigestForce(
-        TBlockDataRef blockContent) const override
+    TMaybe<ui32> ComputeDigestForce(TBlockDataRef blockContent) const override
     {
         if (blockContent.Data() == nullptr) {
             return 0;
@@ -148,8 +145,7 @@ struct TTestBlockDigestGenerator final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TBlockDigestGeneratorStub final
-    : IBlockDigestGenerator
+struct TBlockDigestGeneratorStub final: IBlockDigestGenerator
 {
     TMaybe<ui32> ComputeDigest(
         ui64 blockIndex,
@@ -160,8 +156,7 @@ struct TBlockDigestGeneratorStub final
         return ComputeDigestForce(blockContent);
     }
 
-    TMaybe<ui32> ComputeDigestForce(
-        TBlockDataRef blockContent) const override
+    TMaybe<ui32> ComputeDigestForce(TBlockDataRef blockContent) const override
     {
         Y_UNUSED(blockContent);
 
@@ -187,8 +182,7 @@ IBlockDigestGeneratorPtr CreateExt4BlockDigestGenerator(
     ui32 digestedBlocksPercentage)
 {
     return std::make_shared<TExt4BlockDigestGenerator>(
-        digestedBlocksPercentage
-    );
+        digestedBlocksPercentage);
 }
 
 IBlockDigestGeneratorPtr CreateTestBlockDigestGenerator()

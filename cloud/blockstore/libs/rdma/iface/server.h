@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include <cloud/blockstore/config/rdma.pb.h>
-
 #include <cloud/blockstore/libs/service/public.h>
 
 #include <cloud/storage/core/libs/common/startable.h>
@@ -64,15 +63,12 @@ struct IServerEndpoint
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IServer
-    : public IStartable
+struct IServer: public IStartable
 {
     virtual ~IServer() = default;
 
-    virtual IServerEndpointPtr StartEndpoint(
-        TString host,
-        ui32 port,
-        IServerHandlerPtr handler) = 0;
+    virtual IServerEndpointPtr
+    StartEndpoint(TString host, ui32 port, IServerHandlerPtr handler) = 0;
 
     virtual void DumpHtml(IOutputStream& out) const = 0;
 };

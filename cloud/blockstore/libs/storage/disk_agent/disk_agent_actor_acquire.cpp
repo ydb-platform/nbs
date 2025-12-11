@@ -23,40 +23,37 @@ void TDiskAgentActor::HandleAcquireDevices(
     auto* actorSystem = ctx.ActorSystem();
     auto replyFrom = ctx.SelfID;
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        ev->Get()->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
 
-    auto reply = [=] (auto error) {
-        auto response = std::make_unique<TEvDiskAgent::TEvAcquireDevicesResponse>(
-            std::move(error));
+    auto reply = [=](auto error)
+    {
+        auto response =
+            std::make_unique<TEvDiskAgent::TEvAcquireDevicesResponse>(
+                std::move(error));
 
-        actorSystem->Send(
-            new IEventHandle(
-                requestInfo->Sender,
-                replyFrom,
-                response.release(),
-                0,          // flags
-                requestInfo->Cookie));
+        actorSystem->Send(new IEventHandle(
+            requestInfo->Sender,
+            replyFrom,
+            response.release(),
+            0,   // flags
+            requestInfo->Cookie));
     };
 
     const auto* msg = ev->Get();
     const auto& record = msg->Record;
     const TString clientId = record.GetHeaders().GetClientId();
 
-    TVector<TString> uuids {
+    TVector<TString> uuids{
         record.GetDeviceUUIDs().begin(),
-        record.GetDeviceUUIDs().end()
-    };
+        record.GetDeviceUUIDs().end()};
 
     try {
         LOG_DEBUG_S(
             ctx,
             TBlockStoreComponents::DISK_AGENT,
             "AcquireDevices: clientId=" << clientId
-                << ", uuids=" << JoinSeq(",", uuids)
-        );
+                                        << ", uuids=" << JoinSeq(",", uuids));
 
         const bool updated = State->AcquireDevices(
             uuids,
@@ -76,12 +73,11 @@ void TDiskAgentActor::HandleAcquireDevices(
             return;
         }
 
-        const NSpdk::TDeviceRateLimits limits {
+        const NSpdk::TDeviceRateLimits limits{
             record.GetRateLimits().GetIopsLimit(),
             record.GetRateLimits().GetBandwidthLimit(),
             record.GetRateLimits().GetReadBandwidthLimit(),
-            record.GetRateLimits().GetWriteBandwidthLimit()
-        };
+            record.GetRateLimits().GetWriteBandwidthLimit()};
 
         TVector<TFuture<void>> futures(Reserve(uuids.size()));
 
@@ -92,12 +88,13 @@ void TDiskAgentActor::HandleAcquireDevices(
         }
 
         WaitExceptionOrAll(futures).Subscribe(
-            [
-                =, this,
-                uuids = std::move(uuids),
-                diskId = record.GetDiskId(),
-                volumeGeneration = record.GetVolumeGeneration()
-            ] (const auto& future) {
+            [=,
+             this,
+             uuids = std::move(uuids),
+             diskId = record.GetDiskId(),
+             volumeGeneration =
+                 record.GetVolumeGeneration()](const auto& future)
+            {
                 try {
                     future.GetValue();
                     reply(NProto::TError());
@@ -115,8 +112,7 @@ void TDiskAgentActor::HandleAcquireDevices(
             ctx,
             TBlockStoreComponents::DISK_AGENT,
             "AcquireDevices failed: " << e.what()
-                << ", uuids=" << JoinSeq(",", uuids)
-        );
+                                      << ", uuids=" << JoinSeq(",", uuids));
 
         reply(MakeError(e.GetCode(), e.what()));
     }

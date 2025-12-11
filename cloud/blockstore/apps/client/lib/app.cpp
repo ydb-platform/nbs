@@ -1,4 +1,5 @@
 #include "app.h"
+
 #include "bootstrap.h"
 
 #include <library/cpp/getopt/small/last_getopt.h>
@@ -57,7 +58,8 @@ int TApp::Run(
         }
 
         auto command = TCommand::NormalizeCommand(argv[1]);
-        --argc; ++argv;
+        --argc;
+        ++argv;
 
         if (command == "mountvolume" || command == "unmountvolume") {
             ythrow yexception()
@@ -91,7 +93,8 @@ int TApp::Run(
             opts = " " + JoinRange(" ", &argv[0], &argv[argc]);
         }
 
-        Cerr << GetProgramName() << opts << " failed: " << CurrentExceptionMessage() << Endl;
+        Cerr << GetProgramName() << opts
+             << " failed: " << CurrentExceptionMessage() << Endl;
 
         return 1;
     }

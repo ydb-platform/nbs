@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_registry_proxy_mock.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -35,8 +36,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestActorSystem
-    : IActorSystem
+struct TTestActorSystem: IActorSystem
 {
     TTestBasicRuntime& Runtime;
     TProgramShouldContinue ProgramShouldContinue;
@@ -112,8 +112,7 @@ struct TTestActorSystem
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFixture
-    : public NUnitTest::TBaseFixture
+struct TFixture: public NUnitTest::TBaseFixture
 {
     std::optional<TTestBasicRuntime> Runtime;
     IActorSystemPtr ActorSystem;
@@ -173,11 +172,11 @@ struct TFixture
         Runtime->SetEventFilter(
             [this](auto&, TAutoPtr<IEventHandle>& ev)
             {
-#define INVOKE_HANDLER_FUNC(ns, name)                                          \
-    case ns::Ev##name##Request:                                                \
-        if (Handle##name) {                                                    \
-            auto* ptr = reinterpret_cast<ns::TEv##name##Request::TPtr*>(&ev);  \
-            return Handle##name(*ptr);                                         \
+#define INVOKE_HANDLER_FUNC(ns, name)                                         \
+    case ns::Ev##name##Request:                                               \
+        if (Handle##name) {                                                   \
+            auto* ptr = reinterpret_cast<ns::TEv##name##Request::TPtr*>(&ev); \
+            return Handle##name(*ptr);                                        \
         }
                 switch (ev->GetTypeRewrite()) {
                     case TEvDiskRegistry::EvGetAgentNodeIdRequest:
@@ -186,10 +185,10 @@ struct TFixture
                                 TEvDiskRegistry::TEvGetAgentNodeIdRequest::
                                     TPtr*>(&ev));
                         return true;
-                    INVOKE_HANDLER_FUNC(TEvDiskAgent, WriteDeviceBlocks)
-                    INVOKE_HANDLER_FUNC(TEvDiskAgent, ReadDeviceBlocks)
-                    INVOKE_HANDLER_FUNC(TEvDiskAgent, ZeroDeviceBlocks)
-                    INVOKE_HANDLER_FUNC(TEvDiskAgent, ChecksumDeviceBlocks)
+                        INVOKE_HANDLER_FUNC(TEvDiskAgent, WriteDeviceBlocks)
+                        INVOKE_HANDLER_FUNC(TEvDiskAgent, ReadDeviceBlocks)
+                        INVOKE_HANDLER_FUNC(TEvDiskAgent, ZeroDeviceBlocks)
+                        INVOKE_HANDLER_FUNC(TEvDiskAgent, ChecksumDeviceBlocks)
                     default:
                         return false;
                 }
@@ -232,8 +231,7 @@ struct TFixture
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestClientHandler
-    : public NRdma::IClientHandler
+struct TTestClientHandler: public NRdma::IClientHandler
 {
     std::function<void(NRdma::TClientRequestPtr, ui32, size_t)> Impl;
 
@@ -322,21 +320,24 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
 
         std::optional<NProto::TError> responseError;
 
-        auto handler = Handler([&] (auto request, ui32 status, size_t len) {
-            auto buffer = request->ResponseBuffer.Head(len);
+        auto handler = Handler(
+            [&](auto request, ui32 status, size_t len)
+            {
+                auto buffer = request->ResponseBuffer.Head(len);
 
-            UNIT_ASSERT_EQUAL(NRdma::RDMA_PROTO_OK, status);
+                UNIT_ASSERT_EQUAL(NRdma::RDMA_PROTO_OK, status);
 
-            auto* serializer = TBlockStoreProtocol::Serializer();
-            auto [result, error] = serializer->Parse(buffer);
+                auto* serializer = TBlockStoreProtocol::Serializer();
+                auto [result, error] = serializer->Parse(buffer);
 
-            UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+                UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 
-            const auto& proto =
-                static_cast<NProto::TWriteDeviceBlocksResponse&>(*result.Proto);
+                const auto& proto =
+                    static_cast<NProto::TWriteDeviceBlocksResponse&>(
+                        *result.Proto);
 
-            responseError = proto.GetError();
-        });
+                responseError = proto.GetError();
+            });
 
         auto [request, error] = ep->AllocateRequest(
             handler,
@@ -432,31 +433,34 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
 
         std::optional<NProto::TReadDeviceBlocksResponse> deviceResponse;
 
-        auto handler = Handler([&] (auto request, ui32 status, size_t len) {
-            auto buffer = request->ResponseBuffer.Head(len);
+        auto handler = Handler(
+            [&](auto request, ui32 status, size_t len)
+            {
+                auto buffer = request->ResponseBuffer.Head(len);
 
-            UNIT_ASSERT_EQUAL(NRdma::RDMA_PROTO_OK, status);
+                UNIT_ASSERT_EQUAL(NRdma::RDMA_PROTO_OK, status);
 
-            auto* serializer = TBlockStoreProtocol::Serializer();
-            auto [result, error] = serializer->Parse(buffer);
+                auto* serializer = TBlockStoreProtocol::Serializer();
+                auto [result, error] = serializer->Parse(buffer);
 
-            UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+                UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 
-            deviceResponse =
-                static_cast<NProto::TReadDeviceBlocksResponse&>(*result.Proto);
-            auto& blocks = *deviceResponse->MutableBlocks();
+                deviceResponse =
+                    static_cast<NProto::TReadDeviceBlocksResponse&>(
+                        *result.Proto);
+                auto& blocks = *deviceResponse->MutableBlocks();
 
-            TSgList dst = ResizeIOVector(
-                blocks,
-                deviceRequest.GetBlocksCount(),
-                deviceRequest.GetBlockSize());
+                TSgList dst = ResizeIOVector(
+                    blocks,
+                    deviceRequest.GetBlocksCount(),
+                    deviceRequest.GetBlockSize());
 
-            UNIT_ASSERT_EQUAL(requestByteCount, result.Data.size());
+                UNIT_ASSERT_EQUAL(requestByteCount, result.Data.size());
 
-            SgListCopy(
-                TBlockDataRef{result.Data.data(), result.Data.size()},
-                dst);
-        });
+                SgListCopy(
+                    TBlockDataRef{result.Data.data(), result.Data.size()},
+                    dst);
+            });
 
         auto [request, error] = ep->AllocateRequest(
             handler,

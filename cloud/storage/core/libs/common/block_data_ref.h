@@ -25,11 +25,10 @@ private:
     size_t Length;
 
 private:
-   constexpr inline TBlockDataRef(std::nullptr_t, size_t size)
-       : Start(nullptr)
-       , Length(size)
-   {
-   }
+    constexpr inline TBlockDataRef(std::nullptr_t, size_t size)
+        : Start(nullptr)
+        , Length(size)
+    {}
 
 public:
     constexpr inline TBlockDataRef(const char* data, size_t len) noexcept
@@ -42,8 +41,7 @@ public:
     constexpr inline TBlockDataRef() noexcept
         : Start(nullptr)
         , Length(0)
-    {
-    }
+    {}
 
     static TBlockDataRef CreateZeroBlock(size_t len)
     {
@@ -58,37 +56,44 @@ public:
         return TStringBuf(Start, Length);
     }
 
-    [[nodiscard]] constexpr const char* Data() const noexcept {
+    [[nodiscard]] constexpr const char* Data() const noexcept
+    {
         return Start;
     }
 
-    [[nodiscard]] constexpr inline size_t Size() const noexcept {
+    [[nodiscard]] constexpr inline size_t Size() const noexcept
+    {
         return Length;
     }
 
     Y_PURE_FUNCTION
-    [[nodiscard]] constexpr inline bool Empty() const noexcept {
+    [[nodiscard]] constexpr inline bool Empty() const noexcept
+    {
         return (Start == nullptr) || (Length == 0);
     }
 
     // Lowercase methods are useful for template functions that use TString and
     // TBlockDataRef.
-    [[nodiscard]] constexpr const char* data() const noexcept {
+    [[nodiscard]] constexpr const char* data() const noexcept
+    {
         return Data();
     }
-    [[nodiscard]] constexpr inline size_t size() const noexcept {
+    [[nodiscard]] constexpr inline size_t size() const noexcept
+    {
         return Size();
     }
     Y_PURE_FUNCTION
-    [[nodiscard]] constexpr inline bool empty() const noexcept {
+    [[nodiscard]] constexpr inline bool empty() const noexcept
+    {
         return Empty();
     }
 
-    constexpr inline explicit operator bool() const noexcept {
+    constexpr inline explicit operator bool() const noexcept
+    {
         return !Empty();
     }
 
-    bool operator == (TBlockDataRef b) const
+    bool operator==(TBlockDataRef b) const
     {
         if (Start == nullptr) {
             return (b.Data() == nullptr) && (Size() == b.Size());
@@ -96,8 +101,8 @@ public:
         return AsStringBuf() == b.AsStringBuf();
     }
 
-
-    inline size_t hash() const noexcept {
+    inline size_t hash() const noexcept
+    {
         if (Start == nullptr) {
             return ComputeHash(TStringBuf());
         }

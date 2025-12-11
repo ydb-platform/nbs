@@ -20,11 +20,8 @@ struct IBlockDigestGenerator
     virtual TMaybe<ui32> ComputeDigestForce(
         TBlockDataRef blockContent) const = 0;
 
-    virtual bool ShouldProcess(
-        ui64 blockIndex,
-        ui32 blockCount,
-        ui32 blockSize
-    ) const = 0;
+    virtual bool
+    ShouldProcess(ui64 blockIndex, ui32 blockCount, ui32 blockSize) const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

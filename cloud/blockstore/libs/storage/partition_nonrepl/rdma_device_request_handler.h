@@ -162,14 +162,14 @@ void ConvertRdmaErrorIfNeeded(ui32 rdmaStatus, NProto::TError& err);
 
 template <typename TDerived>
 TRdmaDeviceRequestHandlerBase<TDerived>::TRdmaDeviceRequestHandlerBase(
-        NActors::TActorSystem* actorSystem,
-        TNonreplicatedPartitionConfigPtr partConfig,
-        TRequestInfoPtr requestInfo,
-        ui64 requestId,
-        NActors::TActorId volumeActorId,
-        NActors::TActorId parentActorId,
-        ui32 requestBlockCount,
-        ui32 responseCount)
+    NActors::TActorSystem* actorSystem,
+    TNonreplicatedPartitionConfigPtr partConfig,
+    TRequestInfoPtr requestInfo,
+    ui64 requestId,
+    NActors::TActorId volumeActorId,
+    NActors::TActorId parentActorId,
+    ui32 requestBlockCount,
+    ui32 responseCount)
     : ActorSystem(actorSystem)
     , PartConfig(std::move(partConfig))
     , RequestInfo(std::move(requestInfo))
@@ -203,8 +203,7 @@ void TRdmaDeviceRequestHandlerBase<TDerived>::OnRequestStarted(
 }
 
 template <typename TDerived>
-void TRdmaDeviceRequestHandlerBase<TDerived>::OnRequestFinished(
-    ui32 deviceIdx)
+void TRdmaDeviceRequestHandlerBase<TDerived>::OnRequestFinished(ui32 deviceIdx)
 {
     if (!DeviceOperationId) {
         // Tracking of this request is disabled.

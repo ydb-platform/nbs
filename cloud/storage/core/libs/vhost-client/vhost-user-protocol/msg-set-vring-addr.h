@@ -6,8 +6,7 @@ namespace NVHostUser {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSetVringAddr
-    : public IMessage
+class TSetVringAddr: public IMessage
 {
 private:
     uint32_t Index;
@@ -19,12 +18,12 @@ private:
 
 public:
     TSetVringAddr(
-            uint32_t index,
-            uint32_t flags,
-            uint64_t descriptorTable,
-            uint64_t usedRing,
-            uint64_t availableRing,
-            uint64_t logging)
+        uint32_t index,
+        uint32_t flags,
+        uint64_t descriptorTable,
+        uint64_t usedRing,
+        uint64_t availableRing,
+        uint64_t logging)
         : Index(index)
         , Flags(flags)
         , DescriptorTable(descriptorTable)
@@ -48,13 +47,9 @@ public:
 
         request.Base.Request = VHOST_USER_SET_VRING_ADDR;
         request.Base.Flags = 1;
-        request.Base.AdditionDataSize =
-            sizeof(uint32_t) +
-            sizeof(uint32_t) +
-            sizeof(uint64_t) +
-            sizeof(uint64_t) +
-            sizeof(uint64_t) +
-            sizeof(uint64_t);
+        request.Base.AdditionDataSize = sizeof(uint32_t) + sizeof(uint32_t) +
+                                        sizeof(uint64_t) + sizeof(uint64_t) +
+                                        sizeof(uint64_t) + sizeof(uint64_t);
         request.Index = Index;
         request.Flags = Flags;
         request.DescriptorTable = DescriptorTable;
@@ -74,4 +69,4 @@ public:
     }
 };
 
-} // namespace NVHostUser
+}   // namespace NVHostUser

@@ -30,20 +30,17 @@ void TDiskRegistryActor::HandleBackupDiskRegistryState(
             TEvDiskRegistry::TEvBackupDiskRegistryStateResponse>();
         *response->Record.MutableBackupFilePath() =
             msg->Record.GetBackupFilePath();
-        *response->Record.MutableBackup() =
-            State->BackupState();
-        response->Record.MutableBackup()->MutableConfig()
-            ->SetWritableState(CurrentState != STATE_READ_ONLY);
+        *response->Record.MutableBackup() = State->BackupState();
+        response->Record.MutableBackup()->MutableConfig()->SetWritableState(
+            CurrentState != STATE_READ_ONLY);
 
         NCloud::Reply(ctx, *ev, std::move(response));
 
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     ExecuteTx<TBackupDiskRegistryState>(
         ctx,
@@ -80,43 +77,27 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
     const TActorContext& ctx,
     TTxDiskRegistry::TBackupDiskRegistryState& args)
 {
-    auto response = std::make_unique<
-        TEvDiskRegistry::TEvBackupDiskRegistryStateResponse>();
+    auto response =
+        std::make_unique<TEvDiskRegistry::TEvBackupDiskRegistryStateResponse>();
     *response->Record.MutableBackupFilePath() = args.BackupFilePath;
 
     // if new fields are added to TDiskRegistryStateSnapshot
     // there will be a compilation error.
-    auto& [
-        config,
-        dirtyDevices,
-        agents,
-        disks,
-        placementGroups,
-        brokenDisks,
-        disksToReallocate,
-        diskStateChanges,
-        lastDiskStateSeqNo,
-        writableState,
-        disksToCleanup,
-        errorNotifications,
-        userNotifications,
-        outdatedVolumeConfigs,
-        suspendedDevices,
-        automaticallyReplacedDevices,
-        diskRegistryAgentListParams
-    ] = args.Snapshot;
+    auto& [config, dirtyDevices, agents, disks, placementGroups, brokenDisks, disksToReallocate, diskStateChanges, lastDiskStateSeqNo, writableState, disksToCleanup, errorNotifications, userNotifications, outdatedVolumeConfigs, suspendedDevices, automaticallyReplacedDevices, diskRegistryAgentListParams] =
+        args.Snapshot;
 
-    auto copy = [] (auto& src, auto* dst) {
+    auto copy = [](auto& src, auto* dst)
+    {
         dst->Reserve(src.size());
         std::copy(
             std::make_move_iterator(src.begin()),
             std::make_move_iterator(src.end()),
-            RepeatedFieldBackInserter(dst)
-        );
+            RepeatedFieldBackInserter(dst));
         src.clear();
     };
 
-    auto transform = [] (auto& src, auto* dst, auto func) {
+    auto transform = [](auto& src, auto* dst, auto func)
+    {
         dst->Reserve(src.size());
         for (auto& x: src) {
             func(x, *dst->Add());
@@ -126,7 +107,7 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
 
     auto& backup = *response->Record.MutableBackup();
 
-    for (auto & [uuid, diskId]: dirtyDevices) {
+    for (auto& [uuid, diskId]: dirtyDevices) {
         backup.AddOldDirtyDevices(uuid);
 
         auto* dd = backup.AddDirtyDevices();
@@ -148,20 +129,29 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
 
     copy(outdatedVolumeConfigs, backup.MutableOutdatedVolumeConfigs());
 
-    transform(brokenDisks, backup.MutableBrokenDisks(), [] (auto& src, auto& dst) {
-        dst.SetDiskId(src.DiskId);
-        dst.SetTsToDestroy(src.TsToDestroy.MicroSeconds());
-    });
+    transform(
+        brokenDisks,
+        backup.MutableBrokenDisks(),
+        [](auto& src, auto& dst)
+        {
+            dst.SetDiskId(src.DiskId);
+            dst.SetTsToDestroy(src.TsToDestroy.MicroSeconds());
+        });
 
-    transform(diskStateChanges, backup.MutableDiskStateChanges(), [] (auto& src, auto& dst) {
-        dst.MutableState()->Swap(&src.State);
-        dst.SetSeqNo(src.SeqNo);
-    });
+    transform(
+        diskStateChanges,
+        backup.MutableDiskStateChanges(),
+        [](auto& src, auto& dst)
+        {
+            dst.MutableState()->Swap(&src.State);
+            dst.SetSeqNo(src.SeqNo);
+        });
 
     transform(
         automaticallyReplacedDevices,
         backup.MutableAutomaticallyReplacedDevices(),
-        [] (auto& src, auto& dst) {
+        [](auto& src, auto& dst)
+        {
             dst.SetDeviceId(src.DeviceId);
             dst.SetReplacementTs(src.ReplacementTs.MicroSeconds());
         });

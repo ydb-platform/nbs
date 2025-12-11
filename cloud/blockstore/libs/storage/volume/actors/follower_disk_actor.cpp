@@ -39,12 +39,12 @@ EDirectCopyPolicy GetDirectCopyUsage(const TFollowerDiskActorParams& params)
 ///////////////////////////////////////////////////////////////////////////////
 
 TFollowerDiskActor::TFollowerDiskActor(
-        const TLogTitle& parentLogTitle,
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticConfig,
-        IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr digestGenerator,
-        TFollowerDiskActorParams params)
+    const TLogTitle& parentLogTitle,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticConfig,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr digestGenerator,
+    TFollowerDiskActorParams params)
     : TNonreplicatedPartitionMigrationCommonActor(
           static_cast<IMigrationOwner*>(this),
           config,

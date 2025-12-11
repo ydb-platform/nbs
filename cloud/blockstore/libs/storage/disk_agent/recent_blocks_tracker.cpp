@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
+
 #include <cloud/storage/core/libs/common/verify.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
@@ -51,8 +52,8 @@ bool IsOverlapped(EOverlapStatus overlapStatus)
 ///////////////////////////////////////////////////////////////////////////////
 
 TRecentBlocksTracker::TRecentBlocksTracker(
-        const TString& deviceUUID,
-        size_t trackDepth)
+    const TString& deviceUUID,
+    size_t trackDepth)
     : DeviceUUID(deviceUUID)
     , TrackDepth(trackDepth)
     , OrderedByArrival(TrackDepth, OrderedById.end())
@@ -114,23 +115,25 @@ EOverlapStatus TRecentBlocksTracker::CheckRecorded(
         bitmap.Reset(other.Start - range.Start, other.End - range.Start + 1);
     }
     if (bitmap.FirstNonZeroBit() >= rangeSize) {
-        *overlapDetails = TStringBuilder()
-                         << "[" << DeviceUUID << "] Complete overlapping "
-                         << TCompositeId::FromRaw(requestId).Print() << " "
-                         << DescribeRange(range) << " with "
-                         << TCompositeId::FromRaw(lastOverlapped->first).Print()
-                         << " " << DescribeRange(lastOverlapped->second);
+        *overlapDetails =
+            TStringBuilder()
+            << "[" << DeviceUUID << "] Complete overlapping "
+            << TCompositeId::FromRaw(requestId).Print() << " "
+            << DescribeRange(range) << " with "
+            << TCompositeId::FromRaw(lastOverlapped->first).Print() << " "
+            << DescribeRange(lastOverlapped->second);
         LogWarn(*overlapDetails);
         return EOverlapStatus::Complete;
     }
 
     if (foundIntersections) {
-        *overlapDetails = TStringBuilder()
-                          << "[" << DeviceUUID << "] Partial overlapping "
-                          << TCompositeId::FromRaw(requestId).Print() << " "
-                          << DescribeRange(range) << " with "
-                          << TCompositeId::FromRaw(lastOverlapped->first).Print()
-                          << " " << DescribeRange(lastOverlapped->second);
+        *overlapDetails =
+            TStringBuilder()
+            << "[" << DeviceUUID << "] Partial overlapping "
+            << TCompositeId::FromRaw(requestId).Print() << " "
+            << DescribeRange(range) << " with "
+            << TCompositeId::FromRaw(lastOverlapped->first).Print() << " "
+            << DescribeRange(lastOverlapped->second);
         LogWarn(*overlapDetails);
         return EOverlapStatus::Partial;
     }
@@ -207,7 +210,8 @@ void TRecentBlocksTracker::RemoveInflight(ui64 requestId)
     InflightBlocks.erase(requestId);
 }
 
-const TString& TRecentBlocksTracker::GetDeviceUUID() const {
+const TString& TRecentBlocksTracker::GetDeviceUUID() const
+{
     return DeviceUUID;
 }
 

@@ -3,22 +3,23 @@
 #include "protocol.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
-#include <cloud/storage/core/libs/common/helpers.h>
 
-#include <google/protobuf/message.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 
 #include <util/stream/printf.h>
 #include <util/string/builder.h>
+
+#include <google/protobuf/message.h>
 
 namespace NCloud::NBlockStore::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define Y_ENSURE_RETURN(expr, message)                                         \
-    if (Y_UNLIKELY(!(expr))) {                                                 \
-        return MakeError(E_ARGUMENT, TStringBuilder() << message);             \
-    }                                                                          \
-// Y_ENSURE_RETURN
+#define Y_ENSURE_RETURN(expr, message)                             \
+    if (Y_UNLIKELY(!(expr))) {                                     \
+        return MakeError(E_ARGUMENT, TStringBuilder() << message); \
+    }                                                              \
+    // Y_ENSURE_RETURN
 
 static inline size_t MessageByteSize(size_t protoLen, size_t dataLen)
 {
@@ -27,7 +28,9 @@ static inline size_t MessageByteSize(size_t protoLen, size_t dataLen)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TProtoMessageSerializer::RegisterProto(ui32 msgId, IProtoFactoryPtr factory)
+void TProtoMessageSerializer::RegisterProto(
+    ui32 msgId,
+    IProtoFactoryPtr factory)
 {
     auto [it, inserted] = Messages.emplace(msgId, std::move(factory));
     Y_ENSURE(inserted, "could not register protobuf message");
@@ -84,7 +87,7 @@ size_t TProtoMessageSerializer::SerializeWithData(
         ptr = const_cast<char*>(buffer.data()) + buffer.length() - dataLen;
     }
 
-    for (const auto part : data) {
+    for (const auto part: data) {
         if (part.Data()) {
             memcpy(ptr, part.Data(), part.Size());
         } else {
@@ -112,8 +115,8 @@ size_t TProtoMessageSerializer::SerializeWithDataLength(
     size_t totalLen = NRdma::MessageByteSize(protoLen, dataLen);
     Y_ENSURE(
         buffer.length() >= totalLen,
-        TStringBuilder() << "insufficient buffer length: "
-            << buffer.length() << " < " << totalLen);
+        TStringBuilder() << "insufficient buffer length: " << buffer.length()
+                         << " < " << totalLen);
 
     TProtoHeader header = {
         .MsgId = msgId,
@@ -150,7 +153,7 @@ TProtoMessageSerializer::Parse(TStringBuf buffer) const
     Y_ENSURE_RETURN(
         buffer.length() >= totalLen,
         "invalid buffer length: " << buffer.length()
-        << " (expected: " << totalLen << ")");
+                                  << " (expected: " << totalLen << ")");
 
     auto proto = CreateProto(header.MsgId);
     Y_ENSURE_RETURN(proto, "unknown protobuf message: " << header.MsgId);
@@ -167,7 +170,7 @@ TProtoMessageSerializer::Parse(TStringBuf buffer) const
     auto data = TStringBuf(ptr, header.DataLen);
     ptr += header.DataLen;
 
-    return TParseResult { header.MsgId, header.Flags, std::move(proto), data };
+    return TParseResult{header.MsgId, header.Flags, std::move(proto), data};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -182,8 +185,8 @@ size_t SerializeError(ui32 code, TStringBuf message, TStringBuf buffer)
     }
 
     if (error.SerializeToArray(
-        const_cast<char*>(buffer.data()),
-        error.ByteSize()))
+            const_cast<char*>(buffer.data()),
+            error.ByteSize()))
     {
         return error.ByteSizeLong();
     }

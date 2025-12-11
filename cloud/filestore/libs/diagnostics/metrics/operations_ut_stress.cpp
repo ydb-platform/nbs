@@ -22,59 +22,71 @@ Y_UNIT_TEST_SUITE(TOperationsStressTest)
 
         NTests::TScopedTasks tasks;
 
-        tasks.Add([&] {
-            for (ui64 i = 0; i < PER_THREAD_OPERATIONS; ++i) {
-                count.fetch_add(1);
+        tasks.Add(
+            [&]
+            {
+                for (ui64 i = 0; i < PER_THREAD_OPERATIONS; ++i) {
+                    count.fetch_add(1);
 
-                Load(value);
-                Load(valueDeprecated);
-            }
-        });
+                    Load(value);
+                    Load(valueDeprecated);
+                }
+            });
 
-        tasks.Add([&] {
-            for (ui64 i = 0; i < PER_THREAD_OPERATIONS; ++i) {
-                const i64 v = count.fetch_add(1);
+        tasks.Add(
+            [&]
+            {
+                for (ui64 i = 0; i < PER_THREAD_OPERATIONS; ++i) {
+                    const i64 v = count.fetch_add(1);
 
-                Store(value, v);
-                Store(valueDeprecated, v);
-            }
-        });
+                    Store(value, v);
+                    Store(valueDeprecated, v);
+                }
+            });
 
-        tasks.Add([&] {
-            for (ui64 i = 0; i < PER_THREAD_OPERATIONS; ++i) {
-                count.fetch_add(1);
+        tasks.Add(
+            [&]
+            {
+                for (ui64 i = 0; i < PER_THREAD_OPERATIONS; ++i) {
+                    count.fetch_add(1);
 
-                Inc(value);
-                Inc(valueDeprecated);
-            }
-        });
+                    Inc(value);
+                    Inc(valueDeprecated);
+                }
+            });
 
-        tasks.Add([&] {
-            for (ui64 i = 0; i < PER_THREAD_OPERATIONS; ++i) {
-                count.fetch_add(1);
+        tasks.Add(
+            [&]
+            {
+                for (ui64 i = 0; i < PER_THREAD_OPERATIONS; ++i) {
+                    count.fetch_add(1);
 
-                Dec(value);
-                Dec(valueDeprecated);
-            }
-        });
+                    Dec(value);
+                    Dec(valueDeprecated);
+                }
+            });
 
-        tasks.Add([&] {
-            for (ui64 i = 0; i < PER_THREAD_OPERATIONS; ++i) {
-                const i64 v = count.fetch_add(1);
+        tasks.Add(
+            [&]
+            {
+                for (ui64 i = 0; i < PER_THREAD_OPERATIONS; ++i) {
+                    const i64 v = count.fetch_add(1);
 
-                Add(value, v);
-                Add(valueDeprecated, v);
-            }
-        });
+                    Add(value, v);
+                    Add(valueDeprecated, v);
+                }
+            });
 
-        tasks.Add([&] {
-            for (ui64 i = 0; i < PER_THREAD_OPERATIONS; ++i) {
-                const i64 v = count.fetch_add(1);
+        tasks.Add(
+            [&]
+            {
+                for (ui64 i = 0; i < PER_THREAD_OPERATIONS; ++i) {
+                    const i64 v = count.fetch_add(1);
 
-                Sub(value, v);
-                Sub(valueDeprecated, v);
-            }
-        });
+                    Sub(value, v);
+                    Sub(valueDeprecated, v);
+                }
+            });
 
         tasks.Start();
         tasks.Stop();

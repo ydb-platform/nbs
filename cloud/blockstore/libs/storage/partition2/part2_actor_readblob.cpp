@@ -6,7 +6,6 @@
 #include <cloud/storage/core/libs/common/alloc.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
@@ -22,8 +21,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReadBlobActor final
-    : public TActorBootstrapped<TReadBlobActor>
+class TReadBlobActor final: public TActorBootstrapped<TReadBlobActor>
 {
     using TRequest = TEvPartitionPrivate::TEvReadBlobRequest;
     using TResponse = TEvPartitionPrivate::TEvReadBlobResponse;
@@ -82,12 +80,12 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReadBlobActor::TReadBlobActor(
-        TRequestInfoPtr requestInfo,
-        const TActorId& tablet,
-        ui64 tabletId,
-        ui32 blockSize,
-        const EStorageAccessMode storageAccessMode,
-        std::unique_ptr<TRequest> request)
+    TRequestInfoPtr requestInfo,
+    const TActorId& tablet,
+    ui64 tabletId,
+    ui32 blockSize,
+    const EStorageAccessMode storageAccessMode,
+    std::unique_ptr<TRequest> request)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
     , TabletId(tabletId)
@@ -121,9 +119,9 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
     size_t queriesCount = 0;
 
     for (size_t i = 0; i < blocksCount; ++i) {
-        if (i && Request->BlobOffsets[i] == Request->BlobOffsets[i-1] + 1) {
+        if (i && Request->BlobOffsets[i] == Request->BlobOffsets[i - 1] + 1) {
             // extend range
-            queries[queriesCount-1].Size += BlockSize;
+            queries[queriesCount - 1].Size += BlockSize;
         } else {
             queries[queriesCount++].Set(
                 Request->BlobId,
@@ -136,26 +134,22 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
         queries,
         queriesCount,
         Request->Deadline,
-        Request->Async
-            ? NKikimrBlobStorage::AsyncRead
-            : NKikimrBlobStorage::FastRead);
+        Request->Async ? NKikimrBlobStorage::AsyncRead
+                       : NKikimrBlobStorage::FastRead);
 
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
     RequestSent = ctx.Now();
 
-    SendToBSProxy(
-        ctx,
-        Request->Proxy,
-        request.release());
+    SendToBSProxy(ctx, Request->Proxy, request.release());
 }
 
 void TReadBlobActor::NotifyCompleted(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto request = std::make_unique<TEvPartitionPrivate::TEvReadBlobCompleted>(
-        error);
+    auto request =
+        std::make_unique<TEvPartitionPrivate::TEvReadBlobCompleted>(error);
     request->BlobId = Request->BlobId;
     request->BytesCount = Request->BlobOffsets.size() * BlockSize;
     request->RequestTime = ResponseReceived - RequestSent;
@@ -191,7 +185,9 @@ void TReadBlobActor::ReplyError(
     const TEvBlobStorage::TEvGetResult& response,
     const TString& description)
 {
-    LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] TEvBlobStorage::TEvGet failed: %s\n%s",
         TabletId,
         description.data(),
@@ -201,7 +197,8 @@ void TReadBlobActor::ReplyError(
         DeadlineSeen = true;
     }
 
-    auto error = MakeError(E_REJECTED, "TEvBlobStorage::TEvGet failed: " + description);
+    auto error =
+        MakeError(E_REJECTED, "TEvBlobStorage::TEvGet failed: " + description);
     ReplyAndDie(ctx, std::make_unique<TResponse>(error));
 }
 
@@ -233,10 +230,12 @@ void TReadBlobActor::HandleGetResult(
             auto& response = msg->Responses[i];
 
             if (response.Status != NKikimrProto::OK) {
-                if (IsUnrecoverable(response.Status)
-                        && StorageAccessMode == EStorageAccessMode::Repair)
+                if (IsUnrecoverable(response.Status) &&
+                    StorageAccessMode == EStorageAccessMode::Repair)
                 {
-                    LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
+                    LOG_WARN(
+                        ctx,
+                        TBlockStoreComponents::PARTITION,
                         "[%lu] Repairing TEvBlobStorage::TEvGet %s error (%s)",
                         TabletId,
                         NKikimrProto::EReplyStatus_Name(response.Status).data(),
@@ -248,13 +247,13 @@ void TReadBlobActor::HandleGetResult(
                     memcpy(
                         const_cast<char*>(block.Data()),
                         marker.data(),
-                        Min(block.Size(), marker.size())
-                    );
+                        Min(block.Size(), marker.size()));
                     ++sglistIndex;
 
                     while (sglistIndex < sglist.size()) {
                         const auto offset = Request->BlobOffsets[sglistIndex];
-                        const auto prevOffset = Request->BlobOffsets[sglistIndex - 1];
+                        const auto prevOffset =
+                            Request->BlobOffsets[sglistIndex - 1];
                         if (offset != prevOffset + 1) {
                             break;
                         }
@@ -264,8 +263,7 @@ void TReadBlobActor::HandleGetResult(
                         memcpy(
                             const_cast<char*>(block.Data()),
                             marker.data(),
-                            Min(block.Size(), marker.size())
-                        );
+                            Min(block.Size(), marker.size()));
 
                         ++sglistIndex;
                     }
@@ -277,15 +275,14 @@ void TReadBlobActor::HandleGetResult(
                 }
             }
 
-            if (response.Id != blobId ||
-                response.Buffer.empty() ||
+            if (response.Id != blobId || response.Buffer.empty() ||
                 response.Buffer.size() % BlockSize != 0)
             {
                 ReplyError(ctx, *msg, "invalid response received");
                 return;
             }
 
-            for (auto iter = response.Buffer.begin(); iter.Valid(); ) {
+            for (auto iter = response.Buffer.begin(); iter.Valid();) {
                 if (sglistIndex >= sglist.size()) {
                     ReplyError(ctx, *msg, "response is out of range");
                     return;
@@ -383,7 +380,8 @@ void TPartitionActor::HandleReadBlob(
         TabletID(),
         State->GetBlockSize(),
         StorageAccessMode,
-        std::unique_ptr<TEvPartitionPrivate::TEvReadBlobRequest>(msg.Release()));
+        std::unique_ptr<TEvPartitionPrivate::TEvReadBlobRequest>(
+            msg.Release()));
 
     if (blob.TabletID() != TabletID()) {
         // Treat this situation as we were reading from base disk.
@@ -417,7 +415,8 @@ void TPartitionActor::HandleReadBlobCompleted(
             LOG_DEBUG(
                 ctx,
                 TBlockStoreComponents::PARTITION,
-                "[%lu] Failed to read blob from base disk, blob tablet: %lu error: %s",
+                "[%lu] Failed to read blob from base disk, blob tablet: %lu "
+                "error: %s",
                 TabletID(),
                 blobTabletId,
                 FormatError(msg->GetError()).data());
@@ -428,8 +427,8 @@ void TPartitionActor::HandleReadBlobCompleted(
             PartCounters->Simple.ReadBlobDeadlineCount.Increment(1);
         }
 
-        if (State->IncrementReadBlobErrorCount()
-                >= Config->GetMaxReadBlobErrorsBeforeSuicide())
+        if (State->IncrementReadBlobErrorCount() >=
+            Config->GetMaxReadBlobErrorsBeforeSuicide())
         {
             ReportTabletBSFailure(
                 TStringBuilder()
@@ -439,7 +438,9 @@ void TPartitionActor::HandleReadBlobCompleted(
                 << "): " << FormatError(msg->GetError()));
             Suicide(ctx);
         } else {
-            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION,
                 "[%lu] ReadBlob error happened: %s",
                 TabletID(),
                 FormatError(msg->GetError()).data());
@@ -462,7 +463,9 @@ void TPartitionActor::HandleReadBlobCompleted(
         return;
     }
 
-    PartCounters->RequestCounters.ReadBlob.AddRequest(msg->RequestTime.MicroSeconds(), msg->BytesCount);
+    PartCounters->RequestCounters.ReadBlob.AddRequest(
+        msg->RequestTime.MicroSeconds(),
+        msg->BytesCount);
 
     State->CompleteIORequest(channel);
 

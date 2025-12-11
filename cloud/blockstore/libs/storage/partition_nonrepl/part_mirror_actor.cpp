@@ -44,22 +44,21 @@ TDuration CalculateScrubbingInterval(
     return TDuration::Seconds(ResyncRangeSize / (bandwidth * 1_MB));
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TMirrorPartitionActor::TMirrorPartitionActor(
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
-        IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr digestGenerator,
-        TString rwClientId,
-        TNonreplicatedPartitionConfigPtr partConfig,
-        TMigrations migrations,
-        TVector<TDevices> replicas,
-        NRdma::IClientPtr rdmaClient,
-        TActorId volumeActorId,
-        TActorId statActorId,
-        TActorId resyncActorId)
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr digestGenerator,
+    TString rwClientId,
+    TNonreplicatedPartitionConfigPtr partConfig,
+    TMigrations migrations,
+    TVector<TDevices> replicas,
+    NRdma::IClientPtr rdmaClient,
+    TActorId volumeActorId,
+    TActorId statActorId,
+    TActorId resyncActorId)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
@@ -96,10 +95,8 @@ void TMirrorPartitionActor::Bootstrap(const TActorContext& ctx)
 
 void TMirrorPartitionActor::KillActors(const TActorContext& ctx)
 {
-    for (auto actorId : State.GetAllActors()) {
-        NCloud::Send<TEvents::TEvPoisonPill>(
-            ctx,
-            actorId);
+    for (auto actorId: State.GetAllActors()) {
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, actorId);
     }
 }
 
@@ -290,9 +287,8 @@ void TMirrorPartitionActor::StartResyncRange(
 
     auto requestInfo = CreateRequestInfo(
         SelfId(),
-        0,  // cookie
-        MakeIntrusive<TCallContext>()
-    );
+        0,   // cookie
+        MakeIntrusive<TCallContext>());
 
     TVector<TReplicaDescriptor> replicas;
     const auto& replicaInfos = State.GetReplicaInfos();
@@ -328,7 +324,7 @@ void TMirrorPartitionActor::AddTagForBufferCopying(
 {
     auto requestInfo = CreateRequestInfo(
         SelfId(),
-        0,  // cookie
+        0,   // cookie
         MakeIntrusive<TCallContext>());
 
     TVector<TString> tags({TString(IntermediateWriteBufferTagName)});
@@ -420,11 +416,11 @@ void TMirrorPartitionActor::HandlePoisonTaken(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TMirrorPartitionActor::ScheduleCountersUpdate(
-    const TActorContext& ctx)
+void TMirrorPartitionActor::ScheduleCountersUpdate(const TActorContext& ctx)
 {
     if (!UpdateCountersScheduled) {
-        ctx.Schedule(UpdateCountersInterval,
+        ctx.Schedule(
+            UpdateCountersInterval,
             new TEvNonreplPartitionPrivate::TEvUpdateCounters());
         UpdateCountersScheduled = true;
     }
@@ -444,8 +440,7 @@ void TMirrorPartitionActor::HandleUpdateCounters(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TMirrorPartitionActor::ScheduleScrubbingNextRange(
-    const TActorContext& ctx)
+void TMirrorPartitionActor::ScheduleScrubbingNextRange(const TActorContext& ctx)
 {
     if (!ScrubbingScheduled) {
         ctx.Schedule(
@@ -479,7 +474,8 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
             LOG_DEBUG(
                 ctx,
                 TBlockStoreComponents::PARTITION,
-                "[%s] Reschedule scrubbing for range %s due to inflight write to %s",
+                "[%s] Reschedule scrubbing for range %s due to inflight write "
+                "to %s",
                 DiskId.c_str(),
                 DescribeRange(scrubbingRange).c_str(),
                 DescribeRange(requestRange).c_str());
@@ -504,7 +500,8 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "[%s] Skipping scrubbing for range %s, devices not ready for reading",
+            "[%s] Skipping scrubbing for range %s, devices not ready for "
+            "reading",
             DiskId.c_str(),
             DescribeRange(scrubbingRange).c_str());
 
@@ -584,7 +581,9 @@ void TMirrorPartitionActor::HandleRangeResynced(
         }
     }
 
-    LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%s] Range %s resync finished: %s %s",
         DiskId.c_str(),
         DescribeRange(msg->Range).c_str(),
@@ -798,23 +797,23 @@ void TMirrorPartitionActor::HandleReleaseRange(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)                      \
-    void TMirrorPartitionActor::Handle##name(                                  \
-        const ns::TEv##name##Request::TPtr& ev,                                \
-        const TActorContext& ctx)                                              \
-    {                                                                          \
-        RejectUnimplementedRequest<ns::T##name##Method>(ev, ctx);              \
-    }                                                                          \
-                                                                               \
-// BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST
+#define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)         \
+    void TMirrorPartitionActor::Handle##name(                     \
+        const ns::TEv##name##Request::TPtr& ev,                   \
+        const TActorContext& ctx)                                 \
+    {                                                             \
+        RejectUnimplementedRequest<ns::T##name##Method>(ev, ctx); \
+    }                                                             \
+                                                                  \
+    // BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST
 
-BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(DescribeBlocks,           TEvVolume);
-BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(CompactRange,             TEvVolume);
-BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetCompactionStatus,      TEvVolume);
-BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(RebuildMetadata,          TEvVolume);
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(DescribeBlocks, TEvVolume);
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(CompactRange, TEvVolume);
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetCompactionStatus, TEvVolume);
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(RebuildMetadata, TEvVolume);
 BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetRebuildMetadataStatus, TEvVolume);
-BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(ScanDisk,                 TEvVolume);
-BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetScanDiskStatus,        TEvVolume);
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(ScanDisk, TEvVolume);
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetScanDiskStatus, TEvVolume);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -847,8 +846,12 @@ STFUNC(TMirrorPartitionActor::StateWork)
         HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadBlocksLocal);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
 
-        HFunc(TEvNonreplPartitionPrivate::TEvAddLaggingAgentRequest, HandleAddLaggingAgent);
-        HFunc(TEvNonreplPartitionPrivate::TEvRemoveLaggingAgentRequest, HandleRemoveLaggingAgent);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvAddLaggingAgentRequest,
+            HandleAddLaggingAgent);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvRemoveLaggingAgentRequest,
+            HandleRemoveLaggingAgent);
         HFunc(TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
         HFunc(
             TEvPartition::TEvWaitForInFlightWritesRequest,
@@ -862,10 +865,14 @@ STFUNC(TMirrorPartitionActor::StateWork)
             HandleInconsistentDiskAgent);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, HandleDescribeBlocks);
-        HFunc(TEvVolume::TEvGetCompactionStatusRequest, HandleGetCompactionStatus);
+        HFunc(
+            TEvVolume::TEvGetCompactionStatusRequest,
+            HandleGetCompactionStatus);
         HFunc(TEvVolume::TEvCompactRangeRequest, HandleCompactRange);
         HFunc(TEvVolume::TEvRebuildMetadataRequest, HandleRebuildMetadata);
-        HFunc(TEvVolume::TEvGetRebuildMetadataStatusRequest, HandleGetRebuildMetadataStatus);
+        HFunc(
+            TEvVolume::TEvGetRebuildMetadataStatusRequest,
+            HandleGetRebuildMetadataStatus);
         HFunc(TEvVolume::TEvScanDiskRequest, HandleScanDisk);
         HFunc(TEvVolume::TEvGetScanDiskStatusRequest, HandleGetScanDiskStatus);
         HFunc(TEvVolume::TEvCheckRangeRequest, HandleCheckRange);
@@ -878,16 +885,12 @@ STFUNC(TMirrorPartitionActor::StateWork)
             TEvNonreplPartitionPrivate::TEvMirroredReadCompleted,
             HandleMirroredReadCompleted);
 
-        HFunc(
-            TEvVolume::TEvRWClientIdChanged,
-            HandleRWClientIdChanged);
+        HFunc(TEvVolume::TEvRWClientIdChanged, HandleRWClientIdChanged);
         HFunc(
             TEvVolume::TEvDiskRegistryBasedPartitionCounters,
             HandlePartCounters);
 
-        HFunc(
-            TEvService::TEvAddTagsResponse,
-            HandleAddTagsResponse);
+        HFunc(TEvService::TEvAddTagsResponse, HandleAddTagsResponse);
 
         HFunc(
             TEvPartition::TEvLockAndDrainRangeRequest,
@@ -933,11 +936,15 @@ STFUNC(TMirrorPartitionActor::StateZombie)
             GetDeviceForRangeCompanion.RejectGetDeviceForRange);
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvInconsistentDiskAgent)
 
-        HFunc(TEvVolume::TEvDescribeBlocksRequest, RejectDescribeBlocks);
-        HFunc(TEvVolume::TEvGetCompactionStatusRequest, RejectGetCompactionStatus);
+            HFunc(TEvVolume::TEvDescribeBlocksRequest, RejectDescribeBlocks);
+        HFunc(
+            TEvVolume::TEvGetCompactionStatusRequest,
+            RejectGetCompactionStatus);
         HFunc(TEvVolume::TEvCompactRangeRequest, RejectCompactRange);
         HFunc(TEvVolume::TEvRebuildMetadataRequest, RejectRebuildMetadata);
-        HFunc(TEvVolume::TEvGetRebuildMetadataStatusRequest, RejectGetRebuildMetadataStatus);
+        HFunc(
+            TEvVolume::TEvGetRebuildMetadataStatusRequest,
+            RejectGetRebuildMetadataStatus);
         HFunc(TEvVolume::TEvScanDiskRequest, RejectScanDisk);
         HFunc(TEvVolume::TEvGetScanDiskStatusRequest, RejectGetScanDiskStatus);
 

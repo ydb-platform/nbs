@@ -23,8 +23,7 @@ struct TFreshBlock
     TFreshBlock(TBlock meta, TStringBuf content)
         : Meta(meta)
         , Content(content)
-    {
-    }
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////

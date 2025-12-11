@@ -46,8 +46,7 @@ TSgList ConvertToSgList(const NProto::TIOVector& iov, ui32 blockSize);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDiskRegistryState
-    : public TAtomicRefCount<TDiskRegistryState>
+struct TDiskRegistryState: public TAtomicRefCount<TDiskRegistryState>
 {
     using TPtr = TIntrusivePtr<TDiskRegistryState>;
 
@@ -59,8 +58,7 @@ struct TDiskRegistryState
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDiskRegistryMock final
-    : public NActors::TActor<TDiskRegistryMock>
+class TDiskRegistryMock final: public NActors::TActor<TDiskRegistryMock>
 {
 private:
     TDiskRegistryState::TPtr State;
@@ -125,13 +123,15 @@ public:
     }
 
     template <typename TResponse>
-    std::unique_ptr<TResponse> RecvResponse(TDuration simTimeout = TDuration::Seconds(5))
+    std::unique_ptr<TResponse> RecvResponse(
+        TDuration simTimeout = TDuration::Seconds(5))
     {
         TAutoPtr<NActors::IEventHandle> handle;
         Runtime.GrabEdgeEventRethrow<TResponse>(handle, simTimeout);
 
         UNIT_ASSERT(handle);
-        return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
+        return std::unique_ptr<TResponse>(
+            handle->Release<TResponse>().Release());
     }
 
     auto CreateWaitReadyRequest()
@@ -148,7 +148,8 @@ public:
         const ui32 volumeGeneration = 0,
         const NSpdk::TDeviceRateLimits& limits = {})
     {
-        auto request = std::make_unique<TEvDiskAgent::TEvAcquireDevicesRequest>();
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvAcquireDevicesRequest>();
 
         request->Record.MutableHeaders()->SetClientId(clientId);
         request->Record.SetAccessMode(accessMode);
@@ -156,14 +157,12 @@ public:
         request->Record.SetDiskId(diskId);
         request->Record.SetVolumeGeneration(volumeGeneration);
 
-        for (const auto& id : ids) {
+        for (const auto& id: ids) {
             *request->Record.AddDeviceUUIDs() = id;
         }
 
-        if (limits.IopsLimit ||
-            limits.BandwidthLimit ||
-            limits.ReadBandwidthLimit ||
-            limits.WriteBandwidthLimit)
+        if (limits.IopsLimit || limits.BandwidthLimit ||
+            limits.ReadBandwidthLimit || limits.WriteBandwidthLimit)
         {
             auto& rateLimits = *request->Record.MutableRateLimits();
 
@@ -182,13 +181,14 @@ public:
         const TString& diskId = "",
         const ui32 volumeGeneration = 0)
     {
-        auto request = std::make_unique<TEvDiskAgent::TEvReleaseDevicesRequest>();
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvReleaseDevicesRequest>();
 
         request->Record.MutableHeaders()->SetClientId(clientId);
         request->Record.SetDiskId(diskId);
         request->Record.SetVolumeGeneration(volumeGeneration);
 
-        for (const auto& id : ids) {
+        for (const auto& id: ids) {
             *request->Record.AddDeviceUUIDs() = id;
         }
 
@@ -222,7 +222,8 @@ public:
         ui32 blocksCount,
         const TString& clientId)
     {
-        auto request = std::make_unique<TEvDiskAgent::TEvReadDeviceBlocksRequest>();
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvReadDeviceBlocksRequest>();
         request->Record.MutableHeaders()->SetClientId(clientId);
         request->Record.SetDeviceUUID(uuid);
         request->Record.SetStartIndex(startIndex);
@@ -238,7 +239,8 @@ public:
         ui32 blocksCount,
         const TString& clientId)
     {
-        auto request = std::make_unique<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvZeroDeviceBlocksRequest>();
         request->Record.MutableHeaders()->SetClientId(clientId);
         request->Record.SetDeviceUUID(uuid);
         request->Record.SetStartIndex(startIndex);
@@ -254,7 +256,8 @@ public:
         const TSgList& data,
         const TString& clientId)
     {
-        auto request = std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
         request->Record.MutableHeaders()->SetClientId(clientId);
         request->Record.SetDeviceUUID(uuid);
         request->Record.SetStartIndex(startIndex);
@@ -272,7 +275,8 @@ public:
 
     auto CreateSecureEraseDeviceRequest(TString uuid)
     {
-        auto request = std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceRequest>();
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceRequest>();
 
         request->Record.SetDeviceUUID(std::move(uuid));
 
@@ -285,7 +289,8 @@ public:
         ui32 blocksCount,
         const TString& clientId)
     {
-        auto request = std::make_unique<TEvDiskAgent::TEvChecksumDeviceBlocksRequest>();
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvChecksumDeviceBlocksRequest>();
         request->Record.MutableHeaders()->SetClientId(clientId);
         request->Record.SetDeviceUUID(uuid);
         request->Record.SetStartIndex(startIndex);
@@ -320,78 +325,80 @@ public:
         return request;
     }
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
-    template <typename... Args>                                                \
-    void Send##name##Request(Args&&... args)                                   \
-    {                                                                          \
-        auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(std::move(request));                                       \
-    }                                                                          \
-                                                                               \
-    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response(             \
-        TDuration simTimeout = TDuration::Seconds(5))                          \
-    {                                                                          \
-        return RecvResponse<ns::TEv##name##Response>(simTimeout);              \
-    }                                                                          \
-                                                                               \
-    template <typename... Args>                                                \
-    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)              \
-    {                                                                          \
-        auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(std::move(request));                                       \
-                                                                               \
-        auto response = RecvResponse<ns::TEv##name##Response>();               \
-        UNIT_ASSERT_C(                                                         \
-            SUCCEEDED(response->GetStatus()),                                  \
-            response->GetErrorReason());                                       \
-        return response;                                                       \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ns)                                \
+    template <typename... Args>                                            \
+    void Send##name##Request(Args&&... args)                               \
+    {                                                                      \
+        auto request = Create##name##Request(std::forward<Args>(args)...); \
+        SendRequest(std::move(request));                                   \
+    }                                                                      \
+                                                                           \
+    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response(         \
+        TDuration simTimeout = TDuration::Seconds(5))                      \
+    {                                                                      \
+        return RecvResponse<ns::TEv##name##Response>(simTimeout);          \
+    }                                                                      \
+                                                                           \
+    template <typename... Args>                                            \
+    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)          \
+    {                                                                      \
+        auto request = Create##name##Request(std::forward<Args>(args)...); \
+        SendRequest(std::move(request));                                   \
+                                                                           \
+        auto response = RecvResponse<ns::TEv##name##Response>();           \
+        UNIT_ASSERT_C(                                                     \
+            SUCCEEDED(response->GetStatus()),                              \
+            response->GetErrorReason());                                   \
+        return response;                                                   \
+    }                                                                      \
+    // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_DISK_AGENT_REQUESTS(BLOCKSTORE_DECLARE_METHOD, TEvDiskAgent)
-    BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_METHOD, TEvDiskAgentPrivate)
+    BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE(
+        BLOCKSTORE_DECLARE_METHOD,
+        TEvDiskAgentPrivate)
 
 #undef BLOCKSTORE_DECLARE_METHOD
 };
 
-template <typename ... T>
+template <typename... T>
 auto WriteDeviceBlocks(
     NActors::TTestActorRuntime& runtime,
     TDiskAgentClient& diskAgent,
-    T && ... args)
+    T&&... args)
 {
     diskAgent.SendWriteDeviceBlocksRequest(std::forward<T>(args)...);
     runtime.DispatchEvents(NActors::TDispatchOptions());
     return diskAgent.RecvWriteDeviceBlocksResponse();
 }
 
-template <typename ... T>
+template <typename... T>
 auto ReadDeviceBlocks(
     NActors::TTestActorRuntime& runtime,
     TDiskAgentClient& diskAgent,
-    T && ... args)
+    T&&... args)
 {
     diskAgent.SendReadDeviceBlocksRequest(std::forward<T>(args)...);
     runtime.DispatchEvents(NActors::TDispatchOptions());
     return diskAgent.RecvReadDeviceBlocksResponse();
 }
 
-template <typename ... T>
+template <typename... T>
 auto ZeroDeviceBlocks(
     NActors::TTestActorRuntime& runtime,
     TDiskAgentClient& diskAgent,
-    T && ... args)
+    T&&... args)
 {
     diskAgent.SendZeroDeviceBlocksRequest(std::forward<T>(args)...);
     runtime.DispatchEvents(NActors::TDispatchOptions());
     return diskAgent.RecvZeroDeviceBlocksResponse();
 }
 
-template <typename ... T>
+template <typename... T>
 auto ChecksumDeviceBlocks(
     NActors::TTestActorRuntime& runtime,
     TDiskAgentClient& diskAgent,
-    T && ... args)
+    T&&... args)
 {
     diskAgent.SendChecksumDeviceBlocksRequest(std::forward<T>(args)...);
     runtime.DispatchEvents(NActors::TDispatchOptions());
@@ -400,8 +407,7 @@ auto ChecksumDeviceBlocks(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestSpdkTarget final
-    : NSpdk::TTestSpdkTarget
+struct TTestSpdkTarget final: NSpdk::TTestSpdkTarget
 {
     TAtomic& EraseCount;
     NThreading::TPromise<NProto::TError>& EraseResult;
@@ -415,8 +421,7 @@ struct TTestSpdkTarget final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestSpdkEnv final
-    : NSpdk::TTestSpdkEnv
+struct TTestSpdkEnv final: NSpdk::TTestSpdkEnv
 {
     THashMap<TString, NProto::TDeviceConfig> Devices;
     TAtomic SecureEraseCount = 0;
@@ -438,13 +443,17 @@ struct TTestSpdkEnv final
         const TString& baseName,
         const TString& transportId) override;
 
-    NThreading::TFuture<void> UnregisterDevice(const TString& deviceName) override;
+    NThreading::TFuture<void> UnregisterDevice(
+        const TString& deviceName) override;
 
-    NThreading::TFuture<void> EnableHistogram(const TString& deviceName, bool enable) override;
+    NThreading::TFuture<void> EnableHistogram(
+        const TString& deviceName,
+        bool enable) override;
 
     NThreading::TFuture<void> StartListen(const TString& transportId) override;
 
-    NThreading::TFuture<NSpdk::TDeviceStats> QueryDeviceStats(const TString& name) override;
+    NThreading::TFuture<NSpdk::TDeviceStats> QueryDeviceStats(
+        const TString& name) override;
 
     NThreading::TFuture<NSpdk::ISpdkTargetPtr> CreateNVMeTarget(
         const TString& nqn,
@@ -519,49 +528,51 @@ IStorageProviderPtr CreateTestStorageProvider(
 
 inline auto WithAcquireRequired()
 {
-    return TPipeableProperty{[] (auto& config) {
-        config.SetAcquireRequired(true);
-    }};
+    return TPipeableProperty{[](auto& config)
+                             {
+                                 config.SetAcquireRequired(true);
+                             }};
 }
 
 inline auto WithBackend(NProto::EDiskAgentBackendType backend)
 {
-    return TPipeableProperty{[=] (NProto::TDiskAgentConfig& config) {
-        config.SetBackend(backend);
-    }};
+    return TPipeableProperty{[=](NProto::TDiskAgentConfig& config)
+                             {
+                                 config.SetBackend(backend);
+                             }};
 }
 
 inline auto WithMemoryDevices(TVector<NProto::TMemoryDeviceArgs> args)
 {
-    return TPipeableProperty{[=] (auto& config) mutable {
-        auto& devices = *config.MutableMemoryDevices();
-        devices.Assign(
-            std::make_move_iterator(args.begin()),
-            std::make_move_iterator(args.end())
-        );
-    }};
+    return TPipeableProperty{[=](auto& config) mutable
+                             {
+                                 auto& devices = *config.MutableMemoryDevices();
+                                 devices.Assign(
+                                     std::make_move_iterator(args.begin()),
+                                     std::make_move_iterator(args.end()));
+                             }};
 }
 
 inline auto WithFileDevices(TVector<NProto::TFileDeviceArgs> args)
 {
-    return TPipeableProperty{[=] (auto& config) mutable {
-        auto& devices = *config.MutableFileDevices();
-        devices.Assign(
-            std::make_move_iterator(args.begin()),
-            std::make_move_iterator(args.end())
-        );
-    }};
+    return TPipeableProperty{[=](auto& config) mutable
+                             {
+                                 auto& devices = *config.MutableFileDevices();
+                                 devices.Assign(
+                                     std::make_move_iterator(args.begin()),
+                                     std::make_move_iterator(args.end()));
+                             }};
 }
 
 inline auto WithNVMeDevices(TVector<NProto::TNVMeDeviceArgs> args)
 {
-    return TPipeableProperty{[=] (auto& config) mutable {
-        auto& devices = *config.MutableNvmeDevices();
-        devices.Assign(
-            std::make_move_iterator(args.begin()),
-            std::make_move_iterator(args.end())
-        );
-    }};
+    return TPipeableProperty{[=](auto& config) mutable
+                             {
+                                 auto& devices = *config.MutableNvmeDevices();
+                                 devices.Assign(
+                                     std::make_move_iterator(args.begin()),
+                                     std::make_move_iterator(args.end()));
+                             }};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -570,10 +581,8 @@ NProto::TMemoryDeviceArgs MemoryDevice(TString uuid, TString name = {});
 
 NProto::TFileDeviceArgs FileDevice(TString uuid, TString path = {});
 
-NProto::TNVMeDeviceArgs NVMeDevice(
-    TString baseName,
-    TVector<TString> uuids,
-    TString transportId = {});
+NProto::TNVMeDeviceArgs
+NVMeDevice(TString baseName, TVector<TString> uuids, TString transportId = {});
 
 NProto::TDiskAgentConfig CreateDefaultAgentConfig();
 

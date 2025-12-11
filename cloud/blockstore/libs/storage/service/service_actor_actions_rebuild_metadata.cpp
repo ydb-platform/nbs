@@ -4,7 +4,6 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -12,10 +11,10 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
-#include <google/protobuf/util/json_util.h>
-
 #include <util/generic/guid.h>
 #include <util/string/printf.h>
+
+#include <google/protobuf/util/json_util.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -39,9 +38,7 @@ private:
     NPrivateProto::TRebuildMetadataRequest Request;
 
 public:
-    TRebuildMetadataActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TRebuildMetadataActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -62,8 +59,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TRebuildMetadataActor::TRebuildMetadataActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -81,7 +78,9 @@ void TRebuildMetadataActor::Bootstrap(const TActorContext& ctx)
     }
 
     if (!Request.GetBatchSize()) {
-        ReplyAndDie(ctx, MakeError(E_ARGUMENT, "Batch size should be supplied"));
+        ReplyAndDie(
+            ctx,
+            MakeError(E_ARGUMENT, "Batch size should be supplied"));
         return;
     }
 
@@ -110,11 +109,12 @@ void TRebuildMetadataActor::Bootstrap(const TActorContext& ctx)
         }
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Rebilding metadata for %s disk, metadata type: %u",
         Request.GetDiskId().c_str(),
         Request.GetMetadataType());
-
 
     NCloud::Send(
         ctx,
@@ -129,12 +129,12 @@ void TRebuildMetadataActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(error);
 
     google::protobuf::util::MessageToJsonString(
         NPrivateProto::TRebuildMetadataResponse(),
-        response->Record.MutableOutput()
-    );
+        response->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,
@@ -144,7 +144,6 @@ void TRebuildMetadataActor::ReplyAndDie(
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
-
 }
 
 void TRebuildMetadataActor::ReplyAndDie(
@@ -158,8 +157,7 @@ void TRebuildMetadataActor::ReplyAndDie(
 
     google::protobuf::util::MessageToJsonString(
         actionResponse,
-        msg->Record.MutableOutput()
-    );
+        msg->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,
@@ -210,9 +208,7 @@ private:
     NPrivateProto::TGetRebuildMetadataStatusRequest Request;
 
 public:
-    TRebuildMetadataStatusActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TRebuildMetadataStatusActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -233,12 +229,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TRebuildMetadataStatusActor::TRebuildMetadataStatusActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-}
+{}
 
 void TRebuildMetadataStatusActor::Bootstrap(const TActorContext& ctx)
 {
@@ -252,10 +247,13 @@ void TRebuildMetadataStatusActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    auto request = std::make_unique<TEvVolume::TEvGetRebuildMetadataStatusRequest>();
+    auto request =
+        std::make_unique<TEvVolume::TEvGetRebuildMetadataStatusRequest>();
     request->Record.SetDiskId(Request.GetDiskId());
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Query rebild metadata progress for %s disk",
         Request.GetDiskId().c_str());
 
@@ -268,13 +266,15 @@ void TRebuildMetadataStatusActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 }
 
-void TRebuildMetadataStatusActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)
+void TRebuildMetadataStatusActor::ReplyAndDie(
+    const TActorContext& ctx,
+    NProto::TError error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(error);
     google::protobuf::util::MessageToJsonString(
         NPrivateProto::TGetRebuildMetadataStatusResponse(),
-        response->Record.MutableOutput()
-    );
+        response->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,
@@ -302,8 +302,7 @@ void TRebuildMetadataStatusActor::ReplyAndDie(
 
     google::protobuf::util::MessageToJsonString(
         actionResponse,
-        msg->Record.MutableOutput()
-    );
+        msg->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,
@@ -350,10 +349,9 @@ TResultOrError<IActorPtr> TServiceActor::CreateRebuildMetadataActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
-    return {
-        std::make_unique<TRebuildMetadataActor>(
-            std::move(requestInfo),
-            std::move(input))};
+    return {std::make_unique<TRebuildMetadataActor>(
+        std::move(requestInfo),
+        std::move(input))};
 }
 
 TResultOrError<IActorPtr> TServiceActor::CreateRebuildMetadataStatusActionActor(

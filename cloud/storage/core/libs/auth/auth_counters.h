@@ -28,12 +28,13 @@ enum class EAuthorizationStatus
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAuthCounters final
-    : public TAtomicRefCount<TAuthCounters>
+class TAuthCounters final: public TAtomicRefCount<TAuthCounters>
 {
 private:
-    std::array<NMonitoring::TDynamicCounters::TCounterPtr,
-        (int)EAuthorizationStatus::MAX> AuthorizationStatusCounters;
+    std::array<
+        NMonitoring::TDynamicCounters::TCounterPtr,
+        (int)EAuthorizationStatus::MAX>
+        AuthorizationStatusCounters;
 
 public:
     explicit TAuthCounters(

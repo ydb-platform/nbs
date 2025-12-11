@@ -1,7 +1,8 @@
 #pragma once
 
-#include "block.h"
 #include "public.h"
+
+#include "block.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
 

@@ -7,9 +7,9 @@
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
+
 #include <library/cpp/blockcodecs/codecs.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
@@ -93,16 +93,16 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TWriteBlobActor::TWriteBlobActor(
-        const TActorId& tabletActorId,
-        const TActorId& volumeActorId,
-        TRequestInfoPtr requestInfo,
-        ui64 tabletId,
-        TString diskId,
-        std::unique_ptr<TRequest> request,
-        TDuration longRunningThreshold,
-        ui32 groupId,
-        TChildLogTitle logTitle,
-        ui64 bsGroupOperationId)
+    const TActorId& tabletActorId,
+    const TActorId& volumeActorId,
+    TRequestInfoPtr requestInfo,
+    ui64 tabletId,
+    TString diskId,
+    std::unique_ptr<TRequest> request,
+    TDuration longRunningThreshold,
+    ui32 groupId,
+    TChildLogTitle logTitle,
+    ui64 bsGroupOperationId)
     : TLongRunningOperationCompanion(
           tabletActorId,
           volumeActorId,
@@ -140,11 +140,12 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
 {
     TString blobContent;
 
-    if (const auto* guardedSgList = std::get_if<TGuardedSgList>(&Request->Data)) {
+    if (const auto* guardedSgList = std::get_if<TGuardedSgList>(&Request->Data))
+    {
         if (auto guard = guardedSgList->Acquire()) {
             const auto& sgList = guard.Get();
             blobContent.ReserveAndResize(SgListGetSize(sgList));
-            SgListCopy(sgList, { blobContent.data(), blobContent.size() });
+            SgListCopy(sgList, {blobContent.data(), blobContent.size()});
         } else {
             auto error = MakeError(
                 E_CANCELLED,
@@ -169,9 +170,8 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
 
         ui32 offset = 0;
         while (offset < blobContent.size()) {
-            BlockChecksums.push_back(ComputeDefaultDigest({
-                blobContent.data() + offset,
-                Request->BlockSizeForChecksums}));
+            BlockChecksums.push_back(ComputeDefaultDigest(
+                {blobContent.data() + offset, Request->BlockSizeForChecksums}));
 
             offset += Request->BlockSizeForChecksums;
         }
@@ -181,26 +181,22 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
         MakeBlobId(TabletId, Request->BlobId),
         std::move(blobContent),
         Request->Deadline,
-        Request->Async
-            ? NKikimrBlobStorage::AsyncBlob
-            : NKikimrBlobStorage::UserData);
+        Request->Async ? NKikimrBlobStorage::AsyncBlob
+                       : NKikimrBlobStorage::UserData);
 
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
     RequestSent = ctx.Now();
 
-    SendToBSProxy(
-        ctx,
-        Request->Proxy,
-        request.release());
+    SendToBSProxy(ctx, Request->Proxy, request.release());
 }
 
 void TWriteBlobActor::NotifyCompleted(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobCompleted>(
-        error);
+    auto request =
+        std::make_unique<TEvPartitionPrivate::TEvWriteBlobCompleted>(error);
     request->BlobId = Request->BlobId;
     request->StorageStatusFlags = StorageStatusFlags;
     request->ApproximateFreeSpaceShare = ApproximateFreeSpaceShare;
@@ -300,7 +296,9 @@ STFUNC(TWriteBlobActor::StateWork)
     TRequestScope timer(*RequestInfo);
 
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvWakeup, TLongRunningOperationCompanion::HandleTimeout);
+        HFunc(
+            TEvents::TEvWakeup,
+            TLongRunningOperationCompanion::HandleTimeout);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         HFunc(TEvBlobStorage::TEvPutResult, HandlePutResult);
@@ -314,10 +312,12 @@ STFUNC(TWriteBlobActor::StateWork)
     }
 }
 
-EChannelPermissions StorageStatusFlags2ChannelPermissions(TStorageStatusFlags ssf)
+EChannelPermissions StorageStatusFlags2ChannelPermissions(
+    TStorageStatusFlags ssf)
 {
     /*
-    YellowStop: Tablets switch to read-only mode. Only system writes are allowed.
+    YellowStop: Tablets switch to read-only mode. Only system writes are
+    allowed.
 
     LightOrange: Alert: "Tablets have not stopped". Compaction writes are not
     allowed if this flag is received.
@@ -332,12 +332,11 @@ EChannelPermissions StorageStatusFlags2ChannelPermissions(TStorageStatusFlags ss
     */
 
     const auto outOfSpaceMask = static_cast<NKikimrBlobStorage::EStatusFlags>(
-        NKikimrBlobStorage::StatusDiskSpaceBlack
-        | NKikimrBlobStorage::StatusDiskSpaceRed
-        | NKikimrBlobStorage::StatusDiskSpaceOrange
-        | NKikimrBlobStorage::StatusDiskSpacePreOrange
-        | NKikimrBlobStorage::StatusDiskSpaceLightOrange
-    );
+        NKikimrBlobStorage::StatusDiskSpaceBlack |
+        NKikimrBlobStorage::StatusDiskSpaceRed |
+        NKikimrBlobStorage::StatusDiskSpaceOrange |
+        NKikimrBlobStorage::StatusDiskSpacePreOrange |
+        NKikimrBlobStorage::StatusDiskSpaceLightOrange);
     if (ssf.Check(outOfSpaceMask)) {
         return {};
     }
@@ -346,7 +345,8 @@ EChannelPermissions StorageStatusFlags2ChannelPermissions(TStorageStatusFlags ss
         return EChannelPermission::SystemWritesAllowed;
     }
 
-    return EChannelPermission::SystemWritesAllowed | EChannelPermission::UserWritesAllowed;
+    return EChannelPermission::SystemWritesAllowed |
+           EChannelPermission::UserWritesAllowed;
 }
 
 }   // namespace
@@ -362,11 +362,12 @@ void TPartitionActor::HandleWriteBlob(
     if (BlobCodec && compRate && msg->BlobId.GetHash() % compRate == 0) {
         TString blobContent;
 
-        if (const auto* guardedSgList = std::get_if<TGuardedSgList>(&msg->Data)) {
+        if (const auto* guardedSgList = std::get_if<TGuardedSgList>(&msg->Data))
+        {
             if (auto guard = guardedSgList->Acquire()) {
                 const auto& sgList = guard.Get();
                 blobContent.ReserveAndResize(SgListGetSize(sgList));
-                SgListCopy(sgList, { blobContent.data(), blobContent.size() });
+                SgListCopy(sgList, {blobContent.data(), blobContent.size()});
             }
         } else {
             blobContent = std::get<TString>(msg->Data);
@@ -466,8 +467,8 @@ void TPartitionActor::HandleWriteBlobCompleted(
         NKikimrBlobStorage::EStatusFlags::StatusDiskSpaceYellowStop;
 
     if (msg->StorageStatusFlags.Check(isValidFlag)) {
-        const auto permissions = StorageStatusFlags2ChannelPermissions(
-            msg->StorageStatusFlags);
+        const auto permissions =
+            StorageStatusFlags2ChannelPermissions(msg->StorageStatusFlags);
         UpdateChannelPermissions(ctx, channel, permissions);
         State->UpdateChannelFreeSpaceShare(
             channel,
@@ -506,8 +507,8 @@ void TPartitionActor::HandleWriteBlobCompleted(
             LogTitle.GetWithTime().c_str(),
             FormatError(msg->GetError()).c_str());
 
-        if (State->IncrementWriteBlobErrorCount()
-                >= Config->GetMaxWriteBlobErrorsBeforeSuicide())
+        if (State->IncrementWriteBlobErrorCount() >=
+            Config->GetMaxWriteBlobErrorsBeforeSuicide())
         {
             ReportTabletBSFailure(
                 TStringBuilder()

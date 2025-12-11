@@ -4,6 +4,7 @@
 #include "utils.h"
 
 #include <cloud/blockstore/libs/service/context.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -19,8 +20,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestClientRequest final
-    : public TClientRequest
+struct TTestClientRequest final: public TClientRequest
 {
     using TClientRequest::TClientRequest;
 
@@ -98,7 +98,7 @@ public:
 std::unique_ptr<TBootstrap> CreateBootstrap()
 {
     return std::make_unique<TBootstrap>(
-        CreateLoggingService("console", { TLOG_DEBUG }));
+        CreateLoggingService("console", {TLOG_DEBUG}));
 }
 
 void NegotiateClient(
@@ -117,18 +117,17 @@ void NegotiateClient(
     }
 
     {
-        TExportInfo exp {};
+        TExportInfo exp{};
         exp.Name = "test";
-        exp.Size = 4*1024*1024*1024ull;
+        exp.Size = 4 * 1024 * 1024 * 1024ull;
         exp.MinBlockSize = DefaultBlockSize;
         exp.OptBlockSize = DefaultBlockSize;
         exp.MaxBlockSize = NBD_MAX_BUFFER_SIZE;
 
-        exp.Flags = NBD_FLAG_HAS_FLAGS
-                  | NBD_FLAG_SEND_TRIM
-                  | NBD_FLAG_SEND_WRITE_ZEROES;
+        exp.Flags = NBD_FLAG_HAS_FLAGS | NBD_FLAG_SEND_TRIM |
+                    NBD_FLAG_SEND_WRITE_ZEROES;
 
-        for (ui16 type: { NBD_INFO_BLOCK_SIZE, NBD_INFO_EXPORT, NBD_INFO_NAME }) {
+        for (ui16 type: {NBD_INFO_BLOCK_SIZE, NBD_INFO_EXPORT, NBD_INFO_NAME}) {
             TBufferRequestWriter response;
             response.WriteExportInfo(exp, type);
 
@@ -234,9 +233,8 @@ Y_UNIT_TEST_SUITE(TClientHandlerTest)
         auto bootstrap = CreateBootstrap();
         bootstrap->Start();
 
-        auto handler = CreateClientHandler(
-            bootstrap->GetLogging(),
-            structuredReply);
+        auto handler =
+            CreateClientHandler(bootstrap->GetLogging(), structuredReply);
 
         TStringStream in;
         TStringStream out;
@@ -261,9 +259,8 @@ Y_UNIT_TEST_SUITE(TClientHandlerTest)
         auto bootstrap = CreateBootstrap();
         bootstrap->Start();
 
-        auto handler = CreateClientHandler(
-            bootstrap->GetLogging(),
-            structuredReply);
+        auto handler =
+            CreateClientHandler(bootstrap->GetLogging(), structuredReply);
 
         TStringStream in;
         TStringStream out;
@@ -289,9 +286,8 @@ Y_UNIT_TEST_SUITE(TClientHandlerTest)
         auto bootstrap = CreateBootstrap();
         bootstrap->Start();
 
-        auto handler = CreateClientHandler(
-            bootstrap->GetLogging(),
-            structuredReply);
+        auto handler =
+            CreateClientHandler(bootstrap->GetLogging(), structuredReply);
 
         TStringStream in;
         TStringStream out;
@@ -345,7 +341,9 @@ Y_UNIT_TEST_SUITE(TClientHandlerTest)
         UNIT_ASSERT(readRequest->Response.HasValue());
         auto response = readRequest->Response.GetValue();
         UNIT_ASSERT_VALUES_EQUAL(cancelError.GetCode(), response.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(cancelError.GetMessage(), response.GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(
+            cancelError.GetMessage(),
+            response.GetMessage());
 
         bootstrap->Stop();
     }

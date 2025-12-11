@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/storage/api/service.h>
-
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
@@ -22,12 +21,12 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TClientInfo
-    : public TIntrusiveListItem<TClientInfo>
+struct TClientInfo: public TIntrusiveListItem<TClientInfo>
 {
     TString ClientId;
     TString DiskId;
-    NProto::EVolumeAccessMode VolumeAccessMode = NProto::VOLUME_ACCESS_READ_WRITE;
+    NProto::EVolumeAccessMode VolumeAccessMode =
+        NProto::VOLUME_ACCESS_READ_WRITE;
     NProto::EVolumeMountMode VolumeMountMode = NProto::VOLUME_MOUNT_LOCAL;
     ui64 MountSeqNumber = 0;
     ui32 MountFlags = 0;
@@ -40,17 +39,14 @@ struct TClientInfo
     // IPC info
     NProto::EClientIpcType IpcType = NProto::IPC_GRPC;
 
-    TClientInfo(
-        TString clientId,
-        TString diskId);
+    TClientInfo(TString clientId, TString diskId);
 };
 
 using TClientInfoList = TIntrusiveListWithAutoDelete<TClientInfo, TDelete>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TSharedServiceCounters
-    : TAtomicRefCount<TSharedServiceCounters>
+struct TSharedServiceCounters: TAtomicRefCount<TSharedServiceCounters>
 {
     const TStorageConfigPtr Config;
 
@@ -182,9 +178,8 @@ struct TVolumeInfo
 private:
     void UpdateSyncManuallyPreemptedVolumes(NProto::EPreemptionSource oldSource)
     {
-        bool checkForManual =
-            oldSource == NProto::SOURCE_MANUAL ||
-            PreemptionSource == NProto::SOURCE_MANUAL;
+        bool checkForManual = oldSource == NProto::SOURCE_MANUAL ||
+                              PreemptionSource == NProto::SOURCE_MANUAL;
         SyncManuallyPreemptedVolumesRequired =
             oldSource != PreemptionSource && checkForManual;
     }

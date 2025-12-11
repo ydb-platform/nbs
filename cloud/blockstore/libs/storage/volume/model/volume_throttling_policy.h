@@ -2,8 +2,8 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/public/api/protos/volume_throttling.pb.h>
 #include <cloud/blockstore/libs/storage/api/public.h>
+#include <cloud/blockstore/public/api/protos/volume_throttling.pb.h>
 
 #include <cloud/storage/core/libs/throttling/tablet_throttler_policy.h>
 
@@ -27,11 +27,11 @@ struct TThrottlerConfig
     const bool UseDiskSpaceScore;
 
     TThrottlerConfig(
-            TDuration maxDelay,
-            ui32 maxWriteCostMultiplier,
-            ui32 defaultPostponedRequestWeight,
-            TDuration initialBoostBudget,
-            bool useDiskSpaceScore)
+        TDuration maxDelay,
+        ui32 maxWriteCostMultiplier,
+        ui32 defaultPostponedRequestWeight,
+        TDuration initialBoostBudget,
+        bool useDiskSpaceScore)
         : MaxDelay(maxDelay)
         , MaxWriteCostMultiplier(maxWriteCostMultiplier)
         , DefaultPostponedRequestWeight(defaultPostponedRequestWeight)
@@ -42,8 +42,7 @@ struct TThrottlerConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TVolumeThrottlingPolicy final
-    : public ITabletThrottlerPolicy
+class TVolumeThrottlingPolicy final: public ITabletThrottlerPolicy
 {
 public:
     enum class EOpType
@@ -55,7 +54,8 @@ public:
         Last,
     };
 
-    struct TSplittedUsedQuota {
+    struct TSplittedUsedQuota
+    {
         double Iops = 0;
         double Bandwidth = 0;
     };

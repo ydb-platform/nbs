@@ -1,6 +1,6 @@
 #include "disk_agent.h"
-#include "disk_agent_actor.h"
 
+#include "disk_agent_actor.h"
 #include "testlib/test_env.h"
 
 namespace NCloud::NBlockStore::NStorage {
@@ -32,21 +32,23 @@ Y_UNIT_TEST_SUITE(TDiskAgentLargeTest)
         runtime.SetScheduledLimit(10'000'000);
 
         auto env = TTestEnvBuilder(runtime)
-            .With([&] {
-                auto config = CreateDefaultAgentConfig();
-                config.SetBackend(backend);
-                config.SetAcquireRequired(true);
-                config.SetEnabled(true);
+                       .With(
+                           [&]
+                           {
+                               auto config = CreateDefaultAgentConfig();
+                               config.SetBackend(backend);
+                               config.SetAcquireRequired(true);
+                               config.SetEnabled(true);
 
-                *config.AddFileDevices() = PrepareFileDevice(
-                    filePath,
-                    uuid,
-                    blockSize,
-                    totalBlockCount*blockSize);
+                               *config.AddFileDevices() = PrepareFileDevice(
+                                   filePath,
+                                   uuid,
+                                   blockSize,
+                                   totalBlockCount * blockSize);
 
-                return config;
-            }())
-            .Build();
+                               return config;
+                           }())
+                       .Build();
 
         TDiskAgentClient diskAgent(runtime);
         diskAgent.WaitReady();
@@ -60,7 +62,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentLargeTest)
         const ui32 chunkSize = 4_MB;
         const ui32 blocksPerChunk = chunkSize / blockSize;
 
-        auto invokeIO = [&] (auto op) {
+        auto invokeIO = [&](auto op)
+        {
             for (ui64 i = 0; i < totalBlockCount; i += 1_GB / blockSize) {
                 op(i, Min<ui64>(totalBlockCount - i, blocksPerChunk));
             }
@@ -69,55 +72,53 @@ Y_UNIT_TEST_SUITE(TDiskAgentLargeTest)
         const TString content(blockSize, 'X');
 
         TVector<TString> writeBlocks;
-        auto writeSgList = ResizeBlocks(
-            writeBlocks,
-            blocksPerChunk,
-            content);
+        auto writeSgList = ResizeBlocks(writeBlocks, blocksPerChunk, content);
 
         // write data
 
-        invokeIO([&] (ui64 startIndex, ui64 blockCount) {
-            UNIT_ASSERT_VALUES_EQUAL(blockCount, writeSgList.size());
+        invokeIO(
+            [&](ui64 startIndex, ui64 blockCount)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(blockCount, writeSgList.size());
 
-            auto response = WriteDeviceBlocks(
-                runtime,
-                diskAgent,
-                uuid,
-                startIndex,
-                writeSgList,
-                sessionId);
-            UNIT_ASSERT_VALUES_EQUAL(
-                S_OK,
-                response->GetError().GetCode());
-        });
+                auto response = WriteDeviceBlocks(
+                    runtime,
+                    diskAgent,
+                    uuid,
+                    startIndex,
+                    writeSgList,
+                    sessionId);
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetError().GetCode());
+            });
 
         // verify data
 
-        invokeIO([&] (ui64 startIndex, ui64 blockCount) {
-            auto response = ReadDeviceBlocks(
-                runtime,
-                diskAgent,
-                uuid,
-                startIndex,
-                blockCount,
-                sessionId);
+        invokeIO(
+            [&](ui64 startIndex, ui64 blockCount)
+            {
+                auto response = ReadDeviceBlocks(
+                    runtime,
+                    diskAgent,
+                    uuid,
+                    startIndex,
+                    blockCount,
+                    sessionId);
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                S_OK,
-                response->GetError().GetCode());
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetError().GetCode());
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                blockCount,
-                response->Record.GetBlocks().BuffersSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    blockCount,
+                    response->Record.GetBlocks().BuffersSize());
 
-            auto data = ConvertToSgList(response->Record.GetBlocks(), blockSize);
+                auto data =
+                    ConvertToSgList(response->Record.GetBlocks(), blockSize);
 
-            UNIT_ASSERT_VALUES_EQUAL(blockCount, data.size());
-            for (TBlockDataRef dr: data) {
-                UNIT_ASSERT_VALUES_EQUAL(blockSize, dr.Size());
-                UNIT_ASSERT_STRINGS_EQUAL(content, dr.AsStringBuf());
-            }
-        });
+                UNIT_ASSERT_VALUES_EQUAL(blockCount, data.size());
+                for (TBlockDataRef dr: data) {
+                    UNIT_ASSERT_VALUES_EQUAL(blockSize, dr.Size());
+                    UNIT_ASSERT_STRINGS_EQUAL(content, dr.AsStringBuf());
+                }
+            });
 
         {
             auto response = diskAgent.CollectStats();
@@ -125,7 +126,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentLargeTest)
             const auto& stats = response->Stats;
             UNIT_ASSERT_VALUES_EQUAL(1, stats.DeviceStatsSize());
             auto& deviceStats = stats.GetDeviceStats(0);
-            UNIT_ASSERT_VALUES_EQUAL("FileDevice-1", deviceStats.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "FileDevice-1",
+                deviceStats.GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL(0, deviceStats.GetBytesZeroed());
             UNIT_ASSERT_VALUES_EQUAL(0, deviceStats.GetNumZeroOps());
         }
@@ -135,10 +138,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentLargeTest)
         diskAgent.ReleaseDevices(TVector{uuid}, sessionId);
         {
             diskAgent.SendSecureEraseDeviceRequest("FileDevice-1");
-            auto response = diskAgent.RecvSecureEraseDeviceResponse(TDuration::Max());
-            UNIT_ASSERT_VALUES_EQUAL(
-                S_OK,
-                response->GetError().GetCode());
+            auto response =
+                diskAgent.RecvSecureEraseDeviceResponse(TDuration::Max());
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetError().GetCode());
         }
         diskAgent.AcquireDevices(
             TVector{uuid},
@@ -153,7 +155,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentLargeTest)
             const auto& stats = response->Stats;
             UNIT_ASSERT_VALUES_EQUAL(1, stats.DeviceStatsSize());
             auto& deviceStats = stats.GetDeviceStats(0);
-            UNIT_ASSERT_VALUES_EQUAL("FileDevice-1", deviceStats.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "FileDevice-1",
+                deviceStats.GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL(1, deviceStats.GetNumEraseOps());
         }
 
@@ -166,11 +170,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentLargeTest)
                 Min<ui32>(totalBlockCount - i, blocksPerChunk),
                 sessionId);
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                S_OK,
-                response->GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetError().GetCode());
 
-            auto data = ConvertToSgList(response->Record.GetBlocks(), blockSize);
+            auto data =
+                ConvertToSgList(response->Record.GetBlocks(), blockSize);
 
             UNIT_ASSERT_VALUES_EQUAL(blocksPerChunk, data.size());
             for (TBlockDataRef dr: data) {

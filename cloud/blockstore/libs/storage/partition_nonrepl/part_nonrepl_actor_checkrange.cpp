@@ -107,7 +107,7 @@ void TNonreplCheckRangeActor::HandleReadBlocksResponse(
     } else {
         TBlockChecksum blockChecksum;
         for (ui64 offset = 0, i = 0; i < Request.GetBlocksCount();
-                offset += BlockSize, ++i)
+             offset += BlockSize, ++i)
         {
             auto* data = Buffer.Get().data() + offset;
             const auto checksum = blockChecksum.Extend(data, BlockSize);

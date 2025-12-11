@@ -2,9 +2,9 @@
 
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
+#include <library/cpp/cgiparam/cgiparam.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 
-#include <library/cpp/cgiparam/cgiparam.h>
 #include <util/generic/string.h>
 #include <util/stream/str.h>
 
@@ -67,9 +67,8 @@ public:
 template <typename T>
 void CheckIndexIntegrity(TTxPartition::TCheckIndex& args, T&& errorHandler)
 {
-    auto comparer = [] (
-        const TTxPartition::TCheckIndex::TBlockMark& l,
-        const TTxPartition::TCheckIndex::TBlockMark& r)
+    auto comparer = [](const TTxPartition::TCheckIndex::TBlockMark& l,
+                       const TTxPartition::TCheckIndex::TBlockMark& r)
     {
         if (l.BlockIndex == r.BlockIndex) {
             if (l.CommitId == r.CommitId) {
@@ -88,9 +87,8 @@ void CheckIndexIntegrity(TTxPartition::TCheckIndex& args, T&& errorHandler)
 
     using TBlockMarkList = TVector<TTxPartition::TCheckIndex::TBlockMark>;
 
-    auto advance = [] (
-        TBlockMarkList::iterator& it,
-        TBlockMarkList::iterator end)
+    auto advance =
+        [](TBlockMarkList::iterator& it, TBlockMarkList::iterator end)
     {
         // skip older versions
         ui32 blockIndex = it->BlockIndex;
@@ -168,14 +166,13 @@ bool TPartitionActor::PrepareCheckIndex(
     auto ready = db.FindMixedBlocks(
         visitorIndex,
         args.BlockRange,
-        true    // precharge
+        true   // precharge
     );
     ready &= db.FindMergedBlocks(
         visitorIndex,
         args.BlockRange,
         true,   // precharge
-        State->GetMaxBlocksInBlob()
-    );
+        State->GetMaxBlocksInBlob());
 
     TCheckIndexVisitor<false> visitorBlobs(args);
     ready &= db.FindBlocksInBlobsIndex(
@@ -205,38 +202,56 @@ void TPartitionActor::CompleteCheckIndex(
     TStringStream out;
     DumpCheckHeader(out, *Info());
 
-    HTML(out) {
-        TABLE_SORTABLE() {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLED() { out << "# Block"; }
-                    TABLED() { out << "CommitId"; }
-                    TABLED() { out << "BlobId"; }
-                    TABLED() { out << "Offset"; }
-                    TABLED() { out << "Error"; }
+    HTML (out) {
+        TABLE_SORTABLE()
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLED () {
+                        out << "# Block";
+                    }
+                    TABLED () {
+                        out << "CommitId";
+                    }
+                    TABLED () {
+                        out << "BlobId";
+                    }
+                    TABLED () {
+                        out << "Offset";
+                    }
+                    TABLED () {
+                        out << "Error";
+                    }
                 }
             }
-            TABLEBODY() {
+            TABLEBODY()
+            {
                 size_t rowsCount = 0;
 
-                auto errorHandler = [&] (
-                    const TTxPartition::TCheckIndex::TBlockMark& mark,
-                    TStringBuf error)
+                auto errorHandler =
+                    [&](const TTxPartition::TCheckIndex::TBlockMark& mark,
+                        TStringBuf error)
                 {
-                    TABLER() {
-                        TABLED_CLASS("view") {
-                            DumpBlockIndex(out, *Info(), mark.BlockIndex, mark.CommitId);
+                    TABLER () {
+                        TABLED_CLASS("view")
+                        {
+                            DumpBlockIndex(
+                                out,
+                                *Info(),
+                                mark.BlockIndex,
+                                mark.CommitId);
                         }
-                        TABLED() {
+                        TABLED () {
                             DumpCommitId(out, mark.CommitId);
                         }
-                        TABLED_CLASS("view") {
+                        TABLED_CLASS("view")
+                        {
                             DumpBlobId(out, *Info(), mark.BlobId);
                         }
-                        TABLED() {
+                        TABLED () {
                             DumpBlobOffset(out, mark.BlobOffset);
                         }
-                        TABLED() {
+                        TABLED () {
                             out << error;
                         }
                     }

@@ -42,8 +42,7 @@ static const TString DefaultFolderId = "test_folder";
 using TYdbStatsCallback =
     std::function<NThreading::TFuture<NProto::TError>(const TYdbRowData& rows)>;
 
-class TYdbStatsMock:
-    public IYdbVolumesStatsUploader
+class TYdbStatsMock: public IYdbVolumesStatsUploader
 {
 private:
     TYdbStatsCallback Callback;
@@ -62,12 +61,10 @@ public:
     }
 
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -91,19 +88,19 @@ NMonitoring::TDynamicCounters::TCounterPtr GetCounterToCheck(
     NMonitoring::TDynamicCounters& counters)
 {
     auto volumeCounters = counters.GetSubgroup("counters", "blockstore")
-        ->GetSubgroup("component", "service_volume")
-        ->GetSubgroup("host", "cluster")
-        ->GetSubgroup("volume", DefaultDiskId)
-        ->GetSubgroup("cloud", DefaultCloudId)
-        ->GetSubgroup("folder", DefaultFolderId);
+                              ->GetSubgroup("component", "service_volume")
+                              ->GetSubgroup("host", "cluster")
+                              ->GetSubgroup("volume", DefaultDiskId)
+                              ->GetSubgroup("cloud", DefaultCloudId)
+                              ->GetSubgroup("folder", DefaultFolderId);
     return volumeCounters->GetCounter("MixedBytesCount");
 }
 
 bool VolumeMetricsExists(NMonitoring::TDynamicCounters& counters)
 {
     auto volumeCounters = counters.GetSubgroup("counters", "blockstore")
-        ->GetSubgroup("component", "service_volume")
-        ->GetSubgroup("host", "cluster");
+                              ->GetSubgroup("component", "service_volume")
+                              ->GetSubgroup("host", "cluster");
 
     return (bool)volumeCounters->FindSubgroup("volume", DefaultDiskId);
 }
@@ -112,15 +109,16 @@ bool VolumeMetricsExists(NMonitoring::TDynamicCounters& counters)
 
 void UnregisterVolume(TTestActorRuntime& runtime, const TString& diskId)
 {
-    auto unregisterMsg = std::make_unique<TEvStatsService::TEvUnregisterVolume>(diskId);
+    auto unregisterMsg =
+        std::make_unique<TEvStatsService::TEvUnregisterVolume>(diskId);
     runtime.Send(
         new IEventHandle(
             MakeStorageStatsServiceId(),
             MakeStorageStatsServiceId(),
             unregisterMsg.release(),
-            0, // flags
+            0,   // flags
             0),
-            0);
+        0);
 }
 
 void RegisterVolume(
@@ -147,9 +145,9 @@ void RegisterVolume(
             MakeStorageStatsServiceId(),
             MakeStorageStatsServiceId(),
             registerMsg.release(),
-            0, // flags
+            0,   // flags
             0),
-            0);
+        0);
 }
 
 void RegisterVolume(
@@ -157,12 +155,15 @@ void RegisterVolume(
     const TString& diskId,
     ui64 volumeTabletId)
 {
-    RegisterVolume(runtime, diskId, NProto::STORAGE_MEDIA_SSD, false, volumeTabletId);
+    RegisterVolume(
+        runtime,
+        diskId,
+        NProto::STORAGE_MEDIA_SSD,
+        false,
+        volumeTabletId);
 }
 
-void RegisterVolume(
-    TTestActorRuntime& runtime,
-    const TString& diskId)
+void RegisterVolume(TTestActorRuntime& runtime, const TString& diskId)
 {
     RegisterVolume(runtime, diskId, 0);
 }
@@ -219,25 +220,24 @@ void SendDiskStats(
             MakeStorageStatsServiceId(),
             MakeStorageStatsServiceId(),
             countersMsg.release(),
-            0, // flags
+            0,   // flags
             0),
-            nodeIdx);
+        nodeIdx);
 
     runtime.Send(
         new IEventHandle(
             MakeStorageStatsServiceId(),
             MakeStorageStatsServiceId(),
             volumeMsg.release(),
-            0, // flags
+            0,   // flags
             0),
-            nodeIdx);
+        nodeIdx);
 }
 
 TVector<ui64> BroadcastVolumeCounters(
     TTestActorRuntime& runtime,
     const TVector<ui64>& nodes,
-    EVolumeTestOptions volumeOptions
-)
+    EVolumeTestOptions volumeOptions)
 {
     TDispatchOptions options;
 
@@ -253,7 +253,7 @@ TVector<ui64> BroadcastVolumeCounters(
         SendDiskStats(
             runtime,
             DefaultDiskId,
-            false, // isLocalMount
+            false,   // isLocalMount
             std::move(counters),
             std::move(volume),
             volumeOptions,
@@ -265,7 +265,7 @@ TVector<ui64> BroadcastVolumeCounters(
                 MakeStorageStatsServiceId(),
                 MakeStorageStatsServiceId(),
                 updateMsg.release(),
-                0, // flags
+                0,   // flags
                 0),
             0);
 
@@ -275,7 +275,7 @@ TVector<ui64> BroadcastVolumeCounters(
     runtime.DispatchEvents(options);
 
     TVector<ui64> res;
-    for (const auto& nodeIdx : nodes) {
+    for (const auto& nodeIdx: nodes) {
         auto counters = runtime.GetAppData(nodeIdx).Counters;
         auto val = GetCounterToCheck(*counters)->Val();
         res.push_back(val);
@@ -304,7 +304,7 @@ void ForceYdbStatsUpdate(
         SendDiskStats(
             runtime,
             volumes[i],
-            false, // isLocalMount
+            false,   // isLocalMount
             std::move(counters),
             std::move(volume),
             {},
@@ -312,13 +312,14 @@ void ForceYdbStatsUpdate(
     }
 
     while (uploadTriggers--) {
-        auto uploadTrigger = std::make_unique<TEvStatsServicePrivate::TEvUploadDisksStats>();
+        auto uploadTrigger =
+            std::make_unique<TEvStatsServicePrivate::TEvUploadDisksStats>();
         runtime.Send(
             new IEventHandle(
                 MakeStorageStatsServiceId(),
                 MakeStorageStatsServiceId(),
                 uploadTrigger.release(),
-                0, // flags
+                0,   // flags
                 0),
             0);
     }
@@ -340,9 +341,9 @@ struct TTestEnv
     TTestActorRuntime& Runtime;
 
     TTestEnv(
-            TTestActorRuntime& runtime,
-            NProto::TStorageServiceConfig storageConfig,
-            NYdbStats::IYdbVolumesStatsUploaderPtr ydbStatsUpdater)
+        TTestActorRuntime& runtime,
+        NProto::TStorageServiceConfig storageConfig,
+        NYdbStats::IYdbVolumesStatsUploaderPtr ydbStatsUpdater)
         : Runtime(runtime)
     {
         SetupLogging();
@@ -350,8 +351,7 @@ struct TTestEnv
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         SetupTabletServices(Runtime);
 
@@ -361,9 +361,8 @@ struct TTestEnv
             std::move(ydbStatsUpdater),
             CreateStatsAggregatorStub());
 
-        auto storageStatsServiceId = Runtime.Register(
-            storageStatsService.release(),
-            0);
+        auto storageStatsServiceId =
+            Runtime.Register(storageStatsService.release(), 0);
 
         Runtime.RegisterService(
             MakeStorageStatsServiceId(),
@@ -384,7 +383,8 @@ struct TTestEnv
             TBlockStoreComponents::END,
             GetComponentName);
 
-        // for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
+        // for (ui32 i = TBlockStoreComponents::START; i <
+        // TBlockStoreComponents::END; ++i) {
         //   Runtime.SetLogPriority(i, NLog::PRI_DEBUG);
         // }
         // Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
@@ -401,9 +401,7 @@ private:
     NActors::TActorId Sender;
 
 public:
-    TStatsServiceClient(
-            NKikimr::TTestActorRuntime& runtime,
-            ui32 nodeIdx = 0)
+    TStatsServiceClient(NKikimr::TTestActorRuntime& runtime, ui32 nodeIdx = 0)
         : Runtime(runtime)
         , NodeIdx(nodeIdx)
         , Sender(runtime.AllocateEdgeActor(nodeIdx))
@@ -419,10 +417,8 @@ public:
         const NActors::TActorId& recipient,
         std::unique_ptr<TRequest> request)
     {
-        auto* ev = new NActors::IEventHandle(
-            recipient,
-            Sender,
-            request.release());
+        auto* ev =
+            new NActors::IEventHandle(recipient, Sender, request.release());
 
         Runtime.Send(ev, NodeIdx);
     }
@@ -432,15 +428,18 @@ public:
     {
         TAutoPtr<NActors::IEventHandle> handle;
         Runtime.GrabEdgeEventRethrow<TResponse>(handle);
-        return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
+        return std::unique_ptr<TResponse>(
+            handle->Release<TResponse>().Release());
     }
 
-    std::unique_ptr<TEvService::TEvUploadClientMetricsRequest> CreateUploadClientMetricsRequest()
+    std::unique_ptr<TEvService::TEvUploadClientMetricsRequest>
+    CreateUploadClientMetricsRequest()
     {
         return std::make_unique<TEvService::TEvUploadClientMetricsRequest>();
     }
 
-    std::unique_ptr<TEvStatsService::TEvGetVolumeStatsRequest> CreateGetVolumeStatsRequest()
+    std::unique_ptr<TEvStatsService::TEvGetVolumeStatsRequest>
+    CreateGetVolumeStatsRequest()
     {
         return std::make_unique<TEvStatsService::TEvGetVolumeStatsRequest>();
     }
@@ -454,32 +453,32 @@ public:
             bandwidth);
     }
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
-    template <typename... Args>                                                \
-    void Send##name##Request(Args&&... args)                                   \
-    {                                                                          \
-        auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(MakeStorageStatsServiceId(), std::move(request));          \
-    }                                                                          \
-                                                                               \
-    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response()            \
-    {                                                                          \
-        return RecvResponse<ns::TEv##name##Response>();                        \
-    }                                                                          \
-                                                                               \
-    template <typename... Args>                                                \
-    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)              \
-    {                                                                          \
-        auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(MakeStorageStatsServiceId(), std::move(request));          \
-                                                                               \
-        auto response = RecvResponse<ns::TEv##name##Response>();               \
-        UNIT_ASSERT_C(                                                         \
-            SUCCEEDED(response->GetStatus()),                                  \
-            response->GetErrorReason());                                       \
-        return response;                                                       \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ns)                                \
+    template <typename... Args>                                            \
+    void Send##name##Request(Args&&... args)                               \
+    {                                                                      \
+        auto request = Create##name##Request(std::forward<Args>(args)...); \
+        SendRequest(MakeStorageStatsServiceId(), std::move(request));      \
+    }                                                                      \
+                                                                           \
+    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response()        \
+    {                                                                      \
+        return RecvResponse<ns::TEv##name##Response>();                    \
+    }                                                                      \
+                                                                           \
+    template <typename... Args>                                            \
+    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)          \
+    {                                                                      \
+        auto request = Create##name##Request(std::forward<Args>(args)...); \
+        SendRequest(MakeStorageStatsServiceId(), std::move(request));      \
+                                                                           \
+        auto response = RecvResponse<ns::TEv##name##Response>();           \
+        UNIT_ASSERT_C(                                                     \
+            SUCCEEDED(response->GetStatus()),                              \
+            response->GetErrorReason());                                   \
+        return response;                                                   \
+    }                                                                      \
+    // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_DECLARE_METHOD(UploadClientMetrics, TEvService)
     BLOCKSTORE_DECLARE_METHOD(GetVolumeStats, TEvStatsService)
@@ -488,7 +487,7 @@ public:
 #undef BLOCKSTORE_DECLARE_METHOD
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -501,15 +500,16 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
         RegisterVolume(runtime, DefaultDiskId);
         auto counters = BroadcastVolumeCounters(runtime, {0}, {});
-        UNIT_ASSERT(counters[0]== 0);
+        UNIT_ASSERT(counters[0] == 0);
 
-        auto isLocalMountCounter = runtime.GetAppData(0).Counters
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "service_volume")
-            ->GetSubgroup("volume", DefaultDiskId)
-            ->GetSubgroup("cloud", DefaultCloudId)
-            ->GetSubgroup("folder", DefaultFolderId)
-            ->FindCounter("IsLocalMount");
+        auto isLocalMountCounter =
+            runtime.GetAppData(0)
+                .Counters->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service_volume")
+                ->GetSubgroup("volume", DefaultDiskId)
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->FindCounter("IsLocalMount");
         UNIT_ASSERT(isLocalMountCounter);
         UNIT_ASSERT_VALUES_EQUAL(0, isLocalMountCounter->Val());
     }
@@ -520,8 +520,11 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         TTestEnv env(runtime);
 
         RegisterVolume(runtime, DefaultDiskId);
-        auto counters = BroadcastVolumeCounters(runtime, {0}, EVolumeTestOptions::VOLUME_HASCLIENTS);
-        UNIT_ASSERT(counters[0]== 1);
+        auto counters = BroadcastVolumeCounters(
+            runtime,
+            {0},
+            EVolumeTestOptions::VOLUME_HASCLIENTS);
+        UNIT_ASSERT(counters[0] == 1);
     }
 
     Y_UNIT_TEST(ShouldReportSolomonMetricsIfVolumeRunsLocallyAndHasCheckpoint)
@@ -530,7 +533,10 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         TTestEnv env(runtime);
 
         RegisterVolume(runtime, DefaultDiskId);
-        auto counters = BroadcastVolumeCounters(runtime, {0}, EVolumeTestOptions::VOLUME_HASCHECKPOINT);
+        auto counters = BroadcastVolumeCounters(
+            runtime,
+            {0},
+            EVolumeTestOptions::VOLUME_HASCHECKPOINT);
         UNIT_ASSERT(counters[0] == 1);
     }
 
@@ -540,8 +546,11 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         TTestEnv env(runtime);
 
         RegisterVolume(runtime, DefaultDiskId);
-        auto c1 = BroadcastVolumeCounters(runtime, {0}, EVolumeTestOptions::VOLUME_HASCLIENTS);
-        UNIT_ASSERT(c1[0]== 1);
+        auto c1 = BroadcastVolumeCounters(
+            runtime,
+            {0},
+            EVolumeTestOptions::VOLUME_HASCLIENTS);
+        UNIT_ASSERT(c1[0] == 1);
 
         UnregisterVolume(runtime, DefaultDiskId);
 
@@ -556,7 +565,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         SendDiskStats(
             runtime,
             DefaultDiskId,
-            false, // isLocalMount
+            false,   // isLocalMount
             std::move(counters),
             std::move(volume),
             EVolumeTestOptions::VOLUME_HASCLIENTS,
@@ -568,7 +577,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 MakeStorageStatsServiceId(),
                 MakeStorageStatsServiceId(),
                 updateMsg.release(),
-                0, // flags
+                0,   // flags
                 0),
             0);
 
@@ -576,7 +585,9 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         options.FinalEvents.emplace_back(NActors::TEvents::TSystem::Wakeup);
         runtime.DispatchEvents(options);
 
-        UNIT_ASSERT_VALUES_EQUAL(false, VolumeMetricsExists(*runtime.GetAppData(0).Counters));
+        UNIT_ASSERT_VALUES_EQUAL(
+            false,
+            VolumeMetricsExists(*runtime.GetAppData(0).Counters));
         auto subGroupForDefaultDiskId =
             runtime.GetAppData(0)
                 .Counters->GetSubgroup("counters", "blockstore")
@@ -595,7 +606,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         SendDiskStats(
             runtime,
             DefaultDiskId,
-            false, // isLocalMount
+            false,   // isLocalMount
             CreatePartitionDiskCounters(
                 EPublishingPolicy::Repl,
                 EHistogramCounterOption::ReportMultipleCounters),
@@ -612,7 +623,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                     MakeStorageStatsServiceId(),
                     MakeStorageStatsServiceId(),
                     updateMsg.release(),
-                    0, // flags
+                    0,   // flags
                     0),
                 0);
 
@@ -620,20 +631,20 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             options.FinalEvents.emplace_back(NActors::TEvents::TSystem::Wakeup);
             runtime.DispatchEvents(options);
 
-            ui64 actual = *runtime.GetAppData(0).Counters
-                ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "service_volume")
-                ->GetSubgroup("volume", DefaultDiskId)
-                ->GetSubgroup("cloud", DefaultCloudId)
-                ->GetSubgroup("folder", DefaultFolderId)
-                ->GetCounter("IsLocalMount");
+            ui64 actual = *runtime.GetAppData(0)
+                               .Counters->GetSubgroup("counters", "blockstore")
+                               ->GetSubgroup("component", "service_volume")
+                               ->GetSubgroup("volume", DefaultDiskId)
+                               ->GetSubgroup("cloud", DefaultCloudId)
+                               ->GetSubgroup("folder", DefaultFolderId)
+                               ->GetCounter("IsLocalMount");
             UNIT_ASSERT_VALUES_EQUAL(0, actual);
         }
 
         SendDiskStats(
             runtime,
             DefaultDiskId,
-            true, // isLocalMount
+            true,   // isLocalMount
             CreatePartitionDiskCounters(
                 EPublishingPolicy::Repl,
                 EHistogramCounterOption::ReportMultipleCounters),
@@ -650,7 +661,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                     MakeStorageStatsServiceId(),
                     MakeStorageStatsServiceId(),
                     updateMsg.release(),
-                    0, // flags
+                    0,   // flags
                     0),
                 0);
 
@@ -658,13 +669,13 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             options.FinalEvents.emplace_back(NActors::TEvents::TSystem::Wakeup);
             runtime.DispatchEvents(options);
 
-            ui64 actual = *runtime.GetAppData(0).Counters
-                ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "service_volume")
-                ->GetSubgroup("volume", DefaultDiskId)
-                ->GetSubgroup("cloud", DefaultCloudId)
-                ->GetSubgroup("folder", DefaultFolderId)
-                ->GetCounter("IsLocalMount");
+            ui64 actual = *runtime.GetAppData(0)
+                               .Counters->GetSubgroup("counters", "blockstore")
+                               ->GetSubgroup("component", "service_volume")
+                               ->GetSubgroup("volume", DefaultDiskId)
+                               ->GetSubgroup("cloud", DefaultCloudId)
+                               ->GetSubgroup("folder", DefaultFolderId)
+                               ->GetCounter("IsLocalMount");
             UNIT_ASSERT_VALUES_EQUAL(1, actual);
         }
     }
@@ -686,7 +697,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         SendDiskStats(
             runtime,
             "vol0",
-            false, // isLocalMount
+            false,   // isLocalMount
             std::move(counters1),
             CreateVolumeSelfCounters(
                 EPublishingPolicy::Repl,
@@ -701,7 +712,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         SendDiskStats(
             runtime,
             "vol1",
-            false, // isLocalMount
+            false,   // isLocalMount
             std::move(counters2),
             CreateVolumeSelfCounters(
                 EPublishingPolicy::Repl,
@@ -715,7 +726,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 MakeStorageStatsServiceId(),
                 MakeStorageStatsServiceId(),
                 updateMsg.release(),
-                0, // flags
+                0,   // flags
                 0),
             0);
 
@@ -723,10 +734,10 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
         runtime.DispatchEvents(options);
 
-        auto counter = runtime.GetAppData(0).Counters
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "service")
-            ->GetCounter("CompactionScore");
+        auto counter = runtime.GetAppData(0)
+                           .Counters->GetSubgroup("counters", "blockstore")
+                           ->GetSubgroup("component", "service")
+                           ->GetCounter("CompactionScore");
 
         UNIT_ASSERT(*counter == 3);
     }
@@ -749,7 +760,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         SendDiskStats(
             runtime,
             DefaultDiskId,
-            false, // isLocalMount
+            false,   // isLocalMount
             std::move(counters),
             CreateVolumeSelfCounters(
                 policy,
@@ -762,7 +773,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 MakeStorageStatsServiceId(),
                 MakeStorageStatsServiceId(),
                 updateMsg.release(),
-                0, // flags
+                0,   // flags
                 0),
             0);
 
@@ -771,11 +782,11 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         runtime.DispatchEvents(options);
 
         // should report "ssd_system" metrics.
-        ui64 actual = *runtime.GetAppData(0).Counters
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "service")
-            ->GetSubgroup("type", type)
-            ->GetCounter("BytesCount");
+        ui64 actual = *runtime.GetAppData(0)
+                           .Counters->GetSubgroup("counters", "blockstore")
+                           ->GetSubgroup("component", "service")
+                           ->GetSubgroup("type", type)
+                           ->GetCounter("BytesCount");
         UNIT_ASSERT_VALUES_EQUAL(100500, actual);
     }
 
@@ -856,14 +867,15 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
-        auto crank = [&] () {
+        auto crank = [&]()
+        {
             auto updateMsg = std::make_unique<TEvents::TEvWakeup>();
             runtime.Send(
                 new IEventHandle(
                     MakeStorageStatsServiceId(),
                     MakeStorageStatsServiceId(),
                     updateMsg.release(),
-                    0, // flags
+                    0,   // flags
                     0),
                 0);
 
@@ -872,77 +884,86 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             runtime.DispatchEvents(options);
         };
 
-        auto ssd = runtime.GetAppData(0).Counters
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "service")
-            ->GetSubgroup("type", "ssd");
+        auto ssd = runtime.GetAppData(0)
+                       .Counters->GetSubgroup("counters", "blockstore")
+                       ->GetSubgroup("component", "service")
+                       ->GetSubgroup("type", "ssd");
 
-        auto totalCounters = runtime.GetAppData(0).Counters
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "service");
+        auto totalCounters =
+            runtime.GetAppData(0)
+                .Counters->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service");
 
-#define CHECK_STATS(dc, dc15m, dc1h, pc, ltu1, lt1to5, lto5, stu1, st1to5, sto5)\
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            dc,                                                                \
-            ssd->GetCounter("TotalDiskCount")->Val());                         \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            dc15m,                                                             \
-            ssd->GetCounter("TotalDiskCountLast15Min")->Val());                \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            dc1h,                                                              \
-            ssd->GetCounter("TotalDiskCountLastHour")->Val());                 \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            pc,                                                                \
-            ssd->GetCounter("TotalPartitionCount")->Val());                    \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            ltu1,                                                              \
-            ssd->GetCounter("VolumeLoadTimeUnder1Sec")->Val());                \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            lt1to5,                                                            \
-            ssd->GetCounter("VolumeLoadTime1To5Sec")->Val());                  \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            lto5,                                                              \
-            ssd->GetCounter("VolumeLoadTimeOver5Sec")->Val());                 \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            stu1,                                                              \
-            ssd->GetCounter("VolumeStartTimeUnder1Sec")->Val());               \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            st1to5,                                                            \
-            ssd->GetCounter("VolumeStartTime1To5Sec")->Val());                 \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            sto5,                                                              \
-            ssd->GetCounter("VolumeStartTimeOver5Sec")->Val());                \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            dc,                                                                \
-            totalCounters->GetCounter("TotalDiskCount")->Val());               \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            dc15m,                                                             \
-            totalCounters->GetCounter("TotalDiskCountLast15Min")->Val());      \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            dc1h,                                                              \
-            totalCounters->GetCounter("TotalDiskCountLastHour")->Val());       \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            pc,                                                                \
-            totalCounters->GetCounter("TotalPartitionCount")->Val());          \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            ltu1,                                                              \
-            totalCounters->GetCounter("VolumeLoadTimeUnder1Sec")->Val());      \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            lt1to5,                                                            \
-            totalCounters->GetCounter("VolumeLoadTime1To5Sec")->Val());        \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            lto5,                                                              \
-            totalCounters->GetCounter("VolumeLoadTimeOver5Sec")->Val());       \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            stu1,                                                              \
-            totalCounters->GetCounter("VolumeStartTimeUnder1Sec")->Val());     \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            st1to5,                                                            \
-            totalCounters->GetCounter("VolumeStartTime1To5Sec")->Val());       \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            sto5,                                                              \
-            totalCounters->GetCounter("VolumeStartTimeOver5Sec")->Val());      \
-// CHECK_STATS
+#define CHECK_STATS(                                                        \
+    dc,                                                                     \
+    dc15m,                                                                  \
+    dc1h,                                                                   \
+    pc,                                                                     \
+    ltu1,                                                                   \
+    lt1to5,                                                                 \
+    lto5,                                                                   \
+    stu1,                                                                   \
+    st1to5,                                                                 \
+    sto5)                                                                   \
+    UNIT_ASSERT_VALUES_EQUAL(dc, ssd->GetCounter("TotalDiskCount")->Val()); \
+    UNIT_ASSERT_VALUES_EQUAL(                                               \
+        dc15m,                                                              \
+        ssd->GetCounter("TotalDiskCountLast15Min")->Val());                 \
+    UNIT_ASSERT_VALUES_EQUAL(                                               \
+        dc1h,                                                               \
+        ssd->GetCounter("TotalDiskCountLastHour")->Val());                  \
+    UNIT_ASSERT_VALUES_EQUAL(                                               \
+        pc,                                                                 \
+        ssd->GetCounter("TotalPartitionCount")->Val());                     \
+    UNIT_ASSERT_VALUES_EQUAL(                                               \
+        ltu1,                                                               \
+        ssd->GetCounter("VolumeLoadTimeUnder1Sec")->Val());                 \
+    UNIT_ASSERT_VALUES_EQUAL(                                               \
+        lt1to5,                                                             \
+        ssd->GetCounter("VolumeLoadTime1To5Sec")->Val());                   \
+    UNIT_ASSERT_VALUES_EQUAL(                                               \
+        lto5,                                                               \
+        ssd->GetCounter("VolumeLoadTimeOver5Sec")->Val());                  \
+    UNIT_ASSERT_VALUES_EQUAL(                                               \
+        stu1,                                                               \
+        ssd->GetCounter("VolumeStartTimeUnder1Sec")->Val());                \
+    UNIT_ASSERT_VALUES_EQUAL(                                               \
+        st1to5,                                                             \
+        ssd->GetCounter("VolumeStartTime1To5Sec")->Val());                  \
+    UNIT_ASSERT_VALUES_EQUAL(                                               \
+        sto5,                                                               \
+        ssd->GetCounter("VolumeStartTimeOver5Sec")->Val());                 \
+    UNIT_ASSERT_VALUES_EQUAL(                                               \
+        dc,                                                                 \
+        totalCounters->GetCounter("TotalDiskCount")->Val());                \
+    UNIT_ASSERT_VALUES_EQUAL(                                               \
+        dc15m,                                                              \
+        totalCounters->GetCounter("TotalDiskCountLast15Min")->Val());       \
+    UNIT_ASSERT_VALUES_EQUAL(                                               \
+        dc1h,                                                               \
+        totalCounters->GetCounter("TotalDiskCountLastHour")->Val());        \
+    UNIT_ASSERT_VALUES_EQUAL(                                               \
+        pc,                                                                 \
+        totalCounters->GetCounter("TotalPartitionCount")->Val());           \
+    UNIT_ASSERT_VALUES_EQUAL(                                               \
+        ltu1,                                                               \
+        totalCounters->GetCounter("VolumeLoadTimeUnder1Sec")->Val());       \
+    UNIT_ASSERT_VALUES_EQUAL(                                               \
+        lt1to5,                                                             \
+        totalCounters->GetCounter("VolumeLoadTime1To5Sec")->Val());         \
+    UNIT_ASSERT_VALUES_EQUAL(                                               \
+        lto5,                                                               \
+        totalCounters->GetCounter("VolumeLoadTimeOver5Sec")->Val());        \
+    UNIT_ASSERT_VALUES_EQUAL(                                               \
+        stu1,                                                               \
+        totalCounters->GetCounter("VolumeStartTimeUnder1Sec")->Val());      \
+    UNIT_ASSERT_VALUES_EQUAL(                                               \
+        st1to5,                                                             \
+        totalCounters->GetCounter("VolumeStartTime1To5Sec")->Val());        \
+    UNIT_ASSERT_VALUES_EQUAL(                                               \
+        sto5,                                                               \
+        totalCounters->GetCounter("VolumeStartTimeOver5Sec")->Val());       \
+    // CHECK_STATS
 
         auto makeVolumeCounters = [=](ui64 lt, ui64 st)
         {
@@ -972,7 +993,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             SendDiskStats(
                 runtime,
                 diskInfo.DiskId,
-                false, // isLocalMount
+                false,   // isLocalMount
                 CreatePartitionDiskCounters(
                     EPublishingPolicy::Repl,
                     EHistogramCounterOption::ReportMultipleCounters),
@@ -1035,21 +1056,27 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
     Y_UNIT_TEST(ShouldReportYdbStatsInBatches)
     {
-        auto callback = [] (const TYdbRowData& rows)
+        auto callback = [](const TYdbRowData& rows)
         {
             Y_UNUSED(rows);
             return NThreading::MakeFuture(MakeError(S_OK));
         };
 
-        IYdbVolumesStatsUploaderPtr ydbStats = std::make_shared<TYdbStatsMock>(callback);
+        IYdbVolumesStatsUploaderPtr ydbStats =
+            std::make_shared<TYdbStatsMock>(callback);
 
         NProto::TStorageServiceConfig storageServiceConfig;
         storageServiceConfig.SetStatsUploadDiskCount(1);
-        storageServiceConfig.SetStatsUploadInterval(TDuration::Seconds(300).MilliSeconds());
-        storageServiceConfig.SetStatsUploadRetryTimeout(TDuration::Seconds(20).MilliSeconds());
+        storageServiceConfig.SetStatsUploadInterval(
+            TDuration::Seconds(300).MilliSeconds());
+        storageServiceConfig.SetStatsUploadRetryTimeout(
+            TDuration::Seconds(20).MilliSeconds());
 
         TTestBasicRuntime runtime;
-        TTestEnv env(runtime, std::move(storageServiceConfig), std::move(ydbStats));
+        TTestEnv env(
+            runtime,
+            std::move(storageServiceConfig),
+            std::move(ydbStats));
 
         RegisterVolume(runtime, "disk1");
         RegisterVolume(runtime, "disk2");
@@ -1059,7 +1086,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     Y_UNIT_TEST(ShouldRetryStatsUploadInCaseOfFailure)
     {
         ui32 attemptCount = 0;
-        auto callback = [&] (const TYdbRowData& rows)
+        auto callback = [&](const TYdbRowData& rows)
         {
             UNIT_ASSERT_VALUES_EQUAL(1, rows.Stats.size());
 
@@ -1069,15 +1096,21 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             return NThreading::MakeFuture(MakeError(S_OK));
         };
 
-        IYdbVolumesStatsUploaderPtr ydbStats = std::make_shared<TYdbStatsMock>(callback);
+        IYdbVolumesStatsUploaderPtr ydbStats =
+            std::make_shared<TYdbStatsMock>(callback);
 
         NProto::TStorageServiceConfig storageServiceConfig;
         storageServiceConfig.SetStatsUploadDiskCount(1);
-        storageServiceConfig.SetStatsUploadInterval(TDuration::Seconds(300).MilliSeconds());
-        storageServiceConfig.SetStatsUploadRetryTimeout(TDuration::MilliSeconds(1).MilliSeconds());
+        storageServiceConfig.SetStatsUploadInterval(
+            TDuration::Seconds(300).MilliSeconds());
+        storageServiceConfig.SetStatsUploadRetryTimeout(
+            TDuration::MilliSeconds(1).MilliSeconds());
 
         TTestBasicRuntime runtime;
-        TTestEnv env(runtime, std::move(storageServiceConfig), std::move(ydbStats));
+        TTestEnv env(
+            runtime,
+            std::move(storageServiceConfig),
+            std::move(ydbStats));
 
         RegisterVolume(runtime, "disk1");
         RegisterVolume(runtime, "disk2");
@@ -1091,7 +1124,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         bool failUpload = true;
         ui32 callCnt = 0;
 
-        auto callback = [&] (const TYdbRowData& rows)
+        auto callback = [&](const TYdbRowData& rows)
         {
             UNIT_ASSERT_VALUES_EQUAL(1, rows.Stats.size());
 
@@ -1103,15 +1136,21 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             }
         };
 
-        IYdbVolumesStatsUploaderPtr ydbStats = std::make_shared<TYdbStatsMock>(callback);
+        IYdbVolumesStatsUploaderPtr ydbStats =
+            std::make_shared<TYdbStatsMock>(callback);
 
         NProto::TStorageServiceConfig storageServiceConfig;
         storageServiceConfig.SetStatsUploadDiskCount(1);
-        storageServiceConfig.SetStatsUploadInterval(TDuration::Seconds(2).MilliSeconds());
-        storageServiceConfig.SetStatsUploadRetryTimeout(TDuration::MilliSeconds(99).MilliSeconds());
+        storageServiceConfig.SetStatsUploadInterval(
+            TDuration::Seconds(2).MilliSeconds());
+        storageServiceConfig.SetStatsUploadRetryTimeout(
+            TDuration::MilliSeconds(99).MilliSeconds());
 
         TTestBasicRuntime runtime;
-        TTestEnv env(runtime, std::move(storageServiceConfig), std::move(ydbStats));
+        TTestEnv env(
+            runtime,
+            std::move(storageServiceConfig),
+            std::move(ydbStats));
 
         RegisterVolume(runtime, "disk1");
         RegisterVolume(runtime, "disk2");
@@ -1119,14 +1158,17 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
         {
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvStatsServicePrivate::EvUploadDisksStats);
+            options.FinalEvents.emplace_back(
+                TEvStatsServicePrivate::EvUploadDisksStats);
             runtime.DispatchEvents(options);
         }
 
         failUpload = false;
 
         TDispatchOptions options;
-        options.FinalEvents.emplace_back(TEvStatsServicePrivate::EvUploadDisksStatsCompleted, 2);
+        options.FinalEvents.emplace_back(
+            TEvStatsServicePrivate::EvUploadDisksStatsCompleted,
+            2);
         runtime.DispatchEvents(options);
 
         UNIT_ASSERT_VALUES_EQUAL(2, callCnt);
@@ -1135,7 +1177,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     Y_UNIT_TEST(ShouldCorrectlyPrepareYdbStatsRequests)
     {
         TVector<TVector<TString>> batches;
-        auto callback = [&] (const TYdbRowData& rows)
+        auto callback = [&](const TYdbRowData& rows)
         {
             TVector<TString> batch;
             for (const auto& x: rows.Stats) {
@@ -1147,15 +1189,21 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             return NThreading::MakeFuture(MakeError(S_OK));
         };
 
-        IYdbVolumesStatsUploaderPtr ydbStats = std::make_shared<TYdbStatsMock>(callback);
+        IYdbVolumesStatsUploaderPtr ydbStats =
+            std::make_shared<TYdbStatsMock>(callback);
 
         NProto::TStorageServiceConfig storageServiceConfig;
         storageServiceConfig.SetStatsUploadDiskCount(2);
-        storageServiceConfig.SetStatsUploadInterval(TDuration::Seconds(300).MilliSeconds());
-        storageServiceConfig.SetStatsUploadRetryTimeout(TDuration::Seconds(20).MilliSeconds());
+        storageServiceConfig.SetStatsUploadInterval(
+            TDuration::Seconds(300).MilliSeconds());
+        storageServiceConfig.SetStatsUploadRetryTimeout(
+            TDuration::Seconds(20).MilliSeconds());
 
         TTestBasicRuntime runtime;
-        TTestEnv env(runtime, std::move(storageServiceConfig), std::move(ydbStats));
+        TTestEnv env(
+            runtime,
+            std::move(storageServiceConfig),
+            std::move(ydbStats));
 
         TVector<TString> diskIds;
         for (ui32 i = 0; i < 5; ++i) {
@@ -1188,28 +1236,37 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         THashSet<std::tuple<ui64, ui32, ui32, ui32>> groups;
         THashMap<ui64, std::pair<ui64, TString>> partitions;
 
-        auto callback = [&] (const TYdbRowData& rows)
+        auto callback = [&](const TYdbRowData& rows)
         {
-            for (const auto& x : rows.Groups) {
+            for (const auto& x: rows.Groups) {
                 groups.insert(std::make_tuple(
-                    x.TabletId, x.Channel, x.GroupId, x.Generation));
+                    x.TabletId,
+                    x.Channel,
+                    x.GroupId,
+                    x.Generation));
             }
-            for (const auto& x : rows.Partitions) {
+            for (const auto& x: rows.Partitions) {
                 partitions[x.PartitionTabletId] = {x.VolumeTabletId, x.DiskId};
             }
 
             return NThreading::MakeFuture(MakeError(S_OK));
         };
 
-        IYdbVolumesStatsUploaderPtr ydbStats = std::make_shared<TYdbStatsMock>(callback);
+        IYdbVolumesStatsUploaderPtr ydbStats =
+            std::make_shared<TYdbStatsMock>(callback);
 
         NProto::TStorageServiceConfig storageServiceConfig;
         storageServiceConfig.SetStatsUploadDiskCount(4);
-        storageServiceConfig.SetStatsUploadInterval(TDuration::Seconds(300).MilliSeconds());
-        storageServiceConfig.SetStatsUploadRetryTimeout(TDuration::Seconds(20).MilliSeconds());
+        storageServiceConfig.SetStatsUploadInterval(
+            TDuration::Seconds(300).MilliSeconds());
+        storageServiceConfig.SetStatsUploadRetryTimeout(
+            TDuration::Seconds(20).MilliSeconds());
 
         TTestBasicRuntime runtime;
-        TTestEnv env(runtime, std::move(storageServiceConfig), std::move(ydbStats));
+        TTestEnv env(
+            runtime,
+            std::move(storageServiceConfig),
+            std::move(ydbStats));
 
         RegisterVolume(runtime, "vol0", 0 /* volumeTabletId */);
         RegisterVolume(runtime, "vol1", 10 /* volumeTabletId */);
@@ -1219,44 +1276,48 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         {
             TVector<NKikimr::TTabletChannelInfo> channels9(2);
             channels9[0].Channel = 0;
-            channels9[0].History = TVector<NKikimr::TTabletChannelInfo::THistoryEntry>{
-                {0 /* fromGeneration */, 0 /* groupId*/},
-                {1 /* fromGeneration */, 1 /* groupId*/}};
+            channels9[0].History =
+                TVector<NKikimr::TTabletChannelInfo::THistoryEntry>{
+                    {0 /* fromGeneration */, 0 /* groupId*/},
+                    {1 /* fromGeneration */, 1 /* groupId*/}};
             channels9[1].Channel = 1;
-            channels9[1].History = TVector<NKikimr::TTabletChannelInfo::THistoryEntry>{
-                {0 /* fromGeneration */, 2 /* groupId*/},
-                {1 /* fromGeneration */, 0 /* groupId*/}};
+            channels9[1].History =
+                TVector<NKikimr::TTabletChannelInfo::THistoryEntry>{
+                    {0 /* fromGeneration */, 2 /* groupId*/},
+                    {1 /* fromGeneration */, 0 /* groupId*/}};
 
             TVector<NKikimr::TTabletChannelInfo> channels18(1);
             channels18[0].Channel = 0;
-            channels18[0].History = TVector<NKikimr::TTabletChannelInfo::THistoryEntry>{
-                {0 /* fromGeneration */, 1 /* groupId*/}};
+            channels18[0].History =
+                TVector<NKikimr::TTabletChannelInfo::THistoryEntry>{
+                    {0 /* fromGeneration */, 1 /* groupId*/}};
 
             TVector<NKikimr::TTabletChannelInfo> channels19(1);
             channels19[0].Channel = 0;
-            channels19[0].History = TVector<NKikimr::TTabletChannelInfo::THistoryEntry>{
-                {0 /* fromGeneration */, 3 /* groupId*/},
-                {2 /* fromGeneration */, 2 /* groupId*/}};
+            channels19[0].History =
+                TVector<NKikimr::TTabletChannelInfo::THistoryEntry>{
+                    {0 /* fromGeneration */, 3 /* groupId*/},
+                    {2 /* fromGeneration */, 2 /* groupId*/}};
 
             PartitionBootExternalCompleted(
                 runtime,
                 "vol1",
-                9, // partitionTabletId
+                9,   // partitionTabletId
                 std::move(channels9));
             PartitionBootExternalCompleted(
                 runtime,
                 "vol2",
-                18, // partitionTabletId
+                18,   // partitionTabletId
                 std::move(channels18));
             PartitionBootExternalCompleted(
                 runtime,
                 "vol2",
-                19, // partitionTabletId
+                19,   // partitionTabletId
                 std::move(channels19));
             PartitionBootExternalCompleted(
                 runtime,
                 "vol3",
-                29, // partitionTabletId
+                29,   // partitionTabletId
                 TVector<NKikimr::TTabletChannelInfo>{});
         }
 
@@ -1382,22 +1443,28 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     {
         TVector<TVector<TString>> batches;
         bool uploadSeen = false;
-        auto callback = [&] (const TYdbRowData& rows)
+        auto callback = [&](const TYdbRowData& rows)
         {
             Y_UNUSED(rows);
             uploadSeen = true;
             return NThreading::MakeFuture(MakeError(S_OK));
         };
 
-        IYdbVolumesStatsUploaderPtr ydbStats = std::make_shared<TYdbStatsMock>(callback);
+        IYdbVolumesStatsUploaderPtr ydbStats =
+            std::make_shared<TYdbStatsMock>(callback);
 
         NProto::TStorageServiceConfig storageServiceConfig;
         storageServiceConfig.SetStatsUploadDiskCount(2);
-        storageServiceConfig.SetStatsUploadInterval(TDuration::Seconds(300).MilliSeconds());
-        storageServiceConfig.SetStatsUploadRetryTimeout(TDuration::Seconds(20).MilliSeconds());
+        storageServiceConfig.SetStatsUploadInterval(
+            TDuration::Seconds(300).MilliSeconds());
+        storageServiceConfig.SetStatsUploadRetryTimeout(
+            TDuration::Seconds(20).MilliSeconds());
 
         TTestBasicRuntime runtime;
-        TTestEnv env(runtime, std::move(storageServiceConfig), std::move(ydbStats));
+        TTestEnv env(
+            runtime,
+            std::move(storageServiceConfig),
+            std::move(ydbStats));
 
         ForceYdbStatsUpdate(runtime, {}, 0, 1);
 
@@ -1432,7 +1499,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         SendDiskStats(
             runtime,
             "vol0",
-            false, // isLocalMount
+            false,   // isLocalMount
             std::move(counters),
             CreateVolumeSelfCounters(
                 publishingPolicy,
@@ -1445,7 +1512,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 MakeStorageStatsServiceId(),
                 MakeStorageStatsServiceId(),
                 updateMsg.release(),
-                0, // flags
+                0,   // flags
                 0),
             0);
 
@@ -1454,28 +1521,28 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         runtime.DispatchEvents(options);
 
         {
-            ui64 actual = *runtime.GetAppData(0).Counters
-                ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "service_volume")
-                ->GetSubgroup("host", "cluster")
-                ->GetSubgroup("volume", "vol0")
-                ->GetSubgroup("cloud", DefaultCloudId)
-                ->GetSubgroup("folder", DefaultFolderId)
-                ->GetSubgroup("request", "ReadBlocks")
-                ->GetCounter("Count");
+            ui64 actual = *runtime.GetAppData(0)
+                               .Counters->GetSubgroup("counters", "blockstore")
+                               ->GetSubgroup("component", "service_volume")
+                               ->GetSubgroup("host", "cluster")
+                               ->GetSubgroup("volume", "vol0")
+                               ->GetSubgroup("cloud", DefaultCloudId)
+                               ->GetSubgroup("folder", DefaultFolderId)
+                               ->GetSubgroup("request", "ReadBlocks")
+                               ->GetCounter("Count");
             UNIT_ASSERT_VALUES_EQUAL(42, actual);
         }
 
         {
-            ui64 actual = *runtime.GetAppData(0).Counters
-                ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "service_volume")
-                ->GetSubgroup("host", "cluster")
-                ->GetSubgroup("volume", "vol0")
-                ->GetSubgroup("cloud", DefaultCloudId)
-                ->GetSubgroup("folder", DefaultFolderId)
-                ->GetSubgroup("request", "ReadBlocks")
-                ->GetCounter("RequestBytes");
+            ui64 actual = *runtime.GetAppData(0)
+                               .Counters->GetSubgroup("counters", "blockstore")
+                               ->GetSubgroup("component", "service_volume")
+                               ->GetSubgroup("host", "cluster")
+                               ->GetSubgroup("volume", "vol0")
+                               ->GetSubgroup("cloud", DefaultCloudId)
+                               ->GetSubgroup("folder", DefaultFolderId)
+                               ->GetSubgroup("request", "ReadBlocks")
+                               ->GetCounter("RequestBytes");
             UNIT_ASSERT_VALUES_EQUAL(100500, actual);
         }
     }
@@ -1525,8 +1592,8 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         auto response = client.RegisterTrafficSource("src1", 200);
         UNIT_ASSERT_VALUES_EQUAL(100, response->LimitedBandwidthMiBs);
 
-        // Register the second source - a part of the bandwidth is given to it, with
-        // an honest division of the bandwidth into all.
+        // Register the second source - a part of the bandwidth is given to it,
+        // with an honest division of the bandwidth into all.
         response = client.RegisterTrafficSource("src2", 600);
         UNIT_ASSERT_VALUES_EQUAL(75, response->LimitedBandwidthMiBs);
 

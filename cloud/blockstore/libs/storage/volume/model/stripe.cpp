@@ -15,8 +15,9 @@ TStripeInfo ConvertToRelativeBlockRange(
     const auto firstStripe = original.Start / blocksPerStripe;
     const auto lastStripe = original.End / blocksPerStripe;
     const auto firstRequestStripe = firstStripe + requestNo;
-    const auto lastRequestStripe = firstRequestStripe + partitionCount
-        * ((lastStripe - firstRequestStripe) / partitionCount);
+    const auto lastRequestStripe =
+        firstRequestStripe +
+        partitionCount * ((lastStripe - firstRequestStripe) / partitionCount);
 
     TBlockRange64 result;
     result.Start = (firstRequestStripe / partitionCount) * blocksPerStripe;
@@ -31,10 +32,7 @@ TStripeInfo ConvertToRelativeBlockRange(
         result.End += blocksPerStripe - 1;
     }
 
-    return {
-        result,
-        IntegerCast<ui32>(firstRequestStripe % partitionCount)
-    };
+    return {result, IntegerCast<ui32>(firstRequestStripe % partitionCount)};
 }
 
 ui64 RelativeToGlobalIndex(
@@ -44,7 +42,8 @@ ui64 RelativeToGlobalIndex(
     const ui32 partitionId)
 {
     const auto relativeStripe = relativeIndex / blocksPerStripe;
-    const auto offsetInStripe = relativeIndex - relativeStripe * blocksPerStripe;
+    const auto offsetInStripe =
+        relativeIndex - relativeStripe * blocksPerStripe;
     const auto stripe = relativeStripe * partitionCount + partitionId;
     return stripe * blocksPerStripe + offsetInStripe;
 }
@@ -66,10 +65,7 @@ ui32 CalculateRequestCount(
 {
     const auto firstStripe = original.Start / blocksPerStripe;
     const auto lastStripe = original.End / blocksPerStripe;
-    return Min(
-        IntegerCast<ui32>(lastStripe - firstStripe + 1),
-        partitionCount
-    );
+    return Min(IntegerCast<ui32>(lastStripe - firstStripe + 1), partitionCount);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

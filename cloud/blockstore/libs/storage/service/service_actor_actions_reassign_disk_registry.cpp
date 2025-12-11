@@ -7,6 +7,7 @@
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
+
 #include <library/cpp/json/json_reader.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -34,6 +35,7 @@ public:
         TString input);
 
     void Bootstrap(const TActorContext& ctx);
+
 private:
     void HandleSuccess(const TActorContext& ctx);
     void HandleError(const TActorContext& ctx, const NProto::TError& error);
@@ -49,8 +51,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReassignDiskRegistryActionActor::TReassignDiskRegistryActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -66,7 +68,9 @@ void TReassignDiskRegistryActionActor::Bootstrap(const TActorContext& ctx)
 
     NJson::TJsonValue input;
     if (!NJson::ReadJsonTree(Input, &input, false)) {
-        HandleError(ctx, MakeError(E_ARGUMENT, "Input should be in JSON format"));
+        HandleError(
+            ctx,
+            MakeError(E_ARGUMENT, "Input should be in JSON format"));
         return;
     }
 
@@ -86,7 +90,8 @@ void TReassignDiskRegistryActionActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(error);
 
     LWTRACK(
         ResponseSent_Service,
@@ -98,8 +103,7 @@ void TReassignDiskRegistryActionActor::HandleError(
     Die(ctx);
 }
 
-void TReassignDiskRegistryActionActor::HandleSuccess(
-    const TActorContext& ctx)
+void TReassignDiskRegistryActionActor::HandleSuccess(const TActorContext& ctx)
 {
     auto response = std::make_unique<TEvService::TEvExecuteActionResponse>();
 
@@ -135,7 +139,8 @@ STFUNC(TReassignDiskRegistryActionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
-            TEvDiskRegistryProxy::TEvReassignResponse, HandleReassignResponse);
+            TEvDiskRegistryProxy::TEvReassignResponse,
+            HandleReassignResponse);
 
         default:
             HandleUnexpectedEvent(

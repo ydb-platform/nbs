@@ -5,15 +5,13 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
-
 namespace NCloud::NBlockStore {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TThrottlerFixture
-    : public NUnitTest::TBaseFixture
+struct TThrottlerFixture: public NUnitTest::TBaseFixture
 {
     ITimerPtr Timer;
     NMonitoring::TDynamicCountersPtr RootGroup;
@@ -26,7 +24,7 @@ struct TThrottlerFixture
         , RootGroup(new NMonitoring::TDynamicCounters())
         , TotalGroup(RootGroup->GetSubgroup("component", "server"))
         , VolumeGroup(RootGroup->GetSubgroup("component", "server_volume")
-            ->GetSubgroup("host", "cluster"))
+                          ->GetSubgroup("host", "cluster"))
         , Throttler(CreateThrottlerMetrics(Timer, RootGroup, "server"))
     {}
 };
@@ -43,7 +41,8 @@ Y_UNIT_TEST_SUITE(TThrottlerBaseTests)
 
         auto diskCounter = VolumeGroup->FindSubgroup("volume", "Disk-1");
         UNIT_ASSERT(diskCounter);
-        auto instanceCounter = diskCounter->FindSubgroup("instance", "Client-1");
+        auto instanceCounter =
+            diskCounter->FindSubgroup("instance", "Client-1");
         UNIT_ASSERT(instanceCounter);
         UNIT_ASSERT(instanceCounter->FindCounter("UsedQuota"));
         UNIT_ASSERT(instanceCounter->FindCounter("MaxUsedQuota"));
@@ -88,7 +87,7 @@ Y_UNIT_TEST_SUITE(TThrottlerBaseTests)
     {
         Throttler->Register("Disk-1", "Client-1");
         auto instanceCounter = VolumeGroup->FindSubgroup("volume", "Disk-1")
-            ->FindSubgroup("instance", "Client-1");
+                                   ->FindSubgroup("instance", "Client-1");
 
         Throttler->Trim(Timer->Now());
         UNIT_ASSERT(instanceCounter->FindCounter("UsedQuota"));
@@ -107,7 +106,7 @@ Y_UNIT_TEST_SUITE(TThrottlerBaseTests)
     {
         Throttler->Register("Disk-1", "Client-1");
         auto instanceCounter = VolumeGroup->FindSubgroup("volume", "Disk-1")
-            ->FindSubgroup("instance", "Client-1");
+                                   ->FindSubgroup("instance", "Client-1");
 
         Throttler->Trim(Timer->Now());
         UNIT_ASSERT(instanceCounter->FindCounter("UsedQuota"));
@@ -140,18 +139,16 @@ Y_UNIT_TEST_SUITE(TThrottlerBaseTests)
         Throttler->Register("Disk-1", "Client-1");
         Throttler->Register("Disk-1", "Client-2");
         auto diskCounter = VolumeGroup->FindSubgroup("volume", "Disk-1");
-        auto quotaCounter1 = diskCounter
-            ->FindSubgroup("instance", "Client-1")
-            ->FindCounter("UsedQuota");
-        auto maxQuotaCounter1 = diskCounter
-            ->FindSubgroup("instance", "Client-1")
-            ->FindCounter("MaxUsedQuota");
-        auto quotaCounter2 = diskCounter
-            ->FindSubgroup("instance", "Client-2")
-            ->FindCounter("UsedQuota");
-        auto maxQuotaCounter2 = diskCounter
-            ->FindSubgroup("instance", "Client-2")
-            ->FindCounter("MaxUsedQuota");
+        auto quotaCounter1 = diskCounter->FindSubgroup("instance", "Client-1")
+                                 ->FindCounter("UsedQuota");
+        auto maxQuotaCounter1 =
+            diskCounter->FindSubgroup("instance", "Client-1")
+                ->FindCounter("MaxUsedQuota");
+        auto quotaCounter2 = diskCounter->FindSubgroup("instance", "Client-2")
+                                 ->FindCounter("UsedQuota");
+        auto maxQuotaCounter2 =
+            diskCounter->FindSubgroup("instance", "Client-2")
+                ->FindCounter("MaxUsedQuota");
         auto quotaCounterTotal = TotalGroup->FindCounter("UsedQuota");
         auto maxQuotaCounterTotal = TotalGroup->FindCounter("MaxUsedQuota");
 
@@ -188,4 +185,4 @@ Y_UNIT_TEST_SUITE(TThrottlerBaseTests)
     }
 }
 
-}   // NCloud::NBlockStore
+}   // namespace NCloud::NBlockStore

@@ -19,8 +19,8 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
-#include <cloud/blockstore/libs/storage/api/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/api/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/device_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
@@ -103,10 +103,10 @@ class TVolumeActor final
         const bool IsMonRequest = false;
 
         TClientRequest(
-                TRequestInfoPtr requestInfo,
-                TString diskId,
-                const NActors::TActorId& pipeServerActorId,
-                NProto::TVolumeClientInfo addedClientInfo)
+            TRequestInfoPtr requestInfo,
+            TString diskId,
+            const NActors::TActorId& pipeServerActorId,
+            NProto::TVolumeClientInfo addedClientInfo)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , PipeServerActorId(pipeServerActorId)
@@ -114,11 +114,11 @@ class TVolumeActor final
         {}
 
         TClientRequest(
-                TRequestInfoPtr requestInfo,
-                TString diskId,
-                const NActors::TActorId& pipeServerActorId,
-                TString removedClientId,
-                bool isMonRequest)
+            TRequestInfoPtr requestInfo,
+            TString diskId,
+            const NActors::TActorId& pipeServerActorId,
+            TString removedClientId,
+            bool isMonRequest)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , PipeServerActorId(pipeServerActorId)
@@ -128,9 +128,8 @@ class TVolumeActor final
 
         TString GetClientId() const
         {
-            return RemovedClientId
-                ? RemovedClientId
-                : AddedClientInfo.GetClientId();
+            return RemovedClientId ? RemovedClientId
+                                   : AddedClientInfo.GetClientId();
         }
     };
 
@@ -154,13 +153,13 @@ class TVolumeActor final
         const bool IsMultipartitionWriteOrZero;
 
         TVolumeRequest(
-                const NActors::TActorId& caller,
-                ui64 callerCookie,
-                TCallContextPtr callContext,
-                TCallContextPtr forkedContext,
-                ui64 receiveTime,
-                TCancelRoutine cancelRoutine,
-                bool isMultipartitionWriteOrZero)
+            const NActors::TActorId& caller,
+            ui64 callerCookie,
+            TCallContextPtr callContext,
+            TCallContextPtr forkedContext,
+            ui64 receiveTime,
+            TCancelRoutine cancelRoutine,
+            bool isMultipartitionWriteOrZero)
             : Caller(caller)
             , CallerCookie(callerCookie)
             , CallContext(std::move(callContext))
@@ -334,7 +333,8 @@ private:
     TDeviceOperationTracker DeviceOperationTracker;
 
     // inflight VolumeRequestId -> duplicate request queue
-    // we respond to duplicate requests as soon as our original request is completed
+    // we respond to duplicate requests as soon as our original request is
+    // completed
     THashMap<ui64, TDeque<TDuplicateRequest>> DuplicateWriteAndZeroRequests;
     ui32 DuplicateRequestCount = 0;
 
@@ -342,7 +342,8 @@ private:
 
     TIntrusiveList<TRequestInfo> ActiveReadHistoryRequests;
 
-    EPartitionsStartedReason PartitionsStartedReason = EPartitionsStartedReason::NOT_STARTED;
+    EPartitionsStartedReason PartitionsStartedReason =
+        EPartitionsStartedReason::NOT_STARTED;
     ui32 FailedBoots = 0;
 
     struct TCheckpointRequestInfo
@@ -352,9 +353,9 @@ private:
         ui64 TraceTs;
 
         TCheckpointRequestInfo(
-                TRequestInfoPtr requestInfo,
-                bool isTraced,
-                ui64 traceTs)
+            TRequestInfoPtr requestInfo,
+            bool isTraced,
+            ui64 traceTs)
             : RequestInfo(std::move(requestInfo))
             , IsTraced(isTraced)
             , TraceTs(traceTs)
@@ -415,14 +416,14 @@ private:
         NBlobMetrics::TBlobLoadMetrics BlobLoadMetrics;
 
         TPartCountersData(
-                NActors::TActorId sender,
-                ui64 cookie,
-                ui64 volumeSystemCpu,
-                ui64 volumeUserCpu,
-                TCallContextPtr callContext,
-                TPartitionDiskCountersPtr diskCounters,
-                NKikimrTabletBase::TMetrics tabletMetrics,
-                NBlobMetrics::TBlobLoadMetrics blobLoadMetrics)
+            NActors::TActorId sender,
+            ui64 cookie,
+            ui64 volumeSystemCpu,
+            ui64 volumeUserCpu,
+            TCallContextPtr callContext,
+            TPartitionDiskCountersPtr diskCounters,
+            NKikimrTabletBase::TMetrics tabletMetrics,
+            NBlobMetrics::TBlobLoadMetrics blobLoadMetrics)
             : Sender(sender)
             , Cookie(cookie)
             , VolumeSystemCpu(volumeSystemCpu)
@@ -600,7 +601,8 @@ private:
     void AddReleaseDiskRequest(
         const NActors::TActorContext& ctx,
         TReleaseDiskRequest request);
-    void ProcessNextAcquireReleaseDiskRequest(const NActors::TActorContext& ctx);
+    void ProcessNextAcquireReleaseDiskRequest(
+        const NActors::TActorContext& ctx);
     void OnClientListUpdate(const NActors::TActorContext& ctx);
 
     void UpdateDelayCounter(
@@ -863,7 +865,9 @@ private:
 
     void ProcessCheckpointRequests(const NActors::TActorContext& ctx);
 
-    bool ProcessCheckpointRequest(const NActors::TActorContext& ctx, ui64 requestId);
+    bool ProcessCheckpointRequest(
+        const NActors::TActorContext& ctx,
+        ui64 requestId);
 
     void ReplyToCheckpointRequestWithoutSaving(
         const NActors::TActorContext& ctx,
@@ -1233,7 +1237,8 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleUpdateVolatileThrottlingConfig(
-        const TEvVolumeThrottlingManager::TEvVolumeThrottlingConfigNotification::TPtr& ev,
+        const TEvVolumeThrottlingManager::
+            TEvVolumeThrottlingConfigNotification::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     TActorsStack WrapWithShadowDiskActorIfNeeded(
@@ -1304,21 +1309,26 @@ private:
     void StartPartitionsImpl(const NActors::TActorContext& ctx);
 
     BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolume)
-    BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolumePrivate)
-    BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvService)
+    BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(
+        BLOCKSTORE_IMPLEMENT_REQUEST,
+        TEvVolumePrivate)
+    BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(
+        BLOCKSTORE_IMPLEMENT_REQUEST,
+        TEvService)
 
     BLOCKSTORE_VOLUME_TRANSACTIONS(BLOCKSTORE_IMPLEMENT_TRANSACTION, TTxVolume)
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_VOLUME_COUNTER(name)                                        \
-    if (Counters) {                                                            \
-        auto& counter = Counters->Cumulative()                                 \
-            [TVolumeCounters::CUMULATIVE_COUNTER_Request_##name];              \
-        counter.Increment(1);                                                  \
-    }                                                                          \
-// BLOCKSTORE_VOLUME_COUNTER
+#define BLOCKSTORE_VOLUME_COUNTER(name)                               \
+    if (Counters) {                                                   \
+        auto& counter =                                               \
+            Counters->Cumulative()                                    \
+                [TVolumeCounters::CUMULATIVE_COUNTER_Request_##name]; \
+        counter.Increment(1);                                         \
+    }                                                                 \
+    // BLOCKSTORE_VOLUME_COUNTER
 
 TString DescribeAllocation(const NProto::TAllocateDiskResponse& record);
 

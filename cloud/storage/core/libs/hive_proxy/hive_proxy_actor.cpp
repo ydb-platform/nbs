@@ -23,8 +23,7 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
     clientConfig.RetryPolicy = {
         .RetryLimitCount = config.PipeClientRetryCount,
         .MinRetryTime = config.PipeClientMinRetryTime,
-        .MaxRetryTime = config.HiveLockExpireTimeout
-    };
+        .MaxRetryTime = config.HiveLockExpireTimeout};
 
     return std::unique_ptr<NTabletPipe::IClientCache>(
         NTabletPipe::CreateUnboundedClientCache(clientConfig));
@@ -35,13 +34,14 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
 ////////////////////////////////////////////////////////////////////////////////
 
 THiveProxyActor::THiveProxyActor(
-        THiveProxyConfig config,
-        NMonitoring::TDynamicCounterPtr counters)
+    THiveProxyConfig config,
+    NMonitoring::TDynamicCounterPtr counters)
     : ClientCache(CreateTabletPipeClientCache(config))
     , LockExpireTimeout(config.HiveLockExpireTimeout)
     , LogComponent(config.LogComponent)
     , TabletBootInfoBackupFilePath(config.TabletBootInfoBackupFilePath)
-    , UseBinaryFormatForTabletBootInfoBackup(config.UseBinaryFormatForTabletBootInfoBackup)
+    , UseBinaryFormatForTabletBootInfoBackup(
+          config.UseBinaryFormatForTabletBootInfoBackup)
     , TenantHiveTabletId(config.TenantHiveTabletId)
     , Counters(std::move(counters))
 {}
@@ -62,10 +62,13 @@ void THiveProxyActor::Bootstrap(const TActorContext& ctx)
             false /* readOnlyMode */
         );
         TabletBootInfoBackup = ctx.Register(
-            cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
+            cache.release(),
+            TMailboxType::HTSwap,
+            AppData()->IOPoolId);
     }
     if (Counters) {
-        HiveReconnectTimeCounter = Counters->GetCounter("HiveReconnectTime", true);
+        HiveReconnectTimeCounter =
+            Counters->GetCounter("HiveReconnectTime", true);
     }
 }
 
@@ -98,9 +101,11 @@ ui64 THiveProxyActor::GetHive(
     if (tabletId) {
         domainUid = domainsInfo->GetDomainUidByTabletId(tabletId);
         if (domainUid == TDomainsInfo::BadDomainId) {
-            LOG_WARN_S(ctx, LogComponent,
+            LOG_WARN_S(
+                ctx,
+                LogComponent,
                 "Missing domain for tablet " << tabletId
-                    << " using default domain");
+                                             << " using default domain");
         }
     }
     if (domainUid == TDomainsInfo::BadDomainId) {
@@ -114,7 +119,10 @@ ui64 THiveProxyActor::GetHive(
 }
 
 void THiveProxyActor::SendLockRequest(
-    const TActorContext& ctx, ui64 hive, ui64 tabletId, bool reconnect)
+    const TActorContext& ctx,
+    ui64 hive,
+    ui64 tabletId,
+    bool reconnect)
 {
     auto hiveRequest =
         std::make_unique<TEvHive::TEvLockTabletExecution>(tabletId);
@@ -125,7 +133,9 @@ void THiveProxyActor::SendLockRequest(
 }
 
 void THiveProxyActor::SendUnlockRequest(
-    const TActorContext& ctx, ui64 hive, ui64 tabletId)
+    const TActorContext& ctx,
+    ui64 hive,
+    ui64 tabletId)
 {
     auto hiveRequest =
         std::make_unique<TEvHive::TEvUnlockTabletExecution>(tabletId);
@@ -134,7 +144,8 @@ void THiveProxyActor::SendUnlockRequest(
 
 void THiveProxyActor::SendGetTabletStorageInfoRequest(
     const TActorContext& ctx,
-    ui64 hive, ui64 tabletId)
+    ui64 hive,
+    ui64 tabletId)
 {
     auto hiveRequest =
         std::make_unique<TEvHive::TEvGetTabletStorageInfo>(tabletId);
@@ -197,12 +208,16 @@ void THiveProxyActor::AddTabletMetrics(
     metrics.MutableResourceUsage()->MergeFrom(tabletData.ResourceValues);
 }
 
-void THiveProxyActor::ScheduleSendTabletMetrics(const TActorContext& ctx, ui64 hive)
+void THiveProxyActor::ScheduleSendTabletMetrics(
+    const TActorContext& ctx,
+    ui64 hive)
 {
     auto* state = HiveStates.FindPtr(hive);
     STORAGE_VERIFY(state, "Hive", hive);
     if (!state->ScheduledSendTabletMetrics) {
-        ctx.Schedule(BatchTimeout, new TEvHiveProxyPrivate::TEvSendTabletMetrics(hive));
+        ctx.Schedule(
+            BatchTimeout,
+            new TEvHiveProxyPrivate::TEvSendTabletMetrics(hive));
         state->ScheduledSendTabletMetrics = true;
     }
 }
@@ -215,7 +230,8 @@ void THiveProxyActor::SendTabletMetrics(
     auto* state = HiveStates.FindPtr(hive);
     STORAGE_VERIFY(state, "Hive", hive);
     state->ScheduledSendTabletMetrics = false;
-    TAutoPtr<TEvHive::TEvTabletMetrics> event = MakeHolder<TEvHive::TEvTabletMetrics>();
+    TAutoPtr<TEvHive::TEvTabletMetrics> event =
+        MakeHolder<TEvHive::TEvTabletMetrics>();
     NKikimrHive::TEvTabletMetrics& record = event->Record;
     for (auto& prTabletId: state->UpdatedTabletMetrics) {
         AddTabletMetrics(prTabletId.first, prTabletId.second, record);
@@ -237,14 +253,15 @@ void THiveProxyActor::HandleConnect(
     ui64 hive = msg->TabletId;
     if (!ClientCache->OnConnect(ev)) {
         // Connect to hive failed
-        auto error = MakeKikimrError(msg->Status, TStringBuilder()
-            << "Connect to hive " << hive << " failed");
+        auto error = MakeKikimrError(
+            msg->Status,
+            TStringBuilder() << "Connect to hive " << hive << " failed");
         HandleConnectionError(ctx, error, hive, true);
     } else if (HiveReconnectStartCycles) {
         if (HiveReconnectTimeCounter) {
             HiveReconnectTimeCounter->Add(
-                CyclesToDuration(
-                    GetCycleCount() - HiveReconnectStartCycles).MicroSeconds());
+                CyclesToDuration(GetCycleCount() - HiveReconnectStartCycles)
+                    .MicroSeconds());
         }
         HiveReconnectStartCycles = 0;
         HiveDisconnected = false;
@@ -260,8 +277,9 @@ void THiveProxyActor::HandleDisconnect(
     ui64 hive = msg->TabletId;
     ClientCache->OnDisconnect(ev);
 
-    auto error = MakeError(E_REJECTED, TStringBuilder()
-        << "Disconnected from hive " << hive);
+    auto error = MakeError(
+        E_REJECTED,
+        TStringBuilder() << "Disconnected from hive " << hive);
     HandleConnectionError(ctx, error, hive, false);
 }
 
@@ -276,7 +294,9 @@ void THiveProxyActor::HandleConnectionError(
 
     HiveDisconnected = true;
 
-    LOG_ERROR_S(ctx, LogComponent,
+    LOG_ERROR_S(
+        ctx,
+        LogComponent,
         "Pipe to hive" << hive << " has been reset ");
 
     // Hive is a tablet, so it should eventually get up
@@ -367,9 +387,11 @@ void THiveProxyActor::HandleLockTabletExecutionLost(
     auto* state = states ? states->LockStates.FindPtr(tabletId) : nullptr;
     if (!state || state->Phase == PHASE_LOCKING) {
         // Unexpected notification, ignore
-        LOG_WARN_S(ctx, LogComponent,
-            "Unexpected lock lost notification from hive " << hive
-                << " for tablet " << tabletId);
+        LOG_WARN_S(
+            ctx,
+            LogComponent,
+            "Unexpected lock lost notification from hive "
+                << hive << " for tablet " << tabletId);
         return;
     }
 
@@ -494,7 +516,7 @@ void THiveProxyActor::HandleSendTabletMetrics(
     SendTabletMetrics(
         ctx,
         msg->Hive,
-        false      // resend
+        false   // resend
     );
 }
 
@@ -531,15 +553,20 @@ STFUNC(THiveProxyActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvTabletPipe::TEvClientConnected, HandleConnect);
         HFunc(TEvTabletPipe::TEvClientDestroyed, HandleDisconnect);
-        HFunc(TEvHive::TEvLockTabletExecutionResult,
+        HFunc(
+            TEvHive::TEvLockTabletExecutionResult,
             HandleLockTabletExecutionResult);
-        HFunc(TEvHive::TEvLockTabletExecutionLost,
+        HFunc(
+            TEvHive::TEvLockTabletExecutionLost,
             HandleLockTabletExecutionLost);
-        HFunc(TEvHive::TEvUnlockTabletExecutionResult,
+        HFunc(
+            TEvHive::TEvUnlockTabletExecutionResult,
             HandleUnlockTabletExecutionResult);
-        HFunc(TEvHive::TEvGetTabletStorageInfoRegistered,
+        HFunc(
+            TEvHive::TEvGetTabletStorageInfoRegistered,
             HandleGetTabletStorageInfoRegistered);
-        HFunc(TEvHive::TEvGetTabletStorageInfoResult,
+        HFunc(
+            TEvHive::TEvGetTabletStorageInfoResult,
             HandleGetTabletStorageInfoResult);
 
         HFunc(TEvHive::TEvCreateTabletReply, HandleCreateTabletReply);
@@ -548,7 +575,9 @@ STFUNC(THiveProxyActor::StateWork)
         HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics)
         HFunc(TEvLocal::TEvTabletMetricsAck, HandleMetricsResponse)
         IgnoreFunc(TEvLocal::TEvReconnect);
-        HFunc(TEvHiveProxyPrivate::TEvSendTabletMetrics, HandleSendTabletMetrics);
+        HFunc(
+            TEvHiveProxyPrivate::TEvSendTabletMetrics,
+            HandleSendTabletMetrics);
 
         HFunc(TEvHiveProxyPrivate::TEvRequestFinished, HandleRequestFinished);
 

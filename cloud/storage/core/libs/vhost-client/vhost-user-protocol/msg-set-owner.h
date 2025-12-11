@@ -6,8 +6,7 @@ namespace NVHostUser {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSetOwner
-    : public IMessage
+class TSetOwner: public IMessage
 {
 public:
     bool Execute(int sock) override
@@ -33,4 +32,4 @@ public:
     }
 };
 
-} // namespace NVHostUser
+}   // namespace NVHostUser

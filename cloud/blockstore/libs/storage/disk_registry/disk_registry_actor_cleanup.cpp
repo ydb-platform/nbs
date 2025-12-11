@@ -11,8 +11,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCleanupActor final
-    : public TActorBootstrapped<TCleanupActor>
+class TCleanupActor final: public TActorBootstrapped<TCleanupActor>
 {
 private:
     const TActorId Owner;
@@ -53,9 +52,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCleanupActor::TCleanupActor(
-        const TActorId& owner,
-        TRequestInfoPtr request,
-        TVector<TString> diskIds)
+    const TActorId& owner,
+    TRequestInfoPtr request,
+    TVector<TString> diskIds)
     : Owner(owner)
     , Request(std::move(request))
     , DiskIds(std::move(diskIds))
@@ -76,8 +75,9 @@ void TCleanupActor::Bootstrap(const TActorContext& ctx)
 
 void TCleanupActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)
 {
-    auto response = std::make_unique<TEvDiskRegistryPrivate::TEvCleanupDisksResponse>(
-        std::move(error));
+    auto response =
+        std::make_unique<TEvDiskRegistryPrivate::TEvCleanupDisksResponse>(
+            std::move(error));
 
     NCloud::Reply(ctx, *Request, std::move(response));
 
@@ -93,8 +93,8 @@ void TCleanupActor::DescribeVolume(const TActorContext& ctx, ui64 index)
 {
     ++PendingRequests;
 
-    auto request = std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
-        DiskIds[index]);
+    auto request =
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(DiskIds[index]);
 
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request), index);
 }
@@ -105,10 +105,13 @@ void TCleanupActor::DeallocateDisk(const TActorContext& ctx, ui64 index)
 
     const auto& id = DiskIds[index];
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_WORKER,
         "Deallocate disk " << id.Quote());
 
-    auto request = std::make_unique<TEvDiskRegistry::TEvDeallocateDiskRequest>();
+    auto request =
+        std::make_unique<TEvDiskRegistry::TEvDeallocateDiskRequest>();
     request->Record.SetDiskId(id);
 
     NCloud::Send(ctx, Owner, std::move(request), index);
@@ -131,8 +134,11 @@ void TCleanupActor::HandleDescribeVolumeResponse(
         DeallocateDisk(ctx, index);
     } else {
         const auto& id = DiskIds[index];
-        LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "Disk " << id.Quote() << " is still present in SchemeShard, keep it");
+        LOG_DEBUG_S(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "Disk " << id.Quote()
+                    << " is still present in SchemeShard, keep it");
     }
 
     if (!PendingRequests) {
@@ -153,13 +159,17 @@ void TCleanupActor::HandleDeallocateDiskResponse(
     const auto& id = DiskIds[index];
 
     if (HasError(msg->GetError())) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "Deallocate disk " << id.Quote() << " error: " <<
-            FormatError(msg->GetError()));
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "Deallocate disk " << id.Quote()
+                               << " error: " << FormatError(msg->GetError()));
     } else {
-        LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "Deallocate disk " << id.Quote() << " result: " <<
-            FormatError(msg->GetError()));
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "Deallocate disk " << id.Quote()
+                               << " result: " << FormatError(msg->GetError()));
     }
 
     if (!PendingRequests) {
@@ -184,8 +194,12 @@ STFUNC(TCleanupActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvSSProxy::TEvDescribeVolumeResponse, HandleDescribeVolumeResponse);
-        HFunc(TEvDiskRegistry::TEvDeallocateDiskResponse, HandleDeallocateDiskResponse);
+        HFunc(
+            TEvSSProxy::TEvDescribeVolumeResponse,
+            HandleDescribeVolumeResponse);
+        HFunc(
+            TEvDiskRegistry::TEvDeallocateDiskResponse,
+            HandleDeallocateDiskResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -209,11 +223,7 @@ void TDiskRegistryActor::HandleCleanupDisks(
     auto actor = NCloud::Register<TCleanupActor>(
         ctx,
         SelfId(),
-        CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            ev->Get()->CallContext
-        ),
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
         State->GetDisksToCleanup());
 
     Actors.insert(actor);

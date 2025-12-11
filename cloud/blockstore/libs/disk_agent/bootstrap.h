@@ -40,7 +40,8 @@ struct TServerModuleFactories
     std::function<NRdma::IServerPtr(
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
-        NRdma::TServerConfigPtr config)> RdmaServerFactory;
+        NRdma::TServerConfigPtr config)>
+        RdmaServerFactory;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

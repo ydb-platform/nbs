@@ -19,15 +19,15 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 ////////////////////////////////////////////////////////////////////////////////
 
 TTrimFreshLogActor::TTrimFreshLogActor(
-        TRequestInfoPtr requestInfo,
-        const TActorId& partitionActorId,
-        TTabletStorageInfoPtr tabletInfo,
-        ui64 trimFreshLogToCommitId,
-        ui32 recordGeneration,
-        ui32 perGenerationCounter,
-        TVector<ui32> freshChannels,
-        TString diskId,
-        TDuration timeout)
+    TRequestInfoPtr requestInfo,
+    const TActorId& partitionActorId,
+    TTabletStorageInfoPtr tabletInfo,
+    ui64 trimFreshLogToCommitId,
+    ui32 recordGeneration,
+    ui32 perGenerationCounter,
+    TVector<ui32> freshChannels,
+    TString diskId,
+    TDuration timeout)
     : RequestInfo(std::move(requestInfo))
     , PartitionActorId(partitionActorId)
     , TabletInfo(std::move(tabletInfo))
@@ -61,12 +61,14 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
     auto barriers = BuildGCBarriers(
         *TabletInfo,
         FreshChannels,
-        TVector<TPartialBlobId>(),  // knownBlobIds
+        TVector<TPartialBlobId>(),   // knownBlobIds
         TrimFreshLogToCommitId);
 
     for (auto channelId: FreshChannels) {
-        for (const auto& [bsProxyId, barrier]: barriers.GetRequests(channelId)) {
-            auto [barrierGen, barrierStep] = ParseCommitId(barrier.CollectCommitId);
+        for (const auto& [bsProxyId, barrier]: barriers.GetRequests(channelId))
+        {
+            auto [barrierGen, barrierStep] =
+                ParseCommitId(barrier.CollectCommitId);
 
             auto deadline = Timeout ? ctx.Now() + Timeout : TInstant::Max();
 
@@ -84,15 +86,14 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
                 false,                  // multicollect not allowed
                 false);                 // soft barrier
 
-            LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::PARTITION,
                 "[%lu] %s",
                 tabletId,
                 request->Print(true).data());
 
-            SendToBSProxy(
-                ctx,
-                bsProxyId,
-                request.release());
+            SendToBSProxy(ctx, bsProxyId, request.release());
 
             ++RequestsInFlight;
         }
@@ -137,8 +138,9 @@ void TTrimFreshLogActor::HandleCollectGarbageResult(
     if (auto error = MakeKikimrError(msg->Status, msg->ErrorReason);
         HasError(error))
     {
-        TCritEventParams critEventParams =
-             {{"disk", DiskId}, {"TabletId", TabletInfo->TabletID}};
+        TCritEventParams critEventParams = {
+            {"disk", DiskId},
+            {"TabletId", TabletInfo->TabletID}};
         if (msg->Status == NKikimrProto::EReplyStatus::DEADLINE) {
             ReportTrimFreshLogTimeout(FormatError(error), critEventParams);
         } else {
@@ -172,7 +174,9 @@ STFUNC(TTrimFreshLogActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvBlobStorage::TEvCollectGarbageResult, HandleCollectGarbageResult);
+        HFunc(
+            TEvBlobStorage::TEvCollectGarbageResult,
+            HandleCollectGarbageResult);
 
         default:
             HandleUnexpectedEvent(

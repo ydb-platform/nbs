@@ -19,8 +19,8 @@
 #include <contrib/ydb/core/driver_lib/run/factories.h>
 
 namespace NCloud::NBlockStore::NProto {
-    class TGrpcClientConfig;
-    class TRootKmsConfig;
+class TGrpcClientConfig;
+class TRootKmsConfig;
 }   // namespace NCloud::NBlockStore::NProto
 
 namespace NCloud::NBlockStore::NServer {
@@ -40,25 +40,30 @@ struct TServerModuleFactories
 
     std::function<NLogbroker::IServicePtr(
         NLogbroker::TLogbrokerConfigPtr config,
-        ILoggingServicePtr logging)> LogbrokerServiceFactory;
+        ILoggingServicePtr logging)>
+        LogbrokerServiceFactory;
 
     std::function<NIamClient::IIamTokenClientPtr(
         NIamClient::TIamClientConfigPtr config,
         ILoggingServicePtr logging,
         ISchedulerPtr scheduler,
-        ITimerPtr timer)> IamClientFactory;
+        ITimerPtr timer)>
+        IamClientFactory;
 
     std::function<IComputeClientPtr(
         NProto::TGrpcClientConfig config,
-        ILoggingServicePtr logging)> ComputeClientFactory;
+        ILoggingServicePtr logging)>
+        ComputeClientFactory;
 
     std::function<IKmsClientPtr(
         NProto::TGrpcClientConfig config,
-        ILoggingServicePtr logging)> KmsClientFactory;
+        ILoggingServicePtr logging)>
+        KmsClientFactory;
 
     std::function<IRootKmsClientPtr(
         const NProto::TRootKmsConfig& config,
-        ILoggingServicePtr logging)> RootKmsClientFactory;
+        ILoggingServicePtr logging)>
+        RootKmsClientFactory;
 
     std::function<ITraceServiceClientPtr(
         const ::NCloud::NProto::TGrpcClientConfig& config,
@@ -70,12 +75,14 @@ struct TServerModuleFactories
     std::function<NRdma::IServerPtr(
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
-        NRdma::TServerConfigPtr config)> RdmaServerFactory;
+        NRdma::TServerConfigPtr config)>
+        RdmaServerFactory;
 
     std::function<NRdma::IClientPtr(
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
-        NRdma::TClientConfigPtr config)> RdmaClientFactory;
+        NRdma::TClientConfigPtr config)>
+        RdmaClientFactory;
 
     std::function<NNotify::IServicePtr(
         NNotify::TNotifyConfigPtr config,
@@ -86,8 +93,7 @@ struct TServerModuleFactories
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TBootstrapYdb final
-    : public TBootstrapBase
+struct TBootstrapYdb final: public TBootstrapBase
 {
 private:
     std::shared_ptr<NKikimr::TModuleFactories> ModuleFactories;

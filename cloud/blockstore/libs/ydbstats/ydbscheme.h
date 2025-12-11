@@ -26,9 +26,9 @@ struct TStatsTableScheme
     TStatsTableScheme() = default;
 
     TStatsTableScheme(
-            TVector<NYdb::TColumn> columns,
-            TVector<TString> keyColumns,
-            TMaybe<NYdb::NTable::TTtlSettings> ttl)
+        TVector<NYdb::TColumn> columns,
+        TVector<TString> keyColumns,
+        TMaybe<NYdb::NTable::TTtlSettings> ttl)
         : Columns(std::move(columns))
         , KeyColumns(std::move(keyColumns))
         , Ttl(std::move(ttl))

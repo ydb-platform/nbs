@@ -20,7 +20,10 @@ void SetupTabletInfo(TTabletStorageInfo& info, ui32 nchannels)
     info.Channels = TVector<TTabletChannelInfo>(nchannels);
 }
 
-void AddNewHistoryToTabletInfo(TTabletStorageInfo& info, ui32 newGeneration, ui32 newGroup)
+void AddNewHistoryToTabletInfo(
+    TTabletStorageInfo& info,
+    ui32 newGeneration,
+    ui32 newGroup)
 {
     for (ui64 channel = 0; channel < info.Channels.size(); ++channel) {
         info.Channels[channel].History.push_back({newGeneration, newGroup});
@@ -66,15 +69,15 @@ Y_UNIT_TEST_SUITE(TGCLogicTest)
 
         SetupTabletInfo(*tabletInfo, 4);
 
-        AddNewHistoryToTabletInfo(*tabletInfo, 0 , 0);
-        AddNewHistoryToTabletInfo(*tabletInfo, 3 , 1);
+        AddNewHistoryToTabletInfo(*tabletInfo, 0, 0);
+        AddNewHistoryToTabletInfo(*tabletInfo, 3, 1);
 
         TVector<ui32> channels = {3};
 
         auto response = BuildGCRequests(
             *tabletInfo,
             channels,
-            { TPartialBlobId(3, 10, 3, 4*1024*1024, 0, 0) },
+            {TPartialBlobId(3, 10, 3, 4 * 1024 * 1024, 0, 0)},
             TVector<TPartialBlobId>(),
             false,
             MakeCommitId(0, 1000),
@@ -103,16 +106,16 @@ Y_UNIT_TEST_SUITE(TGCLogicTest)
         TTabletStorageInfoPtr tabletInfo = MakeIntrusive<TTabletStorageInfo>();
 
         SetupTabletInfo(*tabletInfo, 4);
-        AddNewHistoryToTabletInfo(*tabletInfo, 0 , 0);
-        AddNewHistoryToTabletInfo(*tabletInfo, 2 , 1);
-        AddNewHistoryToTabletInfo(*tabletInfo, 3 , 2);
+        AddNewHistoryToTabletInfo(*tabletInfo, 0, 0);
+        AddNewHistoryToTabletInfo(*tabletInfo, 2, 1);
+        AddNewHistoryToTabletInfo(*tabletInfo, 3, 2);
 
         TVector<ui32> channels = {3};
 
         auto response = BuildGCRequests(
             *tabletInfo,
             channels,
-            { TPartialBlobId(3, 10, 3, 4*1024*1024, 0, 0) },
+            {TPartialBlobId(3, 10, 3, 4 * 1024 * 1024, 0, 0)},
             TVector<TPartialBlobId>(),
             false,
             MakeCommitId(2, 1000),
@@ -142,20 +145,21 @@ Y_UNIT_TEST_SUITE(TGCLogicTest)
         UNIT_ASSERT_VALUES_EQUAL(NumberOfGarbageBlobs, 0);
     }
 
-    Y_UNIT_TEST(ShouldNotCollectGroupsNoLongerActiveIfTabletGenerationHasNotChanged)
+    Y_UNIT_TEST(
+        ShouldNotCollectGroupsNoLongerActiveIfTabletGenerationHasNotChanged)
     {
         TTabletStorageInfoPtr tabletInfo = MakeIntrusive<TTabletStorageInfo>();
 
         SetupTabletInfo(*tabletInfo, 4);
-        AddNewHistoryToTabletInfo(*tabletInfo, 0 , 0);
-        AddNewHistoryToTabletInfo(*tabletInfo, 3 , 1);
+        AddNewHistoryToTabletInfo(*tabletInfo, 0, 0);
+        AddNewHistoryToTabletInfo(*tabletInfo, 3, 1);
 
         TVector<ui32> channels = {3};
 
         auto response = BuildGCRequests(
             *tabletInfo,
             channels,
-            { TPartialBlobId(3, 10, 3, 4*1024*1024, 0, 0) },
+            {TPartialBlobId(3, 10, 3, 4 * 1024 * 1024, 0, 0)},
             TVector<TPartialBlobId>(),
             false,
             MakeCommitId(3, 100),
@@ -189,27 +193,27 @@ Y_UNIT_TEST_SUITE(TGCLogicTest)
     {
         {
             TVector<ui64> checkpoints = {};
-            TVector<ui64> commitIds = { 351, 350, 151, 150, 91, 90 };
+            TVector<ui64> commitIds = {351, 350, 151, 150, 91, 90};
 
             TVector<ui64> result;
             FindGarbageVersions(checkpoints, commitIds, result);
 
-            AssertEqual(result, { 351, 350, 151, 150, 91, 90 });
+            AssertEqual(result, {351, 350, 151, 150, 91, 90});
         }
 
         {
-            TVector<ui64> checkpoints = { 300, 200, 100};
-            TVector<ui64> commitIds = { 350 };
+            TVector<ui64> checkpoints = {300, 200, 100};
+            TVector<ui64> commitIds = {350};
 
             TVector<ui64> result;
             FindGarbageVersions(checkpoints, commitIds, result);
 
-            AssertEqual(result, { 350 });
+            AssertEqual(result, {350});
         }
 
         {
-            TVector<ui64> checkpoints = { 300, 200, 100};
-            TVector<ui64> commitIds = { 250 };
+            TVector<ui64> checkpoints = {300, 200, 100};
+            TVector<ui64> commitIds = {250};
 
             TVector<ui64> result;
             FindGarbageVersions(checkpoints, commitIds, result);
@@ -218,13 +222,13 @@ Y_UNIT_TEST_SUITE(TGCLogicTest)
         }
 
         {
-            TVector<ui64> checkpoints = { 300, 200, 100 };
-            TVector<ui64> commitIds = { 351, 350, 151, 150, 91, 90 };
+            TVector<ui64> checkpoints = {300, 200, 100};
+            TVector<ui64> commitIds = {351, 350, 151, 150, 91, 90};
 
             TVector<ui64> result;
             FindGarbageVersions(checkpoints, commitIds, result);
 
-            AssertEqual(result, { 351, 350, 150, 90 });
+            AssertEqual(result, {351, 350, 150, 90});
         }
     }
 
@@ -233,8 +237,8 @@ Y_UNIT_TEST_SUITE(TGCLogicTest)
         TTabletStorageInfoPtr tabletInfo = MakeIntrusive<TTabletStorageInfo>();
 
         SetupTabletInfo(*tabletInfo, 4);
-        AddNewHistoryToTabletInfo(*tabletInfo, 0 , 0);
-        AddNewHistoryToTabletInfo(*tabletInfo, 3 , 1);
+        AddNewHistoryToTabletInfo(*tabletInfo, 0, 0);
+        AddNewHistoryToTabletInfo(*tabletInfo, 3, 1);
         AddNewChannel(*tabletInfo, 5, 2);
 
         TVector<ui32> channels = {3, 4};
@@ -242,7 +246,7 @@ Y_UNIT_TEST_SUITE(TGCLogicTest)
         auto response = BuildGCRequests(
             *tabletInfo,
             channels,
-            { TPartialBlobId(3, 10, 3, 4*1024*1024, 0, 0) },
+            {TPartialBlobId(3, 10, 3, 4 * 1024 * 1024, 0, 0)},
             TVector<TPartialBlobId>(),
             false,
             MakeCommitId(3, 100),
@@ -257,17 +261,17 @@ Y_UNIT_TEST_SUITE(TGCLogicTest)
 
         SetupTabletInfo(*tabletInfo, 4);
 
-        AddNewHistoryToTabletInfo(*tabletInfo, std::make_pair(3, 3), 0 , 0);
-        AddNewHistoryToTabletInfo(*tabletInfo, std::make_pair(3, 3), 1 , 1);
-        AddNewHistoryToTabletInfo(*tabletInfo, std::make_pair(3, 3), 4 , 2);
-        AddNewHistoryToTabletInfo(*tabletInfo, std::make_pair(3, 3), 6 , 3);
+        AddNewHistoryToTabletInfo(*tabletInfo, std::make_pair(3, 3), 0, 0);
+        AddNewHistoryToTabletInfo(*tabletInfo, std::make_pair(3, 3), 1, 1);
+        AddNewHistoryToTabletInfo(*tabletInfo, std::make_pair(3, 3), 4, 2);
+        AddNewHistoryToTabletInfo(*tabletInfo, std::make_pair(3, 3), 6, 3);
 
         TVector<ui32> channels = {3};
 
         auto response = BuildGCRequests(
             *tabletInfo,
             channels,
-            { TPartialBlobId(3, 10, 3, 4*1024*1024, 0, 0) },
+            {TPartialBlobId(3, 10, 3, 4 * 1024 * 1024, 0, 0)},
             TVector<TPartialBlobId>(),
             false,
             MakeCommitId(2, 1000),
@@ -293,7 +297,7 @@ Y_UNIT_TEST_SUITE(TGCLogicTest)
         response = BuildGCRequests(
             *tabletInfo,
             channels,
-            { TPartialBlobId(3, 10, 3, 4*1024*1024, 0, 0) },
+            {TPartialBlobId(3, 10, 3, 4 * 1024 * 1024, 0, 0)},
             TVector<TPartialBlobId>(),
             true,
             MakeCommitId(2, 1000),
@@ -323,10 +327,10 @@ Y_UNIT_TEST_SUITE(TGCLogicTest)
 
         SetupTabletInfo(*tabletInfo, 4);
 
-        AddNewHistoryToTabletInfo(*tabletInfo, std::make_pair(3, 3), 0 , 0);
-        AddNewHistoryToTabletInfo(*tabletInfo, std::make_pair(3, 3), 1 , 1);
-        AddNewHistoryToTabletInfo(*tabletInfo, std::make_pair(3, 3), 4 , 2);
-        AddNewHistoryToTabletInfo(*tabletInfo, std::make_pair(3, 3), 6 , 3);
+        AddNewHistoryToTabletInfo(*tabletInfo, std::make_pair(3, 3), 0, 0);
+        AddNewHistoryToTabletInfo(*tabletInfo, std::make_pair(3, 3), 1, 1);
+        AddNewHistoryToTabletInfo(*tabletInfo, std::make_pair(3, 3), 4, 2);
+        AddNewHistoryToTabletInfo(*tabletInfo, std::make_pair(3, 3), 6, 3);
 
         TVector<ui32> channels = {3};
 
@@ -359,15 +363,16 @@ Y_UNIT_TEST_SUITE(TGCLogicTest)
 
     Y_UNIT_TEST(ShouldRemoveDuplicates)
     {
-        auto blob1 = TPartialBlobId(2, 10, 3, 4*1024*1024, 0, 0);
-        auto blob2 = TPartialBlobId(3, 10, 2, 4*1024*1024, 0, 0);
-        auto blob3 = TPartialBlobId(3, 10, 4, 4*1024*1024, 0, 0);
-        auto blob4 = TPartialBlobId(3, 11, 6, 4*1024*1024, 0, 0);
+        auto blob1 = TPartialBlobId(2, 10, 3, 4 * 1024 * 1024, 0, 0);
+        auto blob2 = TPartialBlobId(3, 10, 2, 4 * 1024 * 1024, 0, 0);
+        auto blob3 = TPartialBlobId(3, 10, 4, 4 * 1024 * 1024, 0, 0);
+        auto blob4 = TPartialBlobId(3, 11, 6, 4 * 1024 * 1024, 0, 0);
 
         TVector<TPartialBlobId> newBlobs = {
             // previous generation, should only be present in garbageBlobs
             blob1,
-            // present in both newBlobs and garbageBlobs, should be excluded from both
+            // present in both newBlobs and garbageBlobs, should be excluded
+            // from both
             blob2,
             // present only in newBlobs, should be kept
             blob3,
@@ -376,7 +381,8 @@ Y_UNIT_TEST_SUITE(TGCLogicTest)
         TVector<TPartialBlobId> garbageBlobs = {
             // previous generation, should only be present in garbageBlobs
             blob1,
-            // present in both newBlobs and garbageBlobs, should be excluded from both
+            // present in both newBlobs and garbageBlobs, should be excluded
+            // from both
             blob2,
             // present only in garbageBlobs, should be kept
             blob4,

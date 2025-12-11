@@ -16,8 +16,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAuthService final
-    : public IFileStoreService
+class TAuthService final: public IFileStoreService
 {
 private:
     const IFileStoreServicePtr Service;
@@ -26,9 +25,9 @@ private:
 
 public:
     TAuthService(
-            IFileStoreServicePtr service,
-            IAuthProviderPtr authProvider,
-            TVector<TString> actionsNoAuth)
+        IFileStoreServicePtr service,
+        IAuthProviderPtr authProvider,
+        TVector<TString> actionsNoAuth)
         : Service(std::move(service))
         , AuthProvider(std::move(authProvider))
         , ActionsNoAuth(std::move(actionsNoAuth))
@@ -44,18 +43,18 @@ public:
         Service->Stop();
     }
 
-#define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr ctx,                                                   \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        using TRequest = NProto::T##name##Request;                             \
-        using TResponse = NProto::T##name##Response;                           \
-        return ExecuteRequest<TRequest, TResponse>(                            \
-            std::move(ctx),                                                    \
-            std::move(request));                                               \
-    }                                                                          \
-// FILESTORE_IMPLEMENT_METHOD
+#define FILESTORE_IMPLEMENT_METHOD(name, ...)                       \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr ctx,                                        \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        using TRequest = NProto::T##name##Request;                  \
+        using TResponse = NProto::T##name##Response;                \
+        return ExecuteRequest<TRequest, TResponse>(                 \
+            std::move(ctx),                                         \
+            std::move(request));                                    \
+    }                                                               \
+    // FILESTORE_IMPLEMENT_METHOD
 
     FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD)
     FILESTORE_IMPLEMENT_METHOD(ReadDataLocal)
@@ -66,7 +65,8 @@ public:
     void GetSessionEventsStream(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TGetSessionEventsRequest> request,
-        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) override
+        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler)
+        override
     {
         // TODO: support auth for this method
         Service->GetSessionEventsStream(
@@ -85,9 +85,8 @@ private:
         const auto& internal = headers.GetInternal();
         auto permissions = GetRequestPermissions(*request, ActionsNoAuth);
 
-        bool needAuth = AuthProvider->NeedAuth(
-            internal.GetRequestSource(),
-            permissions);
+        bool needAuth =
+            AuthProvider->NeedAuth(internal.GetRequestSource(), permissions);
 
         if (!needAuth) {
             return ExecuteServiceRequest(std::move(ctx), std::move(request));
@@ -114,7 +113,9 @@ private:
         auto promise = NewPromise<TResponse>();
 
         authResponse.Subscribe(
-            [=, this, request = std::move(request), ctx = std::move(ctx)] (const auto& future) mutable {
+            [=, this, request = std::move(request), ctx = std::move(ctx)](
+                const auto& future) mutable
+            {
                 const auto& error = future.GetValue();
 
                 if (HasError(error)) {
@@ -122,26 +123,22 @@ private:
                     return;
                 }
 
-                ExecuteServiceRequest(
-                    std::move(ctx),
-                    std::move(request)
-                ).Subscribe(
-                    [=] (const auto& future) mutable {
-                        promise.SetValue(future.GetValue());
-                    });
+                ExecuteServiceRequest(std::move(ctx), std::move(request))
+                    .Subscribe([=](const auto& future) mutable
+                               { promise.SetValue(future.GetValue()); });
             });
 
         return promise.GetFuture();
     }
 
-#define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
-    TFuture<NProto::T##name##Response> ExecuteServiceRequest(                  \
-        TCallContextPtr ctx,                                                   \
-        std::shared_ptr<NProto::T##name##Request> request)                     \
-    {                                                                          \
-        return Service->name(std::move(ctx), std::move(request));              \
-    }                                                                          \
-// FILESTORE_IMPLEMENT_METHOD
+#define FILESTORE_IMPLEMENT_METHOD(name, ...)                     \
+    TFuture<NProto::T##name##Response> ExecuteServiceRequest(     \
+        TCallContextPtr ctx,                                      \
+        std::shared_ptr<NProto::T##name##Request> request)        \
+    {                                                             \
+        return Service->name(std::move(ctx), std::move(request)); \
+    }                                                             \
+    // FILESTORE_IMPLEMENT_METHOD
 
     FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD)
     FILESTORE_IMPLEMENT_METHOD(ReadDataLocal)

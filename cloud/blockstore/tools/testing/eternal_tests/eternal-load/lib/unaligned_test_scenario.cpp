@@ -33,46 +33,47 @@ constexpr size_t RegionBlockByteCount = 1_KB;
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
-* Test scenario:
-*
-* File is split into N non-overlapping regions of various size, each region
-* is at least |MinRegionByteCount| bytes and at most |MaxRegionByteCount| bytes.
-*
-* |IoDepth| workers run concurrently. Each worker performs read and write
-* operations in an infinite cycle. The ratio between read and write operations
-* is determined by |WriteOperationPercentage| parameter.
-*
-* Write operation:
-* - A worker randomly selects a region that is not currently being written;
-* - The region is locked by the worker for writing;
-* - The worker updates the region metadata: new sequence number, write time;
-* - The worker generates new data for the region and writes it using a series
-*   of consecutive write requests of various size (from |MinWriteByteCount| to
-*   |MaxWriteByteCount|);
-* - The worker updates the region metadata: current state = new state;
-* - The region is unlocked.
-*
-* Read operation:
-* - A worker selects a random offset and length (from |MinReadByteCount| to
-*   |MaxReadByteCount|) within the data area of the file (may overlap several
-*   regions);
-* - The worker reads the data using a single read request;
-* - The worker checks the data integrity:
-*   - For each region that was fully or partially read, the worker checks the
-*     region state before and after the read;
-*   - If the region state did not change during the read, the data is verified
-*     against the expected data pattern;
-*   - If the region state changed during the read, but the worker knows all
-*     intermediate states (i.e. the region was not written by another worker
-*     during the read), the data is verified against all known patterns;
-*   - Otherwise, the data is not verified.
-*
-* Data:
-* - Each region is split into blocks of size |RegionBlockByteCount|, each filled
-*   with a generated pattern,
-* - The values of TRegionState and block offset are used as a seed for the
-*   pattern generation.
-*/
+ * Test scenario:
+ *
+ * File is split into N non-overlapping regions of various size, each region
+ * is at least |MinRegionByteCount| bytes and at most |MaxRegionByteCount|
+ * bytes.
+ *
+ * |IoDepth| workers run concurrently. Each worker performs read and write
+ * operations in an infinite cycle. The ratio between read and write operations
+ * is determined by |WriteOperationPercentage| parameter.
+ *
+ * Write operation:
+ * - A worker randomly selects a region that is not currently being written;
+ * - The region is locked by the worker for writing;
+ * - The worker updates the region metadata: new sequence number, write time;
+ * - The worker generates new data for the region and writes it using a series
+ *   of consecutive write requests of various size (from |MinWriteByteCount| to
+ *   |MaxWriteByteCount|);
+ * - The worker updates the region metadata: current state = new state;
+ * - The region is unlocked.
+ *
+ * Read operation:
+ * - A worker selects a random offset and length (from |MinReadByteCount| to
+ *   |MaxReadByteCount|) within the data area of the file (may overlap several
+ *   regions);
+ * - The worker reads the data using a single read request;
+ * - The worker checks the data integrity:
+ *   - For each region that was fully or partially read, the worker checks the
+ *     region state before and after the read;
+ *   - If the region state did not change during the read, the data is verified
+ *     against the expected data pattern;
+ *   - If the region state changed during the read, but the worker knows all
+ *     intermediate states (i.e. the region was not written by another worker
+ *     during the read), the data is verified against all known patterns;
+ *   - Otherwise, the data is not verified.
+ *
+ * Data:
+ * - Each region is split into blocks of size |RegionBlockByteCount|, each
+ * filled with a generated pattern,
+ * - The values of TRegionState and block offset are used as a seed for the
+ *   pattern generation.
+ */
 
 struct Y_PACKED TFileHeader
 {
@@ -344,8 +345,7 @@ public:
             }
         }
 
-        switch (Operation)
-        {
+        switch (Operation) {
             case EOperation::Read:
                 TestScenario->Read(service, ReadBuffer);
                 Operation = EOperation::Idle;
@@ -377,22 +377,23 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define INIT_CONFIG_PARAMS_HELPER(config, x) \
-    if ((config).GetMin##x() > 0) { \
-        Min##x = (config).GetMin##x(); \
-    } \
-    if ((config).GetMax##x() > 0) { \
-        Max##x = (config).GetMax##x(); \
-    } \
-    Y_ENSURE(Min##x <= Max##x, \
-        "Invalid configuration: Min" #x " (" << Min##x << ") > Max" #x \
-        " (" << Max##x << ")"); \
-    (config).SetMin##x(Min##x); \
-    (config).SetMax##x(Max##x); \
+#define INIT_CONFIG_PARAMS_HELPER(config, x)                                \
+    if ((config).GetMin##x() > 0) {                                         \
+        Min##x = (config).GetMin##x();                                      \
+    }                                                                       \
+    if ((config).GetMax##x() > 0) {                                         \
+        Max##x = (config).GetMax##x();                                      \
+    }                                                                       \
+    Y_ENSURE(                                                               \
+        Min##x <= Max##x,                                                   \
+        "Invalid configuration: Min" #x " (" << Min##x << ") > Max" #x " (" \
+                                             << Max##x << ")");             \
+    (config).SetMin##x(Min##x);                                             \
+    (config).SetMax##x(Max##x);
 
 TUnalignedTestScenario::TUnalignedTestScenario(
-        IConfigHolderPtr configHolder,
-        const TLog& log)
+    IConfigHolderPtr configHolder,
+    const TLog& log)
     : ConfigHolder(std::move(configHolder))
     , Log(log)
     , TestStartTime(Now())
@@ -426,10 +427,9 @@ ui64 TUnalignedTestScenario::GetNextRegionByteCount(
 
     // We want to ensure that the remaining size will be enough to fit at
     // least one region
-    ui64 maxRegionByteCount = Min(
-        MaxRegionByteCount,
-        remainingFileSize - MinRegionByteCount - sizeof(TRegionMetadata)
-    );
+    ui64 maxRegionByteCount =
+        Min(MaxRegionByteCount,
+            remainingFileSize - MinRegionByteCount - sizeof(TRegionMetadata));
 
     Y_ABORT_UNLESS(MinRegionByteCount <= maxRegionByteCount);
 
@@ -799,10 +799,8 @@ void TUnalignedTestScenario::ValidateReadDataRegion(
                 reinterpret_cast<char*>(&regionData),
                 fragment.data(),
                 fragment.size());
-            sb << " ("
-               << regionData.SeqNum << ", "
-               << regionData.TestStartTime << ", "
-               << regionData.WriteTime << ")";
+            sb << " (" << regionData.SeqNum << ", " << regionData.TestStartTime
+               << ", " << regionData.WriteTime << ")";
         }
         sb << "\n  " << HexText(fragment);
 
@@ -868,8 +866,7 @@ size_t TUnalignedTestScenario::WriteBegin(IService& service)
         metadata.NewState = {
             .SeqNum = NextSeqNum++,
             .TestStartTime = TestStartTime.GetValue(),
-            .LastWriteTime = Now().GetValue()
-        };
+            .LastWriteTime = Now().GetValue()};
     } else {
         STORAGE_DEBUG(
             "Writing to region #"

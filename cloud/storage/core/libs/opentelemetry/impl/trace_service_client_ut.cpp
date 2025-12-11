@@ -37,7 +37,7 @@ Y_UNIT_TEST_SUITE(TraceServiceClientTest)
         Y_DEFER
         {
             client->Stop();
-        };
+        }
 
         auto testDuration = TDuration::Seconds(10);
         TVector<TFuture<TResultOrError<ExportTraceServiceResponse>>> results;

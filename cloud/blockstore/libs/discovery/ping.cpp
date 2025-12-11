@@ -13,7 +13,6 @@
 #include <contrib/libs/grpc/include/grpcpp/impl/codegen/completion_queue.h>
 #include <contrib/libs/grpc/include/grpcpp/impl/codegen/status.h>
 #include <contrib/libs/grpc/include/grpcpp/security/credentials.h>
-
 #include <contrib/ydb/library/actors/prof/tag.h>
 
 #include <util/stream/file.h>
@@ -44,17 +43,16 @@ struct TRequestContext
     TPromise<TPingResponseInfo> Promise;
 
     TRequestContext(
-            grpc::CompletionQueue& cq,
-            TString host,
-            ui16 port,
-            TDuration timeout,
-            std::shared_ptr<grpc::ChannelCredentials> channelCredentials)
+        grpc::CompletionQueue& cq,
+        TString host,
+        ui16 port,
+        TDuration timeout,
+        std::shared_ptr<grpc::ChannelCredentials> channelCredentials)
         : CQ(cq)
         , ResponseInfo{std::move(host), port, {}, {}}
         , Service(grpc::CreateChannel(
-            Sprintf("%s:%u", ResponseInfo.Host.c_str(), port),
-            channelCredentials
-        ))
+              Sprintf("%s:%u", ResponseInfo.Host.c_str(), port),
+              channelCredentials))
         , Promise(NewPromise<TPingResponseInfo>())
     {
         RequestStartTs = Now();
@@ -89,42 +87,40 @@ public:
         bool ok;
         while (CQ.Next(&tag, &ok)) {
             std::unique_ptr<TRequestContext> requestContext(
-                static_cast<TRequestContext*>(tag)
-            );
+                static_cast<TRequestContext*>(tag));
 
             if (!requestContext->Status.ok()) {
                 auto* e = requestContext->ResponseInfo.Record.MutableError();
-                e->SetCode(MAKE_GRPC_ERROR(requestContext->Status.error_code()));
+                e->SetCode(
+                    MAKE_GRPC_ERROR(requestContext->Status.error_code()));
                 e->SetMessage(requestContext->Status.error_message());
             }
             requestContext->ResponseInfo.Time =
                 Now() - requestContext->RequestStartTs;
 
             requestContext->Promise.SetValue(
-                std::move(requestContext->ResponseInfo)
-            );
+                std::move(requestContext->ResponseInfo));
         }
 
         return nullptr;
     }
 
-    TFuture<TPingResponseInfo> Ping(TString host, ui16 port, TDuration timeout) override
+    TFuture<TPingResponseInfo>
+    Ping(TString host, ui16 port, TDuration timeout) override
     {
         auto requestContext = std::make_unique<TRequestContext>(
             CQ,
             std::move(host),
             port,
             timeout,
-            ChannelCredentials
-        );
+            ChannelCredentials);
 
         auto future = requestContext->Promise.GetFuture();
 
         requestContext->Reader->Finish(
             &requestContext->ResponseInfo.Record,
             &requestContext->Status,
-            &*requestContext
-        );
+            &*requestContext);
 
         // At this point, requestContext object can already be freed after
         // request completion. It is not safe to use it.
@@ -147,9 +143,7 @@ public:
 
 TString ReadFile(const TString& name)
 {
-    return name
-        ? TFileInput(name).ReadAll()
-        : TString();
+    return name ? TFileInput(name).ReadAll() : TString();
 }
 
 }   // namespace
@@ -159,19 +153,14 @@ TString ReadFile(const TString& name)
 IPingClientPtr CreateSecurePingClient(const TString& rootCertFile)
 {
     grpc::SslCredentialsOptions options{
-        .pem_root_certs = ReadFile(rootCertFile)
-    };
+        .pem_root_certs = ReadFile(rootCertFile)};
 
-    return std::make_shared<TPingClient>(
-        grpc::SslCredentials(options)
-    );
+    return std::make_shared<TPingClient>(grpc::SslCredentials(options));
 }
 
 IPingClientPtr CreateInsecurePingClient()
 {
-    return std::make_shared<TPingClient>(
-        grpc::InsecureChannelCredentials()
-    );
+    return std::make_shared<TPingClient>(grpc::InsecureChannelCredentials());
 }
 
 }   // namespace NCloud::NBlockStore::NDiscovery

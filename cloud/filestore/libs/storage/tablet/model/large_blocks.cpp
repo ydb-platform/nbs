@@ -18,11 +18,10 @@ struct TMarkerInfo
     explicit TMarkerInfo(TDeletionMarker marker, IAllocator* alloc)
         : Marker(marker)
         , UnprocessedPart(
-            alloc,
-            marker.BlockIndex,
-            marker.BlockIndex + marker.BlockCount)
-    {
-    }
+              alloc,
+              marker.BlockIndex,
+              marker.BlockIndex + marker.BlockCount)
+    {}
 };
 
 struct TMarkerInfoLess
@@ -32,13 +31,13 @@ struct TMarkerInfoLess
     bool operator()(const TMarkerInfo& lhs, const TMarkerInfo& rhs) const
     {
         return std::make_tuple(
-            GetEnd(lhs),
-            lhs.Marker.BlockIndex,
-            lhs.Marker.CommitId
-        ) < std::make_tuple(
-            GetEnd(rhs),
-            rhs.Marker.BlockIndex,
-            rhs.Marker.CommitId);
+                   GetEnd(lhs),
+                   lhs.Marker.BlockIndex,
+                   lhs.Marker.CommitId) <
+               std::make_tuple(
+                   GetEnd(rhs),
+                   rhs.Marker.BlockIndex,
+                   rhs.Marker.CommitId);
     }
 
     bool operator()(const ui64 lhs, const TMarkerInfo& rhs) const
@@ -68,8 +67,8 @@ struct TBlockVisitor final: public ILargeBlockVisitor
 
     void Accept(const TBlockDeletion& deletion) override
     {
-        if (deletion.CommitId < Block.MaxCommitId
-                && deletion.CommitId > Block.MinCommitId)
+        if (deletion.CommitId < Block.MaxCommitId &&
+            deletion.CommitId > Block.MinCommitId)
         {
             Block.MaxCommitId = deletion.CommitId;
             Affected = true;
@@ -106,8 +105,7 @@ struct TLargeBlocks::TImpl
     explicit TImpl(IAllocator* alloc)
         : Alloc(alloc)
         , NodeId2Markers(alloc)
-    {
-    }
+    {}
 
     void Apply(
         ILargeBlockVisitor& visitor,
@@ -136,18 +134,15 @@ struct TLargeBlocks::TImpl
                 continue;
             }
 
-            const auto intersectionStart = Max(
-                rangeIt->Marker.BlockIndex,
-                blockIndex);
-            const auto intersectionEnd = Min(
-                rangeIt->Marker.BlockIndex + rangeIt->Marker.BlockCount,
-                blockIndex + blockCount);
+            const auto intersectionStart =
+                Max(rangeIt->Marker.BlockIndex, blockIndex);
+            const auto intersectionEnd =
+                Min(rangeIt->Marker.BlockIndex + rangeIt->Marker.BlockCount,
+                    blockIndex + blockCount);
 
             for (auto b = intersectionStart; b < intersectionEnd; ++b) {
-                visitor.Accept({
-                    rangeIt->Marker.NodeId,
-                    b,
-                    rangeIt->Marker.CommitId});
+                visitor.Accept(
+                    {rangeIt->Marker.NodeId, b, rangeIt->Marker.CommitId});
             }
 
             if (update) {
@@ -185,20 +180,11 @@ struct TLargeBlocks::TImpl
         return affected;
     }
 
-    void MarkProcessed(
-        ui64 nodeId,
-        ui64 commitId,
-        ui32 blockIndex,
-        ui32 blocksCount)
+    void
+    MarkProcessed(ui64 nodeId, ui64 commitId, ui32 blockIndex, ui32 blocksCount)
     {
         TNoOpVisitor visitor;
-        Apply(
-            visitor,
-            nodeId,
-            blockIndex,
-            blocksCount,
-            commitId,
-            true);
+        Apply(visitor, nodeId, blockIndex, blocksCount, commitId, true);
     }
 };
 

@@ -22,14 +22,14 @@ std::tuple<ui64, ui64> SafeRange(ui64 offset, ui64 length)
     }
 
     if (offset < MaxOffset - length) {
-        return { offset, offset + length };
+        return {offset, offset + length};
     }
-    return { offset, MaxOffset };
+    return {offset, MaxOffset};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TLock : TSimpleRefCount<TLock>
+struct TLock: TSimpleRefCount<TLock>
 {
     ui64 LockId;
     ELockMode Mode;
@@ -77,7 +77,8 @@ public:
 
     bool Insert(ui64 min, ui64 max, TLockPtr lock)
     {
-        return RangesByMax.emplace(max, TRange(min, max, std::move(lock))).second;
+        return RangesByMax.emplace(max, TRange(min, max, std::move(lock)))
+            .second;
     }
 
     TVector<ui64> Erase(ui64 min, ui64 max)
@@ -112,10 +113,8 @@ public:
         return removedLocks;
     }
 
-    const_iterator FindConflictingRange(
-        ui64 min,
-        ui64 max,
-        ELockMode mode) const
+    const_iterator
+    FindConflictingRange(ui64 min, ui64 max, ELockMode mode) const
     {
         auto it = RangesByMax.upper_bound(min);
         while (it != RangesByMax.end() && it->second.Min < max) {
@@ -152,8 +151,7 @@ struct TOwner
 
     bool Equal(const TOwner& other) const
     {
-        return SessionId == other.SessionId
-            && OwnerId == other.OwnerId;
+        return SessionId == other.SessionId && OwnerId == other.OwnerId;
     }
 
     size_t GetHash() const
@@ -168,7 +166,7 @@ struct TOwnerOps
 {
     struct TEqual
     {
-        bool operator ()(const TOwner& l, const TOwner& r) const
+        bool operator()(const TOwner& l, const TOwner& r) const
         {
             return l.Equal(r);
         }
@@ -176,14 +174,15 @@ struct TOwnerOps
 
     struct THash
     {
-        size_t operator ()(const TOwner& owner) const
+        size_t operator()(const TOwner& owner) const
         {
             return owner.GetHash();
         }
     };
 };
 
-using TOwnedRanges = THashMap<TOwner, TLockedRanges, TOwnerOps::THash, TOwnerOps::TEqual>;
+using TOwnedRanges =
+    THashMap<TOwner, TLockedRanges, TOwnerOps::THash, TOwnerOps::TEqual>;
 
 struct TLockedNodeInfo
 {
@@ -225,8 +224,7 @@ struct TRangeLocks::TImpl
     THashMap<ui64, TLockedNodeInfo> LockedNodeInfoByNode;
 };
 
-
-IOutputStream& operator <<(IOutputStream& out, const TLockRange& range)
+IOutputStream& operator<<(IOutputStream& out, const TLockRange& range)
 {
     return out << "{ OwnerId: " << range.OwnerId << ", NodeId: " << range.NodeId
                << ", Offset: " << range.Offset << ", Length: " << range.Length
@@ -282,7 +280,7 @@ TRangeLockOperationResult TRangeLocks::Release(
     if (node == nullptr) {
         return TRangeLockOperationResult::MakeSucceeded();
     }
-    if(range.LockOrigin != node->LockOrigin && !node->OwnedRanges.empty()) {
+    if (range.LockOrigin != node->LockOrigin && !node->OwnedRanges.empty()) {
         return TRangeLockOperationResult(
             ErrorIncompatibleLockOriginLocks(),
             node->LockOrigin);

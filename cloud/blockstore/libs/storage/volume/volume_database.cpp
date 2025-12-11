@@ -45,18 +45,15 @@ void TVolumeDatabase::WriteMeta(const NProto::TVolumeMeta& meta)
 {
     using TTable = TVolumeSchema::Meta;
 
-    Table<TTable>()
-        .Key(META_KEY)
-        .Update(NIceDb::TUpdate<TTable::VolumeMeta>(meta));
+    Table<TTable>().Key(META_KEY).Update(
+        NIceDb::TUpdate<TTable::VolumeMeta>(meta));
 }
 
 bool TVolumeDatabase::ReadMeta(TMaybe<NProto::TVolumeMeta>& meta)
 {
     using TTable = TVolumeSchema::Meta;
 
-    auto it = Table<TTable>()
-        .Key(META_KEY)
-        .Select<TTable::TColumns>();
+    auto it = Table<TTable>().Key(META_KEY).Select<TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -69,22 +66,21 @@ bool TVolumeDatabase::ReadMeta(TMaybe<NProto::TVolumeMeta>& meta)
     return true;
 }
 
-void TVolumeDatabase::WriteStartPartitionsNeeded(const bool startPartitionsNeeded)
+void TVolumeDatabase::WriteStartPartitionsNeeded(
+    const bool startPartitionsNeeded)
 {
     using TTable = TVolumeSchema::Meta;
 
-    Table<TTable>()
-        .Key(META_KEY)
-        .Update(NIceDb::TUpdate<TTable::StartPartitionsNeeded>(startPartitionsNeeded));
+    Table<TTable>().Key(META_KEY).Update(
+        NIceDb::TUpdate<TTable::StartPartitionsNeeded>(startPartitionsNeeded));
 }
 
-bool TVolumeDatabase::ReadStartPartitionsNeeded(TMaybe<bool>& startPartitionsNeeded)
+bool TVolumeDatabase::ReadStartPartitionsNeeded(
+    TMaybe<bool>& startPartitionsNeeded)
 {
     using TTable = TVolumeSchema::Meta;
 
-    auto it = Table<TTable>()
-        .Key(META_KEY)
-        .Select<TTable::TColumns>();
+    auto it = Table<TTable>().Key(META_KEY).Select<TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -97,13 +93,13 @@ bool TVolumeDatabase::ReadStartPartitionsNeeded(TMaybe<bool>& startPartitionsNee
     return true;
 }
 
-void TVolumeDatabase::WriteStorageConfig(const NProto::TStorageServiceConfig& storageConfig)
+void TVolumeDatabase::WriteStorageConfig(
+    const NProto::TStorageServiceConfig& storageConfig)
 {
     using TTable = TVolumeSchema::Meta;
 
-    Table<TTable>()
-        .Key(META_KEY)
-        .Update(NIceDb::TUpdate<TTable::StorageConfig>(storageConfig));
+    Table<TTable>().Key(META_KEY).Update(
+        NIceDb::TUpdate<TTable::StorageConfig>(storageConfig));
 }
 
 bool TVolumeDatabase::ReadStorageConfig(
@@ -111,9 +107,7 @@ bool TVolumeDatabase::ReadStorageConfig(
 {
     using TTable = TVolumeSchema::Meta;
 
-    auto it = Table<TTable>()
-        .Key(META_KEY)
-        .Select<TTable::TColumns>();
+    auto it = Table<TTable>().Key(META_KEY).Select<TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -134,32 +128,27 @@ void TVolumeDatabase::WriteMetaHistory(
 {
     using TTable = TVolumeSchema::MetaHistory;
 
-    Table<TTable>()
-        .Key(version)
-        .Update(
-            NIceDb::TUpdate<TTable::Timestamp>(meta.Timestamp.MicroSeconds()),
-            NIceDb::TUpdate<TTable::VolumeMeta>(meta.Meta));
+    Table<TTable>().Key(version).Update(
+        NIceDb::TUpdate<TTable::Timestamp>(meta.Timestamp.MicroSeconds()),
+        NIceDb::TUpdate<TTable::VolumeMeta>(meta.Meta));
 
     // simple size limit
-    Table<TTable>()
-        .Key(version - 1000)
-        .Delete();
+    Table<TTable>().Key(version - 1000).Delete();
 }
 
 bool TVolumeDatabase::ReadMetaHistory(TVector<TVolumeMetaHistoryItem>& metas)
 {
     using TTable = TVolumeSchema::MetaHistory;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select<TTable::TColumns>();
+    auto it = Table<TTable>().Range().Select<TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     while (it.IsValid()) {
-        auto timestamp = TInstant::MicroSeconds(it.GetValue<TTable::Timestamp>());
+        auto timestamp =
+            TInstant::MicroSeconds(it.GetValue<TTable::Timestamp>());
         auto meta = it.GetValue<TTable::VolumeMeta>();
         metas.push_back({timestamp, std::move(meta)});
 
@@ -173,14 +162,16 @@ bool TVolumeDatabase::ReadMetaHistory(TVector<TVolumeMetaHistoryItem>& metas)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TVolumeDatabase::WriteClients(const THashMap<TString, TVolumeClientState>& infos)
+void TVolumeDatabase::WriteClients(
+    const THashMap<TString, TVolumeClientState>& infos)
 {
     using TTable = TVolumeSchema::Clients;
 
     for (const auto& pair: infos) {
         Table<TTable>()
             .Key(pair.first)
-            .Update(NIceDb::TUpdate<TTable::ClientInfo>(pair.second.GetVolumeClientInfo()));
+            .Update(NIceDb::TUpdate<TTable::ClientInfo>(
+                pair.second.GetVolumeClientInfo()));
     }
 }
 
@@ -188,9 +179,7 @@ bool TVolumeDatabase::ReadClients(THashMap<TString, TVolumeClientState>& infos)
 {
     using TTable = TVolumeSchema::Clients;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select<TTable::TColumns>();
+    auto it = Table<TTable>().Range().Select<TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -225,9 +214,7 @@ bool TVolumeDatabase::ReadClient(
 {
     using TTable = TVolumeSchema::Clients;
 
-    auto it = Table<TTable>()
-        .Key(clientId)
-        .Select<TTable::TColumns>();
+    auto it = Table<TTable>().Key(clientId).Select<TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;
@@ -244,9 +231,7 @@ void TVolumeDatabase::RemoveClient(const TString& clientId)
 {
     using TTable = TVolumeSchema::Clients;
 
-    Table<TTable>()
-        .Key(clientId)
-        .Delete();
+    Table<TTable>().Key(clientId).Delete();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -262,14 +247,11 @@ bool TVolumeDatabase::ReadOutdatedHistory(
 
     using TTable = TVolumeSchema::History;
 
-    auto dbKey =
-        CreateReversedHistoryLogKey(THistoryLogKey(oldestTimestamp));
+    auto dbKey = CreateReversedHistoryLogKey(THistoryLogKey(oldestTimestamp));
 
     auto it = Table<TTable>()
-        .GreaterOrEqual(
-            dbKey.Timestamp.MicroSeconds(),
-            dbKey.SeqNo)
-        .Select<TTable::TKeyColumns>();
+                  .GreaterOrEqual(dbKey.Timestamp.MicroSeconds(), dbKey.SeqNo)
+                  .Select<TTable::TKeyColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -304,10 +286,8 @@ bool TVolumeDatabase::ReadHistory(
     auto dbKey = CreateReversedHistoryLogKey(startTs);
 
     auto it = Table<TTable>()
-        .GreaterOrEqual(
-            dbKey.Timestamp.MicroSeconds(),
-            dbKey.SeqNo)
-        .Select<TTable::TColumns>();
+                  .GreaterOrEqual(dbKey.Timestamp.MicroSeconds(), dbKey.SeqNo)
+                  .Select<TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -327,7 +307,9 @@ bool TVolumeDatabase::ReadHistory(
             return true;
         }
 
-        THistoryLogItem item {itemKey, it.template GetValue<TTable::OperationInfo>()};
+        THistoryLogItem item{
+            itemKey,
+            it.template GetValue<TTable::OperationInfo>()};
 
         records.Items.push_back(std::move(item));
 
@@ -345,11 +327,7 @@ void TVolumeDatabase::DeleteHistoryEntry(THistoryLogKey entry)
 
     auto dbKey = CreateReversedHistoryLogKey(entry);
 
-    Table<TTable>()
-        .Key(
-            dbKey.Timestamp.MicroSeconds(),
-            dbKey.SeqNo)
-        .Delete();
+    Table<TTable>().Key(dbKey.Timestamp.MicroSeconds(), dbKey.SeqNo).Delete();
 }
 
 void TVolumeDatabase::WriteHistory(THistoryLogItem item)
@@ -387,10 +365,9 @@ bool TVolumeDatabase::ReadPartStats(TVector<TPartStats>& stats)
     }
 
     while (it.IsValid()) {
-        stats.push_back({
-            it.GetValue<TTable::PartTabletId>(),
-            it.GetValue<TTable::Stats>()
-        });
+        stats.push_back(
+            {it.GetValue<TTable::PartTabletId>(),
+             it.GetValue<TTable::Stats>()});
 
         if (!it.Next()) {
             return false;   // not ready
@@ -406,9 +383,7 @@ void TVolumeDatabase::WriteNonReplPartStats(
 {
     using TTable = TVolumeSchema::NonReplPartStats;
 
-    Table<TTable>()
-        .Key(id)
-        .Update(NIceDb::TUpdate<TTable::Stats>(stats));
+    Table<TTable>().Key(id).Update(NIceDb::TUpdate<TTable::Stats>(stats));
 }
 
 bool TVolumeDatabase::ReadNonReplPartStats(TVector<TPartStats>& stats)
@@ -422,10 +397,8 @@ bool TVolumeDatabase::ReadNonReplPartStats(TVector<TPartStats>& stats)
     }
 
     while (it.IsValid()) {
-        stats.push_back({
-            it.GetValue<TTable::Id>(),
-            it.GetValue<TTable::Stats>()
-        });
+        stats.push_back(
+            {it.GetValue<TTable::Id>(), it.GetValue<TTable::Stats>()});
 
         if (!it.Next()) {
             return false;   // not ready
@@ -437,8 +410,7 @@ bool TVolumeDatabase::ReadNonReplPartStats(TVector<TPartStats>& stats)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TVolumeDatabase::WriteCheckpointRequest(
-    const TCheckpointRequest& request)
+void TVolumeDatabase::WriteCheckpointRequest(const TCheckpointRequest& request)
 {
     using TTable = TVolumeSchema::CheckpointRequests;
 
@@ -446,10 +418,13 @@ void TVolumeDatabase::WriteCheckpointRequest(
         .Key(request.RequestId)
         .Update(
             NIceDb::TUpdate<TTable::CheckpointId>(request.CheckpointId),
-            NIceDb::TUpdate<TTable::Timestamp>(request.Timestamp.MicroSeconds()),
+            NIceDb::TUpdate<TTable::Timestamp>(
+                request.Timestamp.MicroSeconds()),
             NIceDb::TUpdate<TTable::State>(static_cast<ui32>(request.State)),
-            NIceDb::TUpdate<TTable::ReqType>(static_cast<ui32>(request.ReqType)),
-            NIceDb::TUpdate<TTable::CheckpointType>(static_cast<ui32>(request.Type)));
+            NIceDb::TUpdate<TTable::ReqType>(
+                static_cast<ui32>(request.ReqType)),
+            NIceDb::TUpdate<TTable::CheckpointType>(
+                static_cast<ui32>(request.Type)));
 }
 
 void TVolumeDatabase::UpdateCheckpointRequest(
@@ -500,9 +475,12 @@ bool TVolumeDatabase::CollectCheckpointsToDelete(
     }
 
     while (it.IsValid()) {
-        auto requestState = static_cast<ECheckpointRequestState>(it.GetValue<TTable::State>());
-        auto timestamp = TInstant::MicroSeconds(it.GetValue<TTable::Timestamp>());
-        auto reqType = static_cast<ECheckpointRequestType>(it.GetValue<TTable::ReqType>());
+        auto requestState =
+            static_cast<ECheckpointRequestState>(it.GetValue<TTable::State>());
+        auto timestamp =
+            TInstant::MicroSeconds(it.GetValue<TTable::Timestamp>());
+        auto reqType =
+            static_cast<ECheckpointRequestType>(it.GetValue<TTable::ReqType>());
 
         if (reqType == ECheckpointRequestType::Delete &&
             requestState == ECheckpointRequestState::Completed &&
@@ -518,7 +496,6 @@ bool TVolumeDatabase::CollectCheckpointsToDelete(
 
     return true;
 }
-
 
 bool TVolumeDatabase::ReadCheckpointRequests(
     const THashMap<TString, TInstant>& deletedCheckpoints,
@@ -537,9 +514,11 @@ bool TVolumeDatabase::ReadCheckpointRequests(
         const auto& id = it.GetValue<TTable::CheckpointId>();
         auto checkpointIt = deletedCheckpoints.find(id);
         if (checkpointIt != deletedCheckpoints.end() &&
-            TInstant::MicroSeconds(it.GetValue<TTable::Timestamp>()) <= checkpointIt->second)
+            TInstant::MicroSeconds(it.GetValue<TTable::Timestamp>()) <=
+                checkpointIt->second)
         {
-            outdatedCheckpointRequestIds.push_back(it.GetValue<TTable::RequestId>());
+            outdatedCheckpointRequestIds.push_back(
+                it.GetValue<TTable::RequestId>());
         } else {
             requests.emplace_back(
                 it.GetValue<TTable::RequestId>(),
@@ -570,9 +549,7 @@ void TVolumeDatabase::DeleteCheckpointEntry(ui64 requestId)
 {
     using TTable = TVolumeSchema::CheckpointRequests;
 
-    Table<TTable>()
-        .Key(requestId)
-        .Delete();
+    Table<TTable>().Key(requestId).Delete();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -591,19 +568,15 @@ bool TVolumeDatabase::ReadUsedBlocks(TCompressedBitmap& usedBlocks)
 {
     using TTable = TVolumeSchema::UsedBlocks;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select();
+    auto it = Table<TTable>().Range().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     while (it.IsValid()) {
-        usedBlocks.Update({
-            it.GetValue<TTable::RangeIndex>(),
-            it.GetValue<TTable::Bitmap>()
-        });
+        usedBlocks.Update(
+            {it.GetValue<TTable::RangeIndex>(), it.GetValue<TTable::Bitmap>()});
 
         if (!it.Next()) {
             return false;   // not ready
@@ -628,23 +601,19 @@ bool TVolumeDatabase::ReadThrottlerState(TMaybe<TThrottlerStateInfo>& stateInfo)
 {
     using TTable = TVolumeSchema::ThrottlerState;
 
-    auto it = Table<TTable>()
-        .Key(THROTTLER_STATE_KEY)
-        .Select<TTable::TColumns>();
+    auto it =
+        Table<TTable>().Key(THROTTLER_STATE_KEY).Select<TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     if (it.IsValid()) {
-        stateInfo = {
-            it.GetValue<TTable::Budget>()
-        };
+        stateInfo = {it.GetValue<TTable::Budget>()};
     }
 
     return true;
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -654,12 +623,10 @@ void TVolumeDatabase::WriteVolumeParams(
     using TTable = TVolumeSchema::VolumeParams;
 
     for (const auto& param: volumeParams) {
-        Table<TTable>()
-            .Key(param.Key)
-            .Update(
-                NIceDb::TUpdate<TTable::Value>(param.Value),
-                NIceDb::TUpdate<TTable::ValidUntil>(
-                    param.ValidUntil.MicroSeconds()));
+        Table<TTable>().Key(param.Key).Update(
+            NIceDb::TUpdate<TTable::Value>(param.Value),
+            NIceDb::TUpdate<TTable::ValidUntil>(
+                param.ValidUntil.MicroSeconds()));
     }
 }
 
@@ -668,9 +635,7 @@ void TVolumeDatabase::DeleteVolumeParams(const TVector<TString>& keys)
     using TTable = TVolumeSchema::VolumeParams;
 
     for (const auto& key: keys) {
-        Table<TTable>()
-            .Key(key)
-            .Delete();
+        Table<TTable>().Key(key).Delete();
     }
 }
 
@@ -681,22 +646,17 @@ bool TVolumeDatabase::ReadVolumeParams(
 
     volumeParams.clear();
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select<TTable::TColumns>();
+    auto it = Table<TTable>().Range().Select<TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     while (it.IsValid()) {
-        volumeParams.push_back({
-            it.GetValue<TTable::Key>(),
-            it.GetValue<TTable::Value>(),
-            TInstant::MicroSeconds(
-                it.GetValue<TTable::ValidUntil>()
-            )
-        });
+        volumeParams.push_back(
+            {it.GetValue<TTable::Key>(),
+             it.GetValue<TTable::Value>(),
+             TInstant::MicroSeconds(it.GetValue<TTable::ValidUntil>())});
 
         if (!it.Next()) {
             return false;   // not ready

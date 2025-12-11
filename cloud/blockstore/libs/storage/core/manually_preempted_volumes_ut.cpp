@@ -89,10 +89,8 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         TLog log;
         TVector<TString> criticalEvents;
-        auto loaded = CreateManuallyPreemptedVolumes(
-            storageConfig,
-            log,
-            criticalEvents);
+        auto loaded =
+            CreateManuallyPreemptedVolumes(storageConfig, log, criticalEvents);
 
         UNIT_ASSERT_VALUES_EQUAL(loaded->GetSize(), 2);
         UNIT_ASSERT_VALUES_EQUAL(criticalEvents.size(), 0);
@@ -134,10 +132,8 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         TLog log;
         TVector<TString> criticalEvents;
-        auto loaded = CreateManuallyPreemptedVolumes(
-            storageConfig,
-            log,
-            criticalEvents);
+        auto loaded =
+            CreateManuallyPreemptedVolumes(storageConfig, log, criticalEvents);
 
         UNIT_ASSERT_VALUES_EQUAL(loaded->GetSize(), 0);
         UNIT_ASSERT_VALUES_EQUAL(criticalEvents.size(), 0);
@@ -167,10 +163,8 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         TLog log;
         TVector<TString> criticalEvents;
-        auto loaded = CreateManuallyPreemptedVolumes(
-            storageConfig,
-            log,
-            criticalEvents);
+        auto loaded =
+            CreateManuallyPreemptedVolumes(storageConfig, log, criticalEvents);
 
         UNIT_ASSERT_VALUES_EQUAL(loaded->GetSize(), 0);
         UNIT_ASSERT_VALUES_EQUAL(criticalEvents.size(), 1);
@@ -193,10 +187,8 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         TLog log;
         TVector<TString> criticalEvents;
-        auto loaded = CreateManuallyPreemptedVolumes(
-            storageConfig,
-            log,
-            criticalEvents);
+        auto loaded =
+            CreateManuallyPreemptedVolumes(storageConfig, log, criticalEvents);
 
         UNIT_ASSERT_VALUES_EQUAL(loaded->GetSize(), 0);
         UNIT_ASSERT_VALUES_EQUAL(criticalEvents.size(), 0);
@@ -218,10 +210,8 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         TLog log;
         TVector<TString> criticalEvents;
-        auto loaded = CreateManuallyPreemptedVolumes(
-            storageConfig,
-            log,
-            criticalEvents);
+        auto loaded =
+            CreateManuallyPreemptedVolumes(storageConfig, log, criticalEvents);
 
         UNIT_ASSERT_VALUES_EQUAL(loaded->GetSize(), 0);
         UNIT_ASSERT_VALUES_EQUAL(criticalEvents.size(), 1);
@@ -246,10 +236,8 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         TLog log;
         TVector<TString> criticalEvents;
-        auto loaded = CreateManuallyPreemptedVolumes(
-            storageConfig,
-            log,
-            criticalEvents);
+        auto loaded =
+            CreateManuallyPreemptedVolumes(storageConfig, log, criticalEvents);
 
         UNIT_ASSERT_VALUES_EQUAL(loaded->GetSize(), 0);
         UNIT_ASSERT_VALUES_EQUAL(criticalEvents.size(), 0);

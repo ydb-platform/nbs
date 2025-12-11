@@ -63,10 +63,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 THttpResetMountSeqNumberActor::THttpResetMountSeqNumberActor(
-        TActorId volumeActor,
-        TRequestInfoPtr requestInfo,
-        TString clientId,
-        ui64 tabletId)
+    TActorId volumeActor,
+    TRequestInfoPtr requestInfo,
+    TString clientId,
+    ui64 tabletId)
     : VolumeActor(volumeActor)
     , RequestInfo(std::move(requestInfo))
     , ClientId(std::move(clientId))
@@ -75,8 +75,9 @@ THttpResetMountSeqNumberActor::THttpResetMountSeqNumberActor(
 
 void THttpResetMountSeqNumberActor::Bootstrap(const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvVolumePrivate::TEvResetMountSeqNumberRequest>(
-        std::move(ClientId));
+    auto request =
+        std::make_unique<TEvVolumePrivate::TEvResetMountSeqNumberRequest>(
+            std::move(ClientId));
 
     NCloud::SendWithUndeliveryTracking(ctx, VolumeActor, std::move(request));
 
@@ -106,7 +107,8 @@ void THttpResetMountSeqNumberActor::HandleResetResponse(
     if (FAILED(ev->Get()->GetStatus())) {
         Notify(
             ctx,
-            TStringBuilder() << "Operation failed: " << FormatError(ev->Get()->GetError()),
+            TStringBuilder()
+                << "Operation failed: " << FormatError(ev->Get()->GetError()),
             EAlertLevel::DANGER);
     } else {
         Notify(ctx, "Operation successfully completed", EAlertLevel::SUCCESS);
@@ -144,8 +146,12 @@ void THttpResetMountSeqNumberActor::HandlePoisonPill(
 STFUNC(THttpResetMountSeqNumberActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvVolumePrivate::TEvResetMountSeqNumberResponse, HandleResetResponse);
-        HFunc(TEvVolumePrivate::TEvResetMountSeqNumberRequest, HandleResetMountSeqNumber);
+        HFunc(
+            TEvVolumePrivate::TEvResetMountSeqNumberResponse,
+            HandleResetResponse);
+        HFunc(
+            TEvVolumePrivate::TEvResetMountSeqNumberRequest,
+            HandleResetMountSeqNumber);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
@@ -158,7 +164,7 @@ STFUNC(THttpResetMountSeqNumberActor::StateWork)
     }
 }
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -169,10 +175,11 @@ void TVolumeActor::HandleResetMountSeqNumber(
     auto* msg = ev->Get();
     auto& clientId = msg->ClientId;
 
-    auto requestInfo = CreateRequestInfo<TEvVolumePrivate::TResetMountSeqNumberMethod>(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo<TEvVolumePrivate::TResetMountSeqNumberMethod>(
+            ev->Sender,
+            ev->Cookie,
+            msg->CallContext);
 
     AddTransaction(*requestInfo);
 
@@ -248,7 +255,8 @@ void TVolumeActor::CompleteResetMountSeqNumber(
     const TActorContext& ctx,
     TTxVolume::TResetMountSeqNumber& args)
 {
-    auto response = std::make_unique<TEvVolumePrivate::TEvResetMountSeqNumberResponse>();
+    auto response =
+        std::make_unique<TEvVolumePrivate::TEvResetMountSeqNumberResponse>();
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 

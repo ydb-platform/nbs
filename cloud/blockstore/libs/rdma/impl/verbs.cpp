@@ -27,18 +27,16 @@ namespace NCloud::NBlockStore::NRdma::NVerbs {
 #undef ibv_reg_mr
 #endif
 
-#define RDMA_THROW_ERROR(method)                                               \
-    throw TServiceError(MAKE_SYSTEM_ERROR(LastSystemError()))                  \
-        << method << " failed with error " << LastSystemError()                \
-        << ": " << SafeLastSystemErrorText()                                   \
-// RDMA_THROW_ERROR
+#define RDMA_THROW_ERROR(method)                                        \
+    throw TServiceError(MAKE_SYSTEM_ERROR(LastSystemError()))           \
+        << method << " failed with error " << LastSystemError() << ": " \
+        << SafeLastSystemErrorText()   // RDMA_THROW_ERROR
 
 ////////////////////////////////////////////////////////////////////////////////
 
 static const int MAX_COMPLETIONS_PER_POLL = 128;
 
-struct TVerbs
-    : IVerbs
+struct TVerbs: IVerbs
 {
     TDeviceListPtr GetDeviceList() override
     {
@@ -93,11 +91,12 @@ struct TVerbs
     TCompletionQueuePtr CreateCompletionQueue(
         ibv_context* context,
         int cqe,
-        void *cq_context,
-        ibv_comp_channel *channel,
+        void* cq_context,
+        ibv_comp_channel* channel,
         int comp_vector) override
     {
-        auto* cq = ibv_create_cq(context, cqe, cq_context, channel, comp_vector);
+        auto* cq =
+            ibv_create_cq(context, cqe, cq_context, channel, comp_vector);
         if (!cq) {
             RDMA_THROW_ERROR("ibv_create_cq");
         }
@@ -195,9 +194,7 @@ struct TVerbs
         if (res < 0) {
             RDMA_THROW_ERROR(
                 TStringBuilder()
-                    << "rdma_getaddrinfo("
-                    << "host=" << host.Quote()
-                    << ')');
+                << "rdma_getaddrinfo(" << "host=" << host.Quote() << ')');
         }
 
         return WrapPtr(addr);
@@ -263,10 +260,8 @@ struct TVerbs
         int res = rdma_bind_addr(id, addr);
         if (res < 0) {
             RDMA_THROW_ERROR(
-                TStringBuilder()
-                    << "rdma_bind_addr("
-                    << "addr=" << PrintAddressAndPort(addr)
-                    << ')');
+                TStringBuilder() << "rdma_bind_addr(" << "addr="
+                                 << PrintAddressAndPort(addr) << ')');
         }
     }
 
@@ -280,10 +275,8 @@ struct TVerbs
         if (res < 0) {
             RDMA_THROW_ERROR(
                 TStringBuilder()
-                    << "rdma_resolve_addr("
-                    << "src='" << PrintAddressAndPort(src)
-                    << "', dst='" << PrintAddressAndPort(dst)
-                    << ')');
+                << "rdma_resolve_addr(" << "src='" << PrintAddressAndPort(src)
+                << "', dst='" << PrintAddressAndPort(dst) << ')');
         }
     }
 
@@ -295,7 +288,7 @@ struct TVerbs
         }
     }
 
-    TString GetPeer(rdma_cm_id *id) override
+    TString GetPeer(rdma_cm_id* id) override
     {
         auto* addr = rdma_get_peer_addr(id);
         char host[NI_MAXHOST];
@@ -331,7 +324,7 @@ struct TVerbs
         }
     }
 
-    void Disconnect(rdma_cm_id *id) override
+    void Disconnect(rdma_cm_id* id) override
     {
         int res = rdma_disconnect(id);
         if (res < 0) {
@@ -347,10 +340,8 @@ struct TVerbs
         }
     }
 
-    void Reject(
-        rdma_cm_id* id,
-        const void* privateData,
-        ui8 privateDataLen) override
+    void
+    Reject(rdma_cm_id* id, const void* privateData, ui8 privateDataLen) override
     {
         int res = rdma_reject(id, privateData, privateDataLen) ? errno : 0;
         if (res < 0) {
@@ -428,7 +419,7 @@ const char* GetOpcodeName(ibv_wc_opcode opcode)
 
 const char* GetStatusString(ibv_wc_status status)
 {
-    static const char *const strings[] = {
+    static const char* const strings[] = {
         "IBV_WC_SUCCESS",
         "IBV_WC_LOC_LEN_ERR",
         "IBV_WC_LOC_QP_OP_ERR",
@@ -480,8 +471,7 @@ const char* GetEventName(rdma_cm_event_type event)
         "RDMA_CM_EVENT_MULTICAST_JOIN",
         "RDMA_CM_EVENT_MULTICAST_ERROR",
         "RDMA_CM_EVENT_ADDR_CHANGE",
-        "RDMA_CM_EVENT_TIMEWAIT_EXIT"
-    };
+        "RDMA_CM_EVENT_TIMEWAIT_EXIT"};
 
     if ((size_t)event < Y_ARRAY_SIZE(names)) {
         return names[(size_t)event];
@@ -503,26 +493,23 @@ TString PrintAddressAndPort(const sockaddr* addr)
 TString PrintConnectionParams(const rdma_conn_param* conn)
 {
     return TStringBuilder()
-        << "[private_data=" << Hex((uintptr_t)conn->private_data)
-        << " private_data_len=" << (uint32_t)conn->private_data_len
-        << " responder_resources=" << (uint32_t)conn->responder_resources
-        << " initiator_depth=" << (uint32_t)conn->initiator_depth
-        << " flow_control=" << (uint32_t)conn->flow_control
-        << " retry_count=" << (uint32_t)conn->retry_count
-        << " rnr_retry_count=" << (uint32_t)conn->rnr_retry_count
-        << " srq=" << (uint32_t)conn->srq
-        << " qp_num=" << (uint32_t)conn->qp_num
-        << "]";
+           << "[private_data=" << Hex((uintptr_t)conn->private_data)
+           << " private_data_len=" << (uint32_t)conn->private_data_len
+           << " responder_resources=" << (uint32_t)conn->responder_resources
+           << " initiator_depth=" << (uint32_t)conn->initiator_depth
+           << " flow_control=" << (uint32_t)conn->flow_control
+           << " retry_count=" << (uint32_t)conn->retry_count
+           << " rnr_retry_count=" << (uint32_t)conn->rnr_retry_count
+           << " srq=" << (uint32_t)conn->srq
+           << " qp_num=" << (uint32_t)conn->qp_num << "]";
 }
 
 TString PrintCompletion(ibv_wc* wc)
 {
-    return TStringBuilder()
-        << "[wr_id=" << TWorkRequestId(wc->wr_id)
-        << " opcode=" << GetOpcodeName(wc->opcode)
-        << " status=" << GetStatusString(wc->status)
-        << " vendor_err=" << wc->vendor_err
-        << "]";
+    return TStringBuilder() << "[wr_id=" << TWorkRequestId(wc->wr_id)
+                            << " opcode=" << GetOpcodeName(wc->opcode)
+                            << " status=" << GetStatusString(wc->status)
+                            << " vendor_err=" << wc->vendor_err << "]";
 }
 
 int DestroyId(rdma_cm_id* id)

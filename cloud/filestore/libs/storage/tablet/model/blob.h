@@ -44,9 +44,9 @@ struct TMixedBlob: TMixedBlobMeta
     TMixedBlob() = default;
 
     TMixedBlob(
-            const TPartialBlobId& blobId,
-            TVector<TBlock> blocks,
-            TString blobContent)
+        const TPartialBlobId& blobId,
+        TVector<TBlock> blocks,
+        TString blobContent)
         : TMixedBlobMeta(blobId, std::move(blocks))
         , BlobContent(std::move(blobContent))
     {}
@@ -63,9 +63,9 @@ struct TMergedBlobMeta
     TMergedBlobMeta() = default;
 
     TMergedBlobMeta(
-            const TPartialBlobId& blobId,
-            const TBlock& block,
-            ui32 blocksCount)
+        const TPartialBlobId& blobId,
+        const TBlock& block,
+        ui32 blocksCount)
         : BlobId(blobId)
         , Block(block)
         , BlocksCount(blocksCount)
@@ -81,10 +81,10 @@ struct TMergedBlob: TMergedBlobMeta
     TMergedBlob() = default;
 
     TMergedBlob(
-            const TPartialBlobId& blobId,
-            const TBlock& block,
-            ui32 blocksCount,
-            TString blobContent)
+        const TPartialBlobId& blobId,
+        const TBlock& block,
+        ui32 blocksCount,
+        TString blobContent)
         : TMergedBlobMeta(blobId, block, blocksCount)
         , BlobContent(std::move(blobContent))
     {}
@@ -99,9 +99,7 @@ struct TCompactionBlob
 
     TCompactionBlob() = default;
 
-    TCompactionBlob(
-            const TPartialBlobId& blobId,
-            TVector<TBlockDataRef> blocks)
+    TCompactionBlob(const TPartialBlobId& blobId, TVector<TBlockDataRef> blocks)
         : BlobId(blobId)
         , Blocks(std::move(blocks))
     {}
@@ -117,8 +115,8 @@ struct TFlushBytesBlob
     TFlushBytesBlob() = default;
 
     TFlushBytesBlob(
-            const TPartialBlobId& blobId,
-            TVector<TBlockWithBytes> blocks)
+        const TPartialBlobId& blobId,
+        TVector<TBlockWithBytes> blocks)
         : BlobId(blobId)
         , Blocks(std::move(blocks))
     {}

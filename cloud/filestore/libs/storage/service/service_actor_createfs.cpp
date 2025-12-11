@@ -23,36 +23,39 @@ NProto::TError ValidateCreateFileSystemRequest(
 {
     const auto& fileSystemId = request.GetFileSystemId();
     if (!fileSystemId) {
-        return MakeError(E_ARGUMENT, TStringBuilder()
-            << "missing file system identifier");
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "missing file system identifier");
     }
 
     const auto& cloudId = request.GetCloudId();
     if (!cloudId) {
-        return MakeError(E_ARGUMENT, TStringBuilder()
-            << "missing cloud identifier");
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "missing cloud identifier");
     }
 
     const auto& folderId = request.GetFolderId();
     if (!folderId) {
-        return MakeError(E_ARGUMENT, TStringBuilder()
-            << "missing folder identifier");
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "missing folder identifier");
     }
 
     ui32 blockSize = request.GetBlockSize();
-    if (!blockSize
-            || !IsAligned(blockSize, 4_KB)
-            || blockSize < 4_KB
-            || blockSize > 128_KB)
+    if (!blockSize || !IsAligned(blockSize, 4_KB) || blockSize < 4_KB ||
+        blockSize > 128_KB)
     {
-        return MakeError(E_ARGUMENT, TStringBuilder()
-            << "invalid block size: " << blockSize);
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "invalid block size: " << blockSize);
     }
 
     ui64 blocksCount = request.GetBlocksCount();
     if (!blocksCount || blockSize * blocksCount < 1_MB) {
-        return MakeError(E_ARGUMENT, TStringBuilder()
-            << "invalid blocks count: " << blocksCount);
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "invalid blocks count: " << blocksCount);
     }
 
     return {};
@@ -118,9 +121,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCreateFileStoreActor::TCreateFileStoreActor(
-        TStorageConfigPtr storageConfig,
-        TRequestInfoPtr requestInfo,
-        NProto::TCreateFileStoreRequest request)
+    TStorageConfigPtr storageConfig,
+    TRequestInfoPtr requestInfo,
+    NProto::TCreateFileStoreRequest request)
     : StorageConfig(std::move(storageConfig))
     , RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
@@ -166,7 +169,7 @@ void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
             FileStoreConfig.ShardConfigs.size());
     } else {
         SetupFileStorePerformanceAndChannels(
-            false,  // do not allocate mixed0 channel
+            false,   // do not allocate mixed0 channel
             *StorageConfig,
             config,
             Request.GetPerformanceProfile());
@@ -197,7 +200,7 @@ void TCreateFileStoreActor::CreateShards(const TActorContext& ctx)
             ctx,
             MakeSSProxyServiceId(),
             std::move(request),
-            i // cookie
+            i   // cookie
         );
     }
 }
@@ -235,7 +238,7 @@ void TCreateFileStoreActor::ConfigureShards(const TActorContext& ctx)
             ctx,
             MakeIndexTabletProxyServiceId(),
             std::move(request),
-            i // cookie
+            i   // cookie
         );
     }
 }
@@ -262,10 +265,7 @@ void TCreateFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
         LogTag.c_str(),
         request->Record.Utf8DebugString().Quote().c_str());
 
-    NCloud::Send(
-        ctx,
-        MakeIndexTabletProxyServiceId(),
-        std::move(request));
+    NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -458,16 +458,14 @@ void TStorageServiceActor::HandleCreateFileStore(
 
     auto error = ValidateCreateFileSystemRequest(msg->Record);
     if (HasError(error)) {
-        auto response = std::make_unique<TEvService::TEvCreateFileStoreResponse>(error);
+        auto response =
+            std::make_unique<TEvService::TEvCreateFileStoreResponse>(error);
         inflight->Complete(ctx.Now(), error);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        SelfId(),
-        cookie,
-        msg->CallContext);
+    auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
     auto actor = std::make_unique<TCreateFileStoreActor>(
         StorageConfig,

@@ -1,9 +1,7 @@
 #pragma once
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
-
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
-
 #include <cloud/blockstore/libs/storage/testlib/service_client.h>
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
 
@@ -26,9 +24,7 @@ ui32 SetupTestEnv(
     NProto::TStorageServiceConfig storageServiceConfig,
     NProto::TFeaturesConfig featuresConfig = {});
 
-ui32 SetupTestEnvWithMultipleMount(
-    TTestEnv& env,
-    TDuration inactivateTimeout);
+ui32 SetupTestEnvWithMultipleMount(TTestEnv& env, TDuration inactivateTimeout);
 
 ui32 SetupTestEnvWithAllowVersionInModifyScheme(TTestEnv& env);
 

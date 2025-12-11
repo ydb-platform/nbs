@@ -45,8 +45,7 @@ struct TAddedBlobInfo
     TAddedBlobInfo(bool added, ui32 zoneId)
         : Added(added)
         , ZoneId(zoneId)
-    {
-    }
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -56,13 +55,10 @@ struct TMutableFoundBlobInfo
     TBlob* Blob;
     ui32 ZoneId;
 
-    TMutableFoundBlobInfo(
-            TBlob* blob,
-            ui32 zoneId)
+    TMutableFoundBlobInfo(TBlob* blob, ui32 zoneId)
         : Blob(blob)
         , ZoneId(zoneId)
-    {
-    }
+    {}
 };
 
 struct TFoundBlobInfo
@@ -70,13 +66,10 @@ struct TFoundBlobInfo
     const TBlob* Blob;
     ui32 ZoneId;
 
-    TFoundBlobInfo(
-            const TBlob* blob,
-            ui32 zoneId)
+    TFoundBlobInfo(const TBlob* blob, ui32 zoneId)
         : Blob(blob)
         , ZoneId(zoneId)
-    {
-    }
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -129,7 +122,9 @@ public:
 
     bool RemoveBlob(ui32 zoneHint, const TPartialBlobId& blobId);
 
-    TMutableFoundBlobInfo AccessBlob(ui32 zoneHint, const TPartialBlobId& blobId);
+    TMutableFoundBlobInfo AccessBlob(
+        ui32 zoneHint,
+        const TPartialBlobId& blobId);
     TFoundBlobInfo FindBlob(ui32 zoneHint, const TPartialBlobId& blobId) const;
 
     TVector<const TBlob*> FindBlobs(const TBlockRange32& blockRange) const;
@@ -171,7 +166,8 @@ public:
 
     size_t GetGarbageBlockCount() const;
 
-    bool AddGarbage(ui32 zoneHint, const TPartialBlobId& blobId, ui16 blockCount);
+    bool
+    AddGarbage(ui32 zoneHint, const TPartialBlobId& blobId, ui16 blockCount);
 
     size_t FindGarbage(ui32 zoneHint, const TPartialBlobId& blobId) const;
 

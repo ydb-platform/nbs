@@ -13,19 +13,17 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define THROTTLING_PARAM(paramName, returnType)                                \
-    returnType paramName(                                                      \
-        const TStorageConfig& config,                                          \
-        const ui32 mediaKind)                                                  \
-    {                                                                          \
-        switch (mediaKind) {                                                   \
-            case NCloud::NProto::STORAGE_MEDIA_SSD:                            \
-                return config.GetSSD ## paramName();                           \
-            default:                                                           \
-                return config.GetHDD ## paramName();                           \
-        }                                                                      \
-    }                                                                          \
-// THROTTLING_PARAM
+#define THROTTLING_PARAM(paramName, returnType)                              \
+    returnType paramName(const TStorageConfig& config, const ui32 mediaKind) \
+    {                                                                        \
+        switch (mediaKind) {                                                 \
+            case NCloud::NProto::STORAGE_MEDIA_SSD:                          \
+                return config.GetSSD##paramName();                           \
+            default:                                                         \
+                return config.GetHDD##paramName();                           \
+        }                                                                    \
+    }                                                                        \
+    // THROTTLING_PARAM
 
 THROTTLING_PARAM(ThrottlingEnabled, bool);
 THROTTLING_PARAM(UnitReadBandwidth, ui64);
@@ -53,17 +51,14 @@ ui64 MaxReadBandwidth(
     const NKikimrFileStore::TConfig& fileStore,
     const ui32 unitCount)
 {
-    const auto unitBandwidth = UnitReadBandwidth(
-        config,
-        fileStore.GetStorageMediaKind());
-    const auto maxBandwidth = MaxReadBandwidth(
-        config,
-        fileStore.GetStorageMediaKind());
+    const auto unitBandwidth =
+        UnitReadBandwidth(config, fileStore.GetStorageMediaKind());
+    const auto maxBandwidth =
+        MaxReadBandwidth(config, fileStore.GetStorageMediaKind());
 
     return Max(
         static_cast<ui64>(fileStore.GetPerformanceProfileMaxReadBandwidth()),
-        Min(maxBandwidth, unitCount * unitBandwidth) * 1_MB
-    );
+        Min(maxBandwidth, unitCount * unitBandwidth) * 1_MB);
 }
 
 ui64 MaxWriteBandwidth(
@@ -71,12 +66,10 @@ ui64 MaxWriteBandwidth(
     const NKikimrFileStore::TConfig& fileStore,
     const ui32 unitCount)
 {
-    const auto unitBandwidth = UnitWriteBandwidth(
-        config,
-        fileStore.GetStorageMediaKind());
-    const auto maxBandwidth = MaxWriteBandwidth(
-        config,
-        fileStore.GetStorageMediaKind());
+    const auto unitBandwidth =
+        UnitWriteBandwidth(config, fileStore.GetStorageMediaKind());
+    const auto maxBandwidth =
+        MaxWriteBandwidth(config, fileStore.GetStorageMediaKind());
 
     auto fileStoreMaxWriteBandwidth =
         fileStore.GetPerformanceProfileMaxWriteBandwidth();
@@ -85,10 +78,9 @@ ui64 MaxWriteBandwidth(
             fileStore.GetPerformanceProfileMaxReadBandwidth();
     }
 
-   return Max(
+    return Max(
         static_cast<ui64>(fileStoreMaxWriteBandwidth),
-        Min(maxBandwidth, unitCount * unitBandwidth) * 1_MB
-    );
+        Min(maxBandwidth, unitCount * unitBandwidth) * 1_MB);
 }
 
 ui32 MaxReadIops(
@@ -96,17 +88,12 @@ ui32 MaxReadIops(
     const NKikimrFileStore::TConfig& fileStore,
     const ui32 unitCount)
 {
-    const auto unitIops = UnitReadIops(
-        config,
-        fileStore.GetStorageMediaKind());
-    const auto maxIops = MaxReadIops(
-        config,
-        fileStore.GetStorageMediaKind());
+    const auto unitIops = UnitReadIops(config, fileStore.GetStorageMediaKind());
+    const auto maxIops = MaxReadIops(config, fileStore.GetStorageMediaKind());
 
     return Max(
         static_cast<ui64>(fileStore.GetPerformanceProfileMaxReadIops()),
-        Min(maxIops, unitCount * unitIops)
-    );
+        Min(maxIops, unitCount * unitIops));
 }
 
 ui32 MaxWriteIops(
@@ -114,12 +101,9 @@ ui32 MaxWriteIops(
     const NKikimrFileStore::TConfig& fileStore,
     const ui32 unitCount)
 {
-    const auto unitIops = UnitWriteIops(
-        config,
-        fileStore.GetStorageMediaKind());
-    const auto maxIops = MaxWriteIops(
-        config,
-        fileStore.GetStorageMediaKind());
+    const auto unitIops =
+        UnitWriteIops(config, fileStore.GetStorageMediaKind());
+    const auto maxIops = MaxWriteIops(config, fileStore.GetStorageMediaKind());
 
     auto fileStoreMaxWriteIops = fileStore.GetPerformanceProfileMaxWriteIops();
     if (!fileStoreMaxWriteIops) {
@@ -128,8 +112,7 @@ ui32 MaxWriteIops(
 
     return Max(
         static_cast<ui64>(fileStoreMaxWriteIops),
-        Min(maxIops, unitCount * unitIops)
-    );
+        Min(maxIops, unitCount * unitIops));
 }
 
 bool ThrottlingEnabled(
@@ -150,9 +133,8 @@ ui32 BoostRefillTime(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore)
 {
-    return BoostRefillTime(
-        config,
-        fileStore.GetStorageMediaKind()).MilliSeconds();
+    return BoostRefillTime(config, fileStore.GetStorageMediaKind())
+        .MilliSeconds();
 }
 
 ui32 BoostPercentage(
@@ -161,7 +143,8 @@ ui32 BoostPercentage(
     const ui32 unitCount)
 {
     const auto unitBoost = UnitBoost(config, fileStore.GetStorageMediaKind());
-    return static_cast<ui32>(100.0 * static_cast<double>(unitBoost) /
+    return static_cast<ui32>(
+        100.0 * static_cast<double>(unitBoost) /
         static_cast<double>(unitCount));
 }
 
@@ -199,23 +182,18 @@ ui32 MaxPostponedTime(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore)
 {
-    return MaxPostponedTime(
-        config,
-        fileStore.GetStorageMediaKind()).MilliSeconds();
+    return MaxPostponedTime(config, fileStore.GetStorageMediaKind())
+        .MilliSeconds();
 }
 
 ui32 MaxPostponedCount(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore)
 {
-    return MaxPostponedCount(
-        config,
-        fileStore.GetStorageMediaKind());
+    return MaxPostponedCount(config, fileStore.GetStorageMediaKind());
 }
 
-auto GetAllocationUnit(
-    const TStorageConfig& config,
-    ui32 mediaKind)
+auto GetAllocationUnit(const TStorageConfig& config, ui32 mediaKind)
 {
     ui64 unit = 0;
     switch (mediaKind) {
@@ -243,9 +221,7 @@ struct TPoolKinds
     TString Mixed;
 };
 
-TPoolKinds GetPoolKinds(
-    const TStorageConfig& config,
-    ui32 mediaKind)
+TPoolKinds GetPoolKinds(const TStorageConfig& config, ui32 mediaKind)
 {
     switch (mediaKind) {
         case NCloud::NProto::STORAGE_MEDIA_SSD:
@@ -289,12 +265,15 @@ ui32 ComputeAllocationUnitCount(
     const double fileStoreSize =
         fileStore.GetBlocksCount() * fileStore.GetBlockSize() / double(1_GB);
 
-    const auto unit = GetAllocationUnit(
-        config,
-        fileStore.GetStorageMediaKind());
+    const auto unit =
+        GetAllocationUnit(config, fileStore.GetStorageMediaKind());
 
     ui32 unitCount = std::ceil(fileStoreSize / unit);
-    Y_DEBUG_ABORT_UNLESS(unitCount >= 1, "size %f unit %lu", fileStoreSize, unit);
+    Y_DEBUG_ABORT_UNLESS(
+        unitCount >= 1,
+        "size %f unit %lu",
+        fileStoreSize,
+        unit);
 
     return unitCount;
 }
@@ -306,20 +285,15 @@ ui32 ComputeMixedChannelCount(
 {
     ui32 mixed = 0;
     for (const auto& channel: fileStore.GetExplicitChannelProfiles()) {
-        if (channel.GetDataKind() == static_cast<ui32>(EChannelDataKind::Mixed)) {
+        if (channel.GetDataKind() == static_cast<ui32>(EChannelDataKind::Mixed))
+        {
             ++mixed;
         }
     }
 
     return Min(
-        Max(
-            allocationUnitCount,
-            mixed,
-            config.GetMinChannelCount()
-        ),
-        MaxChannelsCount
-    );
-
+        Max(allocationUnitCount, mixed, config.GetMinChannelCount()),
+        MaxChannelsCount);
 }
 
 void AddOrModifyChannel(
@@ -352,35 +326,30 @@ void SetupChannels(
     const TStorageConfig& config,
     NKikimrFileStore::TConfig& fileStore)
 {
-    const auto unit = GetAllocationUnit(
-        config,
-        fileStore.GetStorageMediaKind());
-    const auto poolKinds = GetPoolKinds(
-        config,
-        fileStore.GetStorageMediaKind());
+    const auto unit =
+        GetAllocationUnit(config, fileStore.GetStorageMediaKind());
+    const auto poolKinds =
+        GetPoolKinds(config, fileStore.GetStorageMediaKind());
 
     AddOrModifyChannel(
         poolKinds.System,
         0,
         128_MB,
         EChannelDataKind::System,
-        fileStore
-    );
+        fileStore);
 
     AddOrModifyChannel(
         poolKinds.Index,
         1,
         16_MB,
         EChannelDataKind::Index,
-        fileStore
-    );
+        fileStore);
     AddOrModifyChannel(
         poolKinds.Fresh,
         2,
         128_MB,
         EChannelDataKind::Fresh,
-        fileStore
-    );
+        fileStore);
 
     const ui32 mixed = ComputeMixedChannelCount(config, unitCount, fileStore);
     ui32 mixedChannelStart = 3;
@@ -391,8 +360,7 @@ void SetupChannels(
             mixedChannelStart,
             unit * 1_GB,
             EChannelDataKind::Mixed0,
-            fileStore
-        );
+            fileStore);
 
         ++mixedChannelStart;
     }
@@ -413,7 +381,9 @@ void OverrideStorageMediaKind(
 {
     using namespace ::NCloud::NProto;
     if (fileStore.GetStorageMediaKind() == STORAGE_MEDIA_HDD) {
-        switch(static_cast<EStorageMediaKind>(config.GetHDDMediaKindOverride())) {
+        switch (
+            static_cast<EStorageMediaKind>(config.GetHDDMediaKindOverride()))
+        {
             case STORAGE_MEDIA_HYBRID:
                 fileStore.SetStorageMediaKind(STORAGE_MEDIA_HYBRID);
                 break;
@@ -421,7 +391,7 @@ void OverrideStorageMediaKind(
                 fileStore.SetStorageMediaKind(STORAGE_MEDIA_SSD);
                 break;
             default:
-                break; // pass
+                break;   // pass
         }
     }
 }
@@ -431,32 +401,32 @@ ui32 NodesLimit(
     NKikimrFileStore::TConfig& fileStore)
 {
     ui64 size = fileStore.GetBlocksCount() * fileStore.GetBlockSize();
-    ui64 limit = Min(
-        static_cast<ui64>(Max<ui32>()),
-        size / config.GetSizeToNodesRatio());
+    ui64 limit =
+        Min(static_cast<ui64>(Max<ui32>()),
+            size / config.GetSizeToNodesRatio());
 
     return Max(limit, static_cast<ui64>(config.GetDefaultNodesLimit()));
 }
 
-#define PERFORMANCE_PROFILE_PARAMETERS_SIMPLE(xxx, ...)                        \
-    xxx(ThrottlingEnabled,                      __VA_ARGS__)                   \
-    xxx(BoostTime,                              __VA_ARGS__)                   \
-    xxx(BoostRefillTime,                        __VA_ARGS__)                   \
-    xxx(BurstPercentage,                        __VA_ARGS__)                   \
-    xxx(DefaultPostponedRequestWeight,          __VA_ARGS__)                   \
-    xxx(MaxPostponedWeight,                     __VA_ARGS__)                   \
-    xxx(MaxWriteCostMultiplier,                 __VA_ARGS__)                   \
-    xxx(MaxPostponedTime,                       __VA_ARGS__)                   \
-    xxx(MaxPostponedCount,                      __VA_ARGS__)                   \
-// PERFORMANCE_PROFILE_PARAMETERS_SIMPLE
+#define PERFORMANCE_PROFILE_PARAMETERS_SIMPLE(xxx, ...) \
+    xxx(ThrottlingEnabled, __VA_ARGS__)                 \
+    xxx(BoostTime, __VA_ARGS__)                         \
+    xxx(BoostRefillTime, __VA_ARGS__)                   \
+    xxx(BurstPercentage, __VA_ARGS__)                   \
+    xxx(DefaultPostponedRequestWeight, __VA_ARGS__)     \
+    xxx(MaxPostponedWeight, __VA_ARGS__)                \
+    xxx(MaxWriteCostMultiplier, __VA_ARGS__)            \
+    xxx(MaxPostponedTime, __VA_ARGS__)                  \
+    xxx(MaxPostponedCount, __VA_ARGS__)                 \
+    // PERFORMANCE_PROFILE_PARAMETERS_SIMPLE
 
-#define PERFORMANCE_PROFILE_PARAMETERS_AU(xxx, ...)                            \
-    xxx(MaxReadIops,                            __VA_ARGS__)                   \
-    xxx(MaxReadBandwidth,                       __VA_ARGS__)                   \
-    xxx(MaxWriteIops,                           __VA_ARGS__)                   \
-    xxx(MaxWriteBandwidth,                      __VA_ARGS__)                   \
-    xxx(BoostPercentage,                        __VA_ARGS__)                   \
-// PERFORMANCE_PROFILE_PARAMETERS_AU
+#define PERFORMANCE_PROFILE_PARAMETERS_AU(xxx, ...) \
+    xxx(MaxReadIops, __VA_ARGS__)                   \
+    xxx(MaxReadBandwidth, __VA_ARGS__)              \
+    xxx(MaxWriteIops, __VA_ARGS__)                  \
+    xxx(MaxWriteBandwidth, __VA_ARGS__)             \
+    xxx(BoostPercentage, __VA_ARGS__)               \
+    // PERFORMANCE_PROFILE_PARAMETERS_AU
 
 }   // namespace
 
@@ -469,19 +439,18 @@ void SetupFileStorePerformanceAndChannels(
     ui32 allocationUnitCount = ComputeAllocationUnitCount(config, fileStore);
     OverrideStorageMediaKind(config, fileStore);
 
-#define SETUP_PARAMETER_SIMPLE(name, ...)                                      \
-    fileStore.SetPerformanceProfile##name(                                     \
-        clientProfile.Get##name()                                              \
-            ? clientProfile.Get##name()                                        \
-            : name(config, fileStore));                                        \
-// SETUP_PARAMETER_AU
+#define SETUP_PARAMETER_SIMPLE(name, ...)                     \
+    fileStore.SetPerformanceProfile##name(                    \
+        clientProfile.Get##name() ? clientProfile.Get##name() \
+                                  : name(config, fileStore)); \
+    // SETUP_PARAMETER_AU
 
-#define SETUP_PARAMETER_AU(name, ...)                                          \
-    fileStore.SetPerformanceProfile##name(                                     \
-        clientProfile.Get##name()                                              \
-            ? clientProfile.Get##name()                                        \
-            : name(config, fileStore, allocationUnitCount));                   \
-// SETUP_PARAMETER_SIMPLE
+#define SETUP_PARAMETER_AU(name, ...)                        \
+    fileStore.SetPerformanceProfile##name(                   \
+        clientProfile.Get##name()                            \
+            ? clientProfile.Get##name()                      \
+            : name(config, fileStore, allocationUnitCount)); \
+    // SETUP_PARAMETER_SIMPLE
 
     PERFORMANCE_PROFILE_PARAMETERS_SIMPLE(SETUP_PARAMETER_SIMPLE);
     PERFORMANCE_PROFILE_PARAMETERS_AU(SETUP_PARAMETER_AU);
@@ -527,18 +496,18 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
     TMultiShardFileStoreConfig result;
     result.MainFileSystemConfig = fileStore;
     SetupFileStorePerformanceAndChannels(
-        false, // allocateMixed0Channel
+        false,   // allocateMixed0Channel
         config,
         result.MainFileSystemConfig,
         clientProfile);
 
     const auto shardCount = explicitShardCount
-        ? explicitShardCount
-        : ComputeShardCount(
-            fileStore.GetBlocksCount(),
-            fileStore.GetBlockSize(),
-            config.GetShardAllocationUnit(),
-            maxShardCount);
+                                ? explicitShardCount
+                                : ComputeShardCount(
+                                      fileStore.GetBlocksCount(),
+                                      fileStore.GetBlockSize(),
+                                      config.GetShardAllocationUnit(),
+                                      maxShardCount);
     result.ShardConfigs.resize(shardCount);
     for (ui32 i = 0; i < shardCount; ++i) {
         result.ShardConfigs[i] = fileStore;
@@ -552,7 +521,7 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
         result.ShardConfigs[i].SetFileSystemId(
             Sprintf("%s_s%u", fileStore.GetFileSystemId().c_str(), i + 1));
         SetupFileStorePerformanceAndChannels(
-            false, // allocateMixed0Channel
+            false,   // allocateMixed0Channel
             config,
             result.ShardConfigs[i],
             clientProfile);

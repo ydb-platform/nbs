@@ -49,13 +49,9 @@ bool WaitFor(F&& event)
     return false;
 }
 
-
 TString GetTestFilePath(const TString& fileName)
 {
-    return JoinFsPaths(
-        ArcadiaSourceRoot(),
-        "cloud/filestore/tests",
-        fileName);
+    return JoinFsPaths(ArcadiaSourceRoot(), "cloud/filestore/tests", fileName);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -92,8 +88,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TLogBackendControlPlaneCollector
-    : public TLogBackend
+class TLogBackendControlPlaneCollector: public TLogBackend
 {
 private:
     TVector<TString> RequestCandidates;
@@ -112,19 +107,20 @@ public:
     }
 
     void ReopenLog() override
-    {
-    }
+    {}
 
     bool CheckExistCommand(TStringBuf command)
     {
-        return CheckExistCommand(command, RequestCandidates)
-            && CheckExistCommand(command, ResponseCandidates);
+        return CheckExistCommand(command, RequestCandidates) &&
+               CheckExistCommand(command, ResponseCandidates);
     }
 
 private:
-    bool CheckExistCommand(TStringBuf command, const TVector<TString>& candidates)
+    bool CheckExistCommand(
+        TStringBuf command,
+        const TVector<TString>& candidates)
     {
-        for (const auto& row : candidates) {
+        for (const auto& row: candidates) {
             if (row.Contains(command)) {
                 return true;
             }
@@ -203,7 +199,8 @@ public:
         const TString& certPrivateKeyFileName)
     {
         ClientConfig.SetCertFile(GetTestFilePath(certsFileName));
-        ClientConfig.SetCertPrivateKeyFile(GetTestFilePath(certPrivateKeyFileName));
+        ClientConfig.SetCertPrivateKeyFile(
+            GetTestFilePath(certPrivateKeyFileName));
         return *this;
     }
 
@@ -293,8 +290,8 @@ struct TBootstrap
 
 public:
     TBootstrap(
-            const NProto::TServerConfig& serverConfig = {},
-            std::shared_ptr<TLogBackendControlPlaneCollector> logBackend = nullptr)
+        const NProto::TServerConfig& serverConfig = {},
+        std::shared_ptr<TLogBackendControlPlaneCollector> logBackend = nullptr)
         : Counters{MakeIntrusive<NMonitoring::TDynamicCounters>()}
         , Logging{logBackend ? CreateLoggingService(logBackend) : CreateLoggingService("console")}
         , Service{std::make_shared<typename TSetup::TService>()}
@@ -353,10 +350,9 @@ public:
         if (!clientConfig.GetPort()) {
             clientConfig.SetPort(ServerConfig->GetPort());
         }
-        Clients.push_back(
-            TSetup::CreateClient(
-                std::make_shared<TClientConfig>(clientConfig),
-                Logging));
+        Clients.push_back(TSetup::CreateClient(
+            std::make_shared<TClientConfig>(clientConfig),
+            Logging));
         return Clients.back();
     }
 
@@ -370,7 +366,7 @@ private:
         if (serverConfig.GetRootCertsFile()) {
             serverConfig.SetSecurePort(PortManager.GetPort(9022));
         }
-        return  std::make_shared<TServerConfig>(std::move(serverConfig));
+        return std::make_shared<TServerConfig>(std::move(serverConfig));
     }
 };
 
@@ -384,7 +380,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
     {
         TBootstrap<TServerSetup> bootstrap;
 
-        bootstrap.Service->PingHandler = [] (auto, auto) {
+        bootstrap.Service->PingHandler = [](auto, auto)
+        {
             return MakeFuture<NProto::TPingResponse>();
         };
 
@@ -394,9 +391,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
         auto context = MakeIntrusive<TCallContext>("fs");
         auto request = std::make_shared<NProto::TPingRequest>();
 
-        auto future = bootstrap.Clients[0]->Ping(
-            std::move(context),
-            std::move(request));
+        auto future =
+            bootstrap.Clients[0]->Ping(std::move(context), std::move(request));
 
         const auto& response = future.GetValue(WaitTimeout);
         UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
@@ -407,11 +403,13 @@ Y_UNIT_TEST_SUITE(TServerTest)
         auto logBackend = std::make_shared<TLogBackendControlPlaneCollector>();
         TBootstrap<TServerSetup> bootstrap({}, logBackend);
 
-        bootstrap.Service->PingHandler = [] (auto, auto) {
+        bootstrap.Service->PingHandler = [](auto, auto)
+        {
             return MakeFuture<NProto::TPingResponse>();
         };
 
-        bootstrap.Service->CreateFileStoreHandler = [] (auto, auto) {
+        bootstrap.Service->CreateFileStoreHandler = [](auto, auto)
+        {
             return MakeFuture<NProto::TCreateFileStoreResponse>();
         };
 
@@ -419,24 +417,27 @@ Y_UNIT_TEST_SUITE(TServerTest)
         bootstrap.Start();
 
         auto context = MakeIntrusive<TCallContext>("fs");
-        auto requestCreateFileStore = std::make_shared<NProto::TCreateFileStoreRequest>();
+        auto requestCreateFileStore =
+            std::make_shared<NProto::TCreateFileStoreRequest>();
         auto requestPing = std::make_shared<NProto::TPingRequest>();
 
         auto futureCreateFileStore = bootstrap.Clients[0]->CreateFileStore(
             context,
             std::move(requestCreateFileStore));
 
-        auto futurePing = bootstrap.Clients[0]->Ping(
-            context,
-            std::move(requestPing));
+        auto futurePing =
+            bootstrap.Clients[0]->Ping(context, std::move(requestPing));
 
-        const auto& responseCreateFileStore = futureCreateFileStore.GetValue(WaitTimeout);
+        const auto& responseCreateFileStore =
+            futureCreateFileStore.GetValue(WaitTimeout);
         UNIT_ASSERT_C(
             !HasError(responseCreateFileStore),
             FormatError(responseCreateFileStore.GetError()));
 
         const auto& responsePing = futurePing.GetValue(WaitTimeout);
-        UNIT_ASSERT_C(!HasError(responsePing), FormatError(responsePing.GetError()));
+        UNIT_ASSERT_C(
+            !HasError(responsePing),
+            FormatError(responsePing.GetError()));
 
         UNIT_ASSERT(logBackend->CheckExistCommand("CreateFileStore"));
         UNIT_ASSERT(!logBackend->CheckExistCommand("Ping"));
@@ -496,8 +497,10 @@ Y_UNIT_TEST_SUITE(TServerTest)
     Y_UNIT_TEST(ShouldHitErrorMetricOnFailure)
     {
         TBootstrap<TServerSetup> bootstrap;
-        bootstrap.Service->CreateNodeHandler = [] (auto, auto) {
-            return MakeFuture<NProto::TCreateNodeResponse>(TErrorResponse(E_IO, ""));
+        bootstrap.Service->CreateNodeHandler = [](auto, auto)
+        {
+            return MakeFuture<NProto::TCreateNodeResponse>(
+                TErrorResponse(E_IO, ""));
         };
 
         bootstrap.CreateClient();
@@ -514,9 +517,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT_VALUES_EQUAL(E_IO, response.GetError().GetCode());
         bootstrap.Stop();
 
-        auto counters = bootstrap.Counters
-            ->FindSubgroup("component", "server_ut")
-            ->FindSubgroup("request", "CreateNode");
+        auto counters =
+            bootstrap.Counters->FindSubgroup("component", "server_ut")
+                ->FindSubgroup("request", "CreateNode");
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             counters->GetCounter("Errors")->GetAtomic());
@@ -532,76 +535,64 @@ Y_UNIT_TEST_SUITE(TServerTest)
             "certs/server.crt",
             {{"certs/server.crt", "certs/server.key"}});
 
-        TBootstrap<TServerSetup> bootstrap(serverConfigBuilder.BuildServerConfig());
-        bootstrap.Service->PingHandler =
-            [&] (auto callContext, auto request) {
-                Y_UNUSED(callContext);
-                UNIT_ASSERT_VALUES_EQUAL(
-                    "test",
-                    request->GetHeaders().GetInternal().GetAuthToken()
-                );
-                return MakeFuture<NProto::TPingResponse>();
-            };
+        TBootstrap<TServerSetup> bootstrap(
+            serverConfigBuilder.BuildServerConfig());
+        bootstrap.Service->PingHandler = [&](auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+            UNIT_ASSERT_VALUES_EQUAL(
+                "test",
+                request->GetHeaders().GetInternal().GetAuthToken());
+            return MakeFuture<NProto::TPingResponse>();
+        };
 
         TTestClientBuilder clientConfigBuilder;
-        clientConfigBuilder.SetSecureEndpoint(
-            "certs/server.crt",
-            "test");
+        clientConfigBuilder.SetSecureEndpoint("certs/server.crt", "test");
 
-        auto client = bootstrap.CreateClient(clientConfigBuilder.BuildClientConfig());
+        auto client =
+            bootstrap.CreateClient(clientConfigBuilder.BuildClientConfig());
         bootstrap.Start();
 
         auto future = client->Ping(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TPingRequest>()
-        );
+            std::make_shared<NProto::TPingRequest>());
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(!HasError(response), response.GetError());
     }
-
 
     Y_UNIT_TEST(ShouldHandleAuthRequestsWithMultipleCertificates)
     {
         TTestServerBuilder serverConfigBuilder;
-        serverConfigBuilder.SetSecureEndpoint(
-            "certs/server.crt",
-            {})
-        .AddCert(
-            "certs/server_fallback.crt",
-            "certs/server.key")
-        .AddCert(
-            "certs/server.crt",
-            "certs/server.key");
+        serverConfigBuilder.SetSecureEndpoint("certs/server.crt", {})
+            .AddCert("certs/server_fallback.crt", "certs/server.key")
+            .AddCert("certs/server.crt", "certs/server.key");
 
-        TBootstrap<TServerSetup> bootstrap(serverConfigBuilder.BuildServerConfig());
-        bootstrap.Service->PingHandler =
-            [&] (auto callContext, auto request) {
-                Y_UNUSED(callContext);
-                UNIT_ASSERT_VALUES_EQUAL(
-                    "test",
-                    request->GetHeaders().GetInternal().GetAuthToken()
-                );
-                return MakeFuture<NProto::TPingResponse>();
-            };
+        TBootstrap<TServerSetup> bootstrap(
+            serverConfigBuilder.BuildServerConfig());
+        bootstrap.Service->PingHandler = [&](auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+            UNIT_ASSERT_VALUES_EQUAL(
+                "test",
+                request->GetHeaders().GetInternal().GetAuthToken());
+            return MakeFuture<NProto::TPingResponse>();
+        };
 
         TTestClientBuilder clientConfigBuilder;
-        clientConfigBuilder.SetSecureEndpoint(
-            "certs/server.crt",
-            "test");
+        clientConfigBuilder.SetSecureEndpoint("certs/server.crt", "test");
 
-        auto client = bootstrap.CreateClient(clientConfigBuilder.BuildClientConfig());
+        auto client =
+            bootstrap.CreateClient(clientConfigBuilder.BuildClientConfig());
         bootstrap.Start();
 
         auto future = client->Ping(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TPingRequest>()
-        );
+            std::make_shared<NProto::TPingRequest>());
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(!HasError(response), response.GetError());
     }
-
 
     Y_UNIT_TEST(ShouldHandleSecureAndInsecureClientsSimultaneously)
     {
@@ -610,20 +601,19 @@ Y_UNIT_TEST_SUITE(TServerTest)
             "certs/server.crt",
             {{"certs/server.crt", "certs/server.key"}});
 
-        TBootstrap<TServerSetup> bootstrap(serverConfigBuilder.BuildServerConfig());
-        bootstrap.Service->PingHandler =
-            [&] (auto callContext, auto request) {
-                Y_UNUSED(callContext);
-                Y_UNUSED(request);
-                return MakeFuture<NProto::TPingResponse>();
-            };
+        TBootstrap<TServerSetup> bootstrap(
+            serverConfigBuilder.BuildServerConfig());
+        bootstrap.Service->PingHandler = [&](auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TPingResponse>();
+        };
 
         bootstrap.CreateClient();
 
         TTestClientBuilder clientConfigBuilder;
-        clientConfigBuilder.SetSecureEndpoint(
-            "certs/server.crt",
-            "test");
+        clientConfigBuilder.SetSecureEndpoint("certs/server.crt", "test");
 
         bootstrap.CreateClient(clientConfigBuilder.BuildClientConfig());
 
@@ -632,18 +622,17 @@ Y_UNIT_TEST_SUITE(TServerTest)
         {
             auto insecureFuture = bootstrap.Clients[0]->Ping(
                 MakeIntrusive<TCallContext>(),
-                std::make_shared<NProto::TPingRequest>()
-            );
+                std::make_shared<NProto::TPingRequest>());
 
-            const auto& response = insecureFuture.GetValue(TDuration::Seconds(5));
+            const auto& response =
+                insecureFuture.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(!HasError(response), response.GetError());
         }
 
         {
             auto secureFuture = bootstrap.Clients[1]->Ping(
                 MakeIntrusive<TCallContext>(),
-                std::make_shared<NProto::TPingRequest>()
-            );
+                std::make_shared<NProto::TPingRequest>());
 
             const auto& response = secureFuture.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(!HasError(response), response.GetError());
@@ -653,15 +642,14 @@ Y_UNIT_TEST_SUITE(TServerTest)
     Y_UNIT_TEST(ShouldFailRequestWithNonEmptyInternalHeaders)
     {
         TBootstrap<TServerSetup> bootstrap;
-        bootstrap.Service->PingHandler =
-            [&] (auto callContext, auto request) {
-                Y_UNUSED(callContext);
-                UNIT_ASSERT_VALUES_EQUAL(
-                    "",
-                    request->GetHeaders().GetInternal().GetAuthToken()
-                );
-                return MakeFuture<NProto::TPingResponse>();
-            };
+        bootstrap.Service->PingHandler = [&](auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+            UNIT_ASSERT_VALUES_EQUAL(
+                "",
+                request->GetHeaders().GetInternal().GetAuthToken());
+            return MakeFuture<NProto::TPingResponse>();
+        };
 
         bootstrap.Start();
 
@@ -669,8 +657,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         request->MutableHeaders()->MutableInternal()->SetAuthToken("test");
         auto future = bootstrap.Clients[0]->Ping(
             MakeIntrusive<TCallContext>(),
-            std::move(request)
-        );
+            std::move(request));
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
@@ -685,27 +672,25 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         TBootstrap<TVHostSetup> bootstrap(
             serverConfigBuilder.BuildServerConfig());
-        bootstrap.Service->PingHandler =
-            [&] (auto request) {
-                UNIT_ASSERT_VALUES_EQUAL(
-                    int(NProto::SOURCE_FD_CONTROL_CHANNEL),
-                    int(request->GetHeaders().GetInternal().GetRequestSource())
-                );
-                return MakeFuture<NProto::TPingResponse>();
-            };
+        bootstrap.Service->PingHandler = [&](auto request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                int(NProto::SOURCE_FD_CONTROL_CHANNEL),
+                int(request->GetHeaders().GetInternal().GetRequestSource()));
+            return MakeFuture<NProto::TPingResponse>();
+        };
 
         bootstrap.Start();
 
         TTestClientBuilder clientConfigBuilder;
         clientConfigBuilder.SetUnixSocketPath(unixSocket.GetPath());
-        auto client = bootstrap.CreateClient(clientConfigBuilder.BuildClientConfig());
+        auto client =
+            bootstrap.CreateClient(clientConfigBuilder.BuildClientConfig());
         client->Start();
 
         auto request = std::make_shared<NProto::TPingRequest>();
-        auto future = client->Ping(
-            MakeIntrusive<TCallContext>(),
-            std::move(request)
-        );
+        auto future =
+            client->Ping(MakeIntrusive<TCallContext>(), std::move(request));
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(!HasError(response), response.GetError());
@@ -721,9 +706,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TBootstrap<TVHostSetup> bootstrap(
             serverConfigBuilder.BuildServerConfig());
         auto errorCounter =
-            bootstrap.Counters->
-            GetSubgroup("component", "server_ut")->
-            GetCounter("AppCriticalEvents/EndpointStartingError", true);
+            bootstrap.Counters->GetSubgroup("component", "server_ut")
+                ->GetCounter("AppCriticalEvents/EndpointStartingError", true);
 
         UNIT_ASSERT_VALUES_EQUAL(0, static_cast<int>(*errorCounter));
         bootstrap.Start();
@@ -763,7 +747,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TBootstrap<TServerSetup> bootstrap(
             serverConfigBuilder.BuildServerConfig());
 
-        bootstrap.Service->PingHandler = [] (auto, auto) {
+        bootstrap.Service->PingHandler = [](auto, auto)
+        {
             return MakeFuture<NProto::TPingResponse>();
         };
 
@@ -776,8 +761,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto insecureFuture = bootstrap.Clients[0]->Ping(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TPingRequest>()
-        );
+            std::make_shared<NProto::TPingRequest>());
 
         const auto& response = insecureFuture.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(!HasError(response), response.GetError());

@@ -6,8 +6,7 @@ using namespace NCloud::NStorage::NServer;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TClientStorageFactoryStub
-    : public IClientStorageFactory
+struct TClientStorageFactoryStub: public IClientStorageFactory
 {
     NStorage::NServer::IClientStoragePtr CreateClientStorage(
         IBlockStorePtr service) override

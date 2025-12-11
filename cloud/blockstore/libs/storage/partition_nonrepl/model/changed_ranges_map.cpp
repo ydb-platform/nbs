@@ -7,9 +7,9 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 TChangedRangesMap::TChangedRangesMap(
-        ui64 blockCount,
-        ui32 blockSize,
-        ui32 rangeSize)
+    ui64 blockCount,
+    ui32 blockSize,
+    ui32 rangeSize)
     : BlockCount(blockCount)
     , BlockSize(blockSize)
     , RangeSize(rangeSize)

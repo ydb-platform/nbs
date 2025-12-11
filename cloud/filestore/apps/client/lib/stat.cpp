@@ -12,8 +12,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void Print(const NProto::TNodeAttr& nodeAttr, bool jsonOutput) {
-
+void Print(const NProto::TNodeAttr& nodeAttr, bool jsonOutput)
+{
     if (jsonOutput) {
         Cout << nodeAttr.AsJSON() << Endl;
     } else {

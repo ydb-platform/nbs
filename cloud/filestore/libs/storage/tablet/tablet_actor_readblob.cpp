@@ -35,10 +35,10 @@ struct TReadBlobRequest
     std::unique_ptr<TEvBlobStorage::TEvGet> Request;
 
     TReadBlobRequest(
-            const TActorId& proxy,
-            const TLogoBlobID& blobId,
-            TVector<TReadBlockRange> ranges,
-            std::unique_ptr<TEvBlobStorage::TEvGet> request)
+        const TActorId& proxy,
+        const TLogoBlobID& blobId,
+        TVector<TReadBlockRange> ranges,
+        std::unique_ptr<TEvBlobStorage::TEvGet> request)
         : Proxy(proxy)
         , BlobId(blobId)
         , Ranges(std::move(ranges))
@@ -62,8 +62,7 @@ TString DumpBlobIds(const TVector<TReadBlobRequest>& requests)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReadBlobActor final
-    : public TActorBootstrapped<TReadBlobActor>
+class TReadBlobActor final: public TActorBootstrapped<TReadBlobActor>
 {
 private:
     const TString LogTag;
@@ -118,15 +117,15 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReadBlobActor::TReadBlobActor(
-        TString logTag,
-        TActorId tablet,
-        TRequestInfoPtr requestInfo,
-        IBlockBufferPtr buffer,
-        ui32 blockSize,
-        TString fileSystemId,
-        IProfileLogPtr profileLog,
-        TVector<TReadBlobRequest> requests,
-        NProto::TProfileLogRequestInfo profileLogRequest)
+    TString logTag,
+    TActorId tablet,
+    TRequestInfoPtr requestInfo,
+    IBlockBufferPtr buffer,
+    ui32 blockSize,
+    TString fileSystemId,
+    IProfileLogPtr profileLog,
+    TVector<TReadBlobRequest> requests,
+    NProto::TProfileLogRequestInfo profileLogRequest)
     : LogTag(std::move(logTag))
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
@@ -190,8 +189,7 @@ void TReadBlobActor::HandleGetResult(
             return;
         }
 
-        if (response.Id != request.BlobId ||
-            response.Buffer.empty() ||
+        if (response.Id != request.BlobId || response.Buffer.empty() ||
             response.Buffer.size() % BlockSize != 0)
         {
             ReplyError(ctx, *msg, "invalid response received");
@@ -223,9 +221,7 @@ void TReadBlobActor::HandleGetResult(
                 view = TStringBuf(buffer, BlockSize);
             }
 
-            Buffer->SetBlock(
-                rangeIt->BlockOffset + inRange,
-                view);
+            Buffer->SetBlock(rangeIt->BlockOffset + inRange, view);
         }
 
         TABLET_VERIFY(blocksCount - rangeOffset == rangeIt->Count);
@@ -249,17 +245,20 @@ void TReadBlobActor::HandlePoisonPill(
 }
 
 void TReadBlobActor::ReplyError(
-        const TActorContext& ctx,
-        const TEvBlobStorage::TEvGetResult& response,
-        const TString& message)
+    const TActorContext& ctx,
+    const TEvBlobStorage::TEvGetResult& response,
+    const TString& message)
 {
-    LOG_ERROR(ctx, TFileStoreComponents::TABLET,
+    LOG_ERROR(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s TEvBlobStorage::TEvGet failed: %s\n%s",
         LogTag.c_str(),
         message.data(),
         response.Print(false).data());
 
-    auto error = MakeError(E_REJECTED, "TEvBlobStorage::TEvGet failed: " + message);
+    auto error =
+        MakeError(E_REJECTED, "TEvBlobStorage::TEvGet failed: " + message);
     ReplyAndDie(ctx, error);
 }
 
@@ -267,8 +266,8 @@ void TReadBlobActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    const auto t = ctx.Now()
-        - TInstant::MicroSeconds(ProfileLogRequest.GetTimestampMcs());
+    const auto t =
+        ctx.Now() - TInstant::MicroSeconds(ProfileLogRequest.GetTimestampMcs());
 
     // log request
     FinalizeProfileLogRequestInfo(
@@ -332,10 +331,8 @@ void TIndexTabletActor::HandleReadBlob(
 
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     FILESTORE_TRACK(
@@ -373,10 +370,7 @@ void TIndexTabletActor::HandleReadBlob(
                 if (curBlock.BlockOffset == prevBlock.BlockOffset + 1) {
                     ++ranges.back().Count;
                 } else {
-                    ranges.push_back({
-                        curBlock.BlockOffset,
-                        1
-                    });
+                    ranges.push_back({curBlock.BlockOffset, 1});
                 }
             } else {
                 queries[queriesCount++].Set(
@@ -384,14 +378,11 @@ void TIndexTabletActor::HandleReadBlob(
                     blob.Blocks[i].BlobOffset * blockSize,
                     blockSize);
 
-                ranges.push_back({
-                    blob.Blocks[i].BlockOffset,
-                    1
-                });
+                ranges.push_back({blob.Blocks[i].BlockOffset, 1});
             }
         }
 
-        for (const auto& range : ranges) {
+        for (const auto& range: ranges) {
             AddRange(
                 blob.BlobId.CommitId(),
                 static_cast<ui64>(range.BlockOffset) * blockSize,
@@ -403,9 +394,8 @@ void TIndexTabletActor::HandleReadBlob(
             queries,
             queriesCount,
             blob.Deadline,
-            blob.Async
-                ? NKikimrBlobStorage::AsyncRead
-                : NKikimrBlobStorage::FastRead);
+            blob.Async ? NKikimrBlobStorage::AsyncRead
+                       : NKikimrBlobStorage::FastRead);
 
         if (!msg->CallContext->LWOrbit.Fork(request->Orbit)) {
             FILESTORE_TRACK(
@@ -414,14 +404,13 @@ void TIndexTabletActor::HandleReadBlob(
                 "TEvBlobStorage::TEvGet");
         }
 
-        requests.emplace_back(
-            proxy,
-            blobId,
-            std::move(ranges),
-            std::move(request));
+        requests
+            .emplace_back(proxy, blobId, std::move(ranges), std::move(request));
     }
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s ReadBlob started (%s)",
         LogTag.c_str(),
         DumpBlobIds(requests).c_str());
@@ -447,7 +436,9 @@ void TIndexTabletActor::HandleReadBlobCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s ReadBlob completed (%s)",
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());

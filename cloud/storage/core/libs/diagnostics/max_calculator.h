@@ -5,6 +5,7 @@
 #include <cloud/storage/core/libs/common/timer.h>
 
 #include <library/cpp/deprecated/atomic/atomic.h>
+
 #include <util/system/types.h>
 
 #include <array>
@@ -25,7 +26,7 @@ struct TMaxCalculatorBase
     TAtomic Current = 0;
     TAtomic Started;
 
-    std::array<ui64, BucketCount> Buckets {};
+    std::array<ui64, BucketCount> Buckets{};
 
     size_t BucketIndex = 0;
 

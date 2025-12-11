@@ -18,7 +18,7 @@ TPipeableProperty(F&&) -> TPipeableProperty<F>;
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T, typename F>
-decltype(auto) operator | (T&& config, TPipeableProperty<F> p)
+decltype(auto) operator|(T&& config, TPipeableProperty<F> p)
 {
     p.Set(config);
 

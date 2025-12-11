@@ -1,6 +1,7 @@
 #include "part_actor.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
@@ -15,8 +16,6 @@
 #include <cloud/storage/core/libs/common/helpers.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-
-#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
@@ -43,10 +42,7 @@ IWriteBlocksHandlerPtr CreateWriteHandler(
     std::unique_ptr<TEvService::TEvWriteBlocksRequest> request,
     ui32 blockSize)
 {
-    return CreateWriteBlocksHandler(
-        writeRange,
-        std::move(request),
-        blockSize);
+    return CreateWriteBlocksHandler(writeRange, std::move(request), blockSize);
 }
 
 IWriteBlocksHandlerPtr CreateWriteHandler(
@@ -55,9 +51,7 @@ IWriteBlocksHandlerPtr CreateWriteHandler(
     ui32 blockSize)
 {
     Y_UNUSED(blockSize);
-    return CreateWriteBlocksHandler(
-        writeRange,
-        std::move(request));
+    return CreateWriteBlocksHandler(writeRange, std::move(request));
 }
 
 TGuardedSgList GetSglist(const NProto::TWriteBlocksRequest& request)
@@ -70,8 +64,8 @@ const TGuardedSgList& GetSglist(const NProto::TWriteBlocksLocalRequest& request)
     return request.Sglist;
 }
 
-template <typename ...T>
-IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&& ...args)
+template <typename... T>
+IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&&... args)
 {
     if (replyLocal) {
         return std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
@@ -90,8 +84,7 @@ void TPartitionActor::HandleWriteBlocks(
     const TEvService::TEvWriteBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    HandleWriteBlocksRequest<TEvService::TWriteBlocksMethod>(
-        ev, ctx, false);
+    HandleWriteBlocksRequest<TEvService::TWriteBlocksMethod>(ev, ctx, false);
 }
 
 void TPartitionActor::HandleWriteBlocksLocal(
@@ -99,7 +92,9 @@ void TPartitionActor::HandleWriteBlocksLocal(
     const TActorContext& ctx)
 {
     HandleWriteBlocksRequest<TEvService::TWriteBlocksLocalMethod>(
-        ev, ctx, true);
+        ev,
+        ctx,
+        true);
 }
 
 template <typename TMethod>
@@ -110,10 +105,8 @@ void TPartitionActor::HandleWriteBlocksRequest(
 {
     auto msg = ev->Release();
 
-    auto requestInfo = CreateRequestInfo<TMethod>(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo<TMethod>(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -181,7 +174,8 @@ void TPartitionActor::HandleWriteBlocksRequest(
                             << checksum.ShortUtf8DebugString().Quote()
                             << "; Incoming checksum: "
                             << msg->Record.GetChecksums(0)
-                                   .ShortUtf8DebugString().Quote(),
+                                   .ShortUtf8DebugString()
+                                   .Quote(),
                         flags));
                 }
             }
@@ -219,8 +213,7 @@ void TPartitionActor::HandleWriteBlocksRequest(
         requestInfo,
         ConvertRangeSafe(writeRange),
         std::move(writeHandler),
-        replyLocal
-    );
+        replyLocal);
 }
 
 void TPartitionActor::WriteBlocks(
@@ -251,7 +244,9 @@ void TPartitionActor::WriteBlocks(
     };
 
     if (!State->IsWriteAllowed(EChannelPermission::UserWritesAllowed)) {
-        replyError(ctx, MakeError(E_BS_OUT_OF_SPACE, "insufficient disk space"));
+        replyError(
+            ctx,
+            MakeError(E_BS_OUT_OF_SPACE, "insufficient disk space"));
 
         ReassignChannelsIfNeeded(ctx);
 
@@ -260,7 +255,8 @@ void TPartitionActor::WriteBlocks(
 
     // RejectProbability is broken in our case (KIKIMR-10194)
     // if (Executor()->GetRejectProbability() >= 0.95) {
-    //     replyError(ctx, MakeError(E_REJECTED, "rejected by tablet executor"));
+    //     replyError(ctx, MakeError(E_REJECTED, "rejected by tablet
+    //     executor"));
     //
     //     return;
     // }
@@ -269,13 +265,10 @@ void TPartitionActor::WriteBlocks(
 
     TRequestInBuffer<TWriteBufferRequestData> requestInBuffer{
         writeRange.Size(),
-        {
-            std::move(requestInfo),
-            writeRange,
-            std::move(writeHandler),
-            replyLocal
-        }
-    };
+        {std::move(requestInfo),
+         writeRange,
+         std::move(writeHandler),
+         replyLocal}};
 
     const auto requestSize = writeRange.Size() * State->GetBlockSize();
     const auto writeBlobThreshold =
@@ -330,8 +323,7 @@ void TPartitionActor::HandleWriteBlocksCompleted(
     PartCounters->RequestCounters.WriteBlocks.AddRequest(
         time,
         requestBytes,
-        requestCount
-    );
+        requestCount);
 
     if (msg->AffectedBlockInfos) {
         IProfileLog::TReadWriteRequestBlockInfos request;

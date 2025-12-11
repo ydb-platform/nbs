@@ -144,24 +144,21 @@ void FillDescribeDataResponse(
             MakeBlobId(tabletId, x.first),
             piece.MutableBlobId());
 
-        piece.SetBSGroupId(info.GroupFor(
-            x.first.Channel(),
-            x.first.Generation()));
+        piece.SetBSGroupId(
+            info.GroupFor(x.first.Channel(), x.first.Generation()));
 
         // joining adjacent ranges from this blob
         NProtoPrivate::TRangeInBlob rangeInBlob;
         ui32 prevBlobOffset = 0;
         for (const auto& b: x.second) {
-            const auto curOffset =
-                static_cast<ui64>(b.BlockIndex) * blockSize;
+            const auto curOffset = static_cast<ui64>(b.BlockIndex) * blockSize;
             if (rangeInBlob.GetLength()) {
                 const ui64 endOffset =
                     rangeInBlob.GetOffset() + rangeInBlob.GetLength();
 
                 // if either Offsets are not adjacent or BlobOffsets are
                 // not adjacent, we should start a new range
-                if (endOffset < curOffset
-                        || prevBlobOffset + 1 != b.BlobOffset)
+                if (endOffset < curOffset || prevBlobOffset + 1 != b.BlobOffset)
                 {
                     *piece.AddRanges() = std::move(rangeInBlob);
                     rangeInBlob.Clear();
@@ -218,10 +215,8 @@ public:
         }
     }
 
-    void Accept(
-        const TBlock& block,
-        const TPartialBlobId& blobId,
-        ui32 blobOffset)
+    void
+    Accept(const TBlock& block, const TPartialBlobId& blobId, ui32 blobOffset)
     {
         TABLET_VERIFY(!ApplyingByteLayer);
         TABLET_VERIFY(blobId);
@@ -258,7 +253,8 @@ public:
     {
         TABLET_VERIFY(!ApplyingByteLayer);
 
-        ui32 blockOffset = deletion.BlockIndex - Args.ActualRange().FirstBlock();
+        ui32 blockOffset =
+            deletion.BlockIndex - Args.ActualRange().FirstBlock();
         TABLET_VERIFY(blockOffset < Args.ActualRange().BlockCount());
 
         auto& prev = Args.Blocks[blockOffset];
@@ -288,13 +284,11 @@ public:
             auto& prev = Args.Blocks[blockIndex];
             auto next = Min<ui32>(
                 bytes.Length,
-                (blockIndex + 1) * Args.ActualRange().BlockSize
-            );
+                (blockIndex + 1) * Args.ActualRange().BlockSize);
             if (prev.MinCommitId < bytes.MinCommitId) {
-                Args.Bytes[blockIndex].Intervals.push_back({
-                    IntegerCast<ui32>(offsetInBlock),
-                    TString(data.data() + i, next - i)
-                });
+                Args.Bytes[blockIndex].Intervals.push_back(
+                    {IntegerCast<ui32>(offsetInBlock),
+                     TString(data.data() + i, next - i)});
             }
 
             i = next;
@@ -320,8 +314,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReadDataActor final
-    : public TActorBootstrapped<TReadDataActor>
+class TReadDataActor final: public TActorBootstrapped<TReadDataActor>
 {
 private:
     const ITraceSerializerPtr TraceSerializer;
@@ -384,23 +377,23 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReadDataActor::TReadDataActor(
-        ITraceSerializerPtr traceSerializer,
-        TString logTag,
-        TString fileSystemId,
-        bool shouldCalculateChecksums,
-        ui32 blockSize,
-        TActorId tablet,
-        TRequestInfoPtr requestInfo,
-        ui64 commitId,
-        TByteRange originByteRange,
-        TByteRange actualRange,
-        ui64 totalSize,
-        TVector<TBlockDataRef> blocks,
-        TVector<TBlockBytes> bytes,
-        IBlockBufferPtr buffer,
-        TSet<ui32> mixedBlocksRanges,
-        IProfileLogPtr profileLog,
-        NProto::TTProfileLogRequestInfo profileLogRequest)
+    ITraceSerializerPtr traceSerializer,
+    TString logTag,
+    TString fileSystemId,
+    bool shouldCalculateChecksums,
+    ui32 blockSize,
+    TActorId tablet,
+    TRequestInfoPtr requestInfo,
+    ui64 commitId,
+    TByteRange originByteRange,
+    TByteRange actualRange,
+    ui64 totalSize,
+    TVector<TBlockDataRef> blocks,
+    TVector<TBlockBytes> bytes,
+    IBlockBufferPtr buffer,
+    TSet<ui32> mixedBlocksRanges,
+    IProfileLogPtr profileLog,
+    NProto::TTProfileLogRequestInfo profileLogRequest)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
     , FileSystemId(std::move(fileSystemId))
@@ -438,8 +431,7 @@ void TReadDataActor::ReadBlob(const TActorContext& ctx)
     using TBlocksByBlob = THashMap<
         TPartialBlobId,
         TVector<TReadBlob::TBlock>,
-        TPartialBlobIdHash
-    >;
+        TPartialBlobIdHash>;
 
     TBlocksByBlob blocksByBlob;
 
@@ -451,14 +443,17 @@ void TReadDataActor::ReadBlob(const TActorContext& ctx)
             continue;
         }
 
-        blocksByBlob[block.BlobId].emplace_back(block.BlobOffset, blockOffset - 1);
+        blocksByBlob[block.BlobId].emplace_back(
+            block.BlobOffset,
+            blockOffset - 1);
     }
 
     auto request = std::make_unique<TEvIndexTabletPrivate::TEvReadBlobRequest>(
         RequestInfo->CallContext);
     request->Buffer = Buffer;
 
-    auto comparer = [] (const auto& l, const auto& r) {
+    auto comparer = [](const auto& l, const auto& r)
+    {
         return l.BlobOffset < r.BlobOffset;
     };
 
@@ -512,7 +507,8 @@ void TReadDataActor::ReplyAndDie(
 
     if (RequestInfo->Sender != Tablet) {
         // reply to caller
-        auto response = std::make_unique<TEvService::TEvReadDataResponse>(error);
+        auto response =
+            std::make_unique<TEvService::TEvReadDataResponse>(error);
         if (SUCCEEDED(error.GetCode())) {
             CopyFileData(
                 LogTag,
@@ -530,7 +526,9 @@ void TReadDataActor::ReplyAndDie(
             }
         }
 
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
             "%s ReadData: #%lu completed (%s)",
             LogTag.c_str(),
             RequestInfo->CallContext->RequestId,
@@ -560,7 +558,9 @@ STFUNC(TReadDataActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvIndexTabletPrivate::TEvReadBlobResponse, HandleReadBlobResponse);
+        HFunc(
+            TEvIndexTabletPrivate::TEvReadBlobResponse,
+            HandleReadBlobResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -574,16 +574,10 @@ STFUNC(TReadDataActor::StateWork)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TReadRequest>
-NProto::TError ValidateRequest(
-    const TReadRequest& request,
-    ui32 blockSize,
-    ui32 maxFileBlocks)
+NProto::TError
+ValidateRequest(const TReadRequest& request, ui32 blockSize, ui32 maxFileBlocks)
 {
-    const TByteRange range(
-        request.GetOffset(),
-        request.GetLength(),
-        blockSize
-    );
+    const TByteRange range(request.GetOffset(), request.GetLength(), blockSize);
 
     if (auto error = ValidateRange(range, maxFileBlocks); HasError(error)) {
         return error;
@@ -609,7 +603,8 @@ void TIndexTabletActor::HandleReadData(
         msg->Record,
         ctx.Now());
 
-    auto validator = [&] (const NProto::TReadDataRequest& request) {
+    auto validator = [&](const NProto::TReadDataRequest& request)
+    {
         return ValidateRequest(
             request,
             GetBlockSize(),
@@ -640,13 +635,10 @@ void TIndexTabletActor::HandleReadData(
     const TByteRange byteRange(
         msg->Record.GetOffset(),
         msg->Record.GetLength(),
-        GetBlockSize()
-    );
+        GetBlockSize());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TReadDataMethod>(*requestInfo);
@@ -693,14 +685,16 @@ void TIndexTabletActor::HandleDescribeData(
         msg->Record,
         ctx.Now());
 
-    auto validator = [&] (const NProtoPrivate::TDescribeDataRequest& request) {
+    auto validator = [&](const NProtoPrivate::TDescribeDataRequest& request)
+    {
         return ValidateRequest(
             request,
             GetBlockSize(),
             Config->GetMaxFileBlocks());
     };
 
-    if (!AcceptRequest<TEvIndexTablet::TDescribeDataMethod>(ev, ctx, validator)) {
+    if (!AcceptRequest<TEvIndexTablet::TDescribeDataMethod>(ev, ctx, validator))
+    {
         FinalizeProfileLogRequestInfo(
             std::move(profileLogRequest),
             ctx.Now(),
@@ -725,13 +719,10 @@ void TIndexTabletActor::HandleDescribeData(
     const TByteRange byteRange(
         msg->Record.GetOffset(),
         msg->Record.GetLength(),
-        GetBlockSize()
-    );
+        GetBlockSize());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     auto* handle = FindHandle(msg->Record.GetHandle());
@@ -795,10 +786,8 @@ bool TIndexTabletActor::ValidateTx_ReadData(
     const TActorContext& ctx,
     TTxIndexTablet::TReadData& args)
 {
-    auto* session = FindSession(
-        args.ClientId,
-        args.SessionId,
-        args.SessionSeqNo);
+    auto* session =
+        FindSession(args.ClientId, args.SessionId, args.SessionSeqNo);
     if (!session) {
         args.Error = ErrorInvalidSession(
             args.ClientId,
@@ -834,10 +823,8 @@ bool TIndexTabletActor::ValidateTx_ReadData(
     if (args.DescribeOnly) {
         // initializing args.ReadAheadRange in an ugly way since TMaybe doesn't
         // support classes which don't have an assignment operator
-        auto readAheadRange = RegisterDescribe(
-            args.NodeId,
-            args.Handle,
-            args.AlignedByteRange);
+        auto readAheadRange =
+            RegisterDescribe(args.NodeId, args.Handle, args.AlignedByteRange);
         if (readAheadRange.Defined()) {
             args.ReadAheadRange.ConstructInPlace(*readAheadRange);
             args.Blocks.resize(args.ActualRange().BlockCount());
@@ -846,7 +833,9 @@ bool TIndexTabletActor::ValidateTx_ReadData(
         }
     }
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s[%s] ReadNodeData @%lu [%lu] %s",
         LogTag.c_str(),
         session->GetSessionId().c_str(),
@@ -887,10 +876,12 @@ bool TIndexTabletActor::PrepareTx_ReadData(
         args.ActualRange().FirstBlock(),
         args.ActualRange().BlockCount(),
         BlockGroupSize,
-        [&] (ui32 blockOffset, ui32 blocksCount) {
+        [&](ui32 blockOffset, ui32 blocksCount)
+        {
             ranges.insert(GetMixedRangeIndex(
                 args.NodeId,
-                IntegerCast<ui32>(args.ActualRange().FirstBlock() + blockOffset),
+                IntegerCast<ui32>(
+                    args.ActualRange().FirstBlock() + blockOffset),
                 blocksCount));
         });
 
@@ -921,12 +912,14 @@ bool TIndexTabletActor::PrepareTx_ReadData(
         args.ActualRange().FirstBlock(),
         args.ActualRange().BlockCount(),
         BlockGroupSize,
-        [&] (ui32 blockOffset, ui32 blocksCount) {
+        [&](ui32 blockOffset, ui32 blocksCount)
+        {
             FindMixedBlocks(
                 visitor,
                 args.NodeId,
                 args.CommitId,
-                IntegerCast<ui32>(args.ActualRange().FirstBlock() + blockOffset),
+                IntegerCast<ui32>(
+                    args.ActualRange().FirstBlock() + blockOffset),
                 blocksCount);
         });
 
@@ -941,11 +934,7 @@ bool TIndexTabletActor::PrepareTx_ReadData(
     // important since we compare bytes.MinCommitId with the corresponding
     // blocks' MinCommitIds and keep only those fresh byte ranges whose
     // MinCommitIds are newer than block MinCommitIds
-    FindFreshBytes(
-        visitor,
-        args.NodeId,
-        args.CommitId,
-        args.ActualRange());
+    FindFreshBytes(visitor, args.NodeId, args.CommitId, args.ActualRange());
 
     return true;
 }
@@ -956,9 +945,10 @@ void TIndexTabletActor::CompleteTx_ReadData(
 {
     RemoveTransaction(*args.RequestInfo);
 
-    Y_DEFER {
+    Y_DEFER
+    {
         ReleaseMixedBlocks(args.MixedBlocksRanges);
-    };
+    }
 
     if (args.DescribeOnly && !HasError(args.Error)) {
         if (args.ReadAheadRange) {
@@ -1013,7 +1003,8 @@ void TIndexTabletActor::CompleteTx_ReadData(
     if (HasError(args.Error)) {
         if (args.DescribeOnly) {
             auto response =
-                std::make_unique<TEvIndexTablet::TEvDescribeDataResponse>(args.Error);
+                std::make_unique<TEvIndexTablet::TEvDescribeDataResponse>(
+                    args.Error);
             CompleteResponse<TEvIndexTablet::TDescribeDataMethod>(
                 response->Record,
                 args.RequestInfo->CallContext,

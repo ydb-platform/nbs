@@ -16,24 +16,22 @@ namespace NCloud {
 class TPartialBlobId
 {
 private:
-    union
-    {
+    union {
         struct
         {
-            ui64 Step: 32;
-            ui64 Generation: 32;
+            ui64 Step : 32;
+            ui64 Generation : 32;
         };
         ui64 Raw;
     } CommitId_;
 
-    union
-    {
+    union {
         struct
         {
-            ui64 Channel: 8;
-            ui64 Cookie: 24;
-            ui64 BlobSize: 28;
-            ui64 PartId: 4;
+            ui64 Channel : 8;
+            ui64 Cookie : 24;
+            ui64 BlobSize : 28;
+            ui64 PartId : 4;
         };
         ui64 Raw;
     } UniqueId_;
@@ -51,12 +49,13 @@ public:
         UniqueId_.Raw = uniqueId;
     }
 
-    TPartialBlobId(ui32 generation,
-                   ui32 step,
-                   ui32 channel,
-                   ui32 blobSize,
-                   ui32 cookie,
-                   ui32 partId)
+    TPartialBlobId(
+        ui32 generation,
+        ui32 step,
+        ui32 channel,
+        ui32 blobSize,
+        ui32 cookie,
+        ui32 partId)
     {
         CommitId_.Step = step;
         CommitId_.Generation = generation;
@@ -117,36 +116,38 @@ public:
         return CommitId_.Raw != 0 || UniqueId_.Raw != 0;
     }
 
-    bool operator ==(const TPartialBlobId& other) const
+    bool operator==(const TPartialBlobId& other) const
     {
-        return CommitId_.Raw == other.CommitId_.Raw
-            && UniqueId_.Raw == other.UniqueId_.Raw;
+        return CommitId_.Raw == other.CommitId_.Raw &&
+               UniqueId_.Raw == other.UniqueId_.Raw;
     }
 
-    bool operator !=(const TPartialBlobId& other) const
+    bool operator!=(const TPartialBlobId& other) const
     {
-        return CommitId_.Raw != other.CommitId_.Raw
-            || UniqueId_.Raw != other.UniqueId_.Raw;
+        return CommitId_.Raw != other.CommitId_.Raw ||
+               UniqueId_.Raw != other.UniqueId_.Raw;
     }
 
-    bool operator <(const TPartialBlobId& other) const
+    bool operator<(const TPartialBlobId& other) const
     {
-        return CommitId_.Raw < other.CommitId_.Raw
-            || CommitId_.Raw == other.CommitId_.Raw && UniqueId_.Raw < other.UniqueId_.Raw;
+        return CommitId_.Raw < other.CommitId_.Raw ||
+               CommitId_.Raw == other.CommitId_.Raw &&
+                   UniqueId_.Raw < other.UniqueId_.Raw;
     }
 
-    bool operator <=(const TPartialBlobId& other) const
+    bool operator<=(const TPartialBlobId& other) const
     {
-        return CommitId_.Raw < other.CommitId_.Raw
-            || CommitId_.Raw == other.CommitId_.Raw && UniqueId_.Raw <= other.UniqueId_.Raw;
+        return CommitId_.Raw < other.CommitId_.Raw ||
+               CommitId_.Raw == other.CommitId_.Raw &&
+                   UniqueId_.Raw <= other.UniqueId_.Raw;
     }
 
-    bool operator >(const TPartialBlobId& other) const
+    bool operator>(const TPartialBlobId& other) const
     {
         return other < *this;
     }
 
-    bool operator >=(const TPartialBlobId& other) const
+    bool operator>=(const TPartialBlobId& other) const
     {
         return other <= *this;
     }
@@ -156,7 +157,7 @@ public:
 
 struct TPartialBlobIdHash
 {
-    ui64 operator ()(const TPartialBlobId& blobId) const
+    ui64 operator()(const TPartialBlobId& blobId) const
     {
         return blobId.GetHash();
     }
@@ -201,10 +202,7 @@ inline void Out<NCloud::TPartialBlobId>(
     IOutputStream& out,
     const NCloud::TPartialBlobId& pbid)
 {
-    out << pbid.Generation()
-        << "::" << pbid.Step()
-        << "::" << pbid.Channel()
-        << "::" << pbid.Cookie()
-        << "::" << pbid.BlobSize()
+    out << pbid.Generation() << "::" << pbid.Step() << "::" << pbid.Channel()
+        << "::" << pbid.Cookie() << "::" << pbid.BlobSize()
         << "::" << pbid.PartId();
 }

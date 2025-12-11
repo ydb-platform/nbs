@@ -65,9 +65,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDestroyCheckpointActor::TDestroyCheckpointActor(
-        const TActorId& tablet,
-        TRequestInfoPtr requestInfo,
-        TString checkpointId)
+    const TActorId& tablet,
+    TRequestInfoPtr requestInfo,
+    TString checkpointId)
     : Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
     , CheckpointId(std::move(checkpointId))
@@ -83,16 +83,18 @@ void TDestroyCheckpointActor::DeleteCheckpoint(
     const TActorContext& ctx,
     EDeleteCheckpointMode mode)
 {
-    auto request = std::make_unique<TEvIndexTabletPrivate::TEvDeleteCheckpointRequest>(
-        CheckpointId,
-        mode);
+    auto request =
+        std::make_unique<TEvIndexTabletPrivate::TEvDeleteCheckpointRequest>(
+            CheckpointId,
+            mode);
 
     NCloud::Send(ctx, Tablet, std::move(request));
 }
 
-void TDestroyCheckpointActor::MarkCheckpointDeleted_HandleDeleteCheckpointResponse(
-    const TEvIndexTabletPrivate::TEvDeleteCheckpointResponse::TPtr& ev,
-    const TActorContext& ctx)
+void TDestroyCheckpointActor::
+    MarkCheckpointDeleted_HandleDeleteCheckpointResponse(
+        const TEvIndexTabletPrivate::TEvDeleteCheckpointResponse::TPtr& ev,
+        const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
 
@@ -105,9 +107,10 @@ void TDestroyCheckpointActor::MarkCheckpointDeleted_HandleDeleteCheckpointRespon
     DeleteCheckpoint(ctx, EDeleteCheckpointMode::RemoveCheckpointNodes);
 }
 
-void TDestroyCheckpointActor::RemoveCheckpointNodes_HandleDeleteCheckpointResponse(
-    const TEvIndexTabletPrivate::TEvDeleteCheckpointResponse::TPtr& ev,
-    const TActorContext& ctx)
+void TDestroyCheckpointActor::
+    RemoveCheckpointNodes_HandleDeleteCheckpointResponse(
+        const TEvIndexTabletPrivate::TEvDeleteCheckpointResponse::TPtr& ev,
+        const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
 
@@ -125,9 +128,10 @@ void TDestroyCheckpointActor::RemoveCheckpointNodes_HandleDeleteCheckpointRespon
     DeleteCheckpoint(ctx, EDeleteCheckpointMode::RemoveCheckpointBlobs);
 }
 
-void TDestroyCheckpointActor::RemoveCheckpointBlobs_HandleDeleteCheckpointResponse(
-    const TEvIndexTabletPrivate::TEvDeleteCheckpointResponse::TPtr& ev,
-    const TActorContext& ctx)
+void TDestroyCheckpointActor::
+    RemoveCheckpointBlobs_HandleDeleteCheckpointResponse(
+        const TEvIndexTabletPrivate::TEvDeleteCheckpointResponse::TPtr& ev,
+        const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
 
@@ -289,7 +293,9 @@ void TIndexTabletActor::HandleDestroyCheckpoint(
 
     const auto& checkpointId = msg->Record.GetCheckpointId();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s DestroyCheckpoint started (checkpointId: %s)",
         LogTag.c_str(),
         checkpointId.c_str());
@@ -297,17 +303,15 @@ void TIndexTabletActor::HandleDestroyCheckpoint(
     auto* checkpoint = FindCheckpoint(checkpointId);
     if (!checkpoint) {
         using TResponse = TEvService::TEvDestroyCheckpointResponse;
-        auto response = std::make_unique<TResponse>(
-            ErrorInvalidCheckpoint(checkpointId));
+        auto response =
+            std::make_unique<TResponse>(ErrorInvalidCheckpoint(checkpointId));
 
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     auto actor = std::make_unique<TDestroyCheckpointActor>(
@@ -325,7 +329,9 @@ void TIndexTabletActor::HandleDeleteCheckpointCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s DestroyCheckpoint completed (%s)",
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());

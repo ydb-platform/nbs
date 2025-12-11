@@ -10,18 +10,18 @@ using namespace NKikimr::NTabletFlatExecutor;
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryActor::HandleUpdateDiskRegistryAgentListParams(
-    const TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsRequest::TPtr& ev,
+    const TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsRequest::TPtr&
+        ev,
     const NActors::TActorContext& ctx)
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     NProto::TDiskRegistryAgentParams params;
-    params.SetDeadlineMs(ctx.Now().MilliSeconds() + msg->Record.GetParams().GetTimeoutMs());
+    params.SetDeadlineMs(
+        ctx.Now().MilliSeconds() + msg->Record.GetParams().GetTimeoutMs());
     params.SetNewNonReplicatedAgentMinTimeoutMs(
         msg->Record.GetParams().GetNewNonReplicatedAgentMinTimeoutMs());
     params.SetNewNonReplicatedAgentMaxTimeoutMs(
@@ -36,9 +36,11 @@ void TDiskRegistryActor::HandleUpdateDiskRegistryAgentListParams(
         params);
 }
 
-void TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly(
-    const TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup::TPtr& ev,
-    const NActors::TActorContext& ctx)
+void TDiskRegistryActor::
+    HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly(
+        const TEvDiskRegistryPrivate::
+            TEvDiskRegistryAgentListExpiredParamsCleanup::TPtr& ev,
+        const NActors::TActorContext& ctx)
 {
     Y_UNUSED(ev);
 
@@ -46,19 +48,16 @@ void TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly
 }
 
 void TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanup(
-    const TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup::TPtr& ev,
+    const TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup::
+        TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    ExecuteTx<TCleanupExpiredAgentListParams>(
-        ctx,
-        std::move(requestInfo));
+    ExecuteTx<TCleanupExpiredAgentListParams>(ctx, std::move(requestInfo));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,7 +89,8 @@ void TDiskRegistryActor::ExecuteUpdateDiskRegistryAgentListParams(
 
     for (const auto& agentId: args.AgentIds) {
         if (!State->FindAgent(agentId)) {
-            args.Error = MakeError(E_NOT_FOUND, "agentId not found: " + agentId);
+            args.Error =
+                MakeError(E_NOT_FOUND, "agentId not found: " + agentId);
             return;
         }
     }

@@ -21,10 +21,10 @@ namespace NCloud::NStorage::NUserStats {
 ////////////////////////////////////////////////////////////////////////////////
 
 TUserStatsActor::TUserStatsActor(
-        int component,
-        TString path,
-        TString title,
-        TVector<IUserMetricsSupplierPtr> providers)
+    int component,
+    TString path,
+    TString title,
+    TVector<IUserMetricsSupplierPtr> providers)
     : Providers(std::move(providers))
     , Component(component)
     , Path(std::move(path))
@@ -43,24 +43,23 @@ void TUserStatsActor::RegisterPages(const NActors::TActorContext& ctx)
     if (mon) {
         auto* rootPage = mon->RegisterIndexPage(Path, Title);
 
-        mon->RegisterActorPage(rootPage, "user_stats/human", "UserStats",
-            true, ctx.ActorSystem(), SelfId());
+        mon->RegisterActorPage(
+            rootPage,
+            "user_stats/human",
+            "UserStats",
+            true,
+            ctx.ActorSystem(),
+            SelfId());
 
         mon->Register(new TMonPageWrapper(
             Path + "/user_stats/json",
-            [this] (IOutputStream& out) {
-                return OutputJsonPage(out);
-            }));
+            [this](IOutputStream& out) { return OutputJsonPage(out); }));
         mon->Register(new TMonPageWrapper(
             Path + "/user_stats/spack",
-            [this] (IOutputStream& out) {
-                return OutputSpackPage(out);
-            }));
+            [this](IOutputStream& out) { return OutputSpackPage(out); }));
         mon->Register(new TMonPageWrapper(
             Path + "/user_stats/prometheus",
-            [this] (IOutputStream& out) {
-                return OutputPrometheusPage(out);
-            }));
+            [this](IOutputStream& out) { return OutputPrometheusPage(out); }));
     }
 }
 
@@ -72,7 +71,7 @@ void TUserStatsActor::RenderHtmlInfo(IOutputStream& out) const
     {
         TReadGuard g{Lock};
 
-        for (auto&& provider : Providers) {
+        for (auto&& provider: Providers) {
             provider->Append(TInstant::Zero(), encoder.Get());
         }
     }
@@ -88,7 +87,7 @@ void TUserStatsActor::OutputJsonPage(IOutputStream& out) const
     {
         TReadGuard g{Lock};
 
-        for (auto&& provider : Providers) {
+        for (auto&& provider: Providers) {
             provider->Append(TInstant::Zero(), encoder.Get());
         }
     }
@@ -108,7 +107,7 @@ void TUserStatsActor::OutputSpackPage(IOutputStream& out) const
     {
         TReadGuard g{Lock};
 
-        for (auto&& provider : Providers) {
+        for (auto&& provider: Providers) {
             provider->Append(TInstant::Now(), encoder.Get());
         }
     }
@@ -125,7 +124,7 @@ void TUserStatsActor::OutputPrometheusPage(IOutputStream& out) const
     {
         TReadGuard g{Lock};
 
-        for (auto&& provider : Providers) {
+        for (auto&& provider: Providers) {
             provider->Append(TInstant::Zero(), encoder.Get());
         }
     }
@@ -167,11 +166,13 @@ STFUNC(TUserStatsActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(NActors::NMon::TEvHttpInfo, HandleHttpInfo);
 
-        HFunc(TEvUserStats::TEvUserStatsProviderCreate, HandleUserStatsProviderCreate);
+        HFunc(
+            TEvUserStats::TEvUserStatsProviderCreate,
+            HandleUserStatsProviderCreate);
 
         default:
             HandleUnexpectedEvent(ev, Component, __PRETTY_FUNCTION__);
     }
 }
 
-}   // NCloud::NStorage::NUserStats
+}   // namespace NCloud::NStorage::NUserStats

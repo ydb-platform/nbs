@@ -34,7 +34,8 @@ private:
 
     void ReplyAndDie(
         const TActorContext& ctx,
-        std::unique_ptr<TEvService::TEvDescribeDiskRegistryConfigResponse> response);
+        std::unique_ptr<TEvService::TEvDescribeDiskRegistryConfigResponse>
+            response);
 
 private:
     STFUNC(StateWork);
@@ -43,7 +44,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeDiskRegistryConfigActor::TDescribeDiskRegistryConfigActor(
-        TRequestInfoPtr requestInfo)
+    TRequestInfoPtr requestInfo)
     : RequestInfo(std::move(requestInfo))
 {}
 
@@ -56,7 +57,8 @@ void TDescribeDiskRegistryConfigActor::Bootstrap(const TActorContext& ctx)
 
 void TDescribeDiskRegistryConfigActor::DescribeConfig(const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvDiskRegistry::TEvDescribeConfigRequest>();
+    auto request =
+        std::make_unique<TEvDiskRegistry::TEvDescribeConfigRequest>();
 
     NCloud::Send(
         ctx,
@@ -73,12 +75,16 @@ void TDescribeDiskRegistryConfigActor::HandleDescribeConfigResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Describe Disk Registry config failed: %s",
             FormatError(error).data());
     }
 
-    auto response = std::make_unique<TEvService::TEvDescribeDiskRegistryConfigResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvDescribeDiskRegistryConfigResponse>(
+            error);
 
     const auto& config = msg->Record.GetConfig();
     auto& result = response->Record;
@@ -95,9 +101,9 @@ void TDescribeDiskRegistryConfigActor::HandleDescribeConfigResponse(
             knownDevice.SetSerialNumber(device.GetSerialNumber());
         }
 
-        SortBy(*dst.MutableKnownDevices(), [] (const auto& device) {
-            return device.GetDeviceUUID();
-        });
+        SortBy(
+            *dst.MutableKnownDevices(),
+            [](const auto& device) { return device.GetDeviceUUID(); });
     }
 
     *result.MutableDeviceOverrides() = config.GetDeviceOverrides();
@@ -109,9 +115,9 @@ void TDescribeDiskRegistryConfigActor::HandleDescribeConfigResponse(
         dst->SetAllocationUnit(src.GetAllocationUnit());
     }
 
-    SortBy(*result.MutableKnownAgents(), [] (const auto& a) {
-        return a.GetAgentId();
-    });
+    SortBy(
+        *result.MutableKnownAgents(),
+        [](const auto& a) { return a.GetAgentId(); });
 
     ReplyAndDie(ctx, std::move(response));
 }
@@ -129,7 +135,9 @@ void TDescribeDiskRegistryConfigActor::ReplyAndDie(
 STFUNC(TDescribeDiskRegistryConfigActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvDiskRegistry::TEvDescribeConfigResponse, HandleDescribeConfigResponse);
+        HFunc(
+            TEvDiskRegistry::TEvDescribeConfigResponse,
+            HandleDescribeConfigResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -150,18 +158,17 @@ void TServiceActor::HandleDescribeDiskRegistryConfig(
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Describe Disk Registry config");
 
     NCloud::Register<TDescribeDiskRegistryConfigActor>(
         ctx,
         std::move(requestInfo));
 }
-
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -12,8 +12,7 @@ namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TOptionsCommon
-    : public virtual TOptionsBase
+struct TOptionsCommon: public virtual TOptionsBase
 {
 public:
     ui32 DataServerPort = 0;
@@ -29,10 +28,11 @@ public:
     TString RdmaConfig;
     TString CellsConfig;
 
-    enum class EServiceKind {
-        Null   /* "null"   */ ,
-        Local  /* "local"  */ ,
-        Ydb    /* "kikimr" */ ,
+    enum class EServiceKind
+    {
+        Null /* "null"   */,
+        Local /* "local"  */,
+        Ydb /* "kikimr" */,
     };
 
     EServiceKind ServiceKind = EServiceKind::Null;

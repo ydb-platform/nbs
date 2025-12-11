@@ -208,12 +208,11 @@ void TVolumeActor::DestroyOutdatedLeaderIfNeeded(
         }
 
         if (!OutdatedLeaderDestruction.has_value()) {
-            OutdatedLeaderDestruction.emplace(
-                TOutdatedLeaderDestruction{
-                    .TryCount = 0,
-                    .DelayProvider = TBackoffDelayProvider(
-                        OutdatedLeaderDestructionBackoffDelay,
-                        OutdatedLeaderDestructionMaxBackoffDelay)});
+            OutdatedLeaderDestruction.emplace(TOutdatedLeaderDestruction{
+                .TryCount = 0,
+                .DelayProvider = TBackoffDelayProvider(
+                    OutdatedLeaderDestructionBackoffDelay,
+                    OutdatedLeaderDestructionMaxBackoffDelay)});
         }
 
         ++OutdatedLeaderDestruction->TryCount;

@@ -11,8 +11,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTouchCommand final
-    : public TFileStoreCommand
+class TTouchCommand final: public TFileStoreCommand
 {
 private:
     TString Path;
@@ -48,9 +47,8 @@ public:
             update->SetMTime(now);
             request->SetNodeId(node.GetId());
 
-            auto response = WaitFor(session.SetNodeAttr(
-                PrepareCallContext(),
-                std::move(request)));
+            auto response = WaitFor(
+                session.SetNodeAttr(PrepareCallContext(), std::move(request)));
 
             CheckResponse(response);
             return true;
@@ -59,17 +57,15 @@ public:
 
             Y_ENSURE(
                 parent.Node.GetType() == NProto::E_DIRECTORY_NODE,
-                TStringBuilder() << "target parent is not a directory"
-            );
+                TStringBuilder() << "target parent is not a directory");
 
             auto request = CreateRequest<NProto::TCreateNodeRequest>();
             request->SetNodeId(parent.Node.GetId());
             request->SetName(ToString(resolved.back().Name));
             request->MutableFile()->SetMode(0644);
 
-            auto response = WaitFor(session.CreateNode(
-                PrepareCallContext(),
-                std::move(request)));
+            auto response = WaitFor(
+                session.CreateNode(PrepareCallContext(), std::move(request)));
 
             CheckResponse(response);
             return true;

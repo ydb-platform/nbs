@@ -4,6 +4,7 @@
 #include "test_env.h"
 
 #include <cloud/filestore/libs/storage/api/service.h>
+
 #include <cloud/storage/core/protos/media.pb.h>
 
 #include <contrib/ydb/core/testlib/actors/test_runtime.h>
@@ -46,8 +47,8 @@ public:
             recipient,
             Sender,
             request.release(),
-            0,          // flags
-            cookie,     // cookie
+            0,        // flags
+            cookie,   // cookie
             // forwardOnNondelivery
             nullptr);
 
@@ -61,7 +62,8 @@ public:
     {
         TAutoPtr<NActors::IEventHandle> handle;
         Runtime.GrabEdgeEventRethrow<TResponse>(handle);
-        return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
+        return std::unique_ptr<TResponse>(
+            handle->Release<TResponse>().Release());
     }
 
     auto& AccessRuntime()
@@ -87,9 +89,7 @@ public:
         Runtime.DispatchEvents({}, TDuration::Seconds(1));
     }
 
-    void UnregisterLocalFileStore(
-        const TString& fileSystemId,
-        ui64 generation)
+    void UnregisterLocalFileStore(const TString& fileSystemId, ui64 generation)
     {
         auto request =
             std::make_unique<TEvService::TEvUnregisterLocalFileStoreRequest>(
@@ -109,7 +109,12 @@ public:
     {
         THeaders headers = {fileSystemId, clientId, "", sessionSeqNo};
 
-        auto response = CreateSession(headers, checkpointId, restoreClientSession, sessionSeqNo, readOnly);
+        auto response = CreateSession(
+            headers,
+            checkpointId,
+            restoreClientSession,
+            sessionSeqNo,
+            readOnly);
         headers.SessionId = response->Record.GetSession().GetSessionId();
         headers.SessionSeqNo = sessionSeqNo;
         return headers;
@@ -126,7 +131,12 @@ public:
     {
         headers = {fileSystemId, clientId, "", sessionSeqNo};
 
-        auto response = CreateSession(headers, checkpointId, restoreClientSession, sessionSeqNo, readOnly);
+        auto response = CreateSession(
+            headers,
+            checkpointId,
+            restoreClientSession,
+            sessionSeqNo,
+            readOnly);
         headers.SessionId = response->Record.GetSession().GetSessionId();
         headers.SessionSeqNo = sessionSeqNo;
         return response;
@@ -142,7 +152,8 @@ public:
         ui32 blockSize = DefaultBlockSize,
         NProto::EStorageMediaKind mediaKind = NProto::STORAGE_MEDIA_DEFAULT)
     {
-        auto request = std::make_unique<TEvService::TEvCreateFileStoreRequest>();
+        auto request =
+            std::make_unique<TEvService::TEvCreateFileStoreRequest>();
         request->Record.SetFileSystemId(fileSystemId);
         request->Record.SetCloudId("test_cloud");
         request->Record.SetFolderId("test_folder");
@@ -171,7 +182,8 @@ public:
         ui32 shardCount = 0,
         bool enableStrictSizeMode = false)
     {
-        auto request = std::make_unique<TEvService::TEvResizeFileStoreRequest>();
+        auto request =
+            std::make_unique<TEvService::TEvResizeFileStoreRequest>();
         request->Record.SetFileSystemId(fileSystemId);
         request->Record.SetBlocksCount(blocksCount);
         request->Record.SetForce(force);
@@ -194,7 +206,8 @@ public:
 
     auto CreateGetFileStoreInfoRequest(const TString& fileSystemId)
     {
-        auto request = std::make_unique<TEvService::TEvGetFileStoreInfoRequest>();
+        auto request =
+            std::make_unique<TEvService::TEvGetFileStoreInfoRequest>();
         request->Record.SetFileSystemId(fileSystemId);
         return request;
     }
@@ -209,7 +222,8 @@ public:
         ui64 blocksCount,
         ui32 blockSize = DefaultBlockSize)
     {
-        auto request = std::make_unique<TEvService::TEvDescribeFileStoreModelRequest>();
+        auto request =
+            std::make_unique<TEvService::TEvDescribeFileStoreModelRequest>();
         request->Record.SetBlocksCount(blocksCount);
         request->Record.SetBlockSize(blockSize);
         return request;
@@ -250,7 +264,8 @@ public:
 
     auto CreateSubscribeSessionRequest(const THeaders& headers)
     {
-        auto request = std::make_unique<TEvService::TEvSubscribeSessionRequest>();
+        auto request =
+            std::make_unique<TEvService::TEvSubscribeSessionRequest>();
         request->Record.SetFileSystemId(headers.FileSystemId);
         headers.Fill(request->Record);
         return request;
@@ -258,7 +273,8 @@ public:
 
     auto CreateGetSessionEventsRequest(const THeaders& headers, ui64 seqNo = 0)
     {
-        auto request = std::make_unique<TEvService::TEvGetSessionEventsRequest>();
+        auto request =
+            std::make_unique<TEvService::TEvGetSessionEventsRequest>();
         request->Record.SetFileSystemId(headers.FileSystemId);
         request->Record.SetSeqNo(seqNo);
         headers.Fill(request->Record);
@@ -448,9 +464,8 @@ public:
         return request;
     }
 
-    std::unique_ptr<TEvService::TEvExecuteActionRequest> CreateExecuteActionRequest(
-        const TString& action,
-        const TString& input)
+    std::unique_ptr<TEvService::TEvExecuteActionRequest>
+    CreateExecuteActionRequest(const TString& action, const TString& input)
     {
         auto request = std::make_unique<TEvService::TEvExecuteActionRequest>();
         request->Record.SetAction(action);
@@ -525,7 +540,8 @@ public:
         return request;
     }
 
-    std::unique_ptr<TEvService::TEvDestroyHandleRequest> CreateDestroyHandleRequest(
+    std::unique_ptr<TEvService::TEvDestroyHandleRequest>
+    CreateDestroyHandleRequest(
         const THeaders& headers,
         const TString& fileSystemId,
         const ui64 nodeId,
@@ -539,7 +555,8 @@ public:
         return request;
     }
 
-    std::unique_ptr<TEvService::TEvAllocateDataRequest> CreateAllocateDataRequest(
+    std::unique_ptr<TEvService::TEvAllocateDataRequest>
+    CreateAllocateDataRequest(
         const THeaders& headers,
         const TString& fileSystemId,
         const ui64 nodeId,
@@ -557,7 +574,8 @@ public:
         return request;
     }
 
-    std::unique_ptr<TEvService::TEvSetNodeXAttrRequest> CreateSetNodeXAttrRequest(
+    std::unique_ptr<TEvService::TEvSetNodeXAttrRequest>
+    CreateSetNodeXAttrRequest(
         const THeaders& headers,
         const TString& fileSystemId,
         const ui64 nodeId,
@@ -573,7 +591,8 @@ public:
         return request;
     }
 
-    std::unique_ptr<TEvService::TEvGetNodeXAttrRequest> CreateGetNodeXAttrRequest(
+    std::unique_ptr<TEvService::TEvGetNodeXAttrRequest>
+    CreateGetNodeXAttrRequest(
         const THeaders& headers,
         const TString& fileSystemId,
         const ui64 nodeId,
@@ -587,13 +606,15 @@ public:
         return request;
     }
 
-    std::unique_ptr<TEvService::TEvRemoveNodeXAttrRequest> CreateRemoveNodeXAttrRequest(
+    std::unique_ptr<TEvService::TEvRemoveNodeXAttrRequest>
+    CreateRemoveNodeXAttrRequest(
         const THeaders& headers,
         const TString& fileSystemId,
         const ui64 nodeId,
         const TString& attrName)
     {
-        auto request = std::make_unique<TEvService::TEvRemoveNodeXAttrRequest>();
+        auto request =
+            std::make_unique<TEvService::TEvRemoveNodeXAttrRequest>();
         headers.Fill(request->Record);
         request->Record.SetFileSystemId(fileSystemId);
         request->Record.SetNodeId(nodeId);
@@ -601,7 +622,8 @@ public:
         return request;
     }
 
-    std::unique_ptr<TEvService::TEvListNodeXAttrRequest> CreateListNodeXAttrRequest(
+    std::unique_ptr<TEvService::TEvListNodeXAttrRequest>
+    CreateListNodeXAttrRequest(
         const THeaders& headers,
         const TString& fileSystemId,
         const ui64 nodeId)
@@ -613,7 +635,8 @@ public:
         return request;
     }
 
-    std::unique_ptr<TEvService::TEvStatFileStoreRequest> CreateStatFileStoreRequest(
+    std::unique_ptr<TEvService::TEvStatFileStoreRequest>
+    CreateStatFileStoreRequest(
         const THeaders& headers,
         const TString& fileSystemId)
     {
@@ -752,17 +775,22 @@ public:
             #name " has not failed as expected " + dbg);                       \
         return response;                                                       \
     }                                                                          \
-// FILESTORE_DECLARE_METHOD
+    // FILESTORE_DECLARE_METHOD
 
     FILESTORE_REMOTE_SERVICE(FILESTORE_DECLARE_METHOD, TEvService)
 
 #undef FILESTORE_DECLARE_METHOD
 
     template <typename... Args>
-    std::unique_ptr<TEvService::TEvGetSessionEventsResponse> GetSessionEventsStream(Args&&... args)
+    std::unique_ptr<TEvService::TEvGetSessionEventsResponse>
+    GetSessionEventsStream(Args&&... args)
     {
-        auto request = CreateGetSessionEventsRequest(std::forward<Args>(args)...);
-        SendRequest(MakeStorageServiceId(), std::move(request), TEvService::StreamCookie);
+        auto request =
+            CreateGetSessionEventsRequest(std::forward<Args>(args)...);
+        SendRequest(
+            MakeStorageServiceId(),
+            std::move(request),
+            TEvService::StreamCookie);
 
         auto response = RecvResponse<TEvService::TEvGetSessionEventsResponse>();
         UNIT_ASSERT_C(

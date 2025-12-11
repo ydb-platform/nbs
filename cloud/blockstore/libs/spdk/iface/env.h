@@ -22,8 +22,7 @@ constexpr TDuration StartTimeout = TDuration::Seconds(30);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ISpdkEnv
-    : public IStartable
+struct ISpdkEnv: public IStartable
 {
     virtual ~ISpdkEnv() = default;
 
@@ -68,8 +67,7 @@ struct ISpdkEnv
         const TString& baseName,
         const TString& transportId) = 0;
 
-    virtual NThreading::TFuture<void> UnregisterDevice(
-        const TString& name) = 0;
+    virtual NThreading::TFuture<void> UnregisterDevice(const TString& name) = 0;
 
     virtual NThreading::TFuture<ISpdkDevicePtr> OpenDevice(
         const TString& name,
@@ -124,20 +122,21 @@ struct ISpdkEnv
     // iSCSI target
     //
 
-    using TPortal = std::pair<TString, ui32>;       // portal address:port
+    using TPortal = std::pair<TString, ui32>;   // portal address:port
 
     virtual NThreading::TFuture<void> CreatePortalGroup(
         ui32 tag,
         const TVector<TPortal>& portals) = 0;
 
-    using TInitiator = std::pair<TString, TString>; // initiator name:netmask
+    using TInitiator = std::pair<TString, TString>;   // initiator name:netmask
 
     virtual NThreading::TFuture<void> CreateInitiatorGroup(
         ui32 tag,
         const TVector<TInitiator>& initiators) = 0;
 
-    using TDevice = std::pair<TString, ui32>;       // device name:lun
-    using TGroupMapping = std::pair<ui32, ui32>;    // initiator group to portal group
+    using TDevice = std::pair<TString, ui32>;   // device name:lun
+    using TGroupMapping =
+        std::pair<ui32, ui32>;   // initiator group to portal group
 
     virtual NThreading::TFuture<ISpdkTargetPtr> CreateSCSITarget(
         const TString& name,

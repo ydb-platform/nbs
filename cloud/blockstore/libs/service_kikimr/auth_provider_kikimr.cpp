@@ -6,10 +6,10 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-#include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
 #include <cloud/storage/core/libs/api/authorizer.h>
 #include <cloud/storage/core/libs/auth/authorizer.h>
+#include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/log.h>
@@ -28,8 +28,7 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestActor final
-    : public TActorBootstrapped<TRequestActor>
+class TRequestActor final: public TActorBootstrapped<TRequestActor>
 {
     using TThis = TRequestActor;
     using TBase = TActorBootstrapped<TThis>;
@@ -48,13 +47,13 @@ private:
 
 public:
     TRequestActor(
-            const TPermissionList& permissions,
-            TString authToken,
-            TPromise<NProto::TError> response,
-            TCallContextPtr callContext,
-            EBlockStoreRequest requestType,
-            TDuration requestTimeout,
-            TString diskId)
+        const TPermissionList& permissions,
+        TString authToken,
+        TPromise<NProto::TError> response,
+        TCallContextPtr callContext,
+        EBlockStoreRequest requestType,
+        TDuration requestTimeout,
+        TString diskId)
         : Permissions(permissions)
         , AuthToken(std::move(authToken))
         , Response(std::move(response))
@@ -90,9 +89,11 @@ public:
 private:
     void AuthorizeRequest(const TActorContext& ctx)
     {
-        LOG_TRACE_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
+        LOG_TRACE_S(
+            ctx,
+            TBlockStoreComponents::SERVICE_PROXY,
             TRequestInfo(RequestType, CallContext->RequestId, DiskId)
-            << " authorizing request");
+                << " authorizing request");
 
         auto request = std::make_unique<TEvAuth::TEvAuthorizationRequest>(
             std::move(AuthToken),
@@ -104,10 +105,7 @@ private:
             GetBlockStoreRequestName(RequestType),
             CallContext->RequestId);
 
-        NCloud::Send(
-            ctx,
-            MakeAuthorizerServiceId(),
-            std::move(request));
+        NCloud::Send(ctx, MakeAuthorizerServiceId(), std::move(request));
 
         if (RequestTimeout && RequestTimeout != TDuration::Max()) {
             ctx.Schedule(RequestTimeout, new TEvents::TEvWakeup());
@@ -119,9 +117,11 @@ private:
         try {
             Response.SetValue(std::move(response));
         } catch (...) {
-            LOG_ERROR_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
+            LOG_ERROR_S(
+                ctx,
+                TBlockStoreComponents::SERVICE_PROXY,
                 TRequestInfo(RequestType, CallContext->RequestId, DiskId)
-                << " exception in callback: " << CurrentExceptionMessage());
+                    << " exception in callback: " << CurrentExceptionMessage());
         }
 
         RequestCompleted = true;
@@ -157,9 +157,11 @@ private:
             CallContext->RequestId);
 
         if (FAILED(msg->GetStatus())) {
-            LOG_WARN_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
+            LOG_WARN_S(
+                ctx,
+                TBlockStoreComponents::SERVICE_PROXY,
                 TRequestInfo(RequestType, CallContext->RequestId, DiskId)
-                << " unauthorized request");
+                    << " unauthorized request");
         }
 
         CompleteRequest(ctx, msg->Error);
@@ -171,12 +173,14 @@ private:
     {
         Y_UNUSED(ev);
 
-        LOG_WARN_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
+        LOG_WARN_S(
+            ctx,
+            TBlockStoreComponents::SERVICE_PROXY,
             TRequestInfo(RequestType, CallContext->RequestId, DiskId)
-            << " request timed out");
+                << " request timed out");
 
         NProto::TError error;
-        error.SetCode(E_REJECTED);  // TODO: E_TIMEOUT
+        error.SetCode(E_REJECTED);   // TODO: E_TIMEOUT
         error.SetMessage("Timeout");
 
         CompleteRequest(ctx, error);
@@ -185,8 +189,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAuthProvider final
-    : public IAuthProvider
+class TAuthProvider final: public IAuthProvider
 {
 private:
     const IActorSystemPtr ActorSystem;

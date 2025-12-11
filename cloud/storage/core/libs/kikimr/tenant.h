@@ -5,12 +5,12 @@
 #include <util/system/types.h>
 
 namespace NKikimr {
-    struct TAppData;
-    struct TLocalConfig;
-};
+struct TAppData;
+struct TLocalConfig;
+};   // namespace NKikimr
 
 namespace NActors {
-    struct TActorContext;
+struct TActorContext;
 };
 
 namespace NCloud::NStorage {

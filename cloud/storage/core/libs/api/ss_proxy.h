@@ -5,9 +5,8 @@
 #include <cloud/storage/core/libs/kikimr/components.h>
 #include <cloud/storage/core/libs/kikimr/events.h>
 
-#include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
-
+#include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 #include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/generic/string.h>
@@ -16,12 +15,12 @@ namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define STORAGE_SS_PROXY_REQUESTS(xxx, ...)                                    \
-    xxx(DescribeScheme,         __VA_ARGS__)                                   \
-    xxx(ModifyScheme,           __VA_ARGS__)                                   \
-    xxx(WaitSchemeTx,           __VA_ARGS__)                                   \
-    xxx(BackupPathDescriptions, __VA_ARGS__)                                   \
-// STORAGE_SS_PROXY_REQUESTS
+#define STORAGE_SS_PROXY_REQUESTS(xxx, ...)  \
+    xxx(DescribeScheme, __VA_ARGS__)         \
+    xxx(ModifyScheme, __VA_ARGS__)           \
+    xxx(WaitSchemeTx, __VA_ARGS__)           \
+    xxx(BackupPathDescriptions, __VA_ARGS__) \
+    // STORAGE_SS_PROXY_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -48,8 +47,8 @@ struct TEvSSProxy
         TDescribeSchemeResponse() = default;
 
         TDescribeSchemeResponse(
-                TString path,
-                NKikimrSchemeOp::TPathDescription pathDescription)
+            TString path,
+            NKikimrSchemeOp::TPathDescription pathDescription)
             : Path(std::move(path))
             , PathDescription(std::move(pathDescription))
         {}
@@ -63,8 +62,7 @@ struct TEvSSProxy
     {
         const NKikimrSchemeOp::TModifyScheme ModifyScheme;
 
-        TModifySchemeRequest(
-                NKikimrSchemeOp::TModifyScheme modifyScheme)
+        TModifySchemeRequest(NKikimrSchemeOp::TModifyScheme modifyScheme)
             : ModifyScheme(std::move(modifyScheme))
         {}
     };
@@ -76,9 +74,9 @@ struct TEvSSProxy
         const TString Reason;
 
         TModifySchemeResponse(
-                ui64 schemeShardTabletId = 0,
-                NKikimrScheme::EStatus status = NKikimrScheme::StatusSuccess,
-                TString reason = TString())
+            ui64 schemeShardTabletId = 0,
+            NKikimrScheme::EStatus status = NKikimrScheme::StatusSuccess,
+            TString reason = TString())
             : SchemeShardTabletId(schemeShardTabletId)
             , Status(status)
             , Reason(std::move(reason))
@@ -94,9 +92,7 @@ struct TEvSSProxy
         const ui64 SchemeShardTabletId;
         const ui64 TxId;
 
-        TWaitSchemeTxRequest(
-                ui64 schemeShardTabletId,
-                ui64 txId)
+        TWaitSchemeTxRequest(ui64 schemeShardTabletId, ui64 txId)
             : SchemeShardTabletId(schemeShardTabletId)
             , TxId(txId)
         {}
@@ -141,7 +137,8 @@ struct TEvSSProxy
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TStorageEvents::SS_PROXY_END,
+    static_assert(
+        EvEnd < (int)TStorageEvents::SS_PROXY_END,
         "EvEnd expected to be < TStorageEvents::SS_PROXY_END");
 
     STORAGE_SS_PROXY_REQUESTS(STORAGE_DECLARE_EVENTS)

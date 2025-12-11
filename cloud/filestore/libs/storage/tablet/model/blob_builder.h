@@ -21,8 +21,7 @@ inline ui32 CalculateMaxBlocksInBlob(ui32 maxBlobSize, ui32 blockSize)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMixedBlobBuilder final
-    : public IFreshBlockVisitor
+class TMixedBlobBuilder final: public IFreshBlockVisitor
 {
     struct TRange
     {
@@ -43,9 +42,9 @@ private:
 
 public:
     TMixedBlobBuilder(
-            const IBlockLocation2RangeIndex& hasher,
-            ui32 blockSize,
-            ui32 maxBlocksCount)
+        const IBlockLocation2RangeIndex& hasher,
+        ui32 blockSize,
+        ui32 maxBlocksCount)
         : Hasher(hasher)
         , BlockSize(blockSize)
         , MaxBlocksInBlob(maxBlocksCount)
@@ -160,8 +159,8 @@ private:
 
 public:
     TFlushBytesBlobBuilder(
-            const IBlockLocation2RangeIndex& hasher,
-            ui32 maxBlocksCount)
+        const IBlockLocation2RangeIndex& hasher,
+        ui32 maxBlocksCount)
         : Hasher(hasher)
         , MaxBlocksInBlob(maxBlocksCount)
     {}

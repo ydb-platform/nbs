@@ -33,8 +33,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStorageServicesInitializer final
-    : public IServiceInitializer
+class TStorageServicesInitializer final: public IServiceInitializer
 {
 private:
     const TDiskAgentActorSystemArgs Args;
@@ -56,18 +55,20 @@ public:
 
         auto hiveProxy = CreateHiveProxy(
             {
-                .PipeClientRetryCount = Args.StorageConfig->GetPipeClientRetryCount(),
-                .PipeClientMinRetryTime = Args.StorageConfig->GetPipeClientMinRetryTime(),
-                .HiveLockExpireTimeout = Args.StorageConfig->GetHiveLockExpireTimeout(),
+                .PipeClientRetryCount =
+                    Args.StorageConfig->GetPipeClientRetryCount(),
+                .PipeClientMinRetryTime =
+                    Args.StorageConfig->GetPipeClientMinRetryTime(),
+                .HiveLockExpireTimeout =
+                    Args.StorageConfig->GetHiveLockExpireTimeout(),
                 .LogComponent = TBlockStoreComponents::HIVE_PROXY,
                 .TabletBootInfoBackupFilePath = {},
                 .UseBinaryFormatForTabletBootInfoBackup = false,
                 .FallbackMode = false,
-                .TenantHiveTabletId = Args.StorageConfig->GetTenantHiveTabletId(),
+                .TenantHiveTabletId =
+                    Args.StorageConfig->GetTenantHiveTabletId(),
             },
-            appData
-                ->Counters
-                ->GetSubgroup("counters", "blockstore")
+            appData->Counters->GetSubgroup("counters", "blockstore")
                 ->GetSubgroup("component", "service"));
 
         setup->LocalServices.emplace_back(
@@ -136,9 +137,8 @@ public:
         // StatsFetcher
         //
 
-        auto statsFetcher = CreateStatsFetcherActor(
-            Args.StorageConfig,
-            Args.StatsFetcher);
+        auto statsFetcher =
+            CreateStatsFetcherActor(Args.StorageConfig, Args.StatsFetcher);
 
         setup->LocalServices.emplace_back(
             TActorId(),
@@ -153,30 +153,31 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IActorSystemPtr CreateDiskAgentActorSystem(const TDiskAgentActorSystemArgs& daArgs)
+IActorSystemPtr CreateDiskAgentActorSystem(
+    const TDiskAgentActorSystemArgs& daArgs)
 {
     TVector<TIntrusivePtr<IServiceInitializer>> initializers = {
-        new TStorageServicesInitializer(daArgs)
-    };
-    auto prepareKikimrRunConfig = [&] (TKikimrRunConfig& runConfig) {
+        new TStorageServicesInitializer(daArgs)};
+    auto prepareKikimrRunConfig = [&](TKikimrRunConfig& runConfig)
+    {
         if (daArgs.StorageConfig->GetConfigsDispatcherServiceEnabled()) {
             SetupConfigDispatcher(
                 daArgs.StorageConfig->GetConfigDispatcherSettings(),
                 daArgs.StorageConfig->GetSchemeShardDir(),
                 daArgs.StorageConfig->GetNodeType(),
                 &runConfig.ConfigsDispatcherInitInfo);
-            runConfig.ConfigsDispatcherInitInfo.InitialConfig = runConfig.AppConfig;
+            runConfig.ConfigsDispatcherInitInfo.InitialConfig =
+                runConfig.AppConfig;
         }
     };
-    auto onInitialize = [&] (
-        TKikimrRunConfig& runConfig,
-        TServiceInitializersList& initializers)
+    auto onInitialize =
+        [&](TKikimrRunConfig& runConfig, TServiceInitializersList& initializers)
     {
         Y_UNUSED(runConfig);
         initializers.AddServiceInitializer(
             new NStorage::TKikimrServicesInitializer(daArgs.AppConfig));
-        initializers.AddServiceInitializer(new TStorageServicesInitializer(
-            daArgs));
+        initializers.AddServiceInitializer(
+            new TStorageServicesInitializer(daArgs));
     };
 
     // TODO: disable the services that are not needed by disk agent
@@ -199,7 +200,7 @@ IActorSystemPtr CreateDiskAgentActorSystem(const TDiskAgentActorSystemArgs& daAr
     servicesMask.EnableSharedCache = 1;
     servicesMask.EnableTxProxy = 1;
     servicesMask.EnableIcbService = 1;
-    servicesMask.EnableLocalService = 0;    // configured manually
+    servicesMask.EnableLocalService = 0;   // configured manually
     servicesMask.EnableConfigsDispatcher =
         daArgs.StorageConfig->GetConfigsDispatcherServiceEnabled();
     servicesMask.EnableViewerService =
@@ -214,7 +215,7 @@ IActorSystemPtr CreateDiskAgentActorSystem(const TDiskAgentActorSystemArgs& daAr
         .OnInitialize = std::move(onInitialize),
         .PrepareKikimrRunConfig = std::move(prepareKikimrRunConfig),
         .ServicesMask = servicesMask,
-        .OnStart = [] (IActorSystem&) {},
+        .OnStart = [](IActorSystem&) {},
     };
 
     auto actorSystem = MakeIntrusive<TActorSystem>(args);

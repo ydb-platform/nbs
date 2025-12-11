@@ -70,7 +70,8 @@ void TActorSystem::Start()
 void TActorSystem::Stop()
 {
     if (Running) {
-        Send(MakeDiskAgentServiceId(Args.NodeId),
+        Send(
+            MakeDiskAgentServiceId(Args.NodeId),
             std::make_unique<TEvents::TEvPoisonPill>());
 
         KikimrStop(false);
@@ -88,10 +89,7 @@ TActorId TActorSystem::Register(IActorPtr actor, TStringBuf executorName)
         }
     }
 
-    return ActorSystem->Register(
-        actor.release(),
-        TMailboxType::Simple,
-        id);
+    return ActorSystem->Register(actor.release(), TMailboxType::Simple, id);
 }
 
 bool TActorSystem::Send(const TActorId& recipient, IEventBasePtr event)

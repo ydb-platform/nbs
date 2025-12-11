@@ -21,10 +21,14 @@ TLog VhostLog;
 ELogPriority GetLogPriority(LogLevel level)
 {
     switch (level) {
-        case LOG_ERROR: return TLOG_ERR;
-        case LOG_WARNING: return TLOG_WARNING;
-        case LOG_INFO: return TLOG_INFO;
-        case LOG_DEBUG: return TLOG_DEBUG;
+        case LOG_ERROR:
+            return TLOG_ERR;
+        case LOG_WARNING:
+            return TLOG_WARNING;
+        case LOG_INFO:
+            return TLOG_INFO;
+        case LOG_DEBUG:
+            return TLOG_DEBUG;
     }
 }
 
@@ -43,20 +47,19 @@ void vhd_log(LogLevel level, const char* format, ...)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TVhostRequestImpl final
-    : public TVhostRequest
+class TVhostRequestImpl final: public TVhostRequest
 {
 private:
     vhd_io* VhdIo;
 
 public:
     TVhostRequestImpl(
-            vhd_io* vhdIo,
-            EBlockStoreRequest type,
-            ui64 from,
-            ui64 length,
-            TSgList sgList,
-            void* cookie)
+        vhd_io* vhdIo,
+        EBlockStoreRequest type,
+        ui64 from,
+        ui64 length,
+        TSgList sgList,
+        void* cookie)
         : VhdIo(vhdIo)
     {
         Type = type;
@@ -116,8 +119,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TVhostDevice final
-    : public IVhostDevice
+class TVhostDevice final: public IVhostDevice
 {
 private:
     vhd_request_queue* const VhdQueue;
@@ -132,16 +134,16 @@ private:
 
 public:
     TVhostDevice(
-            vhd_request_queue* vhdQueue,
-            TString socketPath,
-            TString deviceName,
-            ui32 blockSize,
-            ui64 blocksCount,
-            ui32 queuesCount,
-            bool discardEnabled,
-            ui32 optimalIoSize,
-            void* cookie,
-            const TVhostCallbacks& callbacks)
+        vhd_request_queue* vhdQueue,
+        TString socketPath,
+        TString deviceName,
+        ui32 blockSize,
+        ui64 blocksCount,
+        ui32 queuesCount,
+        bool discardEnabled,
+        ui32 optimalIoSize,
+        void* cookie,
+        const TVhostCallbacks& callbacks)
         : VhdQueue(vhdQueue)
         , SocketPath(std::move(socketPath))
         , DeviceName(std::move(deviceName))
@@ -157,7 +159,8 @@ public:
         VhdBdevInfo.unmap_cb = callbacks.UnmapMemory;
         VhdBdevInfo.optimal_io_size = optimalIoSize;
         if (discardEnabled) {
-            VhdBdevInfo.features |= VHD_BDEV_F_DISCARD | VHD_BDEV_F_WRITE_ZEROES;
+            VhdBdevInfo.features |=
+                VHD_BDEV_F_DISCARD | VHD_BDEV_F_WRITE_ZEROES;
         }
     }
 
@@ -168,12 +171,9 @@ public:
 
     bool Start() override
     {
-        vhd_request_queue* queues[1] = { VhdQueue };
+        vhd_request_queue* queues[1] = {VhdQueue};
 
-        VhdVdev = vhd_register_blockdev(
-            &VhdBdevInfo,
-            queues, 1,
-            Cookie);
+        VhdVdev = vhd_register_blockdev(&VhdBdevInfo, queues, 1, Cookie);
 
         return VhdVdev != nullptr;
     }
@@ -188,11 +188,14 @@ public:
 
         auto& Log = VhostLog;
         STORAGE_INFO("vhd_unregister_blockdev starting: " << SocketPath);
-        result.GetFuture().Apply([socketPath = SocketPath] (const auto& future) {
-            auto& Log = VhostLog;
-            STORAGE_INFO("vhd_unregister_blockdev completed: " << socketPath);
-            return future;
-        });
+        result.GetFuture().Apply(
+            [socketPath = SocketPath](const auto& future)
+            {
+                auto& Log = VhostLog;
+                STORAGE_INFO(
+                    "vhd_unregister_blockdev completed: " << socketPath);
+                return future;
+            });
 
         auto completion = std::make_unique<TUnregisterCompletion>(result);
 
@@ -220,8 +223,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TVhostQueue final
-    : public IVhostQueue
+class TVhostQueue final: public IVhostQueue
 {
 private:
     TLog Log;
@@ -297,8 +299,7 @@ private:
         auto* vhdBdevIo = vhd_get_bdev_io(vhdRequest.io);
 
         EBlockStoreRequest type;
-        switch (vhdBdevIo->type)
-        {
+        switch (vhdBdevIo->type) {
             case VHD_BDEV_READ:
                 type = EBlockStoreRequest::ReadBlocks;
                 break;
@@ -310,8 +311,9 @@ private:
                 type = EBlockStoreRequest::ZeroBlocks;
                 break;
             default:
-                STORAGE_ERROR("Unexpected vhost request type: " <<
-                    static_cast<int>(vhdBdevIo->type));
+                STORAGE_ERROR(
+                    "Unexpected vhost request type: "
+                    << static_cast<int>(vhdBdevIo->type));
                 return nullptr;
         }
 
@@ -338,8 +340,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TVhostQueueFactory final
-    : public IVhostQueueFactory
+class TVhostQueueFactory final: public IVhostQueueFactory
 {
 public:
     TVhostQueueFactory()

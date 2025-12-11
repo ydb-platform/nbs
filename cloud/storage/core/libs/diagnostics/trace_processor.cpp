@@ -99,8 +99,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTraceProcessorStub final
-    : public ITraceProcessor
+struct TTraceProcessorStub final: public ITraceProcessor
 {
     void Start() override
     {}

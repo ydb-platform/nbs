@@ -24,7 +24,8 @@ void TSolomonValueHolder::SetCounterValue(TInstant now, ui64 value)
         if (value > 0) {
             LastNonZeroValueTs = now;
             if (!SolomonValue && Parent) {
-                SolomonValue = Parent->GetExpiringCounter(CounterName, Derivative);
+                SolomonValue =
+                    Parent->GetExpiringCounter(CounterName, Derivative);
             }
         }
     }
@@ -34,7 +35,8 @@ void TSolomonValueHolder::SetCounterValue(TInstant now, ui64 value)
     }
 }
 
-ui64 TSolomonValueHolder::GetValue() const {
+ui64 TSolomonValueHolder::GetValue() const
+{
     if (SolomonValue) {
         return *SolomonValue;
     }

@@ -18,8 +18,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAssignVolumeActor final
-    : public TActorBootstrapped<TAssignVolumeActor>
+class TAssignVolumeActor final: public TActorBootstrapped<TAssignVolumeActor>
 {
 private:
     const TActorId Sender;
@@ -59,12 +58,12 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TAssignVolumeActor::TAssignVolumeActor(
-        const TActorId& sender,
-        ui64 cookie,
-        TStorageConfigPtr config,
-        TString diskId,
-        TMountToken publicToken,
-        ui64 tokenVersion)
+    const TActorId& sender,
+    ui64 cookie,
+    TStorageConfigPtr config,
+    TString diskId,
+    TMountToken publicToken,
+    ui64 tokenVersion)
     : Sender(sender)
     , Cookie(cookie)
     , Config(std::move(config))
@@ -88,8 +87,7 @@ void TAssignVolumeActor::AssignVolume(const TActorContext& ctx)
             TEvSSProxy::TModifyVolumeRequest::EOpType::Assign,
             DiskId,
             PublicToken.ToString(),
-            TokenVersion
-        ));
+            TokenVersion));
 }
 
 void TAssignVolumeActor::HandleModifyResponse(
@@ -99,7 +97,9 @@ void TAssignVolumeActor::HandleModifyResponse(
     const auto* msg = ev->Get();
 
     if (FAILED(msg->GetError().GetCode())) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Volume %s: assign failed",
             DiskId.Quote().data());
 
@@ -110,13 +110,13 @@ void TAssignVolumeActor::HandleModifyResponse(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Volume %s assigned successfully",
         DiskId.Quote().data());
 
-    ReplyAndDie(
-        ctx,
-        std::make_unique<TEvService::TEvAssignVolumeResponse>());
+    ReplyAndDie(ctx, std::make_unique<TEvService::TEvAssignVolumeResponse>());
 }
 
 void TAssignVolumeActor::ReplyAndDie(
@@ -162,7 +162,9 @@ void TServiceActor::HandleAssignVolume(
         publicToken.SetSecret(TMountToken::EFormat::SHA384_V1, mountSecret);
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Assign volume: %s, %s, %s, %s, %llu",
         diskId.Quote().c_str(),
         request.GetInstanceId().Quote().c_str(),

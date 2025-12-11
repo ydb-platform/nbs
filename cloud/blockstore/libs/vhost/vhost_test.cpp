@@ -16,20 +16,19 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestVhostRequest final
-    : public TVhostRequest
+class TTestVhostRequest final: public TVhostRequest
 {
 private:
     TPromise<EResult> Promise;
 
 public:
     TTestVhostRequest(
-            TPromise<EResult> promise,
-            EBlockStoreRequest type,
-            ui64 from,
-            ui64 length,
-            TSgList sgList,
-            void* cookie)
+        TPromise<EResult> promise,
+        EBlockStoreRequest type,
+        ui64 from,
+        ui64 length,
+        TSgList sgList,
+        void* cookie)
         : Promise(std::move(promise))
     {
         Type = type;
@@ -84,13 +83,14 @@ public:
     TFuture<NProto::TError> Stop() override
     {
         Y_UNUSED(Stopped.test_and_set());
-        return Autostop.GetFuture().Apply([this] (const auto&) {
-            with_lock (Lock) {
-                return WaitAll(Futures).Apply([] (const auto&) {
-                    return NProto::TError();
-                });
-            }
-        });
+        return Autostop.GetFuture().Apply(
+            [this](const auto&)
+            {
+                with_lock (Lock) {
+                    return WaitAll(Futures).Apply([](const auto&)
+                                                  { return NProto::TError(); });
+                }
+            });
     }
 
     void Update(ui64 blocksCount) override
@@ -165,7 +165,8 @@ class TTestVhostQueue final
 private:
     TManualEvent& FailedEvent;
 
-    enum EState {
+    enum EState
+    {
         Undefined = 0,
         Running = 1,
         Stopped = 2,

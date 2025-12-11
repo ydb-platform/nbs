@@ -22,12 +22,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestAuthorizerActor
-    : public TActor<TTestAuthorizerActor>
+class TTestAuthorizerActor: public TActor<TTestAuthorizerActor>
 {
 public:
     std::function<std::unique_ptr<bool>(
-        const TEvAuth::TEvAuthorizationRequest::TPtr&)> AuthorizeHandler;
+        const TEvAuth::TEvAuthorizationRequest::TPtr&)>
+        AuthorizeHandler;
 
 public:
     TTestAuthorizerActor()
@@ -35,10 +35,8 @@ public:
     {}
 
 private:
-    STRICT_STFUNC(
-        StateWork,
-        HFunc(TEvAuth::TEvAuthorizationRequest, HandleAuthorize);
-    )
+    STRICT_STFUNC(StateWork,
+                  HFunc(TEvAuth::TEvAuthorizationRequest, HandleAuthorize);)
 
     void HandleAuthorize(
         const TEvAuth::TEvAuthorizationRequest::TPtr& ev,
@@ -57,7 +55,8 @@ private:
             NCloud::Reply(
                 ctx,
                 *ev,
-                std::make_unique<TEvAuth::TEvAuthorizationResponse>(std::move(error)));
+                std::make_unique<TEvAuth::TEvAuthorizationResponse>(
+                    std::move(error)));
         }
     }
 };
@@ -73,11 +72,12 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
         int volumeHandlerCount = 0;
         auto testService = std::make_shared<TTestService>();
         testService->CreateVolumeHandler =
-            [&] (std::shared_ptr<NProto::TCreateVolumeRequest> request) {
-                Y_UNUSED(request);
-                ++volumeHandlerCount;
-                return MakeFuture<NProto::TCreateVolumeResponse>();
-            };
+            [&](std::shared_ptr<NProto::TCreateVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            ++volumeHandlerCount;
+            return MakeFuture<NProto::TCreateVolumeResponse>();
+        };
 
         const TString authToken = "TEST_AUTH_TOKEN";
 
@@ -85,14 +85,15 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
         int authorizeHandlerCount = 0;
         auto authorizerActor = std::make_unique<TTestAuthorizerActor>();
         authorizerActor->AuthorizeHandler =
-            [&] (const TEvAuth::TEvAuthorizationRequest::TPtr& ev) {
-                ++authorizeHandlerCount;
-                UNIT_ASSERT_EQUAL(ev->Get()->Token, authToken);
-                UNIT_ASSERT_EQUAL(
-                    ev->Get()->Permissions,
-                    CreatePermissionList({EPermission::Create}));
-                return std::make_unique<bool>(authorizeResult);
-            };
+            [&](const TEvAuth::TEvAuthorizationRequest::TPtr& ev)
+        {
+            ++authorizeHandlerCount;
+            UNIT_ASSERT_EQUAL(ev->Get()->Token, authToken);
+            UNIT_ASSERT_EQUAL(
+                ev->Get()->Permissions,
+                CreatePermissionList({EPermission::Create}));
+            return std::make_unique<bool>(authorizeResult);
+        };
 
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestAuthorizer(std::move(authorizerActor));
@@ -104,10 +105,10 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
         // When requiring authorization and failing it, we fail the request.
         {
             auto request = std::make_shared<NProto::TCreateVolumeRequest>();
-            request->MutableHeaders()->MutableInternal()->
-                SetRequestSource(NProto::SOURCE_SECURE_CONTROL_CHANNEL);
-            request->MutableHeaders()->MutableInternal()->
-                SetAuthToken(authToken);
+            request->MutableHeaders()->MutableInternal()->SetRequestSource(
+                NProto::SOURCE_SECURE_CONTROL_CHANNEL);
+            request->MutableHeaders()->MutableInternal()->SetAuthToken(
+                authToken);
 
             auto future = service->CreateVolume(
                 MakeIntrusive<TCallContext>(),
@@ -124,10 +125,10 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
         // When not requiring authorization, we skip it.
         {
             auto request = std::make_shared<NProto::TCreateVolumeRequest>();
-            request->MutableHeaders()->MutableInternal()->
-                SetRequestSource(NProto::SOURCE_TCP_DATA_CHANNEL);
-            request->MutableHeaders()->MutableInternal()->
-                SetAuthToken(TString());
+            request->MutableHeaders()->MutableInternal()->SetRequestSource(
+                NProto::SOURCE_TCP_DATA_CHANNEL);
+            request->MutableHeaders()->MutableInternal()->SetAuthToken(
+                TString());
 
             auto future = service->CreateVolume(
                 MakeIntrusive<TCallContext>(),
@@ -145,10 +146,10 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
         {
             authorizeResult = true;
             auto request = std::make_shared<NProto::TCreateVolumeRequest>();
-            request->MutableHeaders()->MutableInternal()->
-                SetRequestSource(NProto::SOURCE_SECURE_CONTROL_CHANNEL);
-            request->MutableHeaders()->MutableInternal()->
-                SetAuthToken(authToken);
+            request->MutableHeaders()->MutableInternal()->SetRequestSource(
+                NProto::SOURCE_SECURE_CONTROL_CHANNEL);
+            request->MutableHeaders()->MutableInternal()->SetAuthToken(
+                authToken);
 
             auto future = service->CreateVolume(
                 MakeIntrusive<TCallContext>(),
@@ -168,11 +169,12 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
         int readHandlerCount = 0;
         auto testService = std::make_shared<TTestService>();
         testService->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest> request) {
-                Y_UNUSED(request);
-                ++readHandlerCount;
-                return MakeFuture<NProto::TReadBlocksResponse>();
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
+        {
+            Y_UNUSED(request);
+            ++readHandlerCount;
+            return MakeFuture<NProto::TReadBlocksResponse>();
+        };
 
         const TString authToken = "TEST_AUTH_TOKEN";
 
@@ -180,12 +182,13 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
         int authorizeHandlerCount = 0;
         auto authorizerActor = std::make_unique<TTestAuthorizerActor>();
         authorizerActor->AuthorizeHandler =
-            [&] (const TEvAuth::TEvAuthorizationRequest::TPtr& ev) {
-                ++authorizeHandlerCount;
-                UNIT_ASSERT_EQUAL(ev->Get()->Token, authToken);
-                UNIT_ASSERT(ev->Get()->Permissions.Empty());
-                return std::make_unique<bool>(authorizeResult);
-            };
+            [&](const TEvAuth::TEvAuthorizationRequest::TPtr& ev)
+        {
+            ++authorizeHandlerCount;
+            UNIT_ASSERT_EQUAL(ev->Get()->Token, authToken);
+            UNIT_ASSERT(ev->Get()->Permissions.Empty());
+            return std::make_unique<bool>(authorizeResult);
+        };
 
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestAuthorizer(std::move(authorizerActor));
@@ -195,10 +198,9 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
             CreateKikimrAuthProvider(actorSystem));
 
         auto request = std::make_shared<NProto::TReadBlocksRequest>();
-        request->MutableHeaders()->MutableInternal()->
-            SetRequestSource(NProto::SOURCE_SECURE_CONTROL_CHANNEL);
-        request->MutableHeaders()->MutableInternal()->
-            SetAuthToken(authToken);
+        request->MutableHeaders()->MutableInternal()->SetRequestSource(
+            NProto::SOURCE_SECURE_CONTROL_CHANNEL);
+        request->MutableHeaders()->MutableInternal()->SetAuthToken(authToken);
 
         auto future = service->ReadBlocks(
             MakeIntrusive<TCallContext>(),
@@ -217,11 +219,12 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
         int mountHandlerCount = 0;
         auto testService = std::make_shared<TTestService>();
         testService->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                Y_UNUSED(request);
-                ++mountHandlerCount;
-                return MakeFuture<NProto::TMountVolumeResponse>();
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            ++mountHandlerCount;
+            return MakeFuture<NProto::TMountVolumeResponse>();
+        };
 
         const TString authToken = "TEST_AUTH_TOKEN";
 
@@ -229,14 +232,15 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
         int authorizeHandlerCount = 0;
         auto authorizerActor = std::make_unique<TTestAuthorizerActor>();
         authorizerActor->AuthorizeHandler =
-            [&] (const TEvAuth::TEvAuthorizationRequest::TPtr& ev) {
-                ++authorizeHandlerCount;
-                UNIT_ASSERT_EQUAL(ev->Get()->Token, authToken);
-                UNIT_ASSERT_EQUAL(
-                    ev->Get()->Permissions,
-                    CreatePermissionList({EPermission::Read, EPermission::Write}));
-                return std::make_unique<bool>(authorizeResult);
-            };
+            [&](const TEvAuth::TEvAuthorizationRequest::TPtr& ev)
+        {
+            ++authorizeHandlerCount;
+            UNIT_ASSERT_EQUAL(ev->Get()->Token, authToken);
+            UNIT_ASSERT_EQUAL(
+                ev->Get()->Permissions,
+                CreatePermissionList({EPermission::Read, EPermission::Write}));
+            return std::make_unique<bool>(authorizeResult);
+        };
 
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestAuthorizer(std::move(authorizerActor));
@@ -246,10 +250,9 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
             CreateKikimrAuthProvider(actorSystem));
 
         auto request = std::make_shared<NProto::TMountVolumeRequest>();
-        request->MutableHeaders()->MutableInternal()->
-            SetRequestSource(NProto::SOURCE_SECURE_CONTROL_CHANNEL);
-        request->MutableHeaders()->MutableInternal()->
-            SetAuthToken(authToken);
+        request->MutableHeaders()->MutableInternal()->SetRequestSource(
+            NProto::SOURCE_SECURE_CONTROL_CHANNEL);
+        request->MutableHeaders()->MutableInternal()->SetAuthToken(authToken);
         request->SetVolumeAccessMode(
             NProto::EVolumeAccessMode::VOLUME_ACCESS_READ_WRITE);
 
@@ -270,11 +273,12 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
         int mountHandlerCount = 0;
         auto testService = std::make_shared<TTestService>();
         testService->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                Y_UNUSED(request);
-                ++mountHandlerCount;
-                return MakeFuture<NProto::TMountVolumeResponse>();
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            ++mountHandlerCount;
+            return MakeFuture<NProto::TMountVolumeResponse>();
+        };
 
         const TString authToken = "TEST_AUTH_TOKEN";
 
@@ -282,14 +286,15 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
         int authorizeHandlerCount = 0;
         auto authorizerActor = std::make_unique<TTestAuthorizerActor>();
         authorizerActor->AuthorizeHandler =
-            [&] (const TEvAuth::TEvAuthorizationRequest::TPtr& ev) {
-                ++authorizeHandlerCount;
-                UNIT_ASSERT_EQUAL(ev->Get()->Token, authToken);
-                UNIT_ASSERT_EQUAL(
-                    ev->Get()->Permissions,
-                    CreatePermissionList({EPermission::Read}));
-                return std::make_unique<bool>(authorizeResult);
-            };
+            [&](const TEvAuth::TEvAuthorizationRequest::TPtr& ev)
+        {
+            ++authorizeHandlerCount;
+            UNIT_ASSERT_EQUAL(ev->Get()->Token, authToken);
+            UNIT_ASSERT_EQUAL(
+                ev->Get()->Permissions,
+                CreatePermissionList({EPermission::Read}));
+            return std::make_unique<bool>(authorizeResult);
+        };
 
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestAuthorizer(std::move(authorizerActor));
@@ -299,10 +304,9 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
             CreateKikimrAuthProvider(actorSystem));
 
         auto request = std::make_shared<NProto::TMountVolumeRequest>();
-        request->MutableHeaders()->MutableInternal()->
-            SetRequestSource(NProto::SOURCE_SECURE_CONTROL_CHANNEL);
-        request->MutableHeaders()->MutableInternal()->
-            SetAuthToken(authToken);
+        request->MutableHeaders()->MutableInternal()->SetRequestSource(
+            NProto::SOURCE_SECURE_CONTROL_CHANNEL);
+        request->MutableHeaders()->MutableInternal()->SetAuthToken(authToken);
         request->SetVolumeAccessMode(
             NProto::EVolumeAccessMode::VOLUME_ACCESS_READ_ONLY);
 
@@ -322,10 +326,11 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
     {
         auto authorizerActor = std::make_unique<TTestAuthorizerActor>();
         authorizerActor->AuthorizeHandler =
-            [] (const TEvAuth::TEvAuthorizationRequest::TPtr& ev) {
-                Y_UNUSED(ev);
-                return nullptr;
-            };
+            [](const TEvAuth::TEvAuthorizationRequest::TPtr& ev)
+        {
+            Y_UNUSED(ev);
+            return nullptr;
+        };
 
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestAuthorizer(std::move(authorizerActor));
@@ -336,7 +341,7 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
 
         auto request = std::make_shared<NProto::TCreateVolumeRequest>();
         auto& headers = *request->MutableHeaders();
-        headers.SetRequestTimeout(100); // ms
+        headers.SetRequestTimeout(100);   // ms
 
         auto future = service->CreateVolume(
             MakeIntrusive<TCallContext>(),

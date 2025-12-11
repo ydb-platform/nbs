@@ -8,8 +8,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTransactionStub
-    : public ITransactionBase
+struct TTransactionStub: public ITransactionBase
 {
     const ui64 CommitId;
 
@@ -18,8 +17,7 @@ struct TTransactionStub
     {}
 
     void Init(const NActors::TActorContext&) override
-    {
-    }
+    {}
 
     bool Execute(
         NKikimr::NTabletFlatExecutor::TTransactionContext&,
@@ -29,8 +27,7 @@ struct TTransactionStub
     }
 
     void Complete(const NActors::TActorContext&) override
-    {
-    }
+    {}
 };
 
 ui64 GetCommitId(const ITransactionBase& tx)

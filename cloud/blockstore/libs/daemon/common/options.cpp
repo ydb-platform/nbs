@@ -15,9 +15,8 @@ TOptionsCommon::TOptionsCommon()
     Opts.AddLongOption("service", "service to run")
         .RequiredArgument("{" + GetEnumAllNames<EServiceKind>() + "}")
         .DefaultValue(ToString(EServiceKind::Ydb))
-        .Handler1T<TString>([this] (const auto& s) {
-            ServiceKind = FromString<EServiceKind>(s);
-        });
+        .Handler1T<TString>([this](const auto& s)
+                            { ServiceKind = FromString<EServiceKind>(s); });
 
     Opts.AddLongOption("data-server-port")
         .RequiredArgument("NUM")
@@ -36,8 +35,7 @@ TOptionsCommon::TOptionsCommon()
         .StoreResult(&DiskAgentConfig);
 
     // TODO: remove it later (NBS-4171)
-    Opts.AddLongOption("local-storage-file")
-        .RequiredArgument("FILE");
+    Opts.AddLongOption("local-storage-file").RequiredArgument("FILE");
 
     Opts.AddLongOption("dr-proxy-file")
         .RequiredArgument("FILE")
@@ -57,7 +55,9 @@ TOptionsCommon::TOptionsCommon()
         .DefaultValue("")
         .StoreResult(&CellsConfig);
 
-    Opts.AddLongOption("temporary-server", "run temporary server for blue-green deployment")
+    Opts.AddLongOption(
+            "temporary-server",
+            "run temporary server for blue-green deployment")
         .NoArgument()
         .StoreTrue(&TemporaryServer);
 

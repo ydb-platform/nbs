@@ -69,9 +69,7 @@ struct THistogram
     {
         TVector<TBucketInfo> result(Reserve(Buckets.size()));
         for (size_t i = 0; i < Buckets.size(); ++i) {
-            result.emplace_back(
-                TBuckets::Buckets[i],
-                Buckets[i]);
+            result.emplace_back(TBuckets::Buckets[i], Buckets[i]);
         }
 
         return result;
@@ -95,9 +93,7 @@ struct THistogram
     {
         auto buckets = GetBuckets();
 
-        auto result = CalculateWeightedPercentiles(
-            buckets,
-            percentiles);
+        auto result = CalculateWeightedPercentiles(buckets, percentiles);
 
         return result;
     }
@@ -109,7 +105,7 @@ struct THistogram
 
     void Add(const THistogram& source)
     {
-        for (ui32 i = 0; i <  Buckets.size(); ++i) {
+        for (ui32 i = 0; i < Buckets.size(); ++i) {
             Buckets[i] += source.Buckets[i];
         }
     }
@@ -124,9 +120,7 @@ struct THistogram
         TVector<TBucketInfo> buckets(Reserve(Buckets.size()));
         for (ui32 idxRange = 0; idxRange < Buckets.size(); ++idxRange) {
             auto value = Buckets[idxRange];
-            buckets.emplace_back(
-                TBuckets::Buckets[idxRange],
-                value);
+            buckets.emplace_back(TBuckets::Buckets[idxRange], value);
         }
         return buckets;
     }

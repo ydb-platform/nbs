@@ -16,7 +16,8 @@ Y_UNIT_TEST_SUITE(TServiceInactiveClientsTest)
         TDuration mountVolumeTimeout = TDuration::Seconds(3);
 
         NProto::TStorageServiceConfig storageServiceConfig;
-        storageServiceConfig.SetInactiveClientsTimeout(mountVolumeTimeout.MilliSeconds());
+        storageServiceConfig.SetInactiveClientsTimeout(
+            mountVolumeTimeout.MilliSeconds());
 
         ui32 nodeIdx = SetupTestEnv(env, std::move(storageServiceConfig));
 
@@ -35,7 +36,9 @@ Y_UNIT_TEST_SUITE(TServiceInactiveClientsTest)
 
         bool detectedInactiveClientsTimeout = false;
         bool detectedStartVolumeActorStopped = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvInactiveClientsTimeout: {
                         detectedInactiveClientsTimeout = true;
@@ -50,8 +53,12 @@ Y_UNIT_TEST_SUITE(TServiceInactiveClientsTest)
             });
 
         // Give a chance to the timeout event although it shouldn't happen
-        runtime.UpdateCurrentTime(runtime.GetCurrentTime() + mountVolumeTimeout + TDuration::Seconds(1));
-        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(100));
+        runtime.UpdateCurrentTime(
+            runtime.GetCurrentTime() + mountVolumeTimeout +
+            TDuration::Seconds(1));
+        runtime.DispatchEvents(
+            TDispatchOptions(),
+            TDuration::MilliSeconds(100));
 
         // Should receive new session id because the volume should have been
         // unmounted via timeout
@@ -73,8 +80,10 @@ Y_UNIT_TEST_SUITE(TServiceInactiveClientsTest)
         TDuration mountVolumeTimeout = TDuration::Seconds(3);
 
         NProto::TStorageServiceConfig storageServiceConfig;
-        storageServiceConfig.SetInactiveClientsTimeout(mountVolumeTimeout.MilliSeconds());
-        storageServiceConfig.SetClientRemountPeriod(mountVolumeTimeout.MilliSeconds());
+        storageServiceConfig.SetInactiveClientsTimeout(
+            mountVolumeTimeout.MilliSeconds());
+        storageServiceConfig.SetClientRemountPeriod(
+            mountVolumeTimeout.MilliSeconds());
 
         ui32 nodeIdx = SetupTestEnv(env, std::move(storageServiceConfig));
         auto& runtime = env.GetRuntime();
@@ -85,7 +94,9 @@ Y_UNIT_TEST_SUITE(TServiceInactiveClientsTest)
 
         {
             auto response = service.MountVolume(DefaultDiskId, "foo", "bar");
-            UNIT_ASSERT(response->Record.GetInactiveClientsTimeout() == mountVolumeTimeout.MilliSeconds());
+            UNIT_ASSERT(
+                response->Record.GetInactiveClientsTimeout() ==
+                mountVolumeTimeout.MilliSeconds());
 
             auto sessionId = response->Record.GetSessionId();
             service.UnmountVolume(DefaultDiskId, sessionId);
@@ -99,7 +110,9 @@ Y_UNIT_TEST_SUITE(TServiceInactiveClientsTest)
                 NProto::IPC_GRPC,
                 NProto::VOLUME_ACCESS_READ_WRITE,
                 NProto::VOLUME_MOUNT_REMOTE);
-            UNIT_ASSERT(response->Record.GetInactiveClientsTimeout() == mountVolumeTimeout.MilliSeconds());
+            UNIT_ASSERT(
+                response->Record.GetInactiveClientsTimeout() ==
+                mountVolumeTimeout.MilliSeconds());
 
             auto sessionId = response->Record.GetSessionId();
             service.UnmountVolume(DefaultDiskId, sessionId);

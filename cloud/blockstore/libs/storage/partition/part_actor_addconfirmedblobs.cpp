@@ -62,9 +62,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TAddConfirmedBlobsActor::TAddConfirmedBlobsActor(
-        const TActorId& tablet,
-        TRequestInfoPtr requestInfo,
-        TRequests requests)
+    const TActorId& tablet,
+    TRequestInfoPtr requestInfo,
+    TRequests requests)
     : Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
     , Requests(std::move(requests))
@@ -185,8 +185,7 @@ STFUNC(TAddConfirmedBlobsActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionActor::EnqueueAddConfirmedBlobsIfNeeded(
-    const TActorContext& ctx)
+void TPartitionActor::EnqueueAddConfirmedBlobsIfNeeded(const TActorContext& ctx)
 {
     if (State->GetAddConfirmedBlobsState().Status != EOperationStatus::Idle) {
         // already enqueued
@@ -202,8 +201,7 @@ void TPartitionActor::EnqueueAddConfirmedBlobsIfNeeded(
 
     auto request =
         std::make_unique<TEvPartitionPrivate::TEvAddConfirmedBlobsRequest>(
-            MakeIntrusive<TCallContext>(CreateRequestId())
-        );
+            MakeIntrusive<TCallContext>(CreateRequestId()));
 
     LOG_DEBUG(
         ctx,
@@ -212,10 +210,7 @@ void TPartitionActor::EnqueueAddConfirmedBlobsIfNeeded(
         LogTitle.GetWithTime().c_str(),
         request->CallContext->RequestId);
 
-    NCloud::Send(
-        ctx,
-        SelfId(),
-        std::move(request));
+    NCloud::Send(ctx, SelfId(), std::move(request));
 }
 
 void TPartitionActor::HandleAddConfirmedBlobs(
@@ -225,10 +220,8 @@ void TPartitionActor::HandleAddConfirmedBlobs(
     auto* msg = ev->Get();
 
     using TMethod = TEvPartitionPrivate::TAddConfirmedBlobsMethod;
-    auto requestInfo = CreateRequestInfo<TMethod>(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo<TMethod>(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -240,16 +233,14 @@ void TPartitionActor::HandleAddConfirmedBlobs(
         requestInfo->CallContext->RequestId,
         PartitionConfig.GetDiskId());
 
-    auto replyError = [=] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
+    auto replyError = [=](const TActorContext& ctx,
+                          TRequestInfo& requestInfo,
+                          ui32 errorCode,
+                          TString errorReason)
     {
         using TResponse = TEvPartitionPrivate::TEvAddConfirmedBlobsResponse;
         auto response = std::make_unique<TResponse>(
-            MakeError(errorCode, std::move(errorReason))
-        );
+            MakeError(errorCode, std::move(errorReason)));
 
         LWTRACK(
             ResponseSent_Partition,
@@ -260,7 +251,8 @@ void TPartitionActor::HandleAddConfirmedBlobs(
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
 
-    if (State->GetAddConfirmedBlobsState().Status == EOperationStatus::Started) {
+    if (State->GetAddConfirmedBlobsState().Status == EOperationStatus::Started)
+    {
         replyError(
             ctx,
             *requestInfo,
@@ -290,7 +282,7 @@ void TPartitionActor::HandleAddConfirmedBlobs(
             mergedBlobs.emplace_back(
                 MakePartialBlobId(commitId, blob.UniqueId),
                 blob.BlockRange,
-                TBlockMask(), // skipMask
+                TBlockMask(),   // skipMask
                 blob.Checksums);
         }
 
@@ -300,8 +292,7 @@ void TPartitionActor::HandleAddConfirmedBlobs(
             TVector<TAddMixedBlob>(),
             std::move(mergedBlobs),
             TVector<TAddFreshBlob>(),
-            ADD_WRITE_RESULT
-        );
+            ADD_WRITE_RESULT);
 
         requests.push_back(std::move(request));
     }

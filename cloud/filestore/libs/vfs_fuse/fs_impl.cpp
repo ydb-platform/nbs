@@ -25,17 +25,17 @@ ELogPriority GetErrorPriority(ui32 code)
 ////////////////////////////////////////////////////////////////////////////////
 
 TFileSystem::TFileSystem(
-        ILoggingServicePtr logging,
-        IProfileLogPtr profileLog,
-        ISchedulerPtr scheduler,
-        ITimerPtr timer,
-        TFileSystemConfigPtr config,
-        IFileStorePtr session,
-        IRequestStatsPtr stats,
-        ICompletionQueuePtr queue,
-        THandleOpsQueuePtr handleOpsQueue,
-        TDirectoryHandlesStoragePtr directoryHandlesStorage,
-        TWriteBackCache writeBackCache)
+    ILoggingServicePtr logging,
+    IProfileLogPtr profileLog,
+    ISchedulerPtr scheduler,
+    ITimerPtr timer,
+    TFileSystemConfigPtr config,
+    IFileStorePtr session,
+    IRequestStatsPtr stats,
+    ICompletionQueuePtr queue,
+    THandleOpsQueuePtr handleOpsQueue,
+    TDirectoryHandlesStoragePtr directoryHandlesStorage,
+    TWriteBackCache writeBackCache)
     : Logging(std::move(logging))
     , ProfileLog(std::move(profileLog))
     , Timer(std::move(timer))
@@ -45,9 +45,9 @@ TFileSystem::TFileSystem(
     , RequestStats(std::move(stats))
     , CompletionQueue(std::move(queue))
     , XAttrCache(
-        Timer,
-        Config->GetXAttrCacheLimit(),
-        Config->GetXAttrCacheTimeout())
+          Timer,
+          Config->GetXAttrCacheLimit(),
+          Config->GetXAttrCacheTimeout())
     , HandleOpsQueue(std::move(handleOpsQueue))
     , DirectoryHandlesStorage(std::move(directoryHandlesStorage))
     , WriteBackCache(std::move(writeBackCache))
@@ -80,7 +80,8 @@ void TFileSystem::Reset()
 {
     STORAGE_INFO("resetting filesystem cache");
     with_lock (DirectoryHandlesLock) {
-        STORAGE_DEBUG("clear directory cache of size %lu",
+        STORAGE_DEBUG(
+            "clear directory cache of size %lu",
             DirectoryHandles.size());
         DirectoryHandles.clear();
 
@@ -94,12 +95,13 @@ void TFileSystem::ScheduleProcessHandleOpsQueue()
 {
     if (Config->GetAsyncDestroyHandleEnabled()) {
         Scheduler->Schedule(
-        Timer->Now() + Config->GetAsyncHandleOperationPeriod(),
-        [=, ptr = weak_from_this()] () {
-            if (auto self = ptr.lock()) {
-                self->ProcessHandleOpsQueue();
-            }
-        });
+            Timer->Now() + Config->GetAsyncHandleOperationPeriod(),
+            [=, ptr = weak_from_this()]()
+            {
+                if (auto self = ptr.lock()) {
+                    self->ProcessHandleOpsQueue();
+                }
+            });
     }
 }
 
@@ -109,9 +111,10 @@ bool TFileSystem::CheckError(
     const NProto::TError& error)
 {
     if (HasError(error)) {
-        STORAGE_LOG(GetErrorPriority(error.GetCode()),
+        STORAGE_LOG(
+            GetErrorPriority(error.GetCode()),
             "request #" << fuse_req_unique(req)
-            << " failed: " << FormatError(error));
+                        << " failed: " << FormatError(error));
 
         ReplyError(callContext, error, req, ErrnoFromError(error.GetCode()));
         return false;
@@ -265,15 +268,11 @@ void TFileSystem::ReplyAttr(
 
 void TFileSystem::CancelRequest(TCallContextPtr callContext, fuse_req_t req)
 {
-    NFuse::CancelRequest(
-        Log,
-        *RequestStats,
-        *callContext,
-        req);
+    NFuse::CancelRequest(Log, *RequestStats, *callContext, req);
 
     // notifying CompletionQueue about request completion to decrement inflight
     // request counter and unblock the stopping procedure
-    CompletionQueue->Complete(req, [&] (fuse_req_t) { return 0; });
+    CompletionQueue->Complete(req, [&](fuse_req_t) { return 0; });
 }
 
 void TFileSystem::CompleteAsyncDestroyHandle(
@@ -339,8 +338,8 @@ void TFileSystem::ProcessHandleOpsQueue()
     const auto& entry = optionalEntry.value();
     if (entry.HasDestroyHandleRequest()) {
         const auto& requestInfo = entry.GetDestroyHandleRequest();
-        auto request = std::make_shared<NProto::TDestroyHandleRequest>(
-            requestInfo);
+        auto request =
+            std::make_shared<NProto::TDestroyHandleRequest>(requestInfo);
         STORAGE_DEBUG(
             "Process destroy handle request: "
             << "filesystem " << Config->GetFileSystemId() << " #"
@@ -358,7 +357,9 @@ void TFileSystem::ProcessHandleOpsQueue()
                 {
                     const auto& response = future.GetValue();
                     if (auto self = ptr.lock()) {
-                        self->CompleteAsyncDestroyHandle(*callContext, response);
+                        self->CompleteAsyncDestroyHandle(
+                            *callContext,
+                            response);
                     }
                 });
     } else {
@@ -370,7 +371,6 @@ void TFileSystem::ProcessHandleOpsQueue()
         ScheduleProcessHandleOpsQueue();
         return;
     }
-
 }
 
 }   // namespace NCloud::NFileStore::NFuse

@@ -18,10 +18,10 @@ using namespace NCloud::NStorage::NUserStats;
 ////////////////////////////////////////////////////////////////////////////////
 
 TStatsServiceActor::TStatsServiceActor(
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
-        NYdbStats::IYdbVolumesStatsUploaderPtr uploader,
-        IStatsAggregatorPtr clientStatsAggregator)
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    NYdbStats::IYdbVolumesStatsUploaderPtr uploader,
+    IStatsAggregatorPtr clientStatsAggregator)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , StatsUploader(std::move(uploader))
@@ -34,7 +34,9 @@ void TStatsServiceActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
-    LOG_WARN(ctx, TBlockStoreComponents::STATS_SERVICE,
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::STATS_SERVICE,
         "Stats service running");
 
     RegisterCounters(ctx);
@@ -85,7 +87,7 @@ void TStatsServiceActor::RegisterCounters(const TActorContext& ctx)
 
     auto request = std::make_unique<
         NCloud::NStorage::TEvUserStats::TEvUserStatsProviderCreate>(
-            UserCounters);
+        UserCounters);
 
     NCloud::Send(
         ctx,
@@ -117,11 +119,15 @@ STFUNC(TStatsServiceActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
-        HFunc(TEvService::TEvUploadClientMetricsRequest, HandleUploadClientMetrics);
+        HFunc(
+            TEvService::TEvUploadClientMetricsRequest,
+            HandleUploadClientMetrics);
 
         HFunc(TEvStatsService::TEvRegisterVolume, HandleRegisterVolume);
         HFunc(TEvStatsService::TEvUnregisterVolume, HandleUnregisterVolume);
-        HFunc(TEvStatsService::TEvVolumeConfigUpdated, HandleVolumeConfigUpdated);
+        HFunc(
+            TEvStatsService::TEvVolumeConfigUpdated,
+            HandleVolumeConfigUpdated);
         HFunc(
             TEvStatsService::TEvPartitionBootExternalCompleted,
             HandlePartitionBootExternalCompleted);
@@ -129,10 +135,16 @@ STFUNC(TStatsServiceActor::StateWork)
         HFunc(TEvStatsService::TEvVolumeSelfCounters, HandleVolumeSelfCounters);
         HFunc(TEvStatsService::TEvGetVolumeStatsRequest, HandleGetVolumeStats);
 
-        HFunc(TEvStatsServicePrivate::TEvUploadDisksStats, HandleUploadDisksStats);
-        HFunc(TEvStatsServicePrivate::TEvUploadDisksStatsCompleted, HandleUploadDisksStatsCompleted);
+        HFunc(
+            TEvStatsServicePrivate::TEvUploadDisksStats,
+            HandleUploadDisksStats);
+        HFunc(
+            TEvStatsServicePrivate::TEvUploadDisksStatsCompleted,
+            HandleUploadDisksStatsCompleted);
 
-        HFunc(TEvStatsServicePrivate::TEvStatsUploadRetryTimeout, HandleStatsUploadRetryTimeout);
+        HFunc(
+            TEvStatsServicePrivate::TEvStatsUploadRetryTimeout,
+            HandleStatsUploadRetryTimeout);
 
         HFunc(
             TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest,

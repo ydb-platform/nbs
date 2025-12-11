@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/public/api/protos/io.pb.h>
+
 #include <cloud/storage/core/libs/common/sglist.h>
 
 namespace NCloud::NBlockStore {
@@ -22,8 +23,9 @@ TSgList ResizeIOVector(NProto::TIOVector& iov, ui32 blockCount, ui32 blockSize);
 TSgList GetSgList(const NProto::TIOVector& iov);
 TSgList GetSgList(const NProto::TWriteBlocksRequest& request);
 
-TResultOrError<TSgList>
-GetSgList(const NProto::TReadBlocksResponse& response, ui32 expectedBlockSize);
+TResultOrError<TSgList> GetSgList(
+    const NProto::TReadBlocksResponse& response,
+    ui32 expectedBlockSize);
 
 // Copy all data from iov to sglist. Skip first offsetInBlocks in sglist.
 TCopyStats CopyToSgList(

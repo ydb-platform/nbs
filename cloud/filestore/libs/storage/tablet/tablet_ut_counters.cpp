@@ -77,8 +77,7 @@ NProto::TDiagnosticsConfig MakeDiagConfig()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEnv
-    : public NUnitTest::TBaseFixture
+struct TEnv: public NUnitTest::TBaseFixture
 {
     TTestEnv Env;
     std::unique_ptr<TIndexTabletClient> Tablet;
@@ -86,12 +85,11 @@ struct TEnv
     TTestRegistryVisitor Visitor;
 
     TEnv()
-        : Env(
-            TTestEnvConfig{},
-            NProto::TStorageConfig{},
-            NKikimr::NFake::TCaches{},
-            CreateProfileLogStub(),
-            MakeDiagConfig())
+        : Env(TTestEnvConfig{},
+              NProto::TStorageConfig{},
+              NKikimr::NFake::TCaches{},
+              CreateProfileLogStub(),
+              MakeDiagConfig())
     {}
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
@@ -109,7 +107,6 @@ struct TEnv
 
     void TearDown(NUnitTest::TTestContext& /*context*/) override
     {}
-
 };
 
 }   // namespace
@@ -124,8 +121,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
         registry->Visit(TInstant::Zero(), Visitor);
 
-        auto storageFsLabels = [](TString sensor) {
-            return NMetrics::TLabels {
+        auto storageFsLabels = [](TString sensor)
+        {
+            return NMetrics::TLabels{
                 {"component", "storage_fs"},
                 {"host", "cluster"},
                 {"cloud", "test_cloud"},
@@ -133,38 +131,38 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 {"sensor", sensor},
             };
         };
-        auto storageLabels = [](TString sensor) {
-            return NMetrics::TLabels {
+        auto storageLabels = [](TString sensor)
+        {
+            return NMetrics::TLabels{
                 {"component", "storage"},
                 {"type", "hdd"},
                 {"sensor", sensor},
             };
         };
 
-        Visitor.ValidateExpectedCounters({
-            {storageFsLabels("FreshBytesCount"), 0},
-            {storageFsLabels("FreshBytesItemCount"), 0},
-            {storageFsLabels("GarbageQueueSize"), 0},
-            {storageFsLabels("MixedBytesCount"), 0},
-            {storageFsLabels("MixedBlobsCount"), 0},
-            {storageFsLabels("GarbageQueueSize"), 0},
-            {storageFsLabels("GarbageBytesCount"), 0},
-            {storageFsLabels("FreshBlocksCount"), 0},
-            {storageFsLabels("PostponedRequests"), 0},
-            {storageFsLabels("RejectedRequests"), 0},
-            {storageFsLabels("UsedSessionsCount"), 0},
-            {storageFsLabels("UsedBytesCount"), 0},
-            {storageFsLabels("UsedQuota"), 0},
-            {storageLabels("FreshBytesCount"), 0},
-            {storageLabels("GarbageQueueSize"), 0},
-            {storageLabels("MixedBytesCount"), 0},
-            {storageLabels("UsedSessionsCount"), 0},
-            {storageLabels("UsedBytesCount"), 0},
-            {storageLabels("MixedBlobsCount"), 0},
-            {storageLabels("GarbageQueueSize"), 0},
-            {storageLabels("GarbageBytesCount"), 0},
-            {storageLabels("FreshBlocksCount"), 0}
-        });
+        Visitor.ValidateExpectedCounters(
+            {{storageFsLabels("FreshBytesCount"), 0},
+             {storageFsLabels("FreshBytesItemCount"), 0},
+             {storageFsLabels("GarbageQueueSize"), 0},
+             {storageFsLabels("MixedBytesCount"), 0},
+             {storageFsLabels("MixedBlobsCount"), 0},
+             {storageFsLabels("GarbageQueueSize"), 0},
+             {storageFsLabels("GarbageBytesCount"), 0},
+             {storageFsLabels("FreshBlocksCount"), 0},
+             {storageFsLabels("PostponedRequests"), 0},
+             {storageFsLabels("RejectedRequests"), 0},
+             {storageFsLabels("UsedSessionsCount"), 0},
+             {storageFsLabels("UsedBytesCount"), 0},
+             {storageFsLabels("UsedQuota"), 0},
+             {storageLabels("FreshBytesCount"), 0},
+             {storageLabels("GarbageQueueSize"), 0},
+             {storageLabels("MixedBytesCount"), 0},
+             {storageLabels("UsedSessionsCount"), 0},
+             {storageLabels("UsedBytesCount"), 0},
+             {storageLabels("MixedBlobsCount"), 0},
+             {storageLabels("GarbageQueueSize"), 0},
+             {storageLabels("GarbageBytesCount"), 0},
+             {storageLabels("FreshBlocksCount"), 0}});
     }
 
     Y_UNIT_TEST_F(ShouldCorrectlyWriteThrottlerMaxParams, TEnv)
@@ -175,12 +173,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
 
         registry->Visit(TInstant::Zero(), Visitor);
-        Visitor.ValidateExpectedCounters({
-            {{{"sensor", "MaxWriteBandwidth"}}, Max<i64>()},
-            {{{"sensor", "MaxReadIops"}}, 4_GB - 1},
-            {{{"sensor", "MaxWriteIops"}}, 4_GB - 1},
-            {{{"sensor", "MaxReadBandwidth"}}, Max<i64>()}
-        });
+        Visitor.ValidateExpectedCounters(
+            {{{{"sensor", "MaxWriteBandwidth"}}, Max<i64>()},
+             {{{"sensor", "MaxReadIops"}}, 4_GB - 1},
+             {{{"sensor", "MaxWriteIops"}}, 4_GB - 1},
+             {{{"sensor", "MaxReadBandwidth"}}, Max<i64>()}});
         auto config = MakeThrottlerConfig(
             true,                                    // throttlingEnabled
             100,                                     // maxReadIops
@@ -195,7 +192,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             TDuration::Seconds(25).MilliSeconds(),   // maxPostponedTime
             64,                                      // maxPostponedCount
             100,                                     // burstPercentage
-            1_KB                                     // defaultPostponedRequestWeight
+            1_KB   // defaultPostponedRequestWeight
         );
         Tablet->UpdateConfig(config);
 
@@ -203,12 +200,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
 
         registry->Visit(TInstant::Zero(), Visitor);
-        Visitor.ValidateExpectedCounters({
-            {{{"sensor", "MaxWriteBandwidth"}}, 8_KB},
-            {{{"sensor", "MaxReadIops"}}, 100},
-            {{{"sensor", "MaxWriteIops"}}, 200},
-            {{{"sensor", "MaxReadBandwidth"}}, 4_KB}
-        });
+        Visitor.ValidateExpectedCounters(
+            {{{{"sensor", "MaxWriteBandwidth"}}, 8_KB},
+             {{{"sensor", "MaxReadIops"}}, 100},
+             {{{"sensor", "MaxWriteIops"}}, 200},
+             {{{"sensor", "MaxReadBandwidth"}}, 4_KB}});
 
         config.PerformanceProfile.MaxWriteBandwidth = 3_GB;
         config.PerformanceProfile.MaxReadBandwidth = 5_GB;
@@ -311,7 +307,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             TDuration::Seconds(25).MilliSeconds(),   // maxPostponedTime
             64,                                      // maxPostponedCount
             100,                                     // burstPercentage
-            1_KB                                     // defaultPostponedRequestWeight
+            1_KB   // defaultPostponedRequestWeight
         );
         tablet.UpdateConfig(config);
 
@@ -362,7 +358,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
         // 2. Testing that we start rejecting requests after
         // our postponed limit saturates.
-        tablet.SendWriteDataRequest(handle, 0, 1, 'y');   // Event 1 byte request must be rejected.
+        tablet.SendWriteDataRequest(
+            handle,
+            0,
+            1,
+            'y');   // Event 1 byte request must be rejected.
         tablet.AssertWriteDataQuickResponse(E_FS_THROTTLED);
         tablet.SendReadDataRequest(handle, 0, 1_KB);
         tablet.AssertReadDataQuickResponse(E_FS_THROTTLED);
@@ -411,115 +411,93 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             auto response = Tablet->GenerateBlobIds(id, handle, 0, sz);
             TVector<NKikimr::TLogoBlobID> blobIds;
             for (const auto& blobId: response->Record.GetBlobs()) {
-                auto blob = NKikimr::LogoBlobIDFromLogoBlobID(blobId.GetBlobId());
+                auto blob =
+                    NKikimr::LogoBlobIDFromLogoBlobID(blobId.GetBlobId());
                 blobIds.push_back(blob);
             }
-            Tablet->AddData(id, handle, 0, sz, blobIds, response->Record.GetCommitId());
+            Tablet->AddData(
+                id,
+                handle,
+                0,
+                sz,
+                blobIds,
+                response->Record.GetCommitId());
         }
 
         registry->Visit(TInstant::Zero(), Visitor);
-        Visitor.ValidateExpectedHistogram({
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "WriteBlob"}}, 0},
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "ReadBlob"}}, 0},
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "WriteData"}}, 0},
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "ReadData"}}, 0},
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "DescribeData"}}, 0},
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "GenerateBlobIds"}}, 0},
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "AddData"}}, 0},
-        }, false);
-        Visitor.ValidateExpectedHistogram({
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "PatchBlob"}}, 0},
-        }, true);
+        Visitor.ValidateExpectedHistogram(
+            {
+                {{{"histogram", "Time"},
+                  {"filesystem", "test"},
+                  {"request", "WriteBlob"}},
+                 0},
+                {{{"histogram", "Time"},
+                  {"filesystem", "test"},
+                  {"request", "ReadBlob"}},
+                 0},
+                {{{"histogram", "Time"},
+                  {"filesystem", "test"},
+                  {"request", "WriteData"}},
+                 0},
+                {{{"histogram", "Time"},
+                  {"filesystem", "test"},
+                  {"request", "ReadData"}},
+                 0},
+                {{{"histogram", "Time"},
+                  {"filesystem", "test"},
+                  {"request", "DescribeData"}},
+                 0},
+                {{{"histogram", "Time"},
+                  {"filesystem", "test"},
+                  {"request", "GenerateBlobIds"}},
+                 0},
+                {{{"histogram", "Time"},
+                  {"filesystem", "test"},
+                  {"request", "AddData"}},
+                 0},
+            },
+            false);
+        Visitor.ValidateExpectedHistogram(
+            {
+                {{{"histogram", "Time"},
+                  {"filesystem", "test"},
+                  {"request", "PatchBlob"}},
+                 0},
+            },
+            true);
         Visitor.ValidateExpectedCounters({
-            {{
-                {"sensor", "WriteBlob.Count"},
-                {"filesystem", "test"}}, 1},
-            {{
-                {"sensor", "ReadBlob.Count"},
-                {"filesystem", "test"}}, 1},
-            {{
-                {"sensor", "PatchBlob.Count"},
-                {"filesystem", "test"}}, 0},
-            {{
-                {"sensor", "WriteData.Count"},
-                {"filesystem", "test"}}, 1},
-            {{
-                {"sensor", "ReadData.Count"},
-                {"filesystem", "test"}}, 1},
-            {{
-                {"sensor", "DescribeData.Count"},
-                {"filesystem", "test"}}, 1},
-            {{
-                {"sensor", "GenerateBlobIds.Count"},
-                {"filesystem", "test"}}, 1},
-            {{
-                {"sensor", "AddData.Count"},
-                {"filesystem", "test"}}, 1},
+            {{{"sensor", "WriteBlob.Count"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "ReadBlob.Count"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "PatchBlob.Count"}, {"filesystem", "test"}}, 0},
+            {{{"sensor", "WriteData.Count"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "ReadData.Count"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "DescribeData.Count"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "GenerateBlobIds.Count"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "AddData.Count"}, {"filesystem", "test"}}, 1},
         });
         Visitor.ValidateExpectedCounters({
-            {{
-                {"sensor", "WriteBlob.RequestBytes"},
-                {"filesystem", "test"}}, sz},
-            {{
-                {"sensor", "ReadBlob.RequestBytes"},
-                {"filesystem", "test"}}, sz},
-            {{
-                {"sensor", "PatchBlob.RequestBytes"},
-                {"filesystem", "test"}}, 0},
-            {{
-                {"sensor", "WriteData.RequestBytes"},
-                {"filesystem", "test"}}, sz},
-            {{
-                {"sensor", "ReadData.RequestBytes"},
-                {"filesystem", "test"}}, sz},
-            {{
-                {"sensor", "DescribeData.RequestBytes"},
-                {"filesystem", "test"}}, sz},
-            {{
-                {"sensor", "GenerateBlobIds.RequestBytes"},
-                {"filesystem", "test"}}, sz},
-            {{
-                {"sensor", "AddData.RequestBytes"},
-                {"filesystem", "test"}}, sz},
-            {{
-                {"sensor", "CurrentLoad"},
-                {"filesystem", "test"}}, 0},
+            {{{"sensor", "WriteBlob.RequestBytes"}, {"filesystem", "test"}},
+             sz},
+            {{{"sensor", "ReadBlob.RequestBytes"}, {"filesystem", "test"}}, sz},
+            {{{"sensor", "PatchBlob.RequestBytes"}, {"filesystem", "test"}}, 0},
+            {{{"sensor", "WriteData.RequestBytes"}, {"filesystem", "test"}},
+             sz},
+            {{{"sensor", "ReadData.RequestBytes"}, {"filesystem", "test"}}, sz},
+            {{{"sensor", "DescribeData.RequestBytes"}, {"filesystem", "test"}},
+             sz},
+            {{{"sensor", "GenerateBlobIds.RequestBytes"},
+              {"filesystem", "test"}},
+             sz},
+            {{{"sensor", "AddData.RequestBytes"}, {"filesystem", "test"}}, sz},
+            {{{"sensor", "CurrentLoad"}, {"filesystem", "test"}}, 0},
         });
 
         Tablet->AdvanceTime(TDuration::Seconds(15));
         Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
         registry->Visit(TInstant::Zero(), Visitor);
         Visitor.ValidateExpectedCounters({
-            {{
-                {"sensor", "CurrentLoad"},
-                {"filesystem", "test"}}, 7},
-            {{
-                {"sensor", "Suffer"},
-                {"filesystem", "test"}}, 0},
+            {{{"sensor", "CurrentLoad"}, {"filesystem", "test"}}, 7},
+            {{{"sensor", "Suffer"}, {"filesystem", "test"}}, 0},
         });
 
         Tablet->DestroyHandle(handle);
@@ -562,21 +540,19 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
         registry->Visit(TInstant::Zero(), Visitor);
         Visitor.ValidateExpectedCounters({
-            {{
-                {"sensor", "CurrentLoad"},
-                {"filesystem", "test"}}, 17},
-            {{
-                {"sensor", "Suffer"},
-                {"filesystem", "test"}}, 0},
+            {{{"sensor", "CurrentLoad"}, {"filesystem", "test"}}, 17},
+            {{{"sensor", "Suffer"}, {"filesystem", "test"}}, 0},
         });
 
         // hard to guarantee something better than the absence of overflows
-        const auto latencySensorPredicate = [] (i64 val) {
+        const auto latencySensorPredicate = [](i64 val)
+        {
             return val < 1e9;
         };
         TVector<std::pair<
             TVector<TTestRegistryVisitor::TLabel>,
-            std::function<bool(i64)>>> expectedCounters;
+            std::function<bool(i64)>>>
+            expectedCounters;
         const auto requestNames = {
             "WriteData",
             "ReadData",
@@ -590,12 +566,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         };
         for (const auto& requestName: requestNames) {
             expectedCounters.push_back(std::make_pair(
-                TVector<TTestRegistryVisitor::TLabel>({
-                    {"sensor", Sprintf("%s.TimeSumUs", requestName)},
-                    {"filesystem", "test"}
-                }),
-                latencySensorPredicate
-            ));
+                TVector<TTestRegistryVisitor::TLabel>(
+                    {{"sensor", Sprintf("%s.TimeSumUs", requestName)},
+                     {"filesystem", "test"}}),
+                latencySensorPredicate));
         }
         Visitor.ValidateExpectedCountersWithPredicate(expectedCounters);
     }
@@ -742,8 +716,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 return false;
             });
 
-        // First metrics submission simply sets the submission time, but does not provide any metrics.
-        // So we wait for the initial submission before generating the load.
+        // First metrics submission simply sets the submission time, but does
+        // not provide any metrics. So we wait for the initial submission before
+        // generating the load.
         env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(reportInterval));
         env.GetRuntime().DispatchEvents({}, TDuration::Seconds(reportInterval));
 
@@ -761,11 +736,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         options.FinalEvents.emplace_back(NKikimr::TEvLocal::EvTabletMetrics);
         env.GetRuntime().DispatchEvents(
             NActors::TDispatchOptions{
-                .CustomFinalCondition = [&]()
+                .CustomFinalCondition =
+                    [&]()
                 {
                     return reportCount;
-                }
-            }, TDuration::Seconds(reportInterval));
+                }},
+            TDuration::Seconds(reportInterval));
 
         UNIT_ASSERT_DOUBLES_EQUAL(sz, (network * reportInterval), sz / 100);
     }
@@ -795,18 +771,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         registry->Visit(TInstant::Zero(), visitor);
         visitor.ValidateExpectedCounters({
             {
-                {
-                    {"sensor", "UncompressedBytesWritten"},
-                    {"filesystem", "test"}
-                },
-                100_KB // expected
+                {{"sensor", "UncompressedBytesWritten"},
+                 {"filesystem", "test"}},
+                100_KB   // expected
             },
             {
-                {
-                    {"sensor", "CompressedBytesWritten"},
-                    {"filesystem", "test"}
-                },
-                439 // expected
+                {{"sensor", "CompressedBytesWritten"}, {"filesystem", "test"}},
+                439   // expected
             },
         });
     }
@@ -830,25 +801,30 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         const auto handle = CreateHandle(tablet, nodeId);
 
-        for (int i = 0; i < 10; i++)
+        for (int i = 0; i < 10; i++) {
             tablet.WriteData(handle, 0, 4_KB, 'a');
+        }
 
         TTestRegistryVisitor visitor;
         registry->Visit(TInstant::Zero(), visitor);
         visitor.ValidateExpectedCountersWithPredicate({
             {
+                {{"sensor", "UncompressedBytesWritten"},
+                 {"filesystem", "test"}},
+                [](i64 val)
                 {
-                    {"sensor", "UncompressedBytesWritten"},
-                    {"filesystem", "test"}
-                },
-                [](i64 val) { return val > 0 && val < 40960; } // expected
+                    return val > 0 && val < 40960;
+                }   // expected
             },
             {
                 {
                     {"sensor", "CompressedBytesWritten"},
                     {"filesystem", "test"},
                 },
-                [](i64 val) { return val > 0 && val < 370; } // expected
+                [](i64 val)
+                {
+                    return val > 0 && val < 370;
+                }   // expected
             },
         });
     }
@@ -870,7 +846,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
-
 
         TTestRegistryVisitor visitor;
         registry->Visit(TInstant::Zero(), visitor);

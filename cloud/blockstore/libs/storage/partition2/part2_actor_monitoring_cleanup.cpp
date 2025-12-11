@@ -27,17 +27,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TForcedCleanupActor final
-    : public TActorBootstrapped<TForcedCleanupActor>
+class TForcedCleanupActor final: public TActorBootstrapped<TForcedCleanupActor>
 {
 private:
     const TActorId Tablet;
     const TDuration RetryTimeout;
 
 public:
-    TForcedCleanupActor(
-        const TActorId& tablet,
-        TDuration retryTimeout);
+    TForcedCleanupActor(const TActorId& tablet, TDuration retryTimeout);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -67,8 +64,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TForcedCleanupActor::TForcedCleanupActor(
-        const TActorId& tablet,
-        TDuration retryTimeout)
+    const TActorId& tablet,
+    TDuration retryTimeout)
     : Tablet(tablet)
     , RetryTimeout(retryTimeout)
 {}
@@ -91,7 +88,8 @@ void TForcedCleanupActor::NotifyCompleted(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvPartitionPrivate::TEvForcedCleanupCompleted>(error);
+    auto response =
+        std::make_unique<TEvPartitionPrivate::TEvForcedCleanupCompleted>(error);
 
     NCloud::Send(ctx, Tablet, std::move(response));
     Die(ctx);
@@ -182,7 +180,11 @@ void TPartitionActor::HandleHttpInfo_ForceCleanup(
         message = "Cleanup is already running";
     }
 
-    SendHttpResponse(ctx, *requestInfo, std::move(message), EAlertLevel::SUCCESS);
+    SendHttpResponse(
+        ctx,
+        *requestInfo,
+        std::move(message),
+        EAlertLevel::SUCCESS);
 }
 
 void TPartitionActor::HandleForcedCleanupCompleted(

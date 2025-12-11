@@ -10,8 +10,7 @@ class TIndexTabletActor;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThrottlerLogger final
-    : public ITabletThrottlerLogger
+class TThrottlerLogger final: public ITabletThrottlerLogger
 {
 private:
     struct TImpl;

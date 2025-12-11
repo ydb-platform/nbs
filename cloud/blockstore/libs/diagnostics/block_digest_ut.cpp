@@ -17,16 +17,26 @@ Y_UNIT_TEST_SUITE(TBlockDigestGeneratorTest)
         auto gen = CreateExt4BlockDigestGenerator(1);
         auto offset = 256;
 
-        UNIT_ASSERT(!gen->ComputeDigest(0, TBlockDataRef::CreateZeroBlock(2_KB)));
-        UNIT_ASSERT(!gen->ComputeDigestForce(TBlockDataRef::CreateZeroBlock(2_KB)));
-        UNIT_ASSERT(!gen->ComputeDigest(0, TBlockDataRef::CreateZeroBlock(256_KB)));
-        UNIT_ASSERT(!gen->ComputeDigestForce(TBlockDataRef::CreateZeroBlock(256_KB)));
-        UNIT_ASSERT(!gen->ComputeDigest(0, TBlockDataRef::CreateZeroBlock(5_KB)));
-        UNIT_ASSERT(!gen->ComputeDigestForce(TBlockDataRef::CreateZeroBlock(5_KB)));
-        UNIT_ASSERT(gen->ComputeDigest(0, TBlockDataRef::CreateZeroBlock(4_KB)));
-        UNIT_ASSERT(gen->ComputeDigestForce(TBlockDataRef::CreateZeroBlock(4_KB)));
-        UNIT_ASSERT(gen->ComputeDigest(0, TBlockDataRef::CreateZeroBlock(128_KB)));
-        UNIT_ASSERT(gen->ComputeDigestForce(TBlockDataRef::CreateZeroBlock(128_KB)));
+        UNIT_ASSERT(
+            !gen->ComputeDigest(0, TBlockDataRef::CreateZeroBlock(2_KB)));
+        UNIT_ASSERT(
+            !gen->ComputeDigestForce(TBlockDataRef::CreateZeroBlock(2_KB)));
+        UNIT_ASSERT(
+            !gen->ComputeDigest(0, TBlockDataRef::CreateZeroBlock(256_KB)));
+        UNIT_ASSERT(
+            !gen->ComputeDigestForce(TBlockDataRef::CreateZeroBlock(256_KB)));
+        UNIT_ASSERT(
+            !gen->ComputeDigest(0, TBlockDataRef::CreateZeroBlock(5_KB)));
+        UNIT_ASSERT(
+            !gen->ComputeDigestForce(TBlockDataRef::CreateZeroBlock(5_KB)));
+        UNIT_ASSERT(
+            gen->ComputeDigest(0, TBlockDataRef::CreateZeroBlock(4_KB)));
+        UNIT_ASSERT(
+            gen->ComputeDigestForce(TBlockDataRef::CreateZeroBlock(4_KB)));
+        UNIT_ASSERT(
+            gen->ComputeDigest(0, TBlockDataRef::CreateZeroBlock(128_KB)));
+        UNIT_ASSERT(
+            gen->ComputeDigestForce(TBlockDataRef::CreateZeroBlock(128_KB)));
 
         TString str("asd");
         str.resize(4_KB);
@@ -64,7 +74,8 @@ Y_UNIT_TEST_SUITE(TBlockDigestGeneratorTest)
 
         // checking that when we write a ui64 into the first 8 bytes of the
         // block our digest is equal to this ui64
-        auto check = [&] () {
+        auto check = [&]()
+        {
             TString str(bytes, sizeof(x));
             str.resize(4_KB);
             TBlockDataRef blockData(str.data(), str.size());
@@ -106,7 +117,9 @@ Y_UNIT_TEST_SUITE(TBlockDigestGeneratorTest)
 
     Y_UNIT_TEST(TestComputeDefaultDigest)
     {
-        UNIT_ASSERT_VALUES_EQUAL(3387363646, ComputeDefaultDigest({"vasya", 5}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            3387363646,
+            ComputeDefaultDigest({"vasya", 5}));
     }
 }
 

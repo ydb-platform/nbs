@@ -10,46 +10,46 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_PARTITION_REQUESTS(xxx, ...)                                \
-    xxx(WaitReady,                                                 __VA_ARGS__)\
-    xxx(StatPartition,                                             __VA_ARGS__)\
-    /* Waits until there are no more in-flight write requests. */              \
-    xxx(Drain,                                                     __VA_ARGS__)\
-    /* Waits for current in-flight writes to finish and does not affect any    \
-     * requests that come after. */                                            \
-    xxx(WaitForInFlightWrites,                                     __VA_ARGS__)\
-    /* Block range for writing requests. Wait for current in-flight writes     \
-     * which overlap that range to finish and reply. Lock can be released by   \
-     * sending a TEvReleaseRange message. */                                   \
-    xxx(LockAndDrainRange,                                        __VA_ARGS__) \
+#define BLOCKSTORE_PARTITION_REQUESTS(xxx, ...)                              \
+    xxx(WaitReady, __VA_ARGS__)                                              \
+    xxx(StatPartition, __VA_ARGS__)                                          \
+    /* Waits until there are no more in-flight write requests. */            \
+    xxx(Drain, __VA_ARGS__)                                                  \
+    /* Waits for current in-flight writes to finish and does not affect any  \
+     * requests that come after. */                                          \
+    xxx(WaitForInFlightWrites, __VA_ARGS__)                                  \
+    /* Block range for writing requests. Wait for current in-flight writes   \
+     * which overlap that range to finish and reply. Lock can be released by \
+     * sending a TEvReleaseRange message. */                                 \
+    xxx(LockAndDrainRange, __VA_ARGS__)                                      \
 // BLOCKSTORE_PARTITION_REQUESTS
 
 // requests forwarded from service to partition
-#define BLOCKSTORE_PARTITION_REQUESTS_FWD_SERVICE(xxx, ...)                    \
-    xxx(ReadBlocks,         __VA_ARGS__)                                       \
-    xxx(WriteBlocks,        __VA_ARGS__)                                       \
-    xxx(ZeroBlocks,         __VA_ARGS__)                                       \
-    xxx(CreateCheckpoint,   __VA_ARGS__)                                       \
-    xxx(DeleteCheckpoint,   __VA_ARGS__)                                       \
-    xxx(GetChangedBlocks,   __VA_ARGS__)                                       \
-    xxx(ReadBlocksLocal,    __VA_ARGS__)                                       \
-    xxx(WriteBlocksLocal,   __VA_ARGS__)                                       \
+#define BLOCKSTORE_PARTITION_REQUESTS_FWD_SERVICE(xxx, ...) \
+    xxx(ReadBlocks, __VA_ARGS__)                            \
+    xxx(WriteBlocks, __VA_ARGS__)                           \
+    xxx(ZeroBlocks, __VA_ARGS__)                            \
+    xxx(CreateCheckpoint, __VA_ARGS__)                      \
+    xxx(DeleteCheckpoint, __VA_ARGS__)                      \
+    xxx(GetChangedBlocks, __VA_ARGS__)                      \
+    xxx(ReadBlocksLocal, __VA_ARGS__)                       \
+    xxx(WriteBlocksLocal, __VA_ARGS__)                      \
 // BLOCKSTORE_PARTITION_REQUESTS_FWD_SERVICE
 
 // requests forwarded from volume to partion
-#define BLOCKSTORE_PARTITION_REQUESTS_FWD_VOLUME(xxx, ...)                     \
-    xxx(DescribeBlocks,           __VA_ARGS__)                                 \
-    xxx(GetUsedBlocks,            __VA_ARGS__)                                 \
-    xxx(GetPartitionInfo,         __VA_ARGS__)                                 \
-    xxx(CompactRange,             __VA_ARGS__)                                 \
-    xxx(GetCompactionStatus,      __VA_ARGS__)                                 \
-    xxx(DeleteCheckpointData,     __VA_ARGS__)                                 \
-    xxx(RebuildMetadata,          __VA_ARGS__)                                 \
-    xxx(GetRebuildMetadataStatus, __VA_ARGS__)                                 \
-    xxx(ScanDisk,                 __VA_ARGS__)                                 \
-    xxx(GetScanDiskStatus,        __VA_ARGS__)                                 \
-    xxx(CheckRange,               __VA_ARGS__)                                 \
-// BLOCKSTORE_PARTITION_REQUESTS_FWD_VOLUME
+#define BLOCKSTORE_PARTITION_REQUESTS_FWD_VOLUME(xxx, ...) \
+    xxx(DescribeBlocks, __VA_ARGS__)                       \
+    xxx(GetUsedBlocks, __VA_ARGS__)                        \
+    xxx(GetPartitionInfo, __VA_ARGS__)                     \
+    xxx(CompactRange, __VA_ARGS__)                         \
+    xxx(GetCompactionStatus, __VA_ARGS__)                  \
+    xxx(DeleteCheckpointData, __VA_ARGS__)                 \
+    xxx(RebuildMetadata, __VA_ARGS__)                      \
+    xxx(GetRebuildMetadataStatus, __VA_ARGS__)             \
+    xxx(ScanDisk, __VA_ARGS__)                             \
+    xxx(GetScanDiskStatus, __VA_ARGS__)                    \
+    xxx(CheckRange, __VA_ARGS__)                           \
+    // BLOCKSTORE_PARTITION_REQUESTS_FWD_VOLUME
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -179,22 +179,19 @@ struct TEvPartition
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStoreEvents::PARTITION_END,
+    static_assert(
+        EvEnd < (int)TBlockStoreEvents::PARTITION_END,
         "EvEnd expected to be < TBlockStoreEvents::PARTITION_END");
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_DECLARE_EVENTS)
 
     using TEvReleaseRange = TRequestEvent<TReleaseRange, EvReleaseRange>;
 
-    using TEvBackpressureReport = TRequestEvent<
-        TBackpressureReport,
-        EvBackpressureReport
-    >;
+    using TEvBackpressureReport =
+        TRequestEvent<TBackpressureReport, EvBackpressureReport>;
 
-    using TEvGarbageCollectorCompleted = TRequestEvent<
-        TGarbageCollectorCompleted,
-        EvGarbageCollectorCompleted
-    >;
+    using TEvGarbageCollectorCompleted =
+        TRequestEvent<TGarbageCollectorCompleted, EvGarbageCollectorCompleted>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

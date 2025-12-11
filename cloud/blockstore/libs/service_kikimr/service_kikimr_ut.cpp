@@ -1,7 +1,6 @@
 #include "service_kikimr.h"
 
 #include <cloud/blockstore/config/server.pb.h>
-
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
@@ -33,28 +32,27 @@ NProto::TKikimrServiceConfig DefaultConfig()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestServiceActor final
-    : public TActor<TTestServiceActor>
+struct TTestServiceActor final: public TActor<TTestServiceActor>
 {
     TTestServiceActor()
         : TActor(&TThis::StateWork)
     {}
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ns)                                  \
-    using T##name##ResponsePtr = std::unique_ptr<ns::TEv##name##Response>;     \
-    using T##name##Handler = std::function<                                    \
-        T##name##ResponsePtr(const ns::TEv##name##Request::TPtr& ev)>;         \
-    T##name##Handler name##Handler;                                            \
-                                                                               \
-    void Handle##name(                                                         \
-        const ns::TEv##name##Request::TPtr& ev,                                \
-        const TActorContext& ctx)                                              \
-    {                                                                          \
-        if (auto response = name##Handler(ev)) {                               \
-            NCloud::Reply(ctx, *ev, std::move(response));                      \
-        }                                                                      \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, ns)                              \
+    using T##name##ResponsePtr = std::unique_ptr<ns::TEv##name##Response>; \
+    using T##name##Handler = std::function<T##name##ResponsePtr(           \
+        const ns::TEv##name##Request::TPtr& ev)>;                          \
+    T##name##Handler name##Handler;                                        \
+                                                                           \
+    void Handle##name(                                                     \
+        const ns::TEv##name##Request::TPtr& ev,                            \
+        const TActorContext& ctx)                                          \
+    {                                                                      \
+        if (auto response = name##Handler(ev)) {                           \
+            NCloud::Reply(ctx, *ev, std::move(response));                  \
+        }                                                                  \
+    }                                                                      \
+    // BLOCKSTORE_IMPLEMENT_METHOD
 
     BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD, TEvService)
     BLOCKSTORE_SERVICE_REQUESTS(BLOCKSTORE_IMPLEMENT_METHOD, TEvService)
@@ -95,23 +93,21 @@ Y_UNIT_TEST_SUITE(TKikimrServiceTest)
     {
         auto serviceActor = std::make_unique<TTestServiceActor>();
         serviceActor->PingHandler =
-            [] (const TEvService::TEvPingRequest::TPtr& ev) {
-                Y_UNUSED(ev);
-                return std::make_unique<TEvService::TEvPingResponse>();
-            };
+            [](const TEvService::TEvPingRequest::TPtr& ev)
+        {
+            Y_UNUSED(ev);
+            return std::make_unique<TEvService::TEvPingResponse>();
+        };
 
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestService(std::move(serviceActor));
 
-        auto service = CreateKikimrService(
-            actorSystem,
-            DefaultConfig());
+        auto service = CreateKikimrService(actorSystem, DefaultConfig());
 
         auto request = std::make_shared<NProto::TPingRequest>();
 
-        auto future = service->Ping(
-            MakeIntrusive<TCallContext>(),
-            std::move(request));
+        auto future =
+            service->Ping(MakeIntrusive<TCallContext>(), std::move(request));
 
         actorSystem->DispatchEvents(TDuration::Seconds(5));
 
@@ -123,38 +119,40 @@ Y_UNIT_TEST_SUITE(TKikimrServiceTest)
     {
         auto serviceActor = std::make_unique<TTestServiceActor>();
         serviceActor->WriteBlocksHandler =
-            [] (const TEvService::TEvWriteBlocksRequest::TPtr& ev) {
-                Y_UNUSED(ev);
-                return nullptr;
-            };
+            [](const TEvService::TEvWriteBlocksRequest::TPtr& ev)
+        {
+            Y_UNUSED(ev);
+            return nullptr;
+        };
         serviceActor->WriteBlocksLocalHandler =
-            [] (const TEvService::TEvWriteBlocksLocalRequest::TPtr& ev) {
-                Y_UNUSED(ev);
-                return nullptr;
-            };
+            [](const TEvService::TEvWriteBlocksLocalRequest::TPtr& ev)
+        {
+            Y_UNUSED(ev);
+            return nullptr;
+        };
         serviceActor->ZeroBlocksHandler =
-            [] (const TEvService::TEvZeroBlocksRequest::TPtr& ev) {
-                Y_UNUSED(ev);
-                return nullptr;
-            };
+            [](const TEvService::TEvZeroBlocksRequest::TPtr& ev)
+        {
+            Y_UNUSED(ev);
+            return nullptr;
+        };
 
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestService(std::move(serviceActor));
 
-        NMonitoring::TDynamicCountersPtr counters
-            = new NMonitoring::TDynamicCounters();
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
         InitCriticalEventsCounter(counters);
         auto counter = counters->GetCounter(
-            "AppCriticalEvents/ServiceProxyWakeupTimerHit", true);
+            "AppCriticalEvents/ServiceProxyWakeupTimerHit",
+            true);
 
-        auto service = CreateKikimrService(
-            actorSystem,
-            DefaultConfig());
+        auto service = CreateKikimrService(actorSystem, DefaultConfig());
 
         {
             auto request = std::make_shared<NProto::TWriteBlocksRequest>();
             auto& headers = *request->MutableHeaders();
-            headers.SetRequestTimeout(100); // ms
+            headers.SetRequestTimeout(100);   // ms
 
             auto future = service->WriteBlocks(
                 MakeIntrusive<TCallContext>(),
@@ -169,7 +167,7 @@ Y_UNIT_TEST_SUITE(TKikimrServiceTest)
         {
             auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
             auto& headers = *request->MutableHeaders();
-            headers.SetRequestTimeout(100); // ms
+            headers.SetRequestTimeout(100);   // ms
 
             auto future = service->WriteBlocksLocal(
                 MakeIntrusive<TCallContext>(),
@@ -184,7 +182,7 @@ Y_UNIT_TEST_SUITE(TKikimrServiceTest)
         {
             auto request = std::make_shared<NProto::TZeroBlocksRequest>();
             auto& headers = *request->MutableHeaders();
-            headers.SetRequestTimeout(100); // ms
+            headers.SetRequestTimeout(100);   // ms
 
             auto future = service->ZeroBlocks(
                 MakeIntrusive<TCallContext>(),
@@ -201,25 +199,23 @@ Y_UNIT_TEST_SUITE(TKikimrServiceTest)
     {
         auto serviceActor = std::make_unique<TTestServiceActor>();
         serviceActor->PingHandler =
-            [] (const TEvService::TEvPingRequest::TPtr& ev) {
-                Y_UNUSED(ev);
-                return nullptr;
-            };
+            [](const TEvService::TEvPingRequest::TPtr& ev)
+        {
+            Y_UNUSED(ev);
+            return nullptr;
+        };
 
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestService(std::move(serviceActor));
 
-        auto service = CreateKikimrService(
-            actorSystem,
-            DefaultConfig());
+        auto service = CreateKikimrService(actorSystem, DefaultConfig());
 
         auto request = std::make_shared<NProto::TPingRequest>();
         auto& headers = *request->MutableHeaders();
-        headers.SetRequestTimeout(100); // ms
+        headers.SetRequestTimeout(100);   // ms
 
-        auto future = service->Ping(
-            MakeIntrusive<TCallContext>(),
-            std::move(request));
+        auto future =
+            service->Ping(MakeIntrusive<TCallContext>(), std::move(request));
 
         actorSystem->DispatchEvents(TDuration::Seconds(5));
 
@@ -231,24 +227,21 @@ Y_UNIT_TEST_SUITE(TKikimrServiceTest)
     {
         auto serviceActor = std::make_unique<TTestServiceActor>();
         serviceActor->PingHandler =
-            [] (const TEvService::TEvPingRequest::TPtr& ev) {
-                Y_UNUSED(ev);
-                return nullptr;
-            };
-
+            [](const TEvService::TEvPingRequest::TPtr& ev)
+        {
+            Y_UNUSED(ev);
+            return nullptr;
+        };
 
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestService(std::move(serviceActor));
 
-        auto service = CreateKikimrService(
-            actorSystem,
-            DefaultConfig());
+        auto service = CreateKikimrService(actorSystem, DefaultConfig());
 
         auto request = std::make_shared<NProto::TPingRequest>();
 
-        auto future = service->Ping(
-            MakeIntrusive<TCallContext>(),
-            std::move(request));
+        auto future =
+            service->Ping(MakeIntrusive<TCallContext>(), std::move(request));
 
         actorSystem->Stop();
 

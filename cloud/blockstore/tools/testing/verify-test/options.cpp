@@ -43,8 +43,7 @@ void TOptions::Parse(int argc, char** argv)
         .StoreResult(&IoDepth)
         .DefaultValue(8);
 
-    opts.AddLongOption("zero-check")
-        .StoreTrue(&CheckZero);
+    opts.AddLongOption("zero-check").StoreTrue(&CheckZero);
 
     opts.AddLongOption("read-only", "perform only read stage without write")
         .StoreTrue(&ReadOnly);

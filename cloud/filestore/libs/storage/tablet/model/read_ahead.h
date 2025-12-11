@@ -36,8 +36,7 @@ public:
         explicit TRange(const TByteRange& byteRange)
             : Offset(byteRange.Offset)
             , Length(byteRange.Length)
-        {
-        }
+        {}
 
         [[nodiscard]] ui64 End() const
         {
@@ -46,10 +45,8 @@ public:
 
         [[nodiscard]] bool Contains(const TByteRange& byteRange) const
         {
-            return TByteRange(
-                Offset,
-                Length,
-                byteRange.BlockSize).Contains(byteRange);
+            return TByteRange(Offset, Length, byteRange.BlockSize)
+                .Contains(byteRange);
         }
     };
 
@@ -72,8 +69,7 @@ private:
         THandleState()
             : LastRanges(RANGE_COUNT)
             , DescribeResults(0)
-        {
-        }
+        {}
     };
 
     struct TNodeState
@@ -111,10 +107,8 @@ public:
         NProtoPrivate::TDescribeDataResponse* response);
 
     // returns the suggested range to describe
-    TMaybe<TByteRange> RegisterDescribe(
-        ui64 nodeId,
-        ui64 handle,
-        const TByteRange inputRange);
+    TMaybe<TByteRange>
+    RegisterDescribe(ui64 nodeId, ui64 handle, const TByteRange inputRange);
     void InvalidateCache(ui64 nodeId);
     void OnDestroyHandle(ui64 nodeId, ui64 handle);
     void RegisterResult(
@@ -137,10 +131,8 @@ private:
         const TByteRange& range,
         NProtoPrivate::TDescribeDataResponse* response);
 
-    TMaybe<TByteRange> RegisterDescribeImpl(
-        ui64 nodeId,
-        ui64 handle,
-        const TByteRange inputRange);
+    TMaybe<TByteRange>
+    RegisterDescribeImpl(ui64 nodeId, ui64 handle, const TByteRange inputRange);
 
     void RegisterResultImpl(
         ui64 nodeId,

@@ -39,18 +39,13 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestSpdkEnv final
-    : public NSpdk::TTestSpdkEnv
+struct TTestSpdkEnv final: public NSpdk::TTestSpdkEnv
 {
-    using TOpenDeviceHandler = std::function<
-        NThreading::TFuture<NSpdk::ISpdkDevicePtr>(
-            const TString& name,
-            bool write)>;
+    using TOpenDeviceHandler = std::function<NThreading::TFuture<
+        NSpdk::ISpdkDevicePtr>(const TString& name, bool write)>;
 
-    using TRegisterNVMeDevicesHandler = std::function<
-        NThreading::TFuture<TVector<TString>>(
-        const TString& baseName,
-        const TString& transportId)>;
+    using TRegisterNVMeDevicesHandler = std::function<NThreading::TFuture<
+        TVector<TString>>(const TString& baseName, const TString& transportId)>;
 
     TOpenDeviceHandler OpenDeviceHandler;
     TRegisterNVMeDevicesHandler RegisterNVMeDevicesHandler;
@@ -72,8 +67,7 @@ struct TTestSpdkEnv final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCompositeDevice
-    : ITaskQueue
+struct TCompositeDevice: ITaskQueue
 {
     const ui32 BlockSize;
     const ui32 BlocksPerDevice;
@@ -96,87 +90,98 @@ struct TCompositeDevice
 
             Devs[d] = std::make_shared<NSpdk::TTestSpdkDevice>();
 
-            Devs[d]->ReadBufferHandler = // fast path
-                [=, this] (void* buffer, ui64 fileOffset, ui32 bytes)
+            Devs[d]->ReadBufferHandler =   // fast path
+                [=, this](void* buffer, ui64 fileOffset, ui32 bytes)
             {
-                return Execute([=, this] {
-                    UNIT_ASSERT(fileOffset < BlocksPerDevice * BlockSize);
-                    UNIT_ASSERT(bytes <= BlocksPerDevice * BlockSize - fileOffset);
+                return Execute(
+                    [=, this]
+                    {
+                        UNIT_ASSERT(fileOffset < BlocksPerDevice * BlockSize);
+                        UNIT_ASSERT(
+                            bytes <= BlocksPerDevice * BlockSize - fileOffset);
 
-                    const auto relOff = off + fileOffset;
-                    memcpy(buffer, Data.data() + relOff, bytes);
+                        const auto relOff = off + fileOffset;
+                        memcpy(buffer, Data.data() + relOff, bytes);
 
-                    return NProto::TError();
-                });
+                        return NProto::TError();
+                    });
             };
 
             Devs[d]->ReadSgListHandler =
-                [=, this] (TSgList sglist, ui64 fileOffset, ui32 bytes)
+                [=, this](TSgList sglist, ui64 fileOffset, ui32 bytes)
             {
-                return Execute([=, this] {
-                    UNIT_ASSERT_VALUES_EQUAL(bytes, SgListGetSize(sglist));
-                    UNIT_ASSERT(fileOffset < BlocksPerDevice * BlockSize);
-                    UNIT_ASSERT(bytes <= BlocksPerDevice * BlockSize - fileOffset);
+                return Execute(
+                    [=, this]
+                    {
+                        UNIT_ASSERT_VALUES_EQUAL(bytes, SgListGetSize(sglist));
+                        UNIT_ASSERT(fileOffset < BlocksPerDevice * BlockSize);
+                        UNIT_ASSERT(
+                            bytes <= BlocksPerDevice * BlockSize - fileOffset);
 
-                    const auto relOff = off + fileOffset;
-                    TSgList src = {
-                        { Data.data() + relOff, bytes }
-                    };
+                        const auto relOff = off + fileOffset;
+                        TSgList src = {{Data.data() + relOff, bytes}};
 
-                    auto size = SgListCopy(src, sglist);
-                    UNIT_ASSERT_VALUES_EQUAL(bytes, size);
+                        auto size = SgListCopy(src, sglist);
+                        UNIT_ASSERT_VALUES_EQUAL(bytes, size);
 
-                    return NProto::TError();
-                });
+                        return NProto::TError();
+                    });
             };
 
-            Devs[d]->WriteBufferHandler = // fast path
-                [=, this] (void* buffer, ui64 fileOffset, ui32 bytes)
+            Devs[d]->WriteBufferHandler =   // fast path
+                [=, this](void* buffer, ui64 fileOffset, ui32 bytes)
             {
-                return Execute([=, this] {
-                    UNIT_ASSERT(fileOffset < BlocksPerDevice * BlockSize);
-                    UNIT_ASSERT(bytes <= BlocksPerDevice * BlockSize - fileOffset);
+                return Execute(
+                    [=, this]
+                    {
+                        UNIT_ASSERT(fileOffset < BlocksPerDevice * BlockSize);
+                        UNIT_ASSERT(
+                            bytes <= BlocksPerDevice * BlockSize - fileOffset);
 
-                    const auto relOff = off + fileOffset;
-                    memcpy(Data.data() + relOff, buffer, bytes);
+                        const auto relOff = off + fileOffset;
+                        memcpy(Data.data() + relOff, buffer, bytes);
 
-                    return NProto::TError();
-                });
+                        return NProto::TError();
+                    });
             };
 
             Devs[d]->WriteSgListHandler =
-                [=, this] (TSgList sglist, ui64 fileOffset, ui32 bytes)
+                [=, this](TSgList sglist, ui64 fileOffset, ui32 bytes)
             {
-                return Execute([=, this] {
-                    UNIT_ASSERT_VALUES_EQUAL(bytes, SgListGetSize(sglist));
-                    UNIT_ASSERT(fileOffset < BlocksPerDevice * BlockSize);
-                    UNIT_ASSERT(bytes <= BlocksPerDevice * BlockSize - fileOffset);
+                return Execute(
+                    [=, this]
+                    {
+                        UNIT_ASSERT_VALUES_EQUAL(bytes, SgListGetSize(sglist));
+                        UNIT_ASSERT(fileOffset < BlocksPerDevice * BlockSize);
+                        UNIT_ASSERT(
+                            bytes <= BlocksPerDevice * BlockSize - fileOffset);
 
-                    const auto relOff = off + fileOffset;
-                    TSgList dst = {
-                        { Data.data() + relOff, bytes }
-                    };
+                        const auto relOff = off + fileOffset;
+                        TSgList dst = {{Data.data() + relOff, bytes}};
 
-                    auto size = SgListCopy(sglist, dst);
-                    UNIT_ASSERT_VALUES_EQUAL(bytes, size);
+                        auto size = SgListCopy(sglist, dst);
+                        UNIT_ASSERT_VALUES_EQUAL(bytes, size);
 
-                    return NProto::TError();
-                });
+                        return NProto::TError();
+                    });
             };
 
-            Devs[d]->WriteZeroesHandler = [=, this] (ui64 fileOffset, ui32 bytes)
+            Devs[d]->WriteZeroesHandler = [=, this](ui64 fileOffset, ui32 bytes)
             {
-                return Execute([=, this] {
-                    UNIT_ASSERT(fileOffset < BlocksPerDevice * BlockSize);
-                    UNIT_ASSERT(bytes <= BlocksPerDevice * BlockSize - fileOffset);
+                return Execute(
+                    [=, this]
+                    {
+                        UNIT_ASSERT(fileOffset < BlocksPerDevice * BlockSize);
+                        UNIT_ASSERT(
+                            bytes <= BlocksPerDevice * BlockSize - fileOffset);
 
-                    const auto relOff = off + fileOffset;
-                    for (ui32 i = 0; i < bytes; ++i) {
-                        Data[relOff + i] = 'Z';
-                    }
+                        const auto relOff = off + fileOffset;
+                        for (ui32 i = 0; i < bytes; ++i) {
+                            Data[relOff + i] = 'Z';
+                        }
 
-                    return NProto::TError();
-                });
+                        return NProto::TError();
+                    });
             };
         }
     }
@@ -205,9 +210,7 @@ struct TCompositeDevice
     {
         std::shared_ptr<ITask> p(task.release());
 
-        Scheduler->Schedule(Timer->Now(), [=] () mutable {
-            p->Execute();
-        });
+        Scheduler->Schedule(Timer->Now(), [=]() mutable { p->Execute(); });
     }
 };
 
@@ -220,27 +223,27 @@ IStoragePtr CreateSpdkStorage(
     NProto::EVolumeIOMode ioMode = NProto::VOLUME_IO_OK)
 {
     auto spdk = std::make_shared<TTestSpdkEnv>();
-    spdk->OpenDeviceHandler = [&] (const TString& name, bool write) {
+    spdk->OpenDeviceHandler = [&](const TString& name, bool write)
+    {
         UNIT_ASSERT(write);
 
         return MakeFuture(cd.ByName(name));
     };
 
-    spdk->RegisterNVMeDevicesHandler = [=] (
-        const TString& baseName,
-        const TString& transportId)
+    spdk->RegisterNVMeDevicesHandler =
+        [=](const TString& baseName, const TString& transportId)
     {
         UNIT_ASSERT_VALUES_EQUAL(baseName, "nvme");
 
-        return MakeFuture(TVector<TString>{ baseName + transportId });
+        return MakeFuture(TVector<TString>{baseName + transportId});
     };
 
-    auto allocator = CreateCachingAllocator(
-        TDefaultAllocator::Instance(), 0, 0, 0);
+    auto allocator =
+        CreateCachingAllocator(TDefaultAllocator::Instance(), 0, 0, 0);
 
     auto serverGroup = monitoring->GetCounters()
-        ->GetSubgroup("counters", "blockstore")
-        ->GetSubgroup("component", "server");
+                           ->GetSubgroup("counters", "blockstore")
+                           ->GetSubgroup("component", "server");
 
     auto serverStats = CreateServerStats(
         std::make_shared<TServerAppConfig>(),
@@ -293,9 +296,7 @@ TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
     request->BlockSize = blockSize;
     request->Sglist = std::move(sglist);
 
-    return storage.ReadBlocksLocal(
-        std::move(context),
-        std::move(request));
+    return storage.ReadBlocksLocal(std::move(context), std::move(request));
 }
 
 TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
@@ -313,15 +314,11 @@ TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
     request->BlockSize = blockSize;
     request->Sglist = std::move(sglist);
 
-    return storage.WriteBlocksLocal(
-        std::move(context),
-        std::move(request));
+    return storage.WriteBlocksLocal(std::move(context), std::move(request));
 }
 
-TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
-    IStorage& storage,
-    ui64 startIndex,
-    ui32 blocksCount)
+TFuture<NProto::TZeroBlocksResponse>
+ZeroBlocks(IStorage& storage, ui64 startIndex, ui32 blocksCount)
 {
     auto context = MakeIntrusive<TCallContext>();
 
@@ -329,9 +326,7 @@ TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
     request->SetStartIndex(startIndex);
     request->SetBlocksCount(blocksCount);
 
-    return storage.ZeroBlocks(
-        std::move(context),
-        std::move(request));
+    return storage.ZeroBlocks(std::move(context), std::move(request));
 }
 
 auto GetCounter(IMonitoringServicePtr monitoring, const TString& request)
@@ -357,24 +352,22 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto storage = CreateSpdkStorage(device, 5, monitoring);
 
-        Y_DEFER { device.Stop(); };
+        Y_DEFER
+        {
+            device.Stop();
+        }
 
         {
             TString blockContent = "00000";
             TVector<TString> blocks;
-            auto sglist = ResizeBlocks(
-                blocks,
-                30,
-                blockContent
-            );
+            auto sglist = ResizeBlocks(blocks, 30, blockContent);
 
             auto future = ReadBlocksLocal(
                 *storage,
                 0,
                 30,
                 blockContent.size(),
-                TGuardedSgList(sglist)
-            );
+                TGuardedSgList(sglist));
 
             const auto& error = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(!HasError(error));
@@ -387,19 +380,14 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
         {
             TString blockContent = "XXXXX";
             TVector<TString> blocks;
-            auto sglist = ResizeBlocks(
-                blocks,
-                20,
-                blockContent
-            );
+            auto sglist = ResizeBlocks(blocks, 20, blockContent);
 
             auto future = WriteBlocksLocal(
                 *storage,
                 5,
                 20,
                 blockContent.size(),
-                TGuardedSgList(sglist)
-            );
+                TGuardedSgList(sglist));
 
             const auto& error = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(!HasError(error));
@@ -408,11 +396,7 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
         {
             TString blockContent = "00000";
             TVector<TString> blocks;
-            auto sglist = ResizeBlocks(
-                blocks,
-                22,
-                blockContent
-            );
+            auto sglist = ResizeBlocks(blocks, 22, blockContent);
 
             auto future = ReadBlocksLocal(
                 *storage,
@@ -432,11 +416,7 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
             UNIT_ASSERT_VALUES_EQUAL("ZZZZZ", sglist[21].AsStringBuf());
         }
 
-        auto future = ZeroBlocks(
-            *storage,
-            6,
-            18
-        );
+        auto future = ZeroBlocks(*storage, 6, 18);
 
         const auto& error = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT(!HasError(error));
@@ -444,19 +424,14 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
         {
             TString blockContent = "00000";
             TVector<TString> blocks;
-            auto sglist = ResizeBlocks(
-                blocks,
-                20,
-                blockContent
-            );
+            auto sglist = ResizeBlocks(blocks, 20, blockContent);
 
             auto future = ReadBlocksLocal(
                 *storage,
                 5,
                 20,
                 blockContent.size(),
-                TGuardedSgList(sglist)
-            );
+                TGuardedSgList(sglist));
 
             const auto& error = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(!HasError(error));
@@ -486,24 +461,22 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto storage = CreateSpdkStorage(device, 5, monitoring);
 
-        Y_DEFER { device.Stop(); };
+        Y_DEFER
+        {
+            device.Stop();
+        }
 
         {
             TString blockContent = "XXXXX";
             TVector<TString> blocks;
-            auto sglist = ResizeBlocks(
-                blocks,
-                10,
-                blockContent
-            );
+            auto sglist = ResizeBlocks(blocks, 10, blockContent);
 
             auto future = WriteBlocksLocal(
                 *storage,
                 10,
                 10,
                 blockContent.size(),
-                TGuardedSgList(sglist)
-            );
+                TGuardedSgList(sglist));
 
             const auto& error = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(!HasError(error));
@@ -520,11 +493,7 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
         {
             TString blockContent = "00000";
             TVector<TString> blocks;
-            auto sglist = ResizeBlocks(
-                blocks,
-                10,
-                blockContent
-            );
+            auto sglist = ResizeBlocks(blocks, 10, blockContent);
 
             auto future = ReadBlocksLocal(
                 *storage,
@@ -545,11 +514,7 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
         UNIT_ASSERT_VALUES_EQUAL(1, writeRequestFastPathHits->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, zeroRequestFastPathHits->Val());
 
-        auto future = ZeroBlocks(
-            *storage,
-            10,
-            10
-        );
+        auto future = ZeroBlocks(*storage, 10, 10);
 
         UNIT_ASSERT_VALUES_EQUAL(1, readRequestFastPathHits->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, writeRequestFastPathHits->Val());
@@ -561,19 +526,14 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
         {
             TString blockContent = "00000";
             TVector<TString> blocks;
-            auto sglist = ResizeBlocks(
-                blocks,
-                10,
-                blockContent
-            );
+            auto sglist = ResizeBlocks(blocks, 10, blockContent);
 
             auto future = ReadBlocksLocal(
                 *storage,
                 10,
                 10,
                 blockContent.size(),
-                TGuardedSgList(sglist)
-            );
+                TGuardedSgList(sglist));
 
             const auto& error = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(!HasError(error));
@@ -600,7 +560,10 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
 
         auto storage = CreateSpdkStorage(device, blockSize, monitoring);
 
-        Y_DEFER { device.Stop(); };
+        Y_DEFER
+        {
+            device.Stop();
+        }
 
         {
             TVector<TString> blocks;
@@ -653,10 +616,8 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
         TCompositeDevice device(blockSize, 1, blocksCount);
         device.Start();
 
-        auto storage = CreateSpdkStorage(
-            device,
-            blockSize,
-            CreateMonitoringServiceStub());
+        auto storage =
+            CreateSpdkStorage(device, blockSize, CreateMonitoringServiceStub());
 
         TStorageAdapter storageAdapter(
             std::move(storage),
@@ -666,12 +627,16 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
             TDuration::Zero()    // shutdownTimeout
         );
 
-        Y_DEFER { device.Stop(); };
+        Y_DEFER
+        {
+            device.Stop();
+        }
 
         {
             auto request = std::make_shared<NProto::TWriteBlocksRequest>();
             request->SetStartIndex(8);
-            auto sglist = ResizeIOVector(*request->MutableBlocks(), 8, blockSize);
+            auto sglist =
+                ResizeIOVector(*request->MutableBlocks(), 8, blockSize);
             for (auto buf: sglist) {
                 memset(const_cast<char*>(buf.Data()), 'A', blockSize);
             }
@@ -730,7 +695,10 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
             monitoring,
             NProto::VOLUME_IO_ERROR_READ_ONLY);
 
-        Y_DEFER { device.Stop(); };
+        Y_DEFER
+        {
+            device.Stop();
+        }
 
         {
             TString blockContent = "00000";
@@ -742,8 +710,7 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
                 0,
                 30,
                 blockContent.size(),
-                TGuardedSgList(sglist)
-            );
+                TGuardedSgList(sglist));
 
             const auto& response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
@@ -763,15 +730,14 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
                 5,
                 20,
                 blockContent.size(),
-                TGuardedSgList(sglist)
-            );
+                TGuardedSgList(sglist));
 
             const auto& response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_VALUES_EQUAL(E_IO, response.GetError().GetCode());
         }
 
         {
-            auto future = ZeroBlocks(*storage, 6, 18 );
+            auto future = ZeroBlocks(*storage, 6, 18);
             const auto& response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_VALUES_EQUAL(E_IO, response.GetError().GetCode());
         }
@@ -786,8 +752,7 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
                 0,
                 30,
                 blockContent.size(),
-                TGuardedSgList(sglist)
-            );
+                TGuardedSgList(sglist));
 
             const auto& response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());

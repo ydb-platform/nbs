@@ -11,12 +11,12 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DISK_REGISTRY_PROXY_REQUESTS(xxx, ...)                      \
-    xxx(Subscribe,            __VA_ARGS__)                                     \
-    xxx(Unsubscribe,          __VA_ARGS__)                                     \
-    xxx(Reassign,             __VA_ARGS__)                                     \
-    xxx(GetDrTabletInfo,      __VA_ARGS__)                                     \
-// BLOCKSTORE_DISK_REGISTRY_PROXY_REQUESTS
+#define BLOCKSTORE_DISK_REGISTRY_PROXY_REQUESTS(xxx, ...) \
+    xxx(Subscribe, __VA_ARGS__)                           \
+    xxx(Unsubscribe, __VA_ARGS__)                         \
+    xxx(Reassign, __VA_ARGS__)                            \
+    xxx(GetDrTabletInfo, __VA_ARGS__)                     \
+    // BLOCKSTORE_DISK_REGISTRY_PROXY_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -89,10 +89,7 @@ struct TEvDiskRegistryProxy
         TString LogKind;
         TString IndexKind;
 
-        TReassignRequest(
-                TString sysKind,
-                TString logKind,
-                TString indexKind)
+        TReassignRequest(TString sysKind, TString logKind, TString indexKind)
             : SysKind(std::move(sysKind))
             , LogKind(std::move(logKind))
             , IndexKind(std::move(indexKind))
@@ -148,7 +145,8 @@ struct TEvDiskRegistryProxy
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStoreEvents::DISK_REGISTRY_PROXY_END,
+    static_assert(
+        EvEnd < (int)TBlockStoreEvents::DISK_REGISTRY_PROXY_END,
         "EvEnd expected to be < TBlockStoreEvents::DISK_REGISTRY_PROXY_END");
 
     BLOCKSTORE_DISK_REGISTRY_PROXY_REQUESTS(BLOCKSTORE_DECLARE_EVENTS)

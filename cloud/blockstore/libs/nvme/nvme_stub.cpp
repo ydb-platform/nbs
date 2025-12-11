@@ -8,8 +8,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TNvmeManagerStub final
-    : public INvmeManager
+class TNvmeManagerStub final: public INvmeManager
 {
 private:
     bool IsDeviceSsd;
@@ -17,8 +16,8 @@ private:
 
 public:
     TNvmeManagerStub(
-            bool isDeviceSsd,
-            TNvmeDeallocateHistoryPtr deallocateHistory)
+        bool isDeviceSsd,
+        TNvmeDeallocateHistoryPtr deallocateHistory)
         : IsDeviceSsd(isDeviceSsd)
         , DeallocateHistory(std::move(deallocateHistory))
     {}
@@ -33,10 +32,8 @@ public:
         return MakeFuture(MakeError(S_OK));
     }
 
-    TFuture<NProto::TError> Deallocate(
-        const TString& path,
-        ui64 offsetBytes,
-        ui64 sizeBytes) override
+    TFuture<NProto::TError>
+    Deallocate(const TString& path, ui64 offsetBytes, ui64 sizeBytes) override
     {
         Y_UNUSED(path);
 
@@ -51,7 +48,7 @@ public:
     {
         Y_UNUSED(path);
 
-        return TString {};
+        return TString{};
     }
 
     TResultOrError<bool> IsSsd(const TString& path) override

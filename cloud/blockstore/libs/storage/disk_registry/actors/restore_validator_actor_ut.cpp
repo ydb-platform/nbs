@@ -1,6 +1,7 @@
 #include "restore_validator_actor.h"
 
 #include <contrib/ydb/library/actors/testlib/test_runtime.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -30,8 +31,7 @@ namespace NDiskRegistry {
 
 Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
 {
-    struct TSetupEnvironment
-        : public TCurrentTestCase
+    struct TSetupEnvironment: public TCurrentTestCase
     {
         NActors::TTestActorRuntimeBase ActorSystem;
 
@@ -46,13 +46,7 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
 
     Y_UNIT_TEST_F(CheckEmptyBackup, TSetupEnvironment)
     {
-        ActorSystem.Register(
-            new TRestoreValidationActor(
-                EdgeActor,
-                {},
-                0,
-                {}
-            ));
+        ActorSystem.Register(new TRestoreValidationActor(EdgeActor, {}, 0, {}));
 
         auto response = ActorSystem.GrabEdgeEvent<
             TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse>();
@@ -67,12 +61,7 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
         backup.Disks.emplace_back().SetDiskId("Disk 1");
 
         ActorSystem.Register(
-            new TRestoreValidationActor(
-                EdgeActor,
-                {},
-                0,
-                backup
-            ));
+            new TRestoreValidationActor(EdgeActor, {}, 0, backup));
 
         auto response = ActorSystem.GrabEdgeEvent<
             TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse>();
@@ -87,12 +76,7 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
         backup.PlacementGroups.emplace_back().SetGroupId("Group 1");
 
         ActorSystem.Register(
-            new TRestoreValidationActor(
-                EdgeActor,
-                {},
-                0,
-                backup
-            ));
+            new TRestoreValidationActor(EdgeActor, {}, 0, backup));
 
         auto response = ActorSystem.GrabEdgeEvent<
             TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse>();
@@ -107,12 +91,7 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
         backup.Agents.emplace_back().SetAgentId("Agent 1");
 
         ActorSystem.Register(
-            new TRestoreValidationActor(
-                EdgeActor,
-                {},
-                0,
-                backup
-            ));
+            new TRestoreValidationActor(EdgeActor, {}, 0, backup));
 
         auto response = ActorSystem.GrabEdgeEvent<
             TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse>();
@@ -128,17 +107,12 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
         backup.Disks.emplace_back().SetDiskId("Disk 2");
 
         auto validatorId = ActorSystem.Register(
-            new TRestoreValidationActor(
-                EdgeActor,
-                {},
-                0,
-                backup
-            ));
+            new TRestoreValidationActor(EdgeActor, {}, 0, backup));
 
         ActorSystem.GrabEdgeEvent<TEvService::TEvListVolumesRequest>();
 
-        auto volumeListResponse
-            = std::make_unique<TEvService::TEvListVolumesResponse>();
+        auto volumeListResponse =
+            std::make_unique<TEvService::TEvListVolumesResponse>();
         volumeListResponse->Record.AddVolumes("Disk 3");
         volumeListResponse->Record.AddVolumes("Disk 1");
 
@@ -148,12 +122,12 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
             volumeListResponse.release()));
 
         UNIT_ASSERT_EQUAL(
-            ActorSystem.GrabEdgeEvent<
-                TEvSSProxy::TEvDescribeVolumeRequest>()->DiskId,
+            ActorSystem.GrabEdgeEvent<TEvSSProxy::TEvDescribeVolumeRequest>()
+                ->DiskId,
             "Disk 1");
         UNIT_ASSERT_EQUAL(
-            ActorSystem.GrabEdgeEvent<
-                TEvSSProxy::TEvDescribeVolumeRequest>()->DiskId,
+            ActorSystem.GrabEdgeEvent<TEvSSProxy::TEvDescribeVolumeRequest>()
+                ->DiskId,
             "Disk 3");
     }
 
@@ -164,17 +138,12 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
         backup.Disks.emplace_back().SetDiskId("Disk 1");
 
         auto validatorId = ActorSystem.Register(
-            new TRestoreValidationActor(
-                EdgeActor,
-                {},
-                0,
-                backup
-            ));
+            new TRestoreValidationActor(EdgeActor, {}, 0, backup));
 
         ActorSystem.GrabEdgeEvent<TEvService::TEvListVolumesRequest>();
 
-        auto volumeListResponse
-            = std::make_unique<TEvService::TEvListVolumesResponse>();
+        auto volumeListResponse =
+            std::make_unique<TEvService::TEvListVolumesResponse>();
         volumeListResponse->Record.AddVolumes("Disk 3");
         volumeListResponse->Record.AddVolumes("Disk 1");
         volumeListResponse->Record.AddVolumes("Disk 2");
@@ -185,22 +154,28 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
             volumeListResponse.release()));
 
         UNIT_ASSERT_EQUAL(
-            ActorSystem.GrabEdgeEvent<TEvSSProxy::TEvDescribeVolumeRequest>()->DiskId,
+            ActorSystem.GrabEdgeEvent<TEvSSProxy::TEvDescribeVolumeRequest>()
+                ->DiskId,
             "Disk 1");
         UNIT_ASSERT_EQUAL(
-            ActorSystem.GrabEdgeEvent<TEvSSProxy::TEvDescribeVolumeRequest>()->DiskId,
+            ActorSystem.GrabEdgeEvent<TEvSSProxy::TEvDescribeVolumeRequest>()
+                ->DiskId,
             "Disk 2");
         UNIT_ASSERT_EQUAL(
-            ActorSystem.GrabEdgeEvent<TEvSSProxy::TEvDescribeVolumeRequest>()->DiskId,
+            ActorSystem.GrabEdgeEvent<TEvSSProxy::TEvDescribeVolumeRequest>()
+                ->DiskId,
             "Disk 3");
 
-        auto sendDiskId = [this, &validatorId](const TString& diskId) {
+        auto sendDiskId = [this, &validatorId](const TString& diskId)
+        {
             NKikimrSchemeOp::TPathDescription description;
             description.MutableBlockStoreVolumeDescription()
-                ->MutableVolumeConfig()->SetDiskId(diskId);
-             auto describeVolumeResponse
-                = std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
-                    "", std::move(description));
+                ->MutableVolumeConfig()
+                ->SetDiskId(diskId);
+            auto describeVolumeResponse =
+                std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                    "",
+                    std::move(description));
 
             ActorSystem.Send(new NActors::IEventHandle(
                 validatorId,
@@ -234,17 +209,12 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
         config.SetFolderId("Folder 1");
 
         auto validatorId = ActorSystem.Register(
-            new TRestoreValidationActor(
-                EdgeActor,
-                {},
-                0,
-                backup
-            ));
+            new TRestoreValidationActor(EdgeActor, {}, 0, backup));
 
         ActorSystem.GrabEdgeEvent<TEvService::TEvListVolumesRequest>();
 
-        auto volumeListResponse
-            = std::make_unique<TEvService::TEvListVolumesResponse>();
+        auto volumeListResponse =
+            std::make_unique<TEvService::TEvListVolumesResponse>();
         volumeListResponse->Record.AddVolumes("Disk 1");
 
         ActorSystem.Send(new NActors::IEventHandle(
@@ -255,12 +225,15 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
         ActorSystem.GrabEdgeEvent<TEvSSProxy::TEvDescribeVolumeRequest>();
 
         NKikimrSchemeOp::TPathDescription description;
-        auto* mutableVolumeConfig = description.MutableBlockStoreVolumeDescription()
-            ->MutableVolumeConfig();
+        auto* mutableVolumeConfig =
+            description.MutableBlockStoreVolumeDescription()
+                ->MutableVolumeConfig();
         *mutableVolumeConfig->MutableFolderId() = "Folder 2";
         mutableVolumeConfig->SetDiskId("Disk 1");
-        auto describeVolumeResponse
-            = std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>("", std::move(description));
+        auto describeVolumeResponse =
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                "",
+                std::move(description));
 
         ActorSystem.Send(new NActors::IEventHandle(
             validatorId,
@@ -268,9 +241,10 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
             describeVolumeResponse.release()));
 
         UNIT_ASSERT(
-            ActorSystem.GrabEdgeEvent<
-                TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse>()
-                    ->LoadDBState.Disks.empty());
+            ActorSystem
+                .GrabEdgeEvent<TEvDiskRegistryPrivate::
+                                   TEvRestoreDiskRegistryValidationResponse>()
+                ->LoadDBState.Disks.empty());
     }
 
     Y_UNIT_TEST_F(CheckAnotherCloud, TSetupEnvironment)
@@ -281,17 +255,12 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
         config.SetCloudId("Cloud 1");
 
         auto validatorId = ActorSystem.Register(
-            new TRestoreValidationActor(
-                EdgeActor,
-                {},
-                0,
-                backup
-            ));
+            new TRestoreValidationActor(EdgeActor, {}, 0, backup));
 
         ActorSystem.GrabEdgeEvent<TEvService::TEvListVolumesRequest>();
 
-        auto volumeListResponse
-            = std::make_unique<TEvService::TEvListVolumesResponse>();
+        auto volumeListResponse =
+            std::make_unique<TEvService::TEvListVolumesResponse>();
         volumeListResponse->Record.AddVolumes("Disk 1");
 
         ActorSystem.Send(new NActors::IEventHandle(
@@ -302,12 +271,15 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
         ActorSystem.GrabEdgeEvent<TEvSSProxy::TEvDescribeVolumeRequest>();
 
         NKikimrSchemeOp::TPathDescription description;
-        auto* mutableVolumeConfig = description.MutableBlockStoreVolumeDescription()
-            ->MutableVolumeConfig();
+        auto* mutableVolumeConfig =
+            description.MutableBlockStoreVolumeDescription()
+                ->MutableVolumeConfig();
         *mutableVolumeConfig->MutableCloudId() = "Cloud 2";
         mutableVolumeConfig->SetDiskId("Disk 1");
-        auto describeVolumeResponse
-            = std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>("", std::move(description));
+        auto describeVolumeResponse =
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                "",
+                std::move(description));
 
         ActorSystem.Send(new NActors::IEventHandle(
             validatorId,
@@ -315,9 +287,10 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
             describeVolumeResponse.release()));
 
         UNIT_ASSERT(
-            ActorSystem.GrabEdgeEvent<
-                TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse>()
-                    ->LoadDBState.Disks.empty());
+            ActorSystem
+                .GrabEdgeEvent<TEvDiskRegistryPrivate::
+                                   TEvRestoreDiskRegistryValidationResponse>()
+                ->LoadDBState.Disks.empty());
     }
 
     Y_UNIT_TEST_F(CheckAnotherBlockSize, TSetupEnvironment)
@@ -328,17 +301,12 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
         config.SetBlockSize(42);
 
         auto validatorId = ActorSystem.Register(
-            new TRestoreValidationActor(
-                EdgeActor,
-                {},
-                0,
-                backup
-            ));
+            new TRestoreValidationActor(EdgeActor, {}, 0, backup));
 
         ActorSystem.GrabEdgeEvent<TEvService::TEvListVolumesRequest>();
 
-        auto volumeListResponse
-            = std::make_unique<TEvService::TEvListVolumesResponse>();
+        auto volumeListResponse =
+            std::make_unique<TEvService::TEvListVolumesResponse>();
         volumeListResponse->Record.AddVolumes("Disk 1");
 
         ActorSystem.Send(new NActors::IEventHandle(
@@ -349,12 +317,15 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
         ActorSystem.GrabEdgeEvent<TEvSSProxy::TEvDescribeVolumeRequest>();
 
         NKikimrSchemeOp::TPathDescription description;
-        auto* mutableVolumeConfig = description.MutableBlockStoreVolumeDescription()
-            ->MutableVolumeConfig();
+        auto* mutableVolumeConfig =
+            description.MutableBlockStoreVolumeDescription()
+                ->MutableVolumeConfig();
         mutableVolumeConfig->SetBlockSize(43);
         mutableVolumeConfig->SetDiskId("Disk 1");
-        auto describeVolumeResponse
-            = std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>("", std::move(description));
+        auto describeVolumeResponse =
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                "",
+                std::move(description));
 
         ActorSystem.Send(new NActors::IEventHandle(
             validatorId,
@@ -362,9 +333,10 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
             describeVolumeResponse.release()));
 
         UNIT_ASSERT(
-            ActorSystem.GrabEdgeEvent<
-                TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse>()
-                    ->LoadDBState.Disks.empty());
+            ActorSystem
+                .GrabEdgeEvent<TEvDiskRegistryPrivate::
+                                   TEvRestoreDiskRegistryValidationResponse>()
+                ->LoadDBState.Disks.empty());
     }
 
     Y_UNIT_TEST_F(CheckPlacementGroups, TSetupEnvironment)
@@ -386,17 +358,12 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
         placementGroup3.SetGroupId("Group 3");
 
         auto validatorId = ActorSystem.Register(
-            new TRestoreValidationActor(
-                EdgeActor,
-                {},
-                0,
-                backup
-            ));
+            new TRestoreValidationActor(EdgeActor, {}, 0, backup));
 
         ActorSystem.GrabEdgeEvent<TEvService::TEvListVolumesRequest>();
 
-        auto volumeListResponse
-            = std::make_unique<TEvService::TEvListVolumesResponse>();
+        auto volumeListResponse =
+            std::make_unique<TEvService::TEvListVolumesResponse>();
         volumeListResponse->Record.AddVolumes("Disk 1");
 
         ActorSystem.Send(new NActors::IEventHandle(
@@ -407,11 +374,14 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
         ActorSystem.GrabEdgeEvent<TEvSSProxy::TEvDescribeVolumeRequest>();
 
         NKikimrSchemeOp::TPathDescription description;
-        auto* mutableVolumeConfig = description.MutableBlockStoreVolumeDescription()
-            ->MutableVolumeConfig();
+        auto* mutableVolumeConfig =
+            description.MutableBlockStoreVolumeDescription()
+                ->MutableVolumeConfig();
         mutableVolumeConfig->SetDiskId("Disk 1");
-        auto describeVolumeResponse = std::make_unique<
-            TEvSSProxy::TEvDescribeVolumeResponse>("", std::move(description));
+        auto describeVolumeResponse =
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                "",
+                std::move(description));
 
         ActorSystem.Send(new NActors::IEventHandle(
             validatorId,
@@ -423,8 +393,8 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
                 ->Record.GetDiskId(),
             "Disk 1");
 
-        auto volumeInfoResponse
-            = std::make_unique<TEvVolume::TEvGetVolumeInfoResponse>();
+        auto volumeInfoResponse =
+            std::make_unique<TEvVolume::TEvGetVolumeInfoResponse>();
         volumeInfoResponse->Record.MutableVolume()->SetDiskId("Disk 1");
         ActorSystem.Send(new NActors::IEventHandle(
             validatorId,
@@ -432,17 +402,15 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
             volumeInfoResponse.release()));
 
         auto response = ActorSystem.GrabEdgeEvent<
-                TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse>();
+            TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse>();
         auto& placementGroups = response->LoadDBState.PlacementGroups;
 
+        UNIT_ASSERT_EQUAL(placementGroups.size(), 2);
+        UNIT_ASSERT_EQUAL(placementGroups[0].GetGroupId(), "Group 1");
+        UNIT_ASSERT_EQUAL(placementGroups[0].GetDisks().size(), 1);
         UNIT_ASSERT_EQUAL(
-            placementGroups.size(), 2);
-        UNIT_ASSERT_EQUAL(
-            placementGroups[0].GetGroupId(), "Group 1");
-        UNIT_ASSERT_EQUAL(
-            placementGroups[0].GetDisks().size(), 1);
-        UNIT_ASSERT_EQUAL(
-            placementGroups[0].GetDisks()[0].GetDiskId(), "Disk 1");
+            placementGroups[0].GetDisks()[0].GetDiskId(),
+            "Disk 1");
     }
 
     Y_UNIT_TEST_F(CheckDevices, TSetupEnvironment)
@@ -454,17 +422,12 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
         disk.AddDeviceUUIDs("Device 2");
 
         auto validatorId = ActorSystem.Register(
-            new TRestoreValidationActor(
-                EdgeActor,
-                {},
-                0,
-                backup
-            ));
+            new TRestoreValidationActor(EdgeActor, {}, 0, backup));
 
         ActorSystem.GrabEdgeEvent<TEvService::TEvListVolumesRequest>();
 
-        auto volumeListResponse
-            = std::make_unique<TEvService::TEvListVolumesResponse>();
+        auto volumeListResponse =
+            std::make_unique<TEvService::TEvListVolumesResponse>();
         volumeListResponse->Record.AddVolumes("Disk 1");
 
         ActorSystem.Send(new NActors::IEventHandle(
@@ -475,11 +438,14 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
         ActorSystem.GrabEdgeEvent<TEvSSProxy::TEvDescribeVolumeRequest>();
 
         NKikimrSchemeOp::TPathDescription description;
-        auto* mutableVolumeConfig = description.MutableBlockStoreVolumeDescription()
-            ->MutableVolumeConfig();
+        auto* mutableVolumeConfig =
+            description.MutableBlockStoreVolumeDescription()
+                ->MutableVolumeConfig();
         mutableVolumeConfig->SetDiskId("Disk 1");
-        auto describeVolumeResponse = std::make_unique<
-            TEvSSProxy::TEvDescribeVolumeResponse>("", std::move(description));
+        auto describeVolumeResponse =
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                "",
+                std::move(description));
 
         ActorSystem.Send(new NActors::IEventHandle(
             validatorId,
@@ -491,8 +457,8 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
                 ->Record.GetDiskId(),
             "Disk 1");
 
-        auto volumeInfoResponse
-            = std::make_unique<TEvVolume::TEvGetVolumeInfoResponse>();
+        auto volumeInfoResponse =
+            std::make_unique<TEvVolume::TEvGetVolumeInfoResponse>();
         auto& volume = *volumeInfoResponse->Record.MutableVolume();
         volume.SetDiskId("Disk 1");
 
@@ -541,17 +507,12 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
         placementGroup.AddDisks()->SetDiskId("Disk 1/1");
 
         auto validatorId = ActorSystem.Register(
-            new TRestoreValidationActor(
-                EdgeActor,
-                {},
-                0,
-                backup
-            ));
+            new TRestoreValidationActor(EdgeActor, {}, 0, backup));
 
         ActorSystem.GrabEdgeEvent<TEvService::TEvListVolumesRequest>();
 
-        auto volumeListResponse
-            = std::make_unique<TEvService::TEvListVolumesResponse>();
+        auto volumeListResponse =
+            std::make_unique<TEvService::TEvListVolumesResponse>();
         volumeListResponse->Record.AddVolumes("Disk 1");
 
         ActorSystem.Send(new NActors::IEventHandle(
@@ -564,13 +525,15 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
         NKikimrSchemeOp::TPathDescription description;
         auto* mutableVolumeConfig =
             description.MutableBlockStoreVolumeDescription()
-            ->MutableVolumeConfig();
+                ->MutableVolumeConfig();
         mutableVolumeConfig->SetDiskId("Disk 1");
         mutableVolumeConfig->SetBlockSize(42);
         mutableVolumeConfig->SetFolderId("Folder 1");
         mutableVolumeConfig->SetCloudId("Cloud 1");
-        auto describeVolumeResponse = std::make_unique<
-            TEvSSProxy::TEvDescribeVolumeResponse>("", std::move(description));
+        auto describeVolumeResponse =
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                "",
+                std::move(description));
 
         ActorSystem.Send(new NActors::IEventHandle(
             validatorId,
@@ -582,8 +545,8 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
                 ->Record.GetDiskId(),
             "Disk 1");
 
-        auto volumeInfoResponse
-            = std::make_unique<TEvVolume::TEvGetVolumeInfoResponse>();
+        auto volumeInfoResponse =
+            std::make_unique<TEvVolume::TEvGetVolumeInfoResponse>();
         auto& volume = *volumeInfoResponse->Record.MutableVolume();
         volume.SetDiskId("Disk 1");
 
@@ -612,26 +575,23 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
             volumeInfoResponse.release()));
 
         auto response = ActorSystem.GrabEdgeEvent<
-                TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse>();
+            TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse>();
         auto& state = response->LoadDBState;
+        UNIT_ASSERT_EQUAL(state.Disks.size(), 3);
+        UNIT_ASSERT_EQUAL(state.Disks[0].GetDiskId(), "Disk 1");
+        UNIT_ASSERT_EQUAL(state.Disks[1].GetDiskId(), "Disk 1/0");
+        UNIT_ASSERT_EQUAL(state.Disks[2].GetDiskId(), "Disk 1/1");
+        UNIT_ASSERT_EQUAL(state.PlacementGroups[0].GetGroupId(), "Group 1");
+        UNIT_ASSERT_EQUAL(state.PlacementGroups[0].GetDisks().size(), 3);
         UNIT_ASSERT_EQUAL(
-            state.Disks.size(), 3);
+            state.PlacementGroups[0].GetDisks()[0].GetDiskId(),
+            "Disk 1");
         UNIT_ASSERT_EQUAL(
-            state.Disks[0].GetDiskId(), "Disk 1");
+            state.PlacementGroups[0].GetDisks()[1].GetDiskId(),
+            "Disk 1/0");
         UNIT_ASSERT_EQUAL(
-            state.Disks[1].GetDiskId(), "Disk 1/0");
-        UNIT_ASSERT_EQUAL(
-            state.Disks[2].GetDiskId(), "Disk 1/1");
-        UNIT_ASSERT_EQUAL(
-            state.PlacementGroups[0].GetGroupId(), "Group 1");
-        UNIT_ASSERT_EQUAL(
-            state.PlacementGroups[0].GetDisks().size(), 3);
-        UNIT_ASSERT_EQUAL(
-            state.PlacementGroups[0].GetDisks()[0].GetDiskId(), "Disk 1");
-        UNIT_ASSERT_EQUAL(
-            state.PlacementGroups[0].GetDisks()[1].GetDiskId(), "Disk 1/0");
-        UNIT_ASSERT_EQUAL(
-            state.PlacementGroups[0].GetDisks()[2].GetDiskId(), "Disk 1/1");
+            state.PlacementGroups[0].GetDisks()[2].GetDiskId(),
+            "Disk 1/1");
     }
 
     Y_UNIT_TEST_F(CheckRestoreDiskMissingInSS, TSetupEnvironment)
@@ -683,17 +643,12 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
         backup.DisksToCleanup.push_back("Disk 4");
 
         auto validatorId = ActorSystem.Register(
-            new TRestoreValidationActor(
-                EdgeActor,
-                {},
-                0,
-                backup
-            ));
+            new TRestoreValidationActor(EdgeActor, {}, 0, backup));
 
         ActorSystem.GrabEdgeEvent<TEvService::TEvListVolumesRequest>();
 
-        auto volumeListResponse
-            = std::make_unique<TEvService::TEvListVolumesResponse>();
+        auto volumeListResponse =
+            std::make_unique<TEvService::TEvListVolumesResponse>();
         volumeListResponse->Record.AddVolumes("Disk 1");
         volumeListResponse->Record.AddVolumes("Disk 3");
 
@@ -707,13 +662,15 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
             NKikimrSchemeOp::TPathDescription description;
             auto* mutableVolumeConfig =
                 description.MutableBlockStoreVolumeDescription()
-                ->MutableVolumeConfig();
+                    ->MutableVolumeConfig();
             mutableVolumeConfig->SetDiskId("Disk 1");
             mutableVolumeConfig->SetBlockSize(41);
             mutableVolumeConfig->SetFolderId("Folder 1");
             mutableVolumeConfig->SetCloudId("Cloud 1");
-            auto describeVolumeResponse = std::make_unique<
-                TEvSSProxy::TEvDescribeVolumeResponse>("", std::move(description));
+            auto describeVolumeResponse =
+                std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                    "",
+                    std::move(description));
 
             ActorSystem.Send(new NActors::IEventHandle(
                 validatorId,
@@ -726,13 +683,15 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
             NKikimrSchemeOp::TPathDescription description;
             auto* mutableVolumeConfig =
                 description.MutableBlockStoreVolumeDescription()
-                ->MutableVolumeConfig();
+                    ->MutableVolumeConfig();
             mutableVolumeConfig->SetDiskId("Disk 3");
             mutableVolumeConfig->SetBlockSize(43);
             mutableVolumeConfig->SetFolderId("Folder 3");
             mutableVolumeConfig->SetCloudId("Cloud 3");
-            auto describeVolumeResponse = std::make_unique<
-                TEvSSProxy::TEvDescribeVolumeResponse>("", std::move(description));
+            auto describeVolumeResponse =
+                std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                    "",
+                    std::move(description));
 
             ActorSystem.Send(new NActors::IEventHandle(
                 validatorId,
@@ -746,8 +705,8 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
                     ->Record.GetDiskId(),
                 "Disk 1");
 
-            auto volumeInfoResponse
-                = std::make_unique<TEvVolume::TEvGetVolumeInfoResponse>();
+            auto volumeInfoResponse =
+                std::make_unique<TEvVolume::TEvGetVolumeInfoResponse>();
             auto& volume = *volumeInfoResponse->Record.MutableVolume();
             volume.SetDiskId("Disk 1");
 
@@ -763,8 +722,8 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
                     ->Record.GetDiskId(),
                 "Disk 3");
 
-            auto volumeInfoResponse
-                = std::make_unique<TEvVolume::TEvGetVolumeInfoResponse>();
+            auto volumeInfoResponse =
+                std::make_unique<TEvVolume::TEvGetVolumeInfoResponse>();
             auto& volume = *volumeInfoResponse->Record.MutableVolume();
             volume.SetDiskId("Disk 3");
 
@@ -775,20 +734,14 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
         }
 
         auto response = ActorSystem.GrabEdgeEvent<
-                TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse>();
+            TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse>();
         auto& state = response->LoadDBState;
-        UNIT_ASSERT_EQUAL(
-            state.Disks.size(), 5);
-        UNIT_ASSERT_EQUAL(
-            state.Disks[0].GetDiskId(), "Disk 1");
-        UNIT_ASSERT_EQUAL(
-            state.Disks[1].GetDiskId(), "Disk 3");
-        UNIT_ASSERT_EQUAL(
-            state.Disks[2].GetDiskId(), "Disk 4");
-        UNIT_ASSERT_EQUAL(
-            state.Disks[3].GetDiskId(), "Disk 4/0");
-        UNIT_ASSERT_EQUAL(
-            state.Disks[4].GetDiskId(), "Disk 4/1");
+        UNIT_ASSERT_EQUAL(state.Disks.size(), 5);
+        UNIT_ASSERT_EQUAL(state.Disks[0].GetDiskId(), "Disk 1");
+        UNIT_ASSERT_EQUAL(state.Disks[1].GetDiskId(), "Disk 3");
+        UNIT_ASSERT_EQUAL(state.Disks[2].GetDiskId(), "Disk 4");
+        UNIT_ASSERT_EQUAL(state.Disks[3].GetDiskId(), "Disk 4/0");
+        UNIT_ASSERT_EQUAL(state.Disks[4].GetDiskId(), "Disk 4/1");
     }
 
     Y_UNIT_TEST_F(CheckSkipRestoreShadowDisk, TSetupEnvironment)

@@ -21,32 +21,32 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_DECLARE_METHOD(name, ...)                                    \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        static constexpr auto RequestName = TStringBuf(#name);                 \
-                                                                               \
-        using TRequest = NProto::T##name##Request;                             \
-        using TResponse = NProto::T##name##Response;                           \
-                                                                               \
-        using TRequestEvent = TEvService::TEv##name##Request;                  \
-        using TResponseEvent = TEvService::TEv##name##Response;                \
-    };                                                                         \
-// FILESTORE_DECLARE_METHOD
+#define FILESTORE_DECLARE_METHOD(name, ...)                     \
+    struct T##name##Method                                      \
+    {                                                           \
+        static constexpr auto RequestName = TStringBuf(#name);  \
+                                                                \
+        using TRequest = NProto::T##name##Request;              \
+        using TResponse = NProto::T##name##Response;            \
+                                                                \
+        using TRequestEvent = TEvService::TEv##name##Request;   \
+        using TResponseEvent = TEvService::TEv##name##Response; \
+    };                                                          \
+    // FILESTORE_DECLARE_METHOD
 
 FILESTORE_REMOTE_SERVICE(FILESTORE_DECLARE_METHOD)
 
 #undef FILESTORE_DECLARE_METHOD
 
-#define FILESTORE_DECLARE_METHOD(name, ...)                                    \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        static constexpr auto RequestName = TStringBuf(#name);                 \
-                                                                               \
-        using TRequest = NProto::T##name##Request;                             \
-        using TResponse = NProto::T##name##Response;                           \
-    };                                                                         \
-// FILESTORE_DECLARE_METHOD
+#define FILESTORE_DECLARE_METHOD(name, ...)                    \
+    struct T##name##Method                                     \
+    {                                                          \
+        static constexpr auto RequestName = TStringBuf(#name); \
+                                                               \
+        using TRequest = NProto::T##name##Request;             \
+        using TResponse = NProto::T##name##Response;           \
+    };                                                         \
+    // FILESTORE_DECLARE_METHOD
 
 FILESTORE_LOCAL_DATA_METHODS(FILESTORE_DECLARE_METHOD)
 
@@ -55,8 +55,7 @@ FILESTORE_LOCAL_DATA_METHODS(FILESTORE_DECLARE_METHOD)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-class TRequestActor final
-    : public TActorBootstrapped<TRequestActor<TMethod>>
+class TRequestActor final: public TActorBootstrapped<TRequestActor<TMethod>>
 {
     using TThis = TRequestActor<TMethod>;
     using TBase = TActorBootstrapped<TThis>;
@@ -73,13 +72,14 @@ private:
     TPromise<TResponse> Response;
 
 public:
-    static constexpr const char ActorName[] = "NCloud::NFileStore::TRequestActor<T>";
+    static constexpr const char ActorName[] =
+        "NCloud::NFileStore::TRequestActor<T>";
 
 public:
     TRequestActor(
-            TCallContextPtr callContext,
-            std::shared_ptr<TRequest> request,
-            TPromise<TResponse> response)
+        TCallContextPtr callContext,
+        std::shared_ptr<TRequest> request,
+        TPromise<TResponse> response)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
         , Response(std::move(response))
@@ -95,13 +95,12 @@ public:
 private:
     void SendRequest(const TActorContext& ctx)
     {
-        LOG_TRACE_S(ctx, TFileStoreComponents::SERVICE_PROXY,
+        LOG_TRACE_S(
+            ctx,
+            TFileStoreComponents::SERVICE_PROXY,
             TMethod::RequestName << " send request");
 
-        auto request = std::make_unique<TRequestEvent>(
-            CallContext,
-            *Request
-        );
+        auto request = std::make_unique<TRequestEvent>(CallContext, *Request);
 
         NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
     }
@@ -112,15 +111,19 @@ private:
     {
         auto* msg = ev->Get();
 
-        LOG_TRACE_S(ctx, TFileStoreComponents::SERVICE_PROXY,
+        LOG_TRACE_S(
+            ctx,
+            TFileStoreComponents::SERVICE_PROXY,
             TMethod::RequestName << " response received");
 
         try {
             Response.SetValue(std::move(msg->Record));
         } catch (...) {
-            LOG_ERROR_S(ctx, TFileStoreComponents::SERVICE_PROXY,
+            LOG_ERROR_S(
+                ctx,
+                TFileStoreComponents::SERVICE_PROXY,
                 TMethod::RequestName << " exception in callback: "
-                << CurrentExceptionMessage());
+                                     << CurrentExceptionMessage());
         }
 
         TThis::Die(ctx);
@@ -163,9 +166,9 @@ private:
 
 public:
     TStreamRequestActor(
-            TCallContextPtr callContext,
-            std::shared_ptr<TRequest> request,
-            IResponseHandlerPtr<TResponse> responseHandler)
+        TCallContextPtr callContext,
+        std::shared_ptr<TRequest> request,
+        IResponseHandlerPtr<TResponse> responseHandler)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
         , ResponseHandler(std::move(responseHandler))
@@ -180,13 +183,12 @@ public:
 private:
     void SendRequest(const TActorContext& ctx)
     {
-        LOG_TRACE_S(ctx, TFileStoreComponents::SERVICE_PROXY,
+        LOG_TRACE_S(
+            ctx,
+            TFileStoreComponents::SERVICE_PROXY,
             TMethod::RequestName << " send request");
 
-        auto request = std::make_unique<TRequestEvent>(
-            CallContext,
-            *Request
-        );
+        auto request = std::make_unique<TRequestEvent>(CallContext, *Request);
 
         // HACK: we use cookie as a marker for streaming requests
         NCloud::Send(
@@ -202,15 +204,19 @@ private:
     {
         auto* msg = ev->Get();
 
-        LOG_TRACE_S(ctx, TFileStoreComponents::SERVICE_PROXY,
+        LOG_TRACE_S(
+            ctx,
+            TFileStoreComponents::SERVICE_PROXY,
             TMethod::RequestName << " response received");
 
         try {
             ResponseHandler->HandleResponse(msg->Record);
         } catch (...) {
-            LOG_ERROR_S(ctx, TFileStoreComponents::SERVICE_PROXY,
+            LOG_ERROR_S(
+                ctx,
+                TFileStoreComponents::SERVICE_PROXY,
                 TMethod::RequestName << " exception in callback: "
-                << CurrentExceptionMessage());
+                                     << CurrentExceptionMessage());
         }
     }
 
@@ -220,15 +226,19 @@ private:
     {
         auto* msg = ev->Get();
 
-        LOG_TRACE_S(ctx, TFileStoreComponents::SERVICE_PROXY,
+        LOG_TRACE_S(
+            ctx,
+            TFileStoreComponents::SERVICE_PROXY,
             TMethod::RequestName << " request completed");
 
         try {
             ResponseHandler->HandleCompletion(MakeError(msg->Status));
         } catch (...) {
-            LOG_ERROR_S(ctx, TFileStoreComponents::SERVICE_PROXY,
+            LOG_ERROR_S(
+                ctx,
+                TFileStoreComponents::SERVICE_PROXY,
                 TMethod::RequestName << " exception in callback: "
-                << CurrentExceptionMessage());
+                                     << CurrentExceptionMessage());
         }
 
         TThis::Die(ctx);
@@ -252,8 +262,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TKikimrFileStore final
-    : public IFileStoreService
+class TKikimrFileStore final: public IFileStoreService
 {
 private:
     const IActorSystemPtr ActorSystem;
@@ -269,19 +278,19 @@ public:
     void Stop() override
     {}
 
-#define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        auto response = NewPromise<NProto::T##name##Response>();               \
-        ExecuteRequest<T##name##Method>(                                       \
-            std::move(callContext),                                            \
-            std::move(request),                                                \
-            response);                                                         \
-        return response.GetFuture();                                           \
-    }                                                                          \
-// FILESTORE_IMPLEMENT_METHOD
+#define FILESTORE_IMPLEMENT_METHOD(name, ...)                       \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr callContext,                                \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        auto response = NewPromise<NProto::T##name##Response>();    \
+        ExecuteRequest<T##name##Method>(                            \
+            std::move(callContext),                                 \
+            std::move(request),                                     \
+            response);                                              \
+        return response.GetFuture();                                \
+    }                                                               \
+    // FILESTORE_IMPLEMENT_METHOD
 
     FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD)
 
@@ -290,7 +299,8 @@ public:
     void GetSessionEventsStream(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TGetSessionEventsRequest> request,
-        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) override
+        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler)
+        override
     {
         ExecuteStreamRequest<TGetSessionEventsMethod>(
             std::move(callContext),
@@ -340,7 +350,7 @@ private:
             std::move(response)));
     }
 
-    template<>
+    template <>
     void ExecuteRequest<TFsyncMethod>(
         TCallContextPtr callContext,
         std::shared_ptr<TFsyncMethod::TRequest> request,
@@ -353,7 +363,7 @@ private:
         response.SetValue(TFsyncMethod::TResponse());
     }
 
-    template<>
+    template <>
     void ExecuteRequest<TFsyncDirMethod>(
         TCallContextPtr callContext,
         std::shared_ptr<TFsyncDirMethod::TRequest> request,

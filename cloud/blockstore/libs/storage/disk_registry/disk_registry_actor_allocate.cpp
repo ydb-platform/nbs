@@ -14,12 +14,9 @@ namespace {
 
 void OutputDevice(const NProto::TDeviceConfig& device, TStringBuilder& result)
 {
-    result << "("
-        << device.GetDeviceUUID() << " "
-        << device.GetBlocksCount() << " "
-        << "(" << device.GetUnadjustedBlockCount() << ") "
-        << device.GetBlockSize()
-    << ")";
+    result << "(" << device.GetDeviceUUID() << " " << device.GetBlocksCount()
+           << " " << "(" << device.GetUnadjustedBlockCount() << ") "
+           << device.GetBlockSize() << ")";
 }
 
 void OutputDevices(const auto& devices, TStringBuilder& result)
@@ -57,10 +54,8 @@ void TDiskRegistryActor::HandleAllocateDisk(
 
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LOG_INFO(
         ctx,
@@ -84,10 +79,9 @@ void TDiskRegistryActor::HandleAllocateDisk(
         msg->Record.GetBlockSize(),
         msg->Record.GetBlocksCount(),
         msg->Record.GetReplicaCount(),
-        TVector<TString> {
+        TVector<TString>{
             msg->Record.GetAgentIds().begin(),
-            msg->Record.GetAgentIds().end()
-        },
+            msg->Record.GetAgentIds().end()},
         msg->Record.GetPoolName(),
         msg->Record.GetStorageMediaKind());
 }
@@ -118,7 +112,7 @@ void TDiskRegistryActor::ExecuteAddDisk(
     args.Error = State->AllocateDisk(
         ctx.Now(),
         db,
-        TDiskRegistryState::TAllocateDiskParams {
+        TDiskRegistryState::TAllocateDiskParams{
             .DiskId = args.DiskId,
             .CloudId = args.CloudId,
             .FolderId = args.FolderId,
@@ -129,8 +123,7 @@ void TDiskRegistryActor::ExecuteAddDisk(
             .ReplicaCount = args.ReplicaCount,
             .AgentIds = args.AgentIds,
             .PoolName = args.PoolName,
-            .MediaKind = args.MediaKind
-        },
+            .MediaKind = args.MediaKind},
         &result);
 
     if (args.Error.GetCode() == E_BS_DISK_ALLOCATION_FAILED &&
@@ -161,7 +154,8 @@ void TDiskRegistryActor::CompleteAddDisk(
     const TActorContext& ctx,
     TTxDiskRegistry::TAddDisk& args)
 {
-    auto response = std::make_unique<TEvDiskRegistry::TEvAllocateDiskResponse>();
+    auto response =
+        std::make_unique<TEvDiskRegistry::TEvAllocateDiskResponse>();
 
     if (HasError(args.Error)) {
         LOG_ERROR(
@@ -211,14 +205,15 @@ void TDiskRegistryActor::CompleteAddDisk(
             migrations.c_str(),
             JoinSeq(", ", args.DeviceReplacementUUIDs).c_str());
 
-        auto onDevice = [&] (NProto::TDeviceConfig& d, ui32 blockSize) {
+        auto onDevice = [&](NProto::TDeviceConfig& d, ui32 blockSize)
+        {
             if (ToLogicalBlocks(d, blockSize)) {
                 return true;
             }
 
             TStringBuilder error;
             error << "CompleteAddDisk: ToLogicalBlocks failed, device: "
-                << d.GetDeviceUUID().Quote().c_str();
+                  << d.GetDeviceUUID().Quote().c_str();
             LOG_ERROR(
                 ctx,
                 TBlockStoreComponents::DISK_REGISTRY,
@@ -306,10 +301,8 @@ void TDiskRegistryActor::HandleDeallocateDisk(
 
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LOG_INFO(
         ctx,
@@ -380,10 +373,12 @@ void TDiskRegistryActor::CompleteRemoveDisk(
         OnDiskDeallocated(args.DiskId);
     }
 
-    auto response = std::make_unique<TEvDiskRegistry::TEvDeallocateDiskResponse>();
+    auto response =
+        std::make_unique<TEvDiskRegistry::TEvDeallocateDiskResponse>();
     *response->Record.MutableError() = args.Error;
 
-    if (HasError(args.Error) || args.Error.GetCode() == S_ALREADY || !args.Sync) {
+    if (HasError(args.Error) || args.Error.GetCode() == S_ALREADY || !args.Sync)
+    {
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
     } else {
         AddPendingDeallocation(ctx, args.DiskId, args.RequestInfo);
@@ -400,7 +395,9 @@ void TDiskRegistryActor::AddPendingDeallocation(
 {
     auto& requestInfos = PendingDiskDeallocationRequests[diskId];
 
-    if (requestInfos.size() > Config->GetMaxNonReplicatedDiskDeallocationRequests()) {
+    if (requestInfos.size() >
+        Config->GetMaxNonReplicatedDiskDeallocationRequests())
+    {
         LOG_WARN(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,

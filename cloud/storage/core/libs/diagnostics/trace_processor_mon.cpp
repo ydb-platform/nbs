@@ -48,9 +48,7 @@ void SerializeTraceToJson(
         const auto spanLength =
             CyclesToDurationSafe(item.TimestampCycles - minSeenTimestamp);
 
-        item.Probe->Event.Signature.SerializeParams(
-            item.Params,
-            paramValues);
+        item.Probe->Event.Signature.SerializeParams(item.Params, paramValues);
 
         writer.BeginList();
         {
@@ -139,9 +137,8 @@ void DisplayJsonErrorMessage(IOutputStream& out, const TString& message)
 bool ReaderIdMatch(const TString& traceType, const TString& readerId)
 {
     const TTraceKey key{traceType, readerId};
-    return traceType.empty() ||
-        key == TRACE_TYPE_SLOW ||
-        key == TRACE_TYPE_RANDOM;
+    return traceType.empty() || key == TRACE_TYPE_SLOW ||
+           key == TRACE_TYPE_RANDOM;
 }
 
 TVector<TTraceLog> PrepareTraceLogDump(
@@ -175,28 +172,48 @@ TVector<TTraceLog> PrepareTraceLogDump(
     return traceLogDump;
 }
 
-
 void DumpTraceLogHtml(
     IOutputStream& out,
     const TVector<TTraceLog>& traceLogDump)
 {
-    HTML(out) {
-        TABLE_SORTABLE() {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLED() { out << "Date"; }
-                    TABLED() { out << "Id"; }
-                    TABLED() { out << "Trace"; }
-                    TABLED() { out << "Actions"; }
+    HTML (out) {
+        TABLE_SORTABLE()
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLED () {
+                        out << "Date";
+                    }
+                    TABLED () {
+                        out << "Id";
+                    }
+                    TABLED () {
+                        out << "Trace";
+                    }
+                    TABLED () {
+                        out << "Actions";
+                    }
                 }
             }
-            TABLEBODY() {
+            TABLEBODY()
+            {
                 for (auto& [requestId, entry]: traceLogDump) {
-                    TABLER() {
-                        TABLED() { out << entry.Ts.ToStringLocalUpToSeconds(); }
-                        TABLED() { out << requestId; }
-                        TABLED() { out << SerializeTraceToString(entry.TrackLog, entry.Date, entry.Tag); }
-                        TABLED() { out << ""; }
+                    TABLER () {
+                        TABLED () {
+                            out << entry.Ts.ToStringLocalUpToSeconds();
+                        }
+                        TABLED () {
+                            out << requestId;
+                        }
+                        TABLED () {
+                            out << SerializeTraceToString(
+                                entry.TrackLog,
+                                entry.Date,
+                                entry.Tag);
+                        }
+                        TABLED () {
+                            out << "";
+                        }
                     }
                 }
             }
@@ -226,12 +243,10 @@ void DumpTraceLogJson(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTraceProcessorMon
-    : public ITraceProcessor
+class TTraceProcessorMon: public ITraceProcessor
 {
 private:
-    class TMonPageHtml final
-        : public THtmlMonPage
+    class TMonPageHtml final: public THtmlMonPage
     {
     private:
         TTraceProcessorMon& TraceProcessor;
@@ -239,9 +254,9 @@ private:
 
     public:
         TMonPageHtml(
-                TTraceProcessorMon& traceProcessor,
-                const TString& traceType,
-                const TString& traceName)
+            TTraceProcessorMon& traceProcessor,
+            const TString& traceType,
+            const TString& traceName)
             : THtmlMonPage(traceType, traceName, true)
             , TraceProcessor(traceProcessor)
             , TraceType(traceType)
@@ -253,8 +268,7 @@ private:
         }
     };
 
-    class TMonPageJson final
-        : public IMonPage
+    class TMonPageJson final: public IMonPage
     {
     public:
         TTraceProcessorMon& TraceProcessor;
@@ -275,8 +289,8 @@ private:
 
 public:
     TTraceProcessorMon(
-            IMonitoringServicePtr monitoring,
-            ITraceProcessorPtr impl)
+        IMonitoringServicePtr monitoring,
+        ITraceProcessorPtr impl)
         : Impl(std::move(impl))
     {
         auto rootPage =

@@ -56,7 +56,8 @@ class TBlockList
 
 private:
     TByteVector Blocks{{GetAllocatorByTag(EAllocatorTag::BlobIndexBlockList)}};
-    TByteVector DeletedBlocks{{GetAllocatorByTag(EAllocatorTag::BlobIndexBlockList)}};
+    TByteVector DeletedBlocks{
+        {GetAllocatorByTag(EAllocatorTag::BlobIndexBlockList)}};
 
 public:
     TBlockList() = default;
@@ -113,13 +114,14 @@ public:
     TBlockListBuilder() = default;
 
     TBlockListBuilder(
-            TVector<TBlockMark> blocks,
-            TVector<TDeletedBlockMark> deletedBlocks)
+        TVector<TBlockMark> blocks,
+        TVector<TDeletedBlockMark> deletedBlocks)
         : Blocks(std::move(blocks))
         , DeletedBlocks(std::move(deletedBlocks))
     {}
 
-    void AddBlock(ui16 blobOffset, ui32 blockIndex, ui64 minCommitId, bool zeroed)
+    void
+    AddBlock(ui16 blobOffset, ui32 blockIndex, ui64 minCommitId, bool zeroed)
     {
         Blocks.emplace_back(blobOffset, blockIndex, minCommitId, zeroed);
     }

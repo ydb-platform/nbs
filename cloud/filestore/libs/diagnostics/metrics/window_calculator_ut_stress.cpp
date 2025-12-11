@@ -18,8 +18,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEnv
-    : public NUnitTest::TBaseFixture
+struct TEnv: public NUnitTest::TBaseFixture
 {
     TStringStream Data;
     NMonitoring::TDynamicCountersPtr Counters;
@@ -73,54 +72,57 @@ Y_UNIT_TEST_SUITE(TCalculatorStressTest)
                  &metricsCount,
                  &c = calculator,
                  &ks = keys]
-            {
-                auto registry = CreateScopedMetricsRegistry(
-                    {CreateLabel("volume", TStringBuilder() << "fs_" << i)},
-                    serviceVolumeRegistry);
+                {
+                    auto registry = CreateScopedMetricsRegistry(
+                        {CreateLabel("volume", TStringBuilder() << "fs_" << i)},
+                        serviceVolumeRegistry);
 
-                auto aggregatableRegistry = CreateScopedMetricsRegistry(
-                    {},
-                    {serviceRegistry, registry});
+                    auto aggregatableRegistry = CreateScopedMetricsRegistry(
+                        {},
+                        {serviceRegistry, registry});
 
-                for (size_t j = 0; j < COUNT / 5; ++j) {
-                    const auto key = c.Register(
-                        aggregatableRegistry,
-                        {NMetrics::CreateLabel("histogram", "Count")});
+                    for (size_t j = 0; j < COUNT / 5; ++j) {
+                        const auto key = c.Register(
+                            aggregatableRegistry,
+                            {NMetrics::CreateLabel("histogram", "Count")});
 
-                    ks.Do([&k = key](THashSet<TMetricKey>& s) {
-                        UNIT_ASSERT(s.insert(k).second);
-                    });
+                        ks.Do([&k = key](THashSet<TMetricKey>& s)
+                              { UNIT_ASSERT(s.insert(k).second); });
 
-                    for (size_t k = 1; k <= WRITES_PER_THREAD; ++k) {
-                        c.Record(j * k);
+                        for (size_t k = 1; k <= WRITES_PER_THREAD; ++k) {
+                            c.Record(j * k);
+                        }
+
+                        c.Unregister(key);
+
+                        ++metricsCount;
                     }
-
-                    c.Unregister(key);
-
-                    ++metricsCount;
-                }
-            });
+                });
         }
 
         for (size_t i = 0; i < 3; ++i) {
-            tasks.Add([i, registry = Registry, &metricsCount] {
-                TStringStream data;
-                auto visitor = CreateRegistryVisitor(data);
-                while (metricsCount < COUNT) {
-                    registry->Visit(TInstant::Now(), *visitor);
-                    data.Clear();
-                    sleep(i + 1);
-                }
-            });
+            tasks.Add(
+                [i, registry = Registry, &metricsCount]
+                {
+                    TStringStream data;
+                    auto visitor = CreateRegistryVisitor(data);
+                    while (metricsCount < COUNT) {
+                        registry->Visit(TInstant::Now(), *visitor);
+                        data.Clear();
+                        sleep(i + 1);
+                    }
+                });
         }
 
         for (size_t i = 0; i < 3; ++i) {
-            tasks.Add([i, &registry = Registry, &metricsCount] {
-                while (metricsCount < COUNT) {
-                    registry->Update(TInstant::Now());
-                    sleep(i + 1);
-                }
-            });
+            tasks.Add(
+                [i, &registry = Registry, &metricsCount]
+                {
+                    while (metricsCount < COUNT) {
+                        registry->Update(TInstant::Now());
+                        sleep(i + 1);
+                    }
+                });
         }
 
         tasks.Start();

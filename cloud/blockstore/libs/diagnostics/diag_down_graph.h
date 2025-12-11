@@ -34,7 +34,8 @@ private:
 
 public:
     explicit TSvgWithDownGraph(IOutputStream& str);
-    TSvgWithDownGraph(IOutputStream& str,
+    TSvgWithDownGraph(
+        IOutputStream& str,
         const TDuration& maxDuration,
         float width);
 
@@ -44,7 +45,7 @@ public:
 
     explicit inline operator bool() const noexcept
     {
-        return true; // just to work with WITH_SCOPED
+        return true;   // just to work with WITH_SCOPED
     }
 
 private:
@@ -52,4 +53,4 @@ private:
     void Init();
 };
 
-} // namespace NCloud::NBlockStore
+}   // namespace NCloud::NBlockStore

@@ -1,4 +1,5 @@
 #include "config_initializer.h"
+
 #include "options.h"
 
 #include <cloud/filestore/libs/server/config.h>
@@ -40,8 +41,8 @@ void TConfigInitializerServer::ApplyServerAppConfig(const TString& text)
     AppConfig.Clear();
     ParseProtoTextFromStringRobust(text, AppConfig);
 
-    ServerConfig = std::make_shared<NServer::TServerConfig>(
-        AppConfig.GetServerConfig());
+    ServerConfig =
+        std::make_shared<NServer::TServerConfig>(AppConfig.GetServerConfig());
 }
 
 }   // namespace NCloud::NFileStore::NDaemon

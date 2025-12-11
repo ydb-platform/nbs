@@ -15,11 +15,11 @@ struct TThrottlingServiceConfig
     const TDuration MaxBurstTime;
 
     TThrottlingServiceConfig(
-            ui64 maxReadBandwidth,
-            ui64 maxWriteBandwidth,
-            ui32 maxReadIops,
-            ui32 maxWriteIops,
-            TDuration maxBurstTime)
+        ui64 maxReadBandwidth,
+        ui64 maxWriteBandwidth,
+        ui32 maxReadIops,
+        ui32 maxWriteIops,
+        TDuration maxBurstTime)
         : MaxReadBandwidth(maxReadBandwidth)
         , MaxWriteBandwidth(maxWriteBandwidth)
         , MaxReadIops(maxReadIops)

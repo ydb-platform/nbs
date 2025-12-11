@@ -6,13 +6,13 @@
 #include <cloud/filestore/tools/testing/loadtest/lib/context.h>
 #include <cloud/filestore/tools/testing/loadtest/lib/executor.h>
 #include <cloud/filestore/tools/testing/loadtest/lib/test.h>
-
 #include <cloud/filestore/tools/testing/loadtest/protos/loadtest.pb.h>
 
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <contrib/ydb/library/actors/util/should_continue.h>
+
 #include <library/cpp/logger/backend.h>
 #include <library/cpp/protobuf/json/proto2json.h>
 #include <library/cpp/protobuf/util/pb_io.h>
@@ -73,15 +73,15 @@ public:
                             bootstrap.GetLogging(),
                             bootstrap.GetClientFactory());
 
-                        tests.push_back(
-                            [=, this] () {
-                                RunLoadTest(i, name, test);
-                            });
+                        tests.push_back([=, this]()
+                                        { RunLoadTest(i, name, test); });
 
                         break;
                     }
                     default:
-                        Y_ABORT("unexpected test case: %s", entry.ShortDebugString().c_str());
+                        Y_ABORT(
+                            "unexpected test case: %s",
+                            entry.ShortDebugString().c_str());
                 }
             }
 
@@ -90,10 +90,13 @@ public:
 
             for (const auto& pair: Tests) {
                 bootstrap.GetOptions()->GetOutputStream()
-                    << NProtobufJson::Proto2Json(pair.second, {.FormatOutput = true}) << Endl;
+                    << NProtobufJson::Proto2Json(
+                           pair.second,
+                           {.FormatOutput = true})
+                    << Endl;
             }
 
-        } catch(...) {
+        } catch (...) {
             STORAGE_ERROR("app has failed: " << CurrentExceptionMessage());
             return 1;
         }
@@ -113,11 +116,11 @@ public:
                 Tests[i] = stats;
             }
 
-            STORAGE_INFO("%s has finished",
-                MakeTestTag(name).c_str());
+            STORAGE_INFO("%s has finished", MakeTestTag(name).c_str());
 
         } catch (...) {
-            STORAGE_INFO("%s test has failed: %s",
+            STORAGE_INFO(
+                "%s test has failed: %s",
                 MakeTestTag(name).c_str(),
                 CurrentExceptionMessage().c_str());
 

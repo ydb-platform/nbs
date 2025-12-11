@@ -11,8 +11,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TUpdateActor final
-    : public TActorBootstrapped<TUpdateActor>
+class TUpdateActor final: public TActorBootstrapped<TUpdateActor>
 {
 private:
     const TActorId Owner;
@@ -56,10 +55,10 @@ private:
 };
 
 TUpdateActor::TUpdateActor(
-        const TActorId& owner,
-        TRequestInfoPtr requestInfo,
-        TVolumeConfig config,
-        ui64 seqNo)
+    const TActorId& owner,
+    TRequestInfoPtr requestInfo,
+    TVolumeConfig config,
+    ui64 seqNo)
     : Owner(owner)
     , RequestInfo(requestInfo)
     , Config(std::move(config))
@@ -72,7 +71,9 @@ void TUpdateActor::Bootstrap(const TActorContext& ctx)
     DescribeVolume(ctx, Config.GetDiskId());
 }
 
-void TUpdateActor::DescribeVolume(const TActorContext& ctx, const TString& diskId)
+void TUpdateActor::DescribeVolume(
+    const TActorContext& ctx,
+    const TString& diskId)
 {
     NCloud::Send(
         ctx,
@@ -89,16 +90,20 @@ void TUpdateActor::HandleDescribeVolumeResponse(
     auto& error = msg->GetError();
 
     if (HasError(error)) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "Failed to update " << diskId.Quote() << " volume config (DescribeVolume): " <<
-            FormatError(error));
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "Failed to update "
+                << diskId.Quote()
+                << " volume config (DescribeVolume): " << FormatError(error));
 
         return ReplyAndDie(ctx, error);
     }
 
     const auto& path = msg->Path;
     const auto& description = msg->PathDescription;
-    const auto& config = description.GetBlockStoreVolumeDescription().GetVolumeConfig();
+    const auto& config =
+        description.GetBlockStoreVolumeDescription().GetVolumeConfig();
 
     UpdateVolumeConfig(
         ctx,
@@ -121,7 +126,8 @@ void TUpdateActor::UpdateVolumeConfig(
 
     NKikimrSchemeOp::TModifyScheme modifyScheme;
     modifyScheme.SetWorkingDir(TString{dir});
-    modifyScheme.SetOperationType(NKikimrSchemeOp::ESchemeOpAlterBlockStoreVolume);
+    modifyScheme.SetOperationType(
+        NKikimrSchemeOp::ESchemeOpAlterBlockStoreVolume);
 
     auto* op = modifyScheme.MutableAlterBlockStoreVolume();
     op->SetName(TString{name});
@@ -134,13 +140,16 @@ void TUpdateActor::UpdateVolumeConfig(
     applyIf->SetPathVersion(pathVersion);
 
     auto& diskId = Config.GetDiskId();
-    LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_WORKER,
         "Sending new " << diskId.Quote() << " volume config");
 
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(std::move(modifyScheme)));
+        std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(
+            std::move(modifyScheme)));
 }
 
 void TUpdateActor::HandleModifySchemeResponse(
@@ -152,11 +161,16 @@ void TUpdateActor::HandleModifySchemeResponse(
     auto& error = msg->GetError();
 
     if (HasError(error)) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "Failed to update " << diskId.Quote() << " volume config (ModifyScheme): " <<
-            FormatError(error));
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "Failed to update "
+                << diskId.Quote()
+                << " volume config (ModifyScheme): " << FormatError(error));
     } else {
-        LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
             "Updated " << diskId.Quote() << " volume config");
     }
 
@@ -173,7 +187,8 @@ void TUpdateActor::HandlePoisonPill(
 
 void TUpdateActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)
 {
-    NCloud::Reply(ctx,
+    NCloud::Reply(
+        ctx,
         *RequestInfo,
         std::make_unique<TEvDiskRegistryPrivate::TEvUpdateVolumeConfigResponse>(
             std::move(error),
@@ -192,15 +207,17 @@ STFUNC(TUpdateActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvSSProxy::TEvDescribeVolumeResponse, HandleDescribeVolumeResponse);
+        HFunc(
+            TEvSSProxy::TEvDescribeVolumeResponse,
+            HandleDescribeVolumeResponse);
         HFunc(TEvSSProxy::TEvModifySchemeResponse, HandleModifySchemeResponse);
 
-    default:
-        HandleUnexpectedEvent(
-            ev,
-            TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            __PRETTY_FUNCTION__);
-        break;
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_REGISTRY_WORKER,
+                __PRETTY_FUNCTION__);
+            break;
     }
 }
 
@@ -218,8 +235,10 @@ void TDiskRegistryActor::UpdateVolumeConfigs(
         NCloud::Send(
             ctx,
             ctx.SelfID,
-            std::make_unique<TEvDiskRegistryPrivate::TEvUpdateVolumeConfigRequest>(diskId),
-            UpdateVolumeConfigsWaiters.StartDependentTaskAwait(principalTaskId));
+            std::make_unique<
+                TEvDiskRegistryPrivate::TEvUpdateVolumeConfigRequest>(diskId),
+            UpdateVolumeConfigsWaiters.StartDependentTaskAwait(
+                principalTaskId));
     }
 }
 
@@ -243,10 +262,8 @@ void TDiskRegistryActor::HandleUpdateVolumeConfig(
     auto [config, seqNo] = State->GetVolumeConfigUpdate(msg->DiskId);
 
     if (config.HasDiskId()) {
-        auto requestInfo = CreateRequestInfo(
-            ev->Sender,
-            dependentTaskId,
-            msg->CallContext);
+        auto requestInfo =
+            CreateRequestInfo(ev->Sender, dependentTaskId, msg->CallContext);
 
         auto actor = NCloud::Register<TUpdateActor>(
             ctx,
@@ -257,9 +274,11 @@ void TDiskRegistryActor::HandleUpdateVolumeConfig(
 
         Actors.insert(actor);
     } else {
-        LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "Disk " << msg->DiskId.Quote() <<
-            " has been deleted, discarding volume config update");
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "Disk " << msg->DiskId.Quote()
+                    << " has been deleted, discarding volume config update");
         UpdateVolumeConfigsWaiters.FinishDependentTaskAwait(
             dependentTaskId,
             ctx);
@@ -280,7 +299,9 @@ void TDiskRegistryActor::HandleUpdateVolumeConfigResponse(
         using google::protobuf::util::MessageDifferencer;
         auto [config, seqNo] = State->GetVolumeConfigUpdate(diskId);
 
-        if (msg->SeqNo == seqNo && MessageDifferencer::Equals(msg->Config, config)) {
+        if (msg->SeqNo == seqNo &&
+            MessageDifferencer::Equals(msg->Config, config))
+        {
             FinishVolumeConfigUpdate(ctx, diskId);
         }
         BackoffDelayProvider.Reset();
@@ -294,11 +315,11 @@ void TDiskRegistryActor::HandleUpdateVolumeConfigResponse(
     const auto statusPathDoesNotExist =
         MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist);
 
-    if (kind == EErrorKind::ErrorRetriable
-            || code == E_ABORTED
-            || code == statusPathDoesNotExist)
+    if (kind == EErrorKind::ErrorRetriable || code == E_ABORTED ||
+        code == statusPathDoesNotExist)
     {
-        auto* request = new TEvDiskRegistryPrivate::TEvUpdateVolumeConfigRequest(diskId);
+        auto* request =
+            new TEvDiskRegistryPrivate::TEvUpdateVolumeConfigRequest(diskId);
 
         ctx.Schedule(
             BackoffDelayProvider.GetDelay(),
@@ -312,8 +333,11 @@ void TDiskRegistryActor::HandleUpdateVolumeConfigResponse(
         return;
     }
 
-    LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "Unable to update " << diskId.Quote() << " volume config: " << FormatError(error));
+    LOG_ERROR_S(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "Unable to update " << diskId.Quote()
+                            << " volume config: " << FormatError(error));
     BackoffDelayProvider.Reset();
     UpdateVolumeConfigsWaiters.FinishDependentTaskAwait(dependentTaskId, ctx);
 }
@@ -327,7 +351,9 @@ void TDiskRegistryActor::FinishVolumeConfigUpdate(
     NCloud::Send(
         ctx,
         ctx.SelfID,
-        std::make_unique<TEvDiskRegistryPrivate::TEvFinishVolumeConfigUpdateRequest>(diskId));
+        std::make_unique<
+            TEvDiskRegistryPrivate::TEvFinishVolumeConfigUpdateRequest>(
+            diskId));
 }
 
 void TDiskRegistryActor::HandleFinishVolumeConfigUpdate(
@@ -336,10 +362,8 @@ void TDiskRegistryActor::HandleFinishVolumeConfigUpdate(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     ExecuteTx<TFinishVolumeConfigUpdate>(
         ctx,

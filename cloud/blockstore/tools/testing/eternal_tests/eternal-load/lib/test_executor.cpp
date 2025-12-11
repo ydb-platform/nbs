@@ -84,17 +84,11 @@ public:
 private:
     bool HandleRequest();
 
-    void Read(
-        void* buffer,
-        ui32 count,
-        ui64 offset,
-        TCallback callback) override;
+    void
+    Read(void* buffer, ui32 count, ui64 offset, TCallback callback) override;
 
-    void Write(
-        const void* buffer,
-        ui32 count,
-        ui64 offset,
-        TCallback callback) override;
+    void Write(const void* buffer, ui32 count, ui64 offset, TCallback callback)
+        override;
 
     void Stop() override;
 
@@ -113,8 +107,8 @@ EOpenMode GetFileOpenMode(bool noDirect)
 }
 
 TTestExecutor::TTestExecutor(
-        TTestExecutorSettings settings,
-        IFileIOServicePtr service)
+    TTestExecutorSettings settings,
+    IFileIOServicePtr service)
     : TestStartTimestamp(Now())
     , TestScenario(std::move(settings.TestScenario))
     , FileService(std::move(service))
@@ -127,10 +121,9 @@ TTestExecutor::TTestExecutor(
     File.Resize(static_cast<i64>(settings.FileSize));
 
     for (ui32 i = 0; i < TestScenario->GetWorkerCount(); i++) {
-        WorkerServices.push_back(
-            std::make_unique<TWorkerService>(
-                *this,
-                TestScenario->GetWorker(i)));
+        WorkerServices.push_back(std::make_unique<TWorkerService>(
+            *this,
+            TestScenario->GetWorker(i)));
     }
 }
 
@@ -208,8 +201,10 @@ void TTestExecutor::PrintStats()
     auto bytesWritten = currentBytesWritten - PreviousBytesWritten;
 
     STORAGE_DEBUG(
-        "Read: " << bytesRead / elapsedSeconds / 1_MB << " MiB/s, "
-        "Write: " << bytesWritten / elapsedSeconds / 1_MB << " MiB/s");
+        "Read: " << bytesRead / elapsedSeconds / 1_MB
+                 << " MiB/s, "
+                    "Write: "
+                 << bytesWritten / elapsedSeconds / 1_MB << " MiB/s");
 
     PreviousStatsTimestamp = now;
     PreviousBytesRead = currentBytesRead;
@@ -219,8 +214,8 @@ void TTestExecutor::PrintStats()
 ////////////////////////////////////////////////////////////////////////////////
 
 TTestExecutor::TWorkerService::TWorkerService(
-        TTestExecutor& executor,
-        ITestScenarioWorker& worker)
+    TTestExecutor& executor,
+    ITestScenarioWorker& worker)
     : Executor(executor)
     , Worker(worker)
 {}
@@ -249,7 +244,7 @@ void TTestExecutor::TWorkerService::Run()
             "Test worker should make at least one request");
 
         if (!HandleRequest()) {
-             // Run() will be called from somewhere else
+            // Run() will be called from somewhere else
             break;
         }
     }
@@ -306,12 +301,11 @@ void TTestExecutor::TWorkerService::Read(
             ui32 value)
         {
             if (HasError(error)) {
-                Executor.Fail(
-                    "Can't read from file: " + error.GetMessage());
+                Executor.Fail("Can't read from file: " + error.GetMessage());
             } else if (value < count) {
                 Executor.Fail(
-                    TStringBuilder() << "Read less than expected: " << value
-                                     << " < " << count);
+                    TStringBuilder()
+                    << "Read less than expected: " << value << " < " << count);
             } else {
                 Executor.BytesRead += count;
                 callback();
@@ -340,8 +334,7 @@ void TTestExecutor::TWorkerService::Write(
             ui32 value)
         {
             if (HasError(error)) {
-                Executor.Fail(
-                    "Can't write to file: " + error.GetMessage());
+                Executor.Fail("Can't write to file: " + error.GetMessage());
             } else if (value < count) {
                 Executor.Fail(
                     TStringBuilder() << "Written less than expected: " << value
@@ -387,9 +380,8 @@ public:
             static_cast<ui32>(buffer.size()),
             static_cast<ui64>(offset));
 
-        future.Subscribe([completion](const auto& f) {
-            RunCompletion(f, completion);
-        });
+        future.Subscribe([completion](const auto& f)
+                         { RunCompletion(f, completion); });
     }
 
     void AsyncWrite(
@@ -404,9 +396,8 @@ public:
             static_cast<ui32>(buffer.size()),
             static_cast<ui64>(offset));
 
-        future.Subscribe([completion](const auto& f) {
-            RunCompletion(f, completion);
-        });
+        future.Subscribe([completion](const auto& f)
+                         { RunCompletion(f, completion); });
     }
 
     void AsyncReadV(

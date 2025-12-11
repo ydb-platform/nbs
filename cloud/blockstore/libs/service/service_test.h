@@ -13,19 +13,22 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestService
-    : public IBlockStore
+struct TTestService: public IBlockStore
 {
-    void Start() override {
+    void Start() override
+    {
         StartHandler();
     }
 
-    void Stop() override {
+    void Stop() override
+    {
         StopHandler();
     }
 
-    std::function<void()> StartHandler = [] () {};
-    std::function<void()> StopHandler = [] () {};
+    std::function<void()> StartHandler = []() {
+    };
+    std::function<void()> StopHandler = []() {
+    };
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {

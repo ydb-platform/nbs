@@ -46,18 +46,20 @@ struct TCompactionMap::TImpl
 
     struct TGroupByBlockIndexNode
         : public TRbTreeItem<TGroupByBlockIndexNode, TCompareByBlockIndex>
-    {};
+    {
+    };
 
     struct TGroupByScoreNode
         : public TRbTreeItem<TGroupByScoreNode, TCompareByScore>
-    {};
+    {
+    };
 
     struct TGroupByGarbageBlockCountNode
         : public TRbTreeItem<
-          TGroupByGarbageBlockCountNode,
-          TCompareByGarbageBlockCount
-        >
-    {};
+              TGroupByGarbageBlockCountNode,
+              TCompareByGarbageBlockCount>
+    {
+    };
 
     struct TGroupNode
         : public TIntrusiveListItem<TGroupNode>
@@ -70,11 +72,12 @@ struct TCompactionMap::TImpl
         ui16 GarbageBlockCount = 0;
         ui32 Range = 0;
 
-        std::array<TRangeStat, GroupSize> Stats {};
+        std::array<TRangeStat, GroupSize> Stats{};
     };
 
     using TGroupList = TIntrusiveListWithAutoDelete<TGroupNode, TDelete>;
-    using TGroupByBlockIndexTree = TRbTree<TGroupByBlockIndexNode, TCompareByBlockIndex>;
+    using TGroupByBlockIndexTree =
+        TRbTree<TGroupByBlockIndexNode, TCompareByBlockIndex>;
     using TGroupByScoreTree = TRbTree<TGroupByScoreNode, TCompareByScore>;
     using TGroupByGarbageBlockCountTree =
         TRbTree<TGroupByGarbageBlockCountNode, TCompareByGarbageBlockCount>;
@@ -91,8 +94,7 @@ struct TCompactionMap::TImpl
     TImpl(ui32 rangeSize, ICompactionPolicyPtr policy)
         : RangeSize(rangeSize)
         , Policy(std::move(policy))
-    {
-    }
+    {}
 
     TGroupNode* FindGroup(ui32 groupStart) const
     {
@@ -116,17 +118,15 @@ struct TCompactionMap::TImpl
             auto& g = static_cast<const TGroupNode&>(*it);
 
             if (g.Stats[g.Range].BlobCount) {
-                tops.push_back({
-                    g.BlockIndex + g.Range * RangeSize,
-                    g.Stats[g.Range]
-                });
+                tops.push_back(
+                    {g.BlockIndex + g.Range * RangeSize, g.Stats[g.Range]});
             }
 
             ++it;
 
             /*
-                Idea: advance iterator by 2 to guarantee that we won't get ranges
-                that intersect by blobs
+                Idea: advance iterator by 2 to guarantee that we won't get
+               ranges that intersect by blobs
 
                 ++it;
             */
@@ -138,7 +138,8 @@ struct TCompactionMap::TImpl
     const TGroupNode* GetTopGroupByGarbageBlockCount() const
     {
         if (!GroupByGarbageBlockCount.Empty()) {
-            return static_cast<const TGroupNode*>(&*GroupByGarbageBlockCount.Begin());
+            return static_cast<const TGroupNode*>(
+                &*GroupByGarbageBlockCount.Begin());
         }
         return nullptr;
     }
@@ -204,10 +205,9 @@ struct TCompactionMap::TImpl
 
         const size_t index = (blockIndex - group->BlockIndex) / RangeSize;
         const auto prev = group->Stats[index];
-        if (prev.BlobCount != blobCount
-                || prev.BlockCount != blockCount
-                || prev.UsedBlockCount != usedBlockCount
-                || prev.Compacted != compacted)
+        if (prev.BlobCount != blobCount || prev.BlockCount != blockCount ||
+            prev.UsedBlockCount != usedBlockCount ||
+            prev.Compacted != compacted)
         {
             if (blobCount && !prev.BlobCount) {
                 ++NonEmptyRangeCount;
@@ -216,11 +216,12 @@ struct TCompactionMap::TImpl
             }
 
             UpdateCompactionCounter(blobCount, &group->Stats[index].BlobCount);
-            UpdateCompactionCounter(blockCount, &group->Stats[index].BlockCount);
+            UpdateCompactionCounter(
+                blockCount,
+                &group->Stats[index].BlockCount);
             UpdateCompactionCounter(
                 usedBlockCount,
-                &group->Stats[index].UsedBlockCount
-            );
+                &group->Stats[index].UsedBlockCount);
 
             if (compacted) {
                 group->Stats[index].ReadRequestCount = 0;
@@ -229,9 +230,9 @@ struct TCompactionMap::TImpl
             }
             group->Stats[index].Compacted = compacted;
 
-            const auto newScore = compacted
-                ? COMPACTED_RANGE_SCORE
-                : Policy->CalculateScore(group->Stats[index]);
+            const auto newScore =
+                compacted ? COMPACTED_RANGE_SCORE
+                          : Policy->CalculateScore(group->Stats[index]);
             group->Stats[index].CompactionScore = newScore;
 
             if (prev.CompactionScore.Score < newScore.Score) {
@@ -243,9 +244,8 @@ struct TCompactionMap::TImpl
                 RecalculateGroupScore(group);
             }
 
-            const auto newGarbageBlockCount = compacted
-                ? 0
-                : group->Stats[index].GarbageBlockCount();
+            const auto newGarbageBlockCount =
+                compacted ? 0 : group->Stats[index].GarbageBlockCount();
 
             if (prev.GarbageBlockCount() < newGarbageBlockCount) {
                 if (GetGarbageBlockCount(*group) < newGarbageBlockCount) {
@@ -269,16 +269,13 @@ struct TCompactionMap::TImpl
         const auto prev = stat;
         UpdateCompactionCounter(
             stat.ReadRequestCount + 1,
-            &stat.ReadRequestCount
-        );
+            &stat.ReadRequestCount);
         UpdateCompactionCounter(
             stat.ReadRequestBlobCount + blobCount,
-            &stat.ReadRequestBlobCount
-        );
+            &stat.ReadRequestBlobCount);
         UpdateCompactionCounter(
             stat.ReadRequestBlockCount + blockCount,
-            &stat.ReadRequestBlockCount
-        );
+            &stat.ReadRequestBlockCount);
 
         if (!group->Stats[index].Compacted) {
             auto newScore = Policy->CalculateScore(group->Stats[index]);
@@ -357,11 +354,8 @@ void TCompactionMap::Update(
         if (used) {
             usedBlockCount = used->Count(
                 c.BlockIndex,
-                Min(
-                    static_cast<ui64>(c.BlockIndex + Impl->RangeSize),
-                    used->Capacity()
-                )
-            );
+                Min(static_cast<ui64>(c.BlockIndex + Impl->RangeSize),
+                    used->Capacity()));
         }
 
         Impl->Update(
@@ -399,7 +393,10 @@ void TCompactionMap::Update(
     Impl->GroupByGarbageBlockCount.Insert(group);
 }
 
-void TCompactionMap::RegisterRead(ui32 blockIndex, ui32 blobCount, ui32 blockCount)
+void TCompactionMap::RegisterRead(
+    ui32 blockIndex,
+    ui32 blobCount,
+    ui32 blockCount)
 {
     ui32 groupStart = GetGroupStart(blockIndex, Impl->RangeSize);
 
@@ -412,8 +409,7 @@ void TCompactionMap::RegisterRead(ui32 blockIndex, ui32 blobCount, ui32 blockCou
         group,
         (blockIndex - groupStart) / Impl->RangeSize,
         blobCount,
-        blockCount
-    );
+        blockCount);
 
     Impl->GroupByScore.Insert(group);
 }
@@ -442,14 +438,14 @@ TCompactionCounter TCompactionMap::GetTop() const
     if (auto* group = Impl->GetTopGroup()) {
         return {
             group->BlockIndex + group->Range * Impl->RangeSize,
-            group->Stats[group->Range]
-        };
+            group->Stats[group->Range]};
     }
 
     return {0, {}};
 }
 
-TVector<TCompactionCounter> TCompactionMap::GetTopsFromGroups(size_t groupCount) const
+TVector<TCompactionCounter> TCompactionMap::GetTopsFromGroups(
+    size_t groupCount) const
 {
     return Impl->GetTopsFromGroups(groupCount);
 }
@@ -460,18 +456,15 @@ TCompactionCounter TCompactionMap::GetTopByGarbageBlockCount() const
         ui32 range = 0;
         TRangeStat stat;
         for (ui32 i = 0; i < GroupSize; ++i) {
-            if (!group->Stats[i].Compacted
-                    && group->Stats[i].GarbageBlockCount() > stat.GarbageBlockCount())
+            if (!group->Stats[i].Compacted &&
+                group->Stats[i].GarbageBlockCount() > stat.GarbageBlockCount())
             {
                 stat = group->Stats[i];
                 range = i;
             }
         }
 
-        return {
-            group->BlockIndex + range * Impl->RangeSize,
-            stat
-        };
+        return {group->BlockIndex + range * Impl->RangeSize, stat};
     }
 
     return {0, {}};
@@ -479,7 +472,8 @@ TCompactionCounter TCompactionMap::GetTopByGarbageBlockCount() const
 
 TVector<TCompactionCounter> TCompactionMap::GetTop(size_t count) const
 {
-    TVector<TCompactionCounter> result(Reserve(Impl->Groups.Size() * GroupSize));
+    TVector<TCompactionCounter> result(
+        Reserve(Impl->Groups.Size() * GroupSize));
 
     for (const auto& group: Impl->Groups) {
         for (ui32 i = 0; i < group.Stats.size(); ++i) {
@@ -491,9 +485,11 @@ TVector<TCompactionCounter> TCompactionMap::GetTop(size_t count) const
         }
     }
 
-    Sort(result, [] (const auto& l, const auto& r) {
-        return l.Stat.CompactionScore.Score > r.Stat.CompactionScore.Score;
-    });
+    Sort(
+        result,
+        [](const auto& l, const auto& r) {
+            return l.Stat.CompactionScore.Score > r.Stat.CompactionScore.Score;
+        });
 
     result.crop(count);
     return result;
@@ -502,7 +498,8 @@ TVector<TCompactionCounter> TCompactionMap::GetTop(size_t count) const
 TVector<TCompactionCounter> TCompactionMap::GetTopByGarbageBlockCount(
     size_t count) const
 {
-    TVector<TCompactionCounter> result(Reserve(Impl->Groups.Size() * GroupSize));
+    TVector<TCompactionCounter> result(
+        Reserve(Impl->Groups.Size() * GroupSize));
 
     for (const auto& group: Impl->Groups) {
         for (ui32 i = 0; i < group.Stats.size(); ++i) {
@@ -514,13 +511,16 @@ TVector<TCompactionCounter> TCompactionMap::GetTopByGarbageBlockCount(
         }
     }
 
-    Sort(result, [] (const auto& l, const auto& r) {
-        if (l.Stat.Compacted != r.Stat.Compacted) {
-            return r.Stat.Compacted;
-        }
+    Sort(
+        result,
+        [](const auto& l, const auto& r)
+        {
+            if (l.Stat.Compacted != r.Stat.Compacted) {
+                return r.Stat.Compacted;
+            }
 
-        return l.Stat.GarbageBlockCount() > r.Stat.GarbageBlockCount();
-    });
+            return l.Stat.GarbageBlockCount() > r.Stat.GarbageBlockCount();
+        });
 
     result.crop(count);
     return result;

@@ -94,14 +94,17 @@ void ShouldNotifyDiskErrorImpl(int version)
 
     service->Start();
 
-    auto r = service->Notify({
-            .CloudId = "yc-nbs",
-            .FolderId = "yc-nbs.folder",
-            .Timestamp = TInstant::ParseIso8601("2024-04-01T00:00:01Z"),
-            .Event =
-                TDiskError{
-                    .DiskId = "ShouldNotifyDiskErrorV" + ToString(version)},
-        }).GetValue(WaitTimeout);
+    auto r =
+        service
+            ->Notify({
+                .CloudId = "yc-nbs",
+                .FolderId = "yc-nbs.folder",
+                .Timestamp = TInstant::ParseIso8601("2024-04-01T00:00:01Z"),
+                .Event =
+                    TDiskError{
+                        .DiskId = "ShouldNotifyDiskErrorV" + ToString(version)},
+            })
+            .GetValue(WaitTimeout);
 
     UNIT_ASSERT_C(!HasError(r), r);
 
@@ -113,12 +116,15 @@ void ShouldNotifyDiskBackOnlineImpl(int version)
     auto service = CreateNotifyService(version);
     service->Start();
 
-    auto r = service->Notify({
-            .CloudId = "yc-nbs",
-            .FolderId = "yc-nbs.folder",
-            .Timestamp = TInstant::ParseIso8601("2023-01-01T00:00:01Z"),
-            .Event = TDiskBackOnline{.DiskId = "nrd0"},
-        }).GetValue(WaitTimeout);
+    auto r =
+        service
+            ->Notify({
+                .CloudId = "yc-nbs",
+                .FolderId = "yc-nbs.folder",
+                .Timestamp = TInstant::ParseIso8601("2023-01-01T00:00:01Z"),
+                .Event = TDiskBackOnline{.DiskId = "nrd0"},
+            })
+            .GetValue(WaitTimeout);
 
     UNIT_ASSERT_C(!HasError(r), r);
 

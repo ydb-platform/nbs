@@ -50,17 +50,19 @@ Y_UNIT_TEST_SUITE(TServiceDescribeVolumeTest)
 
         auto error = MakeError(E_ARGUMENT, "Error");
 
-        runtime.SetObserverFunc( [nodeIdx, error, &runtime] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [nodeIdx, error, &runtime](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeRequest: {
-                        auto response = std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
-                            error);
+                        auto response = std::make_unique<
+                            TEvSSProxy::TEvDescribeVolumeResponse>(error);
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
                                 event->Recipient,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
                                 event->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
@@ -84,11 +86,16 @@ Y_UNIT_TEST_SUITE(TServiceDescribeVolumeTest)
         TServiceClient service(runtime, nodeIdx);
         service.CreateVolume();
 
-        runtime.SetObserverFunc([] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
-                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
-                        auto& pathDescription = const_cast<NKikimrSchemeOp::TPathDescription&>(msg->PathDescription);
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        auto& pathDescription =
+                            const_cast<NKikimrSchemeOp::TPathDescription&>(
+                                msg->PathDescription);
                         pathDescription.MutableSelf()->SetPathType(
                             NKikimrSchemeOp::EPathTypeSolomonVolume);
                         break;
@@ -131,10 +138,9 @@ Y_UNIT_TEST_SUITE(TServiceDescribeVolumeTest)
                 DefaultDiskId,
                 200_GB / DefaultBlockSize,
                 DefaultBlockSize,
-                "", // folderId
-                "", // cloudId
-                NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
-            );
+                "",   // folderId
+                "",   // cloudId
+                NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
@@ -146,10 +152,9 @@ Y_UNIT_TEST_SUITE(TServiceDescribeVolumeTest)
             UNIT_ASSERT_VALUES_UNEQUAL(
                 response->Record.GetVolume().GetDevices().size(),
                 0);
-            for (const auto& device : response->Record.GetVolume().GetDevices()) {
-                UNIT_ASSERT_VALUES_UNEQUAL(
-                    device.GetBlockCount(),
-                    0);
+            for (const auto& device: response->Record.GetVolume().GetDevices())
+            {
+                UNIT_ASSERT_VALUES_UNEQUAL(device.GetBlockCount(), 0);
             }
         }
     }
@@ -243,7 +248,8 @@ Y_UNIT_TEST_SUITE(TServiceDescribeVolumeTest)
             response->Record.GetVolume().GetDiskId());
     }
 
-    Y_UNIT_TEST(ShouldActLikeSecondaryVolumeDoesNotExistWhenExactDiskIdMatchIsRequired)
+    Y_UNIT_TEST(
+        ShouldActLikeSecondaryVolumeDoesNotExistWhenExactDiskIdMatchIsRequired)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;

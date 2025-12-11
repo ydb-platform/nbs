@@ -8,7 +8,6 @@
 #include <cloud/storage/core/libs/common/disjoint_interval_map.h>
 
 #include <util/datetime/base.h>
-
 #include <util/generic/intrlist.h>
 #include <util/generic/strbuf.h>
 #include <util/generic/string.h>
@@ -203,7 +202,7 @@ struct TWriteBackCache::TWriteDataEntryPart
     bool operator==(const TWriteDataEntryPart& p) const
     {
         return std::tie(Source, OffsetInSource, Offset, Length) ==
-            std::tie(p.Source, p.OffsetInSource, p.Offset, p.Length);
+               std::tie(p.Source, p.OffsetInSource, p.Offset, p.Length);
     }
 };
 
@@ -228,44 +227,44 @@ public:
         ui64 length);
 
     /**
-    * Calculate a set of intervals that is complimentary to the input set of
-    * intervals for the specified range.
-    *
-    * @param sortedParts A sorted vector of non-overlapping intervals.
-    * @param startingFromOffset The starting offset of the interval to invert
-    *   within.
-    * @param length The length of the interval to invert within.
-    * @return A vector of intervals representing the inverted (missing) parts
-    *   within the specified range. Only fields Offset and Length are set.
-    *
-    * Note: The interval [startingFromOffset, startingFromOffset + length) may
-    *   be narrower than the minimal bounding interval for sortedParts.
-    *
-    * Example:
-    *   sortedParts: {{.Offset = 1, .Length = 3}, {.Offset = 5, .Length = 2}}
-    *   startingFromOffset: 0
-    *   length: 6
-    *   result: {{.Offset = 0, .Length = 1}, {.Offset = 3, .Length = 2}}
-    */
+     * Calculate a set of intervals that is complimentary to the input set of
+     * intervals for the specified range.
+     *
+     * @param sortedParts A sorted vector of non-overlapping intervals.
+     * @param startingFromOffset The starting offset of the interval to invert
+     *   within.
+     * @param length The length of the interval to invert within.
+     * @return A vector of intervals representing the inverted (missing) parts
+     *   within the specified range. Only fields Offset and Length are set.
+     *
+     * Note: The interval [startingFromOffset, startingFromOffset + length) may
+     *   be narrower than the minimal bounding interval for sortedParts.
+     *
+     * Example:
+     *   sortedParts: {{.Offset = 1, .Length = 3}, {.Offset = 5, .Length = 2}}
+     *   startingFromOffset: 0
+     *   length: 6
+     *   result: {{.Offset = 0, .Length = 1}, {.Offset = 3, .Length = 2}}
+     */
     static TVector<TWriteDataEntryPart> InvertDataParts(
         const TVector<TWriteDataEntryPart>& sortedParts,
         ui64 startingFromOffset,
         ui64 length);
 
     /**
-    * Count the number of entries that can be taken for flushing.
-    *
-    * @param entries The sequence of client write requests.
-    * @param maxWriteRequestSize The maximum size of a single consolidated
-    *   WriteData request.
-    * @param maxWriteRequestsCount The maximum number of consolidated WriteData
-    *   requests.
-    * @param maxSumWriteRequestsSize The maximum total size of all consolidated
-    *   WriteData requests.
-    *
-    * @return The number of entries that can be taken from the beginning of
-    *   the entries sequence for flushing.
-    */
+     * Count the number of entries that can be taken for flushing.
+     *
+     * @param entries The sequence of client write requests.
+     * @param maxWriteRequestSize The maximum size of a single consolidated
+     *   WriteData request.
+     * @param maxWriteRequestsCount The maximum number of consolidated WriteData
+     *   requests.
+     * @param maxSumWriteRequestsSize The maximum total size of all consolidated
+     *   WriteData requests.
+     *
+     * @return The number of entries that can be taken from the beginning of
+     *   the entries sequence for flushing.
+     */
     static size_t CalculateEntriesCountToFlush(
         const TDeque<TWriteDataEntry*>& entries,
         ui32 maxWriteRequestSize,

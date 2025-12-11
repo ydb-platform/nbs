@@ -52,12 +52,13 @@ TString GetIamTokenFromFile(const TString& iamTokenFile)
         return {};
     }
 
-    auto stats = std::filesystem::status(
-            std::filesystem::path(path.GetPath().c_str()));
+    auto stats =
+        std::filesystem::status(std::filesystem::path(path.GetPath().c_str()));
     auto perms = stats.permissions();
 
     Y_ENSURE(
-        (perms & std::filesystem::perms::others_all) == std::filesystem::perms::none,
+        (perms & std::filesystem::perms::others_all) ==
+            std::filesystem::perms::none,
         TStringBuilder() << "bad Mode: " << static_cast<ui32>(perms));
 
     if (!file.IsOpen()) {
@@ -101,7 +102,9 @@ TCommand::TCommand()
         .RequiredArgument("NUM")
         .StoreResult(&ServerPort);
 
-    Opts.AddLongOption("secure-port", "connect secure port (overrides --server-port)")
+    Opts.AddLongOption(
+            "secure-port",
+            "connect secure port (overrides --server-port)")
         .RequiredArgument("NUM")
         .StoreResult(&SecurePort);
 
@@ -109,7 +112,9 @@ TCommand::TCommand()
         .RequiredArgument("STR")
         .StoreResult(&ServerUnixSocketPath);
 
-    Opts.AddLongOption("skip-cert-verification", "skip server certificate verification")
+    Opts.AddLongOption(
+            "skip-cert-verification",
+            "skip server certificate verification")
         .StoreTrue(&SkipCertVerification);
 
     Opts.AddLongOption("iam-token-file", "path to iam token")
@@ -117,22 +122,21 @@ TCommand::TCommand()
         .StoreResult(&IamTokenFile);
 
     Opts.AddLongOption("config")
-        .Help(TStringBuilder()
-            << "config file name. Default is "
-            << DefaultConfigFile)
+        .Help(
+            TStringBuilder()
+            << "config file name. Default is " << DefaultConfigFile)
         .RequiredArgument("STR")
         .DefaultValue(DefaultConfigFile)
         .StoreResult(&ConfigFile);
 
     Opts.AddLongOption("iam-config")
-        .Help(TStringBuilder()
-            << "iam-config file name. Default is "
-            << DefaultIamConfigFile)
+        .Help(
+            TStringBuilder()
+            << "iam-config file name. Default is " << DefaultIamConfigFile)
         .RequiredArgument("STR")
         .StoreResult(&IamConfigFile);
 
-    Opts.AddLongOption("json")
-        .StoreTrue(&JsonOutput);
+    Opts.AddLongOption("json").StoreTrue(&JsonOutput);
 }
 
 int TCommand::Run(int argc, char** argv)
@@ -145,7 +149,9 @@ int TCommand::Run(int argc, char** argv)
     if (!Execute()) {
         // wait until operation completed
         with_lock (WaitMutex) {
-            while (ProgramShouldContinue.PollState() == TProgramShouldContinue::Continue) {
+            while (ProgramShouldContinue.PollState() ==
+                   TProgramShouldContinue::Continue)
+            {
                 WaitCondVar.WaitT(WaitMutex, WaitTimeout);
             }
         }
@@ -164,7 +170,9 @@ void TCommand::Stop(int exitCode)
 
 bool TCommand::WaitForI(const TFuture<void>& future)
 {
-    while (ProgramShouldContinue.PollState() == TProgramShouldContinue::Continue) {
+    while (ProgramShouldContinue.PollState() ==
+           TProgramShouldContinue::Continue)
+    {
         if (future.Wait(WaitTimeout)) {
             return true;
         }
@@ -215,12 +223,10 @@ void TCommand::Init()
     if (SecurePort) {
         config.SetSecurePort(SecurePort);
     }
-    if (ServerUnixSocketPath){
+    if (ServerUnixSocketPath) {
         config.SetUnixSocketPath(ServerUnixSocketPath);
     }
-    if (config.GetHost() == "localhost" &&
-        config.GetSecurePort() != 0)
-    {
+    if (config.GetHost() == "localhost" && config.GetSecurePort() != 0) {
         // With TLS on transform localhost into fully qualified domain name.
         config.SetHost(FQDNHostName());
     }
@@ -435,7 +441,8 @@ NProto::TNodeAttr TFileStoreCommand::ResolveNode(
 {
     const auto invalidNodeId = Max<ui64>();
 
-    auto makeInvalidNode = [&] () {
+    auto makeInvalidNode = [&]()
+    {
         NProto::TNodeAttr node;
         node.SetType(NProto::E_INVALID_NODE);   // being explicit about the type
         node.SetId(invalidNodeId);
@@ -450,9 +457,8 @@ NProto::TNodeAttr TFileStoreCommand::ResolveNode(
     request->SetNodeId(parentNodeId);
     request->SetName(std::move(name));
 
-    auto response = WaitFor(session.GetNodeAttr(
-        PrepareCallContext(),
-        std::move(request)));
+    auto response =
+        WaitFor(session.GetNodeAttr(PrepareCallContext(), std::move(request)));
 
     const auto code = MAKE_FILESTORE_ERROR(NProto::E_FS_NOENT);
     if (ignoreMissing && response.GetError().GetCode() == code) {
@@ -511,19 +517,18 @@ NProto::TListNodesResponse TFileStoreCommand::ListAll(
             request->SetMaxBytes(maxBytes);
         }
 
-        auto response = WaitFor(session.ListNodes(
-            PrepareCallContext(),
-            std::move(request)));
+        auto response = WaitFor(
+            session.ListNodes(PrepareCallContext(), std::move(request)));
 
         Y_ENSURE_EX(
             !HasError(response.GetError()),
             yexception() << "ListNodes error: "
-                << FormatError(response.GetError()));
+                         << FormatError(response.GetError()));
 
         Y_ENSURE_EX(
             response.NamesSize() == response.NodesSize(),
             yexception() << "invalid ListNodes response: "
-                << response.DebugString().Quote());
+                         << response.DebugString().Quote());
 
         for (ui32 i = 0; i < response.NamesSize(); ++i) {
             fullResult.AddNames(*response.MutableNames(i));
@@ -541,9 +546,8 @@ TString TFileStoreCommand::ReadLink(ISession& session, ui64 nodeId)
     auto request = CreateRequest<NProto::TReadLinkRequest>();
     request->SetNodeId(nodeId);
 
-    auto response = WaitFor(session.ReadLink(
-        PrepareCallContext(),
-        std::move(request)));
+    auto response =
+        WaitFor(session.ReadLink(PrepareCallContext(), std::move(request)));
 
     CheckResponse(response);
 
@@ -553,8 +557,7 @@ TString TFileStoreCommand::ReadLink(ISession& session, ui64 nodeId)
 ////////////////////////////////////////////////////////////////////////////////
 
 TEndpointCommand::TEndpointCommand()
-{
-}
+{}
 
 void TEndpointCommand::Init()
 {

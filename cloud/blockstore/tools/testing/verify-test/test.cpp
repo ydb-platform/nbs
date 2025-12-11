@@ -3,13 +3,13 @@
 #include "options.h"
 #include "test_executor.h"
 
+#include <library/cpp/deprecated/atomic/atomic.h>
 #include <library/cpp/threading/future/async.h>
 
 #include <util/generic/map.h>
 #include <util/generic/scope.h>
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
-#include <library/cpp/deprecated/atomic/atomic.h>
 #include <util/system/file.h>
 #include <util/system/info.h>
 #include <util/thread/pool.h>
@@ -20,12 +20,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTest final
-    : public ITest
+class TTest final: public ITest
 {
-    struct TStopException
-        : public yexception
-    {};
+    struct TStopException: public yexception
+    {
+    };
 
 private:
     TAtomic ExitCode = 0;
@@ -58,12 +57,12 @@ TStringBuilder BuildTestReport(
     const TTestExecutorReport& report)
 {
     return TStringBuilder()
-        << "#StartOffset = " << config.StartOffset << " "
-        << "#EndOffset = " << config.EndOffset << " "
-        << "#TestPattern = " << config.TestPattern << " "
-        << "#DirectIO = " << config.DirectIo << " "
-        << "#StartTime = " << report.StartTime.ToString() << " "
-        << "#FinishTime = " << report.FinishTime.ToString();
+           << "#StartOffset = " << config.StartOffset << " "
+           << "#EndOffset = " << config.EndOffset << " "
+           << "#TestPattern = " << config.TestPattern << " "
+           << "#DirectIO = " << config.DirectIo << " "
+           << "#StartTime = " << report.StartTime.ToString() << " "
+           << "#FinishTime = " << report.FinishTime.ToString();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -113,27 +112,25 @@ void TTest::InitExecutorsConfigs()
     Y_ENSURE(Options->BlockSize > 0, "blocksize must be greater than 0");
     Y_ENSURE(
         Options->BlockSize % 512 == 0,
-        "blocksize must be a multiple of 512"
-    );
+        "blocksize must be a multiple of 512");
     Y_ENSURE(
         Options->FileSize >= Options->BlockSize * Options->IoDepth,
-        "filesize must be greater than blocksize * iodepth"
-    );
+        "filesize must be greater than blocksize * iodepth");
 
-    ui64 executorBlocksCount = Options->FileSize /
+    ui64 executorBlocksCount =
+        Options->FileSize /
         (Options->IoDepth * static_cast<ui64>(Options->BlockSize));
     ui64 executorBytesCount = executorBlocksCount * Options->BlockSize;
 
     Y_ENSURE(
         executorBytesCount % NSystemInfo::GetPageSize() == 0,
-        "executor bytes count must be a multiple of page size"
-    );
+        "executor bytes count must be a multiple of page size");
 
     for (ui16 i = 0; i < Options->IoDepth; i++) {
         ui64 startOffset = Options->Offset + i * executorBytesCount;
         ui64 endOffset = startOffset + executorBytesCount;
-        auto testPattern = static_cast<ETestPattern>(
-            i % static_cast<ui16>(ETestPattern::Max));
+        auto testPattern =
+            static_cast<ETestPattern>(i % static_cast<ui16>(ETestPattern::Max));
         bool directIO = i % 2;
 
         if (Options->CheckZero) {
@@ -147,8 +144,7 @@ void TTest::InitExecutorsConfigs()
             Options->Step,
             Options->BlockSize,
             testPattern,
-            directIO
-        );
+            directIO);
 
         ExecutorsConfigs.push_back(std::move(executorConfig));
     }
@@ -167,17 +163,19 @@ void TTest::RunStage(const ETestExecutorType& type)
     TMap<TTestExecutorConfig, TFuture<TTestExecutorReport>> configToReport;
 
     for (const auto& executorConfig: ExecutorsConfigs) {
-        Executors.push_back(CreateTestExecutor(
-            type, Options->FilePath, executorConfig));
+        Executors.push_back(
+            CreateTestExecutor(type, Options->FilePath, executorConfig));
 
-        const auto report = Async([&, executor = Executors.back()]() mutable {
-            return executor->Run(waitingForStart, shouldStart);
-        }, *threadPool);
+        const auto report = Async(
+            [&, executor = Executors.back()]() mutable
+            { return executor->Run(waitingForStart, shouldStart); },
+            *threadPool);
 
         configToReport[*executorConfig] = report;
     }
 
-    while (AtomicGet(waitingForStart) != Options->IoDepth) {}
+    while (AtomicGet(waitingForStart) != Options->IoDepth) {
+    }
     AtomicSet(shouldStart, 1);
 
     for (const auto& [config, reportFuture]: configToReport) {

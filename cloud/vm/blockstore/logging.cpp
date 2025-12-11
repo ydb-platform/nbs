@@ -10,8 +10,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class THostLogBackend final
-    : public TLogBackend
+class THostLogBackend final: public TLogBackend
 {
 private:
     BlockPluginHost* const Host;

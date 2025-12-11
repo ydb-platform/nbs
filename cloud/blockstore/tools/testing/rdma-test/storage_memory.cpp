@@ -12,8 +12,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMemoryStorage final
-    : public IStorage
+class TMemoryStorage final: public IStorage
 {
 private:
     const TString Buffer;
@@ -25,8 +24,10 @@ public:
         , BlockSize(blockSize)
     {}
 
-    void Start() override {}
-    void Stop() override {}
+    void Start() override
+    {}
+    void Stop() override
+    {}
 
     TFuture<NProto::TError> ReadBlocks(
         TCallContextPtr callContext,

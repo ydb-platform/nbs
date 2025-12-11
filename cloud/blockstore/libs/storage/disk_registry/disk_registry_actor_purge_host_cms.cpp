@@ -1,4 +1,5 @@
 #include "disk_registry_actor.h"
+
 #include "disk_registry_database.h"
 
 namespace NCloud::NBlockStore::NStorage {
@@ -17,10 +18,8 @@ void TDiskRegistryActor::HandlePurgeHostCms(
 
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LOG_INFO(
         ctx,
@@ -87,7 +86,8 @@ void TDiskRegistryActor::CompletePurgeHostCms(
             }
             out << " ]";
             return out.Str();
-        }().c_str());
+        }()
+            .c_str());
 
     ReallocateDisks(ctx);
     NotifyUsers(ctx);

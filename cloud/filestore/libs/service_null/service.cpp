@@ -16,7 +16,8 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 // predefined session state to restore connection upon restart
-static constexpr TStringBuf SessionState = "\010\007\020\037\030\333\370\377\010 \213\370R(\200\240@";
+static constexpr TStringBuf SessionState =
+    "\010\007\020\037\030\333\370\377\010 \213\370R(\200\240@";
 
 void Fill(NProto::TFileStore& filestore)
 {
@@ -40,19 +41,18 @@ void Fill(NProto::TNodeAttr& attr, ui64 nodeId)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDummyFileStore
-    : public IFileStoreService
+struct TDummyFileStore: public IFileStoreService
 {
-#define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        Y_UNUSED(callContext);                                                 \
-        Y_UNUSED(request);                                                     \
-        return MakeFuture(NProto::T##name##Response());                        \
-    }                                                                          \
-// FILESTORE_IMPLEMENT_METHOD
+#define FILESTORE_IMPLEMENT_METHOD(name, ...)                       \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr callContext,                                \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        Y_UNUSED(callContext);                                      \
+        Y_UNUSED(request);                                          \
+        return MakeFuture(NProto::T##name##Response());             \
+    }                                                               \
+    // FILESTORE_IMPLEMENT_METHOD
 
     FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD)
     FILESTORE_IMPLEMENT_METHOD(ReadDataLocal)
@@ -63,8 +63,7 @@ struct TDummyFileStore
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TNullFileStore final
-    : public TDummyFileStore
+struct TNullFileStore final: public TDummyFileStore
 {
     THashMap<TString, ui64> NodesIndex = {
         {"a.txt", 1},
@@ -140,7 +139,7 @@ struct TNullFileStore final
             *response.AddNames() = "a.txt";
             *response.MutableCookie() = "cookie";
             Fill(*response.AddNodes(), RootNodeId + NodesIndex["a.txt"]);
-        } else if (request->GetCookie() == "cookie"){
+        } else if (request->GetCookie() == "cookie") {
             *response.AddNames() = "b.txt";
             *response.MutableCookie() = "end";
             Fill(*response.AddNodes(), RootNodeId + NodesIndex["a.txt"]);
@@ -161,7 +160,8 @@ struct TNullFileStore final
         // i.e. lookup by node id or by parent & name
         // beware: for some pairs (nodeId, name) may produce invalid node id
         // because of int overflow
-        ui64 nodeId = request->GetNodeId() + THash<TString>{}(request->GetName());
+        ui64 nodeId =
+            request->GetNodeId() + THash<TString>{}(request->GetName());
         Fill(*response.MutableNode(), nodeId);
 
         return MakeFuture(response);
@@ -207,7 +207,8 @@ struct TNullFileStore final
     void GetSessionEventsStream(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TGetSessionEventsRequest> request,
-        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) override
+        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler)
+        override
     {
         Y_UNUSED(callContext);
         Y_UNUSED(request);

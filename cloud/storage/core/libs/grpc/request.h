@@ -24,7 +24,7 @@ public:
 
 using TRequestHandlerPtr = std::unique_ptr<TRequestHandlerBase>;
 
-template<typename TRequestHandler >
+template <typename TRequestHandler>
 class TRequestsInFlight final
 {
 protected:
@@ -33,17 +33,16 @@ protected:
     bool ShouldStop = false;
 
 public:
-
     size_t GetCount() const
     {
-        with_lock(RequestsLock) {
+        with_lock (RequestsLock) {
             return Requests.size();
         }
     }
 
     bool Register(TRequestHandler* handler)
     {
-        with_lock(RequestsLock) {
+        with_lock (RequestsLock) {
             if (ShouldStop) {
                 return false;
             }
@@ -57,7 +56,7 @@ public:
 
     void Unregister(TRequestHandler* handler)
     {
-        with_lock(RequestsLock) {
+        with_lock (RequestsLock) {
             auto it = Requests.find(handler);
             Y_ABORT_UNLESS(it != Requests.end());
             Requests.erase(it);
@@ -66,15 +65,15 @@ public:
 
     void Shutdown()
     {
-        with_lock(RequestsLock) {
+        with_lock (RequestsLock) {
             ShouldStop = true;
 
-            for (auto* handler : Requests) {
+            for (auto* handler: Requests) {
                 handler->Cancel();
             }
         }
         TSpinWait sw;
-        for(;;) {
+        for (;;) {
             if (GetCount() == 0) {
                 break;
             }
@@ -85,8 +84,8 @@ public:
     template <std::invocable<TRequestHandler*> TUnaryFunction>
     void ForEach(TUnaryFunction f)
     {
-        with_lock(RequestsLock) {
-            for (auto* handler : Requests) {
+        with_lock (RequestsLock) {
+            for (auto* handler: Requests) {
                 f(handler);
             }
         }

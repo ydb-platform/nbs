@@ -1,9 +1,9 @@
 #include "test_server.h"
 
+#include <cloud/blockstore/public/api/grpc/service.grpc.pb.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/grpc/init.h>
-
-#include <cloud/blockstore/public/api/grpc/service.grpc.pb.h>
 
 #include <contrib/libs/grpc/include/grpcpp/impl/codegen/completion_queue.h>
 #include <contrib/libs/grpc/include/grpcpp/impl/codegen/status.h>
@@ -41,18 +41,11 @@ struct TRequestContext
     bool Done = false;
 
     TRequestContext(
-            NProto::TBlockStoreService::AsyncService& service,
-            grpc::ServerCompletionQueue& cq)
+        NProto::TBlockStoreService::AsyncService& service,
+        grpc::ServerCompletionQueue& cq)
         : Writer(&ServerContext)
     {
-        service.RequestPing(
-            &ServerContext,
-            &Request,
-            &Writer,
-            &cq,
-            &cq,
-            this
-        );
+        service.RequestPing(&ServerContext, &Request, &Writer, &cq, &cq, this);
     }
 };
 
@@ -84,18 +77,17 @@ struct TFakeBlockStoreServer::TImpl
     TAtomic ShouldStop = 0;
 
     TImpl(
-            ui16 port,
-            ui16 securePort,
-            const TString& rootCertsFile,
-            const TString& keyFile,
-            const TString& certFile)
+        ui16 port,
+        ui16 securePort,
+        const TString& rootCertsFile,
+        const TString& keyFile,
+        const TString& certFile)
         : Port(port)
         , SecurePort(securePort)
         , RootCertsFile(rootCertsFile)
         , KeyFile(keyFile)
         , CertFile(certFile)
-    {
-    }
+    {}
 
     ~TImpl()
     {
@@ -115,7 +107,8 @@ struct TFakeBlockStoreServer::TImpl
 
             Server->Shutdown();
             CQ->Shutdown();
-            // Need to drain completion queue, otherwise it fails on assert when destroying:
+            // Need to drain completion queue, otherwise it fails on assert when
+            // destroying:
             // https://github.com/ydb-platform/nbs/blob/fbf6b9fa568b7b3861fbccffcf3177ee445f498a/contrib/libs/grpc/src/core/lib/surface/completion_queue.cc#L258
             DrainCompletionQueue();
         }
@@ -131,23 +124,19 @@ struct TFakeBlockStoreServer::TImpl
         grpc::ServerBuilder sb;
         sb.AddListeningPort(
             Sprintf("0.0.0.0:%u", Port),
-            grpc::InsecureServerCredentials()
-        );
+            grpc::InsecureServerCredentials());
 
         if (SecurePort) {
             grpc::SslServerCredentialsOptions options(
                 GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY);
 
             options.pem_root_certs = ReadFile(RootCertsFile);
-            options.pem_key_cert_pairs.push_back({
-                ReadFile(KeyFile),
-                ReadFile(CertFile)
-            });
+            options.pem_key_cert_pairs.push_back(
+                {ReadFile(KeyFile), ReadFile(CertFile)});
 
             sb.AddListeningPort(
                 Sprintf("0.0.0.0:%u", SecurePort),
-                grpc::SslServerCredentials(options)
-            );
+                grpc::SslServerCredentials(options));
         }
 
         sb.RegisterService(&Service);
@@ -164,9 +153,8 @@ struct TFakeBlockStoreServer::TImpl
         void* tag;
         bool ok;
         while (!AtomicGet(ShouldStop)) {
-            const auto deadline =
-                std::chrono::system_clock::now() +
-                std::chrono::milliseconds(100);
+            const auto deadline = std::chrono::system_clock::now() +
+                                  std::chrono::milliseconds(100);
             auto status = CQ->AsyncNext(&tag, &ok, deadline);
             if (status != grpc::CompletionQueue::GOT_EVENT) {
                 continue;
@@ -215,20 +203,14 @@ struct TFakeBlockStoreServer::TImpl
             r.MutableError()->SetCode(E_FAIL);
             r.MutableError()->SetMessage(ErrorMessage);
         }
-        requestContext->Writer.Finish(
-            r,
-            grpc::Status::OK,
-            requestContext
-        );
+        requestContext->Writer.Finish(r, grpc::Status::OK, requestContext);
     }
 
     void ForkStart()
     {
         PreStart();
 
-        Thread = SystemThreadFactory()->Run([=, this] () {
-            Loop();
-        });
+        Thread = SystemThreadFactory()->Run([=, this]() { Loop(); });
     }
 
     void Start()
@@ -245,12 +227,10 @@ TFakeBlockStoreServer::TFakeBlockStoreServer(
     const TString& keyFile,
     const TString& certFile)
     : Impl(new TImpl(port, securePort, rootCertsFile, keyFile, certFile))
-{
-}
+{}
 
 TFakeBlockStoreServer::~TFakeBlockStoreServer()
-{
-}
+{}
 
 void TFakeBlockStoreServer::ForkStart()
 {

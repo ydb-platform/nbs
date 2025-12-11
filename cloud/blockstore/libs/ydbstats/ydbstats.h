@@ -38,8 +38,7 @@ struct TYDBTableSchemes
     ~TYDBTableSchemes();
 };
 
-struct IYdbVolumesStatsUploader
-    : public IStartable
+struct IYdbVolumesStatsUploader: public IStartable
 {
     virtual ~IYdbVolumesStatsUploader() = default;
 

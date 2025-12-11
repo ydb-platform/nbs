@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
+
 #include <cloud/storage/core/libs/actors/helpers.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -11,9 +12,9 @@ namespace NCloud::NBlockStore::NStorage {
 ///////////////////////////////////////////////////////////////////////////////
 
 TMigrationTimeoutCalculator::TMigrationTimeoutCalculator(
-        ui32 maxMigrationBandwidthMiBs,
-        ui32 expectedDiskAgentSize,
-        TNonreplicatedPartitionConfigPtr partitionConfig)
+    ui32 maxMigrationBandwidthMiBs,
+    ui32 expectedDiskAgentSize,
+    TNonreplicatedPartitionConfigPtr partitionConfig)
     : MaxMigrationBandwidthMiBs(maxMigrationBandwidthMiBs)
     , ExpectedDiskAgentSize(expectedDiskAgentSize)
     , PartitionConfig(std::move(partitionConfig))

@@ -1,10 +1,9 @@
 #pragma once
 
-#include <cloud/storage/core/libs/grpc/request.h>
-
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/executor_counters.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/grpc/request.h>
 
 #include <contrib/ydb/library/actors/prof/tag.h>
 
@@ -48,11 +47,12 @@ struct TExecutorContext
         if (!RequestsInFlight.Register(handler.get())) {
             return handler;
         }
-        Y_DEFER {
+        Y_DEFER
+        {
             if (handler) {
                 RequestsInFlight.Unregister(handler.get());
             }
-        };
+        }
 
         if (EnqueueCompletion(CompletionQueue.get(), handler.get())) {
             // ownership transferred to CompletionQueue
@@ -65,16 +65,17 @@ struct TExecutorContext
     template <typename THandler, typename... TArgs>
     void StartRequestHandler(TArgs&&... args)
     {
-
-        auto handler = std::make_unique<THandler>(*this, std::forward<TArgs>(args)...);
+        auto handler =
+            std::make_unique<THandler>(*this, std::forward<TArgs>(args)...);
         if (!this->RequestsInFlight.Register(handler.get())) {
             return;
         }
-        Y_DEFER {
+        Y_DEFER
+        {
             if (handler) {
                 this->RequestsInFlight.Unregister(handler.get());
             }
-        };
+        }
 
         handler->PrepareRequest();
         // ownership transferred to CompletionQueue
@@ -97,10 +98,10 @@ private:
 
 public:
     TExecutor(
-            TString name,
-            std::unique_ptr<TCompletionQueue> completionQueue,
-            TLog log,
-            TExecutorScope executorScope = {})
+        TString name,
+        std::unique_ptr<TCompletionQueue> completionQueue,
+        TLog log,
+        TExecutorScope executorScope = {})
         : Name(std::move(name))
         , Log(std::move(log))
         , ExecutorScope(std::move(executorScope))
@@ -152,11 +153,12 @@ private:
         [[maybe_unused]] auto activity = ExecutorScope.StartExecute();
 
         auto handler = static_cast<TRequestHandlerBase*>(tag);
-        Y_DEFER {
+        Y_DEFER
+        {
             handler->ReleaseCompletionTag();
-        };
+        }
         handler->Process(ok);
     }
 };
 
-}   // namespace NCloud::NStorage::NGrpc:
+}   // namespace NCloud::NStorage::NGrpc

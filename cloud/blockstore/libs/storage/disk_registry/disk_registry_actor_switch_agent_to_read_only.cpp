@@ -1,4 +1,5 @@
 #include "disk_registry_actor.h"
+
 #include "disk_registry_database.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -15,7 +16,8 @@ using namespace NKikimr::NTabletFlatExecutor;
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryActor::HandleSwitchAgentDisksToReadOnly(
-    const TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest::TPtr& ev,
+    const TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest::TPtr&
+        ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -73,10 +75,8 @@ void TDiskRegistryActor::ExecuteSwitchAgentDisksToReadOnly(
     TDiskRegistryDatabase db(tx.DB);
 
     TVector<TDiskId> affectedDisks;
-    args.Error = State->SwitchAgentDisksToReadOnly(
-        db,
-        args.AgentId,
-        affectedDisks);
+    args.Error =
+        State->SwitchAgentDisksToReadOnly(db, args.AgentId, affectedDisks);
 }
 
 void TDiskRegistryActor::CompleteSwitchAgentDisksToReadOnly(

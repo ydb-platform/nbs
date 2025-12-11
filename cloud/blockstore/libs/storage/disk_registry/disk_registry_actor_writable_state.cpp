@@ -26,18 +26,13 @@ void TDiskRegistryActor::HandleSetWritableState(
         msg->Record.ShortDebugString().c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    if (CurrentState != STATE_WORK &&
-        CurrentState != STATE_READ_ONLY)
-    {
+    if (CurrentState != STATE_WORK && CurrentState != STATE_READ_ONLY) {
         const TString errorMsg = TStringBuilder()
-            << "Can't change state in "
-            << States[CurrentState].Name
-            << " state";
+                                 << "Can't change state in "
+                                 << States[CurrentState].Name << " state";
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
@@ -53,10 +48,7 @@ void TDiskRegistryActor::HandleSetWritableState(
 
     BecomeAux(ctx, writableState ? STATE_WORK : STATE_READ_ONLY);
 
-    ExecuteTx<TWritableState>(
-        ctx,
-        std::move(requestInfo),
-        writableState);
+    ExecuteTx<TWritableState>(ctx, std::move(requestInfo), writableState);
 }
 
 bool TDiskRegistryActor::PrepareWritableState(
@@ -87,13 +79,15 @@ void TDiskRegistryActor::CompleteWritableState(
     TTxDiskRegistry::TWritableState& args)
 {
     if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
             "SetWritableState error: %s",
             FormatError(args.Error).c_str());
     }
 
-    auto response = std::make_unique<
-        TEvDiskRegistry::TEvSetWritableStateResponse>(
+    auto response =
+        std::make_unique<TEvDiskRegistry::TEvSetWritableStateResponse>(
             std::move(args.Error));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));

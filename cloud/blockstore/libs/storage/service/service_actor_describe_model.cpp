@@ -4,7 +4,6 @@
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 
 #include <contrib/ydb/core/protos/blockstore_config.pb.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -26,15 +25,14 @@ void TServiceActor::HandleDescribeVolumeModel(
 
     auto partitionsInfo = ComputePartitionsInfo(
         *Config,
-        {}, // cloudId
-        {}, // folderId
-        {}, // diskId
+        {},   // cloudId
+        {},   // folderId
+        {},   // diskId
         request.GetStorageMediaKind(),
         request.GetBlocksCount(),
         request.GetBlockSize(),
         request.GetIsSystem(),
-        !request.GetBaseDiskId().empty()
-    );
+        !request.GetBaseDiskId().empty());
 
     TVolumeParams volumeParams;
     volumeParams.BlockSize = request.GetBlockSize();
@@ -47,7 +45,8 @@ void TServiceActor::HandleDescribeVolumeModel(
     config.SetBlockSize(request.GetBlockSize());
     ResizeVolume(*Config, volumeParams, {}, {}, config);
 
-    auto response = std::make_unique<TEvService::TEvDescribeVolumeModelResponse>();
+    auto response =
+        std::make_unique<TEvService::TEvDescribeVolumeModelResponse>();
     VolumeConfigToVolumeModel(config, *response->Record.MutableVolumeModel());
 
     NCloud::Send(ctx, ev->Sender, std::move(response), ev->Cookie);

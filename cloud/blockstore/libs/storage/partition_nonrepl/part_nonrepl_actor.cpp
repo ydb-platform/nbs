@@ -24,11 +24,11 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 ////////////////////////////////////////////////////////////////////////////////
 
 TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
-        TNonreplicatedPartitionConfigPtr partConfig,
-        TActorId volumeActorId,
-        TActorId statActorId)
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    TNonreplicatedPartitionConfigPtr partConfig,
+    TActorId volumeActorId,
+    TActorId statActorId)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PartConfig(std::move(partConfig))
@@ -191,15 +191,18 @@ void TNonreplicatedPartitionActor::Bootstrap(const TActorContext& ctx)
     ScheduleCountersUpdate(ctx);
 }
 
-bool TNonreplicatedPartitionActor::CheckReadWriteBlockRange(const TBlockRange64& range) const
+bool TNonreplicatedPartitionActor::CheckReadWriteBlockRange(
+    const TBlockRange64& range) const
 {
     return range.End >= range.Start && PartConfig->GetBlockCount() > range.End;
 }
 
-void TNonreplicatedPartitionActor::ScheduleCountersUpdate(const TActorContext& ctx)
+void TNonreplicatedPartitionActor::ScheduleCountersUpdate(
+    const TActorContext& ctx)
 {
     if (!UpdateCountersScheduled) {
-        ctx.Schedule(UpdateCountersInterval,
+        ctx.Schedule(
+            UpdateCountersInterval,
             new TEvNonreplPartitionPrivate::TEvUpdateCounters());
         UpdateCountersScheduled = true;
     }
@@ -302,10 +305,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
     if (isWriteMethod && PartConfig->IsReadOnly() &&
         !msg.Record.GetHeaders().GetIsBackgroundRequest())
     {
-        reply(
-            ctx,
-            requestInfo,
-            PartConfig->MakeIOError("disk in error state"));
+        reply(ctx, requestInfo, PartConfig->MakeIOError("disk in error state"));
         return false;
     }
 
@@ -362,7 +362,8 @@ bool TNonreplicatedPartitionActor::InitRequests(
     return true;
 }
 
-template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TWriteBlocksMethod>(
+template bool
+TNonreplicatedPartitionActor::InitRequests<TEvService::TWriteBlocksMethod>(
     const TEvService::TWriteBlocksMethod::TRequest& msg,
     const TActorContext& ctx,
     const TRequestInfo& requestInfo,
@@ -371,7 +372,8 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TWriteBlock
     TRequestTimeoutPolicy* timeoutPolicy,
     TRequestData* requestData);
 
-template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TWriteBlocksLocalMethod>(
+template bool
+TNonreplicatedPartitionActor::InitRequests<TEvService::TWriteBlocksLocalMethod>(
     const TEvService::TWriteBlocksLocalMethod::TRequest& msg,
     const TActorContext& ctx,
     const TRequestInfo& requestInfo,
@@ -380,7 +382,8 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TWriteBlock
     TRequestTimeoutPolicy* timeoutPolicy,
     TRequestData* requestData);
 
-template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TZeroBlocksMethod>(
+template bool
+TNonreplicatedPartitionActor::InitRequests<TEvService::TZeroBlocksMethod>(
     const TEvService::TZeroBlocksMethod::TRequest& msg,
     const TActorContext& ctx,
     const TRequestInfo& requestInfo,
@@ -389,7 +392,8 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TZeroBlocks
     TRequestTimeoutPolicy* timeoutPolicy,
     TRequestData* requestData);
 
-template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocksMethod>(
+template bool
+TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocksMethod>(
     const TEvService::TReadBlocksMethod::TRequest& msg,
     const TActorContext& ctx,
     const TRequestInfo& requestInfo,
@@ -398,7 +402,8 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocks
     TRequestTimeoutPolicy* timeoutPolicy,
     TRequestData* requestData);
 
-template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocksLocalMethod>(
+template bool
+TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocksLocalMethod>(
     const TEvService::TReadBlocksLocalMethod::TRequest& msg,
     const TActorContext& ctx,
     const TRequestInfo& requestInfo,
@@ -407,7 +412,8 @@ template bool TNonreplicatedPartitionActor::InitRequests<TEvService::TReadBlocks
     TRequestTimeoutPolicy* timeoutPolicy,
     TRequestData* requestData);
 
-template bool TNonreplicatedPartitionActor::InitRequests<TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
+template bool TNonreplicatedPartitionActor::InitRequests<
+    TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
     const TEvNonreplPartitionPrivate::TChecksumBlocksMethod::TRequest& msg,
     const TActorContext& ctx,
     const TRequestInfo& requestInfo,
@@ -577,8 +583,8 @@ void TNonreplicatedPartitionActor::HandleAgentIsUnavailable(
         }
     }
 
-    // Cancel all write/zero requests that intersects with the rows of the lagging
-    // agent. And read requests to the lagging replica.
+    // Cancel all write/zero requests that intersects with the rows of the
+    // lagging agent. And read requests to the lagging replica.
     for (const auto& [actorId, requestData]: RequestsInProgress.AllRequests()) {
         for (int deviceIndex: requestData.Value.DeviceIndices) {
             const bool shouldCancelRequest =
@@ -622,7 +628,8 @@ void TNonreplicatedPartitionActor::HandleAgentIsBackOnline(
     }
 }
 
-void TNonreplicatedPartitionActor::ReplyAndDie(const NActors::TActorContext& ctx)
+void TNonreplicatedPartitionActor::ReplyAndDie(
+    const NActors::TActorContext& ctx)
 {
     NCloud::Reply(ctx, *Poisoner, std::make_unique<TEvents::TEvPoisonTaken>());
     Die(ctx);
@@ -649,7 +656,7 @@ void TNonreplicatedPartitionActor::HandlePoisonPill(
 bool TNonreplicatedPartitionActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        // TODO
+            // TODO
 
         default:
             return false;
@@ -660,30 +667,32 @@ bool TNonreplicatedPartitionActor::HandleRequests(STFUNC_SIG)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)                      \
-    void TNonreplicatedPartitionActor::Handle##name(                           \
-        const ns::TEv##name##Request::TPtr& ev,                                \
-        const TActorContext& ctx)                                              \
-    {                                                                          \
-        RejectUnimplementedRequest<ns::T##name##Method>(ev, ctx);              \
-    }                                                                          \
-                                                                               \
-// BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST
+#define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)         \
+    void TNonreplicatedPartitionActor::Handle##name(              \
+        const ns::TEv##name##Request::TPtr& ev,                   \
+        const TActorContext& ctx)                                 \
+    {                                                             \
+        RejectUnimplementedRequest<ns::T##name##Method>(ev, ctx); \
+    }                                                             \
+                                                                  \
+    // BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST
 
-BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(DescribeBlocks,           TEvVolume);
-BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(CompactRange,             TEvVolume);
-BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetCompactionStatus,      TEvVolume);
-BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(RebuildMetadata,          TEvVolume);
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(DescribeBlocks, TEvVolume);
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(CompactRange, TEvVolume);
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetCompactionStatus, TEvVolume);
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(RebuildMetadata, TEvVolume);
 BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetRebuildMetadataStatus, TEvVolume);
-BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(ScanDisk,                 TEvVolume);
-BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetScanDiskStatus,        TEvVolume);
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(ScanDisk, TEvVolume);
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetScanDiskStatus, TEvVolume);
 
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TNonreplicatedPartitionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvNonreplPartitionPrivate::TEvUpdateCounters, HandleUpdateCounters);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvUpdateCounters,
+            HandleUpdateCounters);
 
         HFunc(TEvService::TEvReadBlocksRequest, HandleReadBlocks);
         HFunc(TEvService::TEvWriteBlocksRequest, HandleWriteBlocks);
@@ -692,8 +701,12 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
         HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadBlocksLocal);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
 
-        HFunc(NPartition::TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
-        HFunc(NPartition::TEvPartition::TEvWaitForInFlightWritesRequest, DrainActorCompanion.HandleWaitForInFlightWrites);
+        HFunc(
+            NPartition::TEvPartition::TEvDrainRequest,
+            DrainActorCompanion.HandleDrain);
+        HFunc(
+            NPartition::TEvPartition::TEvWaitForInFlightWritesRequest,
+            DrainActorCompanion.HandleWaitForInFlightWrites);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
@@ -702,28 +715,48 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
             TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest,
             HandleMultiAgentWrite);
 
-        HFunc(TEvNonreplPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
-        HFunc(TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvReadBlocksCompleted,
+            HandleReadBlocksCompleted);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted,
+            HandleWriteBlocksCompleted);
         HFunc(
             TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted,
             HandleMultiAgentWriteBlocksCompleted);
-        HFunc(TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted, HandleZeroBlocksCompleted);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted,
+            HandleZeroBlocksCompleted);
 
-        HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest, HandleChecksumBlocks);
-        HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted, HandleChecksumBlocksCompleted);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest,
+            HandleChecksumBlocks);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted,
+            HandleChecksumBlocksCompleted);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, HandleDescribeBlocks);
-        HFunc(TEvVolume::TEvGetCompactionStatusRequest, HandleGetCompactionStatus);
+        HFunc(
+            TEvVolume::TEvGetCompactionStatusRequest,
+            HandleGetCompactionStatus);
         HFunc(TEvVolume::TEvCompactRangeRequest, HandleCompactRange);
         HFunc(TEvVolume::TEvRebuildMetadataRequest, HandleRebuildMetadata);
-        HFunc(TEvVolume::TEvGetRebuildMetadataStatusRequest, HandleGetRebuildMetadataStatus);
+        HFunc(
+            TEvVolume::TEvGetRebuildMetadataStatusRequest,
+            HandleGetRebuildMetadataStatus);
         HFunc(TEvVolume::TEvScanDiskRequest, HandleScanDisk);
         HFunc(TEvVolume::TEvGetScanDiskStatusRequest, HandleGetScanDiskStatus);
         HFunc(TEvVolume::TEvCheckRangeRequest, HandleCheckRange);
 
-        HFunc(TEvVolumePrivate::TEvDeviceTimedOutResponse, HandleDeviceTimedOutResponse);
-        HFunc(TEvNonreplPartitionPrivate::TEvAgentIsUnavailable, HandleAgentIsUnavailable);
-        HFunc(TEvNonreplPartitionPrivate::TEvAgentIsBackOnline, HandleAgentIsBackOnline);
+        HFunc(
+            TEvVolumePrivate::TEvDeviceTimedOutResponse,
+            HandleDeviceTimedOutResponse);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvAgentIsUnavailable,
+            HandleAgentIsUnavailable);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvAgentIsBackOnline,
+            HandleAgentIsBackOnline);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
@@ -753,7 +786,9 @@ STFUNC(TNonreplicatedPartitionActor::StateZombie)
         HFunc(TEvService::TEvWriteBlocksLocalRequest, RejectWriteBlocksLocal);
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, RejectDrain);
-        HFunc(NPartition::TEvPartition::TEvWaitForInFlightWritesRequest, RejectWaitForInFlightWrites);
+        HFunc(
+            NPartition::TEvPartition::TEvWaitForInFlightWritesRequest,
+            RejectWaitForInFlightWrites);
         HFunc(TEvService::TEvGetChangedBlocksRequest, DeclineGetChangedBlocks);
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
@@ -762,21 +797,35 @@ STFUNC(TNonreplicatedPartitionActor::StateZombie)
             TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest,
             RejectMultiAgentWrite);
 
-        HFunc(TEvNonreplPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
-        HFunc(TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvReadBlocksCompleted,
+            HandleReadBlocksCompleted);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted,
+            HandleWriteBlocksCompleted);
         HFunc(
             TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted,
             HandleMultiAgentWriteBlocksCompleted);
-        HFunc(TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted, HandleZeroBlocksCompleted);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted,
+            HandleZeroBlocksCompleted);
 
-        HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest, RejectChecksumBlocks);
-        HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted, HandleChecksumBlocksCompleted);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest,
+            RejectChecksumBlocks);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted,
+            HandleChecksumBlocksCompleted);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, RejectDescribeBlocks);
-        HFunc(TEvVolume::TEvGetCompactionStatusRequest, RejectGetCompactionStatus);
+        HFunc(
+            TEvVolume::TEvGetCompactionStatusRequest,
+            RejectGetCompactionStatus);
         HFunc(TEvVolume::TEvCompactRangeRequest, RejectCompactRange);
         HFunc(TEvVolume::TEvRebuildMetadataRequest, RejectRebuildMetadata);
-        HFunc(TEvVolume::TEvGetRebuildMetadataStatusRequest, RejectGetRebuildMetadataStatus);
+        HFunc(
+            TEvVolume::TEvGetRebuildMetadataStatusRequest,
+            RejectGetRebuildMetadataStatus);
         HFunc(TEvVolume::TEvScanDiskRequest, RejectScanDisk);
         HFunc(TEvVolume::TEvGetScanDiskStatusRequest, RejectGetScanDiskStatus);
 

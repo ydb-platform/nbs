@@ -4,9 +4,9 @@
 
 #include <cloud/filestore/libs/storage/tablet/tablet_schema.h>
 
-#include <library/cpp/cache/cache.h>
-
 #include <cloud/storage/core/libs/common/lru_cache.h>
+
+#include <library/cpp/cache/cache.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -31,7 +31,7 @@ struct TInMemoryIndexStateStats
  * @brief Stores the state of the index tables in memory. Can be used to perform
  * read-only operations.
  */
-class TInMemoryIndexState : public IIndexTabletDatabase
+class TInMemoryIndexState: public IIndexTabletDatabase
 {
 public:
     explicit TInMemoryIndexState(IAllocator* allocator);
@@ -66,10 +66,7 @@ public:
         TVector<IIndexTabletDatabase::TNode>& nodes) override;
 
 private:
-    void WriteNode(
-        ui64 nodeId,
-        ui64 commitId,
-        const NProto::TNode& attrs);
+    void WriteNode(ui64 nodeId, ui64 commitId, const NProto::TNode& attrs);
 
     void DeleteNode(ui64 nodeId);
 
@@ -207,7 +204,6 @@ public:
         TVector<TDeletionMarker>& deletionMarkers) override;
 
 private:
-
     //
     // Nodes
     //
@@ -278,9 +274,8 @@ private:
 
     struct TNodeRefsKeyHash
     {
-        size_t operator()(
-            const NCloud::NFileStore::NStorage::TInMemoryIndexState::TNodeRefsKey&
-                key) const
+        size_t operator()(const NCloud::NFileStore::NStorage::
+                              TInMemoryIndexState::TNodeRefsKey& key) const
         {
             return MultiHash(key.NodeId, key.Name);
         }

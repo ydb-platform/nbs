@@ -64,25 +64,33 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         tablet.AcquireLock(handle, 1, 0, 4_KB);
 
         auto response = tablet.AssertAcquireLockFailed(handle, 2, 0, 4_KB);
-        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_FS_WOULDBLOCK);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response->GetError().GetCode(),
+            E_FS_WOULDBLOCK);
 
         tablet.ReleaseLock(handle, 1, 0, 4_KB);
         tablet.AcquireLock(handle, 2, 0, 4_KB);
 
         response = tablet.AssertAcquireLockFailed(handle, 1, 0, 0);
-        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_FS_WOULDBLOCK);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response->GetError().GetCode(),
+            E_FS_WOULDBLOCK);
 
         tablet.ReleaseLock(handle, 2, 0, 4_KB);
         tablet.AcquireLock(handle, 1, 0, 0);
 
         response = tablet.AssertAcquireLockFailed(handle, 2, 0, 4_KB);
-        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_FS_WOULDBLOCK);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response->GetError().GetCode(),
+            E_FS_WOULDBLOCK);
 
         tablet.RebootTablet();
         tablet.InitSession("client", "session");
 
         response = tablet.AssertAcquireLockFailed(handle, 2, 0, 4_KB);
-        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_FS_WOULDBLOCK);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response->GetError().GetCode(),
+            E_FS_WOULDBLOCK);
 
         tablet.DestroyHandle(handle);
 
@@ -111,21 +119,37 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         tablet.AcquireLock(handle, 2, 0, 4_KB, DefaultPid, NProto::E_SHARED);
 
         auto response = tablet.AssertAcquireLockFailed(handle, 1, 0, 0);
-        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_FS_WOULDBLOCK);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response->GetError().GetCode(),
+            E_FS_WOULDBLOCK);
 
         tablet.RebootTablet();
         tablet.InitSession("client", "session");
 
         response = tablet.AssertAcquireLockFailed(handle, 1, 0, 0);
-        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_FS_WOULDBLOCK);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response->GetError().GetCode(),
+            E_FS_WOULDBLOCK);
 
         tablet.AcquireLock(handle, 3, 0, 4_KB, DefaultPid, NProto::E_SHARED);
 
         tablet.DestroyHandle(handle);
 
         handle = CreateHandle(tablet, id, {}, TCreateHandleArgs::WRNLY);
-        tablet.AssertTestLockFailed(handle, 1, 0, 4_KB, DefaultPid, NProto::E_SHARED);
-        tablet.AssertAcquireLockFailed(handle, 1, 0, 4_KB, DefaultPid, NProto::E_SHARED);
+        tablet.AssertTestLockFailed(
+            handle,
+            1,
+            0,
+            4_KB,
+            DefaultPid,
+            NProto::E_SHARED);
+        tablet.AssertAcquireLockFailed(
+            handle,
+            1,
+            0,
+            4_KB,
+            DefaultPid,
+            NProto::E_SHARED);
     }
 
     Y_UNIT_TEST(ShouldCleanupLocksKeptBySession)
@@ -140,8 +164,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
 
         tablet.InitSession("client", "session");
 
-        auto id1 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
-        auto id2 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        auto id1 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
+        auto id2 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
 
         ui64 handle1 = CreateHandle(tablet, id1);
         ui64 handle2 = CreateHandle(tablet, id2);
@@ -158,7 +184,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         tablet.AcquireLock(handle1, 1, 0, 4_KB);
 
         auto response = tablet.AssertAcquireLockFailed(handle1, 2, 0, 4_KB);
-        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_FS_WOULDBLOCK);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response->GetError().GetCode(),
+            E_FS_WOULDBLOCK);
     }
 
     Y_UNIT_TEST(ShouldCreateHandlesAndFiles)
@@ -172,16 +200,21 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
 
-        auto id1 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto id1 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
 
         tablet.CreateHandle(id1, TCreateHandleArgs::CREATE);
         tablet.CreateHandle(id1, TCreateHandleArgs::RDWR);
 
-        auto response2 = tablet.CreateHandle(RootNodeId, "xxx", TCreateHandleArgs::CREATE);
+        auto response2 =
+            tablet.CreateHandle(RootNodeId, "xxx", TCreateHandleArgs::CREATE);
         auto id2 = response2->Record.GetNodeAttr().GetId();
         UNIT_ASSERT(id2 != InvalidNodeId);
 
-        auto response3 = tablet.CreateHandle(RootNodeId, "yyy", TCreateHandleArgs::CREATE_EXL);
+        auto response3 = tablet.CreateHandle(
+            RootNodeId,
+            "yyy",
+            TCreateHandleArgs::CREATE_EXL);
         auto id3 = response3->Record.GetNodeAttr().GetId();
         UNIT_ASSERT(id3 != InvalidNodeId);
 
@@ -217,9 +250,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         // create file under file node
         tablet.AssertCreateHandleFailed(id, "xxx", TCreateHandleArgs::CREATE);
         // create the same file with O_EXCL
-        tablet.AssertCreateHandleFailed(RootNodeId, "test", TCreateHandleArgs::CREATE_EXL);
+        tablet.AssertCreateHandleFailed(
+            RootNodeId,
+            "test",
+            TCreateHandleArgs::CREATE_EXL);
         // open non existent file w/o O_CREAT
-        tablet.AssertCreateHandleFailed(RootNodeId, "xxx", TCreateHandleArgs::RDWR);
+        tablet.AssertCreateHandleFailed(
+            RootNodeId,
+            "xxx",
+            TCreateHandleArgs::RDWR);
     }
 
     Y_UNIT_TEST(ShouldKeepFileByOpenHandle)
@@ -296,7 +335,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         tablet.SubscribeSession();
         tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test"));
 
-        auto response = tablet.RecvResponse<TEvService::TEvGetSessionEventsResponse>();
+        auto response =
+            tablet.RecvResponse<TEvService::TEvGetSessionEventsResponse>();
         UNIT_ASSERT_C(
             SUCCEEDED(response->GetStatus()),
             response->GetErrorReason());
@@ -319,11 +359,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         {
             auto response = tablet.CreateSession(
                 "client",
-                "session",  // sessionId
-                "",         // checkpointId
+                "session",   // sessionId
+                "",          // checkpointId
                 0,
                 false,
-                true        // restoreClientSession
+                true   // restoreClientSession
             );
             sessionId = response->Record.GetSessionId();
         }
@@ -339,25 +379,29 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         {
             auto response = tablet.CreateSession(
                 "client",
-                "vasya",    // sessionId
-                "",         // checkpointId
+                "vasya",   // sessionId
+                "",        // checkpointId
                 0,
                 false,
-                true        // restoreClientSession
+                true   // restoreClientSession
             );
-            UNIT_ASSERT_VALUES_EQUAL("session", response->Record.GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "session",
+                response->Record.GetSessionId());
         }
 
         {
             auto response = tablet.CreateSession(
                 "client",
-                "",         // sessionId
-                "",         // checkpointId
+                "",   // sessionId
+                "",   // checkpointId
                 0,
                 false,
-                true        // restoreClientSession
+                true   // restoreClientSession
             );
-            UNIT_ASSERT_VALUES_EQUAL("session", response->Record.GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "session",
+                response->Record.GetSessionId());
         }
 
         TString expected;
@@ -382,7 +426,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
 
-        auto id1 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto id1 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle1 = CreateHandle(tablet, id1);
         tablet.AcquireLock(handle1, 1, 0, 1_KB);
 
@@ -394,7 +439,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
 
         // check that handles are invalidated
         auto lock = tablet.AssertAcquireLockFailed(handle1, 1, 0, 1_KB);
-        UNIT_ASSERT_VALUES_EQUAL(lock->Record.GetError().GetCode(), (ui32)E_FS_BADHANDLE);
+        UNIT_ASSERT_VALUES_EQUAL(
+            lock->Record.GetError().GetCode(),
+            (ui32)E_FS_BADHANDLE);
 
         // check that locks are invalidated
         handle1 = CreateHandle(tablet, id1);
@@ -457,7 +504,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
 
-        auto createRequest = [&] (ui64 reqId) {
+        auto createRequest = [&](ui64 reqId)
+        {
             auto request = tablet.CreateCreateHandleRequest(
                 RootNodeId,
                 "xxx",
@@ -513,7 +561,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
 
-        auto createRequest = [&] (ui64 reqId, const TString& name) {
+        auto createRequest = [&](ui64 reqId, const TString& name)
+        {
             auto request = tablet.CreateCreateHandleRequest(
                 RootNodeId,
                 name,
@@ -594,8 +643,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
 
         tablet.InitSession("client", "session", {}, 2);
 
-        auto id1 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
-        auto id2 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        auto id1 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
+        auto id2 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
 
         ui64 handle1 = CreateHandle(tablet, id1);
         ui64 handle2 = CreateHandle(tablet, id2);
@@ -610,7 +661,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         tablet.InitSession("client", "session2");
         handle1 = CreateHandle(tablet, id1);
         auto response = tablet.AssertAcquireLockFailed(handle1, 2, 0, 4_KB);
-        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_FS_WOULDBLOCK);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response->GetError().GetCode(),
+            E_FS_WOULDBLOCK);
 
         tablet.InitSession("client", "session", {}, 2);
         tablet.DestroySession(2);
@@ -632,8 +685,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
 
         tablet.InitSession("client", "session", {}, 2);
 
-        auto id1 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
-        auto id2 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        auto id1 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
+        auto id2 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
 
         ui64 handle1 = CreateHandle(tablet, id1);
         ui64 handle2 = CreateHandle(tablet, id2);
@@ -648,7 +703,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         tablet.InitSession("client", "session2");
         handle1 = CreateHandle(tablet, id1);
         auto response = tablet.AssertAcquireLockFailed(handle1, 2, 0, 4_KB);
-        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_FS_WOULDBLOCK);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response->GetError().GetCode(),
+            E_FS_WOULDBLOCK);
 
         tablet.InitSession("client", "session", {}, 2);
         tablet.ResetSession("client", "session", 2, "");
@@ -671,11 +728,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         {
             auto response = tablet.CreateSession(
                 "client",
-                "session",  // sessionId
-                "",         // checkpointId
+                "session",   // sessionId
+                "",          // checkpointId
                 0,
                 false,
-                true        // restoreClientSession
+                true   // restoreClientSession
             );
             sessionId = response->Record.GetSessionId();
         }
@@ -687,14 +744,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         {
             auto response = tablet.CreateSession(
                 "client",
-                "vasya",    // sessionId
-                "",         // checkpointId
+                "vasya",   // sessionId
+                "",        // checkpointId
                 1,
                 false,
-                true        // restoreClientSession
+                true   // restoreClientSession
             );
-            UNIT_ASSERT_VALUES_EQUAL("session", response->Record.GetSessionId());
-            UNIT_ASSERT_VALUES_EQUAL("hello", response->Record.GetSessionState());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "session",
+                response->Record.GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "hello",
+                response->Record.GetSessionState());
         }
 
         tablet.RebootTablet();
@@ -702,14 +763,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         {
             auto response = tablet.CreateSession(
                 "client",
-                "",         // sessionId
-                "",         // checkpointId
+                "",   // sessionId
+                "",   // checkpointId
                 2,
                 false,
-                true        // restoreClientSession
+                true   // restoreClientSession
             );
-            UNIT_ASSERT_VALUES_EQUAL("session", response->Record.GetSessionId());
-            UNIT_ASSERT_VALUES_EQUAL("hello", response->Record.GetSessionState());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "session",
+                response->Record.GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "hello",
+                response->Record.GetSessionState());
         }
     }
 
@@ -735,7 +800,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         tclient1.WithSessionSeqNo(1);
         tclient2.WithSessionSeqNo(2);
 
-        auto id = CreateNode(tclient1, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto id =
+            CreateNode(tclient1, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tclient1, id);
         tclient1.WriteData(handle, 0, 4_KB, '0');
         tclient1.WriteData(handle, 100, 10, 'a');
@@ -758,7 +824,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         }
     }
 
-    Y_UNIT_TEST(ShouldSupportInterhostMigrationRollbackScenarioInPresenseOfResets)
+    Y_UNIT_TEST(
+        ShouldSupportInterhostMigrationRollbackScenarioInPresenseOfResets)
     {
         TTestEnvConfig envCfg;
         envCfg.DynamicNodes = 2;
@@ -780,7 +847,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         tclient1.WithSessionSeqNo(1);
         tclient2.WithSessionSeqNo(2);
 
-        auto id = CreateNode(tclient1, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto id =
+            CreateNode(tclient1, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tclient1, id);
         tclient1.WriteData(handle, 0, 4_KB, '0');
         tclient1.WriteData(handle, 100, 10, 'a');
@@ -817,7 +885,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
 
         auto response = tablet.CreateSession("client", "session");
         const auto& features = response->Record.GetFileStore().GetFeatures();
-        UNIT_ASSERT_VALUES_EQUAL(features.DebugString(), expected.DebugString());
+        UNIT_ASSERT_VALUES_EQUAL(
+            features.DebugString(),
+            expected.DebugString());
     }
 
     Y_UNIT_TEST(ShouldReturnFeaturesInCreateSessionResponse)
@@ -925,7 +995,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             tablet.SendUnlinkNodeRequest(
                 RootNodeId,
                 "file1",
-                false, // unlinkDirectory
+                false,   // unlinkDirectory
                 requestId);
 
             auto response = tablet.RecvUnlinkNodeResponse();
@@ -939,7 +1009,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             tablet.SendUnlinkNodeRequest(
                 RootNodeId,
                 "file1",
-                false, // unlinkDirectory
+                false,   // unlinkDirectory
                 requestId);
 
             auto response = tablet.RecvUnlinkNodeResponse();

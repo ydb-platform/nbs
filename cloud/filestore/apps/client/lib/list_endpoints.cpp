@@ -6,8 +6,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TListEndpointsCommand final
-    : public TEndpointCommand
+class TListEndpointsCommand final: public TEndpointCommand
 {
 public:
     bool Execute() override
@@ -17,9 +16,7 @@ public:
         auto request = std::make_shared<NProto::TListEndpointsRequest>();
 
         auto response = WaitFor(
-            Client->ListEndpoints(
-                std::move(callContext),
-                std::move(request)));
+            Client->ListEndpoints(std::move(callContext), std::move(request)));
 
         if (HasError(response)) {
             ythrow TServiceError(response.GetError());

@@ -17,10 +17,7 @@ void TPartitionActor::HandleInitIndex(
 {
     auto* msg = ev->Get();
 
-    auto tx = CreateTx<TInitIndex>(
-        ev->Sender,
-        std::move(msg->BlockRanges)
-    );
+    auto tx = CreateTx<TInitIndex>(ev->Sender, std::move(msg->BlockRanges));
     ExecuteTx(ctx, std::move(tx));
 }
 

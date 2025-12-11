@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/startable.h>
 
@@ -29,9 +30,7 @@ struct TDiskBackOnline
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TEvent = std::variant<
-    TDiskError,
-    TDiskBackOnline>;
+using TEvent = std::variant<TDiskError, TDiskBackOnline>;
 
 struct TNotification
 {
@@ -46,8 +45,7 @@ struct TNotification
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IService
-    : public IStartable
+struct IService: public IStartable
 {
     virtual NThreading::TFuture<NProto::TError> Notify(
         const TNotification& data) = 0;

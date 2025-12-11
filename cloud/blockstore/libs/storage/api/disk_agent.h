@@ -2,10 +2,9 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/libs/storage/protos/disk.pb.h>
-
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
+#include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 
@@ -13,30 +12,30 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DISK_AGENT_REQUESTS_LOCAL(xxx, ...)                         \
-    xxx(WaitReady,          __VA_ARGS__)                                       \
-// BLOCKSTORE_DISK_AGENT_REQUESTS_LOCAL
+#define BLOCKSTORE_DISK_AGENT_REQUESTS_LOCAL(xxx, ...) \
+    xxx(WaitReady, __VA_ARGS__)                        \
+    // BLOCKSTORE_DISK_AGENT_REQUESTS_LOCAL
 
-#define BLOCKSTORE_DISK_AGENT_REQUESTS_PROTO(xxx, ...)                         \
-    xxx(AcquireDevices,           __VA_ARGS__)                                 \
-    xxx(ReleaseDevices,           __VA_ARGS__)                                 \
-    xxx(ReadDeviceBlocks,         __VA_ARGS__)                                 \
-    xxx(WriteDeviceBlocks,        __VA_ARGS__)                                 \
-    xxx(ZeroDeviceBlocks,         __VA_ARGS__)                                 \
-    xxx(SecureEraseDevice,        __VA_ARGS__)                                 \
-    xxx(ChecksumDeviceBlocks,     __VA_ARGS__)                                 \
-    xxx(DisableConcreteAgent,     __VA_ARGS__)                                 \
-    xxx(EnableAgentDevice,        __VA_ARGS__)                                 \
-    xxx(PartiallySuspendAgent,    __VA_ARGS__)                                 \
-    xxx(DirectCopyBlocks,         __VA_ARGS__)                                 \
-    xxx(DetachPaths,              __VA_ARGS__)                                 \
+#define BLOCKSTORE_DISK_AGENT_REQUESTS_PROTO(xxx, ...) \
+    xxx(AcquireDevices, __VA_ARGS__)                   \
+    xxx(ReleaseDevices, __VA_ARGS__)                   \
+    xxx(ReadDeviceBlocks, __VA_ARGS__)                 \
+    xxx(WriteDeviceBlocks, __VA_ARGS__)                \
+    xxx(ZeroDeviceBlocks, __VA_ARGS__)                 \
+    xxx(SecureEraseDevice, __VA_ARGS__)                \
+    xxx(ChecksumDeviceBlocks, __VA_ARGS__)             \
+    xxx(DisableConcreteAgent, __VA_ARGS__)             \
+    xxx(EnableAgentDevice, __VA_ARGS__)                \
+    xxx(PartiallySuspendAgent, __VA_ARGS__)            \
+    xxx(DirectCopyBlocks, __VA_ARGS__)                 \
+    xxx(DetachPaths, __VA_ARGS__)
 
 // BLOCKSTORE_DISK_AGENT_REQUESTS_PROTO
 
-#define BLOCKSTORE_DISK_AGENT_REQUESTS(xxx, ...)                               \
-    BLOCKSTORE_DISK_AGENT_REQUESTS_LOCAL(xxx, __VA_ARGS__)                     \
-    BLOCKSTORE_DISK_AGENT_REQUESTS_PROTO(xxx, __VA_ARGS__)                     \
-// BLOCKSTORE_DISK_AGENT_REQUESTS
+#define BLOCKSTORE_DISK_AGENT_REQUESTS(xxx, ...)           \
+    BLOCKSTORE_DISK_AGENT_REQUESTS_LOCAL(xxx, __VA_ARGS__) \
+    BLOCKSTORE_DISK_AGENT_REQUESTS_PROTO(xxx, __VA_ARGS__) \
+    // BLOCKSTORE_DISK_AGENT_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -104,7 +103,8 @@ struct TEvDiskAgent
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStoreEvents::DISK_AGENT_END,
+    static_assert(
+        EvEnd < (int)TBlockStoreEvents::DISK_AGENT_END,
         "EvEnd expected to be < TBlockStoreEvents::DISK_AGENT_END");
 
     BLOCKSTORE_DISK_AGENT_REQUESTS_LOCAL(BLOCKSTORE_DECLARE_EVENTS)

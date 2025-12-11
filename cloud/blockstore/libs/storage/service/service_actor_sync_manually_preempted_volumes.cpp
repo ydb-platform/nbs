@@ -36,9 +36,7 @@ private:
     const TString Data;
 
 public:
-    TSyncManuallyPreemptedVolumesActor(
-        TString filePath,
-        TString data);
+    TSyncManuallyPreemptedVolumesActor(TString filePath, TString data);
 
     void Bootstrap(const TActorContext& ctx);
 };
@@ -46,8 +44,8 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 TSyncManuallyPreemptedVolumesActor::TSyncManuallyPreemptedVolumesActor(
-        TString filePath,
-        TString data)
+    TString filePath,
+    TString data)
     : FilePath(std::move(filePath))
     , Data(std::move(data))
 {}
@@ -60,13 +58,13 @@ void TSyncManuallyPreemptedVolumesActor::Bootstrap(const TActorContext& ctx)
         LOG_ERROR_S(
             ctx,
             TBlockStoreComponents::SERVICE,
-            TStringBuilder()
-                << "Failed to write manually preempted volumes: "
-                << CurrentExceptionMessage());
+            TStringBuilder() << "Failed to write manually preempted volumes: "
+                             << CurrentExceptionMessage());
         ReportManuallyPreemptedVolumesFileError(CurrentExceptionMessage());
     }
 
-    using TResponse = TEvServicePrivate::TEvSyncManuallyPreemptedVolumesComplete;
+    using TResponse =
+        TEvServicePrivate::TEvSyncManuallyPreemptedVolumesComplete;
 
     auto response = std::make_unique<TResponse>();
     NCloud::Send(ctx, MakeStorageServiceId(), std::move(response));

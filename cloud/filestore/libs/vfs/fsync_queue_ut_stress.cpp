@@ -63,24 +63,23 @@ public:
     void Add(TFunction&& function)
     {
         Workers.push_back(SystemThreadFactory()->Run(
-            [this, function = std::forward<TFunction>(function)] {
+            [this, function = std::forward<TFunction>(function)]
+            {
                 with_lock (Mutex) {
                     StartedCV.Wait(Mutex, [&] { return Started; });
                 }
                 function();
-            }
-        ));
+            }));
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEnvironment
-    : public NUnitTest::TBaseFixture
+struct TEnvironment: public NUnitTest::TBaseFixture
 {
     const TString FileSystemId = "nfs_test";
     const ILoggingServicePtr Logging =
-        CreateLoggingService("console", { TLOG_RESOURCES });
+        CreateLoggingService("console", {TLOG_RESOURCES});
 
     TFSyncQueue Queue = TFSyncQueue(FileSystemId, Logging);
 
@@ -104,7 +103,7 @@ struct TEnvironment
 
     TNodeId GetNextNodeId()
     {
-        return TNodeId {CurrentNodeId.fetch_add(1ul)};
+        return TNodeId{CurrentNodeId.fetch_add(1ul)};
     }
 
     THandle GetRandomHandle()
@@ -115,7 +114,7 @@ struct TEnvironment
 
         with_lock (HandleMutex) {
             for (;;) {
-                THandle handle {dist(eng)};
+                THandle handle{dist(eng)};
 
                 if (UsedHandles.emplace(handle).second) {
                     return handle;
@@ -145,40 +144,40 @@ Y_UNIT_TEST_SUITE(TFSyncQueueStressTest)
         TMap<TNodeId, TFSyncCache::TRequestId> metaFsyncMap;
 
         TMutex dataFsyncMutex;
-        TMap<
-            std::pair<TNodeId, THandle>,
-            TFSyncCache::TRequestId> dataFsyncMap;
+        TMap<std::pair<TNodeId, THandle>, TFSyncCache::TRequestId> dataFsyncMap;
 
         TMutex metaMutex;
         TMap<TFSyncCache::TRequestId, TNodeId> metaMap;
 
         TMutex dataMutex;
-        TMap<
-            TFSyncCache::TRequestId,
-            std::pair<TNodeId, THandle>> dataMap;
+        TMap<TFSyncCache::TRequestId, std::pair<TNodeId, THandle>> dataMap;
 
         std::atomic_flag shouldStop(false);
 
-        const auto getRandomMetaRequest = [&] {
+        const auto getRandomMetaRequest = [&]
+        {
             static auto localEng = CreateRandomEngine();
 
             with_lock (metaMutex) {
                 const auto size = metaMap.size();
                 if (size == 0) {
-                    return TNodeId {};
+                    return TNodeId{};
                 }
                 std::uniform_int_distribution<ui64> dist(0, size - 1);
-                return TNodeId {std::next(metaMap.begin(), dist(localEng))->second};
+                return TNodeId{
+                    std::next(metaMap.begin(), dist(localEng))->second};
             }
         };
 
-        const auto isEmptyMetaMap = [&] {
+        const auto isEmptyMetaMap = [&]
+        {
             with_lock (metaMutex) {
                 return metaMap.empty();
             }
         };
 
-        const auto addMetaRequest = [&] (TNodeId nodeId) {
+        const auto addMetaRequest = [&](TNodeId nodeId)
+        {
             const auto reqId = GetNextRequestId();
             Queue.Enqueue(reqId, nodeId);
             with_lock (metaMutex) {
@@ -186,7 +185,8 @@ Y_UNIT_TEST_SUITE(TFSyncQueueStressTest)
             }
         };
 
-        const auto removeRandomMetaRequest = [&] {
+        const auto removeRandomMetaRequest = [&]
+        {
             static auto localEng = CreateRandomEngine();
 
             TFSyncCache::TRequestId reqId = 0ul;
@@ -206,37 +206,38 @@ Y_UNIT_TEST_SUITE(TFSyncQueueStressTest)
             Queue.Dequeue(reqId, {}, nodeId);
         };
 
-        const auto getRandomDataRequest = [&] {
+        const auto getRandomDataRequest = [&]
+        {
             static auto localEng = CreateRandomEngine();
 
             with_lock (dataMutex) {
                 const auto size = dataMap.size();
                 if (size == 0) {
-                    return std::make_pair(TNodeId {}, THandle {});
+                    return std::make_pair(TNodeId{}, THandle{});
                 }
                 std::uniform_int_distribution<ui64> dist(0, size - 1);
                 return std::next(dataMap.begin(), dist(localEng))->second;
             }
         };
 
-        const auto isEmptyDataMap = [&] {
+        const auto isEmptyDataMap = [&]
+        {
             with_lock (dataMutex) {
                 return dataMap.empty();
             }
         };
 
-        const auto addDataRequest = [&] (
-                TNodeId nodeId,
-                THandle handle)
-            {
-                const auto reqId = GetNextRequestId();
-                Queue.Enqueue(reqId, nodeId, handle);
-                with_lock (dataMutex) {
-                    dataMap.emplace(reqId, std::make_pair(nodeId, handle));
-                }
-            };
+        const auto addDataRequest = [&](TNodeId nodeId, THandle handle)
+        {
+            const auto reqId = GetNextRequestId();
+            Queue.Enqueue(reqId, nodeId, handle);
+            with_lock (dataMutex) {
+                dataMap.emplace(reqId, std::make_pair(nodeId, handle));
+            }
+        };
 
-        const auto removeRandomDataRequest = [&] {
+        const auto removeRandomDataRequest = [&]
+        {
             static auto localEng = CreateRandomEngine();
 
             TFSyncCache::TRequestId reqId = 0ul;
@@ -261,149 +262,179 @@ Y_UNIT_TEST_SUITE(TFSyncQueueStressTest)
         TScopedTasks tasks;
 
         // Producer
-        tasks.Add([&, this] {
-            auto eng = CreateRandomEngine();
+        tasks.Add(
+            [&, this]
+            {
+                auto eng = CreateRandomEngine();
 
-            std::uniform_int_distribution<ui64> requestDist(0ul, 2ul);
-            std::uniform_int_distribution<ui64> shouldPerformFsyncDist(0ul, 255ul);
+                std::uniform_int_distribution<ui64> requestDist(0ul, 2ul);
+                std::uniform_int_distribution<ui64> shouldPerformFsyncDist(
+                    0ul,
+                    255ul);
 
-            while (fsyncStarted.load() < fsyncCount) {
-                switch (requestDist(eng)) {
-                    case 0ul: {
-                        switch (requestDist(eng)) {
-                            case 0ul: {
-                                const auto nodeId = getRandomMetaRequest();
-                                if (!nodeId) {
+                while (fsyncStarted.load() < fsyncCount) {
+                    switch (requestDist(eng)) {
+                        case 0ul: {
+                            switch (requestDist(eng)) {
+                                case 0ul: {
+                                    const auto nodeId = getRandomMetaRequest();
+                                    if (!nodeId) {
+                                        break;
+                                    }
+                                    addMetaRequest(nodeId);
                                     break;
                                 }
-                                addMetaRequest(nodeId);
-                                break;
-                            }
-                            case 1ul: {
-                                const auto [nodeId, handle] = getRandomDataRequest();
-                                if (!nodeId && !handle) {
+                                case 1ul: {
+                                    const auto [nodeId, handle] =
+                                        getRandomDataRequest();
+                                    if (!nodeId && !handle) {
+                                        break;
+                                    }
+                                    addMetaRequest(nodeId);
                                     break;
                                 }
-                                addMetaRequest(nodeId);
-                                break;
+                                case 2ul: {
+                                    addMetaRequest(GetNextNodeId());
+                                    break;
+                                }
+                                default: {
+                                    // unreacheable code
+                                    UNIT_ASSERT(false);
+                                }
                             }
-                            case 2ul: {
-                                addMetaRequest(GetNextNodeId());
-                                break;
-                            }
-                            default: {
-                                // unreacheable code
-                                UNIT_ASSERT(false);
-                            }
+                            break;
                         }
-                        break;
-                    }
-                    case 1ul: {
-                        switch (requestDist(eng)) {
-                            case 0ul: {
-                                const auto nodeId = getRandomMetaRequest();
-                                if (!nodeId) {
+                        case 1ul: {
+                            switch (requestDist(eng)) {
+                                case 0ul: {
+                                    const auto nodeId = getRandomMetaRequest();
+                                    if (!nodeId) {
+                                        break;
+                                    }
+                                    addDataRequest(nodeId, GetRandomHandle());
                                     break;
                                 }
-                                addDataRequest(nodeId, GetRandomHandle());
-                                break;
-                            }
-                            case 1ul: {
-                                const auto [nodeId, handle] = getRandomDataRequest();
-                                if (!nodeId && !handle) {
+                                case 1ul: {
+                                    const auto [nodeId, handle] =
+                                        getRandomDataRequest();
+                                    if (!nodeId && !handle) {
+                                        break;
+                                    }
+                                    addDataRequest(nodeId, handle);
                                     break;
                                 }
-                                addDataRequest(nodeId, handle);
-                                break;
+                                case 2ul: {
+                                    addDataRequest(
+                                        GetNextNodeId(),
+                                        GetRandomHandle());
+                                    break;
+                                }
+                                default: {
+                                    // unreacheable code
+                                    UNIT_ASSERT(false);
+                                }
                             }
-                            case 2ul: {
-                                addDataRequest(GetNextNodeId(), GetRandomHandle());
-                                break;
-                            }
-                            default: {
-                                // unreacheable code
-                                UNIT_ASSERT(false);
-                            }
+                            break;
                         }
-                        break;
+                        default: {
+                            break;
+                        }
                     }
-                    default: {
-                        break;
-                    }
-                }
 
-                const auto fsyncVal = shouldPerformFsyncDist(eng);
-                if (fsyncVal < 64ul) {
-                    const auto nodeId = getRandomMetaRequest();
-                    if (nodeId) {
+                    const auto fsyncVal = shouldPerformFsyncDist(eng);
+                    if (fsyncVal < 64ul) {
+                        const auto nodeId = getRandomMetaRequest();
+                        if (nodeId) {
+                            fsyncStarted.fetch_add(1ul);
+                            const auto reqId = GetNextRequestId();
+                            Queue.WaitForRequests(reqId, nodeId)
+                                .Subscribe(
+                                    [&, nodeId, reqId](const auto& future)
+                                    {
+                                        Y_UNUSED(future);
+                                        with_lock (metaFsyncMutex) {
+                                            UNIT_ASSERT(
+                                                std::exchange(
+                                                    metaFsyncMap[nodeId],
+                                                    reqId) < reqId);
+                                        }
+                                        fsyncCompleted.fetch_add(1ul);
+                                    });
+                        }
+                    } else if (fsyncVal < 128ul) {
+                        const auto dataReq = getRandomDataRequest();
+                        if (dataReq.first && dataReq.second) {
+                            fsyncStarted.fetch_add(1ul);
+                            const auto reqId = GetNextRequestId();
+                            Queue
+                                .WaitForDataRequests(
+                                    reqId,
+                                    dataReq.first,
+                                    dataReq.second)
+                                .Subscribe(
+                                    [&, key = dataReq, reqId](
+                                        const auto& future)
+                                    {
+                                        Y_UNUSED(future);
+                                        with_lock (dataFsyncMutex) {
+                                            UNIT_ASSERT(
+                                                std::exchange(
+                                                    dataFsyncMap[key],
+                                                    reqId) < reqId);
+                                        }
+                                        fsyncCompleted.fetch_add(1ul);
+                                    });
+                        }
+                    } else if (fsyncVal < 129ul) {
                         fsyncStarted.fetch_add(1ul);
                         const auto reqId = GetNextRequestId();
-                        Queue.WaitForRequests(reqId, nodeId)
-                            .Subscribe([&, nodeId, reqId] (const auto& future) {
+                        Queue.WaitForRequests(reqId).Subscribe(
+                            [&, reqId](const auto& future)
+                            {
                                 Y_UNUSED(future);
-                                with_lock (metaFsyncMutex) {
-                                    UNIT_ASSERT(std::exchange(metaFsyncMap[nodeId], reqId) < reqId);
-                                }
+                                UNIT_ASSERT(
+                                    metaFsyncGlobal.exchange(reqId) < reqId);
+                                fsyncCompleted.fetch_add(1ul);
+                            });
+                    } else if (fsyncVal < 130ul) {
+                        fsyncStarted.fetch_add(1ul);
+                        const auto reqId = GetNextRequestId();
+                        Queue.WaitForDataRequests(reqId).Subscribe(
+                            [&, reqId](const auto& future)
+                            {
+                                Y_UNUSED(future);
+                                UNIT_ASSERT(
+                                    dataFsyncGlobal.exchange(reqId) < reqId);
                                 fsyncCompleted.fetch_add(1ul);
                             });
                     }
-                } else if (fsyncVal < 128ul) {
-                    const auto dataReq = getRandomDataRequest();
-                    if (dataReq.first && dataReq.second) {
-                        fsyncStarted.fetch_add(1ul);
-                        const auto reqId = GetNextRequestId();
-                        Queue.WaitForDataRequests(reqId, dataReq.first, dataReq.second)
-                            .Subscribe([&, key = dataReq, reqId] (const auto& future) {
-                                Y_UNUSED(future);
-                                with_lock (dataFsyncMutex) {
-                                    UNIT_ASSERT(std::exchange(dataFsyncMap[key], reqId) < reqId);
-                                }
-                                fsyncCompleted.fetch_add(1ul);
-                            });
-                    }
-                } else if (fsyncVal < 129ul) {
-                    fsyncStarted.fetch_add(1ul);
-                    const auto reqId = GetNextRequestId();
-                    Queue.WaitForRequests(reqId)
-                        .Subscribe([&, reqId] (const auto& future) {
-                            Y_UNUSED(future);
-                            UNIT_ASSERT(metaFsyncGlobal.exchange(reqId) < reqId);
-                            fsyncCompleted.fetch_add(1ul);
-                        });
-                } else if (fsyncVal < 130ul) {
-                    fsyncStarted.fetch_add(1ul);
-                    const auto reqId = GetNextRequestId();
-                    Queue.WaitForDataRequests(reqId)
-                        .Subscribe([&, reqId] (const auto& future) {
-                            Y_UNUSED(future);
-                            UNIT_ASSERT(dataFsyncGlobal.exchange(reqId) < reqId);
-                            fsyncCompleted.fetch_add(1ul);
-                        });
                 }
-            }
 
-            shouldStop.test_and_set();
-        });
+                shouldStop.test_and_set();
+            });
 
         // Consumers
-        const auto threads = std::max(8u, std::thread::hardware_concurrency()) - 1ul;
+        const auto threads =
+            std::max(8u, std::thread::hardware_concurrency()) - 1ul;
         for (ui32 i = 0; i < threads; ++i) {
-            tasks.Add([&, index = i] {
-                auto eng = CreateRandomEngine();
-                std::uniform_int_distribution<ui64> dist(0, threads);
-                while (!shouldStop.test() ||
+            tasks.Add(
+                [&, index = i]
+                {
+                    auto eng = CreateRandomEngine();
+                    std::uniform_int_distribution<ui64> dist(0, threads);
+                    while (!shouldStop.test() ||
                            fsyncCompleted.load() < fsyncStarted.load() ||
-                           !isEmptyMetaMap() ||
-                           !isEmptyDataMap()) {
-                    if (dist(eng) == 0ul) {
-                        if (index % 2 == 0) {
-                            removeRandomMetaRequest();
-                        } else {
-                            removeRandomDataRequest();
+                           !isEmptyMetaMap() || !isEmptyDataMap())
+                    {
+                        if (dist(eng) == 0ul) {
+                            if (index % 2 == 0) {
+                                removeRandomMetaRequest();
+                            } else {
+                                removeRandomDataRequest();
+                            }
                         }
                     }
-                }
-            });
+                });
         }
 
         tasks.Start();

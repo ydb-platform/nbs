@@ -2,11 +2,11 @@
 
 #include "public.h"
 
-#include <rdma/rdma_verbs.h>
-
 #include <util/generic/utility.h>
 #include <util/stream/output.h>
 #include <util/stream/printf.h>
+
+#include <rdma/rdma_verbs.h>
 
 namespace NCloud::NBlockStore::NRdma {
 
@@ -17,11 +17,11 @@ constexpr size_t RDMA_MAX_RECV_SGE = 1;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-union TWorkRequestId
-{
+union TWorkRequestId {
     ui64 Id;
 
-    struct {
+    struct
+    {
         ui32 Magic;
         ui16 Generation;
         ui16 Index;

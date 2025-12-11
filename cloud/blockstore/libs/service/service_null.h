@@ -5,12 +5,11 @@
 namespace NCloud::NBlockStore {
 
 namespace NProto {
-    class TNullServiceConfig;
+class TNullServiceConfig;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IBlockStorePtr CreateNullService(
-    const NProto::TNullServiceConfig& config);
+IBlockStorePtr CreateNullService(const NProto::TNullServiceConfig& config);
 
 }   // namespace NCloud::NBlockStore

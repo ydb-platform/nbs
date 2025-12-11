@@ -12,8 +12,7 @@ using namespace NKikimr;
 
 using namespace NCloud::NStorage;
 
-class TKikimrServicesInitializer final
-    : public IServiceInitializer
+class TKikimrServicesInitializer final: public IServiceInitializer
 {
 private:
     const NKikimrConfig::TAppConfigPtr Config;

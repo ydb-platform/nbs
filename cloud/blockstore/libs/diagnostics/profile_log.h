@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/service/request.h>
+
 #include <cloud/storage/core/libs/common/startable.h>
 
 #include <util/datetime/base.h>
@@ -14,8 +15,7 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IProfileLog
-    : IStartable
+struct IProfileLog: IStartable
 {
     struct TBlockInfo
     {
@@ -23,7 +23,8 @@ struct IProfileLog
         ui32 Checksum = 0;
     };
 
-    struct TReplicaChecksums {
+    struct TReplicaChecksums
+    {
         ui32 ReplicaId = 0;
         TVector<ui32> Checksums;
     };
@@ -124,8 +125,8 @@ struct IProfileLog
             TSysReadWriteRequestBlockCommitIds,
             TDescribeBlocksRequest,
             TMiscRequest,
-            TCleanupRequestBlobUpdates
-        > Request;
+            TCleanupRequestBlobUpdates>
+            Request;
     };
 
     virtual void Write(TRecord record) = 0;

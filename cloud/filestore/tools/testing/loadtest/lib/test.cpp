@@ -62,16 +62,13 @@ struct TTestStats
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T WaitForCompletion(
-    const TString& request,
-    const TFuture<T>& future)
+T WaitForCompletion(const TString& request, const TFuture<T>& future)
 {
     const auto& response = future.GetValue(TDuration::Max());
     if (HasError(response)) {
         const auto& error = response.GetError();
-        throw yexception()
-            << "Failed to execute " << request << " request: "
-            << FormatError(error);
+        throw yexception() << "Failed to execute " << request
+                           << " request: " << FormatError(error);
     }
 
     return response;
@@ -120,9 +117,15 @@ struct TTeardown
 {
     TPromise<bool> Complete;
 };
-struct TSuspendLoad {};
-struct TResumeLoad {};
-struct TProcessCompletedRequests {};
+struct TSuspendLoad
+{
+};
+struct TResumeLoad
+{
+};
+struct TProcessCompletedRequests
+{
+};
 
 using TLoadTestCommand = std::variant<
     TTeardown,
@@ -191,11 +194,8 @@ struct TTestFinished
     TString Id;
 };
 
-using TLoadTestControllerCommand = std::variant<
-    TStartSource,
-    TStartTarget,
-    TFinishMigration,
-    TTestFinished>;
+using TLoadTestControllerCommand =
+    std::variant<TStartSource, TStartTarget, TFinishMigration, TTestFinished>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -290,13 +290,13 @@ private:
 
 public:
     TLoadTest(
-            NProto::TLoadTest config,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            ILoggingServicePtr logging,
-            IClientFactoryPtr clientFactory,
-            TString testInstanceId,
-            TLoadTestControllerCommandChannel& controller)
+        NProto::TLoadTest config,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler,
+        ILoggingServicePtr logging,
+        IClientFactoryPtr clientFactory,
+        TString testInstanceId,
+        TLoadTestControllerCommandChannel& controller)
         : Config(std::move(config))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
@@ -321,8 +321,11 @@ public:
         if (LoadEnabled && !ShouldStop()) {
             while (SendNextRequest()) {
                 ++RequestsSent;
-                STORAGE_DEBUG("%s request sent: %s %lu",
-                    MakeTestTag().c_str(), SessionId.c_str(), SeqNo);
+                STORAGE_DEBUG(
+                    "%s request sent: %s %lu",
+                    MakeTestTag().c_str(),
+                    SessionId.c_str(),
+                    SeqNo);
             }
         }
     }
@@ -340,8 +343,10 @@ public:
             return;
         }
         if (!ShouldStop()) {
-            STORAGE_INFO("%s establishing session %lu",
-                MakeTestTag().c_str(), cmd.SessionSeqNo);
+            STORAGE_INFO(
+                "%s establishing session %lu",
+                MakeTestTag().c_str(),
+                cmd.SessionSeqNo);
 
             TFuture<NProto::TCreateSessionResponse> result;
             if (!SessionId) {
@@ -376,8 +381,11 @@ public:
                 return;
             }
             SessionId = sessionId;
-            STORAGE_INFO("%s session established: %s %lu",
-                MakeTestTag().c_str(), SessionId.c_str(), cmd.SessionSeqNo);
+            STORAGE_INFO(
+                "%s session established: %s %lu",
+                MakeTestTag().c_str(),
+                SessionId.c_str(),
+                cmd.SessionSeqNo);
         }
 
         cmd.Complete.SetValue(true);
@@ -396,7 +404,8 @@ public:
         return true;
     }
 
-    bool HandleResumeLoad(const TResumeLoad&) {
+    bool HandleResumeLoad(const TResumeLoad&)
+    {
         LoadEnabled = true;
         GenerateRequests();
         return true;
@@ -410,7 +419,8 @@ public:
         return true;
     }
 
-    bool HandleSetupSession(TSetupSession& cmd) {
+    bool HandleSetupSession(TSetupSession& cmd)
+    {
         SeqNo = cmd.SessionSeqNo;
         SetupSession(cmd);
         GenerateRequests();
@@ -420,23 +430,18 @@ public:
     bool HandleCommand(TLoadTestCommand cmd)
     {
         return std::visit(
-            TOverloaded {
-                [this] (TTeardown& cmd) {
-                    return HandleTeardown(cmd);
-                },
-                [this] (const TSuspendLoad& cmd) {
-                    return HandleSuspendLoad(cmd);
-                },
-                [this] (const TResumeLoad& cmd) {
-                    return HandleResumeLoad(cmd);
-                },
-                [this] (const TProcessCompletedRequests& cmd) {
-                    return HandleProcessCompletedRequests(cmd);
-                },
-                [this] (TSetupSession& cmd) {
+            TOverloaded{
+                [this](TTeardown& cmd) { return HandleTeardown(cmd); },
+                [this](const TSuspendLoad& cmd)
+                { return HandleSuspendLoad(cmd); },
+                [this](const TResumeLoad& cmd)
+                { return HandleResumeLoad(cmd); },
+                [this](const TProcessCompletedRequests& cmd)
+                { return HandleProcessCompletedRequests(cmd); },
+                [this](TSetupSession& cmd)
+                {
                     return HandleSetupSession(cmd);
-                }
-            },
+                }},
             cmd);
     }
 
@@ -449,7 +454,7 @@ public:
             SetupTest();
             LastReportTs = TInstant::Now();
 
-            for(;;) {
+            for (;;) {
                 Event.WaitI();
                 bool cont = true;
                 while (auto maybeCmd = Commands.Dequeue()) {
@@ -476,9 +481,11 @@ public:
             // destroying test instance right after setvalue()
             auto result = Result;
             result.SetValue(GetStats());
-        } catch(...) {
-            STORAGE_ERROR("%s test has failed: %s",
-                MakeTestTag().c_str(), CurrentExceptionMessage().c_str());
+        } catch (...) {
+            STORAGE_ERROR(
+                "%s test has failed: %s",
+                MakeTestTag().c_str(),
+                CurrentExceptionMessage().c_str());
 
             Result.SetException(std::current_exception());
         }
@@ -548,8 +555,7 @@ private:
                 break;
             default:
                 ythrow yexception()
-                    << MakeTestTag()
-                    << " config should have test spec";
+                    << MakeTestTag() << " config should have test spec";
         }
     }
 
@@ -577,7 +583,7 @@ private:
     bool LimitsReached() const
     {
         return (MaxDuration && TInstant::Now() - StartTs >= MaxDuration) ||
-            (MaxRequests && RequestsSent >= MaxRequests);
+               (MaxRequests && RequestsSent >= MaxRequests);
     }
 
     bool SendNextRequest()
@@ -656,13 +662,16 @@ private:
         auto elapsed = now - LastReportTs;
 
         if (elapsed > ReportInterval) {
-            const auto requestsCompleted = RequestsCompleted - LastRequestsCompleted;
+            const auto requestsCompleted =
+                RequestsCompleted - LastRequestsCompleted;
 
             auto stats = GetStats();
-            STORAGE_INFO("%s current rate: %ld r/s; stats:\n%s",
+            STORAGE_INFO(
+                "%s current rate: %ld r/s; stats:\n%s",
                 MakeTestTag().c_str(),
                 (ui64)(requestsCompleted / elapsed.Seconds()),
-                NProtobufJson::Proto2Json(stats, {.FormatOutput = true}).c_str());
+                NProtobufJson::Proto2Json(stats, {.FormatOutput = true})
+                    .c_str());
 
             LastReportTs = now;
             LastRequestsCompleted = RequestsCompleted;
@@ -732,9 +741,7 @@ private:
         }
     }
 
-    void FillLatency(
-        const TLatencyHistogram& hist,
-        NProto::TLatency& latency)
+    void FillLatency(const TLatencyHistogram& hist, NProto::TLatency& latency)
     {
         latency.SetP50(hist.GetValueAtPercentile(50));
         latency.SetP90(hist.GetValueAtPercentile(90));
@@ -811,12 +818,12 @@ private:
 
 public:
     TLoadTestController(
-            const TAppContext& ctx,
-            const NProto::TLoadTest& config,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            ILoggingServicePtr logging,
-            IClientFactoryPtr clientFactory)
+        const TAppContext& ctx,
+        const NProto::TLoadTest& config,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler,
+        ILoggingServicePtr logging,
+        IClientFactoryPtr clientFactory)
         : Ctx(ctx)
         , Config(config)
         , Timer(std::move(timer))
@@ -891,11 +898,12 @@ public:
         if (period) {
             Scheduler->Schedule(
                 Timer->Now() + TDuration::Seconds(period),
-                [weakPtr = weak_from_this()] {
+                [weakPtr = weak_from_this()]
+                {
                     if (auto self = weakPtr.lock()) {
                         self->Events.Enqueue(TStartTarget{});
                     }
-            });
+                });
         }
         return true;
     }
@@ -927,11 +935,12 @@ public:
         if (period) {
             Scheduler->Schedule(
                 Timer->Now() + TDuration::Seconds(period),
-                [weakPtr = weak_from_this()] {
+                [weakPtr = weak_from_this()]
+                {
                     if (auto self = weakPtr.lock()) {
                         self->Events.Enqueue(TFinishMigration{});
                     }
-            });
+                });
         }
         return true;
     }
@@ -946,7 +955,7 @@ public:
         auto source = SendSetupTestSession(SourceTest, true, SessionSeqNo);
         auto target = SendSetupTestSession(TargetTest, false, ++SessionSeqNo);
 
-        TVector<TFuture<bool>> futures {source, target};
+        TVector<TFuture<bool>> futures{source, target};
         WaitAll(futures).Wait();
         if (!source.GetValue() || !target.GetValue()) {
             STORAGE_ERROR(
@@ -959,18 +968,20 @@ public:
         SourceTest->EnqueueCommand(teardown);
         SourceFuture.GetValueSync();
 
-        SourceFuture = std::exchange(TargetFuture, TFuture<NProto::TTestStats>());
+        SourceFuture =
+            std::exchange(TargetFuture, TFuture<NProto::TTestStats>());
         std::swap(SourceTest, TargetTest);
         TargetTest.reset();
 
         auto period = Config.GetMigrationSpec().GetMigrationPeriod();
         Scheduler->Schedule(
             Timer->Now() + TDuration::Seconds(period),
-            [weakPtr = weak_from_this()] {
+            [weakPtr = weak_from_this()]
+            {
                 if (auto self = weakPtr.lock()) {
                     self->Events.Enqueue(TStartTarget());
                 }
-        });
+            });
         return true;
     }
 
@@ -995,20 +1006,17 @@ public:
     bool HandleStateChange(TLoadTestControllerCommand cmd)
     {
         return std::visit(
-            TOverloaded {
-                [this] (const TStartSource& cmd) {
-                    return HandleStartSource(cmd);
-                },
-                [this] (const TStartTarget& cmd) {
-                    return HandleStartTarget(cmd);
-                },
-                [this] (const TFinishMigration& cmd) {
-                    return HandleFinishMigration(cmd);
-                },
-                [this] (const TTestFinished& cmd) {
+            TOverloaded{
+                [this](const TStartSource& cmd)
+                { return HandleStartSource(cmd); },
+                [this](const TStartTarget& cmd)
+                { return HandleStartTarget(cmd); },
+                [this](const TFinishMigration& cmd)
+                { return HandleFinishMigration(cmd); },
+                [this](const TTestFinished& cmd)
+                {
                     return HandleTestFinished(cmd);
-                }
-            },
+                }},
             cmd);
     }
 
@@ -1019,16 +1027,17 @@ public:
         MaxDuration = TDuration::Seconds(Config.GetTestDuration());
 
         if (Config.HasFileSystemId() && Config.HasCreateFileStoreRequest()) {
-            ythrow yexception()
-                << MakeTestTag()
-                << " config should have either existing filesystem id or request to create one";
+            ythrow yexception() << MakeTestTag()
+                                << " config should have either existing "
+                                   "filesystem id or request to create one";
         }
 
         if (Config.HasCreateFileStoreRequest()) {
             auto request = std::make_shared<NProto::TCreateFileStoreRequest>(
                 Config.GetCreateFileStoreRequest());
 
-            STORAGE_INFO("%s create filestore: %s",
+            STORAGE_INFO(
+                "%s create filestore: %s",
                 MakeTestTag().c_str(),
                 DumpMessage(*request).c_str());
 
@@ -1103,9 +1112,11 @@ public:
                 if (!cont) {
                     break;
                 }
-            } catch(...) {
-                STORAGE_ERROR("%s test has failed: %s",
-                    MakeTestTag().c_str(), CurrentExceptionMessage().c_str());
+            } catch (...) {
+                STORAGE_ERROR(
+                    "%s test has failed: %s",
+                    MakeTestTag().c_str(),
+                    CurrentExceptionMessage().c_str());
 
                 Result.SetException(std::current_exception());
             }
@@ -1122,10 +1133,9 @@ private:
     bool ShouldStop() const
     {
         return AtomicGet(Ctx.ShouldStop) ||
-            (MaxDuration && TInstant::Now() - StartTs >= MaxDuration) ||
-            (TargetFuture.HasValue() || SourceFuture.HasValue());
+               (MaxDuration && TInstant::Now() - StartTs >= MaxDuration) ||
+               (TargetFuture.HasValue() || SourceFuture.HasValue());
     }
-
 
     const TString& MakeTestTag() const
     {

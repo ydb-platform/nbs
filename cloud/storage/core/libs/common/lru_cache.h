@@ -14,7 +14,9 @@ namespace {
 
 template <typename T>
 concept HasReserve = requires(T t) {
-    { t.reserve(42) } -> std::same_as<void>;
+    {
+        t.reserve(42)
+    } -> std::same_as<void>;
 };
 
 }   // namespace

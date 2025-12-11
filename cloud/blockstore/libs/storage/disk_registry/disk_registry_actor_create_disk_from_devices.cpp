@@ -43,16 +43,14 @@ void TDiskRegistryActor::HandleCreateDiskFromDevices(
         CreateRequestInfo<TEvDiskRegistry::TCreateDiskFromDevicesMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext
-        ),
+            ev->Get()->CallContext),
         record.GetForce(),
         volume.GetDiskId(),
         volume.GetBlockSize(),
         static_cast<NProto::EStorageMediaKind>(volume.GetStorageMediaKind()),
-        TVector<NProto::TDeviceConfig> (
+        TVector<NProto::TDeviceConfig>(
             record.GetDevices().begin(),
-            record.GetDevices().end())
-        );
+            record.GetDevices().end()));
 }
 
 bool TDiskRegistryActor::PrepareCreateDiskFromDevices(
@@ -91,10 +89,11 @@ void TDiskRegistryActor::ExecuteCreateDiskFromDevices(
 
     for (auto& d: result.Devices) {
         if (!ToLogicalBlocks(d, args.BlockSize)) {
-            args.Error = MakeError(E_FAIL, TStringBuilder()
-                << "CreateDiskFromDevices: ToLogicalBlocks failed, device: "
-                << d.GetDeviceUUID().Quote().c_str()
-            );
+            args.Error = MakeError(
+                E_FAIL,
+                TStringBuilder()
+                    << "CreateDiskFromDevices: ToLogicalBlocks failed, device: "
+                    << d.GetDeviceUUID().Quote().c_str());
 
             return;
         }

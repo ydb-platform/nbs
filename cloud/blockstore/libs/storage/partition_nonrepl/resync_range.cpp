@@ -55,15 +55,15 @@ IProfileLog::TReplicaChecksums MakeChecksums(
 }   // namespace
 
 TResyncRangeActor::TResyncRangeActor(
-        TRequestInfoPtr requestInfo,
-        ui32 blockSize,
-        TBlockRange64 range,
-        TVector<TReplicaDescriptor> replicas,
-        TString writerClientId,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        NProto::EResyncPolicy resyncPolicy,
-        NActors::TActorId volumeActorId,
-        bool assignVolumeRequestId)
+    TRequestInfoPtr requestInfo,
+    ui32 blockSize,
+    TBlockRange64 range,
+    TVector<TReplicaDescriptor> replicas,
+    TString writerClientId,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    NProto::EResyncPolicy resyncPolicy,
+    NActors::TActorId volumeActorId,
+    bool assignVolumeRequestId)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , Range(range)
@@ -142,8 +142,11 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
         return;
     }
 
-    LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Resync range %s: majority replica %lu, checksum %lu, count %u of %u",
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Resync range %s: majority replica %lu, checksum %lu, count %u of "
+        "%u",
         Replicas[0].ReplicaId.c_str(),
         DescribeRange(Range).c_str(),
         majorIdx,
@@ -154,8 +157,11 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
     for (size_t i = 0; i < checksums.size(); i++) {
         ui64 checksum = checksums[i];
         if (checksum != majorChecksum) {
-            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%s] Replica %lu block range %s checksum %lu differs from majority checksum %lu",
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "[%s] Replica %lu block range %s checksum %lu differs from "
+                "majority checksum %lu",
                 Replicas[0].ReplicaId.c_str(),
                 Replicas[i].ReplicaIndex,
                 DescribeRange(Range).c_str(),
@@ -246,8 +252,7 @@ void TResyncRangeActor::WriteReplicaBlocks(
 
         const auto digest = BlockDigestGenerator->ComputeDigest(
             blockIndex,
-            TBlockDataRef(data, BlockSize)
-        );
+            TBlockDataRef(data, BlockSize));
 
         if (digest.Defined()) {
             AffectedBlockInfos.push_back({blockIndex, *digest});
@@ -263,7 +268,9 @@ void TResyncRangeActor::WriteReplicaBlocks(
         &ctx.SelfID   // forwardOnNondelivery
     );
 
-    LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%s] Replica %lu Overwrite block range %s during resync",
         Replicas[idx].ReplicaId.c_str(),
         Replicas[idx].ReplicaIndex,

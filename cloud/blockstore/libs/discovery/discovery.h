@@ -3,14 +3,14 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
+
 #include <cloud/storage/core/libs/common/startable.h>
 
 namespace NCloud::NBlockStore::NDiscovery {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IDiscoveryService
-    : IStartable
+struct IDiscoveryService: IStartable
 {
     virtual void ServeRequest(
         const NProto::TDiscoverInstancesRequest& request,
@@ -32,6 +32,8 @@ IDiscoveryServicePtr CreateDiscoveryService(
     IBalancingPolicyPtr balancingPolicy);
 
 IDiscoveryServicePtr CreateDiscoveryServiceStub(
-    TString defaultHost = {}, ui16 defaultInsecurePort = 0, ui16 defaultSecurePort = 0);
+    TString defaultHost = {},
+    ui16 defaultInsecurePort = 0,
+    ui16 defaultSecurePort = 0);
 
 }   // namespace NCloud::NBlockStore::NDiscovery

@@ -12,8 +12,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestScheduler final
-    : public IScheduler
+class TTestScheduler final: public IScheduler
 {
     struct TScheduledCallback
     {
@@ -32,8 +31,10 @@ public:
         : Now(now)
     {}
 
-    void Start() override {}
-    void Stop() override {}
+    void Start() override
+    {}
+    void Stop() override
+    {}
 
     void Schedule(
         ITaskQueue* taskQueue,

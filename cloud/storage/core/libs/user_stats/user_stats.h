@@ -13,4 +13,4 @@ NActors::IActorPtr CreateStorageUserStats(
     TString title,
     TVector<IUserMetricsSupplierPtr> providers);
 
-}   // NCloud::NStorage::NUserStats
+}   // namespace NCloud::NStorage::NUserStats

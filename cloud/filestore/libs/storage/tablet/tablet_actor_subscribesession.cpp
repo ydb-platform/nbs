@@ -20,11 +20,9 @@ void TIndexTabletActor::HandleSubscribeSession(
 
     auto* session = FindSession(clientId, sessionId, sessionSeqNo);
     if (!session) {
-        auto response = std::make_unique<TEvService::TEvSubscribeSessionResponse>(
-            ErrorInvalidSession(
-                clientId,
-                sessionId,
-                sessionSeqNo));
+        auto response =
+            std::make_unique<TEvService::TEvSubscribeSessionResponse>(
+                ErrorInvalidSession(clientId, sessionId, sessionSeqNo));
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
 
@@ -44,7 +42,9 @@ void TIndexTabletActor::NotifySessionEvent(
         for (auto* session: sessionsToNotify) {
             const auto seqNo = GenerateEventId(session);
 
-            LOG_TRACE(ctx, TFileStoreComponents::TABLET,
+            LOG_TRACE(
+                ctx,
+                TFileStoreComponents::TABLET,
                 "%s[%s] notify session event (seqNo: %lu)",
                 LogTag.c_str(),
                 session->GetSessionId().c_str(),

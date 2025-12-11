@@ -30,9 +30,9 @@ protected:
 
 public:
     TStatsUpdater(
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            IIncompleteRequestProcessorPtr collector);
+        ITimerPtr timer,
+        ISchedulerPtr scheduler,
+        IIncompleteRequestProcessorPtr collector);
 
     void Start() override;
     void Stop() override;
@@ -45,14 +45,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TStatsUpdater::TStatsUpdater(
-        ITimerPtr timer,
-        ISchedulerPtr scheduler,
-        IIncompleteRequestProcessorPtr collector)
+    ITimerPtr timer,
+    ISchedulerPtr scheduler,
+    IIncompleteRequestProcessorPtr collector)
     : Timer(std::move(timer))
     , Scheduler(std::move(scheduler))
     , Collector(std::move(collector))
-{
-}
+{}
 
 void TStatsUpdater::Start()
 {
@@ -82,7 +81,8 @@ void TStatsUpdater::ScheduleUpdateStats()
 
     Scheduler->Schedule(
         Timer->Now() + UpdateStatsInterval,
-        [weak_ptr = std::move(weak_ptr)] {
+        [weak_ptr = std::move(weak_ptr)]
+        {
             if (auto p = weak_ptr.lock()) {
                 p->UpdateStats();
                 p->ScheduleUpdateStats();
@@ -90,7 +90,7 @@ void TStatsUpdater::ScheduleUpdateStats()
         });
 }
 
-}  // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -102,8 +102,7 @@ IStatsUpdaterPtr CreateStatsUpdater(
     return std::make_shared<TStatsUpdater>(
         std::move(timer),
         std::move(scheduler),
-        std::move(collector)
-    );
+        std::move(collector));
 }
 
-}  // namespace NCloud
+}   // namespace NCloud

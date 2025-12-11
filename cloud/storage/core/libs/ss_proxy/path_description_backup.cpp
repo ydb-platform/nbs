@@ -28,9 +28,9 @@ constexpr TDuration BackupInterval = TDuration::Seconds(10);
 ////////////////////////////////////////////////////////////////////////////////
 
 TPathDescriptionBackup::TPathDescriptionBackup(
-        int logComponent,
-        TString backupFilePath,
-        bool readOnlyMode)
+    int logComponent,
+    TString backupFilePath,
+    bool readOnlyMode)
     : LogComponent(logComponent)
     , BackupFilePath(std::move(backupFilePath))
     , ReadOnlyMode(readOnlyMode)
@@ -46,19 +46,26 @@ void TPathDescriptionBackup::Bootstrap(const TActorContext& ctx)
             TFile file(BackupFilePath, OpenExisting | RdOnly | Seq);
             TUnbufferedFileInput input(file);
             MergeFromTextFormat(input, BackupProto);
-            LOG_INFO_S(ctx, LogComponent,
-                "PathDescriptionBackup: loaded " << file.GetLength() << " bytes");
+            LOG_INFO_S(
+                ctx,
+                LogComponent,
+                "PathDescriptionBackup: loaded " << file.GetLength()
+                                                 << " bytes");
         } catch (...) {
             ReportLoadPathDescriptionBackupFailure();
-            LOG_WARN_S(ctx, LogComponent,
+            LOG_WARN_S(
+                ctx,
+                LogComponent,
                 "PathDescriptionBackup: can't load from file: "
-                << CurrentExceptionMessage());
+                    << CurrentExceptionMessage());
         }
     } else {
         ScheduleBackup(ctx);
     }
 
-    LOG_INFO_S(ctx, LogComponent,
+    LOG_INFO_S(
+        ctx,
+        LogComponent,
         "PathDescriptionBackup: started with ReadOnlyMode=" << ReadOnlyMode);
 }
 
@@ -75,15 +82,17 @@ NProto::TError TPathDescriptionBackup::Backup(const TActorContext& ctx)
         TFileLock lock(TmpBackupFilePath);
 
         if (lock.TryAcquire()) {
-            Y_DEFER {
+            Y_DEFER
+            {
                 lock.Release();
-            };
+            }
             TFileOutput output(TmpBackupFilePath);
             SerializeToTextFormat(BackupProto, output);
             TmpBackupFilePath.RenameTo(BackupFilePath);
         } else {
             auto message = TStringBuilder()
-                << "failed to acquire lock on file: " << TmpBackupFilePath;
+                           << "failed to acquire lock on file: "
+                           << TmpBackupFilePath;
             error = MakeError(E_IO, std::move(message));
         }
     } catch (...) {
@@ -91,21 +100,26 @@ NProto::TError TPathDescriptionBackup::Backup(const TActorContext& ctx)
     }
 
     if (SUCCEEDED(error.GetCode())) {
-        LOG_DEBUG_S(ctx, LogComponent,
+        LOG_DEBUG_S(
+            ctx,
+            LogComponent,
             "PathDescriptionBackup: backup completed");
     } else {
         ReportBackupPathDescriptionsFailure();
 
-        LOG_ERROR_S(ctx, LogComponent,
-            "PathDescriptionBackup: backup failed: "
-            << error);
+        LOG_ERROR_S(
+            ctx,
+            LogComponent,
+            "PathDescriptionBackup: backup failed: " << error);
 
         try {
             TmpBackupFilePath.DeleteIfExists();
         } catch (...) {
-            LOG_WARN_S(ctx, LogComponent,
+            LOG_WARN_S(
+                ctx,
+                LogComponent,
                 "PathDescriptionBackup: failed to delete temporary file: "
-                << CurrentExceptionMessage());
+                    << CurrentExceptionMessage());
         }
     }
 
@@ -146,12 +160,17 @@ void TPathDescriptionBackup::HandleReadPathDescriptionBackup(
     std::unique_ptr<TResponse> response;
 
     if (found) {
-        LOG_DEBUG_S(ctx, LogComponent,
+        LOG_DEBUG_S(
+            ctx,
+            LogComponent,
             "PathDescriptionBackup: found data for path " << msg->Path);
         response = std::make_unique<TResponse>(
-            std::move(msg->Path), std::move(pathDescription));
+            std::move(msg->Path),
+            std::move(pathDescription));
     } else {
-        LOG_DEBUG_S(ctx, LogComponent,
+        LOG_DEBUG_S(
+            ctx,
+            LogComponent,
             "PathDescriptionBackup: no data for path " << msg->Path);
         response = std::make_unique<TResponse>(MakeError(E_NOT_FOUND));
     }
@@ -167,7 +186,9 @@ void TPathDescriptionBackup::HandleUpdatePathDescriptionBackup(
     auto& data = *BackupProto.MutableData();
     data[msg->Path] = std::move(msg->PathDescription);
 
-    LOG_DEBUG_S(ctx, LogComponent,
+    LOG_DEBUG_S(
+        ctx,
+        LogComponent,
         "PathDescriptionBackup: updated data for path " << msg->Path);
 }
 
@@ -194,9 +215,15 @@ STFUNC(TPathDescriptionBackup::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleWakeup);
-        HFunc(TEvSSProxyPrivate::TEvReadPathDescriptionBackupRequest, HandleReadPathDescriptionBackup);
-        HFunc(TEvSSProxyPrivate::TEvUpdatePathDescriptionBackupRequest, HandleUpdatePathDescriptionBackup);
-        HFunc(TEvSSProxy::TEvBackupPathDescriptionsRequest, HandleBackupPathDescriptions);
+        HFunc(
+            TEvSSProxyPrivate::TEvReadPathDescriptionBackupRequest,
+            HandleReadPathDescriptionBackup);
+        HFunc(
+            TEvSSProxyPrivate::TEvUpdatePathDescriptionBackupRequest,
+            HandleUpdatePathDescriptionBackup);
+        HFunc(
+            TEvSSProxy::TEvBackupPathDescriptionsRequest,
+            HandleBackupPathDescriptions);
 
         default:
             HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);

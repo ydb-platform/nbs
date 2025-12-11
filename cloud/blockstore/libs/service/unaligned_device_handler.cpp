@@ -109,7 +109,7 @@ protected:
     virtual void DoExecutePostponed() = 0;
 };
 
-// Wrapper for a write request.
+//  Wrapper for a write request.
 class TWriteRequest final: public TModifyRequest
 {
 public:
@@ -139,7 +139,7 @@ private:
     TResponseFuture ModifyAndWrite();
 };
 
-// Wrapper for a zero request.
+//  Wrapper for a zero request.
 class TZeroRequest final: public TModifyRequest
 {
 public:
@@ -172,9 +172,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TModifyRequest::TModifyRequest(
-        std::weak_ptr<TAlignedDeviceHandler> backend,
-        TCallContextPtr callContext,
-        const TBlocksInfo& blocksInfo)
+    std::weak_ptr<TAlignedDeviceHandler> backend,
+    TCallContextPtr callContext,
+    const TBlocksInfo& blocksInfo)
     : Backend(std::move(backend))
     , BlocksInfo(blocksInfo)
     , CallContext(std::move(callContext))
@@ -264,14 +264,11 @@ void TModifyRequest::AllocateRMWBuffer(TAlignedDeviceHandler& backend)
 ////////////////////////////////////////////////////////////////////////////////
 
 TWriteRequest::TWriteRequest(
-        std::weak_ptr<TAlignedDeviceHandler> backend,
-        TCallContextPtr callContext,
-        const TBlocksInfo& blocksInfo,
-        TGuardedSgList sgList)
-    : TModifyRequest(
-          std::move(backend),
-          std::move(callContext),
-          blocksInfo)
+    std::weak_ptr<TAlignedDeviceHandler> backend,
+    TCallContextPtr callContext,
+    const TBlocksInfo& blocksInfo,
+    TGuardedSgList sgList)
+    : TModifyRequest(std::move(backend), std::move(callContext), blocksInfo)
     , SgList(std::move(sgList))
 {}
 
@@ -366,13 +363,10 @@ TWriteRequest::TResponseFuture TWriteRequest::ModifyAndWrite()
 ////////////////////////////////////////////////////////////////////////////////
 
 TZeroRequest::TZeroRequest(
-        std::weak_ptr<TAlignedDeviceHandler> backend,
-        TCallContextPtr callContext,
-        const TBlocksInfo& blocksInfo)
-    : TModifyRequest(
-          std::move(backend),
-          std::move(callContext),
-          blocksInfo)
+    std::weak_ptr<TAlignedDeviceHandler> backend,
+    TCallContextPtr callContext,
+    const TBlocksInfo& blocksInfo)
+    : TModifyRequest(std::move(backend), std::move(callContext), blocksInfo)
 {}
 
 TZeroRequest::~TZeroRequest()
@@ -456,8 +450,10 @@ TZeroRequest::TResponseFuture TZeroRequest::ModifyAndWrite()
         0,
         BlocksInfo.BufferSize());
 
-    auto result =
-        backend->ExecuteWriteRequest(CallContext, BlocksInfo.MakeAligned(), SgList);
+    auto result = backend->ExecuteWriteRequest(
+        CallContext,
+        BlocksInfo.MakeAligned(),
+        SgList);
     return result.Apply(
         [](const TFuture<NProto::TWriteBlocksResponse>& future)
         {
@@ -469,12 +465,11 @@ TZeroRequest::TResponseFuture TZeroRequest::ModifyAndWrite()
 ////////////////////////////////////////////////////////////////////////////////
 
 TUnalignedDeviceHandler::TUnalignedDeviceHandler(
-        TDeviceHandlerParams params,
-        ui32 maxSubRequestSize)
-    : Backend(
-          std::make_shared<TAlignedDeviceHandler>(
-              std::move(params),
-              maxSubRequestSize))
+    TDeviceHandlerParams params,
+    ui32 maxSubRequestSize)
+    : Backend(std::make_shared<TAlignedDeviceHandler>(
+          std::move(params),
+          maxSubRequestSize))
     , BlockSize(Backend->GetBlockSize())
     , MaxUnalignedBlockCount(MaxUnalignedRequestSize / BlockSize)
 {}

@@ -1,15 +1,16 @@
 #include "vhost-queue.h"
 
 #include "monotonic_buffer_resource.h"
+
 #include <cloud/contrib/vhost/platform.h>
 
 #include <util/generic/scope.h>
 
-#include <new>
-
 #include <poll.h>
-#include <unistd.h>
 #include <sys/eventfd.h>
+#include <unistd.h>
+
+#include <new>
 
 namespace NVHost {
 
@@ -28,19 +29,25 @@ TQueue::TQueue(uint32_t size, std::span<char> buffer)
 
     memset(buffer.data(), 0, buffer.size());
 
-    TMonotonicBufferResource memory {buffer};
+    TMonotonicBufferResource memory{buffer};
 
-    Descriptors = reinterpret_cast<virtq_desc*>(memory.Allocate(
-        sizeof(virtq_desc) * size,
-        alignof(virtq_desc)).data());
+    Descriptors = reinterpret_cast<virtq_desc*>(
+        memory.Allocate(sizeof(virtq_desc) * size, alignof(virtq_desc)).data());
 
-    AvailableRings = reinterpret_cast<virtq_avail*>(memory.Allocate(
-        sizeof(virtq_avail) + (size + 1) * sizeof(uint16_t),
-        alignof(virtq_avail)).data());
+    AvailableRings = reinterpret_cast<virtq_avail*>(
+        memory
+            .Allocate(
+                sizeof(virtq_avail) + (size + 1) * sizeof(uint16_t),
+                alignof(virtq_avail))
+            .data());
 
-    UsedRings = reinterpret_cast<virtq_used*>(memory.Allocate(
-        sizeof(virtq_used) + size * sizeof(virtq_used_elem) + sizeof(uint16_t),
-        platform_page_size).data());
+    UsedRings = reinterpret_cast<virtq_used*>(
+        memory
+            .Allocate(
+                sizeof(virtq_used) + size * sizeof(virtq_used_elem) +
+                    sizeof(uint16_t),
+                platform_page_size)
+            .data());
 
     for (uint32_t i = 0; i != size; ++i) {
         FreeBuffers.push(i);
@@ -49,17 +56,16 @@ TQueue::TQueue(uint32_t size, std::span<char> buffer)
 
 TQueue::TQueue(TQueue&& other)
     : Size(other.Size)
-    , Descriptors (other.Descriptors)
-    , AvailableRings (other.AvailableRings)
-    , UsedRings (other.UsedRings)
+    , Descriptors(other.Descriptors)
+    , AvailableRings(other.AvailableRings)
+    , UsedRings(other.UsedRings)
     , KickFd(std::move(other.KickFd))
     , CallFd(std::move(other.CallFd))
     , ErrFd(std::move(other.ErrFd))
     , FreeBuffers(std::move(other.FreeBuffers))
     , LastSeenUsed(other.LastSeenUsed)
     , InFlights(std::move(other.InFlights))
-{
-}
+{}
 
 uint64_t TQueue::GetDescriptorsAddr() const
 {
@@ -95,7 +101,7 @@ TFuture<uint32_t> TQueue::WriteAsync(
     const TSgList& inBuffers,
     const TSgList& outBuffers)
 {
-    std::unique_lock lock {Mutex};
+    std::unique_lock lock{Mutex};
 
     if (FreeBuffers.size() < (inBuffers.size() + outBuffers.size())) {
         return MakeFuture<uint32_t>();
@@ -103,11 +109,12 @@ TFuture<uint32_t> TQueue::WriteAsync(
 
     TVector<size_t> usedBuffers;
 
-    Y_DEFER {
+    Y_DEFER
+    {
         for (auto idx: usedBuffers) {
             FreeBuffers.push(idx);
         }
-    };
+    }
 
     const uint32_t inflight = FreeBuffers.front();
 
@@ -131,8 +138,7 @@ TFuture<uint32_t> TQueue::WriteAsync(
         Descriptors[inIdx] = {
             .addr = std::bit_cast<uint64_t>(buf.data()),
             .len = static_cast<uint32_t>(buf.size()),
-            .flags = VIRTQ_DESC_F_NEXT
-        };
+            .flags = VIRTQ_DESC_F_NEXT};
     }
 
     for (auto buf: outBuffers) {
@@ -147,11 +153,10 @@ TFuture<uint32_t> TQueue::WriteAsync(
         Descriptors[outIdx] = {
             .addr = std::bit_cast<uint64_t>(buf.data()),
             .len = static_cast<uint32_t>(buf.size()),
-            .flags = VIRTQ_DESC_F_WRITE | VIRTQ_DESC_F_NEXT
-        };
+            .flags = VIRTQ_DESC_F_WRITE | VIRTQ_DESC_F_NEXT};
     }
 
-    Descriptors[prevIdx].flags &= ~((uint16_t) VIRTQ_DESC_F_NEXT);
+    Descriptors[prevIdx].flags &= ~((uint16_t)VIRTQ_DESC_F_NEXT);
     Descriptors[prevIdx].next = 0;
 
     if (eventfd_write(KickFd, 1) < 0) {
@@ -170,7 +175,7 @@ bool TQueue::RunOnce(TDuration timeout)
         return false;
     }
 
-    std::unique_lock lock {Mutex};
+    std::unique_lock lock{Mutex};
 
     for (; LastSeenUsed != UsedRings->idx; ++LastSeenUsed) {
         virtq_used_elem& elem = UsedRings->ring[LastSeenUsed % Size];
@@ -191,14 +196,11 @@ bool TQueue::RunOnce(TDuration timeout)
 
 bool TQueue::WaitCallEvent(TDuration timeout)
 {
-    const int ms = timeout != TDuration::Max()
-        ? timeout.MilliSeconds()
-        : -1;
+    const int ms = timeout != TDuration::Max() ? timeout.MilliSeconds() : -1;
 
-    pollfd fds[] {
-        { .fd = ErrFd, .events = POLLIN },
-        { .fd = CallFd, .events = POLLIN }
-    };
+    pollfd fds[]{
+        {.fd = ErrFd, .events = POLLIN},
+        {.fd = CallFd, .events = POLLIN}};
 
     if (poll(fds, std::size(fds), ms) < 0) {
         return false;
@@ -210,12 +212,9 @@ bool TQueue::WaitCallEvent(TDuration timeout)
         return false;
     }
 
-    if ((fds[0].revents & POLLERR) |
-        (fds[0].revents & POLLHUP) |
-        (fds[0].revents & POLLNVAL) |
-        (fds[1].revents & POLLERR) |
-        (fds[1].revents & POLLHUP) |
-        (fds[1].revents & POLLNVAL))
+    if ((fds[0].revents & POLLERR) | (fds[0].revents & POLLHUP) |
+        (fds[0].revents & POLLNVAL) | (fds[1].revents & POLLERR) |
+        (fds[1].revents & POLLHUP) | (fds[1].revents & POLLNVAL))
     {
         return false;
     }
@@ -229,10 +228,14 @@ bool TQueue::WaitCallEvent(TDuration timeout)
 
 uint32_t TQueue::GetQueueMemSize(uint32_t queueSize)
 {
-    return AlignUp(sizeof(virtq_desc) * queueSize
-            + sizeof(uint16_t) * (3 + queueSize), platform_page_size)
-        + AlignUp(sizeof(uint16_t) * 3
-            + sizeof(struct virtq_used_elem) * queueSize, platform_page_size);
+    return AlignUp(
+               sizeof(virtq_desc) * queueSize +
+                   sizeof(uint16_t) * (3 + queueSize),
+               platform_page_size) +
+           AlignUp(
+               sizeof(uint16_t) * 3 +
+                   sizeof(struct virtq_used_elem) * queueSize,
+               platform_page_size);
 }
 
-} // namespace NVHostQueue
+}   // namespace NVHost

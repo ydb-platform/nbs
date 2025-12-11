@@ -20,14 +20,14 @@
 #include <util/generic/string.h>
 #include <util/string/printf.h>
 
-#include <thread>
-
-#include <unistd.h>
 #include <sys/eventfd.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/un.h>
+#include <unistd.h>
+
+#include <thread>
 
 namespace NVHost {
 
@@ -49,7 +49,7 @@ TClient::~TClient()
 bool TClient::Execute(NVHostUser::IMessage& msg)
 {
     auto requestStr = msg.ToString();
-    if(!msg.Execute(Sock)) {
+    if (!msg.Execute(Sock)) {
         Logger.AddLog(
             ELogPriority::TLOG_ERR,
             "TClient::%s: error %s. Request %s\n",
@@ -68,7 +68,7 @@ bool TClient::Execute(NVHostUser::IMessage& msg)
 
 bool TClient::Connect()
 {
-    TFileHandle sock { socket(AF_UNIX, SOCK_STREAM, 0) };
+    TFileHandle sock{socket(AF_UNIX, SOCK_STREAM, 0)};
 
     if (!sock) {
         const int ec = errno;
@@ -85,9 +85,9 @@ bool TClient::Connect()
     strlcpy(un.sun_path, SockPath.c_str(), sizeof(un.sun_path));
 
     if (int errorCode = connect(
-        sock,
-        reinterpret_cast<sockaddr*>(&un),
-        sizeof(un.sun_family) + SockPath.size()) == -1)
+                            sock,
+                            reinterpret_cast<sockaddr*>(&un),
+                            sizeof(un.sun_family) + SockPath.size()) == -1)
     {
         Logger.AddLog(
             ELogPriority::TLOG_ERR,
@@ -98,8 +98,7 @@ bool TClient::Connect()
             ELogPriority::TLOG_ERR,
             "errno: %d, errnostr: %s\n",
             errno,
-            strerror(errno)
-        );
+            strerror(errno));
         return false;
     }
 
@@ -118,8 +117,8 @@ bool TClient::CoordinationFeatures(
     }
 
     if (!BitIsSet(
-        getFuatureMsg.GetResult(),
-        NVHostUser::TGetFeature::VHOST_USER_F_PROTOCOL_FEATURES))
+            getFuatureMsg.GetResult(),
+            NVHostUser::TGetFeature::VHOST_USER_F_PROTOCOL_FEATURES))
     {
         Logger.AddLog(
             ELogPriority::TLOG_ERR,
@@ -138,7 +137,8 @@ bool TClient::CoordinationFeatures(
         return false;
     }
 
-    NVHostUser::TSetProtocolFeature setProtocolFeatureMsg(virtioProtocolFeatures);
+    NVHostUser::TSetProtocolFeature setProtocolFeatureMsg(
+        virtioProtocolFeatures);
     if (!Execute(setProtocolFeatureMsg)) {
         return false;
     }
@@ -167,13 +167,7 @@ auto TClient::MapMemory(uint64_t size) -> TMemTable
         return {};
     }
 
-    void* addr = mmap(
-        NULL,
-        size,
-        PROT_READ | PROT_WRITE,
-        MAP_SHARED,
-        fd,
-        0);
+    void* addr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
     if (addr == MAP_FAILED) {
         Logger.AddLog(
@@ -184,13 +178,13 @@ auto TClient::MapMemory(uint64_t size) -> TMemTable
         return {};
     }
 
-    return { fd, static_cast<char*>(addr), size };
+    return {fd, static_cast<char*>(addr), size};
 }
 
 bool TClient::CoordinationMemMap()
 {
-    const uint64_t totalMemorySize = FastClp2(
-        TotalQueuesMemory() + Params.MemorySize);
+    const uint64_t totalMemorySize =
+        FastClp2(TotalQueuesMemory() + Params.MemorySize);
 
     MemTable = MapMemory(totalMemorySize);
 
@@ -198,14 +192,13 @@ bool TClient::CoordinationMemMap()
         return false;
     }
 
-    NVHostUser::TSetMemTable::MemoryRegion region {
+    NVHostUser::TSetMemTable::MemoryRegion region{
         .GuestAddress = std::bit_cast<uint64_t>(MemTable.Addr),
         .Size = MemTable.Size,
         .UserAddress = std::bit_cast<uint64_t>(MemTable.Addr),
-        .MmapOffset = 0
-    };
+        .MmapOffset = 0};
 
-    NVHostUser::TSetMemTable setMemTableMsg({ std::move(region)}, { MemTable.Fd });
+    NVHostUser::TSetMemTable setMemTableMsg({std::move(region)}, {MemTable.Fd});
 
     return Execute(setMemTableMsg);
 }
@@ -217,15 +210,17 @@ uint64_t TClient::MemoryPerQueue() const
 
 uint64_t TClient::TotalQueuesMemory() const
 {
-    return AlignUp(Params.QueueCount * MemoryPerQueue(), Params.MemoryAlignment);
+    return AlignUp(
+        Params.QueueCount * MemoryPerQueue(),
+        Params.MemoryAlignment);
 }
 
 bool TClient::CoordinationQueue()
 {
     const uint64_t memoryPerQueue = MemoryPerQueue();
-    const uint64_t queueMemAlignment = 4_KB; // page
+    const uint64_t queueMemAlignment = 4_KB;   // page
 
-    TMonotonicBufferResource memory {MemTable.Addr, MemTable.Size};
+    TMonotonicBufferResource memory{MemTable.Addr, MemTable.Size};
 
     for (size_t i = 0; i < Params.QueueCount; ++i) {
         NVHostUser::TSetVringNum setVringNumMsg(i, Params.QueueSize);
@@ -252,11 +247,11 @@ bool TClient::CoordinationQueue()
 
         NVHostUser::TSetVringAddr setVringAddrMsg(
             i,
-            0,  // flags
+            0,   // flags
             queue.GetDescriptorsAddr(),
             queue.GetUsedRings(),
             queue.GetAvailableRingsAddr(),
-            0); // logging
+            0);   // logging
         if (!Execute(setVringAddrMsg)) {
             return false;
         }
@@ -284,8 +279,8 @@ bool TClient::CoordinationQueue()
     return true;
 }
 
- void TClient::DeInit()
- {
+void TClient::DeInit()
+{
     if (ShouldStop.exchange(true)) {
         return;
     }
@@ -301,13 +296,13 @@ bool TClient::CoordinationQueue()
     if (MemTable.Fd != -1) {
         ::close(MemTable.Fd);
     }
- }
+}
 
 bool TClient::Init()
 {
     ShouldStop = false;
 
-    if(!Connect()) {
+    if (!Connect()) {
         return false;
     }
 
@@ -321,7 +316,7 @@ bool TClient::Init()
         virtioProtocolFeatures,
         NVHostUser::TGetProtocolFeature::VHOST_USER_PROTOCOL_F_MQ);
 
-    if(!CoordinationFeatures(virtioFeatures, virtioProtocolFeatures)) {
+    if (!CoordinationFeatures(virtioFeatures, virtioProtocolFeatures)) {
         return false;
     }
 
@@ -348,7 +343,7 @@ bool TClient::Init()
         return false;
     }
 
-    if (!CoordinationQueue()){
+    if (!CoordinationQueue()) {
         const int ec = errno;
         Logger.AddLog(
             ELogPriority::TLOG_ERR,
@@ -361,11 +356,13 @@ bool TClient::Init()
     QueueThreads.reserve(Queues.size());
 
     for (auto& q: Queues) {
-        QueueThreads.emplace_back([this, &q] {
-            while (!ShouldStop) {
-                q.RunOnce();
-            }
-        });
+        QueueThreads.emplace_back(
+            [this, &q]
+            {
+                while (!ShouldStop) {
+                    q.RunOnce();
+                }
+            });
     }
 
     return true;
@@ -381,10 +378,7 @@ TFuture<uint32_t> TClient::WriteAsync(
 
 std::span<char> TClient::GetMemory()
 {
-    return {
-        MemTable.Addr + TotalQueuesMemory(),
-        Params.MemorySize
-    };
+    return {MemTable.Addr + TotalQueuesMemory(), Params.MemorySize};
 }
 
-} // namespace NVHost
+}   // namespace NVHost

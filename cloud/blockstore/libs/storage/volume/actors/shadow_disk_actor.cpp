@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 using namespace NActors;
@@ -148,16 +149,16 @@ private:
 ///////////////////////////////////////////////////////////////////////////////
 
 TAcquireShadowDiskActor::TAcquireShadowDiskActor(
-        TStorageConfigPtr config,
-        TString shadowDiskId,
-        TDevices shadowDiskDevices,
-        TShadowDiskActor::EAcquireReason acquireReason,
-        bool readOnlyMount,
-        bool areWritesToSourceBlocked,
-        TString rwClientId,
-        ui64 mountSeqNumber,
-        ui32 generation,
-        TActorId parentActor)
+    TStorageConfigPtr config,
+    TString shadowDiskId,
+    TDevices shadowDiskDevices,
+    TShadowDiskActor::EAcquireReason acquireReason,
+    bool readOnlyMount,
+    bool areWritesToSourceBlocked,
+    TString rwClientId,
+    ui64 mountSeqNumber,
+    ui32 generation,
+    TActorId parentActor)
     : ShadowDiskId(std::move(shadowDiskId))
     , AcquireReason(acquireReason)
     , ReadOnlyMount(readOnlyMount)
@@ -323,10 +324,10 @@ void TAcquireShadowDiskActor::HandleDiskRegistryError(
         LOG_WARN_S(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Will soon retry " << actionName << " shadow disk "
-                               << ShadowDiskId.Quote()
-                               << " Error: " << FormatError(error)
-                               << " with delay " << RetryDelayProvider.GetDelay().ToString());
+            "Will soon retry "
+                << actionName << " shadow disk " << ShadowDiskId.Quote()
+                << " Error: " << FormatError(error) << " with delay "
+                << RetryDelayProvider.GetDelay().ToString());
 
         if (sessionError) {
             ReleaseShadowDisk(ctx, true);
@@ -528,18 +529,18 @@ void TAcquireShadowDiskActor::MaybeReady(const NActors::TActorContext& ctx)
 ///////////////////////////////////////////////////////////////////////////////
 
 TShadowDiskActor::TShadowDiskActor(
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticConfig,
-        NRdma::IClientPtr rdmaClient,
-        IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr digestGenerator,
-        TString sourceDiskClientId,
-        ui64 mountSeqNumber,
-        ui32 generation,
-        TNonreplicatedPartitionConfigPtr srcConfig,
-        TActorId volumeActorId,
-        TActorId srcActorId,
-        const TActiveCheckpointInfo& checkpointInfo)
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticConfig,
+    NRdma::IClientPtr rdmaClient,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr digestGenerator,
+    TString sourceDiskClientId,
+    ui64 mountSeqNumber,
+    ui32 generation,
+    TNonreplicatedPartitionConfigPtr srcConfig,
+    TActorId volumeActorId,
+    TActorId srcActorId,
+    const TActiveCheckpointInfo& checkpointInfo)
     : TNonreplicatedPartitionMigrationCommonActor(
           static_cast<IMigrationOwner*>(this),
           config,
@@ -1168,10 +1169,10 @@ bool TShadowDiskActor::HandleRWClientIdChanged(
     LOG_INFO_S(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "Changed clientId for disk "
-            << SrcConfig->GetName().Quote() << ", shadow disk "
-            << ShadowDiskId.Quote() << " from " << SourceDiskClientId.Quote()
-            << " to " << ev->Get()->RWClientId);
+        "Changed clientId for disk " << SrcConfig->GetName().Quote()
+                                     << ", shadow disk " << ShadowDiskId.Quote()
+                                     << " from " << SourceDiskClientId.Quote()
+                                     << " to " << ev->Get()->RWClientId);
 
     SourceDiskClientId = ev->Get()->RWClientId;
 
@@ -1181,7 +1182,8 @@ bool TShadowDiskActor::HandleRWClientIdChanged(
         SrcActorId,
         std::make_unique<TEvVolume::TEvRWClientIdChanged>(SourceDiskClientId));
 
-    // Somehow we got into an error state. There is no need to reacquire the disk.
+    // Somehow we got into an error state. There is no need to reacquire the
+    // disk.
     if (State == EActorState::Error) {
         return true;
     }

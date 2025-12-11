@@ -1,6 +1,7 @@
 #pragma once
 
 #include "public.h"
+
 #include "request_buffer.h"
 #include "request_info.h"
 
@@ -18,16 +19,15 @@ struct TWriteBufferRequestData
     bool ReplyLocal;
 
     TWriteBufferRequestData(
-            TRequestInfoPtr requestInfo,
-            TBlockRange32 range,
-            IWriteBlocksHandlerPtr handler,
-            bool replyLocal)
+        TRequestInfoPtr requestInfo,
+        TBlockRange32 range,
+        IWriteBlocksHandlerPtr handler,
+        bool replyLocal)
         : RequestInfo(std::move(requestInfo))
         , Range(range)
         , Handler(std::move(handler))
         , ReplyLocal(replyLocal)
-    {
-    }
+    {}
 };
 
 struct TRequestGroup

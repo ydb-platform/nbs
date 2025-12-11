@@ -39,8 +39,7 @@ struct TIndices
         , PhysicalBlockIndex(Offset / BlockSize)
         , PhysicalOffset(PhysicalBlockIndex * BlockSize)
         , OffsetInBlock(Offset - PhysicalOffset)
-    {
-    }
+    {}
 };
 
 }   // namespace
@@ -71,14 +70,11 @@ struct TMetaTable::TImpl
 
 public:
     TImpl(const TString& filePath, ui64 blockCount)
-        : File(
-            filePath,
-            EOpenModeFlag::DirectAligned | EOpenModeFlag::RdWr
-        )
+        : File(filePath, EOpenModeFlag::DirectAligned | EOpenModeFlag::RdWr)
     {
         Y_ABORT_UNLESS(File.IsOpen());
         Y_UNUSED(blockCount);
-        //File.Resize(blockCount * sizeof(TBlockMeta));
+        // File.Resize(blockCount * sizeof(TBlockMeta));
         AsyncIO.Start();
     }
 
@@ -92,8 +88,8 @@ public:
     {
         TIndices i(blockIndex);
 
-        Cdbg << "async read: " << i.BlockIndex << "("
-            << i.PhysicalBlockIndex << ")" << Endl;
+        Cdbg << "async read: " << i.BlockIndex << "(" << i.PhysicalBlockIndex
+             << ")" << Endl;
 
         TString buffer(2 * BlockSize, 0);
         const ui64 baseAddr = reinterpret_cast<ui64>(buffer.data());
@@ -101,33 +97,31 @@ public:
         const auto alignmentOffset = alignedAddr - baseAddr;
         auto alignedPtr = const_cast<char*>(buffer.data() + alignmentOffset);
 
-        return AsyncIO.Read(File, alignedPtr, BlockSize, i.PhysicalOffset).Apply([
-            b = std::move(buffer),
-            alignedPtr,
-            i
-        ] (const auto& f) {
-            try {
-                Cdbg << "async read completed: " << i.BlockIndex << "("
-                    << i.PhysicalBlockIndex << ")" << Endl;
+        return AsyncIO.Read(File, alignedPtr, BlockSize, i.PhysicalOffset)
+            .Apply(
+                [b = std::move(buffer), alignedPtr, i](const auto& f)
+                {
+                    try {
+                        Cdbg << "async read completed: " << i.BlockIndex << "("
+                             << i.PhysicalBlockIndex << ")" << Endl;
 
-                f.GetValue();
+                        f.GetValue();
 
-                return *reinterpret_cast<const TBlockMeta*>(
-                    alignedPtr + i.OffsetInBlock
-                );
-            } catch (...) {
-                Cerr << CurrentExceptionMessage() << Endl;
-                Y_ABORT_UNLESS(0);
-            }
-        });
+                        return *reinterpret_cast<const TBlockMeta*>(
+                            alignedPtr + i.OffsetInBlock);
+                    } catch (...) {
+                        Cerr << CurrentExceptionMessage() << Endl;
+                        Y_ABORT_UNLESS(0);
+                    }
+                });
     }
 
     NThreading::TFuture<void> WriteImpl(TBlockMeta meta, TIndices i)
     {
         TString data(reinterpret_cast<const char*>(&meta), sizeof(meta));
 
-        Cdbg << "async write: " << i.BlockIndex << "("
-            << i.PhysicalBlockIndex << ")" << Endl;
+        Cdbg << "async write: " << i.BlockIndex << "(" << i.PhysicalBlockIndex
+             << ")" << Endl;
 
         TString buffer(2 * BlockSize, 0);
         const ui64 baseAddr = reinterpret_cast<ui64>(buffer.data());
@@ -136,64 +130,80 @@ public:
         auto alignedPtr = const_cast<char*>(buffer.data() + alignmentOffset);
 
         // rmw
-        return AsyncIO.Read(File, alignedPtr, BlockSize, i.PhysicalOffset).Apply([
-            this,
-            b = std::move(buffer),
-            d = std::move(data),
-            i,
-            alignedPtr
-        ] (const auto& f) mutable {
-            try {
-                f.GetValue();
-
-                char* p = alignedPtr + i.OffsetInBlock;
-                std::memcpy(p, d.data(), d.size());
-
-                return AsyncIO.Write(File, alignedPtr, BlockSize, i.PhysicalOffset).Apply([
-                    this,
-                    b2 = std::move(b),
-                    i
-                ] (const auto& f) {
+        return AsyncIO.Read(File, alignedPtr, BlockSize, i.PhysicalOffset)
+            .Apply(
+                [this,
+                 b = std::move(buffer),
+                 d = std::move(data),
+                 i,
+                 alignedPtr](const auto& f) mutable
+                {
                     try {
-                        Cdbg << "async write completed: " << i.BlockIndex << "("
-                            << i.PhysicalBlockIndex << ")" << Endl;
-
                         f.GetValue();
 
-                        with_lock (WriteLock) {
-                            //Cdbg << "looking for write context for physical block "
-                            //    << i.PhysicalBlockIndex << Endl;
+                        char* p = alignedPtr + i.OffsetInBlock;
+                        std::memcpy(p, d.data(), d.size());
 
-                            auto it = Block2Context.find(i.PhysicalBlockIndex);
-                            Y_ABORT_UNLESS(it != Block2Context.end());
-                            auto& context = it->second;
-                            if (context.WriteQueue) {
-                                auto request = context.WriteQueue.front();
-                                context.WriteQueue.pop_front();
-                                WriteImpl(
-                                    request.Meta,
-                                    TIndices(request.BlockIndex)
-                                ).Subscribe([
-                                    p = std::move(request.Promise)
-                                ] (const auto&) mutable {
-                                    p.SetValue();
+                        return AsyncIO
+                            .Write(
+                                File,
+                                alignedPtr,
+                                BlockSize,
+                                i.PhysicalOffset)
+                            .Apply(
+                                [this, b2 = std::move(b), i](const auto& f)
+                                {
+                                    try {
+                                        Cdbg << "async write completed: "
+                                             << i.BlockIndex << "("
+                                             << i.PhysicalBlockIndex << ")"
+                                             << Endl;
+
+                                        f.GetValue();
+
+                                        with_lock (WriteLock) {
+                                            // Cdbg << "looking for write
+                                            // context for physical block "
+                                            //     << i.PhysicalBlockIndex <<
+                                            //     Endl;
+
+                                            auto it = Block2Context.find(
+                                                i.PhysicalBlockIndex);
+                                            Y_ABORT_UNLESS(
+                                                it != Block2Context.end());
+                                            auto& context = it->second;
+                                            if (context.WriteQueue) {
+                                                auto request =
+                                                    context.WriteQueue.front();
+                                                context.WriteQueue.pop_front();
+                                                WriteImpl(
+                                                    request.Meta,
+                                                    TIndices(
+                                                        request.BlockIndex))
+                                                    .Subscribe(
+                                                        [p = std::move(
+                                                             request.Promise)](
+                                                            const auto&) mutable
+                                                        { p.SetValue(); });
+                                            } else {
+                                                Block2Context.erase(it);
+                                                // Cdbg << "destroyed write
+                                                // context for physical block "
+                                                //     << i.PhysicalBlockIndex
+                                                //     << Endl;
+                                            }
+                                        }
+                                    } catch (...) {
+                                        Cerr << CurrentExceptionMessage()
+                                             << Endl;
+                                        Y_ABORT_UNLESS(0);
+                                    }
                                 });
-                            } else {
-                                Block2Context.erase(it);
-                                //Cdbg << "destroyed write context for physical block "
-                                //    << i.PhysicalBlockIndex << Endl;
-                            }
-                        }
                     } catch (...) {
                         Cerr << CurrentExceptionMessage() << Endl;
                         Y_ABORT_UNLESS(0);
                     }
                 });
-            } catch (...) {
-                Cerr << CurrentExceptionMessage() << Endl;
-                Y_ABORT_UNLESS(0);
-            }
-        });
     }
 
     NThreading::TFuture<void> Write(ui64 blockIndex, TBlockMeta meta)
@@ -211,13 +221,13 @@ public:
                 });
 
                 Cdbg << "async write postponed: " << blockIndex << "("
-                    << i.PhysicalBlockIndex << ")" << Endl;
+                     << i.PhysicalBlockIndex << ")" << Endl;
 
                 return context.WriteQueue.back().Promise;
             }
 
-            //Cdbg << "created write context for physical block "
-            //    << i.PhysicalBlockIndex << Endl;
+            // Cdbg << "created write context for physical block "
+            //     << i.PhysicalBlockIndex << Endl;
 
             context.Busy = true;
         }
@@ -230,12 +240,10 @@ public:
 
 TMetaTable::TMetaTable(const TString& filePath, ui64 blockCount)
     : Impl(new TImpl(filePath, blockCount))
-{
-}
+{}
 
 TMetaTable::~TMetaTable()
-{
-}
+{}
 
 NThreading::TFuture<TBlockMeta> TMetaTable::Read(ui64 blockIndex) const
 {

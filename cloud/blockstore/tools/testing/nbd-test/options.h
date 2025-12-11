@@ -30,7 +30,7 @@ struct TOptions
 
     // device geometry
     ui32 BlockSize = 4_KB;
-    ui32 BlocksCount = 1024*1024;
+    ui32 BlocksCount = 1024 * 1024;
 
     // test options
     ui32 MaxIoDepth = 10;

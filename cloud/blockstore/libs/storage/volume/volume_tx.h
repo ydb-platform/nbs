@@ -16,39 +16,39 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_VOLUME_TRANSACTIONS(xxx, ...)                               \
-    xxx(InitSchema,                     __VA_ARGS__)                           \
-    xxx(LoadState,                      __VA_ARGS__)                           \
-    xxx(UpdateConfig,                   __VA_ARGS__)                           \
-    xxx(UpdateDevices,                  __VA_ARGS__)                           \
-    xxx(UpdateMigrationState,           __VA_ARGS__)                           \
-    xxx(AddClient,                      __VA_ARGS__)                           \
-    xxx(RemoveClient,                   __VA_ARGS__)                           \
-    xxx(ResetMountSeqNumber,            __VA_ARGS__)                           \
-    xxx(ReadHistory,                    __VA_ARGS__)                           \
-    xxx(CleanupHistory,                 __VA_ARGS__)                           \
-    xxx(SavePartStats,                  __VA_ARGS__)                           \
-    xxx(SaveMultiplePartStats,          __VA_ARGS__)                           \
-    xxx(SaveCheckpointRequest,          __VA_ARGS__)                           \
-    xxx(UpdateCheckpointRequest,        __VA_ARGS__)                           \
-    xxx(UpdateShadowDiskState,          __VA_ARGS__)                           \
-    xxx(UpdateUsedBlocks,               __VA_ARGS__)                           \
-    xxx(WriteThrottlerState,            __VA_ARGS__)                           \
-    xxx(UpdateResyncState,              __VA_ARGS__)                           \
-    xxx(ToggleResync,                   __VA_ARGS__)                           \
-    xxx(UpdateClientInfo,               __VA_ARGS__)                           \
-    xxx(ResetStartPartitionsNeeded,     __VA_ARGS__)                           \
-    xxx(UpdateVolumeParams,             __VA_ARGS__)                           \
-    xxx(DeleteVolumeParams,             __VA_ARGS__)                           \
-    xxx(ChangeStorageConfig,            __VA_ARGS__)                           \
-    xxx(ReadMetaHistory,                __VA_ARGS__)                           \
-    xxx(AddLaggingAgent,                __VA_ARGS__)                           \
-    xxx(RemoveLaggingAgent,             __VA_ARGS__)                           \
-    xxx(UpdateFollower,                 __VA_ARGS__)                           \
-    xxx(RemoveFollower,                 __VA_ARGS__)                           \
-    xxx(UpdateLeader,                   __VA_ARGS__)                           \
-    xxx(RemoveLeader,                   __VA_ARGS__)                           \
-// BLOCKSTORE_VOLUME_TRANSACTIONS
+#define BLOCKSTORE_VOLUME_TRANSACTIONS(xxx, ...) \
+    xxx(InitSchema, __VA_ARGS__)                 \
+    xxx(LoadState, __VA_ARGS__)                  \
+    xxx(UpdateConfig, __VA_ARGS__)               \
+    xxx(UpdateDevices, __VA_ARGS__)              \
+    xxx(UpdateMigrationState, __VA_ARGS__)       \
+    xxx(AddClient, __VA_ARGS__)                  \
+    xxx(RemoveClient, __VA_ARGS__)               \
+    xxx(ResetMountSeqNumber, __VA_ARGS__)        \
+    xxx(ReadHistory, __VA_ARGS__)                \
+    xxx(CleanupHistory, __VA_ARGS__)             \
+    xxx(SavePartStats, __VA_ARGS__)              \
+    xxx(SaveMultiplePartStats, __VA_ARGS__)      \
+    xxx(SaveCheckpointRequest, __VA_ARGS__)      \
+    xxx(UpdateCheckpointRequest, __VA_ARGS__)    \
+    xxx(UpdateShadowDiskState, __VA_ARGS__)      \
+    xxx(UpdateUsedBlocks, __VA_ARGS__)           \
+    xxx(WriteThrottlerState, __VA_ARGS__)        \
+    xxx(UpdateResyncState, __VA_ARGS__)          \
+    xxx(ToggleResync, __VA_ARGS__)               \
+    xxx(UpdateClientInfo, __VA_ARGS__)           \
+    xxx(ResetStartPartitionsNeeded, __VA_ARGS__) \
+    xxx(UpdateVolumeParams, __VA_ARGS__)         \
+    xxx(DeleteVolumeParams, __VA_ARGS__)         \
+    xxx(ChangeStorageConfig, __VA_ARGS__)        \
+    xxx(ReadMetaHistory, __VA_ARGS__)            \
+    xxx(AddLaggingAgent, __VA_ARGS__)            \
+    xxx(RemoveLaggingAgent, __VA_ARGS__)         \
+    xxx(UpdateFollower, __VA_ARGS__)             \
+    xxx(RemoveFollower, __VA_ARGS__)             \
+    xxx(UpdateLeader, __VA_ARGS__)               \
+    xxx(RemoveLeader, __VA_ARGS__)               \
+    // BLOCKSTORE_VOLUME_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -131,10 +131,10 @@ struct TTxVolume
         const TVolumeMetaHistoryItem MetaHistoryItem;
 
         TUpdateConfig(
-                TRequestInfoPtr requestInfo,
-                ui64 txId,
-                NProto::TVolumeMeta meta,
-                TVolumeMetaHistoryItem metaHistoryItem)
+            TRequestInfoPtr requestInfo,
+            ui64 txId,
+            NProto::TVolumeMeta meta,
+            TVolumeMetaHistoryItem metaHistoryItem)
             : RequestInfo(std::move(requestInfo))
             , TxId(txId)
             , Meta(std::move(meta))
@@ -168,15 +168,15 @@ struct TTxVolume
         TVector<NProto::TDeviceConfig> ReplacedDevices;
 
         TUpdateDevices(
-                TDevices devices,
-                TMigrations migrations,
-                TVector<TDevices> replicas,
-                TVector<TString> freshDeviceIds,
-                TVector<TString> removedLaggingDeviceIds,
-                TVector<TString> unavailableDeviceIds,
-                NProto::EVolumeIOMode ioMode,
-                TInstant ioModeTs,
-                bool muteIOErrors)
+            TDevices devices,
+            TMigrations migrations,
+            TVector<TDevices> replicas,
+            TVector<TString> freshDeviceIds,
+            TVector<TString> removedLaggingDeviceIds,
+            TVector<TString> unavailableDeviceIds,
+            NProto::EVolumeIOMode ioMode,
+            TInstant ioModeTs,
+            bool muteIOErrors)
             : TUpdateDevices(
                   TRequestInfoPtr(),
                   std::move(devices),
@@ -191,16 +191,16 @@ struct TTxVolume
         {}
 
         TUpdateDevices(
-                TRequestInfoPtr requestInfo,
-                TDevices devices,
-                TMigrations migrations,
-                TVector<TDevices> replicas,
-                TVector<TString> freshDeviceIds,
-                TVector<TString> removedLaggingDeviceIds,
-                TVector<TString> unavailableDeviceIds,
-                NProto::EVolumeIOMode ioMode,
-                TInstant ioModeTs,
-                bool muteIOErrors)
+            TRequestInfoPtr requestInfo,
+            TDevices devices,
+            TMigrations migrations,
+            TVector<TDevices> replicas,
+            TVector<TString> freshDeviceIds,
+            TVector<TString> removedLaggingDeviceIds,
+            TVector<TString> unavailableDeviceIds,
+            NProto::EVolumeIOMode ioMode,
+            TInstant ioModeTs,
+            bool muteIOErrors)
             : RequestInfo(std::move(requestInfo))
             , Devices(std::move(devices))
             , Migrations(std::move(migrations))
@@ -258,10 +258,10 @@ struct TTxVolume
         bool VolumeClientMigrationInProgress = false;
 
         TAddClient(
-                TRequestInfoPtr requestInfo,
-                TString diskId,
-                const NActors::TActorId& pipeServerActorId,
-                NProto::TVolumeClientInfo info)
+            TRequestInfoPtr requestInfo,
+            TString diskId,
+            const NActors::TActorId& pipeServerActorId,
+            NProto::TVolumeClientInfo info)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , PipeServerActorId(pipeServerActorId)
@@ -293,11 +293,11 @@ struct TTxVolume
         NProto::TError Error;
 
         TRemoveClient(
-                TRequestInfoPtr requestInfo,
-                TString diskId,
-                const NActors::TActorId& pipeServerActorId,
-                TString clientId,
-                bool isMonRequest)
+            TRequestInfoPtr requestInfo,
+            TString diskId,
+            const NActors::TActorId& pipeServerActorId,
+            TString clientId,
+            bool isMonRequest)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , PipeServerActorId(pipeServerActorId)
@@ -321,9 +321,7 @@ struct TTxVolume
         const TString ClientId;
         TMaybe<NProto::TVolumeClientInfo> ClientInfo;
 
-        TResetMountSeqNumber(
-                TRequestInfoPtr requestInfo,
-                TString clientId)
+        TResetMountSeqNumber(TRequestInfoPtr requestInfo, TString clientId)
             : RequestInfo(std::move(requestInfo))
             , ClientId(std::move(clientId))
         {}
@@ -349,11 +347,11 @@ struct TTxVolume
         TVolumeMountHistorySlice History;
 
         TReadHistory(
-                TRequestInfoPtr requestInfo,
-                THistoryLogKey ts,
-                TInstant oldestTs,
-                size_t recordCount,
-                bool monRequest)
+            TRequestInfoPtr requestInfo,
+            THistoryLogKey ts,
+            TInstant oldestTs,
+            size_t recordCount,
+            bool monRequest)
             : RequestInfo(std::move(requestInfo))
             , Ts(ts)
             , OldestTs(oldestTs)
@@ -380,9 +378,9 @@ struct TTxVolume
         TVector<THistoryLogKey> OutdatedHistory;
 
         TCleanupHistory(
-                TRequestInfoPtr requestInfo,
-                TInstant key,
-                ui32 itemsToRemove)
+            TRequestInfoPtr requestInfo,
+            TInstant key,
+            ui32 itemsToRemove)
             : RequestInfo(std::move(requestInfo))
             , Key(key)
             , ItemsToRemove(itemsToRemove)
@@ -424,8 +422,8 @@ struct TTxVolume
         const TVolumeDatabase::TPartStats PartStats;
 
         TSavePartStats(
-                TRequestInfoPtr requestInfo,
-                TVolumeDatabase::TPartStats partStats)
+            TRequestInfoPtr requestInfo,
+            TVolumeDatabase::TPartStats partStats)
             : RequestInfo(std::move(requestInfo))
             , PartStats(std::move(partStats))
         {}
@@ -459,9 +457,7 @@ struct TTxVolume
         const TRequestInfoPtr RequestInfo;
         const ui64 RequestId;
 
-        TSaveCheckpointRequest(
-                TRequestInfoPtr requestInfo,
-                ui64 requestId)
+        TSaveCheckpointRequest(TRequestInfoPtr requestInfo, ui64 requestId)
             : RequestInfo(std::move(requestInfo))
             , RequestId(requestId)
         {}
@@ -486,12 +482,12 @@ struct TTxVolume
         const std::optional<TString> ErrorMessage;
 
         TUpdateCheckpointRequest(
-                TRequestInfoPtr requestInfo,
-                ui64 requestId,
-                bool completed,
-                TString shadowDiskId,
-                EShadowDiskState shadowDiskState,
-                std::optional<TString> errorMessage)
+            TRequestInfoPtr requestInfo,
+            ui64 requestId,
+            bool completed,
+            TString shadowDiskId,
+            EShadowDiskState shadowDiskState,
+            std::optional<TString> errorMessage)
             : RequestInfo(std::move(requestInfo))
             , RequestId(requestId)
             , Completed(completed)
@@ -518,10 +514,10 @@ struct TTxVolume
         const ui64 ProcessedBlockCount;
 
         TUpdateShadowDiskState(
-                TRequestInfoPtr requestInfo,
-                ui64 requestId,
-                EShadowDiskState shadowDiskState,
-                ui64 processedBlockCount)
+            TRequestInfoPtr requestInfo,
+            ui64 requestId,
+            EShadowDiskState shadowDiskState,
+            ui64 processedBlockCount)
             : RequestInfo(std::move(requestInfo))
             , RequestId(requestId)
             , ShadowDiskState(shadowDiskState)
@@ -544,8 +540,8 @@ struct TTxVolume
         const TVector<TBlockRange64> Ranges;
 
         TUpdateUsedBlocks(
-                TRequestInfoPtr requestInfo,
-                TVector<TBlockRange64> ranges)
+            TRequestInfoPtr requestInfo,
+            TVector<TBlockRange64> ranges)
             : RequestInfo(std::move(requestInfo))
             , Ranges(std::move(ranges))
         {}
@@ -566,8 +562,8 @@ struct TTxVolume
         const TVolumeDatabase::TThrottlerStateInfo StateInfo;
 
         TWriteThrottlerState(
-                TRequestInfoPtr requestInfo,
-                TVolumeDatabase::TThrottlerStateInfo stateInfo)
+            TRequestInfoPtr requestInfo,
+            TVolumeDatabase::TThrottlerStateInfo stateInfo)
             : RequestInfo(std::move(requestInfo))
             , StateInfo(stateInfo)
         {}
@@ -610,9 +606,9 @@ struct TTxVolume
         bool ResyncWasNeeded = false;
 
         TToggleResync(
-                TRequestInfoPtr requestInfo,
-                bool resyncEnabled,
-                bool alertResyncChecksumMismatch)
+            TRequestInfoPtr requestInfo,
+            bool resyncEnabled,
+            bool alertResyncChecksumMismatch)
             : RequestInfo(std::move(requestInfo))
             , ResyncEnabled(resyncEnabled)
             , AlertResyncChecksumMismatch(alertResyncChecksumMismatch)
@@ -654,7 +650,8 @@ struct TTxVolume
         const ui64 PartitionTabletId;
 
         TResetStartPartitionsNeeded(
-                TRequestInfoPtr requestInfo, ui64 PartitionTabletId)
+            TRequestInfoPtr requestInfo,
+            ui64 PartitionTabletId)
             : RequestInfo(std::move(requestInfo))
             , PartitionTabletId(std::move(PartitionTabletId))
         {}
@@ -675,8 +672,8 @@ struct TTxVolume
         const THashMap<TString, TRuntimeVolumeParamsValue> VolumeParams;
 
         TUpdateVolumeParams(
-                TRequestInfoPtr requestInfo,
-                THashMap<TString, TRuntimeVolumeParamsValue> volumeParams)
+            TRequestInfoPtr requestInfo,
+            THashMap<TString, TRuntimeVolumeParamsValue> volumeParams)
             : RequestInfo(std::move(requestInfo))
             , VolumeParams(std::move(volumeParams))
         {}
@@ -696,9 +693,7 @@ struct TTxVolume
         const TRequestInfoPtr RequestInfo;
         const TVector<TString> Keys;
 
-        TDeleteVolumeParams(
-                TRequestInfoPtr requestInfo,
-                TVector<TString> keys)
+        TDeleteVolumeParams(TRequestInfoPtr requestInfo, TVector<TString> keys)
             : RequestInfo(std::move(requestInfo))
             , Keys(std::move(keys))
         {}
@@ -729,7 +724,7 @@ struct TTxVolume
             : RequestInfo(std::move(requestInfo))
             , StorageConfigNew(std::move(storageConfig))
             , MergeWithStorageConfigFromVolumeDB(
-                mergeWithStorageConfigFromVolumeDB)
+                  mergeWithStorageConfigFromVolumeDB)
         {}
 
         void Clear()
@@ -752,8 +747,8 @@ struct TTxVolume
         NProto::TError Error;
 
         TAddLaggingAgent(
-                TRequestInfoPtr requestInfo,
-                TString timedOudDeviceUUID)
+            TRequestInfoPtr requestInfo,
+            TString timedOudDeviceUUID)
             : RequestInfo(std::move(requestInfo))
             , TimedOudDeviceUUID(std::move(timedOudDeviceUUID))
         {}
@@ -799,8 +794,8 @@ struct TTxVolume
         const TFollowerDiskInfo FollowerInfo;
 
         TUpdateFollower(
-                TRequestInfoPtr requestInfo,
-                TFollowerDiskInfo followerInfo)
+            TRequestInfoPtr requestInfo,
+            TFollowerDiskInfo followerInfo)
             : RequestInfo(std::move(requestInfo))
             , FollowerInfo(std::move(followerInfo))
         {}

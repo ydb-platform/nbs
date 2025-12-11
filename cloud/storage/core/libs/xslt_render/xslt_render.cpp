@@ -67,19 +67,22 @@ NProto::TError TXslRenderer::Render(
         nullptr,
         "utf-8",
         0);
-    Y_DEFER {
+    Y_DEFER
+    {
         xmlFreeDoc(sourceDoc);
-    };
+    }
 
     xmlDocPtr result = xsltApplyStylesheet(Impl->Stylesheet, sourceDoc, {});
-    Y_DEFER {
+    Y_DEFER
+    {
         xmlFreeDoc(result);
-    };
+    }
     if (result != nullptr) {
         xmlChar* buffer = nullptr;
-        Y_DEFER {
+        Y_DEFER
+        {
             xmlFree(buffer);
-        };
+        }
         int bufferSize = 0;
 
         if (!xsltSaveResultToString(

@@ -77,16 +77,16 @@ private:
 
 public:
     TBootstrap(
-            ILoggingServicePtr logging,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            IServerPtr server,
-            IClientPtr client,
-            IBlockStorePtr grpcClientEndpoint,
-            IBlockStorePtr clientEndpoint,
-            IServerHandlerFactoryPtr handlerFactory,
-            TNetworkAddress connectAddress,
-            TString diskId)
+        ILoggingServicePtr logging,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler,
+        IServerPtr server,
+        IClientPtr client,
+        IBlockStorePtr grpcClientEndpoint,
+        IBlockStorePtr clientEndpoint,
+        IServerHandlerFactoryPtr handlerFactory,
+        TNetworkAddress connectAddress,
+        TString diskId)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
@@ -235,9 +235,7 @@ private:
     {
         Server->Start();
 
-        auto future = Server->StartEndpoint(
-            ConnectAddress,
-            HandlerFactory);
+        auto future = Server->StartEndpoint(ConnectAddress, HandlerFactory);
 
         return future.GetValue(TDuration::Seconds(3));
     }
@@ -263,7 +261,7 @@ std::unique_ptr<TBootstrap> CreateBootstrap(
 {
     const ui32 clientThreadsCount = 1;
 
-    auto logging = CreateLoggingService("console", { TLOG_DEBUG });
+    auto logging = CreateLoggingService("console", {TLOG_DEBUG});
 
     auto timer = CreateWallClockTimer();
     auto scheduler = CreateScheduler();
@@ -278,35 +276,33 @@ std::unique_ptr<TBootstrap> CreateBootstrap(
         CreateErrorHandlerStub(),
         options);
 
-    auto client = CreateClient(
-        logging,
-        clientThreadsCount);
+    auto client = CreateClient(logging, clientThreadsCount);
 
-    auto clientHandler = CreateClientHandler(
-        logging,
-        StructuredReply,
-        UseNbsErrors);
+    auto clientHandler =
+        CreateClientHandler(logging, StructuredReply, UseNbsErrors);
 
     if (!grpcClientEndpoint) {
         auto testGrpcService = std::make_shared<TTestService>();
         testGrpcService->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                UNIT_ASSERT_VALUES_EQUAL(options.DiskId, request->GetDiskId());
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(options.DiskId, request->GetDiskId());
 
-                NProto::TMountVolumeResponse response;
-                response.SetInactiveClientsTimeout(100);
+            NProto::TMountVolumeResponse response;
+            response.SetInactiveClientsTimeout(100);
 
-                auto& volume = *response.MutableVolume();
-                volume.SetDiskId(options.DiskId);
-                volume.SetBlocksCount(options.BlocksCount);
-                volume.SetBlockSize(options.BlockSize);
-                return MakeFuture(response);
-            };
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId(options.DiskId);
+            volume.SetBlocksCount(options.BlocksCount);
+            volume.SetBlockSize(options.BlockSize);
+            return MakeFuture(response);
+        };
         testGrpcService->UnmountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture(NProto::TUnmountVolumeResponse());
-            };
+            [&](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture(NProto::TUnmountVolumeResponse());
+        };
         grpcClientEndpoint = testGrpcService;
     }
 
@@ -359,10 +355,8 @@ NProto::TError WriteBlocksLocal(const IBlockStorePtr& clientEndpoint)
     const ui64 blocksCount = 42;
 
     TVector<TString> blocks;
-    auto sglist = ResizeBlocks(
-        blocks,
-        blocksCount,
-        TString(DefaultBlockSize, 'X'));
+    auto sglist =
+        ResizeBlocks(blocks, blocksCount, TString(DefaultBlockSize, 'X'));
 
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->SetStartIndex(0);
@@ -407,9 +401,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        storage->ReadBlocksLocalHandler = [&] (
-            TCallContextPtr callContext,
-            std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        storage->ReadBlocksLocalHandler =
+            [&](TCallContextPtr callContext,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
         {
             Y_UNUSED(callContext);
 
@@ -426,9 +420,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
             return MakeFuture<NProto::TReadBlocksLocalResponse>();
         };
 
-        storage->WriteBlocksLocalHandler = [&] (
-            TCallContextPtr callContext,
-            std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        storage->WriteBlocksLocalHandler =
+            [&](TCallContextPtr callContext,
+                std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
         {
             Y_UNUSED(callContext);
 
@@ -443,9 +437,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
             return MakeFuture<NProto::TWriteBlocksLocalResponse>();
         };
 
-        storage->ZeroBlocksHandler = [&] (
-            TCallContextPtr callContext,
-            std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        storage->ZeroBlocksHandler =
+            [&](TCallContextPtr callContext,
+                std::shared_ptr<NProto::TZeroBlocksRequest> request)
         {
             Y_UNUSED(callContext);
 
@@ -524,9 +518,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        storage->ReadBlocksLocalHandler = [&] (
-            TCallContextPtr callContext,
-            std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        storage->ReadBlocksLocalHandler =
+            [&](TCallContextPtr callContext,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
         {
             Y_UNUSED(callContext);
 
@@ -539,9 +533,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
             return MakeFuture<NProto::TReadBlocksLocalResponse>();
         };
 
-        storage->WriteBlocksLocalHandler = [&] (
-            TCallContextPtr callContext,
-            std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        storage->WriteBlocksLocalHandler =
+            [&](TCallContextPtr callContext,
+                std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
         {
             Y_UNUSED(callContext);
             Y_UNUSED(request);
@@ -549,9 +543,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
             return MakeFuture<NProto::TWriteBlocksLocalResponse>();
         };
 
-        storage->ZeroBlocksHandler = [&] (
-            TCallContextPtr callContext,
-            std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        storage->ZeroBlocksHandler =
+            [&](TCallContextPtr callContext,
+                std::shared_ptr<NProto::TZeroBlocksRequest> request)
         {
             Y_UNUSED(callContext);
             Y_UNUSED(request);
@@ -596,9 +590,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        storage->ReadBlocksLocalHandler = [&] (
-            TCallContextPtr callContext,
-            std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        storage->ReadBlocksLocalHandler =
+            [&](TCallContextPtr callContext,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
         {
             Y_UNUSED(callContext);
 
@@ -634,25 +628,27 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TNetworkAddress connectAddress(TUnixSocketPath(unixSocket.GetPath()));
 
         auto storage1 = std::make_shared<TTestStorage>();
-        storage1->ReadBlocksLocalHandler = [&] (
-            TCallContextPtr callContext,
-            std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        storage1->ReadBlocksLocalHandler =
+            [&](TCallContextPtr callContext,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
         {
             Y_UNUSED(callContext);
             Y_UNUSED(request);
 
-            return MakeFuture<NProto::TReadBlocksLocalResponse>(TErrorResponse(serverCode1));
+            return MakeFuture<NProto::TReadBlocksLocalResponse>(
+                TErrorResponse(serverCode1));
         };
 
         auto storage2 = std::make_shared<TTestStorage>();
-        storage2->ReadBlocksLocalHandler = [&] (
-            TCallContextPtr callContext,
-            std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        storage2->ReadBlocksLocalHandler =
+            [&](TCallContextPtr callContext,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
         {
             Y_UNUSED(callContext);
             Y_UNUSED(request);
 
-            return MakeFuture<NProto::TReadBlocksLocalResponse>(TErrorResponse(serverCode2));
+            return MakeFuture<NProto::TReadBlocksLocalResponse>(
+                TErrorResponse(serverCode2));
         };
 
         auto bootstrap1 = CreateBootstrap(connectAddress, storage1);
@@ -709,10 +705,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
             EErrorKind::ErrorFatal,
             GetErrorKind(error),
             error);
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_NOT_FOUND,
-            error.GetCode(),
-            error);
+        UNIT_ASSERT_VALUES_EQUAL_C(E_NOT_FOUND, error.GetCode(), error);
 
         bootstrap->Stop();
     }
@@ -721,17 +714,18 @@ Y_UNIT_TEST_SUITE(TServerTest)
     {
         TFsPath unixSocket(CreateGuidAsString() + ".sock");
         unixSocket.Touch();
-        Y_DEFER {
+        Y_DEFER
+        {
             unixSocket.DeleteIfExists();
-        };
+        }
 
         TNetworkAddress connectAddress(TUnixSocketPath(unixSocket.GetPath()));
 
         auto storage = std::make_shared<TTestStorage>();
 
-        storage->ReadBlocksLocalHandler = [&] (
-            TCallContextPtr callContext,
-            std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        storage->ReadBlocksLocalHandler =
+            [&](TCallContextPtr callContext,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
         {
             Y_UNUSED(callContext);
 
@@ -764,7 +758,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TUnixSocketPath socketPath("./TestUnixSocket");
         TNetworkAddress connectAddress(socketPath);
 
-        auto logging = CreateLoggingService("console", { TLOG_DEBUG });
+        auto logging = CreateLoggingService("console", {TLOG_DEBUG});
 
         TStorageOptions options;
         options.DiskId = diskId;
@@ -803,9 +797,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        storage->ZeroBlocksHandler = [&] (
-            TCallContextPtr callContext,
-            std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        storage->ZeroBlocksHandler =
+            [&](TCallContextPtr callContext,
+                std::shared_ptr<NProto::TZeroBlocksRequest> request)
         {
             Y_UNUSED(callContext);
 
@@ -823,7 +817,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         NProto::TClientAppConfig clientConfig;
         clientConfig.MutableClientConfig()->SetRetryTimeoutIncrement(100);
-        auto config = std::make_shared<TClientAppConfig>(std::move(clientConfig));
+        auto config =
+            std::make_shared<TClientAppConfig>(std::move(clientConfig));
 
         auto clientEndpoint = CreateDurableClient(
             config,
@@ -905,9 +900,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TManualEvent event;
         auto trigger = NewPromise<NProto::TZeroBlocksResponse>();
 
-        storage->ZeroBlocksHandler = [&] (
-            TCallContextPtr callContext,
-            std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        storage->ZeroBlocksHandler =
+            [&](TCallContextPtr callContext,
+                std::shared_ptr<NProto::TZeroBlocksRequest> request)
         {
             Y_UNUSED(callContext);
 
@@ -993,9 +988,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto trigger = NewPromise<NProto::TZeroBlocksResponse>();
 
-        storage->ZeroBlocksHandler = [&] (
-            TCallContextPtr callContext,
-            std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        storage->ZeroBlocksHandler =
+            [&](TCallContextPtr callContext,
+                std::shared_ptr<NProto::TZeroBlocksRequest> request)
         {
             Y_UNUSED(callContext);
 
@@ -1015,11 +1010,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         const auto& options = DefaultStorageOptions;
 
-        auto bootstrap = CreateBootstrap(
-            connectAddress,
-            storage,
-            options,
-            serverConfig);
+        auto bootstrap =
+            CreateBootstrap(connectAddress, storage, options, serverConfig);
 
         auto error = bootstrap->Start();
         UNIT_ASSERT_C(!HasError(error), error);
@@ -1117,18 +1109,19 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto testGrpcService = std::make_shared<TTestService>();
         testGrpcService->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                UNIT_ASSERT_VALUES_EQUAL(options.DiskId, request->GetDiskId());
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(options.DiskId, request->GetDiskId());
 
-                NProto::TMountVolumeResponse response;
-                response.SetInactiveClientsTimeout(100);
+            NProto::TMountVolumeResponse response;
+            response.SetInactiveClientsTimeout(100);
 
-                auto& volume = *response.MutableVolume();
-                volume.SetDiskId(options.DiskId);
-                volume.SetBlocksCount(options.BlocksCount);
-                volume.SetBlockSize(mountBlockSize);
-                return MakeFuture(response);
-            };
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId(options.DiskId);
+            volume.SetBlocksCount(options.BlocksCount);
+            volume.SetBlockSize(mountBlockSize);
+            return MakeFuture(response);
+        };
 
         auto bootstrap = CreateBootstrap(
             connectAddress,
@@ -1152,9 +1145,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        storage->ReadBlocksLocalHandler = [&] (
-            TCallContextPtr callContext,
-            std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        storage->ReadBlocksLocalHandler =
+            [&](TCallContextPtr callContext,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
         {
             Y_UNUSED(callContext);
 

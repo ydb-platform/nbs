@@ -1,5 +1,6 @@
-#include "alloc.h"
 #include "mixed_index.h"
+
+#include "alloc.h"
 
 #include <util/generic/algorithm.h>
 
@@ -48,10 +49,10 @@ struct TCheckpointData
     TCheckpointData()
         : CheckpointId(0)
         , BlockMap(
-            0,
-            SPARSEHASH_HASH<ui32>(),
-            std::equal_to<ui32>(),
-            GetAllocatorByTag(EAllocatorTag::MixedIndexBlockMap))
+              0,
+              SPARSEHASH_HASH<ui32>(),
+              std::equal_to<ui32>(),
+              GetAllocatorByTag(EAllocatorTag::MixedIndexBlockMap))
     {}
 
     bool operator<(ui64 commitId) const
@@ -66,7 +67,7 @@ TBlock Block(ui32 blockIndex, ui64 minCommitId, const TBlockLocation& loc)
         blockIndex,
         minCommitId,
         InvalidCommitId,
-        loc.BlobOffset == ZeroBlobOffset    // zeroed
+        loc.BlobOffset == ZeroBlobOffset   // zeroed
     };
 }
 
@@ -100,15 +101,14 @@ void AddResult(
     const TVector<ui64>& deletionCommits,
     TVector<TBlockAndLocation>& result)
 {
-    result.push_back({
-        {
-            blockIndex,
-            rit->CheckpointId,
-            deletionCommits[blockIndex - range.Start],
-            loc.BlobOffset == ZeroBlobOffset    // zeroed
-        },
-        loc
-    });
+    result.push_back(
+        {{
+             blockIndex,
+             rit->CheckpointId,
+             deletionCommits[blockIndex - range.Start],
+             loc.BlobOffset == ZeroBlobOffset   // zeroed
+         },
+         loc});
 }
 
 }   // namespace
@@ -123,12 +123,12 @@ struct TMixedIndex::TImpl
 
     TImpl()
         : Blocks(
-            0,
-            SPARSEHASH_HASH<ui32>(),
-            std::equal_to<ui32>(),
-            GetAllocatorByTag(EAllocatorTag::MixedIndexBlockMap))
+              0,
+              SPARSEHASH_HASH<ui32>(),
+              std::equal_to<ui32>(),
+              GetAllocatorByTag(EAllocatorTag::MixedIndexBlockMap))
         , OverwrittenBlobIds(
-            GetAllocatorByTag(EAllocatorTag::MixedIndexOverwrittenBlobIds))
+              GetAllocatorByTag(EAllocatorTag::MixedIndexOverwrittenBlobIds))
     {
         Blocks.set_deleted_key(InvalidBlockIndex);
     }
@@ -136,11 +136,7 @@ struct TMixedIndex::TImpl
     void UpdateOverwrittenBlobs(ui32 blockIndex, ui64 commitId)
     {
         TBlockAndLocation oldLocation;
-        const auto found = FindBlock(
-            commitId,
-            blockIndex,
-            &oldLocation
-        );
+        const auto found = FindBlock(commitId, blockIndex, &oldLocation);
         if (found) {
             Y_ABORT_UNLESS(oldLocation.Location.BlobId);
             OverwrittenBlobIds.insert(oldLocation.Location.BlobId);
@@ -173,8 +169,7 @@ struct TMixedIndex::TImpl
         auto rit = LowerBound(
             CheckpointData.begin(),
             CheckpointData.end(),
-            b.Block.MinCommitId
-        );
+            b.Block.MinCommitId);
 
         if (rit == CheckpointData.end()) {
             OverwriteBlock(
@@ -182,27 +177,25 @@ struct TMixedIndex::TImpl
                 b.Block.MinCommitId,
                 b.Location,
                 Blocks,
-                replace
-            );
+                replace);
         } else {
             auto it = LowerBound(
                 rit->Blocks.begin(),
                 rit->Blocks.end(),
-                b.Block.BlockIndex
-            );
+                b.Block.BlockIndex);
 
             if (it == rit->Blocks.end() || it->Index != b.Block.BlockIndex) {
                 Y_ABORT_UNLESS(b.Block.MaxCommitId > rit->CheckpointId);
                 // location can either be unset - it means that this block is
-                // being added to blob index for the first time (e.g. flush result)
-                // or it can be set and needs to be overwritten - e.g. via compaction
+                // being added to blob index for the first time (e.g. flush
+                // result) or it can be set and needs to be overwritten - e.g.
+                // via compaction
                 OverwriteBlock(
                     b.Block.BlockIndex,
                     b.Block.MinCommitId,
                     b.Location,
                     rit->BlockMap,
-                    replace
-                );
+                    replace);
             } else if (replace) {
                 if (it->Location.BlobId) {
                     OverwrittenBlobIds.insert(it->Location.BlobId);
@@ -215,15 +208,13 @@ struct TMixedIndex::TImpl
                 // need to insert a tombstone if there is no block whose
                 // MinCommitId is equivalent to b.Block.MaxCommitId
 
-                SetOrUpdateBlock({
-                    {
-                        b.Block.BlockIndex,
-                        b.Block.MaxCommitId,
-                        InvalidCommitId,
-                        false
-                    },
-                    {{}, InvalidBlobOffset}
-                }, false);
+                SetOrUpdateBlock(
+                    {{b.Block.BlockIndex,
+                      b.Block.MaxCommitId,
+                      InvalidCommitId,
+                      false},
+                     {{}, InvalidBlobOffset}},
+                    false);
             }
         }
     }
@@ -235,8 +226,7 @@ struct TMixedIndex::TImpl
             InvalidCommitId,
             {{}, InvalidBlobOffset},
             Blocks,
-            true
-        );
+            true);
     }
 
     void OnCheckpoint(ui64 checkpointId)
@@ -259,8 +249,7 @@ struct TMixedIndex::TImpl
         auto rit = LowerBound(
             CheckpointData.begin(),
             CheckpointData.end(),
-            checkpointId
-        );
+            checkpointId);
 
         if (rit == CheckpointData.end() || rit->CheckpointId != checkpointId) {
             // or verify?
@@ -326,8 +315,7 @@ struct TMixedIndex::TImpl
                 auto it = LowerBound(
                     nextRit->Blocks.begin(),
                     nextRit->Blocks.end(),
-                    x.first
-                );
+                    x.first);
 
                 if (it != nextRit->Blocks.end() && it->Index == x.first) {
                     continue;
@@ -352,7 +340,7 @@ struct TMixedIndex::TImpl
                 blockIndex,
                 InvalidCommitId,
                 InvalidCommitId,
-                it->second.BlobOffset == ZeroBlobOffset  // zeroed
+                it->second.BlobOffset == ZeroBlobOffset   // zeroed
             };
             return it->second.BlobOffset != InvalidBlobOffset;
         }
@@ -364,16 +352,11 @@ struct TMixedIndex::TImpl
         return FindBlock(CheckpointData.end() - 1, blockIndex, result);
     }
 
-    bool FindBlock(
-        ui64 commitId,
-        ui32 blockIndex,
-        TBlockAndLocation* result) const
+    bool
+    FindBlock(ui64 commitId, ui32 blockIndex, TBlockAndLocation* result) const
     {
-        auto rit = LowerBound(
-            CheckpointData.begin(),
-            CheckpointData.end(),
-            commitId
-        );
+        auto rit =
+            LowerBound(CheckpointData.begin(), CheckpointData.end(), commitId);
 
         if (rit == CheckpointData.end()) {
             auto it = Blocks.find(blockIndex);
@@ -383,8 +366,7 @@ struct TMixedIndex::TImpl
                     blockIndex,
                     InvalidCommitId,
                     it->second,
-                    result
-                );
+                    result);
             }
 
             if (CheckpointData.empty()) {
@@ -408,30 +390,17 @@ struct TMixedIndex::TImpl
         ui32 blockIndex,
         TBlockAndLocation* result) const
     {
-        auto it = LowerBound(
-            cd.Blocks.begin(),
-            cd.Blocks.end(),
-            blockIndex
-        );
+        auto it = LowerBound(cd.Blocks.begin(), cd.Blocks.end(), blockIndex);
 
         if (it != cd.Blocks.end() && blockIndex == it->Index) {
-            return {
-                FillResult(blockIndex, cd, it, result),
-                true
-            };
+            return {FillResult(blockIndex, cd, it, result), true};
         }
 
         auto bmit = cd.BlockMap.find(blockIndex);
         if (bmit != cd.BlockMap.end()) {
             return {
-                FillResult(
-                    blockIndex,
-                    cd.CheckpointId,
-                    bmit->second,
-                    result
-                ),
-                true
-            };
+                FillResult(blockIndex, cd.CheckpointId, bmit->second, result),
+                true};
         }
 
         return {false, false};
@@ -467,10 +436,8 @@ struct TMixedIndex::TImpl
             auto it = Blocks.find(i);
             if (it != Blocks.end()) {
                 if (it->second.BlobOffset != InvalidBlobOffset) {
-                    result.push_back({
-                        Block(i, InvalidCommitId, it->second),
-                        it->second
-                    });
+                    result.push_back(
+                        {Block(i, InvalidCommitId, it->second), it->second});
                 }
 
                 if (CheckpointData) {
@@ -480,14 +447,11 @@ struct TMixedIndex::TImpl
             }
         }
 
-        for (auto rit = CheckpointData.rbegin();
-                rit != CheckpointData.rend(); ++rit)
+        for (auto rit = CheckpointData.rbegin(); rit != CheckpointData.rend();
+             ++rit)
         {
-            auto it = LowerBound(
-                rit->Blocks.begin(),
-                rit->Blocks.end(),
-                range.Start
-            );
+            auto it =
+                LowerBound(rit->Blocks.begin(), rit->Blocks.end(), range.Start);
 
             while (it != rit->Blocks.end() && it->Index <= range.End) {
                 if (it->Location.BlobOffset != InvalidBlobOffset) {
@@ -497,8 +461,7 @@ struct TMixedIndex::TImpl
                         range,
                         it->Location,
                         deletionCommits,
-                        result
-                    );
+                        result);
                 }
 
                 deletionCommits[it->Index - range.Start] = rit->CheckpointId;
@@ -515,8 +478,7 @@ struct TMixedIndex::TImpl
                             range,
                             x.second,
                             deletionCommits,
-                            result
-                        );
+                            result);
                     }
 
                     deletionCommits[x.first - range.Start] = rit->CheckpointId;
@@ -542,12 +504,10 @@ struct TMixedIndex::TImpl
 
 TMixedIndex::TMixedIndex()
     : Impl(new TImpl())
-{
-}
+{}
 
 TMixedIndex::~TMixedIndex()
-{
-}
+{}
 
 void TMixedIndex::SetOrUpdateBlock(const TBlockAndLocation& b)
 {
@@ -558,10 +518,9 @@ void TMixedIndex::SetOrUpdateBlock(
     ui32 blockIndex,
     const TBlockLocation& location)
 {
-    Impl->SetOrUpdateBlock({
-        Block(blockIndex, InvalidCommitId, location),
-        location
-    }, true);
+    Impl->SetOrUpdateBlock(
+        {Block(blockIndex, InvalidCommitId, location), location},
+        true);
 }
 
 void TMixedIndex::ClearBlock(ui32 blockIndex)
@@ -614,9 +573,8 @@ TMixedIndexBuilder::TMixedIndexBuilder(const TBlockRange32& range)
     : Range(range)
     , Blocks(range.Size())
     , OverwrittenBlobIds(
-        GetAllocatorByTag(EAllocatorTag::MixedIndexOverwrittenBlobIds))
-{
-}
+          GetAllocatorByTag(EAllocatorTag::MixedIndexOverwrittenBlobIds))
+{}
 
 void TMixedIndexBuilder::AddBlock(const TBlockAndLocation& b)
 {
@@ -647,23 +605,21 @@ std::unique_ptr<TMixedIndex> TMixedIndexBuilder::Build(
         Sort(
             v.begin(),
             v.end(),
-            [] (const TBlockAndLocation& l, const TBlockAndLocation& r) {
-                return l.Block.MinCommitId < r.Block.MinCommitId;
-            }
-        );
+            [](const TBlockAndLocation& l, const TBlockAndLocation& r)
+            { return l.Block.MinCommitId < r.Block.MinCommitId; });
 
         auto checkpoint = checkpointIds.begin();
         for (const auto& b: v) {
-            while (checkpoint != checkpointIds.end()
-                    && *checkpoint < b.Block.MinCommitId)
+            while (checkpoint != checkpointIds.end() &&
+                   *checkpoint < b.Block.MinCommitId)
             {
                 ++checkpoint;
             }
 
             auto creationCheckpoint = checkpoint;
 
-            while (checkpoint != checkpointIds.end()
-                    && *checkpoint < b.Block.MaxCommitId)
+            while (checkpoint != checkpointIds.end() &&
+                   *checkpoint < b.Block.MaxCommitId)
             {
                 ++checkpoint;
             }
@@ -674,30 +630,25 @@ std::unique_ptr<TMixedIndex> TMixedIndexBuilder::Build(
                 if (creationCheckpoint != deletionCheckpoint) {
                     const auto j = std::distance(
                         checkpointIds.begin(),
-                        creationCheckpoint
-                    );
-                    if (rodata[j].Blocks
-                            && rodata[j].Blocks.back().Index == b.Block.BlockIndex)
+                        creationCheckpoint);
+                    if (rodata[j].Blocks &&
+                        rodata[j].Blocks.back().Index == b.Block.BlockIndex)
                     {
-                        Y_ABORT_UNLESS(rodata[j].Blocks.back().Location.BlobOffset
-                            == InvalidBlobOffset);
+                        Y_ABORT_UNLESS(
+                            rodata[j].Blocks.back().Location.BlobOffset ==
+                            InvalidBlobOffset);
                         rodata[j].Blocks.back().Location = b.Location;
                     } else {
-                        rodata[j].Blocks.push_back({
-                            b.Block.BlockIndex,
-                            b.Location
-                        });
+                        rodata[j].Blocks.push_back(
+                            {b.Block.BlockIndex, b.Location});
                     }
 
                     if (deletionCheckpoint != checkpointIds.end()) {
                         const auto k = std::distance(
                             checkpointIds.begin(),
-                            deletionCheckpoint
-                        );
-                        rodata[k].Blocks.push_back({
-                            b.Block.BlockIndex,
-                            {{}, InvalidBlobOffset}
-                        });
+                            deletionCheckpoint);
+                        rodata[k].Blocks.push_back(
+                            {b.Block.BlockIndex, {{}, InvalidBlobOffset}});
                     } else if (b.Block.MaxCommitId != InvalidCommitId) {
                         blocks[b.Block.BlockIndex] = {{}, InvalidBlobOffset};
                     }

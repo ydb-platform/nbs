@@ -35,9 +35,9 @@ TSvgWithDownGraph::TSvgWithDownGraph(IOutputStream& str)
 }
 
 TSvgWithDownGraph::TSvgWithDownGraph(
-        IOutputStream& str,
-        const TDuration& maxDuration,
-        float width)
+    IOutputStream& str,
+    const TDuration& maxDuration,
+    float width)
     : MaxWidth(width)
     , MaxDuration(maxDuration)
     , Str(str)

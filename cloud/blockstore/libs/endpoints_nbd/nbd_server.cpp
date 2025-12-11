@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nbd/server_handler.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
+
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -20,8 +21,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TNbdEndpointListener final
-    : public IEndpointListener
+class TNbdEndpointListener final: public IEndpointListener
 {
 private:
     const NBD::IServerPtr Server;
@@ -33,12 +33,12 @@ private:
 
 public:
     TNbdEndpointListener(
-            NBD::IServerPtr server,
-            ILoggingServicePtr logging,
-            IServerStatsPtr serverStats,
-            NProto::TChecksumFlags checksumFlags,
-            ui32 maxZeroBlocksSubRequestSize,
-            IErrorHandlerMapPtr errorHandlerMap)
+        NBD::IServerPtr server,
+        ILoggingServicePtr logging,
+        IServerStatsPtr serverStats,
+        NProto::TChecksumFlags checksumFlags,
+        ui32 maxZeroBlocksSubRequestSize,
+        IErrorHandlerMapPtr errorHandlerMap)
         : Server(std::move(server))
         , Logging(std::move(logging))
         , ServerStats(std::move(serverStats))
@@ -57,7 +57,8 @@ public:
         options.ClientId = request.GetClientId();
         options.BlockSize = volume.GetBlockSize();
         options.BlocksCount = volume.GetBlocksCount();
-        options.UnalignedRequestsDisabled = request.GetUnalignedRequestsDisabled();
+        options.UnalignedRequestsDisabled =
+            request.GetUnalignedRequestsDisabled();
         options.SendMinBlockSize = request.GetSendNbdMinBlockSize();
         options.CheckBufferModificationDuringWriting =
             ChecksumFlags.GetCheckBufferModificationForMirrorDisk() &&
@@ -73,8 +74,8 @@ public:
             ErrorHandlerMap->Get(request.GetUnixSocketPath()),
             options);
 
-        auto address = TNetworkAddress(
-            TUnixSocketPath(request.GetUnixSocketPath()));
+        auto address =
+            TNetworkAddress(TUnixSocketPath(request.GetUnixSocketPath()));
 
         return Server->StartEndpoint(address, std::move(requestFactory));
     }
@@ -115,7 +116,6 @@ public:
         Y_UNUSED(session);
         return MakeFuture(MakeError(E_NOT_IMPLEMENTED));
     }
-
 };
 
 }   // namespace

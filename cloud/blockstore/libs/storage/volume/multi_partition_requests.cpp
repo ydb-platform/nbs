@@ -22,16 +22,13 @@ ui32 InitPartitionRequest(
     const typename TMethod::TRequest::ProtoRecordType& proto,
     TPartitionRequest<TMethod>& request)
 {
-    const auto blockRange = TBlockRange64::WithLength(
-        proto.GetStartIndex(),
-        originalBlocksCount
-    );
+    const auto blockRange =
+        TBlockRange64::WithLength(proto.GetStartIndex(), originalBlocksCount);
     const auto stripeInfo = ConvertToRelativeBlockRange(
         blocksPerStripe,
         blockRange,
         partitions.size(),
-        i
-    );
+        i);
     const auto& partition = partitions[stripeInfo.PartitionId];
 
     request.ActorId = partition.GetTopActorId(),
@@ -81,8 +78,7 @@ ui32 InitIORequest(
         blocksPerStripe,
         i,
         proto,
-        request
-    );
+        request);
 
     request.Event->Record.SetFlags(proto.GetFlags());
 
@@ -139,11 +135,8 @@ bool ToPartitionRequests<TEvService::TWriteBlocksMethod>(
 
     *blockRange = BuildRequestBlockRange(*ev->Get(), blockSize);
 
-    requests->resize(CalculateRequestCount(
-        blocksPerStripe,
-        *blockRange,
-        partitions.size()
-    ));
+    requests->resize(
+        CalculateRequestCount(blocksPerStripe, *blockRange, partitions.size()));
 
     if (requests->size() == 1) {
         CombineChecksumsInPlace(*proto.MutableChecksums());
@@ -157,8 +150,7 @@ bool ToPartitionRequests<TEvService::TWriteBlocksMethod>(
             blocksPerStripe,
             i,
             proto,
-            request
-        );
+            request);
         request.Event->Record.SetSessionId(proto.GetSessionId());
 
         for (ui32 j = 0; j < blocksCount; ++j) {
@@ -166,8 +158,7 @@ bool ToPartitionRequests<TEvService::TWriteBlocksMethod>(
                 blocksPerStripe,
                 request.BlockRange.Start + j,
                 partitions.size(),
-                request.PartitionId
-            );
+                request.PartitionId);
 
             if (bufferSize == blockSize) {
                 *request.Event->Record.MutableBlocks()->AddBuffers() =
@@ -176,9 +167,11 @@ bool ToPartitionRequests<TEvService::TWriteBlocksMethod>(
                 ui32 relativeBlockIndex = index - proto.GetStartIndex();
                 ui32 relativeByteIndex = relativeBlockIndex * blockSize;
                 ui32 bufferIndex = relativeByteIndex / bufferSize;
-                ui32 offsetInBuffer = relativeByteIndex - bufferIndex * bufferSize;
+                ui32 offsetInBuffer =
+                    relativeByteIndex - bufferIndex * bufferSize;
 
-                auto& block = *request.Event->Record.MutableBlocks()->AddBuffers();
+                auto& block =
+                    *request.Event->Record.MutableBlocks()->AddBuffers();
                 block.resize(blockSize);
                 memcpy(
                     block.begin(),
@@ -204,11 +197,8 @@ bool ToPartitionRequests<TEvService::TReadBlocksMethod>(
 
     *blockRange = BuildRequestBlockRange(*ev->Get(), blockSize);
 
-    requests->resize(CalculateRequestCount(
-        blocksPerStripe,
-        *blockRange,
-        partitions.size()
-    ));
+    requests->resize(
+        CalculateRequestCount(blocksPerStripe, *blockRange, partitions.size()));
 
     for (ui32 i = 0; i < requests->size(); ++i) {
         const auto blocksCount = InitIORequest<TEvService::TReadBlocksMethod>(
@@ -217,8 +207,7 @@ bool ToPartitionRequests<TEvService::TReadBlocksMethod>(
             blocksPerStripe,
             i,
             proto,
-            (*requests)[i]
-        );
+            (*requests)[i]);
         (*requests)[i].Event->Record.SetBlocksCount(blocksCount);
         (*requests)[i].Event->Record.SetCheckpointId(proto.GetCheckpointId());
         (*requests)[i].Event->Record.SetSessionId(proto.GetSessionId());
@@ -240,13 +229,10 @@ bool ToPartitionRequests<TEvService::TZeroBlocksMethod>(
 
     const auto& proto = ev->Get()->Record;
 
-    *blockRange =  BuildRequestBlockRange(*ev->Get(), blockSize);
+    *blockRange = BuildRequestBlockRange(*ev->Get(), blockSize);
 
-    requests->resize(CalculateRequestCount(
-        blocksPerStripe,
-        *blockRange,
-        partitions.size()
-    ));
+    requests->resize(
+        CalculateRequestCount(blocksPerStripe, *blockRange, partitions.size()));
 
     for (ui32 i = 0; i < requests->size(); ++i) {
         auto& request = (*requests)[i];
@@ -256,8 +242,7 @@ bool ToPartitionRequests<TEvService::TZeroBlocksMethod>(
             blocksPerStripe,
             i,
             proto,
-            request
-        );
+            request);
         request.Event->Record.SetBlocksCount(blocksCount);
         request.Event->Record.SetSessionId(proto.GetSessionId());
     }
@@ -280,8 +265,7 @@ ui32 InitLocalRequest(
         blocksPerStripe,
         i,
         proto,
-        request
-    );
+        request);
 
     TSgList sglist;
     for (ui32 j = 0; j < blocksCount; ++j) {
@@ -289,8 +273,7 @@ ui32 InitLocalRequest(
             blocksPerStripe,
             request.BlockRange.Start + j,
             partitions.size(),
-            request.PartitionId
-        );
+            request.PartitionId);
         sglist.push_back(blockDatas[index - proto.GetStartIndex()]);
     }
 
@@ -320,11 +303,8 @@ bool ToPartitionRequests<TEvService::TWriteBlocksLocalMethod>(
 
     *blockRange = BuildRequestBlockRange(*ev->Get(), blockSize);
 
-    requests->resize(CalculateRequestCount(
-        blocksPerStripe,
-        *blockRange,
-        partitions.size()
-    ));
+    requests->resize(
+        CalculateRequestCount(blocksPerStripe, *blockRange, partitions.size()));
 
     if (requests->size() == 1) {
         CombineChecksumsInPlace(*proto.MutableChecksums());
@@ -336,14 +316,14 @@ bool ToPartitionRequests<TEvService::TWriteBlocksLocalMethod>(
 
     for (ui32 i = 0; i < requests->size(); ++i) {
         auto& request = (*requests)[i];
-        const auto blocksCount = InitLocalRequest<TEvService::TWriteBlocksLocalMethod>(
-            partitions,
-            blocksPerStripe,
-            i,
-            proto,
-            blockDatas,
-            request
-        );
+        const auto blocksCount =
+            InitLocalRequest<TEvService::TWriteBlocksLocalMethod>(
+                partitions,
+                blocksPerStripe,
+                i,
+                proto,
+                blockDatas,
+                request);
 
         request.Event->Record.BlocksCount = blocksCount;
         request.Event->Record.BlockSize = blockSize;
@@ -372,22 +352,19 @@ bool ToPartitionRequests<TEvService::TReadBlocksLocalMethod>(
 
     *blockRange = BuildRequestBlockRange(*ev->Get(), blockSize);
 
-    requests->resize(CalculateRequestCount(
-        blocksPerStripe,
-        *blockRange,
-        partitions.size()
-    ));
+    requests->resize(
+        CalculateRequestCount(blocksPerStripe, *blockRange, partitions.size()));
 
     for (ui32 i = 0; i < requests->size(); ++i) {
         auto& request = (*requests)[i];
-        const auto blocksCount = InitLocalRequest<TEvService::TReadBlocksLocalMethod>(
-            partitions,
-            blocksPerStripe,
-            i,
-            proto,
-            blockDatas,
-            request
-        );
+        const auto blocksCount =
+            InitLocalRequest<TEvService::TReadBlocksLocalMethod>(
+                partitions,
+                blocksPerStripe,
+                i,
+                proto,
+                blockDatas,
+                request);
 
         request.Event->Record.SetBlocksCount(blocksCount);
         request.Event->Record.SetCheckpointId(proto.GetCheckpointId());
@@ -412,21 +389,18 @@ bool ToPartitionRequests<TEvVolume::TDescribeBlocksMethod>(
 
     *blockRange = BuildRequestBlockRange(*ev->Get(), blockSize);
 
-    requests->resize(CalculateRequestCount(
-        blocksPerStripe,
-        *blockRange,
-        partitions.size()
-    ));
+    requests->resize(
+        CalculateRequestCount(blocksPerStripe, *blockRange, partitions.size()));
 
     for (ui32 i = 0; i < requests->size(); ++i) {
-        const auto blocksCount = InitIORequest<TEvVolume::TDescribeBlocksMethod>(
-            partitions,
-            proto.GetBlocksCount(),
-            blocksPerStripe,
-            i,
-            proto,
-            (*requests)[i]
-        );
+        const auto blocksCount =
+            InitIORequest<TEvVolume::TDescribeBlocksMethod>(
+                partitions,
+                proto.GetBlocksCount(),
+                blocksPerStripe,
+                i,
+                proto,
+                (*requests)[i]);
         (*requests)[i].Event->Record.SetBlocksCount(blocksCount);
         (*requests)[i].Event->Record.SetCheckpointId(proto.GetCheckpointId());
     }
@@ -447,25 +421,25 @@ bool ToPartitionRequests<TEvService::TGetChangedBlocksMethod>(
 
     *blockRange = BuildRequestBlockRange(*ev->Get(), blockSize);
 
-    requests->resize(CalculateRequestCount(
-        blocksPerStripe,
-        *blockRange,
-        partitions.size()
-    ));
+    requests->resize(
+        CalculateRequestCount(blocksPerStripe, *blockRange, partitions.size()));
 
     for (ui32 i = 0; i < requests->size(); ++i) {
-        const auto blocksCount = InitPartitionRequest<TEvService::TGetChangedBlocksMethod>(
-            partitions,
-            proto.GetBlocksCount(),
-            blocksPerStripe,
-            i,
-            proto,
-            (*requests)[i]
-        );
+        const auto blocksCount =
+            InitPartitionRequest<TEvService::TGetChangedBlocksMethod>(
+                partitions,
+                proto.GetBlocksCount(),
+                blocksPerStripe,
+                i,
+                proto,
+                (*requests)[i]);
         (*requests)[i].Event->Record.SetBlocksCount(blocksCount);
-        (*requests)[i].Event->Record.SetLowCheckpointId(proto.GetLowCheckpointId());
-        (*requests)[i].Event->Record.SetHighCheckpointId(proto.GetHighCheckpointId());
-        (*requests)[i].Event->Record.SetIgnoreBaseDisk(proto.GetIgnoreBaseDisk());
+        (*requests)[i].Event->Record.SetLowCheckpointId(
+            proto.GetLowCheckpointId());
+        (*requests)[i].Event->Record.SetHighCheckpointId(
+            proto.GetHighCheckpointId());
+        (*requests)[i].Event->Record.SetIgnoreBaseDisk(
+            proto.GetIgnoreBaseDisk());
     }
 
     return true;
@@ -491,7 +465,8 @@ bool ToPartitionRequests<TEvVolume::TGetPartitionInfoMethod>(
     (*requests)[0].ActorId = partition.GetTopActorId();
     (*requests)[0].TabletId = partition.TabletId;
     (*requests)[0].PartitionId = partitionId;
-    (*requests)[0].Event = std::make_unique<TEvVolume::TEvGetPartitionInfoRequest>();
+    (*requests)[0].Event =
+        std::make_unique<TEvVolume::TEvGetPartitionInfoRequest>();
     (*requests)[0].Event->Record = std::move(ev->Get()->Record);
 
     return true;
@@ -510,11 +485,8 @@ bool ToPartitionRequests<TEvVolume::TCompactRangeMethod>(
 
     *blockRange = BuildRequestBlockRange(*ev->Get(), blockSize);
 
-    requests->resize(CalculateRequestCount(
-        blocksPerStripe,
-        *blockRange,
-        partitions.size()
-    ));
+    requests->resize(
+        CalculateRequestCount(blocksPerStripe, *blockRange, partitions.size()));
 
     for (ui32 i = 0; i < requests->size(); ++i) {
         const auto blocksCount = InitIORequest<TEvVolume::TCompactRangeMethod>(
@@ -523,10 +495,10 @@ bool ToPartitionRequests<TEvVolume::TCompactRangeMethod>(
             blocksPerStripe,
             i,
             proto,
-            (*requests)[i]
-        );
+            (*requests)[i]);
         (*requests)[i].Event->Record.SetBlocksCount(blocksCount);
-        (*requests)[i].Event->Record.SetOperationId(ev->Get()->Record.GetOperationId());
+        (*requests)[i].Event->Record.SetOperationId(
+            ev->Get()->Record.GetOperationId());
     }
 
     return true;
@@ -574,7 +546,8 @@ bool ToPartitionRequests<TEvVolume::TGetRebuildMetadataStatusMethod>(
     const ui32 blockSize,
     const ui32 blocksPerStripe,
     const TEvVolume::TGetRebuildMetadataStatusMethod::TRequest::TPtr& ev,
-    TVector<TPartitionRequest<TEvVolume::TGetRebuildMetadataStatusMethod>>* requests,
+    TVector<TPartitionRequest<TEvVolume::TGetRebuildMetadataStatusMethod>>*
+        requests,
     TBlockRange64* blockRange)
 {
     return ToPartitionRequestsSimple(

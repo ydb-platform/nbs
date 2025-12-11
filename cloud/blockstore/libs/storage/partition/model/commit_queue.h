@@ -12,8 +12,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCommitQueue
-    : public TBarriers
+class TCommitQueue: public TBarriers
 {
     using TTxPtr = std::unique_ptr<ITransactionBase>;
 

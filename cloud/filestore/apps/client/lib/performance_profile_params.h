@@ -3,7 +3,7 @@
 #include <util/system/types.h>
 
 namespace NLastGetopt {
-    class TOpts;
+class TOpts;
 }   // namespace NLastGetopt
 
 namespace NCloud::NFileStore::NClient {

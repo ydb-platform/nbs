@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
+
 #include <cloud/storage/core/libs/common/startable.h>
 
 #include <util/generic/deque.h>
@@ -14,8 +15,7 @@ namespace NCloud::NBlockStore::NDiscovery {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IBanList
-    : IStartable
+struct IBanList: IStartable
 {
     virtual ~IBanList() = default;
 
@@ -30,7 +30,6 @@ IBanListPtr CreateBanList(
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring);
 
-IBanListPtr CreateBanListStub(
-    TDeque<std::pair<TString, ui16>> instances = {});
+IBanListPtr CreateBanListStub(TDeque<std::pair<TString, ui16>> instances = {});
 
 }   // namespace NCloud::NBlockStore::NDiscovery

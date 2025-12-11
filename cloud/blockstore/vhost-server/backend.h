@@ -3,8 +3,9 @@
 #include "options.h"
 #include "stats.h"
 
-#include <cloud/contrib/vhost/include/vhost/blockdev.h>
 #include <cloud/storage/core/libs/common/startable.h>
+
+#include <cloud/contrib/vhost/include/vhost/blockdev.h>
 
 namespace NCloud::NBlockStore::NVHostServer {
 

@@ -4,7 +4,6 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -47,9 +46,7 @@ Y_UNIT_TEST_SUITE(TCheckpointLightTests)
         checkpoint.CreateCheckpoint("Checkpoint_2");
         {
             const auto& data = checkpoint.GetCurrentDirtyBlocks();
-            UNIT_ASSERT_VALUES_EQUAL(
-                data.Count(),
-                fillRange.Size());
+            UNIT_ASSERT_VALUES_EQUAL(data.Count(), fillRange.Size());
             for (ui64 i = 0; i < blocksCount; ++i) {
                 if (i >= fillRange.Start && i <= fillRange.End) {
                     UNIT_ASSERT(data.Test(i));
@@ -68,27 +65,39 @@ Y_UNIT_TEST_SUITE(TCheckpointLightTests)
         checkpoint.CreateCheckpoint("Checkpoint_2");
 
         TString mask;
-        UNIT_ASSERT(!SUCCEEDED(checkpoint.FindDirtyBlocksBetweenCheckpoints(
-            "Checkpoint_1",
-            "Checkpoint_2",
-            TBlockRange64::WithLength(0, 11),
-            &mask).GetCode()));
-        UNIT_ASSERT(!SUCCEEDED(checkpoint.FindDirtyBlocksBetweenCheckpoints(
-            "Checkpoint_1",
-            "Checkpoint_2",
-            TBlockRange64::WithLength(5, 7),
-            &mask).GetCode()));
+        UNIT_ASSERT(!SUCCEEDED(checkpoint
+                                   .FindDirtyBlocksBetweenCheckpoints(
+                                       "Checkpoint_1",
+                                       "Checkpoint_2",
+                                       TBlockRange64::WithLength(0, 11),
+                                       &mask)
+                                   .GetCode()));
+        UNIT_ASSERT(!SUCCEEDED(checkpoint
+                                   .FindDirtyBlocksBetweenCheckpoints(
+                                       "Checkpoint_1",
+                                       "Checkpoint_2",
+                                       TBlockRange64::WithLength(5, 7),
+                                       &mask)
+                                   .GetCode()));
 
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, checkpoint.FindDirtyBlocksBetweenCheckpoints(
-            "Checkpoint_1",
-            "Checkpoint_2",
-            TBlockRange64::WithLength(0, 10),
-            &mask).GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, checkpoint.FindDirtyBlocksBetweenCheckpoints(
-            "Checkpoint_1",
-            "Checkpoint_2",
-            TBlockRange64::WithLength(3, 2),
-            &mask).GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            checkpoint
+                .FindDirtyBlocksBetweenCheckpoints(
+                    "Checkpoint_1",
+                    "Checkpoint_2",
+                    TBlockRange64::WithLength(0, 10),
+                    &mask)
+                .GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            checkpoint
+                .FindDirtyBlocksBetweenCheckpoints(
+                    "Checkpoint_1",
+                    "Checkpoint_2",
+                    TBlockRange64::WithLength(3, 2),
+                    &mask)
+                .GetCode());
     }
 
     Y_UNIT_TEST(ShouldReturnDirtyBlocksBetweenCheckpoints)

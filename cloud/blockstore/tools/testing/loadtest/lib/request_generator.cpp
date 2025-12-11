@@ -5,6 +5,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/eventlog/dumper/evlogdump.h>
@@ -23,8 +24,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TArtificialRequestGenerator final
-    : public IRequestGenerator
+class TArtificialRequestGenerator final: public IRequestGenerator
 {
 private:
     TLog Log;
@@ -38,8 +38,8 @@ private:
 
 public:
     TArtificialRequestGenerator(
-            ILoggingServicePtr logging,
-            NProto::TRangeTest range)
+        ILoggingServicePtr logging,
+        NProto::TRangeTest range)
         : RangeTest(std::move(range))
         , BlocksRange(TBlockRange64::MakeClosedInterval(
               RangeTest.GetStart(),
@@ -66,15 +66,14 @@ private:
 
 TString TArtificialRequestGenerator::Describe() const
 {
-    return TStringBuilder()
-        << "Range[" << RangeTest.GetStart()
-        << ',' << RangeTest.GetEnd() << ']';
+    return TStringBuilder() << "Range[" << RangeTest.GetStart() << ','
+                            << RangeTest.GetEnd() << ']';
 }
 
 bool TArtificialRequestGenerator::HasMoreRequests() const
 {
-    return !RangeTest.GetRequestsCount()
-        || RangeTest.GetRequestsCount() - SentRequestCount;
+    return !RangeTest.GetRequestsCount() ||
+           RangeTest.GetRequestsCount() - SentRequestCount;
 }
 
 bool TArtificialRequestGenerator::Next(TRequest* request)
@@ -141,7 +140,7 @@ EBlockStoreRequest TArtificialRequestGenerator::ChooseRequest() const
         Rates.begin(),
         Rates.end(),
         RandomNumber(TotalRate),
-        [] (const auto& a, const auto& b) { return a.first < b; });
+        [](const auto& a, const auto& b) { return a.first < b; });
 
     auto offset = std::distance(Rates.begin(), it);
     return Rates[offset].second;
@@ -184,9 +183,9 @@ private:
 
         bool operator<(const TRequestWithVersion& rhs) const
         {
-            return Version == rhs.Version
-                ? Request.GetTimestampMcs() < rhs.Request.GetTimestampMcs()
-                : Version < rhs.Version;
+            return Version == rhs.Version ? Request.GetTimestampMcs() <
+                                                rhs.Request.GetTimestampMcs()
+                                          : Version < rhs.Version;
         }
 
         bool HasValue() const
@@ -194,7 +193,6 @@ private:
             return Request.RangesSize();
         }
     };
-
 
     struct TQueueCounter
     {
@@ -244,14 +242,14 @@ private:
 
 public:
     TRealRequestGenerator(
-            ILoggingServicePtr logging,
-            TString profileLogPath,
-            TString diskId,
-            TString startTime,
-            TString endTime,
-            bool fullSpeed,
-            ui64 maxRequestsInMemory,
-            std::atomic<bool>& shouldStop)
+        ILoggingServicePtr logging,
+        TString profileLogPath,
+        TString diskId,
+        TString startTime,
+        TString endTime,
+        bool fullSpeed,
+        ui64 maxRequestsInMemory,
+        std::atomic<bool>& shouldStop)
         : ProfileLogPath(std::move(profileLogPath))
         , DiskId(std::move(diskId))
         , StartTime(std::move(startTime))
@@ -267,8 +265,7 @@ public:
 
     ~TRealRequestGenerator()
     {
-        while (!FinishedRead.load(std::memory_order_acquire))
-        {
+        while (!FinishedRead.load(std::memory_order_acquire)) {
             Sleep(TDuration::Seconds(1));
         }
     }
@@ -321,15 +318,13 @@ private:
 
 TString TRealRequestGenerator::Describe() const
 {
-    return TStringBuilder()
-        << "LogReplay[" << ProfileLogPath << "]";
+    return TStringBuilder() << "LogReplay[" << ProfileLogPath << "]";
 }
 
 bool TRealRequestGenerator::HasMoreRequests() const
 {
-    return Requests.GetCounter().Count
-        || !FinishedRead.load(std::memory_order_acquire)
-        || Head.HasValue();
+    return Requests.GetCounter().Count ||
+           !FinishedRead.load(std::memory_order_acquire) || Head.HasValue();
 }
 
 bool TRealRequestGenerator::Next(TRequest* request)
@@ -381,8 +376,7 @@ void TRealRequestGenerator::Complete(TBlockRange64 blockRange)
     InFlight.erase(blockRange);
 }
 
-TInstant TRealRequestGenerator::Timestamp(
-    const TRequestWithVersion& r) const
+TInstant TRealRequestGenerator::Timestamp(const TRequestWithVersion& r) const
 {
     auto requestTs = TInstant::MicroSeconds(r.Request.GetTimestampMcs());
 
@@ -403,15 +397,13 @@ void* TRealRequestGenerator::ThreadProc()
 
 void TRealRequestGenerator::ReadRequests()
 {
-    struct TEventProcessor
-        : TProtobufEventProcessor
+    struct TEventProcessor: TProtobufEventProcessor
     {
         TRealRequestGenerator& Parent;
 
         TEventProcessor(TRealRequestGenerator& parent)
             : Parent(parent)
-        {
-        }
+        {}
 
         void DoProcessEvent(const TEvent* ev, IOutputStream* out) override
         {
@@ -420,9 +412,13 @@ void TRealRequestGenerator::ReadRequests()
             Y_ENSURE(!Parent.StopRequested(), "Exit from reading test data");
 
             if (Parent.MaxRequestsInMemory) {
-                while (Parent.Requests.GetCounter().Count >= Parent.MaxRequestsInMemory) {
+                while (Parent.Requests.GetCounter().Count >=
+                       Parent.MaxRequestsInMemory)
+                {
                     Sleep(TDuration::MilliSeconds(1));
-                    Y_ENSURE(!Parent.StopRequested(), "Exit from reading test data");
+                    Y_ENSURE(
+                        !Parent.StopRequested(),
+                        "Exit from reading test data");
                 }
             }
 
@@ -463,7 +459,8 @@ void TRealRequestGenerator::ReadRequests()
     }
     argv[argc++] = ProfileLogPath.c_str();
 
-    auto code = IterateEventLog(NEvClass::Factory(), &eventProcessor, argc, argv);
+    auto code =
+        IterateEventLog(NEvClass::Factory(), &eventProcessor, argc, argv);
 
     if (code && !StopRequested()) {
         ythrow yexception()

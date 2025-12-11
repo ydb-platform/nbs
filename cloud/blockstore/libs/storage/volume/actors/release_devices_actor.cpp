@@ -11,14 +11,14 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 TReleaseDevicesActor::TReleaseDevicesActor(
-        const TActorId& owner,
-        TString diskId,
-        TString clientId,
-        ui32 volumeGeneration,
-        TDuration requestTimeout,
-        TVector<NProto::TDeviceConfig> devices,
-        bool muteIOErrors,
-        TChildLogTitle logTitle)
+    const TActorId& owner,
+    TString diskId,
+    TString clientId,
+    ui32 volumeGeneration,
+    TDuration requestTimeout,
+    TVector<NProto::TDeviceConfig> devices,
+    bool muteIOErrors,
+    TChildLogTitle logTitle)
     : Owner(owner)
     , DiskId(std::move(diskId))
     , ClientId(std::move(clientId))

@@ -2,13 +2,13 @@
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
-#include <google/protobuf/io/tokenizer.h>
-#include <google/protobuf/messagext.h>
-#include <google/protobuf/text_format.h>
-
 #include <util/folder/path.h>
 #include <util/stream/file.h>
 #include <util/stream/str.h>
+
+#include <google/protobuf/io/tokenizer.h>
+#include <google/protobuf/messagext.h>
+#include <google/protobuf/text_format.h>
 
 namespace NCloud {
 
@@ -16,8 +16,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TNullErrorCollector
-    : public google::protobuf::io::ErrorCollector
+struct TNullErrorCollector: public google::protobuf::io::ErrorCollector
 {
     void AddError(
         int line,

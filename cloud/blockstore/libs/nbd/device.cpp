@@ -16,18 +16,19 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum {
-    NBD_SET_SOCK                = _IO(0xAB, 0),
-    NBD_SET_BLKSIZE             = _IO(0xAB, 1),
-    NBD_SET_SIZE                = _IO(0xAB, 2),
-    NBD_DO_IT                   = _IO(0xAB, 3),
-    NBD_CLEAR_SOCK              = _IO(0xAB, 4),
-    NBD_CLEAR_QUE               = _IO(0xAB, 5),
-    NBD_PRINT_DEBUG             = _IO(0xAB, 6),
-    NBD_SET_SIZE_BLOCKS         = _IO(0xAB, 7),
-    NBD_DISCONNECT              = _IO(0xAB, 8),
-    NBD_SET_TIMEOUT             = _IO(0xAB, 9),
-    NBD_SET_FLAGS               = _IO(0xAB, 10),
+enum
+{
+    NBD_SET_SOCK = _IO(0xAB, 0),
+    NBD_SET_BLKSIZE = _IO(0xAB, 1),
+    NBD_SET_SIZE = _IO(0xAB, 2),
+    NBD_DO_IT = _IO(0xAB, 3),
+    NBD_CLEAR_SOCK = _IO(0xAB, 4),
+    NBD_CLEAR_QUE = _IO(0xAB, 5),
+    NBD_PRINT_DEBUG = _IO(0xAB, 6),
+    NBD_SET_SIZE_BLOCKS = _IO(0xAB, 7),
+    NBD_DISCONNECT = _IO(0xAB, 8),
+    NBD_SET_TIMEOUT = _IO(0xAB, 9),
+    NBD_SET_FLAGS = _IO(0xAB, 10),
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -54,13 +55,13 @@ private:
 
 public:
     TDevice(
-            ILoggingServicePtr logging,
-            const TNetworkAddress& connectAddress,
-            TString devicePath,
-            TString devicePrefix,
-            ui64 blockCount,
-            ui32 blockSize,
-            TDuration timeout)
+        ILoggingServicePtr logging,
+        const TNetworkAddress& connectAddress,
+        TString devicePath,
+        TString devicePrefix,
+        ui64 blockCount,
+        ui32 blockSize,
+        TDuration timeout)
         : Logging(std::move(logging))
         , ConnectAddress(connectAddress)
         , DevicePath(std::move(devicePath))
@@ -99,9 +100,8 @@ public:
 
             ISimpleThread::Start();
         } catch (...) {
-            return NThreading::MakeFuture(MakeError(
-                E_FAIL,
-                CurrentExceptionMessage()));
+            return NThreading::MakeFuture(
+                MakeError(E_FAIL, CurrentExceptionMessage()));
         }
 
         return NThreading::MakeFuture(MakeError(S_OK));
@@ -125,9 +125,8 @@ public:
             Device.Close();
             DisconnectSocket();
         } catch (...) {
-            return NThreading::MakeFuture(MakeError(
-                E_FAIL,
-                CurrentExceptionMessage()));
+            return NThreading::MakeFuture(
+                MakeError(E_FAIL, CurrentExceptionMessage()));
         }
 
         return NThreading::MakeFuture(MakeError(S_OK));
@@ -206,7 +205,7 @@ void TDevice::ConnectDevice()
     TFileHandle device(DevicePath, OpenExisting | RdWr);
 
     if (!device.IsOpen()) {
-         ythrow TFileError() << "cannot open " << DevicePath;
+        ythrow TFileError() << "cannot open " << DevicePath;
     }
 
     ioctl(device, NBD_CLEAR_SOCK);
@@ -217,9 +216,10 @@ void TDevice::ConnectDevice()
 
     const auto expectedSize = BlockCount * BlockSize;
     if (expectedSize && expectedSize != exportInfo.Size) {
-        ythrow TFileError() << "unexpected export info, size mismatch: "
-            << expectedSize << " != " << exportInfo.Size << ", sectorSize: "
-            << exportInfo.MinBlockSize;
+        ythrow TFileError()
+            << "unexpected export info, size mismatch: " << expectedSize
+            << " != " << exportInfo.Size
+            << ", sectorSize: " << exportInfo.MinBlockSize;
     }
 
     STORAGE_DEBUG("NBD_SET_BLKSIZE " << sectorSize);
@@ -285,8 +285,7 @@ void TDevice::DisconnectDevice()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDeviceStub final
-    : public IDevice
+class TDeviceStub final: public IDevice
 {
 public:
     NThreading::TFuture<NProto::TError> Start() override
@@ -315,8 +314,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDeviceFactory final
-    : public IDeviceFactory
+class TDeviceFactory final: public IDeviceFactory
 {
 private:
     const ILoggingServicePtr Logging;
@@ -376,8 +374,8 @@ IDevicePtr CreateDevice(
         connectAddress,
         std::move(devicePath),
         "",
-        0, // blockCount
-        0, // blockSize
+        0,   // blockCount
+        0,   // blockSize
         timeout);
 }
 
@@ -392,8 +390,8 @@ IDevicePtr CreateFreeDevice(
         connectAddress,
         "",
         std::move(devicePrefix),
-        0, // blockCount
-        0, // blockSize
+        0,   // blockCount
+        0,   // blockSize
         timeout);
 }
 
@@ -406,9 +404,7 @@ IDeviceFactoryPtr CreateDeviceFactory(
     ILoggingServicePtr logging,
     TDuration timeout)
 {
-    return std::make_shared<TDeviceFactory>(
-        std::move(logging),
-        timeout);
+    return std::make_shared<TDeviceFactory>(std::move(logging), timeout);
 }
 
 }   // namespace NCloud::NBlockStore::NBD

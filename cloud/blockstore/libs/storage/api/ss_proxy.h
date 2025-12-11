@@ -7,23 +7,22 @@
 
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
-
 #include <contrib/ydb/library/actors/core/actorid.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_SS_PROXY_REQUESTS(xxx, ...)                                 \
-    xxx(CreateVolume,       __VA_ARGS__)                                       \
-    xxx(ModifyScheme,       __VA_ARGS__)                                       \
-    xxx(ModifyVolume,       __VA_ARGS__)                                       \
-    xxx(DescribeScheme,     __VA_ARGS__)                                       \
-    xxx(DescribeVolume,     __VA_ARGS__)                                       \
-    xxx(WaitSchemeTx,       __VA_ARGS__)                                       \
-                                                                               \
-    xxx(BackupPathDescriptions, __VA_ARGS__)                                   \
-// BLOCKSTORE_SS_PROXY_REQUESTS
+#define BLOCKSTORE_SS_PROXY_REQUESTS(xxx, ...) \
+    xxx(CreateVolume, __VA_ARGS__)             \
+    xxx(ModifyScheme, __VA_ARGS__)             \
+    xxx(ModifyVolume, __VA_ARGS__)             \
+    xxx(DescribeScheme, __VA_ARGS__)           \
+    xxx(DescribeVolume, __VA_ARGS__)           \
+    xxx(WaitSchemeTx, __VA_ARGS__)             \
+                                               \
+    xxx(BackupPathDescriptions, __VA_ARGS__)   \
+    // BLOCKSTORE_SS_PROXY_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -37,8 +36,7 @@ struct TEvSSProxy
     {
         const NKikimrBlockStore::TVolumeConfig VolumeConfig;
 
-        explicit TCreateVolumeRequest(
-                NKikimrBlockStore::TVolumeConfig config)
+        explicit TCreateVolumeRequest(NKikimrBlockStore::TVolumeConfig config)
             : VolumeConfig(std::move(config))
         {}
     };
@@ -49,8 +47,8 @@ struct TEvSSProxy
         const TString Reason;
 
         TCreateVolumeResponse(
-                NKikimrScheme::EStatus status = NKikimrScheme::StatusSuccess,
-                TString reason = {})
+            NKikimrScheme::EStatus status = NKikimrScheme::StatusSuccess,
+            TString reason = {})
             : Status(status)
             , Reason(std::move(reason))
         {}
@@ -65,7 +63,7 @@ struct TEvSSProxy
         const NKikimrSchemeOp::TModifyScheme ModifyScheme;
 
         explicit TModifySchemeRequest(
-                NKikimrSchemeOp::TModifyScheme modifyScheme)
+            NKikimrSchemeOp::TModifyScheme modifyScheme)
             : ModifyScheme(std::move(modifyScheme))
         {}
     };
@@ -77,9 +75,9 @@ struct TEvSSProxy
         const TString Reason;
 
         TModifySchemeResponse(
-                ui64 schemeShardTabletId = 0,
-                NKikimrScheme::EStatus status = NKikimrScheme::StatusSuccess,
-                TString reason = TString())
+            ui64 schemeShardTabletId = 0,
+            NKikimrScheme::EStatus status = NKikimrScheme::StatusSuccess,
+            TString reason = TString())
             : SchemeShardTabletId(schemeShardTabletId)
             , Status(status)
             , Reason(std::move(reason))
@@ -107,11 +105,11 @@ struct TEvSSProxy
         const ui64 FillGeneration;
 
         TModifyVolumeRequest(
-                EOpType opType,
-                TString diskId,
-                TString newMountToken,
-                ui64 tokenVersion,
-                ui64 fillGeneration = 0)
+            EOpType opType,
+            TString diskId,
+            TString newMountToken,
+            ui64 tokenVersion,
+            ui64 fillGeneration = 0)
             : OpType(opType)
             , DiskId(std::move(diskId))
             , NewMountToken(std::move(newMountToken))
@@ -127,9 +125,9 @@ struct TEvSSProxy
         const TString Reason;
 
         TModifyVolumeResponse(
-                ui64 schemeShardTabletId = 0,
-                NKikimrScheme::EStatus status = NKikimrScheme::StatusSuccess,
-                TString reason = TString())
+            ui64 schemeShardTabletId = 0,
+            NKikimrScheme::EStatus status = NKikimrScheme::StatusSuccess,
+            TString reason = TString())
             : SchemeShardTabletId(schemeShardTabletId)
             , Status(status)
             , Reason(std::move(reason))
@@ -157,8 +155,8 @@ struct TEvSSProxy
         TDescribeSchemeResponse() = default;
 
         TDescribeSchemeResponse(
-                TString path,
-                NKikimrSchemeOp::TPathDescription pathDescription)
+            TString path,
+            NKikimrSchemeOp::TPathDescription pathDescription)
             : Path(std::move(path))
             , PathDescription(std::move(pathDescription))
         {}
@@ -191,8 +189,8 @@ struct TEvSSProxy
         TDescribeVolumeResponse() = default;
 
         TDescribeVolumeResponse(
-                TString path,
-                NKikimrSchemeOp::TPathDescription pathDescription)
+            TString path,
+            NKikimrSchemeOp::TPathDescription pathDescription)
             : Path(std::move(path))
             , PathDescription(std::move(pathDescription))
         {}
@@ -211,9 +209,7 @@ struct TEvSSProxy
         const ui64 SchemeShardTabletId;
         const ui64 TxId;
 
-        TWaitSchemeTxRequest(
-                ui64 schemeShardTabletId,
-                ui64 txId)
+        TWaitSchemeTxRequest(ui64 schemeShardTabletId, ui64 txId)
             : SchemeShardTabletId(schemeShardTabletId)
             , TxId(txId)
         {}
@@ -267,7 +263,8 @@ struct TEvSSProxy
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStoreEvents::SS_PROXY_END,
+    static_assert(
+        EvEnd < (int)TBlockStoreEvents::SS_PROXY_END,
         "EvEnd expected to be < TBlockStoreEvents::SS_PROXY_END");
 
     BLOCKSTORE_SS_PROXY_REQUESTS(BLOCKSTORE_DECLARE_EVENTS)

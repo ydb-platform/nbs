@@ -9,9 +9,10 @@ int main(int argc, char** argv)
     using namespace NCloud::NBlockStore;
 
     auto moduleFactories = std::make_shared<NLoadTest::TModuleFactories>();
-    moduleFactories->SpdkFactory = [] (NSpdk::TSpdkEnvConfigPtr config) {
+    moduleFactories->SpdkFactory = [](NSpdk::TSpdkEnvConfigPtr config)
+    {
         Y_UNUSED(config);
-        return NLoadTest::TSpdkParts {
+        return NLoadTest::TSpdkParts{
             .Env = NSpdk::CreateEnvStub(),
             .LogInitializer = {},
         };

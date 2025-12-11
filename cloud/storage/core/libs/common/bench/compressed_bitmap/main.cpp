@@ -56,7 +56,8 @@ struct TRanges
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_CPU_BENCHMARK(SetUnset, iface) {
+Y_CPU_BENCHMARK(SetUnset, iface)
+{
     TCompressedBitmap bitmap(1);
     auto& ranges = *HugeSingleton<TRanges>();
     for (size_t i = 0; i < iface.Iterations(); ++i) {
@@ -70,7 +71,7 @@ Y_CPU_BENCHMARK(SetUnset, iface) {
 
 struct TSerializedBitmap
 {
-    const ui64 Size = 2ll*1024*1024*1024;
+    const ui64 Size = 2ll * 1024 * 1024 * 1024;
     const int RangeSize = 64;
     const ui32 DensityPercent = 50;
 
@@ -105,7 +106,8 @@ struct TSerializedBitmap
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_CPU_BENCHMARK(Load, iface) {
+Y_CPU_BENCHMARK(Load, iface)
+{
     auto& serialized = *HugeSingleton<TSerializedBitmap>();
     for (size_t i = 0; i < iface.Iterations(); ++i) {
         TCompressedBitmap m(serialized.Size);
