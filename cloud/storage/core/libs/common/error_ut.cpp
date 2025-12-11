@@ -65,6 +65,24 @@ Y_UNIT_TEST_SUITE(GetDiagnosticsErrorKindTest)
             GetDiagnosticsErrorKind(e));
     }
 
+    Y_UNIT_TEST(ShouldRetrieveErrorKindSilentOnLocalDiskAllocation)
+    {
+        NProto::TError e;
+        e.SetCode(E_TRY_AGAIN);
+        e.SetMessage(
+            "Unable to allocate local disk: secure erase has not finished yet");
+
+        UNIT_ASSERT_EQUAL(
+            EDiagnosticsErrorKind::ErrorSilent,
+            GetDiagnosticsErrorKind(e));
+
+        e.SetCode(E_FAIL);
+
+        UNIT_ASSERT_EQUAL(
+            EDiagnosticsErrorKind::ErrorFatal,
+            GetDiagnosticsErrorKind(e));
+    }
+
     Y_UNIT_TEST(ShouldWrapExceptionInResponse)
     {
         auto response = SafeExecute<TTestResponse>(
