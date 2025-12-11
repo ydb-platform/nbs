@@ -566,7 +566,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         env.CreateSubDomain("nbs");
         NProto::TStorageServiceConfig storageServiceConfig;
         storageServiceConfig.SetAllocationUnitHDD(1);
-        storageServiceConfig.SetAllocationUnitHDD(1);
+        storageServiceConfig.SetFreshChannelCountHDD(1);
         auto storageConfig =
             CreateTestStorageConfig(std::move(storageServiceConfig));
         TControlBoard controlBoard;
