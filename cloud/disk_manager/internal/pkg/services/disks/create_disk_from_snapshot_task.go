@@ -227,7 +227,8 @@ func (t *createDiskFromSnapshotTask) Cancel(
 		return err
 	}
 
-	if diskMeta == nil {
+	if len(diskMeta.ZoneID) == 0 {
+		// Disk does not exist, nothing to do.
 		return nil
 	}
 
