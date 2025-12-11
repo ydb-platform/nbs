@@ -65,6 +65,7 @@ private:
 
         // Waiting for the acquire of the shadow disk devices. The disk is
         // already completely filled and we will only read checkpoint data from it.
+        // We do not block writes to the source disk.
         WaitAcquireForRead,
 
         // The devices of the shadow disk have been successfully acquired and we
@@ -73,11 +74,13 @@ private:
 
         // The devices of the shadow disk have been successfully acquired and we
         // are ready to read the checkpoint data.
+        // We do not block writes to the source disk.
         CheckpointReady,
 
         // Something went wrong and we stopped filling the shadow disk.
         // At the same time, we do not interfere with the operation of the
         // source disk.
+        // We do not block writes to the source disk.
         Error,
     };
 

@@ -911,6 +911,7 @@ void TShadowDiskActor::SetErrorState(const NActors::TActorContext& ctx)
 bool TShadowDiskActor::CanJustForwardWritesToSrcDisk() const
 {
     return State == EActorState::CheckpointReady ||
+           State == EActorState::WaitAcquireForRead ||
            State == EActorState::Error ||
            State == EActorState::WaitAcquireForPrepareStart;
 }
