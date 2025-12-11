@@ -252,6 +252,25 @@ public:
             .SetHistogramMultipleCounter = std::get<2>(GetParam()),
             .UseMsUnitsForTimeHistogram = std::get<3>(GetParam())};
     }
+
+    static EHistogramCounterOptions GetHistogramCounterOptions()
+    {
+        const auto histConfig = GetHistogramTestConfiguration();
+        EHistogramCounterOptions histogramCounterOptions;
+        if (histConfig.UseMsUnitsForTimeHistogram) {
+            histogramCounterOptions |=
+                EHistogramCounterOption::UseMsUnitsForTimeHistogram;
+        }
+        if (histConfig.SetHistogramSingleCounter) {
+            histogramCounterOptions |=
+                EHistogramCounterOption::ReportSingleCounter;
+        }
+        if (histConfig.SetHistogramMultipleCounter) {
+            histogramCounterOptions |=
+                EHistogramCounterOption::ReportMultipleCounters;
+        }
+        return histogramCounterOptions;
+    }
 };
 
 }   // namespace
@@ -308,11 +327,6 @@ TEST_P(TUserWrapperTest, UserServerVolumeInstanceTests)
         setCounters(stats, "ZeroBlocks", histConfig);
 
         auto supplier = CreateUserCounterSupplier();
-        EHistogramCounterOptions histogramCounterOptions;
-        if (histConfig.UseMsUnitsForTimeHistogram) {
-            histogramCounterOptions |=
-                EHistogramCounterOption::UseMsUnitsForTimeHistogram;
-        }
         RegisterServerVolumeInstance(
             *supplier,
             "cloudId",
@@ -320,7 +334,7 @@ TEST_P(TUserWrapperTest, UserServerVolumeInstanceTests)
             "diskId",
             "instanceId",
             config.ReportZeroBlocksMetrics,
-            histogramCounterOptions,
+            GetHistogramCounterOptions(),
             stats);
 
         ValidateTestResult(supplier.get(), config.Resource);
@@ -344,11 +358,7 @@ TEST_P(TUserWrapperTest, UserServiceVolumeInstanceTests)
         stats->GetCounter("MaxUsedQuota")->Set(10);
 
         auto request = stats->GetSubgroup("request", name);
-        if (histConfig.UseMsUnitsForTimeHistogram) {
-            SetTimeHistogramCountersMs(request, "ThrottlerDelay", histConfig);
-        } else {
-            SetTimeHistogramCountersUs(request, "ThrottlerDelay", histConfig);
-        }
+        SetTimeHistogramCountersUs(request, "ThrottlerDelay", histConfig);
     };
 
     auto stats = MakeIntrusive<TDynamicCounters>();
@@ -358,17 +368,12 @@ TEST_P(TUserWrapperTest, UserServiceVolumeInstanceTests)
     makeCounters(stats, "ZeroBlocks", histConfig);
 
     auto supplier = CreateUserCounterSupplier();
-    EHistogramCounterOptions histogramCounterOptions;
-    if (histConfig.UseMsUnitsForTimeHistogram) {
-        histogramCounterOptions |=
-            EHistogramCounterOption::UseMsUnitsForTimeHistogram;
-    }
     RegisterServiceVolume(
         *supplier,
         "cloudId",
         "folderId",
         "diskId",
-        histogramCounterOptions,
+        GetHistogramCounterOptions(),
         stats);
     ValidateTestResult(supplier.get(), "user_service_volume_instance_test");
 }
