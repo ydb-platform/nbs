@@ -144,11 +144,10 @@ void TStatsServiceActor::HandleGetVolumeStats(
     const TEvStatsService::TEvGetVolumeStatsRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto& volumes = State.GetVolumes();
-
     for (auto& v: ev->Get()->VolumeStats) {
         if (v.GetHost()) {
-            if (auto it = volumes.find(v.GetDiskId()); it == volumes.end()) {
+            const auto* volume = State.GetVolume(v.GetDiskId());
+            if (!volume) {
                 v.SetIsLocal(false);
             }
         }
