@@ -3,7 +3,6 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-#include <cloud/blockstore/private/api/protos/disk.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -11,8 +10,6 @@
 #include <contrib/ydb/library/actors/core/log.h>
 
 #include <google/protobuf/util/json_util.h>
-
-#include <util/string/printf.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -26,69 +23,62 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDiskRegistryCompareStateActor final
-    : public TActorBootstrapped<TDiskRegistryCompareStateActor>
+class TCompareDiskRegistryStateActor final
+    : public TActorBootstrapped<TCompareDiskRegistryStateActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
     const TString Input;
 
-    NProto::TCompareDiskRegistryStateRequest Request;
-
     NProto::TError Error;
 
 public:
-    TDiskRegistryCompareStateActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TCompareDiskRegistryStateActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void ReplyAndDie(const TActorContext& ctx);
+    void ReplyAndDie(const TActorContext& ctx, std::unique_ptr<TEvService::TEvExecuteActionResponse> response);
 
 private:
-    STFUNC(StateWork);
+    STFUNC(StateCompareDiskRegistryState);
 
-    void HandleCompareStatesResponse(
+    void HandleCompareDiskRegistryStateResponse(
         const TEvDiskRegistry::TEvCompareDiskRegistryStateResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDiskRegistryCompareStateActor::TDiskRegistryCompareStateActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+TCompareDiskRegistryStateActor::TCompareDiskRegistryStateActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
 
-void TDiskRegistryCompareStateActor::Bootstrap(const TActorContext& ctx)
+void TCompareDiskRegistryStateActor::Bootstrap(const TActorContext& ctx)
 {
+    auto request =
+        std::make_unique<TEvDiskRegistry::TEvCompareDiskRegistryStateRequest>();
 
-    auto request = std::make_unique<TEvDiskRegistry::TEvCompareDiskRegistryStateRequest>(
-
-    );
-    if (!google::protobuf::util::JsonStringToMessage(Input, &Request).ok()) {
+    if (!google::protobuf::util::JsonStringToMessage(Input, &request->Record)
+             .ok())
+    {
         Error = MakeError(E_ARGUMENT, "Failed to parse input");
-        ReplyAndDie(ctx);
+        ReplyAndDie(ctx, std::make_unique<TEvService::TEvExecuteActionResponse>());
         return;
     }
 
+    Become(&TThis::StateCompareDiskRegistryState);
 
-    Become(&TThis::StateWork);
-    ctx.Send(MakeDiskRegistryProxyServiceId(), std::move(request));
+    NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
 }
 
-void TDiskRegistryCompareStateActor::ReplyAndDie(const TActorContext& ctx)
+void TCompareDiskRegistryStateActor::ReplyAndDie(
+    const TActorContext& ctx,
+    std::unique_ptr<TEvService::TEvExecuteActionResponse> response)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(Error);
-    // google::protobuf::util::MessageToJsonString(
-    //     NPrivateProto::TDiskRegistryCompareStateResponse(),
-    //     response->Record.MutableOutput()
-    // );
-
     LWTRACK(
         ResponseSent_Service,
         RequestInfo->CallContext->LWOrbit,
@@ -101,28 +91,31 @@ void TDiskRegistryCompareStateActor::ReplyAndDie(const TActorContext& ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDiskRegistryCompareStateActor::HandleCompareStatesResponse(
+void TCompareDiskRegistryStateActor::HandleCompareDiskRegistryStateResponse(
     const TEvDiskRegistry::TEvCompareDiskRegistryStateResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    
 
     if (HasError(msg->GetError())) {
+        Cerr << "error occured" << Endl;
         Error = msg->GetError();
     }
-
-    ReplyAndDie(ctx);
+    TString output;
+    google::protobuf::util::MessageToJsonString(msg->Record, &output);
+    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>();
+    response->Record.SetOutput(output);
+    ReplyAndDie(ctx, std::move(response));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TDiskRegistryCompareStateActor::StateWork)
+STFUNC(TCompareDiskRegistryStateActor::StateCompareDiskRegistryState)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
             TEvDiskRegistry::TEvCompareDiskRegistryStateResponse,
-            HandleCompareStatesResponse);
+            HandleCompareDiskRegistryStateResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -141,7 +134,7 @@ TResultOrError<IActorPtr> TServiceActor::CreateDiskRegistryCompareStateActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
-    return {std::make_unique<TDiskRegistryCompareStateActor>(
+    return {std::make_unique<TCompareDiskRegistryStateActor>(
         std::move(requestInfo),
         std::move(input))};
 }

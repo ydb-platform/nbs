@@ -10348,7 +10348,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             .Build();
         TDiskRegistryState& state2 = *state2Ptr;
 
-        UNIT_ASSERT(state1.CompareMeaningfulFields(state2));
+        UNIT_ASSERT(state1.GetDifferingFields(state2).empty());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(state1.CreatePlacementGroup(
@@ -10366,7 +10366,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 {}));
         });
 
-        UNIT_ASSERT(!state1.CompareMeaningfulFields(state2));
+        UNIT_ASSERT(!state1.GetDifferingFields(state2).empty());
     }
 
     Y_UNIT_TEST(ShouldUpdateVolumeConfig)

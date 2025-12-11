@@ -1,5 +1,6 @@
 #include "disk_registry_actor.h"
 
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -15,27 +16,23 @@ void TDiskRegistryActor::HandleCompareDiskRegistryState(
 {
     BLOCKSTORE_DISK_REGISTRY_COUNTER(CompareDiskRegistryState);
 
-    LOG_DEBUG(
-            ctx,
-            TBlockStoreComponents::DISK_REGISTRY,
-            "Received CompareDiskRegistryState request");
-    
-    const auto* msg = ev->Get();
+    const auto& record = ev->Get()->Record;
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received CompareDiskRegistryState request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TCompareDiskRegistryState>(
         ctx,
-        std::move(requestInfo));
-    auto response =
-        std::make_unique<TEvDiskRegistry::TEvCompareDiskRegistryStateResponse>();
-    // auto diffrences = State->GetDifferingFields(const TDiskRegistryState &rhs);
-    // response->Record.MutableDiffers()->Add(diffrences.begin(), diffrences.end());
-    
-    NCloud::Reply(ctx, *ev, std::move(response));
+        CreateRequestInfo<TEvDiskRegistry::TCompareDiskRegistryStateMethod>(
+            ev->Sender,
+            ev->Cookie,
+            ev->Get()->CallContext
+        ));
 }
 
 bool TDiskRegistryActor::PrepareCompareDiskRegistryState(
@@ -44,8 +41,13 @@ bool TDiskRegistryActor::PrepareCompareDiskRegistryState(
     TTxDiskRegistry::TCompareDiskRegistryState& args)
 {
     Y_UNUSED(ctx);
-    Y_UNUSED(tx);
     Y_UNUSED(args);
+
+    TDiskRegistryDatabase db(tx.DB);
+    if(!LoadState(db, args.StateArgs)) {
+        Cerr << "Disk Actor unable to load state" << Endl;
+        return false;
+    }
 
     return true;
 }
@@ -55,51 +57,53 @@ void TDiskRegistryActor::ExecuteCompareDiskRegistryState(
     TTransactionContext& tx,
     TTxDiskRegistry::TCompareDiskRegistryState& args)
 {
-    Y_UNUSED(ctx);
-    TDiskRegistryDatabase db(tx.DB);
-    TDiskRegistryStateSnapshot stateArgs;
-    LoadState(db, stateArgs);
+    Y_UNUSED(tx);
     auto DBState = std::make_unique<TDiskRegistryState>(
         Logging,
         Config,
         ComponentGroup,
-        std::move(stateArgs.Config),
-        std::move(stateArgs.Agents),
-        std::move(stateArgs.Disks),
-        std::move(stateArgs.PlacementGroups),
-        std::move(stateArgs.BrokenDisks),
-        std::move(stateArgs.DisksToReallocate),
-        std::move(stateArgs.DiskStateChanges),
-        stateArgs.LastDiskStateSeqNo,
-        std::move(stateArgs.DirtyDevices),
-        std::move(stateArgs.DisksToCleanup),
-        std::move(stateArgs.ErrorNotifications),
-        std::move(stateArgs.UserNotifications),
-        std::move(stateArgs.OutdatedVolumeConfigs),
-        std::move(stateArgs.SuspendedDevices),
-        std::move(stateArgs.AutomaticallyReplacedDevices),
-        std::move(stateArgs.DiskRegistryAgentListParams));
+        std::move(args.StateArgs.Config),
+        std::move(args.StateArgs.Agents),
+        std::move(args.StateArgs.Disks),
+        std::move(args.StateArgs.PlacementGroups),
+        std::move(args.StateArgs.BrokenDisks),
+        std::move(args.StateArgs.DisksToReallocate),
+        std::move(args.StateArgs.DiskStateChanges),
+        args.StateArgs.LastDiskStateSeqNo,
+        std::move(args.StateArgs.DirtyDevices),
+        std::move(args.StateArgs.DisksToCleanup),
+        std::move(args.StateArgs.ErrorNotifications),
+        std::move(args.StateArgs.UserNotifications),
+        std::move(args.StateArgs.OutdatedVolumeConfigs),
+        std::move(args.StateArgs.SuspendedDevices),
+        std::move(args.StateArgs.AutomaticallyReplacedDevices),
+        std::move(args.StateArgs.DiskRegistryAgentListParams));
     auto differences = State->GetDifferingFields(*DBState);
     args.Result.MutableDiffers()->Add(differences.begin(), differences.end());
-    // args.Diffs.Mu = State->GetDifferingFields(*DBState);
+    
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s CompareDiskRegistryState execution succeeded",
+        LogTitle.GetWithTime().c_str());
 }
 
 void TDiskRegistryActor::CompleteCompareDiskRegistryState(
     const TActorContext& ctx,
     TTxDiskRegistry::TCompareDiskRegistryState& args)
 {
-    // LOG_LOG(
-    //     ctx,
-    //     HasError(args.Error) ? NLog::PRI_ERROR : NLog::PRI_INFO,
-    //     TBlockStoreComponents::DISK_REGISTRY,
-    //     "CompareDiskRegistryState result: DiskId=%s Error=%s",
-    //     args.DiskId.c_str(),
-    //     FormatError(args.Error).c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s CompareDiskRegistryState result",
+        LogTitle.GetWithTime().c_str());
 
     auto response =
         std::make_unique<TEvDiskRegistry::TEvCompareDiskRegistryStateResponse>(
             std::move(args.Result));
+
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 
-}
+}   // namespace NCloud::NBlockStore::NStorage
+

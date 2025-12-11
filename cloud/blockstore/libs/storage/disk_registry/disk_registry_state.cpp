@@ -436,10 +436,13 @@ TDiskRegistryState::TDiskRegistryState(
 
 TDiskRegistryState::~TDiskRegistryState() = default;
 
-std::vector<std::string> TDiskRegistryState::TDiskState::getDiff(const TDiskState& rhs) const {
+TString TDiskRegistryState::TDiskState::getDiff(const TDiskState& rhs) const {
     static_assert(sizeof(*this) == 328);
 
-    std::vector<std::string> result;
+    std::stringstream result;
+
+    result << "hello";
+
     google::protobuf::util::MessageDifferencer diff;
     NProtoBuf::string report;
 
@@ -448,11 +451,9 @@ std::vector<std::string> TDiskRegistryState::TDiskState::getDiff(const TDiskStat
     comparator.set_float_comparison(google::protobuf::util::DefaultFieldComparator::FloatComparison::APPROXIMATE);
     diff.set_field_comparator(&comparator);
 
-    auto notifyIfNotEqual = [&result]<typename T>(std::string name, T value, T rhs_value) {
+    auto notifyIfNotEqual = [&result]<typename T>(const std::string& name, const T& value, const T& rhs_value) {
         if(value != rhs_value) {
-            std::stringstream ss;
-            ss << name << " not equal";
-            result.push_back(ss.str());
+            result << name << " not equal\n ";
         }
     };
     
@@ -474,33 +475,37 @@ std::vector<std::string> TDiskRegistryState::TDiskState::getDiff(const TDiskStat
     notifyIfNotEqual("MasterDiskId", MasterDiskId, rhs.MasterDiskId);
 
     if(!diff.Compare(CheckpointReplica, rhs.CheckpointReplica)) {
-        result.push_back(report);
+        result << "Checkpoint Replica not equal: " << report << "\n";
+        report.clear();
     }
 
     notifyIfNotEqual("LostDeviceIds", LostDeviceIds, rhs.LostDeviceIds);
     notifyIfNotEqual("MediaKind", MediaKind, rhs.MediaKind);
 
     std::stringstream ss;
-    ss << "History: ";
     for(size_t i = 0; i < std::max(History.size(), rhs.History.size()); i++) {
         if(i >= History.size()) {
-            ss << "[" << i << "]: " << rhs.History[i].DebugString() << std::endl;
+            ss << "[" << i << "]: " << rhs.History[i].DebugString() << "\n";
             continue;
         }
         if(i >= rhs.History.size()) {
-            ss << "[" << i << "]: " << History[i].DebugString() << std::endl;
+            ss << "[" << i << "]: " << History[i].DebugString() << "\n";
             continue;
         }
 
         if(!diff.Compare(History[i], rhs.History[i])) {
-            ss << "[" << i << "]: " << report << std::endl; 
+            ss << "[" << i << "]: " << report << "\n"; 
+            report.clear();
         }
     }
-    result.push_back(ss.str());
+    if(ss.str().size() > 0) {
+        result << "History not equal: " << ss.str() << "\n";
+        ss.clear();
+    }
 
     notifyIfNotEqual("OutdatedLaggingDevices", OutdatedLaggingDevices, rhs.OutdatedLaggingDevices);
 
-    return result;
+    return result.str();
 }
 
 TVector<TString> TDiskRegistryState::GetDifferingFields(const TDiskRegistryState& rhs) const{
@@ -518,40 +523,40 @@ TVector<TString> TDiskRegistryState::GetDifferingFields(const TDiskRegistryState
 
     if(!diff.Compare(StorageConfig->GetStorageConfigProto(), rhs.StorageConfig->GetStorageConfigProto())) {
         std::stringstream ss;
-        ss << "StorageConfig difference: " << report << std::endl;
+        ss << "StorageConfig difference: " << report << "\n";
         result.push_back(ss.str());
     }
 
     if(!diff.Compare(CurrentConfig, rhs.CurrentConfig)) {
         std::stringstream ss;
-        ss << "CurrentConfig difference: " << report << std::endl;
+        ss << "CurrentConfig difference: " << report << "\n";
         result.push_back(ss.str());
     }
 
     
     const auto& vPlacementGroups = rhs.PlacementGroups;
     std::stringstream ss;
-    ss << "PlacementGroups difference: " << report << std::endl;
     THashSet<TString> used;
 
     for(const auto& [k, v] : PlacementGroups) {
         used.insert(k);
         if(vPlacementGroups.find(k) == vPlacementGroups.end()) {
-            ss << "[" << k << "] not found, this: " << v.Config.DebugString() << std::endl;
+            ss << "[" << k << "] not found, current: " << v.Config.DebugString() << "\n";
         }
         if(!diff.Compare(v.Config, vPlacementGroups.at(k).Config)) {
-            ss << "[" << k << "] difference: " << report << std::endl;
+            ss << "[" << k << "] difference: " << report << "\n";
         }
     }
 
     for(const auto& [k, v] : vPlacementGroups) {
         if(used.find(k) == used.end()) {
-            ss << "[" << k << "] not found, other: " << v.Config.DebugString() << std::endl;
+            ss << "[" << k << "] not found, DB: " << v.Config.DebugString() << "\n";
         }
     }
-    result.push_back(ss.str());
-
-    ss.clear();
+    if(ss.str().size() > 0) {
+        result.push_back((std::stringstream() << "PlacementGroups difference: " << ss.str()).str());
+        ss.clear();
+    }
 
     if(!DeviceList.CompareDevices(rhs.DeviceList)) {
         result.emplace_back("DeviceList differs");
@@ -567,6 +572,26 @@ TVector<TString> TDiskRegistryState::GetDifferingFields(const TDiskRegistryState
     }
     if(AutomaticallyReplacedDeviceIds != rhs.AutomaticallyReplacedDeviceIds) {
         result.emplace_back("AutomaticallyReplacedDeviceIds differs");
+    }
+
+    used.clear();
+    for(const auto& [k, v]: Disks) {
+        if(rhs.Disks.find(k) == rhs.Disks.end()) {
+            result.emplace_back("Disk " + k + " not found in db");
+            continue;
+        }
+        TString disk_report = v.getDiff(rhs.Disks.at(k));
+        if(disk_report.size() > 0) {
+            ss << "Disk " << k << " differs: " << disk_report << "\n";
+            result.emplace_back(ss.str());
+            ss.clear();
+        }
+        used.insert(k);
+    }
+    for(const auto& [k, v]: rhs.Disks) {
+        if(used.find(k) == used.end()) {
+            result.emplace_back("Disk " + k + " not found in current state");
+        }
     }
     return result;
 }

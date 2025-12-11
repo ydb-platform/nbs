@@ -1486,6 +1486,7 @@ struct TTxDiskRegistry
         const TRequestInfoPtr RequestInfo;
 
         NProto::TCompareDiskRegistryStateResponse Result;
+        TDiskRegistryStateSnapshot StateArgs;
 
         TCompareDiskRegistryState(
                 TRequestInfoPtr requestInfo)
