@@ -79,8 +79,6 @@ public:
         , Alloc(alloc)
     {}
 
-    bool Empty() const;
-
     void Add(TDeletionMarker deletionMarker);
 
     ui32 Apply(TArrayRef<TBlock> blocks) const;
@@ -89,11 +87,6 @@ public:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-
-bool TDeletionMarkers::TImpl::Empty() const
-{
-    return DeletionMarkers.empty();
-}
 
 void TDeletionMarkers::TImpl::Add(TDeletionMarker deletionMarker)
 {
@@ -187,11 +180,6 @@ TDeletionMarkers::TDeletionMarkers(IAllocator* alloc)
 {}
 
 TDeletionMarkers::~TDeletionMarkers() = default;
-
-bool TDeletionMarkers::Empty() const
-{
-    return Impl->Empty();
-}
 
 void TDeletionMarkers::Add(TDeletionMarker deletionMarker)
 {

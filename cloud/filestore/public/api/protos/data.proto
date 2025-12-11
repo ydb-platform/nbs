@@ -154,20 +154,10 @@ message TReadDataRequest
     // Number of bytes to read.
     uint64 Length = 6;
 
-
-    // NB: Iovec + optional RegionId + Length in the response
-    // are an alternative to Buffer + BufferOffset in the response.
-    // This API works only if the caller and the calle are sharing the memory
-    // space
-
     // Vector I/O data structure
     // Data can be passed via Iovecs instead of Buffer to avoid excess copy
     // Caller should ensure that total Length of Iovecs is at least Length
     repeated TIovec Iovecs = 7;
-
-    // For vector I/O, the caller can pass an identifier. Its interpretation
-    // is up to the callee.
-    uint64 RegionId = 8;
 }
 
 message TReadDataResponse
@@ -216,17 +206,9 @@ message TWriteDataRequest
     // Bytes to write start at buffer offset.
     uint32 BufferOffset = 7;
 
-    // NB: Iovec + optional RegionId are an alternative to Buffer + BufferOffset
-    // This API works only if the caller and the calle are sharing the memory
-    // space
-
     // Vector I/O data structure
     // Data can be passed via Iovecs instead of Buffer to avoid excess copy
     repeated TIovec Iovecs = 8;
-
-    // For vector I/O, the caller can pass an identifier. Its interpretation
-    // is up to the callee.
-    uint64 RegionId = 9;
 }
 
 message TWriteDataResponse

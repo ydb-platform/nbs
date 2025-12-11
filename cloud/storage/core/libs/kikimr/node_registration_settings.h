@@ -20,7 +20,7 @@ struct TNodeRegistrationSettings
     TDuration LegacyRegistrationTimeout;
 
     // Timeout for dynamic node registration via discovery service
-    TDuration DynamicNodeRegistrationTimeout;
+    TDuration DynamicNodeRegistrationTimeout = TDuration::Max();
 
     TDuration LoadConfigsFromCmsRetryMinDelay;
     TDuration LoadConfigsFromCmsRetryMaxDelay;

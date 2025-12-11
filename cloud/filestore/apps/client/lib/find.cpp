@@ -25,7 +25,6 @@ class TFindCommand final
 private:
     TString Glob;
     ui32 Depth = 0;
-    ui64 StartRootNodeId = RootNodeId;
 
 public:
     TFindCommand()
@@ -38,11 +37,6 @@ public:
             .RequiredArgument("NUM")
             .DefaultValue(1)
             .StoreResult(&Depth);
-
-        Opts.AddLongOption("root")
-            .RequiredArgument("NUM")
-            .DefaultValue(RootNodeId)
-            .StoreResult(&StartRootNodeId);
     }
 
     void StatAll(
@@ -79,7 +73,7 @@ public:
     {
         auto sessionGuard = CreateSession();
         auto& session = sessionGuard.AccessSession();
-        StatAll(session, FileSystemId, "/", StartRootNodeId, Depth);
+        StatAll(session, FileSystemId, "/", RootNodeId, Depth);
 
         return true;
     }

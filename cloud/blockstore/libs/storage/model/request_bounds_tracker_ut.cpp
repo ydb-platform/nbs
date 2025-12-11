@@ -1,7 +1,6 @@
 #include "request_bounds_tracker.h"
 
 #include "common_constants.h"
-#include "requests_in_progress.h"
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -107,6 +106,9 @@ Y_UNIT_TEST_SUITE(TRequestBoundsTrackerTest)
             ui32>
             requestsInProgress{blockSize};
 
+        const auto& boundsTracker =
+            requestsInProgress.GetRequestBoundsTracker();
+
         auto blocksPerTrackingRange = MigrationRangeSize / 4_KB;
 
         {
@@ -114,24 +116,22 @@ Y_UNIT_TEST_SUITE(TRequestBoundsTrackerTest)
 
             requestsInProgress.AddWriteRequest(
                 id1,
-                TBlockRange64::WithLength(0, 10),
-                {});
+                TBlockRange64::WithLength(0, 10));
 
-            UNIT_ASSERT(requestsInProgress.Overlaps(
+            UNIT_ASSERT(boundsTracker.OverlapsWithRequest(
                 TBlockRange64::WithLength(0, blocksPerTrackingRange)));
 
             auto id2 = requestsInProgress.GenerateRequestId();
             requestsInProgress.AddWriteRequest(
                 id2,
-                TBlockRange64::WithLength(10, 10),
-                {});
+                TBlockRange64::WithLength(10, 10));
             requestsInProgress.ExtractRequest(id1);
 
-            UNIT_ASSERT(requestsInProgress.Overlaps(
+            UNIT_ASSERT(boundsTracker.OverlapsWithRequest(
                 TBlockRange64::WithLength(0, blocksPerTrackingRange)));
 
             requestsInProgress.ExtractRequest(id2);
-            UNIT_ASSERT(!requestsInProgress.Overlaps(
+            UNIT_ASSERT(!boundsTracker.OverlapsWithRequest(
                 TBlockRange64::WithLength(0, blocksPerTrackingRange)));
         }
 
@@ -141,13 +141,12 @@ Y_UNIT_TEST_SUITE(TRequestBoundsTrackerTest)
 
             requestsInProgress.AddWriteRequest(
                 id1,
-                TBlockRange64::WithLength(blocksPerTrackingRange - 1, 2),
-                {});
+                TBlockRange64::WithLength(blocksPerTrackingRange - 1, 2));
 
-            UNIT_ASSERT(requestsInProgress.Overlaps(
+            UNIT_ASSERT(boundsTracker.OverlapsWithRequest(
                 TBlockRange64::WithLength(0, blocksPerTrackingRange)));
             UNIT_ASSERT(
-                requestsInProgress.Overlaps(TBlockRange64::WithLength(
+                boundsTracker.OverlapsWithRequest(TBlockRange64::WithLength(
                     blocksPerTrackingRange,
                     2 * blocksPerTrackingRange)));
         }
@@ -162,31 +161,32 @@ Y_UNIT_TEST_SUITE(TRequestBoundsTrackerTest)
             ui32>
             requestsInProgress{blockSize};
 
+        const auto& boundsTracker =
+            requestsInProgress.GetRequestBoundsTracker();
+
         auto blocksPerTrackingRange = MigrationRangeSize / 4_KB;
 
         auto id1 = requestsInProgress.GenerateRequestId();
         requestsInProgress.AddWriteRequest(
             id1,
-            TBlockRange64::WithLength(0, blocksPerTrackingRange),
-            {});
+            TBlockRange64::WithLength(0, blocksPerTrackingRange));
 
-        UNIT_ASSERT(requestsInProgress.Overlaps(
+        UNIT_ASSERT(boundsTracker.OverlapsWithRequest(
             TBlockRange64::WithLength(0, blocksPerTrackingRange)));
 
         requestsInProgress.RemoveRequest(id1);
 
-        UNIT_ASSERT(!requestsInProgress.Overlaps(
+        UNIT_ASSERT(!boundsTracker.OverlapsWithRequest(
             TBlockRange64::WithLength(0, blocksPerTrackingRange)));
 
         auto id2 = requestsInProgress.AddWriteRequest(
-            TBlockRange64::WithLength(0, blocksPerTrackingRange),
-            {});
-        UNIT_ASSERT(requestsInProgress.Overlaps(
+            TBlockRange64::WithLength(0, blocksPerTrackingRange));
+        UNIT_ASSERT(boundsTracker.OverlapsWithRequest(
             TBlockRange64::WithLength(0, blocksPerTrackingRange)));
 
         requestsInProgress.RemoveRequest(id2);
 
-        UNIT_ASSERT(!requestsInProgress.Overlaps(
+        UNIT_ASSERT(!boundsTracker.OverlapsWithRequest(
             TBlockRange64::WithLength(0, blocksPerTrackingRange)));
     }
 }

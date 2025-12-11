@@ -20,12 +20,6 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const (
-	copyVolumeClientId = "copy-volume-client"
-)
-
-////////////////////////////////////////////////////////////////////////////////
-
 type Session struct {
 	nbs                 *nbs_client.DiscoveryClient
 	metricsRegistry     metrics.Registry
@@ -107,18 +101,9 @@ func newSession(
 		)
 	}
 
-	var clientID string
-	if mountOpts.FillGeneration > 0 {
-		// If FillGeneration is greater than 0, it means that there is
-		// a relocation in progress.
-		// We should use copyVolumeClientId to avoid NBS
-		// restrictions on writing to the destination disk.
-		clientID = copyVolumeClientId
-	} else {
-		clientID, err = generateClientID()
-		if err != nil {
-			return nil, err
-		}
+	clientID, err := generateClientID()
+	if err != nil {
+		return nil, err
 	}
 
 	span.SetAttributes(tracing.AttributeString("client_id", clientID))

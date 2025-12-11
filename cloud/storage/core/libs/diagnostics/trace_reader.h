@@ -68,6 +68,7 @@ class TTraceReaderWithRingBuffer final: public ITraceReader
 
 private:
     TSimpleRingBuffer<TEntry> RingBuffer;
+    ui64 TracksCount = 0;
     const TString Tag;
 
 public:
@@ -96,11 +97,6 @@ ITraceReaderPtr CreateSlowRequestsFilter(
     ILoggingServicePtr logging,
     TString componentName,
     TRequestThresholds requestThresholds);
-
-ITraceReaderPtr CreateTraceLimiter(
-    TString id,
-    ITraceReaderPtr consumer,
-    ui64 limit);
 
 ITraceReaderPtr SetupTraceReaderWithLog(
     TString id,

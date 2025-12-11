@@ -64,17 +64,12 @@ type snapshotState struct {
 }
 
 func (s *snapshotState) toSnapshotMeta() *SnapshotMeta {
-	var disk *types.Disk
-	if len(s.diskID) != 0 {
-		disk = &types.Disk{
+	return &SnapshotMeta{
+		ID: s.id,
+		Disk: &types.Disk{
 			ZoneId: s.zoneID,
 			DiskId: s.diskID,
-		}
-	}
-
-	return &SnapshotMeta{
-		ID:               s.id,
-		Disk:             disk,
+		},
 		CheckpointID:     s.checkpointID,
 		CreateTaskID:     s.createTaskID,
 		BaseSnapshotID:   s.baseSnapshotID,

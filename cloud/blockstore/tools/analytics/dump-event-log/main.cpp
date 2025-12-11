@@ -1,7 +1,6 @@
 #include <cloud/blockstore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/tools/analytics/dump-event-log/sqlite_output.h>
-#include <cloud/blockstore/tools/analytics/dump-event-log/zero_ranges_stat.h>
 #include <cloud/blockstore/tools/analytics/libs/event-log/dump.h>
 
 #include <library/cpp/eventlog/dumper/evlogdump.h>
@@ -43,49 +42,13 @@ struct TEventProcessor: TProtobufEventProcessor
     TEventLogPtr EventLog;
     TString OutputFilename;
     TString OutputDatabaseFilename;
-    TString OutputZeroRangesStatFilename;
     TString FilterByDiskId;
     TString FilterByDiskIdFile;
     TString FilterByRequestTypeFile;
-
-    bool Initialized = false;
     TSet<TString> FilterByDiskIdSet;
     TSet<ui32> RequestTypeSet;
     std::optional<TBlockRange64> FilterRange;
-    TVector<std::unique_ptr<IProfileLogEventHandler>> EventHandlers;
-
-    void InitIfNeeded()
-    {
-        if (Initialized) {
-            return;
-        }
-        Initialized = true;
-
-        if (FilterByDiskIdFile) {
-            FilterByDiskIdSet = LoadDiskIds(FilterByDiskIdFile);
-        }
-
-        if (FilterByRequestTypeFile) {
-            RequestTypeSet = LoadRequestTypes(FilterByRequestTypeFile);
-        }
-
-        if (OutputFilename) {
-            EventLog = MakeIntrusive<TEventLog>(
-                OutputFilename,
-                NEvClass::Factory()->CurrentFormat());
-        }
-
-        if (OutputZeroRangesStatFilename) {
-            EventHandlers.push_back(
-                std::make_unique<TZeroRangesStat>(
-                    OutputZeroRangesStatFilename));
-        }
-
-        if (OutputDatabaseFilename) {
-            EventHandlers.push_back(
-                std::make_unique<TSqliteOutput>(OutputDatabaseFilename));
-        }
-    }
+    std::unique_ptr<TSqliteOutput> SqliteOutput;
 
     void DoProcessEvent(const TEvent* ev, IOutputStream* out) override
     {
@@ -95,11 +58,26 @@ struct TEventProcessor: TProtobufEventProcessor
             return;
         }
 
-        InitIfNeeded();
-
-        if (EventLog) {
+        if (OutputFilename) {
+            if (!EventLog) {
+                EventLog = MakeIntrusive<TEventLog>(
+                    OutputFilename,
+                    NEvClass::Factory()->CurrentFormat());
+            }
             EventLog->LogEvent(*message);
             return;
+        }
+
+        if (FilterByDiskIdFile) {
+            if (FilterByDiskIdSet.empty()) {
+                FilterByDiskIdSet = LoadDiskIds(FilterByDiskIdFile);
+            }
+        }
+
+        if (FilterByRequestTypeFile) {
+            if (RequestTypeSet.empty()) {
+                RequestTypeSet = LoadRequestTypes(FilterByRequestTypeFile);
+            }
         }
 
         const TVector<TItemDescriptor> order = GetItemOrder(*message);
@@ -108,32 +86,13 @@ struct TEventProcessor: TProtobufEventProcessor
                 continue;
             }
 
-            for (const auto& handler: EventHandlers) {
-                switch (type) {
-                    case EItemType::Request: {
-                        const NProto::TProfileLogRequestInfo& r =
-                            message->GetRequests(index);
-                        for (const auto& range: r.GetRanges()) {
-                            handler->ProcessRequest(
-                                message->GetDiskId(),
-                                TInstant::FromValue(r.GetTimestampMcs()),
-                                r.GetRequestType(),
-                                TBlockRange64::WithLength(
-                                    range.GetBlockIndex(),
-                                    range.GetBlockCount()),
-                                TDuration::MicroSeconds(r.GetDurationMcs()),
-                                range.GetReplicaChecksums());
-                        }
-                        break;
-                    }
-                    case EItemType::BlockInfo:
-                    case EItemType::BlockCommitId:
-                    case EItemType::BlobUpdate:
-                        break;
+            if (OutputDatabaseFilename) {
+                if (!SqliteOutput) {
+                    SqliteOutput =
+                        std::make_unique<TSqliteOutput>(OutputDatabaseFilename);
                 }
-            }
 
-            if (EventHandlers) {
+                SqliteOutput->ProcessMessage(*message, type, index);
                 continue;
             }
 
@@ -280,12 +239,6 @@ public:
                 "Enables output to the sqlite database file")
             .Optional()
             .StoreResult(&Processor->OutputDatabaseFilename);
-
-        opts.AddLongOption(
-                "output-zero-ranges-stat-file",
-                "Enables output statistics of zero-block ranges to the file")
-            .Optional()
-            .StoreResult(&Processor->OutputZeroRangesStatFilename);
     }
 
     void SetOptions(const TEvent::TOutputOptions& options) override

@@ -276,10 +276,6 @@ def test_find():
     client.touch("fs0", "/a0/g3.txt")
     out = client.find("fs0", depth=2)
     out += client.find("fs0", depth=2, glob="f*.txt")
-
-    a1_node_id = json.loads(client.stat("fs0", "/a1"))["Id"]
-    out += client.find("fs0", depth=3, root_node_id=a1_node_id)
-
     client.destroy("fs0")
 
     with open(results_path, "wb") as results_file:

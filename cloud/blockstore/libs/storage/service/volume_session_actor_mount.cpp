@@ -656,10 +656,6 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
     if (SUCCEEDED(error.GetCode())) {
         AddClientRequestCompleted = true;
 
-        if (msg->Record.GetVolumeClientMigrationInProgress()) {
-            MountMode = NProto::VOLUME_MOUNT_REMOTE;
-        }
-
         if (msg->Record.GetForceTabletRestart() &&
             MountMode == NProto::VOLUME_MOUNT_LOCAL)
         {

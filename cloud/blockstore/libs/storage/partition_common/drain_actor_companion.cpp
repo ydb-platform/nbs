@@ -23,10 +23,20 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 TDrainActorCompanion::TDrainActorCompanion(
         IRequestsInProgress& requestsInProgress,
         TString loggingId,
-        IWriteRequestsTracker* writeRequestTracker)
+        const TRequestBoundsTracker* requestBoundsTracker)
     : RequestsInProgress(requestsInProgress)
-    , WriteRequestTracker(writeRequestTracker)
+    , RequestBoundsTracker(requestBoundsTracker)
     , LoggingId(std::move(loggingId))
+{}
+
+TDrainActorCompanion::TDrainActorCompanion(
+        IRequestsInProgress& requestsInProgress,
+        ui64 tabletID,
+        const TRequestBoundsTracker* requestBoundsTracker)
+    : TDrainActorCompanion(
+          requestsInProgress,
+          ToString(tabletID),
+          requestBoundsTracker)
 {}
 
 void TDrainActorCompanion::HandleDrain(
@@ -105,7 +115,7 @@ void TDrainActorCompanion::AddDrainRangeRequest(
     TRequestInfoPtr reqInfo,
     TBlockRange64 range)
 {
-    Y_DEBUG_ABORT_UNLESS(WriteRequestTracker);
+    Y_DEBUG_ABORT_UNLESS(RequestBoundsTracker);
     DrainRangeRequests.emplace_back(std::move(reqInfo), range);
     DoProcessDrainRangeRequests(ctx);
 }
@@ -116,7 +126,7 @@ void TDrainActorCompanion::ProcessDrainRequests(const TActorContext& ctx)
 {
     DoProcessDrainRequests(ctx);
     DoProcessWaitForInFlightWritesRequests(ctx);
-    if (WriteRequestTracker) {
+    if (RequestBoundsTracker) {
         DoProcessDrainRangeRequests(ctx);
     }
 }
@@ -174,7 +184,7 @@ void TDrainActorCompanion::RemoveDrainRangeRequest(
     const TActorContext& ctx,
     TBlockRange64 range)
 {
-    Y_DEBUG_ABORT_UNLESS(WriteRequestTracker);
+    Y_DEBUG_ABORT_UNLESS(RequestBoundsTracker);
 
     auto cancelRemovedRequest = [&](const TDrainRangeInfo& drainRequest)
     {
@@ -196,8 +206,8 @@ void TDrainActorCompanion::RemoveDrainRangeRequest(
 
 void TDrainActorCompanion::DoProcessDrainRangeRequests(const TActorContext& ctx)
 {
-    Y_DEBUG_ABORT_UNLESS(WriteRequestTracker);
-    if (!WriteRequestTracker) {
+    Y_DEBUG_ABORT_UNLESS(RequestBoundsTracker);
+    if (!RequestBoundsTracker) {
         return;
     }
 
@@ -205,7 +215,9 @@ void TDrainActorCompanion::DoProcessDrainRangeRequests(const TActorContext& ctx)
 
     auto checkNoRequestsInRange = [&](const TDrainRangeInfo& drainRequest)
     {
-        if (WriteRequestTracker->Overlaps(drainRequest.RangeToDrain)) {
+        if (RequestBoundsTracker->OverlapsWithRequest(
+                drainRequest.RangeToDrain))
+        {
             return false;
         }
 

@@ -12,11 +12,3 @@
 /a0/	f5.txt	16
 /a1/	f3.txt	14
 /a1/	f4.txt	15
-/	b1	8
-/b1/	c1	10
-/b1/c1/	f2.txt	13
-/	b1_0	9
-/	f3.txt	14
-/	f4.txt	15
-/	g1.txt	17
-/	g2.txt	18

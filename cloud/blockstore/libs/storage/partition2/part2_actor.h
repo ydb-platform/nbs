@@ -129,9 +129,7 @@ private:
     // Requests in-progress
     THashSet<NActors::TActorId> Actors;
     TIntrusiveList<TRequestInfo> ActiveTransactions;
-    TDrainActorCompanion DrainActorCompanion{
-        *this,
-        PartitionConfig.GetDiskId()};
+    TDrainActorCompanion DrainActorCompanion{*this, TabletID()};
     ui32 WriteAndZeroRequestsInProgress = 0;
 
     TPartitionDiskCountersPtr PartCounters;

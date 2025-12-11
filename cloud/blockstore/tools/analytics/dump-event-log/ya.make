@@ -9,9 +9,8 @@ PEERDIR(
 )
 
 SRCS(
-    main.cpp
     sqlite_output.cpp
-    zero_ranges_stat.cpp
+    main.cpp
 )
 
 END()

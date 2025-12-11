@@ -2,8 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
-#include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
-
+#include <cloud/blockstore/libs/storage/model/request_bounds_tracker.h>
 #include <cloud/storage/core/libs/actors/public.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -20,14 +19,19 @@ private:
     TVector<TRequestInfoPtr> DrainRequests;
     TRequestInfoPtr WaitForInFlightWritesRequest;
     IRequestsInProgress& RequestsInProgress;
-    const IWriteRequestsTracker* WriteRequestTracker;
+    const TRequestBoundsTracker* RequestBoundsTracker;
     const TString LoggingId;
 
 public:
     TDrainActorCompanion(
         IRequestsInProgress& requestsInProgress,
         TString loggingId,
-        IWriteRequestsTracker* writeRequestTracker = nullptr);
+        const TRequestBoundsTracker* requestBoundsTracker = nullptr);
+
+    TDrainActorCompanion(
+        IRequestsInProgress& requestsInProgress,
+        ui64 tabletID,
+        const TRequestBoundsTracker* requestBoundsTracker = nullptr);
 
     void HandleDrain(
         const NPartition::TEvPartition::TEvDrainRequest::TPtr& ev,

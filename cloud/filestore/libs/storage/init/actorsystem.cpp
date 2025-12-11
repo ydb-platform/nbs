@@ -252,7 +252,7 @@ public:
             ConfigureTenantSystemTablets(
                 *appData,
                 *localConfig,
-                config->GetAllowAdditionalSystemTablets(),
+                /*allowAdditionalSystemTablets=*/false,
                 config->GetSystemTabletsPriority());
         }
 

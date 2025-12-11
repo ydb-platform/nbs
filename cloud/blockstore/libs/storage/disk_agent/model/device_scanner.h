@@ -24,7 +24,6 @@ using TDeviceCallback = std::function<NProto::TError(
 
 NProto::TError FindDevices(
     const NProto::TStorageDiscoveryConfig& config,
-    const THashSet<TString>& allowedPaths,
     TDeviceCallback callback);
 
 }   // namespace NCloud::NBlockStore::NStorage

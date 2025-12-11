@@ -31,4 +31,4 @@ expect char stat ${nx} type
 expect 0 unlink ${nx}
 expect ENAMETOOLONG mknod ${nxx} c 0644 1 2
 
-strace -v rm -rf "${nx%%/*}"
+rm -rf "${nx%%/*}"

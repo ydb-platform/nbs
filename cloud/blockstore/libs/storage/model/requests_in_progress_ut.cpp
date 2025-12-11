@@ -1,4 +1,5 @@
-#include "requests_in_progress.h"
+#include "common_constants.h"
+#include "request_bounds_tracker.h"
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -94,7 +95,7 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
         using TRequests =
             TRequestsInProgress<EAllowedRequests::ReadWrite, ui32, TString>;
 
-        TMap<ui32, TRequests::TRequestInfo> testData{
+        TMap<ui32, TRequests::TRequest> testData{
             {0, {.Value = "Read Request 1", .IsWrite = false}},
             {1, {.Value = "Write Request 1", .IsWrite = true}},
             {10, {.Value = "Read Request 2", .IsWrite = false}},
@@ -116,7 +117,7 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
 
         for (const auto& request: requestsInProgress.AllRequests()) {
             ui32 id = request.first;
-            const TRequests::TRequestInfo& item = request.second;
+            const TRequests::TRequest& item = request.second;
             const auto& testItem = testData[id];
             UNIT_ASSERT_EQUAL(testItem.IsWrite, item.IsWrite);
             UNIT_ASSERT_EQUAL(testItem.Value, item.Value);
@@ -128,7 +129,7 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
         using TRequests =
             TRequestsInProgress<EAllowedRequests::ReadWrite, ui32, TString>;
 
-        TMap<ui32, TRequests::TRequestInfo> testData{
+        TMap<ui32, TRequests::TRequest> testData{
             {0, {.Value = "Read Request 1", .IsWrite = false}},
             {1, {.Value = "Write Request 1", .IsWrite = true}},
             {10, {.Value = "Read Request 2", .IsWrite = false}},
