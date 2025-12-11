@@ -1068,6 +1068,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetHybridMergedChannelPoolKind("merged");
         storageServiceConfig.SetHybridFreshChannelPoolKind("fresh");
         storageServiceConfig.SetMinChannelCount(1);
+        storageServiceConfig.SetFreshChannelCountSSD(1);
         storageServiceConfig.SetAllocationUnitHDD(1);
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
@@ -1202,6 +1203,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         {
             NProto::TStorageServiceConfig storageServiceConfig;
             storageServiceConfig.SetMinChannelCount(1);
+            storageServiceConfig.SetFreshChannelCountSSD(1);
             auto config = std::make_unique<TStorageConfig>(
                 std::move(storageServiceConfig),
                 std::make_shared<NFeatures::TFeaturesConfig>(
@@ -1236,6 +1238,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         {
             NProto::TStorageServiceConfig storageServiceConfig;
             storageServiceConfig.SetMinChannelCount(1);
+            storageServiceConfig.SetFreshChannelCountSSD(1);
             auto config = std::make_unique<TStorageConfig>(
                 std::move(storageServiceConfig),
                 std::make_shared<NFeatures::TFeaturesConfig>(
@@ -1291,6 +1294,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetHybridMergedChannelPoolKind("merged");
         storageServiceConfig.SetHybridFreshChannelPoolKind("fresh");
         storageServiceConfig.SetMinChannelCount(1);
+        storageServiceConfig.SetFreshChannelCountSSD(1);
         storageServiceConfig.SetAllocationUnitHDD(1);
         storageServiceConfig.SetHDDUnitWriteIops(10);
         storageServiceConfig.SetSSDUnitWriteIops(100);
@@ -1391,6 +1395,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetHybridMergedChannelPoolKind("merged");
         storageServiceConfig.SetHybridFreshChannelPoolKind("fresh");
         storageServiceConfig.SetMinChannelCount(1);
+        storageServiceConfig.SetFreshChannelCountSSD(1);
         storageServiceConfig.SetAllocationUnitHDD(1);
         storageServiceConfig.SetHDDUnitWriteIops(10);
         storageServiceConfig.SetSSDUnitWriteIops(100);
@@ -1584,6 +1589,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetBytesPerStripe(16_MB);
         storageServiceConfig.SetMaxPartitionsPerVolume(2);
         storageServiceConfig.SetAllocationUnitSSD(32);
+        storageServiceConfig.SetFreshChannelCountSSD(1);
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
