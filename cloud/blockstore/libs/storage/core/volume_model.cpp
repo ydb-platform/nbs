@@ -530,9 +530,14 @@ void SetupChannels(
         volumeParams);
     ui32 mixedChannelCount = 0;
 
+    const auto freshChannelCountForMediaKind =
+        volumeParams.MediaKind == NCloud::NProto::STORAGE_MEDIA_SSD
+            ? config.GetFreshChannelCountSSD()
+            : config.GetFreshChannelCountHDD();
+
     ui32 freshChannelCount =
         Max(GetExistingFreshChannelCount(volumeParams),
-            config.GetFreshChannelCount());
+            freshChannelCountForMediaKind);
     if (volumeConfig.GetTabletVersion() == 2) {
         freshChannelCount = 1;
     }
