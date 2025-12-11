@@ -140,8 +140,9 @@ void TDiskRegistryActor::ExecuteAddDisk(
             args.PoolName,
             args.BlocksCount * args.BlockSize))
     {
-        // Note: DM uses this specific error message to identify this case.
-        // Update createEmptyDiskTask simultaneously if you change it.
+        // Note: DM and NBS uses this specific error message to identify this
+        // case. Update "createEmptyDiskTask()" and "GetDiagnosticsErrorKind()"
+        // simultaneously if you change it.
         args.Error = MakeError(
             E_TRY_AGAIN,
             "Unable to allocate local disk: secure erase has not finished yet");
