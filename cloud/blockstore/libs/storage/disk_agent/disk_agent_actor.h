@@ -8,6 +8,7 @@
 
 #include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
+#include <cloud/blockstore/libs/local_nvme/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
 #include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
@@ -61,6 +62,7 @@ private:
     const IStorageProviderPtr StorageProvider;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const ILocalNVMeServicePtr LocalNVMeService;
 
     ILoggingServicePtr Logging;
     NRdma::IServerPtr RdmaServer;
@@ -114,7 +116,8 @@ public:
         ILoggingServicePtr logging,
         NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager,
-        ITaskQueuePtr backgroundThreadPool);
+        ITaskQueuePtr backgroundThreadPool,
+        ILocalNVMeServicePtr localNVMeService);
 
     ~TDiskAgentActor() override;
 
@@ -156,6 +159,7 @@ private:
         const TRequestPtr& ev);
 
     void RenderDevices(IOutputStream& out) const;
+    void RenderNVMeDevices(IOutputStream& out) const;
 
     bool CanStartSecureErase(const TString& uuid);
 

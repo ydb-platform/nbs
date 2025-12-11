@@ -56,6 +56,7 @@ namespace NCloud::NBlockStore {
     xxx(EXTERNAL_ENDPOINT)                                                     \
     BLOCKSTORE_ACTORS(xxx)                                                     \
     xxx(USER_STATS)                                                            \
+    xxx(LOCAL_NVME)                                                            \
 // BLOCKSTORE_COMPONENTS
 
 ////////////////////////////////////////////////////////////////////////////////

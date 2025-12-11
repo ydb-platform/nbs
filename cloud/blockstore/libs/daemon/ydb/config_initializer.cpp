@@ -163,6 +163,17 @@ void TConfigInitializerYdb::InitRootKmsConfig()
     RootKmsConfig = std::move(config);
 }
 
+void TConfigInitializerYdb::InitLocalNVMeConfig()
+{
+    NProto::TLocalNVMeConfig config;
+
+    if (Options->LocalNVMeConfig) {
+        ParseProtoTextFromFile(Options->LocalNVMeConfig, config);
+    }
+
+    LocalNVMeConfig = std::move(config);
+}
+
 void TConfigInitializerYdb::InitComputeClientConfig()
 {
     NProto::TGrpcClientConfig config;

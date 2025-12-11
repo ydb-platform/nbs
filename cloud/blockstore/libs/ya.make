@@ -18,6 +18,7 @@ RECURSE(
     endpoints_vhost
     kikimr
     kms
+    local_nvme
     logbroker
     nbd
     nbd/bench

@@ -22,6 +22,7 @@ RECURSE(
     infra-cms
     loadtest
     loadtest/remote
+    local_nvme
     local_ssd
     monitoring
     mount

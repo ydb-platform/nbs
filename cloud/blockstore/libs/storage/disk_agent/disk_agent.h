@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
+#include <cloud/blockstore/libs/local_nvme/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service/public.h>
@@ -26,6 +27,7 @@ NActors::IActorPtr CreateDiskAgent(
     ILoggingServicePtr logging,
     NRdma::IServerPtr rdmaServer,
     NNvme::INvmeManagerPtr nvmeManager,
-    ITaskQueuePtr backgroundThreadPool);
+    ITaskQueuePtr backgroundThreadPool,
+    ILocalNVMeServicePtr localNVMeService);
 
 }   // namespace NCloud::NBlockStore::NStorage
