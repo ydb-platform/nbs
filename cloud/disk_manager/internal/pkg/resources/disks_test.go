@@ -126,17 +126,17 @@ func TestDisksDeleteDisk(t *testing.T) {
 		CreatedBy:    "user",
 	}
 
-	actual, err := storage.CreateDisk(ctx, disk)
+	diskMeta, err := storage.CreateDisk(ctx, disk)
 	require.NoError(t, err)
-	require.NotNil(t, actual)
+	require.NotNil(t, diskMeta)
 
 	expected := disk
 	expected.CreateRequest = nil
 	expected.DeleteTaskID = "delete"
 
-	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", time.Now())
+	actual, err := storage.DeleteDisk(ctx, disk.ID, "delete", time.Now())
 	require.NoError(t, err)
-	requireDisksAreEqual(t, expected, *actual)
+	requireDisksAreEqual(t, expected, actual)
 
 	disk.CreatedAt = time.Now()
 	err = storage.DiskCreated(ctx, disk)
@@ -146,7 +146,7 @@ func TestDisksDeleteDisk(t *testing.T) {
 	// Check idempotency.
 	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", time.Now())
 	require.NoError(t, err)
-	requireDisksAreEqual(t, expected, *actual)
+	requireDisksAreEqual(t, expected, actual)
 
 	_, err = storage.CreateDisk(ctx, disk)
 	require.Error(t, err)
@@ -155,10 +155,10 @@ func TestDisksDeleteDisk(t *testing.T) {
 	err = storage.DiskDeleted(ctx, disk.ID, time.Now())
 	require.NoError(t, err)
 
-	// Check that DeleteDisk returns nil for already deleted disk.
+	// Check idempotency.
 	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", time.Now())
 	require.NoError(t, err)
-	require.Nil(t, actual)
+	requireDisksAreEqual(t, expected, actual)
 
 	_, err = storage.CreateDisk(ctx, disk)
 	require.Error(t, err)
@@ -178,10 +178,18 @@ func TestDisksDeleteNonexistentDisk(t *testing.T) {
 		DeleteTaskID: "delete",
 	}
 
+	tombstone := DiskMeta{
+		ID:           "disk",
+		ZoneID:       "",
+		DeleteTaskID: "delete",
+	}
+
+	// Check that DeleteDisk returns tombstone without ZoneID for non-existent
+	// disk.
 	deletingAt := time.Now()
 	actual, err := storage.DeleteDisk(ctx, disk.ID, "delete", deletingAt)
 	require.NoError(t, err)
-	require.Nil(t, actual)
+	requireDisksAreEqual(t, tombstone, actual)
 
 	created := disk
 	created.CreatedAt = time.Now()
@@ -193,7 +201,7 @@ func TestDisksDeleteNonexistentDisk(t *testing.T) {
 	deletingAt = deletingAt.Add(time.Second)
 	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", deletingAt)
 	require.NoError(t, err)
-	require.Nil(t, actual)
+	requireDisksAreEqual(t, tombstone, actual)
 
 	_, err = storage.CreateDisk(ctx, disk)
 	require.Error(t, err)

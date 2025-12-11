@@ -132,7 +132,7 @@ type Storage interface {
 		diskID string,
 		taskID string,
 		deletingAt time.Time,
-	) (*DiskMeta, error)
+	) (DiskMeta, error)
 
 	DiskDeleted(ctx context.Context, diskID string, deletedAt time.Time) error
 
