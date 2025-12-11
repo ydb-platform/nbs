@@ -29,7 +29,7 @@ message TFileSystemConfig
     // Filesystem max buffer size per request.
     optional uint32 MaxBufferSize = 8;
 
-    optional uint32 RegularFileEntryTimeout = 30;
+    optional uint32 RegularFileEntryTimeout = 31;
 
     // Inode entry timeout for negative responses (responses with errors).
     // The most notable one is ENOENT for getattr.
