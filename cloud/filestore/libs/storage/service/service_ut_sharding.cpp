@@ -2706,7 +2706,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // with Strict... == true and switches a filesystem created with
         // Strict... == false to Strct... == true.
 
+        const ui64 blockSize = 4_KB;
         config.SetAutomaticShardCreationEnabled(true);
+        TStorageConfig storageConfig(config);
 
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
@@ -2722,6 +2724,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         WaitForTabletStart(service);
 
+        {
+            const auto response = GetStorageStats(service, "test");
+            const auto& stats = response.GetStats();
+            for (const auto& stat: stats.GetShardStats()) {
+                UNIT_ASSERT_EQUAL(
+                    storageConfig.GetAutomaticallyCreatedShardSize() /
+                        blockSize,
+                    stat.GetTotalBlocksCount());
+            }
+        }
+
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
         env.UpdateStorageConfig(config);
         env.CreateAndRegisterStorageService(nodeIdx);
@@ -2732,6 +2745,63 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             false /* force */,
             shardsCount,
             true /* enableStrictSizeMode */);
+
+        WaitForTabletStart(service);
+
+        {
+            const auto response = GetStorageStats(service, "test");
+            const auto& stats = response.GetStats();
+            for (const auto& stat: stats.GetShardStats()) {
+                UNIT_ASSERT_EQUAL(fsSize, stat.GetTotalBlocksCount());
+            }
+        }
+    }
+
+    SERVICE_TEST_SIMPLE(ShouldUseOldFileSystemInStrictMode)
+    {
+        const ui64 blockSize = 4_KB;
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(1_GB);
+        config.SetAutomaticallyCreatedShardSize(1_GB);
+        const ui64 shardBlockCount = 1_GB / blockSize;
+        const ui64 fsSize = (1_GB / blockSize) * 3 / 2;
+
+        TStorageConfig storageConfig(config);
+
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore("test", fsSize);
+        {
+            const auto response = GetStorageStats(service, "test");
+            const auto& stats = response.GetStats();
+            UNIT_ASSERT_EQUAL(2, stats.GetShardStats().size());
+            for (const auto& stat: stats.GetShardStats()) {
+                UNIT_ASSERT_EQUAL(shardBlockCount, stat.GetTotalBlocksCount());
+            }
+        }
+
+        config.SetStrictFileSystemSizeEnforcementEnabled(true);
+        env.UpdateStorageConfig(config);
+        env.CreateAndRegisterStorageService(nodeIdx);
+
+        // The filestore has Strict... == false. After resize the all shards and
+        // a newly created shard should have the same size equal to
+        // storageConfig.GetAutomaticallyCreatedShardSize().
+        const ui64 newFsSize = fsSize * 3 / 2;
+        service.ResizeFileStore("test", newFsSize);
+        {
+            const auto response = GetStorageStats(service, "test");
+            const auto& stats = response.GetStats();
+            UNIT_ASSERT_EQUAL(newFsSize, stats.GetTotalBlocksCount());
+            UNIT_ASSERT_EQUAL(3, stats.GetShardStats().size());
+            for (const auto& stat: stats.GetShardStats()) {
+                UNIT_ASSERT_EQUAL(shardBlockCount, stat.GetTotalBlocksCount());
+            }
+        }
     }
 
     SERVICE_TEST_SIMPLE(ShouldAggregateFileSystemMetricsInBackground)

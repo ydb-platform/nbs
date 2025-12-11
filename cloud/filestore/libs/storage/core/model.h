@@ -28,8 +28,7 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore,
     const NProto::TFileStorePerformanceProfile& clientProfile,
-    const ui32 explicitShardCount,
-    const ui32 maxShardCount);
+    const ui32 explicitShardCount);
 
 void SetupFileStorePerformanceAndChannels(
     bool allocateMixed0Channel,
