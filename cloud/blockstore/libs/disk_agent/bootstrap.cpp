@@ -121,10 +121,8 @@ bool AgentHasDevices(
     }
 
     NStorage::TDeviceGenerator gen{std::move(log), agentConfig->GetAgentId()};
-    auto error = FindDevices(
-        agentConfig->GetStorageDiscoveryConfig(),
-        {},   // allowedPaths
-        std::ref(gen));
+    auto error =
+        FindDevices(agentConfig->GetStorageDiscoveryConfig(), std::ref(gen));
     if (HasError(error)) {
         return false;
     }

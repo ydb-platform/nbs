@@ -221,7 +221,7 @@ public:
     void Accept(
         const TBlock& block,
         const TPartialBlobId& blobId,
-        ui32 blobOffset)
+        ui32 blobOffset) override
     {
         TABLET_VERIFY(!ApplyingByteLayer);
         TABLET_VERIFY(blobId);
@@ -232,25 +232,6 @@ public:
         auto& prev = Args.Blocks[blockOffset];
         if (Update(prev, block, blobId, blobOffset)) {
             Args.Buffer->ClearBlock(blockOffset);
-        }
-    }
-
-    void Accept(
-        const TBlock& block,
-        const TPartialBlobId& blobId,
-        ui32 blobOffset,
-        ui32 blocksCount) override
-    {
-        Accept(block, blobId, blobOffset);
-
-        if (blocksCount > 1) {
-            auto b = block;
-            while (--blocksCount > 0) {
-                b.BlockIndex++;
-                blobOffset++;
-
-                Accept(b, blobId, blobOffset);
-            }
         }
     }
 

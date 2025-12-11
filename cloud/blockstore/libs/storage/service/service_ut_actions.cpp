@@ -1852,6 +1852,43 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
     Y_UNIT_TEST(ShouldCheckRange)
     {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        const ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume("vol0");
+
+        const auto sessionId =
+            service.MountVolume("vol0")->Record.GetSessionId();
+
+        service.WriteBlocks(
+            "vol0",
+            TBlockRange64::WithLength(0, 1024),
+            sessionId,
+            char(1));
+
+        {
+            NProto::TCheckRangeRequest request;
+            request.SetDiskId("vol0");
+            request.SetStartIndex(0);
+            request.SetBlocksCount(1000);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+
+            const auto response = service.ExecuteAction("CheckRange", buf);
+            NProto::TCheckRangeResponse checkRangeResponse;
+
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                            response->Record.GetOutput(),
+                            &checkRangeResponse)
+                            .ok());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCalculateCheckSumsWhileCheckRange)
+    {
         constexpr ui32 blockCount = 1000;
 
         TTestEnv env;
@@ -1869,7 +1906,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             char(1));
 
         {
-            NProto::TCheckRangeRequest request;
+            NPrivateProto::TCheckRangeRequest request;
             request.SetDiskId(DefaultDiskId);
             request.SetStartIndex(0);
             request.SetBlocksCount(blockCount);
@@ -1878,7 +1915,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             google::protobuf::util::MessageToJsonString(request, &buf);
 
             const auto response = service.ExecuteAction("CheckRange", buf);
-            NProto::TCheckRangeResponse checkRangeResponse;
+            NPrivateProto::TCheckRangeResponse checkRangeResponse;
 
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
                             response->Record.GetOutput(),

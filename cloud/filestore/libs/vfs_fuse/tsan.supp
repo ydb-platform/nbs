@@ -1,0 +1,2 @@
+# There is a race between fuse_session_loop & fuse_session_exit
+race:fuse/lib/fuse_session.c

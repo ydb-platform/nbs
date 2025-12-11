@@ -21,14 +21,6 @@
 #define Y_UNUSED(x) (void)x;
 #endif
 
-#if __has_feature(thread_sanitizer)
-#define TSAN_ACQUIRE(x) __tsan_acquire(x)
-#define TSAN_RELEASE(x) __tsan_release(x)
-#else
-#define TSAN_ACQUIRE(x)
-#define TSAN_RELEASE(x)
-#endif
-
 struct fuse_virtio_dev
 {
     struct vhd_fsdev_info fsdev;
@@ -112,22 +104,8 @@ static void iov_copy_to_iov(
             // to dst buffers. This is done when zero copy is enabled for read
             // requests
             if (src_iov[0].iov_base) {
-                void* dst = dst_iov[0].iov_base + dst_offset;
-                void* src = src_iov[0].iov_base + src_offset;
-                memcpy(dst, src, dst_len);
-                // Each fuse requests comes with iovec that is splitted into in
-                // and out iovecs. The in iovec is read in iov_iter_to_buf to
-                // copy it's content to allocated buffer. The out iovec is
-                // written in iov_copy_to_iov to send data response.
-                //
-                // It looks like tsan is not tracking the memory access well
-                // across guest vm. The guest may resend new request with in
-                // iovec containing out iovec address from previously responded
-                // request and tsan shadow memory still thinks that the memory
-                // is read during write.
-                //
-                // See https://github.com/ydb-platform/nbs/pull/4600
-                TSAN_RELEASE(dst);
+                memcpy(dst_iov[0].iov_base + dst_offset,
+                       src_iov[0].iov_base + src_offset, dst_len);
             }
             src_len -= dst_len;
             to_copy -= dst_len;
@@ -209,23 +187,7 @@ static size_t iov_iter_to_buf(struct iov_iter *it, void *buf, size_t len)
     while (it->idx < it->count && len) {
         struct iovec *iov = &it->iov[it->idx];
         size_t cplen = MIN(len, iov->iov_len - it->off);
-
-        void* src = iov->iov_base + it->off;
-        // Each fuse requests comes with iovec that is splitted into in
-        // and out iovecs. The in iovec is read in iov_iter_to_buf to
-        // copy it's content to allocated buffer. The out iovec is
-        // written in iov_copy_to_iov to send data response.
-        //
-        // It looks like tsan is not tracking the memory access well
-        // across guest vm. The guest may resend new request with in
-        // iovec containing out iovec address from previously responded
-        // request and tsan shadow memory still thinks that the memory
-        // is read during write.
-        //
-        // See https://github.com/ydb-platform/nbs/pull/4600
-        TSAN_ACQUIRE(src);
-        memcpy(ptr, src, cplen);
-
+        memcpy(ptr, iov->iov_base + it->off, cplen);
         ptr += cplen;
         len -= cplen;
         it->off += cplen;

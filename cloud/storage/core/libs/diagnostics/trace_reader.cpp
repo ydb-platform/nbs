@@ -47,7 +47,9 @@ void SerializeTraceToJson(
         const auto spanLength =
             CyclesToDurationSafe(item.TimestampCycles - minSeenTimestamp);
 
-        item.Probe->Event.Signature.SerializeParams(item.Params, paramValues);
+        item.Probe->Event.Signature.SerializeParams(
+            item.Params,
+            paramValues);
 
         writer.BeginList();
         {
@@ -88,6 +90,7 @@ private:
     const ELogPriority Priority;
 
     TLog Log;
+    ui64 TracksCount = 0;
 
 public:
     TTraceLogger(
@@ -107,7 +110,9 @@ public:
 
     void Push(TThread::TId tid, const NLWTrace::TTrackLog& tl) override
     {
-        if (tl.Items.empty()) {
+        Y_UNUSED(tid);
+
+        if (tl.Items.empty() || ++TracksCount > DumpTracksLimit) {
             return;
         }
 
@@ -119,6 +124,7 @@ public:
 
     void Reset() override
     {
+        TracksCount = 0;
         Consumer->Reset();
     }
 
@@ -130,7 +136,8 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSlowRequestsFilter final: public ITraceReader
+class TSlowRequestsFilter final
+    : public ITraceReader
 {
 private:
     TLog Log;
@@ -138,6 +145,8 @@ private:
     ITraceReaderPtr Consumer;
 
     TRequestThresholds RequestThresholds;
+
+    ui64 TracksCount = 0;
 
     THashMap<TString, ui64> SeenStartProbes;
 
@@ -157,6 +166,8 @@ public:
 
     void Push(TThread::TId tid, const NLWTrace::TTrackLog& tl) override
     {
+        Y_UNUSED(tid);
+
         if (tl.Items.empty()) {
             return;
         }
@@ -206,7 +217,7 @@ public:
                 CyclesToDurationSafe(maxSeenTimestamp - minSeenTimestamp);
         }
 
-        if (trackLength >= srt) {
+        if (trackLength >= srt && ++TracksCount <= DumpTracksLimit) {
             Consumer->Push(tid, tl);
         }
     }
@@ -220,43 +231,6 @@ public:
             p.second = 0;
         }
         Log.Write(ELogPriority::TLOG_DEBUG, out);
-        Consumer->Reset();
-    }
-
-    void ForEach(std::function<void(const TEntry&)> fn) override
-    {
-        Consumer->ForEach(std::move(fn));
-    }
-};
-
-class TTraceLimiter final: public ITraceReader
-{
-private:
-    const ui64 TraceLimit;
-    ui64 TracesCount = 0;
-    ITraceReaderPtr Consumer;
-
-public:
-    TTraceLimiter(TString id, ITraceReaderPtr consumer, ui64 traceLimit)
-        : ITraceReader(std::move(id))
-        , TraceLimit(traceLimit)
-        , Consumer(std::move(consumer))
-    {}
-
-    void Push(TThread::TId tid, const NLWTrace::TTrackLog& tl) override
-    {
-        if (tl.Items.empty() || TracesCount >= TraceLimit) {
-            return;
-        }
-
-        ++TracesCount;
-
-        Consumer->Push(tid, tl);
-    }
-
-    void Reset() override
-    {
-        TracesCount = 0;
         Consumer->Reset();
     }
 
@@ -282,7 +256,7 @@ void TTraceReaderWithRingBuffer::Push(
 {
     Y_UNUSED(tid);
 
-    if (tl.Items.empty()) {
+    if (tl.Items.empty() || ++TracksCount > DumpTracksLimit) {
         return;
     }
 
@@ -296,7 +270,9 @@ void TTraceReaderWithRingBuffer::Push(
 }
 
 void TTraceReaderWithRingBuffer::Reset()
-{}
+{
+    TracksCount = 0;
+}
 
 void TTraceReaderWithRingBuffer::ForEach(std::function<void(const TEntry&)> fn)
 {
@@ -339,15 +315,6 @@ ITraceReaderPtr CreateSlowRequestsFilter(
         std::move(requestThresholds));
 }
 
-ITraceReaderPtr
-CreateTraceLimiter(TString id, ITraceReaderPtr consumer, ui64 limit)
-{
-    return std::make_shared<TTraceLimiter>(
-        std::move(id),
-        std::move(consumer),
-        limit);
-}
-
 ITraceReaderPtr SetupTraceReaderWithLog(
     TString id,
     ILoggingServicePtr logging,
@@ -355,19 +322,14 @@ ITraceReaderPtr SetupTraceReaderWithLog(
     TString tag,
     ELogPriority priority)
 {
-    ITraceReaderPtr reader =
-        std::make_shared<TTraceReaderWithRingBuffer>(id, tag);
-    reader = CreateTraceLogger(
-        id,
-        std::move(reader),
+    auto traceStorage = std::make_shared<TTraceReaderWithRingBuffer>(id, tag);
+    return CreateTraceLogger(
+        std::move(id),
+        std::move(traceStorage),
         std::move(logging),
         std::move(componentName),
         std::move(tag),
         priority);
-    return CreateTraceLimiter(
-        std::move(id),
-        std::move(reader),
-        DumpTracksLimit);
 }
 
 ITraceReaderPtr SetupTraceReaderForSlowRequests(
@@ -377,7 +339,7 @@ ITraceReaderPtr SetupTraceReaderForSlowRequests(
     TRequestThresholds requestThresholds,
     TString tag)
 {
-    auto reader = SetupTraceReaderWithLog(
+    auto readerWithLog = SetupTraceReaderWithLog(
         id,
         logging,
         componentName,
@@ -385,7 +347,7 @@ ITraceReaderPtr SetupTraceReaderForSlowRequests(
         TLOG_WARNING);
     return CreateSlowRequestsFilter(
         std::move(id),
-        std::move(reader),
+        std::move(readerWithLog),
         std::move(logging),
         std::move(componentName),
         std::move(requestThresholds));

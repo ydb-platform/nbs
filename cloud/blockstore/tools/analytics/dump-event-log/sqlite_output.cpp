@@ -15,7 +15,7 @@ constexpr ui64 RowsPerTransaction = 100000;
 constexpr TStringBuf CreateRequestsTable = R"__(
     CREATE TABLE IF NOT EXISTS Requests (
         Id integer not null unique,
-        AtUs integer not null,
+        At datetime not null,
         DiskId integer not null,
         RequestTypeId integer not null,
         StartBlock integer not null,
@@ -157,15 +157,12 @@ TSqliteOutput::TSqliteOutput(const TString& filename)
         ythrow yexception() << "can't open database: " << sqlite3_errmsg(Db);
     }
 
-    Transaction = std::make_unique<TTransaction>(Db);
-
     CreateTables();
     AddZeroChecksumsTypes();
     AddRequestTypes();
     AddBlocksSequence();
     ReadDisks();
 
-    Transaction.reset();
     Transaction = std::make_unique<TTransaction>(Db);
 }
 
@@ -198,9 +195,10 @@ void TSqliteOutput::ProcessRequest(
         requestType,
         blockRange);
 
-    AddChecksums(requestId, blockRange, replicaChecksums);
+        AddChecksums(requestId, blockRange, range.GetReplicaChecksums());
 
-    AdvanceTransaction();
+        AdvanceTransaction();
+    }
 }
 
 void TSqliteOutput::CreateTables()

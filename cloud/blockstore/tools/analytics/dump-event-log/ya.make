@@ -16,10 +16,6 @@ SRCS(
     read_write_requests_with_inflight.cpp
     sqlite_output.cpp
     main.cpp
-    profile_log_event_handler.cpp
-    read_write_requests_with_inflight.cpp
-    sqlite_output.cpp
-    zero_ranges_stat.cpp
 )
 
 END()

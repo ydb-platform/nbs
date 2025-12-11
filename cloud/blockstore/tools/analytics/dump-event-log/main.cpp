@@ -4,7 +4,6 @@
 #include <cloud/blockstore/tools/analytics/dump-event-log/io_distribution.h>
 #include <cloud/blockstore/tools/analytics/dump-event-log/read_write_requests_with_inflight.h>
 #include <cloud/blockstore/tools/analytics/dump-event-log/sqlite_output.h>
-#include <cloud/blockstore/tools/analytics/dump-event-log/zero_ranges_stat.h>
 #include <cloud/blockstore/tools/analytics/libs/event-log/dump.h>
 
 #include <library/cpp/eventlog/dumper/evlogdump.h>
@@ -53,8 +52,6 @@ struct TEventProcessor: TProtobufEventProcessor
     TString FilterByDiskId;
     TString FilterByDiskIdFile;
     TString FilterByRequestTypeFile;
-
-    bool Initialized = false;
     TSet<TString> FilterByDiskIdSet;
     TSet<ui32> RequestTypeSet;
     std::optional<TBlockRange64> FilterRange;
@@ -116,11 +113,26 @@ struct TEventProcessor: TProtobufEventProcessor
             return;
         }
 
-        InitIfNeeded();
-
-        if (EventLog) {
+        if (OutputFilename) {
+            if (!EventLog) {
+                EventLog = MakeIntrusive<TEventLog>(
+                    OutputFilename,
+                    NEvClass::Factory()->CurrentFormat());
+            }
             EventLog->LogEvent(*message);
             return;
+        }
+
+        if (FilterByDiskIdFile) {
+            if (FilterByDiskIdSet.empty()) {
+                FilterByDiskIdSet = LoadDiskIds(FilterByDiskIdFile);
+            }
+        }
+
+        if (FilterByRequestTypeFile) {
+            if (RequestTypeSet.empty()) {
+                RequestTypeSet = LoadRequestTypes(FilterByRequestTypeFile);
+            }
         }
 
         const TVector<TItemDescriptor> order = GetItemOrder(*message);

@@ -17,29 +17,11 @@ class TEmptyType
 
 ///////////////////////////////////////////////////////////////////////////////
 
-enum class EAllowedRequests
-{
-    ReadOnly,
-    WriteOnly,
-    ReadWrite,
-};
-
-template <EAllowedRequests TKind>
-constexpr bool IsWriteAllowed = TKind == EAllowedRequests::ReadWrite ||
-                                TKind == EAllowedRequests::WriteOnly;
-
-template <EAllowedRequests TKind>
-constexpr bool IsReadAllowed =
-    TKind == EAllowedRequests::ReadOnly || TKind == EAllowedRequests::ReadWrite;
-
-///////////////////////////////////////////////////////////////////////////////
-
 class IRequestsInProgress
 {
 public:
     virtual ~IRequestsInProgress() = default;
 
-    // Returns true if there are any requests in progress
     [[nodiscard]] virtual bool WriteRequestInProgress() const = 0;
 
     // Returns true if range overlaps with any write/zero request in progress.
@@ -48,8 +30,6 @@ public:
 
     // Mark current write/zero request as dirty.
     virtual void WaitForInFlightWrites() = 0;
-
-    // Returns true if there are any dirty in-flight writes.
     [[nodiscard]] virtual bool IsWaitingForInFlightWrites() const = 0;
 };
 

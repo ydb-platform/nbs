@@ -21,8 +21,6 @@
 #include <util/system/spinlock.h>
 #include <util/thread/pool.h>
 
-#include <latch>
-
 namespace NCloud {
 
 #define LWTRACE_UT_PROVIDER(PROBE, EVENT, GROUPS, TYPES, NAMES)                \
@@ -247,34 +245,23 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
         // lwtrace depot sizes are limited by 1000
         static_assert(runs <= 1000 / REQUEST_COUNT);
 
-        auto doRuns = [&]()
-        {
-            std::latch enqueued{runs};
+        TAtomic remaining = runs;
+        TManualEvent ev;
 
-            for (size_t j = 0; j < runs; ++j) {
-                threadPool->SafeAddFunc(
-                    [&enqueued]()
-                    {
-                        Track();
+        for (size_t j = 0; j < runs; ++j) {
+            threadPool->SafeAddFunc([&remaining, &ev] () {
+                Track();
 
-                        enqueued.count_down();
-                    });
-            }
+                AtomicDecrement(remaining);
+                ev.Signal();
+            });
+        }
 
-
-            enqueued.wait();
-        };
-
-        doRuns();
+        while (AtomicGet(remaining)) {
+            ev.WaitI();
+        }
 
         auto requestCount = Min<ui32>(runs * REQUEST_COUNT, DumpTracksLimit);
-        Check(env, requestCount);
-
-        // Check that reset drops old traces
-        env.Scheduler->RunAllScheduledTasks();
-
-        doRuns();
-
         Check(env, requestCount);
 
         threadPool->Stop();

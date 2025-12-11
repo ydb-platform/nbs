@@ -26,20 +26,9 @@ struct TMixedBlockVisitor final
     void Accept(
         const TBlock& block,
         const TPartialBlobId& blobId,
-        ui32 blobOffset,
-        ui32 blocksCount) override
+        ui32 blobOffset) override
     {
         Blocks.emplace_back(block, blobId, blobOffset);
-
-        if (blocksCount > 1) {
-            auto b = block;
-            while (--blocksCount > 0) {
-                b.BlockIndex++;
-                blobOffset++;
-
-                Blocks.emplace_back(b, blobId, blobOffset);
-            }
-        }
     }
 };
 

@@ -114,7 +114,7 @@ TVector<TString> GetLostDevicesIds(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TInitializer: public std::enable_shared_from_this<TInitializer>
+class TInitializer
 {
 private:
     const TLog Log;
@@ -146,9 +146,8 @@ public:
         IStorageProviderPtr storageProvider,
         NNvme::INvmeManagerPtr nvmeManager);
 
-    TFuture<TInitializeStorageResult> Initialize();
-    TFuture<TInitializeStorageResult> InitializePaths(
-        const THashSet<TString>& allowedPaths);
+    TFuture<void> Initialize();
+    TInitializeStorageResult GetResult();
 
 private:
     TFuture<IStoragePtr> CreateFileStorage(
@@ -166,13 +165,10 @@ private:
     NProto::TDeviceConfig CreateConfig(const NProto::TFileDeviceArgs& device);
     NProto::TDeviceConfig CreateConfig(const NProto::TMemoryDeviceArgs& device);
 
-    void ScanFileDevices(const THashSet<TString>& allowedPaths = {});
-    bool ValidateGeneratedConfigs(
-        const TVector<NProto::TFileDeviceArgs>& fileDevices);
+    void ScanFileDevices();
+    bool ValidateGeneratedConfigs(const TVector<NProto::TFileDeviceArgs>& fileDevices);
     bool ValidateStorageDiscoveryConfig() const;
-    bool TryToAcceptCurrentConfigs(
-        const TVector<NProto::TFileDeviceArgs>& cachedDevices);
-    NProto::TError AcceptCurrentConfigs(
+    void ValidateCurrentConfigs(
         const TVector<NProto::TFileDeviceArgs>& cachedDevices);
 
     void SaveCurrentConfig();
@@ -184,11 +180,7 @@ private:
     TString GetSerialNumber(const TString& path);
     void SetupSerialNumbers(TVector<NProto::TFileDeviceArgs>& fileDevices);
 
-    auto ProcessConfigCache(const THashSet<TString>& allowedPaths = {})
-        -> TResultOrError<TVector<NProto::TFileDeviceArgs>>;
-
-    TInitializeStorageResult GetResult();
-    TFuture<TInitializeStorageResult> CreateStorages();
+    NProto::TError ProcessConfigCache();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -199,7 +191,7 @@ TInitializer::TInitializer(
         TDiskAgentConfigPtr agentConfig,
         IStorageProviderPtr storageProvider,
         NNvme::INvmeManagerPtr nvmeManager)
-    : Log{std::move(log)}
+    : Log {std::move(log)}
     , StorageConfig(std::move(storageConfig))
     , AgentConfig(std::move(agentConfig))
     , StorageProvider(std::move(storageProvider))
@@ -365,27 +357,18 @@ void TInitializer::SetupSerialNumbers(
     }
 }
 
-void TInitializer::ScanFileDevices(const THashSet<TString>& allowedPaths)
+void TInitializer::ScanFileDevices()
 {
     if (!ValidateStorageDiscoveryConfig()) {
         ReportDiskAgentConfigMismatchEvent("Bad storage discovery config");
         return;
     }
 
-    // Setup serial numbers for the static config
-    for (auto& file: FileDevices) {
-        if (file.GetSerialNumber().empty()) {
-            file.SetSerialNumber(GetSerialNumber(file.GetPath()));
-        }
-    }
-
-    TDeviceGenerator gen{Log, AgentConfig->GetAgentId()};
+    TDeviceGenerator gen { Log, AgentConfig->GetAgentId() };
 
     if (auto error = FindDevices(
             AgentConfig->GetStorageDiscoveryConfig(),
-            allowedPaths,
-            std::ref(gen));
-        HasError(error))
+            std::ref(gen)); HasError(error))
     {
         ReportDiskAgentConfigMismatchEvent(TStringBuilder()
             << "Can't generate config: " << FormatError(error));
@@ -465,31 +448,24 @@ TString TInitializer::GetCachedConfigsPath() const
     return diskAgentPath.empty() ? storagePath : diskAgentPath;
 }
 
-NProto::TError TInitializer::AcceptCurrentConfigs(
+void TInitializer::ValidateCurrentConfigs(
     const TVector<NProto::TFileDeviceArgs>& cachedDevices)
 {
     if (cachedDevices.empty()) {
         STORAGE_INFO("There is no cached config");
-        return {};
+        SaveCurrentConfig();
+        return;
     }
 
     STORAGE_INFO("Compare the current config with the cached one");
-    auto error = CompareConfigs(cachedDevices, FileDevices);
+    const auto error = CompareConfigs(cachedDevices, FileDevices);
     if (!HasError(error)) {
+        STORAGE_INFO("Current config is OK. Update cached config.");
+
         LostDevicesIds = GetLostDevicesIds(cachedDevices, FileDevices);
 
-        return {};
-    }
-
-    return error;
-}
-
-bool TInitializer::TryToAcceptCurrentConfigs(
-    const TVector<NProto::TFileDeviceArgs>& cachedDevices)
-{
-    const auto error = AcceptCurrentConfigs(cachedDevices);
-    if (!HasError(error)) {
-        return true;
+        SaveCurrentConfig();
+        return;
     }
 
     TStringStream ss;
@@ -511,16 +487,13 @@ bool TInitializer::TryToAcceptCurrentConfigs(
 
     Errors.push_back(TStringBuilder()
         << "broken config: " << FormatError(error));
-
-    return false;
 }
 
-auto TInitializer::ProcessConfigCache(const THashSet<TString>& allowedPaths)
-    -> TResultOrError<TVector<NProto::TFileDeviceArgs>>
+NProto::TError TInitializer::ProcessConfigCache()
 {
     const auto& path = GetCachedConfigsPath();
     if (path.empty()) {
-        return TVector<NProto::TFileDeviceArgs>{};
+        return {};
     }
 
     auto [config, error] = LoadDiskAgentConfig(path);
@@ -541,14 +514,6 @@ auto TInitializer::ProcessConfigCache(const THashSet<TString>& allowedPaths)
     TVector<NProto::TFileDeviceArgs> devices{
         std::make_move_iterator(config.MutableFileDevices()->begin()),
         std::make_move_iterator(config.MutableFileDevices()->end())};
-
-    if (allowedPaths) {
-        std::erase_if(
-            devices,
-            [&](const auto& fileArg)
-            { return !allowedPaths.contains(fileArg.GetPath()); });
-    }
-
     SortBy(devices, [] (const auto& d) {
         return d.GetDeviceId();
     });
@@ -569,49 +534,26 @@ auto TInitializer::ProcessConfigCache(const THashSet<TString>& allowedPaths)
 
     SortUnique(DevicesWithSuspendedIO);
 
-    return devices;
+    ValidateCurrentConfigs(devices);
+
+    return {};
 }
 
-TFuture<TInitializeStorageResult> TInitializer::InitializePaths(
-    const THashSet<TString>& allowedPaths)
+TFuture<void> TInitializer::Initialize()
 {
-    std::erase_if(FileDevices, [&](const auto& fileArg) {
-        return !allowedPaths.contains(fileArg.GetPath());
-    });
-
-    ScanFileDevices(allowedPaths);
-
-    auto [cachedDevices, error] = ProcessConfigCache(allowedPaths);
-    if (HasError(error)) {
-        return MakeErrorFuture<TInitializeStorageResult>(
-            std::make_exception_ptr(TServiceError(error)));
+    // Setup serial numbers for the static config
+    for (auto& file: FileDevices) {
+        if (file.GetSerialNumber().empty()) {
+            file.SetSerialNumber(GetSerialNumber(file.GetPath()));
+        }
     }
 
-    TryToAcceptCurrentConfigs(cachedDevices);
-
-    return CreateStorages();
-}
-
-TFuture<TInitializeStorageResult> TInitializer::Initialize()
-{
     ScanFileDevices();
-
-    auto [cachedDevices, error] = ProcessConfigCache();
-    if (HasError(error)) {
-        return MakeErrorFuture<TInitializeStorageResult>(
+    if (auto error = ProcessConfigCache(); HasError(error)) {
+        return MakeErrorFuture<void>(
             std::make_exception_ptr(TServiceError(error)));
     }
 
-    if (TryToAcceptCurrentConfigs(cachedDevices)) {
-        STORAGE_INFO("Current config is OK. Update cached config.");
-        SaveCurrentConfig();
-    }
-
-    return CreateStorages();
-}
-
-TFuture<TInitializeStorageResult> TInitializer::CreateStorages()
-{
     const auto& memoryDevices = AgentConfig->GetMemoryDevices();
 
     auto deviceCount = std::ssize(FileDevices) + memoryDevices.size();
@@ -695,12 +637,9 @@ TFuture<TInitializeStorageResult> TInitializer::CreateStorages()
         }
     }
 
-    return WaitAll(futures).Apply(
-        [self = shared_from_this()](const auto& future)
-        {
-            Y_UNUSED(future);   // ignore exception
-            return self->GetResult();
-        });
+    return WaitAll(futures).Apply([] (const auto& future) {
+        Y_UNUSED(future);   // ignore
+    });
 }
 
 NProto::TDeviceConfig TInitializer::CreateConfig(
@@ -787,26 +726,11 @@ TFuture<TInitializeStorageResult> InitializeStorage(
         std::move(storageProvider),
         std::move(nvmeManager));
 
-    return initializer->Initialize();
-}
+    return initializer->Initialize().Apply([=] (const auto& future) {
+        future.GetValue();
 
-NThreading::TFuture<TInitializeStorageResult> InitializePaths(
-    TLog log,
-    TStorageConfigPtr storageConfig,
-    TDiskAgentConfigPtr agentConfig,
-    IStorageProviderPtr storageProvider,
-    NNvme::INvmeManagerPtr nvmeManager,
-    TVector<TString> allowedPaths)
-{
-    auto initializer = std::make_shared<TInitializer>(
-        std::move(log),
-        std::move(storageConfig),
-        std::move(agentConfig),
-        std::move(storageProvider),
-        std::move(nvmeManager));
-
-    return initializer->InitializePaths(
-        {allowedPaths.begin(), allowedPaths.end()});
+        return initializer->GetResult();
+    });
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

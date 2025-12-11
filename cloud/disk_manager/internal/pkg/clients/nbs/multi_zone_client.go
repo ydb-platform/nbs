@@ -27,7 +27,6 @@ func (c *multiZoneClient) Clone(
 	dstPlacementPartitionIndex uint32,
 	fillGeneration uint64,
 	baseDiskID string,
-	tagsStr string,
 ) (err error) {
 
 	defer c.metrics.StatRequest("Clone")(&err)
@@ -58,7 +57,6 @@ func (c *multiZoneClient) Clone(
 		dstPlacementPartitionIndex,
 		fillGeneration,
 		baseDiskID,
-		tagsStr,
 	)
 	if err != nil {
 		if isAbortedError(err) {
@@ -126,7 +124,6 @@ func (c *multiZoneClient) clone(
 	dstPlacementPartitionIndex uint32,
 	fillGeneration uint64,
 	baseDiskID string,
-	tagsStr string,
 ) (err error) {
 
 	volume, err := c.srcZoneClient.describeVolume(ctx, diskID)
@@ -162,7 +159,6 @@ func (c *multiZoneClient) clone(
 			StoragePoolName: "",
 			AgentIds:        []string{},
 			FillGeneration:  fillGeneration,
-			TagsStr:         tagsStr,
 		},
 	)
 	if IsNotFoundError(err) {

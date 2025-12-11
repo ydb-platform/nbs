@@ -236,7 +236,9 @@ TMiscNodeStats TIndexTabletState::GetMiscNodeStats() const
 
 THandlesStats TIndexTabletState::GetHandlesStats() const
 {
-    return Impl->HandlesStats;
+    return {
+        .UsedDirectHandlesCount = Impl->UsedDirectHandlesCount,
+    };
 }
 
 ui64 TIndexTabletState::CalculateExpectedShardCount(

@@ -12,8 +12,6 @@
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/unimplemented.h>
 
-#include <cloud/storage/core/libs/common/helpers.h>
-
 #include <contrib/ydb/core/base/appdata.h>
 
 namespace NCloud::NBlockStore::NStorage {

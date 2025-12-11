@@ -2666,10 +2666,10 @@ void TVolumeActor::HandleHttpInfo_ChangeThrottlingPolicy(
     const auto maxReadBandwidth = getParam64("MaxReadBandwidth");
     const auto maxWriteBandwidth = getParam64("MaxWriteBandwidth");
 
-    pp.SetMaxReadIops(maxReadIops);
-    pp.SetMaxWriteIops(maxWriteIops);
-    pp.SetMaxReadBandwidth(maxReadBandwidth);
-    pp.SetMaxWriteBandwidth(maxWriteBandwidth);
+    pp.SetMaxReadIops(Min(pp.GetMaxReadIops(), maxReadIops));
+    pp.SetMaxWriteIops(Min(pp.GetMaxWriteIops(), maxWriteIops));
+    pp.SetMaxReadBandwidth(Min(pp.GetMaxReadBandwidth(), maxReadBandwidth));
+    pp.SetMaxWriteBandwidth(Min(pp.GetMaxWriteBandwidth(), maxWriteBandwidth));
 
     State->ResetThrottlingPolicy(pp);
 

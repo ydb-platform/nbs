@@ -190,11 +190,6 @@ func (t *migrateDiskTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (t *migrateDiskTask) getSourceDiskIdTagStr() string {
-	return "source-disk-id=" +
-		t.request.Disk.ZoneId + "_" + t.request.Disk.DiskId
-}
-
 func (t *migrateDiskTask) start(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
@@ -277,7 +272,6 @@ func (t *migrateDiskTask) start(
 			t.request.DstPlacementPartitionIndex,
 			t.state.FillGeneration,
 			t.state.RelocateInfo.TargetBaseDiskID,
-			t.getSourceDiskIdTagStr(),
 		)
 		if err != nil {
 			return err
@@ -478,37 +472,16 @@ func (t *migrateDiskTask) finishMigration(
 		logging.Info(ctx, "Overlay disk rebased for RebaseInfo %+v", rebaseInfo)
 	}
 
-	srcZoneClient, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
+	client, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
 	if err != nil {
 		return err
 	}
 
-	err = srcZoneClient.Delete(ctx, t.request.Disk.DiskId)
+	err = client.Delete(ctx, t.request.Disk.DiskId)
 	if err != nil {
 		return err
 	}
 	t.logInfo(ctx, execCtx, "deleted src disk")
-
-	dstZoneClient, err := t.nbsFactory.GetClient(ctx, t.request.DstZoneId)
-	if err != nil {
-		return err
-	}
-
-	err = dstZoneClient.ModifyTags(
-		ctx,
-		func() error {
-			return execCtx.SaveState(ctx)
-		},
-		t.request.Disk.DiskId,
-		[]string{},
-		[]string{
-			t.getSourceDiskIdTagStr(),
-		},
-	)
-	if err != nil {
-		return err
-	}
-	t.logInfo(ctx, execCtx, "source-disk-id tag removed from dst disk")
 
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(

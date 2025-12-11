@@ -14,7 +14,7 @@ SIZES = [BLOCK_SIZE - 1, BLOCK_SIZE, BLOCK_SIZE + 1, 2 * BLOCK_SIZE - 1,
          64 * fio.KB, 256 * fio.KB, 1 * fio.MB]
 
 UNALIGNED_TESTS = fio.generate_tests(
-    offset=256 * fio.KB-1,
+    offset=100,
     sizes=SIZES,
     iodepths=[1],
     numjobs=[1],

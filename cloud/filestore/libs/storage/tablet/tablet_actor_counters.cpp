@@ -346,7 +346,6 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(UsedSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedHandlesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedDirectHandlesCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(SevenBytesHandlesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedLocksCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(StatefulSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(StatelessSessionsCount, EMetricType::MT_ABSOLUTE);
@@ -354,11 +353,6 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(OrphanSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(SessionTimeouts, EMetricType::MT_DERIVATIVE);
     REGISTER_AGGREGATABLE_SUM(SessionCleanupAttempts, EMetricType::MT_DERIVATIVE);
-
-    REGISTER_LOCAL(
-        StrictFileSystemSizeEnforcementEnabled,
-        EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(DirectoryCreationInShardsEnabled, EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(ReassignCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(WritableChannelCount, EMetricType::MT_ABSOLUTE);
@@ -592,15 +586,7 @@ void TIndexTabletActor::TMetrics::Update(
     Store(UsedSessionsCount, stats.GetUsedSessionsCount());
     Store(UsedHandlesCount, stats.GetUsedHandlesCount());
     Store(UsedDirectHandlesCount, handlesStats.UsedDirectHandlesCount);
-    Store(SevenBytesHandlesCount, handlesStats.SevenBytesHandlesCount);
     Store(UsedLocksCount, stats.GetUsedLocksCount());
-
-    Store(
-        StrictFileSystemSizeEnforcementEnabled,
-        fileSystem.GetStrictFileSystemSizeEnforcementEnabled());
-    Store(
-        DirectoryCreationInShardsEnabled,
-        fileSystem.GetDirectoryCreationInShardsEnabled());
 
     Store(FreshBytesCount, stats.GetFreshBytesCount());
     Store(FreshBytesItemCount, stats.GetFreshBytesItemCount());

@@ -49,7 +49,7 @@ struct TIndexTabletState::TImpl
 
     TNodeToSessionStat NodeToSessionStat;
 
-    THandlesStats HandlesStats;
+    i64 UsedDirectHandlesCount = 0;
 
     TWriteRequestList WriteBatch;
 
