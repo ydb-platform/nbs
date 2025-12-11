@@ -102,11 +102,22 @@ TString GetMonitoringVolumeUrl(
     const TString& diskId)
 {
     TMonitoringUrlData data = config.GetMonitoringUrlData();
+
+    if (data.MonitoringGrafanaUrl.empty()) {
+        return TStringBuilder()
+               << data.MonitoringUrl << "/projects/" << data.MonitoringProject
+               << "/dashboards/" << data.MonitoringVolumeDashboard
+               << "?from=now-1d&to=now&refresh=60000&p.cluster="
+               << data.MonitoringClusterName << "&p.volume=" << diskId;
+    }
+
     return TStringBuilder()
-           << data.MonitoringUrl << "/projects/" << data.MonitoringProject
-           << "/dashboards/" << data.MonitoringVolumeDashboard
-           << "?from=now-1d&to=now&refresh=60000&p.cluster="
-           << data.MonitoringClusterName << "&p.volume=" << diskId;
+           << data.MonitoringGrafanaUrl << "/d/"
+           << data.MonitoringGrafanaDasboard
+           << "?orgId=" << data.MonitoringGrafanaOrgId
+           << "&from=now-1d&to=now&refresh=60000&p.cluster="
+           << "&var-datasource=" << data.MonitoringGrafanaDatasourcePid
+           << "&var-disk_id=" << diskId;
 }
 
 TString GetMonitoringVolumeUrlWithoutDiskId(const TDiagnosticsConfig& config)
