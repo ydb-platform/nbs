@@ -125,17 +125,26 @@ void TDiskAgentActor::HandleAttachPaths(
     PendingAttachDetachPathsRequest =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    TVector<TString> pathsToAttach{
+    TVector<TString> alreadyAttachedPaths{
         record.GetPathsToAttach().begin(),
         record.GetPathsToAttach().end()};
 
+    auto it = std::partition(
+        alreadyAttachedPaths.begin(),
+        alreadyAttachedPaths.end(),
+        std::bind_front(&TDiskAgentState::IsPathAttached, State.get()));
+
+    TVector<TString> pathsToAttach{it, alreadyAttachedPaths.end()};
+
+    alreadyAttachedPaths.erase(it, alreadyAttachedPaths.end());
+
     auto future = State->AttachPaths(pathsToAttach);
 
-    auto* actorSystem = TActivationContext::ActorSystem();
-    auto selfId = ctx.SelfID;
-
     future.Subscribe(
-        [actorSystem, selfId](
+        [actorSystem = TActivationContext::ActorSystem(),
+         selfId = ctx.SelfID,
+         alreadyAttachedPaths = std::move(alreadyAttachedPaths),
+         pathsToAttach = std::move(pathsToAttach)](
             TFuture<TResultOrError<TDiskAgentState::TAttachPathResult>>
                 future) mutable
         {
@@ -143,9 +152,8 @@ void TDiskAgentActor::HandleAttachPaths(
 
             auto response =
                 std::make_unique<TEvDiskAgentPrivate::TEvPathsAttached>(error);
-            response->AlreadyAttachedPaths =
-                std::move(result.AlreadyAttachedPaths);
-            response->PathsToAttach = std::move(result.PathsToAttach);
+            response->AlreadyAttachedPaths = std::move(alreadyAttachedPaths);
+            response->PathsToAttach = std::move(pathsToAttach);
             response->Devices = std::move(result.Devices);
             response->Stats = std::move(result.Stats);
             response->Configs = std::move(result.Configs);

@@ -329,43 +329,29 @@ NProto::TError CompareConfigs(
     return {};
 }
 
-void ProcessConfigsAfterInitialization(
-    TPromise<TResultOrError<TDiskAgentState::TAttachPathResult>> promise,
-    TDiskAgentState::TAttachPathResult resultTemplate,
-    TVector<NProto::TDeviceConfig> deviceConfigs,
+TResultOrError<TDiskAgentState::TAttachPathResult>
+ProcessConfigsAfterInitialization(
+    const TVector<NProto::TDeviceConfig>& deviceConfigs,
     TFuture<TInitializeStorageResult> future)
 {
-    future.Subscribe(
-        [promise = std::move(promise),
-         resultTemplate = std::move(resultTemplate),
-         deviceConfigs = std::move(deviceConfigs)](auto future) mutable
-        {
-            auto initializationResult = future.ExtractValue();
+    TInitializeStorageResult result = future.ExtractValue();
 
-            if (initializationResult.ConfigMismatchErrors) {
-                auto error = MakeError(
-                    E_ARGUMENT,
-                    Sprintf(
-                        "Config mismatch: %s",
-                        initializationResult.ConfigMismatchErrors.front()
-                            .c_str()));
-                promise.SetValue(std::move(error));
-                return;
-            }
+    if (result.ConfigMismatchErrors) {
+        return MakeError(
+            E_ARGUMENT,
+            JoinSeq("; ", result.ConfigMismatchErrors));
+    }
 
-            if (auto error =
-                    CompareConfigs(deviceConfigs, initializationResult.Configs);
-                HasError(error))
-            {
-                promise.SetValue(std::move(error));
-                return;
-            }
+    auto error = CompareConfigs(deviceConfigs, result.Configs);
+    if (HasError(error)) {
+        return error;
+    }
 
-            resultTemplate.Configs = std::move(initializationResult.Configs);
-            resultTemplate.Stats = std::move(initializationResult.Stats);
-            resultTemplate.Devices = std::move(initializationResult.Devices);
-            promise.SetValue(std::move(resultTemplate));
-        });
+    return TDiskAgentState::TAttachPathResult{
+        .Configs = std::move(result.Configs),
+        .Devices = std::move(result.Devices),
+        .Stats = std::move(result.Stats),
+    };
 }
 
 }   // namespace
@@ -1336,68 +1322,34 @@ TFuture<void> TDiskAgentState::DetachPaths(const TVector<TString>& paths)
         });
 }
 
-auto TDiskAgentState::AttachPaths(const TVector<TString>& pathsToAttach)
+auto TDiskAgentState::AttachPaths(TVector<TString> pathsToAttach)
         -> TFuture<TResultOrError<TAttachPathResult>>
 {
-    TAttachPathResult result;
-
-    THashSet<TString> allKnownPaths;
-    for (const auto& [_, deviceState]: Devices) {
-        allKnownPaths.emplace(deviceState.Config.GetDeviceName());
-    }
-
-    for (const auto& path: pathsToAttach) {
-        if (AttachedPaths.contains(path) || !allKnownPaths.contains(path)) {
-            result.AlreadyAttachedPaths.emplace_back(path);
-        } else {
-            result.PathsToAttach.emplace_back(path);
-        }
-    }
-
-    if (!result.PathsToAttach) {
-        return MakeFuture(TResultOrError<TAttachPathResult>(std::move(result)));
-    }
-
-    return AttachPathsImpl(std::move(result));
-}
-
-auto TDiskAgentState::AttachPathsImpl(TAttachPathResult result)
-    -> NThreading::TFuture<TResultOrError<TAttachPathResult>>
-{
-    THashSet<TString> pathsSet(
-        result.PathsToAttach.begin(),
-        result.PathsToAttach.end());
+    THashSet<TString> pathsSet(pathsToAttach.begin(), pathsToAttach.end());
     auto devices = GetDevicesByPath(pathsSet);
 
-    auto promise = NewPromise<TResultOrError<TAttachPathResult>>();
-    auto future = promise.GetFuture();
-
-    BackgroundThreadPool->ExecuteSimple(
-        [promise = std::move(promise),
-         result = std::move(result),
-         agentConfig = AgentConfig,
-         loggingService = Logging,
+    return BackgroundThreadPool->Execute(
+        [agentConfig = AgentConfig,
+         log = Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
          nvmeManager = NvmeManager,
          storageProvider = StorageProvider,
          storageConfig = StorageConfig,
-         devices = std::move(devices)]() mutable
+         devices = std::move(devices),
+         pathsToAttach = std::move(pathsToAttach)]() mutable
         {
             auto future = InitializePaths(
-                loggingService->CreateLog("BLOCKSTORE_DISK_AGENT"),
+                std::move(log),
                 storageConfig,
                 agentConfig,
                 storageProvider,
                 nvmeManager,
-                result.PathsToAttach);
+                pathsToAttach);
 
-            ProcessConfigsAfterInitialization(
-                std::move(promise),
-                std::move(result),
-                std::move(devices),
-                std::move(future));
+            return future.Apply(
+                std::bind_front(
+                    ProcessConfigsAfterInitialization,
+                    std::move(devices)));
         });
-
-    return future;
 }
 
 void TDiskAgentState::PathsAttached(

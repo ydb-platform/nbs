@@ -764,7 +764,8 @@ TInitializeStorageResult TInitializer::GetResult()
     return r;
 }
 
-void TInitializer::ReportDiskAgentConfigMismatchEvent(const TString& error) {
+void TInitializer::ReportDiskAgentConfigMismatchEvent(const TString& error)
+{
     ReportDiskAgentConfigMismatch(error);
     ConfigMismatchErrors.push_back(error);
 }
