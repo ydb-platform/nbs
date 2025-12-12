@@ -439,21 +439,15 @@ public:
         const NThreading::TFuture<ui32>& future,
         TFileIOCompletion* completion)
     {
-        Y_ABORT_UNLESS(future.HasValue());
+        Y_ABORT_UNLESS(future.HasException() || future.HasValue());
 
-        try {
-            auto value = future.GetValue();
-            if (value >= 0) {
-                completion->Func(completion, {}, value);
-            } else {
-                completion->Func(completion, MakeError(E_FAIL), value);
-            }
-        } catch (...) {
-            completion->Func(
-                completion,
-                MakeError(E_FAIL, CurrentExceptionMessage()),
-                0);
+        auto [ret, error] = ResultOrError<ui32>(future);
+        if (HasError(error)) {
+            completion->Func(completion, error, 0);
+            return;
         }
+
+        completion->Func(completion, {}, ret);
     }
 };
 
