@@ -141,14 +141,12 @@ void TNonreplicatedPartitionActor::HandleCheckRange(
         return;
     }
 
-    const auto actorId = NCloud::Register<TNonreplCheckRangeActor>(
+    NCloud::Register<TNonreplCheckRangeActor>(
         ctx,
         SelfId(),
         std::move(record),
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
         PartConfig->GetBlockSize());
-
-    RequestsInProgress.AddReadRequest(actorId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

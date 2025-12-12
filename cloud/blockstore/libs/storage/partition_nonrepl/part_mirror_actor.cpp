@@ -470,23 +470,16 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
     WriteIntersectsWithScrubbing = false;
     auto scrubbingRange = GetScrubbingRange();
 
-    for (const auto& [key, requestInfo]: RequestsInProgress.AllRequests()) {
-        if (!requestInfo.IsWrite) {
-            continue;
-        }
-        const auto& requestRange = requestInfo.BlockRange;
-        if (scrubbingRange.Overlaps(requestRange)) {
-            LOG_DEBUG(
-                ctx,
-                TBlockStoreComponents::PARTITION,
-                "[%s] Reschedule scrubbing for range %s due to inflight write to %s",
-                DiskId.c_str(),
-                DescribeRange(scrubbingRange).c_str(),
-                DescribeRange(requestRange).c_str());
+    if (RequestsInProgress.OverlapsWithWrites(scrubbingRange)) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%s] Reschedule scrubbing for range %s due to inflight write",
+            DiskId.c_str(),
+            DescribeRange(scrubbingRange).c_str());
 
-            StartScrubbingRange(ctx, ScrubbingRangeId);
-            return;
-        }
+        StartScrubbingRange(ctx, ScrubbingRangeId);
+        return;
     }
 
     TVector<TReplicaDescriptor> replicas;
@@ -750,18 +743,18 @@ void TMirrorPartitionActor::HandleLockAndDrainRange(
     const TEvPartition::TEvLockAndDrainRangeRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    auto* msg = ev->Get();
+    const auto* msg = ev->Get();
 
-    if (BlockRangeRequests.OverlapsWithRequest(msg->Range)) {
+    if (LockedRanges.OverlapsWithRequest(msg->Range)) {
         auto response =
             std::make_unique<TEvPartition::TEvLockAndDrainRangeResponse>(
                 MakeError(
                     E_REJECTED,
-                    "request overlaps with other block range request"));
+                    "request overlaps with other lock range request"));
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
-    BlockRangeRequests.AddRequest(msg->Range);
+    LockedRanges.AddRequest(msg->Range);
 
     auto reqInfo = CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
@@ -773,7 +766,7 @@ void TMirrorPartitionActor::HandleLockAndDrainRange(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Range %s is blocked for writing requests",
+        "[%s] Range %s is locked for writing requests",
         DiskId.c_str(),
         DescribeRange(msg->Range).c_str());
 }
@@ -782,16 +775,14 @@ void TMirrorPartitionActor::HandleReleaseRange(
     const TEvPartition::TEvReleaseRange::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    Y_UNUSED(ctx);
-    auto* msg = ev->Get();
+    const auto* msg = ev->Get();
 
-    BlockRangeRequests.RemoveRequest(msg->Range);
-
+    LockedRanges.RemoveRequest(msg->Range);
     DrainActorCompanion.RemoveDrainRangeRequest(ctx, msg->Range);
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Releasing range %s for writing requests",
+        "[%s] Range %s unlocked for writing requests",
         DiskId.c_str(),
         DescribeRange(msg->Range).c_str());
 }

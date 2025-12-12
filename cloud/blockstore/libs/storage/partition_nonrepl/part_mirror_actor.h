@@ -72,15 +72,12 @@ private:
     TDuration CpuUsage;
 
     THashSet<ui64> DirtyReadRequestIds;
-    TRequestsInProgressWithBlockRangeTracking<
+    TRequestsInProgress<
         EAllowedRequests::ReadWrite,
         ui64,   // key
         ui64>   // volume request id
-        RequestsInProgress{State.GetBlockSize()};
-    TDrainActorCompanion DrainActorCompanion{
-        RequestsInProgress,
-        DiskId,
-        &RequestsInProgress.GetRequestBoundsTracker()};
+        RequestsInProgress;
+    TDrainActorCompanion DrainActorCompanion{RequestsInProgress, DiskId};
     TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
         TGetDeviceForRangeCompanion::EAllowedOperation::Read};
 
@@ -107,7 +104,8 @@ private:
     TBlockRangeSet64 Fixed;
     TBlockRangeSet64 FixedPartial;
 
-    TRequestBoundsTracker BlockRangeRequests{State.GetBlockSize()};
+    // The ranges are locked for migrations and filling of fresh replicas.
+    TRequestBoundsTracker LockedRanges{State.GetBlockSize()};
 
     bool MultiAgentWriteEnabled = true;
     const size_t MultiAgentWriteRequestSizeThreshold = 0;

@@ -19,19 +19,12 @@ private:
     TVector<TRequestInfoPtr> DrainRequests;
     TRequestInfoPtr WaitForInFlightWritesRequest;
     IRequestsInProgress& RequestsInProgress;
-    const TRequestBoundsTracker* RequestBoundsTracker;
     const TString LoggingId;
 
 public:
     TDrainActorCompanion(
         IRequestsInProgress& requestsInProgress,
-        TString loggingId,
-        const TRequestBoundsTracker* requestBoundsTracker = nullptr);
-
-    TDrainActorCompanion(
-        IRequestsInProgress& requestsInProgress,
-        ui64 tabletID,
-        const TRequestBoundsTracker* requestBoundsTracker = nullptr);
+        TString loggingId);
 
     void HandleDrain(
         const NPartition::TEvPartition::TEvDrainRequest::TPtr& ev,

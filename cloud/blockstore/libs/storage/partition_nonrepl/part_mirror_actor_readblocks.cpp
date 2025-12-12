@@ -532,17 +532,14 @@ ui64 TMirrorPartitionActor::RegisterNewReadBlocksRequest(
     ui64 volumeRequestId,
     TBlockRange64 blockRange)
 {
-    const auto requestIdentityKey = TakeNextRequestIdentifier();
+    const ui64 requestIdentityKey = TakeNextRequestIdentifier();
     RequestsInProgress.AddReadRequest(
         requestIdentityKey,
         blockRange,
         volumeRequestId);
 
-    for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
-        if (request.IsWrite && blockRange.Overlaps(request.BlockRange)) {
-            DirtyReadRequestIds.insert(requestIdentityKey);
-            break;
-        }
+    if (RequestsInProgress.OverlapsWithWrites(blockRange)) {
+        DirtyReadRequestIds.insert(requestIdentityKey);
     }
 
     return requestIdentityKey;

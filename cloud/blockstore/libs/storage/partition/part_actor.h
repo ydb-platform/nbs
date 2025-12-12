@@ -248,6 +248,12 @@ private:
         return WriteAndZeroRequestsInProgress != 0;
     }
 
+    bool OverlapsWithWrites(TBlockRange64 range) const override
+    {
+        Y_UNUSED(range);
+        Y_ABORT("Unimplemented");
+    }
+
     void WaitForInFlightWrites() override
     {
         Y_ABORT("Unimplemented");
