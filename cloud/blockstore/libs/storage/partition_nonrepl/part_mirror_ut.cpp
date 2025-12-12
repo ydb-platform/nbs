@@ -3230,6 +3230,58 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(3, describeRequestCount);
     }
 
+    Y_UNIT_TEST(
+        ShouldFallbackFromMultiAgentWriteWhenDiscoveryRequestUndelivered)
+    {
+        TTestRuntime runtime;
+
+        size_t undeliveredDescribeRequestCount = 0;
+
+        auto failDescribe =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            switch (event->GetTypeRewrite()) {
+                case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
+                    using TRequest = TEvDiskAgent::TEvWriteDeviceBlocksRequest;
+
+                    const auto& record = event->Get<TRequest>()->Record;
+
+                    // Check that there are no multi-agent requests.
+                    UNIT_ASSERT(record.GetReplicationTargets().empty());
+                    break;
+                }
+                case TEvNonreplPartitionPrivate::EvGetDeviceForRangeRequest: {
+                    auto sendTo = event->Sender;
+                    runtime.Send(
+                        new IEventHandle(
+                            sendTo,
+                            sendTo,
+                            event->ReleaseBase().Release(),
+                            0,
+                            event->Cookie,
+                            nullptr),
+                        0);
+                    ++undeliveredDescribeRequestCount;
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        runtime.SetEventFilter(failDescribe);
+
+        NProto::TStorageServiceConfig config;
+        config.SetMultiAgentWriteEnabled(true);
+        TTestEnv env(runtime, std::move(config));
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        client.WriteBlocks(TBlockRange64::WithLength(10, 5), 1);
+
+        UNIT_ASSERT_LE(1, undeliveredDescribeRequestCount);
+    }
+
     Y_UNIT_TEST(ShouldMakeMultiAgentAndOrdinaryWriteRequestsWhenFresh)
     {
         TTestRuntime runtime;
@@ -3367,7 +3419,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_EQUAL(writtenDevices, expectedDevices);
     }
 
-    Y_UNIT_TEST(ShouldHandleUndelviryForMultiAgentWriteRequests)
+    Y_UNIT_TEST(ShouldHandleUndelveryForMultiAgentWriteRequests)
     {
         TTestRuntime runtime;
 
