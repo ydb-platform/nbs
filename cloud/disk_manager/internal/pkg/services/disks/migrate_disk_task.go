@@ -131,20 +131,23 @@ func (t *migrateDiskTask) Cancel(
 
 	t.logInfo(ctx, execCtx, "cancelling task")
 
+	// We do not expect task cancelling after ReplicationFinished status for
+	// migration between cells, but we still avoid dst disk deletion.
+	if t.request.IsMigrationBetweenCells &&
+		t.state.Status >= protos.MigrationStatus_ReplicationFinished {
+		return nil
+	}
+
 	// We do not expect task cancelling after FINISH_MIGRATION signal, but we still
 	// avoid dst disk deletion.
-	if !execCtx.HasEvent(
+	if execCtx.HasEvent(
 		ctx,
 		int64(protos.MigrateDiskTaskEvents_FINISH_MIGRATION),
 	) {
-		err := t.deleteDstDisk(ctx, execCtx)
-		if err != nil {
-			return err
-		}
-		t.logInfo(ctx, execCtx, "deleted dst disk")
+		return nil
 	}
 
-	return nil
+	return t.deleteDstDisk(ctx, execCtx)
 }
 
 func (t *migrateDiskTask) GetMetadata(

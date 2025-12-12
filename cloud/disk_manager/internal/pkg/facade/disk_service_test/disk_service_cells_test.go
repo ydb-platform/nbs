@@ -5,15 +5,14 @@ import (
 	"crypto/rand"
 	"hash/crc32"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	sdk_client "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -62,12 +61,23 @@ func successfullyMigrateDiskBetweenCells(
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 
+	// TODO: Make freeze operation transactional.
+	// See: https://github.com/ydb-platform/nbs/issues/4847#issuecomment-3656284845
+	var confirmedDiskContentInfoCrc32, unconfirmedDiskContentInfoCrc32 uint32
 	for {
 		data := make([]byte, 4096)
 		_, err := rand.Read(data)
 		require.NoError(t, err)
 
-		common.WaitForRandomDuration(1*time.Second, 3*time.Second)
+		crc32 := crc32.ChecksumIEEE(data)
+
+		logging.Info(
+			ctx,
+			"Writing zero block with crc32 %+v to disk %+v",
+			crc32,
+			params.DiskID,
+		)
+		unconfirmedDiskContentInfoCrc32 = crc32
 		err = srcZoneNBSClient.Write(
 			params.DiskID,
 			0, // startIndex
@@ -80,7 +90,13 @@ func successfullyMigrateDiskBetweenCells(
 
 			require.NoError(t, err)
 		} else {
-			diskContentInfo.BlockCrc32s[0] = crc32.ChecksumIEEE(data)
+			logging.Info(
+				ctx,
+				"Writed zero block with crc32 %+v to disk %+v",
+				crc32,
+				params.DiskID,
+			)
+			confirmedDiskContentInfoCrc32 = crc32
 		}
 	}
 
@@ -93,12 +109,40 @@ func successfullyMigrateDiskBetweenCells(
 
 	dstZoneNBSClient := testcommon.NewNbsTestingClient(t, ctx, params.DstZoneID)
 
+	diskContentInfo.BlockCrc32s[0] = confirmedDiskContentInfoCrc32
 	err = dstZoneNBSClient.ValidateCrc32(
 		ctx,
 		params.DiskID,
 		diskContentInfo,
 	)
-	require.NoError(t, err)
+	logging.Info(
+		ctx,
+		"Error for confirmed disk content info crc32 %+v: %+v",
+		confirmedDiskContentInfoCrc32,
+		err,
+	)
+
+	if err != nil {
+		logging.Info(
+			ctx,
+			"Trying to validate unconfirmed disk content info crc32 %+v",
+			unconfirmedDiskContentInfoCrc32,
+		)
+		diskContentInfo.BlockCrc32s[0] = unconfirmedDiskContentInfoCrc32
+		err = dstZoneNBSClient.ValidateCrc32(
+			ctx,
+			params.DiskID,
+			diskContentInfo,
+		)
+		logging.Info(
+			ctx,
+			"Error for unconfirmed disk content info crc32 %+v: %+v",
+			unconfirmedDiskContentInfoCrc32,
+			err,
+		)
+
+		require.NoError(t, err)
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
