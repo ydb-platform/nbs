@@ -16,6 +16,7 @@ SRCS(
     part_actor_compactrange.cpp
     part_actor_confirmblobs.cpp
     part_actor_deletegarbage.cpp
+    part_actor_deleteunconfirmedblobs.cpp
     part_actor_describeblocks.cpp
     part_actor_flush.cpp
     part_actor_getusedblocks.cpp
