@@ -239,9 +239,6 @@ func TestDiskServiceDeleteDiskWhenCreationIsInFlight(t *testing.T) {
 		true, // pooled
 	)
 
-	// Need to add some variance for better testing.
-	common.WaitForRandomDuration(time.Millisecond, 2*time.Second)
-
 	diskID := t.Name()
 	diskSize := 2 * imageSize
 
@@ -260,12 +257,14 @@ func TestDiskServiceDeleteDiskWhenCreationIsInFlight(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, createOp)
 
-	<-time.After(time.Second)
+	// Need to add some variance for better testing.
+	common.WaitForRandomDuration(time.Millisecond, 2*time.Second)
 
 	testcommon.DeleteDisk(t, ctx, client, diskID)
 
 	_ = internal_client.WaitOperation(ctx, client, createOp.Id)
 
+	testcommon.CheckBaseDiskSlotReleased(t, ctx, diskID)
 	testcommon.CheckConsistency(t, ctx)
 }
 

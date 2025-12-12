@@ -189,7 +189,7 @@ CellsConfig: <
     ScheduleCollectClusterCapacityTask: false
 >
 DisksConfig: <
-    DeletedDiskExpirationTimeout: "1s"
+    DeletedDiskExpirationTimeout: "2000s"
     ClearDeletedDisksTaskScheduleInterval: "2s"
     EndedMigrationExpirationTimeout: "30s"
     EnableOverlayDiskRegistryBasedDisks: true
