@@ -255,6 +255,15 @@ bool TIndexTabletActor::PrepareTx_WriteData(
         args.Error = ErrorInvalidTarget(args.NodeId);
         return true;
     }
+
+    //
+    // NodeId might be missing in the original request but at this stage we
+    // have already read the Node and we can properly set NodeId in all request
+    // ranges.
+    //
+
+    UpdateRangeNodeIds(args.ProfileLogRequest, args.Node->NodeId);
+
     // TODO: access check
     if (!HasSpaceLeft(args.Node->Attrs.GetSize(), args.ByteRange.End())) {
         args.Error = ErrorNoSpaceLeft();
