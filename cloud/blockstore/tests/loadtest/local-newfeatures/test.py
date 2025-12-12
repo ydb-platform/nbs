@@ -95,7 +95,8 @@ def features_config_with_incremental_compaction():
 
 def storage_config_with_fresh_channel_writes_enabled(enabled):
     storage = default_storage_config()
-    storage.FreshChannelCount = 1
+    storage.FreshChannelCountSSD = 1
+    storage.FreshChannelCountHDD = 1
     storage.FreshChannelWriteRequestsEnabled = enabled
 
     return storage
@@ -122,7 +123,7 @@ def ordinary_prod_storage_config():
     storage = default_storage_config()
     storage.WriteRequestBatchingEnabled = True
     storage.IncrementalCompactionEnabled = True
-    storage.FreshChannelCount = 1
+    storage.FreshChannelCountSSD = 1
     storage.FreshChannelWriteRequestsEnabled = True
     storage.BatchCompactionEnabled = True
     storage.HDDMaxBlobsPerRange = 5
