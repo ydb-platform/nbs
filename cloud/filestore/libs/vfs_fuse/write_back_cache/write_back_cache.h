@@ -61,9 +61,9 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
-    NThreading::TFuture<void> FlushNodeData(ui64 nodeId);
+    NThreading::TFuture<NProto::TError> FlushNodeData(ui64 nodeId);
 
-    NThreading::TFuture<void> FlushAllData();
+    NThreading::TFuture<NProto::TError> FlushAllData();
 
     bool IsEmpty() const;
 
