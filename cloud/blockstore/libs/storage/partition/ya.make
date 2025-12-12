@@ -50,6 +50,7 @@ SRCS(
     part_database.cpp
     part_schema.cpp
     part_state.cpp
+    part_tx.cpp
 )
 
 PEERDIR(
