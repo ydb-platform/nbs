@@ -35,6 +35,7 @@ public:
     virtual TVector<TStringBuf> GetPeerMetaValues(TStringBuf key) const;
     virtual TVector<TStringBuf> FindClientCert() const {return {};}
     virtual grpc_compression_level GetCompressionLevel() const { return GRPC_COMPRESS_LEVEL_NONE; }
+    virtual TString GetEndpointId() const;
 
     virtual google::protobuf::Arena* GetArena();
 
@@ -46,9 +47,10 @@ public:
     virtual void FinishStreamingOk() {}
     virtual TAsyncFinishResult GetFinishFuture() { return {}; }
     virtual bool IsClientLost() const { return false; }
-    virtual TString GetPeer() const { return {}; }
+    virtual TString GetPeer() const;
     virtual bool SslServer() const { return false; }
+    virtual bool IsStreamCall() const { return false; }
+    virtual TString GetRpcMethodName() const;
 };
 
 } // namespace NKikimr::NPublicHttp
-

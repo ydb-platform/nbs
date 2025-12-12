@@ -18,7 +18,7 @@ IF (NOT WITH_VALGRIND)
         library/cpp/getopt
         library/cpp/regex/pcre
         library/cpp/svnversion
-        contrib/ydb/core/testlib/default
+        contrib/ydb/core/testlib/pg
         contrib/ydb/core/tx
         contrib/ydb/core/tx/schemeshard/ut_helpers
         contrib/ydb/library/yql/public/udf/service/exception_policy

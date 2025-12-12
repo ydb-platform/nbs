@@ -3,8 +3,8 @@
 #include <contrib/ydb/core/tx/columnshard/counters/indexation.h>
 #include <contrib/ydb/core/tx/columnshard/engines/storage/optimizer/intervals/optimizer.h>
 #include <contrib/ydb/core/formats/arrow/serializer/batch_only.h>
-#include <contrib/ydb/core/formats/arrow/simple_builder/batch.h>
-#include <contrib/ydb/core/formats/arrow/simple_builder/filler.h>
+#include <contrib/ydb/library/formats/arrow/simple_builder/batch.h>
+#include <contrib/ydb/library/formats/arrow/simple_builder/filler.h>
 #include <contrib/ydb/core/formats/arrow/serializer/full.h>
 #include <contrib/libs/apache/arrow/cpp/src/arrow/type.h>
 

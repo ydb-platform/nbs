@@ -3,6 +3,7 @@
 #include "blobstorage_replbroker.h"
 #include "blobstorage_hullrepljob.h"
 #include "query_donor.h"
+#include <contrib/ydb/library/actors/interconnect/watchdog_timer.h>
 #include <contrib/ydb/core/blobstorage/base/utility.h>
 #include <contrib/ydb/core/blobstorage/backpressure/queue_backpressure_client.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/circlebuf.h>
@@ -148,13 +149,14 @@ namespace NKikimr {
 
         struct TDonorQueueItem {
             TVDiskID VDiskId;
-            TActorId QueueActorId;
+            TDonorQueueActors QueueActors;
             ui32 NodeId;
             ui32 PDiskId;
             ui32 VSlotId;
         };
 
         std::shared_ptr<TReplCtx> ReplCtx;
+        ui32 NextMinREALHugeBlobInBytes;
         THistory History;
         EState State;
         TInstant LastReplStart;
@@ -165,13 +167,18 @@ namespace NKikimr {
         TBlobIdQueuePtr BlobsToReplicatePtr;
         TBlobIdQueuePtr UnreplicatedBlobsPtr = std::make_shared<TBlobIdQueue>();
         TUnreplicatedBlobRecords UnreplicatedBlobRecords;
+        TMilestoneQueue MilestoneQueue;
         TActorId ReplJobActorId;
         std::list<std::optional<TDonorQueueItem>> DonorQueue;
-        std::deque<std::pair<TVDiskID, TActorId>> Donors;
+        std::deque<std::pair<TVDiskID, TDonorQueueActors>> Donors;
         std::set<TVDiskID> ConnectedPeerDisks, ConnectedDonorDisks;
         TEvResumeForce *ResumeForceToken = nullptr;
         TInstant ReplicationEndTime;
         bool UnrecoveredNonphantomBlobs = false;
+        bool RequestedReplicationToken = false;
+        bool HoldingReplicationToken = false;
+
+        TWatchdogTimer<TEvReplCheckProgress> ReplProgressWatchdog;
 
         friend class TActorBootstrapped<TReplScheduler>;
 
@@ -203,26 +210,35 @@ namespace NKikimr {
             CreateQueuesForVDisks(*QueueActorMapPtr, SelfId(), ReplCtx->GInfo, ReplCtx->VCtx,
                     ReplCtx->GInfo->GetVDisks(), ReplCtx->MonGroup.GetGroup(),
                     replQueueClientId, NKikimrBlobStorage::EVDiskQueueId::GetAsyncRead,
-                    "PeerRepl", replInterconnectChannel);
+                    "PeerRepl", replInterconnectChannel, false);
 
             for (const auto& [vdiskId, vdiskActorId] : ReplCtx->VDiskCfg->BaseInfo.DonorDiskIds) {
                 TIntrusivePtr<NBackpressure::TFlowRecord> flowRecord(new NBackpressure::TFlowRecord);
                 auto info = MakeIntrusive<TBlobStorageGroupInfo>(ReplCtx->GInfo, vdiskId, vdiskActorId);
-                const TActorId queueActorId = Register(CreateVDiskBackpressureClient(info, vdiskId,
+                const TActorId asyncReadQueueActorId = Register(CreateVDiskBackpressureClient(info, vdiskId,
                     NKikimrBlobStorage::EVDiskQueueId::GetAsyncRead, ReplCtx->MonGroup.GetGroup(), ReplCtx->VCtx,
-                    NBackpressure::TQueueClientId(NBackpressure::EQueueClientType::ReplJob, 0), "Donor",
+                    NBackpressure::TQueueClientId(NBackpressure::EQueueClientType::ReplJob, 0), "ReplicationDonor",
+                    ReplCtx->VDiskCfg->ReplInterconnectChannel, vdiskActorId.NodeId() == SelfId().NodeId(),
+                    TDuration::Minutes(1), flowRecord, NMonitoring::TCountableBase::EVisibility::Private));
+                
+                const TActorId fastReadQueueActorId = Register(CreateVDiskBackpressureClient(info, vdiskId,
+                    NKikimrBlobStorage::EVDiskQueueId::GetFastRead, ReplCtx->MonGroup.GetGroup(), ReplCtx->VCtx,
+                    NBackpressure::TQueueClientId(NBackpressure::EQueueClientType::ReplJob, 0), "OnlineReadDonor",
                     ReplCtx->VDiskCfg->ReplInterconnectChannel, vdiskActorId.NodeId() == SelfId().NodeId(),
                     TDuration::Minutes(1), flowRecord, NMonitoring::TCountableBase::EVisibility::Private));
                 ui32 nodeId, pdiskId, vslotId;
                 std::tie(nodeId, pdiskId, vslotId) = DecomposeVDiskServiceId(vdiskActorId);
                 DonorQueue.emplace_back(TDonorQueueItem{
                     .VDiskId = vdiskId,
-                    .QueueActorId = queueActorId,
+                    .QueueActors = TDonorQueueActors{
+                        .AsyncReadQueueActorId = asyncReadQueueActorId,
+                        .FastReadQueueActorId = fastReadQueueActorId
+                    },
                     .NodeId = nodeId,
                     .PDiskId = pdiskId,
                     .VSlotId = vslotId
                 });
-                Donors.emplace_back(vdiskId, queueActorId);
+                Donors.emplace_back(vdiskId, TDonorQueueActors(asyncReadQueueActorId, fastReadQueueActorId));
             }
             DonorQueue.emplace_back(std::nullopt); // disks from group
 
@@ -249,6 +265,10 @@ namespace NKikimr {
             }
         }
 
+        void Handle(TEvMinHugeBlobSizeUpdate::TPtr ev) {
+            NextMinREALHugeBlobInBytes = ev->Get()->MinREALHugeBlobInBytes;
+        }
+
         void StartReplication() {
             STLOG(PRI_DEBUG, BS_REPL, BSVR14, VDISKP(ReplCtx->VCtx->VDiskLogPrefix, "REPL START"));
             STLOG(PRI_DEBUG, BS_REPL, BSVR15, VDISKP(ReplCtx->VCtx->VDiskLogPrefix, "QUANTUM START"));
@@ -259,9 +279,12 @@ namespace NKikimr {
             ReplCtx->MonGroup.ReplWorkUnitsDone() = 0;
             ReplCtx->MonGroup.ReplItemsRemaining() = 0;
             ReplCtx->MonGroup.ReplItemsDone() = 0;
+            Y_ABORT_UNLESS(NextMinREALHugeBlobInBytes);
+            ReplCtx->MinREALHugeBlobInBytes = NextMinREALHugeBlobInBytes;
             UnrecoveredNonphantomBlobs = false;
 
             Become(&TThis::StateRepl);
+            ResetReplProgressTimer(false);
 
             // switch to planning state
             Transition(Relaxation, Plan);
@@ -276,6 +299,12 @@ namespace NKikimr {
                 case Plan:
                     // this is a first quantum of replication, so we have to register it in the broker
                     State = AwaitToken;
+                    Y_DEBUG_ABORT_UNLESS(!RequestedReplicationToken);
+                    if (RequestedReplicationToken) {
+                        STLOG(PRI_CRIT, BS_REPL, BSVR38, ReplCtx->VCtx->VDiskLogPrefix << "excessive replication token requested");
+                        break;
+                    }
+                    RequestedReplicationToken = true;
                     if (!Send(MakeBlobStorageReplBrokerID(), new TEvQueryReplToken(ReplCtx->VDiskCfg->BaseInfo.PDiskId))) {
                         HandleReplToken();
                     }
@@ -292,6 +321,10 @@ namespace NKikimr {
         }
 
         void HandleReplToken() {
+            Y_ABORT_UNLESS(RequestedReplicationToken);
+            RequestedReplicationToken = false;
+            HoldingReplicationToken = true;
+
             // switch to replication state
             Transition(AwaitToken, Replication);
             if (!ResumeIfReady()) {
@@ -324,8 +357,10 @@ namespace NKikimr {
         }
 
         void DropDonor(const TDonorQueueItem& donor) {
-            Donors.erase(std::find(Donors.begin(), Donors.end(), std::make_pair(donor.VDiskId, donor.QueueActorId)));
-            Send(donor.QueueActorId, new TEvents::TEvPoison); // kill the queue actor
+            Donors.erase(std::find(Donors.begin(), Donors.end(), std::make_pair(donor.VDiskId,
+                TDonorQueueActors(donor.QueueActors.AsyncReadQueueActorId, donor.QueueActors.FastReadQueueActorId))));
+            Send(donor.QueueActors.AsyncReadQueueActorId, new TEvents::TEvPoison); // kill the queue actor
+            Send(donor.QueueActors.FastReadQueueActorId, new TEvents::TEvPoison); // kill the queue actor
             Send(MakeBlobStorageNodeWardenID(SelfId().NodeId()), new TEvBlobStorage::TEvDropDonor(donor.NodeId,
                 donor.PDiskId, donor.VSlotId, donor.VDiskId));
         }
@@ -345,6 +380,11 @@ namespace NKikimr {
 
             UnrecoveredNonphantomBlobs |= info->UnrecoveredNonphantomBlobs;
             UnreplicatedBlobRecords = std::move(info->UnreplicatedBlobRecords);
+            MilestoneQueue = std::move(info->MilestoneQueue);
+
+            if (info->ItemsRecovered > 0) {
+                ResetReplProgressTimer(false);
+            }
 
             bool finished = false;
 
@@ -352,15 +392,15 @@ namespace NKikimr {
                 BlobsToReplicatePtr = std::exchange(UnreplicatedBlobsPtr, std::make_shared<TBlobIdQueue>());
 
 #ifndef NDEBUG
-                Y_VERIFY_DEBUG_S(BlobsToReplicatePtr->size() == UnreplicatedBlobRecords.size(),
-                    "BlobsToReplicatePtr->size# " << BlobsToReplicatePtr->size()
+                Y_VERIFY_DEBUG_S(BlobsToReplicatePtr->GetNumItems() == UnreplicatedBlobRecords.size(),
+                    "BlobsToReplicatePtr->size# " << BlobsToReplicatePtr->GetNumItems()
                     << " UnreplicatedBlobRecords.size# " << UnreplicatedBlobRecords.size());
-                for (const TLogoBlobID& id : *BlobsToReplicatePtr) {
+                for (const TLogoBlobID& id : BlobsToReplicatePtr->Queue) {
                     Y_DEBUG_ABORT_UNLESS(UnreplicatedBlobRecords.contains(id));
                 }
 #endif
 
-                if (BlobsToReplicatePtr->empty()) {
+                if (BlobsToReplicatePtr->IsEmpty()) {
                     // no more blobs to replicate -- consider replication finished
                     finished = true;
                     for (const auto& donor : std::exchange(DonorQueue, {})) {
@@ -387,16 +427,20 @@ namespace NKikimr {
 
             if (finished) {
                 STLOG(PRI_DEBUG, BS_REPL, BSVR17, VDISKP(ReplCtx->VCtx->VDiskLogPrefix, "REPL COMPLETED"),
-                    (BlobsToReplicate, BlobsToReplicatePtr->size()));
+                    (BlobsToReplicate, BlobsToReplicatePtr->GetNumItems()));
                 LastReplEnd = now;
 
                 if (State == WaitQueues || State == Replication) {
                     // release token as we have finished replicating
                     Send(MakeBlobStorageReplBrokerID(), new TEvReleaseReplToken);
+                    Y_DEBUG_ABORT_UNLESS(!RequestedReplicationToken);
+                    Y_DEBUG_ABORT_UNLESS(HoldingReplicationToken);
+                    HoldingReplicationToken = false;
                 }
+                ResetReplProgressTimer(true);
 
                 Become(&TThis::StateRelax);
-                if (!BlobsToReplicatePtr->empty()) {
+                if (!BlobsToReplicatePtr->IsEmpty()) {
                     // try again for unreplicated blobs in some future
                     State = Relaxation;
                     Schedule(ReplCtx->VDiskCfg->ReplTimeInterval, new TEvents::TEvWakeup);
@@ -409,8 +453,8 @@ namespace NKikimr {
                     // no more blobs to replicate; replication will not resume
                     State = Finished;
                     ReplCtx->MonGroup.ReplUnreplicatedVDisks() = 0;
-                    ReplCtx->MonGroup.ReplUnreplicatedPhantoms() = 1;
-                    ReplCtx->MonGroup.ReplUnreplicatedNonPhantoms() = 1;
+                    ReplCtx->MonGroup.ReplUnreplicatedPhantoms() = 0;
+                    ReplCtx->MonGroup.ReplUnreplicatedNonPhantoms() = 0;
                     ReplCtx->MonGroup.ReplWorkUnitsRemaining() = 0;
                     ReplCtx->MonGroup.ReplWorkUnitsDone() = 0;
                     ReplCtx->MonGroup.ReplItemsRemaining() = 0;
@@ -437,7 +481,8 @@ namespace NKikimr {
                 donor->NodeId << ":" << donor->PDiskId << ":" << donor->VSlotId << "}") : "generic"));
             ReplJobActorId = Register(CreateReplJobActor(ReplCtx, SelfId(), from, QueueActorMapPtr,
                 BlobsToReplicatePtr, UnreplicatedBlobsPtr, donor ? std::make_optional(std::make_pair(
-                donor->VDiskId, donor->QueueActorId)) : std::nullopt, std::move(UnreplicatedBlobRecords)));
+                donor->VDiskId, donor->QueueActors.AsyncReadQueueActorId)) : std::nullopt, std::move(UnreplicatedBlobRecords),
+                std::move(MilestoneQueue)));
         }
 
         template<typename Iter>
@@ -492,6 +537,19 @@ namespace NKikimr {
             const double workPerSecond = (workAtBegin - workAtEnd) / (timeAtEnd - timeAtBegin).SecondsFloat();
 
             return TDuration::Seconds(workAtEnd / workPerSecond);
+        }
+
+        void ResetReplProgressTimer(bool finish) {
+            if (finish) {
+                ReplProgressWatchdog.Disarm();
+            } else {
+                ReplProgressWatchdog.Rearm(SelfId());
+            }
+            ReplCtx->MonGroup.ReplMadeNoProgress() = 0;
+        }
+
+        void ReplStuck() {
+            ReplCtx->MonGroup.ReplMadeNoProgress() = 1;
         }
 
         void Handle(NMon::TEvHttpInfo::TPtr &ev) {
@@ -554,7 +612,7 @@ namespace NKikimr {
         std::set<TActorId> DonorQueryActors;
 
         void Handle(TEvBlobStorage::TEvEnrichNotYet::TPtr ev) {
-            DonorQueryActors.insert(Register(new TDonorQueryActor(*ev->Get(), Donors)));
+            DonorQueryActors.insert(Register(new TDonorQueryActor(*ev->Get(), Donors, ReplCtx->VCtx)));
         }
 
         void Handle(TEvents::TEvActorDied::TPtr ev) {
@@ -586,6 +644,8 @@ namespace NKikimr {
             hFunc(TEvents::TEvActorDied, Handle)
             cFunc(TEvBlobStorage::EvCommenceRepl, StartReplication)
             hFunc(TEvReplInvoke, Handle)
+            hFunc(TEvReplCheckProgress, ReplProgressWatchdog)
+            hFunc(TEvMinHugeBlobSizeUpdate, Handle)
         )
 
         void PassAway() override {
@@ -595,7 +655,8 @@ namespace NKikimr {
             }
             for (const auto& donor : DonorQueue) {
                 if (donor) {
-                    Send(donor->QueueActorId, new TEvents::TEvPoison);
+                    Send(donor->QueueActors.AsyncReadQueueActorId, new TEvents::TEvPoison);
+                    Send(donor->QueueActors.FastReadQueueActorId, new TEvents::TEvPoison);
                 }
             }
             for (const TActorId& actorId : DonorQueryActors) {
@@ -604,13 +665,22 @@ namespace NKikimr {
 
             // return replication token if we have one
             if (State == AwaitToken || State == WaitQueues || State == Replication) {
-                Send(MakeBlobStorageReplBrokerID(), new TEvReleaseReplToken);
+                Y_DEBUG_ABORT_UNLESS(RequestedReplicationToken || HoldingReplicationToken);
+                if (RequestedReplicationToken || HoldingReplicationToken) {
+                    Send(MakeBlobStorageReplBrokerID(), new TEvReleaseReplToken);
+                }
+            } else {
+                Y_DEBUG_ABORT_UNLESS(!RequestedReplicationToken && !HoldingReplicationToken);
+                if (RequestedReplicationToken || HoldingReplicationToken) {
+                    STLOG(PRI_CRIT, BS_REPL, BSVR37, ReplCtx->VCtx->VDiskLogPrefix << "stuck replication token");
+                }
             }
 
             if (ReplJobActorId) {
                 Send(ReplJobActorId, new TEvents::TEvPoison);
             }
 
+            ResetReplProgressTimer(true);
             TActorBootstrapped::PassAway();
         }
 
@@ -627,6 +697,8 @@ namespace NKikimr {
             hFunc(TEvents::TEvActorDied, Handle)
             cFunc(TEvBlobStorage::EvCommenceRepl, Ignore)
             hFunc(TEvReplInvoke, Handle)
+            hFunc(TEvReplCheckProgress, ReplProgressWatchdog)
+            hFunc(TEvMinHugeBlobSizeUpdate, Handle)
         )
 
     public:
@@ -637,8 +709,13 @@ namespace NKikimr {
         TReplScheduler(std::shared_ptr<TReplCtx> &replCtx)
             : TActorBootstrapped<TReplScheduler>()
             , ReplCtx(replCtx)
+            , NextMinREALHugeBlobInBytes(ReplCtx->MinREALHugeBlobInBytes)
             , History(HistorySize)
             , State(Relaxation)
+            , ReplProgressWatchdog(
+                ReplCtx->VDiskCfg->ReplMaxTimeToMakeProgress,
+                std::bind(&TThis::ReplStuck, this)
+            )
         {}
     };
 

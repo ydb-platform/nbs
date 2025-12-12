@@ -22,6 +22,9 @@ const std::vector<NKikimrServices::EServiceKikimr> TLoggerInit::KqpServices = {
 
 const std::vector<NKikimrServices::EServiceKikimr> TLoggerInit::CSServices = {
     NKikimrServices::TX_COLUMNSHARD,
+    NKikimrServices::TX_COLUMNSHARD_BLOBS,
+    NKikimrServices::TX_COLUMNSHARD_BLOBS_BS,
+    NKikimrServices::TX_COLUMNSHARD_BLOBS_TIER,
     NKikimrServices::TX_COLUMNSHARD_SCAN,
     NKikimrServices::TX_CONVEYOR
 };
@@ -32,7 +35,7 @@ TLoggerInit::TLoggerInit(NKqp::TKikimrRunner& kikimr)
 
 void TLoggerInit::Initialize() {
     for (auto&& i : Services) {
-        for (auto&& s : i) {
+        for (auto&& s : i.second) {
             Runtime->SetLogPriority(s, Priority);
         }
     }
@@ -60,7 +63,9 @@ void THelper::StartScanRequest(const TString& request, const bool expectSuccess,
     });
     const TInstant start = TInstant::Now();
     while (!resultReady && start + TDuration::Seconds(60) > TInstant::Now()) {
+        Cerr << "START_SLEEP" << Endl;
         Server.GetRuntime()->SimulateSleep(TDuration::Seconds(1));
+        Cerr << "FINISHED_SLEEP" << Endl;
         if (scanIterator && !resultReady) {
             scanIterator->ReadNext().Subscribe([&](NThreading::TFuture<NYdb::NTable::TScanQueryPart> streamPartFuture) {
                 NYdb::NTable::TScanQueryPart streamPart = streamPartFuture.GetValueSync();

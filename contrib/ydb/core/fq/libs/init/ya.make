@@ -33,6 +33,7 @@ PEERDIR(
     contrib/ydb/library/yql/minikql/comp_nodes
     contrib/ydb/library/yql/utils/actor_log
     contrib/ydb/library/yql/dq/actors/compute
+    contrib/ydb/library/yql/dq/actors/input_transforms
     contrib/ydb/library/yql/dq/comp_nodes
     contrib/ydb/library/yql/dq/transform
     contrib/ydb/library/yql/providers/common/comp_nodes

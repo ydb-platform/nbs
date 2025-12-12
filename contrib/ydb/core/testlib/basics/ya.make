@@ -21,6 +21,7 @@ PEERDIR(
     contrib/ydb/core/mind
     contrib/ydb/core/node_whiteboard
     contrib/ydb/core/quoter
+    contrib/ydb/core/statistics/service
     contrib/ydb/core/tablet_flat
     contrib/ydb/core/testlib/actors
     contrib/ydb/core/tx/columnshard

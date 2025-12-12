@@ -3,6 +3,7 @@
 #include "dsproxy.h"
 #include "dsproxy_blackboard.h"
 #include "dsproxy_mon.h"
+#include "request_history.h"
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_events.h>
 #include <util/generic/set.h>
 
@@ -49,9 +50,19 @@ class TGetImpl {
 
     std::unordered_map<TLogoBlobID, std::tuple<bool, bool>> BlobFlags; // keep, doNotKeep per blob
 
+    TAccelerationParams AccelerationParams;
+
+    THistory History;
+
+    bool AtLeastOneResponseWasNotOk = false;
+
+    friend class TBlobStorageGroupGetRequest;
+    friend class THistory;
+
 public:
     TGetImpl(const TIntrusivePtr<TBlobStorageGroupInfo> &info, const TIntrusivePtr<TGroupQueues> &groupQueues,
-            TEvBlobStorage::TEvGet *ev, TNodeLayoutInfoPtr&& nodeLayout, const TString& requestPrefix = {})
+            TEvBlobStorage::TEvGet *ev, TNodeLayoutInfoPtr&& nodeLayout,
+            const TAccelerationParams& accelerationParams, const TString& requestPrefix = {})
         : Deadline(ev->Deadline)
         , Info(info)
         , Queries(ev->Queries.Release())
@@ -68,6 +79,8 @@ public:
         , PhantomCheck(ev->PhantomCheck)
         , Decommission(ev->Decommission)
         , ReaderTabletData(ev->ReaderTabletData)
+        , AccelerationParams(accelerationParams)
+        , History(Info)
     {
         Y_ABORT_UNLESS(QuerySize > 0);
     }
@@ -224,6 +237,7 @@ public:
                 R_LOG_DEBUG_SX(logCtx, "BPG60", "Got# " << NKikimrProto::EReplyStatus_Name(replyStatus).data()
                     << " orderNumber# " << orderNumber << " vDiskId# " << vdisk.ToString());
                 Blackboard.AddErrorResponse(blobId, orderNumber);
+                AtLeastOneResponseWasNotOk = true;
             } else if (replyStatus == NKikimrProto::NOT_YET) {
                 R_LOG_DEBUG_SX(logCtx, "BPG67", "Got# NOT_YET orderNumber# " << orderNumber
                         << " vDiskId# " << vdisk.ToString());
@@ -236,6 +250,7 @@ public:
         ++ResponseIndex;
 
         Step(logCtx, outVGets, outVPuts, outGetResult);
+        History.AddVGetResult(orderNumber, status, record.GetErrorReason());
     }
 
     void OnVPutResult(TLogContext &logCtx, TEvBlobStorage::TEvVPutResult &ev,
@@ -246,7 +261,7 @@ public:
     void PrepareReply(NKikimrProto::EReplyStatus status, TString errorReason, TLogContext &logCtx,
             TAutoPtr<TEvBlobStorage::TEvGetResult> &outGetResult);
 
-    void AccelerateGet(TLogContext &logCtx, i32 slowDiskOrderNumber,
+    void AccelerateGet(TLogContext &logCtx, ui32 slowDisksMask,
             TDeque<std::unique_ptr<TEvBlobStorage::TEvVGet>> &outVGets,
             TDeque<std::unique_ptr<TEvBlobStorage::TEvVPut>> &outVPuts) {
         TAutoPtr<TEvBlobStorage::TEvGetResult> outGetResult;
@@ -256,7 +271,7 @@ public:
             TStackVec<TBlobState::TDisk, TypicalDisksInSubring> &disks = it->second.Disks;
             for (ui32 i = 0; i < disks.size(); ++i) {
                 TBlobState::TDisk &disk = disks[i];
-                disk.IsSlow = ((i32)disk.OrderNumber == slowDiskOrderNumber);
+                disk.IsSlow = slowDisksMask & (1 << disk.OrderNumber);
             }
         }
         Blackboard.ChangeAll();
@@ -266,16 +281,24 @@ public:
             RequestPrefix.data(), outGetResult->Print(false).c_str(), DumpFullState().c_str());
     }
 
-    void AcceleratePut(TLogContext &logCtx, i32 slowDiskOrderNumber,
+    void AcceleratePut(TLogContext &logCtx, ui32 slowDisksMask,
             TDeque<std::unique_ptr<TEvBlobStorage::TEvVGet>> &outVGets,
             TDeque<std::unique_ptr<TEvBlobStorage::TEvVPut>> &outVPuts) {
-        AccelerateGet(logCtx, slowDiskOrderNumber, outVGets, outVPuts);
+        AccelerateGet(logCtx, slowDisksMask, outVGets, outVPuts);
     }
 
     ui64 GetTimeToAccelerateGetNs(TLogContext &logCtx);
     ui64 GetTimeToAcceleratePutNs(TLogContext &logCtx);
 
     TString DumpFullState() const;
+
+    TString PrintHistory() const {
+        return History.Print((QuerySize == 0) ? nullptr : &Queries[0].Id);
+    }
+
+    bool WasNotOkResponses() {
+        return AtLeastOneResponseWasNotOk;
+    }
 
 protected:
     EStrategyOutcome RunBoldStrategy(TLogContext &logCtx);

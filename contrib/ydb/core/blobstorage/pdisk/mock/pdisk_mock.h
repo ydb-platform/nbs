@@ -9,7 +9,8 @@ namespace NKikimr {
 
     enum EPDiskMockEvents {
         EvBecomeError = TEvBlobStorage::EvEnd + 1,
-        EvBecomeNormal
+        EvBecomeNormal,
+        EvReplaceData,
     };
 
     class TPDiskMockState : public TThrRefBase {
@@ -21,7 +22,8 @@ namespace NKikimr {
         using TPtr = TIntrusivePtr<TPDiskMockState>;
 
     public:
-        TPDiskMockState(ui32 nodeId, ui32 pdiskId, ui64 pdiskGuid, ui64 size, ui32 chunkSize = 128 << 20);
+        TPDiskMockState(ui32 nodeId, ui32 pdiskId, ui64 pdiskGuid, ui64 size, ui32 chunkSize = 128 << 20,
+                bool isDiskReadOnly = false, NPDisk::EDeviceType deviceType = NPDisk::EDeviceType::DEVICE_TYPE_NVME);
         TPDiskMockState(std::unique_ptr<TImpl>&& impl);
         ~TPDiskMockState();
 
@@ -39,6 +41,16 @@ namespace NKikimr {
         TPtr Snapshot(); // create a copy of PDisk whole state
 
         void SetReadOnly(const TVDiskID& vDiskId, bool isReadOnly);
+
+        bool IsDiskReadOnly() const;
+    };
+
+    struct TEvMoveDrive : TEventLocal<TEvMoveDrive, EvReplaceData> {
+        TIntrusivePtr<TPDiskMockState>& State;
+
+        TEvMoveDrive(TIntrusivePtr<TPDiskMockState>& state)
+            : State(state)
+        {}
     };
 
     IActor *CreatePDiskMockActor(TPDiskMockState::TPtr state);

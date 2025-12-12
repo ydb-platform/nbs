@@ -1,6 +1,6 @@
 #pragma once
 
-#include "contrib/ydb/core/protos/grpc_pq_old.pb.h"
+#include <contrib/ydb/core/protos/grpc_pq_old.pb.h>
 
 #include "kafka.h"
 

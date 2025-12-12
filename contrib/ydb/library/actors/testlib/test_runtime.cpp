@@ -804,6 +804,12 @@ namespace NActors {
         LogBackend = logBackend;
     }
 
+    void TTestActorRuntimeBase::SetLogBackendFactory(std::function<TAutoPtr<TLogBackend>()> logBackendFactory) {
+        Y_ABORT_UNLESS(!IsInitialized);
+        TGuard<TMutex> guard(Mutex);
+        LogBackendFactory = logBackendFactory;
+    }
+
     void TTestActorRuntimeBase::SetLogPriority(NActors::NLog::EComponent component, NActors::NLog::EPriority priority) {
         TGuard<TMutex> guard(Mutex);
         for (ui32 nodeIndex = 0; nodeIndex < NodeCount; ++nodeIndex) {
@@ -828,7 +834,7 @@ namespace NActors {
         return TMonotonic::MicroSeconds(CurrentTimestamp);
     }
 
-    void TTestActorRuntimeBase::UpdateCurrentTime(TInstant newTime) {
+    void TTestActorRuntimeBase::UpdateCurrentTime(TInstant newTime, bool rewind) {
         static int counter = 0;
         ++counter;
         if (VERBOSE) {
@@ -836,7 +842,7 @@ namespace NActors {
         }
         TGuard<TMutex> guard(Mutex);
         Y_ABORT_UNLESS(!UseRealThreads);
-        if (newTime.MicroSeconds() > CurrentTimestamp) {
+        if (rewind || newTime.MicroSeconds() > CurrentTimestamp) {
             CurrentTimestamp = newTime.MicroSeconds();
             for (auto& kv : Nodes) {
                 AtomicStore(kv.second->ActorSystemTimestamp, CurrentTimestamp);
@@ -1160,6 +1166,26 @@ namespace NActors {
             tempEdgeEventsCaptor.Reset(new TTempEdgeEventsCaptor(*this));
         }
 
+        auto checkStopConditions = [&](bool perMessage = false) -> bool {
+            // Note: too many tests expect unrelated messages to be
+            // processed before simulation is stopped.
+            if (!perMessage) {
+                if (localContext.FinalEventFound) {
+                    return true;
+                }
+
+                if (!localContext.FoundNonEmptyMailboxes.empty()) {
+                    return true;
+                }
+            }
+
+            if (options.CustomFinalCondition && options.CustomFinalCondition()) {
+                return true;
+            }
+
+            return false;
+        };
+
         TEventMailBoxList& currentMailboxes = useRestrictedMailboxes ? restrictedMailboxes : Mailboxes;
         while (!currentMailboxes.empty()) {
             bool hasProgress = true;
@@ -1189,7 +1215,8 @@ namespace NActors {
                     isEmpty = true;
                     auto mboxIt = startWithMboxIt;
                     TDeque<TEventMailboxId> suspectedBoxes;
-                    while (true) {
+                    bool stopCondition = false;
+                    while (!stopCondition) {
                         auto& mbox = *mboxIt;
                         bool isIgnored = true;
                         if (!mbox.second->IsEmpty()) {
@@ -1206,13 +1233,14 @@ namespace NActors {
                                     for (auto& ev : events) {
                                         TInverseGuard<TMutex> inverseGuard(Mutex);
 
-                                        for (auto observer : ObserverFuncs) {
+                                        for (auto& observer : ObserverFuncs) {
                                             observer(ev);
                                             if (!ev) break;
                                         }
 
-                                        if(ev && ObserverFunc(ev) != EEventAction::DROP && ev)
+                                        if (ev && ObserverFunc(ev) != EEventAction::DROP) {
                                             eventsToPush.push_back(ev);
+                                        }
                                     }
                                     mbox.second->PushFront(eventsToPush);
                                 }
@@ -1237,37 +1265,41 @@ namespace NActors {
                                     }
 
                                     hasProgress = true;
-                                    EEventAction action = EEventAction::PROCESS;
+                                    EEventAction action;
                                     {
                                         TInverseGuard<TMutex> inverseGuard(Mutex);
 
-                                        for (auto observer : ObserverFuncs) {
+                                        for (auto& observer : ObserverFuncs) {
                                             observer(ev);
-                                            if(!ev) break;
+                                            if (!ev) break;
                                         }
 
-                                        if (ev)
+                                        if (ev) {
                                             action = ObserverFunc(ev);
+                                        } else {
+                                            action = EEventAction::DROP;
+                                        }
                                     }
 
-                                    if (ev) {
-                                        switch (action) {
-                                            case EEventAction::PROCESS:
-                                                UpdateFinalEventsStatsForEachContext(*ev);
-                                                SendInternal(ev.Release(), mbox.first.NodeId - FirstNodeId, false);
-                                                break;
-                                            case EEventAction::DROP:
-                                                // do nothing
-                                                break;
-                                            case EEventAction::RESCHEDULE: {
-                                                TInstant deadline = TInstant::MicroSeconds(CurrentTimestamp) + ReschedulingDelay;
-                                                mbox.second->Freeze(deadline);
-                                                mbox.second->PushFront(ev);
-                                                break;
+                                    switch (action) {
+                                        case EEventAction::PROCESS:
+                                            UpdateFinalEventsStatsForEachContext(*ev);
+                                            SendInternal(ev.Release(), mbox.first.NodeId - FirstNodeId, false);
+                                            if (checkStopConditions(/* perMessage */ true)) {
+                                                stopCondition = true;
                                             }
-                                            default:
-                                                Y_ABORT("Unknown action");
+                                            break;
+                                        case EEventAction::DROP:
+                                            // do nothing
+                                            break;
+                                        case EEventAction::RESCHEDULE: {
+                                            TInstant deadline = TInstant::MicroSeconds(CurrentTimestamp) + ReschedulingDelay;
+                                            mbox.second->Freeze(deadline);
+                                            mbox.second->PushFront(ev);
+                                            break;
                                         }
+                                        default:
+                                            Y_ABORT("Unknown action");
                                     }
                                 }
                             }
@@ -1297,18 +1329,16 @@ namespace NActors {
                             currentMailboxes.erase(it);
                         }
                     }
+
+                    if (stopCondition) {
+                        return true;
+                    }
                 }
             }
 
-            if (localContext.FinalEventFound) {
+            if (checkStopConditions()) {
                 return true;
             }
-
-            if (!localContext.FoundNonEmptyMailboxes.empty())
-                return true;
-
-            if (options.CustomFinalCondition && options.CustomFinalCondition())
-                return true;
 
             if (options.FinalEvents.empty()) {
                 for (auto& mbox : currentMailboxes) {
@@ -1592,8 +1622,10 @@ namespace NActors {
         return node->DynamicCounters;
     }
 
-    void TTestActorRuntimeBase::SetupMonitoring() {
+    void TTestActorRuntimeBase::SetupMonitoring(ui16 monitoringPortOffset, bool monitoringTypeAsync) {
         NeedMonitoring = true;
+        MonitoringPortOffset = monitoringPortOffset;
+        MonitoringTypeAsync = monitoringTypeAsync;
     }
 
     void TTestActorRuntimeBase::SendInternal(TAutoPtr<IEventHandle> ev, ui32 nodeIndex, bool viaActorSystem) {
@@ -1757,6 +1789,9 @@ namespace NActors {
         }
 
         if (!SingleSysEnv) { // Single system env should do this self
+            if (LogBackendFactory) {
+                LogBackend = LogBackendFactory();
+            }
             TAutoPtr<TLogBackend> logBackend = LogBackend ? LogBackend : NActors::CreateStderrBackend();
             NActors::TLoggerActor *loggerActor = new NActors::TLoggerActor(node->LogSettings,
                 logBackend, GetCountersForComponent(node->DynamicCounters, "utils"));

@@ -76,6 +76,14 @@ ui32 GetStageOutputsCount(const TDqStageBase& stage) {
     return resultsTypeTuple->GetSize();
 }
 
+bool DqStageFirstInputIsBroadcast(const TDqStageBase& stage) {
+    if (stage.Inputs().Empty()) {
+        return false;
+    }
+
+    return TDqCnBroadcast::Match(stage.Inputs().Item(0).Raw());
+}
+
 bool IsDqPureNode(const TExprBase& node) {
     return !node.Maybe<TDqSource>() &&
            !node.Maybe<TDqConnection>() &&
@@ -122,47 +130,7 @@ bool IsDqPureExpr(const TExprBase& node, bool isPrecomputePure) {
 }
 
 bool IsDqSelfContainedExpr(const TExprBase& node) {
-    bool selfContained = true;
-    TNodeSet knownArguments;
-
-    VisitExpr(node.Ptr(),
-        [&selfContained, &knownArguments] (const TExprNode::TPtr& node) {
-            if (!selfContained) {
-                return false;
-            }
-
-            if (auto maybeLambda = TMaybeNode<TCoLambda>(node)) {
-                for (const auto& arg : maybeLambda.Cast().Args()) {
-                    YQL_ENSURE(knownArguments.emplace(arg.Raw()).second);
-                }
-            }
-
-            if (node->IsArgument()) {
-                if (!knownArguments.contains(node.Get())) {
-                    selfContained = false;
-                    return false;
-                }
-            }
-
-            return true;
-        },
-        [&selfContained, &knownArguments] (const TExprNode::TPtr& node) {
-            if (!selfContained) {
-                return false;
-            }
-
-            if (auto maybeLambda = TMaybeNode<TCoLambda>(node)) {
-                for (const auto& arg : maybeLambda.Cast().Args()) {
-                    auto it = knownArguments.find(arg.Raw());
-                    YQL_ENSURE(it != knownArguments.end());
-                    knownArguments.erase(it);
-                }
-            }
-
-            return true;
-        });
-
-    return selfContained;
+    return node.Ref().IsComplete();
 }
 
 bool IsDqDependsOnStage(const TExprBase& node, const TDqStageBase& stage) {
@@ -171,8 +139,21 @@ bool IsDqDependsOnStage(const TExprBase& node, const TDqStageBase& stage) {
     });
 }
 
+bool IsDqDependsOnStageOutput(const TExprBase& node, const TDqStageBase& stage, ui32 outputIndex) {
+    return !!FindNode(node.Ptr(), [ptr = stage.Raw(), outputIndex](const TExprNode::TPtr& exprNode) {
+        if (TDqOutput::Match(exprNode.Get())) {
+            TDqOutput output(exprNode);
+            if (output.Stage().Ptr().Get() == ptr) {
+                return FromString<ui32>(output.Index().Value()) == outputIndex;
+            }
+        }
+
+        return false;
+    });
+}
+
 bool CanPushDqExpr(const TExprBase& expr, const TDqStageBase& stage) {
-    return IsDqPureExpr(expr, true) && !IsDqDependsOnStage(expr, stage);
+    return IsDqCompletePureExpr(expr, true) && !IsDqDependsOnStage(expr, stage);
 }
 
 bool CanPushDqExpr(const TExprBase& expr, const TDqConnection& connection) {

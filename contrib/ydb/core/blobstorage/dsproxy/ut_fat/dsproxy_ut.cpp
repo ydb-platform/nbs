@@ -875,7 +875,7 @@ class TTestRangeGet: public TTestBlobStorageProxy {
 
             TLogoBlobID from(1, StartIdx, 0, 0, 1, 0);
             TLogoBlobID to(1, StartIdx + RangeLength, 0, 0, 1, 0);
-            ctx.Send(Proxy, new TEvBlobStorage::TEvRange(MakeTabletID(0, 0, 1), from, to, true, TInstant::Max()));
+            ctx.Send(Proxy, new TEvBlobStorage::TEvRange(1, from, to, true, TInstant::Max()));
         } else {
             InitExpectedValues();
             TEST_RESPONSE_FULLCHECK(MessageRangeResult, OK, (size_t)RangeSize, ExpectedValues);
@@ -2793,7 +2793,7 @@ class TTestEmptyRange : public TTestBlobStorageProxy {
                 TLogoBlobID from(1, 7/*generation*/, 0, 0, 0, 0);
                 TLogoBlobID to(1, 8/*generation*/, 0, 0, 0, 0);
                 VERBOSE_COUT(" Sending TEvRange, expecting 0");
-                ctx.Send(Proxy, new TEvBlobStorage::TEvRange(MakeTabletID(0, 0, 1), from, to, true, TInstant::Max()));
+                ctx.Send(Proxy, new TEvBlobStorage::TEvRange(1, from, to, true, TInstant::Max()));
                 break;
             }
             case 10:
@@ -2935,7 +2935,7 @@ class TTestBlobStorageProxyBasic1 : public TTestBlobStorageProxy {
                 TLogoBlobID from(1, 7/*generation*/, 0, 0, 0, 0);
                 TLogoBlobID to(1, 6/*generation*/, 0, 0, 0, 0);
                 VERBOSE_COUT(" Sending TEvRange, expecting 1");
-                ctx.Send(Proxy, new TEvBlobStorage::TEvRange(MakeTabletID(0, 0, 1), from, to, true, TInstant::Max()));
+                ctx.Send(Proxy, new TEvBlobStorage::TEvRange(1, from, to, true, TInstant::Max()));
                 break;
             }
             case 120:
@@ -2947,7 +2947,7 @@ class TTestBlobStorageProxyBasic1 : public TTestBlobStorageProxy {
                 TLogoBlobID from(1, 7/*generation*/, 0, 0, 0, 0);
                 TLogoBlobID to(1, 2/*generation*/, 0, 0, 0, 0);
                 VERBOSE_COUT(" Sending TEvRange, expecting 4");
-                ctx.Send(Proxy, new TEvBlobStorage::TEvRange(MakeTabletID(0, 0, 1), from, to, true, TInstant::Max()));
+                ctx.Send(Proxy, new TEvBlobStorage::TEvRange(1, from, to, true, TInstant::Max()));
                 break;
             }
             case 130:
@@ -2966,7 +2966,7 @@ class TTestBlobStorageProxyBasic1 : public TTestBlobStorageProxy {
                 TLogoBlobID from(1, 2/*generation*/, 0, 0, 0, 0);
                 TLogoBlobID to(1, 7/*generation*/, 0, 0, TLogoBlobID::MaxBlobSize, 0);
                 VERBOSE_COUT(" Sending TEvRange, expecting 4");
-                ctx.Send(Proxy, new TEvBlobStorage::TEvRange(MakeTabletID(0, 0, 1), from, to, true, TInstant::Max()));
+                ctx.Send(Proxy, new TEvBlobStorage::TEvRange(1, from, to, true, TInstant::Max()));
                 break;
             }
             case 140:
@@ -2985,7 +2985,7 @@ class TTestBlobStorageProxyBasic1 : public TTestBlobStorageProxy {
                 TLogoBlobID from(1, 7/*generation*/, 0, 0, 0, 0);
                 TLogoBlobID to(1, 8/*generation*/, 0, 0, TLogoBlobID::MaxBlobSize, 0);
                 VERBOSE_COUT(" Sending TEvRange, expecting 0");
-                ctx.Send(Proxy, new TEvBlobStorage::TEvRange(MakeTabletID(0, 0, 1), from, to, true, TInstant::Max()));
+                ctx.Send(Proxy, new TEvBlobStorage::TEvRange(1, from, to, true, TInstant::Max()));
                 break;
             }
             case 150:
@@ -2997,7 +2997,7 @@ class TTestBlobStorageProxyBasic1 : public TTestBlobStorageProxy {
                 TLogoBlobID from(1, 2/*generation*/, 0, 0, 0, 0);
                 TLogoBlobID to(1, 3/*generation*/, 0, 0, TLogoBlobID::MaxBlobSize, 0);
                 VERBOSE_COUT(" Sending TEvRange, expecting 1");
-                ctx.Send(Proxy, new TEvBlobStorage::TEvRange(MakeTabletID(0, 0, 1), from, to, true, TInstant::Max()));
+                ctx.Send(Proxy, new TEvBlobStorage::TEvRange(1, from, to, true, TInstant::Max()));
                 break;
             }
             case 160:
@@ -3403,9 +3403,25 @@ class TTestBlobStorageProxyBatchedPutRequestDoesNotContainAHugeBlob : public TTe
                 batched[1] = GetPut(blobIds[1], Data2);
 
                 TMaybe<TGroupStat::EKind> kind = PutHandleClassToGroupStatKind(HandleClass);
-                IActor *reqActor = CreateBlobStorageGroupPutRequest(BsInfo, GroupQueues,
-                        Mon, batched, false, PerDiskStatsPtr, kind,TInstant::Now(),
-                        StoragePoolCounters, HandleClass, Tactic, false);
+                IActor *reqActor = CreateBlobStorageGroupPutRequest(
+                        TBlobStorageGroupMultiPutParameters{
+                            .Common = {
+                                .GroupInfo = BsInfo,
+                                .GroupQueues = GroupQueues,
+                                .Mon = Mon,
+                                .Now = TMonotonic::Now(),
+                                .StoragePoolCounters = StoragePoolCounters,
+                                .RestartCounter = TBlobStorageGroupMultiPutParameters::CalculateRestartCounter(batched),
+                                .LatencyQueueKind = kind,
+                            },
+                            .Events = batched,
+                            .TimeStatsEnabled = false,
+                            .Stats = PerDiskStatsPtr,
+                            .HandleClass = HandleClass,
+                            .Tactic = Tactic,
+                            .EnableRequestMod3x3ForMinLatency = false,
+                            .AccelerationParams = TAccelerationParams{},
+                        });
 
                 ctx.Register(reqActor);
                 break;
@@ -4188,8 +4204,18 @@ public:
         TIntrusivePtr<TDsProxyNodeMon> dsProxyNodeMon(new TDsProxyNodeMon(counters, true));
         TDsProxyPerPoolCounters perPoolCounters(counters);
         TIntrusivePtr<TStoragePoolCounters> storagePoolCounters = perPoolCounters.GetPoolCounters("pool_name");
+        TControlWrapper enablePutBatching(args.EnablePutBatching, false, true);
+        TControlWrapper enableVPatch(DefaultEnableVPatch, false, true);
         std::unique_ptr<IActor> proxyActor{CreateBlobStorageGroupProxyConfigured(TIntrusivePtr(bsInfo), false,
-            dsProxyNodeMon, TIntrusivePtr(storagePoolCounters), args.EnablePutBatching, DefaultEnableVPatch)};
+                dsProxyNodeMon, TIntrusivePtr(storagePoolCounters),
+                TBlobStorageProxyParameters{
+                    .Controls = TBlobStorageProxyControlWrappers{
+                        .EnablePutBatching = enablePutBatching,
+                        .EnableVPatch = enableVPatch,
+                    }
+                }
+            )
+        };
         TActorSetupCmd bsproxySetup(proxyActor.release(), TMailboxType::Revolving, 3);
         setup1->LocalServices.push_back(std::pair<TActorId, TActorSetupCmd>(env->ProxyId, std::move(bsproxySetup)));
 
@@ -4252,6 +4278,7 @@ public:
                 vDiskConfig->GCOnlySynced = false;
                 vDiskConfig->HullCompLevelRateThreshold = 0.1;
                 vDiskConfig->SkeletonFrontQueueBackpressureCheckMsgId = false;
+                vDiskConfig->UseCostTracker = false;
 
                 IActor* vDisk = CreateVDisk(vDiskConfig, bsInfo, counters);
                 TActorSetupCmd vDiskSetup(vDisk, TMailboxType::Revolving, 0);
@@ -4278,7 +4305,7 @@ public:
         EnableActorCallstack();
         try {
             VERBOSE_COUT("Sending TEvBoot to testproxy");
-            actorSystem1->Send(env->ProxyTestId, new TEvTablet::TEvBoot(MakeTabletID(0, 0, 1), 0, nullptr, TActorId(),
+            actorSystem1->Send(env->ProxyTestId, new TEvTablet::TEvBoot(1, 0, nullptr, TActorId(),
                         nullptr));
             VERBOSE_COUT("Done");
 

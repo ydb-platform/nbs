@@ -21,6 +21,8 @@ PEERDIR(
     contrib/ydb/core/formats
     contrib/ydb/core/tx
     contrib/ydb/core/tx/columnshard
+    contrib/ydb/core/tx/columnshard/test_helper
+    contrib/ydb/core/tx/columnshard/hooks/testing
     contrib/ydb/core/tx/schemeshard/ut_helpers
     contrib/ydb/library/yql/public/udf/service/exception_policy
 )
@@ -29,7 +31,6 @@ YQL_LAST_ABI_VERSION()
 
 SRCS(
     ut_olap.cpp
-    contrib/ydb/core/tx/columnshard/columnshard_ut_common.cpp
 )
 
 END()

@@ -1,0 +1,23 @@
+items:
+  - name: Обзор
+    href: index.md
+  - name: Установка SDK
+    href: install.md
+  - name: Аутентификация в SDK
+    href: auth.md
+  - name: Параметризованные запросы
+    href: parameterized_queries.md
+  - name: Работа с топиками
+    href: topic.md
+  - name: Обработка ошибок в API
+    href: error_handling.md
+  - name: gRPC API
+    items:
+    - name: Обзор
+      href: overview-grpc-api.md
+    - name: Заголовки gRPC
+      href: grpc-headers.md
+    - name: Health Check API
+      href: health-check-api.md
+  - name: Сравнение возможностей SDK
+    href: feature-parity.md

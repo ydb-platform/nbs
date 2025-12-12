@@ -14,6 +14,7 @@ ELSE()
 ENDIF()
 
 PEERDIR(
+    contrib/ydb/core/protos
     contrib/ydb/core/tx/schemeshard/ut_helpers
     contrib/ydb/library/yql/sql/pg_dummy
 )

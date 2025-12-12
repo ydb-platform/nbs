@@ -4,6 +4,8 @@
 
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/core/protos/kesus.pb.h>
+#include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
+#include <contrib/ydb/public/api/protos/ydb_issue_message.pb.h>
 #include <contrib/ydb/core/scheme/scheme_tabledefs.h>
 
 namespace NKikimr {

@@ -1,10 +1,15 @@
 #include <library/cpp/testing/unittest/tests_data.h>
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <grpc++/client_context.h>
-#include <grpc++/create_channel.h>
+#include <grpcpp/client_context.h>
+#include <grpcpp/create_channel.h>
 
 #include <contrib/ydb/core/testlib/test_client.h>
+#include <contrib/ydb/core/protos/console_config.pb.h>
+#include <contrib/ydb/core/protos/console_base.pb.h>
+#include <contrib/ydb/core/protos/console.pb.h>
+#include <contrib/ydb/core/protos/cms.pb.h>
+#include <contrib/ydb/core/protos/console_tenant.pb.h>
 
 #include <contrib/ydb/library/aclib/aclib.h>
 

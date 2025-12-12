@@ -33,6 +33,7 @@ namespace NYql {
         const TString OPERATION_SIZE("OPERATION_SIZE");
         const TString YT_COORDINATOR("YT_COORDINATOR");
         const TString YT_BACKEND("YT_BACKEND");
+        const TString YT_FORCE_IPV4("YT_FORCE_IPV4");
     }
 
     using namespace NActors;
@@ -600,6 +601,7 @@ namespace NYql {
                         .BeginMap()
                             .Item(NCommonJobVars::YT_COORDINATOR).Value(coordinatorStr)
                             .Item(NCommonJobVars::YT_BACKEND).Value(backendStr)
+                            .Item(NCommonJobVars::YT_FORCE_IPV4).Value(Options.ForceIPv4)
                             .DoFor(Options.YtBackend.GetVaultEnv(), [&] (NYT::TFluentMap fluent, const NYql::NProto::TDqConfig::TAttr& envVar) { // Добавляем env variables
                                 TString tokenValue;
                                 try {
@@ -680,6 +682,16 @@ namespace NYql {
                                         })
                                         .DoIf(Options.YtBackend.HasUseTmpFs() && Options.YtBackend.GetUseTmpFs(), [&] (NYT::TFluentMap fluent) {
                                             fluent.Item("tmpfs_path").Value(fileCache);
+                                        })
+                                        .DoIf(Options.YtBackend.HasDiskRequest(), [&] (NYT::TFluentMap fluent) {
+                                            auto& diskRequest = Options.YtBackend.GetDiskRequest();
+                                            fluent.Item("disk_request")
+                                                .BeginMap()
+                                                    .DoIf(diskRequest.HasDiskSpace(), [&] (NYT::TFluentMap fluent) { fluent.Item("disk_space").Value(diskRequest.GetDiskSpace()); } )
+                                                    .DoIf(diskRequest.HasInodeCount(), [&] (NYT::TFluentMap fluent) { fluent.Item("inode_count").Value(diskRequest.GetInodeCount()); } )
+                                                    .DoIf(diskRequest.HasAccount(), [&] (NYT::TFluentMap fluent) { fluent.Item("account").Value(diskRequest.GetAccount()); } )
+                                                    .DoIf(diskRequest.HasMediumName(), [&] (NYT::TFluentMap fluent) { fluent.Item("medium_name").Value(diskRequest.GetMediumName()); } )
+                                                .EndMap();
                                         })
                                     .EndMap();
                             })

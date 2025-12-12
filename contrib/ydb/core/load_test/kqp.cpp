@@ -3,10 +3,11 @@
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
 #include <contrib/ydb/core/kqp/common/kqp.h>
+#include <contrib/ydb/core/protos/kqp_stats.pb.h>
 
-#include <contrib/ydb/library/workload/workload_factory.h>
-#include <contrib/ydb/library/workload/stock_workload.h>
-#include <contrib/ydb/library/workload/kv_workload.h>
+#include <contrib/ydb/library/workload/abstract/workload_factory.h>
+#include <contrib/ydb/library/workload/stock/stock.h>
+#include <contrib/ydb/library/workload/kv/kv.h>
 
 #include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
 

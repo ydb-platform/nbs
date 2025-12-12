@@ -142,6 +142,10 @@ public:
             if (alterData->Description.HasCycle()) {
                 event->Record.SetCycle(alterData->Description.GetCycle());
             }
+            if (alterData->Description.HasSetVal()) {
+                event->Record.MutableSetVal()->SetNextValue(alterData->Description.GetSetVal().GetNextValue());
+                event->Record.MutableSetVal()->SetNextUsed(alterData->Description.GetSetVal().GetNextUsed());
+            }
 
             LOG_DEBUG_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                         "TCreateSequence TConfigureParts ProgressState"
@@ -242,6 +246,64 @@ public:
     }
 };
 
+// fill sequence description with default values
+NKikimrSchemeOp::TSequenceDescription FillSequenceDescription(const NKikimrSchemeOp::TSequenceDescription& descr) {
+    NKikimrSchemeOp::TSequenceDescription result = descr;
+
+    i64 increment = 0;
+    if (result.HasIncrement()) {
+        increment = result.GetIncrement();
+    }
+    if (increment == 0) {
+        increment = 1;
+    }
+    result.SetIncrement(increment);
+
+    i64 minValue = 1;
+    i64 maxValue = Max<i64>();
+    if (increment < 0) {
+        maxValue = -1;
+        minValue = Min<i64>();
+    }
+
+    if (result.HasMaxValue()) {
+        maxValue = result.GetMaxValue();
+    }
+
+    if (result.HasMinValue()) {
+        minValue = result.GetMinValue();
+    }
+
+    result.SetMaxValue(maxValue);
+    result.SetMinValue(minValue);
+
+    bool cycle = false;
+    if (result.HasCycle()) {
+        cycle = result.GetCycle();
+    }
+
+    result.SetCycle(cycle);
+
+    i64 startValue = minValue;
+    if (increment < 0) {
+        startValue = maxValue;
+    }
+    if (result.HasStartValue()) {
+        startValue = result.GetStartValue();
+    }
+
+    result.SetStartValue(startValue);
+
+    ui64 cache = 1;
+    if (result.HasCache()) {
+        cache = result.GetCache();
+    }
+
+    result.SetCache(cache);
+
+    return result;
+}
+
 class TCreateSequence : public TSubOperation {
     static TTxState::ETxState NextState() {
         return TTxState::CreateParts;
@@ -309,10 +371,12 @@ public:
                 .IsResolved()
                 .NotDeleted()
                 .NotUnderDeleting()
-                .IsCommonSensePath();
+                .IsCommonSensePath()
+                .FailOnRestrictedCreateInTempZone(Transaction.GetAllowCreateInTempDir());
 
             if (checks) {
                 if (parentPath->IsTable()) {
+                    checks.NotBackupTable();
                     // allow immediately inside a normal table
                     if (parentPath.IsUnderOperation()) {
                         checks.IsUnderTheSameOperation(OperationId.GetTxId()); // allowed only as part of consistent operations
@@ -425,7 +489,7 @@ public:
 
         TSequenceInfo::TPtr sequenceInfo = new TSequenceInfo(0);
         TSequenceInfo::TPtr alterData = sequenceInfo->CreateNextVersion();
-        alterData->Description = descr;
+        alterData->Description = FillSequenceDescription(descr);
 
         if (shardsToCreate) {
             sequenceShard = context.SS->RegisterShardInfo(
@@ -435,7 +499,7 @@ public:
             txState.Shards.emplace_back(sequenceShard, ETabletType::SequenceShard, TTxState::CreateParts);
             txState.State = TTxState::CreateParts;
             context.SS->PathsById.at(domainPathId)->IncShardsInside();
-            domainInfo->AddInternalShard(sequenceShard);
+            domainInfo->AddInternalShard(sequenceShard, context.SS);
             domainInfo->AddSequenceShard(sequenceShard);
         } else {
             txState.Shards.emplace_back(sequenceShard, ETabletType::SequenceShard, TTxState::ConfigureParts);
@@ -456,11 +520,10 @@ public:
         context.SS->ChangeTxState(db, OperationId, txState.State);
         context.OnComplete.ActivateTx(OperationId);
 
-        context.SS->PersistPath(db, dstPath->PathId);
         if (!acl.empty()) {
             dstPath->ApplyACL(acl);
-            context.SS->PersistACL(db, dstPath.Base());
         }
+        context.SS->PersistPath(db, dstPath->PathId);
 
         context.SS->Sequences[pathId] = sequenceInfo;
         context.SS->PersistSequence(db, pathId, *sequenceInfo);
@@ -488,7 +551,7 @@ public:
         context.SS->ClearDescribePathCaches(dstPath.Base());
         context.OnComplete.PublishToSchemeBoard(OperationId, dstPath->PathId);
 
-        domainInfo->IncPathsInside();
+        domainInfo->IncPathsInside(context.SS);
         parentPath->IncAliveChildren();
 
         SetState(NextState());
