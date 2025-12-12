@@ -1,3 +1,5 @@
+import os
+import subprocess
 import pytest
 import tempfile
 import time
@@ -77,3 +79,28 @@ def test_load_works(scenario, engine, direct):
         pass
     else:
         pytest.fail(f"Eternal load should not have finished within {timeout} seconds")
+
+
+@pytest.fixture
+def fixture_mount_tmpfs():
+    mount_dir = "/tmp/testfs"
+    os.makedirs(mount_dir, exist_ok=True)
+    subprocess.run(["sudo", "mount", "-t", "tmpfs", "-o", "size=1M", "tmpfs", mount_dir], check=True)
+    yield mount_dir
+    subprocess.run(["sudo", "umount", mount_dir], check=True)
+
+
+def test_load_async_io_fails(fixture_mount_tmpfs):
+    mount_dir = fixture_mount_tmpfs
+
+    tmp_file = tempfile.NamedTemporaryFile(suffix=".test", dir=mount_dir)
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        # linux native aio does not work on tmpfs with IO_DIRECT
+        future = executor.submit(__run_load_test, tmp_file.name, "aligned", "asyncio", False)
+
+        result = future.result()
+
+        assert result.returncode == 1
+        msg = 'Can\'t write to file: (yexception) (No space left on device) async IO operation failed'
+        assert result.stderr.find(msg) != -1
