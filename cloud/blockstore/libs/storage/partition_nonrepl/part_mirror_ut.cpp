@@ -3277,7 +3277,13 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         TPartitionClient client(runtime, env.ActorId);
 
-        client.WriteBlocks(TBlockRange64::WithLength(10, 5), 1);
+        client.SendWriteBlocksRequest(TBlockRange64::WithLength(10, 5), 1);
+        auto response = client.RecvWriteBlocksResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetError().GetCode(),
+            FormatError(response->GetError()));
 
         UNIT_ASSERT_LE(1, undeliveredDescribeRequestCount);
     }

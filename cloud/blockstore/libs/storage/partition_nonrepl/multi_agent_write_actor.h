@@ -459,16 +459,21 @@ void TMultiAgentWriteActor<TMethod>::HandleDiscoveryUndelivery(
     const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
         "[%s] TEvGetDeviceForRangeRequest request undelivered to nonrepl "
-        "partition",
-        DiskId.c_str());
+        "partition #%lu",
+        DiskId.c_str(),
+        ev->Cookie);
 
-    Fallback(ctx);
+    UpdateResponse(
+        MakeError(
+            E_REJECTED,
+            TStringBuilder()
+                << "Discovery request undelivered to nonrepl partition #"
+                << ev->Cookie));
+    Done(ctx);
 }
 
 template <typename TMethod>
