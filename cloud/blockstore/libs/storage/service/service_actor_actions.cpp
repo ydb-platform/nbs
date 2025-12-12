@@ -48,6 +48,7 @@ void TServiceActor::HandleExecuteAction(
         {"describeblocks",                    &TServiceActor::CreateDescribeBlocksActionActor              },
         {"describevolume",                    &TServiceActor::CreateDescribeVolumeActionActor              },
         {"diskregistrychangestate",           &TServiceActor::CreateDiskRegistryChangeStateActor           },
+        {"diskregistrycomparestate",          &TServiceActor::CreateDiskRegistryCompareStateActor          },
         {"drainnode",                         &TServiceActor::CreateDrainNodeActionActor                   },
         {"finishfilldisk",                    &TServiceActor::CreateFinishFillDiskActionActor              },
         {"getcompactionstatus",               &TServiceActor::CreateGetCompactionStatusActionActor         },

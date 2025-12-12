@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 
+#include <google/protobuf/util/message_differencer.h>
 #include <util/generic/algorithm.h>
 #include <util/generic/iterator_range.h>
 #include <util/string/builder.h>
@@ -208,6 +209,33 @@ void TDeviceList::RemoveDevices(const NProto::TAgentConfig& agent)
         RemoveFromAllDevices(uuid);
         DirtyDevices.erase(uuid);
     }
+}
+
+bool TDeviceList::CompareDevices(const TDeviceList& rhs) const
+{
+    using google::protobuf::util::MessageDifferencer;
+    static_assert(sizeof(*this) == 232);
+
+    for(const auto& [k, v] : SuspendedDevices) {
+        if(
+            rhs.SuspendedDevices.find(k) == rhs.SuspendedDevices.end() ||
+            !MessageDifferencer::ApproximatelyEquals(v, rhs.SuspendedDevices.at(k))
+        ) {
+            return false;
+        }
+    }
+
+    for(const auto& [k, v] : AllDevices) {
+        if(
+            rhs.AllDevices.find(k) == rhs.AllDevices.end() ||
+            !MessageDifferencer::ApproximatelyEquals(v, rhs.AllDevices.at(k))
+        ) {
+            return false;
+        }
+    }
+
+    return AllocatedDevices == rhs.AllocatedDevices &&
+           DirtyDevices == rhs.DirtyDevices;
 }
 
 TDeviceList::TNodeId TDeviceList::FindNodeId(const TDeviceId& id) const

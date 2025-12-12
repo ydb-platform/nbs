@@ -63,6 +63,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(PurgeHostCms,                       __VA_ARGS__)                       \
     xxx(RemoveOrphanDevices,                __VA_ARGS__)                       \
     xxx(AddOutdatedLaggingDevices,          __VA_ARGS__)                       \
+    xxx(CompareDiskRegistryState,           __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1477,6 +1478,23 @@ struct TTxDiskRegistry
         void Clear()
         {
             Error.Clear();
+        }
+    };
+
+    struct TCompareDiskRegistryState
+    {
+        const TRequestInfoPtr RequestInfo;
+
+        NProto::TCompareDiskRegistryStateResponse Result;
+
+        TCompareDiskRegistryState(
+                TRequestInfoPtr requestInfo)
+            : RequestInfo(std::move(requestInfo))
+        {}
+
+        void Clear()
+        {
+            Result.Clear();
         }
     };
 };

@@ -59,6 +59,8 @@ public:
         TVector<TDiskStateUpdate> diskStateUpdates,
         ui64 diskStateSeqNo,
         TVector<TDiskId> outdatedVolumes);
+    
+    bool operator==(const TNotificationSystem& rhs) const;
 
     [[nodiscard]] static NProto::TDiskState CreateDiskState(
         const TDiskId& diskId,
