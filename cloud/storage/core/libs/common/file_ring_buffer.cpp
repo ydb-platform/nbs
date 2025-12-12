@@ -4,8 +4,11 @@
 
 #include <util/generic/size_literals.h>
 #include <util/stream/mem.h>
+#include <util/system/align.h>
 #include <util/system/compiler.h>
 #include <util/system/filemap.h>
+
+#include <span>
 
 namespace NCloud {
 
@@ -13,19 +16,36 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 VERSION = 2;
+constexpr ui32 VERSION_PREV = 2;
+constexpr ui32 VERSION = 3;
 constexpr ui64 INVALID_POS = Max<ui64>();
+
+// Reserve some space after header so adding new fields will not require data
+// migration
+constexpr ui64 DefaultDataOffset = 256;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct THeader
+struct THeaderPrev
 {
     ui32 Version = 0;
-    ui64 Capacity = 0;
+    ui32 HeaderSize = 0;
+    ui64 DataCapacity = 0;
     ui64 ReadPos = 0;
     ui64 WritePos = 0;
     ui64 LastEntrySize = 0;
 };
+
+struct THeader: THeaderPrev
+{
+    ui64 DataOffset = 0;
+    ui64 MetadataCapacity = 0;
+    ui64 MetadataOffset = 0;
+    ui32 MetadataSize = 0;
+    ui32 MetadataChecksum = 0;
+};
+
+static_assert(sizeof(THeader) <= DefaultDataOffset);
 
 struct Y_PACKED TEntryHeader
 {
@@ -66,16 +86,13 @@ struct Y_PACKED TEntryHeader
 class TEntriesData
 {
 private:
-    char* Begin = nullptr;
-    const char* End = nullptr;
+    std::span<char> Data;
 
     template <class T = char>
     T* GetPtr(ui64 pos, ui64 size = sizeof(T)) const
     {
-        char* begin = Begin + pos;
-        const char* end = begin + size;
-        return Begin <= begin && begin <= end && end <= End
-                   ? reinterpret_cast<T*>(begin)
+        return pos < Data.size() && size <= Data.size() - pos
+                   ? reinterpret_cast<T*>(Data.data() + pos)
                    : nullptr;
     }
 
@@ -84,22 +101,16 @@ private:
         Y_ABORT_UNLESS(eh != nullptr);
         Y_ABORT_UNLESS(eh->DataSize != 0);
 
-        ui64 pos = reinterpret_cast<const char*>(eh) - Begin;
+        ui64 pos = reinterpret_cast<const char*>(eh) - Data.data();
         return GetPtr(pos + sizeof(eh), eh->DataSize);
     }
 
 public:
     TEntriesData() = default;
 
-    TEntriesData(char* begin, const char* end)
-    {
-        Y_ABORT_UNLESS(begin != nullptr);
-        Y_ABORT_UNLESS(end != nullptr);
-        Y_ABORT_UNLESS(begin <= end);
-
-        Begin = begin;
-        End = end;
-    }
+    explicit TEntriesData(std::span<char> data)
+        : Data(data)
+    {}
 
     TEntryHeader* GetEntryHeader(ui64 pos)
     {
@@ -190,6 +201,21 @@ struct TEntryInfo
         return TEntryInfo{.ActualPos = INVALID_POS};
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+THeader InitHeader(ui64 dataCapacity, ui64 metadataCapacity)
+{
+    THeader res;
+    res.Version = VERSION;
+    res.HeaderSize = sizeof(THeader);
+    res.MetadataOffset = DefaultDataOffset;
+    res.MetadataCapacity = metadataCapacity;
+    res.DataOffset =
+        AlignUp(res.MetadataOffset + res.MetadataCapacity, sizeof(ui64));
+    res.DataCapacity = dataCapacity;
+    return res;
+}
 
 }   // namespace
 
@@ -322,36 +348,90 @@ private:
         }
     }
 
+    std::span<char> GetMappedData() const
+    {
+        return std::span<char>(static_cast<char*>(Map.Ptr()), Map.MappedSize());
+    }
+
+    void Migrate(const THeader& header)
+    {
+        Y_ABORT_UNLESS(Header()->DataCapacity == header.DataCapacity);
+        Y_ABORT_UNLESS(sizeof(THeaderPrev) <= header.DataOffset);
+
+        const ui64 newFileSize = header.DataOffset + header.DataCapacity;
+
+        // Make a copy of all data in the end of the file
+        // Then copy it to the right place
+        Map.ResizeAndRemap(0, newFileSize + header.DataCapacity);
+        auto map = GetMappedData();
+
+        if (Header()->HeaderSize == 0) {
+            memcpy(
+                map.data() + newFileSize,
+                map.data() + sizeof(THeaderPrev),
+                header.DataCapacity);
+            // Indicate that the data has been copied
+            Header()->HeaderSize = sizeof(THeader);
+        }
+
+        Y_ABORT_UNLESS(Header()->HeaderSize == sizeof(THeader));
+        memcpy(
+            map.data() + header.DataOffset,
+            map.data() + newFileSize,
+            header.DataCapacity);
+
+        Header()->DataOffset = header.DataOffset;
+        Header()->MetadataOffset = header.MetadataOffset;
+        Header()->MetadataCapacity = header.MetadataCapacity;
+        Header()->MetadataSize = 0;
+        Header()->Version = VERSION;
+
+        Map.ResizeAndRemap(0, newFileSize);
+    }
+
 public:
-    TImpl(const TString& filePath, ui64 capacity)
+    TImpl(const TString& filePath, ui64 dataCapacity, ui64 metadataCapacity)
         : Map(filePath, TMemoryMapCommon::oRdWr)
     {
-        Y_ABORT_UNLESS(sizeof(TEntryHeader) <= capacity);
+        Y_ABORT_UNLESS(sizeof(TEntryHeader) <= dataCapacity);
 
         if (static_cast<ui64>(Map.Length()) < sizeof(THeader)) {
-            const ui64 realSize = sizeof(THeader) + capacity;
-            Map.ResizeAndRemap(0, realSize);
+            auto header = InitHeader(dataCapacity, metadataCapacity);
+            Map.ResizeAndRemap(0, header.DataOffset + header.DataCapacity);
+            *Header() = header;
         } else {
             Map.Map(0, Map.Length());
         }
 
-        if (Header()->Version) {
-            Y_ABORT_UNLESS(
-                sizeof(THeader) + Header()->Capacity <=
-                static_cast<ui64>(Map.Length()));
-            Y_ABORT_UNLESS(Header()->Version == VERSION);
-        } else {
-            Header()->Capacity = capacity;
-            Header()->Version = VERSION;
+        if (Header()->Version == VERSION_PREV) {
+            auto header = InitHeader(Header()->DataCapacity, metadataCapacity);
+            Migrate(header);
         }
 
-        auto* begin = static_cast<char*>(Map.Ptr()) + sizeof(THeader);
-        Data = TEntriesData(begin, begin + capacity);
+        TString s;
+        auto map = GetMappedData();
+        const auto& eh = *Header();
+
+        Y_ABORT_UNLESS(eh.Version == VERSION);
+        Y_ABORT_UNLESS(sizeof(THeader) == eh.HeaderSize);
+
+        Y_ABORT_UNLESS(eh.HeaderSize <= eh.MetadataOffset);
+        Y_ABORT_UNLESS(eh.MetadataOffset <= map.size());
+        Y_ABORT_UNLESS(eh.MetadataCapacity <= map.size() - eh.MetadataOffset);
+
+        Y_ABORT_UNLESS(eh.HeaderSize <= eh.DataOffset);
+        Y_ABORT_UNLESS(eh.DataOffset <= map.size());
+        Y_ABORT_UNLESS(eh.DataCapacity <= map.size() - eh.DataOffset);
+
+        Y_ABORT_UNLESS(
+            eh.MetadataOffset + eh.MetadataCapacity <= eh.DataOffset ||
+            eh.DataOffset + eh.DataCapacity <= eh.MetadataOffset);
+
+        Data = TEntriesData(map.subspan(eh.DataOffset, eh.DataCapacity));
 
         ValidateDataStructure();
     }
 
-public:
     bool PushBack(TStringBuf data)
     {
         if (IsCorrupted()) {
@@ -364,7 +444,7 @@ public:
         }
 
         const auto sz = data.size() + sizeof(TEntryHeader);
-        if (sz > Header()->Capacity) {
+        if (sz > Header()->DataCapacity) {
             return false;
         }
         auto writePos = Header()->WritePos;
@@ -375,7 +455,7 @@ public:
             // and a buffer which is completely full
             if (Header()->ReadPos < Header()->WritePos) {
                 // we have a single contiguous occupied region
-                ui64 freeSpace = Header()->Capacity - Header()->WritePos;
+                ui64 freeSpace = Header()->DataCapacity - Header()->WritePos;
                 if (freeSpace < sz) {
                     if (Header()->ReadPos <= sz) {
                         // out of space
@@ -513,13 +593,13 @@ public:
 
     ui64 GetRawCapacity() const
     {
-        return Header()->Capacity;
+        return Header()->DataCapacity;
     }
 
     ui64 GetRawUsedBytesCount() const
     {
         ui64 res =
-            Header()->ReadPos > Header()->WritePos ? Header()->Capacity : 0;
+            Header()->ReadPos > Header()->WritePos ? Header()->DataCapacity : 0;
 
         return res + Header()->WritePos - Header()->ReadPos;
     }
@@ -532,9 +612,9 @@ public:
 
         ui64 maxRawSize = 0;
         if (Empty()) {
-            maxRawSize = Header()->Capacity;
+            maxRawSize = Header()->DataCapacity;
         } else if (Header()->ReadPos <= Header()->WritePos) {
-            maxRawSize = Header()->Capacity - Header()->WritePos;
+            maxRawSize = Header()->DataCapacity - Header()->WritePos;
             if (Header()->ReadPos > 0) {
                 maxRawSize = Max(maxRawSize, Header()->ReadPos - 1);
             }
@@ -545,14 +625,53 @@ public:
                    ? maxRawSize - sizeof(TEntryHeader)
                    : 0;
     }
+
+    bool ValidateMetadata() const
+    {
+        auto data = GetMappedData().subspan(
+            Header()->MetadataOffset,
+            Header()->MetadataCapacity);
+
+        return Header()->MetadataSize <= data.size() &&
+               Crc32c(data.data(), Header()->MetadataSize) ==
+                   Header()->MetadataChecksum;
+    }
+
+    TStringBuf GetMetadata() const
+    {
+        auto data = GetMappedData().subspan(
+            Header()->MetadataOffset,
+            Header()->MetadataCapacity);
+
+        Y_ABORT_UNLESS(Header()->MetadataSize <= data.size());
+
+        return {data.data(), Header()->MetadataSize};
+    }
+
+    bool SetMetadata(TStringBuf buf)
+    {
+        if (buf.size() > Header()->MetadataCapacity) {
+            return false;
+        }
+
+        auto data = GetMappedData().subspan(
+            Header()->MetadataOffset,
+            Header()->MetadataCapacity);
+
+        Header()->MetadataSize = buf.size();
+        Header()->MetadataChecksum = Crc32c(buf.data(), buf.size());
+        buf.copy(data.data(), buf.size());
+        return true;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TFileRingBuffer::TFileRingBuffer(
         const TString& filePath,
-        ui64 capacity)
-    : Impl(new TImpl(filePath, capacity))
+        ui64 dataCapacity,
+        ui64 metadataCapacity)
+    : Impl(new TImpl(filePath, dataCapacity, metadataCapacity))
 {}
 
 TFileRingBuffer::~TFileRingBuffer() = default;
@@ -615,6 +734,21 @@ ui64 TFileRingBuffer::GetRawUsedBytesCount() const
 ui64 TFileRingBuffer::GetMaxAllocationBytesCount() const
 {
     return Impl->GetMaxAllocationBytesCount();
+}
+
+bool TFileRingBuffer::ValidateMetadata() const
+{
+    return Impl->ValidateMetadata();
+}
+
+TStringBuf TFileRingBuffer::GetMetadata() const
+{
+    return Impl->GetMetadata();
+}
+
+bool TFileRingBuffer::SetMetadata(TStringBuf data)
+{
+    return Impl->SetMetadata(data);
 }
 
 }   // namespace NCloud

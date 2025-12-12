@@ -1785,7 +1785,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         b.WriteToCacheSync(1, 0, "abc");
 
-        b.TempFileHandle.Pwrite("Corrupt cache", 13, 41);
+        b.TempFileHandle.Pwrite("Corrupt cache", 13, 256);
         b.TempFileHandle.Flush();
 
         b.RecreateCache();

@@ -26,7 +26,11 @@ private:
     std::unique_ptr<TImpl> Impl;
 
 public:
-    TFileRingBuffer(const TString& filePath, ui64 capacity);
+    TFileRingBuffer(
+        const TString& filePath,
+        ui64 dataCapacity,
+        ui64 metadataCapacity = 0);
+
     ~TFileRingBuffer();
 
 public:
@@ -44,6 +48,10 @@ public:
     // Returns the maximum data size that is guaranteed to be successfully
     // allocated by PushBack. Returns zero if the buffer is corrupted.
     ui64 GetMaxAllocationBytesCount() const;
+
+    bool ValidateMetadata() const;
+    TStringBuf GetMetadata() const;
+    bool SetMetadata(TStringBuf data);
 };
 
 }   // namespace NCloud
