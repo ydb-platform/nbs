@@ -3,7 +3,10 @@ import re
 import yatest.common as common
 
 
-def analyze_profile_log(profile_tool_bin_path, profile_log_path, fs_name, node_name=""):
+def analyze_profile_log(profile_tool_bin_path,
+                        profile_log_path,
+                        fs_name,
+                        node_name_filter=None):
     proc = common.execute(
         [profile_tool_bin_path, "dumpevents",
          "--profile-log", profile_log_path,
@@ -13,7 +16,7 @@ def analyze_profile_log(profile_tool_bin_path, profile_log_path, fs_name, node_n
     for line in proc.stdout.decode("utf-8").splitlines():
         request_type = line.rstrip().split("\t")[2]
 
-        if node_name and f"node_name={node_name}" not in line:
+        if node_name_filter and f"node_name={node_name_filter}" not in line:
             continue
 
         type_dict[request_type] = type_dict.get(request_type, 0) + 1

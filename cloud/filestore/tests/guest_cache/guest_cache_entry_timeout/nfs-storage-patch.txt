@@ -1,2 +1,1 @@
 EntryTimeout: 15000
-RegularFileEntryTimeout: 1000

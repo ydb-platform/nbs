@@ -56,9 +56,11 @@ def test():
     initial_foo = get_server_request_count_for_entry("foo")
     initial_bar = get_server_request_count_for_entry("bar")
 
-    stat(ssh, mount_dir, "foo/bar")
+    stat(ssh, mount_dir, "foo/bar")  # bar is not uncached
+    stat(ssh, mount_dir, "foo/bar")  # bar hit cache
     time.sleep(2)
-    stat(ssh, mount_dir, "foo/bar")
+    stat(ssh, mount_dir, "foo/bar")  # bar is not uncached
+    stat(ssh, mount_dir, "foo/bar")  # bar hit cache
 
     # Sleep for a while to ensure that the profile log is flushed
     time.sleep(2)
@@ -67,7 +69,10 @@ def test():
     final_foo = get_server_request_count_for_entry("foo")
     final_bar = get_server_request_count_for_entry("bar")
 
-    # Expect 0 GetNodeAttr both for foo and bar
-    # All stats should be served from cache
+    # Expect 0 GetNodeAttr for the "foo" directory.
+    # All stats should hit the cache.
     assert final_foo - initial_foo == 0
-    assert final_bar - initial_bar == 0
+
+    # Expect 2 GetNodeAttr for "bar" regular file.
+    # #Second requesr in every pair should hit the cache.
+    assert final_bar - initial_bar == 2
