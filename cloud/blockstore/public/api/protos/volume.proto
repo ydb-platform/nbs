@@ -291,7 +291,7 @@ message TVolume
 
     // Enables discard (ZeroBlocks) requests for the volume.
     // If this flag is set, it should never be unset anymore!
-    optional bool VhostDiscardEnabled = 52;
+    optional bool VhostDiscardEnabled = 39;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

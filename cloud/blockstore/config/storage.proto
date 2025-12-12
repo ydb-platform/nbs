@@ -1386,7 +1386,7 @@ message TStorageServiceConfig
     // Enables encryption with DEK provided by the Root KMS for Disk Registry based disks.
     optional bool RootKmsEncryptionForDiskRegistryBasedDisksEnabled = 471;
 
-    // Set VhostDiscardEnabled flag in VolumeConfig on volume creation. Works for
-    // network-ssd and network-hdd disks.
+    // Sets the VhostDiscardEnabled flag in VolumeConfig when creating a volume.
+    // Applies to network-ssd and network-hdd disks.
     optional bool EnableVhostDiscardForNewVolumes = 472;
 }
