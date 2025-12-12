@@ -73,6 +73,10 @@ void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     const TProtoRequest& request);
 
+void UpdateRangeNodeIds(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    ui64 nodeId);
+
 template <typename TProtoResponse>
 void FinalizeProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,

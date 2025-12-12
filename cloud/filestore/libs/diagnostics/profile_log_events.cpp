@@ -534,6 +534,17 @@ void InitProfileLogRequestInfo(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void UpdateRangeNodeIds(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    ui64 nodeId)
+{
+    for (auto& range: *profileLogRequest.MutableRanges()) {
+        range.SetNodeId(nodeId);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 #define IMPLEMENT_DEFAULT_METHOD(name, ns)                                     \
     template <>                                                                \
     void FinalizeProfileLogRequestInfo(                                        \

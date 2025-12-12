@@ -908,6 +908,14 @@ bool TIndexTabletActor::PrepareTx_ReadData(
         return false;
     }
 
+    //
+    // NodeId might be missing in the original request but at this stage we
+    // have already read the Node and we can properly set NodeId in all request
+    // ranges.
+    //
+
+    UpdateRangeNodeIds(args.ProfileLogRequest, args.Node->NodeId);
+
     TReadDataVisitor visitor(LogTag, args);
 
     FindFreshBlocks(
