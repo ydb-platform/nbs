@@ -834,6 +834,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
 
         config.SetTwoStageReadEnabled(true);
+        config.SetTwoStageReadThreshold(64_KB);
         config.SetThreeStageWriteEnabled(true);
         config.SetThreeStageWriteThreshold(10_MB);
         config.SetEntryTimeout(TDuration::Seconds(10).MilliSeconds());
@@ -853,6 +854,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetZeroCopyReadEnabled(true);
 
         features.SetTwoStageReadEnabled(true);
+        features.SetTwoStageReadThreshold(64_KB);
         features.SetEntryTimeout(TDuration::Seconds(10).MilliSeconds());
         features.SetNegativeEntryTimeout(TDuration::Seconds(1).MilliSeconds());
         features.SetAttrTimeout(TDuration::Seconds(20).MilliSeconds());

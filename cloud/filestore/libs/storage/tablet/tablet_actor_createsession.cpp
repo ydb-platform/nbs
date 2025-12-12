@@ -24,6 +24,7 @@ void FillFeatures(
 {
     auto* features = fileStore.MutableFeatures();
     features->SetTwoStageReadEnabled(config.GetTwoStageReadEnabled());
+    features->SetTwoStageReadThreshold(config.GetTwoStageReadThreshold());
     features->SetThreeStageWriteEnabled(config.GetThreeStageWriteEnabled());
     features->SetTwoStageReadDisabledForHDD(
         config.GetTwoStageReadDisabledForHDD());
