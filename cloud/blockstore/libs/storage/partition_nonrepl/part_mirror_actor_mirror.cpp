@@ -130,7 +130,13 @@ void TMirrorPartitionActor::MirrorRequest(
             Y_UNUSED(range);
             Y_UNUSED(volumeRequestId);
 
-            Y_DEBUG_ABORT_UNLESS(isWrite == false);
+            if (isWrite) {
+                ReportInflightRequestInvariantViolation(
+                    "Received a write request while enumerating read requests",
+                    {{"requestId", requestId},
+                     {"range", range},
+                     {"volumeRequestId", volumeRequestId}});
+            }
 
             DirtyReadRequestIds.insert(requestId);
         });

@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/common/block_range_map.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 
 #include <util/generic/hash.h>
 
@@ -153,13 +154,19 @@ public:
             });
     }
 
-    void
-    AddWriteRequest(const TKey& key, TBlockRange64 range, TRequestInfo request = {})
+    void AddWriteRequest(
+        const TKey& key,
+        TBlockRange64 range,
+        TRequestInfo request = {})
         requires(IsWriteAllowed<TKind>)
     {
         const bool inserted =
             WriteRequests.AddRange(key, range, std::move(request));
-        Y_DEBUG_ABORT_UNLESS(inserted);
+        if (!inserted) {
+            ReportInflightRequestInvariantViolation(
+                "Failed to register write request",
+                {{"key", ToString(key)}, {"range", range}});
+        }
     }
 
     TKey AddWriteRequest(TBlockRange64 range, TRequestInfo request = {})
@@ -170,13 +177,19 @@ public:
         return key;
     }
 
-    void
-    AddReadRequest(const TKey& key, TBlockRange64 range, TRequestInfo request = {})
+    void AddReadRequest(
+        const TKey& key,
+        TBlockRange64 range,
+        TRequestInfo request = {})
         requires(IsReadAllowed<TKind>)
     {
         const bool inserted =
             ReadRequests.AddRange(key, range, std::move(request));
-        Y_DEBUG_ABORT_UNLESS(inserted);
+        if (!inserted) {
+            ReportInflightRequestInvariantViolation(
+                "Failed to register read request",
+                {{"key", ToString(key)}, {"range", range}});
+        }
     }
 
     TKey AddReadRequest(TBlockRange64 range, TRequestInfo request = {})
