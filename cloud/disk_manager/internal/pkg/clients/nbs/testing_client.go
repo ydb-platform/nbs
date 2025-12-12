@@ -434,13 +434,17 @@ func (c *testingClient) ValidateCrc32WithEncryption(
 	actualBlockCrc32s := actualDiskContentInfo.BlockCrc32s
 	expectedBlockCrc32s := expectedDiskContentInfo.BlockCrc32s
 
-	if len(expectedBlockCrc32s) == 0 && actualCrc32 != expectedCrc32 {
-		return fmt.Errorf(
-			"%v crc32 doesn't match, expected %v, actual %v",
-			diskID,
-			expectedCrc32,
-			actualCrc32,
-		)
+	if len(expectedBlockCrc32s) == 0 {
+		if actualCrc32 != expectedCrc32 {
+			return fmt.Errorf(
+				"%v crc32 doesn't match, expected %v, actual %v",
+				diskID,
+				expectedCrc32,
+				actualCrc32,
+			)
+		}
+
+		return nil
 	}
 
 	if len(actualBlockCrc32s) != len(expectedBlockCrc32s) {
