@@ -5807,7 +5807,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         const auto& collectGarbageRanges =
             (*collectGarbageRequests)[0].Request.GetRanges();
         UNIT_ASSERT_VALUES_EQUAL(0, collectGarbageRanges.size());
-        Cerr << (*collectGarbageRequests)[0].Request.ShortUtf8DebugString() << Endl;
+        const auto& collectGarbageInfo =
+            (*collectGarbageRequests)[0].Request.GetCollectGarbageInfo();
+        UNIT_ASSERT_GT(collectGarbageInfo.GetCollectCommitId(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(1, collectGarbageInfo.GetNewBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, collectGarbageInfo.GetGarbageBlobsCount());
 
         tablet.DestroyHandle(handle);
     }
