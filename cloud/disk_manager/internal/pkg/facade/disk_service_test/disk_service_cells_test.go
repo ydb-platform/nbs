@@ -5,13 +5,11 @@ import (
 	"crypto/rand"
 	"hash/crc32"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	sdk_client "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client"
 )
@@ -67,7 +65,6 @@ func successfullyMigrateDiskBetweenCells(
 		_, err := rand.Read(data)
 		require.NoError(t, err)
 
-		common.WaitForRandomDuration(1*time.Second, 3*time.Second)
 		err = srcZoneNBSClient.Write(
 			params.DiskID,
 			0, // startIndex
