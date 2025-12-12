@@ -8,8 +8,15 @@
 
 namespace NCloud::NBlockStore {
 
-using TValue =
-    std::variant<TString, int, ui16, ui32, ui64, TBlockRange64, TStringBuf>;
+using TValue = std::variant<
+    TString,
+    int,
+    ui16,
+    ui32,
+    ui64,
+    TBlockRange64,
+    TStringBuf,
+    const char* const>;
 
 using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
 
@@ -127,6 +134,7 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(ChecksumCalculationError)                                              \
     xxx(LogicalDiskIdMismatch)                                                 \
     xxx(DeviceReplacementContractBroken)                                       \
+    xxx(InflightRequestInvariantViolation)                                     \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

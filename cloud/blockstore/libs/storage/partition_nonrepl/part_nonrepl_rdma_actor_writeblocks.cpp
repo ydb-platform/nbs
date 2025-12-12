@@ -314,7 +314,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
             requestInfo->CallContext);
     }
 
-    RequestsInProgress.AddWriteRequest(requestId, sentRequestCtx);
+    RequestsInProgress.AddWriteRequest(requestId, blockRange, sentRequestCtx);
 }
 
 void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
@@ -494,7 +494,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
             requestInfo->CallContext);
     }
 
-    RequestsInProgress.AddWriteRequest(requestId, sentRequestCtx);
+    RequestsInProgress.AddWriteRequest(requestId, blockRange, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

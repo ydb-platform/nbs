@@ -189,6 +189,8 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         "MultiAgentWriteBlocks",
         requestInfo->CallContext->RequestId);
 
+    auto blockRange = msg->Record.Range;
+
     auto replyError = [&](ui32 errorCode, TString errorReason)
     {
         auto response = std::make_unique<
@@ -224,7 +226,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         *msg,
         ctx,
         *requestInfo,
-        msg->Record.Range,
+        blockRange,
         &deviceRequests);
 
     if (!ok) {
@@ -237,7 +239,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         // requests are response with an error if the request hits two disk-agents.
         ReportMultiAgentRequestAffectsTwoDevices(
             "rdmaActor",
-            {{"disk", PartConfig->GetName()}, {"range", msg->Record.Range}});
+            {{"disk", PartConfig->GetName()}, {"range", blockRange}});
         replyError(
             E_ARGUMENT,
             "Can't execute MultiAgentWriteBlocks request cross device borders");
@@ -258,7 +260,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
             ctx.ActorSystem(),
             PartConfig,
             requestInfo,
-            msg->Record.Range.Size(),
+            blockRange.Size(),
             msg->Record.DevicesAndRanges.size(),
             VolumeActorId,
             SelfId(),
@@ -272,7 +274,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         std::make_unique<TDeviceRequestRdmaContext>(deviceRequest.DeviceIdx),
         NRdma::TProtoMessageSerializer::MessageByteSize(
             writeDeviceBlocksRequest,
-            msg->Record.Range.Size() * msg->Record.BlockSize),
+            blockRange.Size() * msg->Record.BlockSize),
         4_KB);
 
     if (HasError(err)) {
@@ -313,7 +315,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         {.DeviceIdx = deviceRequest.DeviceIdx,
          .SentRequestId = sentRequestId}};
 
-    RequestsInProgress.AddWriteRequest(requestId, sentRequestCtx);
+    RequestsInProgress.AddWriteRequest(requestId, blockRange, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

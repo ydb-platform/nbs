@@ -276,6 +276,8 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWrite(
         ev->Cookie,
         msg->CallContext);
 
+    auto blockRange = msg->Record.Range;
+
     TRequestScope timer(*requestInfo);
 
     LWTRACK(
@@ -310,7 +312,7 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWrite(
         *msg,
         ctx,
         *requestInfo,
-        msg->Record.Range,
+        blockRange,
         &deviceRequests,
         &timeoutPolicy,
         &request);
@@ -325,7 +327,7 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWrite(
         // requests are response with an error if the request hits two disk-agents.
         ReportMultiAgentRequestAffectsTwoDevices(
             "partActor",
-            {{"disk", PartConfig->GetName()}, {"range", msg->Record.Range}});
+            {{"disk", PartConfig->GetName()}, {"range", blockRange}});
         replyError(
             E_ARGUMENT,
             "Can't execute MultiAgentWriteBlocks request cross device borders");
@@ -347,7 +349,7 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWrite(
         Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
         LogTitle.GetChild(GetCycleCount()));
 
-    RequestsInProgress.AddWriteRequest(actorId, std::move(request));
+    RequestsInProgress.AddWriteRequest(actorId, blockRange, std::move(request));
 }
 
 void TNonreplicatedPartitionActor::HandleMultiAgentWriteBlocksCompleted(
@@ -376,7 +378,7 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWriteBlocksCompleted(
     NetworkBytes += requestBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
-    RequestsInProgress.RemoveRequest(ev->Sender);
+    RequestsInProgress.RemoveWriteRequest(ev->Sender);
     OnRequestCompleted(*msg, ctx.Now());
 
     DrainActorCompanion.ProcessDrainRequests(ctx);
