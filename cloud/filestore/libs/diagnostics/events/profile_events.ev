@@ -83,6 +83,15 @@ message TProfileLogCompactionRangeInfo {
     optional uint64 GarbageBlocksCount = 5;
 };
 
+message TProfileLogCollectGarbageInfo {
+    option (message_id) = 8;
+
+    optional uint64 CollectCommitId = 1;
+    optional uint64 LastCollectCommitId = 2;
+    optional uint32 NewBlobsCount = 3;
+    optional uint32 GarbageBlobsCount = 4;
+};
+
 message TProfileLogRequestInfo {
     option (message_id) = 1;
 
@@ -97,6 +106,8 @@ message TProfileLogRequestInfo {
 
     repeated TProfileLogBlobInfo BlobsInfo = 8;
     repeated TProfileLogCompactionRangeInfo CompactionRanges = 9;
+
+    optional TProfileLogCollectGarbageInfo CollectGarbageInfo = 10;
 };
 
 message TProfileLogRecord {
