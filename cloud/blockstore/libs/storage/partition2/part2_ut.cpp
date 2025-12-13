@@ -7647,7 +7647,6 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         constexpr ui32 FreshChannelId = 4;
 
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
         config.SetFlushThreshold(4_MB);
         config.SetTrimFreshLogTimeout(TDuration::Seconds(1).MilliSeconds());
