@@ -259,11 +259,22 @@ void TFileSystem::ReadDir(
                     const auto& attr = response.GetNodes(i);
                     const auto& name = response.GetNames(i);
 
+                    const auto entryTimeout = Config->GetEntryTimeout();
+                    const auto regularEntryTimeout =
+                        (Config->GetRegularFileEntryTimeout() ==
+                                 TDuration::Zero()
+                             ? Config->GetEntryTimeout()
+                             : Config->GetRegularFileEntryTimeout());
+
+                    const auto timeout =
+                        (attr.GetType() == NProto::ENodeType::E_REGULAR_NODE
+                             ? regularEntryTimeout.SecondsFloat()
+                             : entryTimeout.SecondsFloat());
+
                     fuse_entry_param entry = {
                         .ino = attr.GetId(),
                         .attr_timeout = Config->GetAttrTimeout().SecondsFloat(),
-                        .entry_timeout =
-                            Config->GetEntryTimeout().SecondsFloat(),
+                        .entry_timeout = timeout,
                     };
 
                     ConvertAttr(
