@@ -279,12 +279,8 @@ struct TPipe
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TChild SpawnChild(
-    const TString& binaryPath,
-    TVector<TString> args)
+TChild SpawnChild(const TString& binaryPath, TVector<TString> args)
 {
-    args.push_back("--blockstore-service-pid=" + ToString(::getpid()));
-
     TPipe stdOut;
     TPipe stdErr;
 
@@ -533,20 +529,39 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void AddToCGroups(pid_t pid, const TVector<TString>& cgroups)
+void AddToCGroupsWithExternalExecutable(
+    TString path,
+    pid_t pid,
+    const TVector<TString>& cgroups)
 {
-    const auto flags =
-          EOpenModeFlag::OpenExisting
-        | EOpenModeFlag::WrOnly
-        | EOpenModeFlag::ForAppend;
-
-    const TString line = ToString(pid) + '\n';
-
-    for (auto& cgroup: cgroups) {
-        TFile file {TFsPath {cgroup} / "cgroup.procs", flags};
-
-        file.Write(line.data(), line.size());
+    TVector<TString> args;
+    args.emplace_back("--pid=" + ToString(pid));
+    args.insert(args.end(), cgroups.begin(), cgroups.end());
+    auto child = SpawnChild(path, std::move(args));
+    auto error = child.Wait();
+    if (HasError(error)) {
+        TIFStream stderr(TFile{child.StdErr.Release()});
+        auto errMsg = stderr.ReadAll();
+        throw yexception() << "Failed to add process to cgroups: " << error
+                           << " stderr: " << errMsg;
     }
+}
+
+void AppendToFile(const TFsPath& path, TStringBuf line)
+{
+    const auto flags = EOpenModeFlag::OpenExisting | EOpenModeFlag::WrOnly |
+                       EOpenModeFlag::ForAppend;
+
+    TFile file{path / "cgroup.procs", flags};
+    file.Write(line.data(), line.size());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TVector<TString> AppendPidArg(TVector<TString> args)
+{
+    args.push_back("--blockstore-service-pid=" + ToString(::getpid()));
+    return args;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -559,7 +574,7 @@ private:
     const ILoggingServicePtr Logging;
     const TExecutorPtr Executor;
     const TString ClientId;
-    const TString BinaryPath;
+    const TServerAppConfigPtr ServerConfig;
     const TVector<TString> Args;
     const TVector<TString> Cgroups;
 
@@ -583,13 +598,13 @@ public:
             ILoggingServicePtr logging,
             TExecutorPtr executor,
             TEndpointStats stats,
-            TString binaryPath,
+            TServerAppConfigPtr serverConfig,
             TVector<TString> args,
             TVector<TString> cgroups)
         : Logging{std::move(logging)}
         , Executor{std::move(executor)}
         , ClientId{std::move(clientId)}
-        , BinaryPath{std::move(binaryPath)}
+        , ServerConfig{std::move(serverConfig)}
         , Args{std::move(args)}
         , Cgroups{std::move(cgroups)}
         , Log{Logging->CreateLog("BLOCKSTORE_EXTERNAL_ENDPOINT")}
@@ -607,7 +622,8 @@ public:
     void PrepareToStart() override
     {
         const auto startAt = TInstant::Now();
-        const bool succ = PrefetchBinaryToCache(BinaryPath);
+        const bool succ =
+            PrefetchBinaryToCache(ServerConfig->GetVhostServerPath());
         const auto logPriority = succ ? TLOG_INFO : TLOG_ERR;
 
         STORAGE_LOG(
@@ -679,7 +695,8 @@ private:
 
     TIntrusivePtr<TEndpointProcess> StartProcess()
     {
-        auto process = SpawnChild(BinaryPath, Args);
+        auto process =
+            SpawnChild(ServerConfig->GetVhostServerPath(), AppendPidArg(Args));
 
         STORAGE_INFO(
             LogPrefix << "Endpoint process has been started, PID:"
@@ -692,7 +709,7 @@ private:
         };
 
         try {
-            AddToCGroups(process.Pid, Cgroups);
+            AddToCGroups(process.Pid);
         } catch (...) {
             ShouldStop = true;
             throw;
@@ -741,6 +758,21 @@ private:
         }
 
         return nullptr;
+    }
+
+    void AddToCGroups(pid_t pid)
+    {
+        if (ServerConfig->GetExternalCgroupsPidWriterBinaryPath()) {
+            AddToCGroupsWithExternalExecutable(
+                ServerConfig->GetExternalCgroupsPidWriterBinaryPath(),
+                pid,
+                Cgroups);
+            return;
+        }
+        const TString line = ToString(pid) + '\n';
+        for (const auto& cgroup: Cgroups) {
+            AppendToFile(cgroup, line);
+        }
     }
 };
 
@@ -1259,25 +1291,22 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     bool isAlignedDataEnabled,
     IEndpointListenerPtr fallbackListener)
 {
-    auto defaultFactory = [=] (
-        const TString& clientId,
-        const TString& diskId,
-        TVector<TString> args,
-        TVector<TString> cgroups)
+    auto defaultFactory = [=](const TString& clientId,
+                              const TString& diskId,
+                              TVector<TString> args,
+                              TVector<TString> cgroups)
     {
         return std::make_shared<TEndpoint>(
             clientId,
             logging,
             executor,
-            TEndpointStats {
+            TEndpointStats{
                 .ClientId = clientId,
                 .DiskId = diskId,
-                .ServerStats = serverStats
-            },
-            serverConfig->GetVhostServerPath(),
+                .ServerStats = serverStats},
+            serverConfig,
             std::move(args),
-            std::move(cgroups)
-        );
+            std::move(cgroups));
     };
 
     return std::make_shared<TExternalVhostEndpointListener>(
