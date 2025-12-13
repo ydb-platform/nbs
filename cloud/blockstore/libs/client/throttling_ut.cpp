@@ -155,11 +155,15 @@ struct TRequestStats final
     ui64 RequestStarted(
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
-        ui64 requestBytes) override
+        ui64 requestBytes,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode) override
     {
         Y_UNUSED(mediaKind);
         Y_UNUSED(requestType);
         Y_UNUSED(requestBytes);
+        Y_UNUSED(accessMode);
+        Y_UNUSED(mountMode);
         return 0;
     }
 
@@ -173,7 +177,9 @@ struct TRequestStats final
         ui32 errorFlags,
         bool unaligned,
         ECalcMaxTime calcMaxTime,
-        ui64 responseSent) override
+        ui64 responseSent,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode) override
     {
         Y_UNUSED(mediaKind);
         Y_UNUSED(requestType);
@@ -185,6 +191,8 @@ struct TRequestStats final
         Y_UNUSED(unaligned);
         Y_UNUSED(calcMaxTime);
         Y_UNUSED(responseSent);
+        Y_UNUSED(accessMode);
+        Y_UNUSED(mountMode);
         return TDuration::Zero();
     }
 
