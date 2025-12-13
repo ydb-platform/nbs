@@ -1,5 +1,6 @@
 #include "file_ring_buffer.h"
 
+#include <library/cpp/string_utils/base64/base64.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/deque.h>
@@ -336,7 +337,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     void DoRandomizedPushPopRestore(
         ui32 len,
         ui32 testBytes,
-        ui32 testUpToEntrySize)
+        ui32 testUpToEntrySize,
+        ui32 metadataSize)
     {
         const auto f = TTempFileHandle();
         const double restoreProbability = 0.05;
@@ -346,7 +348,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         auto restore = [&] () {
             rb = std::make_unique<TFileRingBuffer>(
                 f.GetName(),
-                len);
+                len,
+                metadataSize);
         };
 
         restore();
@@ -405,12 +408,22 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
     Y_UNIT_TEST(RandomizedPushPopRestore)
     {
-        DoRandomizedPushPopRestore(1_MB, 16_MB, 5_KB);
+        DoRandomizedPushPopRestore(1_MB, 16_MB, 5_KB, 0);
     }
 
     Y_UNIT_TEST(RandomizedPushPopRestoreSmall)
     {
-        DoRandomizedPushPopRestore(4_KB, 1_MB, 16);
+        DoRandomizedPushPopRestore(4_KB, 1_MB, 16, 0);
+    }
+
+    Y_UNIT_TEST(RandomizedPushPopRestoreWithMetadata)
+    {
+        DoRandomizedPushPopRestore(1_MB, 16_MB, 5_KB, 1_KB);
+    }
+
+    Y_UNIT_TEST(RandomizedPushPopRestoreSmallWithMetadata)
+    {
+        DoRandomizedPushPopRestore(4_KB, 1_MB, 16, 4);
     }
 
     Y_UNIT_TEST(ShouldFullyUtilizeCapacity)
@@ -601,6 +614,67 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT_EQUAL(15, rb.GetMaxAllocationBytesCount());
         rb.PopFront();
         UNIT_ASSERT_EQUAL(28, rb.GetMaxAllocationBytesCount());
+    }
+
+    Y_UNIT_TEST(ShouldNotSupportMetadata)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 36;
+
+        auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
+        UNIT_ASSERT(rb->PushBack("AAA"));
+        UNIT_ASSERT_VALUES_EQUAL("", rb->GetMetadata());
+        UNIT_ASSERT(!rb->SetMetadata("1"));
+        UNIT_ASSERT(rb->SetMetadata(""));
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 4);
+        UNIT_ASSERT(!rb->SetMetadata("1"));
+        UNIT_ASSERT_VALUES_EQUAL("", rb->GetMetadata());
+        UNIT_ASSERT_VALUES_EQUAL("AAA", rb->Front());
+    }
+
+    Y_UNIT_TEST(ShouldSupportMetadata)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 36;
+
+        auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 8);
+        UNIT_ASSERT(rb->PushBack("AAA"));
+        UNIT_ASSERT_VALUES_EQUAL("", rb->GetMetadata());
+        UNIT_ASSERT(rb->SetMetadata("1234"));
+        UNIT_ASSERT_VALUES_EQUAL("1234", rb->GetMetadata());
+        UNIT_ASSERT(!rb->SetMetadata("abcdefghij"));
+        UNIT_ASSERT_VALUES_EQUAL("1234", rb->GetMetadata());
+        UNIT_ASSERT(rb->SetMetadata("abc"));
+        UNIT_ASSERT_VALUES_EQUAL("abc", rb->GetMetadata());
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 8);
+        UNIT_ASSERT_VALUES_EQUAL("abc", rb->GetMetadata());
+        UNIT_ASSERT(rb->SetMetadata(""));
+        UNIT_ASSERT_VALUES_EQUAL("", rb->GetMetadata());
+        UNIT_ASSERT_VALUES_EQUAL("AAA", rb->Front());
+    }
+
+    Y_UNIT_TEST(ShouldBackwardSupportFileFormat)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 36;
+
+        const TString fileDumpVer2 =
+            "AgAAAAAAAAAkAAAAAAAAAAAAAAAAAAAACwAAAAAAAAALAAAAAAAAAAMAAAARceVdQU"
+            "FBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==";
+
+        {
+            TString decoded;
+            Base64Decode(fileDumpVer2, decoded);
+
+            TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
+            m.ResizeAndRemap(0, decoded.size());
+            decoded.copy(reinterpret_cast<char*>(m.Ptr()), decoded.size());
+        }
+
+        TFileRingBuffer rb(f.GetName(), len);
+        UNIT_ASSERT_VALUES_EQUAL("AAA", rb.Front());
     }
 }
 
