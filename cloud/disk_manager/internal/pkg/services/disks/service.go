@@ -733,6 +733,7 @@ func (s *service) MigrateDisk(
 			DstZoneId:                  req.DstZoneId,
 			DstPlacementGroupId:        req.DstPlacementGroupId,
 			DstPlacementPartitionIndex: req.DstPlacementPartitionIndex,
+			IsMigrationBetweenCells:    req.IsMigrationBetweenCells,
 		},
 	)
 }

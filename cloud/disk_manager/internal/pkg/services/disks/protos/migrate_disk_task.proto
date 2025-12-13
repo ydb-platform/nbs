@@ -17,6 +17,7 @@ message MigrateDiskRequest {
     string DstZoneId = 2;
     string DstPlacementGroupId = 3;
     uint32 DstPlacementPartitionIndex = 4;
+    bool IsMigrationBetweenCells = 5;
 }
 
 // Should be in sync with statuses from public API.

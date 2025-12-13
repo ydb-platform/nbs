@@ -34,4 +34,6 @@ message DataplaneConfig {
     optional string ProxyOverlayDiskIdPrefix = 16 [default = "proxy-"];
     optional snapshot.SnapshotConfig MigrationDstSnapshotConfig = 17;
     optional uint32 MigratingSnapshotsInflightLimit = 18 [default = 10];
+
+    optional int64 ReplicationBetweenCellsSecondsRemainingThreshold = 19 [default = 300];
 }
