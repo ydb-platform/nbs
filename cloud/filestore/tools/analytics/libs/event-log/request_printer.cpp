@@ -525,6 +525,11 @@ public:
     TString DumpInfo(const NProto::TProfileLogRequestInfo& request) const override
     {
         if (!request.GetRanges().empty()) {
+
+            //
+            // legacy format - info stored as a Range
+            //
+
             return PrintRanges(
                 "current_collect_commid_id",
                 "last_collect_commit_id",
@@ -536,7 +541,20 @@ public:
                 request.GetRanges());
         }
 
-        return "{no_info}";
+        const auto& info = request.GetCollectGarbageInfo();
+        if (info.ByteSize() == 0) {
+            return "{no_info}";
+        }
+
+        TStringBuilder out;
+        out << "{"
+            << "current_collect_commit_id=" << info.GetCollectCommitId()
+            << ", last_collect_commit_id=" << info.GetLastCollectCommitId()
+            << ", new_blobs=" << info.GetNewBlobsCount()
+            << ", garbage_blobs=" << info.GetGarbageBlobsCount()
+            << "}";
+
+        return out;
     }
 };
 

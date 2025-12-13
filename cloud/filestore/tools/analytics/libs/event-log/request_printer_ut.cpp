@@ -290,10 +290,10 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
             printer->DumpInfo(Request));
     }
 
-    Y_UNIT_TEST_F(ShouldPrintRequestInfoForCollectGarbageRequestType, TEnv)
+    Y_UNIT_TEST_F(ShouldPrintRequestInfoForCollectGarbageRequestTypeLegacy, TEnv)
     {
-        Request.SetRequestType(
-            static_cast<ui32>(NStorage::EFileStoreSystemRequest::CollectGarbage));
+        Request.SetRequestType(static_cast<ui32>(
+            NStorage::EFileStoreSystemRequest::CollectGarbage));
 
         auto printer = CreateRequestPrinter(Request.GetRequestType());
         UNIT_ASSERT_VALUES_EQUAL("{no_info}", printer->DumpInfo(Request));
@@ -307,6 +307,24 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "[{current_collect_commid_id=123, last_collect_commit_id=456, "
             "new_blobs=32, garbage_blobs=64}]",
+            printer->DumpInfo(Request));
+    }
+
+    Y_UNIT_TEST_F(ShouldPrintCollectGarbageRequest, TEnv)
+    {
+        Request.SetRequestType(static_cast<ui32>(
+            NStorage::EFileStoreSystemRequest::CollectGarbage));
+
+        auto printer = CreateRequestPrinter(Request.GetRequestType());
+        auto& info = *Request.MutableCollectGarbageInfo();
+        info.SetCollectCommitId(111);
+        info.SetLastCollectCommitId(80);
+        info.SetNewBlobsCount(10);
+        info.SetGarbageBlobsCount(15);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "{current_collect_commit_id=111"
+            ", last_collect_commit_id=80"
+            ", new_blobs=10, garbage_blobs=15}",
             printer->DumpInfo(Request));
     }
 
