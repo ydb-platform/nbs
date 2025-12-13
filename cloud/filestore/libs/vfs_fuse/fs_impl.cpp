@@ -132,6 +132,14 @@ bool TFileSystem::ValidateNodeId(
     return true;
 }
 
+void TFileSystem::AdjustNodeSize(NProto::TNodeAttr& attrs)
+{
+    if (WriteBackCache) {
+        const auto minNodeSize = WriteBackCache.GetMinNodeSize(attrs.GetId());
+        attrs.SetSize(Max(attrs.GetSize(), minNodeSize));
+    }
+}
+
 bool TFileSystem::UpdateNodeCache(
     const NProto::TNodeAttr& attrs,
     fuse_entry_param& entry)

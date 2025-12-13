@@ -64,6 +64,11 @@ struct TRequestBuffer<THeader, TBody, true>
         Header.len = len;
     }
 
+    [[nodiscard]] void* Data() const
+    {
+        return const_cast<void*>(reinterpret_cast<const void*>(this + 1));
+    }
+
     static auto Create(size_t dataSize = 0)
     {
         size_t len = sizeof(TSelf) + dataSize;
@@ -486,6 +491,32 @@ struct TFlushRequest
     TFlushRequest(ui64 nodeId, ui64 fh)
     {
         In->Header.opcode = FUSE_FLUSH;
+        In->Header.nodeid = nodeId;
+        In->Body.fh = fh;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TGetAttrRequest
+    : public TRequestBase<fuse_getattr_in, fuse_attr_out, void>
+{
+    explicit TGetAttrRequest(ui64 nodeId)
+    {
+        In->Header.opcode = FUSE_GETATTR;
+        In->Header.nodeid = nodeId;
+        In->Body.getattr_flags = 0;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TSetAttrRequest
+    : public TRequestBase<fuse_setattr_in, fuse_attr_out, void>
+{
+    explicit TSetAttrRequest(ui64 nodeId, ui64 fh)
+    {
+        In->Header.opcode = FUSE_SETATTR;
         In->Header.nodeid = nodeId;
         In->Body.fh = fh;
     }
