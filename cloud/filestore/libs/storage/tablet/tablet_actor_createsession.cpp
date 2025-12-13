@@ -92,6 +92,9 @@ void FillFeatures(
         config.GetGuestHandleKillPrivV2Enabled());
 
     features->SetZeroCopyReadEnabled(config.GetZeroCopyReadEnabled());
+
+    features->SetBlockChecksumsInProfileLogEnabled(
+        config.GetBlockChecksumsInProfileLogEnabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

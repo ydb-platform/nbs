@@ -719,6 +719,9 @@ void TStorageServiceActor::HandleWriteData(
         (range.IsAligned() ||
          StorageConfig->GetUnalignedThreeStageWriteEnabled()) &&
         range.AlignedSubRange().Length > 0;
+    const bool blockChecksumsEnabled =
+        filestore.GetFeatures().GetBlockChecksumsInProfileLogEnabled()
+        || StorageConfig->GetBlockChecksumsInProfileLogEnabled();
 
     if (threeStageWriteEnabled) {
         auto logTag = filestore.GetFileSystemId();
@@ -736,6 +739,12 @@ void TStorageServiceActor::HandleWriteData(
             startTime);
 
         InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+        if (blockChecksumsEnabled) {
+            CalculateWriteDataRequestChecksums(
+                msg->Record,
+                blockSize,
+                inflight->ProfileLogRequest);
+        }
 
         auto requestInfo =
             CreateRequestInfo(SelfId(), cookie, msg->CallContext);

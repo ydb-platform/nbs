@@ -57,6 +57,7 @@ private:
 
     // Stats for reporting
     IRequestStatsPtr RequestStats;
+    NProto::TProfileLogRequestInfo* ProfileLogRequest;
     IProfileLogPtr ProfileLog;
     std::optional<TInFlightRequest> InFlightRequest;
     const NCloud::NProto::EStorageMediaKind MediaKind;
@@ -69,6 +70,7 @@ public:
         TString logTag,
         ui32 blockSize,
         IRequestStatsPtr requestStats,
+        NProto::TProfileLogRequestInfo* profileLogRequest,
         IProfileLogPtr profileLog,
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useTwoStageRead);
@@ -116,6 +118,7 @@ TReadDataActor::TReadDataActor(
         TString logTag,
         ui32 blockSize,
         IRequestStatsPtr requestStats,
+        NProto::TProfileLogRequestInfo* profileLogRequest,
         IProfileLogPtr profileLog,
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useTwoStageRead)
@@ -131,6 +134,7 @@ TReadDataActor::TReadDataActor(
     , BlockBuffer(std::make_unique<TString>())
     , ZeroIntervals(TDefaultAllocator::Instance(), 0, AlignedByteRange.Length)
     , RequestStats(std::move(requestStats))
+    , ProfileLogRequest(profileLogRequest)
     , ProfileLog(std::move(profileLog))
     , MediaKind(mediaKind)
     , UseTwoStageRead(useTwoStageRead)
@@ -566,6 +570,13 @@ void TReadDataActor::HandleReadDataResponse(
     auto response = std::make_unique<TEvService::TEvReadDataResponse>();
     response->Record = std::move(msg->Record);
 
+    if (ProfileLogRequest) {
+        CalculateReadDataResponseChecksums(
+            response->Record,
+            BlockSize,
+            *ProfileLogRequest);
+    }
+
     MoveBufferToIovecsIfNeeded(ctx, response->Record);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
@@ -669,6 +680,13 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
             OriginByteRange.Offset - AlignedByteRange.Offset;
         response->Record.set_allocated_buffer(BlockBuffer.release());
         response->Record.SetBufferOffset(bufferOffset);
+    }
+
+    if (ProfileLogRequest) {
+        CalculateReadDataResponseChecksums(
+            response->Record,
+            BlockSize,
+            *ProfileLogRequest);
     }
 
     MoveBufferToIovecsIfNeeded(ctx, response->Record);
@@ -781,6 +799,9 @@ void TStorageServiceActor::HandleReadData(
         : StorageConfig->GetTwoStageReadThreshold();
     const bool useTwoStageRead = IsTwoStageReadEnabled(filestore)
         && msg->Record.GetLength() >= twoStageReadThreshold;
+    const bool blockChecksumsEnabled =
+        filestore.GetFeatures().GetBlockChecksumsInProfileLogEnabled()
+        || StorageConfig->GetBlockChecksumsInProfileLogEnabled();
 
     LOG_DEBUG(
         ctx,
@@ -804,6 +825,7 @@ void TStorageServiceActor::HandleReadData(
         filestore.GetFileSystemId(),
         filestore.GetBlockSize(),
         session->RequestStats,
+        blockChecksumsEnabled ? &inflight->ProfileLogRequest : nullptr,
         ProfileLog,
         session->MediaKind,
         useTwoStageRead);

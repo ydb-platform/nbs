@@ -20,6 +20,8 @@ namespace NProto {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TProfileLogRequestInfo;
+class TWriteDataRequest;
+class TReadDataResponse;
 
 }   // namespace NProto
 
@@ -84,6 +86,32 @@ void FinalizeProfileLogRequestInfo(
 
 void CalculateChecksums(
     const TStringBuf buffer,
+    ui32 blockSize,
+    NProto::TProfileLogRequestInfo& profileLogRequest);
+
+/**
+ * @brief Calculates request checksums. Copies data in the case when iovecs are
+ * used.
+ *
+ * @param request - Request proto.
+ * @param blockSize - Filesystem block size.
+ * @param profileLogRequest - Profile log request reference.
+ */
+void CalculateWriteDataRequestChecksums(
+    const NProto::TWriteDataRequest& request,
+    ui32 blockSize,
+    NProto::TProfileLogRequestInfo& profileLogRequest);
+
+/**
+ * @brief Calculates response checksums. Copies data in the case when iovecs are
+ * used.
+ *
+ * @param response - Response proto.
+ * @param blockSize - Filesystem block size.
+ * @param profileLogRequest - Profile log request reference.
+ */
+void CalculateReadDataResponseChecksums(
+    const NProto::TReadDataResponse& response,
     ui32 blockSize,
     NProto::TProfileLogRequestInfo& profileLogRequest);
 
