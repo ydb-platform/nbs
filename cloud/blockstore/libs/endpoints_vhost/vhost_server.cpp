@@ -55,8 +55,7 @@ public:
             IsReliableDiskRegistryMediaKind(volume.GetStorageMediaKind());
         options.StorageMediaKind = volume.GetStorageMediaKind();
         options.DiscardEnabled =
-            VhostDiscardEnabled &&
-            !IsDiskRegistryMediaKind(volume.GetStorageMediaKind());
+            ShouldEnableVhostDiscardForVolume(VhostDiscardEnabled, volume);
         options.MaxZeroBlocksSubRequestSize = MaxZeroBlocksSubRequestSize;
         options.OptimalIoSize = OptimalIoSize;
 
@@ -104,6 +103,14 @@ public:
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+bool ShouldEnableVhostDiscardForVolume(
+    bool vhostDiscardEnabled,
+    const NProto::TVolume& volume)
+{
+    return (vhostDiscardEnabled || volume.GetVhostDiscardEnabled()) &&
+           !IsDiskRegistryMediaKind(volume.GetStorageMediaKind());
+}
 
 IEndpointListenerPtr CreateVhostEndpointListener(
     NVhost::IServerPtr server,

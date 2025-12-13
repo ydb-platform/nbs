@@ -386,6 +386,11 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsEnableVhostDiscardForNewVolumesFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -745,6 +750,8 @@ public:
     [[nodiscard]] NProto::ENonreplAllocationPolicy GetNonreplAllocationPolicy() const;
 
     [[nodiscard]] bool GetSendLocalTabletMetricsToHiveEnabled() const;
+
+    [[nodiscard]] bool GetEnableVhostDiscardForNewVolumes() const;
 };
 
 ui64 GetAllocationUnit(

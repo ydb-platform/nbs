@@ -650,6 +650,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
         NProto::NONREPL_ALLOC_POLICY_NOT_SPECIFIED                            )\
                                                                                \
     xxx(SendLocalTabletMetricsToHiveEnabled,  bool,        false              )\
+                                                                               \
+    xxx(EnableVhostDiscardForNewVolumes,      bool,        false              )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
@@ -683,6 +685,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(RootKmsEncryptionForDiskRegistryBasedDisks)                            \
     xxx(LaggingDevicesForMirror2Disks)                                         \
     xxx(LaggingDevicesForMirror3Disks)                                         \
+    xxx(EnableVhostDiscardForNewVolumes)                                       \
 
 // BLOCKSTORE_BINARY_FEATURES
 
