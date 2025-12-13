@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 
 #include <util/generic/hash.h>
+#include <util/string/cast.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
