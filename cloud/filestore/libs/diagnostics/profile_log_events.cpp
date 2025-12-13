@@ -728,6 +728,8 @@ void FinalizeProfileLogRequestInfo(
     rangeInfo->SetActualBytes(response.BytesRead);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 void CalculateChecksums(
     const TStringBuf buffer,
     ui32 blockSize,
@@ -787,6 +789,48 @@ void CalculateChecksums(
                 range.UnalignedTailLength())));
         }
     }
+}
+
+void CalculateWriteDataRequestChecksums(
+    const NProto::TWriteDataRequest& request,
+    ui32 blockSize,
+    NProto::TProfileLogRequestInfo& profileLogRequest)
+{
+    if (request.GetIovecs().empty()) {
+        TStringBuf buffer(request.GetBuffer());
+        buffer.Skip(request.GetBufferOffset());
+        CalculateChecksums(buffer, blockSize, profileLogRequest);
+        return;
+    }
+
+    //
+    // Making a copy for simplicity. Checksum calculation is more expensive
+    // than memcpy anyway.
+    //
+
+    TString buffer;
+    const auto bytesToCopy = NStorage::CalculateByteCount(request);
+    buffer.ReserveAndResize(bytesToCopy);
+    char* ptr = buffer.begin();
+    for (const auto& iovec: request.GetIovecs()) {
+        memcpy(
+            ptr,
+            reinterpret_cast<char*>(iovec.GetBase()),
+            iovec.GetLength());
+        ptr += iovec.GetLength();
+    }
+
+    CalculateChecksums(buffer, blockSize, profileLogRequest);
+}
+
+void CalculateReadDataResponseChecksums(
+    const NProto::TReadDataResponse& response,
+    ui32 blockSize,
+    NProto::TProfileLogRequestInfo& profileLogRequest)
+{
+    TStringBuf buffer(response.GetBuffer());
+    buffer.Skip(response.GetBufferOffset());
+    CalculateChecksums(buffer, blockSize, profileLogRequest);
 }
 
 }   // namespace NCloud::NFileStore

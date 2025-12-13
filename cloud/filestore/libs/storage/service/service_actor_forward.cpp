@@ -10,8 +10,32 @@
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
-
 using namespace NKikimr;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TProtoRequest>
+void CalculateRequestChecksums(
+    const TProtoRequest& request,
+    ui32 blockSize,
+    NProto::TProfileLogRequestInfo& profileLogRequest)
+{
+    Y_UNUSED(request);
+    Y_UNUSED(blockSize);
+    Y_UNUSED(profileLogRequest);
+}
+
+void CalculateRequestChecksums(
+    const NProto::TWriteDataRequest& request,
+    ui32 blockSize,
+    NProto::TProfileLogRequestInfo& profileLogRequest)
+{
+    CalculateWriteDataRequestChecksums(request, blockSize, profileLogRequest);
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -87,6 +111,7 @@ void TStorageServiceActor::ForwardRequest(
             ErrorInvalidSession(clientId, sessionId, seqNo));
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
+    const NProto::TFileStore& filestore = session->FileStore;
 
     auto [cookie, inflight] = CreateInFlightRequest(
         TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
@@ -95,6 +120,15 @@ void TStorageServiceActor::ForwardRequest(
         ctx.Now());
 
     InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+    const bool blockChecksumsEnabled =
+        filestore.GetFeatures().GetBlockChecksumsInProfileLogEnabled()
+        || StorageConfig->GetBlockChecksumsInProfileLogEnabled();
+    if (blockChecksumsEnabled) {
+        CalculateRequestChecksums(
+            msg->Record,
+            filestore.GetBlockSize(),
+            inflight->ProfileLogRequest);
+    }
     TraceSerializer->BuildTraceRequest(
         *msg->Record.MutableHeaders()->MutableInternal()->MutableTrace(),
         msg->CallContext->LWOrbit);
