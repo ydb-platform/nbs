@@ -97,27 +97,59 @@ TString GetExternalHostUrl(
     return out;
 }
 
+TString GetUrlFromTemplate(
+    const TString& templateStr,
+    const TDiagnosticsConfig& config,
+    const TString& diskId)
+{
+    TString result = templateStr;
+    const auto& data = config.GetMonitoringUrlData();
+
+    auto substitute = [&result](TStringBuf placeholder, TStringBuf value)
+    {
+        SubstGlobal(result, placeholder, value);
+    };
+
+    substitute("{MonitoringUrl}", data.MonitoringUrl);
+    substitute("{MonitoringProject}", data.MonitoringProject);
+    substitute("{MonitoringClusterName}", data.MonitoringClusterName);
+    substitute("{MonitoringVolumeDashboard}", data.MonitoringVolumeDashboard);
+    substitute(
+        "{MonitoringNBSAlertsDashboard}",
+        data.MonitoringNBSAlertsDashboard);
+    substitute("{MonitoringNBSTVDashboard}", data.MonitoringNBSTVDashboard);
+    substitute("{MonitoringDataSourcePid}", data.MonitoringDataSourcePid);
+    substitute("{diskId}", diskId);
+
+    return result;
+}
+
 TString GetMonitoringVolumeUrl(
     const TDiagnosticsConfig& config,
     const TString& diskId)
 {
     TMonitoringUrlData data = config.GetMonitoringUrlData();
 
-    if (data.MonitoringGrafanaUrl.empty()) {
-        return TStringBuilder()
-               << data.MonitoringUrl << "/projects/" << data.MonitoringProject
-               << "/dashboards/" << data.MonitoringVolumeDashboard
-               << "?from=now-1d&to=now&refresh=60000&p.cluster="
-               << data.MonitoringClusterName << "&p.volume=" << diskId;
-    }
+    if (data.MonitoringUrlTemplate.empty()) {
+        // backward compatibility
+        data.MonitoringUrlTemplate =
+        "{MonitoringUrl}/projects/{MonitoringProject}"
+        "/dashboards/{MonitoringVolumeDashboard}"
+        "?from=now-1d&to=now&refresh=60000"
+        "&p.cluster={MonitoringClusterName}&p.volume={diskId}";
+        }
 
-    return TStringBuilder()
-           << data.MonitoringGrafanaUrl << "/d/"
-           << data.MonitoringGrafanaDasboard
-           << "?orgId=" << data.MonitoringGrafanaOrgId
-           << "&from=now-1d&to=now&refresh=60000&p.cluster="
-           << "&var-datasource=" << data.MonitoringGrafanaDatasourcePid
-           << "&var-disk_id=" << diskId;
+    /*
+    example template:
+    {MonitoringUrl}/d/{MonitoringVolumeDashboard}?orgId=1
+    &from=now-1d&to=now&refresh=60000
+    &var-datasource={MonitoringDataSourcePid}
+    &var-disk_id={diskId}
+    */
+    return GetUrlFromTemplate(
+        data.MonitoringUrlTemplate,
+        config,
+        diskId);
 }
 
 TString GetMonitoringVolumeUrlWithoutDiskId(const TDiagnosticsConfig& config)

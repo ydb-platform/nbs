@@ -311,10 +311,8 @@ void Out<NCloud::NBlockStore::TMonitoringUrlData>(
     v.SetMonitoringPartitionDashboard(value.MonitoringPartitionDashboard);
     v.SetMonitoringNBSAlertsDashboard(value.MonitoringNBSAlertsDashboard);
     v.SetMonitoringNBSTVDashboard(value.MonitoringNBSTVDashboard);
-    v.SetMonitoringGrafanaUrl(value.MonitoringGrafanaUrl);
-    v.SetMonitoringGrafanaOrgId(value.MonitoringGrafanaOrgId);
-    v.SetMonitoringGrafanaDasboard(value.MonitoringGrafanaDasboard);
-    v.SetMonitoringGrafanaDatasourcePid(value.MonitoringGrafanaDatasourcePid);
+    v.SetMonitoringUrlTemplate(value.MonitoringUrlTemplate);
+    v.SetMonitoringDataSourcePid(value.MonitoringDataSourcePid);
     SerializeToTextFormat(v, out);
 }
 

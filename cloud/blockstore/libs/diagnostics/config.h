@@ -83,11 +83,8 @@ struct TMonitoringUrlData: public TAtomicRefCount<TMonitoringUrlData>
     TString MonitoringNBSTVDashboard;
     TString MonitoringYDBProject;
     TString MonitoringYDBGroupDashboard;
-
-    TString MonitoringGrafanaUrl;
-    TString MonitoringGrafanaOrgId;
-    TString MonitoringGrafanaDasboard;
-    TString MonitoringGrafanaDatasourcePid;
+    TString MonitoringUrlTemplate;
+    TString MonitoringDataSourcePid;
 
     TMonitoringUrlData()
         : MonitoringProject("nbs")
@@ -104,11 +101,8 @@ struct TMonitoringUrlData: public TAtomicRefCount<TMonitoringUrlData>
         , MonitoringNBSTVDashboard(data.GetMonitoringNBSTVDashboard())
         , MonitoringYDBProject(data.GetMonitoringYDBProject())
         , MonitoringYDBGroupDashboard(data.GetMonitoringYDBGroupDashboard())
-        , MonitoringGrafanaUrl(data.GetMonitoringGrafanaUrl())
-        , MonitoringGrafanaOrgId(data.GetMonitoringGrafanaOrgId())
-        , MonitoringGrafanaDasboard(data.GetMonitoringGrafanaDasboard())
-        , MonitoringGrafanaDatasourcePid(
-              data.GetMonitoringGrafanaDatasourcePid())
+        , MonitoringUrlTemplate(data.GetMonitoringUrlTemplate())
+        , MonitoringDataSourcePid(data.GetMonitoringDataSourcePid())
     {}
 };
 

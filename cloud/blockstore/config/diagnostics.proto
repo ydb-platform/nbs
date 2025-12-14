@@ -79,14 +79,14 @@ message TMonitoringUrlData
     optional string MonitoringYDBProject = 8;
     optional string MonitoringYDBGroupDashboard = 9;
 
-    // grafana url
-    optional string MonitoringGrafanaUrl = 10;
-    // organization Id. 1 by default
-    optional string MonitoringGrafanaOrgId = 11;
-    // dasboard name - id/name
-    optional string MonitoringGrafanaDasboard = 12;
-    // monitoring datasource pid
-    optional string MonitoringGrafanaDatasourcePid = 13;
+    // monitoring dashboard url template
+    // for example
+    // {MonitoringUrl}/projects/{MonitoringProject}/dashboards/{MonitoringVolumeDashboard}
+    // ?from=now-1d&to=now&refresh=60000&p.cluster={MonitoringClusterName}&p.volume={diskId}"
+    optional string MonitoringUrlTemplate = 10;
+
+    // monitoring datasource pid for this ClusterName
+    optional string MonitoringDataSourcePid = 11;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
