@@ -53,6 +53,17 @@ bool IsWriteRequestType(ui32 requestType)
                static_cast<ui32>(EBlockStoreRequest::WriteBlocksLocal);
 }
 
+bool IsZeroRequestType(ui32 requestType)
+{
+    return requestType == static_cast<ui32>(EBlockStoreRequest::ZeroBlocks);
+}
+
+bool IsReadWriteZeroRequestType(ui32 requestType)
+{
+    return IsReadRequestType(requestType) || IsWriteRequestType(requestType) ||
+           IsZeroRequestType(requestType);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NCloud::NBlockStore

@@ -1,6 +1,7 @@
 #include <cloud/blockstore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/tools/analytics/dump-event-log/io_deps_stat_accumulator.h>
+#include <cloud/blockstore/tools/analytics/dump-event-log/io_distribution.h>
 #include <cloud/blockstore/tools/analytics/dump-event-log/read_write_requests_with_inflight.h>
 #include <cloud/blockstore/tools/analytics/dump-event-log/sqlite_output.h>
 #include <cloud/blockstore/tools/analytics/libs/event-log/dump.h>
@@ -47,6 +48,7 @@ struct TEventProcessor: TProtobufEventProcessor
     TString OutputZeroRangesStatFilename;
     TString KnownDisksFilename;
     TString OutputInflightStatFilename;
+    TString IODistributionStatFilename;
     TString FilterByDiskId;
     TString FilterByDiskIdFile;
     TString FilterByRequestTypeFile;
@@ -94,6 +96,12 @@ struct TEventProcessor: TProtobufEventProcessor
             IoDepsStatAccumulator->AddEventHandler(
                 std::make_unique<TReadWriteRequestsWithInflight>(
                     OutputInflightStatFilename));
+        }
+
+        if (IODistributionStatFilename) {
+            IoDepsStatAccumulator->AddEventHandler(
+                std::make_unique<TIODistributionStat>(
+                    IODistributionStatFilename));
         }
     }
 
@@ -323,6 +331,13 @@ public:
                 "the file")
             .Optional()
             .StoreResult(&Processor->OutputInflightStatFilename);
+
+        opts.AddLongOption(
+                "io-distribution-stat-file",
+                "Enables IO distribution calculation to the file")
+            .Optional()
+            .StoreResult(&Processor->IODistributionStatFilename);
+
     }
 
     void SetOptions(const TEvent::TOutputOptions& options) override

@@ -48,7 +48,7 @@ THashMap<TString, TDiskInfo> LoadKnownDisks(const TString& filename)
     if (!filename) {
         return {};
     }
-    const std::regex pattern(R"(^(.*?)\t(\d+)\t(.*)$)");
+    const std::regex pattern(R"(^(.*?)\t(\d+)\t(\d+)\t(.*)$)");
     const TMap<TString, NCloud::NProto::EStorageMediaKind> kindMapping = {
         {"ssd", NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD},
         {"hdd", NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD},
@@ -74,15 +74,18 @@ THashMap<TString, TDiskInfo> LoadKnownDisks(const TString& filename)
     while (input.ReadLine(line)) {
         std::smatch match;
         ui32 blockSize = 0;
+        ui64 blockCount = 0;
         if (std::regex_match(line.c_str(), match, pattern) &&
-            TryFromString(match[2], blockSize))
+            TryFromString(match[2], blockSize) &&
+            TryFromString(match[3], blockCount))
         {
             result.emplace(
                 match[1].str(),
                 TDiskInfo{
                     .DiskId = match[1].str(),
-                    .MediaKind = getKind(match[3].str()),
-                    .BlockSize = blockSize});
+                    .MediaKind = getKind(match[4].str()),
+                    .BlockSize = blockSize,
+                    .BlockCount = blockCount});
         }
     }
 
@@ -138,8 +141,13 @@ void TIoDepsStatAccumulator::ProcessRequest(
     TDuration postponed,
     const TReplicaChecksums& replicaChecksums)
 {
+    auto& diskInfo = GetDiskInfo(diskId);
+    diskInfo.BlockCount = Max(diskInfo.BlockCount, blockRange.End + 1);
+    diskInfo.RangeWithIO.Start =
+        Min(diskInfo.RangeWithIO.Start, blockRange.Start);
+    diskInfo.RangeWithIO.End = Max(diskInfo.RangeWithIO.End, blockRange.End);
     Requests.emplace_back(TRequestInfo(
-        &GetDiskInfo(diskId),
+        &diskInfo,
         timestamp,
         duration,
         postponed,
@@ -148,9 +156,9 @@ void TIoDepsStatAccumulator::ProcessRequest(
         replicaChecksums));
 }
 
-const TDiskInfo& TIoDepsStatAccumulator::GetDiskInfo(const TString& diskId)
+TDiskInfo& TIoDepsStatAccumulator::GetDiskInfo(const TString& diskId)
 {
-    if (const auto* diskInfo = DiskInfos.FindPtr(diskId)) {
+    if (auto* diskInfo = DiskInfos.FindPtr(diskId)) {
         return *diskInfo;
     }
 
