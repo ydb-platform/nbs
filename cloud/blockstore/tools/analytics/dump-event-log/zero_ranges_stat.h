@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/tools/analytics/dump-event-log/profile_log_event_handler.h>
 
+#include <library/cpp/json/writer/json_value.h>
+
 #include <util/generic/bitmap.h>
 #include <util/generic/map.h>
 #include <util/generic/string.h>
@@ -23,7 +25,7 @@ class TZeroRangesStat: public IProfileLogEventHandler
 
     public:
         void Set(ui64 rangeIndx, bool isZero);
-        [[nodiscard]] TString Print() const;
+        [[nodiscard]] NJson::TJsonValue Dump() const;
     };
 
     class TZeroRangesBySegmentSize
@@ -32,7 +34,7 @@ class TZeroRangesStat: public IProfileLogEventHandler
 
     public:
         void Set(ui64 rangeIndx4MiB, bool isZero);
-        [[nodiscard]] TString Print() const;
+        [[nodiscard]] NJson::TJsonValue Dump() const;
     };
 
     const TString Filename;
