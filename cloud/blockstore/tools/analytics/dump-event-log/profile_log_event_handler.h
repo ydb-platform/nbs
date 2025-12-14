@@ -23,6 +23,8 @@ struct TDiskInfo
     NCloud::NProto::EStorageMediaKind MediaKind =
         NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT;
     ui32 BlockSize = 0;
+    ui64 BlockCount = 0;
+    TBlockRange64 RangeWithIO;
 };
 
 struct TInflightCounter
@@ -88,5 +90,7 @@ struct IProfileLogEventHandler
 
 bool IsReadRequestType(ui32 requestType);
 bool IsWriteRequestType(ui32 requestType);
+bool IsZeroRequestType(ui32 requestType);
+bool IsReadWriteZeroRequestType(ui32 requestType);
 
 }   // namespace NCloud::NBlockStore

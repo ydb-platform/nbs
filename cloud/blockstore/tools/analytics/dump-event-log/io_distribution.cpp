@@ -8,14 +8,11 @@
 #include <util/generic/algorithm.h>
 #include <util/stream/file.h>
 #include <util/string/builder.h>
-
 namespace NCloud::NBlockStore {
 
 namespace {
 
 ///////////////////////////////////////////////////////////////////////////////
-
-constexpr ui64 NonreplDeviceSize = 93LU * 1024 * 1024 * 1024;
 
 struct TStripeConfig
 {
@@ -53,7 +50,7 @@ class TIODistribution: public IDistributionCalculator
     ui64 RequestCount = 0;
     ui64 SplittedRequestCount = 0;
     ui64 TotalIoBlockCount = 0;
-    TVector<ui32> IoBlockCountPerStripe;
+    TVector<ui32> BlockCountPerStripe;
     ui32 MinBlocksPerRequest = 0;
     ui32 MaxBlocksPerRequest = 0;
 
@@ -65,7 +62,7 @@ public:
         ui32 leftUsedStripe = DiskInfo.RangeWithIO.Start / BlocksPerStripe;
         ui32 rightUsedStripe = DiskInfo.RangeWithIO.End / BlocksPerStripe;
 
-        IoBlockCountPerStripe.resize(rightUsedStripe - leftUsedStripe + 1);
+        BlockCountPerStripe.resize(rightUsedStripe - leftUsedStripe + 1);
     }
 
     TString GetName() const override
@@ -97,7 +94,7 @@ public:
             const auto stripeRange =
                 TBlockRange64::WithLength(i * BlocksPerStripe, BlocksPerStripe);
 
-            IoBlockCountPerStripe[i - StartOffset] +=
+            BlockCountPerStripe[i - StartOffset] +=
                 stripeRange.Intersect(blockRange).Size();
         }
         ++RequestCount;
@@ -111,7 +108,7 @@ public:
 
         ui32 maxIoBlockPerStripe = 0;
         ui32 stripeWithIoCount = 0;
-        for (unsigned int count: IoBlockCountPerStripe) {
+        for (unsigned int count: BlockCountPerStripe) {
             maxIoBlockPerStripe = Max(maxIoBlockPerStripe, count);
             stripeWithIoCount += count > 0 ? 1 : 0;
         }
@@ -147,10 +144,10 @@ public:
 
         NJson::TJsonValue data;
         TVector<ui64> ioByStripeGroups(StripeConfig.StripeGroupCount);
-        for (size_t i = 0; i < IoBlockCountPerStripe.size(); ++i) {
+        for (size_t i = 0; i < BlockCountPerStripe.size(); ++i) {
             const size_t stripeGroupIndex =
                 (i + StartOffset) % StripeConfig.StripeGroupCount;
-            ioByStripeGroups[stripeGroupIndex] += IoBlockCountPerStripe[i];
+            ioByStripeGroups[stripeGroupIndex] += BlockCountPerStripe[i];
         }
         const double fairIoFraction = 1.0 / StripeConfig.StripeGroupCount;
         const double maxIoFraction =
@@ -172,46 +169,27 @@ public:
 
     NJson::TJsonValue CalcTopLoaded()
     {
+        Sort(BlockCountPerStripe, [&](ui32 a, ui32 b) { return a > b; });
+
+        NJson::TJsonValue data;
         struct TStripesStat
         {
             double BlockCount = 0.0;
             double StripeCount = 0.0;
             double IoBlockCount = 0.0;
+            double Overload = 0.0;
 
-            [[nodiscard]] NJson::TJsonValue Dump(
-                ui64 totalIoBlockCount,
-                ui64 diskBlockCount) const
+            [[nodiscard]] NJson::TJsonValue Dump(ui64 totalIoBlockCount) const
             {
-                const double avgIoPerBlock =
-                    static_cast<double>(totalIoBlockCount) / diskBlockCount;
-
-                const double overload =
-                    (IoBlockCount / BlockCount) / avgIoPerBlock;
-
                 NJson::TJsonValue data;
                 data["BlockCount"] = BlockCount;
                 data["StripeCount"] = StripeCount;
                 data["IoBlockCount"] = IoBlockCount;
                 data["IoFraction%"] = 100.0 * IoBlockCount / totalIoBlockCount;
-                data["Overload"] = overload;
+                data["Overload"] = Overload;
                 return data;
             }
         };
-
-        TStripesStat firstDeviceLoad{
-            .BlockCount = 1.0 * NonreplDeviceSize / DiskInfo.BlockSize,
-            .StripeCount = 1.0 * NonreplDeviceSize / StripeConfig.StripeSize};
-
-        for (size_t i = 0; i < IoBlockCountPerStripe.size(); ++i) {
-            const ui64 offset =
-                (i + StartOffset) * BlocksPerStripe * DiskInfo.BlockSize;
-            if (offset > NonreplDeviceSize) {
-                break;
-            }
-            firstDeviceLoad.IoBlockCount += IoBlockCountPerStripe[i];
-        }
-
-        Sort(IoBlockCountPerStripe, [&](ui32 a, ui32 b) { return a > b; });
 
         const std::pair<TStringBuf, double> percents[] = {
             {"Top_0.1%", 0.001},
@@ -236,26 +214,26 @@ public:
             }
 
             for (size_t i = 0;
-                 i < IoBlockCountPerStripe.size() && i < result.StripeCount;
+                 i < BlockCountPerStripe.size() && i < result.StripeCount;
                  ++i)
             {
-                result.IoBlockCount += IoBlockCountPerStripe[i];
+                result.IoBlockCount += BlockCountPerStripe[i];
                 if (static_cast<double>(i + 1) > result.StripeCount) {
                     result.IoBlockCount -=
                         (static_cast<double>(i) + 1.0 - result.StripeCount) *
-                        IoBlockCountPerStripe[i];
+                        BlockCountPerStripe[i];
                 }
             }
 
+            const double avgIoPerBlock =
+                static_cast<double>(TotalIoBlockCount) / DiskInfo.BlockCount;
+            result.Overload =
+                (result.IoBlockCount / result.BlockCount) / avgIoPerBlock;
             return result;
         };
 
-        NJson::TJsonValue data;
-        data["FirstDevice"] =
-            firstDeviceLoad.Dump(TotalIoBlockCount, DiskInfo.BlockCount);
         for (auto [name, percent]: percents) {
-            data[name] =
-                countIo(percent).Dump(TotalIoBlockCount, DiskInfo.BlockCount);
+            data[name] = countIo(percent).Dump(TotalIoBlockCount);
         }
 
         return data;
