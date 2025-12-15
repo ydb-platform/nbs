@@ -788,9 +788,20 @@ void TStorageServiceActor::HandleReadData(
         "read data %s",
         msg->Record.DebugString().Quote().c_str());
 
+    TChecksumCalcInfo checksumCalcInfo;
+    const bool blockChecksumsEnabled =
+        filestore.GetFeatures().GetBlockChecksumsInProfileLogEnabled()
+        || StorageConfig->GetBlockChecksumsInProfileLogEnabled();
+    if (blockChecksumsEnabled) {
+        checksumCalcInfo = TChecksumCalcInfo(
+            filestore.GetBlockSize(),
+            msg->Record.GetIovecs());
+    }
+
     auto [cookie, inflight] = CreateInFlightRequest(
         TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         session->MediaKind,
+        std::move(checksumCalcInfo),
         session->RequestStats,
         startTime);
 

@@ -109,6 +109,14 @@ public:
             }
         };
 
+        if constexpr (requires { request.GetVolumeAccessMode(); }) {
+            MetricRequest.AccessMode = request.GetVolumeAccessMode();
+        }
+
+        if constexpr (requires { request.GetVolumeMountMode(); }) {
+            MetricRequest.MountMode = request.GetVolumeMountMode();
+        }
+
         AppCtx.ServerStats->PrepareMetricRequest(
             MetricRequest,
             GetClientId(request),

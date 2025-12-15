@@ -46,6 +46,7 @@ message TFileStoreFeatures
     bool GuestHandleKillPrivV2Enabled = 31;
     bool ZeroCopyReadEnabled = 32;
     uint32 TwoStageReadThreshold = 33;
+    bool BlockChecksumsInProfileLogEnabled = 34;
 }
 
 message TFileStore

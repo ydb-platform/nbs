@@ -158,6 +158,13 @@ private:
         IRequestStatsPtr requestStats,
         TInstant currentTs);
 
+    std::pair<ui64, TInFlightRequest*> CreateInFlightRequest(
+        const TRequestInfo& info,
+        NProto::EStorageMediaKind media,
+        TChecksumCalcInfo checksumCalcInfo,
+        IRequestStatsPtr requestStats,
+        TInstant currentTs);
+
     TInFlightRequest* FindInFlightRequest(ui64 cookie);
 
     bool RemoveSession(

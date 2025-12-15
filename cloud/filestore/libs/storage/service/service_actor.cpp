@@ -92,6 +92,21 @@ std::pair<ui64, TInFlightRequest*> TStorageServiceActor::CreateInFlightRequest(
     IRequestStatsPtr requestStats,
     TInstant start)
 {
+    return CreateInFlightRequest(
+        info,
+        media,
+        {} /* checksumCalcInfo */,
+        std::move(requestStats),
+        start);
+}
+
+std::pair<ui64, TInFlightRequest*> TStorageServiceActor::CreateInFlightRequest(
+    const TRequestInfo& info,
+    NProto::EStorageMediaKind media,
+    TChecksumCalcInfo checksumCalcInfo,
+    IRequestStatsPtr requestStats,
+    TInstant start)
+{
     const ui64 cookie = MAKE_PROXY_COOKIE(++ProxyCounter);
     auto [it, inserted] = InFlightRequests.emplace(
         std::piecewise_construct,
@@ -100,6 +115,7 @@ std::pair<ui64, TInFlightRequest*> TStorageServiceActor::CreateInFlightRequest(
             info,
             ProfileLog,
             media,
+            std::move(checksumCalcInfo),
             requestStats));
 
     Y_ABORT_UNLESS(inserted);

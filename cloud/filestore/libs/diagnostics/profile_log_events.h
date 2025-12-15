@@ -5,6 +5,12 @@
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 
+namespace google::protobuf {
+
+    template <typename T>
+    class RepeatedPtrField;
+}   // namespace google::protobuf
+
 namespace NCloud::NProto {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -20,6 +26,9 @@ namespace NProto {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TProfileLogRequestInfo;
+class TWriteDataRequest;
+class TReadDataResponse;
+class TIovec;
 
 }   // namespace NProto
 
@@ -84,6 +93,34 @@ void FinalizeProfileLogRequestInfo(
 
 void CalculateChecksums(
     const TStringBuf buffer,
+    ui32 blockSize,
+    NProto::TProfileLogRequestInfo& profileLogRequest);
+
+/**
+ * @brief Calculates request checksums. Copies data in the case when iovecs are
+ * used.
+ *
+ * @param request - Request proto.
+ * @param blockSize - Filesystem block size.
+ * @param profileLogRequest - Profile log request reference.
+ */
+void CalculateWriteDataRequestChecksums(
+    const NProto::TWriteDataRequest& request,
+    ui32 blockSize,
+    NProto::TProfileLogRequestInfo& profileLogRequest);
+
+/**
+ * @brief Calculates response checksums. Copies data in the case when iovecs are
+ * used.
+ *
+ * @param iovecs - Request iovecs.
+ * @param response - Response proto.
+ * @param blockSize - Filesystem block size.
+ * @param profileLogRequest - Profile log request reference.
+ */
+void CalculateReadDataResponseChecksums(
+    const google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs,
+    const NProto::TReadDataResponse& response,
     ui32 blockSize,
     NProto::TProfileLogRequestInfo& profileLogRequest);
 

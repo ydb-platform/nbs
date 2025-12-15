@@ -852,6 +852,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetZeroCopyWriteEnabled(true);
         config.SetGuestHandleKillPrivV2Enabled(true);
         config.SetZeroCopyReadEnabled(true);
+        config.SetBlockChecksumsInProfileLogEnabled(true);
 
         features.SetTwoStageReadEnabled(true);
         features.SetTwoStageReadThreshold(64_KB);
@@ -872,6 +873,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetZeroCopyWriteEnabled(true);
         features.SetGuestHandleKillPrivV2Enabled(true);
         features.SetZeroCopyReadEnabled(true);
+        features.SetBlockChecksumsInProfileLogEnabled(true);
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
     }

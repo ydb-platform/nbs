@@ -94,6 +94,38 @@ ui32 CalculateChecksum(TStringBuf buf)
     return 0;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+void CalculateIovecsChecksums(
+    const google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs,
+    ui32 blockSize,
+    NProto::TProfileLogRequestInfo& profileLogRequest)
+{
+
+    //
+    // Making a copy for simplicity. Checksum calculation is more expensive
+    // than memcpy anyway.
+    //
+
+    TString buffer;
+    ui64 bytesToCopy = 0;
+    for (const auto& iovec: iovecs) {
+        bytesToCopy += iovec.GetLength();
+    }
+
+    buffer.ReserveAndResize(bytesToCopy);
+    char* ptr = buffer.begin();
+    for (const auto& iovec: iovecs) {
+        memcpy(
+            ptr,
+            reinterpret_cast<char*>(iovec.GetBase()),
+            iovec.GetLength());
+        ptr += iovec.GetLength();
+    }
+
+    CalculateChecksums(buffer, blockSize, profileLogRequest);
+}
+
 } // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -728,6 +760,8 @@ void FinalizeProfileLogRequestInfo(
     rangeInfo->SetActualBytes(response.BytesRead);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 void CalculateChecksums(
     const TStringBuf buffer,
     ui32 blockSize,
@@ -787,6 +821,37 @@ void CalculateChecksums(
                 range.UnalignedTailLength())));
         }
     }
+}
+
+void CalculateWriteDataRequestChecksums(
+    const NProto::TWriteDataRequest& request,
+    ui32 blockSize,
+    NProto::TProfileLogRequestInfo& profileLogRequest)
+{
+    if (request.GetIovecs().empty()) {
+        TStringBuf buffer(request.GetBuffer());
+        buffer.Skip(request.GetBufferOffset());
+        CalculateChecksums(buffer, blockSize, profileLogRequest);
+        return;
+    }
+
+    CalculateIovecsChecksums(request.GetIovecs(), blockSize, profileLogRequest);
+}
+
+void CalculateReadDataResponseChecksums(
+    const google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs,
+    const NProto::TReadDataResponse& response,
+    ui32 blockSize,
+    NProto::TProfileLogRequestInfo& profileLogRequest)
+{
+    if (iovecs.empty()) {
+        TStringBuf buffer(response.GetBuffer());
+        buffer.Skip(response.GetBufferOffset());
+        CalculateChecksums(buffer, blockSize, profileLogRequest);
+        return;
+    }
+
+    CalculateIovecsChecksums(iovecs, blockSize, profileLogRequest);
 }
 
 }   // namespace NCloud::NFileStore

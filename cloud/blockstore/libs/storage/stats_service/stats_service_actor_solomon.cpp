@@ -286,6 +286,10 @@ void TStatsServiceActor::HandleRegisterVolume(
             EPublishingPolicy::Repl,
             DiagnosticsConfig->GetHistogramCounterOptions());
     }
+
+    if (volume->ServiceVolumeCounters) {
+        volume->PerfCounters.Register(volume->ServiceVolumeCounters);
+    }
 }
 
 void TStatsServiceActor::HandleVolumeConfigUpdated(
