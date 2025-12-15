@@ -1085,7 +1085,8 @@ private:
             config.SetEntryTimeout(features.GetEntryTimeout());
         }
         if (features.GetRegularFileEntryTimeout()) {
-            config.SetRegularFileEntryTimeout(features.GetRegularFileEntryTimeout());
+            config.SetRegularFileEntryTimeout(
+                features.GetRegularFileEntryTimeout());
         }
         if (features.GetNegativeEntryTimeout()) {
             config.SetNegativeEntryTimeout(features.GetNegativeEntryTimeout());
