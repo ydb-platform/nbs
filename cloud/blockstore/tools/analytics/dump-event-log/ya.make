@@ -16,6 +16,8 @@ SRCS(
     read_write_requests_with_inflight.cpp
     sqlite_output.cpp
     main.cpp
+    sqlite_output.cpp
+    zero_ranges_stat.cpp
 )
 
 END()

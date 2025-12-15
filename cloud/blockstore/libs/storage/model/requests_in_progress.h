@@ -33,28 +33,34 @@ public:
     [[nodiscard]] virtual bool IsWaitingForInFlightWrites() const = 0;
 };
 
-///////////////////////////////////////////////////////////////////////////////
-
-template <
-    EAllowedRequests TKind,
-    typename TKey,
-    typename TRequestInfo = TEmptyType>
-class TRequestsInProgress: public IRequestsInProgress
+class IWriteRequestsTracker
 {
 public:
-    using TRequests = TBlockRangeMap<TKey, TRequestInfo>;
-    using TItem = TRequests::TItem;
-    using TEnumerateFunc =
-        std::function<void(TKey, bool, TBlockRange64, const TRequestInfo&)>;
+    virtual ~IWriteRequestsTracker() = default;
+
+    // Returns true if range overlaps with any write/zero request in progress.
+    [[nodiscard]] virtual bool Overlaps(TBlockRange64 range) const = 0;
+};
+
+///////////////////////////////////////////////////////////////////////////////
+
+template <typename TKey, typename TRequest>
+class TRequestsInProgressImpl: public IRequestsInProgress
+{
+public:
+    using TRequestInfo = TRequest;
 
 private:
+    using TRequests = THashMap<TKey, TRequestInfo>;
+    TRequests RequestsInProgress;
+    size_t WriteRequestCount = 0;
     TKey RequestIdentityKeyCounter = {};
-    TRequests ReadRequests;
-    TRequests WriteRequests;
-    THashSet<TKey> DirtyWriteRequests;
+
+    // Dirty write/zero requests.
+    THashSet<TKey> WaitingForWriteRequests;
 
 public:
-    ~TRequestsInProgress() override = default;
+    ~TRequestsInProgressImpl() override = default;
 
     TKey GenerateRequestId()
     {
@@ -66,31 +72,74 @@ public:
         RequestIdentityKeyCounter = value;
     }
 
+    const TRequests& AllRequests() const
+    {
+        return RequestsInProgress;
+    }
+
     [[nodiscard]] size_t GetRequestCount() const
     {
-        return ReadRequests.Size() + WriteRequests.Size();
+        return RequestsInProgress.size();
     }
 
     [[nodiscard]] bool Empty() const
     {
-        return ReadRequests.Empty() && WriteRequests.Empty();
+        return GetRequestCount() == 0;
     }
 
     // IRequestsInProgress  implementation
 
     [[nodiscard]] bool WriteRequestInProgress() const override
     {
-        return !WriteRequests.Empty();
-    }
-
-    [[nodiscard]] bool OverlapsWithWrites(TBlockRange64 range) const override
-    {
-        return WriteRequests.FindFirstOverlapping(range) != nullptr;
+        return WriteRequestCount != 0;
     }
 
     void WaitForInFlightWrites() override
     {
-        DirtyWriteRequests = WriteRequests.GetAllKeys();
+        for (const auto& [key, value]: RequestsInProgress) {
+            if (value.IsWrite) {
+                WaitingForWriteRequests.insert(key);
+            }
+        }
+    }
+
+    [[nodiscard]] bool IsWaitingForInFlightWrites() const override
+    {
+        return !WaitingForWriteRequests.empty();
+    }
+
+protected:
+    void AddRequest(const TKey& key, TRequestInfo request)
+    {
+        Y_DEBUG_ABORT_UNLESS(!RequestsInProgress.contains(key));
+
+        WriteRequestCount += !!request.IsWrite;
+        RequestsInProgress.emplace(key, std::move(request));
+    }
+
+    TKey AddRequest(TRequestInfo request)
+    {
+        auto key = GenerateRequestId();
+        AddRequest(key, std::move(request));
+        return key;
+    }
+
+    std::optional<TRequestInfo> ExtractRequest(const TKey& key)
+    {
+        auto it = RequestsInProgress.find(key);
+
+        if (it == RequestsInProgress.end()) {
+            Y_DEBUG_ABORT_UNLESS(0);
+            return std::nullopt;
+        }
+
+        if (it->second.IsWrite) {
+            WaitingForWriteRequests.erase(key);
+            --WriteRequestCount;
+        }
+        TRequestInfo res = std::move(it->second);
+        RequestsInProgress.erase(it);
+        return res;
     }
 };
 
