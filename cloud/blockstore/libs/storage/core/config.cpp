@@ -1213,6 +1213,13 @@ void AdaptNodeRegistrationParams(
             serverConfig.GetNodeRegistrationToken());
     }
 
+    if (!storageConfig.HasEnableVhostDiscardForNewVolumes() &&
+        serverConfig.HasVhostDiscardEnabled())
+    {
+        storageConfig.SetEnableVhostDiscardForNewVolumes(
+            serverConfig.GetVhostDiscardEnabled());
+    }
+
     if (overriddenNodeType) {
         storageConfig.SetNodeType(overriddenNodeType);
     }
