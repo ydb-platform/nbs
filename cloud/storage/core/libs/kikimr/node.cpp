@@ -117,13 +117,13 @@ NKikimrConfig::TAppConfig GetYamlConfigFromResult(
     const TMap<TString, TString>& labels)
 {
     NKikimrConfig::TAppConfig appConfig;
-    if (result.HasYamlConfig() && !result.GetYamlConfig().empty()) {
+    if (result.HasMainYamlConfig() && !result.GetMainYamlConfig().empty()) {
         NYamlConfig::ResolveAndParseYamlConfig(
-            result.GetYamlConfig(),
+            result.GetMainYamlConfig(),
             result.GetVolatileYamlConfigs(),
             labels,
             appConfig,
-            nullptr,
+            std::nullopt,
             nullptr);
     }
     return appConfig;

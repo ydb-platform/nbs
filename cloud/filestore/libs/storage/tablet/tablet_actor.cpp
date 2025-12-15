@@ -137,7 +137,7 @@ void TIndexTabletActor::OnActivateExecutor(const TActorContext& ctx)
 
     RegisterCounters(ctx);
 
-    if (!Executor()->GetStats().IsFollower) {
+    if (!Executor()->GetStats().IsFollower()) {
         ExecuteTx<TInitSchema>(ctx, UseNoneCompactionPolicy);
     }
 }
