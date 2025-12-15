@@ -31,13 +31,17 @@ void AddRequestStats(
     IRequestStats& requestStats,
     NCloud::NProto::EStorageMediaKind mediaKind,
     EBlockStoreRequest requestType,
-    std::initializer_list<TRequest> requests)
+    std::initializer_list<TRequest> requests,
+    NProto::EVolumeAccessMode accessMode,
+    NProto::EVolumeMountMode mountMode)
 {
     for (const auto& request: requests) {
         auto requestStarted = requestStats.RequestStarted(
             mediaKind,
             requestType,
-            request.RequestBytes);
+            request.RequestBytes,
+            accessMode,
+            mountMode);
 
         requestStats.RequestCompleted(
             mediaKind,
@@ -49,7 +53,9 @@ void AddRequestStats(
             NCloud::NProto::EF_NONE,
             false,
             ECalcMaxTime::ENABLE,
-            0);
+            0,
+            accessMode,
+            mountMode);
     }
 }
 
@@ -122,9 +128,9 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_SSD,
                 EBlockStoreRequest::WriteBlocks,
-            {
-                { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() }
-            });
+                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}},
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL);
 
             UNIT_ASSERT_EQUAL(totalCount->Val(), 1);
             UNIT_ASSERT_EQUAL(ssdCount->Val(), 1);
@@ -140,9 +146,9 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_HDD,
                 EBlockStoreRequest::WriteBlocks,
-            {
-                { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() }
-            });
+                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}},
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL);
 
             UNIT_ASSERT_EQUAL(totalCount->Val(), 2);
             UNIT_ASSERT_EQUAL(ssdCount->Val(), 1);
@@ -158,9 +164,9 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
                 EBlockStoreRequest::WriteBlocks,
-            {
-                { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() }
-            });
+                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}},
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL);
 
             UNIT_ASSERT_EQUAL(totalCount->Val(), 3);
             UNIT_ASSERT_EQUAL(ssdCount->Val(), 1);
@@ -176,9 +182,9 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
                 EBlockStoreRequest::WriteBlocks,
-            {
-                { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() }
-            });
+                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}},
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL);
 
             UNIT_ASSERT_EQUAL(totalCount->Val(), 4);
             UNIT_ASSERT_EQUAL(ssdCount->Val(), 1);
@@ -194,9 +200,9 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
                 EBlockStoreRequest::WriteBlocks,
-            {
-                { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() }
-            });
+                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}},
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL);
 
             UNIT_ASSERT_EQUAL(totalCount->Val(), 5);
             UNIT_ASSERT_EQUAL(ssdCount->Val(), 1);
@@ -212,9 +218,9 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
                 EBlockStoreRequest::WriteBlocks,
-            {
-                { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() }
-            });
+                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}},
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL);
 
             UNIT_ASSERT_EQUAL(totalCount->Val(), 6);
             UNIT_ASSERT_EQUAL(ssdCount->Val(), 1);
@@ -266,7 +272,9 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_DEFAULT,
                 EBlockStoreRequest::WriteBlocks,
-                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}});
+                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}},
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL);
 
             UNIT_ASSERT_EQUAL(1, totalCounters->GetCounter("Count")->Val());
             for (const auto& counter: countersByMediaKind) {
@@ -353,31 +361,37 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             *requestStats,
             NCloud::NProto::STORAGE_MEDIA_SSD,
             EBlockStoreRequest::WriteBlocks,
-        {
-            { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 1_MB, TDuration::MilliSeconds(200), TDuration::Zero() },
-            { 1_MB, TDuration::MilliSeconds(300), TDuration::Zero() },
-        });
+            {
+                {1_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+                {1_MB, TDuration::MilliSeconds(200), TDuration::Zero()},
+                {1_MB, TDuration::MilliSeconds(300), TDuration::Zero()},
+            },
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL);
 
         AddRequestStats(
             *requestStats,
             NCloud::NProto::STORAGE_MEDIA_HDD,
             EBlockStoreRequest::WriteBlocks,
-        {
-            { 1_MB, TDuration::MilliSeconds(400), TDuration::Zero() },
-            { 1_MB, TDuration::MilliSeconds(500), TDuration::Zero() },
-            { 1_MB, TDuration::MilliSeconds(600), TDuration::Zero() },
-        });
+            {
+                {1_MB, TDuration::MilliSeconds(400), TDuration::Zero()},
+                {1_MB, TDuration::MilliSeconds(500), TDuration::Zero()},
+                {1_MB, TDuration::MilliSeconds(600), TDuration::Zero()},
+            },
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL);
 
         AddRequestStats(
             *requestStats,
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             EBlockStoreRequest::WriteBlocks,
-        {
-            { 1_MB, TDuration::MilliSeconds(10), TDuration::Zero() },
-            { 1_MB, TDuration::MilliSeconds(20), TDuration::Zero() },
-            { 1_MB, TDuration::MilliSeconds(30), TDuration::Zero() },
-        });
+            {
+                {1_MB, TDuration::MilliSeconds(10), TDuration::Zero()},
+                {1_MB, TDuration::MilliSeconds(20), TDuration::Zero()},
+                {1_MB, TDuration::MilliSeconds(30), TDuration::Zero()},
+            },
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL);
 
         requestStats->UpdateStats(true);
 
@@ -471,7 +485,9 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 {1_MB,
                  TDuration::MilliSeconds(300),
                  TDuration::MilliSeconds(100)},   // 200 ms
-            });
+            },
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL);
 
         AddRequestStats(
             *requestStats,
@@ -487,7 +503,9 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 {1_MB,
                  TDuration::MilliSeconds(600),
                  TDuration::MilliSeconds(250)},   // 350 ms
-            });
+            },
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL);
 
         AddRequestStats(
             *requestStats,
@@ -503,7 +521,9 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 {1_MB,
                  TDuration::MilliSeconds(30),
                  TDuration::MilliSeconds(22)},   // 8 ms
-            });
+            },
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL);
 
         requestStats->UpdateStats(true);
 
@@ -590,31 +610,37 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             *requestStats,
             NCloud::NProto::STORAGE_MEDIA_SSD,
             EBlockStoreRequest::WriteBlocks,
-        {
-            { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 2_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 3_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-        });
+            {
+                {1_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+                {2_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+                {3_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+            },
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL);
 
         AddRequestStats(
             *requestStats,
             NCloud::NProto::STORAGE_MEDIA_HDD,
             EBlockStoreRequest::WriteBlocks,
-        {
-            { 4_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 5_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 6_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-        });
+            {
+                {4_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+                {5_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+                {6_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+            },
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL);
 
         AddRequestStats(
             *requestStats,
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             EBlockStoreRequest::WriteBlocks,
-        {
-            { 7_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 8_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 9_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-        });
+            {
+                {7_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+                {8_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+                {9_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+            },
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL);
 
         requestStats->UpdateStats(true);
 
@@ -689,23 +715,29 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             ->GetSubgroup("type", "hdd_nonrepl")
             ->GetSubgroup("request", "WriteBlocks");
 
-        auto shoot = [&] (auto mediaKind) {
+        auto shoot = [&](auto mediaKind)
+        {
             auto requestStarted = requestStats->RequestStarted(
                 mediaKind,
                 EBlockStoreRequest::WriteBlocks,
-                1_MB);
+                1_MB,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL);
 
             requestStats->RequestCompleted(
                 mediaKind,
                 EBlockStoreRequest::WriteBlocks,
-                requestStarted - DurationToCyclesSafe(TDuration::MilliSeconds(100)),
+                requestStarted -
+                    DurationToCyclesSafe(TDuration::MilliSeconds(100)),
                 TDuration::Zero(),
                 1_MB,
                 EDiagnosticsErrorKind::ErrorSilent,
-                NCloud::NProto::EF_SILENT, // a stub at the moment
+                NCloud::NProto::EF_SILENT,   // a stub at the moment
                 false,
                 ECalcMaxTime::ENABLE,
-                0);
+                0,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL);
         };
 
         shoot(NCloud::NProto::STORAGE_MEDIA_SSD);
@@ -736,26 +768,31 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             {});
 
         unsigned int totalShots = 0;
-        auto shoot = [&] (auto mediaKind, unsigned int count) {
+        auto shoot = [&](auto mediaKind, unsigned int count)
+        {
             totalShots += count;
             while (count--) {
                 auto requestStarted = requestStats->RequestStarted(
                     mediaKind,
                     EBlockStoreRequest::WriteBlocks,
-                    1_MB);
+                    1_MB,
+                    NProto::VOLUME_ACCESS_READ_WRITE,
+                    NProto::VOLUME_MOUNT_LOCAL);
 
                 requestStats->RequestCompleted(
                     mediaKind,
                     EBlockStoreRequest::WriteBlocks,
-                    requestStarted
-                        - DurationToCyclesSafe(TDuration::MilliSeconds(100)),
+                    requestStarted -
+                        DurationToCyclesSafe(TDuration::MilliSeconds(100)),
                     TDuration::Zero(),
                     1_MB,
                     EDiagnosticsErrorKind::ErrorSilent,
                     NCloud::NProto::EF_HW_PROBLEMS_DETECTED,
                     false,
                     ECalcMaxTime::ENABLE,
-                    0);
+                    0,
+                    NProto::VOLUME_ACCESS_READ_WRITE,
+                    NProto::VOLUME_MOUNT_LOCAL);
             }
         };
 
@@ -821,7 +858,9 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 {.RequestBytes = 4_MB,   // no size class
                  .RequestTime = TDuration::MilliSeconds(5000),
                  .PostponedTime = TDuration::MilliSeconds(1000)},
-            });
+            },
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL);
 
         requestStats->UpdateStats(true);
 
