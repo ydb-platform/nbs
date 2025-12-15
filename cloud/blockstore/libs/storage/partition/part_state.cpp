@@ -779,7 +779,6 @@ void TPartitionState::BlobsConfirmed(
     UnconfirmedBlobCount -= blobCount;
 }
 
-
 void TPartitionState::ConfirmBlobs(
     TPartitionDatabase& db,
     const TVector<TPartialBlobId>& unrecoverableBlobs)
