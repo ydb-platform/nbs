@@ -9,6 +9,14 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TPartitionDiskCounters;
+struct TVolumeSelfCounters;
+
+using TPartitionDiskCountersPtr = std::unique_ptr<TPartitionDiskCounters>;
+using TVolumeSelfCountersPtr = std::unique_ptr<TVolumeSelfCounters>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 enum class EPublishingPolicy
 {
     All,
@@ -831,6 +839,15 @@ struct TPartitionDiskCounters
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TPartNonreplCountersData
+{
+    TPartitionDiskCountersPtr DiskCounters;
+    ui64 NetworkBytes = 0;
+    TDuration CpuUsage;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TVolumeSelfCounters
 {
     TVolumeSelfSimpleCounters Simple;
@@ -854,11 +871,6 @@ struct TVolumeSelfCounters
     void Publish(TInstant now);
     void Reset();
 };
-
-////////////////////////////////////////////////////////////////////////////////
-
-using TPartitionDiskCountersPtr = std::unique_ptr<TPartitionDiskCounters>;
-using TVolumeSelfCountersPtr = std::unique_ptr<TVolumeSelfCounters>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

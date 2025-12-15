@@ -290,20 +290,14 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
     const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
     const TActorContext& ctx)
 {
-
     auto* msg = ev->Get();
-
-    TPartNonreplCountersData partCountersData(
-        msg->NetworkBytes,
-        msg->CpuUsage,
-        std::move(msg->DiskCounters));
 
     TDataForUpdatingDiskRegistryBasedPartCounters data(
         ev->Sender,
         ev->Cookie,
         std::move(msg->DiskId),
         std::move(msg->CallContext),
-        std::move(partCountersData));
+        std::move(msg->CountersData));
 
     UpdateDiskRegistryBasedPartCounters(ctx, std::move(data));
 }
@@ -324,17 +318,12 @@ void TVolumeActor::HandleGetDiskRegistryBasedPartCountersResponse(
             FormatError(msg->Error).c_str());
     }
 
-    TPartNonreplCountersData partCountersData(
-        msg->NetworkBytes,
-        msg->CpuUsage,
-        std::move(msg->DiskCounters));
-
     TDataForUpdatingDiskRegistryBasedPartCounters data(
         msg->ActorId,
         ev->Cookie,
         std::move(msg->DiskId),
         MakeIntrusive<TCallContext>(),
-        std::move(partCountersData));
+        std::move(msg->CountersData));
 
     UpdateDiskRegistryBasedPartCounters(ctx, std::move(data));
 }
