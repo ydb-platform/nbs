@@ -49,13 +49,7 @@ void TMirrorPartitionResyncActor::HandlePartCounters(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-
-    TPartNonreplCountersData partCountersData(
-        msg->NetworkBytes,
-        msg->CpuUsage,
-        std::move(msg->DiskCounters));
-
-    UpdateCounters(ctx, ev->Sender, std::move(partCountersData));
+    UpdateCounters(ctx, ev->Sender, std::move(msg->CountersData));
 }
 
 void TMirrorPartitionResyncActor::HandleScrubberCounters(
@@ -77,20 +71,16 @@ void TMirrorPartitionResyncActor::HandleGetDiskRegistryBasedPartCounters(
             std::make_unique<TEvNonreplPartitionPrivate::
                                  TEvGetDiskRegistryBasedPartCountersResponse>(
                 MakeError(E_REJECTED, "Mirror resync actor got new request"),
-                CreatePartitionDiskCounters(
-                    EPublishingPolicy::DiskRegistryBased,
-                    DiagnosticsConfig
-                        ->GetHistogramCounterOptions()),   // diskCounters
-                0,                                         // networkBytes
-                TDuration{},                               // cpuUsage
                 SelfId(),
-                PartConfig->GetName()));
+                PartConfig->GetName(),
+                TPartNonreplCountersData{
+                    .DiskCounters = CreatePartitionDiskCounters(
+                        EPublishingPolicy::DiskRegistryBased,
+                        DiagnosticsConfig->GetHistogramCounterOptions())}));
         StatisticRequestInfo.Reset();
     }
 
     if (!MirrorActorId && Replicas.empty()) {
-        auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters();
-
         NCloud::Reply(
             ctx,
             *ev,
@@ -100,11 +90,9 @@ void TMirrorPartitionResyncActor::HandleGetDiskRegistryBasedPartCounters(
                     E_INVALID_STATE,
                     "Part mirror resync actor hasn't replicas and mirror "
                     "actor"),
-                std::move(diskCounters),
-                networkBytes,
-                cpuUsage,
                 SelfId(),
-                PartConfig->GetName()));
+                PartConfig->GetName(),
+                ExtractPartCounters()));
         return;
     }
 
@@ -150,15 +138,8 @@ void TMirrorPartitionResyncActor::HandleDiskRegistryBasedPartCountersCombined(
     }
 
     for (auto& counters: msg->Counters) {
-        TPartNonreplCountersData partCountersData(
-            counters.NetworkBytes,
-            counters.CpuUsage,
-            std::move(counters.DiskCounters));
-
-        UpdateCounters(ctx, counters.ActorId, std::move(partCountersData));
+        UpdateCounters(ctx, counters.ActorId, std::move(counters.CountersData));
     }
-
-    auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters();
 
     NCloud::Reply(
         ctx,
@@ -166,11 +147,9 @@ void TMirrorPartitionResyncActor::HandleDiskRegistryBasedPartCountersCombined(
         std::make_unique<TEvNonreplPartitionPrivate::
                              TEvGetDiskRegistryBasedPartCountersResponse>(
             msg->Error,
-            std::move(diskCounters),
-            networkBytes,
-            cpuUsage,
             SelfId(),
-            PartConfig->GetName()));
+            PartConfig->GetName(),
+            ExtractPartCounters()));
 
     StatisticRequestInfo.Reset();;
 }
@@ -188,25 +167,20 @@ TPartNonreplCountersData TMirrorPartitionResyncActor::ExtractPartCounters()
         MirrorCounters.reset();
     }
 
-    TPartNonreplCountersData counters(NetworkBytes, CpuUsage, std::move(stats));
-
-    NetworkBytes = 0;
-    CpuUsage = TDuration();
-
-    return counters;
+    return {
+        .DiskCounters = std::exchange(stats, {}),
+        .NetworkBytes = std::exchange(NetworkBytes, {}),
+        .CpuUsage = std::exchange(CpuUsage, {}),
+    };
 }
 
 void TMirrorPartitionResyncActor::SendStats(const TActorContext& ctx)
 {
-    auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters();
-
     auto request =
         std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
             MakeIntrusive<TCallContext>(),
-            std::move(diskCounters),
             PartConfig->GetName(),
-            networkBytes,
-            cpuUsage);
+            ExtractPartCounters());
 
     NCloud::Send(ctx, StatActorId, std::move(request));
 }

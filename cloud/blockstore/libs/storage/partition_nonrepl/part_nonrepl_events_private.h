@@ -402,23 +402,17 @@ struct TEvNonreplPartitionPrivate
 
     struct TGetDiskRegistryBasedPartCountersResponse
     {
-        TPartitionDiskCountersPtr DiskCounters;
-        ui64 NetworkBytes;
-        TDuration CpuUsage;
         NActors::TActorId ActorId;
         TString DiskId;
+        TPartNonreplCountersData CountersData;
 
         TGetDiskRegistryBasedPartCountersResponse(
-                TPartitionDiskCountersPtr diskCounters,
-                ui64 networkBytes,
-                TDuration cpuUsage,
                 const NActors::TActorId& actorId,
-                TString diskId)
-            : DiskCounters(std::move(diskCounters))
-            , NetworkBytes(networkBytes)
-            , CpuUsage(cpuUsage)
-            , ActorId(actorId)
+                TString diskId,
+                TPartNonreplCountersData countersData)
+            : ActorId(actorId)
             , DiskId(std::move(diskId))
+            , CountersData(std::move(countersData))
         {}
     };
 

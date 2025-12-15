@@ -589,9 +589,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             {
                 auto* msg = event->Get<
                     TEvVolume::TEvDiskRegistryBasedPartitionCounters>();
-                if (msg->NetworkBytes || msg->CpuUsage) {
-                    network = std::max(network, msg->NetworkBytes);
-                    cpu = std::max(cpu, msg->CpuUsage);
+                auto& [_, networkBytes, cpuUsage] = msg->CountersData;
+                if (networkBytes || cpuUsage) {
+                    network = std::max(network, networkBytes);
+                    cpu = std::max(cpu, cpuUsage);
                     ++nonEmptyReports;
                 }
             }
@@ -708,9 +709,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             {
                 auto* msg = event->Get<
                     TEvVolume::TEvDiskRegistryBasedPartitionCounters>();
-                if (msg->NetworkBytes || msg->CpuUsage) {
-                    network = std::max(network, msg->NetworkBytes);
-                    cpu = std::max(cpu, msg->CpuUsage);
+                auto& [_, networkBytes, cpuUsage] = msg->CountersData;
+                if (networkBytes || cpuUsage) {
+                    network = std::max(network, networkBytes);
+                    cpu = std::max(cpu, cpuUsage);
                 }
             }
 
@@ -843,18 +845,19 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                     case TEvVolume::EvDiskRegistryBasedPartitionCounters: {
                         auto* msg = event->Get<
                             TEvVolume::TEvDiskRegistryBasedPartitionCounters>();
-                        totalNetworkBytes += msg->NetworkBytes;
+                        auto& [_, networkBytes, cpuUsage] = msg->CountersData;
+                        totalNetworkBytes += networkBytes;
 
                         // Resync is done by 4MiB ranges. Checksum is an 8-byte
                         // request.
                         UNIT_ASSERT_VALUES_EQUAL(
                             0,
-                            msg->NetworkBytes % 4_MB % 8);
-                        if (msg->NetworkBytes) {
+                            networkBytes % 4_MB % 8);
+                        if (networkBytes) {
                             nonEmptyStatsUpdates++;
                             UNIT_ASSERT_VALUES_UNEQUAL(
                                 TDuration(),
-                                msg->CpuUsage);
+                                cpuUsage);
                         }
                         break;
                     }

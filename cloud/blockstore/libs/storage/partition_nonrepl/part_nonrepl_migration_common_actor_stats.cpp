@@ -39,13 +39,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandlePartCounters(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-
-    TPartNonreplCountersData partCountersData(
-        msg->NetworkBytes,
-        msg->CpuUsage,
-        std::move(msg->DiskCounters));
-
-    UpdateCounters(ctx, ev->Sender, std::move(partCountersData));
+    UpdateCounters(ctx, ev->Sender, std::move(msg->CountersData));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -81,12 +75,11 @@ TNonreplicatedPartitionMigrationCommonActor::ExtractPartCounters()
         EPublishingPolicy::DiskRegistryBased,
         DiagnosticsConfig->GetHistogramCounterOptions());
 
-    TPartNonreplCountersData counters(NetworkBytes, CpuUsage, std::move(stats));
-
-    NetworkBytes = 0;
-    CpuUsage = {};
-
-    return counters;
+    return {
+        .DiskCounters = std::move(stats),
+        .NetworkBytes = std::exchange(NetworkBytes, {}),
+        .CpuUsage = std::exchange(CpuUsage, {})
+    };
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::SendStats(
@@ -96,15 +89,11 @@ void TNonreplicatedPartitionMigrationCommonActor::SendStats(
         return;
     }
 
-    auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters();
-
     auto request =
         std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
             MakeIntrusive<TCallContext>(),
-            std::move(diskCounters),
             DiskId,
-            networkBytes,
-            cpuUsage);
+            ExtractPartCounters());
 
     NCloud::Send(ctx, StatActorId, std::move(request));
 }
@@ -124,14 +113,12 @@ void TNonreplicatedPartitionMigrationCommonActor::
             std::make_unique<TEvNonreplPartitionPrivate::
                                  TEvGetDiskRegistryBasedPartCountersResponse>(
                 MakeError(E_REJECTED, "Migration actor got new request"),
-                CreatePartitionDiskCounters(
-                    EPublishingPolicy::DiskRegistryBased,
-                    DiagnosticsConfig
-                        ->GetHistogramCounterOptions()),   // diskCounters
-                0,                                         // networkBytes
-                TDuration{},                               // cpuUsage
                 SelfId(),
-                DiskId));
+                DiskId,
+                TPartNonreplCountersData{
+                    .DiskCounters = CreatePartitionDiskCounters(
+                        EPublishingPolicy::DiskRegistryBased,
+                        DiagnosticsConfig->GetHistogramCounterOptions())}));
         StatisticRequestInfo.Reset();
     }
 
@@ -146,8 +133,6 @@ void TNonreplicatedPartitionMigrationCommonActor::
     }
 
     if (statActorIds.empty()) {
-        auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters();
-
         NCloud::Reply(
             ctx,
             *ev,
@@ -157,11 +142,9 @@ void TNonreplicatedPartitionMigrationCommonActor::
                     E_INVALID_STATE,
                     "Nonreplicated migration actor hasn't src and dst "
                     "actors"),
-                std::move(diskCounters),
-                networkBytes,
-                cpuUsage,
                 SelfId(),
-                DiskId));
+                DiskId,
+                ExtractPartCounters()));
 
         return;
     }
@@ -199,15 +182,8 @@ void TNonreplicatedPartitionMigrationCommonActor::
     }
 
     for (auto& counters: msg->Counters) {
-        TPartNonreplCountersData partCountersData(
-            counters.NetworkBytes,
-            counters.CpuUsage,
-            std::move(counters.DiskCounters));
-
-        UpdateCounters(ctx, counters.ActorId, std::move(partCountersData));
+        UpdateCounters(ctx, counters.ActorId, std::move(counters.CountersData));
     }
-
-    auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters();
 
     NCloud::Reply(
         ctx,
@@ -215,11 +191,9 @@ void TNonreplicatedPartitionMigrationCommonActor::
         std::make_unique<TEvNonreplPartitionPrivate::
                              TEvGetDiskRegistryBasedPartCountersResponse>(
             msg->Error,
-            std::move(diskCounters),
-            networkBytes,
-            cpuUsage,
             SelfId(),
-            DiskId));
+            DiskId,
+            ExtractPartCounters()));
 
     StatisticRequestInfo.Reset();
 }
