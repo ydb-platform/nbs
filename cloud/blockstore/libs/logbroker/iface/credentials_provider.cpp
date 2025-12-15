@@ -2,8 +2,7 @@
 
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/iam/common/iam.h>
-
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/iam/iam.h>
 #include <util/string/cast.h>
 
 namespace NCloud::NBlockStore::NLogbroker {
