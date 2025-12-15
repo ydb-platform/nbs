@@ -53,20 +53,23 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
         StorageConfig->GetMultiTabletForwardingEnabled()
         && !disableMultiTabletForwarding;
 
-    // It is now possible to have more than 255 shards, with the maximum number
-    // specified by TStorageConfig::MaxShardCount. The current code reserves the
-    // two most significant bytes for shardNo, but handles created by the old
-    // code, which used only the 8th byte for shardNo, may still exist. To allow
-    // for a shard count higher than 255, we first need to wait until the
-    // SevenBytesHandlesCount counter is zero, and only then increase
-    // MaxShardCount. The following 'if' reconciles old handles with the new
-    // code.
-    if (shardNo && filestore.GetShardFileSystemIds().size() <= 254) {
-        shardNo &= 0xff;
-    }
-
     if (multiTabletForwardingEnabled && shardNo) {
         const auto& shardIds = filestore.GetShardFileSystemIds();
+
+        // It is now possible to have more than 255 shards, with the maximum
+        // number specified by TStorageConfig::MaxShardCount. The current code
+        // reserves the two most significant bytes for shardNo, but handles
+        // created by the old code, which used only the 8th byte for shardNo,
+        // may still exist. To allow for a shard count higher than 255, we first
+        // need to wait until the SevenBytesHandlesCount counter is zero, and
+        // only then increase MaxShardCount. The following 'if' reconciles old
+        // handles with the new code.
+        // TODO(#2566): Remove this code when there are no filesystems with
+        // shardIds.size() <= 255 and handles that use 7th byte.
+        if (shardNo && shardIds.size() <= 255) {
+            shardNo &= 0xff;
+        }
+
         if (shardIds.size() < static_cast<int>(shardNo)) {
             LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
                 "[%s][%lu] forward %s #%lu - invalid shardNo: %u/%d"
