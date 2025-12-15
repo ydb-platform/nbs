@@ -4,15 +4,15 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 
-namespace NYdb {
-    class ICredentialsProviderFactory;
-}   // namespace NYdb
+namespace NYdb::inline V3 {
+class ICredentialsProviderFactory;
+}   // namespace NYdb::inline V3
 
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace NCloud::NBlockStore::NLogbroker {
 
-using NYdbICredentialsProviderFactory = NYdb::ICredentialsProviderFactory;
+using NYdbICredentialsProviderFactory = NYdb::V3::ICredentialsProviderFactory;
 
 class TLogbrokerConfig;
 
