@@ -100,6 +100,10 @@ private:
         const typename TMethod::TResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleDiscoveryUndelivery(
+        const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleMultiAgentWriteUndelivery(
         const TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -167,14 +171,19 @@ void TMultiAgentWriteActor<TMethod>::SendDiscoveryRequests(
 
     ui64 count = 0;
     for (const auto& replica: ReplicasDiscovery) {
-        ctx.Send(
+        auto request = std::make_unique<
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest>(
+            EPurpose::ForWriting,
+            Range);
+        auto event = std::make_unique<NActors::IEventHandle>(
             replica.ActorId,
-            std::make_unique<
-                TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest>(
-                EPurpose::ForWriting,
-                Range),
-            0,
-            count++);
+            ctx.SelfID,
+            request.release(),
+            NActors::IEventHandle::FlagForwardOnNondelivery,
+            count++,      // cookie
+            &ctx.SelfID   // forwardOnNondelivery
+        );
+        ctx.Send(std::move(event));
     }
 }
 
@@ -446,6 +455,28 @@ void TMultiAgentWriteActor<TMethod>::HandleOrdinaryWriteResponse(
 }
 
 template <typename TMethod>
+void TMultiAgentWriteActor<TMethod>::HandleDiscoveryUndelivery(
+    const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "[%s] TEvGetDeviceForRangeRequest undelivered to nonrepl "
+        "partition #%lu",
+        DiskId.c_str(),
+        ev->Cookie);
+
+    UpdateResponse(
+        MakeError(
+            E_REJECTED,
+            TStringBuilder()
+                << "Discovery request undelivered to nonrepl partition #"
+                << ev->Cookie));
+    Done(ctx);
+}
+
+template <typename TMethod>
 void TMultiAgentWriteActor<TMethod>::HandleMultiAgentWriteUndelivery(
     const TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
@@ -455,12 +486,12 @@ void TMultiAgentWriteActor<TMethod>::HandleMultiAgentWriteUndelivery(
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] TMultiAgentWriteRequest request undelivered to nonrepl partition",
+        "[%s] TMultiAgentWriteRequest undelivered to nonrepl partition",
         DiskId.c_str());
 
     UpdateResponse(MakeError(
         E_REJECTED,
-        "TMultiAgentWriteRequestrequest undelivered to nonrepl partition"));
+        "TMultiAgentWriteRequest undelivered to nonrepl partition"));
 
     --RemainResponseCount;
     if (!RemainResponseCount) {
@@ -517,6 +548,9 @@ STFUNC(TMultiAgentWriteActor<TMethod>::StateWork)
             TEvNonreplPartitionPrivate::TEvMultiAgentWriteResponse,
             HandleMultiAgentWriteDeviceBlocksResponse);
         HFunc(TMethod::TResponse, HandleOrdinaryWriteResponse);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
+            HandleDiscoveryUndelivery);
         HFunc(
             TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest,
             HandleMultiAgentWriteUndelivery);
