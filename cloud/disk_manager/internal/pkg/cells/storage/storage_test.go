@@ -289,7 +289,7 @@ func TestUpdateClusterCapacitiesDeletesRecordsBeforeTimestamp(t *testing.T) {
 	}
 	capacity2 := ClusterCapacity{
 		ZoneID:     shardedZoneID,
-		CellID:     cellID1,
+		CellID:     cellID2,
 		Kind:       types.DiskKind_DISK_KIND_HDD,
 		TotalBytes: 1024,
 		FreeBytes:  1024,
