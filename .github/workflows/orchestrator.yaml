@@ -74,8 +74,10 @@ jobs:
     uses: ./.github/workflows/scheduler.yaml
     secrets: inherit
     with:
-      max_vms_to_create: 5
-      vms_ttl: "21600"
+      max_vms_to_create: ${{ vars.POOLED_LIGHT_CREATE_VMS || "10" }}
+      vms_ttl: ${{ vars.POOLED_LIGHT_VMS_TTL || "86400" }}
+      maximum_amount_of_vms_to_have: ${{ vars.POOLED_LIGHT_MAXIMUM_AMOUNT_OF_VMS || "20" }}
+      extra_vms_if_needed: ${{ vars.POOLED_LIGHT_EXTRA_VMS_IF_NEEDED || "2" }}
       flavor: light
       provision_mode: ${{ inputs.provision_mode || 'regular' }}
       loop: ${{ inputs.provision_mode == 'initial' && 'no' || (inputs.loop || 'no') }}
@@ -86,8 +88,10 @@ jobs:
     uses: ./.github/workflows/scheduler.yaml
     secrets: inherit
     with:
-      max_vms_to_create: 5
-      vms_ttl: "21600"
+      max_vms_to_create: ${{ vars.POOLED_HEAVY_CREATE_VMS || "5" }}
+      vms_ttl: ${{ vars.POOLED_HEAVY_VMS_TTL || "21600" }}
+      maximum_amount_of_vms_to_have: ${{ vars.POOLED_HEAVY_MAXIMUM_AMOUNT_OF_VMS || "10" }}
+      extra_vms_if_needed: ${{ vars.POOLED_HEAVY_EXTRA_VMS_IF_NEEDED || "1" }}
       flavor: heavy
       provision_mode: ${{ inputs.provision_mode || 'regular' }}
       loop: ${{ inputs.provision_mode == 'initial' && 'no' || (inputs.loop == 'yes' && 'yes' || 'no') }}
