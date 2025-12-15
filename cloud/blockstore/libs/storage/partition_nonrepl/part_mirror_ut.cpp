@@ -3254,7 +3254,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                     auto sendTo = event->Sender;
                     // Due to the specifics of the test actor system, calling
                     // runtime.Send() causes the actor message handler to be
-                    // called while it is handle another message.
+                    // called while it is handling another message.
                     runtime.Schedule(
                         new IEventHandle(
                             sendTo,
