@@ -1,0 +1,18 @@
+#pragma once
+
+#include <yt/yt/core/misc/public.h>
+
+#include <library/cpp/yt/threading/public.h>
+
+namespace NYT::NThreading {
+
+////////////////////////////////////////////////////////////////////////////////
+
+DEFINE_ENUM(EThreadPriority,
+    (Normal)
+    (RealTime)
+);
+
+////////////////////////////////////////////////////////////////////////////////
+
+} // namespace NYT::NThreading
