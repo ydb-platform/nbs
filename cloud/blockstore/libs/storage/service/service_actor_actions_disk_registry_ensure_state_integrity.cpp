@@ -23,8 +23,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBackupDiskRegistryStateActor final
-    : public TActorBootstrapped<TBackupDiskRegistryStateActor>
+class TEnsureDiskRegistryStateIntegrityActor final
+    : public TActorBootstrapped<TEnsureDiskRegistryStateIntegrityActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
@@ -33,7 +33,7 @@ private:
     NProto::TError Error;
 
 public:
-    TBackupDiskRegistryStateActor(
+    TEnsureDiskRegistryStateIntegrityActor(
         TRequestInfoPtr requestInfo,
         TString input);
 
@@ -42,59 +42,54 @@ public:
 private:
     void ReplyAndDie(
         const TActorContext& ctx,
-        NProto::TBackupDiskRegistryStateResponse proto
-    );
+        std::unique_ptr<TEvService::TEvExecuteActionResponse> response);
 
 private:
-    STFUNC(StateWork);
+    STFUNC(StateEnsureDiskRegistryStateIntegrity);
 
-    void HandleBackupDiskRegistryStateResponse(
-        const TEvDiskRegistry::TEvBackupDiskRegistryStateResponse::TPtr& ev,
+    void HandleEnsureDiskRegistryStateIntegrityResponse(
+        const TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse::
+            TPtr& ev,
         const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TBackupDiskRegistryStateActor::TBackupDiskRegistryStateActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+TEnsureDiskRegistryStateIntegrityActor::TEnsureDiskRegistryStateIntegrityActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
 
-void TBackupDiskRegistryStateActor::Bootstrap(const TActorContext& ctx)
+void TEnsureDiskRegistryStateIntegrityActor::Bootstrap(const TActorContext& ctx)
 {
-    auto request =
-        std::make_unique<TEvDiskRegistry::TEvBackupDiskRegistryStateRequest>();
+    auto request = std::make_unique<
+        TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest>();
 
     if (!google::protobuf::util::JsonStringToMessage(Input, &request->Record)
              .ok())
     {
         Error = MakeError(E_ARGUMENT, "Failed to parse input");
-        ReplyAndDie(ctx, {});
+        ReplyAndDie(
+            ctx,
+            std::make_unique<TEvService::TEvExecuteActionResponse>());
         return;
     }
 
-    if (request->Record.GetBackupLocalDB()) {
-        request->Record.SetSource(NProto::BDRSS_MEMORY);
-    }
-
-    Become(&TThis::StateWork);
+    Become(&TThis::StateEnsureDiskRegistryStateIntegrity);
 
     NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
 }
 
-void TBackupDiskRegistryStateActor::ReplyAndDie(
+void TEnsureDiskRegistryStateIntegrityActor::ReplyAndDie(
     const TActorContext& ctx,
-    NProto::TBackupDiskRegistryStateResponse proto)
+    std::unique_ptr<TEvService::TEvExecuteActionResponse> response)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(Error);
-    google::protobuf::util::MessageToJsonString(proto, response->Record.MutableOutput());
-
     LWTRACK(
         ResponseSent_Service,
         RequestInfo->CallContext->LWOrbit,
-        "ExecuteAction_backupdiskregistrystate",
+        "ExecuteAction_ensurediskregistrystateintegrity",
         RequestInfo->CallContext->RequestId);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
@@ -103,27 +98,31 @@ void TBackupDiskRegistryStateActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TBackupDiskRegistryStateActor::HandleBackupDiskRegistryStateResponse(
-    const TEvDiskRegistry::TEvBackupDiskRegistryStateResponse::TPtr& ev,
-    const TActorContext& ctx)
+void TEnsureDiskRegistryStateIntegrityActor::
+    HandleEnsureDiskRegistryStateIntegrityResponse(
+        const TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse::
+            TPtr& ev,
+        const TActorContext& ctx)
 {
-    auto* msg = ev->Get();
+    const auto* msg = ev->Get();
 
-    if (HasError(msg->GetError())) {
-        Error = msg->GetError();
-    }
-
-    ReplyAndDie(ctx, std::move(msg->Record));
+    TString output;
+    google::protobuf::util::MessageToJsonString(msg->Record, &output);
+    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>();
+    response->Record.SetOutput(output);
+    ReplyAndDie(ctx, std::move(response));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TBackupDiskRegistryStateActor::StateWork)
+STFUNC(
+    TEnsureDiskRegistryStateIntegrityActor::
+        StateEnsureDiskRegistryStateIntegrity)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
-            TEvDiskRegistry::TEvBackupDiskRegistryStateResponse,
-            HandleBackupDiskRegistryStateResponse);
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse,
+            HandleEnsureDiskRegistryStateIntegrityResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -138,11 +137,12 @@ STFUNC(TBackupDiskRegistryStateActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<IActorPtr> TServiceActor::CreateBackupDiskRegistryStateActor(
+TResultOrError<IActorPtr>
+TServiceActor::CreateDiskRegistryEnsureStateIntegrityActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
-    return {std::make_unique<TBackupDiskRegistryStateActor>(
+    return {std::make_unique<TEnsureDiskRegistryStateIntegrityActor>(
         std::move(requestInfo),
         std::move(input))};
 }

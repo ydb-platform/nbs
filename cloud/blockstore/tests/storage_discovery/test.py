@@ -8,7 +8,7 @@ from copy import deepcopy
 from cloud.blockstore.public.sdk.python.client import CreateClient
 from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, \
     TAction, STORAGE_POOL_KIND_LOCAL, STORAGE_POOL_KIND_DEFAULT, \
-    STORAGE_POOL_KIND_GLOBAL
+    STORAGE_POOL_KIND_GLOBAL, EBackupDiskRegistryStateSource
 
 from cloud.blockstore.tests.python.lib.client import NbsClient
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
@@ -502,22 +502,21 @@ def test_add_devices(
     disk_agent.kill()
 
 
-@pytest.mark.parametrize("backup_from", ['local_db', 'state'])
+@pytest.mark.parametrize("source", [EBackupDiskRegistryStateSource.BDRSS_LOCAL_DB, EBackupDiskRegistryStateSource.BDRSS_MEMORY])
 def test_remove_devices(
         nbs,
         agent_id,
         data_path,
         disk_agent_configurator,
         disk_agent_dynamic_config,
-        backup_from):
+        source):
 
     _setup_disk_registry_config(nbs, agent_id)
 
     default_device_count = 18
 
     def get_bkp():
-        r = client.backup_disk_registry_state(
-            backup_local_db=backup_from == 'local_db')
+        r = client.backup_disk_registry_state(source)
         return r["Backup"]
 
     client = NbsClient(nbs.port)

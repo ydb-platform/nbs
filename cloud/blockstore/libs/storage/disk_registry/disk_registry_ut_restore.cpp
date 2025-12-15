@@ -27,11 +27,9 @@ namespace {
 auto GetBackup(TDiskRegistryClient& dr)
     -> NProto::TDiskRegistryStateBackup
 {
-    auto response = dr.BackupDiskRegistryState(
-        true // localDB
-    );
+    auto response = dr.BackupDiskRegistryState(NProto::BDRSS_LOCAL_DB);
 
-    return response->Record.GetBackup();
+    return response->Record.GetLocalDBBackup();
 }
 
 }   // namespace

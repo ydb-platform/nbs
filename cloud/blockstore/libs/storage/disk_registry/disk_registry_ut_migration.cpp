@@ -1703,8 +1703,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             ->Record.GetDevices(0).GetDeviceUUID();
 
         {
-            auto response = diskRegistry.BackupDiskRegistryState(true);
-            auto& backup = *response->Record.MutableBackup();
+            auto response = diskRegistry.BackupDiskRegistryState(NProto::BDRSS_LOCAL_DB);
+            auto& backup = *response->Record.MutableLocalDBBackup();
             UNIT_ASSERT_VALUES_EQUAL(1, backup.DisksSize());
             UNIT_ASSERT_VALUES_EQUAL("disk-1", backup.GetDisks(0).GetDiskId());
 
@@ -1803,8 +1803,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             runtime->AdvanceCurrentTime(5s);
             runtime->DispatchEvents({}, 10ms);
 
-            auto response = diskRegistry.BackupDiskRegistryState(false);
-            if (response->Record.MutableBackup()->DirtyDevicesSize() == 0) {
+            auto response = diskRegistry.BackupDiskRegistryState(NProto::BDRSS_MEMORY);
+            if (response->Record.MutableMemoryBackup()->DirtyDevicesSize() == 0) {
                 break;
             }
         }

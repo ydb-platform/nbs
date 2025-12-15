@@ -227,14 +227,23 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.WaitReady();
         diskRegistry.SetWritableState(true);
 
-        auto checkState = [&] (auto func) {
+        auto checkState = [&](auto func)
+        {
             // check local DB
-            func(true, diskRegistry.BackupDiskRegistryState(true)
-                ->Record.GetBackup());
+            func(
+                true,
+                diskRegistry
+                    .BackupDiskRegistryState(
+                        NProto::BDRSS_LOCAL_DB)
+                    ->Record.GetLocalDBBackup());
 
             // check dyn state
-            func(false, diskRegistry.BackupDiskRegistryState(false)
-                ->Record.GetBackup());
+            func(
+                false,
+                diskRegistry
+                    .BackupDiskRegistryState(
+                        NProto::BDRSS_MEMORY)
+                    ->Record.GetMemoryBackup());
         };
 
         auto createConfig = [i = 0] (TVector<NProto::TAgentConfig> agents) mutable {

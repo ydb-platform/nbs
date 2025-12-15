@@ -49,6 +49,7 @@ void TServiceActor::HandleExecuteAction(
         {"describevolume",                    &TServiceActor::CreateDescribeVolumeActionActor              },
         {"diskregistrychangestate",           &TServiceActor::CreateDiskRegistryChangeStateActor           },
         {"drainnode",                         &TServiceActor::CreateDrainNodeActionActor                   },
+        {"ensurediskregistrystateintegrity",  &TServiceActor::CreateDiskRegistryEnsureStateIntegrityActor  },
         {"finishfilldisk",                    &TServiceActor::CreateFinishFillDiskActionActor              },
         {"getcompactionstatus",               &TServiceActor::CreateGetCompactionStatusActionActor         },
         {"getdependentdisks",                 &TServiceActor::CreateGetDependentDisksActionActor           },
