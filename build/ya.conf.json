@@ -1982,7 +1982,7 @@
         "golang": {
             "params": {
                 "type": "golang",
-                "version": "1.22.1"
+                "version": "1.21.3"
             },
             "platforms": [
                 {
