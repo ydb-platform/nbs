@@ -152,7 +152,7 @@ def import_string(import_name: str, silent: bool = False) -> t.Any:
             raise
 
 
-def open_if_exists(filename: str, mode: str = "rb") -> t.Optional[t.IO]:
+def open_if_exists(filename: str, mode: str = "rb") -> t.Optional[t.IO[t.Any]]:
     """Returns a file descriptor for the filename if that file exists,
     otherwise ``None``.
     """
@@ -182,7 +182,7 @@ def object_type_repr(obj: t.Any) -> str:
 
 def pformat(obj: t.Any) -> str:
     """Format an object using :func:`pprint.pformat`."""
-    from pprint import pformat  # type: ignore
+    from pprint import pformat
 
     return pformat(obj)
 
@@ -259,7 +259,7 @@ def urlize(
     if trim_url_limit is not None:
 
         def trim_url(x: str) -> str:
-            if len(x) > trim_url_limit:  # type: ignore
+            if len(x) > trim_url_limit:
                 return f"{x[:trim_url_limit]}..."
 
             return x
@@ -450,7 +450,7 @@ class LRUCache:
         self.__dict__.update(d)
         self._postinit()
 
-    def __getnewargs__(self) -> t.Tuple:
+    def __getnewargs__(self) -> t.Tuple[t.Any, ...]:
         return (self.capacity,)
 
     def copy(self) -> "LRUCache":
