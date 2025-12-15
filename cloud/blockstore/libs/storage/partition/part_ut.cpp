@@ -12839,7 +12839,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             // checksum verification, so execution never reaches this point. If
             // we disable verification, we hit the `1 != 0` check — meaning we
             // end up confirming an E_REJECTED blob without a checksum.
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
         }
     }
 
@@ -12912,7 +12912,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
         }
 
         rejectWrite = false;
@@ -12929,6 +12929,71 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
 
         UNIT_ASSERT(!barriers.empty());
+    }
+
+    Y_UNIT_TEST(ShouldCleanupUnconfirmedBlobsAfterErrorsInWriteBlocks)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        config.SetAddingUnconfirmedBlobsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            4096,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID});
+
+        // Create event filter for WriteBlobResponse rejection
+        TTestActorRuntimeBase::TEventFilter rejectionFilter =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+        {
+            switch (ev->GetTypeRewrite()) {
+                case TEvPartitionPrivate::EvWriteBlobResponse: {
+                    auto* msg =
+                        ev->Get<TEvPartitionPrivate::TEvWriteBlobResponse>();
+                    auto& e = const_cast<NProto::TError&>(msg->Error);
+                    e.SetCode(E_REJECTED);
+                    return false;
+                }
+                case TEvPartitionPrivate::EvDeleteStalledUnconfirmedBlobsRequest: {
+                    return true;
+                }
+            };
+            return false;
+        };
+
+        // Set up event order controller to ensure that
+        // AddUnconfirmedBlobsResponse is processed before WriteBlobResponse
+        TEventExecutionOrderController orderController(
+            *runtime,
+            TVector<std::pair<ui32, ui32>>{
+                {TEvPartitionPrivate::EvAddUnconfirmedBlobsResponse,
+                 TEvPartitionPrivate::EvWriteBlobResponse}},
+            rejectionFilter);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(10, 1), 1);
+
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetStalledUnconfirmedBlobCount());
+        }
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetStalledUnconfirmedBlobCount());
+        }
     }
 
     Y_UNIT_TEST(ShouldSendPartitionStatistics)

@@ -62,6 +62,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     xxx(ScanDiskBatch,              __VA_ARGS__)                               \
     xxx(AddUnconfirmedBlobs,        __VA_ARGS__)                               \
     xxx(ConfirmBlobs,               __VA_ARGS__)                               \
+    xxx(DeleteStalledUnconfirmedBlobs, __VA_ARGS__)                            \
     xxx(LoadCompactionMapChunk,     __VA_ARGS__)                               \
 // BLOCKSTORE_PARTITION_TRANSACTIONS
 
@@ -670,6 +671,25 @@ struct TTxPartition
             , CommitId(commitId)
             , NewBlobs(std::move(newBlobs))
             , GarbageBlobs(std::move(garbageBlobs))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
+
+    //
+    // DeleteStalledUnconfirmedBlobs
+    //
+
+    struct TDeleteStalledUnconfirmedBlobs
+    {
+        const TRequestInfoPtr RequestInfo;
+
+        TDeleteStalledUnconfirmedBlobs(
+                TRequestInfoPtr requestInfo)
+            : RequestInfo(std::move(requestInfo))
         {}
 
         void Clear()
