@@ -132,7 +132,7 @@ bool TFileSystem::ValidateNodeId(
     return true;
 }
 
-inline TDuration TFileSystem::GetEntryCacheTimeout(
+TDuration TFileSystem::GetEntryCacheTimeout(
     const NProto::TNodeAttr& attrs) const
 {
     if (attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE &&
