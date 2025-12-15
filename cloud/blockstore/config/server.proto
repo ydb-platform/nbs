@@ -241,7 +241,7 @@ message TServerConfig
 
     // Enable Discard/ZeroBlocks features for vhost devices. Applies to
     // network-ssd and network-hdd disks. If this flag is enabled, discards are
-    // enabled for all network-ssd and network-hdd disks. Otherwize, discards
+    // enabled for all network-ssd and network-hdd disks. Otherwise, discards
     // are enabled only for disks that have the VhostDiscardEnabled flag set in
     // the VolumeConfig in SchemeShard.
     optional bool VhostDiscardEnabled = 121;
