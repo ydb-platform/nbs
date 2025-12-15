@@ -559,6 +559,7 @@ TVector<TString> TDiskRegistryState::GetDifferingFields(const TDiskRegistryState
     if(!DeviceList.CompareDevices(rhs.DeviceList)) {
         result.emplace_back("DeviceList differs");
     }
+    
     TString agentReport = AgentList.CompareAgents(rhs.AgentList);
     if(agentReport.size() > 0) {
         result.emplace_back(agentReport);
