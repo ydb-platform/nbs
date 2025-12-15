@@ -265,6 +265,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    TResultOrError<NActors::IActorPtr> CreateDiskRegistryCompareStateActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     TResultOrError<NActors::IActorPtr> CreateReplaceDeviceActionActor(
         TRequestInfoPtr requestInfo,
         TString input);

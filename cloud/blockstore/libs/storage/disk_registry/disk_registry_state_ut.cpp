@@ -10327,6 +10327,48 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldComparePlacementGroup)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        auto agentConfig1 = AgentConfig(2, {
+            Device("dev-1", "uuid-1"),
+        });
+
+        auto state1Ptr = TDiskRegistryStateBuilder()
+            .WithKnownAgents({ agentConfig1 })
+            .Build();
+        TDiskRegistryState& state1 = *state1Ptr;
+
+        auto state2Ptr = TDiskRegistryStateBuilder()
+            .WithKnownAgents({ agentConfig1 })
+            .Build();
+        TDiskRegistryState& state2 = *state2Ptr;
+
+        UNIT_ASSERT(state1.GetDifferingFields(state2).empty());
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            UNIT_ASSERT_SUCCESS(state1.CreatePlacementGroup(
+                db,
+                "group-1",
+                NProto::PLACEMENT_STRATEGY_SPREAD,
+                {}));
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            UNIT_ASSERT_SUCCESS(state1.CreatePlacementGroup(
+                db,
+                "group-2",
+                NProto::PLACEMENT_STRATEGY_SPREAD,
+                {}));
+        });
+
+        UNIT_ASSERT(!state1.GetDifferingFields(state2).empty());
+    }
+
     Y_UNIT_TEST(ShouldUpdateVolumeConfig)
     {
         TTestExecutor executor;

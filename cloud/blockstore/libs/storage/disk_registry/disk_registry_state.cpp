@@ -436,6 +436,172 @@ TDiskRegistryState::TDiskRegistryState(
 
 TDiskRegistryState::~TDiskRegistryState() = default;
 
+TString TDiskRegistryState::TDiskState::getDiff(const TDiskState& rhs) const {
+    static_assert(sizeof(*this) == 328);
+
+    std::stringstream result;
+
+    google::protobuf::util::MessageDifferencer diff;
+    NProtoBuf::string report;
+
+    diff.ReportDifferencesToString(&report);
+    google::protobuf::util::DefaultFieldComparator comparator;
+    comparator.set_float_comparison(google::protobuf::util::DefaultFieldComparator::FloatComparison::APPROXIMATE);
+    diff.set_field_comparator(&comparator);
+
+    auto notifyIfNotEqual = [&result]<typename T>(const std::string& name, const T& value, const T& rhs_value) {
+        if(value != rhs_value) {
+            result << name << " not equal\n";
+        }
+    };
+
+    notifyIfNotEqual("CloudId", CloudId, rhs.CloudId);
+    notifyIfNotEqual("FolderId", FolderId, rhs.FolderId);
+    notifyIfNotEqual("UserId", UserId, rhs.UserId);
+    notifyIfNotEqual("Devices", Devices, rhs.Devices);
+    notifyIfNotEqual("MigrationTarget2Source", MigrationTarget2Source, rhs.MigrationTarget2Source);
+    notifyIfNotEqual("MigrationSource2Target", MigrationSource2Target, rhs.MigrationSource2Target);
+    notifyIfNotEqual("FinishedMigrations", FinishedMigrations, rhs.FinishedMigrations);
+    notifyIfNotEqual("MigrationStartTs", MigrationStartTs.ToString(), rhs.MigrationStartTs.ToString());
+    notifyIfNotEqual("AcquireInProgress", AcquireInProgress, rhs.AcquireInProgress);
+    notifyIfNotEqual("LogicalBlockSize", LogicalBlockSize, rhs.LogicalBlockSize);
+    notifyIfNotEqual("PlacementGroupId", PlacementGroupId, rhs.PlacementGroupId);
+    notifyIfNotEqual("PlacementPartitionIndex", PlacementPartitionIndex, rhs.PlacementPartitionIndex);
+    notifyIfNotEqual("State", State, rhs.State);
+    notifyIfNotEqual("StateTs", StateTs.ToString(), rhs.StateTs.ToString());
+    notifyIfNotEqual("ReplicaCount", ReplicaCount, rhs.ReplicaCount+1);
+    notifyIfNotEqual("MasterDiskId", MasterDiskId, rhs.MasterDiskId);
+
+    if(!diff.Compare(CheckpointReplica, rhs.CheckpointReplica)) {
+        result << "Checkpoint Replica not equal: " << report << "\n";
+        report.clear();
+    }
+
+    notifyIfNotEqual("LostDeviceIds", LostDeviceIds, rhs.LostDeviceIds);
+    notifyIfNotEqual("MediaKind", MediaKind, rhs.MediaKind);
+
+    std::stringstream ss;
+    for(size_t i = 0; i < std::max(History.size(), rhs.History.size()); i++) {
+        if(i >= History.size()) {
+            ss << "[" << i << "]: " << rhs.History[i].DebugString() << "\n";
+            continue;
+        }
+        if(i >= rhs.History.size()) {
+            ss << "[" << i << "]: " << History[i].DebugString() << "\n";
+            continue;
+        }
+
+        if(!diff.Compare(History[i], rhs.History[i])) {
+            ss << "[" << i << "]: " << report << "\n"; 
+            report.clear();
+        }
+    }
+    if(ss.str().size() > 0) {
+        result << "History not equal: " << ss.str() << "\n";
+        ss.clear();
+    }
+
+    notifyIfNotEqual("OutdatedLaggingDevices", OutdatedLaggingDevices, rhs.OutdatedLaggingDevices);
+
+    return result.str();
+}
+
+TVector<TString> TDiskRegistryState::GetDifferingFields(const TDiskRegistryState& rhs) const{
+    using google::protobuf::util::MessageDifferencer;
+    static_assert(sizeof(*this) == 2144);
+
+    google::protobuf::util::MessageDifferencer diff;
+    NProtoBuf::string report;
+    diff.ReportDifferencesToString(&report);
+    google::protobuf::util::DefaultFieldComparator comparator;
+    comparator.set_float_comparison(google::protobuf::util::DefaultFieldComparator::FloatComparison::APPROXIMATE);
+    diff.set_field_comparator(&comparator);
+
+    TVector<TString> result;
+
+    if(!diff.Compare(StorageConfig->GetStorageConfigProto(), rhs.StorageConfig->GetStorageConfigProto())) {
+        std::stringstream ss;
+        ss << "StorageConfig difference: " << report << "\n";
+        result.push_back(ss.str());
+    }
+
+    if(!diff.Compare(CurrentConfig, rhs.CurrentConfig)) {
+        std::stringstream ss;
+        ss << "CurrentConfig difference: " << report << "\n";
+        result.push_back(ss.str());
+    }
+
+    const auto& vPlacementGroups = rhs.PlacementGroups;
+    std::stringstream ss;
+    THashSet<TString> used;
+
+    for(const auto& [k, v] : PlacementGroups) {
+        used.insert(k);
+        if(vPlacementGroups.find(k) == vPlacementGroups.end()) {
+            ss << "[" << k << "] not found, current: " << v.Config.DebugString() << "\n";
+        }
+        if(!diff.Compare(v.Config, vPlacementGroups.at(k).Config)) {
+            ss << "[" << k << "] difference: " << report << "\n";
+        }
+    }
+
+    for(const auto& [k, v] : vPlacementGroups) {
+        if(used.find(k) == used.end()) {
+            ss << "[" << k << "] not found, DB: " << v.Config.DebugString() << "\n";
+        }
+    }
+
+    if(ss.str().size() > 0) {
+        result.push_back((std::stringstream() << "PlacementGroups difference: " << ss.str()).str());
+        ss.clear();
+    }
+
+    if(!DeviceList.CompareDevices(rhs.DeviceList)) {
+        result.emplace_back("DeviceList differs");
+    }
+
+    TString agentReport = AgentList.CompareAgents(rhs.AgentList);
+    if(agentReport.size() > 0) {
+        result.emplace_back(agentReport);
+    }
+
+    if(BrokenDisks != rhs.BrokenDisks) {
+        result.emplace_back("BrokenDisks differs");
+    }
+
+    TString notificationReport = NotificationSystem.Compare(rhs.NotificationSystem);
+    if(notificationReport.size() > 0) {
+        result.emplace_back("NotificationSystem differs");
+    }
+    
+    if(AutomaticallyReplacedDeviceIds != rhs.AutomaticallyReplacedDeviceIds) {
+        result.emplace_back("AutomaticallyReplacedDeviceIds differs");
+    }
+
+    used.clear();
+
+    for(const auto& [k, v]: Disks) {
+        if(rhs.Disks.find(k) == rhs.Disks.end()) {
+            result.emplace_back("Disk " + k + " not found in db");
+            continue;
+        }
+        TString diskReport = v.getDiff(rhs.Disks.at(k));
+        if(diskReport.size() > 0) {
+            ss << "Disk " << k << " differs: " << diskReport << "\n";
+            result.emplace_back(ss.str());
+            ss.clear();
+        }
+        used.insert(k);
+    }
+    for(const auto& [k, v]: rhs.Disks) {
+        if(used.find(k) == used.end()) {
+            result.emplace_back("Disk " + k + " not found in current state");
+        }
+    }
+
+    return result;
+}
+
 void TDiskRegistryState::AllowNotifications(
     const TDiskId& diskId,
     const TDiskState& disk)

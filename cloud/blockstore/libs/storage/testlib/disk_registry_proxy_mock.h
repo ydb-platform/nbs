@@ -157,6 +157,10 @@ private:
             HFunc(
                 TEvDiskRegistry::TEvGetClusterCapacityRequest,
                 HandleGetClusterCapacity);
+            
+            HFunc(
+                TEvDiskRegistry::TEvCompareDiskRegistryStateRequest,
+                HandleCompareDiskRegistryState);
 
             IgnoreFunc(NKikimr::TEvLocal::TEvTabletMetrics);
 
@@ -1099,6 +1103,16 @@ private:
 
         *response->Record.AddCapacity() = std::move(capacityInfo);
         NCloud::Reply(ctx, *ev, std::move(response));
+    }
+
+    void HandleCompareDiskRegistryState(
+        const TEvDiskRegistry::TEvCompareDiskRegistryStateRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvDiskRegistry::TEvCompareDiskRegistryStateResponse>());
     }
 };
 

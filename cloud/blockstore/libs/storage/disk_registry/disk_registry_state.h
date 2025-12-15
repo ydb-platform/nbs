@@ -274,6 +274,8 @@ class TDiskRegistryState
         TVector<NProto::TDiskHistoryItem> History;
 
         TVector<TLaggingDevice> OutdatedLaggingDevices;
+
+        TString getDiff(const TDiskState& rhs) const;
     };
 
     struct TVolumeDeviceOverrides
@@ -481,6 +483,8 @@ public:
     void FinishAcquireDisk(const TString& diskId);
 
     bool IsAcquireInProgress(const TString& diskId) const;
+
+    TVector<TString> GetDifferingFields(const TDiskRegistryState& rhs) const;
 
     const TVector<NProto::TAgentConfig>& GetAgents() const;
 
