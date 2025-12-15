@@ -392,7 +392,7 @@ void TPartitionActor::HandleWriteBlocksCompleted(
     ProcessCommitQueue(ctx);
     EnqueueFlushIfNeeded(ctx);
     EnqueueAddConfirmedBlobsIfNeeded(ctx);
-    EnqueueDeleteStalledUnconfirmedBlobsIfNeeded(ctx);
+    EnqueueDeleteObsoleteUnconfirmedBlobsIfNeeded(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

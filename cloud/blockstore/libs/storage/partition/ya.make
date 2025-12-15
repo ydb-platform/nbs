@@ -16,6 +16,7 @@ SRCS(
     part_actor_compactrange.cpp
     part_actor_confirmblobs.cpp
     part_actor_deletegarbage.cpp
+    part_actor_deleteobsoleteunconfirmedblobs.cpp
     part_actor_describeblocks.cpp
     part_actor_flush.cpp
     part_actor_getusedblocks.cpp
@@ -34,7 +35,6 @@ SRCS(
     part_actor_patchblob.cpp
     part_actor_readblob.cpp
     part_actor_readblocks.cpp
-    part_actor_deletestalledunconfirmedblobs.cpp
     part_actor_scan_disk.cpp
     part_actor_statpartition.cpp
     part_actor_stats.cpp

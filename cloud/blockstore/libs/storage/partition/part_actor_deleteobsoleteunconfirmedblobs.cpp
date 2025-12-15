@@ -18,40 +18,40 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionActor::EnqueueDeleteStalledUnconfirmedBlobsIfNeeded(
+void TPartitionActor::EnqueueDeleteObsoleteUnconfirmedBlobsIfNeeded(
     const TActorContext& ctx)
 {
-    if (State->GetStalledUnconfirmedBlobsState().Status !=
+    if (State->GetObsoleteUnconfirmedBlobsState().Status !=
         EOperationStatus::Idle)
     {
         // already enqueued
         return;
     }
 
-    if (State->GetStalledUnconfirmedBlobs().empty()) {
+    if (State->GetObsoleteUnconfirmedBlobs().empty()) {
         // not ready
         return;
     }
 
-    State->GetStalledUnconfirmedBlobsState().SetStatus(
+    State->GetObsoleteUnconfirmedBlobsState().SetStatus(
         EOperationStatus::Enqueued);
 
     auto request = std::make_unique<
-        TEvPartitionPrivate::TEvDeleteStalledUnconfirmedBlobsRequest>(
+        TEvPartitionPrivate::TEvDeleteObsoleteUnconfirmedBlobsRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()));
 
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s DeleteStalledUnconfirmedBlobs request sent: %lu",
+        "%s DeleteObsoleteUnconfirmedBlobs request sent: %lu",
         LogTitle.GetWithTime().c_str(),
         request->CallContext->RequestId);
 
     NCloud::Send(ctx, SelfId(), std::move(request));
 }
 
-void TPartitionActor::HandleDeleteStalledUnconfirmedBlobs(
-    const TEvPartitionPrivate::TEvDeleteStalledUnconfirmedBlobsRequest::TPtr&
+void TPartitionActor::HandleDeleteObsoleteUnconfirmedBlobs(
+    const TEvPartitionPrivate::TEvDeleteObsoleteUnconfirmedBlobsRequest::TPtr&
         ev,
     const TActorContext& ctx)
 {
@@ -65,22 +65,22 @@ void TPartitionActor::HandleDeleteStalledUnconfirmedBlobs(
     LWTRACK(
         RequestReceived_Partition,
         requestInfo->CallContext->LWOrbit,
-        "DeleteStalledUnconfirmedBlobs",
+        "DeleteObsoleteUnconfirmedBlobs",
         requestInfo->CallContext->RequestId);
 
-    State->GetStalledUnconfirmedBlobsState().SetStatus(
+    State->GetObsoleteUnconfirmedBlobsState().SetStatus(
         EOperationStatus::Started);
 
-    AddTransaction<TEvPartitionPrivate::TDeleteStalledUnconfirmedBlobsMethod>(
+    AddTransaction<TEvPartitionPrivate::TDeleteObsoleteUnconfirmedBlobsMethod>(
         *requestInfo);
 
-    ExecuteTx(ctx, CreateTx<TDeleteStalledUnconfirmedBlobs>(requestInfo));
+    ExecuteTx(ctx, CreateTx<TDeleteObsoleteUnconfirmedBlobs>(requestInfo));
 }
 
-bool TPartitionActor::PrepareDeleteStalledUnconfirmedBlobs(
+bool TPartitionActor::PrepareDeleteObsoleteUnconfirmedBlobs(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxPartition::TDeleteStalledUnconfirmedBlobs& args)
+    TTxPartition::TDeleteObsoleteUnconfirmedBlobs& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
@@ -89,50 +89,48 @@ bool TPartitionActor::PrepareDeleteStalledUnconfirmedBlobs(
     return true;
 }
 
-void TPartitionActor::ExecuteDeleteStalledUnconfirmedBlobs(
+void TPartitionActor::ExecuteDeleteObsoleteUnconfirmedBlobs(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxPartition::TDeleteStalledUnconfirmedBlobs& args)
+    TTxPartition::TDeleteObsoleteUnconfirmedBlobs& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(args);
 
     TPartitionDatabase db(tx.DB);
 
-    const auto& stalledBlobs = State->GetStalledUnconfirmedBlobs();
+    const auto& obsoleteBlobs = State->GetObsoleteUnconfirmedBlobs();
 
-    for (const auto& [commitId, blobs]: stalledBlobs) {
+    for (const auto& [commitId, blobs]: obsoleteBlobs) {
         for (const auto& blob: blobs) {
             auto blobId = MakePartialBlobId(commitId, blob.UniqueId);
             db.DeleteUnconfirmedBlob(blobId);
         }
 
-        // Release barriers for this commitId
         State->GetGarbageQueue().ReleaseBarrier(commitId);
         State->GetCommitQueue().ReleaseBarrier(commitId);
     }
 
-    // Clear the stalled blobs structure
-    State->ClearStalledUnconfirmedBlobs();
+    State->ClearObsoleteUnconfirmedBlobs();
 }
 
-void TPartitionActor::CompleteDeleteStalledUnconfirmedBlobs(
+void TPartitionActor::CompleteDeleteObsoleteUnconfirmedBlobs(
     const TActorContext& ctx,
-    TTxPartition::TDeleteStalledUnconfirmedBlobs& args)
+    TTxPartition::TDeleteObsoleteUnconfirmedBlobs& args)
 {
     TRequestScope timer(*args.RequestInfo);
 
-    State->GetStalledUnconfirmedBlobsState().SetStatus(EOperationStatus::Idle);
+    State->GetObsoleteUnconfirmedBlobsState().SetStatus(EOperationStatus::Idle);
 
     RemoveTransaction(*args.RequestInfo);
 
     UpdateCPUUsageStat(ctx.Now(), args.RequestInfo->GetExecCycles());
     auto time =
         CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
-    PartCounters->RequestCounters.DeleteStalledUnconfirmedBlobs.AddRequest(
+    PartCounters->RequestCounters.DeleteObsoleteUnconfirmedBlobs.AddRequest(
         time);
 
-    // Barriers were released in Execute, so process commit queue
+    EnqueueDeleteObsoleteUnconfirmedBlobsIfNeeded(ctx);
     ProcessCommitQueue(ctx);
 }
 

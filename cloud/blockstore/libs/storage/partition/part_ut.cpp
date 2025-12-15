@@ -158,67 +158,66 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEventExecutionOrderController
+class TEventExecutionOrderFilter
 {
 public:
-    TEventExecutionOrderController(
+    TEventExecutionOrderFilter(
         TTestActorRuntimeBase& runtime,
-        const TVector<std::pair<ui32, ui32>>& eventOrders,
-        TTestActorRuntimeBase::TEventFilter baseFilter = nullptr)
+        const TVector<std::pair<ui32, ui32>>& eventOrders)
+        : Runtime(runtime)
     {
         for (const auto& [prerequisiteEvent, dependentEvent]: eventOrders) {
             EventDependencies[dependentEvent] = prerequisiteEvent;
         }
+    }
 
-        runtime.SetEventFilter(
-            [this, baseFilter, &runtime](
-                TTestActorRuntimeBase& rt,
-                TAutoPtr<IEventHandle>& ev) -> bool
-            {
-                Y_ABORT_UNLESS(ev);
+    TTestActorRuntimeBase::TEventFilter operator()(
+        TTestActorRuntimeBase::TEventFilter baseFilter = nullptr)
+    {
+        return [this, baseFilter](
+                   TTestActorRuntimeBase& rt,
+                   TAutoPtr<IEventHandle>& ev) -> bool
+        {
+            Y_ABORT_UNLESS(ev);
 
-                TActorId recipient = ev->GetRecipientRewrite();
-                ui32 eventType = ev->GetTypeRewrite();
+            TActorId recipient = ev->GetRecipientRewrite();
+            ui32 eventType = ev->GetTypeRewrite();
 
-                bool baseFilterResult = baseFilter ? baseFilter(rt, ev) : false;
+            bool baseFilterResult = baseFilter ? baseFilter(rt, ev) : false;
 
-                auto prerequisiteEventIt = EventDependencies.find(eventType);
-                if (prerequisiteEventIt != EventDependencies.end()) {
-                    ui32 prerequisiteEvent = prerequisiteEventIt->second;
-                    auto& processedEventsByRecipient =
-                        ProcessedEvents[recipient];
-                    if (!processedEventsByRecipient.contains(
-                            prerequisiteEvent)) {
-                        DelayedEvents[recipient][prerequisiteEvent] =
-                            std::move(ev);
-                        return true;
-                    }
+            auto prerequisiteEventIt = EventDependencies.find(eventType);
+            if (prerequisiteEventIt != EventDependencies.end()) {
+                ui32 prerequisiteEvent = prerequisiteEventIt->second;
+                auto& processedEventsByRecipient = ProcessedEvents[recipient];
+                if (!processedEventsByRecipient.contains(prerequisiteEvent)) {
+                    DelayedEvents[recipient][prerequisiteEvent] = std::move(ev);
+                    return true;
+                }
+            }
+
+            auto& delayedEventsByRecipient = DelayedEvents[recipient];
+            auto delayedEventIt = delayedEventsByRecipient.find(eventType);
+            if (delayedEventIt != delayedEventsByRecipient.end()) {
+                ProcessedEvents[recipient].insert(eventType);
+                TAutoPtr<IEventHandle> delayedEvent =
+                    std::move(delayedEventIt->second);
+                delayedEventsByRecipient.erase(delayedEventIt);
+
+                // Remove the recipient from the map if there are no more
+                // delayed events
+                if (delayedEventsByRecipient.empty()) {
+                    DelayedEvents.erase(recipient);
                 }
 
-                auto& delayedEventsByRecipient = DelayedEvents[recipient];
-                auto delayedEventIt = delayedEventsByRecipient.find(eventType);
-                if (delayedEventIt != delayedEventsByRecipient.end()) {
-                    ProcessedEvents[recipient].insert(eventType);
-                    TAutoPtr<IEventHandle> delayedEvent =
-                        std::move(delayedEventIt->second);
-                    delayedEventsByRecipient.erase(delayedEventIt);
+                Runtime.Schedule(delayedEvent, TDuration::MilliSeconds(100));
+            }
 
-                    // Remove the recipient from the map if there are no more
-                    // delayed events
-                    if (delayedEventsByRecipient.empty()) {
-                        DelayedEvents.erase(recipient);
-                    }
-
-                    runtime.Schedule(
-                        delayedEvent,
-                        TDuration::MilliSeconds(100));
-                }
-
-                return baseFilterResult;
-            });
+            return baseFilterResult;
+        };
     }
 
 private:
+    TTestActorRuntimeBase& Runtime;
     THashMap<ui32, ui32> EventDependencies;
     THashMap<TActorId, THashSet<ui32>> ProcessedEvents;
     // Map of delayed events by recipient and event type
@@ -12818,12 +12817,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         // Set up event order controller to ensure that
         // AddUnconfirmedBlobsResponse is processed before WriteBlobResponse
-        TEventExecutionOrderController orderController(
+        TEventExecutionOrderFilter orderFilter(
             *runtime,
             TVector<std::pair<ui32, ui32>>{
                 {TEvPartitionPrivate::EvAddUnconfirmedBlobsResponse,
-                 TEvPartitionPrivate::EvWriteBlobResponse}},
-            rejectWriteBlobFilter);
+                 TEvPartitionPrivate::EvWriteBlobResponse}});
+        runtime->SetEventFilter(orderFilter(rejectWriteBlobFilter));
 
         TPartitionClient partition(*runtime);
         partition.WaitReady();
@@ -12942,6 +12941,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             {},
             {.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID});
 
+        bool shouldRejectDeleteObsoleteUnconfirmedBlobsRequest = true;
         // Create event filter for WriteBlobResponse rejection
         TTestActorRuntimeBase::TEventFilter rejectionFilter =
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
@@ -12954,8 +12954,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     e.SetCode(E_REJECTED);
                     return false;
                 }
-                case TEvPartitionPrivate::EvDeleteStalledUnconfirmedBlobsRequest: {
-                    return true;
+                case TEvPartitionPrivate::
+                    EvDeleteObsoleteUnconfirmedBlobsRequest: {
+                    return shouldRejectDeleteObsoleteUnconfirmedBlobsRequest;
                 }
             };
             return false;
@@ -12963,12 +12964,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         // Set up event order controller to ensure that
         // AddUnconfirmedBlobsResponse is processed before WriteBlobResponse
-        TEventExecutionOrderController orderController(
+        TEventExecutionOrderFilter addWriteBlobOrderFilter(
             *runtime,
             TVector<std::pair<ui32, ui32>>{
                 {TEvPartitionPrivate::EvAddUnconfirmedBlobsResponse,
-                 TEvPartitionPrivate::EvWriteBlobResponse}},
-            rejectionFilter);
+                 TEvPartitionPrivate::EvWriteBlobResponse}});
+        runtime->SetEventFilter(addWriteBlobOrderFilter(rejectionFilter));
 
         TPartitionClient partition(*runtime);
         partition.WaitReady();
@@ -12981,7 +12982,27 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetStalledUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetObsoleteUnconfirmedBlobCount());
+        }
+
+        // Set up event order controller to ensure that
+        // WriteBlobResponse is processed before AddUnconfirmedBlobsResponse
+        TEventExecutionOrderFilter writeAddBlobOrderFilter(
+            *runtime,
+            TVector<std::pair<ui32, ui32>>{
+                {TEvPartitionPrivate::EvWriteBlobResponse,
+                 TEvPartitionPrivate::EvAddUnconfirmedBlobsResponse}});
+        runtime->SetEventFilter(writeAddBlobOrderFilter(rejectionFilter));
+
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(11, 1), 1);
+
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetObsoleteUnconfirmedBlobCount());
         }
 
         partition.RebootTablet();
@@ -12992,7 +13013,19 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetStalledUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetObsoleteUnconfirmedBlobCount());
+        }
+
+        shouldRejectDeleteObsoleteUnconfirmedBlobsRequest = false;
+
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(12, 1), 1);
+
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetObsoleteUnconfirmedBlobCount());
         }
     }
 

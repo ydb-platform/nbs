@@ -769,8 +769,8 @@ void TPartitionState::BlobsStalled(ui64 commitId, TVector<TBlobToConfirm> blobs)
     const auto blobCount = dstBlobs.size();
     Y_DEBUG_ABORT_UNLESS(blobs.empty() || blobCount == blobs.size());
 
-    StalledUnconfirmedBlobs[commitId] = std::move(dstBlobs);
-    StalledUnconfirmedBlobCount += blobCount;
+    ObsoleteUnconfirmedBlobs[commitId] = std::move(dstBlobs);
+    ObsoleteUnconfirmedBlobCount += blobCount;
 
     UnconfirmedBlobs.erase(it);
     Y_DEBUG_ABORT_UNLESS(UnconfirmedBlobCount >= blobCount);
