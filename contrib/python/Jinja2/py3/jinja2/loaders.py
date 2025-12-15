@@ -1,6 +1,7 @@
 """API and implementations for loading templates from different data
 sources.
 """
+
 import importlib.util
 import os
 import posixpath
@@ -16,7 +17,6 @@ from types import ModuleType
 
 from .exceptions import TemplateNotFound
 from .utils import internalcode
-from .utils import open_if_exists
 
 if t.TYPE_CHECKING:
     from .environment import Environment
@@ -181,7 +181,9 @@ class FileSystemLoader(BaseLoader):
 
     def __init__(
         self,
-        searchpath: t.Union[str, os.PathLike, t.Sequence[t.Union[str, os.PathLike]]],
+        searchpath: t.Union[
+            str, "os.PathLike[str]", t.Sequence[t.Union[str, "os.PathLike[str]"]]
+        ],
         encoding: str = "utf-8",
         followlinks: bool = False,
     ) -> None:
@@ -196,29 +198,30 @@ class FileSystemLoader(BaseLoader):
         self, environment: "Environment", template: str
     ) -> t.Tuple[str, str, t.Callable[[], bool]]:
         pieces = split_template_path(template)
+
         for searchpath in self.searchpath:
             # Use posixpath even on Windows to avoid "drive:" or UNC
             # segments breaking out of the search directory.
             filename = posixpath.join(searchpath, *pieces)
-            f = open_if_exists(filename)
-            if f is None:
-                continue
+
+            if os.path.isfile(filename):
+                break
+        else:
+            raise TemplateNotFound(template)
+
+        with open(filename, encoding=self.encoding) as f:
+            contents = f.read()
+
+        mtime = os.path.getmtime(filename)
+
+        def uptodate() -> bool:
             try:
-                contents = f.read().decode(self.encoding)
-            finally:
-                f.close()
+                return os.path.getmtime(filename) == mtime
+            except OSError:
+                return False
 
-            mtime = os.path.getmtime(filename)
-
-            def uptodate() -> bool:
-                try:
-                    return os.path.getmtime(filename) == mtime
-                except OSError:
-                    return False
-
-            # Use normpath to convert Windows altsep to sep.
-            return contents, os.path.normpath(filename), uptodate
-        raise TemplateNotFound(template)
+        # Use normpath to convert Windows altsep to sep.
+        return contents, os.path.normpath(filename), uptodate
 
     def list_templates(self) -> t.List[str]:
         found = set()
@@ -276,6 +279,7 @@ class PackageLoader(BaseLoader):
         package_name: str,
         package_path: "str" = "templates",
         encoding: str = "utf-8",
+        skip_unknown_package: bool = False,
     ) -> None:
         package_path = os.path.normpath(package_path).rstrip(os.path.sep)
 
@@ -288,10 +292,17 @@ class PackageLoader(BaseLoader):
         self.package_path = package_path
         self.package_name = package_name
         self.encoding = encoding
+        self.skip_unknown_package = skip_unknown_package
 
         # Make sure the package exists. This also makes namespace
         # packages work, otherwise get_loader returns None.
-        package = import_module(package_name)
+        try:
+            package = import_module(package_name)
+        except ModuleNotFoundError:
+            if skip_unknown_package:
+                self._template_root = None
+                return
+            raise
         spec = importlib.util.find_spec(package_name)
         assert spec is not None, "An import spec was not found for the package."
         loader = spec.loader
@@ -336,6 +347,9 @@ class PackageLoader(BaseLoader):
     def get_source(
         self, environment: "Environment", template: str
     ) -> t.Tuple[str, str, t.Optional[t.Callable[[], bool]]]:
+        if self._template_root is None and self.skip_unknown_package:
+            raise TemplateNotFound(template)
+
         # Use posixpath even on Windows to avoid "drive:" or UNC
         # segments breaking out of the search directory. Use normpath to
         # convert Windows altsep to sep.
@@ -383,6 +397,9 @@ class PackageLoader(BaseLoader):
     def list_templates(self) -> t.List[str]:
         results: t.List[str] = []
 
+        if self._template_root is None and self.skip_unknown_package:
+            return results
+
         if self._archive is None and hasattr(self, "_package"):
             prefix = os.path.join(self._template_root, self.package_path).encode() + b"/"
             for name in arcadia_res.resfs_files(prefix):
@@ -412,7 +429,7 @@ class PackageLoader(BaseLoader):
             )
             offset = len(prefix)
 
-            for name in self._loader._files.keys():  # type: ignore
+            for name in self._loader._files.keys():
                 # Find names under the templates directory that aren't directories.
                 if name.startswith(prefix) and name[-1] != os.path.sep:
                     results.append(name[offset:].replace(os.path.sep, "/"))
@@ -621,7 +638,10 @@ class ModuleLoader(BaseLoader):
     has_source_access = False
 
     def __init__(
-        self, path: t.Union[str, os.PathLike, t.Sequence[t.Union[str, os.PathLike]]]
+        self,
+        path: t.Union[
+            str, "os.PathLike[str]", t.Sequence[t.Union[str, "os.PathLike[str]"]]
+        ],
     ) -> None:
         package_name = f"_jinja2_module_templates_{id(self):x}"
 

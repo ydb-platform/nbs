@@ -11,7 +11,7 @@ LICENSE(
 
 LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
-WITHOUT_LICENSE_TEXTS()
+VERSION(8.5.0)
 
 PEERDIR(
     contrib/libs/c-ares
@@ -29,6 +29,7 @@ NO_COMPILER_WARNINGS()
 NO_RUNTIME()
 
 CFLAGS(
+    -DBUILDING_CURL
     -DHAVE_CONFIG_H
     -DARCADIA_CURL_DNS_RESOLVER_ARES
 )
@@ -36,6 +37,7 @@ CFLAGS(
 SRCDIR(contrib/libs/curl)
 
 SRCS(
+    lib/base64.c
     lib/curl_multibyte.c
     lib/dynbuf.c
     lib/nonblock.c
@@ -64,18 +66,19 @@ SRCS(
     src/tool_help.c
     src/tool_helpers.c
     src/tool_hugehelp.c
+    src/tool_ipfs.c
     src/tool_libinfo.c
     src/tool_listhelp.c
     src/tool_main.c
     src/tool_msgs.c
     src/tool_operate.c
     src/tool_operhlp.c
-    src/tool_panykey.c
     src/tool_paramhlp.c
     src/tool_parsecfg.c
     src/tool_progress.c
     src/tool_setopt.c
     src/tool_sleep.c
+    src/tool_stderr.c
     src/tool_strdup.c
     src/tool_urlglob.c
     src/tool_util.c
@@ -83,6 +86,7 @@ SRCS(
     src/tool_writeout.c
     src/tool_writeout_json.c
     src/tool_xattr.c
+    src/var.c
 )
 
 END()

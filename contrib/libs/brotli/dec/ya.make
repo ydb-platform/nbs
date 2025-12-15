@@ -1,8 +1,10 @@
 LIBRARY()
 
+VERSION(1.0.1)
+
 LICENSE(MIT)
 
-LICENSE_TEXTS(../LICENSE)
+LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
 NO_UTIL()
 

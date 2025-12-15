@@ -40,6 +40,9 @@ class MagicsDisplay(object):
     def _repr_pretty_(self, p, cycle):
         p.text(self._lsmagic())
     
+    def __repr__(self):
+        return self.__str__()
+
     def __str__(self):
         return self._lsmagic()
     
@@ -124,7 +127,7 @@ class BasicMagics(Magics):
           In [6]: %whereami
           Out[6]: '/home/testuser'
 
-          In [7]: %alias_magic h history "-p -l 30" --line
+          In [7]: %alias_magic h history -p "-l 30" --line
           Created `%h` as an alias for `%history -l 30`.
         """
 
@@ -458,7 +461,7 @@ Currently the magic system has the following functions:""",
             ptformatter.pprint = False
             disp_formatter.active_types = ['text/plain']
 
-            shell.magic('xmode Plain')
+            shell.run_line_magic("xmode", "Plain")
         else:
             # turn off
             shell.separate_in = dstore.rc_separate_in
@@ -469,7 +472,7 @@ Currently the magic system has the following functions:""",
             ptformatter.pprint = dstore.rc_pprint
             disp_formatter.active_types = dstore.rc_active_types
 
-            shell.magic('xmode ' + dstore.xmode)
+            shell.run_line_magic("xmode", dstore.xmode)
 
         # mode here is the state before we switch; switch_doctest_mode takes
         # the mode we're switching to.
