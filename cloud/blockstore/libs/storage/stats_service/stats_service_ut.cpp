@@ -1545,6 +1545,20 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         response = client.RegisterTrafficSource("src1", 200);
         UNIT_ASSERT_VALUES_EQUAL(100, response->LimitedBandwidthMiBs);
     }
+
+    Y_UNIT_TEST(ShouldRegisterVolumeForSecondTime)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        RegisterVolume(runtime, DefaultDiskId);
+        auto counters = BroadcastVolumeCounters(runtime, {0}, EVolumeTestOptions::VOLUME_HASCLIENTS);
+        UNIT_ASSERT(counters[0]== 1);
+        RegisterVolume(runtime, DefaultDiskId);
+        BroadcastVolumeCounters(runtime, {0}, EVolumeTestOptions::VOLUME_HASCLIENTS);
+        UNIT_ASSERT(counters[0]== 1);
+    }
+
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
