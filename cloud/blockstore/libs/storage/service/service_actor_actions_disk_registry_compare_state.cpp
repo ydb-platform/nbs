@@ -98,7 +98,6 @@ void TCompareDiskRegistryStateActor::HandleCompareDiskRegistryStateResponse(
     const auto* msg = ev->Get();
 
     if (HasError(msg->GetError())) {
-        Cerr << "error occured" << Endl;
         Error = msg->GetError();
     }
     TString output;

@@ -45,7 +45,12 @@ bool TDiskRegistryActor::PrepareCompareDiskRegistryState(
 
     TDiskRegistryDatabase db(tx.DB);
     if(!LoadState(db, args.StateArgs)) {
-        Cerr << "Disk Actor unable to load state" << Endl;
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Failed to load state",
+            LogTitle.GetWithTime().c_str());
+        args.Result.MutableError()->set_code(E_FAIL);
         return false;
     }
 
@@ -58,7 +63,8 @@ void TDiskRegistryActor::ExecuteCompareDiskRegistryState(
     TTxDiskRegistry::TCompareDiskRegistryState& args)
 {
     Y_UNUSED(tx);
-    auto DBState = std::make_unique<TDiskRegistryState>(
+
+    auto dbState = std::make_unique<TDiskRegistryState>(
         Logging,
         Config,
         ComponentGroup,
@@ -78,8 +84,10 @@ void TDiskRegistryActor::ExecuteCompareDiskRegistryState(
         std::move(args.StateArgs.SuspendedDevices),
         std::move(args.StateArgs.AutomaticallyReplacedDevices),
         std::move(args.StateArgs.DiskRegistryAgentListParams));
-    auto differences = State->GetDifferingFields(*DBState);
+
+    auto differences = State->GetDifferingFields(*dbState);
     args.Result.MutableDiffers()->Add(differences.begin(), differences.end());
+    args.Result.MutableError()->set_code(S_OK);
     
     LOG_INFO(
         ctx,

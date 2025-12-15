@@ -5,6 +5,7 @@
 #include <google/protobuf/util/message_differencer.h>
 
 #include <util/string/builder.h>
+#include <sstream>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -508,33 +509,57 @@ auto TAgentList::RegisterAgent(
         .OldConfigs = std::move(oldConfigs)};
 }
 
-bool TAgentList::CompareAgents(const TAgentList& rhs) const
+TString TAgentList::CompareAgents(const TAgentList& rhs) const
 {
     using google::protobuf::util::MessageDifferencer;
     static_assert(sizeof(*this) == 400);
 
+    MessageDifferencer diff;
+    NProtoBuf::string report;
+    diff.ReportDifferencesToString(&report);
+    google::protobuf::util::DefaultFieldComparator comparator;
+    comparator.set_float_comparison(google::protobuf::util::DefaultFieldComparator::FloatComparison::APPROXIMATE);
+    diff.set_field_comparator(&comparator);
+
+    std::stringstream result;
+
     const auto& vAgentListParams = rhs.GetDiskRegistryAgentListParams();
-    if(GetDiskRegistryAgentListParams().size() != vAgentListParams.size()) {
-        return false;
-    }
+
+    THashSet<TString> used;
     for(const auto& [k, v] : GetDiskRegistryAgentListParams()) {
         if(vAgentListParams.find(k) == vAgentListParams.end()) {
-            return false;
+            result << "Agent param " << k << " not found in db\n";
         }
-        if(!MessageDifferencer::ApproximatelyEquals(v, vAgentListParams.at(k))) {
-            return false;
+        if(!diff.Compare(v, vAgentListParams.at(k))) {
+            result << "Agent param" << k << " differs: " << report << "\n";
         }
+        used.insert(k);
     }
 
-    if (Agents.size() != rhs.Agents.size()) {
-        return false;
-    }
-    for (size_t i = 0; i < Agents.size(); ++i) {
-        if (!MessageDifferencer::ApproximatelyEquals(Agents[i], rhs.Agents[i])) {
-            return false;
+    for(const auto& [k, v] : vAgentListParams) {
+        if(used.find(k) == used.end()) {
+            result << "Agent param" << k << " not found in current disk state\n";
         }
     }
-    return true;
+    used.clear();
+
+    if(Agents.size() != rhs.Agents.size()) {
+        result << "Agent lists differ in size\n";
+        return result.str();
+    }
+    auto desc = NProto::TAgentConfig::descriptor();
+    std::vector<const google::protobuf::FieldDescriptor*> fields;
+    for(int i = 0; i < desc->field_count(); i++) {
+        if(desc->field(i)->name() != "UnknownDevices") { // non persistent field
+            fields.push_back(desc->field(i));
+        }
+    }
+    for (size_t i = 0; i < Agents.size(); ++i) {
+        if (!diff.CompareWithFields(Agents[i], rhs.Agents[i], fields, fields)) {
+            result << "Agent " << i << " differs: " << report << "\n";
+        }
+    }
+    return result.str();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
