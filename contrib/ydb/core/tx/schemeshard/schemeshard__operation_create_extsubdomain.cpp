@@ -84,7 +84,8 @@ public:
                 .NotDeleted()
                 .NotUnderDeleting()
                 .IsCommonSensePath()
-                .IsLikeDirectory();
+                .IsLikeDirectory()
+                .FailOnRestrictedCreateInTempZone();
 
             if (!checks) {
                 result->SetError(checks.GetStatus(), checks.GetError());
@@ -191,13 +192,12 @@ public:
 
         NIceDb::TNiceDb db(context.GetDB());
 
-        context.SS->PersistPath(db, newNode->PathId);
         context.SS->ApplyAndPersistUserAttrs(db, newNode->PathId);
 
         if (!acl.empty()) {
             newNode->ApplyACL(acl);
-            context.SS->PersistACL(db, newNode);
         }
+        context.SS->PersistPath(db, newNode->PathId);
 
         context.SS->PersistUpdateNextPathId(db);
 
@@ -260,7 +260,7 @@ public:
         context.OnComplete.PublishToSchemeBoard(OperationId, newNode->PathId);
 
         Y_ABORT_UNLESS(0 == txState.Shards.size());
-        parentPath.DomainInfo()->IncPathsInside();
+        parentPath.DomainInfo()->IncPathsInside(context.SS);
         parentPath.Base()->IncAliveChildren();
 
         SetState(NextState());

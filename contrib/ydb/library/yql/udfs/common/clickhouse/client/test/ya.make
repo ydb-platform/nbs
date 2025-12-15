@@ -1,6 +1,6 @@
 IF (OS_LINUX AND CLANG AND NOT WITH_VALGRIND)
 
-YQL_UDF_TEST_CONTRIB()
+YQL_UDF_TEST()
 
 DEPENDS(contrib/ydb/library/yql/udfs/common/clickhouse/client)
 

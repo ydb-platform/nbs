@@ -9,7 +9,6 @@ class TTxCreateTablet : public TTransactionBase<THive> {
     const ui64 OwnerId;
     const ui64 OwnerIdx;
     const TTabletTypes::EType TabletType;
-    const ui32 AssignStateStorage;
 
     const TActorId Sender;
     const ui64 Cookie;
@@ -40,8 +39,6 @@ public:
         , OwnerId(RequestData.GetOwner())
         , OwnerIdx(RequestData.GetOwnerIdx())
         , TabletType((TTabletTypes::EType)RequestData.GetTabletType())
-        , AssignStateStorage(RequestData.HasAssignStateStorage() ? RequestData.GetAssignStateStorage() :
-            StateStorageGroupFromTabletID(hive->TabletID()))
         , Sender(sender)
         , Cookie(cookie)
         , TabletId(0)
@@ -307,7 +304,13 @@ public:
                                     NIceDb::TUpdate<Schema::TabletFollowerGroup::RequireDifferentNodes>(followerGroup->RequireDifferentNodes));
                     }
 
-                    Self->UpdateTabletFollowersNumber(*tablet, db, SideEffects);
+                    auto followerGroupsEnd = itFollowerGroup;
+                    for (; itFollowerGroup != tablet->FollowerGroups.end(); ++itFollowerGroup) {
+                        db.Table<Schema::TabletFollowerGroup>().Key(TabletId, itFollowerGroup->Id).Delete();
+                    }
+                    tablet->FollowerGroups.erase(followerGroupsEnd, tablet->FollowerGroups.end());
+
+                    Self->CreateTabletFollowers(*tablet, db, SideEffects);
                     ProcessTablet(*tablet);
 
                     BLOG_D("THive::TTxCreateTablet::Execute Existing tablet " << tablet->ToString() << " has been successfully updated");
@@ -341,7 +344,7 @@ public:
             RequestFreeSequence();
             return true;
         } else {
-            TabletId = MakeTabletID(AssignStateStorage, Self->HiveUid, tabletIdIndex);
+            TabletId = MakeTabletID(true, tabletIdIndex);
             BLOG_D("Hive " << Self->TabletID() << " allocated TabletId " << TabletId << " from TabletIdIndex " << tabletIdIndex);
             Y_ABORT_UNLESS(Self->Tablets.count(TabletId) == 0);
             for (auto owner : modified) {
@@ -362,7 +365,7 @@ public:
         // insert entry for new tablet
         TLeaderTabletInfo& tablet = Self->GetTablet(TabletId);
         tablet.NodeId = 0;
-        tablet.Type = (TTabletTypes::EType)TabletType;
+        tablet.SetType((TTabletTypes::EType)TabletType);
         tablet.KnownGeneration = 0; // because we will increase it on start
         tablet.State = ETabletState::GroupAssignment;
         tablet.ActorsToNotify.push_back(Sender);
@@ -464,7 +467,7 @@ public:
                         NIceDb::TUpdate<Schema::TabletFollowerGroup::FollowerCountPerDataCenter>(followerGroup.FollowerCountPerDataCenter));
         }
 
-        Self->UpdateTabletFollowersNumber(tablet, db, SideEffects);
+        Self->CreateTabletFollowers(tablet, db, SideEffects);
         Self->OwnerToTablet.emplace(ownerIdx, TabletId);
         Self->ObjectToTabletMetrics[tablet.ObjectId].IncreaseCount();
         Self->TabletTypeToTabletMetrics[tablet.Type].IncreaseCount();

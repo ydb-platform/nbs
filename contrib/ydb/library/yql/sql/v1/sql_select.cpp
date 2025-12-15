@@ -40,7 +40,31 @@ bool TSqlSelect::JoinOp(ISource* join, const TRule_join_source::TBlock3& block, 
             TString joinOp("Inner");
             auto hints = Ctx.PullHintForToken(Ctx.TokenPosition(alt.GetToken3()));
             TJoinLinkSettings linkSettings;
-            linkSettings.ForceSortedMerge = AnyOf(hints, [](const NSQLTranslation::TSQLHint& hint) { return to_lower(hint.Name) == "merge"; });
+            for (const auto& hint: hints) {
+                const auto canonizedName = to_lower(hint.Name);
+                auto newStrategy =  TJoinLinkSettings::EStrategy::Default;
+                if (canonizedName == "merge") {
+                    newStrategy = TJoinLinkSettings::EStrategy::SortedMerge;
+                } else if (canonizedName == "streamlookup") {
+                    newStrategy = TJoinLinkSettings::EStrategy::StreamLookup;
+                } else if (canonizedName == "map") {
+                    newStrategy = TJoinLinkSettings::EStrategy::ForceMap;
+                } else if (canonizedName == "grace") {
+                    newStrategy = TJoinLinkSettings::EStrategy::ForceGrace;
+                } else {
+                    Ctx.Warning(hint.Pos, TIssuesIds::YQL_UNUSED_HINT) << "Unsupported join strategy: " << hint.Name;
+                }
+
+                if (TJoinLinkSettings::EStrategy::Default == linkSettings.Strategy) {
+                    linkSettings.Strategy = newStrategy;
+                } else if (newStrategy == linkSettings.Strategy) {
+                    Error() << "Duplicate join strategy hint";
+                    return false;
+                } else {
+                    Error() << "Conflicting join strategy hints";
+                    return false;
+                }
+            }
             switch (alt.GetBlock2().Alt_case()) {
                 case TRule_join_op::TAlt2::TBlock2::kAlt1:
                     if (alt.GetBlock2().GetAlt1().HasBlock1()) {
@@ -102,6 +126,10 @@ bool TSqlSelect::JoinOp(ISource* join, const TRule_join_source::TBlock3& block, 
             joinOp = NormalizeJoinOp(joinOp);
             Ctx.IncrementMonCounter("sql_features", "Join");
             Ctx.IncrementMonCounter("sql_join_operations", joinOp);
+            if (linkSettings.Strategy != TJoinLinkSettings::EStrategy::Default && joinOp == "Cross") {
+                Ctx.Warning(Ctx.Pos(), TIssuesIds::YQL_UNUSED_HINT) << "Non-default join strategy will not be used for CROSS JOIN";
+                linkSettings.Strategy = TJoinLinkSettings::EStrategy::Default;
+            }
 
             TNodePtr joinKeyExpr;
             if (block.HasBlock4()) {
@@ -552,7 +580,8 @@ TSourcePtr TSqlSelect::NamedSingleSource(const TRule_named_single_source& node, 
         singleSource->SetLabel(label);
     }
     if (node.HasBlock4()) {
-        ESampleMode mode = ESampleMode::Auto;
+        ESampleClause sampleClause;
+        ESampleMode mode;
         TSqlExpression expr(Ctx, Mode);
         TNodePtr samplingRateNode;
         TNodePtr samplingSeedNode;
@@ -561,6 +590,8 @@ TSourcePtr TSqlSelect::NamedSingleSource(const TRule_named_single_source& node, 
         switch (sampleBlock.Alt_case()) {
         case TRule_named_single_source::TBlock4::kAlt1:
             {
+                sampleClause = ESampleClause::Sample;
+                mode = ESampleMode::Bernoulli;
                 const auto& sampleExpr = sampleBlock.GetAlt1().GetRule_sample_clause1().GetRule_expr2();
                 samplingRateNode = expr.Build(sampleExpr);
                 if (!samplingRateNode) {
@@ -572,6 +603,7 @@ TSourcePtr TSqlSelect::NamedSingleSource(const TRule_named_single_source& node, 
             break;
         case TRule_named_single_source::TBlock4::kAlt2:
             {
+                sampleClause = ESampleClause::TableSample;
                 const auto& tableSampleClause = sampleBlock.GetAlt2().GetRule_tablesample_clause1();
                 const auto& modeToken = tableSampleClause.GetRule_sampling_mode2().GetToken1();
                 const TCiString& token = Token(modeToken);
@@ -603,7 +635,7 @@ TSourcePtr TSqlSelect::NamedSingleSource(const TRule_named_single_source& node, 
         case TRule_named_single_source::TBlock4::ALT_NOT_SET:
             Y_ABORT("SampleClause: does not corresond to grammar changes");
         }
-        if (!singleSource->SetSamplingOptions(Ctx, pos, mode, samplingRateNode, samplingSeedNode)) {
+        if (!singleSource->SetSamplingOptions(Ctx, pos, sampleClause, mode, samplingRateNode, samplingSeedNode)) {
             Ctx.IncrementMonCounter("sql_errors", "IncorrectSampleClause");
             return nullptr;
         }

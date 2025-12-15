@@ -1,11 +1,11 @@
 #include <contrib/ydb/core/base/tablet.h>
+#include <contrib/ydb/core/base/blobstorage_common.h>
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
 #include <contrib/ydb/core/blobstorage/dsproxy/mock/dsproxy_mock.h>
 #include <contrib/ydb/core/mind/bscontroller/bsc.h>
 #include <contrib/ydb/core/mind/bscontroller/indir.h>
 #include <contrib/ydb/core/mind/bscontroller/types.h>
 #include <contrib/ydb/core/mind/bscontroller/ut_helpers.h>
-#include <contrib/ydb/core/mind/bscontroller/vdisk_status_tracker.h>
 #include <contrib/ydb/core/protos/blobstorage_config.pb.h>
 #include <contrib/ydb/core/protos/blobstorage_distributed_config.pb.h>
 #include <contrib/ydb/core/testlib/basics/helpers.h>
@@ -39,7 +39,7 @@ struct TEnvironmentSetup {
     const ui32 NodeCount;
     const ui32 DataCenterCount;
     const ui32 Domain = 0;
-    const ui64 TabletId = MakeBSControllerID(Domain);
+    const ui64 TabletId = MakeBSControllerID();
     const TVector<ui64> TabletIds = {TabletId};
     const TDuration Timeout = TDuration::Seconds(30);
     const ui32 GroupId = 0;
@@ -208,7 +208,7 @@ struct TEnvironmentSetup {
         TAppPrepare app;
         app.AddDomain(TDomainsInfo::TDomain::ConstructEmptyDomain("dc-1").Release());
         for (ui32 i = 0; i < nodeCount; ++i) {
-            SetupStateStorage(*Runtime, i, 0, true);
+            SetupStateStorage(*Runtime, i, true);
             SetupTabletResolver(*Runtime, i);
         }
         Runtime->Initialize(app.Unwrap());
@@ -234,7 +234,7 @@ struct TEnvironmentSetup {
 
     void SetupStorage() {
         const TActorId proxyId = MakeBlobStorageProxyID(GroupId);
-        Runtime->RegisterService(proxyId, Runtime->Register(CreateBlobStorageGroupProxyMockActor(GroupId), NodeId), NodeId);
+        Runtime->RegisterService(proxyId, Runtime->Register(CreateBlobStorageGroupProxyMockActor(TGroupId::FromValue(GroupId)), NodeId), NodeId);
 
         class TMock : public TActor<TMock> {
         public:
@@ -243,7 +243,7 @@ struct TEnvironmentSetup {
             {}
 
             void Handle(TEvNodeWardenQueryStorageConfig::TPtr ev) {
-                Send(ev->Sender, new TEvNodeWardenStorageConfig(NKikimrBlobStorage::TStorageConfig()));
+                Send(ev->Sender, new TEvNodeWardenStorageConfig(NKikimrBlobStorage::TStorageConfig(), nullptr));
             }
 
             STATEFN(StateFunc) {
@@ -319,6 +319,51 @@ Y_UNIT_TEST_SUITE(BsControllerConfig) {
                 NKikimrBlobStorage::TConfigResponse response = env.Invoke(request);
                 UNIT_ASSERT(response.GetSuccess());
                 UNIT_ASSERT(env.ParsePDisks(response.GetStatus(baseConfigIndex).GetBaseConfig()) == env.ExpectedPDisks); });
+    }
+
+    Y_UNIT_TEST(PDiskUpdate) {
+        TEnvironmentSetup env(10, 1);
+        RunTestWithReboots(env.TabletIds, [&] { return env.PrepareInitialEventsFilter(); }, [&](const TString& dispatchName, std::function<void(TTestActorRuntime&)> setup, bool& outActiveZone) {
+                TFinalizer finalizer(env);
+                env.Prepare(dispatchName, setup, outActiveZone);
+
+                {
+                    NKikimrBlobStorage::TConfigRequest request;
+                    env.DefineBox(1, "test box", {
+                            {"/dev/disk1", NKikimrBlobStorage::ROT, false, false, 0},
+                        }, env.GetNodes(), request);
+
+                    size_t baseConfigIndex = request.CommandSize();
+                    request.AddCommand()->MutableQueryBaseConfig();
+
+                    NKikimrBlobStorage::TConfigResponse response = env.Invoke(request);
+                    UNIT_ASSERT(response.GetSuccess());
+                    UNIT_ASSERT(env.ParsePDisks(response.GetStatus(baseConfigIndex).GetBaseConfig()) == env.ExpectedPDisks);
+                }
+
+                {
+                    NKikimrBlobStorage::TConfigRequest request;
+
+                    auto& hostcfg = *request.AddCommand()->MutableDefineHostConfig();
+                    hostcfg.SetHostConfigId(env.NextHostConfigId - 1);
+                    hostcfg.SetItemConfigGeneration(1);
+                    
+                    auto& drive = *hostcfg.AddDrive();
+                    drive.SetPath("/dev/disk1");
+                    drive.SetType(NKikimrBlobStorage::ROT);
+                    drive.SetSharedWithOs(false);
+                    drive.SetReadCentric(false);
+                    drive.SetKind(0);
+                    drive.MutablePDiskConfig()->SetChunkBaseLimit(65);
+
+                    size_t baseConfigIndex = request.CommandSize();
+                    request.AddCommand()->MutableQueryBaseConfig();
+
+                    NKikimrBlobStorage::TConfigResponse response = env.Invoke(request);
+                    UNIT_ASSERT(response.GetSuccess());
+                    UNIT_ASSERT(env.ParsePDisks(response.GetStatus(baseConfigIndex).GetBaseConfig()) == env.ExpectedPDisks);
+                }
+         });
     }
 
     Y_UNIT_TEST(ManyPDisksRestarts) {
@@ -1104,29 +1149,5 @@ Y_UNIT_TEST_SUITE(BsControllerConfig) {
                 }
             }
         }
-    }
-
-    Y_UNIT_TEST(VDiskStatusTracker) {
-        using E = NKikimrBlobStorage::EVDiskStatus;
-        TInstant base = TInstant::Zero();
-        TVDiskStatusTracker tracker(TDuration::Seconds(60));
-        UNIT_ASSERT_VALUES_EQUAL(tracker.GetStatus(base + TDuration::Seconds(0)), std::nullopt);
-        UNIT_ASSERT_VALUES_EQUAL(tracker.GetStatus(base + TDuration::Seconds(75)), std::nullopt);
-        tracker.Update(E::INIT_PENDING, base + TDuration::Seconds(10));
-        UNIT_ASSERT_VALUES_EQUAL(tracker.GetStatus(base + TDuration::Seconds(15)), std::nullopt);
-        UNIT_ASSERT_VALUES_EQUAL(tracker.GetStatus(base + TDuration::Seconds(75)), E::INIT_PENDING);
-        tracker.Update(E::REPLICATING, base + TDuration::Seconds(20));
-        UNIT_ASSERT_VALUES_EQUAL(tracker.GetStatus(base + TDuration::Seconds(15)), std::nullopt);
-        UNIT_ASSERT_VALUES_EQUAL(tracker.GetStatus(base + TDuration::Seconds(75)), std::nullopt);
-        UNIT_ASSERT_VALUES_EQUAL(tracker.GetStatus(base + TDuration::Seconds(85)), E::REPLICATING);
-        tracker.Update(E::READY, base + TDuration::Seconds(30));
-        UNIT_ASSERT_VALUES_EQUAL(tracker.GetStatus(base + TDuration::Seconds(15)), std::nullopt);
-        UNIT_ASSERT_VALUES_EQUAL(tracker.GetStatus(base + TDuration::Seconds(75)), std::nullopt);
-        UNIT_ASSERT_VALUES_EQUAL(tracker.GetStatus(base + TDuration::Seconds(85)), std::nullopt);
-        UNIT_ASSERT_VALUES_EQUAL(tracker.GetStatus(base + TDuration::Seconds(95)), E::READY);
-        tracker.Update(E::ERROR, base + TDuration::Seconds(40));
-        UNIT_ASSERT_VALUES_EQUAL(tracker.GetStatus(base + TDuration::Seconds(75)), std::nullopt);
-        UNIT_ASSERT_VALUES_EQUAL(tracker.GetStatus(base + TDuration::Seconds(85)), std::nullopt);
-        UNIT_ASSERT_VALUES_EQUAL(tracker.GetStatus(base + TDuration::Seconds(95)), std::nullopt);
     }
 }

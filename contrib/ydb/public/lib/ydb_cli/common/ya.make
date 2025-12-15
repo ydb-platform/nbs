@@ -26,6 +26,7 @@ SRCS(
     scheme_printers.cpp
     sys.cpp
     tabbed_table.cpp
+    waiting_bar.cpp
     ydb_updater.cpp
     yt.cpp
 )
@@ -47,6 +48,7 @@ PEERDIR(
     contrib/ydb/public/sdk/cpp/client/ydb_topic
     contrib/ydb/public/sdk/cpp/client/ydb_types
     contrib/ydb/public/sdk/cpp/client/ydb_types/credentials
+    contrib/ydb/public/sdk/cpp/client/ydb_types/credentials/oauth2_token_exchange
     contrib/ydb/library/arrow_parquet
 )
 

@@ -77,4 +77,19 @@ namespace NKikimr::NPublicHttp {
     google::protobuf::Arena* TGrpcRequestContextWrapper::GetArena() {
         return &Arena;
     }
+
+    TString TGrpcRequestContextWrapper::GetPeer() const {
+       return RequestContext.GetPeer();
+    }
+
+    TString TGrpcRequestContextWrapper::GetEndpointId() const { return {}; }
+
+    TString TGrpcRequestContextWrapper::GetRpcMethodName() const {
+        // We have no grpc method, but the closest analog is protobuf name
+        if (Request) {
+            return Request->GetDescriptor()->name();
+        }
+        return {};
+    }
+
 } // namespace NKikimr::NPublicHttp

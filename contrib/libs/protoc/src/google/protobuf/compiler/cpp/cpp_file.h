@@ -40,11 +40,12 @@
 #include <set>
 #include <string>
 #include <vector>
+
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/compiler/cpp/cpp_field.h>
 #include <google/protobuf/compiler/cpp/cpp_helpers.h>
-#include <google/protobuf/compiler/cpp/cpp_options.h>
 #include <google/protobuf/compiler/scc.h>
+#include <google/protobuf/compiler/cpp/cpp_options.h>
 
 namespace google {
 namespace protobuf {
@@ -80,6 +81,7 @@ class FileGenerator {
   // info_path, if non-empty, should be the path (relative to printer's
   // output) to the metadata file describing this PB header.
   void GeneratePBHeader(io::Printer* printer, const TProtoStringType& info_path);
+  void GeneratePBDeps(io::Printer* printer, const TProtoStringType& info_path);
   void GenerateSource(io::Printer* printer);
 
   // The following member functions are used when the lite_implicit_weak_fields
@@ -122,19 +124,19 @@ class FileGenerator {
   void GenerateInternalForwardDeclarations(const CrossFileReferences& refs,
                                            io::Printer* printer);
   void GenerateSourceIncludes(io::Printer* printer);
+  void GenerateSourcePrelude(io::Printer* printer);
   void GenerateSourceDefaultInstance(int idx, io::Printer* printer);
 
   void GenerateInitForSCC(const SCC* scc, const CrossFileReferences& refs,
                           io::Printer* printer);
-  void GenerateTables(io::Printer* printer);
   void GenerateReflectionInitializationCode(io::Printer* printer);
 
   // For other imports, generates their forward-declarations.
   void GenerateForwardDeclarations(io::Printer* printer);
 
   // Generates top or bottom of a header file.
-  void GenerateTopHeaderGuard(io::Printer* printer, bool pb_h);
-  void GenerateBottomHeaderGuard(io::Printer* printer, bool pb_h);
+  void GenerateTopHeaderGuard(io::Printer* printer, bool pb_h, bool deps = false);
+  void GenerateBottomHeaderGuard(io::Printer* printer, bool pb_h, bool deps = false);
 
   // Generates #include directives.
   void GenerateLibraryIncludes(io::Printer* printer);

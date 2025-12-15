@@ -6,6 +6,7 @@
 
 #include <contrib/ydb/library/yverify_stream/yverify_stream.h>
 #include <contrib/ydb/core/util/lz4_data_generator.h>
+#include <contrib/ydb/core/jaeger_tracing/throttler.h>
 
 #include <google/protobuf/text_format.h>
 
@@ -16,6 +17,7 @@
 #include <util/generic/set.h>
 #include <util/system/type_name.h>
 #include <util/random/fast.h>
+#include <util/random/shuffle.h>
 
 namespace NKikimr {
 
@@ -445,6 +447,8 @@ class TLogWriterLoadTestActor : public TActorBootstrapped<TLogWriterLoadTestActo
         // There is no point in having more than 1 active garbage collection request at the moment
         constexpr static ui32 MaxGarbageCollectionsInFlight = 1;
 
+        TIntrusivePtr<NJaegerTracing::TThrottler> TracingThrottler;
+
     public:
         TTabletWriter(TIntrusivePtr<::NMonitoring::TDynamicCounters> counters,
                 TLogWriterLoadTestActor& self, ui64 tabletId, ui32 channel,
@@ -453,7 +457,8 @@ class TLogWriterLoadTestActor : public TActorBootstrapped<TLogWriterLoadTestActo
                 NKikimrBlobStorage::EGetHandleClass getHandleClass, const TRequestDispatchingSettings& readSettings,
                 TIntervalGenerator garbageCollectIntervalGen,
                 TDuration scriptedRoundDuration, TVector<TReqInfo>&& scriptedRequests,
-                const TInitialAllocation& initialAllocation)
+                const TInitialAllocation& initialAllocation,
+                const TIntrusivePtr<NJaegerTracing::TThrottler>& tracingThrottler)
             : Self(self)
             , TagCounters(counters->GetSubgroup("tag", Sprintf("%" PRIu64, Self.Tag)))
             , Counters(TagCounters->GetSubgroup("channel", Sprintf("%" PRIu32, channel)))
@@ -491,6 +496,7 @@ class TLogWriterLoadTestActor : public TActorBootstrapped<TLogWriterLoadTestActo
             , ScriptedRequests(std::move(scriptedRequests))
             , InitialAllocation(initialAllocation)
             , GarbageCollectIntervalGen(garbageCollectIntervalGen)
+            , TracingThrottler(tracingThrottler)
         {
             *Counters->GetCounter("tabletId") = tabletId;
             const auto& percCounters = Counters->GetSubgroup("sensor", "microseconds");
@@ -605,9 +611,6 @@ class TLogWriterLoadTestActor : public TActorBootstrapped<TLogWriterLoadTestActo
         void StartWorking(const TActorContext& ctx) {
             MainCycleStarted = true;
             StartTimestamp = TActivationContext::Monotonic();
-            if (Self.TestDuration) {
-                ctx.Schedule(*Self.TestDuration, new TEvents::TEvPoisonPill());
-            }
             InitializeTrackers(StartTimestamp);
             WriteSettings.DelayManager->Start(StartTimestamp);
             IssueWriteIfPossible(ctx);
@@ -923,7 +926,13 @@ class TLogWriterLoadTestActor : public TActorBootstrapped<TLogWriterLoadTestActo
                     IssueReadIfPossible(ctx);
                 }
             };
-            SendToBSProxy(ctx, GroupId, ev.release(), Self.QueryDispatcher.ObtainCookie(std::move(writeCallback)));
+
+            NWilson::TTraceId traceId = (TracingThrottler && !TracingThrottler->Throttle())
+                    ? NWilson::TTraceId::NewTraceId(15, ::Max<ui32>())
+                    : NWilson::TTraceId{};
+
+            SendToBSProxy(ctx, GroupId, ev.release(), Self.QueryDispatcher.ObtainCookie(std::move(writeCallback)),
+                    std::move(traceId));
             const auto nowCycles = GetCycleCountFast();
             WritesInFlightTimestamps.emplace_back(writeQueryId, nowCycles);
             SentTimestamp.emplace(writeQueryId, nowCycles);
@@ -1073,7 +1082,12 @@ class TLogWriterLoadTestActor : public TActorBootstrapped<TLogWriterLoadTestActo
                 IssueReadIfPossible(ctx);
             };
 
-            SendToBSProxy(ctx, GroupId, ev.release(), Self.QueryDispatcher.ObtainCookie(std::move(readCallback)));
+            NWilson::TTraceId traceId = (TracingThrottler && !TracingThrottler->Throttle())
+                    ? NWilson::TTraceId::NewTraceId(15, ::Max<ui32>())
+                    : NWilson::TTraceId{};
+
+            SendToBSProxy(ctx, GroupId, ev.release(), Self.QueryDispatcher.ObtainCookie(std::move(readCallback)),
+                    std::move(traceId));
             ReadSentTimestamp.emplace(readQueryId, GetCycleCountFast());
 
             ReadSettings.InFlightTracker.Request(size);
@@ -1211,6 +1225,14 @@ public:
 
             TIntervalGenerator garbageCollectIntervalGen(profile.GetFlushIntervals());
 
+            TIntrusivePtr<NJaegerTracing::TThrottler> tracingThrottler;
+
+            ui32 throttlerRate = profile.GetTracingThrottlerRate();
+            if (throttlerRate) {
+                tracingThrottler = MakeIntrusive<NJaegerTracing::TThrottler>(throttlerRate, profile.GetTracingThrottlerBurst(),
+                        TAppData::TimeProvider);
+            }
+
             for (const auto& tablet : profile.GetTablets()) {
                 auto scriptedRoundDuration = TDuration::MicroSeconds(tablet.GetScriptedCycleDurationSec() * 1e6);
                 TVector<TReqInfo> scriptedRequests;
@@ -1243,7 +1265,7 @@ public:
                         tabletId = (tabletId << 10) + tag;
                         tabletId = (tabletId << 10) + Parent.NodeId();
                         tabletId &= (1ull << 44) - 1;
-                        tabletId = MakeTabletID(0, 0, tabletId);
+                        tabletId = MakeTabletID(false, tabletId);
                         tabletIds[name] = tabletId;
                     }
                 } else {
@@ -1256,9 +1278,16 @@ public:
                     getHandleClass, readSettings,
                     garbageCollectIntervalGen,
                     scriptedRoundDuration, std::move(scriptedRequests),
-                    initialAllocation));
+                    initialAllocation, tracingThrottler));
 
                 WorkersInInitialState++;
+            }
+
+            ui32 numberOfRandomGroupsToPick = profile.GetNumberOfRandomGroupsToPick();
+            if (numberOfRandomGroupsToPick > 0 && numberOfRandomGroupsToPick < TabletWriters.size()) {
+                Shuffle(TabletWriters.begin(), TabletWriters.end());
+                TabletWriters.resize(numberOfRandomGroupsToPick);
+                WorkersInInitialState = numberOfRandomGroupsToPick;
             }
         }
     }

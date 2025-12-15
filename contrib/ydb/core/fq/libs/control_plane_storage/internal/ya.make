@@ -18,9 +18,11 @@ PEERDIR(
     contrib/ydb/core/base
     contrib/ydb/core/metering
     contrib/ydb/core/fq/libs/common
+    contrib/ydb/core/fq/libs/compute/common
     contrib/ydb/core/fq/libs/config
     contrib/ydb/core/fq/libs/control_plane_storage/proto
     contrib/ydb/core/fq/libs/exceptions
+    contrib/ydb/core/fq/libs/metrics
     contrib/ydb/core/fq/libs/quota_manager
     contrib/ydb/core/fq/libs/quota_manager/events
     contrib/ydb/core/fq/libs/rate_limiter/events

@@ -22,12 +22,15 @@ class TExecStats {
     friend class NYdb::TProtoAccessor;
 
 public:
+    TExecStats() = default;
+
     explicit TExecStats(Ydb::TableStats::QueryStats&& proto);
     explicit TExecStats(const Ydb::TableStats::QueryStats& proto);
 
     TString ToString(bool withPlan = false) const;
 
     TMaybe<TString> GetPlan() const;
+    TMaybe<TString> GetAst() const;
 
     TDuration GetTotalDuration() const;
     TDuration GetTotalCpuTime() const;

@@ -1,4 +1,4 @@
-UNITTEST_FOR(cotnrib/ydb/library/ncloud/impl)
+UNITTEST_FOR(contrib/ydb/library/ncloud/impl)
 
 FORK_SUBTESTS()
 

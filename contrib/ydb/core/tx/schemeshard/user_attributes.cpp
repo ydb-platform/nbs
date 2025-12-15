@@ -57,6 +57,7 @@ inline bool IsValidPathName_WeakCheck(const TString& name) {
                 HANDLE_ATTR(EXTRA_PATH_SYMBOLS_ALLOWED);
                 HANDLE_ATTR(DOCUMENT_API_VERSION);
                 HANDLE_ATTR(ASYNC_REPLICATION);
+                HANDLE_ATTR(ASYNC_REPLICA);
 
             #undef HANDLE_ATTR
             return EAttribute::UNKNOWN;
@@ -145,6 +146,9 @@ inline bool IsValidPathName_WeakCheck(const TString& name) {
                     return false;
                 }
                 return CheckValueJson(name, value, errStr);
+            case EAttribute::ASYNC_REPLICA:
+                errStr = Sprintf("UserAttributes: attribute '%s' cannot be set", name.c_str());
+                return false;
         }
 
         Y_UNREACHABLE();
@@ -184,6 +188,9 @@ inline bool IsValidPathName_WeakCheck(const TString& name) {
                     return false;
                 }
                 return true;
+            case EAttribute::ASYNC_REPLICA:
+                errStr = Sprintf("UserAttributes: attribute '%s' cannot be set", name.c_str());
+                return false;
         }
 
         Y_UNREACHABLE();

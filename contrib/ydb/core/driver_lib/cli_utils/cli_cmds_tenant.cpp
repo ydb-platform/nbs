@@ -8,6 +8,7 @@
 #include <contrib/ydb/public/api/grpc/ydb_operation_v1.grpc.pb.h>
 #include <contrib/ydb/public/api/grpc/ydb_auth_v1.grpc.pb.h>
 #include <contrib/ydb/public/api/grpc/ydb_cms_v1.grpc.pb.h>
+#include <contrib/ydb/core/protos/console_base.pb.h>
 
 #include <util/string/split.h>
 #include <util/string/join.h>
@@ -653,6 +654,7 @@ public:
     {
         TTenantClientGRpcCommand::Parse(config);
         TClientCommandTenantQuotasBase::Parse(config, GRpcRequest);
+        GRpcRequest.set_path(config.Tenant);
     }
 };
 
