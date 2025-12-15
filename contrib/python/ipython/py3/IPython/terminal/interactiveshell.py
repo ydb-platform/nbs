@@ -1,8 +1,8 @@
 """IPython terminal interface using prompt_toolkit"""
 
-import asyncio
 import os
 import sys
+import inspect
 from warnings import warn
 from typing import Union as UnionType, Optional
 
@@ -26,7 +26,10 @@ from traitlets import (
     Any,
     validate,
     Float,
+    DottedObjectName,
 )
+from traitlets.utils.importstring import import_item
+
 
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.enums import DEFAULT_BUFFER, EditingMode
@@ -52,6 +55,7 @@ from .prompts import Prompts, ClassicPrompts, RichPromptDisplayHook
 from .ptutils import IPythonPTCompleter, IPythonPTLexer
 from .shortcuts import (
     KEY_BINDINGS,
+    UNASSIGNED_ALLOWED_COMMANDS,
     create_ipython_shortcuts,
     create_identifier,
     RuntimeBinding,
@@ -66,8 +70,8 @@ from .shortcuts.auto_suggest import (
 PTK3 = ptk_version.startswith('3.')
 
 
-class _NoStyle(Style): pass
-
+class _NoStyle(Style):
+    pass
 
 
 _style_overrides_light_bg = {
@@ -84,6 +88,20 @@ _style_overrides_linux = {
             Token.OutPromptNum: '#ansired bold',
 }
 
+
+def _backward_compat_continuation_prompt_tokens(method, width: int, *, lineno: int):
+    """
+    Sagemath use custom prompt and we broke them in 8.19.
+    """
+    sig = inspect.signature(method)
+    if "lineno" in inspect.signature(method).parameters or any(
+        [p.kind == p.VAR_KEYWORD for p in sig.parameters.values()]
+    ):
+        return method(width, lineno=lineno)
+    else:
+        return method(width)
+
+
 def get_default_editor():
     try:
         return os.environ['EDITOR']
@@ -96,7 +114,8 @@ def get_default_editor():
     if os.name == 'posix':
         return 'vi'  # the only one guaranteed to be there!
     else:
-        return 'notepad' # same in Windows!
+        return "notepad"  # same in Windows!
+
 
 # conservatively check for tty
 # overridden streams can result in things like:
@@ -198,7 +217,9 @@ class TerminalInteractiveShell(InteractiveShell):
 
     pt_app: UnionType[PromptSession, None] = None
     auto_suggest: UnionType[
-        AutoSuggestFromHistory, NavigableAutoSuggestFromHistory, None
+        AutoSuggestFromHistory,
+        NavigableAutoSuggestFromHistory,
+        None,
     ] = None
     debugger_history = None
 
@@ -209,12 +230,18 @@ class TerminalInteractiveShell(InteractiveShell):
     simple_prompt = Bool(_use_simple_prompt,
         help="""Use `raw_input` for the REPL, without completion and prompt colors.
 
-            Useful when controlling IPython as a subprocess, and piping STDIN/OUT/ERR. Known usage are:
-            IPython own testing machinery, and emacs inferior-shell integration through elpy.
+            Useful when controlling IPython as a subprocess, and piping
+            STDIN/OUT/ERR. Known usage are: IPython's own testing machinery,
+            and emacs' inferior-python subprocess (assuming you have set
+            `python-shell-interpreter` to "ipython") available through the
+            built-in `M-x run-python` and third party packages such as elpy.
 
             This mode default to `True` if the `IPY_TEST_SIMPLE_PROMPT`
-            environment variable is set, or the current terminal is not a tty."""
-            ).tag(config=True)
+            environment variable is set, or the current terminal is not a tty.
+            Thus the Default value reported in --help-all, or config will often
+            be incorrectly reported.
+            """,
+    ).tag(config=True)
 
     @property
     def debugger_cls(self):
@@ -293,7 +320,6 @@ class TerminalInteractiveShell(InteractiveShell):
 
         return self.editing_mode
 
-
     @observe('editing_mode')
     def _editing_mode(self, change):
         if self.pt_app:
@@ -321,7 +347,6 @@ class TerminalInteractiveShell(InteractiveShell):
 
     def refresh_style(self):
         self._style = self._make_style_from_name_or_cls(self.highlighting_style)
-
 
     highlighting_style_overrides = Dict(
         help="Override highlighting format for specific tokens"
@@ -401,6 +426,37 @@ class TerminalInteractiveShell(InteractiveShell):
         allow_none=True,
     ).tag(config=True)
 
+    llm_provider_class = DottedObjectName(
+        None,
+        allow_none=True,
+        help="""\
+        Provisional:
+            This is a provisinal API in IPython 8.32, before stabilisation
+            in 9.0, it may change without warnings.
+
+        class to use for the `NavigableAutoSuggestFromHistory` to request
+        completions from a LLM, this should inherit from
+        `jupyter_ai_magics:BaseProvider` and implement
+        `stream_inline_completions`
+    """,
+    ).tag(config=True)
+
+    @observe("llm_provider_class")
+    def _llm_provider_class_changed(self, change):
+        provider_class = change.new
+        if provider_class is not None:
+            warn(
+                "TerminalInteractiveShell.llm_provider_class is a provisional"
+                "  API as of IPython 8.32, and may change without warnings."
+            )
+            if isinstance(self.auto_suggest, NavigableAutoSuggestFromHistory):
+                self.auto_suggest._llm_provider = provider_class()
+            else:
+                self.log.warn(
+                    "llm_provider_class only has effects when using"
+                    "`NavigableAutoSuggestFromHistory` as auto_suggest."
+                )
+
     def _set_autosuggestions(self, provider):
         # disconnect old handler
         if self.auto_suggest and isinstance(
@@ -412,7 +468,15 @@ class TerminalInteractiveShell(InteractiveShell):
         elif provider == "AutoSuggestFromHistory":
             self.auto_suggest = AutoSuggestFromHistory()
         elif provider == "NavigableAutoSuggestFromHistory":
+            # LLM stuff are all Provisional in 8.32
+            if self.llm_provider_class:
+                llm_provider_constructor = import_item(self.llm_provider_class)
+                llm_provider = llm_provider_constructor()
+            else:
+                llm_provider = None
             self.auto_suggest = NavigableAutoSuggestFromHistory()
+            # Provisinal in 8.32
+            self.auto_suggest._llm_provider = llm_provider
         else:
             raise ValueError("No valid provider.")
         if self.pt_app:
@@ -489,19 +553,25 @@ class TerminalInteractiveShell(InteractiveShell):
         # rebuild the bindings list from scratch
         key_bindings = create_ipython_shortcuts(self)
 
-        # for now we only allow adding shortcuts for commands which are already
-        # registered; this is a security precaution.
-        known_commands = {
+        # for now we only allow adding shortcuts for a specific set of
+        # commands; this is a security precution.
+        allowed_commands = {
             create_identifier(binding.command): binding.command
             for binding in KEY_BINDINGS
         }
+        allowed_commands.update(
+            {
+                create_identifier(command): command
+                for command in UNASSIGNED_ALLOWED_COMMANDS
+            }
+        )
         shortcuts_to_skip = []
         shortcuts_to_add = []
 
         for shortcut in user_shortcuts:
             command_id = shortcut["command"]
-            if command_id not in known_commands:
-                allowed_commands = "\n - ".join(known_commands)
+            if command_id not in allowed_commands:
+                allowed_commands = "\n - ".join(allowed_commands)
                 raise ValueError(
                     f"{command_id} is not a known shortcut command."
                     f" Allowed commands are: \n - {allowed_commands}"
@@ -525,7 +595,7 @@ class TerminalInteractiveShell(InteractiveShell):
             new_keys = shortcut.get("new_keys", None)
             new_filter = shortcut.get("new_filter", None)
 
-            command = known_commands[command_id]
+            command = allowed_commands[command_id]
 
             creating_new = shortcut.get("create", False)
             modifying_existing = not creating_new and (
@@ -567,12 +637,14 @@ class TerminalInteractiveShell(InteractiveShell):
                     RuntimeBinding(
                         command,
                         keys=new_keys or old_keys,
-                        filter=filter_from_string(new_filter)
-                        if new_filter is not None
-                        else (
-                            old_filter
-                            if old_filter is not None
-                            else filter_from_string("always")
+                        filter=(
+                            filter_from_string(new_filter)
+                            if new_filter is not None
+                            else (
+                                old_filter
+                                if old_filter is not None
+                                else filter_from_string("always")
+                            )
                         ),
                     )
                 )
@@ -586,6 +658,17 @@ class TerminalInteractiveShell(InteractiveShell):
 
     prompt_includes_vi_mode = Bool(True,
         help="Display the current vi mode (when using vi editing mode)."
+    ).tag(config=True)
+
+    prompt_line_number_format = Unicode(
+        "",
+        help="The format for line numbering, will be passed `line` (int, 1 based)"
+        " the current line number and `rel_line` the relative line number."
+        " for example to display both you can use the following template string :"
+        " c.TerminalInteractiveShell.prompt_line_number_format='{line: 4d}/{rel_line:+03d} | '"
+        " This will display the current line number, with leading space and a width of at least 4"
+        " character, as well as the relative line number 0 padded and always with a + or - sign."
+        " Note that when using Emacs mode the prompt of the first line may not update.",
     ).tag(config=True)
 
     @observe('term_title')
@@ -736,7 +819,7 @@ class TerminalInteractiveShell(InteractiveShell):
         def get_message():
             return PygmentsTokens(self.prompts.in_prompt_tokens())
 
-        if self.editing_mode == 'emacs':
+        if self.editing_mode == "emacs" and self.prompt_line_number_format == "":
             # with emacs mode the prompt is (usually) static, so we call only
             # the function once. With VI mode it can toggle between [ins] and
             # [nor] so we can't precompute.
@@ -753,7 +836,9 @@ class TerminalInteractiveShell(InteractiveShell):
             "message": get_message,
             "prompt_continuation": (
                 lambda width, lineno, is_soft_wrap: PygmentsTokens(
-                    self.prompts.continuation_prompt_tokens(width)
+                    _backward_compat_continuation_prompt_tokens(
+                        self.prompts.continuation_prompt_tokens, width, lineno=lineno
+                    )
                 )
             ),
             "multiline": True,
@@ -774,7 +859,8 @@ class TerminalInteractiveShell(InteractiveShell):
                     & ~IsDone()
                     & Condition(
                         lambda: isinstance(
-                            self.auto_suggest, NavigableAutoSuggestFromHistory
+                            self.auto_suggest,
+                            NavigableAutoSuggestFromHistory,
                         )
                     ),
                 ),
@@ -848,7 +934,6 @@ class TerminalInteractiveShell(InteractiveShell):
             for cmd in ('clear', 'more', 'less', 'man'):
                 self.alias_manager.soft_define_alias(cmd, cmd)
 
-
     def __init__(self, *args, **kwargs) -> None:
         super(TerminalInteractiveShell, self).__init__(*args, **kwargs)
         self._set_autosuggestions(self.autosuggestions_provider)
@@ -856,7 +941,6 @@ class TerminalInteractiveShell(InteractiveShell):
         self.init_term_title()
         self.keep_running = True
         self._set_formatter(self.autoformatter)
-
 
     def ask_exit(self):
         self.keep_running = False
@@ -905,7 +989,6 @@ class TerminalInteractiveShell(InteractiveShell):
 
         self._atexit_once()
 
-
     _inputhook = None
     def inputhook(self, context):
         if self._inputhook is not None:
@@ -914,6 +997,11 @@ class TerminalInteractiveShell(InteractiveShell):
     active_eventloop: Optional[str] = None
 
     def enable_gui(self, gui: Optional[str] = None) -> None:
+        if gui:
+            from ..core.pylabtools import _convert_gui_from_matplotlib
+
+            gui = _convert_gui_from_matplotlib(gui)
+
         if self.simple_prompt is True and gui is not None:
             print(
                 f'Cannot install event loop hook for "{gui}" when running with `--simple-prompt`.'
@@ -943,7 +1031,7 @@ class TerminalInteractiveShell(InteractiveShell):
         if self._inputhook is not None and gui is None:
             self.active_eventloop = self._inputhook = None
 
-        if gui and (gui not in {"inline", "webagg"}):
+        if gui and (gui not in {None, "webagg"}):
             # This hook runs with each cycle of the `prompt_toolkit`'s event loop.
             self.active_eventloop, self._inputhook = get_inputhook_name_and_func(gui)
         else:
