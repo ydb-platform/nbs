@@ -129,7 +129,6 @@ jobs:
       - provide-runner
     with:
       runner_kind: self-hosted
-      runner_flavor: "none"
       runner_label: ${{ needs.provide-runner.outputs.label }}
       build_target: ${{ needs.provide-runner.outputs.large_tests == 'yes' && 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/' || 'cloud/tasks' }}
       test_target:  ${{ needs.provide-runner.outputs.large_tests == 'yes' && 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/' || 'cloud/tasks' }}
