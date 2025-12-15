@@ -34,19 +34,15 @@ TPartNonreplCountersData TNonreplicatedPartitionActor::ExtractPartCounters(
     PartCounters->Simple.HasBrokenDeviceSilent.Set(
         CalculateHasBrokenDeviceCounterValue(ctx, true));
 
-    TPartNonreplCountersData counters(
-        NetworkBytes,
-        CpuUsage,
-        std::move(PartCounters));
-
-    NetworkBytes = 0;
-    CpuUsage = {};
-
-    PartCounters = CreatePartitionDiskCounters(
+    auto partCounters = CreatePartitionDiskCounters(
         EPublishingPolicy::DiskRegistryBased,
         DiagnosticsConfig->GetHistogramCounterOptions());
 
-    return counters;
+    return {
+        .DiskCounters = std::exchange(PartCounters, std::move(partCounters)),
+        .NetworkBytes = std::exchange(NetworkBytes, {}),
+        .CpuUsage = std::exchange(CpuUsage, {}),
+    };
 }
 
 void TNonreplicatedPartitionActor::SendStats(const TActorContext& ctx)
@@ -55,15 +51,11 @@ void TNonreplicatedPartitionActor::SendStats(const TActorContext& ctx)
         return;
     }
 
-    auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters(ctx);
-
     auto request =
         std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
             MakeIntrusive<TCallContext>(),
-            std::move(diskCounters),
             PartConfig->GetName(),
-            networkBytes,
-            cpuUsage);
+            ExtractPartCounters(ctx));
 
     NCloud::Send(ctx, StatActorId, std::move(request));
 }
@@ -76,18 +68,14 @@ void TNonreplicatedPartitionActor::
             TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
         const TActorContext& ctx)
 {
-    auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters(ctx);
-
     NCloud::Reply(
         ctx,
         *ev,
         std::make_unique<TEvNonreplPartitionPrivate::
                              TEvGetDiskRegistryBasedPartCountersResponse>(
-            std::move(diskCounters),
-            networkBytes,
-            cpuUsage,
             SelfId(),
-            PartConfig->GetName()));
+            PartConfig->GetName(),
+            ExtractPartCounters(ctx)));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
