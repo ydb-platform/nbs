@@ -26,6 +26,25 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TChecksumCalcInfo
+{
+    ui32 BlockSize;
+    bool BlockChecksumsEnabled;
+    using TIovecs = google::protobuf::RepeatedPtrField<NProto::TIovec>;
+    TIovecs Iovecs;
+
+    TChecksumCalcInfo()
+        : BlockSize(0)
+        , BlockChecksumsEnabled(false)
+    {}
+
+    TChecksumCalcInfo(ui32 blockSize, TIovecs iovecs)
+        : BlockSize(blockSize)
+        , BlockChecksumsEnabled(true)
+        , Iovecs(std::move(iovecs))
+    {}
+};
+
 struct TInFlightRequest
     : public TRequestInfo
 {
@@ -34,6 +53,7 @@ public:
 
 private:
     const NCloud::NProto::EStorageMediaKind MediaKind;
+    const TChecksumCalcInfo ChecksumCalcInfo;
     const IRequestStatsPtr RequestStats;
     const IProfileLogPtr ProfileLog;
 
@@ -45,8 +65,23 @@ public:
             IProfileLogPtr profileLog,
             NCloud::NProto::EStorageMediaKind mediaKind,
             IRequestStatsPtr requestStats)
+        : TInFlightRequest(
+            info,
+            std::move(profileLog),
+            mediaKind,
+            {} /* checksumCalcInfo */,
+            std::move(requestStats))
+    {}
+
+    TInFlightRequest(
+            const TRequestInfo& info,
+            IProfileLogPtr profileLog,
+            NCloud::NProto::EStorageMediaKind mediaKind,
+            TChecksumCalcInfo checksumCalcInfo,
+            IRequestStatsPtr requestStats)
         : TRequestInfo(info.Sender, info.Cookie, info.CallContext)
         , MediaKind(mediaKind)
+        , ChecksumCalcInfo(std::move(checksumCalcInfo))
         , RequestStats(std::move(requestStats))
         , ProfileLog(std::move(profileLog))
     {}
@@ -54,6 +89,11 @@ public:
     void Start(TInstant currentTs);
     void Complete(TInstant currentTs, const NCloud::NProto::TError& error);
     bool IsCompleted() const;
+
+    const TChecksumCalcInfo& GetChecksumCalcInfo() const
+    {
+        return ChecksumCalcInfo;
+    }
 
     TIncompleteRequest ToIncompleteRequest(ui64 nowCycles) const;
 };

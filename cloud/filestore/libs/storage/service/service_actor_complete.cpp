@@ -14,6 +14,38 @@ using namespace NActors;
 
 using namespace NKikimr;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TProtoResponse>
+void CalculateResponseChecksums(
+    const TChecksumCalcInfo::TIovecs& iovecs,
+    const TProtoResponse& response,
+    ui32 blockSize,
+    NProto::TProfileLogRequestInfo& profileLogRequest)
+{
+    Y_UNUSED(iovecs);
+    Y_UNUSED(response);
+    Y_UNUSED(blockSize);
+    Y_UNUSED(profileLogRequest);
+}
+
+void CalculateResponseChecksums(
+    const TChecksumCalcInfo::TIovecs& iovecs,
+    const NProto::TReadDataResponse& response,
+    ui32 blockSize,
+    NProto::TProfileLogRequestInfo& profileLogRequest)
+{
+    CalculateReadDataResponseChecksums(
+        iovecs,
+        response,
+        blockSize,
+        profileLogRequest);
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template<typename TMethod>
@@ -37,6 +69,15 @@ void TStorageServiceActor::CompleteRequest(
         request->CallContext->RequestId,
         TMethod::Name,
         FormatError(msg->Record.GetError()).c_str());
+
+    const auto& checksumCalcInfo = request->GetChecksumCalcInfo();
+    if (checksumCalcInfo.BlockChecksumsEnabled) {
+        CalculateResponseChecksums(
+            checksumCalcInfo.Iovecs,
+            msg->Record,
+            checksumCalcInfo.BlockSize,
+            request->ProfileLogRequest);
+    }
 
     FinalizeProfileLogRequestInfo(request->ProfileLogRequest, msg->Record);
     HandleTraceInfo(TraceSerializer, request->CallContext, msg->Record);
