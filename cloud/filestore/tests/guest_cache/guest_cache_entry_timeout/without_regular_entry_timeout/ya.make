@@ -12,14 +12,12 @@ DEPENDS(
 )
 
 PEERDIR(
-    cloud/filestore/tests/python/lib
-    cloud/filestore/tools/testing/profile_log
-    cloud/storage/core/tools/testing/qemu/lib
+    cloud/filestore/tests/guest_cache/guest_cache_entry_timeout/lib
 )
 
 SET(
     NFS_STORAGE_CONFIG_PATCH
-    cloud/filestore/tests/guest_cache/guest_cache_regular_entry_timeout/nfs-storage-patch.txt
+    cloud/filestore/tests/guest_cache/guest_cache_entry_timeout/without_regular_entry_timeout/nfs-storage-patch.txt
 )
 
 SET(QEMU_VIRTIO fs)
