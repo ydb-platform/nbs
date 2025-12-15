@@ -132,6 +132,21 @@ bool TFileSystem::ValidateNodeId(
     return true;
 }
 
+TDuration TFileSystem::GetEntryCacheTimeout(
+    const NProto::TNodeAttr& attrs) const
+{
+    const auto entryTimeout = Config->GetEntryTimeout();
+    const auto regularEntryTimeout =
+        (Config->GetRegularFileEntryTimeout() == TDuration::Zero()
+             ? Config->GetEntryTimeout()
+             : Config->GetRegularFileEntryTimeout());
+
+    return (
+        attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE
+            ? regularEntryTimeout
+            : entryTimeout);
+}
+
 bool TFileSystem::UpdateNodeCache(
     const NProto::TNodeAttr& attrs,
     fuse_entry_param& entry)
@@ -146,18 +161,7 @@ bool TFileSystem::UpdateNodeCache(
 
         entry.ino = attrs.GetId();
         entry.generation = NodeCache.Generation();
-
-        const auto entryTimeout = Config->GetEntryTimeout();
-        const auto regularEntryTimeout =
-            (Config->GetRegularFileEntryTimeout() == TDuration::Zero()
-                 ? Config->GetEntryTimeout()
-                 : Config->GetRegularFileEntryTimeout());
-
-        entry.entry_timeout =
-            (attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE
-                 ? regularEntryTimeout.SecondsFloat()
-                 : entryTimeout.SecondsFloat());
-
+        entry.entry_timeout = GetEntryCacheTimeout(attrs).SecondsFloat();
         entry.attr_timeout = Config->GetAttrTimeout().SecondsFloat();
 
         ConvertAttr(Config->GetPreferredBlockSize(), node->Attrs, entry.attr);
