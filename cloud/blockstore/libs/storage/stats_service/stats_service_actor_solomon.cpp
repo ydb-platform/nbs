@@ -274,22 +274,8 @@ void TStatsServiceActor::HandleRegisterVolume(
     Y_UNUSED(ctx);
     const auto* msg = ev->Get();
 
-    auto *volume = State.GetOrAddVolume(msg->DiskId, msg->Config);
+    auto* volume = State.GetOrAddVolume(msg->DiskId, msg->Config);
     volume->VolumeTabletId = msg->TabletId;
-
-    if (volume->IsDiskRegistryBased()) {
-        volume->PerfCounters = TDiskPerfData(
-            EPublishingPolicy::DiskRegistryBased,
-            DiagnosticsConfig->GetHistogramCounterOptions());
-    } else {
-        volume->PerfCounters = TDiskPerfData(
-            EPublishingPolicy::Repl,
-            DiagnosticsConfig->GetHistogramCounterOptions());
-    }
-
-    if (volume->ServiceVolumeCounters) {
-        volume->PerfCounters.Register(volume->ServiceVolumeCounters);
-    }
 }
 
 void TStatsServiceActor::HandleVolumeConfigUpdated(

@@ -145,10 +145,13 @@ struct TVolumeStatsInfo
     THashMap<ui64, TVector<NKikimr::TTabletChannelInfo>> ChannelInfos;
 
     TVolumeStatsInfo(
-            NProto::TVolume config,
-            EHistogramCounterOptions histCounterOptions)
+        NProto::TVolume config,
+        EHistogramCounterOptions histCounterOptions)
         : VolumeInfo(std::move(config))
-        , PerfCounters(EPublishingPolicy::All, histCounterOptions)
+        , PerfCounters(
+              IsDiskRegistryBased() ? EPublishingPolicy::DiskRegistryBased
+                                    : EPublishingPolicy::Repl,
+              histCounterOptions)
     {}
 
     bool IsDiskRegistryBased() const

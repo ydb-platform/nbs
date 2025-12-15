@@ -1557,8 +1557,9 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             {0},
             EVolumeTestOptions::VOLUME_HASCLIENTS);
         UNIT_ASSERT(counters[0] == 1);
+
         RegisterVolume(runtime, DefaultDiskId);
-        BroadcastVolumeCounters(
+        counters = BroadcastVolumeCounters(
             runtime,
             {0},
             EVolumeTestOptions::VOLUME_HASCLIENTS);
