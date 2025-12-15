@@ -100,9 +100,6 @@ void TPartitionActor::HandleStatPartition(
     response->Record.MutableStats()->SetConfirmedBlobCount(
         State->GetConfirmedBlobCount());
 
-    response->Record.MutableStats()->SetObsoleteUnconfirmedBlobCount(
-        State->GetObsoleteUnconfirmedBlobCount());
-
     response->Record.MutableStats()->SetTrimFreshLogToCommitId(
         State->GetTrimFreshLogToCommitId());
 

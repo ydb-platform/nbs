@@ -12981,8 +12981,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetObsoleteUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetUnconfirmedBlobCount());
         }
 
         // Set up event order controller to ensure that
@@ -13001,8 +13000,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetObsoleteUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetUnconfirmedBlobCount());
         }
 
         partition.RebootTablet();
@@ -13013,7 +13011,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetObsoleteUnconfirmedBlobCount());
         }
 
         shouldRejectDeleteObsoleteUnconfirmedBlobsRequest = false;
@@ -13025,7 +13022,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetObsoleteUnconfirmedBlobCount());
         }
     }
 

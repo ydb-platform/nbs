@@ -686,10 +686,16 @@ struct TTxPartition
     struct TDeleteObsoleteUnconfirmedBlobs
     {
         const TRequestInfoPtr RequestInfo;
+        const ui64 CommitId;
+        const TVector<TBlobToConfirm> Blobs;
 
         TDeleteObsoleteUnconfirmedBlobs(
-                TRequestInfoPtr requestInfo)
+            TRequestInfoPtr requestInfo,
+            ui64 commitId,
+            TVector<TBlobToConfirm> blobs)
             : RequestInfo(std::move(requestInfo))
+            , CommitId(commitId)
+            , Blobs(std::move(blobs))
         {}
 
         void Clear()

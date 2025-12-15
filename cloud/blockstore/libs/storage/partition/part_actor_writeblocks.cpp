@@ -1,5 +1,6 @@
 #include "part_actor.h"
 
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -348,13 +349,18 @@ void TPartitionActor::HandleWriteBlocksCompleted(
     }
 
     if (msg->AddingUnconfirmedBlobsRequested) {
-        if (!HasError(msg->GetError())) {
+        if (HasError(msg->GetError())) {
+            // blobs are obsolete, delete them directly
+            auto request = std::make_unique<
+                TEvPartitionPrivate::TEvDeleteObsoleteUnconfirmedBlobsRequest>(
+                MakeIntrusive<TCallContext>(CreateRequestId()),
+                commitId,
+                std::move(msg->BlobsToConfirm));
+            NCloud::Send(ctx, SelfId(), std::move(request));
+        } else {
             // blobs are confirmed, but AddBlobs request will be executed
             // (for this commit) later
             State->BlobsConfirmed(commitId, std::move(msg->BlobsToConfirm));
-        } else {
-            // blobs are obsolete, so they need to be deleted
-            State->BlobsObsoleted(commitId, std::move(msg->BlobsToConfirm));
         }
         Y_DEBUG_ABORT_UNLESS(msg->CollectGarbageBarrierAcquired);
         // commit & garbage queue barriers will be released when confirmed
@@ -392,7 +398,6 @@ void TPartitionActor::HandleWriteBlocksCompleted(
     ProcessCommitQueue(ctx);
     EnqueueFlushIfNeeded(ctx);
     EnqueueAddConfirmedBlobsIfNeeded(ctx);
-    EnqueueDeleteObsoleteUnconfirmedBlobsIfNeeded(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

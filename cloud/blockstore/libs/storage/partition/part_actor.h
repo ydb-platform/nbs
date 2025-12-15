@@ -227,7 +227,6 @@ private:
     void EnqueueProcessWriteQueueIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueTrimFreshLogIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueAddConfirmedBlobsIfNeeded(const NActors::TActorContext& ctx);
-    void EnqueueDeleteObsoleteUnconfirmedBlobsIfNeeded(const NActors::TActorContext& ctx);
 
     void UpdateStats(const NProto::TPartitionStats& update);
     void UpdateActorStats(const NActors::TActorContext& ctx);
