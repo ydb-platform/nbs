@@ -129,6 +129,8 @@ jobs:
       - provide-runner
     with:
       runner_kind: self-hosted
+      runner_instance_id: ${{ needs.provide-runner.outputs.instance-id }}
+      runner_ipv4: ${{ needs.provide-runner.outputs.runner_local_ipv4 }}
       runner_label: ${{ needs.provide-runner.outputs.label }}
       build_target: ${{ needs.provide-runner.outputs.large_tests == 'yes' && 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/' || 'cloud/tasks' }}
       test_target:  ${{ needs.provide-runner.outputs.large_tests == 'yes' && 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/' || 'cloud/tasks' }}
@@ -146,3 +148,44 @@ jobs:
       number_of_retries: ${{ inputs.number_of_retries }}
       truncate_enabled: ${{ contains(github.event.pull_request.labels.*.name, 'disable_truncate') && 'no' || 'yes' }}
     secrets: inherit
+
+  release-runner:
+    name: Release self-hosted runner (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
+    needs:
+      - provide-runner
+      - build-and-test
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: checkout PR
+        uses: actions/checkout@v4
+        if: github.event.pull_request.head.sha != ''
+        with:
+          submodules: false
+          sparse-checkout: '.github'
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
+      - name: rebase PR
+        if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
+        shell: bash
+        run: |
+          git config user.email "robot-nbs@nebius.com"
+          git config user.name "Robot NBS"
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          git rebase origin/${{ github.event.pull_request.base.ref }}
+      - name: checkout
+        uses: actions/checkout@v4
+        if: github.event.pull_request.head.sha == ''
+        with:
+          submodules: false
+          sparse-checkout: '.github'
+      - name: Stop runner
+        uses: ./.github/actions/nebius_runner_remove
+        timeout-minutes: 60
+        with:
+          service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          repo_owner: ${{ github.repository_owner }}
+          repo: ${{ github.event.repository.name }}
+          vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+          vm_id: ${{ needs.provide-runner.outputs.instance-id }}
