@@ -760,7 +760,7 @@ void TPartitionState::BlobsConfirmed(
     UnconfirmedBlobCount -= blobCount;
 }
 
-void TPartitionState::BlobsStalled(ui64 commitId, TVector<TBlobToConfirm> blobs)
+void TPartitionState::BlobsObsoleted(ui64 commitId, TVector<TBlobToConfirm> blobs)
 {
     auto it = UnconfirmedBlobs.find(commitId);
     Y_DEBUG_ABORT_UNLESS(it != UnconfirmedBlobs.end());
