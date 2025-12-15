@@ -146,6 +146,20 @@
             "name",                                                            \
             NCloud::NProbeParam::RequestId)                                    \
     )                                                                          \
+    PROBE(RequestReceived_ServiceWorker,                                       \
+        GROUPS("NFSRequest"),                                                  \
+        TYPES(TString, ui64),                                                  \
+        NAMES(                                                                 \
+            NCloud::NProbeParam::RequestType,                                  \
+            NCloud::NProbeParam::RequestId)                                    \
+    )                                                                          \
+    PROBE(ResponseSent_ServiceWorker,                                          \
+        GROUPS("NFSRequest"),                                                  \
+        TYPES(TString, ui64),                                                  \
+        NAMES(                                                                 \
+            NCloud::NProbeParam::RequestType,                                  \
+            NCloud::NProbeParam::RequestId)                                    \
+    )                                                                          \
 // FILESTORE_STORAGE_PROVIDER
 
 LWTRACE_DECLARE_PROVIDER(FILESTORE_STORAGE_PROVIDER)
