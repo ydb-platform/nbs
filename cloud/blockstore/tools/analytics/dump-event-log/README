@@ -1,6 +1,6 @@
 Example queries:
 
-1. Insert disk, range and time for investigations.
+1. Insert disk, range and time (UTC) for investigations.
 ```
 INSERT into Ranges(DiskId, StartAt, EndAt, StartBlock, EndBlock)
        values ('sample-disk-id', '2025-10-14T06:45:00.000000Z', '2025-10-14T12:40:00.000000Z', 6708224, 6709247);
@@ -11,7 +11,8 @@ INSERT into Ranges(DiskId, StartAt, EndAt, StartBlock, EndBlock)
 create table tmp1 as
 SELECT
     r.id,
-    r.At,
+    printf('%s %.6d', datetime(r.AtUs / 1000000.0, 'unixepoch'), r.AtUs % 1000000) as At,
+    r.AtUs,
     d.DiskId,
     rt.Request,
     r.StartBlock,
@@ -26,8 +27,8 @@ INNER join Ranges as rn
     on d.DiskId == rn.DiskId
     and (rn.StartBlock is null or rn.StartBlock <= r.EndBlock)
     and (rn.EndBlock is null or rn.EndBlock >= r.StartBlock)
-    and (rn.StartAt is null or rn.StartAt <= r.At)
-    and (rn.EndAt is null or rn.EndAt >= r.At)
+    and (rn.StartAt is null or (julianday(rn.StartAt) - 2440587.5) * 86400000000 <= r.AtUs)
+    and (rn.EndAt is null or (julianday(rn.EndAt) - 2440587.5) * 86400000000 >= r.AtUs)
 ```
 
 3. Find overwritten blocks for range
@@ -49,4 +50,24 @@ left join tmp1 as f
     and f.Request == 'WriteBlocks'
 group by bs.BlockIndx
 order by bs.BlockIndx
+```
+
+4. Find overlapped reads and writes
+```
+select
+	A.Id as ReadId,
+	A.At as ReadAt,
+	A.StartBlock as ReadStartBlock,
+	A.EndBlock as ReadEndBlock,
+	A.DurationUs as ReadDurationUs,
+	B.Id as WriteId,
+	B.At as WriteAt,
+	B.StartBlock as WriteStartBlock,
+	B.EndBlock as WriteEndBlock,
+	B.DurationUs as WriteDurationUs
+from tmp1 as A
+inner join tmp1 as B
+	on A.Request == "ReadBlocks"
+	and B.Request == "WriteBlocks"
+	and (A.AtUs + A.DurationUs >= B.AtUs and A.AtUs <= B.AtUs + B.DurationUs)
 ```

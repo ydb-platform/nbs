@@ -25,16 +25,6 @@ TDrainActorCompanion::TDrainActorCompanion(
     , LoggingId(std::move(loggingId))
 {}
 
-TDrainActorCompanion::TDrainActorCompanion(
-        IRequestsInProgress& requestsInProgress,
-        ui64 tabletID,
-        const TRequestBoundsTracker* requestBoundsTracker)
-    : TDrainActorCompanion(
-          requestsInProgress,
-          ToString(tabletID),
-          requestBoundsTracker)
-{}
-
 void TDrainActorCompanion::HandleDrain(
     const NPartition::TEvPartition::TEvDrainRequest::TPtr& ev,
     const TActorContext& ctx)

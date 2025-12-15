@@ -1,6 +1,7 @@
 #include "request_bounds_tracker.h"
 
 #include "common_constants.h"
+#include "requests_in_progress.h"
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -109,7 +110,8 @@ Y_UNIT_TEST_SUITE(TRequestBoundsTrackerTest)
 
             requestsInProgress.AddWriteRequest(
                 id1,
-                TBlockRange64::WithLength(0, 10));
+                TBlockRange64::WithLength(0, 10),
+                {});
 
             UNIT_ASSERT(requestsInProgress.OverlapsWithWrites(
                 TBlockRange64::WithLength(0, blocksPerTrackingRange)));
@@ -117,7 +119,8 @@ Y_UNIT_TEST_SUITE(TRequestBoundsTrackerTest)
             auto id2 = requestsInProgress.GenerateRequestId();
             requestsInProgress.AddWriteRequest(
                 id2,
-                TBlockRange64::WithLength(10, 10));
+                TBlockRange64::WithLength(10, 10),
+                {});
             requestsInProgress.ExtractRequest(id1);
 
             UNIT_ASSERT(requestsInProgress.OverlapsWithWrites(
@@ -134,7 +137,8 @@ Y_UNIT_TEST_SUITE(TRequestBoundsTrackerTest)
 
             requestsInProgress.AddWriteRequest(
                 id1,
-                TBlockRange64::WithLength(blocksPerTrackingRange - 1, 2));
+                TBlockRange64::WithLength(blocksPerTrackingRange - 1, 2),
+                {});
 
             UNIT_ASSERT(requestsInProgress.OverlapsWithWrites(
                 TBlockRange64::WithLength(0, blocksPerTrackingRange)));
@@ -155,7 +159,8 @@ Y_UNIT_TEST_SUITE(TRequestBoundsTrackerTest)
         auto id1 = requestsInProgress.GenerateRequestId();
         requestsInProgress.AddWriteRequest(
             id1,
-            TBlockRange64::WithLength(0, blocksPerTrackingRange));
+            TBlockRange64::WithLength(0, blocksPerTrackingRange),
+            {});
 
         UNIT_ASSERT(requestsInProgress.OverlapsWithWrites(
             TBlockRange64::WithLength(0, blocksPerTrackingRange)));
