@@ -132,19 +132,16 @@ bool TFileSystem::ValidateNodeId(
     return true;
 }
 
-TDuration TFileSystem::GetEntryCacheTimeout(
+inline TDuration TFileSystem::GetEntryCacheTimeout(
     const NProto::TNodeAttr& attrs) const
 {
-    const auto entryTimeout = Config->GetEntryTimeout();
-    const auto regularEntryTimeout =
-        (Config->GetRegularFileEntryTimeout() == TDuration::Zero()
-             ? Config->GetEntryTimeout()
-             : Config->GetRegularFileEntryTimeout());
+    if (attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE &&
+        Config->GetRegularFileEntryTimeout() != TDuration::Zero())
+    {
+        return Config->GetRegularFileEntryTimeout();
+    }
 
-    return (
-        attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE
-            ? regularEntryTimeout
-            : entryTimeout);
+    return Config->GetEntryTimeout();
 }
 
 bool TFileSystem::UpdateNodeCache(

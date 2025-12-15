@@ -39,15 +39,16 @@ def get_vhost_request_count_for_node(node_name: str) -> int:
     ).get("GetNodeAttr", 0)
 
 
-def test_guest_cache_enty_timeout(expected_foo: int, expected_bar: int):
+def test_guest_cache_enty_timeout(expected_dir_stat_count: int,
+                                  expected_file_stat_count: int):
     port = int(os.getenv("QEMU_FORWARDING_PORT"))
     ssh_key = os.getenv("QEMU_SSH_KEY")
     mount_dir = os.getenv("NFS_MOUNT_PATH")
 
     ssh = SshToGuest(user="qemu", port=port, key=ssh_key)
 
-    mkdir(ssh, f"{mount_dir}/foo")
-    create_file(ssh, mount_dir, "foo/bar")
+    mkdir(ssh, f"{mount_dir}/dirname")
+    create_file(ssh, mount_dir, "dirname/filename")
 
     # Sleep for a while to ensure that the profile log is flushed
     # before we start analyzing it
@@ -55,28 +56,29 @@ def test_guest_cache_enty_timeout(expected_foo: int, expected_bar: int):
     time.sleep(2)
 
     # Collect counters after setup
-    initial_foo = get_vhost_request_count_for_node("foo")
-    initial_bar = get_vhost_request_count_for_node("bar")
+    initial_dir_stat_count = get_vhost_request_count_for_node("dirname")
+    initial_file_stat_count = get_vhost_request_count_for_node("filename")
 
-    stat(ssh, mount_dir, "foo/bar")
-    stat(ssh, mount_dir, "foo/bar")
+    stat(ssh, mount_dir, "dirname/filename")
+    stat(ssh, mount_dir, "dirname/filename")
 
     time.sleep(2)
 
-    stat(ssh, mount_dir, "foo/bar")
-    stat(ssh, mount_dir, "foo/bar")
+    stat(ssh, mount_dir, "dirname/filename")
+    stat(ssh, mount_dir, "dirname/filename")
 
     # Sleep for a while to ensure that the profile log is flushed
     time.sleep(2)
 
-    # Collect counters for "foo" and "foo/bar"
-    final_foo = get_vhost_request_count_for_node("foo")
-    final_bar = get_vhost_request_count_for_node("bar")
+    # Count GetNodeAttr requests executed for the directory and the file
+    final_dir_stat_count = get_vhost_request_count_for_node("dirname")
+    final_file_stat_count = get_vhost_request_count_for_node("filename")
 
     # In both tests EntryTimeout is set to 15 seconds
-    # So "foo" should be always cached
-    assert final_foo - initial_foo == expected_foo
+    # final_dir_stat_count must be 0 for both tests
+    assert final_dir_stat_count - initial_dir_stat_count == expected_dir_stat_count
 
-    # Expect 0 GetNodeAttr for "bar" if RegularFileEntryTimeout is not set
-    # And 2 GetNodeAttr for "bar" if RegularFileEntryTimeout is set to 1 second
-    assert final_bar - initial_bar == expected_bar
+    # expected values for final_file_stat_count:
+    # 0 if RegularFileEntryTimeout is not set
+    # 2 if RegularFileEntryTimeout is set to 1 second
+    assert final_file_stat_count - initial_file_stat_count == expected_file_stat_count
