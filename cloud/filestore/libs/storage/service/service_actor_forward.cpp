@@ -23,11 +23,24 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
     const TString& methodName,
     const ui64 requestId,
     const NProto::TFileStore& filestore,
-    const ui32 shardNo) const
+    ui32 shardNo) const
 {
     const bool multiTabletForwardingEnabled =
         StorageConfig->GetMultiTabletForwardingEnabled()
         && !disableMultiTabletForwarding;
+
+    // It is now possible to have more than 255 shards, with the maximum number
+    // specified by TStorageConfig::MaxShardCount. The current code reserves the
+    // two most significant bytes for shardNo, but handles created by the old
+    // code, which used only the 8th byte for shardNo, may still exist. To allow
+    // for a shard count higher than 255, we first need to wait until the
+    // SevenBytesHandlesCount counter is zero, and only then increase
+    // MaxShardCount. The following 'if' reconciles old handles with the new
+    // code.
+    if (shardNo && filestore.GetShardFileSystemIds().size() <= 254) {
+        shardNo &= 0xff;
+    }
+
     if (multiTabletForwardingEnabled && shardNo) {
         const auto& shardIds = filestore.GetShardFileSystemIds();
         if (shardIds.size() < static_cast<int>(shardNo)) {

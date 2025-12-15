@@ -177,7 +177,7 @@ private:
         const TString& methodName,
         const ui64 requestId,
         const NProto::TFileStore& filestore,
-        const ui32 shardNo) const;
+        ui32 shardNo) const;
 
 private:
     // actions
