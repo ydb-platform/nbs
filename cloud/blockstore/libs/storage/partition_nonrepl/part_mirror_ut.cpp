@@ -3252,7 +3252,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 }
                 case TEvNonreplPartitionPrivate::EvGetDeviceForRangeRequest: {
                     auto sendTo = event->Sender;
-                    runtime.Send(
+                    runtime.Schedule(
                         new IEventHandle(
                             sendTo,
                             sendTo,
@@ -3260,6 +3260,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                             0,
                             event->Cookie,
                             nullptr),
+                        TDuration::MilliSeconds(1),
                         0);
                     ++undeliveredDescribeRequestCount;
                     return true;
