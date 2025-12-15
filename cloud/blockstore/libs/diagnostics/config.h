@@ -102,7 +102,6 @@ struct TMonitoringUrlData: public TAtomicRefCount<TMonitoringUrlData>
         , MonitoringYDBProject(data.GetMonitoringYDBProject())
         , MonitoringYDBGroupDashboard(data.GetMonitoringYDBGroupDashboard())
         , MonitoringUrlTemplate(data.GetMonitoringUrlTemplate())
-        , MonitoringDataSourcePid(data.GetMonitoringDataSourcePid())
     {}
 };
 

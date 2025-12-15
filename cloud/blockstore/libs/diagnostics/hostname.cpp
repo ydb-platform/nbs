@@ -118,7 +118,6 @@ TString GetUrlFromTemplate(
         "{MonitoringNBSAlertsDashboard}",
         data.MonitoringNBSAlertsDashboard);
     substitute("{MonitoringNBSTVDashboard}", data.MonitoringNBSTVDashboard);
-    substitute("{MonitoringDataSourcePid}", data.MonitoringDataSourcePid);
     substitute("{diskId}", diskId);
 
     return result;
@@ -131,19 +130,23 @@ TString GetMonitoringVolumeUrl(
     TMonitoringUrlData data = config.GetMonitoringUrlData();
 
     if (data.MonitoringUrlTemplate.empty()) {
-        // backward compatibility
-        data.MonitoringUrlTemplate =
-        "{MonitoringUrl}/projects/{MonitoringProject}"
-        "/dashboards/{MonitoringVolumeDashboard}"
-        "?from=now-1d&to=now&refresh=60000"
-        "&p.cluster={MonitoringClusterName}&p.volume={diskId}";
-        }
-
+        return TStringBuilder()
+        << data.MonitoringUrl << "/projects/" << data.MonitoringProject
+        << "/dashboards/" << data.MonitoringVolumeDashboard
+        << "?from=now-1d&to=now&refresh=60000&p.cluster="
+        << data.MonitoringClusterName << "&p.volume=" << diskId;
+    }
     /*
-    example template:
+    example templates:
+
+    {MonitoringUrl}/projects/{MonitoringProject}
+    /dashboards/{MonitoringVolumeDashboard}
+    ?from=now-1d&to=now&refresh=60000
+    &p.cluster={MonitoringClusterName}&p.volume={diskId}
+
     {MonitoringUrl}/d/{MonitoringVolumeDashboard}?orgId=1
     &from=now-1d&to=now&refresh=60000
-    &var-datasource={MonitoringDataSourcePid}
+    &var-datasource={MonitoringProject}
     &var-disk_id={diskId}
     */
     return GetUrlFromTemplate(

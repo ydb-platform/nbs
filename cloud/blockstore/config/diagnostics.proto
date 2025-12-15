@@ -84,9 +84,6 @@ message TMonitoringUrlData
     // {MonitoringUrl}/projects/{MonitoringProject}/dashboards/{MonitoringVolumeDashboard}
     // ?from=now-1d&to=now&refresh=60000&p.cluster={MonitoringClusterName}&p.volume={diskId}"
     optional string MonitoringUrlTemplate = 10;
-
-    // monitoring datasource pid for this ClusterName
-    optional string MonitoringDataSourcePid = 11;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

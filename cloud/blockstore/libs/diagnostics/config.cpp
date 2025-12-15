@@ -312,7 +312,6 @@ void Out<NCloud::NBlockStore::TMonitoringUrlData>(
     v.SetMonitoringNBSAlertsDashboard(value.MonitoringNBSAlertsDashboard);
     v.SetMonitoringNBSTVDashboard(value.MonitoringNBSTVDashboard);
     v.SetMonitoringUrlTemplate(value.MonitoringUrlTemplate);
-    v.SetMonitoringDataSourcePid(value.MonitoringDataSourcePid);
     SerializeToTextFormat(v, out);
 }
 
