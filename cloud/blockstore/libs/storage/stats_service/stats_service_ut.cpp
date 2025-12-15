@@ -1552,13 +1552,18 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         TTestEnv env(runtime);
 
         RegisterVolume(runtime, DefaultDiskId);
-        auto counters = BroadcastVolumeCounters(runtime, {0}, EVolumeTestOptions::VOLUME_HASCLIENTS);
-        UNIT_ASSERT(counters[0]== 1);
+        auto counters = BroadcastVolumeCounters(
+            runtime,
+            {0},
+            EVolumeTestOptions::VOLUME_HASCLIENTS);
+        UNIT_ASSERT(counters[0] == 1);
         RegisterVolume(runtime, DefaultDiskId);
-        BroadcastVolumeCounters(runtime, {0}, EVolumeTestOptions::VOLUME_HASCLIENTS);
-        UNIT_ASSERT(counters[0]== 1);
+        BroadcastVolumeCounters(
+            runtime,
+            {0},
+            EVolumeTestOptions::VOLUME_HASCLIENTS);
+        UNIT_ASSERT(counters[0] == 1);
     }
-
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
