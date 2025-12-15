@@ -1372,8 +1372,7 @@ public:
 
     void DeleteUnconfirmedBlobs(
         TPartitionDatabase& db,
-        ui64 commitId,
-        const TVector<TBlobToConfirm>& blobs);
+        ui64 commitId);
 
     void ConfirmedBlobsAdded(TPartitionDatabase& db, ui64 commitId);
 

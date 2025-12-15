@@ -397,7 +397,7 @@ struct THistogramRequestCounters
         EPublishingPolicy::Repl,
         HistCounterOptions};
     TLowResCounter ConfirmBlobs{EPublishingPolicy::Repl, HistCounterOptions};
-    TLowResCounter DeleteObsoleteUnconfirmedBlobs{
+    TLowResCounter DeleteUnconfirmedBlobs{
         EPublishingPolicy::Repl,
         HistCounterOptions};
 
@@ -426,7 +426,7 @@ struct THistogramRequestCounters
         MakeMeta<&THistogramRequestCounters::AddConfirmedBlobs>(),
         MakeMeta<&THistogramRequestCounters::AddUnconfirmedBlobs>(),
         MakeMeta<&THistogramRequestCounters::ConfirmBlobs>(),
-        MakeMeta<&THistogramRequestCounters::DeleteObsoleteUnconfirmedBlobs>(),
+        MakeMeta<&THistogramRequestCounters::DeleteUnconfirmedBlobs>(),
 
         MakeMeta<&THistogramRequestCounters::WriteBlob>(),
         MakeMeta<&THistogramRequestCounters::ReadBlob>(),

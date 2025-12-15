@@ -1033,7 +1033,7 @@ STFUNC(TPartitionActor::StateWork)
         IgnoreFunc(TEvPartitionPrivate::TEvFlushResponse);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsResponse);
-        IgnoreFunc(TEvPartitionPrivate::TEvDeleteObsoleteUnconfirmedBlobsResponse);
+        IgnoreFunc(TEvPartitionPrivate::TEvDeleteUnconfirmedBlobsResponse);
 
         // Wakeup function should handle wakeup event taking into account that
         // there is wakeup event scheduled during boot stage with
@@ -1095,7 +1095,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvFlushResponse);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogResponse);
-        IgnoreFunc(TEvPartitionPrivate::TEvDeleteObsoleteUnconfirmedBlobsResponse);
+        IgnoreFunc(TEvPartitionPrivate::TEvDeleteUnconfirmedBlobsResponse);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
