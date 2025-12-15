@@ -5,6 +5,7 @@
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/core/probes.h>
 
 #include <cloud/storage/core/libs/common/verify.h>
 
@@ -15,6 +16,8 @@ using namespace NActors;
 using namespace NKikimr;
 
 namespace {
+
+LWTRACE_USING(FILESTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -96,6 +99,11 @@ void TStorageServiceActor::CompleteRequest(
         request->Cookie,
         // undeliveredRequestActor
         nullptr);
+
+    FILESTORE_TRACK(
+        ResponseSent_Service,
+        request->CallContext,
+        TMethod::Name);
 
     const auto& error = msg->Record.GetError();
     request->Complete(ctx.Now(), error);
