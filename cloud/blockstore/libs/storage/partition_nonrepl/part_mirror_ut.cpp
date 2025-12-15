@@ -3425,7 +3425,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_EQUAL(writtenDevices, expectedDevices);
     }
 
-    Y_UNIT_TEST(ShouldHandleUndelveryForMultiAgentWriteRequests)
+    Y_UNIT_TEST(ShouldHandleUndeliveryForMultiAgentWriteRequests)
     {
         TTestRuntime runtime;
 
@@ -3442,6 +3442,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                     }
 
                     if (!record.GetReplicationTargets().empty()) {
+                        // Bounce request back to the sender with
+                        // ForwardOnNondelivery semantics, simulating undelivery.
                         auto sendTo = event->Sender;
                         runtime.Send(
                             new IEventHandle(

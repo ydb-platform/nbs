@@ -462,7 +462,7 @@ void TMultiAgentWriteActor<TMethod>::HandleDiscoveryUndelivery(
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] TEvGetDeviceForRangeRequest request undelivered to nonrepl "
+        "[%s] TEvGetDeviceForRangeRequest undelivered to nonrepl "
         "partition #%lu",
         DiskId.c_str(),
         ev->Cookie);
@@ -486,12 +486,12 @@ void TMultiAgentWriteActor<TMethod>::HandleMultiAgentWriteUndelivery(
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] TMultiAgentWriteRequest request undelivered to nonrepl partition",
+        "[%s] TMultiAgentWriteRequest undelivered to nonrepl partition",
         DiskId.c_str());
 
     UpdateResponse(MakeError(
         E_REJECTED,
-        "TMultiAgentWriteRequestrequest undelivered to nonrepl partition"));
+        "TMultiAgentWriteRequest undelivered to nonrepl partition"));
 
     --RemainResponseCount;
     if (!RemainResponseCount) {
