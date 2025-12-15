@@ -485,7 +485,7 @@ void TFileSystem::DoWrite(
     ui64 size,
     fuse_file_info* fi)
 {
-    const auto wbcMode = GetServerWriteBackCacheState(fi);
+    const auto wbcState = GetServerWriteBackCacheState(fi);
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
@@ -500,7 +500,7 @@ void TFileSystem::DoWrite(
         const auto& response = future.GetValue();
         const auto& error = response.GetError();
 
-        if (wbcMode != EServerWriteBackCacheState::Enabled) {
+        if (wbcState != EServerWriteBackCacheState::Enabled) {
             self->FSyncQueue
                 ->Dequeue(reqId, error, TNodeId{ino}, THandle{handle});
         }
@@ -510,7 +510,7 @@ void TFileSystem::DoWrite(
         }
     };
 
-    if (wbcMode == EServerWriteBackCacheState::Enabled) {
+    if (wbcState == EServerWriteBackCacheState::Enabled) {
         WriteBackCache.WriteData(callContext, std::move(request))
             .Subscribe(std::move(callback));
         return;
@@ -518,16 +518,16 @@ void TFileSystem::DoWrite(
 
     FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
 
-    if (wbcMode == EServerWriteBackCacheState::Disabled) {
+    if (wbcState == EServerWriteBackCacheState::Disabled) {
         Session->WriteData(callContext, std::move(request))
             .Subscribe(std::move(callback));
         return;
     }
 
     Y_ABORT_UNLESS(
-        wbcMode == EServerWriteBackCacheState::Draining,
+        wbcState == EServerWriteBackCacheState::Draining,
         "Invalid EServerWriteBackCacheState value = %d",
-        wbcMode);
+        wbcState);
 
     WriteBackCache.FlushNodeData(request->GetNodeId())
         .Subscribe(
