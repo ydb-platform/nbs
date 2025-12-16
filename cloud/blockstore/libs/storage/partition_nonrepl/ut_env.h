@@ -128,6 +128,7 @@ class TDummyActor final
 {
 private:
     TMigrationStatePtr MigrationState;
+    ui64 VolumeRequestIdGenerator = 0;
 
 public:
     TDummyActor(TMigrationStatePtr migrationState = nullptr)
@@ -157,6 +158,9 @@ private:
 
             HFunc(TEvVolume::TEvPreparePartitionMigrationRequest, HandlePreparePartitionMigration);
             HFunc(TEvVolume::TEvUpdateMigrationState, HandleUpdateMigrationState);
+            HFunc(
+                TEvVolumePrivate::TEvTakeVolumeRequestIdRequest,
+                HandleTakeVolumeRequestId);
 
             IgnoreFunc(TEvVolume::TEvReacquireDisk);
 
@@ -260,6 +264,17 @@ private:
             ctx,
             *ev,
             std::make_unique<TEvVolume::TEvMigrationStateUpdated>());
+    }
+
+    void HandleTakeVolumeRequestId(
+        const TEvVolumePrivate::TEvTakeVolumeRequestIdRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdResponse>(
+                ++VolumeRequestIdGenerator));
     }
 };
 

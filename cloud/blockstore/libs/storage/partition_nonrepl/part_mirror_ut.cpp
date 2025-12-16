@@ -3007,6 +3007,132 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         DoShouldNotMigrateIfCantLockMigrationRange(true);
     }
 
+    void DoShouldNotMigrateRangeIfCantDelivery(
+        bool useDirectCopy,
+        ui32 messageType)
+    {
+        TTestRuntime runtime;
+
+        NProto::TStorageServiceConfig cfg;
+        cfg.SetUseDirectCopyRange(useDirectCopy);
+        cfg.SetAssignIdToWriteAndZeroRequestsEnabled(true);
+
+        const THashSet<TString> freshDeviceIds{"vasya"};
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TVector<TDevices>{
+                TTestEnv::DefaultReplica(runtime.GetNodeId(0), 1),
+                TTestEnv::DefaultReplica(runtime.GetNodeId(0), 2),
+            },
+            {},   // migrations
+            freshDeviceIds,
+            cfg);
+
+        TPartitionClient client(runtime, env.ActorId);
+        ui64 migrationResponseCount = 0;
+
+        auto failLock =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            if (messageType == event->GetTypeRewrite()) {
+                auto sendTo = event->Sender;
+                // Due to the specifics of the test actor system,  calling
+                // runtime.Send() causes the actor message handler to be
+                // called while it is handling another  message.
+                runtime.Schedule(
+                    new IEventHandle(
+                        sendTo,
+                        sendTo,
+                        event->ReleaseBase().Release(),
+                        0,
+                        event->Cookie,
+                        nullptr),
+                    TDuration::MilliSeconds(1),
+                    0);
+                return true;
+            };
+
+            switch (event->GetTypeRewrite()) {
+                case TEvNonreplPartitionPrivate::EvRangeMigrated: {
+                    auto* ev = static_cast<
+                        TEvNonreplPartitionPrivate::TEvRangeMigrated*>(
+                        event->GetBase());
+                    ++migrationResponseCount;
+                    UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, ev->Error.GetCode());
+                    break;
+                }
+            }
+            return false;
+        };
+
+        runtime.SetEventFilter(failLock);
+
+        runtime.AdvanceCurrentTime(40ms);
+        NActors::TDispatchOptions options;
+        options.FinalEvents = {NActors::TDispatchOptions::TFinalEventCondition(
+            TEvNonreplPartitionPrivate::EvRangeMigrated)};
+
+        runtime.DispatchEvents(options);
+        UNIT_ASSERT_LE(1, migrationResponseCount);
+    }
+
+    Y_UNIT_TEST(ShouldNotMigrateIfCantDeliveryTakeRequestId)
+    {
+        DoShouldNotMigrateRangeIfCantDelivery(
+            false,
+            TEvVolumePrivate::EvTakeVolumeRequestIdRequest);
+    }
+
+    Y_UNIT_TEST(ShouldNotMigrateIfCantDeliveryLockRange)
+    {
+        DoShouldNotMigrateRangeIfCantDelivery(
+            false,
+            NPartition::TEvPartition::EvLockAndDrainRangeRequest);
+    }
+
+    Y_UNIT_TEST(ShouldNotMigrateIfCantDeliveryRead)
+    {
+        DoShouldNotMigrateRangeIfCantDelivery(
+            false,
+            TEvService::EvReadBlocksRequest);
+    }
+
+    Y_UNIT_TEST(ShouldNotMigrateIfCantDeliveryWrite)
+    {
+        DoShouldNotMigrateRangeIfCantDelivery(
+            false,
+            TEvService::EvWriteBlocksRequest);
+    }
+
+    Y_UNIT_TEST(ShouldNotMigrateIfCantDeliveryTakeRequestIdDirectCopy)
+    {
+        DoShouldNotMigrateRangeIfCantDelivery(
+            true,
+            TEvVolumePrivate::EvTakeVolumeRequestIdRequest);
+    }
+
+    Y_UNIT_TEST(ShouldNotMigrateIfCantDeliveryLockRangeDirectCopy)
+    {
+        DoShouldNotMigrateRangeIfCantDelivery(
+            true,
+            NPartition::TEvPartition::EvLockAndDrainRangeRequest);
+    }
+
+    Y_UNIT_TEST(ShouldNotMigrateIfCantDeliveryDescribeRangeDirectCopy)
+    {
+        DoShouldNotMigrateRangeIfCantDelivery(
+            true,
+            TEvNonreplPartitionPrivate::EvGetDeviceForRangeRequest);
+    }
+
+    Y_UNIT_TEST(ShouldNotMigrateIfCantDeliveryDirectCopyBlockRange)
+    {
+        DoShouldNotMigrateRangeIfCantDelivery(
+            true,
+            TEvDiskAgent::EvDirectCopyBlocksRequest);
+    }
+
     Y_UNIT_TEST(ShouldExecuteMultiWriteRequestsInterconnect)
     {
         TTestRuntime runtime;
@@ -3231,7 +3357,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
     }
 
     Y_UNIT_TEST(
-        ShouldFallbackFromMultiAgentWriteWhenDiscoveryRequestUndelivered)
+        ShouldRejectMultiAgentWriteWhenDiscoveryRequestUndelivered)
     {
         TTestRuntime runtime;
 
