@@ -6229,6 +6229,67 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             }
         }
     }
+
+    SERVICE_TEST_SIMPLE(ShouldUseOldHandles)
+    {
+        // This test verifies that when TStorageConfig::maxShardCount is defualt
+        // (254) and we create a handle that uses the 7th byte,
+        // TStorageServiceActor::SelectShard selects a correct shard.
+
+        const ui64 blockSize = 4_KB;
+        const ui64 shardBlockCount = 1024;
+        const ui64 shardAllocationUnit = shardBlockCount * blockSize;
+        const ui64 shardCount = 16;
+        const ui64 fsSize =
+            shardBlockCount * (shardCount - 1) + shardBlockCount / 2;
+
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(shardAllocationUnit);
+
+        const TString fsId = "test";
+
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, fsSize);
+
+        WaitForTabletStart(service);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        auto createNodeResponse =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record;
+        const ui64 nodeId = createNodeResponse.GetNode().GetId();
+
+        TString fsIdFromRequest;
+
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& e)
+            {
+                Y_UNUSED(runtime);
+                if (e->GetTypeRewrite() == TEvService::EvReadDataRequest) {
+                    const auto* msg = e->Get<TEvService::TEvReadDataRequest>();
+                    fsIdFromRequest = msg->Record.GetFileSystemId();
+                }
+                return false;
+            });
+
+        service.AssertReadDataFailed(
+            headers,
+            fsId,
+            nodeId,
+            0x0101000000000001,
+            0,
+            1);
+
+        UNIT_ASSERT_EQUAL(fsId + "_s1", fsIdFromRequest);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
