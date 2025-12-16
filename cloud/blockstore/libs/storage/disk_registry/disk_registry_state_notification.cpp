@@ -54,61 +54,72 @@ TNotificationSystem::TNotificationSystem(
     }
 }
 
-TString TNotificationSystem::Compare(const TNotificationSystem& rhs) const {
+TString TNotificationSystem::Compare(const TNotificationSystem& rhs) const
+{
     static_assert(sizeof(*this) == 200);
 
     google::protobuf::util::MessageDifferencer diff;
-    NProtoBuf::string report;
+    TString report;
 
     diff.ReportDifferencesToString(&report);
     google::protobuf::util::DefaultFieldComparator comparator;
-    comparator.set_float_comparison(google::protobuf::util::DefaultFieldComparator::FloatComparison::APPROXIMATE);
+    comparator.set_float_comparison(
+        google::protobuf::util::DefaultFieldComparator::FloatComparison::
+            APPROXIMATE);
     diff.set_field_comparator(&comparator);
 
+    TStringBuilder result;
 
-    std::stringstream result;
-
-    THashSet<TString> used;
     const auto& vUserNotifications = rhs.UserNotifications.Storage;
-    for(const auto& [k, v] : UserNotifications.Storage) {
-        if(vUserNotifications.find(k) == vUserNotifications.end()) {
+    for (const auto& [k, v]: UserNotifications.Storage) {
+        if (vUserNotifications.find(k) == vUserNotifications.end()) {
             result << "User notification " << k << " not found in db\n";
+            continue;
         }
         auto n1 = v.Notifications;
         auto n2 = vUserNotifications.at(k).Notifications;
-        if(n1.size() != n2.size()) {
+        if (n1.size() != n2.size()) {
             result << "User notification at " << k << " differs in size\n";
             continue;
         }
-        for(size_t i = 0; i < n1.size(); i++) {
-            if(!diff.Compare(n1[i], n2[i])) {
-                result << "User notification at " << k << " differs at index " << i << ": " << report << "\n";
+        for (size_t i = 0; i < n1.size(); i++) {
+            if (!diff.Compare(n1[i], n2[i])) {
+                result << "User notification at " << k << " differs at index "
+                       << i << ": " << report << "\n";
             }
-        }    
+        }
+    }
+    for (const auto& [k, v]: vUserNotifications) {
+        if (UserNotifications.Storage.find(k) ==
+            UserNotifications.Storage.end())
+        {
+            result << "User notification " << k
+                   << " not found in current state\n";
+        }
     }
 
-    if(SupportsNotifications != rhs.SupportsNotifications) {
+    if (SupportsNotifications != rhs.SupportsNotifications) {
         result << "SupportsNotifications differs\n";
     }
-    if(DisksToReallocate != rhs.DisksToReallocate) {
+    if (DisksToReallocate != rhs.DisksToReallocate) {
         result << "DisksToReallocate differs\n";
     }
-    if(DisksToReallocateSeqNo != rhs.DisksToReallocateSeqNo) {
+    if (DisksToReallocateSeqNo != rhs.DisksToReallocateSeqNo) {
         result << "DisksToReallocateSeqNo differs\n";
     }
-    if(DiskStateUpdates != rhs.DiskStateUpdates) {
+    if (DiskStateUpdates != rhs.DiskStateUpdates) {
         result << "DiskStateUpdates differs\n";
     }
-    if(DiskStateSeqNo != rhs.DiskStateSeqNo) {
+    if (DiskStateSeqNo != rhs.DiskStateSeqNo) {
         result << "DiskStateSeqNo differs\n";
     }
-    if(OutdatedVolumeConfigs != rhs.OutdatedVolumeConfigs) {
+    if (OutdatedVolumeConfigs != rhs.OutdatedVolumeConfigs) {
         result << "OutdatedVolumeConfigs differs\n";
     }
-    if(VolumeConfigSeqNo != rhs.VolumeConfigSeqNo) {
+    if (VolumeConfigSeqNo != rhs.VolumeConfigSeqNo) {
         result << "VolumeConfigSeqNo differs\n";
     }
-    return result.str();
+    return result;
 }
 
 // TODO: Remove legacy compatibility in next release

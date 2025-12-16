@@ -226,17 +226,14 @@ TString TDeviceList::CompareDevices(const TDeviceList& rhs) const
     diff.set_field_comparator(&comparator);
 
     TStringBuilder result;
-    THashSet<TString> used;
 
     for (const auto& [k, v]: SuspendedDevices) {
         if (rhs.SuspendedDevices.find(k) == rhs.SuspendedDevices.end()) {
             result << "Suspended device " << k << " not found in db\n";
-        }
-        if (!diff.Compare(v, rhs.SuspendedDevices.at(k))) {
+        } else if (!diff.Compare(v, rhs.SuspendedDevices.at(k))) {
             result << "Suspended device " << k << " differs: " << report
                    << "\n";
         }
-        used.insert(k);
     }
     for (const auto& [k, v]: rhs.SuspendedDevices) {
         if (SuspendedDevices.find(k) == SuspendedDevices.end()) {
@@ -244,16 +241,14 @@ TString TDeviceList::CompareDevices(const TDeviceList& rhs) const
                    << " not found in current state\n";
         }
     }
-    used.clear();
 
     for (const auto& [k, v]: AllDevices) {
         if (rhs.AllDevices.find(k) == rhs.AllDevices.end()) {
             result << "Device " << k << " not found in db\n";
+        } else if (!diff.Compare(v, rhs.AllDevices.at(k))) {
+            result << "Device " << k << " differs: " << report.length()
+                   << report << "\n";
         }
-        if (diff.Compare(v, rhs.AllDevices.at(k))) {
-            result << "Device " << k << " differs: " << report << "\n";
-        }
-        used.insert(k);
     }
     for (const auto& [k, v]: rhs.AllDevices) {
         if (AllDevices.find(k) == AllDevices.end()) {

@@ -525,26 +525,25 @@ TString TAgentList::CompareAgents(const TAgentList& rhs) const
 
     TStringBuilder result;
 
-    const auto& vAgentListParams = rhs.GetDiskRegistryAgentListParams();
+    const auto& vAgentListParams = rhs.DiskRegistryAgentListParams;
 
     THashSet<TString> used;
-    for (const auto& [k, v]: GetDiskRegistryAgentListParams()) {
+    for (const auto& [k, v]: DiskRegistryAgentListParams) {
         if (vAgentListParams.find(k) == vAgentListParams.end()) {
             result << "Agent param " << k << " not found in db\n";
-        }
-        if (!diff.Compare(v, vAgentListParams.at(k))) {
+        } else if (!diff.Compare(v, vAgentListParams.at(k))) {
             result << "Agent param" << k << " differs: " << report << "\n";
         }
-        used.insert(k);
     }
 
     for (const auto& [k, v]: vAgentListParams) {
-        if (used.find(k) == used.end()) {
+        if (DiskRegistryAgentListParams.find(k) ==
+            DiskRegistryAgentListParams.end())
+        {
             result << "Agent param" << k
                    << " not found in current disk state\n";
         }
     }
-    used.clear();
 
     if (Agents.size() != rhs.Agents.size()) {
         result << "Agent lists differ in size\n";

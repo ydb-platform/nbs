@@ -570,21 +570,18 @@ TVector<TString> TDiskRegistryState::GetDifferingFields(
 
     const auto& vPlacementGroups = rhs.PlacementGroups;
     TStringBuilder ss;
-    THashSet<TString> used;
 
     for (const auto& [k, v]: PlacementGroups) {
-        used.insert(k);
         if (vPlacementGroups.find(k) == vPlacementGroups.end()) {
             ss << "[" << k << "] not found, current: " << v.Config.DebugString()
                << "\n";
-        }
-        if (!diff.Compare(v.Config, vPlacementGroups.at(k).Config)) {
+        } else if (!diff.Compare(v.Config, vPlacementGroups.at(k).Config)) {
             ss << "[" << k << "] difference: " << report << "\n";
         }
     }
 
     for (const auto& [k, v]: vPlacementGroups) {
-        if (used.find(k) == used.end()) {
+        if (PlacementGroups.find(k) == PlacementGroups.end()) {
             ss << "[" << k << "] not found, DB: " << v.Config.DebugString()
                << "\n";
         }
@@ -620,8 +617,6 @@ TVector<TString> TDiskRegistryState::GetDifferingFields(
         result.emplace_back("AutomaticallyReplacedDeviceIds differs\n");
     }
 
-    used.clear();
-
     for (const auto& [k, v]: Disks) {
         if (rhs.Disks.find(k) == rhs.Disks.end()) {
             result.emplace_back("Disk " + k + " not found in db\n");
@@ -633,10 +628,9 @@ TVector<TString> TDiskRegistryState::GetDifferingFields(
                 TStringBuilder()
                 << "Disk " << k << " differs: " << diskReport << "\n");
         }
-        used.insert(k);
     }
     for (const auto& [k, v]: rhs.Disks) {
-        if (used.find(k) == used.end()) {
+        if (Disks.find(k) == Disks.end()) {
             result.emplace_back("Disk " + k + " not found in current state\n");
         }
     }
