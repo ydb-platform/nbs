@@ -105,20 +105,22 @@ TString GetUrlFromTemplate(
     TString result = templateStr;
     const auto& data = config.GetMonitoringUrlData();
 
-    auto substitute = [&result](TStringBuf placeholder, TStringBuf value)
-    {
-        SubstGlobal(result, placeholder, value);
-    };
-
-    substitute("{MonitoringUrl}", data.MonitoringUrl);
-    substitute("{MonitoringProject}", data.MonitoringProject);
-    substitute("{MonitoringClusterName}", data.MonitoringClusterName);
-    substitute("{MonitoringVolumeDashboard}", data.MonitoringVolumeDashboard);
-    substitute(
+    SubstGlobal(result, "{MonitoringUrl}", data.MonitoringUrl);
+    SubstGlobal(result, "{MonitoringProject}", data.MonitoringProject);
+    SubstGlobal(result, "{MonitoringClusterName}", data.MonitoringClusterName);
+    SubstGlobal(
+        result,
+        "{MonitoringVolumeDashboard}",
+        data.MonitoringVolumeDashboard);
+    SubstGlobal(
+        result,
         "{MonitoringNBSAlertsDashboard}",
         data.MonitoringNBSAlertsDashboard);
-    substitute("{MonitoringNBSTVDashboard}", data.MonitoringNBSTVDashboard);
-    substitute("{diskId}", diskId);
+    SubstGlobal(
+        result,
+        "{MonitoringNBSTVDashboard}",
+        data.MonitoringNBSTVDashboard);
+    SubstGlobal(result, "{diskId}", diskId);
 
     return result;
 }
