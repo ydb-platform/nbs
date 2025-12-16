@@ -138,7 +138,7 @@ public:
     TVector<TString> GetDeviceIds() const;
     TVector<TString> GetDeviceIdsByPath(const TString& path);
     TVector<NProto::TDeviceConfig> GetDevicesByPath(
-        const THashSet<TString>& paths);
+        std::span<const TString> paths);
 
     ui32 GetDevicesCount() const;
 
@@ -186,13 +186,10 @@ public:
         TVector<NProto::TDeviceConfig> Configs;
         TVector<IStoragePtr> Devices;
         TVector<TStorageIoStatsPtr> Stats;
-
-        TVector<TString> PathsToAttach;
-        TVector<TString> AlreadyAttachedPaths;
     };
 
     NThreading::TFuture<TResultOrError<TAttachPathResult>> AttachPaths(
-        const TVector<TString>& pathsToAttach);
+        TVector<TString> pathsToAttach);
 
     void PathsAttached(
         TVector<NProto::TDeviceConfig> configs,

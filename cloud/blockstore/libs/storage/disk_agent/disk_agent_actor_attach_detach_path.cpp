@@ -4,6 +4,8 @@
 
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
+#include <algorithm>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -122,12 +124,42 @@ void TDiskAgentActor::HandleAttachPaths(
         return;
     }
 
-    PendingAttachDetachPathsRequest =
-        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
-
-    TVector<TString> pathsToAttach{
+    TVector<TString> alreadyAttachedPaths{
         record.GetPathsToAttach().begin(),
         record.GetPathsToAttach().end()};
+
+    auto pathsToAttachRange = std::ranges::partition(
+        alreadyAttachedPaths,
+        std::bind_front(&TDiskAgentState::IsPathAttached, State.get()));
+
+    if (pathsToAttachRange.empty()) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
+            "No paths to attach. Attached paths: [%s]",
+            JoinSeq(",", alreadyAttachedPaths).c_str());
+
+        auto deviceConfigs = State->GetDevicesByPath(pathsToAttachRange);
+        auto response =
+            std::make_unique<TEvDiskAgent::TEvAttachPathsResponse>();
+        response->Record.MutableAttachedDevices()->Assign(
+            std::make_move_iterator(deviceConfigs.begin()),
+            std::make_move_iterator(deviceConfigs.end()));
+        NCloud::Reply(ctx, *ev, std::move(response));
+
+        return;
+    }
+
+    TVector<TString> pathsToAttach{
+        pathsToAttachRange.begin(),
+        pathsToAttachRange.end()};
+
+    alreadyAttachedPaths.erase(
+        pathsToAttachRange.begin(),
+        pathsToAttachRange.end());
+
+    PendingAttachDetachPathsRequest =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     auto future = State->AttachPaths(pathsToAttach);
 
@@ -135,7 +167,10 @@ void TDiskAgentActor::HandleAttachPaths(
     auto selfId = ctx.SelfID;
 
     future.Subscribe(
-        [actorSystem, selfId](
+        [actorSystem,
+         selfId,
+         pathsToAttach = std::move(pathsToAttach),
+         alreadyAttachedPaths = std::move(alreadyAttachedPaths)](
             TFuture<TResultOrError<TDiskAgentState::TAttachPathResult>>
                 future) mutable
         {
@@ -143,9 +178,8 @@ void TDiskAgentActor::HandleAttachPaths(
 
             auto response =
                 std::make_unique<TEvDiskAgentPrivate::TEvPathsAttached>(error);
-            response->AlreadyAttachedPaths =
-                std::move(result.AlreadyAttachedPaths);
-            response->PathsToAttach = std::move(result.PathsToAttach);
+            response->AlreadyAttachedPaths = std::move(alreadyAttachedPaths);
+            response->PathsToAttach = std::move(pathsToAttach);
             response->Devices = std::move(result.Devices);
             response->Stats = std::move(result.Stats);
             response->Configs = std::move(result.Configs);
@@ -186,14 +220,11 @@ void TDiskAgentActor::HandlePathsAttached(
         std::move(msg->Stats),
         msg->PathsToAttach);
 
-    THashSet<TString> paths{
-        msg->PathsToAttach.begin(),
-        msg->PathsToAttach.end()};
-    paths.insert(
-        msg->AlreadyAttachedPaths.begin(),
-        msg->AlreadyAttachedPaths.end());
+    auto deviceConfigs = State->GetDevicesByPath(msg->PathsToAttach);
 
-    auto deviceConfigs = State->GetDevicesByPath(paths);
+    std::ranges::move(
+        State->GetDevicesByPath(msg->AlreadyAttachedPaths),
+        std::back_inserter(deviceConfigs));
 
     auto response = std::make_unique<TEvDiskAgent::TEvAttachPathsResponse>();
     response->Record.MutableAttachedDevices()->Assign(
