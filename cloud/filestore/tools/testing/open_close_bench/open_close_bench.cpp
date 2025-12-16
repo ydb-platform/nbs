@@ -99,18 +99,18 @@ int main(int argc, char *argv[]) {
                 return;
             }
 
-            auto total = std::distance(container.cbegin(), container.cend());
+            const auto total = container.size();
             if (total <= 0) {
                 return;
             }
 
-            auto threads = std::min<int>(parallel, total);
+            auto threads = std::min<size_t>(parallel, total);
             std::vector<std::future<void>> futures;
             futures.reserve(threads);
 
             auto chunkStart = container.begin();
             size_t currentNumber = 0;
-            for (ssize_t thread = 0; thread < threads; ++thread) {
+            for (size_t thread = 0; thread < threads; ++thread) {
                 auto chunkEnd = chunkStart;
                 const auto chunkSize =
                     total / threads + (thread < (total % threads) ? 1 : 0);
