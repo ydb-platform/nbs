@@ -1,12 +1,15 @@
 #include "service_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
+#include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/tablet/model/sparse_segment.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 #include <cloud/storage/core/libs/common/byte_range.h>
+
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
@@ -21,6 +24,10 @@ using namespace NActors;
 using namespace NKikimr;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+LWTRACE_USING(FILESTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -62,6 +69,8 @@ private:
     const NCloud::NProto::EStorageMediaKind MediaKind;
     const bool UseTwoStageRead;
 
+    ITraceSerializerPtr TraceSerializer;
+
 public:
     TReadDataActor(
         TRequestInfoPtr requestInfo,
@@ -71,7 +80,8 @@ public:
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         NCloud::NProto::EStorageMediaKind mediaKind,
-        bool useTwoStageRead);
+        bool useTwoStageRead,
+        ITraceSerializerPtr traceSerializer);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -118,7 +128,8 @@ TReadDataActor::TReadDataActor(
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         NCloud::NProto::EStorageMediaKind mediaKind,
-        bool useTwoStageRead)
+        bool useTwoStageRead,
+        ITraceSerializerPtr traceSerializer)
     : RequestInfo(std::move(requestInfo))
     , ReadRequest(std::move(readRequest))
     , LogTag(std::move(logTag))
@@ -134,11 +145,17 @@ TReadDataActor::TReadDataActor(
     , ProfileLog(std::move(profileLog))
     , MediaKind(mediaKind)
     , UseTwoStageRead(useTwoStageRead)
+    , TraceSerializer(std::move(traceSerializer))
 {
 }
 
 void TReadDataActor::Bootstrap(const TActorContext& ctx)
 {
+    FILESTORE_TRACK(
+        RequestReceived_ServiceWorker,
+        RequestInfo->CallContext,
+        "ReadData");
+
     // BlockBuffer should not be initialized in constructor, because creating
     // a block buffer leads to memory allocation (and initialization) which is
     // heavy and we would like to execute that on a separate thread (instead of
@@ -193,6 +210,9 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
     InitProfileLogRequestInfo(
         InFlightRequest->ProfileLogRequest,
         request->Record);
+    TraceSerializer->BuildTraceRequest(
+        *request->Record.MutableHeaders()->MutableInternal()->MutableTrace(),
+        RequestInfo->CallContext->LWOrbit);
 
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -281,6 +301,7 @@ void TReadDataActor::HandleDescribeDataResponse(
     FinalizeProfileLogRequestInfo(
         InFlightRequest->ProfileLogRequest,
         msg->Record);
+    HandleTraceInfo(TraceSerializer, RequestInfo->CallContext, msg->Record);
 
     if (FAILED(msg->GetStatus())) {
         if (error.GetCode() != E_FS_THROTTLED) {
@@ -365,6 +386,13 @@ void TReadDataActor::ReadBlobIfNeeded(const TActorContext& ctx)
             TInstant::Max(),
             NKikimrBlobStorage::FastRead);
 
+        if (!RequestInfo->CallContext->LWOrbit.Fork(request->Orbit)) {
+            FILESTORE_TRACK(
+                ForkFailed,
+                RequestInfo->CallContext,
+                "TEvBlobStorage::TEvGet");
+        }
+
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
@@ -380,13 +408,15 @@ void TReadDataActor::HandleReadBlobResponse(
     const TEvBlobStorage::TEvGetResult::TPtr& ev,
     const TActorContext& ctx)
 {
+    const auto* msg = ev->Get();
+
+    RequestInfo->CallContext->LWOrbit.Join(msg->Orbit);
+
     if (ReadDataFallbackEnabled) {
         // we don't need this response anymore
 
         return;
     }
-
-    const auto* msg = ev->Get();
 
     if (msg->Status != NKikimrProto::OK) {
         LOG_WARN(
@@ -673,6 +703,11 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
 
     MoveBufferToIovecsIfNeeded(ctx, response->Record);
 
+    FILESTORE_TRACK(
+        ResponseSent_ServiceWorker,
+        RequestInfo->CallContext,
+        "ReadData");
+
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     Die(ctx);
@@ -817,7 +852,8 @@ void TStorageServiceActor::HandleReadData(
         session->RequestStats,
         ProfileLog,
         session->MediaKind,
-        useTwoStageRead);
+        useTwoStageRead,
+        TraceSerializer);
 
     NCloud::Register(ctx, std::move(actor));
 }

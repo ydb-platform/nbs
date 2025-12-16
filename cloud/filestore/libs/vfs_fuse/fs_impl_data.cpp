@@ -72,6 +72,7 @@ void TFileSystem::Create(
             ? ProtoFlag(NProto::TCreateHandleRequest::E_READ)
             : 0;
     request->SetFlags(flags | overrideRead);
+    
     if (HasFlag(flags, NProto::TCreateHandleRequest::E_CREATE)) {
         SetUserNGroup(*request, fuse_req_ctx(req));
     }
@@ -125,7 +126,6 @@ void TFileSystem::Open(
             ? ProtoFlag(NProto::TCreateHandleRequest::E_READ)
             : 0;
     request->SetFlags(flags | overrideRead);
-
     Session->CreateHandle(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             const auto& response = future.GetValue();
