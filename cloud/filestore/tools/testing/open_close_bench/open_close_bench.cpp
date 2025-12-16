@@ -110,7 +110,7 @@ int main(int argc, char *argv[]) {
 
             auto chunkStart = container.begin();
             size_t currentNumber = 0;
-            for (size_t thread = 0; thread < threads; ++thread) {
+            for (ssize_t thread = 0; thread < threads; ++thread) {
                 auto chunkEnd = chunkStart;
                 const auto chunkSize =
                     total / threads + (thread < (total % threads) ? 1 : 0);
@@ -118,7 +118,7 @@ int main(int argc, char *argv[]) {
 
                 futures.emplace_back(std::async(
                     std::launch::async,
-                    [chunkStart, chunkEnd, &func, currentNumber, &container]() {
+                    [chunkStart, chunkEnd, &func, currentNumber]() {
                         size_t thread = 0;
                         for (auto it = chunkStart; it != chunkEnd;
                              ++it, ++thread) {
@@ -204,7 +204,7 @@ int main(int argc, char *argv[]) {
 
         if (!keepOpen) {
             bench("Open", [&]() {
-                forEach(fds, [&fds, verbose](const auto i, auto &fd) {
+                forEach(fds, [verbose](const auto i, auto &fd) {
                     const auto filename = makeFilename(i);
                     fd = open(filename.c_str(), O_RDONLY);
                     if (verbose) {
