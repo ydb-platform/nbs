@@ -1,5 +1,7 @@
 #include "listener.h"
 
+#include "helpers.h"
+
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/endpoint/listener.h>
@@ -104,9 +106,7 @@ public:
         }
 
         NProto::TSessionConfig sessionConfig;
-        sessionConfig.SetFileSystemId(config.GetFileSystemId());
-        sessionConfig.SetClientId(config.GetClientId());
-        sessionConfig.SetSessionPingTimeout(config.GetSessionPingTimeout());
+        EndpointConfigToSessionConfig(config, &sessionConfig);
 
         auto session = CreateSession(
             Logging,
