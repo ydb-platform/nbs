@@ -101,15 +101,15 @@ TString TNotificationSystem::Compare(const TNotificationSystem& rhs) const
     if (SupportsNotifications != rhs.SupportsNotifications) {
         result << "SupportsNotifications differs\n";
     }
-    if (DisksToReallocate != rhs.DisksToReallocate) {
-        result << "DisksToReallocate differs\n";
-    }
-    if (DisksToReallocateSeqNo != rhs.DisksToReallocateSeqNo) {
-        result << "DisksToReallocateSeqNo differs\n";
-    }
-    if (DiskStateUpdates != rhs.DiskStateUpdates) {
-        result << "DiskStateUpdates differs\n";
-    }
+    // if (DisksToReallocate != rhs.DisksToReallocate) {
+    //     result << "DisksToReallocate differs\n";
+    // }
+    // if (DisksToReallocateSeqNo != rhs.DisksToReallocateSeqNo) {
+    //     result << "DisksToReallocateSeqNo differs\n";
+    // }
+    // if (DiskStateUpdates != rhs.DiskStateUpdates) {
+    //     result << "DiskStateUpdates differs\n";
+    // }
     if (DiskStateSeqNo != rhs.DiskStateSeqNo) {
         result << "DiskStateSeqNo differs\n";
     }

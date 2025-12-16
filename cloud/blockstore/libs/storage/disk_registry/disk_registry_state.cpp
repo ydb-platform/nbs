@@ -500,7 +500,7 @@ TString TDiskRegistryState::TDiskState::GetDiff(const TDiskState& rhs) const
         rhs.PlacementPartitionIndex);
     notifyIfNotEqual("State", State, rhs.State);
     notifyIfNotEqual("StateTs", StateTs.ToString(), rhs.StateTs.ToString());
-    notifyIfNotEqual("ReplicaCount", ReplicaCount, rhs.ReplicaCount + 1);
+    notifyIfNotEqual("ReplicaCount", ReplicaCount, rhs.ReplicaCount);
     notifyIfNotEqual("MasterDiskId", MasterDiskId, rhs.MasterDiskId);
 
     if (!diff.Compare(CheckpointReplica, rhs.CheckpointReplica)) {
@@ -610,7 +610,7 @@ TVector<TString> TDiskRegistryState::GetDifferingFields(
     TString notificationReport =
         NotificationSystem.Compare(rhs.NotificationSystem);
     if (notificationReport.size() > 0) {
-        result.emplace_back("NotificationSystem differsn");
+        result.emplace_back(TStringBuilder() << "NotificationSystem differs:" << notificationReport << "\n");
     }
 
     if (AutomaticallyReplacedDeviceIds != rhs.AutomaticallyReplacedDeviceIds) {
