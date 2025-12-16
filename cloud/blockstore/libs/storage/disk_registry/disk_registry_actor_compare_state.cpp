@@ -1,6 +1,5 @@
 #include "disk_registry_actor.h"
 
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -10,58 +9,50 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDiskRegistryActor::HandleCompareDiskRegistryState(
-    const TEvDiskRegistry::TEvCompareDiskRegistryStateRequest::TPtr& ev,
+void TDiskRegistryActor::HandleCompareDiskRegistryStateWithLocalDb(
+    const TEvDiskRegistry::TEvCompareDiskRegistryStateWithLocalDbRequest::TPtr&
+        ev,
     const TActorContext& ctx)
 {
-    BLOCKSTORE_DISK_REGISTRY_COUNTER(CompareDiskRegistryState);
+    BLOCKSTORE_DISK_REGISTRY_COUNTER(CompareDiskRegistryStateWithLocalDb);
 
     const auto& record = ev->Get()->Record;
 
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "%s Received CompareDiskRegistryState request: %s %s",
+        "%s Received CompareDiskRegistryStateWithLocalDb request: %s %s",
         LogTitle.GetWithTime().c_str(),
         record.ShortDebugString().c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
-    ExecuteTx<TCompareDiskRegistryState>(
+    ExecuteTx<TCompareDiskRegistryStateWithLocalDb>(
         ctx,
-        CreateRequestInfo<TEvDiskRegistry::TCompareDiskRegistryStateMethod>(
+        CreateRequestInfo<
+            TEvDiskRegistry::TCompareDiskRegistryStateWithLocalDbMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext
-        ));
+            ev->Get()->CallContext));
 }
 
-bool TDiskRegistryActor::PrepareCompareDiskRegistryState(
+bool TDiskRegistryActor::PrepareCompareDiskRegistryStateWithLocalDb(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TCompareDiskRegistryState& args)
+    TTxDiskRegistry::TCompareDiskRegistryStateWithLocalDb& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(args);
 
     TDiskRegistryDatabase db(tx.DB);
-    if(!LoadState(db, args.StateArgs)) {
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::DISK_REGISTRY,
-            "%s Failed to load state",
-            LogTitle.GetWithTime().c_str());
-        args.Result.MutableError()->set_code(E_FAIL);
-        return false;
-    }
-
-    return true;
+    return LoadState(db, args.StateArgs);
 }
 
-void TDiskRegistryActor::ExecuteCompareDiskRegistryState(
+void TDiskRegistryActor::ExecuteCompareDiskRegistryStateWithLocalDb(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TCompareDiskRegistryState& args)
+    TTxDiskRegistry::TCompareDiskRegistryStateWithLocalDb& args)
 {
+    Y_UNUSED(ctx);
     Y_UNUSED(tx);
 
     auto dbState = std::make_unique<TDiskRegistryState>(
@@ -87,28 +78,22 @@ void TDiskRegistryActor::ExecuteCompareDiskRegistryState(
 
     auto differences = State->GetDifferingFields(*dbState);
     args.Result.MutableDiffers()->Add(differences.begin(), differences.end());
-    args.Result.MutableError()->set_code(S_OK);
-    
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::DISK_REGISTRY,
-        "%s CompareDiskRegistryState execution succeeded",
-        LogTitle.GetWithTime().c_str());
 }
 
-void TDiskRegistryActor::CompleteCompareDiskRegistryState(
+void TDiskRegistryActor::CompleteCompareDiskRegistryStateWithLocalDb(
     const TActorContext& ctx,
-    TTxDiskRegistry::TCompareDiskRegistryState& args)
+    TTxDiskRegistry::TCompareDiskRegistryStateWithLocalDb& args)
 {
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "%s CompareDiskRegistryState result",
-        LogTitle.GetWithTime().c_str());
+        "%s CompareDiskRegistryStateWithLocalDb result: %s",
+        LogTitle.GetWithTime().c_str(),
+        args.Result.ShortDebugString().c_str());
 
-    auto response =
-        std::make_unique<TEvDiskRegistry::TEvCompareDiskRegistryStateResponse>(
-            std::move(args.Result));
+    auto response = std::make_unique<
+        TEvDiskRegistry::TEvCompareDiskRegistryStateWithLocalDbResponse>(
+        std::move(args.Result));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

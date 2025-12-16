@@ -725,8 +725,8 @@ STFUNC(TDiskRegistryActor::StateWork)
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanup);
         
         HFunc(
-            TEvDiskRegistry::TEvCompareDiskRegistryStateRequest,
-            HandleCompareDiskRegistryState);
+            TEvDiskRegistry::TEvCompareDiskRegistryStateWithLocalDbRequest,
+            HandleCompareDiskRegistryStateWithLocalDb);
 
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
@@ -849,8 +849,8 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
             HandleGetClusterCapacity);
         
         HFunc(
-            TEvDiskRegistry::TEvCompareDiskRegistryStateRequest,
-            HandleCompareDiskRegistryState);
+            TEvDiskRegistry::TEvCompareDiskRegistryStateWithLocalDbRequest,
+            HandleCompareDiskRegistryStateWithLocalDb);
 
         IgnoreFunc(
             TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);

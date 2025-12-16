@@ -275,7 +275,7 @@ class TDiskRegistryState
 
         TVector<TLaggingDevice> OutdatedLaggingDevices;
 
-        TString getDiff(const TDiskState& rhs) const;
+        TString GetDiff(const TDiskState& rhs) const;
     };
 
     struct TVolumeDeviceOverrides

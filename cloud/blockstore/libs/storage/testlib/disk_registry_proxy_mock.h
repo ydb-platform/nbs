@@ -159,8 +159,8 @@ private:
                 HandleGetClusterCapacity);
             
             HFunc(
-                TEvDiskRegistry::TEvCompareDiskRegistryStateRequest,
-                HandleCompareDiskRegistryState);
+                TEvDiskRegistry::TEvCompareDiskRegistryStateWithLocalDbRequest,
+                HandleCompareDiskRegistryStateWithLocalDb);
 
             IgnoreFunc(NKikimr::TEvLocal::TEvTabletMetrics);
 
@@ -1105,14 +1105,14 @@ private:
         NCloud::Reply(ctx, *ev, std::move(response));
     }
 
-    void HandleCompareDiskRegistryState(
-        const TEvDiskRegistry::TEvCompareDiskRegistryStateRequest::TPtr& ev,
+    void HandleCompareDiskRegistryStateWithLocalDb(
+        const TEvDiskRegistry::TEvCompareDiskRegistryStateWithLocalDbRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TEvDiskRegistry::TEvCompareDiskRegistryStateResponse>());
+            std::make_unique<TEvDiskRegistry::TEvCompareDiskRegistryStateWithLocalDbResponse>());
     }
 };
 

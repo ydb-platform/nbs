@@ -1888,13 +1888,13 @@ message TAttachPathsResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// CompareDiskRegistryState request/response.
+// CompareDiskRegistryStateWithLocalDb request/response.
 
-message TCompareDiskRegistryStateRequest
+message TCompareDiskRegistryStateWithLocalDbRequest
 {
 }
 
-message TCompareDiskRegistryStateResponse
+message TCompareDiskRegistryStateWithLocalDbResponse
 {
     NCloud.NProto.TError Error = 1;
     repeated string Differs = 2;

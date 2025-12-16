@@ -8,8 +8,6 @@
 #include <util/string/builder.h>
 #include <util/string/printf.h>
 
-#include <sstream>
-
 namespace NCloud::NBlockStore::NStorage {
 
 namespace {
@@ -219,53 +217,57 @@ TString TDeviceList::CompareDevices(const TDeviceList& rhs) const
     static_assert(sizeof(*this) == 232);
 
     MessageDifferencer diff;
-    NProtoBuf::string report;
+    TString report;
     diff.ReportDifferencesToString(&report);
     google::protobuf::util::DefaultFieldComparator comparator;
-    comparator.set_float_comparison(google::protobuf::util::DefaultFieldComparator::FloatComparison::APPROXIMATE);
+    comparator.set_float_comparison(
+        google::protobuf::util::DefaultFieldComparator::FloatComparison::
+            APPROXIMATE);
     diff.set_field_comparator(&comparator);
 
-    std::stringstream result;
+    TStringBuilder result;
     THashSet<TString> used;
 
-    for(const auto& [k, v] : SuspendedDevices) {
-        if(rhs.SuspendedDevices.find(k) == rhs.SuspendedDevices.end()) {
+    for (const auto& [k, v]: SuspendedDevices) {
+        if (rhs.SuspendedDevices.find(k) == rhs.SuspendedDevices.end()) {
             result << "Suspended device " << k << " not found in db\n";
-        } 
-        if(!diff.Compare(v, rhs.SuspendedDevices.at(k))) {
-            result << "Suspended device " << k << " differs: " << report << "\n";
+        }
+        if (!diff.Compare(v, rhs.SuspendedDevices.at(k))) {
+            result << "Suspended device " << k << " differs: " << report
+                   << "\n";
         }
         used.insert(k);
     }
-    for(const auto& [k, v] : rhs.SuspendedDevices) {
-        if(SuspendedDevices.find(k) == SuspendedDevices.end()) {
-            result << "Suspended device " << k << " not found in current state\n";
+    for (const auto& [k, v]: rhs.SuspendedDevices) {
+        if (SuspendedDevices.find(k) == SuspendedDevices.end()) {
+            result << "Suspended device " << k
+                   << " not found in current state\n";
         }
     }
     used.clear();
 
-    for(const auto& [k, v] : AllDevices) {
-        if(rhs.AllDevices.find(k) == rhs.AllDevices.end()){
+    for (const auto& [k, v]: AllDevices) {
+        if (rhs.AllDevices.find(k) == rhs.AllDevices.end()) {
             result << "Device " << k << " not found in db\n";
         }
-        if(diff.Compare(v, rhs.AllDevices.at(k))) {
+        if (diff.Compare(v, rhs.AllDevices.at(k))) {
             result << "Device " << k << " differs: " << report << "\n";
         }
         used.insert(k);
     }
-    for(const auto& [k, v] : rhs.AllDevices) {
-        if(AllDevices.find(k) == AllDevices.end()) {
+    for (const auto& [k, v]: rhs.AllDevices) {
+        if (AllDevices.find(k) == AllDevices.end()) {
             result << "Device " << k << " not found in state\n";
         }
     }
 
-    if(AllocatedDevices != rhs.AllocatedDevices) {
+    if (AllocatedDevices != rhs.AllocatedDevices) {
         result << "Allocated devices differs\n";
     }
-    if(DirtyDevices != rhs.DirtyDevices) {
+    if (DirtyDevices != rhs.DirtyDevices) {
         result << "Dirty devices differs\n";
     }
-    return result.str();
+    return result;
 }
 
 TDeviceList::TNodeId TDeviceList::FindNodeId(const TDeviceId& id) const

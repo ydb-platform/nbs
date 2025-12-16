@@ -23,8 +23,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCompareDiskRegistryStateActor final
-    : public TActorBootstrapped<TCompareDiskRegistryStateActor>
+class TCompareDiskRegistryStateWithLocalDbActor final
+    : public TActorBootstrapped<TCompareDiskRegistryStateWithLocalDbActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
@@ -33,49 +33,58 @@ private:
     NProto::TError Error;
 
 public:
-    TCompareDiskRegistryStateActor(TRequestInfoPtr requestInfo, TString input);
+    TCompareDiskRegistryStateWithLocalDbActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void ReplyAndDie(const TActorContext& ctx, std::unique_ptr<TEvService::TEvExecuteActionResponse> response);
+    void ReplyAndDie(
+        const TActorContext& ctx,
+        std::unique_ptr<TEvService::TEvExecuteActionResponse> response);
 
 private:
-    STFUNC(StateCompareDiskRegistryState);
+    STFUNC(StateCompareDiskRegistryStateWithLocalDb);
 
-    void HandleCompareDiskRegistryStateResponse(
-        const TEvDiskRegistry::TEvCompareDiskRegistryStateResponse::TPtr& ev,
+    void HandleCompareDiskRegistryStateWithLocalDbResponse(
+        const TEvDiskRegistry::TEvCompareDiskRegistryStateWithLocalDbResponse::
+            TPtr& ev,
         const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCompareDiskRegistryStateActor::TCompareDiskRegistryStateActor(
-    TRequestInfoPtr requestInfo,
-    TString input)
+TCompareDiskRegistryStateWithLocalDbActor::
+    TCompareDiskRegistryStateWithLocalDbActor(
+        TRequestInfoPtr requestInfo,
+        TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
 
-void TCompareDiskRegistryStateActor::Bootstrap(const TActorContext& ctx)
+void TCompareDiskRegistryStateWithLocalDbActor::Bootstrap(
+    const TActorContext& ctx)
 {
-    auto request =
-        std::make_unique<TEvDiskRegistry::TEvCompareDiskRegistryStateRequest>();
+    auto request = std::make_unique<
+        TEvDiskRegistry::TEvCompareDiskRegistryStateWithLocalDbRequest>();
 
     if (!google::protobuf::util::JsonStringToMessage(Input, &request->Record)
              .ok())
     {
         Error = MakeError(E_ARGUMENT, "Failed to parse input");
-        ReplyAndDie(ctx, std::make_unique<TEvService::TEvExecuteActionResponse>());
+        ReplyAndDie(
+            ctx,
+            std::make_unique<TEvService::TEvExecuteActionResponse>());
         return;
     }
 
-    Become(&TThis::StateCompareDiskRegistryState);
+    Become(&TThis::StateCompareDiskRegistryStateWithLocalDb);
 
     NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
 }
 
-void TCompareDiskRegistryStateActor::ReplyAndDie(
+void TCompareDiskRegistryStateWithLocalDbActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TEvService::TEvExecuteActionResponse> response)
 {
@@ -91,15 +100,14 @@ void TCompareDiskRegistryStateActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TCompareDiskRegistryStateActor::HandleCompareDiskRegistryStateResponse(
-    const TEvDiskRegistry::TEvCompareDiskRegistryStateResponse::TPtr& ev,
-    const TActorContext& ctx)
+void TCompareDiskRegistryStateWithLocalDbActor::
+    HandleCompareDiskRegistryStateWithLocalDbResponse(
+        const TEvDiskRegistry::TEvCompareDiskRegistryStateWithLocalDbResponse::
+            TPtr& ev,
+        const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
 
-    if (HasError(msg->GetError())) {
-        Error = msg->GetError();
-    }
     TString output;
     google::protobuf::util::MessageToJsonString(msg->Record, &output);
     auto response = std::make_unique<TEvService::TEvExecuteActionResponse>();
@@ -109,12 +117,14 @@ void TCompareDiskRegistryStateActor::HandleCompareDiskRegistryStateResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TCompareDiskRegistryStateActor::StateCompareDiskRegistryState)
+STFUNC(
+    TCompareDiskRegistryStateWithLocalDbActor::
+        StateCompareDiskRegistryStateWithLocalDb)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
-            TEvDiskRegistry::TEvCompareDiskRegistryStateResponse,
-            HandleCompareDiskRegistryStateResponse);
+            TEvDiskRegistry::TEvCompareDiskRegistryStateWithLocalDbResponse,
+            HandleCompareDiskRegistryStateWithLocalDbResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -133,7 +143,7 @@ TResultOrError<IActorPtr> TServiceActor::CreateDiskRegistryCompareStateActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
-    return {std::make_unique<TCompareDiskRegistryStateActor>(
+    return {std::make_unique<TCompareDiskRegistryStateWithLocalDbActor>(
         std::move(requestInfo),
         std::move(input))};
 }
