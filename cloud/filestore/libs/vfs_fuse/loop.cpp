@@ -924,12 +924,13 @@ private:
                 }
             }
 
-            if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
-                if (Config->GetWriteBackCachePath()) {
-                    auto path = TFsPath(Config->GetWriteBackCachePath()) /
-                        FileSystemConfig->GetFileSystemId() /
-                        SessionId;
+            if (Config->GetWriteBackCachePath()) {
+                auto path = TFsPath(Config->GetWriteBackCachePath()) /
+                            FileSystemConfig->GetFileSystemId() / SessionId;
 
+                if (path.Exists() ||
+                    FileSystemConfig->GetServerWriteBackCacheEnabled())
+                {
                     auto error = CreateAndLockFile(
                         path,
                         WriteBackCacheFileName,
@@ -960,15 +961,14 @@ private:
                         Config->GetWriteBackCacheFlushMaxWriteRequestSize(),
                         Config->GetWriteBackCacheFlushMaxWriteRequestsCount(),
                         Config->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
-                        FileSystemConfig->GetZeroCopyWriteEnabled()
-                    );
-                } else {
-                    ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
-                        "[f:%s][c:%s] Error initializing WriteBackCache: "
-                        "WriteBackCachePath is not set",
-                        Config->GetFileSystemId().Quote().c_str(),
-                        Config->GetClientId().Quote().c_str()));
+                        FileSystemConfig->GetZeroCopyWriteEnabled());
                 }
+            } else if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
+                ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
+                    "[f:%s][c:%s] Error initializing WriteBackCache: "
+                    "WriteBackCachePath is not set",
+                    Config->GetFileSystemId().Quote().c_str(),
+                    Config->GetClientId().Quote().c_str()));
             }
 
             TDirectoryHandlesStoragePtr directoryHandlesStorage;
