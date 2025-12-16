@@ -1290,6 +1290,8 @@ public:
             regionInfo->SetId(region.Id);
             regionInfo->SetFilePath(region.FilePath);
             regionInfo->SetSize(region.Size);
+            regionInfo->SetLatestActivityTimestamp(
+                region.LatestActivityTimestamp.MicroSeconds());
         }
         this->Writer.Finish(response, grpc::Status::OK, AcquireCompletionTag());
     }
@@ -1427,6 +1429,61 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TPingRegionCustomHandler final
+    : public TCustomHandlerBase<
+          NProto::TPingRegionRequest,
+          NProto::TPingRegionResponse,
+          TPingRegionCustomHandler>
+{
+    using TBase = TCustomHandlerBase<
+        NProto::TPingRegionRequest,
+        NProto::TPingRegionResponse,
+        TPingRegionCustomHandler>;
+
+public:
+    using TBase::TBase;
+
+    void PrepareRequestImpl()
+    {
+        this->AppCtx.Service.RequestPingRegion(
+            this->Context.get(),
+            this->Request.get(),
+            &this->Writer,
+            this->ExecCtx.CompletionQueue.get(),
+            this->ExecCtx.CompletionQueue.get(),
+            this);
+    }
+
+    void ProcessAndSendResponse()
+    {
+        Error = this->AppCtx.State->PingRegion(this->Request->GetId());
+
+        NProto::TPingRegionResponse response;
+        if (NCloud::HasError(Error)) {
+            *response.MutableError() = Error;
+        }
+
+        this->Writer.Finish(response, grpc::Status::OK, AcquireCompletionTag());
+    }
+
+    void CompleteRequest()
+    {
+        auto& Log = this->AppCtx.Log;
+        if (!NCloud::HasError(Error)) {
+            STORAGE_INFO("PingRegion #" << this->RequestId << " completed");
+        } else {
+            STORAGE_INFO(
+                "PingRegion #" << this->RequestId
+                              << " failed: " << FormatError(Error));
+        }
+    }
+
+private:
+    NCloud::NProto::TError Error;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename T>
 using TFileStoreHandler = TRequestHandler<TFileStoreContext, T>;
 
@@ -1450,6 +1507,7 @@ void StartRequests(TExecutorContext& execCtx, TFileStoreContext& appCtx)
         TListMmapRegionsCustomHandler::Start(execCtx, appCtx);
         TMmapCustomHandler::Start(execCtx, appCtx);
         TMunmapCustomHandler::Start(execCtx, appCtx);
+        TPingRegionCustomHandler::Start(execCtx, appCtx);
     }
 }
 

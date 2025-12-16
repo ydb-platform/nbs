@@ -58,6 +58,7 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
         auto mmapInfo = result.ExtractResult();
         UNIT_ASSERT(mmapInfo.Address != nullptr);
         UNIT_ASSERT(mmapInfo.Id != 0);
+        UNIT_ASSERT_GT(mmapInfo.LatestActivityTimestamp, TInstant());
 
         auto regions = state.ListMmapRegions();
         UNIT_ASSERT_VALUES_EQUAL(1u, regions.size());
@@ -66,6 +67,9 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
         UNIT_ASSERT_VALUES_EQUAL(mmapInfo.FilePath, mmapInfoListed.FilePath);
         UNIT_ASSERT_VALUES_EQUAL(mmapInfo.Size, mmapInfoListed.Size);
         UNIT_ASSERT_VALUES_EQUAL(mmapInfo.Id, mmapInfoListed.Id);
+        UNIT_ASSERT_VALUES_EQUAL(
+            mmapInfo.LatestActivityTimestamp,
+            mmapInfoListed.LatestActivityTimestamp);
 
         const auto mmapInfoById = state.GetMmapRegion(mmapInfo.Id);
         UNIT_ASSERT_C(
@@ -76,6 +80,9 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
             mmapInfoById.GetResult().FilePath);
         UNIT_ASSERT_VALUES_EQUAL(mmapInfo.Size, mmapInfoById.GetResult().Size);
         UNIT_ASSERT_VALUES_EQUAL(mmapInfo.Id, mmapInfoById.GetResult().Id);
+        UNIT_ASSERT_VALUES_EQUAL(
+            mmapInfo.LatestActivityTimestamp,
+            mmapInfoById.GetResult().LatestActivityTimestamp);
 
         // validate that the process has indeed mmaped the file
         char* data = static_cast<char*>(mmapInfo.Address);
@@ -218,6 +225,33 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
 
         result = state.GetMmapRegion(999999);
         UNIT_ASSERT(HasError(result));
+    }
+
+    Y_UNIT_TEST(ShouldPingMmapRegion)
+    {
+        TTestEnv env;
+        TServerState state(env.GetBasePath());
+
+        const size_t fileSize = 4096;
+        TString relativePath = env.CreateTestFile("test_file.dat", fileSize);
+
+        auto result = state.CreateMmapRegion(relativePath, fileSize);
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+
+        const auto mmapInfo = result.ExtractResult();
+        const auto oldTimestamp = mmapInfo.LatestActivityTimestamp;
+
+        // wait a bit to ensure timestamp difference
+        Sleep(TDuration::MilliSeconds(10));
+
+        auto pingResult = state.PingRegion(mmapInfo.Id);
+        UNIT_ASSERT_C(!HasError(pingResult), FormatError(pingResult));
+
+        auto getResult = state.GetMmapRegion(mmapInfo.Id);
+        UNIT_ASSERT(!HasError(getResult));
+        UNIT_ASSERT_GT(
+            getResult.GetResult().LatestActivityTimestamp,
+            oldTimestamp);
     }
 }
 

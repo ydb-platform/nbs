@@ -735,6 +735,20 @@ class Client(object):
         return self.__impl.list_mmap_regions(
             request, idempotence_id, timestamp, trace_id, request_timeout)
 
+    def ping_region(
+        self,
+        mmap_id: int,
+        idempotence_id: Optional[str] = None,
+        timestamp: Optional[int] = None,
+        trace_id: Optional[str] = None,
+        request_timeout: Optional[float] = None
+    ) -> protos.TPingRegionResponse:
+        request = protos.TPingRegionRequest(
+            Id=mmap_id
+        )
+        return self.__impl.ping_region(
+            request, idempotence_id, timestamp, trace_id, request_timeout)
+
 
 def CreateClient(
         endpoint,

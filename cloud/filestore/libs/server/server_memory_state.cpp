@@ -148,4 +148,20 @@ TResultOrError<TMmapRegionMetadata> TServerState::GetMmapRegion(ui64 mmapId)
     return it->second.ToMetadata();
 }
 
+NProto::TError TServerState::PingRegion(ui64 mmapId)
+{
+    TLightWriteGuard guard(StateLock);
+    auto it = MmapRegions.find(mmapId);
+    if (it == MmapRegions.end()) {
+        return MakeError(
+            E_NOT_FOUND,
+            Sprintf("Mmap region not found: %lu", mmapId));
+    }
+
+    // update latest activity timestamp
+    it->second.UpdateActivityTimestamp();
+
+    return NProto::TError{};
+}
+
 }   // namespace NCloud::NFileStore::NServer

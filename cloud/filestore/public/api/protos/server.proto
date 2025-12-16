@@ -26,6 +26,9 @@ message TMmapRegionInfo
 
     // Size of the mmap region
     optional uint64 Size = 3;
+
+    // Timestamp of the latest ping activity (in microseconds since epoch)
+    optional int64 LatestActivityTimestamp = 4;
 }
 
 message TListMmapRegionsResponse
@@ -74,6 +77,24 @@ message TMunmapRequest
 }
 
 message TMunmapResponse
+{
+    // Optional error, set only if error happened
+    optional NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PingRegion request/response
+
+message TPingRegionRequest
+{
+    // Standard request headers
+    optional THeaders Headers = 1;
+
+    // Mmap region ID to ping
+    optional uint64 Id = 2;
+}
+
+message TPingRegionResponse
 {
     // Optional error, set only if error happened
     optional NCloud.NProto.TError Error = 1;
