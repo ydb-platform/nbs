@@ -42,4 +42,5 @@ message TTestConfig {
   optional uint64 MaxWriteRequestCount = 11;
   // Used in TUnalignedTestScenario
   optional TUnalignedTestConfig UnalignedTest = 12;
+  optional uint32 TestCount = 13;
 }

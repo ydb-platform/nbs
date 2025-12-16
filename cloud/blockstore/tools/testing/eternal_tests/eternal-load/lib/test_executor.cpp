@@ -9,6 +9,7 @@
 #include <library/cpp/aio/aio.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/vector.h>
 #include <util/generic/yexception.h>
 #include <util/string/builder.h>
 #include <util/system/file.h>
@@ -25,15 +26,22 @@ using namespace NThreading;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TTestScenario
+{
+    ITestScenarioPtr Scenario;
+    TFileHandle File;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TTestExecutor: public ITestExecutor
 {
 private:
     class TWorkerService;
 
     const TInstant TestStartTimestamp;
-    ITestScenarioPtr TestScenario;
+    TVector<std::unique_ptr<TTestScenario>> TestScenarios;
     IFileIOServicePtr FileService;
-    TFileHandle File;
 
     std::atomic_bool ShouldStop = false;
     std::atomic_bool Failed = false;
@@ -70,13 +78,17 @@ class TTestExecutor::TWorkerService: public ITestExecutorIOService
 {
 private:
     TTestExecutor& Executor;
+    TTestScenario& Scenario;
     ITestScenarioWorker& Worker;
     TPromise<void> StopPromise = NewPromise();
     std::atomic_int PendingRequestCount = 0;
     int RequestCount = 0;
 
 public:
-    TWorkerService(TTestExecutor& executor, ITestScenarioWorker& worker);
+    TWorkerService(
+        TTestExecutor& executor,
+        TTestScenario& scenario,
+        ITestScenarioWorker& worker);
 
     void Run();
     TFuture<void> GetFuture() const;
@@ -116,28 +128,37 @@ TTestExecutor::TTestExecutor(
         TTestExecutorSettings settings,
         IFileIOServicePtr service)
     : TestStartTimestamp(Now())
-    , TestScenario(std::move(settings.TestScenario))
     , FileService(std::move(service))
-    , File(settings.FilePath, GetFileOpenMode(settings.NoDirect))
     , PreviousStatsTimestamp(TestStartTimestamp)
     , Log(settings.Log)
     , RunInCallbacks(settings.RunInCallbacks)
     , PrintDebugStats(settings.PrintDebugStats)
 {
-    File.Resize(static_cast<i64>(settings.FileSize));
+    for (const auto& it: settings.TestScenarios) {
+        auto scenario = std::make_unique<TTestScenario>();
 
-    for (ui32 i = 0; i < TestScenario->GetWorkerCount(); i++) {
-        WorkerServices.push_back(
-            std::make_unique<TWorkerService>(
-                *this,
-                TestScenario->GetWorker(i)));
+        scenario->Scenario = it.TestScenario;
+        scenario->File = {it.FilePath, GetFileOpenMode(settings.NoDirect)};
+        scenario->File.Resize(static_cast<i64>(it.FileSize));
+
+        for (ui32 i = 0; i < it.TestScenario->GetWorkerCount(); i++) {
+            WorkerServices.push_back(
+                std::make_unique<TWorkerService>(
+                    *this,
+                    *scenario,
+                    it.TestScenario->GetWorker(i)));
+        }
+
+        TestScenarios.push_back(std::move(scenario));
     }
 }
 
 bool TTestExecutor::Run()
 {
-    if (!TestScenario->Init(File)) {
-        return false;
+    for (const auto& it: TestScenarios) {
+        if (!it->Scenario->Init(it->File)) {
+            return false;
+        }
     }
 
     STORAGE_INFO("Started TTestExecutor");
@@ -172,7 +193,10 @@ bool TTestExecutor::Run()
     }
 
     FileService->Stop();
-    File.Close();
+
+    for (const auto& it: TestScenarios) {
+        it->File.Close();
+    }
 
     STORAGE_INFO("Stopped TTestExecutor");
     return !Failed.load();
@@ -220,8 +244,10 @@ void TTestExecutor::PrintStats()
 
 TTestExecutor::TWorkerService::TWorkerService(
         TTestExecutor& executor,
+        TTestScenario& scenario,
         ITestScenarioWorker& worker)
     : Executor(executor)
+    , Scenario(scenario)
     , Worker(worker)
 {}
 
@@ -298,7 +324,7 @@ void TTestExecutor::TWorkerService::Read(
     PendingRequestCount++;
 
     Executor.FileService->AsyncRead(
-        Executor.File,
+        Scenario.File,
         static_cast<i64>(offset),
         TArrayRef(static_cast<char*>(buffer), count),
         [this, count, callback = std::move(callback)](
@@ -332,7 +358,7 @@ void TTestExecutor::TWorkerService::Write(
     PendingRequestCount++;
 
     Executor.FileService->AsyncWrite(
-        Executor.File,
+        Scenario.File,
         static_cast<i64>(offset),
         TArrayRef(static_cast<const char*>(buffer), count),
         [this, count, callback = std::move(callback)](
@@ -589,9 +615,12 @@ IFileIOServicePtr CreateFileService(
 
 ITestExecutorPtr CreateTestExecutor(TTestExecutorSettings settings)
 {
-    auto fileService = CreateFileService(
-        settings.FileService,
-        settings.TestScenario->GetWorkerCount());
+    ui64 sumWorkerCount = 0;
+    for (const auto& it: settings.TestScenarios) {
+        sumWorkerCount += it.TestScenario->GetWorkerCount();
+    }
+
+    auto fileService = CreateFileService(settings.FileService, sumWorkerCount);
 
     return std::make_shared<TTestExecutor>(
         std::move(settings),

@@ -41,10 +41,12 @@ Y_UNIT_TEST_SUITE(ValidateTest)
         auto log = logging->CreateLog("ETERNAL_EXECUTOR");
 
         auto executor = NTesting::CreateTestExecutor(
-            {.TestScenario =
-                 NTesting::CreateAlignedTestScenario(configHolder, log),
+            {.TestScenarios = {{
+                 .TestScenario =
+                     NTesting::CreateAlignedTestScenario(configHolder, log),
+                 .FilePath = filePath,
+             }},
              .FileService = NTesting::ETestExecutorFileService::AsyncIo,
-             .FilePath = filePath,
              .Log = log});
 
         UNIT_ASSERT(executor->Run());

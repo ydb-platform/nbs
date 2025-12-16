@@ -120,6 +120,15 @@ void TOptions::Parse(int argc, char** argv)
         .StoreResult(&FileSize);
 
     opts.AddLongOption(
+        "test-count",
+        "run several test scenarios in parallel, "
+        "each with own file, the parameter --file "
+        "should have a placeholder {}")
+        .RequiredArgument("NUM")
+        .StoreResult(&TestCount)
+        .DefaultValue(0);
+
+    opts.AddLongOption(
         "request-block-count",
         "specify request size in number of blocks")
         .RequiredArgument("NUM")
@@ -133,7 +142,7 @@ void TOptions::Parse(int argc, char** argv)
         .StoreResult(&BlockSize)
         .DefaultValue(4096);
 
-    opts.AddLongOption("iodepth")
+    opts.AddLongOption("iodepth", "number of workers in a scenario")
         .RequiredArgument("NUM")
         .DefaultValue(32)
         .StoreResult(&IoDepth);

@@ -23,8 +23,13 @@ _SCENARIOS = [
     ("unaligned", "sync", False)
 ]
 
+_SIMPLE_SCENARIOS = [
+    ("sequential", "sync", False),
+    ("random", "sync", False),
+]
 
-def __run_load_test(file_name, scenario="aligned", engine="asyncio", direct=True, timeout=None):
+
+def __run_load_test(file_name, scenario="aligned", engine="asyncio", direct=True, timeout=None, test_count=0):
     eternal_load = yatest_common.binary_path(_BINARY_PATH)
 
     params = [
@@ -38,7 +43,8 @@ def __run_load_test(file_name, scenario="aligned", engine="asyncio", direct=True
         '--filesize', str(_FILE_SIZE),
         '--iodepth', str(_IO_DEPTH),
         '--write-rate', '70',
-        '--debug'
+        '--debug',
+        '--test-count', str(test_count)
     ]
 
     if not direct:
@@ -69,7 +75,7 @@ def test_load_fails(scenario, engine, direct):
         assert (result.returncode == 1) and (result.stderr.find('Wrong') != -1) and (result.stderr.find('MiB/s') != -1)
 
 
-@pytest.mark.parametrize("scenario,engine,direct", _SCENARIOS)
+@pytest.mark.parametrize("scenario,engine,direct", _SCENARIOS + _SIMPLE_SCENARIOS)
 def test_load_works(scenario, engine, direct):
     timeout = 30
     tmp_file = tempfile.NamedTemporaryFile(suffix=".test")
@@ -104,3 +110,22 @@ def test_load_async_io_fails(fixture_mount_tmpfs):
         assert result.returncode == 1
         msg = 'Can\'t write to file: (yexception) (No space left on device) async IO operation failed'
         assert result.stderr.find(msg) != -1
+
+
+def test_multiple_files():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        pattern = os.path.join(tmpdir, "testfile_{}.test")
+        test_count = 5
+        tmp_files = [pattern.format(i) for i in range(test_count)]
+
+        try:
+            assert __run_load_test(pattern, scenario="unaligned", engine="sync", direct=False, timeout=10, test_count=test_count).returncode == 0
+        except TimeoutExpired:
+            pass
+        else:
+            pytest.fail(f"Eternal load should not have finished within {timeout} seconds")
+
+        for f in tmp_files:
+            assert os.path.exists(f), f"Expected file {f} to exist"
+
+        assert not os.path.exists(pattern), f"Pattern string {pattern} should not have been created as a literal file"

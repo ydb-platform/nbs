@@ -9,6 +9,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/size_literals.h>
+#include <util/string/printf.h>
 #include <util/system/file.h>
 
 namespace NCloud::NBlockStore {
@@ -74,9 +75,10 @@ int TTest::Run()
             Y_ENSURE(Options->FileSize.Defined(), "You need to specify the file size");
             Y_ENSURE(Options->WriteRate <= 100, "Write rate should be in range [0, 100]");
 
-            ConfigHolder = CreateTestConfig(
+            ConfigHolder = CreateTestConfig(TCreateTestConfigArguments
                 {.FilePath = *Options->FilePath,
                  .FileSize = *Options->FileSize * 1_GB,
+                 .TestCount = Options->TestCount,
                  .IoDepth = Options->IoDepth,
                  .BlockSize = Options->BlockSize,
                  .WriteRate = Options->WriteRate,
@@ -118,21 +120,27 @@ TTestExecutorSettings TTest::ConfigureTest() const
 
     TTestExecutorSettings settings;
 
+    std::function<ITestScenarioPtr(IConfigHolderPtr)> scenarioFactory;
+
     switch (Options->Scenario) {
         case EScenario::Aligned:
-            settings.TestScenario =
-                CreateAlignedTestScenario(ConfigHolder, log);
+            scenarioFactory = [&](IConfigHolderPtr config)
+            {
+                return CreateAlignedTestScenario(std::move(config), log);
+            };
             STORAGE_INFO("Using test scenario: Aligned");
             break;
 
         case EScenario::Unaligned:
-            settings.TestScenario =
-                CreateUnalignedTestScenario(ConfigHolder, log);
+            scenarioFactory = [&](IConfigHolderPtr config)
+            {
+                return CreateUnalignedTestScenario(std::move(config), log);
+            };
             STORAGE_INFO("Using test scenario: Unaligned");
             break;
 
         default:
-            Y_ABORT("Unsupported Scenario value %d", Options->Engine);
+            Y_ABORT("Unsupported Scenario value %d", Options->Scenario);
     }
 
     switch (Options->Engine) {
@@ -155,11 +163,42 @@ TTestExecutorSettings TTest::ConfigureTest() const
             Y_ABORT("Unsupported EIoEngine value %d", Options->Engine);
     }
 
-    settings.FilePath = ConfigHolder->GetConfig().GetFilePath();
-    STORAGE_INFO("Using test file: " << settings.FilePath);
+    TVector<IConfigHolderPtr> testConfigs;
+    const auto& config = ConfigHolder->GetConfig();
 
-    settings.FileSize = ConfigHolder->GetConfig().GetFileSize();
-    STORAGE_INFO("Using test file size: " << settings.FileSize);
+    if (config.GetTestCount()) {
+        const auto pos = config.GetFilePath().find("{}");
+        Y_ABORT_UNLESS(
+            pos != TString::npos,
+            "If the test count parameter is set, the file name should contain "
+            "a placeholder {}");
+
+        const auto str1 = config.GetFilePath().substr(0, pos);
+        const auto str2 = config.GetFilePath().substr(pos + 2);
+
+        STORAGE_INFO("Using test file pattern: " << config.GetFilePath());
+        STORAGE_INFO("Using test file count: " << config.GetTestCount());
+
+        for (ui32 i = 0; i < config.GetTestCount(); i++) {
+            // Tests may modify config - each test should work with own copy
+            IConfigHolderPtr testConfig = ConfigHolder->Clone();
+            testConfig->GetConfig().SetFilePath(
+                Sprintf("%s%u%s", str1.c_str(), i, str2.c_str()));
+            testConfigs.push_back(std::move(testConfig));
+        }
+    } else {
+        STORAGE_INFO("Using test file: " << config.GetFilePath());
+        testConfigs.push_back(ConfigHolder);
+    }
+
+    STORAGE_INFO("Using test file size: " << config.GetFileSize());
+
+    for (const auto& testConfig: testConfigs) {
+        settings.TestScenarios.push_back(
+            {.TestScenario = scenarioFactory(testConfig),
+             .FilePath = testConfig->GetConfig().GetFilePath(),
+             .FileSize = testConfig->GetConfig().GetFileSize()});
+    }
 
     settings.RunInCallbacks = Options->RunInCallbacks;
     STORAGE_INFO(
