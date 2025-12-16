@@ -105,14 +105,14 @@ func (c *nbsServerControllerService) CreateVolume(
 			if describeVolumeErr == nil {
 				return nil, status.Errorf(
 					codes.AlreadyExists,
-					"Failed to create volume: %w", describeVolumeErr)
+					"Failed to create volume: %v", describeVolumeErr)
 			}
 		}
 	}
 
 	if err != nil {
 		return nil, status.Errorf(
-			codes.Internal, "Failed to create volume: %w", err)
+			codes.Internal, "Failed to create volume: %v", err)
 	}
 
 	return &csi.CreateVolumeResponse{Volume: &csi.Volume{
@@ -185,7 +185,7 @@ func (c *nbsServerControllerService) DeleteVolume(
 		if err != nil {
 			return nil, status.Errorf(
 				codes.Internal,
-				"Failed to destroy disk: %w", err)
+				"Failed to destroy disk: %v", err)
 		}
 	}
 
@@ -196,7 +196,7 @@ func (c *nbsServerControllerService) DeleteVolume(
 		if err != nil {
 			return nil, status.Errorf(
 				codes.Internal,
-				"Failed to destroy filestore: %w", err)
+				"Failed to destroy filestore: %v", err)
 		}
 	}
 
@@ -208,7 +208,7 @@ func (c *nbsServerControllerService) ValidateVolumeCapabilities(
 	req *csi.ValidateVolumeCapabilitiesRequest,
 ) (*csi.ValidateVolumeCapabilitiesResponse, error) {
 
-	log.Printf("csi.ValidateVolumeCapabilities: %+v", req)
+	log.Printf("csi.ValidateVolumeCapabilities: %v", req)
 
 	if req.VolumeId == "" {
 		return nil, status.Error(
@@ -232,7 +232,7 @@ func (c *nbsServerControllerService) ValidateVolumeCapabilities(
 		}
 
 		return nil, status.Errorf(
-			codes.Internal, "Failed to validate volume capabilities: %w", err)
+			codes.Internal, "Failed to validate volume capabilities: %v", err)
 	}
 
 	return &csi.ValidateVolumeCapabilitiesResponse{}, nil
