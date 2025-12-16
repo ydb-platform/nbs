@@ -183,10 +183,6 @@ void TMirrorPartitionActor::HandleDiskRegistryBasedPartCountersCombined(
 
     auto* msg = ev->Get();
 
-    if (msg->SeqNo < StatisticSeqNo) {
-        return;
-    }
-
     for (auto& counters: msg->Counters) {
         UpdateCounters(ctx, counters.ActorId, std::move(counters.CountersData));
     }

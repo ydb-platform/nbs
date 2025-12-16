@@ -32,7 +32,7 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    void SendStatistics(const NActors::TActorContext& ctx);
+    void ReplyAndDie(const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateWork);

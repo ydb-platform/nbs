@@ -37,7 +37,7 @@ void TDiskRegistryBasedPartitionStatisticsCollectorActor::Bootstrap(
     ctx.Schedule(UpdateCountersInterval, new TEvents::TEvWakeup());
 }
 
-void TDiskRegistryBasedPartitionStatisticsCollectorActor::SendStatistics(
+void TDiskRegistryBasedPartitionStatisticsCollectorActor::ReplyAndDie(
     const TActorContext& ctx)
 {
     NCloud::Send(
