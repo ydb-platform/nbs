@@ -29,3 +29,7 @@ PEERDIR(
 )
 
 END()
+
+RECURSE(
+    test_ignore_unknown_conf_params
+)
