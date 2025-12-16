@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     config.cpp
+    helpers.cpp
     listener.cpp
 )
 
@@ -17,3 +18,5 @@ PEERDIR(
 )
 
 END()
+
+RECURSE_FOR_TESTS(ut)
