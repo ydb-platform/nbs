@@ -15,6 +15,5 @@ message TNfsGatewayConfig
     optional string FileSystemId = 2;
 
     // Session options.
-    optional uint32 SessionRetryTimeout = 100;
     optional uint32 SessionPingTimeout = 101;
 }

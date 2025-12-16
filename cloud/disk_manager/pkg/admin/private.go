@@ -823,6 +823,86 @@ func newFinishExternalFilesystemDeletionCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type migrateDiskBetweenCells struct {
+	config    *client_config.ClientConfig
+	diskID    string
+	srcZoneID string
+	dstZoneID string
+	async     bool
+}
+
+func (c *migrateDiskBetweenCells) run() error {
+	ctx := newContext(c.config)
+
+	client, err := internal_client.NewClient(ctx, c.config)
+	if err != nil {
+		return fmt.Errorf("failed to create client: %w", err)
+	}
+	defer client.Close()
+
+	req := &disk_manager.MigrateDiskRequest{
+		DiskId: &disk_manager.DiskId{
+			DiskId: c.diskID,
+			ZoneId: c.srcZoneID,
+		},
+		DstZoneId:               c.dstZoneID,
+		IsMigrationBetweenCells: true,
+	}
+
+	resp, err := client.MigrateDisk(getRequestContext(ctx), req)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Operation: %v\n", resp.Id)
+
+	if c.async {
+		return nil
+	}
+
+	return internal_client.WaitOperation(ctx, client, resp.Id)
+}
+
+func newMigrateDiskBetweenCellsCmd(config *client_config.ClientConfig) *cobra.Command {
+	c := &migrateDiskBetweenCells{
+		config: config,
+	}
+
+	cmd := &cobra.Command{
+		Use:     "migrate-disk-between-cells",
+		Aliases: []string{"migrate_disk_between_cells"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(&c.diskID, "disk-id", "", "disk ID; required")
+	if err := cmd.MarkFlagRequired("disk-id"); err != nil {
+		log.Fatalf("Error setting flag disk-id as required: %v", err)
+	}
+
+	cmd.Flags().StringVar(&c.srcZoneID, "src-zone-id", "", "source zone ID; required")
+	if err := cmd.MarkFlagRequired("src-zone-id"); err != nil {
+		log.Fatalf("Error setting flag src-zone-id as required: %v", err)
+	}
+
+	cmd.Flags().StringVar(&c.dstZoneID, "dst-zone-id", "", "destination zone ID; required")
+	if err := cmd.MarkFlagRequired("dst-zone-id"); err != nil {
+		log.Fatalf("Error setting flag dst-zone-id as required: %v", err)
+	}
+
+	cmd.Flags().BoolVar(
+		&c.async,
+		"async",
+		false,
+		"do not wait for task ending",
+	)
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newPrivateCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
@@ -844,6 +924,7 @@ func newPrivateCmd(
 		newGetCheckpointSizeCmd(clientConfig, serverConfig),
 		newFinishExternalFilesystemCreationCmd(clientConfig),
 		newFinishExternalFilesystemDeletionCmd(clientConfig),
+		newMigrateDiskBetweenCellsCmd(clientConfig),
 	)
 
 	return cmd

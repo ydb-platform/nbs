@@ -3252,7 +3252,10 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 }
                 case TEvNonreplPartitionPrivate::EvGetDeviceForRangeRequest: {
                     auto sendTo = event->Sender;
-                    runtime.Send(
+                    // Due to the specifics of the test actor system, calling
+                    // runtime.Send() causes the actor message handler to be
+                    // called while it is handling another message.
+                    runtime.Schedule(
                         new IEventHandle(
                             sendTo,
                             sendTo,
@@ -3260,6 +3263,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                             0,
                             event->Cookie,
                             nullptr),
+                        TDuration::MilliSeconds(1),
                         0);
                     ++undeliveredDescribeRequestCount;
                     return true;

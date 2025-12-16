@@ -4,6 +4,7 @@
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/core/helpers.h>
+#include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 #include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
@@ -16,6 +17,8 @@
 #include <utility>
 
 namespace NCloud::NFileStore::NStorage {
+
+LWTRACE_USING(FILESTORE_STORAGE_PROVIDER);
 
 using namespace NActors;
 
@@ -206,6 +209,11 @@ public:
 
     void Bootstrap(const TActorContext& ctx)
     {
+        FILESTORE_TRACK(
+            RequestReceived_ServiceWorker,
+            RequestInfo->CallContext,
+            "GenerateBlobIds");
+
         Rope = CreateRopeFromIovecs(WriteRequest);
 
         auto request =
@@ -314,6 +322,11 @@ private:
 
     void WriteBlobs(const TActorContext& ctx)
     {
+        FILESTORE_TRACK(
+            RequestReceived_ServiceWorker,
+            RequestInfo->CallContext,
+            "WriteBlobs");
+
         RemainingBlobsToWrite = GenerateBlobIdsResponse.BlobsSize();
         ui64 offset = BlobRange.Offset - Range.Offset;
 
@@ -456,6 +469,11 @@ private:
 
     void AddData(const TActorContext& ctx)
     {
+        FILESTORE_TRACK(
+            RequestReceived_ServiceWorker,
+            RequestInfo->CallContext,
+            "AddData");
+
         auto request = std::make_unique<TEvIndexTablet::TEvAddDataRequest>();
 
         request->Record.MutableHeaders()->CopyFrom(WriteRequest.GetHeaders());
@@ -552,13 +570,11 @@ private:
             msg->Record);
 
         if (HasError(msg->GetError())) {
-            return WriteData(ctx, msg->GetError());
+            WriteData(ctx, msg->GetError());
+            return;
         }
 
-        auto response = std::make_unique<TEvService::TEvWriteDataResponse>();
-        NCloud::Reply(ctx, *RequestInfo, std::move(response));
-
-        Die(ctx);
+        ReplyAndDie(ctx, {} /* record */);
     }
 
     /**
@@ -566,8 +582,14 @@ private:
      */
     void WriteData(const TActorContext& ctx, const NProto::TError& error)
     {
+        FILESTORE_TRACK(
+            RequestReceived_ServiceWorker,
+            RequestInfo->CallContext,
+            "WriteData");
+
         WriteDataFallbackEnabled = true;
         MoveIovecsToBuffer(WriteRequest);
+
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
@@ -605,23 +627,31 @@ private:
             "%s WriteData succeeded",
             LogTag.c_str());
 
-        auto response = std::make_unique<TEvService::TEvWriteDataResponse>();
-        response->Record = std::move(msg->Record);
-        NCloud::Reply(ctx, *RequestInfo, std::move(response));
-
-        Die(ctx);
+        ReplyAndDie(ctx, std::move(msg->Record));
     }
 
-    void ReplyAndDie(const TActorContext& ctx)
+    void ReplyAndDie(
+        const TActorContext& ctx,
+        NProto::TWriteDataResponse record)
     {
-        auto response = std::make_unique<TEvService::TEvWriteDataResponse>();
-        NCloud::Reply(ctx, *RequestInfo, std::move(response));
+        FILESTORE_TRACK(
+            ResponseSent_ServiceWorker,
+            RequestInfo->CallContext,
+            "WriteData");
 
+        auto response = std::make_unique<TEvService::TEvWriteDataResponse>();
+        response->Record = std::move(record);
+        NCloud::Reply(ctx, *RequestInfo, std::move(response));
         Die(ctx);
     }
 
     void HandleError(const TActorContext& ctx, const NProto::TError& error)
     {
+        FILESTORE_TRACK(
+            ResponseSent_ServiceWorker,
+            RequestInfo->CallContext,
+            "WriteData");
+
         auto response =
             std::make_unique<TEvService::TEvWriteDataResponse>(error);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
@@ -647,6 +677,8 @@ void TStorageServiceActor::HandleWriteData(
 {
     TInstant startTime = ctx.Now();
     auto* msg = ev->Get();
+
+    FILESTORE_TRACK(RequestReceived_Service, msg->CallContext, "WriteData");
 
     const auto& clientId = GetClientId(msg->Record);
     const auto& sessionId = GetSessionId(msg->Record);
