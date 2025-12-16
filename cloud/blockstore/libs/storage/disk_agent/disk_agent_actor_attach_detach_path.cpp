@@ -139,7 +139,7 @@ void TDiskAgentActor::HandleAttachPaths(
             "No paths to attach. Attached paths: [%s]",
             JoinSeq(",", alreadyAttachedPaths).c_str());
 
-        auto deviceConfigs = State->GetDevicesByPath(pathsToAttachRange);
+        auto deviceConfigs = State->GetDevicesByPath(alreadyAttachedPaths);
         auto response =
             std::make_unique<TEvDiskAgent::TEvAttachPathsResponse>();
         response->Record.MutableAttachedDevices()->Assign(
@@ -161,14 +161,11 @@ void TDiskAgentActor::HandleAttachPaths(
     PendingAttachDetachPathsRequest =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    auto future = State->AttachPaths(pathsToAttach);
-
-    auto* actorSystem = TActivationContext::ActorSystem();
-    auto selfId = ctx.SelfID;
+    auto future = State->PreparePaths(pathsToAttach);
 
     future.Subscribe(
-        [actorSystem,
-         selfId,
+        [actorSystem = TActivationContext::ActorSystem(),
+         selfId = ctx.SelfID,
          pathsToAttach = std::move(pathsToAttach),
          alreadyAttachedPaths = std::move(alreadyAttachedPaths)](
             TFuture<TResultOrError<TDiskAgentState::TAttachPathResult>>
@@ -214,11 +211,10 @@ void TDiskAgentActor::HandlePathsAttached(
         return;
     }
 
-    State->PathsAttached(
+    State->AttachPaths(
         std::move(msg->Configs),
         std::move(msg->Devices),
-        std::move(msg->Stats),
-        msg->PathsToAttach);
+        std::move(msg->Stats));
 
     auto deviceConfigs = State->GetDevicesByPath(msg->PathsToAttach);
 

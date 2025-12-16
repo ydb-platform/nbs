@@ -188,14 +188,13 @@ public:
         TVector<TStorageIoStatsPtr> Stats;
     };
 
-    NThreading::TFuture<TResultOrError<TAttachPathResult>> AttachPaths(
+    NThreading::TFuture<TResultOrError<TAttachPathResult>> PreparePaths(
         TVector<TString> pathsToAttach);
 
-    void PathsAttached(
+    void AttachPaths(
         TVector<NProto::TDeviceConfig> configs,
         TVector<IStoragePtr> devices,
-        TVector<TStorageIoStatsPtr> stats,
-        const TVector<TString>& pathsToAttach);
+        TVector<TStorageIoStatsPtr> stats);
 
 private:
     TStorageAdapterPtr GetDeviceStorageAdapter(
@@ -237,9 +236,6 @@ private:
         const THashSet<TString>& lostDevicesIds) const;
 
     void CheckIfDeviceIsDisabled(const TString& uuid, const TString& clientId);
-
-    NThreading::TFuture<TResultOrError<TAttachPathResult>> AttachPathsImpl(
-        TAttachPathResult result);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

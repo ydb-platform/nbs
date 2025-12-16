@@ -295,25 +295,33 @@ NProto::TError CompareConfigs(
         return MakeError(E_ARGUMENT, "device count mismatch");
     }
 
-    auto comparator = [](const auto& lhs, const auto& rhs)
+    auto byId = [](const auto& lhs, const auto& rhs)
     {
         return lhs.GetDeviceUUID() < rhs.GetDeviceUUID();
     };
 
-    Sort(expectedConfigs, comparator);
-    Sort(actualConfigs, comparator);
+    Sort(expectedConfigs, byId);
+    Sort(actualConfigs, byId);
+
+    auto equals = [](const auto& lhs, const auto& rhs, auto... by)
+    {
+        return (... && (std::invoke(by, lhs) == std::invoke(by, rhs)));
+    };
 
     auto [it1, it2] = std::ranges::mismatch(
         expectedConfigs,
         actualConfigs,
         [&](const auto& expected, const auto& actual)
         {
-            return expected.GetBlocksCount() == actual.GetBlocksCount() &&
-                   expected.GetBlockSize() == actual.GetBlockSize() &&
-                   expected.GetPhysicalOffset() == actual.GetPhysicalOffset() &&
-                   expected.GetSerialNumber() == actual.GetSerialNumber() &&
-                   expected.GetPoolName() == actual.GetPoolName() &&
-                   expected.GetDeviceName() == actual.GetDeviceName();
+            return equals(
+                expected,
+                actual,
+                &NProto::TDeviceConfig::GetBlocksCount,
+                &NProto::TDeviceConfig::GetBlockSize,
+                &NProto::TDeviceConfig::GetPhysicalOffset,
+                &NProto::TDeviceConfig::GetSerialNumber,
+                &NProto::TDeviceConfig::GetPoolName,
+                &NProto::TDeviceConfig::GetDeviceName);
         });
 
     if (it1 != expectedConfigs.end()) {
@@ -1323,21 +1331,17 @@ TFuture<void> TDiskAgentState::DetachPaths(const TVector<TString>& paths)
         });
 }
 
-auto TDiskAgentState::AttachPaths(TVector<TString> pathsToAttach)
+auto TDiskAgentState::PreparePaths(TVector<TString> pathsToAttach)
         -> TFuture<TResultOrError<TAttachPathResult>>
 {
-    THashSet<TString> pathsSet(pathsToAttach.begin(), pathsToAttach.end());
-
-    auto devices = GetDevicesByPath(pathsToAttach);
-
     return BackgroundThreadPool->Execute(
         [agentConfig = AgentConfig,
+         devices = GetDevicesByPath(pathsToAttach),
          log = Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
 
          nvmeManager = NvmeManager,
          storageProvider = StorageProvider,
          storageConfig = StorageConfig,
-         devices = std::move(devices),
          pathsToAttach = std::move(pathsToAttach)]() mutable
         {
             auto future = InitializePaths(
@@ -1355,11 +1359,10 @@ auto TDiskAgentState::AttachPaths(TVector<TString> pathsToAttach)
         });
 }
 
-void TDiskAgentState::PathsAttached(
+void TDiskAgentState::AttachPaths(
     TVector<NProto::TDeviceConfig> configs,
     TVector<IStoragePtr> devices,
-    TVector<TStorageIoStatsPtr> stats,
-    const TVector<TString>& pathsToAttach)
+    TVector<TStorageIoStatsPtr> stats)
 {
     TDuration ioTimeout;
     if (!AgentConfig->GetDeviceIOTimeoutsDisabled()) {
@@ -1387,10 +1390,7 @@ void TDiskAgentState::PathsAttached(
         DeviceClient->AttachDevice(
             d->Config.GetDeviceUUID(),
             std::move(storageAdapter));
-    }
-
-    for (const auto& path: pathsToAttach) {
-        AttachedPaths.emplace(path);
+        AttachedPaths.emplace(d->Config.GetDeviceName());
     }
 }
 
