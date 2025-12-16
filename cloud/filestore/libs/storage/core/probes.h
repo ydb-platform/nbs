@@ -69,6 +69,34 @@
             NCloud::NProbeParam::RequestType,                                  \
             NCloud::NProbeParam::RequestId)                                    \
     )                                                                          \
+    PROBE(RequestReceived_Service,                                             \
+        GROUPS("NFSRequest"),                                                  \
+        TYPES(TString, ui64),                                                  \
+        NAMES(                                                                 \
+            NCloud::NProbeParam::RequestType,                                  \
+            NCloud::NProbeParam::RequestId)                                    \
+    )                                                                          \
+    PROBE(ResponseSent_Service,                                                \
+        GROUPS("NFSRequest"),                                                  \
+        TYPES(TString, ui64),                                                  \
+        NAMES(                                                                 \
+            NCloud::NProbeParam::RequestType,                                  \
+            NCloud::NProbeParam::RequestId)                                    \
+    )                                                                          \
+    PROBE(RequestReceived_ServiceWorker,                                       \
+        GROUPS("NFSRequest"),                                                  \
+        TYPES(TString, ui64),                                                  \
+        NAMES(                                                                 \
+            NCloud::NProbeParam::RequestType,                                  \
+            NCloud::NProbeParam::RequestId)                                    \
+    )                                                                          \
+    PROBE(ResponseSent_ServiceWorker,                                          \
+        GROUPS("NFSRequest"),                                                  \
+        TYPES(TString, ui64),                                                  \
+        NAMES(                                                                 \
+            NCloud::NProbeParam::RequestType,                                  \
+            NCloud::NProbeParam::RequestId)                                    \
+    )                                                                          \
     PROBE(TxInit,                                                              \
         GROUPS("NFSRequest"),                                                  \
         TYPES(TString, ui64),                                                  \

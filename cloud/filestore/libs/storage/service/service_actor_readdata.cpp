@@ -1,8 +1,10 @@
 #include "service_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
+#include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/tablet/model/sparse_segment.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
@@ -15,6 +17,8 @@
 #include <memory>
 
 namespace NCloud::NFileStore::NStorage {
+
+LWTRACE_USING(FILESTORE_STORAGE_PROVIDER);
 
 using namespace NActors;
 
@@ -84,7 +88,7 @@ private:
         const TEvIndexTablet::TEvDescribeDataResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void ReadBlobIfNeeded(const TActorContext& ctx);
+    void ReadBlobsIfNeeded(const TActorContext& ctx);
 
     void HandleReadBlobResponse(
         const TEvBlobStorage::TEvGetResult::TPtr& ev,
@@ -155,6 +159,11 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
 
 void TReadDataActor::DescribeData(const TActorContext& ctx)
 {
+    FILESTORE_TRACK(
+        RequestReceived_ServiceWorker,
+        RequestInfo->CallContext,
+        "DescribeData");
+
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
@@ -300,18 +309,23 @@ void TReadDataActor::HandleDescribeDataResponse(
         msg->Record.BlobPiecesSize());
 
     DescribeResponse.CopyFrom(msg->Record);
-    ReadBlobIfNeeded(ctx);
+    ReadBlobsIfNeeded(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TReadDataActor::ReadBlobIfNeeded(const TActorContext& ctx)
+void TReadDataActor::ReadBlobsIfNeeded(const TActorContext& ctx)
 {
     RemainingBlobsToRead = DescribeResponse.GetBlobPieces().size();
     if (RemainingBlobsToRead == 0) {
         ReplyAndDie(ctx);
         return;
     }
+
+    FILESTORE_TRACK(
+        RequestReceived_ServiceWorker,
+        RequestInfo->CallContext,
+        "ReadBlobs");
 
     auto readBlobCallContext = MakeIntrusive<TCallContext>(
         RequestInfo->CallContext->FileSystemId,
@@ -518,6 +532,11 @@ void TReadDataActor::ReadData(
     const TActorContext& ctx,
     const TString& fallbackReason)
 {
+    FILESTORE_TRACK(
+        RequestReceived_ServiceWorker,
+        RequestInfo->CallContext,
+        "ReadData");
+
     ReadDataFallbackEnabled = true;
 
     if (fallbackReason) {
@@ -567,6 +586,11 @@ void TReadDataActor::HandleReadDataResponse(
     response->Record = std::move(msg->Record);
 
     MoveBufferToIovecsIfNeeded(ctx, response->Record);
+
+    FILESTORE_TRACK(
+        ResponseSent_ServiceWorker,
+        RequestInfo->CallContext,
+        "ReadData");
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
@@ -673,8 +697,12 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
 
     MoveBufferToIovecsIfNeeded(ctx, response->Record);
 
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    FILESTORE_TRACK(
+        ResponseSent_ServiceWorker,
+        RequestInfo->CallContext,
+        "ReadData");
 
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
 
@@ -682,6 +710,11 @@ void TReadDataActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
+    FILESTORE_TRACK(
+        ResponseSent_ServiceWorker,
+        RequestInfo->CallContext,
+        "ReadData");
+
     auto response = std::make_unique<TEvService::TEvReadDataResponse>(error);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
@@ -721,6 +754,8 @@ void TStorageServiceActor::HandleReadData(
 {
     TInstant startTime = ctx.Now();
     auto* msg = ev->Get();
+
+    FILESTORE_TRACK(RequestReceived_Service, msg->CallContext, "ReadData");
 
     const auto& clientId = GetClientId(msg->Record);
     const auto& sessionId = GetSessionId(msg->Record);
