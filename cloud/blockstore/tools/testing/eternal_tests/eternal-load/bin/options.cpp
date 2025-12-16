@@ -2,6 +2,9 @@
 
 #include <library/cpp/getopt/small/last_getopt.h>
 
+#include <util/generic/size_literals.h>
+#include <util/string/cast.h>
+
 namespace NCloud::NBlockStore {
 
 using namespace NLastGetopt;
@@ -23,6 +26,12 @@ const THashMap<TString, EIoEngine> nameToEngine = {
     {"uring", EIoEngine::IoUring},
     {"sync", EIoEngine::Sync}
 };
+
+const THashMap<char, ui64> suffixToMultiplier = {
+    {'b', 1},
+    {'k', 1_KB},
+    {'m', 1_MB},
+    {'g', 1_GB}};
 
 template <class T>
 struct TMapOption
@@ -61,6 +70,37 @@ TOpt& operator|(TOpt& opt, const TMapOption<T>& map)
         map.Target,
         [map = map.Map](const TString& v) { return map.at(v); });
 }
+
+template <class T>
+struct TByteCountOption
+{
+    T* Target = nullptr;
+    ui64 DefaultMultiplier = 1;
+
+    explicit TByteCountOption(T* target, char defaultSuffix = 'b')
+        : Target(target)
+        , DefaultMultiplier(suffixToMultiplier.at(defaultSuffix))
+    {}
+
+    ui64 operator()(const TString& v) const
+    {
+        if (v.Empty()) {
+            return 0;
+        }
+
+        auto it = suffixToMultiplier.find(v.back());
+        return it != suffixToMultiplier.end()
+                   ? FromString<ui64>(TStringBuf(v).Chop(1)) * it->second
+                   : FromString<ui64>(v) * DefaultMultiplier;
+    }
+};
+
+template <class T>
+TOpt& operator|(TOpt& opt, const TByteCountOption<T>& arg)
+{
+    opt.RequiredArgument("STR");
+    return opt.StoreMappedResultT<TString>(arg.Target, arg);
+};
 
 }   // namespace
 
@@ -115,9 +155,11 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("STR")
         .StoreResult(&FilePath);
 
-    opts.AddLongOption("filesize", "size of file or block device in GB")
-        .RequiredArgument("NUM")
-        .StoreResult(&FileSize);
+    opts.AddLongOption(
+        "filesize",
+        "size of file or block device in GiB or other unit "
+        "by suffix: b - bytes, k - KiB, m - MiB, g - GiB")
+        | TByteCountOption(&FileSize, 'g');
 
     opts.AddLongOption(
         "test-count",

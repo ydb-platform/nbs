@@ -77,7 +77,7 @@ int TTest::Run()
 
             ConfigHolder = CreateTestConfig(TCreateTestConfigArguments
                 {.FilePath = *Options->FilePath,
-                 .FileSize = *Options->FileSize * 1_GB,
+                 .FileSize = *Options->FileSize,
                  .TestCount = Options->TestCount,
                  .IoDepth = Options->IoDepth,
                  .BlockSize = Options->BlockSize,
