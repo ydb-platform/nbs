@@ -107,7 +107,6 @@ public:
         sessionConfig.SetFileSystemId(config.GetFileSystemId());
         sessionConfig.SetClientId(config.GetClientId());
         sessionConfig.SetSessionPingTimeout(config.GetSessionPingTimeout());
-        sessionConfig.SetSessionRetryTimeout(config.GetSessionRetryTimeout());
 
         auto session = CreateSession(
             Logging,

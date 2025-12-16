@@ -431,8 +431,7 @@ type StartEndpointOpts struct {
 	SocketPath string
 	ReadOnly   bool
 
-	SessionRetryTimeout uint32
-	SessionPingTimeout  uint32
+	SessionPingTimeout uint32
 
 	ServiceEndpoint string
 }
@@ -458,8 +457,7 @@ func (client *EndpointClient) StartEndpoint(
 		SocketPath: opts.SocketPath,
 		ReadOnly:   opts.ReadOnly,
 
-		SessionRetryTimeout: opts.SessionRetryTimeout,
-		SessionPingTimeout:  opts.SessionPingTimeout,
+		SessionPingTimeout: opts.SessionPingTimeout,
 
 		ServiceEndpoint: opts.ServiceEndpoint,
 	}

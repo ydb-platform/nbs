@@ -18,6 +18,13 @@ void TStorageServiceActor::HandlePingSession(
     const auto seqNo = GetSessionSeqNo(msg->Record);
     const auto sessionId = GetSessionId(msg->Record);
 
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "HandlePingSession %s, %s",
+        clientId.Quote().c_str(),
+        sessionId.Quote().c_str());
+
     auto* session = State->FindSession(sessionId, seqNo);
     if (!session ||
         session->ClientId != clientId ||

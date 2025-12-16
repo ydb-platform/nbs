@@ -35,7 +35,6 @@ bool CompareRequests(
     return left.GetFileSystemId() == right.GetFileSystemId()
         && left.GetClientId() == right.GetClientId()
         && left.GetSocketPath() == right.GetSocketPath()
-        && left.GetSessionRetryTimeout() == right.GetSessionRetryTimeout()
         && left.GetSessionPingTimeout() == right.GetSessionPingTimeout()
         && left.GetServiceEndpoint() == right.GetServiceEndpoint()
         && left.GetMountSeqNumber() == right.GetMountSeqNumber()
