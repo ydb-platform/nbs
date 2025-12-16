@@ -97,6 +97,8 @@ TString GetExternalHostUrl(
     return out;
 }
 
+namespace {
+
 TString GetUrlFromTemplate(
     const TString& templateStr,
     const TDiagnosticsConfig& config,
@@ -125,6 +127,8 @@ TString GetUrlFromTemplate(
     return result;
 }
 
+}   // namespace
+
 TString GetMonitoringVolumeUrl(
     const TDiagnosticsConfig& config,
     const TString& diskId)
@@ -139,7 +143,7 @@ TString GetMonitoringVolumeUrl(
         << data.MonitoringClusterName << "&p.volume=" << diskId;
     }
     /*
-    example templates:
+    Example templates:
 
     {MonitoringUrl}/projects/{MonitoringProject}
     /dashboards/{MonitoringVolumeDashboard}
@@ -150,6 +154,15 @@ TString GetMonitoringVolumeUrl(
     &from=now-1d&to=now&refresh=60000
     &var-datasource={MonitoringProject}
     &var-disk_id={diskId}
+
+    Possible template parameters:
+    - MonitoringUrl
+    - MonitoringProject
+    - MonitoringClusterName
+    - MonitoringVolumeDashboard
+    - MonitoringNBSAlertsDashboard
+    - MonitoringNBSTVDashboard
+    - diskId
     */
     return GetUrlFromTemplate(
         data.MonitoringUrlTemplate,
