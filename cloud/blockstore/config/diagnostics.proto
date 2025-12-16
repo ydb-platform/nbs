@@ -79,11 +79,27 @@ message TMonitoringUrlData
     optional string MonitoringYDBProject = 8;
     optional string MonitoringYDBGroupDashboard = 9;
 
-    // monitoring dashboard url template
-    // for example
+    // Monitoring dashboard url template
+    // For example
     // {MonitoringUrl}/projects/{MonitoringProject}/dashboards/{MonitoringVolumeDashboard}
     // ?from=now-1d&to=now&refresh=60000&p.cluster={MonitoringClusterName}&p.volume={diskId}"
+    // or
+    // {MonitoringUrl}/d/{MonitoringVolumeDashboard}?orgId=1
+    // &from=now-1d&to=now&refresh=60000
+    // &var-datasource={MonitoringProject}
+    // &var-disk_id={diskId}
+    // Possible template parameters:
+    // - MonitoringUrl
+    // - MonitoringProject
+    // - MonitoringClusterName
+    // - MonitoringVolumeDashboard
+    // - MonitoringNBSAlertsDashboard
+    // - MonitoringNBSTVDashboard
+    // - MonitoringYDBProject
+    // - MonitoringYDBGroupDashboard
+    // - diskId
     optional string MonitoringUrlTemplate = 10;
+
 };
 
 ////////////////////////////////////////////////////////////////////////////////

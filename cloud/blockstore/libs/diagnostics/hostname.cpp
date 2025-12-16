@@ -122,6 +122,11 @@ TString GetUrlFromTemplate(
         result,
         "{MonitoringNBSTVDashboard}",
         data.MonitoringNBSTVDashboard);
+    SubstGlobal(result, "{MonitoringYDBProject}", data.MonitoringYDBProject);
+    SubstGlobal(
+        result,
+        "{MonitoringYDBGroupDashboard}",
+        data.MonitoringYDBGroupDashboard);
     SubstGlobal(result, "{diskId}", diskId);
 
     return result;
@@ -162,6 +167,8 @@ TString GetMonitoringVolumeUrl(
     - MonitoringVolumeDashboard
     - MonitoringNBSAlertsDashboard
     - MonitoringNBSTVDashboard
+    - MonitoringYDBProject
+    - MonitoringYDBGroupDashboard
     - diskId
     */
     return GetUrlFromTemplate(
