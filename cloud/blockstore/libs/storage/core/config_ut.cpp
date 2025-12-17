@@ -330,6 +330,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         NProto::TServerConfig serverConfig;
         serverConfig.SetNodeRegistrationMaxAttempts(10);
         serverConfig.SetNodeRegistrationErrorTimeout(20);
+        serverConfig.SetVhostDiscardEnabled(true);
 
         NProto::TStorageServiceConfig storageConfigProto = []
         {
@@ -354,6 +355,9 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::MilliSeconds(40),
             storageConfig->GetNodeRegistrationTimeout());
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            storageConfig->GetEnableVhostDiscardForNewVolumes());
         UNIT_ASSERT_VALUES_EQUAL(
             "root@builtin",
             storageConfig->GetNodeRegistrationToken());
