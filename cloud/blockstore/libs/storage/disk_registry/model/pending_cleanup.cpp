@@ -123,4 +123,11 @@ bool TPendingCleanup::Contains(const TString& diskId) const
     return DiskToDeviceCount.contains(diskId);
 }
 
+bool TPendingCleanup::operator==(const TPendingCleanup& rhs) const
+{
+    static_assert(sizeof(*this) == 64);
+    return DiskToDeviceCount == rhs.DiskToDeviceCount &&
+           DeviceToDisk == rhs.DeviceToDisk;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

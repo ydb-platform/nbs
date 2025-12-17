@@ -187,7 +187,7 @@ class NbsClient:
         resp = self.__execute_action("diskregistrychangestate", req, timeout)
 
         return json.loads(resp)
-    
+
     def compare_disk_registry_state_with_db(self, timeout=300):
         req = {}
 

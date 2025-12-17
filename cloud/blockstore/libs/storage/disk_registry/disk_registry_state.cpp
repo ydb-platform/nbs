@@ -568,19 +568,18 @@ TVector<TString> TDiskRegistryState::GetDifferingFields(
             TStringBuilder() << "CurrentConfig difference: " << report << "\n");
     }
 
-    const auto& vPlacementGroups = rhs.PlacementGroups;
     TStringBuilder ss;
 
     for (const auto& [k, v]: PlacementGroups) {
-        if (vPlacementGroups.find(k) == vPlacementGroups.end()) {
+        if (rhs.PlacementGroups.find(k) == rhs.PlacementGroups.end()) {
             ss << "[" << k << "] not found, current: " << v.Config.DebugString()
                << "\n";
-        } else if (!diff.Compare(v.Config, vPlacementGroups.at(k).Config)) {
+        } else if (!diff.Compare(v.Config, rhs.PlacementGroups.at(k).Config)) {
             ss << "[" << k << "] difference: " << report << "\n";
         }
     }
 
-    for (const auto& [k, v]: vPlacementGroups) {
+    for (const auto& [k, v]: rhs.PlacementGroups) {
         if (PlacementGroups.find(k) == PlacementGroups.end()) {
             ss << "[" << k << "] not found, DB: " << v.Config.DebugString()
                << "\n";
@@ -606,11 +605,19 @@ TVector<TString> TDiskRegistryState::GetDifferingFields(
     if (BrokenDisks != rhs.BrokenDisks) {
         result.emplace_back("BrokenDisks differs\n");
     }
+    
+    if (DisksToCleanup != rhs.DisksToCleanup) {
+        result.emplace_back("DisksToCleanup differs\n");
+    }
+
+    if(PendingCleanup != rhs.PendingCleanup) {
+        result.emplace_back("PendingCleanup differs\n");
+    }
 
     TString notificationReport =
         NotificationSystem.Compare(rhs.NotificationSystem);
     if (notificationReport.size() > 0) {
-        result.emplace_back(TStringBuilder() << "NotificationSystem differs:" << notificationReport << "\n");
+        result.emplace_back(TStringBuilder() << "NotificationSystem difference:" << notificationReport << "\n");
     }
 
     if (AutomaticallyReplacedDeviceIds != rhs.AutomaticallyReplacedDeviceIds) {

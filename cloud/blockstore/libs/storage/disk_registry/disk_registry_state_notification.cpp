@@ -98,20 +98,51 @@ TString TNotificationSystem::Compare(const TNotificationSystem& rhs) const
         }
     }
 
-    if (SupportsNotifications != rhs.SupportsNotifications) {
-        result << "SupportsNotifications differs\n";
+    auto compareHashMaps = [&result](const TString& name,const auto& lhs, const auto& rhs) {
+        for(const auto& [k, v]: rhs) {
+            if (lhs.find(k) == lhs.end()) {
+                result << name << " key " << k << " not found in current state\n";
+            } // values are non persistent
+        }
+        for(const auto& [k, v]: lhs) {
+            if (rhs.find(k) == rhs.end()) {
+                result << name << " key " << k << " not found in db\n";
+            }
+        }
+    };
+
+    compareHashMaps("DisksToReallocate", DisksToReallocate, rhs.DisksToReallocate);
+
+    THashMap<TString, TDiskStateUpdate> dsupdates, rhs_dsupdates;
+    for (const auto& dsu: DiskStateUpdates) {
+        dsupdates[dsu.State.GetDiskId()] = dsu;
     }
-    // if (DisksToReallocate != rhs.DisksToReallocate) {
-    //     result << "DisksToReallocate differs\n";
-    // }
-    // if (DisksToReallocateSeqNo != rhs.DisksToReallocateSeqNo) {
-    //     result << "DisksToReallocateSeqNo differs\n";
-    // }
-    // if (DiskStateUpdates != rhs.DiskStateUpdates) {
-    //     result << "DiskStateUpdates differs\n";
-    // }
+
+    for(const auto& dsu: rhs.DiskStateUpdates) {
+        rhs_dsupdates[dsu.State.GetDiskId()] = dsu;
+    }
+
+    for(const auto& [k, v]: dsupdates) {
+        if (rhs_dsupdates.find(k) == rhs_dsupdates.end()) {
+            result << "DiskStateUpdates key " << k << " not found in db\n";
+        } else if(dsupdates[k] != rhs_dsupdates[k]) {
+            if(!diff.Compare(dsupdates[k].State, rhs_dsupdates[k].State)) {
+                result << "DiskStateUpdates key " << k << " differs in state: " << report << "\n";
+                report.clear();
+            }
+            if(dsupdates[k].SeqNo != rhs_dsupdates[k].SeqNo) {
+                result << "DiskStateUpdates key " << k << " differs in seqNo: " << dsupdates[k].SeqNo << " != " << rhs_dsupdates[k].SeqNo << "\n";
+            }
+        }
+    }
+    for(const auto& [k, v]: rhs_dsupdates) {
+        if (dsupdates.find(k) == dsupdates.end()) {
+            result << "DiskStateUpdates key " << k << " not found in current state: " << v.State.DebugString() << "\n";
+        }
+    }
+
     if (DiskStateSeqNo != rhs.DiskStateSeqNo) {
-        result << "DiskStateSeqNo differs\n";
+        result << "DiskStateSeqNo differs: " << DiskStateSeqNo << " != " << rhs.DiskStateSeqNo << "\n";
     }
     if (OutdatedVolumeConfigs != rhs.OutdatedVolumeConfigs) {
         result << "OutdatedVolumeConfigs differs\n";
@@ -381,9 +412,9 @@ void TNotificationSystem::OnDiskStateChanged(
         }
     }
 
-    if (SupportsNotifications.contains(diskId)) {
+    // if (SupportsNotifications.contains(diskId)) {
         DiskStateUpdates.emplace_back(std::move(diskState), seqNo);
-    }
+    // }
 }
 
 void TNotificationSystem::DeleteDiskStateUpdate(
