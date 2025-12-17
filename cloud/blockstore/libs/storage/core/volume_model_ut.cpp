@@ -48,6 +48,7 @@ auto CreateConfigWithThrottlingParams(
 
     config.SetMinChannelCount(minChannelCount);
     config.SetFreshChannelCountSSD(1);
+    config.SetFreshChannelCountHDD(1);
 
     config.SetThrottlingBurstPercentage(10);
     config.SetThrottlingMaxPostponedWeight(1000);
