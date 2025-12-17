@@ -1,7 +1,8 @@
 #include "volume_model.h"
 
-#include "cloud/blockstore/libs/diagnostics/critical_events.h"
 #include "config.h"
+
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 
 #include <cloud/storage/core/libs/common/media.h>
 
