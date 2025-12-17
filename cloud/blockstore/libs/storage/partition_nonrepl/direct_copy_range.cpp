@@ -322,7 +322,7 @@ void TDirectCopyRangeActor::HandleDirectCopyBlocksResponse(
 
     if (SUCCEEDED(msg->GetError().GetCode())) {
         ReadDuration = TDuration::MicroSeconds(msg->Record.GetReadDuration());
-        WriteDuration = TDuration::MicroSeconds(msg->Record.GetReadDuration());
+        WriteDuration = TDuration::MicroSeconds(msg->Record.GetWriteDuration());
         AllZeroes = msg->Record.GetAllZeroes();
         RecommendedBandwidth = msg->Record.GetRecommendedBandwidth();
     }
