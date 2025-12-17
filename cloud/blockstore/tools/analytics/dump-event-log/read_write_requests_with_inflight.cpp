@@ -14,11 +14,6 @@ TReadWriteRequestsWithInflight::TReadWriteRequestsWithInflight(
     : Output(filename)
 {}
 
-TReadWriteRequestsWithInflight::~TReadWriteRequestsWithInflight()
-{
-    Output.Flush();
-}
-
 void TReadWriteRequestsWithInflight::ProcessRequest(
     const TDiskInfo& diskInfo,
     const TTimeData& timeData,
@@ -55,6 +50,11 @@ void TReadWriteRequestsWithInflight::ProcessRequest(
     printInflight(sb, inflightData.HostDiskRegistryBased);
     sb << "]\n";
     Output.Write(sb);
+}
+
+void TReadWriteRequestsWithInflight::Finish()
+{
+    Output.Flush();
 }
 
 }   // namespace NCloud::NBlockStore

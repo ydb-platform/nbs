@@ -171,9 +171,6 @@ TSqliteOutput::TSqliteOutput(const TString& filename)
 
 TSqliteOutput::~TSqliteOutput()
 {
-    Transaction.reset();
-    Cout << "Total row count: " << TotalRowCount << Endl;
-
     if (Db) {
         sqlite3_finalize(AddDiskStmt);
         sqlite3_finalize(AddRequestStmt);
@@ -201,6 +198,12 @@ void TSqliteOutput::ProcessRequest(
     AddChecksums(requestId, blockRange, replicaChecksums);
 
     AdvanceTransaction();
+}
+
+void TSqliteOutput::Finish()
+{
+    Transaction.reset();
+    Cout << "Total row count: " << TotalRowCount << Endl;
 }
 
 void TSqliteOutput::CreateTables()

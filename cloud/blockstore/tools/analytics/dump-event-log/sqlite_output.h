@@ -43,6 +43,8 @@ public:
         const TReplicaChecksums& replicaChecksums,
         const TInflightData& inflightData) override;
 
+    void Finish() override;
+
 private:
     void CreateTables();
     void ReadDisks();
