@@ -3793,6 +3793,53 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_UNEQUAL(differentChecksums, 0);
     }
 
+    static void DoTestShouldCheckRangeIndependentChecksum(
+        NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, 8192);
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        ui32 blockCnt{0};
+        // 0 1 2 0 1 2
+        for (ui32 i = 0; i < 2; ++i) {
+            for (ui32 j = 0; j < 3; ++j) {
+                volume.WriteBlocks(
+                    TBlockRange64::MakeClosedInterval(blockCnt, blockCnt),
+                    clientInfo.GetClientId(),
+                    j);
+                ++blockCnt;
+            }
+        }
+
+        volume.SendCheckRangeRequest("disk-id", 0, blockCnt);
+        auto response = volume.RecvCheckRangeResponse(TDuration::Seconds(3));
+        const auto& record = response->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(false, HasError(record.error()));
+        UNIT_ASSERT_VALUES_EQUAL(false, HasError(record.status()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            blockCnt,
+            record.GetChecksums().size());
+        for (ui32 i = 0; i < 2; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                record.GetChecksums()[i],
+                record.GetChecksums()[i + 3]);
+        }
+        for (ui32 i = 0; i < 2; ++i) {
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                record.GetChecksums()[i],
+                record.GetChecksums()[i + 1]);
+        }
+    }
+
     ///////
 
     void DoTestShouldThrottleSomeOps(
@@ -10209,7 +10256,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         DoTestShouldCommonCheckRange(
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
     }
-
+/*
     Y_UNIT_TEST(ShouldCommonCheckRangeMirror2)
     {
         DoTestShouldCommonCheckRange(NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
@@ -10219,7 +10266,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     {
         DoTestShouldCommonCheckRange(NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
     }
-
+*/
     Y_UNIT_TEST(ShouldCommonCheckRangeSSD)
     {
         DoTestShouldCommonCheckRange(NCloud::NProto::STORAGE_MEDIA_SSD);
@@ -10241,7 +10288,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
     }
-
+/*
     Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmptyMirror2)
     {
         DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
@@ -10253,7 +10300,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
             NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
     }
-
+*/
     Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmptySSD)
     {
         DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
@@ -10278,7 +10325,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         DoTestShouldntCheckRangeWithBigBlockCount(
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
     }
-
+/*
     Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCountMirror2)
     {
         DoTestShouldntCheckRangeWithBigBlockCount(
@@ -10290,7 +10337,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         DoTestShouldntCheckRangeWithBigBlockCount(
             NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
     }
-
+*/
     Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCountSSD)
     {
         DoTestShouldntCheckRangeWithBigBlockCount(
@@ -10316,7 +10363,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
     }
-
+/*
     Y_UNIT_TEST(ShouldGetSameChecksumsWhileCheckRangeEqualBlocksMirror2)
     {
         DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
@@ -10328,7 +10375,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
             NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
     }
-
+*/
     Y_UNIT_TEST(ShouldGetSameChecksumsWhileCheckRangeEqualBlocksSSD)
     {
         DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
@@ -10353,7 +10400,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         DoTEstShouldGetDifferentChecksumsWhileCheckRange(
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
     }
-
+/*
     Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeMirror2)
     {
         DoTEstShouldGetDifferentChecksumsWhileCheckRange(
@@ -10365,7 +10412,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         DoTEstShouldGetDifferentChecksumsWhileCheckRange(
             NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
     }
-
+*/
     Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeSSD)
     {
         DoTEstShouldGetDifferentChecksumsWhileCheckRange(
@@ -10381,6 +10428,44 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeHybrid)
     {
         DoTEstShouldGetDifferentChecksumsWhileCheckRange(
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+    }
+
+    //---
+
+    Y_UNIT_TEST(ShouldCheckRangeIndependentChecksumSSDNonreplicated)
+    {
+        DoTestShouldCheckRangeIndependentChecksum(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+/*
+    Y_UNIT_TEST(ShouldCheckRangeIndependentChecksumMirror2)
+    {
+        DoTestShouldCheckRangeIndependentChecksum(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
+    }
+
+    Y_UNIT_TEST(ShouldCheckRangeIndependentChecksumMirror3)
+    {
+        DoTestShouldCheckRangeIndependentChecksum(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+    }
+*/
+    Y_UNIT_TEST(ShouldCheckRangeIndependentChecksumSSD)
+    {
+        DoTestShouldCheckRangeIndependentChecksum(
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(ShouldCheckRangeIndependentChecksumHDD)
+    {
+        DoTestShouldCheckRangeIndependentChecksum(
+            NCloud::NProto::STORAGE_MEDIA_HDD);
+    }
+
+    Y_UNIT_TEST(ShouldCheckRangeIndependentChecksumHybrid)
+    {
+        DoTestShouldCheckRangeIndependentChecksum(
             NCloud::NProto::STORAGE_MEDIA_HYBRID);
     }
 

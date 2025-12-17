@@ -31,10 +31,6 @@ public:
 
 protected:
     void SendReadBlocksRequest(const TActorContext& ctx) override;
-
-    void HandleReadBlocksResponse(
-        const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
-        const NActors::TActorContext& ctx) override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -71,49 +67,6 @@ void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     NCloud::Send(ctx, Partition, std::move(request));
 }
 
-void TMirrorCheckRangeActor::HandleReadBlocksResponse(
-    const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-    auto response =
-        std::make_unique<TEvVolume::TEvCheckRangeResponse>(MakeError(S_OK));
-
-    const auto& error = msg->Record.GetError();
-    if (HasError(error)) {
-        LOG_ERROR_S(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "reading error has occurred: " << FormatError(error));
-
-        auto* status = response->Record.MutableStatus();
-        status->CopyFrom(error);
-
-        if (!msg->Record.FailInfo.FailedRanges.empty()) {
-            TStringBuilder builder;
-            builder << ", Broken ranges:\n ["
-                    << JoinRange(
-                           ", ",
-                           msg->Record.FailInfo.FailedRanges.begin(),
-                           msg->Record.FailInfo.FailedRanges.end())
-                    << "]";
-
-            status->MutableMessage()->append(builder);
-        }
-    } else {
-        TBlockChecksum blockChecksum;
-        for (ui64 offset = 0, i = 0; i < Request.GetBlocksCount();
-                offset += BlockSize, ++i)
-        {
-            auto* data = Buffer.Get().data() + offset;
-            const auto checksum = blockChecksum.Extend(data, BlockSize);
-            response->Record.MutableChecksums()->Add(checksum);
-        }
-    }
-
-    ReplyAndDie(ctx, std::move(response));
-}
-
 }   // namespace
 
 //////////////////////////////////////////////////////////////////
@@ -122,6 +75,15 @@ void TMirrorPartitionActor::HandleCheckRange(
     const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
+    auto fatalErr = MakeError(
+        E_FAIL,
+        "Checkrange is not supported for mirror disks temporarily");
+    auto response =
+        std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(fatalErr));
+    NCloud::Reply(ctx, *ev, std::move(response));
+    return;
+    /////
+
     auto& record = ev->Get()->Record;
 
     auto error = ValidateBlocksCount(
@@ -142,7 +104,8 @@ void TMirrorPartitionActor::HandleCheckRange(
         SelfId(),
         std::move(record),
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
-        State.GetBlockSize());
+        State.GetBlockSize(),
+        LogTitle);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

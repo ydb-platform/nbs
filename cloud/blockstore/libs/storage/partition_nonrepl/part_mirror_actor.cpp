@@ -78,6 +78,7 @@ TMirrorPartitionActor::TMirrorPartitionActor(
     , MultiAgentWriteEnabled(Config->GetMultiAgentWriteEnabled())
     , MultiAgentWriteRequestSizeThreshold(
           Config->GetMultiAgentWriteRequestSizeThreshold())
+    , LogTitle{GetCycleCount(), TLogTitle::TPartitionMirror{.DiskId = DiskId}}
 {}
 
 TMirrorPartitionActor::~TMirrorPartitionActor() = default;
