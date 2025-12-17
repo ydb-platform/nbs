@@ -99,7 +99,8 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
     auto clientSessionStatePath = StatePath / ("client_" + clientId);
     clientSessionStatePath.MkDir();
 
-    session = std::make_shared<TSession>(
+    try {
+        session = std::make_shared<TSession>(
         Store.GetFileSystemId(),
         RootPath,
         clientSessionStatePath,
@@ -112,8 +113,15 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         Config->GetSnapshotsDirRefreshInterval(),
         Logging);
 
-    session->Init(request.GetRestoreClientSession());
-    session->AddSubSession(sessionSeqNo, readOnly);
+        session->Init(request.GetRestoreClientSession());
+        session->AddSubSession(sessionSeqNo, readOnly);
+    } catch (...) {
+        return TErrorResponse(
+            E_FS_INVALID_SESSION,
+            TStringBuilder() << "invalid session: " << sessionId.Quote()
+                             << ". This session tries to share state files "
+                                "with another one.");
+    }
 
     SessionsList.push_front(session);
 
