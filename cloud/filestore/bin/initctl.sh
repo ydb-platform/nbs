@@ -17,6 +17,7 @@ BLOCK_SIZE=${BLOCK_SIZE:-4096}
 BLOCK_COUNT=${BLOCK_COUNT:-1048576} # 4GiB
 MOUNT_POINT=${MOUNT_POINT:-"$HOME/$FS"}
 VHOST_SOCKET_PATH=${VHOST_SOCKET_PATH:-/tmp/vhost.sock}
+VHOST_QUEUE_COUNT=${VHOST_QUEUE_COUNT:-9}
 
 PID_FILE=$BIN_DIR/pids.txt
 
@@ -124,6 +125,11 @@ if [[ "$1" == "create" ]]; then
         --block-size        "$BLOCK_SIZE"   \
         nfs
     shift
+
+    $BIN_DIR/filestore-client executeaction                                    \
+        --action changestorageconfig                                           \
+        --input-json                                                           \
+        '{"FileSystemId": "'$FS'", "StorageConfig": {"MaxFuseLoopThreads": 8}}'
 fi
 
 ################################################################################
@@ -157,6 +163,7 @@ if [[ "$1" == "startendpoint" ]]; then
         --filesystem        "$FS"                   \
         --socket-path       "$VHOST_SOCKET_PATH"    \
         --client-id         "local-qemu"            \
+        --vhost-queue-count "$VHOST_QUEUE_COUNT"    \
         --persistent
     echo "started endpoint at $VHOST_SOCKET_PATH"
 
