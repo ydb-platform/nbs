@@ -63,7 +63,8 @@ public:
 
 private:
     TDiskInfo& GetDiskInfo(const TString& diskId);
-    void ExtractRequests();
+    void ProcessRequests();
+    void FinishEventHandler();
 };
 
 }   // namespace NCloud::NBlockStore

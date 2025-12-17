@@ -14,7 +14,6 @@ class TReadWriteRequestsWithInflight: public IProfileLogEventHandler
 
 public:
     explicit TReadWriteRequestsWithInflight(const TString& filename);
-    ~TReadWriteRequestsWithInflight() override;
 
     void ProcessRequest(
         const TDiskInfo& diskInfo,
@@ -23,6 +22,8 @@ public:
         TBlockRange64 blockRange,
         const TReplicaChecksums& replicaChecksums,
         const TInflightData& inflightData) override;
+
+    void Finish() override;
 };
 
 }   // namespace NCloud::NBlockStore

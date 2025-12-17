@@ -44,7 +44,6 @@ class TZeroRangesStat: public IProfileLogEventHandler
 
 public:
     explicit TZeroRangesStat(const TString& filename);
-    ~TZeroRangesStat() override;
 
     void ProcessRequest(
         const TDiskInfo& diskInfo,
@@ -54,8 +53,7 @@ public:
         const TReplicaChecksums& replicaChecksums,
         const TInflightData& inflightData) override;
 
-private:
-    void Dump();
+    void Finish() override;
 };
 
 }   // namespace NCloud::NBlockStore

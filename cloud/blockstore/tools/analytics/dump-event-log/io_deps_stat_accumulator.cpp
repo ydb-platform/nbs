@@ -123,7 +123,8 @@ TIoDepsStatAccumulator::TIoDepsStatAccumulator(const TString& knownDisksFile)
 
 TIoDepsStatAccumulator::~TIoDepsStatAccumulator()
 {
-    ExtractRequests();
+    ProcessRequests();
+    FinishEventHandler();
 }
 
 void TIoDepsStatAccumulator::AddEventHandler(
@@ -177,7 +178,7 @@ TDiskInfo& TIoDepsStatAccumulator::GetDiskInfo(const TString& diskId)
     return it->second;
 }
 
-void TIoDepsStatAccumulator::ExtractRequests()
+void TIoDepsStatAccumulator::ProcessRequests()
 {
     Cerr << "Requests: " << Requests.size() << Endl;
     const auto now = TInstant::Now();
@@ -220,6 +221,13 @@ void TIoDepsStatAccumulator::ExtractRequests()
                 request->ReplicaChecksums,
                 request->InflightData);
         }
+    }
+}
+
+void TIoDepsStatAccumulator::FinishEventHandler()
+{
+    for (auto& handler: EventHandlers) {
+        handler->Finish();
     }
 }
 

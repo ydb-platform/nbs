@@ -88,11 +88,6 @@ TZeroRangesStat::TZeroRangesStat(const TString& filename)
     , ZeroChecksum(CalcZeroChecksum())
 {}
 
-TZeroRangesStat::~TZeroRangesStat()
-{
-    Dump();
-}
-
 void TZeroRangesStat::ProcessRequest(
     const TDiskInfo& diskInfo,
     const TTimeData& timeData,
@@ -120,7 +115,7 @@ void TZeroRangesStat::ProcessRequest(
     volume.Set(rangeIndex4MiB, isZeroRange);
 }
 
-void TZeroRangesStat::Dump()
+void TZeroRangesStat::Finish()
 {
     TFileOutput out(Filename);
 

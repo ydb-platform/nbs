@@ -16,10 +16,12 @@ struct IDistributionCalculator
 {
     virtual ~IDistributionCalculator() = default;
 
+    [[nodiscard]] virtual bool HaveMeaning() const = 0;
     [[nodiscard]] virtual TString GetName() const = 0;
     virtual void Apply(ui32 requestType, TBlockRange64 blockRange) = 0;
     [[nodiscard]] virtual NJson::TJsonValue Dump() = 0;
 };
+
 using IDistributionCalculatorPtr = std::unique_ptr<IDistributionCalculator>;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,7 +53,6 @@ class TIODistributionStat: public IProfileLogEventHandler
 
 public:
     explicit TIODistributionStat(const TString& filename);
-    ~TIODistributionStat() override;
 
     void ProcessRequest(
         const TDiskInfo& diskInfo,
@@ -61,10 +62,10 @@ public:
         const TReplicaChecksums& replicaChecksums,
         const TInflightData& inflightData) override;
 
+    void Finish() override;
+
 private:
     TVolumeStat& GetVolumeStat(const TDiskInfo& diskInfo);
-
-    void Dump();
 };
 
 }   // namespace NCloud::NBlockStore
