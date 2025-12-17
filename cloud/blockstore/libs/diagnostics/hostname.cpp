@@ -147,30 +147,7 @@ TString GetMonitoringVolumeUrl(
         << "?from=now-1d&to=now&refresh=60000&p.cluster="
         << data.MonitoringClusterName << "&p.volume=" << diskId;
     }
-    /*
-    Example templates:
 
-    {MonitoringUrl}/projects/{MonitoringProject}
-    /dashboards/{MonitoringVolumeDashboard}
-    ?from=now-1d&to=now&refresh=60000
-    &p.cluster={MonitoringClusterName}&p.volume={diskId}
-
-    {MonitoringUrl}/d/{MonitoringVolumeDashboard}?orgId=1
-    &from=now-1d&to=now&refresh=60000
-    &var-datasource={MonitoringProject}
-    &var-disk_id={diskId}
-
-    Possible template parameters:
-    - MonitoringUrl
-    - MonitoringProject
-    - MonitoringClusterName
-    - MonitoringVolumeDashboard
-    - MonitoringNBSAlertsDashboard
-    - MonitoringNBSTVDashboard
-    - MonitoringYDBProject
-    - MonitoringYDBGroupDashboard
-    - diskId
-    */
     return GetUrlFromTemplate(
         data.MonitoringUrlTemplate,
         config,
