@@ -99,14 +99,18 @@ def fixture_mount_very_small_tmpfs(request):
 def test_load_async_io_fails(fixture_mount_very_small_tmpfs):
     mount_dir = fixture_mount_very_small_tmpfs
 
-    # Run eternal-load with async IO on a tmpfs with very small size to raise ENOSPC error
-    with ThreadPoolExecutor(max_workers=1) as executor, \
-        tempfile.NamedTemporaryFile(suffix=".test", dir=mount_dir) as tmp_file:
+    # Run async-io eternal-load on a small tmpfs to raise ENOSPC error
+    with (
+        ThreadPoolExecutor(max_workers=1) as executor,
+        tempfile.NamedTemporaryFile(suffix='.test', dir=mount_dir) as tmp_file
+    ):
         # Linux native aio does not support IO_DIRECT on tmpfs
-        future = executor.submit(__run_load_test, tmp_file.name, "aligned", "asyncio", False)
+        future = executor.submit(
+            __run_load_test, tmp_file.name, 'aligned', 'asyncio', False)
 
         result = future.result()
 
         assert result.returncode == 1
-        msg = 'Can\'t write to file: (yexception) (No space left on device) async IO operation failed'
+        msg = 'Can\'t write to file: (yexception) (No space left on device) ' \
+            'async IO operation failed'
         assert result.stderr.find(msg) != -1
