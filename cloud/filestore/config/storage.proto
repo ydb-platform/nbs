@@ -696,4 +696,11 @@ message TStorageConfig
     // MaxShardCount used to be hardcoded and equal to 254.
     // Now it is configurable with the default == 254
     optional uint32 MaxShardCount = 473;
+
+    // These 2 parameters convert ReadBlob and WriteBlob ops to no-op. These
+    // parameters are supposed to be used only for testing purposes - to test
+    // fuse / service / tablet layer performance without direct blobstorage
+    // reads / writes. Tablet local DB still continues to use blobstorage.
+    optional bool ReadBlobDisabled = 474;
+    optional bool WriteBlobDisabled = 475;
 }

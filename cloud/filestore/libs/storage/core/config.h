@@ -360,6 +360,9 @@ public:
     [[nodiscard]] bool GetBlockChecksumsInProfileLogEnabled() const;
 
     ui32 GetMaxShardCount() const;
+
+    bool GetReadBlobDisabled() const;
+    bool GetWriteBlobDisabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
