@@ -128,7 +128,7 @@ def test_ping_region():
             nfs_client.list_mmap_regions().Regions[0].LatestActivityTimestamp
         )
         time.sleep(2)  # Ensure timestamp difference
-        nfs_client.ping_region(mmap_id=region_id)
+        nfs_client.ping_mmap_region(mmap_id=region_id)
 
         new_timestamp = (
             nfs_client.list_mmap_regions().Regions[0].LatestActivityTimestamp

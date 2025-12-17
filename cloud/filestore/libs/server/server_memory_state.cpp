@@ -148,7 +148,7 @@ TResultOrError<TMmapRegionMetadata> TServerState::GetMmapRegion(ui64 mmapId)
     return it->second.ToMetadata();
 }
 
-NProto::TError TServerState::PingRegion(ui64 mmapId)
+NProto::TError TServerState::PingMmapRegion(ui64 mmapId)
 {
     TLightWriteGuard guard(StateLock);
     auto it = MmapRegions.find(mmapId);

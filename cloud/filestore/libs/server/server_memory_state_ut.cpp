@@ -244,7 +244,7 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
         // wait a bit to ensure timestamp difference
         Sleep(TDuration::MilliSeconds(10));
 
-        auto pingResult = state.PingRegion(mmapInfo.Id);
+        auto pingResult = state.PingMmapRegion(mmapInfo.Id);
         UNIT_ASSERT_C(!HasError(pingResult), FormatError(pingResult));
 
         auto getResult = state.GetMmapRegion(mmapInfo.Id);

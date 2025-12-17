@@ -87,7 +87,7 @@ public:
 
     TResultOrError<TMmapRegionMetadata> GetMmapRegion(ui64 mmapId);
 
-    NProto::TError PingRegion(ui64 mmapId);
+    NProto::TError PingMmapRegion(ui64 mmapId);
 
 private:
     TLightRWLock StateLock;

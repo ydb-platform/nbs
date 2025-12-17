@@ -1429,23 +1429,23 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPingRegionCustomHandler final
+class TPingMmapRegionCustomHandler final
     : public TCustomHandlerBase<
-          NProto::TPingRegionRequest,
-          NProto::TPingRegionResponse,
-          TPingRegionCustomHandler>
+          NProto::TPingMmapRegionRequest,
+          NProto::TPingMmapRegionResponse,
+          TPingMmapRegionCustomHandler>
 {
     using TBase = TCustomHandlerBase<
-        NProto::TPingRegionRequest,
-        NProto::TPingRegionResponse,
-        TPingRegionCustomHandler>;
+        NProto::TPingMmapRegionRequest,
+        NProto::TPingMmapRegionResponse,
+        TPingMmapRegionCustomHandler>;
 
 public:
     using TBase::TBase;
 
     void PrepareRequestImpl()
     {
-        this->AppCtx.Service.RequestPingRegion(
+        this->AppCtx.Service.RequestPingMmapRegion(
             this->Context.get(),
             this->Request.get(),
             &this->Writer,
@@ -1456,9 +1456,9 @@ public:
 
     void ProcessAndSendResponse()
     {
-        Error = this->AppCtx.State->PingRegion(this->Request->GetId());
+        Error = this->AppCtx.State->PingMmapRegion(this->Request->GetId());
 
-        NProto::TPingRegionResponse response;
+        NProto::TPingMmapRegionResponse response;
         if (NCloud::HasError(Error)) {
             *response.MutableError() = Error;
         }
@@ -1470,10 +1470,10 @@ public:
     {
         auto& Log = this->AppCtx.Log;
         if (!NCloud::HasError(Error)) {
-            STORAGE_INFO("PingRegion #" << this->RequestId << " completed");
+            STORAGE_INFO("PingMmapRegion #" << this->RequestId << " completed");
         } else {
             STORAGE_INFO(
-                "PingRegion #" << this->RequestId
+                "PingMmapRegion #" << this->RequestId
                               << " failed: " << FormatError(Error));
         }
     }
@@ -1507,7 +1507,7 @@ void StartRequests(TExecutorContext& execCtx, TFileStoreContext& appCtx)
         TListMmapRegionsCustomHandler::Start(execCtx, appCtx);
         TMmapCustomHandler::Start(execCtx, appCtx);
         TMunmapCustomHandler::Start(execCtx, appCtx);
-        TPingRegionCustomHandler::Start(execCtx, appCtx);
+        TPingMmapRegionCustomHandler::Start(execCtx, appCtx);
     }
 }
 

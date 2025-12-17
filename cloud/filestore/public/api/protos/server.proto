@@ -83,9 +83,9 @@ message TMunmapResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// PingRegion request/response
+// PingMmapRegion request/response
 
-message TPingRegionRequest
+message TPingMmapRegionRequest
 {
     // Standard request headers
     optional THeaders Headers = 1;
@@ -94,7 +94,7 @@ message TPingRegionRequest
     optional uint64 Id = 2;
 }
 
-message TPingRegionResponse
+message TPingMmapRegionResponse
 {
     // Optional error, set only if error happened
     optional NCloud.NProto.TError Error = 1;

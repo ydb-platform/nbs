@@ -40,7 +40,7 @@ CLIENT_METHODS = [
     "mmap",
     "munmap",
     "list_mmap_regions",
-    "ping_region",
+    "ping_mmap_region",
 ]
 
 ENDPOINT_METHODS = [
