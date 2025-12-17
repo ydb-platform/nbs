@@ -30,7 +30,9 @@ enum class EIoEngine
 enum class EScenario
 {
     Aligned,
-    Unaligned
+    Unaligned,
+    Sequential,
+    Random
 };
 
 ////////////////////////////////////////////////////////////////////////////////

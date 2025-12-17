@@ -3,6 +3,7 @@ LIBRARY()
 SRCS(
     aligned_test_scenario.cpp
     config.cpp
+    simple_test_scenario.cpp
     test_executor.cpp
     unaligned_test_scenario.cpp
 )

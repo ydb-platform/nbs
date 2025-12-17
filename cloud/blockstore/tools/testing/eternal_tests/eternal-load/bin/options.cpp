@@ -18,7 +18,9 @@ const THashMap<TString, ECommand> nameToCommand = {
 
 const THashMap<TString, EScenario> nameToScenario = {
     {"aligned", EScenario::Aligned},
-    {"unaligned", EScenario::Unaligned}
+    {"unaligned", EScenario::Unaligned},
+    {"sequential", EScenario::Sequential},
+    {"random", EScenario::Random}
 };
 
 const THashMap<TString, EIoEngine> nameToEngine = {

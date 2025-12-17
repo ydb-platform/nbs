@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/aligned_test_scenario.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/simple_test_scenario.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_executor.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/unaligned_test_scenario.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -137,6 +138,28 @@ TTestExecutorSettings TTest::ConfigureTest() const
                 return CreateUnalignedTestScenario(std::move(config), log);
             };
             STORAGE_INFO("Using test scenario: Unaligned");
+            break;
+
+        case EScenario::Sequential:
+            scenarioFactory = [&](IConfigHolderPtr config)
+            {
+                return CreateSimpleTestScenario(
+                    ESimpleTestScenarioMode::Sequential,
+                    std::move(config),
+                    log);
+            };
+            STORAGE_INFO("Using test scenario: Sequential");
+            break;
+
+        case EScenario::Random:
+            scenarioFactory = [&](IConfigHolderPtr config)
+            {
+                return CreateSimpleTestScenario(
+                    ESimpleTestScenarioMode::Random,
+                    std::move(config),
+                    log);
+            };
+            STORAGE_INFO("Using test scenario: Random");
             break;
 
         default:
