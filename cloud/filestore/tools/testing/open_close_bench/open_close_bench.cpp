@@ -16,11 +16,13 @@
 #include <system_error>
 #include <vector>
 
-const auto makeFilename = [](const auto &i) {
+const auto makeFilename = [](const auto& i)
+{
     return "file" + std::to_string(i + 1) + ".txt";
 };
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[])
+{
     bool keepOpen = false;
     bool remove = false;
     bool verbose = false;
@@ -32,14 +34,16 @@ int main(int argc, char *argv[]) {
 
     int opt;
 
-    const auto usage = [&argv]() {
-        fprintf(stderr,
-                "Usage: %s -n <number_of_files> [-j <jobs>] [-f "
-                "<fallocate_bytes>] [-w <write_bytes>] [-v] [-r] [-k]\n"
-                "-v \t Verbose\n"
-                "-r \t Remove files after test\n"
-                "-k \t Keep files open after create\n",
-                argv[0]);
+    const auto usage = [&argv]()
+    {
+        fprintf(
+            stderr,
+            "Usage: %s -n <number_of_files> [-j <jobs>] [-f "
+            "<fallocate_bytes>] [-w <write_bytes>] [-v] [-r] [-k]\n"
+            "-v \t Verbose\n"
+            "-r \t Remove files after test\n"
+            "-k \t Keep files open after create\n",
+            argv[0]);
     };
 
     while ((opt = getopt(argc, argv, "vrkn:j:w:f:s:")) != -1) {
@@ -75,8 +79,9 @@ int main(int argc, char *argv[]) {
     }
 
     if (n <= 0) {
-        fprintf(stderr,
-                "Please specify a number of files using the -n option.\n");
+        fprintf(
+            stderr,
+            "Please specify a number of files using the -n option.\n");
         usage();
         return EXIT_FAILURE;
     }
@@ -86,14 +91,20 @@ int main(int argc, char *argv[]) {
         printf(
             "Number of files: %zu, parallel: %d, write: %d, fallocate: %d, "
             "keep: %d, sleep: %d, remove: %d\n",
-            fds.size(), parallel, writeBytes, fallocateBytes, keepOpen,
-            sleepOpenClose, remove);
+            fds.size(),
+            parallel,
+            writeBytes,
+            fallocateBytes,
+            keepOpen,
+            sleepOpenClose,
+            remove);
         fflush(stdout);
 
-        const auto forEach = [&parallel](auto &container, const auto func) {
+        const auto forEach = [&parallel](auto& container, const auto func)
+        {
             if (parallel <= 1) {
                 size_t i = 0;
-                for (auto &elem : container) {
+                for (auto& elem: container) {
                     func(i++, elem);
                 }
                 return;
@@ -118,7 +129,8 @@ int main(int argc, char *argv[]) {
 
                 futures.emplace_back(std::async(
                     std::launch::async,
-                    [chunkStart, chunkEnd, &func, currentNumber]() {
+                    [chunkStart, chunkEnd, &func, currentNumber]()
+                    {
                         size_t thread = 0;
                         for (auto it = chunkStart; it != chunkEnd;
                              ++it, ++thread) {
@@ -130,13 +142,14 @@ int main(int argc, char *argv[]) {
                 chunkStart = chunkEnd;
             }
 
-            for (auto &fu : futures) {
+            for (auto& fu: futures) {
                 fu.get();
                 // rethrow exceptions if any
             }
         };
 
-        const auto bench = [&](const auto &name, const auto &func) {
+        const auto bench = [&](const auto& name, const auto& func)
+        {
             struct timespec startTime, endTime;
             clock_gettime(CLOCK_MONOTONIC, &startTime);
 
@@ -150,74 +163,115 @@ int main(int argc, char *argv[]) {
             fflush(stdout);
         };
 
-        bench("Create", [&]() {
-            forEach(fds, [&writeBytes, &verbose, &fallocateBytes, &keepOpen](
-                             const auto i, auto &fd) {
-                const auto filename = makeFilename(i);
-                // Try to open the file in read-only mode to check if it exists
-                fd = open(filename.c_str(), O_RDONLY);
-                if (fd < 0) {
-                    // File doesn't exist, create it
-                    fd = open(filename.c_str(), O_WRONLY | O_CREAT,
-                              S_IRUSR | S_IWUSR);
-                    if (fd < 0) {
-                        fprintf(stderr, "Error creating file %s : %s\n",
-                                filename.c_str(), strerror(errno));
-                        throw std::system_error(errno, std::generic_category());
-                    }
+        bench(
+            "Create",
+            [&]()
+            {
+                forEach(
+                    fds,
+                    [&writeBytes, &verbose, &fallocateBytes, &keepOpen](
+                        const auto i,
+                        auto& fd)
+                    {
+                        const auto filename = makeFilename(i);
+                        // Try to open the file in read-only mode to check if it
+                        // exists
+                        fd = open(filename.c_str(), O_RDONLY);
+                        if (fd < 0) {
+                            // File doesn't exist, create it
+                            fd = open(
+                                filename.c_str(),
+                                O_WRONLY | O_CREAT,
+                                S_IRUSR | S_IWUSR);
+                            if (fd < 0) {
+                                fprintf(
+                                    stderr,
+                                    "Error creating file %s : %s\n",
+                                    filename.c_str(),
+                                    strerror(errno));
+                                throw std::system_error(
+                                    errno,
+                                    std::generic_category());
+                            }
 
-                    if (verbose) {
-                        printf("File %s created.\n", filename.c_str());
-                    }
+                            if (verbose) {
+                                printf("File %s created.\n", filename.c_str());
+                            }
 
-                    if (fallocateBytes) {
-                        const auto res = fallocate(fd, 0, 0, fallocateBytes);
-                        if (res < 0) {
-                            fprintf(stderr, "Error fallocating file %s : %s\n",
-                                    filename.c_str(), strerror(errno));
-                            close(fd);
-                            throw std::system_error(errno,
-                                                    std::generic_category());
+                            if (fallocateBytes) {
+                                const auto res =
+                                    fallocate(fd, 0, 0, fallocateBytes);
+                                if (res < 0) {
+                                    fprintf(
+                                        stderr,
+                                        "Error fallocating file %s : %s\n",
+                                        filename.c_str(),
+                                        strerror(errno));
+                                    close(fd);
+                                    throw std::system_error(
+                                        errno,
+                                        std::generic_category());
+                                }
+                            }
+
+                            if (writeBytes) {
+                                std::string buf(writeBytes, 'A');
+                                const auto written =
+                                    write(fd, buf.data(), buf.size());
+                                if (written < 0 ||
+                                    static_cast<size_t>(written) != buf.size())
+                                {
+                                    fprintf(
+                                        stderr,
+                                        "Error writing file %s : %s\n",
+                                        filename.c_str(),
+                                        strerror(errno));
+                                    close(fd);
+                                    throw std::system_error(
+                                        errno,
+                                        std::generic_category());
+                                }
+                            }
                         }
-                    }
 
-                    if (writeBytes) {
-                        std::string buf(writeBytes, 'A');
-                        const auto written = write(fd, buf.data(), buf.size());
-                        if (written < 0 ||
-                            static_cast<size_t>(written) != buf.size()) {
-                            fprintf(stderr, "Error writing file %s : %s\n",
-                                    filename.c_str(), strerror(errno));
+                        if (!keepOpen) {
+                            // If file already exists, close it
                             close(fd);
-                            throw std::system_error(errno,
-                                                    std::generic_category());
                         }
-                    }
-                }
-
-                if (!keepOpen) {
-                    // If file already exists, close it
-                    close(fd);
-                }
+                    });
             });
-        });
 
         if (!keepOpen) {
-            bench("Open", [&]() {
-                forEach(fds, [verbose](const auto i, auto &fd) {
-                    const auto filename = makeFilename(i);
-                    fd = open(filename.c_str(), O_RDONLY);
-                    if (verbose) {
-                        fprintf(stderr, "File %s opened n=%lu fd=%d \n",
-                                filename.c_str(), i, fd);
-                    }
-                    if (fd < 0) {
-                        fprintf(stderr, "Error opening file %s : %s\n",
-                                filename.c_str(), strerror(errno));
-                        throw std::system_error(errno, std::generic_category());
-                    }
+            bench(
+                "Open",
+                [&]()
+                {
+                    forEach(
+                        fds,
+                        [verbose](const auto i, auto& fd)
+                        {
+                            const auto filename = makeFilename(i);
+                            fd = open(filename.c_str(), O_RDONLY);
+                            if (verbose) {
+                                fprintf(
+                                    stderr,
+                                    "File %s opened n=%lu fd=%d \n",
+                                    filename.c_str(),
+                                    i,
+                                    fd);
+                            }
+                            if (fd < 0) {
+                                fprintf(
+                                    stderr,
+                                    "Error opening file %s : %s\n",
+                                    filename.c_str(),
+                                    strerror(errno));
+                                throw std::system_error(
+                                    errno,
+                                    std::generic_category());
+                            }
+                        });
                 });
-            });
         }
 
         if (sleepOpenClose) {
@@ -226,36 +280,65 @@ int main(int argc, char *argv[]) {
             sleep(sleepOpenClose);
         }
 
-        bench("Close", [&]() {
-            forEach(fds, [](const auto i, auto &fd) {
-                const auto result = close(fd);
-                if (result < 0) {
-                    fprintf(stderr,
-                            "Error closing file number %lu fd %d: %s (%d)\n", i,
-                            fd, strerror(errno), result);
-                    throw std::system_error(errno, std::generic_category());
-                }
+        bench(
+            "Close",
+            [&]()
+            {
+                forEach(
+                    fds,
+                    [](const auto i, auto& fd)
+                    {
+                        const auto result = close(fd);
+                        if (result < 0) {
+                            fprintf(
+                                stderr,
+                                "Error closing file number %lu fd %d: %s "
+                                "(%d)\n",
+                                i,
+                                fd,
+                                strerror(errno),
+                                result);
+                            throw std::system_error(
+                                errno,
+                                std::generic_category());
+                        }
+                    });
             });
-        });
 
         if (remove) {
-            bench("Remove", [&]() {
-                forEach(fds, [](const auto i, auto &fd) {
-                    const auto filename = makeFilename(i);
-                    const auto result = unlink(filename.c_str());
-                    if (result < 0) {
-                        fprintf(
-                            stderr,
-                            "Error closing file number %lu fd %d: %s (%d)\n", i,
-                            fd, strerror(errno), result);
-                        throw std::system_error(errno, std::generic_category());
-                    }
+            bench(
+                "Remove",
+                [&]()
+                {
+                    forEach(
+                        fds,
+                        [](const auto i, auto& fd)
+                        {
+                            const auto filename = makeFilename(i);
+                            const auto result = unlink(filename.c_str());
+                            if (result < 0) {
+                                fprintf(
+                                    stderr,
+                                    "Error closing file number %lu fd %d: %s "
+                                    "(%d)\n",
+                                    i,
+                                    fd,
+                                    strerror(errno),
+                                    result);
+                                throw std::system_error(
+                                    errno,
+                                    std::generic_category());
+                            }
+                        });
                 });
-            });
         }
-    } catch (const std::system_error &ex) {
-        fprintf(stderr, "Exception: %d, %s, %s", ex.code().value(),
-                ex.code().message().c_str(), ex.what());
+    } catch (const std::system_error& ex) {
+        fprintf(
+            stderr,
+            "Exception: %d, %s, %s",
+            ex.code().value(),
+            ex.code().message().c_str(),
+            ex.what());
         return EXIT_FAILURE;
     }
 
