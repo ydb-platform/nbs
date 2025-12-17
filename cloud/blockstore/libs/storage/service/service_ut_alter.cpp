@@ -567,6 +567,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         NProto::TStorageServiceConfig storageServiceConfig;
         storageServiceConfig.SetAllocationUnitHDD(1);
         storageServiceConfig.SetFreshChannelCountHDD(1);
+        storageServiceConfig.SetFreshChannelCountSSD(1);
         auto storageConfig =
             CreateTestStorageConfig(std::move(storageServiceConfig));
         TControlBoard controlBoard;

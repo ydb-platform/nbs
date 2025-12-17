@@ -1,5 +1,6 @@
 #include "volume_model.h"
 
+#include "cloud/blockstore/libs/diagnostics/critical_events.h"
 #include "config.h"
 
 #include <cloud/storage/core/libs/common/media.h>
@@ -521,6 +522,17 @@ void SetupChannels(
     const NProto::TResizeVolumeRequestFlags& flags,
     NKikimrBlockStore::TVolumeConfig& volumeConfig)
 {
+    constexpr NCloud::NProto::EStorageMediaKind MediaKindAllowedList[]{
+        NCloud::NProto::STORAGE_MEDIA_SSD,
+        NCloud::NProto::STORAGE_MEDIA_HDD,
+        NCloud::NProto::STORAGE_MEDIA_HYBRID};
+
+    if (!FindPtr(MediaKindAllowedList, volumeParams.MediaKind)) {
+        ReportSetupChannelsOnWrongMediaKindVolume(
+            "Trying to setup channels on wrong media kind",
+            {{"diskId", volumeConfig.GetDiskId()},
+             {"mediaKind", volumeParams.MediaKind}});
+    }
     const auto existingMergedChannelCount =
         GetExistingMergedChannelCount(volumeParams);
     ui32 mergedChannelCount = ComputeMergedChannelCount(

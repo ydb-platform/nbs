@@ -141,6 +141,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
     {
         NProto::TStorageServiceConfig storageServiceConfig;
         storageServiceConfig.SetFreshChannelCountSSD(1);
+        storageServiceConfig.SetFreshChannelCountHDD(1);
         auto config = CreateTestStorageConfig(std::move(storageServiceConfig));
 
         TVolumeParams volumeParams;
@@ -1016,6 +1017,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         NProto::TStorageServiceConfig storageServiceConfig;
         storageServiceConfig.SetMinChannelCount(1);
         storageServiceConfig.SetFreshChannelCountSSD(1);
+        storageServiceConfig.SetFreshChannelCountHDD(1);
         auto config = CreateTestStorageConfig(std::move(storageServiceConfig));
 
         DoTestExplicitChannelAllocationSettings(*config);
@@ -1072,6 +1074,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetHybridFreshChannelPoolKind("fresh");
         storageServiceConfig.SetMinChannelCount(1);
         storageServiceConfig.SetFreshChannelCountSSD(1);
+        storageServiceConfig.SetFreshChannelCountHDD(1);
         storageServiceConfig.SetAllocationUnitHDD(1);
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
@@ -1207,6 +1210,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             NProto::TStorageServiceConfig storageServiceConfig;
             storageServiceConfig.SetMinChannelCount(1);
             storageServiceConfig.SetFreshChannelCountSSD(1);
+            storageServiceConfig.SetFreshChannelCountHDD(1);
             auto config = std::make_unique<TStorageConfig>(
                 std::move(storageServiceConfig),
                 std::make_shared<NFeatures::TFeaturesConfig>(
@@ -1243,6 +1247,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             NProto::TStorageServiceConfig storageServiceConfig;
             storageServiceConfig.SetMinChannelCount(1);
             storageServiceConfig.SetFreshChannelCountSSD(1);
+            storageServiceConfig.SetFreshChannelCountHDD(1);
             auto config = std::make_unique<TStorageConfig>(
                 std::move(storageServiceConfig),
                 std::make_shared<NFeatures::TFeaturesConfig>(
@@ -1300,6 +1305,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetHybridFreshChannelPoolKind("fresh");
         storageServiceConfig.SetMinChannelCount(1);
         storageServiceConfig.SetFreshChannelCountSSD(1);
+        storageServiceConfig.SetFreshChannelCountHDD(1);
         storageServiceConfig.SetAllocationUnitHDD(1);
         storageServiceConfig.SetHDDUnitWriteIops(10);
         storageServiceConfig.SetSSDUnitWriteIops(100);
@@ -1352,6 +1358,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetHybridFreshChannelPoolKind("fresh");
         storageServiceConfig.SetMinChannelCount(1);
         storageServiceConfig.SetFreshChannelCountSSD(1);
+        storageServiceConfig.SetFreshChannelCountHDD(1);
         storageServiceConfig.SetAllocationUnitHDD(1);
         storageServiceConfig.SetHDDUnitWriteIops(10);
         storageServiceConfig.SetSSDUnitWriteIops(100);
@@ -1402,6 +1409,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetHybridFreshChannelPoolKind("fresh");
         storageServiceConfig.SetMinChannelCount(1);
         storageServiceConfig.SetFreshChannelCountSSD(1);
+        storageServiceConfig.SetFreshChannelCountHDD(1);
         storageServiceConfig.SetAllocationUnitHDD(1);
         storageServiceConfig.SetHDDUnitWriteIops(10);
         storageServiceConfig.SetSSDUnitWriteIops(100);
@@ -1555,6 +1563,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetHybridMergedChannelPoolKind("merged");
         storageServiceConfig.SetMinChannelCount(1);
         storageServiceConfig.SetFreshChannelCountSSD(1);
+        storageServiceConfig.SetFreshChannelCountHDD(1);
         storageServiceConfig.SetAllocationUnitHDD(1);
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
@@ -1597,6 +1606,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetMaxPartitionsPerVolume(2);
         storageServiceConfig.SetAllocationUnitSSD(32);
         storageServiceConfig.SetFreshChannelCountSSD(1);
+        storageServiceConfig.SetFreshChannelCountHDD(1);
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
@@ -2076,6 +2086,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetHybridFreshChannelPoolKind("fresh");
         storageServiceConfig.SetMinChannelCount(4);
         storageServiceConfig.SetFreshChannelCountSSD(1);
+        storageServiceConfig.SetFreshChannelCountHDD(1);
         storageServiceConfig.SetAllocationUnitHDD(256);
         // in case MixedChannelsPercentageFromMerged == 0 we will receive 2 mixed channels
         storageServiceConfig.SetMixedChannelsPercentageFromMerged(20);
@@ -2122,6 +2133,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetHybridFreshChannelPoolKind("fresh");
         storageServiceConfig.SetMinChannelCount(4);
         storageServiceConfig.SetFreshChannelCountSSD(1);
+        storageServiceConfig.SetFreshChannelCountHDD(1);
         storageServiceConfig.SetAllocationUnitHDD(256);
         storageServiceConfig.SetMixedChannelsPercentageFromMerged(20);
 
@@ -2168,6 +2180,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetHybridFreshChannelPoolKind("fresh");
         storageServiceConfig.SetMinChannelCount(4);
         storageServiceConfig.SetFreshChannelCountSSD(1);
+        storageServiceConfig.SetFreshChannelCountHDD(1);
         storageServiceConfig.SetAllocationUnitHDD(256);
         storageServiceConfig.SetMixedChannelsPercentageFromMerged(20);
 
@@ -2247,6 +2260,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetHybridFreshChannelPoolKind("fresh");
         storageServiceConfig.SetMinChannelCount(1);
         storageServiceConfig.SetFreshChannelCountSSD(1);
+        storageServiceConfig.SetFreshChannelCountHDD(1);
         storageServiceConfig.SetAllocationUnitHDD(1);
         storageServiceConfig.SetMixedChannelsPercentageFromMerged(50);
 

@@ -28,6 +28,7 @@ Y_UNIT_TEST_SUITE(TServiceDescribeVolumeModelTest)
         ssConfig.SetHDDMaxWriteBandwidth(600);
         ssConfig.SetAllocationUnitHDD(1);
         ssConfig.SetFreshChannelCountHDD(1);
+        ssConfig.SetFreshChannelCountSSD(1);
         ui32 nodeIdx = SetupTestEnv(env, std::move(ssConfig));
 
         TServiceClient service(env.GetRuntime(), nodeIdx);

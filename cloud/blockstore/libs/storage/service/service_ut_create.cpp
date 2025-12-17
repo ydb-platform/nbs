@@ -940,6 +940,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         TTestEnv env;
         NProto::TStorageServiceConfig config;
         config.SetFreshChannelCountHDD(1);
+        config.SetFreshChannelCountSSD(1);
         ui32 nodeIdx = SetupTestEnv(env, config, {});
 
         auto& runtime = env.GetRuntime();

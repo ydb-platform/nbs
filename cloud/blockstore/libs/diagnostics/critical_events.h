@@ -135,6 +135,7 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(LogicalDiskIdMismatch)                                                 \
     xxx(DeviceReplacementContractBroken)                                       \
     xxx(InflightRequestInvariantViolation)                                     \
+    xxx(SetupChannelsOnWrongMediaKindVolume)                                   \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////
