@@ -69,7 +69,7 @@ void TCopyRangeActor::Bootstrap(const TActorContext& ctx)
 
 void TCopyRangeActor::GetVolumeRequestId(const NActors::TActorContext& ctx)
 {
-    NCloud::Send(
+    NCloud::SendWithUndeliveryTracking(
         ctx,
         VolumeActorId,
         std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdRequest>());
@@ -77,7 +77,7 @@ void TCopyRangeActor::GetVolumeRequestId(const NActors::TActorContext& ctx)
 
 void TCopyRangeActor::LockAndDrainRange(const TActorContext& ctx)
 {
-    NCloud::Send(
+    NCloud::SendWithUndeliveryTracking(
         ctx,
         ActorToLockAndDrainRange,
         std::make_unique<TEvPartition::TEvLockAndDrainRangeRequest>(Range));
@@ -93,16 +93,7 @@ void TCopyRangeActor::ReadBlocks(const TActorContext& ctx)
     headers->SetIsBackgroundRequest(true);
     headers->SetClientId(TString(BackgroundOpsClientId));
 
-    auto event = std::make_unique<IEventHandle>(
-        Source,
-        ctx.SelfID,
-        request.release(),
-        IEventHandle::FlagForwardOnNondelivery,
-        0,            // cookie
-        &ctx.SelfID   // forwardOnNondelivery
-    );
-
-    ctx.Send(event.release());
+    NCloud::SendWithUndeliveryTracking(ctx, Source, std::move(request));
 
     ReadStartTs = ctx.Now();
 }
@@ -148,16 +139,7 @@ void TCopyRangeActor::WriteBlocks(
         }
     }
 
-    auto event = std::make_unique<IEventHandle>(
-        Target,
-        ctx.SelfID,
-        request.release(),
-        IEventHandle::FlagForwardOnNondelivery,
-        0,            // cookie
-        &ctx.SelfID   // forwardOnNondelivery
-    );
-
-    ctx.Send(event.release());
+    NCloud::SendWithUndeliveryTracking(ctx, Target, std::move(request));
 
     WriteStartTs = ctx.Now();
 }
@@ -184,16 +166,7 @@ void TCopyRangeActor::ZeroBlocks(const TActorContext& ctx)
         }
     }
 
-    auto event = std::make_unique<IEventHandle>(
-        Target,
-        ctx.SelfID,
-        request.release(),
-        IEventHandle::FlagForwardOnNondelivery,
-        0,            // cookie
-        &ctx.SelfID   // forwardOnNondelivery
-    );
-
-    ctx.Send(event.release());
+    NCloud::SendWithUndeliveryTracking(ctx, Target, std::move(request));
 
     WriteStartTs = ctx.Now();
 }
@@ -237,7 +210,7 @@ void TCopyRangeActor::Done(const TActorContext& ctx, NProto::TError error)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TCopyRangeActor::HandleVolumeRequestId(
+void TCopyRangeActor::HandleVolumeRequestIdResponse(
     const TEvVolumePrivate::TEvTakeVolumeRequestIdResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
@@ -249,6 +222,15 @@ void TCopyRangeActor::HandleVolumeRequestId(
 
     VolumeRequestId = msg->VolumeRequestId;
     ReadBlocks(ctx);
+}
+
+void TCopyRangeActor::HandleVolumeRequestIdUndelivery(
+    const TEvVolumePrivate::TEvTakeVolumeRequestIdRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    Done(ctx, MakeError(E_REJECTED, "VolumeRequestId request undelivered"));
 }
 
 void TCopyRangeActor::HandleReadUndelivery(
@@ -277,6 +259,15 @@ void TCopyRangeActor::HandleLockAndDrainRangeResponse(
         return;
     }
     ReadBlocks(ctx);
+}
+
+void TCopyRangeActor::HandleLockAndDrainRangeUndelivery(
+    const NPartition::TEvPartition::TEvLockAndDrainRangeRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    Done(ctx, MakeError(E_REJECTED, "LockAndDrainRange request undelivered"));
 }
 
 void TCopyRangeActor::HandleReadResponse(
@@ -362,10 +353,16 @@ STFUNC(TCopyRangeActor::StateWork)
 
         HFunc(
             TEvVolumePrivate::TEvTakeVolumeRequestIdResponse,
-            HandleVolumeRequestId);
+            HandleVolumeRequestIdResponse);
+        HFunc(
+            TEvVolumePrivate::TEvTakeVolumeRequestIdRequest,
+            HandleVolumeRequestIdUndelivery);
         HFunc(
             TEvPartition::TEvLockAndDrainRangeResponse,
             HandleLockAndDrainRangeResponse);
+        HFunc(
+            TEvPartition::TEvLockAndDrainRangeRequest,
+            HandleLockAndDrainRangeUndelivery);
 
         HFunc(TEvService::TEvReadBlocksRequest, HandleReadUndelivery);
         HFunc(TEvService::TEvWriteBlocksRequest, HandleWriteUndelivery);

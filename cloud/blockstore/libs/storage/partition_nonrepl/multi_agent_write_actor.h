@@ -171,19 +171,14 @@ void TMultiAgentWriteActor<TMethod>::SendDiscoveryRequests(
 
     ui64 count = 0;
     for (const auto& replica: ReplicasDiscovery) {
-        auto request = std::make_unique<
-            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest>(
-            EPurpose::ForWriting,
-            Range);
-        auto event = std::make_unique<NActors::IEventHandle>(
+        NCloud::SendWithUndeliveryTracking(
+            ctx,
             replica.ActorId,
-            ctx.SelfID,
-            request.release(),
-            NActors::IEventHandle::FlagForwardOnNondelivery,
-            count++,      // cookie
-            &ctx.SelfID   // forwardOnNondelivery
-        );
-        ctx.Send(std::move(event));
+            std::make_unique<
+                TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest>(
+                EPurpose::ForWriting,
+                Range),
+            count++);
     }
 }
 
