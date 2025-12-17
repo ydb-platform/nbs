@@ -104,7 +104,7 @@ int main(int argc, char *argv[]) {
                 return;
             }
 
-            auto threads = std::min<int>(parallel, total);
+            size_t threads = std::min<size_t>(parallel, total);
             std::vector<std::future<void>> futures;
             futures.reserve(threads);
 
@@ -118,7 +118,7 @@ int main(int argc, char *argv[]) {
 
                 futures.emplace_back(std::async(
                     std::launch::async,
-                    [chunkStart, chunkEnd, &func, currentNumber, &container]() {
+                    [chunkStart, chunkEnd, &func, currentNumber]() {
                         size_t thread = 0;
                         for (auto it = chunkStart; it != chunkEnd;
                              ++it, ++thread) {
@@ -204,7 +204,7 @@ int main(int argc, char *argv[]) {
 
         if (!keepOpen) {
             bench("Open", [&]() {
-                forEach(fds, [&fds, verbose](const auto i, auto &fd) {
+                forEach(fds, [verbose](const auto i, auto &fd) {
                     const auto filename = makeFilename(i);
                     fd = open(filename.c_str(), O_RDONLY);
                     if (verbose) {
