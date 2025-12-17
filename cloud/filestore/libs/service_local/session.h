@@ -132,7 +132,8 @@ public:
 
         HandleTable = std::make_unique<THandleTable>(
             handlesPath.GetPath(),
-            MaxHandleCount);
+            MaxHandleCount,
+            true  /* lockFile */);
 
         ui64 maxHandleId = 0;
         for (auto it = HandleTable->begin(); it != HandleTable->end(); it++) {
