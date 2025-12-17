@@ -266,7 +266,6 @@ message TStorageConfig
     // Params that are passed to filestore-vhost via TCreateSessionResponse via
     // TFilestore::Features. They do not have any effect on the tablet itself.
     optional uint32 EntryTimeout = 335;
-    optional uint32 RegularFileEntryTimeout = 570;
     optional uint32 NegativeEntryTimeout = 336;
     optional uint32 AttrTimeout = 337;
 
@@ -704,4 +703,8 @@ message TStorageConfig
     // reads / writes. Tablet local DB still continues to use blobstorage.
     optional bool ReadBlobDisabled = 474;
     optional bool WriteBlobDisabled = 475;
+
+    // Entry timeout for regular entries. See EntryTimeout
+    // Passed to filestore-vhost and do not have effect on the tablet
+    optional uint32 RegularFileEntryTimeout = 476;
 }

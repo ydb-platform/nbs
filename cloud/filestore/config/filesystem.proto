@@ -29,8 +29,6 @@ message TFileSystemConfig
     // Filesystem max buffer size per request.
     optional uint32 MaxBufferSize = 8;
 
-    optional uint32 RegularFileEntryTimeout = 31;
-
     // Inode entry timeout for negative responses (responses with errors).
     // The most notable one is ENOENT for getattr.
     optional uint32 NegativeEntryTimeout = 9;
@@ -102,4 +100,8 @@ message TFileSystemConfig
 
     // Enable zero-copy for read operations in the VFS FUSE layer
     optional bool ZeroCopyReadEnabled = 30;
+
+    // Inode entry timeout for regular entries (e.g. files)
+    // Only applies if set. Not set by default
+    optional uint32 RegularFileEntryTimeout = 31;
 }

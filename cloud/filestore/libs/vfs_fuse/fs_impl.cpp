@@ -158,8 +158,8 @@ bool TFileSystem::UpdateNodeCache(
 
         entry.ino = attrs.GetId();
         entry.generation = NodeCache.Generation();
-        entry.entry_timeout = GetEntryCacheTimeout(attrs).SecondsFloat();
         entry.attr_timeout = Config->GetAttrTimeout().SecondsFloat();
+        entry.entry_timeout = GetEntryCacheTimeout(attrs).SecondsFloat();
 
         ConvertAttr(Config->GetPreferredBlockSize(), node->Attrs, entry.attr);
     }
