@@ -435,7 +435,8 @@ private:
         if (!NodeLoader) {
             NodeTable = std::make_unique<TNodeTable>(
                 (StatePath / "nodes").GetPath(),
-                MaxNodeCount);
+                MaxNodeCount,
+                true  /* lockFile */);
 
             RecoverNodesFromPersistentTable();
         }

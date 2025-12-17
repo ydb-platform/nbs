@@ -611,6 +611,50 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
         UNIT_ASSERT_VALUES_EQUAL(decreasedTableSize-1, table->AllocRecord());
 
     }
+
+    Y_UNIT_TEST(TwoTablesShouldNotShareState)
+    {
+        TTempDir dir;
+        auto tablePath = dir.Path() / "table";
+        auto initialTableSize = 32;
+
+        using TTable = TPersistentTable<THeader, TRecord>;
+
+        {
+            auto table =
+                std::make_shared<TTable>(tablePath, initialTableSize, true);
+
+            // validate table is empty
+            UNIT_ASSERT_VALUES_EQUAL(table->CountRecords(), 0);
+
+            // fill table with initialTableSize elements
+            for (auto i = 0; i < initialTableSize; i++) {
+                auto index = table->AllocRecord();
+                table->RecordData(index)->Index = i;
+                table->RecordData(index)->Val = i;
+                table->CommitRecord(index);
+            }
+
+            // table unlocks the state file on destruction
+        }
+
+        auto table1 =
+            std::make_shared<TTable>(tablePath, initialTableSize, true);
+
+        // ensure table1 has all records from previous table
+        UNIT_ASSERT_VALUES_EQUAL(table1->CountRecords(), initialTableSize);
+
+        try {
+            auto table2 =
+                std::make_shared<TTable>(tablePath, initialTableSize, true);
+        } catch (...) {
+            // table2 tried to share the state file with table1
+            // and failed as expected
+            return;
+        }
+
+        UNIT_FAIL("Two tables should not share state file");
+    }
 }
 
 }   // namespace NCloud
