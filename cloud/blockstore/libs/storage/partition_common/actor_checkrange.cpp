@@ -22,7 +22,7 @@ TCheckRangeActor::TCheckRangeActor(
     NProto::TCheckRangeRequest request,
     TRequestInfoPtr requestInfo,
     ui64 blockSize,
-    TLogTitle logTitle)
+    TChildLogTitle logTitle)
     : Partition(partition)
     , Request(std::move(request))
     , RequestInfo(std::move(requestInfo))
@@ -34,7 +34,7 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
 {
     LOG_INFO(
         ctx,
-        TBlockStoreComponents::PARTITION,
+        TBlockStoreComponents::PARTITION_WORKER,
         "%s CheckRangeActor has started",
         LogTitle.GetWithTime().c_str());
 
@@ -78,7 +78,7 @@ void TCheckRangeActor::ReplyAndDie(
 {
     LOG_INFO(
         ctx,
-        TBlockStoreComponents::PARTITION,
+        TBlockStoreComponents::PARTITION_WORKER,
         "%s CheckRangeActor has finished",
         LogTitle.GetWithTime().c_str());
 
@@ -94,7 +94,7 @@ void TCheckRangeActor::ReplyAndDie(
 {
     LOG_INFO(
         ctx,
-        TBlockStoreComponents::PARTITION,
+        TBlockStoreComponents::PARTITION_WORKER,
         "%s CheckRangeActor has finished",
         LogTitle.GetWithTime().c_str());
 
@@ -139,20 +139,19 @@ void TCheckRangeActor::HandlePoisonPill(
     ReplyAndDie(ctx, error);
 }
 
-void TCheckRangeActor::HandleReadBlocksResponseError(
+std::unique_ptr<NProto::TError> TCheckRangeActor::HandleReadBlocksResponseError(
     const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
     const NActors::TActorContext& ctx,
-    const ::NCloud::NProto::TError& error,
-    NProto::TError* responseStatus)
+    const ::NCloud::NProto::TError& error)
 {
     const auto* msg = ev->Get();
     LOG_ERROR_S(
         ctx,
-        TBlockStoreComponents::PARTITION,
+        TBlockStoreComponents::PARTITION_WORKER,
         LogTitle.GetWithTime()
             << " reading error has occurred: " << FormatError(error));
 
-    responseStatus->CopyFrom(error);
+    auto result = std::make_unique<NProto::TError>(error);
     if (!msg->Record.FailInfo.FailedRanges.empty()) {
         TStringBuilder builder;
         builder << ", Fail in ranges:\n ["
@@ -162,8 +161,10 @@ void TCheckRangeActor::HandleReadBlocksResponseError(
                        msg->Record.FailInfo.FailedRanges.end())
                 << "]";
 
-        responseStatus->MutableMessage()->append(builder);
+        result->MutableMessage()->append(builder);
     }
+
+    return result;
 }
 
 void TCheckRangeActor::HandleReadBlocksResponse(
@@ -171,16 +172,12 @@ void TCheckRangeActor::HandleReadBlocksResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    auto response =
-        std::make_unique<TEvVolume::TEvCheckRangeResponse>(MakeError(S_OK));
+    auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>();
 
     const auto& error = msg->Record.GetError();
     if (HasError(error)) {
-        HandleReadBlocksResponseError(
-            ev,
-            ctx,
-            error,
-            response->Record.MutableStatus());
+        auto err = HandleReadBlocksResponseError(ev, ctx, error);
+        response->Record.MutableStatus()->CopyFrom(*err);
     } else {
         for (ui64 offset = 0, i = 0; i < Request.GetBlocksCount();
              offset += BlockSize, ++i)

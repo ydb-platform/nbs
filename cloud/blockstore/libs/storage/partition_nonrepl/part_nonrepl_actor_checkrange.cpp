@@ -61,7 +61,7 @@ void TNonreplicatedPartitionActor::HandleCheckRange(
         std::move(record),
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
         PartConfig->GetBlockSize(),
-        LogTitle);
+        LogTitle.GetChild(GetCycleCount()));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

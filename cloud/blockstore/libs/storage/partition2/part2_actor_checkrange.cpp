@@ -38,7 +38,7 @@ void TPartitionActor::HandleCheckRange(
         std::move(record),
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
         State->GetBlockSize(),
-        LogTitle);
+        LogTitle.GetChild(GetCycleCount()));
 
     Actors.insert(actorId);
 }

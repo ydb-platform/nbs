@@ -65,6 +65,7 @@ private:
     const NActors::TActorId StatActorId;
     const NActors::TActorId ResyncActorId;
 
+    TLogTitle LogTitle;
     TMirrorPartitionState State;
 
     TDeque<TPartitionDiskCountersPtr> ReplicaCounters;
@@ -111,7 +112,6 @@ private:
     bool MultiAgentWriteEnabled = true;
     const size_t MultiAgentWriteRequestSizeThreshold = 0;
     size_t MultiAgentWriteRoundRobinSeed = 0;
-    TLogTitle LogTitle;
 
 public:
     TMirrorPartitionActor(

@@ -105,7 +105,7 @@ void TMirrorPartitionActor::HandleCheckRange(
         std::move(record),
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
         State.GetBlockSize(),
-        LogTitle);
+        LogTitle.GetChild(GetCycleCount()));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

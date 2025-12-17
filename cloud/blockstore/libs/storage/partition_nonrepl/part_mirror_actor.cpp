@@ -69,6 +69,7 @@ TMirrorPartitionActor::TMirrorPartitionActor(
     , VolumeActorId(volumeActorId)
     , StatActorId(statActorId)
     , ResyncActorId(resyncActorId)
+    , LogTitle{GetCycleCount(), TLogTitle::TPartitionMirror{.DiskId = DiskId}}
     , State(
           Config,
           rwClientId,
@@ -78,7 +79,6 @@ TMirrorPartitionActor::TMirrorPartitionActor(
     , MultiAgentWriteEnabled(Config->GetMultiAgentWriteEnabled())
     , MultiAgentWriteRequestSizeThreshold(
           Config->GetMultiAgentWriteRequestSizeThreshold())
-    , LogTitle{GetCycleCount(), TLogTitle::TPartitionMirror{.DiskId = DiskId}}
 {}
 
 TMirrorPartitionActor::~TMirrorPartitionActor() = default;

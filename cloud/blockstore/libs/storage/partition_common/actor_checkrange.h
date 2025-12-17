@@ -24,7 +24,7 @@ protected:
     const ui64 BlockSize;
     TGuardedBuffer<TString> Buffer;
     TGuardedSgList SgList;
-    TLogTitle LogTitle;
+    const TChildLogTitle LogTitle;
 
 public:
     TCheckRangeActor(
@@ -32,7 +32,7 @@ public:
         NProto::TCheckRangeRequest request,
         TRequestInfoPtr requestInfo,
         ui64 blockSize,
-        TLogTitle logTitle);
+        TChildLogTitle logTitle);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -48,11 +48,10 @@ protected:
     void HandleReadBlocksResponse(
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
-    void HandleReadBlocksResponseError(
+    std::unique_ptr<NProto::TError> HandleReadBlocksResponseError(
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx,
-        const ::NCloud::NProto::TError &error,
-        NProto::TError *responseStatus);
+        const ::NCloud::NProto::TError &error);
 
     virtual void SendReadBlocksRequest(const NActors::TActorContext& ctx);
     virtual bool OnMessage(TAutoPtr<NActors::IEventHandle>& ev);
