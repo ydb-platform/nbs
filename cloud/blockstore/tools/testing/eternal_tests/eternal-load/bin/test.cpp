@@ -2,11 +2,11 @@
 
 #include "options.h"
 
-#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/aligned_test_scenario.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
-#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/simple_test_scenario.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_executor.h>
-#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/unaligned_test_scenario.h>
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_scenarios/aligned_test_scenario.h>
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_scenarios/simple_test_scenario.h>
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_scenarios/unaligned_test_scenario.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/size_literals.h>

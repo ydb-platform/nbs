@@ -1,6 +1,8 @@
 #include "aligned_test_scenario.h"
 
-#include "config.h"
+#include "test_scenario_base.h"
+
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -123,21 +125,14 @@ struct TRange
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAlignedTestScenario: public ITestScenario
+class TAlignedTestScenario: public TTestScenarioBase
 {
 private:
     using IService = ITestExecutorIOService;
 
-    const TInstant TestStartTimestamp;
-    IConfigHolderPtr ConfigHolder;
     TDuration SlowRequestThreshold;
-    std::optional<double> PhaseDuration;
-    ui32 WriteRate;
 
     TVector<TRange> Ranges;
-    TVector<std::unique_ptr<ITestScenarioWorker>> Workers;
-
-    TLog Log;
 
     TAtomic WriteRequestsCompleted = 0;
 
@@ -172,9 +167,7 @@ private:
 
 public:
     TAlignedTestScenario(IConfigHolderPtr configHolder, const TLog& log)
-        : TestStartTimestamp(Now())
-        , ConfigHolder(configHolder)
-        , Log(log)
+        : TTestScenarioBase({}, std::move(configHolder), log)
     {
         auto& config = ConfigHolder->GetConfig();
         for (ui16 i = 0; i < config.GetIoDepth(); ++i) {
@@ -182,32 +175,11 @@ public:
             Ranges.emplace_back(
                 rangeConfig,
                 rangeConfig.GetRequestBlockCount() * config.GetBlockSize());
-            Workers.push_back(std::make_unique<TWorker>(this, i));
+            AddWorker(std::make_unique<TWorker>(this, i));
         }
 
         SlowRequestThreshold =
             TDuration::Parse(config.GetSlowRequestThreshold());
-
-        if (config.HasAlternatingPhase()) {
-            PhaseDuration =
-                TDuration::Parse(config.GetAlternatingPhase()).SecondsFloat();
-
-            Y_ENSURE(
-                PhaseDuration > 0,
-                "Alternating phase duration should be a positive non-zero value");
-        }
-
-        WriteRate = config.GetWriteRate();
-    }
-
-    ui32 GetWorkerCount() const final
-    {
-        return static_cast<ui32>(Workers.size());
-    }
-
-    ITestScenarioWorker& GetWorker(ui32 index) const final
-    {
-        return *Workers[index];
     }
 };
 
@@ -218,13 +190,7 @@ void TAlignedTestScenario::DoRequest(
     double secondsSinceTestStart,
     IService& service)
 {
-    auto writeRate = WriteRate;
-    if (PhaseDuration) {
-        auto iter = secondsSinceTestStart / PhaseDuration.value();
-        if (static_cast<ui64>(iter) % 2 == 1) {
-            writeRate = 100 - writeRate;
-        }
-    }
+    const auto writeRate = GetWriteProbabilityPercent(secondsSinceTestStart);
 
     if (RandomNumber(100u) >= writeRate) {
         DoReadRequest(rangeIdx, service);
@@ -317,7 +283,7 @@ void TAlignedTestScenario::DoWriteRequest(ui16 rangeIdx, IService& service)
         .BlockIndex = blockIdx,
         .RangeIdx = rangeIdx,
         .RequestTimestamp = startTs.MicroSeconds(),
-        .TestTimestamp = TestStartTimestamp.MicroSeconds(),
+        .TestTimestamp = TestStartTime.MicroSeconds(),
         .TestId = ConfigHolder->GetConfig().GetTestId(),
         .Checksum = 0};
 

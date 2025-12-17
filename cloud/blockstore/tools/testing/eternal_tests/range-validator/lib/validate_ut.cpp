@@ -1,8 +1,8 @@
 #include "validate.h"
 
-#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/aligned_test_scenario.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_executor.h>
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_scenarios/aligned_test_scenario.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/range-validator/lib/validate.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
