@@ -1,7 +1,7 @@
-PROGRAM(open_close_bench)
+PROGRAM(bench)
 
 SRCS(
-    open_close_bench.cpp
+    main.c
 )
 
 END()
