@@ -104,7 +104,7 @@ int main(int argc, char *argv[]) {
                 return;
             }
 
-            auto threads = std::min<size_t>(parallel, total);
+            size_t threads = std::min<size_t>(parallel, total);
             std::vector<std::future<void>> futures;
             futures.reserve(threads);
 
