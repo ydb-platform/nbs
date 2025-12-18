@@ -2623,7 +2623,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_NOT_IMPLEMENTED,
-            record.error().GetCode(),
+            record.GetError().GetCode(),
             "checkrange must not work for mirror disks now");
     }
 

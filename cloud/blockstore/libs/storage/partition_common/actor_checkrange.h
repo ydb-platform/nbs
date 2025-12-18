@@ -50,7 +50,6 @@ protected:
         const NActors::TActorContext& ctx);
 
     virtual void SendReadBlocksRequest(const NActors::TActorContext& ctx);
-    virtual bool OnMessage(TAutoPtr<NActors::IEventHandle>& ev);
 
 private:
     STFUNC(StateWork);

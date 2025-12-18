@@ -11,10 +11,11 @@
 #include <util/string/builder.h>
 #include <util/string/join.h>
 
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
+
+////////////////////////////////////////////////////////////////////////////////
 
 namespace {
 
@@ -123,20 +124,10 @@ void TCheckRangeActor::ReplyAndDie(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-bool TCheckRangeActor::OnMessage(TAutoPtr<NActors::IEventHandle>& ev)
-{
-    Y_UNUSED(ev);
-
-    return false;
-}
 
 STFUNC(TCheckRangeActor::StateWork)
 {
     TRequestScope timer(*RequestInfo);
-
-    if (OnMessage(ev)) {
-        return;
-    }
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvService::TEvReadBlocksLocalResponse, HandleReadBlocksResponse);
