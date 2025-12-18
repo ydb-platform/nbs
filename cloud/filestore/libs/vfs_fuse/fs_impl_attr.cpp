@@ -52,7 +52,7 @@ void TFileSystem::SetAttr(
         flags |= ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
         update->SetSize(attr->st_size);
         if (WriteBackCache) {
-            WriteBackCache.SetMinNodeSize(ino, attr->st_size);
+            WriteBackCache.SetCachedNodeSize(ino, attr->st_size);
         }
     }
     if (to_set & FUSE_SET_ATTR_ATIME) {
@@ -134,7 +134,8 @@ void TFileSystem::GetAttr(
     request->SetHandle(handle);
 
     // Take into account cached WriteData requests
-    auto minNodeSize = WriteBackCache ? WriteBackCache.GetMinNodeSize(ino) : 0;
+    const auto cachedNodeSize =
+        WriteBackCache ? WriteBackCache.GetCachedNodeSize(ino) : 0;
 
     Session->GetNodeAttr(callContext, std::move(request))
         .Subscribe(
@@ -144,7 +145,7 @@ void TFileSystem::GetAttr(
                 auto self = ptr.lock();
                 if (CheckResponse(self, *callContext, req, response)) {
                     auto* attr = response.MutableNode();
-                    attr->SetSize(Max(attr->GetSize(), minNodeSize));
+                    attr->SetSize(Max(attr->GetSize(), cachedNodeSize));
                     self->ReplyAttr(
                         *callContext,
                         response.GetError(),

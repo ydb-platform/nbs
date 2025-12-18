@@ -187,7 +187,7 @@ struct TWriteBackCache::TNodeState
     // the changes are not visible to the tablet. FileSystem requests that
     // return node attributes or rely on it (GetAttr, Lookup, Read, ReadDir)
     // should have the node size adjusted to this value.
-    ui64 MinNodeSize = 0;
+    ui64 CachedNodeSize = 0;
 
     // Non-zero value indicates that the node state is to be deleted but it is
     // referenced from |TImpl::NodeStateRefs|. 'Referenced' means that there are
@@ -870,20 +870,20 @@ public:
         }
     }
 
-    ui64 GetMinNodeSize(ui64 nodeId) const
+    ui64 GetCachedNodeSize(ui64 nodeId) const
     {
         with_lock (Lock) {
             auto it = NodeStates.find(nodeId);
-            return it != NodeStates.end() ? it->second->MinNodeSize : 0;
+            return it != NodeStates.end() ? it->second->CachedNodeSize : 0;
         }
     }
 
-    void SetMinNodeSize(ui64 nodeId, ui64 size)
+    void SetCachedNodeSize(ui64 nodeId, ui64 size)
     {
         with_lock (Lock) {
             auto it = NodeStates.find(nodeId);
             if (it != NodeStates.end()) {
-                it->second->MinNodeSize = size;
+                it->second->CachedNodeSize = size;
             }
         }
     }
@@ -1524,7 +1524,8 @@ private:
         nodeState->CachedEntries.push_back(entry.get());
         nodeState->MaxCachedRequestId =
             Max(nodeState->MaxCachedRequestId, entry->GetRequestId());
-        nodeState->MinNodeSize = Max(nodeState->MinNodeSize, entry->GetEnd());
+        nodeState->CachedNodeSize =
+            Max(nodeState->CachedNodeSize, entry->GetEnd());
         NodesWithNewCachedEntries.insert(nodeState->NodeId);
         CachedEntries.push_back(std::move(entry));
     }
@@ -1654,14 +1655,14 @@ void TWriteBackCache::ReleaseNodeStateRef(ui64 refId)
     Impl->ReleaseNodeStateRef(refId);
 }
 
-ui64 TWriteBackCache::GetMinNodeSize(ui64 nodeId) const
+ui64 TWriteBackCache::GetCachedNodeSize(ui64 nodeId) const
 {
-    return Impl->GetMinNodeSize(nodeId);
+    return Impl->GetCachedNodeSize(nodeId);
 }
 
-void TWriteBackCache::SetMinNodeSize(ui64 nodeId, ui64 size)
+void TWriteBackCache::SetCachedNodeSize(ui64 nodeId, ui64 size)
 {
-    Impl->SetMinNodeSize(nodeId, size);
+    Impl->SetCachedNodeSize(nodeId, size);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
