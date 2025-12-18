@@ -703,4 +703,8 @@ message TStorageConfig
     // reads / writes. Tablet local DB still continues to use blobstorage.
     optional bool ReadBlobDisabled = 474;
     optional bool WriteBlobDisabled = 475;
+
+    // Entry timeout for regular entries. See EntryTimeout
+    // Passed to filestore-vhost and do not have effect on the tablet
+    optional uint32 RegularFileEntryTimeout = 476;
 }

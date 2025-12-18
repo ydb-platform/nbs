@@ -47,6 +47,7 @@ message TFileStoreFeatures
     bool ZeroCopyReadEnabled = 32;
     uint32 TwoStageReadThreshold = 33;
     bool BlockChecksumsInProfileLogEnabled = 34;
+    uint32 RegularFileEntryTimeout = 35;
 }
 
 message TFileStore
