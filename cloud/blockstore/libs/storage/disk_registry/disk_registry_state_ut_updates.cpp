@@ -214,6 +214,55 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateUpdatesTest)
             );
         });
     }
+
+    Y_UNIT_TEST(ShouldUpdateDiskStateWhenSupportsNotificationsEnabled)
+    {
+        const auto deviceId = "uuid-1.1";
+        const auto diskId = "disk-1";
+
+        const TVector agents {
+            AgentConfig(1, {
+                Device("dev-1", deviceId, "", DefaultBlockSize, 10000000000),
+            })
+        };
+
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents(agents)
+                            .WithDisks({Disk(diskId, {deviceId})})
+                            .Build();
+        
+        TVector<TDiskStateUpdate> dbUpdates;
+        executor.ReadTx([&](TDiskRegistryDatabase db) {
+            db.ReadDiskStateChanges(dbUpdates);
+        });
+
+        TVector<TDiskStateUpdate> updates = statePtr->GetDiskStateUpdates();
+        UNIT_ASSERT(dbUpdates.size() == updates.size());
+        for(size_t i = 0; i < dbUpdates.size(); ++i) {
+            UNIT_ASSERT(google::protobuf::util::MessageDifferencer::Equals(dbUpdates[i].State, updates[i].State));
+        }
+        
+        TString affectedDisk;
+        executor.WriteTx([&](TDiskRegistryDatabase db) {
+            statePtr->UpdateDeviceState(db, deviceId, NProto::DEVICE_STATE_WARNING, TInstant::Now(), "", affectedDisk);
+        });
+        
+        updates = statePtr->GetDiskStateUpdates();
+        dbUpdates.clear();
+        executor.ReadTx([&](TDiskRegistryDatabase db) {
+            db.ReadDiskStateChanges(dbUpdates);
+        });
+
+        UNIT_ASSERT(dbUpdates.size() == updates.size());
+        for(size_t i = 0; i < dbUpdates.size(); ++i) {
+            UNIT_ASSERT(google::protobuf::util::MessageDifferencer::Equals(dbUpdates[i].State, updates[i].State));
+        }
+    }
 }
 
 Y_UNIT_TEST_SUITE(TDiskRegistryChangeNonreplDiskTest)
