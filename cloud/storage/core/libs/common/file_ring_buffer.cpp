@@ -433,12 +433,15 @@ private:
         ResizeAndRemap(newFileSize);
     }
 
-    void NormalizeAndResizeMetadataIfNeeded(ui64 newMetadataCapacity)
+    void NormalizeAndResizeMetadataIfNeeded(ui64 desiredMetadataCapacity)
     {
+        const ui64 minMetadataCapacity =
+            Min(Header()->MetadataCapacity,
+                static_cast<ui64>(Header()->MetadataSize));
+
         const auto header = InitHeader(
             Header()->DataCapacity,
-            Max(newMetadataCapacity,
-                static_cast<ui64>(Header()->MetadataSize)));
+            Max(desiredMetadataCapacity, minMetadataCapacity));
 
         if (header.MetadataOffset == Header()->MetadataOffset &&
             header.MetadataCapacity == Header()->MetadataCapacity &&
