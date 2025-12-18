@@ -25,11 +25,11 @@ QEMU_FIRMWARE_REL=/usr/share/qemu
       tar -xzf $QEMU_BIN_TAR -C $QEMU_BIN_DIR
 
 : ${QMP_PORT:=4444}
-: ${DISK_IMAGE:=$QEMU_DIR/image-noble/rootfs.img}
+: ${DISK_IMAGE:=$QEMU_DIR/image-plucky/rootfs.img}
 : ${VHOST_SOCKET_PATH:=/tmp/vhost.sock}
 
-: ${MEM_SIZE:=4G}
-: ${NCORES:=16}
+: ${MEM_SIZE:=32G}
+: ${NCORES:=32}
 
 args=(
     -L $QEMU_FIRMWARE
@@ -54,7 +54,7 @@ args=(
     -device virtio-blk-pci,id=vblk0,drive=hdd0,num-queues=$NCORES,bootindex=1
 
     -chardev socket,path=$VHOST_SOCKET_PATH,id=vhost0,reconnect=1
-    -device vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,queue-size=512
+    -device vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,num-request-queues=8,queue-size=512
 
     -serial stdio
     -nographic
