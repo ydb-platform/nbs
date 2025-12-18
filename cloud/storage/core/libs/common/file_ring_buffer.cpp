@@ -217,6 +217,13 @@ THeader InitHeader(ui64 dataCapacity, ui64 metadataCapacity)
     return res;
 }
 
+ui64 GetMaxUsedOffset(const THeader& header)
+{
+    return Max(
+        header.DataOffset + header.DataCapacity,
+        header.MetadataOffset + header.MetadataCapacity);
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -369,9 +376,29 @@ private:
         }
     }
 
+    void ResizeAndRemap(ui64 fileSize)
+    {
+        Map.ResizeAndRemap(0, fileSize);
+    }
+
     std::span<char> GetMappedData() const
     {
         return std::span<char>(static_cast<char*>(Map.Ptr()), Map.MappedSize());
+    }
+
+    void CopyMappedData(ui64 destPos, ui64 srcPos, ui64 size)
+    {
+        auto map = GetMappedData();
+
+        Y_ABORT_UNLESS(srcPos <= map.size());
+        Y_ABORT_UNLESS(destPos <= map.size());
+        Y_ABORT_UNLESS(size <= map.size() - srcPos);
+        Y_ABORT_UNLESS(size <= map.size() - destPos);
+
+        // Copied data regions cannot overlap
+        Y_ABORT_UNLESS(destPos + size <= srcPos || srcPos + size <= destPos);
+
+        MemCopy(map.data() + destPos, map.data() + srcPos, size);
     }
 
     void Migrate(const THeader& header)
@@ -383,23 +410,19 @@ private:
 
         // Make a copy of all data in the end of the file
         // Then copy it to the right place
-        Map.ResizeAndRemap(0, newFileSize + header.DataCapacity);
-        auto map = GetMappedData();
+        ResizeAndRemap(newFileSize + header.DataCapacity);
 
         if (Header()->HeaderSize == 0) {
-            memcpy(
-                map.data() + newFileSize,
-                map.data() + sizeof(THeaderPrev),
+            CopyMappedData(
+                newFileSize,
+                sizeof(THeaderPrev),
                 header.DataCapacity);
             // Indicate that the data has been copied
             Header()->HeaderSize = sizeof(THeader);
         }
 
         Y_ABORT_UNLESS(Header()->HeaderSize == sizeof(THeader));
-        memcpy(
-            map.data() + header.DataOffset,
-            map.data() + newFileSize,
-            header.DataCapacity);
+        CopyMappedData(header.DataOffset, newFileSize, header.DataCapacity);
 
         Header()->DataOffset = header.DataOffset;
         Header()->MetadataOffset = header.MetadataOffset;
@@ -407,39 +430,80 @@ private:
         Header()->MetadataSize = 0;
         Header()->Version = VERSION;
 
-        Map.ResizeAndRemap(0, newFileSize);
+        ResizeAndRemap(newFileSize);
     }
 
-    void ResizeMetadata(ui64 newMetadataCapacity)
+    void NormalizeAndResizeMetadataIfNeeded(ui64 newMetadataCapacity)
     {
-        Y_ABORT_UNLESS(Header()->MetadataCapacity < newMetadataCapacity);
+        const auto header = InitHeader(
+            Header()->DataCapacity,
+            Max(newMetadataCapacity,
+                static_cast<ui64>(Header()->MetadataSize)));
 
-        if (Header()->MetadataOffset > Header()->DataOffset) {
-            // Metadata is at the end, can just expand the file
-            Map.ResizeAndRemap(
-                0,
-                Header()->MetadataOffset + newMetadataCapacity);
-        } else if (
-            Header()->DataOffset - Header()->MetadataOffset <
-            newMetadataCapacity)
+        if (header.MetadataOffset == Header()->MetadataOffset &&
+            header.MetadataCapacity == Header()->MetadataCapacity &&
+            header.DataOffset == Header()->DataOffset &&
+            header.DataCapacity == Header()->DataCapacity)
         {
-            // Not enough space before data, need to move metadata to the end
-            const ui64 newMetadataOffset = AlignUp(
-                Header()->DataOffset + Header()->DataCapacity,
-                sizeof(ui64));
+            // The file is already normalized - just ensure the size is correct
+            const ui64 fileSize = GetMaxUsedOffset(header);
+            if (fileSize != static_cast<ui64>(Map.Length())) {
+                ResizeAndRemap(fileSize);
+            }
+            return;
+        }
 
-            Map.ResizeAndRemap(0, newMetadataOffset + newMetadataCapacity);
+        const ui64 newFileSize = GetMaxUsedOffset(header);
 
-            auto map = GetMappedData();
-            MemCopy(
-                map.data() + newMetadataOffset,
-                map.data() + Header()->MetadataOffset,
+        if (Header()->MetadataOffset != header.MetadataOffset &&
+            Header()->MetadataOffset < newFileSize)
+        {
+            // Move metadata to the temporary place
+            const ui64 newMetadataOffset =
+                Max(newFileSize, GetMaxUsedOffset(*Header()));
+            ResizeAndRemap(newMetadataOffset + Header()->MetadataCapacity);
+            CopyMappedData(
+                newMetadataOffset,
+                Header()->MetadataOffset,
                 Header()->MetadataCapacity);
-
             Header()->MetadataOffset = newMetadataOffset;
         }
 
-        Header()->MetadataCapacity = newMetadataCapacity;
+        if (Header()->DataOffset != header.DataOffset &&
+            Header()->DataOffset < newFileSize)
+        {
+            // Move data to the temporary place
+            const ui64 newDataOffset =
+                Max(newFileSize, GetMaxUsedOffset(*Header()));
+            ResizeAndRemap(newDataOffset + Header()->DataCapacity);
+            CopyMappedData(
+                newDataOffset,
+                Header()->DataOffset,
+                Header()->DataCapacity);
+            Header()->DataOffset = newDataOffset;
+        }
+
+        if (Header()->MetadataOffset != header.MetadataOffset) {
+            // Move metadata to the right place
+            CopyMappedData(
+                header.MetadataOffset,
+                Header()->MetadataOffset,
+                Header()->MetadataSize);
+            Header()->MetadataOffset = header.MetadataOffset;
+        }
+
+        Header()->MetadataCapacity = header.MetadataCapacity;
+
+        if (Header()->DataOffset != header.DataOffset) {
+            // Move data to the right place
+            CopyMappedData(
+                header.DataOffset,
+                Header()->DataOffset,
+                Header()->DataCapacity);
+            Header()->DataOffset = header.DataOffset;
+        }
+
+        ResizeAndRemap(newFileSize);
     }
 
 public:
@@ -463,9 +527,7 @@ public:
 
         ValidateStructure();
 
-        if (Header()->MetadataCapacity < metadataCapacity) {
-            ResizeMetadata(metadataCapacity);
-        }
+        NormalizeAndResizeMetadataIfNeeded(metadataCapacity);
 
         Data = TEntriesData(
             GetMappedData().subspan(
