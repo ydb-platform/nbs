@@ -184,14 +184,14 @@ struct TWriteBackCache::TNodeState
     ui64 AutomaticFlushRequestId = 0;
 
     // Cached data extends the node size but until the data is flushed,
-    // the changes are not visible to the tablet. Calls to GetAttr, ListNodes
-    // and other requests that return node attributes should have the node
-    // size adjusted to this value.
+    // the changes are not visible to the tablet. FileSystem requests that
+    // return node attributes or rely on it (GetAttr, Lookup, Read, ReadDir)
+    // should have the node size adjusted to this value.
     ui64 MinNodeSize = 0;
 
-    // Non-zero value indicates that the node state is to be deleted but is
-    // still referenced from |TImpl::NodeStateRefs|. It can be deleted when all
-    // references with id less than |DeletionId| are released.
+    // Non-zero value indicates that the node state is to be deleted but it is
+    // referenced from |TImpl::NodeStateRefs|. 'Referenced' means that there are
+    // values in |TImpl::NodeStateRefs| that are less than |DeletionId|.
     ui64 DeletionId = 0;
 
     explicit TNodeState(ui64 nodeId)
@@ -416,7 +416,8 @@ private:
     TSet<ui64> NodeStateRefs;
 
     // Node states to be deleted but that are referenced from |NodeStateRefs|.
-    TMap<ui64, TNodeState*> DeletedNodeStates;
+    // Key: |TNodeState::DeletionId|, Value: NodeId.
+    TMap<ui64, ui64> DeletedNodeStates;
 
     // Waiting queue for the available space in the cache - entries
     // with Pending status that have acquired write lock.
@@ -861,11 +862,10 @@ public:
                 NodeStateRefs.empty() ? Max<ui64>() : *NodeStateRefs.begin();
 
             for (auto it = DeletedNodeStates.begin();
-                 it != DeletedNodeStates.end() && it->first <= minRefId; )
+                 it != DeletedNodeStates.end() && it->first <= minRefId;)
             {
-                Y_DEBUG_ABORT_UNLESS(NodeStates.erase(it->second->NodeId));
+                EraseNodeState(it->second);
                 it = DeletedNodeStates.erase(it);
-                Stats->DecrementNodeCount();
             }
         }
     }
@@ -969,6 +969,12 @@ private:
         return ptr.get();
     }
 
+    void EraseNodeState(ui64 nodeId)
+    {
+        Y_DEBUG_ABORT_UNLESS(NodeStates.erase(nodeId));
+        Stats->DecrementNodeCount();
+    }
+
     void DeleteNodeStateIfNeeded(TNodeState* nodeState)
     {
         Y_DEBUG_ABORT_UNLESS(nodeState->DeletionId == 0);
@@ -981,11 +987,10 @@ private:
         NodesWithNewEntries.erase(nodeState->NodeId);
 
         if (NodeStateRefs.empty()) {
-            Y_DEBUG_ABORT_UNLESS(NodeStates.erase(nodeState->NodeId));
-            Stats->DecrementNodeCount();
+            EraseNodeState(nodeState->NodeId);
         } else {
             nodeState->DeletionId = NextRequestId++;
-            DeletedNodeStates[nodeState->DeletionId] = nodeState;
+            DeletedNodeStates[nodeState->DeletionId] = nodeState->NodeId;
         }
     }
 
