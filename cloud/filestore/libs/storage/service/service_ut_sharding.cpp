@@ -6280,6 +6280,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 return false;
             });
 
+        // Test handle that contains non-zero shard
         service.AssertReadDataFailed(
             headers,
             fsId,
@@ -6289,6 +6290,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             1);
 
         UNIT_ASSERT_EQUAL(fsId + "_s1", fsIdFromRequest);
+
+        // Test handle that contains zero shard
+        service.AssertReadDataFailed(
+            headers,
+            fsId,
+            nodeId,
+            0x0001000000000001,
+            0,
+            1);
+
+        UNIT_ASSERT_EQUAL(fsId, fsIdFromRequest);
     }
 }
 
