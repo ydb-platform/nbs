@@ -208,7 +208,7 @@ func (c *nbsServerControllerService) ValidateVolumeCapabilities(
 	req *csi.ValidateVolumeCapabilitiesRequest,
 ) (*csi.ValidateVolumeCapabilitiesResponse, error) {
 
-	log.Printf("csi.ValidateVolumeCapabilities: %v", req)
+	log.Printf("csi.ValidateVolumeCapabilities: %+v", req)
 
 	if req.VolumeId == "" {
 		return nil, status.Error(
