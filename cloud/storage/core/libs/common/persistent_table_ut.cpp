@@ -624,10 +624,10 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
             auto table =
                 std::make_shared<TTable>(tablePath, initialTableSize, true);
 
-            // validate table is empty
+            // Validate table is empty
             UNIT_ASSERT_VALUES_EQUAL(table->CountRecords(), 0);
 
-            // fill table with initialTableSize elements
+            // Fill table with initialTableSize elements
             for (auto i = 0; i < initialTableSize; i++) {
                 auto index = table->AllocRecord();
                 table->RecordData(index)->Index = i;
@@ -635,25 +635,19 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
                 table->CommitRecord(index);
             }
 
-            // table unlocks the state file on destruction
+            // Unlocks the state file on destruction
         }
 
         auto table1 =
             std::make_shared<TTable>(tablePath, initialTableSize, true);
 
-        // ensure table1 has all records from previous table
+        // Ensure table1 has all records from previous table
         UNIT_ASSERT_VALUES_EQUAL(table1->CountRecords(), initialTableSize);
 
-        try {
-            auto table2 =
-                std::make_shared<TTable>(tablePath, initialTableSize, true);
-        } catch (...) {
-            // table2 tried to share the state file with table1
-            // and failed as expected
-            return;
-        }
-
-        UNIT_FAIL("Two tables should not share state file");
+        // Ensure that two tables cannot share the same state file
+        UNIT_ASSERT_EXCEPTION(
+            std::make_shared<TTable>(tablePath, initialTableSize, true),
+            yexception);
     }
 }
 
