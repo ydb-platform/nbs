@@ -85,7 +85,8 @@ class Qemu:
                  backup_rootfs=False,
                  inst_index=0,
                  shared_nic_port=0,
-                 use_virtiofs_server=False):
+                 use_virtiofs_server=False,
+                 num_request_queues=1):
 
         self.ssh_port = 0
         self.qmp = None
@@ -103,6 +104,7 @@ class Qemu:
         self.proc = proc
         self.virtio = virtio
         self.qemu_options = qemu_options
+        self.num_request_queues = num_request_queues
         self.virtio_options = self._get_virtio_options(self.virtio, vhost_socket)
         self.enable_kvm = enable_kvm
         self.backup_rootfs = backup_rootfs
@@ -144,7 +146,8 @@ class Qemu:
         cmd = ["-chardev",
                "socket,id=vhost0,path={},reconnect=1".format(vhost_socket)]
         cmd += ["-device",
-                "vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,queue-size=512,migration=external"]
+                "vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,num-request-queues=%s,queue-size=512,migration=external"
+                % self.num_request_queues]
         return cmd
 
     def _get_virtioblk_options(self, vhost_socket):

@@ -754,6 +754,7 @@ void TFileSystem::Flush(
     NProto::TProfileLogRequestInfo requestInfo;
     InitProfileLogRequestInfo(requestInfo, EFileStoreFuseRequest::Flush, Now());
     InitNodeInfo(requestInfo, true, TNodeId{ino}, THandle{fi->fh});
+    requestInfo.SetLoopThreadId(callContext->LoopThreadId);
 
     auto callback = [=, ptr = weak_from_this(), requestInfo = std::move(requestInfo)]
         (const auto& future) mutable {
@@ -816,6 +817,7 @@ void TFileSystem::FSync(
         datasync,
         TNodeId{fi ? ino : InvalidNodeId},
         THandle{fi ? fi->fh : InvalidHandle});
+    requestInfo.SetLoopThreadId(callContext->LoopThreadId);
 
     std::function<void(const TFuture<NProto::TError>&)>
     callback = [=, ptr = weak_from_this(), requestInfo = std::move(requestInfo)]
@@ -940,6 +942,7 @@ void TFileSystem::FSyncDir(
         datasync,
         TNodeId{ino},
         THandle{fi->fh});
+    requestInfo.SetLoopThreadId(callContext->LoopThreadId);
 
     auto callback = [=, ptr = weak_from_this(), requestInfo = std::move(requestInfo)]
         (const auto& future) mutable {

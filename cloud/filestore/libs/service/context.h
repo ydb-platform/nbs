@@ -22,6 +22,8 @@ public:
     ui64 RequestSize = 0;
     bool Unaligned = false;
 
+    ui64 LoopThreadId = 0;
+
     int CancellationCode = 0;
     std::atomic<bool> Cancelled = false;
 

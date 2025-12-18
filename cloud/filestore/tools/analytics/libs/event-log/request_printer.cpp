@@ -371,6 +371,11 @@ public:
             out << PrintBlobsInfo(request.GetBlobsInfo()) << "\t";
         }
 
+        if (request.GetLoopThreadId()) {
+            out << PrintValue("loop_thread_id", request.GetLoopThreadId())
+                << "\t";
+        }
+
         if (out.empty()) {
             out << "{no_info}";
         } else {
