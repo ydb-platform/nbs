@@ -114,12 +114,13 @@ def test_load_async_io_fails(fixture_mount_tmpfs):
 
 def test_multiple_files():
     with tempfile.TemporaryDirectory() as tmpdir:
+        timeout = 10
         pattern = os.path.join(tmpdir, "testfile_{}.test")
         test_count = 5
         tmp_files = [pattern.format(i) for i in range(test_count)]
 
         try:
-            assert __run_load_test(pattern, scenario="unaligned", engine="sync", direct=False, timeout=10, test_count=test_count).returncode == 0
+            assert __run_load_test(pattern, scenario="unaligned", engine="sync", direct=False, timeout=timeout, test_count=test_count).returncode == 0
         except TimeoutExpired:
             pass
         else:
