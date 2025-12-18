@@ -627,7 +627,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(!rb->SetMetadata("1"));
         UNIT_ASSERT(rb->SetMetadata(""));
 
-        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 4);
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
         UNIT_ASSERT(!rb->SetMetadata("1"));
         UNIT_ASSERT_VALUES_EQUAL("", rb->GetMetadata());
         UNIT_ASSERT_VALUES_EQUAL("AAA", rb->Front());
@@ -715,6 +715,30 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         TFileRingBuffer rb(f.GetName(), len);
         UNIT_ASSERT_VALUES_EQUAL("AAA", rb.Front());
+    }
+
+    Y_UNIT_TEST(ShouldResizeMetadata)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 36;
+
+        auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 1);
+        UNIT_ASSERT(rb->PushBack("AAA"));
+        UNIT_ASSERT(rb->SetMetadata("1"));
+        UNIT_ASSERT(!rb->SetMetadata("12"));
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 4);
+        UNIT_ASSERT_STRINGS_EQUAL("1", rb->GetMetadata());
+        UNIT_ASSERT(rb->SetMetadata("123"));
+        UNIT_ASSERT(!rb->SetMetadata("12345"));
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 16);
+        UNIT_ASSERT_STRINGS_EQUAL("123", rb->GetMetadata());
+        UNIT_ASSERT(rb->SetMetadata("123456789"));
+        UNIT_ASSERT(!rb->SetMetadata("1234567890abcdef!"));
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 100);
+        UNIT_ASSERT_STRINGS_EQUAL("123456789", rb->GetMetadata());
     }
 }
 

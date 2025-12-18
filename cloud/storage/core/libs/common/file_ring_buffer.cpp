@@ -310,6 +310,27 @@ private:
         Corrupted = true;
     }
 
+    void ValidateStructure()
+    {
+        auto map = GetMappedData();
+        const auto& h = *Header();
+
+        Y_ABORT_UNLESS(h.Version == VERSION);
+        Y_ABORT_UNLESS(sizeof(THeader) == h.HeaderSize);
+
+        Y_ABORT_UNLESS(h.HeaderSize <= h.MetadataOffset);
+        Y_ABORT_UNLESS(h.MetadataOffset <= map.size());
+        Y_ABORT_UNLESS(h.MetadataCapacity <= map.size() - h.MetadataOffset);
+
+        Y_ABORT_UNLESS(h.HeaderSize <= h.DataOffset);
+        Y_ABORT_UNLESS(h.DataOffset <= map.size());
+        Y_ABORT_UNLESS(h.DataCapacity <= map.size() - h.DataOffset);
+
+        Y_ABORT_UNLESS(
+            h.MetadataOffset + h.MetadataCapacity <= h.DataOffset ||
+            h.DataOffset + h.DataCapacity <= h.MetadataOffset);
+    }
+
     void ValidateDataStructure()
     {
         TEntryInfo front = GetFrontEntry();
@@ -389,6 +410,38 @@ private:
         Map.ResizeAndRemap(0, newFileSize);
     }
 
+    void ResizeMetadata(ui64 newMetadataCapacity)
+    {
+        Y_ABORT_UNLESS(Header()->MetadataCapacity < newMetadataCapacity);
+
+        if (Header()->MetadataOffset > Header()->DataOffset) {
+            // Metadata is at the end, can just expand the file
+            Map.ResizeAndRemap(
+                0,
+                Header()->MetadataOffset + newMetadataCapacity);
+        } else if (
+            Header()->DataOffset - Header()->MetadataOffset <
+            newMetadataCapacity)
+        {
+            // Not enough space before data, need to move metadata to the end
+            const ui64 newMetadataOffset = AlignUp(
+                Header()->DataOffset + Header()->DataCapacity,
+                sizeof(ui64));
+
+            Map.ResizeAndRemap(0, newMetadataOffset + newMetadataCapacity);
+
+            auto map = GetMappedData();
+            MemCopy(
+                map.data() + newMetadataOffset,
+                map.data() + Header()->MetadataOffset,
+                Header()->MetadataCapacity);
+
+            Header()->MetadataOffset = newMetadataOffset;
+        }
+
+        Header()->MetadataCapacity = newMetadataCapacity;
+    }
+
 public:
     TImpl(const TString& filePath, ui64 dataCapacity, ui64 metadataCapacity)
         : Map(filePath, TMemoryMapCommon::oRdWr)
@@ -408,26 +461,16 @@ public:
             Migrate(header);
         }
 
-        TString s;
-        auto map = GetMappedData();
-        const auto& h = *Header();
+        ValidateStructure();
 
-        Y_ABORT_UNLESS(h.Version == VERSION);
-        Y_ABORT_UNLESS(sizeof(THeader) == h.HeaderSize);
+        if (Header()->MetadataCapacity < metadataCapacity) {
+            ResizeMetadata(metadataCapacity);
+        }
 
-        Y_ABORT_UNLESS(h.HeaderSize <= h.MetadataOffset);
-        Y_ABORT_UNLESS(h.MetadataOffset <= map.size());
-        Y_ABORT_UNLESS(h.MetadataCapacity <= map.size() - h.MetadataOffset);
-
-        Y_ABORT_UNLESS(h.HeaderSize <= h.DataOffset);
-        Y_ABORT_UNLESS(h.DataOffset <= map.size());
-        Y_ABORT_UNLESS(h.DataCapacity <= map.size() - h.DataOffset);
-
-        Y_ABORT_UNLESS(
-            h.MetadataOffset + h.MetadataCapacity <= h.DataOffset ||
-            h.DataOffset + h.DataCapacity <= h.MetadataOffset);
-
-        Data = TEntriesData(map.subspan(h.DataOffset, h.DataCapacity));
+        Data = TEntriesData(
+            GetMappedData().subspan(
+                Header()->DataOffset,
+                Header()->DataCapacity));
 
         ValidateDataStructure();
     }
