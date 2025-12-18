@@ -139,7 +139,7 @@ void TCheckRangeActor::HandlePoisonPill(
     ReplyAndDie(ctx, error);
 }
 
-std::unique_ptr<NProto::TError> TCheckRangeActor::HandleReadBlocksResponseError(
+NProto::TError TCheckRangeActor::HandleReadBlocksResponseError(
     const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
     const NActors::TActorContext& ctx,
     const ::NCloud::NProto::TError& error)
@@ -151,7 +151,7 @@ std::unique_ptr<NProto::TError> TCheckRangeActor::HandleReadBlocksResponseError(
         LogTitle.GetWithTime()
             << " reading error has occurred: " << FormatError(error));
 
-    auto result = std::make_unique<NProto::TError>(error);
+    NProto::TError result(error);
     if (!msg->Record.FailInfo.FailedRanges.empty()) {
         TStringBuilder builder;
         builder << ", Fail in ranges:\n ["
@@ -161,7 +161,7 @@ std::unique_ptr<NProto::TError> TCheckRangeActor::HandleReadBlocksResponseError(
                        msg->Record.FailInfo.FailedRanges.end())
                 << "]";
 
-        result->MutableMessage()->append(builder);
+        result.MutableMessage()->append(builder);
     }
 
     return result;
@@ -177,7 +177,7 @@ void TCheckRangeActor::HandleReadBlocksResponse(
     const auto& error = msg->Record.GetError();
     if (HasError(error)) {
         auto err = HandleReadBlocksResponseError(ev, ctx, error);
-        response->Record.MutableStatus()->CopyFrom(*err);
+        response->Record.MutableStatus()->CopyFrom(err);
     } else {
         for (ui64 offset = 0, i = 0; i < Request.GetBlocksCount();
              offset += BlockSize, ++i)

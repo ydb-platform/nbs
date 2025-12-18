@@ -76,7 +76,7 @@ void TMirrorPartitionActor::HandleCheckRange(
     const NActors::TActorContext& ctx)
 {
     auto fatalErr = MakeError(
-        E_FAIL,
+        E_NOT_IMPLEMENTED,
         "Checkrange is not supported for mirror disks temporarily");
     auto response =
         std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(fatalErr));

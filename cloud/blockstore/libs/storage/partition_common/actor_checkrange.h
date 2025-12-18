@@ -48,7 +48,7 @@ protected:
     void HandleReadBlocksResponse(
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
-    std::unique_ptr<NProto::TError> HandleReadBlocksResponseError(
+    NProto::TError HandleReadBlocksResponseError(
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx,
         const ::NCloud::NProto::TError &error);

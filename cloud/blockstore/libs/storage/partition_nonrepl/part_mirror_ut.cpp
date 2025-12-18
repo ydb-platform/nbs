@@ -2622,8 +2622,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         const auto& record = response->Record;
 
         UNIT_ASSERT_VALUES_EQUAL_C(
-            true,
-            HasError(record.error()),
+            E_NOT_IMPLEMENTED,
+            record.error().GetCode(),
             "checkrange must not work for mirror disks now");
     }
 
