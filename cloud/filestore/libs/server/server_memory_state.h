@@ -26,9 +26,11 @@ struct TMmapRegionMetadata
     void* Address = nullptr;
     size_t Size = 0; // in bytes
     ui64 Id = 0;
+    TInstant LatestActivityTimestamp;
 
     bool operator<(const TMmapRegionMetadata& other) const
     {
+        // Exclude timestamp from comparison - it's not part of identity
         return std::tie(FilePath, Size, Id) <
                std::tie(other.FilePath, other.Size, other.Id);
     }
@@ -47,13 +49,20 @@ public:
             .FilePath = std::move(filePath),
             .Address = address,
             .Size = size,
-            .Id = id}
+            .Id = id,
+            .LatestActivityTimestamp = TInstant::Now()
+        }
         , Fd(std::move(fd))
     {}
 
     TMmapRegionMetadata ToMetadata() const
     {
         return Metadata;
+    }
+
+    void UpdateActivityTimestamp()
+    {
+        Metadata.LatestActivityTimestamp = TInstant::Now();
     }
 
 private:
@@ -77,6 +86,8 @@ public:
     TVector<TMmapRegionMetadata> ListMmapRegions();
 
     TResultOrError<TMmapRegionMetadata> GetMmapRegion(ui64 mmapId);
+
+    NProto::TError PingMmapRegion(ui64 mmapId);
 
 private:
     TLightRWLock StateLock;
