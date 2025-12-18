@@ -48,6 +48,39 @@ ui32 GetServicePort(EHostService serviceType, const TDiagnosticsConfig& config)
     return DefaultHandleClasses;
 }
 
+TString GetUrlFromTemplate(
+    const TString& templateStr,
+    const TDiagnosticsConfig& config,
+    const TString& diskId)
+{
+    TString result = templateStr;
+    const auto& data = config.GetMonitoringUrlData();
+
+    SubstGlobal(result, "{MonitoringUrl}", data.MonitoringUrl);
+    SubstGlobal(result, "{MonitoringProject}", data.MonitoringProject);
+    SubstGlobal(result, "{MonitoringClusterName}", data.MonitoringClusterName);
+    SubstGlobal(
+        result,
+        "{MonitoringVolumeDashboard}",
+        data.MonitoringVolumeDashboard);
+    SubstGlobal(
+        result,
+        "{MonitoringNBSAlertsDashboard}",
+        data.MonitoringNBSAlertsDashboard);
+    SubstGlobal(
+        result,
+        "{MonitoringNBSTVDashboard}",
+        data.MonitoringNBSTVDashboard);
+    SubstGlobal(result, "{MonitoringYDBProject}", data.MonitoringYDBProject);
+    SubstGlobal(
+        result,
+        "{MonitoringYDBGroupDashboard}",
+        data.MonitoringYDBGroupDashboard);
+    SubstGlobal(result, "{diskId}", diskId);
+
+    return result;
+}
+
 }    // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -96,43 +129,6 @@ TString GetExternalHostUrl(
     out << '/';
     return out;
 }
-
-namespace {
-
-TString GetUrlFromTemplate(
-    const TString& templateStr,
-    const TDiagnosticsConfig& config,
-    const TString& diskId)
-{
-    TString result = templateStr;
-    const auto& data = config.GetMonitoringUrlData();
-
-    SubstGlobal(result, "{MonitoringUrl}", data.MonitoringUrl);
-    SubstGlobal(result, "{MonitoringProject}", data.MonitoringProject);
-    SubstGlobal(result, "{MonitoringClusterName}", data.MonitoringClusterName);
-    SubstGlobal(
-        result,
-        "{MonitoringVolumeDashboard}",
-        data.MonitoringVolumeDashboard);
-    SubstGlobal(
-        result,
-        "{MonitoringNBSAlertsDashboard}",
-        data.MonitoringNBSAlertsDashboard);
-    SubstGlobal(
-        result,
-        "{MonitoringNBSTVDashboard}",
-        data.MonitoringNBSTVDashboard);
-    SubstGlobal(result, "{MonitoringYDBProject}", data.MonitoringYDBProject);
-    SubstGlobal(
-        result,
-        "{MonitoringYDBGroupDashboard}",
-        data.MonitoringYDBGroupDashboard);
-    SubstGlobal(result, "{diskId}", diskId);
-
-    return result;
-}
-
-}   // namespace
 
 TString GetMonitoringVolumeUrl(
     const TDiagnosticsConfig& config,
