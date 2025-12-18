@@ -11,9 +11,29 @@
 #include <util/string/builder.h>
 #include <util/string/join.h>
 
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
+
+namespace {
+
+NProto::TError CreateCheckRangeError(
+    const NProto::TReadBlocksLocalResponse& resp)
+{
+    NProto::TError error = resp.GetError();
+
+    if (resp.FailInfo.FailedRanges) {
+        error.MutableMessage()->append(
+            TStringBuilder()
+            << ", Fail in ranges:\n ["
+            << JoinSeq(", ", resp.FailInfo.FailedRanges) << "]");
+    }
+
+    return error;
+}
+
+}  // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -103,8 +123,10 @@ void TCheckRangeActor::ReplyAndDie(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-bool TCheckRangeActor::OnMessage(TAutoPtr<NActors::IEventHandle>&)
+bool TCheckRangeActor::OnMessage(TAutoPtr<NActors::IEventHandle>& ev)
 {
+    Y_UNUSED(ev);
+
     return false;
 }
 
@@ -139,34 +161,6 @@ void TCheckRangeActor::HandlePoisonPill(
     ReplyAndDie(ctx, error);
 }
 
-NProto::TError TCheckRangeActor::HandleReadBlocksResponseError(
-    const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
-    const NActors::TActorContext& ctx,
-    const ::NCloud::NProto::TError& error)
-{
-    const auto* msg = ev->Get();
-    LOG_ERROR_S(
-        ctx,
-        TBlockStoreComponents::PARTITION_WORKER,
-        LogTitle.GetWithTime()
-            << " reading error has occurred: " << FormatError(error));
-
-    NProto::TError result(error);
-    if (!msg->Record.FailInfo.FailedRanges.empty()) {
-        TStringBuilder builder;
-        builder << ", Fail in ranges:\n ["
-                << JoinRange(
-                       ", ",
-                       msg->Record.FailInfo.FailedRanges.begin(),
-                       msg->Record.FailInfo.FailedRanges.end())
-                << "]";
-
-        result.MutableMessage()->append(builder);
-    }
-
-    return result;
-}
-
 void TCheckRangeActor::HandleReadBlocksResponse(
     const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -174,10 +168,14 @@ void TCheckRangeActor::HandleReadBlocksResponse(
     const auto* msg = ev->Get();
     auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>();
 
-    const auto& error = msg->Record.GetError();
-    if (HasError(error)) {
-        auto err = HandleReadBlocksResponseError(ev, ctx, error);
-        response->Record.MutableStatus()->CopyFrom(err);
+    if (HasError(msg->Record)) {
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::PARTITION_WORKER,
+            LogTitle.GetWithTime() << " reading error has occurred: "
+                                   << FormatError(msg->Record.GetError()));
+
+        *response->Record.MutableStatus() = CreateCheckRangeError(msg->Record);
     } else {
         for (ui64 offset = 0, i = 0; i < Request.GetBlocksCount();
              offset += BlockSize, ++i)

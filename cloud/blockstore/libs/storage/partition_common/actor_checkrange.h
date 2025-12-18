@@ -48,10 +48,6 @@ protected:
     void HandleReadBlocksResponse(
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
-    NProto::TError HandleReadBlocksResponseError(
-        const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
-        const NActors::TActorContext& ctx,
-        const ::NCloud::NProto::TError &error);
 
     virtual void SendReadBlocksRequest(const NActors::TActorContext& ctx);
     virtual bool OnMessage(TAutoPtr<NActors::IEventHandle>& ev);
