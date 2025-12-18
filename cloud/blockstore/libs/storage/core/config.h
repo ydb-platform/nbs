@@ -286,7 +286,8 @@ public:
     ui32 GetChannelMinFreeSpace() const;
 
     ui32 GetMinChannelCount() const;
-    ui32 GetFreshChannelCount() const;
+    [[nodiscard]] ui32 GetFreshChannelCountSSD() const;
+    [[nodiscard]] ui32 GetFreshChannelCountHDD() const;
 
     ui32 GetZoneBlockCount() const;
     ui32 GetHotZoneRequestCountFactor() const;
