@@ -22,7 +22,7 @@ constexpr ui64 INVALID_POS = Max<ui64>();
 
 // Reserve some space after header so adding new fields will not require data
 // migration
-constexpr ui64 DefaultDataOffset = 256;
+constexpr ui64 HeaderReserveSize = 256;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -45,7 +45,7 @@ struct THeader: THeaderPrev
     ui32 MetadataChecksum = 0;
 };
 
-static_assert(sizeof(THeader) <= DefaultDataOffset);
+static_assert(sizeof(THeader) <= HeaderReserveSize);
 
 struct Y_PACKED TEntryHeader
 {
@@ -209,7 +209,7 @@ THeader InitHeader(ui64 dataCapacity, ui64 metadataCapacity)
     THeader res;
     res.Version = VERSION;
     res.HeaderSize = sizeof(THeader);
-    res.MetadataOffset = DefaultDataOffset;
+    res.MetadataOffset = HeaderReserveSize;
     res.MetadataCapacity = metadataCapacity;
     res.DataOffset =
         AlignUp(res.MetadataOffset + res.MetadataCapacity, sizeof(ui64));
@@ -410,24 +410,24 @@ public:
 
         TString s;
         auto map = GetMappedData();
-        const auto& eh = *Header();
+        const auto& h = *Header();
 
-        Y_ABORT_UNLESS(eh.Version == VERSION);
-        Y_ABORT_UNLESS(sizeof(THeader) == eh.HeaderSize);
+        Y_ABORT_UNLESS(h.Version == VERSION);
+        Y_ABORT_UNLESS(sizeof(THeader) == h.HeaderSize);
 
-        Y_ABORT_UNLESS(eh.HeaderSize <= eh.MetadataOffset);
-        Y_ABORT_UNLESS(eh.MetadataOffset <= map.size());
-        Y_ABORT_UNLESS(eh.MetadataCapacity <= map.size() - eh.MetadataOffset);
+        Y_ABORT_UNLESS(h.HeaderSize <= h.MetadataOffset);
+        Y_ABORT_UNLESS(h.MetadataOffset <= map.size());
+        Y_ABORT_UNLESS(h.MetadataCapacity <= map.size() - h.MetadataOffset);
 
-        Y_ABORT_UNLESS(eh.HeaderSize <= eh.DataOffset);
-        Y_ABORT_UNLESS(eh.DataOffset <= map.size());
-        Y_ABORT_UNLESS(eh.DataCapacity <= map.size() - eh.DataOffset);
+        Y_ABORT_UNLESS(h.HeaderSize <= h.DataOffset);
+        Y_ABORT_UNLESS(h.DataOffset <= map.size());
+        Y_ABORT_UNLESS(h.DataCapacity <= map.size() - h.DataOffset);
 
         Y_ABORT_UNLESS(
-            eh.MetadataOffset + eh.MetadataCapacity <= eh.DataOffset ||
-            eh.DataOffset + eh.DataCapacity <= eh.MetadataOffset);
+            h.MetadataOffset + h.MetadataCapacity <= h.DataOffset ||
+            h.DataOffset + h.DataCapacity <= h.MetadataOffset);
 
-        Data = TEntriesData(map.subspan(eh.DataOffset, eh.DataCapacity));
+        Data = TEntriesData(map.subspan(h.DataOffset, h.DataCapacity));
 
         ValidateDataStructure();
     }
