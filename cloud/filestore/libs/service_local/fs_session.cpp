@@ -111,17 +111,10 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         Config->GetNodeCleanupBatchSize(),
         Config->GetSnapshotsDirEnabled(),
         Config->GetSnapshotsDirRefreshInterval(),
-        Logging);
+       Logging);
 
-        session->Init(request.GetRestoreClientSession());
-        session->AddSubSession(sessionSeqNo, readOnly);
-    } catch (...) {
-        return TErrorResponse(
-            E_FS_INVALID_SESSION,
-            TStringBuilder() << "invalid session: " << sessionId.Quote()
-                             << ". This session tries to share state files "
-                                "with another one.");
-    }
+    session->Init(request.GetRestoreClientSession());
+    session->AddSubSession(sessionSeqNo, readOnly);
 
     SessionsList.push_front(session);
 
