@@ -3793,7 +3793,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_UNEQUAL(differentChecksums, 0);
     }
 
-    static void DoTestShouldCheckRangeIndependentChecksum(
+    static void DoTestShouldCheckRangeChecksumAlgorithm(
         NCloud::NProto::EStorageMediaKind mediaKind)
     {
         auto runtime = PrepareTestActorRuntime();
@@ -3807,36 +3807,38 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             0);
         volume.AddClient(clientInfo);
 
-        ui32 blockCnt{0};
-        // 0 1 2 0 1 2
-        for (ui32 i = 0; i < 2; ++i) {
-            for (ui32 j = 0; j < 3; ++j) {
-                volume.WriteBlocks(
-                    TBlockRange64::MakeClosedInterval(blockCnt, blockCnt),
-                    clientInfo.GetClientId(),
-                    j);
-                ++blockCnt;
-            }
+        const TVector<TString> blocks{
+            GetBlockContent('A'),
+            GetBlockContent('B'),
+            GetBlockContent('C'),
+            GetBlockContent('A'),
+            GetBlockContent('B'),
+            GetBlockContent('C'),
+        };
+
+        TVector<ui32> expectedChecksum(blocks.size());
+
+        for (size_t i = 0; i != blocks.size(); ++i) {
+            expectedChecksum[i] =
+                TBlockChecksum{}.Extend(blocks[i].data(), blocks[i].size());
+
+            volume.WriteBlocks(
+                TBlockRange64::MakeOneBlock(i),
+                clientInfo.GetClientId(),
+                blocks[i]);
         }
 
-        volume.SendCheckRangeRequest("disk-id", 0, blockCnt);
-        auto response = volume.RecvCheckRangeResponse(TDuration::Seconds(3));
+        auto response = volume.CheckRange("disk-id", 0, blocks.size());
         const auto& record = response->Record;
 
-        UNIT_ASSERT_VALUES_EQUAL(false, HasError(record.error()));
-        UNIT_ASSERT_VALUES_EQUAL(false, HasError(record.status()));
         UNIT_ASSERT_VALUES_EQUAL(
-            blockCnt,
-            record.GetChecksums().size());
-        for (ui32 i = 0; i < 2; ++i) {
+            expectedChecksum.size(),
+            record.ChecksumsSize());
+
+        for (size_t i = 0; i != blocks.size(); ++i) {
             UNIT_ASSERT_VALUES_EQUAL(
-                record.GetChecksums()[i],
-                record.GetChecksums()[i + 3]);
-        }
-        for (ui32 i = 0; i < 2; ++i) {
-            UNIT_ASSERT_VALUES_UNEQUAL(
-                record.GetChecksums()[i],
-                record.GetChecksums()[i + 1]);
+                expectedChecksum[i],
+                record.GetChecksums(i));
         }
     }
 
@@ -10433,39 +10435,39 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     //---
 
-    Y_UNIT_TEST(ShouldCheckRangeIndependentChecksumSSDNonreplicated)
+    Y_UNIT_TEST(ShouldCheckRangeChecksumAlgorithmSSDNonreplicated)
     {
-        DoTestShouldCheckRangeIndependentChecksum(
+        DoTestShouldCheckRangeChecksumAlgorithm(
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
     }
 /*
-    Y_UNIT_TEST(ShouldCheckRangeIndependentChecksumMirror2)
+    Y_UNIT_TEST(ShouldCheckRangeChecksumAlgorithmMirror2)
     {
-        DoTestShouldCheckRangeIndependentChecksum(
+        DoTestShouldCheckRangeChecksumAlgorithm(
             NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
     }
 
-    Y_UNIT_TEST(ShouldCheckRangeIndependentChecksumMirror3)
+    Y_UNIT_TEST(ShouldCheckRangeChecksumAlgorithmMirror3)
     {
-        DoTestShouldCheckRangeIndependentChecksum(
+        DoTestShouldCheckRangeChecksumAlgorithm(
             NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
     }
 */
-    Y_UNIT_TEST(ShouldCheckRangeIndependentChecksumSSD)
+    Y_UNIT_TEST(ShouldCheckRangeChecksumAlgorithmSSD)
     {
-        DoTestShouldCheckRangeIndependentChecksum(
+        DoTestShouldCheckRangeChecksumAlgorithm(
             NCloud::NProto::STORAGE_MEDIA_SSD);
     }
 
-    Y_UNIT_TEST(ShouldCheckRangeIndependentChecksumHDD)
+    Y_UNIT_TEST(ShouldCheckRangeChecksumAlgorithmHDD)
     {
-        DoTestShouldCheckRangeIndependentChecksum(
+        DoTestShouldCheckRangeChecksumAlgorithm(
             NCloud::NProto::STORAGE_MEDIA_HDD);
     }
 
-    Y_UNIT_TEST(ShouldCheckRangeIndependentChecksumHybrid)
+    Y_UNIT_TEST(ShouldCheckRangeChecksumAlgorithmHybrid)
     {
-        DoTestShouldCheckRangeIndependentChecksum(
+        DoTestShouldCheckRangeChecksumAlgorithm(
             NCloud::NProto::STORAGE_MEDIA_HYBRID);
     }
 
