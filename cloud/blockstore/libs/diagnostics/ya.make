@@ -32,6 +32,7 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics/data
     cloud/blockstore/libs/diagnostics/events
     cloud/blockstore/libs/service
+    cloud/blockstore/libs/storage/model
     cloud/blockstore/public/api/protos
 
     cloud/storage/core/libs/common
