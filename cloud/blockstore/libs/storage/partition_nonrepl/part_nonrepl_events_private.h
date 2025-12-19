@@ -422,12 +422,9 @@ struct TEvNonreplPartitionPrivate
 
     struct TDiskRegistryBasedPartCountersCombined
     {
-        const ui64 SeqNo;
-
         TVector<TGetDiskRegistryBasedPartCountersResponse> Counters;
 
-        explicit TDiskRegistryBasedPartCountersCombined(ui64 seqNo)
-            : SeqNo(seqNo)
+        explicit TDiskRegistryBasedPartCountersCombined()
         {}
     };
 

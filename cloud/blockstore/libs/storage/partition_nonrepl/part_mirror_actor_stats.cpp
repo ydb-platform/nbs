@@ -162,8 +162,7 @@ void TMirrorPartitionActor::HandleGetDiskRegistryBasedPartCounters(
     NCloud::Register<TDiskRegistryBasedPartitionStatisticsCollectorActor>(
         ctx,
         SelfId(),
-        std::move(statActorIds),
-        ++StatisticSeqNo);
+        std::move(statActorIds));
 }
 
 void TMirrorPartitionActor::HandleDiskRegistryBasedPartCountersCombined(

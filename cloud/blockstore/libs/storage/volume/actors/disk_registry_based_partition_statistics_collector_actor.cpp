@@ -14,11 +14,9 @@ namespace NCloud::NBlockStore::NStorage {
 TDiskRegistryBasedPartitionStatisticsCollectorActor::
     TDiskRegistryBasedPartitionStatisticsCollectorActor(
         const TActorId& owner,
-        TVector<TActorId> statActorIds,
-        ui64 seqNo)
+        TVector<TActorId> statActorIds)
     : Owner(owner)
     , StatActorIds(std::move(statActorIds))
-    , Response(seqNo)
 {}
 
 void TDiskRegistryBasedPartitionStatisticsCollectorActor::Bootstrap(
@@ -45,8 +43,7 @@ void TDiskRegistryBasedPartitionStatisticsCollectorActor::ReplyAndDie(
         Owner,
         std::make_unique<TEvNonreplPartitionPrivate::
                              TEvDiskRegistryBasedPartCountersCombined>(
-            std::move(LastError),
-            std::move(Response)));
+            std::move(LastError)));
 
     Die(ctx);
 }

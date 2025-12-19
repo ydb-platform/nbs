@@ -128,7 +128,6 @@ private:
     size_t MultiAgentWriteRoundRobinSeed = 0;
 
     TRequestInfoPtr StatisticRequestInfo;
-    ui64 StatisticSeqNo = 0;
 
 public:
     TMirrorPartitionActor(
