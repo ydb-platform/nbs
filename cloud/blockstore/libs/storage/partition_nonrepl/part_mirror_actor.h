@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/model/request_bounds_tracker.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
@@ -64,6 +65,7 @@ private:
     const NActors::TActorId StatActorId;
     const NActors::TActorId ResyncActorId;
 
+    TLogTitle LogTitle;
     TMirrorPartitionState State;
 
     TDeque<TPartitionDiskCountersPtr> ReplicaCounters;

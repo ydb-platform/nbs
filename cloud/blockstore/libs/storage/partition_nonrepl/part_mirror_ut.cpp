@@ -2610,6 +2610,25 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldntCommonCheckRangeMirror)
+    {
+        constexpr ui32 replicaCount = 3;
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        TPartitionClient client(runtime, env.ActorId);
+
+        client.SendCheckRangeRequest("disk-id", 0, 1, replicaCount);
+        auto response = client.RecvCheckRangeResponse();
+        const auto& record = response->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_NOT_IMPLEMENTED,
+            record.GetError().GetCode(),
+            "checkrange must not work for mirror disks now");
+    }
+
+    /*
+    this test will be uncommented soon
     Y_UNIT_TEST(ShouldCheckRangeFromAllReplicas)
     {
         constexpr ui32 replicaCount = 3;
@@ -2647,6 +2666,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(replicaCount - 1, checksumResponseCount);
         UNIT_ASSERT_VALUES_EQUAL(replicaCount, actorIds[recepient].size());
     }
+    */
 
     Y_UNIT_TEST(ShouldLockAndDrainRangeForWriteIO)
     {

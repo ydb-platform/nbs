@@ -69,6 +69,7 @@ TMirrorPartitionActor::TMirrorPartitionActor(
     , VolumeActorId(volumeActorId)
     , StatActorId(statActorId)
     , ResyncActorId(resyncActorId)
+    , LogTitle{GetCycleCount(), TLogTitle::TPartitionMirror{.DiskId = DiskId}}
     , State(
           Config,
           rwClientId,
