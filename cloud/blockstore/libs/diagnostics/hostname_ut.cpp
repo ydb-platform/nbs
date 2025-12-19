@@ -20,22 +20,17 @@ Y_UNIT_TEST_SUITE(TMonitoringUrlTest)
 {
     Y_UNIT_TEST(ShouldReturnCorrectMonitoringVolumeUrl)
     {
+        const TString protoText = R"(
+            MonitoringUrlData {
+                MonitoringClusterName: "company_devlab"
+                MonitoringUrl: "https://monitoring.company.com"
+                MonitoringProject: "development.cloud"
+                MonitoringVolumeDashboard: "monitoring_dashboard"
+                MonitoringUrlTemplate: "{MonitoringUrl}/projects/{MonitoringProject}/dashboards/{MonitoringVolumeDashboard}?from=now-1d&to=now&refresh=60000&p.cluster={MonitoringClusterName}&p.volume={diskId}"
+            }
+        )";
+
         NProto::TDiagnosticsConfig protoConfig;
-        const TMap<TString, TString> configMap = {
-            {"MonitoringClusterName", "company_devlab"},
-            {"MonitoringUrl", "https://monitoring.company.com"},
-            {"MonitoringProject", "development.cloud"},
-            {"MonitoringVolumeDashboard", "monitoring_dashboard"},
-            {"MonitoringUrlTemplate",
-             "{MonitoringUrl}/projects/{MonitoringProject}/dashboards/"
-             "{MonitoringVolumeDashboard}?from=now-1d&to=now&refresh=60000&p."
-             "cluster={MonitoringClusterName}&p.volume={diskId}"}};
-
-        TString protoText;
-        for (const auto& [key, value]: configMap) {
-            protoText += key + ": \"" + value + "\"\n";
-        }
-
         NCloud::ParseProtoTextFromStringRobust(protoText, protoConfig);
 
         TDiagnosticsConfig config(protoConfig);
@@ -45,9 +40,10 @@ Y_UNIT_TEST_SUITE(TMonitoringUrlTest)
         UNIT_ASSERT_EQUAL(
             url,
             "https://monitoring.company.com/projects/development.cloud/"
-            "dashboards/"
-            "monitoring_dashboard?from=now-1d&to=now&refresh=60000&p.cluster="
-            "company_devlab&p.volume=vol-1234567890abcdef");
+            "dashboards/monitoring_dashboard"
+            "?from=now-1d&to=now&refresh=60000"
+            "&p.cluster=company_devlab"
+            "&p.volume=vol-1234567890abcdef");
     }
 }
 
