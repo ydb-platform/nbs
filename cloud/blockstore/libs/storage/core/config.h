@@ -757,6 +757,9 @@ public:
     [[nodiscard]] bool GetEnableVhostDiscardForNewVolumes() const;
 
     [[nodiscard]] ui32 GetTabletExecutorRejectionThreshold() const;
+
+    [[nodiscard]] TDuration GetRestoreAgentsToOnlineInterval() const;
+    [[nodiscard]] TDuration GetCheckAgentsToRestoreToOnlineInterval() const;
 };
 
 ui64 GetAllocationUnit(

@@ -1886,3 +1886,19 @@ message TAttachPathsResponse
     // List of attached devices.
     repeated TDeviceConfig AttachedDevices = 2;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Restore Disks To Online
+
+message TRestoreDisksToOnlineRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+}
+
+message TRestoreDisksToOnlineResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

@@ -1405,4 +1405,7 @@ message TStorageServiceConfig
     // When disabled, fast path waits for data and 2 checksums before replying
     // to the client.
     optional bool OptimizeFastPathReadsOnResync = 476;
+
+    optional uint32 RestoreAgentsToOnlineInterval = 477;
+    optional uint32 CheckAgentsToRestoreToOnlineInterval = 478;
 }

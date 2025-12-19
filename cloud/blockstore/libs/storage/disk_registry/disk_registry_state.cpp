@@ -5272,6 +5272,35 @@ NProto::TError TDiskRegistryState::UpdateAgentState(
     return error;
 }
 
+NProto::TError TDiskRegistryState::RestoreAgentsFromWarning(
+    TDiskRegistryDatabase& db,
+    TInstant timestamp,
+    TDuration restoreInterval,
+    TVector<TString>& affectedAgents)
+{
+    for (const auto& agent: AgentList.GetAgents()) {
+        if (agent.GetState() == NProto::AGENT_STATE_WARNING &&
+            agent.GetStateMessage() == "back from unavailable" &&
+            timestamp - TInstant::MicroSeconds(agent.GetStateTs()) >
+                restoreInterval)
+        {
+            TVector<TDiskId> affectedDisks;
+            NProto::TError error = UpdateAgentState(
+                db,
+                agent.GetAgentId(),
+                NProto::AGENT_STATE_ONLINE,
+                TInstant::Now(),
+                "automaticly restored to online",
+                affectedDisks);
+            if (FAILED(error.GetCode())) {
+                return error;
+            }
+            affectedAgents.push_back(agent.GetAgentId());
+        }
+    }
+    return {};
+}
+
 NProto::TError TDiskRegistryState::SwitchAgentDisksToReadOnly(
     TDiskRegistryDatabase& db,
     TString agentId,
