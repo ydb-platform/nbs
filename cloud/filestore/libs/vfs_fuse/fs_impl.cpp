@@ -132,6 +132,18 @@ bool TFileSystem::ValidateNodeId(
     return true;
 }
 
+TDuration TFileSystem::GetEntryCacheTimeout(
+    const NProto::TNodeAttr& attrs) const
+{
+    if (attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE &&
+        Config->GetRegularFileEntryTimeout() != TDuration::Zero())
+    {
+        return Config->GetRegularFileEntryTimeout();
+    }
+
+    return Config->GetEntryTimeout();
+}
+
 void TFileSystem::AdjustNodeSize(NProto::TNodeAttr& attrs)
 {
     if (WriteBackCache) {
@@ -156,7 +168,7 @@ bool TFileSystem::UpdateNodeCache(
         entry.ino = attrs.GetId();
         entry.generation = NodeCache.Generation();
         entry.attr_timeout = Config->GetAttrTimeout().SecondsFloat();
-        entry.entry_timeout = Config->GetEntryTimeout().SecondsFloat();
+        entry.entry_timeout = GetEntryCacheTimeout(attrs).SecondsFloat();
 
         ConvertAttr(Config->GetPreferredBlockSize(), node->Attrs, entry.attr);
     }

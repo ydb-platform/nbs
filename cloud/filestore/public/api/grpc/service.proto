@@ -421,6 +421,13 @@ service TFileStoreService
             body: "*"
         };
     }
+
+    rpc PingMmapRegion(TPingMmapRegionRequest) returns (TPingMmapRegionResponse) {
+        option (google.api.http) = {
+            post: "/ping_mmap_region"
+            body: "*"
+        };
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

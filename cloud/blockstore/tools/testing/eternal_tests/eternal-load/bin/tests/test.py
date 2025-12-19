@@ -82,25 +82,35 @@ def test_load_works(scenario, engine, direct):
 
 
 @pytest.fixture
-def fixture_mount_tmpfs():
+def fixture_mount_very_small_tmpfs(request):
     mount_dir = "/tmp/testfs"
     os.makedirs(mount_dir, exist_ok=True)
-    subprocess.run(["sudo", "mount", "-t", "tmpfs", "-o", "size=1M", "tmpfs", mount_dir], check=True)
-    yield mount_dir
-    subprocess.run(["sudo", "umount", mount_dir], check=True)
+    mount_cmd = ["sudo", "mount", "-t", "tmpfs", "-o", "size=1K", "tmpfs", mount_dir]
+    subprocess.run(mount_cmd, check=True)
+
+    def fin():
+        unmount_cmd = ["sudo", "umount", "-l", mount_dir]
+        subprocess.run(unmount_cmd, check=False)
+
+    request.addfinalizer(fin)
+    return mount_dir
 
 
-def test_load_async_io_fails(fixture_mount_tmpfs):
-    mount_dir = fixture_mount_tmpfs
+def test_load_async_io_fails(fixture_mount_very_small_tmpfs):
+    mount_dir = fixture_mount_very_small_tmpfs
 
-    tmp_file = tempfile.NamedTemporaryFile(suffix=".test", dir=mount_dir)
-
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        # linux native aio does not work on tmpfs with IO_DIRECT
-        future = executor.submit(__run_load_test, tmp_file.name, "aligned", "asyncio", False)
+    # Run async-io eternal-load on a small tmpfs to raise ENOSPC error
+    with (
+        ThreadPoolExecutor(max_workers=1) as executor,
+        tempfile.NamedTemporaryFile(suffix='.test', dir=mount_dir) as tmp_file
+    ):
+        # Linux native aio does not support IO_DIRECT on tmpfs
+        future = executor.submit(
+            __run_load_test, tmp_file.name, 'aligned', 'asyncio', False)
 
         result = future.result()
 
         assert result.returncode == 1
-        msg = 'Can\'t write to file: (yexception) (No space left on device) async IO operation failed'
+        msg = 'Can\'t write to file: (yexception) (No space left on device) ' \
+            'async IO operation failed'
         assert result.stderr.find(msg) != -1

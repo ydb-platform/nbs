@@ -288,6 +288,10 @@ message TVolume
 
     // Set of volume tags. Value can be empty.
     map<string, string> Tags = 38;
+
+    // Enables discard (ZeroBlocks) requests for the volume.
+    // If this flag is set, it should never be unset anymore!
+    optional bool VhostDiscardEnabled = 39;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

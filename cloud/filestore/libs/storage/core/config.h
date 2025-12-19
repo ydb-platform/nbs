@@ -206,6 +206,7 @@ public:
     ui32 GetThreeStageWriteThreshold() const;
     bool GetUnalignedThreeStageWriteEnabled() const;
     TDuration GetEntryTimeout() const;
+    TDuration GetRegularFileEntryTimeout() const;
     TDuration GetNegativeEntryTimeout() const;
     TDuration GetAttrTimeout() const;
     ui32 GetPreferredBlockSizeMultiplier() const;
@@ -360,6 +361,9 @@ public:
     [[nodiscard]] bool GetBlockChecksumsInProfileLogEnabled() const;
 
     ui32 GetMaxShardCount() const;
+
+    bool GetReadBlobDisabled() const;
+    bool GetWriteBlobDisabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

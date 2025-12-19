@@ -86,6 +86,8 @@ struct IProfileLogEventHandler
         TBlockRange64 blockRange,
         const TReplicaChecksums& replicaChecksums,
         const TInflightData& inflightData) = 0;
+
+    virtual void Finish() = 0;
 };
 
 bool IsReadRequestType(ui32 requestType);

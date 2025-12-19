@@ -16,7 +16,7 @@ namespace NCloud::NBlockStore::NRdma {
 
 #define Y_ENSURE_RETURN(expr, message)                                         \
     if (Y_UNLIKELY(!(expr))) {                                                 \
-        return MakeError(E_ARGUMENT, TStringBuilder() << message);             \
+        return MakeError(E_REJECTED, TStringBuilder() << message);             \
     }                                                                          \
 // Y_ENSURE_RETURN
 

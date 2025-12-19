@@ -99,6 +99,7 @@ def test_mmap_unmmap():
         assert regions.Regions[0].Id == region_id
         assert regions.Regions[0].Size == 4096
         assert regions.Regions[0].FilePath == file_path
+        assert regions.Regions[0].LatestActivityTimestamp > 0
 
         with pytest.raises(ClientError, match="Mmap region not found"):
             nfs_client.munmap(mmap_id=region_id + 1)
@@ -111,6 +112,28 @@ def test_mmap_unmmap():
 
         with pytest.raises(ClientError, match="No such file or directory"):
             nfs_client.mmap(file_path="nonexistent", size=4096)
+
+
+def test_ping_region():
+    logger = logging.getLogger("test")
+    port = os.getenv("NFS_SERVER_PORT")
+
+    with CreateClient(f"localhost:{port}", log=logger) as nfs_client:
+        region_id, _ = create_mmap_region(
+            nfs_client, "testfile_ping", 4096
+        )
+        logger.info(f"Created mmap region with ID: {region_id}")
+
+        old_timestamp = (
+            nfs_client.list_mmap_regions().Regions[0].LatestActivityTimestamp
+        )
+        time.sleep(2)  # Ensure timestamp difference
+        nfs_client.ping_mmap_region(mmap_id=region_id)
+
+        new_timestamp = (
+            nfs_client.list_mmap_regions().Regions[0].LatestActivityTimestamp
+        )
+        assert new_timestamp > old_timestamp
 
 
 SHARED_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB

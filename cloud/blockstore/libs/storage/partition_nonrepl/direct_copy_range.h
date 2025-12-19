@@ -77,7 +77,7 @@ private:
 private:
     STFUNC(StateWork);
 
-    void HandleVolumeRequestId(
+    void HandleVolumeRequestIdResponse(
         const TEvVolumePrivate::TEvTakeVolumeRequestIdResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
@@ -85,9 +85,21 @@ private:
         const NPartition::TEvPartition::TEvLockAndDrainRangeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleGetDeviceForRange(
+    void HandleGetDeviceForRangeResponse(
         const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse::TPtr&
             ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleVolumeRequestIdUndelivery(
+        const TEvVolumePrivate::TEvTakeVolumeRequestIdRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleLockAndDrainUndelivery(
+        const NPartition::TEvPartition::TEvLockAndDrainRangeRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDiscoveryUndelivery(
+        const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleDirectCopyUndelivered(

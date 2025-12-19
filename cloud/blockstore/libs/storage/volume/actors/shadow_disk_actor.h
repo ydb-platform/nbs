@@ -5,8 +5,10 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_common_actor.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -84,6 +86,7 @@ private:
         Error,
     };
 
+    const TChildLogTitle LogTitle;
     const NRdma::IClientPtr RdmaClient;
     const TNonreplicatedPartitionConfigPtr SrcConfig;
     const TString CheckpointId;
@@ -111,6 +114,7 @@ private:
 
 public:
     TShadowDiskActor(
+        TChildLogTitle logTitle,
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticConfig,
         NRdma::IClientPtr rdmaClient,

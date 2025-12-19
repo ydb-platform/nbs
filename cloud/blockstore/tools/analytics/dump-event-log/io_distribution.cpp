@@ -68,6 +68,11 @@ public:
         IoBlockCountPerStripe.resize(rightUsedStripe - leftUsedStripe + 1);
     }
 
+    bool HaveMeaning() const override
+    {
+        return StripeCount > 0;
+    }
+
     TString GetName() const override
     {
         return StripeConfig.Name;
@@ -118,7 +123,7 @@ public:
 
         data["IoTotalBlockCount"] = TotalIoBlockCount;
         data["IoTotalRequestCount"] = RequestCount;
-        data["StripeCount"] = DiskInfo.BlockCount / BlocksPerStripe;
+        data["StripeCount"] = StripeCount;
         data["StripeWithIoCount"] = stripeWithIoCount;
         data["StripeWithIo%"] = 100.0 * stripeWithIoCount / StripeCount;
         data["MinBlockPerRequest"] = MinBlocksPerRequest;
@@ -130,9 +135,8 @@ public:
 
         data["AvgIoPerBlock"] =
             static_cast<double>(TotalIoBlockCount) / DiskInfo.BlockCount;
-        const double avgIoPerStripe =
+        data["AvgIoPerStripe"] =
             static_cast<double>(TotalIoBlockCount) / StripeCount;
-        data["AvgIoPerStripe"] = avgIoPerStripe;
         data["StripeGroupsDisbalance"] = CalcStripeGroupsDisbalance();
         data["TopLoadedStripes"] = CalcTopLoaded();
 
@@ -251,11 +255,16 @@ public:
         };
 
         NJson::TJsonValue data;
-        data["FirstDevice"] =
-            firstDeviceLoad.Dump(TotalIoBlockCount, DiskInfo.BlockCount);
+        if (firstDeviceLoad.BlockCount < DiskInfo.BlockCount) {
+            data["FirstDevice (93GiB)"] =
+                firstDeviceLoad.Dump(TotalIoBlockCount, DiskInfo.BlockCount);
+        }
+
         for (auto [name, percent]: percents) {
-            data[name] =
-                countIo(percent).Dump(TotalIoBlockCount, DiskInfo.BlockCount);
+            auto stat = countIo(percent);
+            if (stat.BlockCount <= DiskInfo.BlockCount) {
+                data[name] = stat.Dump(TotalIoBlockCount, DiskInfo.BlockCount);
+            }
         }
 
         return data;
@@ -384,7 +393,9 @@ void TIODistributionStat::TVolumeStat::ProcessRequest(
     Y_UNUSED(inflightData);
 
     for (auto& distribution: Distributions) {
-        distribution->Apply(requestType, blockRange);
+        if (distribution->HaveMeaning()) {
+            distribution->Apply(requestType, blockRange);
+        }
     }
 }
 
@@ -398,7 +409,9 @@ NJson::TJsonValue TIODistributionStat::TVolumeStat::Dump() const
 
     NJson::TJsonValue data;
     for (const auto& distribution: Distributions) {
-        data[distribution->GetName()] = distribution->Dump();
+        if (distribution->HaveMeaning()) {
+            data[distribution->GetName()] = distribution->Dump();
+        }
     }
     diskInfo["Distributions"] = std::move(data);
 
@@ -410,11 +423,6 @@ NJson::TJsonValue TIODistributionStat::TVolumeStat::Dump() const
 TIODistributionStat::TIODistributionStat(const TString& filename)
     : Filename(filename)
 {}
-
-TIODistributionStat::~TIODistributionStat()
-{
-    Dump();
-}
 
 void TIODistributionStat::ProcessRequest(
     const TDiskInfo& diskInfo,
@@ -437,20 +445,7 @@ void TIODistributionStat::ProcessRequest(
         inflightData);
 }
 
-TIODistributionStat::TVolumeStat& TIODistributionStat::GetVolumeStat(
-    const TDiskInfo& diskInfo)
-{
-    if (auto it = Volumes.find(diskInfo.DiskId); it != Volumes.end()) {
-        return it->second;
-    }
-
-    auto [it, inserted] =
-        Volumes.emplace(diskInfo.DiskId, TVolumeStat{diskInfo});
-
-    return it->second;
-}
-
-void TIODistributionStat::Dump()
+void TIODistributionStat::Finish()
 {
     TFileOutput out(Filename);
 
@@ -466,6 +461,19 @@ void TIODistributionStat::Dump()
             .SortKeys = true,
             .WriteNanAsString = true,
         });
+}
+
+TIODistributionStat::TVolumeStat& TIODistributionStat::GetVolumeStat(
+    const TDiskInfo& diskInfo)
+{
+    if (auto it = Volumes.find(diskInfo.DiskId); it != Volumes.end()) {
+        return it->second;
+    }
+
+    auto [it, inserted] =
+        Volumes.emplace(diskInfo.DiskId, TVolumeStat{diskInfo});
+
+    return it->second;
 }
 
 }   // namespace NCloud::NBlockStore

@@ -514,8 +514,8 @@ message TStorageServiceConfig
     optional string SSDFreshChannelPoolKind = 177;
     optional string HybridFreshChannelPoolKind = 178;
 
-    // Number of fresh channels per partition.
-    optional uint32 FreshChannelCount = 179;
+    // Number of fresh channels per partition for SSD disks.
+    optional uint32 FreshChannelCountSSD = 179;
 
     // Enables fresh channel write requests.
     optional bool FreshChannelWriteRequestsEnabled = 180;
@@ -1385,4 +1385,11 @@ message TStorageServiceConfig
 
     // Enables encryption with DEK provided by the Root KMS for Disk Registry based disks.
     optional bool RootKmsEncryptionForDiskRegistryBasedDisksEnabled = 471;
+
+    // Sets the VhostDiscardEnabled flag in VolumeConfig when creating a volume.
+    // Applies to network-ssd and network-hdd disks.
+    optional bool EnableVhostDiscardForNewVolumes = 472;
+
+    // Number of fresh channels per partition for HDD disks.
+    optional uint32 FreshChannelCountHDD = 473;
 }

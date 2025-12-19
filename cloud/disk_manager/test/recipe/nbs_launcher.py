@@ -109,7 +109,6 @@ class NbsLauncher:
 
         # TODO: Actualize blockstore storage config.
         storage_config_patch.FreshChannelWriteRequestsEnabled = True
-        storage_config_patch.FreshChannelCount = 1
 
         # Needed for tests on blockstore client https://github.com/ydb-platform/nbs/pull/3067
         storage_config_patch.MaxDisksInPlacementGroup = 2

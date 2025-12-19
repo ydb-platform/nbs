@@ -415,6 +415,8 @@ private:
     EServerWriteBackCacheState GetServerWriteBackCacheState(
         const fuse_file_info* fi) const;
 
+    TDuration GetEntryCacheTimeout(const NProto::TNodeAttr& attrs) const;
+
     void AdjustNodeSize(
         NProto::TNodeAttr& attrs
     );

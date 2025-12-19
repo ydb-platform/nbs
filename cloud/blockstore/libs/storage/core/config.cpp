@@ -371,7 +371,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(ChannelFreeSpaceThreshold,                      ui32,   25            )\
     xxx(ChannelMinFreeSpace,                            ui32,   10            )\
     xxx(MinChannelCount,                                ui32,   4             )\
-    xxx(FreshChannelCount,                              ui32,   1             )\
+    xxx(FreshChannelCountSSD,                           ui32,   1             )\
+    xxx(FreshChannelCountHDD,                           ui32,   1             )\
                                                                                \
     xxx(ZoneBlockCount,                            ui32,   32 * MaxBlocksCount)\
     xxx(HotZoneRequestCountFactor,                 ui32,   10                 )\
@@ -650,6 +651,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
         NProto::NONREPL_ALLOC_POLICY_NOT_SPECIFIED                            )\
                                                                                \
     xxx(SendLocalTabletMetricsToHiveEnabled,  bool,        false              )\
+                                                                               \
+    xxx(EnableVhostDiscardForNewVolumes,      bool,        false              )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
@@ -683,6 +686,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(RootKmsEncryptionForDiskRegistryBasedDisks)                            \
     xxx(LaggingDevicesForMirror2Disks)                                         \
     xxx(LaggingDevicesForMirror3Disks)                                         \
+    xxx(EnableVhostDiscardForNewVolumes)                                       \
 
 // BLOCKSTORE_BINARY_FEATURES
 
@@ -1208,6 +1212,13 @@ void AdaptNodeRegistrationParams(
     {
         storageConfig.SetNodeRegistrationToken(
             serverConfig.GetNodeRegistrationToken());
+    }
+
+    if (!storageConfig.HasEnableVhostDiscardForNewVolumes() &&
+        serverConfig.HasVhostDiscardEnabled())
+    {
+        storageConfig.SetEnableVhostDiscardForNewVolumes(
+            serverConfig.GetVhostDiscardEnabled());
     }
 
     if (overriddenNodeType) {
