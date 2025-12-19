@@ -87,7 +87,7 @@ void TDiskRegistryBasedPartitionStatisticsCollectorActor::
     Response.Counters.push_back(std::move(*msg));
 
     if (Response.Counters.size() == StatActorIds.size()) {
-        SendStatistics(ctx);
+        ReplyAndDie(ctx);
     }
 }
 
