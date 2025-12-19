@@ -79,7 +79,6 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
     request->Record.SetDiskId(Request.GetDiskId());
     request->Record.SetStartIndex(Request.GetStartIndex());
     request->Record.SetBlocksCount(Request.GetBlocksCount());
-    request->Record.mutable_headers()->SetReplicaCount(Request.GetReplicaCount());
 
     LOG_INFO(
         ctx,
@@ -146,12 +145,14 @@ void TCheckRangeActor::HandleCheckRangeResponse(
     auto& record = ev->Get()->Record;
     NProto::TCheckRangeResponse response;
     response.MutableStatus()->CopyFrom(record.GetStatus());
-    response.MutableChecksums()->Swap(record.MutableChecksums());
+    if (record.HasDiskChecksums()) {
+        response.MutableDiskChecksums()->Swap(record.MutableDiskChecksums());
+    } else if (record.HasMirrorChecksums()) {
+        response.MutableMirrorChecksums()->Swap(
+            record.MutableMirrorChecksums());
+    }
 
-    return ReplyAndDie(
-        ctx,
-        ev->Get()->Record.GetError(),
-        std::move(response));
+    return ReplyAndDie(ctx, ev->Get()->Record.GetError(), std::move(response));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
