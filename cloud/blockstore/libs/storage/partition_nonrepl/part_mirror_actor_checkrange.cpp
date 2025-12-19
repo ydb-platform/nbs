@@ -6,7 +6,11 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition_common/actor_checkrange.h>
+
+#include <cloud/storage/core/libs/common/helpers.h>
+#include <cloud/storage/core/libs/common/verify.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
@@ -26,45 +30,155 @@ namespace {
 
 class TMirrorCheckRangeActor final: public TCheckRangeActor
 {
+private:
+    const ui32 ReplicasNumber;
+    bool ErrorOnReplicaReading{false};
+    ui32 ResponseCount{0};
+    TVector<ui32> ReplicasSummaryChecksums;
+    NProto::TCheckRangeResponse Response;
+
 public:
-    using TCheckRangeActor::TCheckRangeActor;
+    template <typename... TArgs>
+    explicit TMirrorCheckRangeActor(
+        ui32 replicasNumber,
+        TArgs&&... args);
 
 protected:
+    bool OnMessage(TAutoPtr<NActors::IEventHandle>& ev) override;
     void SendReadBlocksRequest(const TActorContext& ctx) override;
+    void HandleReadBlocksResponse(
+        const TEvService::TEvReadBlocksResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void Done(const NActors::TActorContext& ctx);
+
+private:
+    void CalculateChecksums(const TEvService::TEvReadBlocksResponse::TPtr& ev);
+    void HandleReadBlocksResponseError(
+        const TEvService::TEvReadBlocksResponse::TPtr& ev,
+        const TActorContext& ctx,
+        const ::NCloud::NProto::TError& error);
 };
+
+template <typename... TArgs>
+TMirrorCheckRangeActor::TMirrorCheckRangeActor(
+        ui32 replicasNumber,
+        TArgs&&... args)
+    : TCheckRangeActor(std::forward<TArgs>(args)...)
+    , ReplicasNumber{replicasNumber}
+{}
+
+bool TMirrorCheckRangeActor::OnMessage(TAutoPtr<NActors::IEventHandle>& ev)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvService::TEvReadBlocksResponse, HandleReadBlocksResponse);
+        default:
+            return false;
+    }
+
+    return true;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
-    const TString clientId{CheckRangeClientId};
-    TBlockRange64 range = TBlockRange64::WithLength(
-        Request.GetStartIndex(),
-        Request.GetBlocksCount());
+    for (ui32 i = 1; i <= ReplicasNumber; ++i) {
+        auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
 
-    Buffer = TGuardedBuffer(TString::Uninitialized(range.Size() * BlockSize));
+        request->Record.SetStartIndex(Request.GetStartIndex());
+        request->Record.SetBlocksCount(Request.GetBlocksCount());
 
-    auto sgList = Buffer.GetGuardedSgList();
-    auto sgListOrError = SgListNormalize(sgList.Acquire().Get(), BlockSize);
-    if (HasError(sgListOrError)) {
-        ReplyAndDie(ctx, sgListOrError.GetError());
-        return;
+        auto* headers = request->Record.MutableHeaders();
+        headers->SetReplicaIndex(i);
+        headers->SetClientId(TString(CheckRangeClientId));
+        headers->SetIsBackgroundRequest(true);
+
+        Response.MutableMirrorChecksums()->MutableReplicas()->Add({});
+        ReplicasSummaryChecksums.push_back(0);
+        NCloud::Send(ctx, Partition, std::move(request), i);
     }
-    SgList.SetSgList(sgListOrError.ExtractResult());
+}
 
-    auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
+void TMirrorCheckRangeActor::HandleReadBlocksResponseError(
+    const TEvService::TEvReadBlocksResponse::TPtr& ev,
+    const TActorContext& ctx,
+    const ::NCloud::NProto::TError& error)
+{
+    LOG_ERROR_S(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        LogTitle.GetWithTime()
+            << " reading error has occurred: " << FormatError(error));
 
-    request->Record.SetStartIndex(Request.GetStartIndex());
-    request->Record.SetBlocksCount(Request.GetBlocksCount());
-    request->Record.Sglist = SgList;
-    request->Record.ShouldReportFailedRangesOnFailure = true;
+    // 1 result error for all replicas
+    ErrorOnReplicaReading = true;
+    Response.MutableStatus()->SetCode(error.GetCode());
+    *Response.MutableStatus()->MutableMessage() +=
+        "replica id: " + std::to_string(ev->Cookie - 1) + " ";
+}
 
-    auto* headers = request->Record.MutableHeaders();
-    headers->SetReplicaCount(Request.headers().GetReplicaCount());
-    headers->SetClientId(clientId);
-    headers->SetIsBackgroundRequest(true);
+void TMirrorCheckRangeActor::CalculateChecksums(
+    const TEvService::TEvReadBlocksResponse::TPtr& ev)
+{
+    const ui32 replicaIdx = ev->Cookie - 1;
+    auto& replica =
+        (*Response.MutableMirrorChecksums()->MutableReplicas())[replicaIdx];
+    auto* replicaChecksums = replica.MutableData();
 
-    NCloud::Send(ctx, Partition, std::move(request));
+    TBlockChecksum summaryChecksum;
+    for (const auto& buffer: ev->Get()->Record.GetBlocks().GetBuffers()) {
+        summaryChecksum.Extend(buffer.data(), buffer.size());
+        replicaChecksums->Add(
+            TBlockChecksum().Extend(buffer.data(), buffer.size()));
+    }
+
+    ReplicasSummaryChecksums[replicaIdx] = summaryChecksum.GetValue();
+}
+
+void TMirrorCheckRangeActor::HandleReadBlocksResponse(
+    const TEvService::TEvReadBlocksResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ++ResponseCount;
+    const auto& error = ev->Get()->Record.GetError();
+    if (HasError(error)) {
+        HandleReadBlocksResponseError(ev, ctx, error);
+    } else {
+        CalculateChecksums(ev);
+    }
+
+    if (ResponseCount == ReplicasNumber) {
+        Done(ctx);
+    }
+}
+
+void TMirrorCheckRangeActor::Done(const NActors::TActorContext& ctx)
+{
+    auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>();
+    bool checksumsEqual =
+        std::ranges::adjacent_find(
+            ReplicasSummaryChecksums,
+            std::not_equal_to{}) == std::ranges::end(ReplicasSummaryChecksums);
+    if (!ErrorOnReplicaReading && checksumsEqual) {
+        auto replicas = Response.MutableMirrorChecksums()->MutableReplicas();
+        auto* srcData = (*replicas)[0].MutableData();
+        std::remove_pointer_t<decltype(srcData)> hlp;
+        hlp.Swap(srcData);
+
+        auto& destData = *Response.MutableDiskChecksums()->MutableData();
+        // at this moment Response.MutableMirrorChecksums() is empty already
+        destData.Swap(&hlp);
+    } else {
+        if (!ErrorOnReplicaReading) {
+            ui32 flags = 0;
+            SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
+            *Response.MutableStatus() =
+                MakeError(E_IO, "Replicas checksum mismatch", flags);
+        }   // Else using the error that we already have
+    }
+
+    response->Record = std::move(Response);
+    ReplyAndDie(ctx, std::move(response));
 }
 
 }   // namespace
@@ -75,15 +189,6 @@ void TMirrorPartitionActor::HandleCheckRange(
     const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    auto fatalErr = MakeError(
-        E_NOT_IMPLEMENTED,
-        "Checkrange is not supported for mirror disks temporarily");
-    auto response =
-        std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(fatalErr));
-    NCloud::Reply(ctx, *ev, std::move(response));
-    return;
-    /////
-
     auto& record = ev->Get()->Record;
 
     auto error = ValidateBlocksCount(
@@ -101,6 +206,7 @@ void TMirrorPartitionActor::HandleCheckRange(
 
     NCloud::Register<TMirrorCheckRangeActor>(
         ctx,
+        State.GetReplicaInfos().size(),
         SelfId(),
         std::move(record),
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),

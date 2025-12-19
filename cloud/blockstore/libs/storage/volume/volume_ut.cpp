@@ -3577,7 +3577,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 extended_msg);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 size,
-                record.GetChecksums().size(),
+                record.GetDiskChecksums().DataSize(),
                 extended_msg);
         };
 
@@ -3735,8 +3735,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(resp2NotNull, true);
         const auto& record2 = response2->Record;
 
-        const auto& checksums1 = record1.GetChecksums();
-        const auto& checksums2 = record2.GetChecksums();
+        const auto& checksums1 = record1.GetDiskChecksums().GetData();
+        const auto& checksums2 = record2.GetDiskChecksums().GetData();
 
         ASSERT_VECTORS_EQUAL(
             TVector<ui32>(checksums1.begin(), checksums1.end()),
@@ -3778,8 +3778,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(resp2NotNull, true);
         const auto& record2 = response2->Record;
 
-        const auto& checksums1 = record1.GetChecksums();
-        const auto& checksums2 = record2.GetChecksums();
+        const auto& checksums1 = record1.GetDiskChecksums().GetData();
+        const auto& checksums2 = record2.GetDiskChecksums().GetData();
 
         UNIT_ASSERT_VALUES_EQUAL(checksums1.size(), checksums2.size());
 
@@ -3833,12 +3833,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             expectedChecksum.size(),
-            record.ChecksumsSize());
+            record.GetDiskChecksums().DataSize());
 
         for (size_t i = 0; i != blocks.size(); ++i) {
             UNIT_ASSERT_VALUES_EQUAL(
                 expectedChecksum[i],
-                record.GetChecksums(i));
+                record.GetDiskChecksums().GetData(i));
         }
     }
 

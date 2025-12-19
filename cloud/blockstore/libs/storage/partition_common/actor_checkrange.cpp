@@ -125,9 +125,20 @@ void TCheckRangeActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TCheckRangeActor::OnMessage(TAutoPtr<NActors::IEventHandle>& ev)
+{
+    Y_UNUSED(ev);
+
+    return false;
+}
+
 STFUNC(TCheckRangeActor::StateWork)
 {
     TRequestScope timer(*RequestInfo);
+
+    if (OnMessage(ev)) {
+        return;
+    }
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvService::TEvReadBlocksLocalResponse, HandleReadBlocksResponse);
@@ -172,7 +183,7 @@ void TCheckRangeActor::HandleReadBlocksResponse(
              offset += BlockSize, ++i)
         {
             const char* data = Buffer.Get().data() + offset;
-            response->Record.MutableChecksums()->Add(
+            response->Record.MutableDiskChecksums()->MutableData()->Add(
                 TBlockChecksum().Extend(data, BlockSize));
         }
     }

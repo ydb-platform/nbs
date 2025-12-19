@@ -49,6 +49,7 @@ protected:
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    virtual bool OnMessage(TAutoPtr<NActors::IEventHandle>& ev);
     virtual void SendReadBlocksRequest(const NActors::TActorContext& ctx);
 
 private:
