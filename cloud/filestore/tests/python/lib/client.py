@@ -455,4 +455,5 @@ def make_socket_generator(
             mount_seqno,
             readonly)
 
+    socket_generator.client = filestore_client
     return socket_generator

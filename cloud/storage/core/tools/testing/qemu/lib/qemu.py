@@ -180,7 +180,7 @@ class Qemu:
             logger.info("migrate_status {}".format(json.dumps(status)))
 
         if status['status'] != "completed":
-            raise self.QemuException(status['status'])
+            raise QemuException(status['status'])
 
         self.qmp.close()
         self.qemu_bin.kill()

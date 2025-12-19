@@ -59,9 +59,12 @@ class QemuWithMigration:
             use_virtiofs_server=True)
 
         self.socket_generator = socket_generator
+        self.filestore_client = getattr(socket_generator, 'client', None)
+        self.previous_socket = None
 
     def start(self):
         self.socket = self.socket_generator(0, False)
+        self.previous_socket = self.socket
 
         self.qemu.set_mount_paths(get_mount_paths())
         self.qemu.set_vhost_socket(self.socket)
@@ -69,6 +72,19 @@ class QemuWithMigration:
 
     def migrate(self, count, timeout):
         for migration in range(0, count):
+            self.qemu._save_to_file()
+
+            if self.previous_socket and self.filestore_client:
+                try:
+                    self.filestore_client.stop_endpoint(self.previous_socket)
+                    time.sleep(0.5)
+                except Exception as e:
+                    logger.warning("Failed to stop previous endpoint %s: %s", self.previous_socket, e)
+
             self.socket = self.socket_generator(migration, False)
-            self.qemu.migrate(migration, self.socket)
+            self.previous_socket = self.socket
+
+            self.qemu._restore_from_file(migration, self.socket)
+            self.qemu.seqno += 1
+
             time.sleep(timeout)
