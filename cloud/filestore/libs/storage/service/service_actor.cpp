@@ -121,6 +121,9 @@ std::pair<ui64, TInFlightRequest*> TStorageServiceActor::CreateInFlightRequest(
     Y_ABORT_UNLESS(inserted);
     it->second.Start(start);
 
+    it->second.ProfileLogRequest.SetLoopThreadId(
+        it->second.CallContext->LoopThreadId);
+
     return std::make_pair(cookie, &it->second);
 }
 

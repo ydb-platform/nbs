@@ -1356,6 +1356,7 @@ private:
             fuse_req_unique(req));
         callContext->RequestType = requestType;
         callContext->RequestSize = requestSize;
+        callContext->LoopThreadId = TThread::CurrentThreadId();
 
         if (auto cancelCode = pThis->CompletionQueue->Enqueue(req, callContext)) {
             STORAGE_DEBUG("driver is stopping, cancel request");

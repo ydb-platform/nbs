@@ -19,6 +19,11 @@ def env_with_index(env, index):
     return "{}__{}".format(env, index)
 
 
+# expected production setup settings
+DEFAULT_VHOST_FRONTEND_QUEUE_COUNT = 8
+VHOST_PRIORITY_QUEUE_COUNT = 1
+
+
 def start(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument("--filesystem", action="store", default="nfs_share")
@@ -29,7 +34,11 @@ def start(argv):
     parser.add_argument("--read-only", action="store_true", default=False)
     parser.add_argument("--verbose", action="store_true", default=False)
     parser.add_argument("--endpoint-count", action="store", default=1, type=int)
-    parser.add_argument("--vhost-queue-count", action="store", default=0, type=int)
+    parser.add_argument(
+        "--vhost-queue-count",
+        action="store",
+        default=DEFAULT_VHOST_FRONTEND_QUEUE_COUNT + VHOST_PRIORITY_QUEUE_COUNT,
+        type=int)
     args = parser.parse_args(argv)
 
     port = os.getenv("NFS_SERVER_PORT")

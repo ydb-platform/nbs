@@ -49,6 +49,7 @@ USE_RECIPE(
     --instance-count $QEMU_INSTANCE_COUNT
     --invoke-test $QEMU_INVOKE_TEST
     --use-virtiofs-server $QEMU_USE_VIRTIOFS_SERVER
+    --num-request-queues $QEMU_NUM_REQUEST_QUEUES
 )
 
 REQUIREMENTS(kvm)
