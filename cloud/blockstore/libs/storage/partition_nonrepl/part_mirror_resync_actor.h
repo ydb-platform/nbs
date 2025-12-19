@@ -94,7 +94,6 @@ private:
     TBackoffDelayProvider BackoffProvider;
 
     TRequestInfoPtr StatisticRequestInfo;
-    ui64 StatisticSeqNo = 0;
 
 public:
     TMirrorPartitionResyncActor(

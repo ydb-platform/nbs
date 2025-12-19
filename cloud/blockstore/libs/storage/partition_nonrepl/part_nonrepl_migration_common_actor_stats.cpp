@@ -155,8 +155,7 @@ void TNonreplicatedPartitionMigrationCommonActor::
     NCloud::Register<TDiskRegistryBasedPartitionStatisticsCollectorActor>(
         ctx,
         SelfId(),
-        std::move(statActorIds),
-        ++StatisticSeqNo);
+        std::move(statActorIds));
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::
@@ -176,10 +175,6 @@ void TNonreplicatedPartitionMigrationCommonActor::
     }
 
     auto* msg = ev->Get();
-
-    if (msg->SeqNo < StatisticSeqNo) {
-        return;
-    }
 
     for (auto& counters: msg->Counters) {
         UpdateCounters(ctx, counters.ActorId, std::move(counters.CountersData));

@@ -188,7 +188,6 @@ private:
     TBackoffDelayProvider BackoffProvider;
 
     TRequestInfoPtr StatisticRequestInfo;
-    ui64 StatisticSeqNo = 0;
 
 protected:
     // Derived class that wishes to handle wakeup messages should make its own
