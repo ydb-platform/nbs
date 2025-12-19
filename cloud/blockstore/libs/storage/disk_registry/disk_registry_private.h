@@ -783,6 +783,10 @@ struct TEvDiskRegistryPrivate
     {
     };
 
+    struct TDiskRegistryRestoreAgentsToOnline
+    {
+    };
+
     //
     // Events declaration
     //
@@ -800,6 +804,8 @@ struct TEvDiskRegistryPrivate
         EvRestoreDiskRegistryValidationResponse,
 
         EvDiskRegistryAgentListExpiredParamsCleanup,
+
+        EvDiskRegistryRestoreAgentsToOnline,
 
         EvEnd
     };
@@ -823,6 +829,10 @@ struct TEvDiskRegistryPrivate
     using TEvDiskRegistryAgentListExpiredParamsCleanup = TRequestEvent<
         TDiskRegistryAgentListExpiredParamsCleanup,
         EvDiskRegistryAgentListExpiredParamsCleanup>;
+
+    using TEvDiskRegistryRestoreAgentsToOnline = TRequestEvent<
+        TDiskRegistryRestoreAgentsToOnline,
+        EvDiskRegistryRestoreAgentsToOnline>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

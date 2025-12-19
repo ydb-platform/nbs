@@ -29,6 +29,7 @@
 namespace NCloud::NBlockStore::NStorage {
 
 namespace {
+const TString BackFromUnavailableStateMessage = "back from unavailable";
 
 template<typename T>
 struct TTableCount;
@@ -1099,7 +1100,7 @@ auto TDiskRegistryState::RegisterAgent(
                 agent,
                 NProto::AGENT_STATE_WARNING,
                 timestamp,
-                "back from unavailable");
+                BackFromUnavailableStateMessage);
 
             ApplyAgentStateChange(db, agent, timestamp, affectedDisks);
 
@@ -5291,6 +5292,42 @@ NProto::TError TDiskRegistryState::UpdateAgentState(
     }
 
     return error;
+}
+
+NProto::TError TDiskRegistryState::RestoreAgentsFromWarning(
+    TDiskRegistryDatabase& db,
+    TInstant timestamp,
+    TDuration restoreInterval,
+    ui32 agentRestoreLimit,
+    TVector<TString>& affectedAgents,
+    bool& remainingAgents)
+{
+    remainingAgents = false;
+    for (const auto& agent: AgentList.GetAgents()) {
+        if (agent.GetState() == NProto::AGENT_STATE_WARNING &&
+            agent.GetStateMessage() == BackFromUnavailableStateMessage &&
+            timestamp - TInstant::MicroSeconds(agent.GetStateTs()) >
+                restoreInterval)
+        {
+            if(affectedAgents.size() >= agentRestoreLimit) {
+                remainingAgents = true;
+                break;
+            }
+            TVector<TDiskId> affectedDisks;
+            NProto::TError error = UpdateAgentState(
+                db,
+                agent.GetAgentId(),
+                NProto::AGENT_STATE_ONLINE,
+                timestamp,
+                "automatically restored",
+                affectedDisks);
+            if (HasError(error)) {
+                return error;
+            }
+            affectedAgents.push_back(agent.GetAgentId());
+        }
+    }
+    return {};
 }
 
 NProto::TError TDiskRegistryState::SwitchAgentDisksToReadOnly(
