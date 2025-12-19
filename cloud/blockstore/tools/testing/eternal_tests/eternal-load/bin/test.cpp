@@ -47,6 +47,9 @@ public:
 private:
     void InitLogger();
 
+    ITestScenarioPtr CreateTestScenario(
+        IConfigHolderPtr config,
+        const TLog& log) const;
     TTestExecutorSettings ConfigureTest() const;
     int RunTest();
 
@@ -115,56 +118,39 @@ void TTest::DumpConfiguration()
         << Options->DumpPath.Quote());
 }
 
+ITestScenarioPtr TTest::CreateTestScenario(
+    IConfigHolderPtr config,
+    const TLog& log) const
+{
+    switch (Options->Scenario) {
+        case EScenario::Aligned:
+            return CreateAlignedTestScenario(std::move(config), log);
+
+        case EScenario::Unaligned:
+            return CreateUnalignedTestScenario(std::move(config), log);
+
+        case EScenario::Sequential:
+            return CreateSimpleTestScenario(
+                ESimpleTestScenarioMode::Sequential,
+                std::move(config),
+                log);
+
+        case EScenario::Random:
+            return CreateSimpleTestScenario(
+                ESimpleTestScenarioMode::Random,
+                std::move(config),
+                log);
+
+        default:
+            Y_ABORT("Unsupported Scenario value %d", Options->Scenario);
+    }
+}
+
 TTestExecutorSettings TTest::ConfigureTest() const
 {
     auto log = Logging->CreateLog("ETERNAL_EXECUTOR");
 
     TTestExecutorSettings settings;
-
-    std::function<ITestScenarioPtr(IConfigHolderPtr)> scenarioFactory;
-
-    switch (Options->Scenario) {
-        case EScenario::Aligned:
-            scenarioFactory = [&](IConfigHolderPtr config)
-            {
-                return CreateAlignedTestScenario(std::move(config), log);
-            };
-            STORAGE_INFO("Using test scenario: Aligned");
-            break;
-
-        case EScenario::Unaligned:
-            scenarioFactory = [&](IConfigHolderPtr config)
-            {
-                return CreateUnalignedTestScenario(std::move(config), log);
-            };
-            STORAGE_INFO("Using test scenario: Unaligned");
-            break;
-
-        case EScenario::Sequential:
-            scenarioFactory = [&](IConfigHolderPtr config)
-            {
-                return CreateSimpleTestScenario(
-                    ESimpleTestScenarioMode::Sequential,
-                    std::move(config),
-                    log);
-            };
-            STORAGE_INFO("Using test scenario: Sequential");
-            break;
-
-        case EScenario::Random:
-            scenarioFactory = [&](IConfigHolderPtr config)
-            {
-                return CreateSimpleTestScenario(
-                    ESimpleTestScenarioMode::Random,
-                    std::move(config),
-                    log);
-            };
-            STORAGE_INFO("Using test scenario: Random");
-            break;
-
-        default:
-            Y_ABORT("Unsupported Scenario value %d", Options->Scenario);
-    }
 
     switch (Options->Engine) {
         case EIoEngine::AsyncIo:
@@ -218,7 +204,7 @@ TTestExecutorSettings TTest::ConfigureTest() const
 
     for (const auto& testConfig: testConfigs) {
         settings.TestScenarios.push_back(
-            {.TestScenario = scenarioFactory(testConfig),
+            {.TestScenario = CreateTestScenario(testConfig, log),
              .FilePath = testConfig->GetConfig().GetFilePath(),
              .FileSize = testConfig->GetConfig().GetFileSize()});
     }

@@ -29,12 +29,6 @@ const THashMap<TString, EIoEngine> nameToEngine = {
     {"sync", EIoEngine::Sync}
 };
 
-const THashMap<char, ui64> suffixToMultiplier = {
-    {'b', 1},
-    {'k', 1_KB},
-    {'m', 1_MB},
-    {'g', 1_GB}};
-
 template <class T>
 struct TMapOption
 {
@@ -77,12 +71,28 @@ template <class T>
 struct TByteCountOption
 {
     T* Target = nullptr;
-    ui64 DefaultMultiplier = 1;
+    ui64 DefaultMultiplier = 0;
 
     explicit TByteCountOption(T* target, char defaultSuffix = 'b')
         : Target(target)
-        , DefaultMultiplier(suffixToMultiplier.at(defaultSuffix))
+        , DefaultMultiplier(GetMultiplier(defaultSuffix))
     {}
+
+    static ui64 GetMultiplier(char suffix)
+    {
+        switch (suffix) {
+            case 'b':
+                return 1;
+            case 'k':
+                return 1_KB;
+            case 'm':
+                return 1_MB;
+            case 'g':
+                return 1_GB;
+            default:
+                Y_ABORT("Unsupported suffix '%c'", suffix);
+        }
+    }
 
     ui64 operator()(const TString& v) const
     {
@@ -90,10 +100,12 @@ struct TByteCountOption
             return 0;
         }
 
-        auto it = suffixToMultiplier.find(v.back());
-        return it != suffixToMultiplier.end()
-                   ? FromString<ui64>(TStringBuf(v).Chop(1)) * it->second
-                   : FromString<ui64>(v) * DefaultMultiplier;
+        if (v.back() >= '0' && v.back() <= '9') {
+            return FromString<ui64>(v) * DefaultMultiplier;
+        }
+
+        return FromString<ui64>(TStringBuf(v).Chop(1)) *
+               GetMultiplier(v.back());
     }
 };
 
