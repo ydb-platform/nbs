@@ -42,7 +42,7 @@ jobs:
             --field provision_mode="${PROVISION_MODE}" \
             --field loop="${LOOP}" \
             --field run_light="${RUN_LIGHT}" \
-            --field run_heavy="${RUN_HEAVY}" \  
+            --field run_heavy="${RUN_HEAVY}" 
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           GITHUB_REPO: ${{ github.repository }}

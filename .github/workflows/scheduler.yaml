@@ -13,6 +13,16 @@ on:
         type: string
         required: true
         default: "86400"
+      maximum_amount_of_vms_to_have:
+        description: 'Maximum amount of VMs to have'
+        type: string
+        required: false
+        default: "5"
+      extra_vms_if_needed:
+        description: 'Extra VMs if needed'
+        type: string
+        required: false
+        default: "1"
       flavor:
         description: 'Runner flavor'
         type: choice
@@ -50,6 +60,16 @@ on:
         type: string
         required: true
         default: "86400"
+      maximum_amount_of_vms_to_have:
+        description: 'Maximum amount of VMs to have'
+        type: string
+        required: false
+        default: "5"
+      extra_vms_if_needed:
+        description: 'Extra VMs if needed'
+        type: string
+        required: false
+        default: "1"
       flavor:
         description: 'Runner flavor'
         type: string
@@ -100,8 +120,8 @@ jobs:
           vms_ttl: ${{ inputs.vms_ttl }}
           flavor: ${{ inputs.flavor }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          maximum_amount_of_vms_to_have: ${{ vars.POOLED_MAXIMUM_AMOUNT_OF_VMS_TO_HAVE || '5' }}
-          extra_vms_if_needed: ${{ vars.POOLED_EXTRA_VMS_IF_NEEDED || '1' }}
+          maximum_amount_of_vms_to_have: ${{ inputs.maximum_amount_of_vms_to_have }}
+          extra_vms_if_needed: ${{ inputs.extra_vms_if_needed }}
           service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
           loop:  ${{ inputs.provision_mode == 'initial' && 'no' || inputs.loop }}
   remove_vms:
