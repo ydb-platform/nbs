@@ -3094,6 +3094,92 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             }
         }
     }
+
+    Y_UNIT_TEST(ShouldRestoreAgentsToOnline)
+    {
+        TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {
+                    Device("dev-1", "uuid-1.1", "rack-1", 10_GB),
+                    Device("dev-2", "uuid-1.2", "rack-1", 10_GB),
+                }),
+            CreateAgentConfig(
+                "agent-2",
+                {
+                    Device("dev-10", "uuid-10.1", "rack-10", 10_GB),
+                    Device("dev-20", "uuid-10.2", "rack-10", 10_GB),
+                }),
+            CreateAgentConfig(
+                "agent-3",
+                {
+                    Device("dev-11", "uuid-11.1", "rack-11", 10_GB),
+                    Device("dev-21", "uuid-11.2", "rack-11", 10_GB),
+                })};
+
+        NProto::TStorageServiceConfig config;
+
+        config.SetRestoreBackFromUnavailableAgentsDelay(
+            TDuration::Minutes(12).MilliSeconds());
+        config.SetBackFromUnavailableAgentsRestoreInterval(
+            TDuration::Minutes(1).MilliSeconds());
+        config.SetRestoreAgentCountPerTransaction(2);
+        config.SetNonReplicatedDiskRecyclingPeriod(Max<ui32>());
+        config.SetAllocationUnitNonReplicatedSSD(10);
+
+        auto runtime =
+            TTestRuntimeBuilder().With(config).WithAgents(agents).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+
+        auto listDiskStates = [&]
+        {
+            auto response = diskRegistry.ListDiskStates();
+            auto& states = *response->Record.MutableDiskStates();
+            SortBy(states, [](const auto& s) { return s.GetDiskId(); });
+            return states;
+        };
+
+        auto assertAgentStatus = [&](NProto::EAgentState expectedState, TString expectedMessage) {
+            for(auto& agent: agents) {
+                auto agent_response = diskRegistry.GetAgentNodeId(agent.agentid());
+                UNIT_ASSERT_EQUAL(
+                    agent_response->Record.GetAgentState(),
+                    expectedState);
+                for (auto& state: listDiskStates()) {
+                    UNIT_ASSERT_EQUAL(state.GetStateMessage(), expectedMessage);
+                }
+            }
+        };
+
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        for(size_t i = 0; i < agents.size(); i++) {
+            auto& agent = agents[i];
+            diskRegistry.ChangeAgentState(
+            agent.agentid(),
+            NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
+
+            agent.SetNodeId(i+1);
+            diskRegistry.RegisterAgent(agent);
+        }
+
+        assertAgentStatus(NProto::EAgentState::AGENT_STATE_WARNING, "back from unavailable");
+
+        runtime->AdvanceCurrentTime(6min);
+        runtime->DispatchEvents({}, 100ms);
+        assertAgentStatus(NProto::EAgentState::AGENT_STATE_WARNING, "back from unavailable");
+
+        runtime->AdvanceCurrentTime(6min);
+        runtime->DispatchEvents({}, 100ms);
+        runtime->AdvanceCurrentTime(1min);
+        runtime->DispatchEvents({}, 100ms);
+        assertAgentStatus(NProto::EAgentState::AGENT_STATE_ONLINE, "automatically restored");
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

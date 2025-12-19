@@ -318,6 +318,7 @@ void TDiskRegistryActor::HandleWakeup(
     const TActorContext& ctx)
 {
     ProcessAutomaticallyReplacedDevices(ctx);
+    ProcessRestoreAgentsToOnline(ctx);
     HandleWakeupReadOnly(ev, ctx);
 }
 
