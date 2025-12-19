@@ -84,7 +84,6 @@ struct TMonitoringUrlData: public TAtomicRefCount<TMonitoringUrlData>
     TString MonitoringYDBProject;
     TString MonitoringYDBGroupDashboard;
     TString MonitoringUrlTemplate;
-    TString MonitoringDataSourcePid;
 
     TMonitoringUrlData()
         : MonitoringProject("nbs")
