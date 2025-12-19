@@ -937,6 +937,7 @@ private:
         nodeState->AllEntries.PushBack(entry);
     }
 
+    // should be protected by |Lock|
     TNodeState* GetNodeStateOrNull(ui64 nodeId) const
     {
         auto it = NodeStates.find(nodeId);
@@ -945,6 +946,7 @@ private:
                    : nullptr;
     }
 
+    // should be protected by |Lock|
     TNodeState* GetOrCreateNodeState(ui64 nodeId)
     {
         auto& ptr = NodeStates[nodeId];
@@ -961,6 +963,7 @@ private:
         return ptr.get();
     }
 
+    // should be protected by |Lock|
     TNodeState* GetNodeState(ui64 nodeId)
     {
         const auto& ptr = NodeStates[nodeId];
@@ -969,12 +972,14 @@ private:
         return ptr.get();
     }
 
+    // should be protected by |Lock|
     void EraseNodeState(ui64 nodeId)
     {
         Y_DEBUG_ABORT_UNLESS(NodeStates.erase(nodeId));
         Stats->DecrementNodeCount();
     }
 
+    // should be protected by |Lock|
     void DeleteNodeStateIfNeeded(TNodeState* nodeState)
     {
         Y_DEBUG_ABORT_UNLESS(nodeState->DeletionId == 0);
@@ -1425,6 +1430,7 @@ private:
         }
     }
 
+    // should be protected by |Lock|
     template <class TTag>
     void EnqueueFlushCompletions(
         TDeque<TFlushRequest>& flushRequests,
@@ -1513,6 +1519,7 @@ private:
             });
     }
 
+    // should be protected by |Lock|
     void AddCachedEntry(
         TNodeState* nodeState,
         std::unique_ptr<TWriteDataEntry> entry)
@@ -1530,6 +1537,7 @@ private:
         CachedEntries.push_back(std::move(entry));
     }
 
+    // should be protected by |Lock|
     static TWriteDataEntry* RemoveFrontCachedEntry(TNodeState* nodeState)
     {
         Y_ABORT_UNLESS(nodeState != nullptr);
