@@ -1474,4 +1474,11 @@ message TStorageServiceConfig
     // Maximum number of inflight attach/detach path requests.
     // VolumeBalancerMaxInProgress == 0 means no limit
     optional uint64 VolumeBalancerMaxInProgress = 488;
+
+    // Delay before changing Disk Agent from "back from unavailable" to online
+    // (time that must pass since the last status change).
+    optional uint64 AgentBackFromUnavailableToOnlineDelay = 489;
+
+    // Interval for checking disk agents with status "back from unavailable".
+    optional uint64 AgentBackFromUnavailableCheckInterval = 490;
 }

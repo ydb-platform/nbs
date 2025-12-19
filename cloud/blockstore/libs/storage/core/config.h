@@ -786,6 +786,9 @@ public:
     GetPoolKindToMediaKindMapping() const;
 
     [[nodiscard]] ui64 GetVolumeBalancerMaxInProgress() const;
+
+    [[nodiscard]] TDuration GetAgentBackFromUnavailableToOnlineDelay() const;
+    [[nodiscard]] TDuration GetAgentBackFromUnavailableCheckInterval() const;
 };
 
 ui64 GetAllocationUnit(

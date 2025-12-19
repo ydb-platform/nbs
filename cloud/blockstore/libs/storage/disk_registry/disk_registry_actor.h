@@ -341,6 +341,8 @@ private:
     void ScheduleEnsureDiskRegistryStateIntegrity(
         const NActors::TActorContext& ctx);
 
+    void ScheduleRestoreAgentsToOnline(const NActors::TActorContext& ctx);
+
     void ProcessPathsToAttachOnAgent(
         const NActors::TActorContext& ctx,
         const NProto::TAgentConfig& agent,
@@ -547,6 +549,14 @@ private:
 
     void HandleEnsureDiskRegistryStateIntegrityResponse(
         const TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleRestoreAgentsToOnlineReadOnly(
+        const TEvDiskRegistryPrivate::TEvRestoreAgentsToOnlineRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleRestoreAgentsToOnlineResponse(
+        const TEvDiskRegistryPrivate::TEvRestoreAgentsToOnlineResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_DISK_REGISTRY_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskRegistry)
