@@ -76,8 +76,22 @@ void TDiskRegistryActor::ExecuteCompareDiskRegistryStateWithLocalDb(
         std::move(args.StateArgs.AutomaticallyReplacedDevices),
         std::move(args.StateArgs.DiskRegistryAgentListParams));
 
-    auto differences = State->GetDifferingFields(*dbState);
-    args.Result.MutableDiffers()->Add(differences.begin(), differences.end());
+    google::protobuf::util::MessageDifferencer diff;
+    TString report;
+
+    diff.ReportDifferencesToString(&report);
+    google::protobuf::util::DefaultFieldComparator comparator;
+    comparator.set_float_comparison(
+        google::protobuf::util::DefaultFieldComparator::FloatComparison::
+            APPROXIMATE);
+    diff.set_field_comparator(&comparator);
+
+    diff.IgnoreField(
+        NProto::TAgentConfig::descriptor()->FindFieldByName("UnknownDevices"));
+
+    if (!diff.Compare(State->BackupState(), dbState->BackupState())) {
+        args.Result.SetDiffers(report);
+    }
 }
 
 void TDiskRegistryActor::CompleteCompareDiskRegistryStateWithLocalDb(

@@ -1897,5 +1897,5 @@ message TCompareDiskRegistryStateWithLocalDbRequest
 message TCompareDiskRegistryStateWithLocalDbResponse
 {
     NCloud.NProto.TError Error = 1;
-    repeated string Differs = 2;
+    string Differs = 2;
 }

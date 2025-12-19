@@ -54,105 +54,6 @@ TNotificationSystem::TNotificationSystem(
     }
 }
 
-TString TNotificationSystem::Compare(const TNotificationSystem& rhs) const
-{
-    static_assert(sizeof(*this) == 200);
-
-    google::protobuf::util::MessageDifferencer diff;
-    TString report;
-
-    diff.ReportDifferencesToString(&report);
-    google::protobuf::util::DefaultFieldComparator comparator;
-    comparator.set_float_comparison(
-        google::protobuf::util::DefaultFieldComparator::FloatComparison::
-            APPROXIMATE);
-    diff.set_field_comparator(&comparator);
-
-    TStringBuilder result;
-
-    const auto& vUserNotifications = rhs.UserNotifications.Storage;
-    for (const auto& [k, v]: UserNotifications.Storage) {
-        if (vUserNotifications.find(k) == vUserNotifications.end()) {
-            result << "User notification " << k << " not found in db\n";
-            continue;
-        }
-        auto n1 = v.Notifications;
-        auto n2 = vUserNotifications.at(k).Notifications;
-        if (n1.size() != n2.size()) {
-            result << "User notification at " << k << " differs in size\n";
-            continue;
-        }
-        for (size_t i = 0; i < n1.size(); i++) {
-            if (!diff.Compare(n1[i], n2[i])) {
-                result << "User notification at " << k << " differs at index "
-                       << i << ": " << report << "\n";
-            }
-        }
-    }
-    for (const auto& [k, v]: vUserNotifications) {
-        if (UserNotifications.Storage.find(k) ==
-            UserNotifications.Storage.end())
-        {
-            result << "User notification " << k
-                   << " not found in current state\n";
-        }
-    }
-
-    auto compareHashMaps = [&result](const TString& name,const auto& lhs, const auto& rhs) {
-        for(const auto& [k, v]: rhs) {
-            if (lhs.find(k) == lhs.end()) {
-                result << name << " key " << k << " not found in current state\n";
-            } // values are non persistent
-        }
-        for(const auto& [k, v]: lhs) {
-            if (rhs.find(k) == rhs.end()) {
-                result << name << " key " << k << " not found in db\n";
-            }
-        }
-    };
-
-    compareHashMaps("DisksToReallocate", DisksToReallocate, rhs.DisksToReallocate);
-
-    THashMap<TString, TDiskStateUpdate> dsupdates, rhs_dsupdates;
-    for (const auto& dsu: DiskStateUpdates) {
-        dsupdates[dsu.State.GetDiskId()] = dsu;
-    }
-
-    for(const auto& dsu: rhs.DiskStateUpdates) {
-        rhs_dsupdates[dsu.State.GetDiskId()] = dsu;
-    }
-
-    for(const auto& [k, v]: dsupdates) {
-        if (rhs_dsupdates.find(k) == rhs_dsupdates.end()) {
-            result << "DiskStateUpdates key " << k << " not found in db\n";
-        } else if(dsupdates[k] != rhs_dsupdates[k]) {
-            if(!diff.Compare(dsupdates[k].State, rhs_dsupdates[k].State)) {
-                result << "DiskStateUpdates key " << k << " differs in state: " << report << "\n";
-                report.clear();
-            }
-            if(dsupdates[k].SeqNo != rhs_dsupdates[k].SeqNo) {
-                result << "DiskStateUpdates key " << k << " differs in seqNo: " << dsupdates[k].SeqNo << " != " << rhs_dsupdates[k].SeqNo << "\n";
-            }
-        }
-    }
-    for(const auto& [k, v]: rhs_dsupdates) {
-        if (dsupdates.find(k) == dsupdates.end()) {
-            result << "DiskStateUpdates key " << k << " not found in current state: " << v.State.DebugString() << "\n";
-        }
-    }
-
-    if (DiskStateSeqNo != rhs.DiskStateSeqNo) {
-        result << "DiskStateSeqNo differs: " << DiskStateSeqNo << " != " << rhs.DiskStateSeqNo << "\n";
-    }
-    if (OutdatedVolumeConfigs != rhs.OutdatedVolumeConfigs) {
-        result << "OutdatedVolumeConfigs differs\n";
-    }
-    if (VolumeConfigSeqNo != rhs.VolumeConfigSeqNo) {
-        result << "VolumeConfigSeqNo differs\n";
-    }
-    return result;
-}
-
 // TODO: Remove legacy compatibility in next release
 void TNotificationSystem::PullInUserNotifications(
     TVector<TString> errorNotifications,
@@ -412,9 +313,9 @@ void TNotificationSystem::OnDiskStateChanged(
         }
     }
 
-    // if (SupportsNotifications.contains(diskId)) {
+    if (SupportsNotifications.contains(diskId)) {
         DiskStateUpdates.emplace_back(std::move(diskState), seqNo);
-    // }
+    }
 }
 
 void TNotificationSystem::DeleteDiskStateUpdate(

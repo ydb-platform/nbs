@@ -7,7 +7,6 @@
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
-#include <google/protobuf/util/message_differencer.h>
 
 #include <util/generic/queue.h>
 #include <util/generic/string.h>
@@ -69,10 +68,6 @@ struct TDiskStateUpdate
         : State(std::move(state))
         , SeqNo(seqNo)
     {}
-
-    bool operator==(const TDiskStateUpdate& rhs) const{
-        return google::protobuf::util::MessageDifferencer::ApproximatelyEquals(State, rhs.State) && SeqNo == rhs.SeqNo;
-    };
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -131,7 +126,6 @@ struct TBrokenDiskInfo
 {
     TString DiskId;
     TInstant TsToDestroy;
-    bool operator==(const TBrokenDiskInfo& rhs) const = default;
 };
 
 struct TDirtyDevice

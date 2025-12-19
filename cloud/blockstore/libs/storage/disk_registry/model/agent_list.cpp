@@ -5,8 +5,6 @@
 
 #include <util/string/builder.h>
 
-#include <google/protobuf/util/message_differencer.h>
-
 namespace NCloud::NBlockStore::NStorage {
 
 namespace {
@@ -507,62 +505,6 @@ auto TAgentList::RegisterAgent(
         .LostDeviceIds = std::move(lostDeviceIds),
         .PrevNodeId = prevNodeId,
         .OldConfigs = std::move(oldConfigs)};
-}
-
-TString TAgentList::CompareAgents(const TAgentList& rhs) const
-{
-    using google::protobuf::util::MessageDifferencer;
-    static_assert(sizeof(*this) == 400);
-
-    MessageDifferencer diff;
-    NProtoBuf::string report;
-    diff.ReportDifferencesToString(&report);
-    google::protobuf::util::DefaultFieldComparator comparator;
-    comparator.set_float_comparison(
-        google::protobuf::util::DefaultFieldComparator::FloatComparison::
-            APPROXIMATE);
-    diff.set_field_comparator(&comparator);
-
-    TStringBuilder result;
-
-    const auto& vAgentListParams = rhs.DiskRegistryAgentListParams;
-
-    THashSet<TString> used;
-    for (const auto& [k, v]: DiskRegistryAgentListParams) {
-        if (vAgentListParams.find(k) == vAgentListParams.end()) {
-            result << "Agent param " << k << " not found in db\n";
-        } else if (!diff.Compare(v, vAgentListParams.at(k))) {
-            result << "Agent param" << k << " differs: " << report << "\n";
-        }
-    }
-
-    for (const auto& [k, v]: vAgentListParams) {
-        if (DiskRegistryAgentListParams.find(k) ==
-            DiskRegistryAgentListParams.end())
-        {
-            result << "Agent param" << k
-                   << " not found in current disk state\n";
-        }
-    }
-
-    if (Agents.size() != rhs.Agents.size()) {
-        result << "Agent lists differ in size\n";
-        return result;
-    }
-    const auto* desc = NProto::TAgentConfig::descriptor();
-    std::vector<const google::protobuf::FieldDescriptor*> fields;
-    for (int i = 0; i < desc->field_count(); i++) {
-        if (desc->field(i)->name() !=
-            "UnknownDevices") {   // non persistent field
-            fields.push_back(desc->field(i));
-        }
-    }
-    for (size_t i = 0; i < Agents.size(); ++i) {
-        if (!diff.CompareWithFields(Agents[i], rhs.Agents[i], fields, fields)) {
-            result << "Agent " << i << " differs: " << report << "\n";
-        }
-    }
-    return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

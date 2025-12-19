@@ -129,6 +129,73 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT(!diskRegistry.Exists("nonrepl-garbage"));
     }
 
+    Y_UNIT_TEST(ShouldKeepDiskRegistryStateEqualWithLocalDb)
+    {
+        const auto agent1 = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB),
+             Device("dev-3", "uuid-3", "rack-1", 10_GB),
+             Device("dev-4", "uuid-4", "rack-1", 10_GB),
+             Device("dev-5", "uuid-5", "rack-1", 10_GB)});
+
+        auto runtime = TTestRuntimeBuilder().WithAgents({agent1}).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent1}));
+
+        RegisterAgents(*runtime, 1);
+        WaitForAgents(*runtime, 1);
+        WaitForSecureErase(*runtime, {agent1});
+
+        {
+            auto result = diskRegistry.CompareDiskRegistryStateWithLocalDb();
+            UNIT_ASSERT(result->Record.differs() == "");
+        }
+
+        diskRegistry.AllocateDisk("disk-1", 20_GB);
+        diskRegistry.AllocateDisk("disk-2", 20_GB);
+        diskRegistry.AllocateDisk("disk-3", 10_GB);
+        {
+            auto result = diskRegistry.CompareDiskRegistryStateWithLocalDb();
+            UNIT_ASSERT(result->Record.differs() == "");
+        }
+
+        diskRegistry.MarkDiskForCleanup("disk-2");
+        diskRegistry.DeallocateDisk("disk-2");
+        {
+            auto result = diskRegistry.CompareDiskRegistryStateWithLocalDb();
+            UNIT_ASSERT(result->Record.differs() == "");
+        }
+
+        diskRegistry.RebootTablet();
+        diskRegistry.WaitReady();
+        {
+            auto result = diskRegistry.CompareDiskRegistryStateWithLocalDb();
+            UNIT_ASSERT(result->Record.differs() == "");
+        }
+
+        diskRegistry.AcquireDisk("disk-1", "session-1");
+        diskRegistry.AcquireDisk("disk-3", "session-2");
+
+        {
+            auto result = diskRegistry.CompareDiskRegistryStateWithLocalDb();
+            UNIT_ASSERT(result->Record.differs() == "");
+        }
+
+        diskRegistry.SendAcquireDiskRequest("disk-2", "session-3");
+        auto response = diskRegistry.RecvAcquireDiskResponse();
+        UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_NOT_FOUND);
+
+        {
+            auto result = diskRegistry.CompareDiskRegistryStateWithLocalDb();
+            UNIT_ASSERT(result->Record.differs() == "");
+        }
+    }
+
     Y_UNIT_TEST(ShouldCleanupMirroredDisks)
     {
         const auto agent1 = CreateAgentConfig("agent-1", {

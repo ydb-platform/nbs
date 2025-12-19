@@ -32,8 +32,6 @@ public:
     [[nodiscard]] bool IsEmpty() const;
     [[nodiscard]] bool Contains(const TString& diskId) const;
 
-    bool operator==(const TPendingCleanup& rhs) const;
-
 private:
     [[nodiscard]] NProto::TError ValidateInsertion(
         const TString& diskId,

@@ -103,8 +103,6 @@ public:
         TVector<TDeviceId> NewDevices;
     };
 
-    TString CompareAgents(const TAgentList& rhs) const;
-
     // If agent with agentId exists, split devices between Devices &
     // UnknownDevices according to knownAgent.
     TUpdateAgentDevicesResult TryUpdateAgentDevices(
