@@ -217,13 +217,6 @@ THeader InitHeader(ui64 dataCapacity, ui64 metadataCapacity)
     return res;
 }
 
-ui64 GetMaxUsedOffset(const THeader& header)
-{
-    return Max(
-        header.DataOffset + header.DataCapacity,
-        header.MetadataOffset + header.MetadataCapacity);
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -319,23 +312,16 @@ private:
 
     void ValidateStructure()
     {
-        auto map = GetMappedData();
+        const ui64 mapLength = static_cast<ui64>(Map.Length());
         const auto& h = *Header();
 
         Y_ABORT_UNLESS(h.Version == VERSION);
         Y_ABORT_UNLESS(sizeof(THeader) == h.HeaderSize);
-
         Y_ABORT_UNLESS(h.HeaderSize <= h.MetadataOffset);
-        Y_ABORT_UNLESS(h.MetadataOffset <= map.size());
-        Y_ABORT_UNLESS(h.MetadataCapacity <= map.size() - h.MetadataOffset);
-
-        Y_ABORT_UNLESS(h.HeaderSize <= h.DataOffset);
-        Y_ABORT_UNLESS(h.DataOffset <= map.size());
-        Y_ABORT_UNLESS(h.DataCapacity <= map.size() - h.DataOffset);
-
-        Y_ABORT_UNLESS(
-            h.MetadataOffset + h.MetadataCapacity <= h.DataOffset ||
-            h.DataOffset + h.DataCapacity <= h.MetadataOffset);
+        Y_ABORT_UNLESS(h.MetadataOffset <= h.DataOffset);
+        Y_ABORT_UNLESS(h.MetadataCapacity <= h.DataOffset - h.MetadataOffset);
+        Y_ABORT_UNLESS(h.DataOffset <= mapLength);
+        Y_ABORT_UNLESS(h.DataCapacity <= mapLength - h.DataOffset);
     }
 
     void ValidateDataStructure()
@@ -381,24 +367,23 @@ private:
         Map.ResizeAndRemap(0, fileSize);
     }
 
-    std::span<char> GetMappedData() const
+    std::span<char> GetMappedData(ui64 offset, ui64 size) const
     {
-        return std::span<char>(static_cast<char*>(Map.Ptr()), Map.MappedSize());
+        const ui64 mapLength = static_cast<ui64>(Map.Length());
+        Y_ABORT_UNLESS(offset <= mapLength);
+        Y_ABORT_UNLESS(size <= mapLength - offset);
+        return {static_cast<char*>(Map.Ptr()) + offset, size};
     }
 
     void CopyMappedData(ui64 destPos, ui64 srcPos, ui64 size)
     {
-        auto map = GetMappedData();
-
-        Y_ABORT_UNLESS(srcPos <= map.size());
-        Y_ABORT_UNLESS(destPos <= map.size());
-        Y_ABORT_UNLESS(size <= map.size() - srcPos);
-        Y_ABORT_UNLESS(size <= map.size() - destPos);
+        auto src = GetMappedData(srcPos, size);
+        auto dst = GetMappedData(destPos, size);
 
         // Copied data regions cannot overlap
         Y_ABORT_UNLESS(destPos + size <= srcPos || srcPos + size <= destPos);
 
-        MemCopy(map.data() + destPos, map.data() + srcPos, size);
+        MemCopy(dst.data(), src.data(), size);
     }
 
     void Migrate(const THeader& header)
@@ -433,80 +418,51 @@ private:
         ResizeAndRemap(newFileSize);
     }
 
-    void NormalizeAndResizeMetadataIfNeeded(ui64 desiredMetadataCapacity)
+    void ResizeMetadata(ui64 desiredMetadataCapacity)
     {
-        const ui64 minMetadataCapacity =
+        Header()->MetadataCapacity =
             Min(Header()->MetadataCapacity,
                 static_cast<ui64>(Header()->MetadataSize));
 
-        const auto header = InitHeader(
-            Header()->DataCapacity,
-            Max(desiredMetadataCapacity, minMetadataCapacity));
+        const ui64 newMetadataCapacity =
+            Max(desiredMetadataCapacity, Header()->MetadataCapacity);
 
-        if (header.MetadataOffset == Header()->MetadataOffset &&
-            header.MetadataCapacity == Header()->MetadataCapacity &&
-            header.DataOffset == Header()->DataOffset &&
-            header.DataCapacity == Header()->DataCapacity)
-        {
-            // The file is already normalized - just ensure the size is correct
-            const ui64 fileSize = GetMaxUsedOffset(header);
-            if (fileSize != static_cast<ui64>(Map.Length())) {
-                ResizeAndRemap(fileSize);
-            }
-            return;
-        }
+        const ui64 newDataOffset = AlignUp(
+            Header()->MetadataOffset + newMetadataCapacity,
+            sizeof(ui64));
 
-        const ui64 newFileSize = GetMaxUsedOffset(header);
+        const ui64 newFileSize = newDataOffset + Header()->DataCapacity;
 
-        if (Header()->MetadataOffset != header.MetadataOffset &&
-            Header()->MetadataOffset < newFileSize)
-        {
-            // Move metadata to the temporary place
-            const ui64 newMetadataOffset =
-                Max(newFileSize, GetMaxUsedOffset(*Header()));
-            ResizeAndRemap(newMetadataOffset + Header()->MetadataCapacity);
-            CopyMappedData(
-                newMetadataOffset,
-                Header()->MetadataOffset,
-                Header()->MetadataCapacity);
-            Header()->MetadataOffset = newMetadataOffset;
-        }
-
-        if (Header()->DataOffset != header.DataOffset &&
+        if (Header()->DataOffset != newDataOffset &&
             Header()->DataOffset < newFileSize)
         {
             // Move data to the temporary place
-            const ui64 newDataOffset =
-                Max(newFileSize, GetMaxUsedOffset(*Header()));
-            ResizeAndRemap(newDataOffset + Header()->DataCapacity);
+            const ui64 tempDataOffset =
+                Max(newFileSize, Header()->DataOffset + Header()->DataCapacity);
+
+            ResizeAndRemap(tempDataOffset + Header()->DataCapacity);
+
+            CopyMappedData(
+                tempDataOffset,
+                Header()->DataOffset,
+                Header()->DataCapacity);
+
+            Header()->DataOffset = tempDataOffset;
+        }
+
+        if (Header()->DataOffset != newDataOffset) {
+            // Move data to the right place
             CopyMappedData(
                 newDataOffset,
                 Header()->DataOffset,
                 Header()->DataCapacity);
+
             Header()->DataOffset = newDataOffset;
         }
 
-        if (Header()->MetadataOffset != header.MetadataOffset) {
-            // Move metadata to the right place
-            CopyMappedData(
-                header.MetadataOffset,
-                Header()->MetadataOffset,
-                Header()->MetadataSize);
-            Header()->MetadataOffset = header.MetadataOffset;
-        }
-
-        Header()->MetadataCapacity = header.MetadataCapacity;
-
-        if (Header()->DataOffset != header.DataOffset) {
-            // Move data to the right place
-            CopyMappedData(
-                header.DataOffset,
-                Header()->DataOffset,
-                Header()->DataCapacity);
-            Header()->DataOffset = header.DataOffset;
-        }
-
         ResizeAndRemap(newFileSize);
+
+        Header()->MetadataCapacity = newMetadataCapacity;
     }
 
 public:
@@ -530,12 +486,12 @@ public:
 
         ValidateStructure();
 
-        NormalizeAndResizeMetadataIfNeeded(metadataCapacity);
+        if (Header()->MetadataCapacity != metadataCapacity) {
+            ResizeMetadata(metadataCapacity);
+        }
 
         Data = TEntriesData(
-            GetMappedData().subspan(
-                Header()->DataOffset,
-                Header()->DataCapacity));
+            GetMappedData(Header()->DataOffset, Header()->DataCapacity));
 
         ValidateDataStructure();
     }
@@ -736,9 +692,8 @@ public:
 
     bool ValidateMetadata() const
     {
-        auto data = GetMappedData().subspan(
-            Header()->MetadataOffset,
-            Header()->MetadataCapacity);
+        auto data =
+            GetMappedData(Header()->MetadataOffset, Header()->MetadataCapacity);
 
         return Header()->MetadataSize <= data.size() &&
                Crc32c(data.data(), Header()->MetadataSize) ==
@@ -747,9 +702,8 @@ public:
 
     TStringBuf GetMetadata() const
     {
-        auto data = GetMappedData().subspan(
-            Header()->MetadataOffset,
-            Header()->MetadataCapacity);
+        auto data =
+            GetMappedData(Header()->MetadataOffset, Header()->MetadataCapacity);
 
         Y_ABORT_UNLESS(Header()->MetadataSize <= data.size());
 
@@ -762,9 +716,8 @@ public:
             return false;
         }
 
-        auto data = GetMappedData().subspan(
-            Header()->MetadataOffset,
-            Header()->MetadataCapacity);
+        auto data =
+            GetMappedData(Header()->MetadataOffset, Header()->MetadataCapacity);
 
         Header()->MetadataSize = buf.size();
         Header()->MetadataChecksum = Crc32c(buf.data(), buf.size());
