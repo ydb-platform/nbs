@@ -6,7 +6,7 @@ import "google/protobuf/timestamp.proto";
 import "google/protobuf/descriptor.proto";
 import "google/rpc/status.proto";
 
-option go_package = "a.yandex-team.ru/contrib/ydb/library/yql/providers/solomon/solomon_accessor/grpc;data_service";
+option go_package = "github.com/ydb-platform/nbs/contrib/ydb/library/yql/providers/solomon/solomon_accessor/grpc;data_service";
 
 // A set of methods for reading metrics data.
 service DataService {
