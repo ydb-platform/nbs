@@ -7,7 +7,7 @@ import "contrib/ydb/public/api/protos/ydb_status_codes.proto";
 import "contrib/ydb/public/api/protos/ydb_issue_message.proto";
 import "yql/essentials/providers/common/proto/gateways_config.proto";
 
-option go_package = "a.yandex-team.ru/contrib/ydb/library/yql/providers/generic/connector/libgo/service/protos";
+option go_package = "github.com/ydb-platform/nbs/contrib/ydb/library/yql/providers/generic/connector/libgo/service/protos";
 
 // ---------- API Requests ----------
 
@@ -240,7 +240,7 @@ message TReadSplitsRequest {
         // If Connector cannot push down the predicate to the data source completely
         // (due to the lack of data type support, for example), it doesn't apply filter at all
         // and returns the full result of `SELECT columns FROM table` (no WHERE clause).
-        // It's YDB's duty to filter the output on its own side. 
+        // It's YDB's duty to filter the output on its own side.
         FILTERING_OPTIONAL = 1;
         // If Connector cannot push down the predicate to the data source completely,
         // it terminates the request and returns an error.
@@ -248,7 +248,7 @@ message TReadSplitsRequest {
     }
 
     // Determines various modes of server behavior in the context of predicate pushdown.
-    // If not set, the default value is `FILTERING_OPTIONAL`. 
+    // If not set, the default value is `FILTERING_OPTIONAL`.
     EFiltering filtering = 7;
 
     reserved 5;
