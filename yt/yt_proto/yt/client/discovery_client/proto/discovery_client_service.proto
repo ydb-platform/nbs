@@ -6,7 +6,7 @@ option java_package = "tech.ytsaurus";
 option java_outer_classname = "DiscoveryClientProtos";
 option java_multiple_files = true;
 
-option go_package = "a.yandex-team.ru/yt/go/proto/client/discovery_client";
+option go_package = "github.com/ydb-platform/nbs/yt/go/proto/client/discovery_client";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -80,4 +80,3 @@ message TRspHeartbeat
 { }
 
 ////////////////////////////////////////////////////////////////////////////////
-
