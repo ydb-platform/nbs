@@ -7,10 +7,9 @@ ENDIF()
 PEERDIR(
     cloud/filestore/libs/storage/tablet
 
-    contrib/ydb/library/yql/public/udf
-
-    yql/essentials/sql/pg_dummy
+    yql/essentials/public/udf
     yql/essentials/public/udf/service/exception_policy
+    yql/essentials/sql/pg_dummy
 )
 
 SRCS(
