@@ -430,15 +430,15 @@ int virtio_session_mount(struct fuse_session* se)
 
     // no need to supply tag here - it will be handled by the QEMU
     dev->fsdev.socket_path = se->vu_socket_path;
-    dev->fsdev.num_queues = se->num_backend_queues;
+    dev->fsdev.num_queues = se->num_frontend_queues;
 
     VHD_LOG_INFO(
-        "starting device %s, num_backend_queues=%d, num_frontend_queues=%d",
+        "starting device %s, num_frontend_queues=%d, num_backend_queues=%d",
         dev->fsdev.socket_path,
-        se->num_backend_queues,
-        se->num_frontend_queues);
+        se->num_frontend_queues,
+        se->num_backend_queues);
 
-    dev->rq_count = se->num_frontend_queues;
+    dev->rq_count = se->num_backend_queues;
     dev->rqs = vhd_zalloc(sizeof(dev->rqs[0]) * dev->rq_count);
 
     for (queue_index = 0; queue_index < dev->rq_count; queue_index++) {
