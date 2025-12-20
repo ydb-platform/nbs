@@ -1,6 +1,6 @@
 package NYT.NBus.NProto;
 
-option go_package = "a.yandex-team.ru/yt/go/proto/core/bus";
+option go_package = "github.com/ydb-platform/nbs/yt/go/proto/core/bus";
 
 import "yt_proto/yt/core/misc/proto/guid.proto";
 
