@@ -96,7 +96,7 @@ TTestEnv::TTestEnv(
         ui32 nchannels,
         ui32 ngroups,
         TTestEnvState state,
-        NKikimr::NFake::TCaches cachesConfig)
+        const NKikimr::NSharedCache::TSharedCacheConfig* sharedCacheConfig)
     : DomainUid(1)
     , DomainName("local")
     , StaticNodeCount(staticNodes)
@@ -111,7 +111,7 @@ TTestEnv::TTestEnv(
     SetupDomain(app);
     app.AddHive(DomainUid, ChangeDomain(Tests::Hive, DomainUid));
     SetupChannelProfiles(app, nchannels);
-    SetupTabletServices(Runtime, &app, false, {}, std::move(cachesConfig));
+    SetupTabletServices(Runtime, &app, false, {}, sharedCacheConfig);
     BootTablets();
     SetupStorage(ngroups);
     SetupLocalServices();

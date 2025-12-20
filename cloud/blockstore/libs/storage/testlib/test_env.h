@@ -47,7 +47,7 @@ public:
         ui32 nchannels = 4,
         ui32 ngroups = 1,
         TTestEnvState state = {},
-        NKikimr::NFake::TCaches cachesConfig = {});
+        const NKikimr::NSharedCache::TSharedCacheConfig* sharedCacheConfig = nullptr);
 
     ~TTestEnv();
 
