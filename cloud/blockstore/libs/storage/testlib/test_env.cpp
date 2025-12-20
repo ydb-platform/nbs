@@ -681,7 +681,9 @@ void TTestEnv::SetupProxies()
 
 void TTestEnv::SetupTicketParser(ui32 nodeIdx)
 {
-    IActor* ticketParser = CreateTicketParser(Runtime.GetAppData().AuthConfig);
+    IActor* ticketParser = CreateTicketParser(
+        {.AuthConfig = Runtime.GetAppData().AuthConfig,
+         .CertificateAuthValues = {}});
     TActorId ticketParserId = Runtime.Register(ticketParser, nodeIdx);
     Runtime.EnableScheduleForActor(ticketParserId);
     Runtime.RegisterService(MakeTicketParserID(), ticketParserId, nodeIdx);
