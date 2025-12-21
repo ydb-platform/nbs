@@ -73,20 +73,19 @@ ui64 ChangeDomain(ui64 tabletId, ui32 domainUid)
 ////////////////////////////////////////////////////////////////////////////////
 
 TTestEnv::TTestEnv(
-        TTestEnvConfig config,
-        NProto::TStorageConfig storageConfig,
-        NKikimr::NFake::TCaches cachesConfig,
-        IProfileLogPtr profileLog,
-        NProto::TDiagnosticsConfig diagConfig,
-        bool useRealThreads)
-    : Config(std::move(config))
-    , Logging(CreateLoggingService("console", { TLOG_DEBUG }))
+    const TTestEnvConfig& config,
+    NProto::TStorageConfig storageConfig,
+    const NKikimr::NSharedCache::TSharedCacheConfig* sharedCacheConfig,
+    IProfileLogPtr profileLog,
+    NProto::TDiagnosticsConfig diagConfig,
+    bool useRealThreads)
+    : Config(config)
+    , Logging(CreateLoggingService("console", {TLOG_DEBUG}))
     , ProfileLog(std::move(profileLog))
-    , TraceSerializer(
-        CreateTraceSerializer(
-            Logging,
-            "NFS_TRACE",
-            NLwTraceMonPage::TraceManager(false)))
+    , TraceSerializer(CreateTraceSerializer(
+          Logging,
+          "NFS_TRACE",
+          NLwTraceMonPage::TraceManager(false)))
     , SystemCounters(MakeIntrusive<TSystemCounters>())
     , Runtime(Config.StaticNodes + Config.DynamicNodes, useRealThreads)
     , NextDynamicNode(Config.StaticNodes)
@@ -104,7 +103,7 @@ TTestEnv::TTestEnv(
     SetupDomain(app);
     app.AddHive(Config.DomainUid, GetHive());
     SetupChannelProfiles(app);
-    SetupTabletServices(Runtime, &app, false, {}, std::move(cachesConfig));
+    SetupTabletServices(Runtime, &app, false, {}, sharedCacheConfig);
     BootTablets();
     SetupStorage();
     SetupLocalServices();
