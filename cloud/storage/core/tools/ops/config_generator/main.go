@@ -86,8 +86,9 @@ func getNfsConfigMap() configurator.ConfigMap {
 
 func getNfsLocalConfigMap() configurator.ConfigMap {
 	return configurator.ConfigMap{
-		"nfs-vhost-local.txt": {Proto: &nfsProto.TVhostAppConfig{}, FileName: "vhost.txt"},
-		"nfs-diag-local.txt":  {Proto: &nfsProto.TDiagnosticsConfig{}, FileName: "diagnostics.txt"},
+		"nfs-vhost-local.txt":    {Proto: &nfsProto.TVhostAppConfig{}, FileName: "vhost.txt"},
+		"nfs-diag-local.txt":     {Proto: &nfsProto.TDiagnosticsConfig{}, FileName: "diagnostics.txt"},
+		"nfs-features-local.txt": {Proto: &coreProto.TFeaturesConfig{}, FileName: "features.txt"},
 	}
 }
 
