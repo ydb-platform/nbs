@@ -209,6 +209,14 @@ EDiagnosticsErrorKind GetDiagnosticsErrorKind(const NProto::TError& e);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TString FormatError(const NProto::TError& e);
+TString FormatResultCode(ui32 code);
+NJson::TJsonValue FormatErrorJson(const NProto::TError& e);
+
+NProto::TError MakeError(ui32 code, TString message = {}, ui32 flags = 0);
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TServiceError
     : public yexception
 {
@@ -226,6 +234,19 @@ public:
         Append(error.GetMessage());
     }
 
+    TServiceError(const char* loc, ui32 code)
+        : TServiceError(loc, MakeError(code))
+    {}
+
+    TServiceError(const char* loc, const NProto::TError& error)
+        : Code(error.GetCode())
+    {
+        Append(loc);
+        Append(FormatError(error));
+        Append(" | "); // appending a delimiter for any extra error details that
+                       // may be further appended via operator<<
+    }
+
     ui32 GetCode() const
     {
         return Code;
@@ -237,13 +258,12 @@ public:
     }
 };
 
+#define STORAGE_THROW_SERVICE_ERROR(x) throw TServiceError(                    \
+    __FILE__ ":" Y_STRINGIZE(__LINE__) ": ",                                   \
+    x)                                                                         \
+// STORAGE_ERROR
+
 ////////////////////////////////////////////////////////////////////////////////
-
-TString FormatError(const NProto::TError& e);
-TString FormatResultCode(ui32 code);
-NJson::TJsonValue FormatErrorJson(const NProto::TError& e);
-
-NProto::TError MakeError(ui32 code, TString message = {}, ui32 flags = 0);
 
 template <typename T>
 concept TAcceptsError = requires(T a)

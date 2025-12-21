@@ -62,7 +62,7 @@ public:
                 std::move(request)));
 
         if (HasError(response)) {
-            ythrow TServiceError(response.GetError());
+            STORAGE_THROW_SERVICE_ERROR(response.GetError());
         }
 
         return true;
