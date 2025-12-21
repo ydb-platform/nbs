@@ -426,7 +426,7 @@ void TAppContext::ValidateRequest(
         bool result = TryParseSourceFd(peer, &fd);
 
         if (!result) {
-            ythrow TServiceError(E_FAIL)
+            STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                 << "failed to parse request source fd: " << peer;
         }
 
@@ -434,7 +434,7 @@ void TAppContext::ValidateRequest(
         // so pretend they are coming from data channel.
         auto src = SessionStorage->FindSourceByFd(fd);
         if (!src) {
-            ythrow TServiceError(E_GRPC_UNAVAILABLE)
+            STORAGE_THROW_SERVICE_ERROR(E_GRPC_UNAVAILABLE)
                 << "endpoint has been stopped (fd = " << fd << ").";
         }
 
@@ -442,7 +442,7 @@ void TAppContext::ValidateRequest(
     }
 
     if (headers.HasInternal()) {
-        ythrow TServiceError(E_ARGUMENT)
+        STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
             << "internal field should not be set by client";
     }
 
@@ -1656,7 +1656,7 @@ public:
 
         AppCtx.Server = builder.BuildAndStart();
         if (!AppCtx.Server) {
-            ythrow TServiceError(E_FAIL)
+            STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                 << "could not start gRPC server";
         }
 

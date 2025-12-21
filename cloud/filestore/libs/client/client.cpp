@@ -705,7 +705,7 @@ protected:
             StartWithTcpSocket();
 
         if (!res) {
-            ythrow TServiceError(E_FAIL)
+            STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                 << "could not start gRPC client";
         }
 
@@ -742,7 +742,7 @@ protected:
         auto& config = AppCtx.Config;
 
         if (config->GetSecurePort() == 0 && config->GetPort() == 0) {
-            ythrow TServiceError(E_ARGUMENT)
+            STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
                 << "gRPC client ports are not set";
         }
 

@@ -101,7 +101,7 @@ public:
 
         auto filestore = FileStoreEndpoints->GetEndpoint(serviceEndpoint);
         if (!filestore) {
-            ythrow TServiceError(E_ARGUMENT)
+            STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
                 << "invalid service endpoint " << serviceEndpoint.Quote();
         }
 

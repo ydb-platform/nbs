@@ -110,7 +110,7 @@ void ConvertStats(const NLowLevel::TFileStatEx& stat, NProto::TNodeAttr& node)
      } else if (S_ISBLK(stat.Mode)) {
         node.SetType(NProto::E_BLOCKDEV_NODE);
      }  else {
-        ythrow TServiceError(E_IO) << "invalid stats";
+        STORAGE_THROW_SERVICE_ERROR(E_IO) << "invalid stats";
     }
 
     node.SetId(stat.INode);
