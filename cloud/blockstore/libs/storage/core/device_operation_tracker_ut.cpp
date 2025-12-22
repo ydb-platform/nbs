@@ -125,15 +125,17 @@ Y_UNIT_TEST_SUITE(TDeviceOperationTrackerTest)
         tracker.UpdateAgents(MakeTestAgents());
 
         TSet<TString> newAgents = {
-            "agent-3",
-            "agent-4",
+            "agent.3",
+            "agent_4",
         };
         tracker.UpdateAgents(newAgents);
 
         auto agents = tracker.GetAgents();
         UNIT_ASSERT_VALUES_EQUAL(2, agents.size());
-        UNIT_ASSERT_VALUES_EQUAL(true, agents.contains("agent-3"));
-        UNIT_ASSERT_VALUES_EQUAL(true, agents.contains("agent-4"));
+        UNIT_ASSERT_VALUES_EQUAL("agent-3", agents[0].Key);
+        UNIT_ASSERT_VALUES_EQUAL("agent.3", agents[0].Description);
+        UNIT_ASSERT_VALUES_EQUAL("agent-3", agents[0].Key);
+        UNIT_ASSERT_VALUES_EQUAL("agent_4", agents[1].Description);
     }
 
     Y_UNIT_TEST(ShouldResetStatistics)

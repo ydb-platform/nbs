@@ -16,13 +16,27 @@ namespace {
 
 std::atomic<ui32> TrackingFrequency = 0;
 
+TString EscapeAgentId(const TString& agentId)
+{
+    TString result;
+    result.reserve(agentId.size());
+    for (auto c: agentId) {
+        if (IsAsciiAlnum(c)) {
+            result.append(c);
+        } else {
+            result.append("-");
+        }
+    }
+    return result;
+}
+
 }   // namespace
 
 TString TDeviceOperationTracker::TKey::GetHtmlPrefix() const
 {
     TStringBuilder builder;
 
-    builder << RequestType << "_" << AgentId;
+    builder << RequestType << "_" << EscapeAgentId(AgentId);
 
     switch (Status) {
         case EStatus::Finished: {
@@ -220,9 +234,18 @@ auto TDeviceOperationTracker::GetTimeBuckets() const -> TVector<TBucketInfo>
     return result;
 }
 
-const TSet<TString>& TDeviceOperationTracker::GetAgents() const
+TVector<TDeviceOperationTracker::TBucketInfo>
+TDeviceOperationTracker::GetAgents() const
 {
-    return Agents;
+    TVector<TBucketInfo> result;
+    for (const auto& agent: Agents) {
+        result.push_back(
+            TBucketInfo{
+                .Key = EscapeAgentId(agent),
+                .Description = agent,
+                .Tooltip = ""});
+    }
+    return result;
 }
 
 void TDeviceOperationTracker::ResetStats()

@@ -93,7 +93,7 @@ public:
 
     [[nodiscard]] TString GetStatJson(ui64 nowCycles) const;
     [[nodiscard]] TVector<TBucketInfo> GetTimeBuckets() const;
-    [[nodiscard]] const TSet<TString>& GetAgents() const;
+    [[nodiscard]] TVector<TBucketInfo> GetAgents() const;
 
     void ResetStats();
 

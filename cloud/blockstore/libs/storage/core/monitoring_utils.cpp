@@ -2074,17 +2074,17 @@ void DumpLatencyTableForRequestType(
             }
 
             TABLEBODY () {
-                for (const auto& agentId: agents) {
+                for (const auto& agentInfo: agents) {
                     TABLER () {
                         TABLED () {
-                            out << agentId;
+                            out << agentInfo.Description;
                         }
 
                         for (const auto& timeBucket: timeBuckets) {
                             RenderDeviceOperationLatencyCell(
                                 out,
                                 requestTypeStr,
-                                agentId,
+                                agentInfo.Key,
                                 timeBucket.Key);
                         }
                     }
@@ -2155,12 +2155,13 @@ void DumpDeviceOperationLatency(
                 for (const [fullKey, value] of Object.entries(result.stat)) {
                     const parts = fullKey.split('_');
                     const op = parts[0];
-                    const device = parts[1];
+                    const agent = parts[1];
                     const type = parts[2];
                     const bucket = parts[3];
-                    const key = `${op}_${device}_${bucket}`;
+                    const key = `${op}_${agent}_${bucket}`;
 
-                    if (!data[key]) data[key] = {};
+                    if (!data[key])
+                       data[key] = {};
                     data[key][type] = value;
                 }
 
