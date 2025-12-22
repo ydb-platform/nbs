@@ -26,8 +26,8 @@
 #include <sys/file.h>
 #include <unistd.h>
 
-#define NUM_BACKEND_QUEUES 64
-#define NUM_FRONTEND_QUEUES 1
+#define DEFAULT_NUM_FRONTEND_QUEUES 64
+#define DEFAULT_NUM_BACKEND_QUEUES 1
 
 #define OFFSET_MAX 0x7fffffffffffffffLL
 
@@ -2536,8 +2536,8 @@ static const struct fuse_opt fuse_ll_opts[] = {
     LL_OPTION("--socket-path=%s", vu_socket_path, 0),
     LL_OPTION("--socket-group=%s", vu_socket_group, 0),
     LL_OPTION("--fd=%d", vu_listen_fd, 0),
-    LL_OPTION("--num-backend-queues=%d", num_backend_queues, 0),
     LL_OPTION("--num-frontend-queues=%d", num_frontend_queues, 0),
+    LL_OPTION("--num-backend-queues=%d", num_backend_queues, 0),
     FUSE_OPT_END
 };
 
@@ -2557,10 +2557,10 @@ void fuse_lowlevel_help(void)
         "    -o allow_root              allow access by root\n"
         "    --socket-path=PATH         path for the vhost-user socket\n"
         "    --fd=FDNUM                 fd number of vhost-user socket\n"
-        "    --num-backend-queues=NUM   backend queues limit (default %d)\n"
-        "    --num-frontend-queues=NUM  frontend queues limit (default %d)\n",
-        NUM_BACKEND_QUEUES,
-        NUM_FRONTEND_QUEUES);
+        "    --num-frontend-queues=NUM  frontend queues limit (default %d)\n"
+        "    --num-backend-queues=NUM   backend queues limit (default %d)\n",
+        DEFAULT_NUM_FRONTEND_QUEUES,
+        DEFAULT_NUM_BACKEND_QUEUES);
 }
 
 void fuse_session_destroy(struct fuse_session *se)
@@ -2632,8 +2632,8 @@ struct fuse_session *fuse_session_new(struct fuse_args *args,
     }
     se->fd = -1;
     se->vu_listen_fd = -1;
-    se->num_backend_queues = NUM_BACKEND_QUEUES;
-    se->num_frontend_queues = NUM_FRONTEND_QUEUES;
+    se->num_frontend_queues = DEFAULT_NUM_FRONTEND_QUEUES;
+    se->num_backend_queues = DEFAULT_NUM_BACKEND_QUEUES;
     se->conn.max_write = UINT_MAX;
     se->conn.max_readahead = UINT_MAX;
 
