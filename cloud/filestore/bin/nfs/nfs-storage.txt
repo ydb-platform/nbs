@@ -7,3 +7,5 @@ ThreeStageWriteEnabled: true
 UnalignedThreeStageWriteEnabled: true
 DirectoryHandlesStorageEnabled: true
 DirectoryHandlesTableSize: 10000
+TwoStageReadEnabled: true
+TwoStageReadThreshold: 65536
