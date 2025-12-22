@@ -105,6 +105,9 @@ public:
 
     void Init(bool restoreClientSession)
     {
+        // TODO add init session here
+        Index.Init();
+
         auto handlesPath = StatePath / "handles";
 
         bool isNewSession = !restoreClientSession || !HasStateFile("session") ||
