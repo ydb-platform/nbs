@@ -636,7 +636,7 @@ size_t TStorageAdapter::TImpl::Shutdown(ITimerPtr timer, TDuration duration)
 void TStorageAdapter::TImpl::VerifyBlockSize(ui32 blockSize) const
 {
     if (blockSize < StorageBlockSize || blockSize % StorageBlockSize != 0) {
-        ythrow TServiceError(E_ARGUMENT)
+        STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
             << "invalid block size: " << blockSize
             << " (storage block size = " << StorageBlockSize << ")";
     }
@@ -646,7 +646,7 @@ ui32 TStorageAdapter::TImpl::VerifyRequestSize(ui32 blocksCount, ui32 blockSize)
 {
     ui64 bytesCount = static_cast<ui64>(blocksCount) * blockSize;
     if (MaxRequestSize > 0 && bytesCount > MaxRequestSize) {
-        ythrow TServiceError(E_ARGUMENT)
+        STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
             << "invalid request size: " << bytesCount
             << " (max request size = " << MaxRequestSize << ")";
     }
@@ -656,13 +656,13 @@ ui32 TStorageAdapter::TImpl::VerifyRequestSize(ui32 blocksCount, ui32 blockSize)
 ui32 TStorageAdapter::TImpl::VerifyRequestSize(ui32 bytesCount) const
 {
     if (bytesCount == 0 || bytesCount % StorageBlockSize != 0) {
-        ythrow TServiceError(E_ARGUMENT)
+        STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
             << "buffer size (" << bytesCount << ") is not a multiple of storage block size"
             << " (storage block size = " << StorageBlockSize << ")";
     }
 
     if (MaxRequestSize > 0 && bytesCount > MaxRequestSize) {
-        ythrow TServiceError(E_ARGUMENT)
+        STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
             << "invalid request size: " << bytesCount
             << " (max request size = " << MaxRequestSize << ")";
     }
@@ -675,7 +675,7 @@ ui32 TStorageAdapter::TImpl::VerifyRequestSize(const NProto::TIOVector& iov) con
     ui64 bytesCount = 0;
     for (const auto& buffer: iov.GetBuffers()) {
         if (buffer.empty() || buffer.size() % StorageBlockSize != 0) {
-            ythrow TServiceError(E_ARGUMENT)
+            STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
                 << "buffer size (" << buffer.size() << ") is not a multiple of storage block size"
                 << " (storage block size = " << StorageBlockSize << ")";
         }
@@ -684,7 +684,7 @@ ui32 TStorageAdapter::TImpl::VerifyRequestSize(const NProto::TIOVector& iov) con
     }
 
     if (MaxRequestSize > 0 && bytesCount > MaxRequestSize) {
-        ythrow TServiceError(E_ARGUMENT)
+        STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
             << "invalid request size: " << bytesCount
             << " (max request size = " << MaxRequestSize << ")";
     }

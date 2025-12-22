@@ -102,7 +102,7 @@ TString SysKeyCtlReadValue(ui32 key, ui32 size)
         size);
 
     if (readSize != size) {
-        ythrow TServiceError(E_REJECTED)
+        STORAGE_THROW_SERVICE_ERROR(E_REJECTED)
             << "readSize (" << readSize << ")"
             << " should be equal size (" << size << ")";
     }
@@ -113,7 +113,7 @@ TString SysKeyCtlDescribe(ui32 key)
 {
     ui32 size = RETRIABLE_SYSCALL(__NR_keyctl, KEYCTL_DESCRIBE, key, NULL, 0);
     if (size == InvalidCode) {
-        ythrow TServiceError(E_REJECTED) << "failed to describe keyring";
+        STORAGE_THROW_SERVICE_ERROR(E_REJECTED) << "failed to describe keyring";
     }
 
     if (size == 0) {
@@ -124,7 +124,7 @@ TString SysKeyCtlDescribe(ui32 key)
     memset((void*)buf, 0, size);
     ui32 readSize = RETRIABLE_SYSCALL(__NR_keyctl, KEYCTL_DESCRIBE, key, buf, size);
     if (readSize != size) {
-        ythrow TServiceError(E_REJECTED)
+        STORAGE_THROW_SERVICE_ERROR(E_REJECTED)
             << "readSize (" << readSize << ")"
             << " should be equal size (" << size << ")";
     }

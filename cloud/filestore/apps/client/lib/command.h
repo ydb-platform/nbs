@@ -174,7 +174,7 @@ protected:
     static void CheckResponse(const T& response)
     {
         if (HasError(response)) {
-            throw TServiceError(response.GetError());
+            STORAGE_THROW_SERVICE_ERROR(response.GetError());
         }
     }
 

@@ -434,7 +434,7 @@ const TString& TDiskAgentState::GetDeviceName(const TString& uuid) const
 {
     auto it = Devices.find(uuid);
     if (it == Devices.cend()) {
-        ythrow TServiceError(E_NOT_FOUND)
+        STORAGE_THROW_SERVICE_ERROR(E_NOT_FOUND)
             << "Device " << uuid.Quote() << " not found";
     }
 
@@ -743,7 +743,7 @@ void TDiskAgentState::CheckIfDeviceIsDisabled(
                 << "] Device suspended. Reject request.");
     }
 
-    ythrow TServiceError(*ec) << "Device disabled";
+    STORAGE_THROW_SERVICE_ERROR(*ec) << "Device disabled";
 }
 
 TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
@@ -967,7 +967,7 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
         ReportAcquiredDiskEraseAttempt(
             {{"device", uuid}, {"client", sessionInfo.Id}});
 
-        ythrow TServiceError(E_INVALID_STATE)
+        STORAGE_THROW_SERVICE_ERROR(E_INVALID_STATE)
             << "Device " << uuid.Quote()
             << " already acquired by client " << sessionInfo.Id;
     }
@@ -1110,7 +1110,7 @@ void TDiskAgentState::ReleaseDevices(
     ui32 volumeGeneration)
 {
     if (PartiallySuspended) {
-        ythrow TServiceError(E_REJECTED)
+        STORAGE_THROW_SERVICE_ERROR(E_REJECTED)
             << "Disk agent is partially suspended. Can't "
                "release any sessions at this state.";
     }
@@ -1275,7 +1275,7 @@ void TDiskAgentState::EnsureAccessToDevices(
         auto [_, error] =
             DeviceClient->AccessDevice(uuid, clientId, accessMode);
         if (HasError(error)) {
-            ythrow TServiceError(E_REJECTED)
+            STORAGE_THROW_SERVICE_ERROR(E_REJECTED)
                 << "Disk agent is partially suspended. "
                    "Can't acquire previously not acquired "
                    "devices. Access returned an error: "

@@ -226,7 +226,8 @@ void TNetlinkDevice::ParseIndex()
 
     ui32 index;
     if (!TryFromString(r, index)) {
-        throw TServiceError(E_ARGUMENT) << "unable to parse device index";
+        STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
+            << "unable to parse device index";
     }
     DeviceIndex = index;
 }

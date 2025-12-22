@@ -330,7 +330,7 @@ private:
                     << "] Device suspended. Reject request.");
         }
 
-        ythrow TServiceError(*ec) << "Device disabled";
+        STORAGE_THROW_SERVICE_ERROR(*ec) << "Device disabled";
     }
 
     TStorageAdapterPtr GetDevice(
@@ -344,7 +344,7 @@ private:
             DeviceClient->AccessDevice(uuid, clientId, accessMode);
 
         if (HasError(error)) {
-            ythrow TServiceError(error.GetCode()) << error.GetMessage();
+            STORAGE_THROW_SERVICE_ERROR(error.GetCode()) << error.GetMessage();
         }
 
         return device;
@@ -355,7 +355,7 @@ private:
         if (const auto* deviceData = Devices.FindPtr(uuid)) {
             return deviceData->ThreadSafeData.Access();
         }
-        ythrow TServiceError(E_NOT_FOUND);
+        STORAGE_THROW_SERVICE_ERROR(E_NOT_FOUND);
     }
 
     template <typename TFuture, typename THandleResponseMethod>

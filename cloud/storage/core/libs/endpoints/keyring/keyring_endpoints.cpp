@@ -110,7 +110,7 @@ private:
         return SafeExecute<TResultOrError<TVector<TKeyring>>>([&] {
             auto rootKeyring = TKeyring::GetProcKey(RootKeyringDesc);
             if (!rootKeyring) {
-                ythrow TServiceError(E_INVALID_STATE)
+                STORAGE_THROW_SERVICE_ERROR(E_INVALID_STATE)
                     << "Failed to find root keyring "
                     << RootKeyringDesc.Quote();
             }
@@ -119,7 +119,7 @@ private:
                 EndpointsKeyringDesc);
 
             if (!endpointsKeyring) {
-                ythrow TServiceError(E_INVALID_STATE)
+                STORAGE_THROW_SERVICE_ERROR(E_INVALID_STATE)
                     << "Failed to find endpoints keyring "
                     << EndpointsKeyringDesc.Quote();
             }
