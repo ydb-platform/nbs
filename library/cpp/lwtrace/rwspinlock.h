@@ -1,6 +1,6 @@
 #pragma once
 
-#include <atomic>
+#include <library/cpp/deprecated/atomic/atomic.h>
 
 #include <util/system/spinlock.h>
 
@@ -27,16 +27,16 @@
 //    * writer can release lock (State = 0: -> READING)
 
 struct TRWSpinLock {
-    std::atomic_signed_lock_free State;
+    TAtomic State; // must be initialized by 'TRWSpinLock myLock = {0};' construction
 
     void Init() noexcept {
-        State.store(0, std::memory_order_relaxed);
+        State = 0;
     }
 
     void AcquireRead() noexcept {
         while (true) {
-            std::atomic_signed_lock_free::value_type a = State.load(std::memory_order_acquire);
-            if ((a & 1) == 0 && State.compare_exchange_strong(a, a + 2, std::memory_order_acquire)) {
+            TAtomic a = AtomicGet(State);
+            if ((a & 1) == 0 && AtomicCas(&State, a + 2, a)) {
                 break;
             }
             SpinLockPause();
@@ -44,29 +44,25 @@ struct TRWSpinLock {
     }
 
     void ReleaseRead() noexcept {
-        State.fetch_add(-2, std::memory_order_release);
+        AtomicAdd(State, -2);
     }
 
     void AcquireWrite() noexcept {
         while (true) {
-            std::atomic_signed_lock_free::value_type a = State.load(std::memory_order_acquire);
-            if ((a & 1) == 0 && State.compare_exchange_strong(a, a + 1, std::memory_order_acquire)) {
+            TAtomic a = AtomicGet(State);
+            if ((a & 1) == 0 && AtomicCas(&State, a + 1, a)) {
                 break;
             }
             SpinLockPause();
         }
 
-        while (true) {
-            std::atomic_signed_lock_free::value_type a = 1;
-            if (State.compare_exchange_strong(a, -1, std::memory_order_acquire)) {
-                break;
-            }
+        while (!AtomicCas(&State, TAtomicBase(-1), 1)) {
             SpinLockPause();
         }
     }
 
     void ReleaseWrite() noexcept {
-        State.store(0, std::memory_order_release);
+        AtomicSet(State, 0);
     }
 };
 
