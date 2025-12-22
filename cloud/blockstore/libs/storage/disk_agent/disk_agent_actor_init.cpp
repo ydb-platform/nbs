@@ -3,6 +3,7 @@
 #include "actors/io_request_parser.h"
 
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
+#include <cloud/blockstore/libs/local_nvme/service.h>
 #include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_handler.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -50,7 +51,8 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
         CreateMultiAgentWriteHandler(
             TActivationContext::ActorSystem(),
             ctx.SelfID),
-        BackgroundThreadPool);
+        BackgroundThreadPool,
+        LocalNVMeService);
 
     auto* actorSystem = TActivationContext::ActorSystem();
     auto replyTo = ctx.SelfID;

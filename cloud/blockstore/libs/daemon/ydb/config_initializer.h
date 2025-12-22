@@ -3,8 +3,8 @@
 #include "public.h"
 
 #include <cloud/blockstore/config/grpc_client.pb.h>
+#include <cloud/blockstore/config/local_nvme.pb.h>
 #include <cloud/blockstore/config/root_kms.pb.h>
-
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/throttling.h>
 #include <cloud/blockstore/libs/common/public.h>
@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/discovery/public.h>
 #include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
+#include <cloud/blockstore/libs/local_nvme/public.h>
 #include <cloud/blockstore/libs/logbroker/iface/public.h>
 #include <cloud/blockstore/libs/notify/iface/public.h>
 #include <cloud/blockstore/libs/root_kms/iface/public.h>
@@ -63,6 +64,7 @@ struct TConfigInitializerYdb final
     NProto::TGrpcClientConfig KmsClientConfig;
     NProto::TGrpcClientConfig ComputeClientConfig;
     NProto::TRootKmsConfig RootKmsConfig;
+    NProto::TLocalNVMeConfig LocalNVMeConfig;
 
     TConfigInitializerYdb(TOptionsYdbPtr options);
 
@@ -74,6 +76,7 @@ struct TConfigInitializerYdb final
     void InitIamClientConfig();
     void InitKmsClientConfig();
     void InitRootKmsConfig();
+    void InitLocalNVMeConfig();
     void InitComputeClientConfig();
     void InitTraceServiceClientConfig();
 

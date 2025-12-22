@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
+#include <cloud/blockstore/libs/local_nvme/service.h>
 #include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/storage.h>
@@ -305,7 +306,8 @@ TDiskAgentState::TDiskAgentState(
         TRdmaTargetConfigPtr rdmaTargetConfig,
         TOldRequestCounters oldRequestCounters,
         IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
-        ITaskQueuePtr backgroundThreadPool)
+        ITaskQueuePtr backgroundThreadPool,
+        ILocalNVMeServicePtr localNVMeService)
     : StorageConfig(std::move(storageConfig))
     , AgentConfig(std::move(agentConfig))
     , Spdk(std::move(spdk))
@@ -321,6 +323,7 @@ TDiskAgentState::TDiskAgentState(
     , RdmaTargetConfig(std::move(rdmaTargetConfig))
     , OldRequestCounters(std::move(oldRequestCounters))
     , BackgroundThreadPool(std::move(backgroundThreadPool))
+    , LocalNVMeService(std::move(localNVMeService))
 {
 }
 
@@ -1241,6 +1244,24 @@ TFuture<void> TDiskAgentState::DetachPaths(const TVector<TString>& paths)
 
             storageAdaptersToDrop.clear();
         });
+}
+
+auto TDiskAgentState::GetNVMeDevices() const
+    -> TResultOrError<TVector<NProto::TNVMeDevice>>
+{
+    return LocalNVMeService->GetNVMeDevices();
+}
+
+auto TDiskAgentState::AcquireNVMeDevice(const TString& serialNumber)
+    -> TFuture<NProto::TError>
+{
+    return LocalNVMeService->AcquireNVMeDevice(serialNumber);
+}
+
+auto TDiskAgentState::ReleaseNVMeDevice(const TString& serialNumber)
+    -> TFuture<NProto::TError>
+{
+    return LocalNVMeService->ReleaseNVMeDevice(serialNumber);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
