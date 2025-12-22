@@ -181,14 +181,14 @@ public:
 
     NThreading::TFuture<void> DetachPaths(const TVector<TString>& paths);
 
-    struct TAttachPathResult
+    struct TPreparePathsResult
     {
         TVector<NProto::TDeviceConfig> Configs;
         TVector<IStoragePtr> Devices;
         TVector<TStorageIoStatsPtr> Stats;
     };
 
-    NThreading::TFuture<TResultOrError<TAttachPathResult>> PreparePaths(
+    NThreading::TFuture<TResultOrError<TPreparePathsResult>> PreparePaths(
         TVector<TString> pathsToAttach);
 
     void AttachPaths(

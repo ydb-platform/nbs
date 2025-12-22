@@ -249,8 +249,8 @@ private:
         const TEvDiskAgentPrivate::TEvPathsDetached::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandlePathsAttached(
-        const TEvDiskAgentPrivate::TEvPathsAttached::TPtr& ev,
+    void HandlePathsPrepared(
+        const TEvDiskAgentPrivate::TEvPathsPrepared::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

@@ -168,13 +168,13 @@ void TDiskAgentActor::HandleAttachPaths(
          selfId = ctx.SelfID,
          pathsToAttach = std::move(pathsToAttach),
          alreadyAttachedPaths = std::move(alreadyAttachedPaths)](
-            TFuture<TResultOrError<TDiskAgentState::TAttachPathResult>>
+            TFuture<TResultOrError<TDiskAgentState::TPreparePathsResult>>
                 future) mutable
         {
             auto [result, error] = future.ExtractValue();
 
             auto response =
-                std::make_unique<TEvDiskAgentPrivate::TEvPathsAttached>(error);
+                std::make_unique<TEvDiskAgentPrivate::TEvPathsPrepared>(error);
             response->AlreadyAttachedPaths = std::move(alreadyAttachedPaths);
             response->PathsToAttach = std::move(pathsToAttach);
             response->Devices = std::move(result.Devices);
@@ -186,8 +186,8 @@ void TDiskAgentActor::HandleAttachPaths(
         });
 }
 
-void TDiskAgentActor::HandlePathsAttached(
-    const TEvDiskAgentPrivate::TEvPathsAttached::TPtr& ev,
+void TDiskAgentActor::HandlePathsPrepared(
+    const TEvDiskAgentPrivate::TEvPathsPrepared::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     auto* msg = ev->Get();

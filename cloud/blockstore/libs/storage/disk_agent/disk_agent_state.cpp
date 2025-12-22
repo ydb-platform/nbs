@@ -335,10 +335,9 @@ NProto::TError CompareConfigs(
     return {};
 }
 
-TResultOrError<TDiskAgentState::TAttachPathResult>
+TResultOrError<TDiskAgentState::TPreparePathsResult>
 ProcessConfigsAfterInitialization(
     const TVector<NProto::TDeviceConfig>& deviceConfigs,
-
     TFuture<TInitializeStorageResult> future)
 {
     TInitializeStorageResult result = future.ExtractValue();
@@ -354,7 +353,7 @@ ProcessConfigsAfterInitialization(
         return error;
     }
 
-    return TDiskAgentState::TAttachPathResult{
+    return TDiskAgentState::TPreparePathsResult{
         .Configs = std::move(result.Configs),
         .Devices = std::move(result.Devices),
         .Stats = std::move(result.Stats),
@@ -1332,7 +1331,7 @@ TFuture<void> TDiskAgentState::DetachPaths(const TVector<TString>& paths)
 }
 
 auto TDiskAgentState::PreparePaths(TVector<TString> pathsToAttach)
-        -> TFuture<TResultOrError<TAttachPathResult>>
+        -> TFuture<TResultOrError<TPreparePathsResult>>
 {
     return BackgroundThreadPool->Execute(
         [agentConfig = AgentConfig,
