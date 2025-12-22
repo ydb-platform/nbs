@@ -308,7 +308,7 @@ void TNotificationSystem::OnDiskStateChanged(
             auto notif = MakeBlankNotification(seqNo, timestamp);
             notif.MutableDiskError()->SetDiskId(diskId);
             AddUserNotification(db, std::move(notif));
-         }
+        }
     } else {
         if (oldState >= NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE) {
             auto notif = MakeBlankNotification(seqNo, timestamp);
