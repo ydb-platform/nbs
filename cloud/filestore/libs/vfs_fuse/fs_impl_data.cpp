@@ -37,6 +37,44 @@ void InitNodeInfo(
     nodeInfo->SetHandle(ToUnderlying(handle));
 }
 
+NProto::TError GetCommonError(
+    const NProto::TError& lhs,
+    const NProto::TError& rhs)
+{
+    if (!HasError(lhs)) {
+        return rhs;
+    }
+    if (!HasError(rhs)) {
+        return lhs;
+    }
+
+    ui32 code = 0;
+    if (lhs.GetCode() == rhs.GetCode()) {
+        code = lhs.GetCode();
+    } else if (
+        GetErrorKind(lhs) == EErrorKind::ErrorRetriable &&
+        GetErrorKind(rhs) == EErrorKind::ErrorRetriable)
+    {
+        code = E_REJECTED;
+    } else {
+        code = E_FAIL;
+    }
+
+    return MakeError(code, Sprintf(
+        "Multiple errors occurred (%s, %s)",
+        lhs.GetMessage().c_str(),
+        rhs.GetMessage().c_str()));
+}
+
+TFuture<NProto::TError> WaitAll(
+    const TFuture<NProto::TError>& lhs,
+    const TFuture<NProto::TError>& rhs)
+{
+    return NWait::WaitAll(lhs, rhs).Apply(
+        [=](const auto&)
+        { return GetCommonError(lhs.GetValue(), rhs.GetValue()); });
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -228,6 +266,7 @@ void TFileSystem::Release(
     }
 
     if (WriteBackCache) {
+        // TODO
         WriteBackCache.FlushNodeData(ino).Subscribe(
             [=, ptr = weak_from_this()] (const auto&)
             {
@@ -785,11 +824,8 @@ void TFileSystem::Flush(
     auto future = fsyncQueueFuture;
 
     if (WriteBackCache) {
-        auto writeBackCacheFlushFuture = WriteBackCache.FlushNodeData(ino)
-            .Apply([] (const auto&) { return MakeError(S_OK); });
-
-        future = NWait::WaitAll(fsyncQueueFuture, writeBackCacheFlushFuture)
-            .Apply([=] (const auto&) { return fsyncQueueFuture.GetValue(); });
+        auto writeBackCacheFlushFuture = WriteBackCache.FlushNodeData(ino);
+        future = WaitAll(fsyncQueueFuture, writeBackCacheFlushFuture);
     }
 
     future.Subscribe(std::move(callback));
@@ -893,19 +929,14 @@ void TFileSystem::FSync(
     auto future = fsyncQueueFuture;
 
     if (WriteBackCache) {
-        auto convertOK = [] (const auto&) { return MakeError(S_OK); };
-
         TFuture<NProto::TError> writeBackCacheFlushFuture;
         if (fi) {
-            writeBackCacheFlushFuture = WriteBackCache.FlushNodeData(ino)
-                .Apply(convertOK);
+            writeBackCacheFlushFuture = WriteBackCache.FlushNodeData(ino);
         } else {
-            writeBackCacheFlushFuture = WriteBackCache.FlushAllData()
-                .Apply(convertOK);
+            writeBackCacheFlushFuture = WriteBackCache.FlushAllData();
         }
 
-        future = NWait::WaitAll(fsyncQueueFuture, writeBackCacheFlushFuture)
-            .Apply([=] (const auto&) { return fsyncQueueFuture.GetValue(); });
+        future = WaitAll(fsyncQueueFuture, writeBackCacheFlushFuture);
     }
 
     future.Subscribe(std::move(callback));
@@ -1001,11 +1032,8 @@ void TFileSystem::FSyncDir(
     auto future = fsyncQueueFuture;
 
     if (WriteBackCache) {
-        auto writeBackCacheFlushFuture = WriteBackCache.FlushAllData()
-            .Apply([] (const auto&) { return MakeError(S_OK); });
-
-        future = NWait::WaitAll(fsyncQueueFuture, writeBackCacheFlushFuture)
-            .Apply([=] (const auto&) { return fsyncQueueFuture.GetValue(); });
+        auto writeBackCacheFlushFuture = WriteBackCache.FlushAllData();
+        future = WaitAll(fsyncQueueFuture, writeBackCacheFlushFuture);
     }
 
     future.Subscribe(std::move(waitCallback));

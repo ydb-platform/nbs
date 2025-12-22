@@ -96,7 +96,7 @@ struct TFlushConfig
 struct TFlushRequest
 {
     const ui64 RequestId = 0;
-    TPromise<void> Promise = NewPromise();
+    TPromise<NProto::TError> Promise = NewPromise<NProto::TError>();
 
     explicit TFlushRequest(ui64 requestId)
         : RequestId(requestId)
@@ -128,6 +128,27 @@ struct TBufferWriter
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TFlushWriteDataRequest
+{
+    std::shared_ptr<NProto::TWriteDataRequest> Request;
+    NProto::TWriteDataResponse Response;
+
+    explicit TFlushWriteDataRequest(
+            std::shared_ptr<NProto::TWriteDataRequest> request)
+        : Request(std::move(request))
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFlushPromiseSetResult
+{
+    TPromise<NProto::TError> Promise;
+    NProto::TError Error;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 ui64 SaturationSub(ui64 x, ui64 y)
 {
     return x > y ? x - y : 0;
@@ -140,10 +161,9 @@ ui64 SaturationSub(ui64 x, ui64 y)
 struct TWriteBackCache::TFlushState
 {
     TVector<TWriteDataEntryPart> CachedWriteDataParts;
-    TVector<std::shared_ptr<NProto::TWriteDataRequest>> WriteRequests;
-    TVector<std::shared_ptr<NProto::TWriteDataRequest>> FailedWriteRequests;
+    TVector<TFlushWriteDataRequest> WriteRequests;
     size_t AffectedWriteDataEntriesCount = 0;
-    size_t InFlightWriteRequestsCount = 0;
+    std::atomic<size_t> InFlightWriteRequestsCount = 0;
     bool Executing = false;
 };
 
@@ -179,8 +199,8 @@ struct TWriteBackCache::TNodeState
     // strictly increasing so newer flush requests have larger RequestId.
     TDeque<TFlushRequest> FlushRequests;
 
-    // All entries with RequestId <= |AutomaticFlushRequestId| are to be flushed
-    ui64 AutomaticFlushRequestId = 0;
+    // All entries with RequestId <= |FlushRequestId| are to be flushed
+    ui64 FlushRequestId = 0;
 
     explicit TNodeState(ui64 nodeId)
         : NodeId(nodeId)
@@ -210,7 +230,7 @@ struct TWriteBackCache::TNodeState
 
         const ui64 minRequestId = AllEntries.Front()->GetRequestId();
         return minRequestId <= maxFlushAllRequestId ||
-               minRequestId <= AutomaticFlushRequestId;
+               minRequestId <= FlushRequestId;
     }
 };
 
@@ -240,7 +260,7 @@ struct TWriteBackCache::TQueuedOperations
     TVector<TPromise<NProto::TWriteDataResponse>> WriteDataCompleted;
 
     // Report FlushData and FlushAll requests as completed
-    TVector<TPromise<void>> FlushCompleted;
+    TVector<TFlushPromiseSetResult> FlushCompleted;
 
     bool Empty() const
     {
@@ -702,9 +722,9 @@ public:
         ui64 nodeId,
         ui64 handle,
         const TVector<TWriteDataEntryPart>& parts) const
-        -> TVector<std::shared_ptr<NProto::TWriteDataRequest>>
+        -> TVector<TFlushWriteDataRequest>
     {
-        TVector<std::shared_ptr<NProto::TWriteDataRequest>> res;
+        TVector<TFlushWriteDataRequest> res;
 
         size_t partIndex = 0;
         while (partIndex < parts.size()) {
@@ -749,7 +769,7 @@ public:
                         reader.Read(FlushConfig.MaxWriteRequestSize));
                 }
 
-                res.push_back(std::move(request));
+                res.emplace_back(std::move(request));
             }
 
             partIndex = rangeEndIndex;
@@ -758,16 +778,17 @@ public:
         return res;
     }
 
-    TFuture<void> FlushNodeData(ui64 nodeId)
+    TFuture<NProto::TError> FlushNodeData(ui64 nodeId)
     {
         auto guard = Guard(Lock);
 
         auto* nodeState = GetNodeStateOrNull(nodeId);
         if (nodeState == nullptr || nodeState->AllEntries.Empty()) {
-            return NThreading::MakeFuture();
+            return NThreading::MakeFuture<NProto::TError>();
         }
 
         ui64 maxRequestId = nodeState->AllEntries.Back()->GetRequestId();
+        nodeState->FlushRequestId = maxRequestId;
 
         if (!nodeState->FlushRequests.empty() &&
             nodeState->FlushRequests.back().RequestId >= maxRequestId)
@@ -786,12 +807,12 @@ public:
         return future;
     }
 
-    TFuture<void> FlushAllData()
+    TFuture<NProto::TError> FlushAllData()
     {
         auto guard = Guard(Lock);
 
         if (AllEntries.Empty()) {
-            return NThreading::MakeFuture();
+            return NThreading::MakeFuture<NProto::TError>();
         }
 
         ui64 maxRequestId = AllEntries.Back()->GetRequestId();
@@ -855,7 +876,8 @@ private:
     {
         for (auto nodeId: NodesWithNewCachedEntries) {
             auto* nodeState = GetNodeState(nodeId);
-            nodeState->AutomaticFlushRequestId = nodeState->MaxCachedRequestId;
+            nodeState->FlushRequestId =
+                Max(nodeState->FlushRequestId, nodeState->MaxCachedRequestId);
             EnqueueFlushIfNeeded(nodeState);
         }
 
@@ -934,7 +956,7 @@ private:
             TVector<TPendingReadDataRequest> readData;
             TVector<TNodeState*> flush;
             TVector<TPromise<NProto::TWriteDataResponse>> writeDataCompleted;
-            TVector<TPromise<void>> flushCompleted;
+            TVector<TFlushPromiseSetResult> flushCompleted;
 
             swap(readData, QueuedOperations.ReadData);
             swap(flush, QueuedOperations.Flush);
@@ -957,8 +979,8 @@ private:
                 promise.SetValue({});
             }
 
-            for (auto& promise: flushCompleted) {
-                promise.SetValue();
+            for (auto& it: flushCompleted) {
+                it.Promise.SetValue(std::move(it.Error));
             }
         }
     }
@@ -1210,13 +1232,9 @@ private:
     void PrepareFlush(TNodeState* nodeState)
     {
         Y_ABORT_UNLESS(nodeState->FlushState.Executing);
-        Y_ABORT_UNLESS(nodeState->FlushState.WriteRequests.empty());
 
-        if (!nodeState->FlushState.FailedWriteRequests.empty()) {
+        if (!nodeState->FlushState.WriteRequests.empty()) {
             // Retry write requests failed at the previous Flush attempt
-            swap(
-                nodeState->FlushState.WriteRequests,
-                nodeState->FlushState.FailedWriteRequests);
             return;
         }
 
@@ -1281,62 +1299,88 @@ private:
 
         Y_ABORT_UNLESS(state.Executing);
         Y_ABORT_UNLESS(!state.WriteRequests.empty());
-        Y_ABORT_UNLESS(state.FailedWriteRequests.empty());
         Y_ABORT_UNLESS(state.AffectedWriteDataEntriesCount > 0);
         Y_ABORT_UNLESS(state.InFlightWriteRequestsCount == 0);
 
         state.InFlightWriteRequestsCount = state.WriteRequests.size();
 
-        for (auto& request: state.WriteRequests) {
+        for (auto& it: state.WriteRequests) {
             auto callContext = MakeIntrusive<TCallContext>(FileSystemId);
             callContext->RequestType = EFileStoreRequest::WriteData;
-            callContext->RequestSize = request->GetBuffer().size();
+            callContext->RequestSize =
+                NStorage::CalculateByteCount(*it.Request) -
+                it.Request->GetBufferOffset();
 
-            Session->WriteData(std::move(callContext), request)
+            Session->WriteData(std::move(callContext), it.Request)
                 .Subscribe(
-                    [nodeState,
-                     request = std::move(request),
-                     ptr = weak_from_this()](auto future)
+                    [nodeState, &it, ptr = weak_from_this()](auto future)
                     {
-                        auto self = ptr.lock();
-                        if (self) {
-                            self->OnWriteDataRequestCompleted(
-                                nodeState,
-                                std::move(request),
-                                future.GetValue());
+                        if (auto self = ptr.lock()) {
+                            it.Response = future.ExtractValue();
+                            if (--nodeState->FlushState
+                                      .InFlightWriteRequestsCount == 0) {
+                                self->OnWriteDataRequestsCompleted(nodeState);
+                            }
                         }
-                    })
-                .IgnoreResult();
+                    });
         }
     }
 
-    void OnWriteDataRequestCompleted(
-        TNodeState* nodeState,
-        std::shared_ptr<NProto::TWriteDataRequest> request,
-        const NProto::TWriteDataResponse& response)
+    void OnWriteDataRequestsCompleted(TNodeState* nodeState)
     {
-        auto& state = nodeState->FlushState;
+        EraseIf(
+            nodeState->FlushState.WriteRequests,
+            [](const auto& it) { return !HasError(it.Response); });
 
-        with_lock (Lock) {
-            if (HasError(response)) {
-                state.FailedWriteRequests.push_back(std::move(request));
-            }
-
-            Y_ABORT_UNLESS(state.InFlightWriteRequestsCount > 0);
-            if (--state.InFlightWriteRequestsCount > 0) {
-                return;
-            }
-        }
-
-        state.WriteRequests.clear();
-
-        if (state.FailedWriteRequests.empty()) {
+        if (nodeState->FlushState.WriteRequests.empty()) {
+            // All requests succeeded
             Stats->FlushCompleted();
             CompleteFlush(nodeState);
+            return;
+        }
+
+        Stats->FlushFailed();
+
+        // Propagate WriteData errors to client FlushData requests
+        // Return any non-retriable error if exists
+        // Otherwise return any retriable error
+        const NProto::TError* error =
+            &nodeState->FlushState.WriteRequests.front().Response.GetError();
+        const NProto::TError* nonRetriableError = nullptr;
+
+        for (const auto& it: nodeState->FlushState.WriteRequests) {
+            if (GetErrorKind(it.Response.GetError()) !=
+                EErrorKind::ErrorRetriable)
+            {
+                ReportWriteBackCacheFlushError(
+                    TStringBuilder()
+                    << LogTag
+                    << " WriteData returned non-retriable error during Flush #"
+                    << nodeState->NodeId << ": " << it.Response.GetError());
+
+                if (!nonRetriableError) {
+                    nonRetriableError = &it.Response.GetError();
+                    error = nonRetriableError;
+                }
+            }
+        }
+
+        if (nonRetriableError) {
+            // TODO(#1751): handle non-retriable errors
         } else {
-            Stats->FlushFailed();
             ScheduleRetryFlush(nodeState);
         }
+
+        auto guard = Guard(Lock);
+
+        for (auto& flushRequest: nodeState->FlushRequests) {
+            QueuedOperations.FlushCompleted.push_back(
+                {.Promise = std::move(flushRequest.Promise), .Error = *error});
+        }
+
+        nodeState->FlushRequests.clear();
+
+        ProcessQueuedOperations(guard);
     }
 
     template <class TTag>
@@ -1350,7 +1394,7 @@ private:
         if (entries.Empty()) {
             for (auto& flushRequest: flushRequests) {
                 QueuedOperations.FlushCompleted.push_back(
-                    std::move(flushRequest.Promise));
+                    {.Promise = std::move(flushRequest.Promise), .Error = {}});
             }
             flushRequests.clear();
         } else {
@@ -1359,7 +1403,8 @@ private:
                    flushRequests.front().RequestId < minRequestId)
             {
                 QueuedOperations.FlushCompleted.push_back(
-                    std::move(flushRequests.front().Promise));
+                    {.Promise = std::move(flushRequests.front().Promise),
+                     .Error = {}});
                 flushRequests.pop_front();
             }
         }
@@ -1369,7 +1414,7 @@ private:
     void CompleteFlush(TNodeState* nodeState)
     {
         Y_ABORT_UNLESS(nodeState->FlushState.Executing);
-        Y_ABORT_UNLESS(nodeState->FlushState.FailedWriteRequests.empty());
+        Y_ABORT_UNLESS(nodeState->FlushState.WriteRequests.empty());
         Y_ABORT_UNLESS(nodeState->FlushState.InFlightWriteRequestsCount == 0);
 
         auto guard = Guard(Lock);
@@ -1542,12 +1587,12 @@ TFuture<NProto::TWriteDataResponse> TWriteBackCache::WriteData(
     return Impl->WriteData(std::move(callContext), std::move(request));
 }
 
-TFuture<void> TWriteBackCache::FlushNodeData(ui64 nodeId)
+TFuture<NProto::TError> TWriteBackCache::FlushNodeData(ui64 nodeId)
 {
     return Impl->FlushNodeData(nodeId);
 }
 
-TFuture<void> TWriteBackCache::FlushAllData()
+TFuture<NProto::TError> TWriteBackCache::FlushAllData()
 {
     return Impl->FlushAllData();
 }
