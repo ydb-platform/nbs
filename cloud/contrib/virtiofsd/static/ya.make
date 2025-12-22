@@ -1,4 +1,4 @@
-DYNAMIC_LIBRARY(virtiofsd)
+LIBRARY(virtiofsd)
 
 LICENSE(
     "(GPL-1.0-or-later OR BSD-3-Clause)" AND
@@ -6,10 +6,6 @@ LICENSE(
     BSD-2-Clause AND
     LGPL-2.0-only AND
     LGPL-2.1-only
-)
-
-LICENSE_RESTRICTION_EXCEPTIONS(
-    contrib/libs/virtiofsd/static
 )
 
 LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
@@ -22,6 +18,14 @@ NO_UTIL()
 
 NO_RUNTIME()
 
-DYNAMIC_LIBRARY_FROM(contrib/libs/virtiofsd/static)
+SRCDIR(cloud/contrib/virtiofsd)
+
+SRCS(
+    buffer.c
+    fuse_log.c
+    fuse_lowlevel.c
+    fuse_opt.c
+    fuse_signals.c
+)
 
 END()

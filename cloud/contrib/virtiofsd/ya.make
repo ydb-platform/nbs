@@ -14,11 +14,11 @@ NO_RUNTIME()
 
 IF (USE_DYNAMIC_LIBFUSE)
     PEERDIR(
-        contrib/libs/virtiofsd/dynamic
+        cloud/contrib/virtiofsd/dynamic
     )
 ELSE()
     PEERDIR(
-        contrib/libs/virtiofsd/static
+        cloud/contrib/virtiofsd/static
     )
 ENDIF()
 

@@ -20,8 +20,7 @@
 #include <cloud/storage/core/libs/vhost-client/vhost-buffered-client.h>
 
 #include <cloud/contrib/vhost/virtio/virtio_fs_spec.h>
-
-#include <contrib/libs/virtiofsd/fuse.h>
+#include <cloud/contrib/virtiofsd/fuse.h>
 
 #include <util/system/getpid.h>
 

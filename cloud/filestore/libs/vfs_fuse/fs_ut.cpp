@@ -29,7 +29,7 @@
 #include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <contrib/libs/virtiofsd/fuse.h>
+#include <cloud/contrib/virtiofsd/fuse.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>

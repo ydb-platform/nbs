@@ -7,10 +7,10 @@
 #include <cloud/contrib/vhost/logging.h>
 #include <cloud/contrib/vhost/platform.h>
 
-#include <contrib/libs/virtiofsd/fuse.h>
-#include <contrib/libs/virtiofsd/fuse_i.h>
-#include <contrib/libs/virtiofsd/fuse_lowlevel.h>
-#include <contrib/libs/virtiofsd/fuse_virtio.h>
+#include <cloud/contrib/virtiofsd/fuse.h>
+#include <cloud/contrib/virtiofsd/fuse_i.h>
+#include <cloud/contrib/virtiofsd/fuse_lowlevel.h>
+#include <cloud/contrib/virtiofsd/fuse_virtio.h>
 
 #include <stdatomic.h>
 #include <sys/stat.h>
