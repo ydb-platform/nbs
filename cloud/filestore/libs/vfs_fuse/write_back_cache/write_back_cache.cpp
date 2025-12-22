@@ -857,7 +857,9 @@ public:
     void ReleaseNodeStateRef(ui64 refId)
     {
         with_lock (Lock) {
-            Y_DEBUG_ABORT_UNLESS(NodeStateRefs.erase(refId));
+            const bool erased = static_cast<bool>(NodeStateRefs.erase(refId));
+            Y_DEBUG_ABORT_UNLESS(erased);
+
             const ui64 minRefId =
                 NodeStateRefs.empty() ? Max<ui64>() : *NodeStateRefs.begin();
 
@@ -873,17 +875,16 @@ public:
     ui64 GetCachedNodeSize(ui64 nodeId) const
     {
         with_lock (Lock) {
-            auto it = NodeStates.find(nodeId);
-            return it != NodeStates.end() ? it->second->CachedNodeSize : 0;
+            const auto* nodeStatePtr = NodeStates.FindPtr(nodeId);
+            return nodeStatePtr ? (*nodeStatePtr)->CachedNodeSize : 0;
         }
     }
 
     void SetCachedNodeSize(ui64 nodeId, ui64 size)
     {
         with_lock (Lock) {
-            auto it = NodeStates.find(nodeId);
-            if (it != NodeStates.end()) {
-                it->second->CachedNodeSize = size;
+            if (auto* nodeStatePtr = NodeStates.FindPtr(nodeId)) {
+                (*nodeStatePtr)->CachedNodeSize = size;
             }
         }
     }
@@ -975,7 +976,8 @@ private:
     // should be protected by |Lock|
     void EraseNodeState(ui64 nodeId)
     {
-        Y_DEBUG_ABORT_UNLESS(NodeStates.erase(nodeId));
+        const auto erased = static_cast<bool>(NodeStates.erase(nodeId));
+        Y_DEBUG_ABORT_UNLESS(erased);
         Stats->DecrementNodeCount();
     }
 
