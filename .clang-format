@@ -154,6 +154,7 @@ IfMacros:
   - TABLEHEAD_CLASS
   - TABLER
   - TABLER_CLASS
+  - TAG
   - UL
   - UL_CLASS
 
