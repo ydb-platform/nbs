@@ -3533,7 +3533,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
     };
 
-    static std::unique_ptr<TTestActorRuntime> CRPrepareTestActorRuntime(
+    static std::unique_ptr<TTestActorRuntime> PrepareCheckRangeTestActorRuntime(
         NCloud::NProto::EStorageMediaKind mediaKind)
     {
         auto state = MakeIntrusive<TDiskRegistryState>();
@@ -3550,7 +3550,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         NCloud::NProto::EStorageMediaKind mediaKind)
     {
         constexpr ui32 DiskSize = 8192;
-        auto runtime = CRPrepareTestActorRuntime(mediaKind);
+        auto runtime = PrepareCheckRangeTestActorRuntime(mediaKind);
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, DiskSize);
         volume.WaitReady();
@@ -3604,7 +3604,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     static void DoTestShouldCheckRangeWithBrokenBlocks(
         NCloud::NProto::EStorageMediaKind mediaKind)
     {
-        auto runtime = CRPrepareTestActorRuntime(mediaKind);
+        auto runtime = PrepareCheckRangeTestActorRuntime(mediaKind);
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, 8192);
         volume.WaitReady();
@@ -3675,7 +3675,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     static void DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
         NCloud::NProto::EStorageMediaKind mediaKind)
     {
-        auto runtime = CRPrepareTestActorRuntime(mediaKind);
+        auto runtime = PrepareCheckRangeTestActorRuntime(mediaKind);
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, 8192);
         volume.WaitReady();
@@ -3696,7 +3696,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     static void DoTestShouldntCheckRangeWithBigBlockCount(
         NCloud::NProto::EStorageMediaKind mediaKind)
     {
-        auto runtime = CRPrepareTestActorRuntime(mediaKind);
+        auto runtime = PrepareCheckRangeTestActorRuntime(mediaKind);
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, 8192);
         volume.WaitReady();
@@ -3720,7 +3720,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     static void DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
         NCloud::NProto::EStorageMediaKind mediaKind)
     {
-        auto runtime = CRPrepareTestActorRuntime(mediaKind);
+        auto runtime = PrepareCheckRangeTestActorRuntime(mediaKind);
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, 8192);
         volume.WaitReady();
@@ -3763,7 +3763,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     static void DoTestShouldGetDifferentChecksumsWhileCheckRange(
         NCloud::NProto::EStorageMediaKind mediaKind)
     {
-        auto runtime = CRPrepareTestActorRuntime(mediaKind);
+        auto runtime = PrepareCheckRangeTestActorRuntime(mediaKind);
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, 8192);
         volume.WaitReady();
@@ -3817,7 +3817,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     static void DoTestShouldCheckRangeChecksumAlgorithm(
         NCloud::NProto::EStorageMediaKind mediaKind)
     {
-        auto runtime = CRPrepareTestActorRuntime(mediaKind);
+        auto runtime = PrepareCheckRangeTestActorRuntime(mediaKind);
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, 8192);
         volume.WaitReady();

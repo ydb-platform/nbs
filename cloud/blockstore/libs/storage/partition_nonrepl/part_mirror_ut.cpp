@@ -2696,18 +2696,18 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_UNEQUAL(flags, record.GetStatus().flags());
         UNIT_ASSERT_VALUES_EQUAL(0, record.GetDiskChecksums().GetData().size());
 
-        ui32 EmptyCheksumsCnt{0};
-        ui32 NonEmptyCheksumsCnt{0};
+        ui32 emptyCheksumsCount{0};
+        ui32 nonEmptyCheksumsCount{0};
         for (const auto& cs: record.GetMirrorChecksums().GetReplicas()) {
             if (cs.GetData().size()) {
-                ++NonEmptyCheksumsCnt;
+                ++nonEmptyCheksumsCount;
             } else {
-                ++EmptyCheksumsCnt;
+                ++emptyCheksumsCount;
             }
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(replicaCount - 1, NonEmptyCheksumsCnt);
-        UNIT_ASSERT_VALUES_EQUAL(1, EmptyCheksumsCnt);
+        UNIT_ASSERT_VALUES_EQUAL(replicaCount - 1, nonEmptyCheksumsCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, emptyCheksumsCount);
     }
 
     Y_UNIT_TEST(ShouldMirrorCheckRangeOneReplicaDifferent)

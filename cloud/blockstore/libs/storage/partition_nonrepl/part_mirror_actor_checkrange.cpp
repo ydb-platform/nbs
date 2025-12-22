@@ -32,10 +32,10 @@ class TMirrorCheckRangeActor final: public TCheckRangeActor
 {
 private:
     const ui32 ReplicasNumber;
-    bool ErrorOnReplicaReading{false};
-    ui32 ResponseCount{0};
+    ui32 ResponseCount = 0;
     TVector<ui32> ReplicasSummaryChecksums;
-    NProto::TCheckRangeResponse Response;
+    TVector<NProto::TDiskChecksums> ReplicasChecksums;
+    NProto::TError Status;
 
 public:
     template <typename... TArgs>
@@ -52,11 +52,7 @@ protected:
     void Done(const NActors::TActorContext& ctx);
 
 private:
-    void CalculateChecksums(const TEvService::TEvReadBlocksResponse::TPtr& ev);
-    void HandleReadBlocksResponseError(
-        const TEvService::TEvReadBlocksResponse::TPtr& ev,
-        const TActorContext& ctx,
-        const ::NCloud::NProto::TError& error);
+    void CalculateChecksums(ui32 replicaIndex, const NProto::TIOVector& iov);
 };
 
 template <typename... TArgs>
@@ -82,6 +78,9 @@ bool TMirrorCheckRangeActor::OnMessage(TAutoPtr<NActors::IEventHandle>& ev)
 
 void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
+    ReplicasSummaryChecksums.resize(ReplicasNumber);
+    ReplicasChecksums.resize(ReplicasNumber);
+
     for (ui32 i = 1; i <= ReplicasNumber; ++i) {
         auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
 
@@ -93,59 +92,48 @@ void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
         headers->SetClientId(TString(CheckRangeClientId));
         headers->SetIsBackgroundRequest(true);
 
-        Response.MutableMirrorChecksums()->MutableReplicas()->Add({});
-        ReplicasSummaryChecksums.push_back(0);
         NCloud::Send(ctx, Partition, std::move(request), i);
     }
 }
 
-void TMirrorCheckRangeActor::HandleReadBlocksResponseError(
-    const TEvService::TEvReadBlocksResponse::TPtr& ev,
-    const TActorContext& ctx,
-    const ::NCloud::NProto::TError& error)
-{
-    LOG_ERROR_S(
-        ctx,
-        TBlockStoreComponents::PARTITION_WORKER,
-        LogTitle.GetWithTime()
-            << " reading error has occurred: " << FormatError(error));
-
-    // 1 result error for all replicas
-    ErrorOnReplicaReading = true;
-    Response.MutableStatus()->SetCode(error.GetCode());
-    *Response.MutableStatus()->MutableMessage() +=
-        "replica id: " + std::to_string(ev->Cookie - 1) + " ";
-}
-
 void TMirrorCheckRangeActor::CalculateChecksums(
-    const TEvService::TEvReadBlocksResponse::TPtr& ev)
+    ui32 replicaIndex,
+    const NProto::TIOVector& iov)
 {
-    const ui32 replicaIdx = ev->Cookie - 1;
-    auto& replica =
-        (*Response.MutableMirrorChecksums()->MutableReplicas())[replicaIdx];
-    auto* replicaChecksums = replica.MutableData();
+    auto* replicaChecksums = ReplicasChecksums[replicaIndex].MutableData();
 
     TBlockChecksum summaryChecksum;
-    for (const auto& buffer: ev->Get()->Record.GetBlocks().GetBuffers()) {
+    for (const auto& buffer: iov.GetBuffers()) {
         summaryChecksum.Extend(buffer.data(), buffer.size());
         replicaChecksums->Add(
             TBlockChecksum().Extend(buffer.data(), buffer.size()));
     }
 
-    ReplicasSummaryChecksums[replicaIdx] = summaryChecksum.GetValue();
+    ReplicasSummaryChecksums[replicaIndex] = summaryChecksum.GetValue();
 }
 
 void TMirrorCheckRangeActor::HandleReadBlocksResponse(
     const TEvService::TEvReadBlocksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    ++ResponseCount;
-    if (HasError(ev->Get()->Record)) {
-        HandleReadBlocksResponseError(ev, ctx, ev->Get()->Record.GetError());
+    const ui32 replicaIndex = ev->Cookie - 1;
+    auto& record = ev->Get()->Record;
+
+    if (HasError(record)) {
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::PARTITION_WORKER,
+            LogTitle.GetWithTime() << " reading error has occurred: "
+                                   << FormatError(record.GetError()));
+
+        Status.Swap(record.MutableError());
+        Status.MutableMessage()->append(
+            TStringBuilder() << " replica index: " << replicaIndex << " ");
     } else {
-        CalculateChecksums(ev);
+        CalculateChecksums(replicaIndex, record.GetBlocks());
     }
 
+    ++ResponseCount;
     if (ResponseCount == ReplicasNumber) {
         Done(ctx);
     }
@@ -154,29 +142,28 @@ void TMirrorCheckRangeActor::HandleReadBlocksResponse(
 void TMirrorCheckRangeActor::Done(const NActors::TActorContext& ctx)
 {
     auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>();
-    bool checksumsEqual =
+    auto& status = *response->Record.MutableStatus();
+    status = std::move(Status);
+
+    const bool mismatch =
         std::ranges::adjacent_find(
             ReplicasSummaryChecksums,
-            std::not_equal_to{}) == std::ranges::end(ReplicasSummaryChecksums);
-    if (!ErrorOnReplicaReading && checksumsEqual) {
-        auto replicas = Response.MutableMirrorChecksums()->MutableReplicas();
-        auto* srcData = (*replicas)[0].MutableData();
-        std::remove_pointer_t<decltype(srcData)> hlp;
-        hlp.Swap(srcData);
+            std::not_equal_to{}) != ReplicasSummaryChecksums.end();
 
-        auto& destData = *Response.MutableDiskChecksums()->MutableData();
-        // at this moment Response.MutableMirrorChecksums() is empty already
-        destData.Swap(&hlp);
+    if (!HasError(status) && !mismatch) {
+        response->Record.MutableDiskChecksums()->Swap(&ReplicasChecksums[0]);
     } else {
-        if (!ErrorOnReplicaReading) {
-            ui32 flags = 0;
-            SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
-            *Response.MutableStatus() =
-                MakeError(E_IO, "Replicas checksum mismatch", flags);
-        }   // Else using the error that we already have
+        response->Record.MutableMirrorChecksums()->MutableReplicas()->Assign(
+            std::make_move_iterator(ReplicasChecksums.begin()),
+            std::make_move_iterator(ReplicasChecksums.end()));
     }
 
-    response->Record = std::move(Response);
+    if (!HasError(status) && mismatch) {
+        ui32 flags = 0;
+        SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
+        status = MakeError(E_IO, "Replicas checksum mismatch", flags);
+    }
+
     ReplyAndDie(ctx, std::move(response));
 }
 

@@ -1885,7 +1885,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                             &checkRangeResponse)
                             .ok());
 
-            UNIT_ASSERT_VALUES_EQUAL(blockCount, checkRangeResponse.ChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(blockCount, checkRangeResponse.GetDiskChecksums().DataSize());
         }
     }
 }

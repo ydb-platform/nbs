@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -286,11 +287,10 @@ private:
             return result.GetError();
         }
 
-        ui64 diskBlockCount = result.GetVolume().GetBlocksCount();
-        auto diskType = result.GetVolume().GetStorageMediaKind();
-        IsMirror = diskType == NProto::STORAGE_MEDIA_SSD_MIRROR3 ||
-                   diskType == NProto::STORAGE_MEDIA_SSD_MIRROR2;
+        IsMirror = NCloud::IsReliableDiskRegistryMediaKind(
+            result.GetVolume().GetStorageMediaKind());
 
+        ui64 diskBlockCount = result.GetVolume().GetBlocksCount();
         ui64 remainingBlocks = diskBlockCount;
 
         if (BlocksCount) {
