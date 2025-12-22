@@ -6843,6 +6843,128 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             0,
             FindProcessesWithOpenFile(Devices[0]).size());
     }
+
+    Y_UNIT_TEST_F(ShouldAttachPaths, TFixture)
+    {
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
+                       .With(storageConfig)
+                       .Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.AttachPaths(TVector<TString>{{PartLabels[0]}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[0]).size());
+    }
+
+    Y_UNIT_TEST_F(ShouldDetectPathChanged, TFixture)
+    {
+        TVector<std::pair<TString, TString>> pathToSerial{
+            {Devices[0], "W"},   // nvme0n1
+            {Devices[1], "X"},   // nvme1n1
+            {Devices[2], "Y"},   // nvme2n1
+            {Devices[3], "Z"},   // nvme3n1
+        };
+
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        auto nvmeManager = std::make_shared<TTestNvmeManager>(pathToSerial);
+
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
+                       .With(nvmeManager)
+                       .With(std::move(storageConfig))
+                       .Build();
+
+        Runtime->UpdateCurrentTime(Now());
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        {
+            nvmeManager->PathToSerial[Devices[0].GetPath()] = "another serial";
+        }
+
+        diskAgent.SendAttachPathsRequest(TVector<TString>{{PartLabels[0]}});
+
+        auto resp = diskAgent.RecvAttachPathsResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
+    }
+
+    Y_UNIT_TEST_F(ShouldDetectPathDeleted, TFixture)
+    {
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
+                       .With(storageConfig)
+                       .Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        unlink(PartLabels[0].c_str());
+
+        diskAgent.SendAttachPathsRequest(TVector<TString>{{PartLabels[0]}});
+
+        auto resp = diskAgent.RecvAttachPathsResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -127,7 +127,7 @@ auto ReleaseDevices(TDeviceClient& client, const TReleaseParamsBuilder& builder)
         builder.VolumeGeneration);
 }
 
-TStorageAdapterPtr CreateStorageAdapterSub()
+TStorageAdapterPtr CreateStorageAdapterStub()
 {
     return std::make_shared<TStorageAdapter>(
         CreateStorageStub(),
@@ -140,8 +140,8 @@ TStorageAdapterPtr CreateStorageAdapterSub()
 struct TDeviceClientParams
 {
     TVector<std::pair<TString, TStorageAdapterPtr>> Devices = {
-        {"uuid1", CreateStorageAdapterSub()},
-        {"uuid2", CreateStorageAdapterSub()}};
+        {"uuid1", CreateStorageAdapterStub()},
+        {"uuid2", CreateStorageAdapterStub()}};
     bool KickOutOldClientsEnabled = false;
 };
 
@@ -941,6 +941,21 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         auto [result, error] = client.AccessDevice("uuid1");
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(result.get(), nullptr);
+    }
+
+    Y_UNIT_TEST_F(ShouldAttachDevice, TFixture)
+    {
+        auto client = CreateClient({});
+
+        auto device = client.DetachDevice("uuid1");
+        UNIT_ASSERT(device.unique());
+
+        auto newStorageAdapter = CreateStorageAdapterStub();
+        client.AttachDevice("uuid1", newStorageAdapter);
+
+        auto [result, error] = client.AccessDevice("uuid1");
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(result.get(), newStorageAdapter.get());
     }
 }
 
