@@ -487,15 +487,15 @@ struct TEvVolumePrivate
 
     struct TDiskRegistryDeviceOperationStarted
     {
-        TString DeviceUUID;
+        TString AgentId;
         TDeviceOperationTracker::ERequestType RequestType;
         ui64 OperationId;
 
         TDiskRegistryDeviceOperationStarted(
-            TString deviceUUID,
+            const TString& agentId,
             TDeviceOperationTracker::ERequestType requestType,
             ui64 operationId)
-            : DeviceUUID(std::move(deviceUUID))
+            : AgentId(agentId)
             , RequestType(requestType)
             , OperationId(operationId)
         {}

@@ -124,7 +124,7 @@ void TDiskAgentReadActor::SendRequest(const TActorContext& ctx)
 
         OnRequestStarted(
             ctx,
-            deviceRequest.Device.GetDeviceUUID(),
+            deviceRequest.Device.GetAgentId(),
             TDeviceOperationTracker::ERequestType::Read,
             cookie);
 

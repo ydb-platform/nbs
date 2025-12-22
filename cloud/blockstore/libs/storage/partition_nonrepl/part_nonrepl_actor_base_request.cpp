@@ -120,7 +120,7 @@ void TDiskAgentBaseRequestActor::Done(
 
 void TDiskAgentBaseRequestActor::OnRequestStarted(
     const NActors::TActorContext& ctx,
-    const TString& deviceUUID,
+    const TString& agentId,
     TDeviceOperationTracker::ERequestType requestType,
     size_t requestIndex)
 {
@@ -131,7 +131,7 @@ void TDiskAgentBaseRequestActor::OnRequestStarted(
 
     auto startEvent = std::make_unique<
         TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted>(
-        deviceUUID,
+        agentId,
         requestType,
         DeviceOperationId + requestIndex);
 

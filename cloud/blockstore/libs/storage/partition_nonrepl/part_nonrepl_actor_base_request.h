@@ -81,7 +81,7 @@ protected:
 
     void OnRequestStarted(
         const NActors::TActorContext& ctx,
-        const TString& deviceUUID,
+        const TString& agentId,
         TDeviceOperationTracker::ERequestType requestType,
         size_t requestIndex);
 
