@@ -616,7 +616,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT_EQUAL(28, rb.GetMaxAllocationBytesCount());
     }
 
-    Y_UNIT_TEST(ShouldNotSupportMetadata)
+    Y_UNIT_TEST(ShouldGetAndSetMetadata_ZeroMetadataCapacity)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 36;
@@ -633,7 +633,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT_VALUES_EQUAL("AAA", rb->Front());
     }
 
-    Y_UNIT_TEST(ShouldSupportMetadata)
+    Y_UNIT_TEST(ShouldGetAndSetMetadata_NonZeroMetadataCapacity)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 36;

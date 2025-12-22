@@ -26,6 +26,19 @@ private:
     std::unique_ptr<TImpl> Impl;
 
 public:
+    /** Creates or opens an existing file ring buffer stored in the file.
+    *
+    * Argument dataCapacity specifies the size of the data area in bytes, it
+    * has effect only when creating a new buffer. When opening an existing
+    * buffer, the argument is ignored and the existing data capacity is used.
+    *
+    * Argument metadataCapacity specifies the size of the metadata area in
+    * bytes. If the existing buffer has different metadata capacity, the
+    * metadata area is resized to the specified capacity, preserving existing
+    * metadata. If the size of the existing metadata is greater than the
+    * specified capacity, the metadata area is shrunk to fit the existing
+    * metadata.
+    */
     TFileRingBuffer(
         const TString& filePath,
         ui64 dataCapacity,
