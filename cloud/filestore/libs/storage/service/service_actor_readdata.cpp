@@ -1,6 +1,7 @@
 #include "service_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
+#include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
@@ -62,6 +63,7 @@ private:
     // Stats for reporting
     IRequestStatsPtr RequestStats;
     IProfileLogPtr ProfileLog;
+    ITraceSerializerPtr TraceSerializer;
     std::optional<TInFlightRequest> InFlightRequest;
     const NCloud::NProto::EStorageMediaKind MediaKind;
     const bool UseTwoStageRead;
@@ -74,6 +76,7 @@ public:
         ui32 blockSize,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
+        ITraceSerializerPtr traceSerializer,
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useTwoStageRead);
 
@@ -121,6 +124,7 @@ TReadDataActor::TReadDataActor(
         ui32 blockSize,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
+        ITraceSerializerPtr traceSerializer,
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useTwoStageRead)
     : RequestInfo(std::move(requestInfo))
@@ -136,6 +140,7 @@ TReadDataActor::TReadDataActor(
     , ZeroIntervals(TDefaultAllocator::Instance(), 0, OriginByteRange.Length)
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
+    , TraceSerializer(std::move(traceSerializer))
     , MediaKind(mediaKind)
     , UseTwoStageRead(useTwoStageRead)
 {
@@ -202,6 +207,9 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
     InitProfileLogRequestInfo(
         InFlightRequest->ProfileLogRequest,
         request->Record);
+    TraceSerializer->BuildTraceRequest(
+        *request->Record.MutableHeaders()->MutableInternal()->MutableTrace(),
+        RequestInfo->CallContext->LWOrbit);
 
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -289,6 +297,7 @@ void TReadDataActor::HandleDescribeDataResponse(
     FinalizeProfileLogRequestInfo(
         InFlightRequest->ProfileLogRequest,
         msg->Record);
+    HandleTraceInfo(TraceSerializer, RequestInfo->CallContext, msg->Record);
 
     if (FAILED(msg->GetStatus())) {
         if (error.GetCode() != E_FS_THROTTLED) {
@@ -378,6 +387,13 @@ void TReadDataActor::ReadBlobsIfNeeded(const TActorContext& ctx)
             TInstant::Max(),
             NKikimrBlobStorage::FastRead);
 
+        if (!RequestInfo->CallContext->LWOrbit.Fork(request->Orbit)) {
+            FILESTORE_TRACK(
+                ForkFailed,
+                RequestInfo->CallContext,
+                "TEvBlobStorage::TEvGet");
+        }
+
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
@@ -400,6 +416,7 @@ void TReadDataActor::HandleReadBlobResponse(
     }
 
     const auto* msg = ev->Get();
+    RequestInfo->CallContext->LWOrbit.Join(msg->Orbit);
 
     if (msg->Status != NKikimrProto::OK) {
         LOG_WARN(
@@ -570,6 +587,9 @@ void TReadDataActor::ReadData(
     auto request = std::make_unique<TEvService::TEvReadDataRequest>();
     request->Record = std::move(ReadRequest);
     request->Record.MutableHeaders()->SetThrottlingDisabled(true);
+    TraceSerializer->BuildTraceRequest(
+        *request->Record.MutableHeaders()->MutableInternal()->MutableTrace(),
+        RequestInfo->CallContext->LWOrbit);
 
     // Original iovecs should be preserved in this request and pruned during
     // this forwarding on the tablet side
@@ -584,6 +604,7 @@ void TReadDataActor::HandleReadDataResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+    HandleTraceInfo(TraceSerializer, RequestInfo->CallContext, msg->Record);
 
     if (FAILED(msg->GetStatus())) {
         HandleError(ctx, msg->GetError());
@@ -862,6 +883,7 @@ void TStorageServiceActor::HandleReadData(
         filestore.GetBlockSize(),
         session->RequestStats,
         ProfileLog,
+        TraceSerializer,
         session->MediaKind,
         useTwoStageRead);
 
