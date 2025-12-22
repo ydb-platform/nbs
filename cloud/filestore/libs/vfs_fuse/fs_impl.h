@@ -416,6 +416,11 @@ private:
         const fuse_file_info* fi) const;
 
     TDuration GetEntryCacheTimeout(const NProto::TNodeAttr& attrs) const;
+
+    void AdjustNodeSize(
+        NProto::TNodeAttr& attrs
+    );
+
     bool UpdateNodeCache(
         const NProto::TNodeAttr& attrs,
         fuse_entry_param& entry);

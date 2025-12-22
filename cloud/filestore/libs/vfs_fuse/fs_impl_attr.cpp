@@ -51,6 +51,9 @@ void TFileSystem::SetAttr(
     if (to_set & FUSE_SET_ATTR_SIZE) {
         flags |= ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
         update->SetSize(attr->st_size);
+        if (WriteBackCache) {
+            WriteBackCache.SetCachedNodeSize(ino, attr->st_size);
+        }
     }
     if (to_set & FUSE_SET_ATTR_ATIME) {
         flags |= ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_ATIME);
@@ -78,19 +81,37 @@ void TFileSystem::SetAttr(
     const auto reqId = callContext->RequestId;
     FSyncQueue->Enqueue(reqId, TNodeId {ino});
 
-    Session->SetNodeAttr(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+    auto callback = [=, ptr = weak_from_this()](const auto& future)
+    {
+        auto self = ptr.lock();
+        if (!self) {
+            return;
+        }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
+        const auto& response = future.GetValue();
+        const auto& error = response.GetError();
+        self->FSyncQueue->Dequeue(reqId, error, TNodeId{ino});
 
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyAttr(*callContext, error, req, response.GetNode());
+        if (self->CheckResponse(self, *callContext, req, response)) {
+            self->ReplyAttr(*callContext, error, req, response.GetNode());
+        }
+    };
+
+    // Changing attributes interferes with WriteBackCache
+    auto flushFuture = WriteBackCache
+                           ? WriteBackCache.FlushNodeData(request->GetNodeId())
+                           : NThreading::MakeFuture();
+
+    flushFuture.Subscribe(
+        [ptr = weak_from_this(),
+         callContext = std::move(callContext),
+         callback = std::move(callback),
+         request = std::move(request)](const auto& future) mutable
+        {
+            future.GetValue();
+            if (auto self = ptr.lock()) {
+                self->Session->SetNodeAttr(callContext, std::move(request))
+                    .Subscribe(std::move(callback));
             }
         });
 }
@@ -112,14 +133,26 @@ void TFileSystem::GetAttr(
     // XXX handle seems to be unneeded
     request->SetHandle(handle);
 
+    // Take into account cached WriteData requests
+    const auto cachedNodeSize =
+        WriteBackCache ? WriteBackCache.GetCachedNodeSize(ino) : 0;
+
     Session->GetNodeAttr(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                self->ReplyAttr(*callContext, error, req, response.GetNode());
-            }
-        });
+        .Subscribe(
+            [=, ptr = weak_from_this()](auto future)
+            {
+                NProto::TGetNodeAttrResponse response = future.ExtractValue();
+                auto self = ptr.lock();
+                if (CheckResponse(self, *callContext, req, response)) {
+                    auto* attr = response.MutableNode();
+                    attr->SetSize(Max(attr->GetSize(), cachedNodeSize));
+                    self->ReplyAttr(
+                        *callContext,
+                        response.GetError(),
+                        req,
+                        response.GetNode());
+                }
+            });
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -144,6 +144,15 @@ TDuration TFileSystem::GetEntryCacheTimeout(
     return Config->GetEntryTimeout();
 }
 
+void TFileSystem::AdjustNodeSize(NProto::TNodeAttr& attrs)
+{
+    if (WriteBackCache) {
+        const auto cachedNodeSize =
+            WriteBackCache.GetCachedNodeSize(attrs.GetId());
+        attrs.SetSize(Max(attrs.GetSize(), cachedNodeSize));
+    }
+}
+
 bool TFileSystem::UpdateNodeCache(
     const NProto::TNodeAttr& attrs,
     fuse_entry_param& entry)
