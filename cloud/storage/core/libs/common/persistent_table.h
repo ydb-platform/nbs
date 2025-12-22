@@ -155,9 +155,7 @@ public:
 
     ~TPersistentTable()
     {
-        if (FileLock) {
-            FileLock->Release();
-        }
+        Cleanup();
     }
 
     H* HeaderData()
@@ -217,6 +215,7 @@ public:
         FileMap->ResizeAndRemap(0, 0);
         FileMap.reset();
         FreeRecords.clear();
+        Cleanup();
         Init();
     }
 
@@ -289,6 +288,13 @@ private:
         // shrink table if it fits into requested size after compaction
         if (initialRecordCount < RecordCount && NextFreeRecord <= initialRecordCount) {
             resizeTable(initialRecordCount);
+        }
+    }
+
+    void Cleanup()
+    {
+        if (FileLock) {
+            FileLock->Release();
         }
     }
 
