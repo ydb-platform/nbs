@@ -1882,7 +1882,6 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid,
     struct fuse_init_in *arg;
     struct fuse_init_out outarg;
     struct fuse_session *se = req->se;
-    size_t bufsize = se->bufsize;
     size_t outargsize = sizeof(outarg);
 
     (void)nodeid;
@@ -1983,8 +1982,8 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid,
     if (!(arg->flags & FUSE_MAX_PAGES)) {
         size_t max_bufsize = FUSE_DEFAULT_MAX_PAGES_PER_REQ * getpagesize() +
                              FUSE_BUFFER_HEADER_SIZE;
-        if (bufsize > max_bufsize) {
-            bufsize = max_bufsize;
+        if (se->bufsize > max_bufsize) {
+            se->bufsize = max_bufsize;
         }
     }
     if (arg->flags & FUSE_HANDLE_KILLPRIV_V2) {
@@ -2024,15 +2023,14 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid,
                    FUSE_CAP_READDIRPLUS_AUTO);
     se->conn.time_gran = 1;
 
-    if (bufsize < FUSE_MIN_READ_BUFFER) {
+    if (se->bufsize < FUSE_MIN_READ_BUFFER) {
         fuse_log(FUSE_LOG_ERR, "fuse: warning: buffer size too small: %zu\n",
-                 bufsize);
-        bufsize = FUSE_MIN_READ_BUFFER;
+                 se->bufsize);
+        se->bufsize = FUSE_MIN_READ_BUFFER;
     }
-    se->bufsize = bufsize;
 
-    if (se->conn.max_write > bufsize - FUSE_BUFFER_HEADER_SIZE) {
-        se->conn.max_write = bufsize - FUSE_BUFFER_HEADER_SIZE;
+    if (se->conn.max_write > se->bufsize - FUSE_BUFFER_HEADER_SIZE) {
+        se->conn.max_write = se->bufsize - FUSE_BUFFER_HEADER_SIZE;
     }
 
     se->got_init = 1;
@@ -2052,7 +2050,7 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid,
         return;
     }
 
-    if (se->conn.max_write < bufsize - FUSE_BUFFER_HEADER_SIZE) {
+    if (se->conn.max_write < se->bufsize - FUSE_BUFFER_HEADER_SIZE) {
         se->bufsize = se->conn.max_write + FUSE_BUFFER_HEADER_SIZE;
     }
     if (arg->flags & FUSE_MAX_PAGES) {
