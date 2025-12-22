@@ -1,8 +1,8 @@
 GO_LIBRARY()
-IF (TRUE)
-    SRCS(
-        expr.go
-        vers.go
-    )
-ENDIF()
+
+SRCS(
+	expr.go
+    vers.go
+)
+
 END()
