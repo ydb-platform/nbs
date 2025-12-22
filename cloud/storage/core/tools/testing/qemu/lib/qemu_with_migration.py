@@ -77,7 +77,6 @@ class QemuWithMigration:
             if self.previous_socket and self.filestore_client:
                 try:
                     self.filestore_client.stop_endpoint(self.previous_socket)
-                    time.sleep(0.5)
                 except Exception as e:
                     logger.warning("Failed to stop previous endpoint %s: %s", self.previous_socket, e)
 
