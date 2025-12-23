@@ -229,7 +229,7 @@ def __modify_scheme(ydb):
     request += "}}"
 
     subprocess.check_call([
-        ydb.config.binary_path,
+        ydb.config.get_binary_path(0),
         "--server", f"grpc://localhost:{list(ydb.nodes.values())[0].port}",
         "db", "schema", "exec",
         request,
