@@ -2475,7 +2475,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
     }
 
-    SERVICE_TEST_SIMPLE(ShouldEnableStrictFileSystemSizeEnforcement)
+    SERVICE_TEST_SIMPLE(
+        ShouldEnableStrictFileSystemSizeEnforcementAndDirectoryCreationInShards)
     {
         // Create file system with two shards 1000 * 4 * 1024 bytes each
         config.SetMultiTabletForwardingEnabled(true);
@@ -2551,7 +2552,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             fsConfig.MainFsBlockCount(),
             false /* force */,
             0 /* shardCount */,
-            true /* enableStrictSizeMode */);
+            true /* enableStrictSizeMode */,
+            true /* directoryCreationInShards */);
 
         {
             // check topology after turning strict mode on
@@ -2559,18 +2561,21 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 GetFileSystemTopology(service, fsConfig.FsId);
             UNIT_ASSERT(
                 mainFsTopology.GetStrictFileSystemSizeEnforcementEnabled());
+            UNIT_ASSERT(mainFsTopology.GetDirectoryCreationInShardsEnabled());
             UNIT_ASSERT_EQUAL(2, mainFsTopology.ShardFileSystemIdsSize());
 
             const auto shard1Topology =
                 GetFileSystemTopology(service, fsConfig.Shard1Id);
             UNIT_ASSERT(
                 shard1Topology.GetStrictFileSystemSizeEnforcementEnabled());
+            UNIT_ASSERT(shard1Topology.GetDirectoryCreationInShardsEnabled());
             UNIT_ASSERT_EQUAL(2, shard1Topology.ShardFileSystemIdsSize());
 
             const auto shard2Topology =
                 GetFileSystemTopology(service, fsConfig.Shard2Id);
             UNIT_ASSERT(
                 shard2Topology.GetStrictFileSystemSizeEnforcementEnabled());
+            UNIT_ASSERT(shard2Topology.GetDirectoryCreationInShardsEnabled());
             UNIT_ASSERT_EQUAL(2, shard2Topology.ShardFileSystemIdsSize());
         }
 

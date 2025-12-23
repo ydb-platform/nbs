@@ -119,7 +119,8 @@ class FilestoreCliClient:
         blk_count,
         force=False,
         shard_count=None,
-        enable_strict=False
+        enable_strict=False,
+        enable_directory_creation_in_shards=False,
     ):
         cmd = [
             self.__binary_path, "resize",
@@ -135,6 +136,9 @@ class FilestoreCliClient:
 
         if enable_strict:
             cmd.append("--enable-strict")
+
+        if enable_directory_creation_in_shards:
+            cmd.append("--enable-directory-creation-in-shards")
 
         logger.info("resizing filestore: " + " ".join(cmd))
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout

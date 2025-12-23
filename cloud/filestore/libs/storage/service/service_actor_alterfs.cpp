@@ -63,8 +63,11 @@ private:
     ui32 MaxShardCount = 0;
     // These flags are set by HandleGetFileSystemTopologyResponse.
     bool DirectoryCreationInShardsEnabled = false;
+    bool EnableDirectoryCreationInShards = false;
+
     bool StrictFileSystemSizeEnforcementEnabled = false;
     bool EnableStrictFileSystemSizeEnforcement = false;
+
     bool ShouldConfigureMainFileStore = false;
 
     const ui64 MainFileStoreCookie = Max<ui64>();
@@ -196,6 +199,8 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , Alter(false)
     , Force(request.GetForce())
     , ExplicitShardCount(request.GetShardCount())
+    , EnableDirectoryCreationInShards(
+          request.GetEnableDirectoryCreationInShards())
     , EnableStrictFileSystemSizeEnforcement(
           request.GetEnableStrictFileSystemSizeEnforcement())
 {
@@ -466,6 +471,7 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
     }
 
     DirectoryCreationInShardsEnabled =
+        EnableDirectoryCreationInShards ||
         msg->Record.GetDirectoryCreationInShardsEnabled();
     StrictFileSystemSizeEnforcementEnabled =
         EnableStrictFileSystemSizeEnforcement ||
@@ -569,7 +575,9 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
             FileStoreConfig.ShardConfigs.size());
         ShardsToCreate =
             FileStoreConfig.ShardConfigs.size() - ExistingShardIds.size();
-        if (ShardsToCreate || EnableStrictFileSystemSizeEnforcement) {
+        if (ShardsToCreate || EnableStrictFileSystemSizeEnforcement ||
+            EnableDirectoryCreationInShards)
+        {
             ShouldConfigureMainFileStore = true;
             ShardsToConfigure = FileStoreConfig.ShardConfigs.size();
         }
