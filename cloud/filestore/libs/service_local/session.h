@@ -99,11 +99,8 @@ public:
               Log)
     {}
 
-    void Init(bool restoreClientSession)
+    NProto::TError TryInit(bool restoreClientSession)
     {
-        // TODO add init session here
-        Index.Init();
-
         auto handlesPath = StatePath / "handles";
 
         bool isNewSession = !restoreClientSession || !HasStateFile("session") ||
@@ -132,11 +129,22 @@ public:
             ", OpenNodeByHandleEnabled=" << OpenNodeByHandleEnabled
         );
 
-
-        HandleTable = std::make_unique<THandleTable>(
-            handlesPath.GetPath(),
-            MaxHandleCount,
-            true  /* lockFile */);
+        try {
+            Index.Init();
+            HandleTable = std::make_unique<THandleTable>(
+                handlesPath.GetPath(),
+                MaxHandleCount,
+                true /* lockFile */);
+        } catch (...) {
+            STORAGE_ERROR(
+                "Failed to initialize session"
+                << ", StatePath=" << StatePath
+                << ", Exception=" << CurrentExceptionMessage());
+            return MakeError(
+                E_FAIL,
+                TStringBuilder() << "Failed to initialize session "
+                                 << CurrentExceptionMessage());
+        }
 
         ui64 maxHandleId = 0;
         for (auto it = HandleTable->begin(); it != HandleTable->end(); it++) {
@@ -176,6 +184,8 @@ public:
         }
 
         NextHandleId = maxHandleId + 1;
+
+        return NProto::TError{};
     }
 
     [[nodiscard]] TResultOrError<ui64>
