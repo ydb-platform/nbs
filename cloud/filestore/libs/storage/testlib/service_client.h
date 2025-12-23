@@ -338,7 +338,7 @@ public:
         ui64 nodeId,
         ui64 handle,
         ui64 offset,
-        const std::vector<TString>& buffers)
+        const TVector<TString>& buffers)
     {
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
         headers.Fill(request->Record);
@@ -367,7 +367,7 @@ public:
         ui64 handle,
         ui64 offset,
         ui64 length,
-        const TVector<std::span<char>>& buffers)
+        const TVector<TString>& buffers)
     {
         auto request = std::make_unique<TEvService::TEvReadDataRequest>();
         headers.Fill(request->Record);
