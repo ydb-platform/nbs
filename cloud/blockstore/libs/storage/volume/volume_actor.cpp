@@ -820,15 +820,7 @@ void TVolumeActor::InitializeDeviceOperationTracker()
         return;
     }
 
-    TVector<TDeviceOperationTracker::TDeviceInfo> deviceInfos;
-
-    for (const NProto::TDeviceConfig* device: GetAllDevices(State->GetMeta())) {
-        deviceInfos.push_back(
-            {.DeviceUUID = device->GetDeviceUUID(),
-             .AgentId = device->GetAgentId()});
-    }
-
-    DeviceOperationTracker.UpdateDevices(std::move(deviceInfos));
+    DeviceOperationTracker.UpdateAgents(GetAllAgents(State->GetMeta()));
     TDeviceOperationTracker::UpdateTrackingFrequency(
         Config->GetDeviceOperationTrackingFrequency());
 }
@@ -843,7 +835,7 @@ void TVolumeActor::HandleDiskRegistryDeviceOperationStarted(
 
     DeviceOperationTracker.OnStarted(
         msg->OperationId,
-        msg->DeviceUUID,
+        msg->AgentId,
         msg->RequestType,
         GetCycleCount());
 }

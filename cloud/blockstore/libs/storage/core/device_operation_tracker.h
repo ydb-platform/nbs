@@ -39,13 +39,6 @@ public:
     {
         ui64 StartTime = 0;
         ERequestType RequestType;
-        TString DeviceUUID;
-        TString AgentId;
-    };
-
-    struct TDeviceInfo
-    {
-        TString DeviceUUID;
         TString AgentId;
     };
 
@@ -64,7 +57,6 @@ private:
     struct TKey
     {
         ERequestType RequestType;
-        TString DeviceUUID;
         TString AgentId;
         EStatus Status = EStatus::Inflight;
 
@@ -78,21 +70,17 @@ private:
         ui64 operator()(const TKey& key) const;
     };
 
-    TVector<TDeviceInfo> DeviceInfos;
-    THashMap<TString, TString> DeviceToAgent;
+    TSet<TString> Agents;
 
     TInflightMap Inflight;
     THashMap<TKey, TTimeHistogram, THash> Histograms;
 
-    void RebuildFromDeviceInfos();
-
 public:
     TDeviceOperationTracker() = default;
-    explicit TDeviceOperationTracker(TVector<TDeviceInfo> deviceInfos);
 
     void OnStarted(
         TOperationId operationId,
-        const TString& deviceUUID,
+        const TString& agentId,
         ERequestType requestType,
         ui64 startTime);
 
@@ -101,11 +89,11 @@ public:
 
     void OnFinished(TOperationId operationId, ui64 finishTime);
 
-    void UpdateDevices(TVector<TDeviceInfo> deviceInfos);
+    void UpdateAgents(TSet<TString> agents);
 
     [[nodiscard]] TString GetStatJson(ui64 nowCycles) const;
     [[nodiscard]] TVector<TBucketInfo> GetTimeBuckets() const;
-    [[nodiscard]] TVector<TDeviceInfo> GetDeviceInfos() const;
+    [[nodiscard]] TVector<TBucketInfo> GetAgents() const;
 
     void ResetStats();
 

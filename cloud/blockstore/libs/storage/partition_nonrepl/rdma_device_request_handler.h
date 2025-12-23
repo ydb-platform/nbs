@@ -195,7 +195,7 @@ void TRdmaDeviceRequestHandlerBase<TDerived>::OnRequestStarted(
 
     auto startEvent = std::make_unique<
         TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted>(
-        devices[deviceIdx].GetDeviceUUID(),
+        devices[deviceIdx].GetAgentId(),
         requestType,
         DeviceOperationId + DeviceIndexes.size());
     DeviceIndexes.push_back(deviceIdx);

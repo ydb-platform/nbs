@@ -44,6 +44,8 @@ void UpdateLaggingDevicesAfterMetaUpdate(
 [[nodiscard]] TVector<const NProto::TDeviceConfig*> GetAllDevices(
     const NProto::TVolumeMeta& meta);
 
+[[nodiscard]] TSet<TString> GetAllAgents(const NProto::TVolumeMeta& meta);
+
 [[nodiscard]] TMap<TString, TString> ParseTags(const TString& tags);
 
 }   // namespace NCloud::NBlockStore::NStorage

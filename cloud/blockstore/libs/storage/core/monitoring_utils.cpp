@@ -1900,9 +1900,6 @@ TString FormatDeviceOperationsInflight(
                             out << "Type";
                         }
                         TABLEH () {
-                            out << "Device UUID";
-                        }
-                        TABLEH () {
                             out << "Agent ID";
                         }
                         TABLEH () {
@@ -1924,9 +1921,6 @@ TString FormatDeviceOperationsInflight(
                             }
                             TABLED () {
                                 out << op.RequestType;
-                            }
-                            TABLED () {
-                                out << op.DeviceUUID;
                             }
                             TABLED () {
                                 out << op.AgentId;
@@ -2029,14 +2023,14 @@ void AddDeviceOperationLatencyCSS(IOutputStream& out)
 void RenderDeviceOperationLatencyCell(
     IOutputStream& out,
     const TString& requestType,
-    const TString& deviceUUID,
+    const TString& agentId,
     const TString& timeKey)
 {
     HTML (out) {
         TABLED () {
             DIV_CLASS_ID(
                 "latency-item",
-                requestType + "_" + deviceUUID + "_" + timeKey)
+                requestType + "_" + agentId + "_" + timeKey)
             {}
         }
     }
@@ -2048,7 +2042,7 @@ void DumpLatencyTableForRequestType(
     TDeviceOperationTracker::ERequestType requestType)
 {
     const auto timeBuckets = deviceTracker.GetTimeBuckets();
-    const auto deviceInfos = deviceTracker.GetDeviceInfos();
+    const auto& agents = deviceTracker.GetAgents();
     const TString requestTypeStr = ToString(requestType);
 
     HTML (out) {
@@ -2059,9 +2053,6 @@ void DumpLatencyTableForRequestType(
         TABLE_CLASS ("table-latency") {
             TABLEHEAD () {
                 TABLER () {
-                    TABLEH () {
-                        out << "Device UUID";
-                    }
                     TABLEH () {
                         out << "Agent ID";
                     }
@@ -2082,23 +2073,18 @@ void DumpLatencyTableForRequestType(
                 }
             }
 
-            TABLEBODY()
-            {
-                for (const auto& deviceInfo: deviceInfos) {
+            TABLEBODY () {
+                for (const auto& agentInfo: agents) {
                     TABLER () {
                         TABLED () {
-                            out << deviceInfo.DeviceUUID;
-                        }
-
-                        TABLED () {
-                            out << deviceInfo.AgentId;
+                            out << agentInfo.Description;
                         }
 
                         for (const auto& timeBucket: timeBuckets) {
                             RenderDeviceOperationLatencyCell(
                                 out,
                                 requestTypeStr,
-                                deviceInfo.DeviceUUID,
+                                agentInfo.Key,
                                 timeBucket.Key);
                         }
                     }
@@ -2169,12 +2155,13 @@ void DumpDeviceOperationLatency(
                 for (const [fullKey, value] of Object.entries(result.stat)) {
                     const parts = fullKey.split('_');
                     const op = parts[0];
-                    const device = parts[1];
+                    const agent = parts[1];
                     const type = parts[2];
                     const bucket = parts[3];
-                    const key = `${op}_${device}_${bucket}`;
+                    const key = `${op}_${agent}_${bucket}`;
 
-                    if (!data[key]) data[key] = {};
+                    if (!data[key])
+                       data[key] = {};
                     data[key][type] = value;
                 }
 
