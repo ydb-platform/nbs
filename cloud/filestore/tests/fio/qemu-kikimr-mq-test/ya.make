@@ -9,7 +9,7 @@ ENDIF()
 DEPENDS(
     cloud/filestore/tools/analytics/profile_tool
     cloud/storage/core/tools/testing/fio/bin
-    cloud/storage/core/tools/testing/qemu/image-noble
+    cloud/storage/core/tools/testing/qemu/image-plucky
 )
 
 PEERDIR(
