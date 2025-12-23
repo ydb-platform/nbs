@@ -107,7 +107,7 @@ NProto::TError TServerState::DestroyMmapRegion(ui64 mmapId)
     auto it = MmapRegions.find(mmapId);
     if (it == MmapRegions.end()) {
         return MakeError(
-            E_NOT_FOUND,
+            E_TRANSPORT_ERROR,
             Sprintf("Mmap region not found: %lu", mmapId));
     }
     auto metadata = it->second.ToMetadata();
@@ -142,7 +142,7 @@ TResultOrError<TMmapRegionMetadata> TServerState::GetMmapRegion(ui64 mmapId)
     auto it = MmapRegions.find(mmapId);
     if (it == MmapRegions.end()) {
         return MakeError(
-            E_NOT_FOUND,
+            E_TRANSPORT_ERROR,
             Sprintf("Mmap region not found: %lu", mmapId));
     }
     return it->second.ToMetadata();
@@ -154,7 +154,7 @@ NProto::TError TServerState::PingMmapRegion(ui64 mmapId)
     auto it = MmapRegions.find(mmapId);
     if (it == MmapRegions.end()) {
         return MakeError(
-            E_NOT_FOUND,
+            E_TRANSPORT_ERROR,
             Sprintf("Mmap region not found: %lu", mmapId));
     }
 
