@@ -88,19 +88,13 @@ ui32 InitIORequest(
     return blocksCount;
 }
 
+// Mirrors the request to all partitions.
 template <typename TMethod>
 bool ToPartitionRequestsSimple(
     const TPartitionInfoList& partitions,
-    const ui32 blockSize,
-    const ui32 blocksPerStripe,
     const typename TMethod::TRequest::TPtr& ev,
-    TVector<TPartitionRequest<TMethod>>* requests,
-    TBlockRange64* blockRange)
+    TVector<TPartitionRequest<TMethod>>* requests)
 {
-    Y_UNUSED(blockSize);
-    Y_UNUSED(blocksPerStripe);
-    Y_UNUSED(blockRange);
-
     requests->resize(partitions.size());
 
     for (ui32 i = 0; i < partitions.size(); ++i) {
@@ -538,13 +532,11 @@ bool ToPartitionRequests<TEvVolume::TGetCompactionStatusMethod>(
     TVector<TPartitionRequest<TEvVolume::TGetCompactionStatusMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    return ToPartitionRequestsSimple(
-        partitions,
-        blockSize,
-        blocksPerStripe,
-        ev,
-        requests,
-        blockRange);
+    Y_UNUSED(blockSize);
+    Y_UNUSED(blocksPerStripe);
+    Y_UNUSED(blockRange);
+
+    return ToPartitionRequestsSimple(partitions, ev, requests);
 }
 
 template <>
@@ -556,13 +548,11 @@ bool ToPartitionRequests<TEvVolume::TRebuildMetadataMethod>(
     TVector<TPartitionRequest<TEvVolume::TRebuildMetadataMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    return ToPartitionRequestsSimple(
-        partitions,
-        blockSize,
-        blocksPerStripe,
-        ev,
-        requests,
-        blockRange);
+    Y_UNUSED(blockSize);
+    Y_UNUSED(blocksPerStripe);
+    Y_UNUSED(blockRange);
+
+    return ToPartitionRequestsSimple(partitions, ev, requests);
 }
 
 template <>
@@ -574,13 +564,11 @@ bool ToPartitionRequests<TEvVolume::TGetRebuildMetadataStatusMethod>(
     TVector<TPartitionRequest<TEvVolume::TGetRebuildMetadataStatusMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    return ToPartitionRequestsSimple(
-        partitions,
-        blockSize,
-        blocksPerStripe,
-        ev,
-        requests,
-        blockRange);
+    Y_UNUSED(blockSize);
+    Y_UNUSED(blocksPerStripe);
+    Y_UNUSED(blockRange);
+
+    return ToPartitionRequestsSimple(partitions, ev, requests);
 }
 
 template <>
@@ -592,13 +580,11 @@ bool ToPartitionRequests<TEvVolume::TScanDiskMethod>(
     TVector<TPartitionRequest<TEvVolume::TScanDiskMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    return ToPartitionRequestsSimple(
-        partitions,
-        blockSize,
-        blocksPerStripe,
-        ev,
-        requests,
-        blockRange);
+    Y_UNUSED(blockSize);
+    Y_UNUSED(blocksPerStripe);
+    Y_UNUSED(blockRange);
+
+    return ToPartitionRequestsSimple(partitions, ev, requests);
 }
 
 template <>
@@ -610,13 +596,11 @@ bool ToPartitionRequests<TEvVolume::TGetScanDiskStatusMethod>(
     TVector<TPartitionRequest<TEvVolume::TGetScanDiskStatusMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    return ToPartitionRequestsSimple(
-        partitions,
-        blockSize,
-        blocksPerStripe,
-        ev,
-        requests,
-        blockRange);
+    Y_UNUSED(blockSize);
+    Y_UNUSED(blocksPerStripe);
+    Y_UNUSED(blockRange);
+
+    return ToPartitionRequestsSimple(partitions, ev, requests);
 }
 
 template <>
@@ -654,13 +638,11 @@ bool ToPartitionRequests<TEvVolume::TCheckRangeMethod>(
     TVector<TPartitionRequest<TEvVolume::TCheckRangeMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    return ToPartitionRequestsSimple(
-        partitions,
-        blockSize,
-        blocksPerStripe,
-        ev,
-        requests,
-        blockRange);
+    Y_UNUSED(blockSize);
+    Y_UNUSED(blocksPerStripe);
+    Y_UNUSED(blockRange);
+
+    return ToPartitionRequestsSimple(partitions, ev, requests);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
