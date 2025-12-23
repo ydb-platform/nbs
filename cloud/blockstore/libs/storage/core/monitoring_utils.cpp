@@ -3,6 +3,7 @@
 #include "config.h"
 #include "probes.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/hostname.h>
 
 #include <cloud/storage/core/libs/common/format.h>
@@ -40,6 +41,10 @@ using namespace NMonitoringUtils;
 
 void AddScript(IOutputStream& out, const TStringBuf resourceName)
 {
+    if (!NResource::Has(resourceName)) {
+        ReportMonitoringResourceNotFound({{"resource", resourceName}});
+        return;
+    }
     out << "<script type='text/javascript'>\n";
     out << NResource::Find(resourceName);
     out << "</script>\n";
@@ -47,6 +52,10 @@ void AddScript(IOutputStream& out, const TStringBuf resourceName)
 
 void AddStyle(IOutputStream& out, const TStringBuf resourceName)
 {
+    if (!NResource::Has(resourceName)) {
+        ReportMonitoringResourceNotFound({{"resource", resourceName}});
+        return;
+    }
     out << "<style>\n";
     out << NResource::Find(resourceName);
     out << "</style>\n";
