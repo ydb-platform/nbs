@@ -297,6 +297,14 @@ void TDiskRegistryActor::ScheduleDiskRegistryAgentListExpiredParamsCleanup(
         new TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup());
 }
 
+void TDiskRegistryActor::ScheduleCompareDiskRegistryStateWithLocalDb(
+    const NActors::TActorContext& ctx)
+{
+    ctx.Schedule(
+        Config->GetCompareDiskRegistryStateWithLocalDbInterval(),
+        new TEvDiskRegistryPrivate::TEvCompareDiskRegistryStateWithLocalDb());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryActor::HandlePoisonPill(
@@ -728,6 +736,10 @@ STFUNC(TDiskRegistryActor::StateWork)
             TEvDiskRegistry::TEvCompareDiskRegistryStateWithLocalDbRequest,
             HandleCompareDiskRegistryStateWithLocalDb);
 
+        HFunc(
+            TEvDiskRegistryPrivate::TEvCompareDiskRegistryStateWithLocalDb,
+            HandleScheduledCompareDiskRegistryStateWithLocalDb);
+
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
                 HandleUnexpectedEvent(
@@ -776,6 +788,10 @@ STFUNC(TDiskRegistryActor::StateRestore)
         HFunc(
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly);
+
+        HFunc(
+            TEvDiskRegistryPrivate::TEvCompareDiskRegistryStateWithLocalDb,
+            HandleScheduledCompareDiskRegistryStateWithLocalDbReadOnly);
 
         IgnoreFunc(TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
 
@@ -851,6 +867,10 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
         HFunc(
             TEvDiskRegistry::TEvCompareDiskRegistryStateWithLocalDbRequest,
             HandleCompareDiskRegistryStateWithLocalDb);
+
+        HFunc(
+            TEvDiskRegistryPrivate::TEvCompareDiskRegistryStateWithLocalDb,
+            HandleScheduledCompareDiskRegistryStateWithLocalDbReadOnly);
 
         IgnoreFunc(
             TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);

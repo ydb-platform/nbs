@@ -322,6 +322,9 @@ private:
     void ScheduleDiskRegistryAgentListExpiredParamsCleanup(
         const NActors::TActorContext& ctx);
 
+    void ScheduleCompareDiskRegistryStateWithLocalDb(
+        const NActors::TActorContext& ctx);
+
     void InitializeState(TDiskRegistryStateSnapshot snapshot);
 
     void ProcessInitialAgentRejectionPhase(const NActors::TActorContext& ctx);
@@ -516,6 +519,14 @@ private:
 
     void HandleSwitchAgentDisksToReadOnlyReshedule(
         const TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleScheduledCompareDiskRegistryStateWithLocalDb(
+        const TEvDiskRegistryPrivate::TEvCompareDiskRegistryStateWithLocalDb::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    
+    void HandleScheduledCompareDiskRegistryStateWithLocalDbReadOnly(
+        const TEvDiskRegistryPrivate::TEvCompareDiskRegistryStateWithLocalDb::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_DISK_REGISTRY_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskRegistry)

@@ -653,6 +653,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(SendLocalTabletMetricsToHiveEnabled,  bool,        false              )\
                                                                                \
     xxx(EnableVhostDiscardForNewVolumes,      bool,        false              )\
+    xxx(CompareDiskRegistryStateWithLocalDbInterval, TDuration, Hours(4)      )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 

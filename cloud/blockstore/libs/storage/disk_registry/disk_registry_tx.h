@@ -1487,10 +1487,14 @@ struct TTxDiskRegistry
 
         NProto::TCompareDiskRegistryStateWithLocalDbResponse Result;
         TDiskRegistryStateSnapshot StateArgs;
+        bool Scheduled;
 
         TCompareDiskRegistryStateWithLocalDb(
-                TRequestInfoPtr requestInfo)
+            TRequestInfoPtr requestInfo,
+            bool scheduled)
             : RequestInfo(std::move(requestInfo))
+            , Scheduled(scheduled)
+
         {}
 
         void Clear()
