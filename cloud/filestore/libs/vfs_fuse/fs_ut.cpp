@@ -3195,6 +3195,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         NProto::TFileStoreFeatures features;
         features.SetServerWriteBackCacheEnabled(true);
 
+        TMutex mutex;
+
         TBootstrap bootstrap(
             CreateWallClockTimer(),
             CreateScheduler(),
@@ -3202,10 +3204,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         // Set these variables to different before each test case in order to
         // prevent caching node attributes
-        ui64 nodeId = 0;
+        std::atomic<ui64> nodeId = 0;
 
         auto getNodeName = [&]() {
-            return Sprintf("file_%lu", nodeId);
+            return Sprintf("file_%lu", nodeId.load());
         };
 
         std::atomic<ui64> size = 0;
@@ -3239,10 +3241,17 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         auto proceedServiceOperations = NewPromise();
 
+        auto getProceedServiceOperations = [&]()
+        {
+            with_lock (mutex) {
+                return proceedServiceOperations;
+            }
+        };
+
         auto delayedFuture = [&](auto result)
         {
             auto promise = NewPromise<decltype(result)>();
-            proceedServiceOperations.GetFuture().Subscribe(
+            getProceedServiceOperations().GetFuture().Subscribe(
                 [promise, result = std::move(result)](const auto&) mutable
                 { promise.SetValue(result); });
             return promise.GetFuture();
@@ -3491,7 +3500,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         {
             auto size = nextIter();
             auto counter = writeDataCalled.load();
-            proceedServiceOperations.TrySetValue();
+            getProceedServiceOperations().TrySetValue();
             UNIT_ASSERT_C(write(size - 5, 9, true), "Scenario 1 " + testName);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 counter + 1,
@@ -3510,7 +3519,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         {
             auto size = nextIter();
             auto counter = writeDataCalled.load();
-            proceedServiceOperations.TrySetValue();
+            getProceedServiceOperations().TrySetValue();
             UNIT_ASSERT_C(write(size - 5, 9, false), "Scenario 2 " + testName);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 counter,
@@ -3531,7 +3540,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         {
             auto size = nextIter();
             auto counter = writeDataCalled.load();
-            proceedServiceOperations = NewPromise();
+            with_lock(mutex) {
+                proceedServiceOperations = NewPromise();
+            }
             UNIT_ASSERT_C(write(size - 5, 9, false), "Scenario 3 " + testName);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 counter,
@@ -3547,7 +3558,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 writeDataCalled.load(),
                 "Scenario 3 " + testName);
 
-            proceedServiceOperations.SetValue();
+            getProceedServiceOperations().SetValue();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 size + 4,
                 sizeFuture.GetValue(WaitTimeout),
