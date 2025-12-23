@@ -16,15 +16,11 @@ void TDiskRegistryActor::HandleCompareDiskRegistryStateWithLocalDb(
 {
     BLOCKSTORE_DISK_REGISTRY_COUNTER(CompareDiskRegistryStateWithLocalDb);
 
-    const auto& record = ev->Get()->Record;
-
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "%s Received CompareDiskRegistryStateWithLocalDb request: %s %s",
-        LogTitle.GetWithTime().c_str(),
-        record.ShortDebugString().c_str(),
-        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
+        "%s Received CompareDiskRegistryStateWithLocalDb request",
+        LogTitle.GetWithTime().c_str());
 
     ExecuteTx<TCompareDiskRegistryStateWithLocalDb>(
         ctx,
@@ -41,7 +37,6 @@ bool TDiskRegistryActor::PrepareCompareDiskRegistryStateWithLocalDb(
     TTxDiskRegistry::TCompareDiskRegistryStateWithLocalDb& args)
 {
     Y_UNUSED(ctx);
-    Y_UNUSED(args);
 
     TDiskRegistryDatabase db(tx.DB);
     return LoadState(db, args.StateArgs);
@@ -98,12 +93,14 @@ void TDiskRegistryActor::CompleteCompareDiskRegistryStateWithLocalDb(
     const TActorContext& ctx,
     TTxDiskRegistry::TCompareDiskRegistryStateWithLocalDb& args)
 {
+    auto diff = args.Result.GetDiffers();
+
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
         "%s CompareDiskRegistryStateWithLocalDb result: %s",
         LogTitle.GetWithTime().c_str(),
-        args.Result.ShortDebugString().c_str());
+        diff.empty() ? "OK" : diff.c_str());
 
     auto response = std::make_unique<
         TEvDiskRegistry::TEvCompareDiskRegistryStateWithLocalDbResponse>(
