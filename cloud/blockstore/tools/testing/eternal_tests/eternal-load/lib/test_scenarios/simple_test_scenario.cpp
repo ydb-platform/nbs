@@ -60,7 +60,7 @@ public:
     TTestWorker(TSimpleTestScenario* testScenario, const TLog& log)
         : TestScenario(testScenario)
         , ReadBuffer(testScenario->MaxReadByteCount)
-        , WriteBuffer(testScenario->MaxWriteByteCount)
+        , WriteBuffer(testScenario->MaxWriteByteCount + (sizeof(ui64) * 2))
         , Log(log)
     {}
 
@@ -120,10 +120,33 @@ private:
         }
 
         if (write) {
-            service.Write(WriteBuffer.data(), byteCount, offset, [&]() {});
+            Write(offset, byteCount, service);
         } else {
             service.Read(WriteBuffer.data(), byteCount, offset, [&]() {});
         }
+    }
+
+    void Write(ui64 offset, ui64 byteCount, ITestExecutorIOService& service)
+    {
+        // Simple pattern: incrementing ui64 values
+
+        ui64 begin = AlignDown(offset, sizeof(ui64));
+        ui64 end = AlignUp(offset + byteCount, sizeof(ui64));
+
+        Y_ABORT_UNLESS(end - begin <= WriteBuffer.size());
+
+        TMemoryOutput stream(WriteBuffer.data(), end - begin);
+
+        for (ui64 pos = begin; pos < end; pos += sizeof(ui64)) {
+            const ui64 value = pos / sizeof(ui64);
+            stream.Write(&value, sizeof(ui64));
+        }
+
+        service.Write(
+            WriteBuffer.data() + (offset - begin),
+            byteCount,
+            offset,
+            [&]() {});
     }
 };
 
