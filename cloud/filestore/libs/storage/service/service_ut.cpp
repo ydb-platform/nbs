@@ -115,6 +115,40 @@ NProtoPrivate::TSetHasXAttrsResponse ExecuteSetHasXAttrs(
     return response;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+TVector<TString> CreateIovecs(size_t num, size_t size)
+{
+    TVector<TString> iovecs;
+    iovecs.reserve(num);
+    for (size_t i = 0; i < num; ++i) {
+        iovecs.emplace_back(size, '\0');
+    }
+    return iovecs;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString GetBufferFromIovecs(const TVector<TString>& iovecs, size_t length)
+{
+    size_t bufOffset = 0;
+    TString buf;
+    buf.resize(length);
+
+    for (const auto& iovec: iovecs) {
+        if (length == 0) {
+            break;
+        }
+
+        size_t len = std::min(iovec.size(), length);
+        memcpy(&buf[bufOffset], iovec.data(), len);
+        length -= len;
+        bufOffset += len;
+    }
+
+    return buf;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -4164,32 +4198,28 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
                 ->Record.GetHandle();
 
-        std::vector<TString> data;
+        TVector<TString> writeIovecs;
+        TVector<TString> readIovecs;
 
         ui64 dataSize = 0;
         for (auto iovecSize: iovecSizes) {
             dataSize += iovecSize;
         }
-        data.reserve(dataSize);
+        writeIovecs.reserve(iovecSizes.size());
         for (size_t i = 0; i < iovecSizes.size(); ++i) {
-            data.push_back(GenerateValidateData(iovecSizes[i], i));
+            writeIovecs.push_back(GenerateValidateData(iovecSizes[i], i));
+            readIovecs.emplace_back(iovecSizes[i], '\0');
         }
-        service.WriteData(headers, fs, nodeId, handle, offset, data);
-        for (size_t i = 0; i < iovecSizes.size(); ++i) {
-            if (data[i].size() == 0) {
-                continue;
-            }
-            auto readDataResult = service.ReadData(
-                headers,
-                fs,
-                nodeId,
-                handle,
-                offset,
-                data[i].size());
-            const auto& buffer = readDataResult->Record.GetBuffer();
-            UNIT_ASSERT_VALUES_EQUAL_C(data[i], buffer, i);
-            offset += data[i].size();
-        }
+        service.WriteData(headers, fs, nodeId, handle, offset, writeIovecs);
+        auto readDataResult = service.ReadData(
+            headers,
+            fs,
+            nodeId,
+            handle,
+            offset,
+            dataSize,
+            readIovecs);
+        UNIT_ASSERT_VALUES_EQUAL(writeIovecs, readIovecs);
     }
 
     Y_UNIT_TEST(TestAlignedZeroCopyWrite)
@@ -4327,13 +4357,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
                 ->Record.GetHandle();
 
-        std::vector<TString> data(64);
+        TVector<TString> data(64);
         service.AssertWriteDataFailed(headers, fs, nodeId, handle, 0, data);
     }
 
     Y_UNIT_TEST(ShouldUseIovecsForReadDataRequest)
     {
-        // TODO(#4664): add more comprehensive tests for zero-copy read
         TTestEnv env;
         env.CreateSubDomain("nfs");
 
@@ -4362,31 +4391,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         const auto& data = GenerateValidateData(256_KB);
         service.WriteData(headers, fs, nodeId, handle, 0, data);
 
-        TVector<std::array<char, 4_KB>> buffers(64);
-        TVector<std::span<char>> spans;
-        for (size_t i = 0; i < buffers.size(); ++i) {
-            spans.push_back(std::span<char>(buffers[i].data(), buffers[i].size()));
-        }
+        auto iovecs = CreateIovecs(64, 4_KB);
+        auto readDataResult =
+            service
+                .ReadData(headers, fs, nodeId, handle, 0, data.size(), iovecs);
 
-        auto readDataResult = service.ReadData(
-            headers,
-            fs,
-            nodeId,
-            handle,
-            0,
-            data.size(),
-            spans);
-
-        TString result;
-        for (const auto& buf: spans) {
-            result.append(buf.data(), buf.size());
-        }
-
-        UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetLength(), data.size());
-        UNIT_ASSERT_VALUES_EQUAL(result, data);
+        UNIT_ASSERT_VALUES_EQUAL(
+            readDataResult->Record.GetLength(),
+            data.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBufferFromIovecs(iovecs, data.size()),
+            data);
 
         // Passing less target data than requested size should fail
-        spans.pop_back();
+        iovecs.pop_back();
         service.AssertReadDataFailed(
             headers,
             fs,
@@ -4394,7 +4412,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             handle,
             0,
             data.size(),
-            spans);
+            iovecs);
     }
 
     Y_UNIT_TEST(ShouldHandleToggleServiceState)
