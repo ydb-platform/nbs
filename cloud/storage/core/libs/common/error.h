@@ -118,6 +118,7 @@ enum EWellKnownResultCodes: ui32
     E_IO_SILENT                  = MAKE_ERROR(13),  // A legacy code for input/output errors. Unlike E_IO, it does not increment the fatal error counter in monitoring
     E_RETRY_TIMEOUT              = MAKE_ERROR(14),  // The total time limit (24 hours) for executing the request has expired
     E_PRECONDITION_FAILED        = MAKE_ERROR(15),  // Transition to the requested state would violate object's preconditions (e.g. unexpected order of operations, write request in read-only state...). This error is not retryable
+    E_TRANSPORT_ERROR            = MAKE_ERROR(16),
 
     E_GRPC_CANCELLED             = MAKE_GRPC_ERROR(1),
     E_GRPC_UNKNOWN               = MAKE_GRPC_ERROR(2),

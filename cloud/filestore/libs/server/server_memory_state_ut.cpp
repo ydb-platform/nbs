@@ -164,7 +164,7 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
         const auto result = state.DestroyMmapRegion(999999);
 
         UNIT_ASSERT(HasError(result));
-        UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, result.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_TRANSPORT_ERROR, result.GetCode());
     }
 
     Y_UNIT_TEST(ShouldListMmapRegions)
@@ -223,8 +223,11 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
         UNIT_ASSERT_VALUES_EQUAL(mmapInfo.Size, result.GetResult().Size);
         UNIT_ASSERT_VALUES_EQUAL(mmapInfo.Id, result.GetResult().Id);
 
-        result = state.GetMmapRegion(999999);
+        result = state.GetMmapRegion(mmapInfo.Id + 1);
         UNIT_ASSERT(HasError(result));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_TRANSPORT_ERROR,
+            result.GetError().GetCode());
     }
 
     Y_UNIT_TEST(ShouldPingMmapRegion)
