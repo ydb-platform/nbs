@@ -35,7 +35,6 @@ ui32 InitPartitionRequest(
     const auto& partition = partitions[stripeInfo.PartitionId];
 
     request.ActorId = partition.GetTopActorId(),
-    request.TabletId = partition.TabletId;
     request.PartitionId = stripeInfo.PartitionId;
     request.BlockRange = stripeInfo.BlockRange;
 
@@ -106,7 +105,6 @@ bool ToPartitionRequestsSimple(
 
     for (ui32 i = 0; i < partitions.size(); ++i) {
         (*requests)[i].ActorId = partitions[i].GetTopActorId();
-        (*requests)[i].TabletId = partitions[i].TabletId;
         (*requests)[i].PartitionId = i;
         (*requests)[i].Event = std::make_unique<typename TMethod::TRequest>();
         (*requests)[i].Event->Record = ev->Get()->Record;
@@ -489,7 +487,6 @@ bool ToPartitionRequests<TEvVolume::TGetPartitionInfoMethod>(
     const auto partitionId = ev->Get()->Record.GetPartitionId();
     const auto& partition = partitions[partitionId];
     (*requests)[0].ActorId = partition.GetTopActorId();
-    (*requests)[0].TabletId = partition.TabletId;
     (*requests)[0].PartitionId = partitionId;
     (*requests)[0].Event = std::make_unique<TEvVolume::TEvGetPartitionInfoRequest>();
     (*requests)[0].Event->Record = std::move(ev->Get()->Record);
