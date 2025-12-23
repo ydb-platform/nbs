@@ -260,6 +260,9 @@ message TResizeFileStoreRequest
 
     // Turn on strict size enforcement mode for the whole filesystem.
     bool EnableStrictFileSystemSizeEnforcement = 8;
+
+    // Turn on directory creation in shards for the whole filesystem.
+    bool EnableDirectoryCreationInShards = 9;
 }
 
 message TResizeFileStoreResponse
