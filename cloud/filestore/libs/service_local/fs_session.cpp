@@ -113,7 +113,12 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         Config->GetSnapshotsDirRefreshInterval(),
        Logging);
 
-    session->Init(request.GetRestoreClientSession());
+    auto sessionError = session->TryInit(request.GetRestoreClientSession());
+    if (HasError(sessionError)) {
+        return TErrorResponse(
+            E_FAIL,
+            TStringBuilder() << FormatError(sessionError) << clientId.Quote());
+    }
     session->AddSubSession(sessionSeqNo, readOnly);
 
     SessionsList.push_front(session);
