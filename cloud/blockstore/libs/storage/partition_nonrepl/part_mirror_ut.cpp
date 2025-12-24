@@ -2490,9 +2490,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_STRING_CONTAINS(
-                response->Device.GetDeviceUUID(),
-                "vasya");
+            UNIT_ASSERT_STRING_CONTAINS(response->DeviceUUID, "vasya");
             UNIT_ASSERT_VALUES_EQUAL(
                 TBlockRange64::WithLength(1024, 8),
                 response->DeviceBlockRange);
