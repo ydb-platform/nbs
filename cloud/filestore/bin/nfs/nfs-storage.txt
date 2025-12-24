@@ -2,7 +2,7 @@ SchemeShardDir: "/Root/NFS"
 MultiTabletForwardingEnabled: true
 AllowFileStoreForceDestroy: true
 AutomaticShardCreationEnabled: true
-AutomaticallyCreatedShardSize: 1073741824
+StrictFileSystemSizeEnforcementEnabled: true
 ThreeStageWriteEnabled: true
 UnalignedThreeStageWriteEnabled: true
 DirectoryHandlesStorageEnabled: true

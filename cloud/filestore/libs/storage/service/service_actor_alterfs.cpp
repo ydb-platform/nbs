@@ -145,20 +145,11 @@ private:
         const TActorContext& ctx,
         const NProto::TError& error = {});
 
-    void ReportInvaildCookieAndDie(const TActorContext& ctx, ui64 cookie);
+    void ReportInvalidCookieAndDie(const TActorContext& ctx, ui64 cookie);
 
     const char* GetOperationString() const
     {
         return !Alter ? "resize" : "alter";
-    }
-
-    const TString& GetFileSytemIdByCookie(const ui64 cookie) const
-    {
-        if (cookie == MainFileStoreCookie) {
-            return FileSystemId;
-        } else {
-            return FileStoreConfig.ShardConfigs[cookie].GetFileSystemId();
-        }
     }
 
     bool IsCookieValid(const ui64 cookie) const
@@ -167,6 +158,18 @@ private:
                cookie < FileStoreConfig.ShardConfigs.size();
     }
 
+    TString GetFileSystemIdForLogByCookie(const ui64 cookie) const
+    {
+        if (!IsCookieValid(cookie)) {
+            return "UNKNOWN";
+        }
+
+        if (cookie == MainFileStoreCookie) {
+            return FileSystemId;
+        }
+
+        return FileStoreConfig.ShardConfigs[cookie].GetFileSystemId();
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -261,8 +264,7 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
             TFileStoreComponents::SERVICE,
             "[%s] Describing filestore %s (cookie: %lu) failed: %s",
             FileSystemId.c_str(),
-            isCookieValid ? GetFileSytemIdByCookie(ev->Cookie).Quote().c_str()
-                          : "\"UNKNOWN\"",
+            GetFileSystemIdForLogByCookie(ev->Cookie).Quote().c_str(),
             ev->Cookie,
             FormatError(msg->GetError()).c_str());
 
@@ -271,7 +273,7 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
     }
 
     if (!isCookieValid) {
-        ReportInvaildCookieAndDie(ctx, ev->Cookie);
+        ReportInvalidCookieAndDie(ctx, ev->Cookie);
         return;
     }
 
@@ -412,8 +414,7 @@ void TAlterFileStoreActor::HandleAlterFileStoreResponse(
             TFileStoreComponents::SERVICE,
             "[%s] Altering of filestore %s (cookie: %lu) failed: %s",
             FileSystemId.c_str(),
-            isCookieValid ? GetFileSytemIdByCookie(ev->Cookie).Quote().c_str()
-                          : "\"UNKNOWN\"",
+            GetFileSystemIdForLogByCookie(ev->Cookie).Quote().c_str(),
             ev->Cookie,
             FormatError(msg->GetError()).Quote().c_str());
 
@@ -422,7 +423,7 @@ void TAlterFileStoreActor::HandleAlterFileStoreResponse(
     }
 
     if (!isCookieValid) {
-        ReportInvaildCookieAndDie(ctx, ev->Cookie);
+        ReportInvalidCookieAndDie(ctx, ev->Cookie);
         return;
     }
 
@@ -630,15 +631,13 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
 {
     const auto* msg = ev->Get();
 
-    const bool isCookieValid = ev->Cookie < FileStoreConfig.ShardConfigs.size();
     if (HasError(msg->GetError())) {
         LOG_ERROR(
             ctx,
             TFileStoreComponents::SERVICE,
             "[%s] Shard %s (cookie: %lu) creation failed: %s",
             FileSystemId.c_str(),
-            isCookieValid ? GetFileSytemIdByCookie(ev->Cookie).Quote().c_str()
-                          : "\"UNKNOWN\"",
+            GetFileSystemIdForLogByCookie(ev->Cookie).Quote().c_str(),
             ev->Cookie,
             FormatError(msg->GetError()).Quote().c_str());
 
@@ -716,8 +715,7 @@ void TAlterFileStoreActor::HandleConfigureShardResponse(
             TFileStoreComponents::SERVICE,
             "[%s] Shard %s (cookie: %lu) configuration failed: %s",
             FileSystemId.c_str(),
-            isCookieValid ? GetFileSytemIdByCookie(ev->Cookie).Quote().c_str()
-                          : "\"UNKNOWN\"",
+            GetFileSystemIdForLogByCookie(ev->Cookie).Quote().c_str(),
             ev->Cookie,
             FormatError(msg->GetError()).Quote().c_str());
 
@@ -726,7 +724,7 @@ void TAlterFileStoreActor::HandleConfigureShardResponse(
     }
 
     if (!isCookieValid) {
-        ReportInvaildCookieAndDie(ctx, ev->Cookie);
+        ReportInvalidCookieAndDie(ctx, ev->Cookie);
         return;
     }
 
@@ -896,13 +894,13 @@ void TAlterFileStoreActor::ReplyAndDie(
     Die(ctx);
 }
 
-void TAlterFileStoreActor::ReportInvaildCookieAndDie(const TActorContext& ctx, ui64 cookie)
+void TAlterFileStoreActor::ReportInvalidCookieAndDie(const TActorContext& ctx, ui64 cookie)
 {
     ReplyAndDie(
         ctx,
         MakeError(
             E_INVALID_STATE,
-            TStringBuilder() << "invalid coockie: " << cookie));
+            TStringBuilder() << "invalid cookie: " << cookie));
 }
 
 STFUNC(TAlterFileStoreActor::AlterStateWork)
