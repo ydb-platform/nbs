@@ -715,7 +715,7 @@ def test_forced_compaction():
     return ret
 
 
-def test_profile_log_io_requests():
+def test_io_telemetry():
     client, results_path = __init_test()
 
     small_data_file = os.path.join(common.output_path(), "small_data.txt")
@@ -774,11 +774,14 @@ def test_profile_log_io_requests():
 
     client.destroy(fs_id)
 
+    #
     # Sleep for a while to ensure that the profile log is flushed
     # before we start analyzing it
     # The default value of ProfileLogTimeThreshold for tests is 100ms
     # TODO(#568) - here and in other similar places - introduce and use a
     # private api method which would force profile-log flush
+    #
+
     time.sleep(2)
 
     profile_tool_bin_path = common.binary_path(
@@ -787,6 +790,40 @@ def test_profile_log_io_requests():
     profile_log_events = profile.get_profile_log_events(
         profile_tool_bin_path, common.output_path("nfs-profile.log"), fs_id
     )
+
+    #
+    # Profile log is flushed => tracks should be flushed as well, their dump
+    # interval is the same.
+    #
+
+    probes = {
+        "ReadData": 0,
+        "DescribeData": 0,
+        "ReadBlobs": 0,
+        "WriteData": 0,
+        "GenerateBlobIds": 0,
+        "WriteBlobs": 0,
+        "AddData": 0,
+    }
+
+    with open(common.output_path("filestore-server.err")) as err:
+        for line in err.readlines():
+            parts = line.rstrip().split(" ", maxsplit=4)
+            component = parts[1]
+            message = parts[3]
+            if component == ":NFS_TRACE":
+                track = json.loads(message)
+                for probe in track:
+                    if len(probe) < 3:
+                        continue
+
+                    probe_name = probe[2]
+                    if probe_name in probes:
+                        probes[probe_name] += 1
+
+    #
+    # Printing profile events and probe info into our canonical results file.
+    #
 
     with open(results_path, "w") as results_file:
         results_file.write(out)
@@ -803,6 +840,9 @@ def test_profile_log_io_requests():
         lines.sort()
         for line in lines:
             results_file.write(line)
+
+        probe_list = sorted(probes.items())
+        results_file.write("%s\n" % probe_list)
 
     ret = common.canonical_file(results_path, local=True)
     return ret

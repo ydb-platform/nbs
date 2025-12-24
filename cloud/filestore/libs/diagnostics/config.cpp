@@ -22,6 +22,7 @@ namespace {
     xxx(TracesSyslogIdentifier,     TString,    ""                            )\
                                                                                \
     xxx(ProfileLogTimeThreshold,    TDuration,  TDuration::Seconds(15)        )\
+    xxx(DumpTracksInterval,         TDuration,  NCloud::DumpTracksInterval    )\
     xxx(LWTraceShuttleCount,        ui32,       2000                          )\
                                                                                \
     xxx(CpuWaitServiceName,         TString,    ""                            )\

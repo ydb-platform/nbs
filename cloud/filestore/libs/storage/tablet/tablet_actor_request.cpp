@@ -30,17 +30,6 @@ TSession* TIndexTabletActor::AcceptRequest(
         TraceSerializer->HandleTraceRequest(
             request.GetHeaders().GetInternal().GetTrace(),
             msg->CallContext->LWOrbit);
-        LOG_WARN(ctx, TFileStoreComponents::TABLET,
-            "%s request %s inited cycles %lu",
-            LogTag.c_str(),
-            TMethod::Name,
-            msg->CallContext->GetRequestStartedCycles());
-    } else {
-        LOG_WARN(ctx, TFileStoreComponents::TABLET,
-            "%s request %s started cycles %lu",
-            LogTag.c_str(),
-            TMethod::Name,
-            msg->CallContext->GetRequestStartedCycles());
     }
 
     Metrics.BusyIdleCalc.OnRequestStarted();
