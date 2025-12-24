@@ -381,7 +381,8 @@ void TBootstrapCommon::InitLWTrace(
     if (traceReaders.size()) {
         TTraceProcessorConfig traceProcessorConfig;
         traceProcessorConfig.ComponentName = "NFS_TRACE";
-        traceProcessorConfig.DumpTracksInterval = Configs->DiagnosticsConfig->GetDumpTracksInterval();
+        traceProcessorConfig.DumpTracksInterval =
+            Configs->DiagnosticsConfig->GetDumpTracksInterval();
         TraceProcessor = CreateTraceProcessorMon(
             Monitoring,
             CreateTraceProcessor(

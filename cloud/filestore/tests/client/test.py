@@ -841,7 +841,7 @@ def test_io_telemetry():
         for line in lines:
             results_file.write(line)
 
-        probe_list = sorted(probes.items())
+        probe_list = sorted([(k, v > 0) for k, v in probes.items()])
         results_file.write("%s\n" % probe_list)
 
     ret = common.canonical_file(results_path, local=True)

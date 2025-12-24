@@ -58,4 +58,4 @@ WriteData	{'node_id': '2', 'offset': '0', 'bytes': '9', 'checksums': '2901820631
 WriteData	{'node_id': '3', 'offset': '0', 'bytes': '16384', 'checksums': '650595490 1275610441 2531880895 2576766623'}
 WriteData	{'node_id': '3', 'offset': '16384', 'bytes': '16384', 'checksums': '1131904105 699954562 4082720628 927336386'}
 WriteData	{'node_id': '3', 'offset': '32768', 'bytes': '16384', 'checksums': '3987156276 2271749343 1569263145 1391867657'}
-[('AddData', 17), ('DescribeData', 5), ('GenerateBlobIds', 5), ('ReadBlobs', 1), ('ReadData', 110), ('WriteBlobs', 1), ('WriteData', 104)]
+[('AddData', True), ('DescribeData', True), ('GenerateBlobIds', True), ('ReadBlobs', True), ('ReadData', True), ('WriteBlobs', True), ('WriteData', True)]
