@@ -1,6 +1,8 @@
 #include "unaligned_test_scenario.h"
 
-#include "config.h"
+#include "test_scenario_base.h"
+
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -19,14 +21,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui64 DefaultMinReadByteCount = 4_KB;
-constexpr ui64 DefaultMaxReadByteCount = 1_MB;
-
-constexpr ui64 DefaultMinWriteByteCount = 4_KB;
-constexpr ui64 DefaultMaxWriteByteCount = 1_MB;
-
-constexpr ui64 DefaultMinRegionByteCount = 3_MB;
-constexpr ui64 DefaultMaxRegionByteCount = 10_MB;
+constexpr TTestScenarioBaseConfig BaseConfig = {
+    .DefaultMinReadByteCount = 4_KB,
+    .DefaultMaxReadByteCount = 1_MB,
+    .DefaultMinWriteByteCount = 4_KB,
+    .DefaultMaxWriteByteCount = 1_MB,
+    .DefaultMinRegionByteCount = 3_MB,
+    .DefaultMaxRegionByteCount = 10_MB,
+};
 
 constexpr size_t RegionBlockByteCount = 1_KB;
 
@@ -203,38 +205,21 @@ ui64 AlignUp(ui64 value, ui64 alignment)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TUnalignedTestScenario: public ITestScenario
+class TUnalignedTestScenario: public TTestScenarioBase
 {
 private:
     class TTestWorker;
 
     using IService = NTesting::ITestExecutorIOService;
 
-    IConfigHolderPtr ConfigHolder;
-    TLog Log;
     TMutex Lock;
-    TVector<std::unique_ptr<ITestScenarioWorker>> Workers;
     TVector<TRegionMetadata> RegionMetadata;
     // Workers are not allowed to concurrently write to the same region.
     // When a worker starts writing to a region, it sets the corresponding flag
     // to true. When the write is complete, the flag is reset to false.
     TVector<bool> RegionLockedForWriteFlags;
     std::atomic<ui64> NextSeqNum = 0;
-    // If set, the workers alternate between two phases:
-    // - 1: WriteProbabilityPercentage = |WriteProbabilityPercentage|
-    // - 2: WriteProbabilityPercentage = 100 - |WriteProbabilityPercentage|
-    // The duration of each phase is |PhaseDuration| seconds
-    std::optional<double> PhaseDuration;
-    ui32 WriteProbabilityPercent = 0;
     ui64 FileSize = 0;
-    const TInstant TestStartTime;
-
-    ui64 MinReadByteCount = DefaultMinReadByteCount;
-    ui64 MaxReadByteCount = DefaultMaxReadByteCount;
-    ui64 MinWriteByteCount = DefaultMinWriteByteCount;
-    ui64 MaxWriteByteCount = DefaultMaxWriteByteCount;
-    ui64 MinRegionByteCount = DefaultMinRegionByteCount;
-    ui64 MaxRegionByteCount = DefaultMaxRegionByteCount;
 
     std::atomic<ui64> ValidationOffset = 0;
     std::atomic<ui64> ValidatedByteCount = 0;
@@ -243,23 +228,12 @@ private:
 public:
     TUnalignedTestScenario(IConfigHolderPtr configHolder, const TLog& log);
 
-    ui32 GetWorkerCount() const override
-    {
-        return static_cast<ui32>(Workers.size());
-    }
-
-    ITestScenarioWorker& GetWorker(ui32 index) const override
-    {
-        return *Workers[index];
-    }
-
 private:
     ui64 GetNextRegionByteCount(ui64 remainingFileSize) const;
     bool GenerateRegionMetadata();
     bool ValidateRegionMetadata() const;
     bool Init(TFileHandle& file) override;
     bool InitialValidationInProgress() const;
-    ui32 GetWriteProbabilityPercent(double secondsSinceTestStart) const;
 
     void Read(IService& service, TVector<char>& readBuffer);
     void Read(
@@ -393,26 +367,12 @@ public:
 TUnalignedTestScenario::TUnalignedTestScenario(
         IConfigHolderPtr configHolder,
         const TLog& log)
-    : ConfigHolder(std::move(configHolder))
-    , Log(log)
-    , TestStartTime(Now())
+    : TTestScenarioBase(BaseConfig, std::move(configHolder), log)
 {
     auto& config = ConfigHolder->GetConfig();
     for (ui32 i = 0; i < config.GetIoDepth(); ++i) {
-        Workers.push_back(std::make_unique<TTestWorker>(this, log));
+        AddWorker(std::make_unique<TTestWorker>(this, log));
     }
-
-    if (config.HasAlternatingPhase()) {
-        PhaseDuration =
-            TDuration::Parse(config.GetAlternatingPhase()).SecondsFloat();
-    }
-
-    WriteProbabilityPercent = config.GetWriteRate();
-
-    auto& fileTestConfig = *config.MutableUnalignedTest();
-    INIT_CONFIG_PARAMS_HELPER(fileTestConfig, ReadByteCount);
-    INIT_CONFIG_PARAMS_HELPER(fileTestConfig, WriteByteCount);
-    INIT_CONFIG_PARAMS_HELPER(fileTestConfig, RegionByteCount);
 }
 
 #undef INIT_CONFIG_PARAMS_HELPER
@@ -589,17 +549,6 @@ bool TUnalignedTestScenario::Init(TFileHandle& file)
 bool TUnalignedTestScenario::InitialValidationInProgress() const
 {
     return ShouldValidate && ValidatedByteCount.load() < FileSize;
-}
-
-ui32 TUnalignedTestScenario::GetWriteProbabilityPercent(
-    double secondsSinceTestStart) const
-{
-    if (PhaseDuration) {
-        auto iter = secondsSinceTestStart / PhaseDuration.value();
-        return static_cast<ui64>(iter) % 2 == 1 ? 100 - WriteProbabilityPercent
-                                                : WriteProbabilityPercent;
-    }
-    return WriteProbabilityPercent;
 }
 
 void TUnalignedTestScenario::Read(

@@ -5,6 +5,7 @@
 #include <library/cpp/logger/log.h>
 
 #include <util/generic/string.h>
+#include <util/generic/vector.h>
 #include <util/system/file.h>
 #include <util/system/types.h>
 
@@ -114,12 +115,19 @@ enum class ETestExecutorFileService
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestExecutorSettings
+struct TTestExecutorScenarioSettings
 {
     ITestScenarioPtr TestScenario;
-    ETestExecutorFileService FileService;
     TString FilePath;
     ui64 FileSize = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestExecutorSettings
+{
+    TVector<TTestExecutorScenarioSettings> TestScenarios;
+    ETestExecutorFileService FileService;
     TLog Log;
     bool RunInCallbacks = false;
     bool NoDirect = false;

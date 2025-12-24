@@ -30,7 +30,9 @@ enum class EIoEngine
 enum class EScenario
 {
     Aligned,
-    Unaligned
+    Unaligned,
+    Sequential,
+    Random
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -47,6 +49,7 @@ struct TOptions
 
     TMaybe<TString> FilePath;
     TMaybe<ui64> FileSize;
+    ui32 TestCount = 0;
 
     TMaybe<TString> RestorePath;
 
