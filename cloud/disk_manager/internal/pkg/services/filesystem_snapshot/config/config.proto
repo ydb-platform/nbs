@@ -7,4 +7,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 
 message FilesystemSnapshotsConfig {
     optional string StorageFolder = 1 [default = "filesystem_snapshots"];
+    optional string DeletedExpirationTimeout = 2 [default = "30m"];
+    optional string ClearDeletedTaskScheduleInterval = 3 [default = "1m"];
+    optional uint32 ClearDeletedLimit = 4 [default = 1000];
 }
