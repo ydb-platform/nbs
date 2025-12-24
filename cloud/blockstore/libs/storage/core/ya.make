@@ -43,6 +43,7 @@ PEERDIR(
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/service
     cloud/blockstore/libs/storage/api
+    cloud/blockstore/libs/storage/core/resources
     cloud/blockstore/libs/storage/model
     cloud/blockstore/libs/storage/protos
     cloud/blockstore/libs/storage/volume/model

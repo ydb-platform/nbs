@@ -119,7 +119,7 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(DiskRegistryCouldNotAddOutdatedLaggingDevice)                          \
     xxx(DiskRegistryReplicaTableReplaceError)                                  \
     xxx(ResyncUnexpectedWriteOrZeroCounter)                                    \
-    xxx(MonitoringSvgTemplatesNotFound)                                        \
+    xxx(MonitoringResourceNotFound)                                            \
     xxx(DiskRegistryUnexpectedAffectedDisks)                                   \
     xxx(ReadBlockCountMismatch)                                                \
     xxx(CancelRoutineIsNotSet)                                                 \

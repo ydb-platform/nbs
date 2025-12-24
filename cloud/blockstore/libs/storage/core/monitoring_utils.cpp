@@ -3,6 +3,7 @@
 #include "config.h"
 #include "probes.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/hostname.h>
 
 #include <cloud/storage/core/libs/common/format.h>
@@ -12,6 +13,7 @@
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/openssl/crypto/sha.h>
 #include <library/cpp/protobuf/util/pb_io.h>
+#include <library/cpp/resource/resource.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/string.h>
@@ -36,6 +38,28 @@ namespace {
 using namespace NMonitoringUtils;
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void AddScript(IOutputStream& out, const TStringBuf resourceName)
+{
+    if (!NResource::Has(resourceName)) {
+        ReportMonitoringResourceNotFound({{"resource", resourceName}});
+        return;
+    }
+    out << "<script type='text/javascript'>\n";
+    out << NResource::Find(resourceName);
+    out << "</script>\n";
+}
+
+void AddStyle(IOutputStream& out, const TStringBuf resourceName)
+{
+    if (!NResource::Has(resourceName)) {
+        ReportMonitoringResourceNotFound({{"resource", resourceName}});
+        return;
+    }
+    out << "<style>\n";
+    out << NResource::Find(resourceName);
+    out << "</style>\n";
+}
 
 TStringBuf AlertClassFromLevel(EAlertLevel alertLevel)
 {
@@ -197,62 +221,12 @@ void BuildTabletNotifyPageWithRedirect(
 
 void GenerateBlobviewJS(IOutputStream& out)
 {
-    out << R"___(
-        <script type='text/javascript'>
-        $(function () {
-            $('.view').each(function () {
-               $('#actions', this).hide();
-               $(this).on('mouseleave', function () { $('#actions', this).hide()});
-               $(this).on('mouseenter', function () { $('#actions', this).show()});
-            })
-        })
-        </script>
-    )___";
+    AddScript(out, "monitoring_utils/blobview.js");
 }
 
 void GenerateActionsJS(IOutputStream& out)
 {
-    out << R"___(
-        <script type='text/javascript'>
-        function addGarbage() {
-            document.forms['AddGarbage'].submit();
-        }
-        function collectGarbage() {
-            document.forms['CollectGarbage'].submit();
-        }
-        function setBarriers() {
-            document.forms['SetHardBarriers'].submit();
-        }
-        function reassignChannels(hiveId, tabletId) {
-            var url = 'app?TabletID=' + hiveId;
-            url += '&page=ReassignTablet';
-            url += '&tablet=' + tabletId;
-            $.ajax({url: url});
-        }
-        function reassignChannel(hiveId, tabletId, channel) {
-            var url = 'app?TabletID=' + hiveId;
-            url += '&page=ReassignTablet';
-            url += '&tablet=' + tabletId;
-            url += '&channel=' + channel;
-            $.ajax({url: url});
-        }
-        function forceCompactionAll() {
-            document.forms['ForceCompaction'].submit();
-        }
-        function forceCompaction(blockIndex) {
-            document.forms['ForceCompaction_' + blockIndex].submit();
-        }
-        function forceCleanupAll() {
-            document.forms['ForceCleanup'].submit();
-        }
-        function rebuildMetadata(rangesPerBatch) {
-            document.forms['RebuildMetadata_' + rangesPerBatch].submit();
-        }
-        function scanDisk(blobsPerBatch) {
-            document.forms['ScanDisk_' + blobsPerBatch].submit();
-        }
-        </script>
-    )___";
+    AddScript(out, "monitoring_utils/actions.js");
 }
 
 void BuildCreateCheckpointButton(IOutputStream& out, ui64 tabletId)
@@ -341,18 +315,7 @@ void BuildPartitionTabs(IOutputStream& out)
 
 void GeneratePartitionTabsJs(IOutputStream& out)
 {
-    out << "<script>"
-        << "$('#Tabs a').click(function(e) {"
-        << "  e.preventDefault();"
-        << "  $(this).tab('show');"
-        << "});"
-        << "$('ul.nav-tabs > li > a').on('shown.bs.tab', function(e) {"
-        << "  var id = $(e.target).attr('href').substr(1);"
-        << "  window.location.hash = id;"
-        << "});"
-        << "var hash = window.location.hash;"
-        << "$('#Tabs a[href=\"' + hash + '\"]').tab('show');"
-        << "</script>";
+    AddScript(out, "monitoring_utils/partition_tabs.js");
 }
 
 void BuildAddGarbageButton(IOutputStream& out, ui64 tabletId)
@@ -1154,63 +1117,7 @@ void DumpTabletNotReady(IOutputStream& out)
 
 void AddLatencyCSS(IOutputStream& out)
 {
-    const TString style = R"(
-        <style>
-            .table-latency {
-                width: 100%;
-                border-collapse: collapse;
-                padding: 0;
-            }
-            .table-latency th,
-            .table-latency td {
-                padding: 0 8px 0 8px;
-                border: 1px solid black;
-            }
-            .table-latency th {
-                font-weight: bold;
-                text-align: center;
-            }
-            .table-latency td {
-                padding: 0 8px 0 8px;
-                border-top: none;
-                border-bottom: none;
-            }
-            .table-latency tr:last-child {
-                border-bottom: 1px solid black;
-            }
-
-            .tooltip-latency {
-                position: relative;
-                display: inline-block;
-            }
-            .tooltip-latency .tooltiptext-latency {
-                visibility: hidden;
-                width: 120px;
-                background-color: black;
-                color: #fff;
-                text-align: center;
-                border-radius: 6px;
-                padding: 5px 0;
-                position: absolute;
-                z-index: 1;
-            }
-            .tooltip-latency:hover .tooltiptext-latency {
-                visibility: visible;
-            }
-
-            .latency-item {
-                display: flex;
-                width: 100%;
-            }
-            .latency-item > div {
-                flex: 1 1 0;
-                text-align: right;
-            }
-        </style>
-        )";
-    HTML (out) {
-        out << style;
-    }
+    AddStyle(out, "monitoring_utils/transactions_latency.css");
 }
 
 void DumpLatency(
@@ -1223,6 +1130,7 @@ void DumpLatency(
     const TString toggleId = "transactions-auto-refresh-toggle";
 
     HTML (out) {
+        AddScript(out, "monitoring_utils/transactions_latency.js");
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
 
         RenderStyledPostButton(
@@ -1242,20 +1150,6 @@ void DumpLatency(
             DumpLatencyForTransactions(out, columnCount, transactionTimeTracker);
             TAG (TH3) { out << "Groups"; }
         }
-
-        out << R"(<script>
-            function updateTransactionsData(result, container) {
-                if (!result.stat) {
-                    return;
-                }
-                for (let key in result.stat) {
-                    const element = container.querySelector('#' + key);
-                    if (element) {
-                        element.textContent = result.stat[key];
-                    }
-                }
-            }
-        </script>)";
 
         RenderAutoRefreshScript(
             out,
@@ -1448,62 +1342,6 @@ void RenderAutoRefreshScript(
 </script>)";
 }
 
-void AddGroupLatencyCSS(IOutputStream& out)
-{
-    out << "<style>"
-        << R"(
-        #latency-table-Read th,
-        #latency-table-Write th,
-        #latency-table-Patch th {
-            position: relative;
-            width: 30px;
-            height: 70px;
-            padding: 0 5px;
-            vertical-align: bottom;
-            border: 1px solid #ccc;
-            white-space: nowrap;
-            overflow: visible;
-            text-align: center;
-        }
-        #latency-table-Read th > div,
-        #latency-table-Write th > div,
-        #latency-table-Patch th > div {
-            position: absolute;
-            bottom: 35px;
-            left: 60%;
-            transform: translateX(-50%) rotate(-90deg);
-            transform-origin: bottom center;
-            white-space: nowrap;
-            padding: 0 5px;
-            font-size: 12px;
-            max-width: 160px;
-            word-wrap: break-word;
-        }
-        #latency-table-Read,
-        #latency-table-Write,
-        #latency-table-Patch{
-            border-collapse: collapse;
-            margin-bottom: 20px;
-            width: max-content;
-        }
-        #latency-table-Read td,
-        #latency-table-Write td,
-        #latency-table-Patch td {
-            border: 1px solid #ccc;
-            padding: 5px;
-            text-align: center;
-            white-space: nowrap;
-            vertical-align: middle;
-        }
-        #latency-table-Read td:first-child,
-        #latency-table-Write td:first-child,
-        #latency-table-Patch td:first-child {
-            text-align: left;
-            font-weight: bold;
-        })"
-        << "</style>";
-}
-
 void DumpLatencyForOperations(
     IOutputStream& out,
     const TBSGroupOperationTimeTracker& tracker)
@@ -1551,7 +1389,8 @@ void DumpGroupLatencyTab(
     const TString toggleId = "group-latency-auto-refresh-toggle";
 
     HTML (out) {
-        AddGroupLatencyCSS(out);
+        AddStyle(out, "monitoring_utils/group_latency.css");
+        AddScript(out, "monitoring_utils/group_latency.js");
 
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
 
@@ -1571,101 +1410,6 @@ void DumpGroupLatencyTab(
 
         DumpLatencyForOperations(out, tracker);
 
-        out << R"(
-            <script>
-            function parseKey(key) {
-                const parts = key.split('_');
-                if (parts.length < 4) {
-                    return null;
-                }
-                return {
-                    op: parts[0],
-                    groupId: parts[1],
-                    status: parts[2],
-                    latencyBucket: parts.slice(3).join('_')
-                };
-            }
-
-            function updateGroupLatencyTable(result, container) {
-                if (!result || !result.stat) {
-                    return;
-                }
-
-                const finished = { Read: {}, Write: {}, Patch: {} };
-                const inflight = { Read: {}, Write: {}, Patch: {} };
-
-                for (const key in result.stat) {
-                    const info = parseKey(key);
-                    if (!info) {
-                        continue;
-                    }
-                    if (!(info.op in finished)) {
-                        continue;
-                    }
-
-                    const target = info.status === "finished" ? finished : (info.status === "inflight" ? inflight : null);
-                    if (!target) {
-                        continue;
-                    }
-
-                    if (!target[info.op][info.groupId]) {
-                        target[info.op][info.groupId] = {};
-                    }
-                    target[info.op][info.groupId][info.latencyBucket] = result.stat[key];
-                }
-
-                ['Read', 'Write', 'Patch'].forEach(op => {
-                    const tbody = document.querySelector('#latency-table-' + op + ' tbody');
-                    if (!tbody) {
-                        return;
-                    }
-
-                    const groups = new Set([...Object.keys(finished[op] || {}), ...Object.keys(inflight[op] || {})]);
-
-                    groups.forEach(groupId => {
-                        let tr = tbody.querySelector('tr[data-group="' + groupId + '"]');
-                        if (!tr) {
-                            tr = document.createElement('tr');
-                            tr.setAttribute('data-group', groupId);
-
-                            const tdGroup = document.createElement('td');
-                            tdGroup.textContent = groupId;
-                            tr.appendChild(tdGroup);
-
-                            const colsCount = document.querySelectorAll('#latency-table-' + op + ' thead th').length - 1;
-                            for (let i = 0; i < colsCount; ++i) {
-                                const td = document.createElement('td');
-                                tr.appendChild(td);
-                            }
-                            tbody.appendChild(tr);
-                        }
-
-                        const headers = document.querySelectorAll('#latency-table-' + op + ' thead th');
-                        for (let i = 1; i < headers.length; i++) {
-                            const bucketKey = headers[i].getAttribute('data-bucket-key');
-                            const td = tr.children[i];
-
-                            const finVal = (finished[op][groupId] && finished[op][groupId][bucketKey]) ? finished[op][groupId][bucketKey] : "";
-                            const inflightVal = (inflight[op][groupId] && inflight[op][groupId][bucketKey]) ? inflight[op][groupId][bucketKey] : "0";
-
-                            td.textContent = "";
-
-                            const spanFinished = document.createElement("span");
-                            spanFinished.textContent = finVal;
-                            td.appendChild(spanFinished);
-
-                            if (inflightVal && inflightVal !== "0") {
-                                td.appendChild(document.createTextNode(" "));
-                                const spanInflight = document.createElement("span");
-                                spanInflight.textContent = inflightVal;
-                                td.appendChild(spanInflight);
-                            }
-                        }
-                    });
-                });
-            }
-            </script>
-        )";
 
         RenderAutoRefreshScript(
             out,
@@ -1973,52 +1717,7 @@ void RenderStyledPostButton(
         << "</button>";
 }
 
-void AddDeviceOperationLatencyCSS(IOutputStream& out)
-{
-    out << "<style>"
-        << R"(
-        .table-latency {
-            border-collapse: collapse;
-            table-layout: auto;
-        }
 
-        .table-latency td:not(:first-child):not(:nth-child(2)) {
-            white-space: nowrap;
-            text-align: right;
-            padding: 5px;
-        }
-
-        .table-latency th:not(:first-child):not(:nth-child(2)) {
-            min-width: 35px;
-        }
-
-        .table-latency th {
-            padding: 5px 2px;
-            text-align: center;
-            vertical-align: bottom;
-            position: relative;
-        }
-
-        .table-latency th:first-child,
-        .table-latency th:nth-child(2) {
-            width: auto;
-            padding: 6px 8px;
-            vertical-align: middle;
-        }
-
-        .rotated-header {
-            transform: rotate(-90deg);
-            transform-origin: left top 0;
-            position: absolute;
-            bottom: -35px;
-            left: 50%;
-            white-space: nowrap;
-            font-size: 14px;
-            padding: 5px 0;
-            margin-left: -10px;
-        })"
-        << "</style>";
-}
 
 void RenderDeviceOperationLatencyCell(
     IOutputStream& out,
@@ -2103,7 +1802,8 @@ void DumpDeviceOperationLatency(
     const TString toggleId = "device-operations-auto-refresh-toggle";
 
     HTML (out) {
-        AddDeviceOperationLatencyCSS(out);
+        AddStyle(out, "monitoring_utils/device_operation_latency.css");
+        AddScript(out, "monitoring_utils/device_operation_latency.js");
 
         RenderAutoRefreshToggle(
             out,
@@ -2142,48 +1842,6 @@ void DumpDeviceOperationLatency(
                 deviceTracker,
                 TDeviceOperationTracker::ERequestType::Checksum);
         }
-
-        out << R"(<script>
-            function updateDeviceOperationsData(result, container) {
-                if (!result.stat) return;
-
-                container.querySelectorAll('[id*="_"]').forEach(cell => {
-                    cell.textContent = '';
-                });
-
-                const data = {};
-                for (const [fullKey, value] of Object.entries(result.stat)) {
-                    const parts = fullKey.split('_');
-                    const op = parts[0];
-                    const agent = parts[1];
-                    const type = parts[2];
-                    const bucket = parts[3];
-                    const key = `${op}_${agent}_${bucket}`;
-
-                    if (!data[key])
-                       data[key] = {};
-                    data[key][type] = value;
-                }
-
-                for (const [key, values] of Object.entries(data)) {
-                    const cell = container.querySelector('#' + key);
-                    if (!cell) continue;
-
-                    const finished = values.finished || '0';
-                    const inflight = values.inflight || '0';
-
-                    if (finished !== '0' && inflight !== '0') {
-                        cell.textContent = finished + ' ' + inflight;
-                    }
-                    else if (finished !== '0') {
-                        cell.textContent = finished;
-                    }
-                    else if (inflight !== '0') {
-                        cell.textContent = inflight;
-                    }
-                }
-            }
-        </script>)";
 
         RenderAutoRefreshScript(
             out,
