@@ -274,7 +274,8 @@ struct TEvNonreplPartitionPrivate
 
     struct TGetDeviceForRangeResponse
     {
-        NProto::TDeviceConfig Device;
+        ui32 NodeId = 0;
+        TString DeviceUUID;
         TBlockRange64 DeviceBlockRange;
         TDuration RequestTimeout;
         TNonreplicatedPartitionConfigPtr PartConfig;

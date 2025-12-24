@@ -1953,7 +1953,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_VALUES_EQUAL("vasya", response->Device.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("vasya", response->DeviceUUID);
             UNIT_ASSERT_VALUES_EQUAL(
                 TBlockRange64::WithLength(2040, 8),
                 response->DeviceBlockRange);
@@ -1970,7 +1970,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_VALUES_EQUAL("petya", response->Device.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("petya", response->DeviceUUID);
             UNIT_ASSERT_VALUES_EQUAL(
                 TBlockRange64::WithLength(0, 8),
                 response->DeviceBlockRange);

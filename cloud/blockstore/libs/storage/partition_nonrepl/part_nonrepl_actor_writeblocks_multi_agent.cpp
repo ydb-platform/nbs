@@ -1,7 +1,6 @@
 #include "part_nonrepl_actor.h"
 
 #include "part_nonrepl_actor_base_request.h"
-#include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/common/request_checksum_helpers.h>
@@ -107,8 +106,8 @@ void TDiskAgentMultiWriteActor::SendRequest(const TActorContext& ctx)
 
     for (const auto& deviceInfo: Request.DevicesAndRanges) {
         auto* replicationTarget = request->Record.AddReplicationTargets();
-        replicationTarget->SetNodeId(deviceInfo.Device.GetNodeId());
-        replicationTarget->SetDeviceUUID(deviceInfo.Device.GetDeviceUUID());
+        replicationTarget->SetNodeId(deviceInfo.NodeId);
+        replicationTarget->SetDeviceUUID(deviceInfo.DeviceUUID);
         replicationTarget->SetStartIndex(deviceInfo.DeviceBlockRange.Start);
         replicationTarget->SetTimeout(deviceInfo.RequestTimeout.MilliSeconds());
     }
@@ -138,12 +137,12 @@ void TDiskAgentMultiWriteActor::SendRequest(const TActorContext& ctx)
 
     OnRequestStarted(
         ctx,
-        Request.DevicesAndRanges[0].Device.GetDeviceUUID(),
+        Request.DevicesAndRanges[0].DeviceUUID,
         TDeviceOperationTracker::ERequestType::Write,
         0);
 
     auto event = std::make_unique<NActors::IEventHandle>(
-        MakeDiskAgentServiceId(Request.DevicesAndRanges[0].Device.GetNodeId()),
+        MakeDiskAgentServiceId(Request.DevicesAndRanges[0].NodeId),
         ctx.SelfID,
         request.release(),
         NActors::IEventHandle::FlagForwardOnNondelivery,
@@ -184,10 +183,11 @@ void TDiskAgentMultiWriteActor::HandleWriteDeviceBlocksUndelivery(
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "%s MultiAgentWriteBlocks request #%lu undelivered. Device: %s",
+        "%s MultiAgentWriteBlocks request #%lu undelivered. Device: %s@%u",
         LogTitle.GetWithTime().c_str(),
         GetRequestId(Request),
-        LogDevice(Request.DevicesAndRanges[0].Device).c_str());
+        Request.DevicesAndRanges[0].DeviceUUID.c_str(),
+        Request.DevicesAndRanges[0].NodeId);
 
     // Ignore undelivered event. Wait for TEvWakeup.
 }
