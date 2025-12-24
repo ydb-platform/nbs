@@ -299,7 +299,7 @@ private:
         const TEvIndexTablet::TEvGenerateBlobIdsResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        const auto* msg = ev->Get();
+        auto* msg = ev->Get();
         const auto& error = msg->GetError();
 
         TABLET_VERIFY(InFlightRequest);
@@ -308,7 +308,12 @@ private:
         FinalizeProfileLogRequestInfo(
             InFlightRequest->ProfileLogRequest,
             msg->Record);
-        HandleTraceInfo(TraceSerializer, RequestInfo->CallContext, msg->Record);
+        HandleServiceTraceInfo(
+            "GenerateBlobIds",
+            ctx,
+            TraceSerializer,
+            RequestInfo->CallContext,
+            msg->Record);
 
         if (HasError(error)) {
             if (error.GetCode() != E_FS_THROTTLED) {
@@ -593,7 +598,12 @@ private:
         FinalizeProfileLogRequestInfo(
             InFlightRequest->ProfileLogRequest,
             msg->Record);
-        HandleTraceInfo(TraceSerializer, RequestInfo->CallContext, msg->Record);
+        HandleServiceTraceInfo(
+            "AddData",
+            ctx,
+            TraceSerializer,
+            RequestInfo->CallContext,
+            msg->Record);
 
         if (HasError(msg->GetError())) {
             WriteData(ctx, msg->GetError());
@@ -646,7 +656,12 @@ private:
         const TActorContext& ctx)
     {
         auto* msg = ev->Get();
-        HandleTraceInfo(TraceSerializer, RequestInfo->CallContext, msg->Record);
+        HandleServiceTraceInfo(
+            "WriteData",
+            ctx,
+            TraceSerializer,
+            RequestInfo->CallContext,
+            msg->Record);
 
         if (HasError(msg->GetError())) {
             HandleError(ctx, msg->GetError());

@@ -83,7 +83,12 @@ void TStorageServiceActor::CompleteRequest(
     }
 
     FinalizeProfileLogRequestInfo(request->ProfileLogRequest, msg->Record);
-    HandleTraceInfo(TraceSerializer, request->CallContext, msg->Record);
+    HandleServiceTraceInfo(
+        TMethod::Name,
+        ctx,
+        TraceSerializer,
+        request->CallContext,
+        msg->Record);
     HandleThrottlerInfo(*request->CallContext, msg->Record);
 
     STORAGE_VERIFY_C(

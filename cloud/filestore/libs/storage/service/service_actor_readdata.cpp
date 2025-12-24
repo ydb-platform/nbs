@@ -288,7 +288,7 @@ void TReadDataActor::HandleDescribeDataResponse(
     const TEvIndexTablet::TEvDescribeDataResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
     const auto& error = msg->GetError();
 
     TABLET_VERIFY(InFlightRequest);
@@ -297,7 +297,12 @@ void TReadDataActor::HandleDescribeDataResponse(
     FinalizeProfileLogRequestInfo(
         InFlightRequest->ProfileLogRequest,
         msg->Record);
-    HandleTraceInfo(TraceSerializer, RequestInfo->CallContext, msg->Record);
+    HandleServiceTraceInfo(
+        "DescribeData",
+        ctx,
+        TraceSerializer,
+        RequestInfo->CallContext,
+        msg->Record);
 
     if (FAILED(msg->GetStatus())) {
         if (error.GetCode() != E_FS_THROTTLED) {
@@ -604,7 +609,12 @@ void TReadDataActor::HandleReadDataResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    HandleTraceInfo(TraceSerializer, RequestInfo->CallContext, msg->Record);
+    HandleServiceTraceInfo(
+        "ReadData",
+        ctx,
+        TraceSerializer,
+        RequestInfo->CallContext,
+        msg->Record);
 
     if (FAILED(msg->GetStatus())) {
         HandleError(ctx, msg->GetError());
