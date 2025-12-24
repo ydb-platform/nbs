@@ -93,6 +93,8 @@ private:
 
     TBackoffDelayProvider BackoffProvider;
 
+    TRequestInfoPtr StatisticRequestInfo;
+
 public:
     TMirrorPartitionResyncActor(
         TStorageConfigPtr config,
@@ -134,6 +136,13 @@ private:
 
     bool IsAnybodyAlive() const;
     void ReplyAndDie(const NActors::TActorContext& ctx);
+
+    void UpdateCounters(
+        const NActors::TActorContext& ctx,
+        const NActors::TActorId& sender,
+        TPartNonreplCountersData partCountersData);
+
+    TPartNonreplCountersData ExtractPartCounters();
 
 private:
     STFUNC(StateWork);
@@ -225,6 +234,16 @@ private:
 
     void HandleGetDeviceForRange(
         const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetDiskRegistryBasedPartCounters(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDiskRegistryBasedPartCountersCombined(
+        const TEvNonreplPartitionPrivate::
+            TEvDiskRegistryBasedPartCountersCombined::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocks, TEvService);

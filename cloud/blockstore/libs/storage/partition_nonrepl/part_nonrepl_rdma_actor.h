@@ -133,6 +133,8 @@ private:
 
     void ReplyAndDie(const NActors::TActorContext& ctx);
 
+    TPartNonreplCountersData ExtractPartCounters();
+
 private:
     STFUNC(StateWork);
     STFUNC(StateZombie);
@@ -205,6 +207,11 @@ private:
 
     void HandleDeviceTimedOutResponse(
         const TEvVolumePrivate::TEvDeviceTimedOutResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetDiskRegistryBasedPartCounters(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

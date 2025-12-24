@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
+#include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
@@ -390,6 +391,43 @@ struct TEvNonreplPartitionPrivate
     };
 
     //
+    //  GetDiskRegistryBasedPartCounters
+    //
+
+    struct TGetDiskRegistryBasedPartCountersRequest
+    {
+        TGetDiskRegistryBasedPartCountersRequest() = default;
+    };
+
+    struct TGetDiskRegistryBasedPartCountersResponse
+    {
+        NActors::TActorId ActorId;
+        TString DiskId;
+        TPartNonreplCountersData CountersData;
+
+        TGetDiskRegistryBasedPartCountersResponse(
+                const NActors::TActorId& actorId,
+                TString diskId,
+                TPartNonreplCountersData countersData)
+            : ActorId(actorId)
+            , DiskId(std::move(diskId))
+            , CountersData(std::move(countersData))
+        {}
+    };
+
+    //
+    // DiskRegistryBasedPartCountersCombined
+    //
+
+    struct TDiskRegistryBasedPartCountersCombined
+    {
+        TVector<TGetDiskRegistryBasedPartCountersResponse> Counters;
+
+        explicit TDiskRegistryBasedPartCountersCombined()
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -422,6 +460,10 @@ struct TEvNonreplPartitionPrivate
         EvLaggingMigrationDisabled,
         EvLaggingMigrationEnabled,
         EvInconsistentDiskAgent,
+        EvGetDiskRegistryBasedPartCountersRequest,
+        EvGetDiskRegistryBasedPartCountersResponse,
+        EvDiskRegistryBasedPartCountersCombined,
+
 
         BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENT_IDS)
 
@@ -522,6 +564,18 @@ struct TEvNonreplPartitionPrivate
 
     using TEvInconsistentDiskAgent =
         TRequestEvent<TInconsistentDiskAgent, EvInconsistentDiskAgent>;
+
+    using TEvGetDiskRegistryBasedPartCountersRequest = TRequestEvent<
+        TGetDiskRegistryBasedPartCountersRequest,
+        EvGetDiskRegistryBasedPartCountersRequest>;
+
+    using TEvGetDiskRegistryBasedPartCountersResponse = TResponseEvent<
+        TGetDiskRegistryBasedPartCountersResponse,
+        EvGetDiskRegistryBasedPartCountersResponse>;
+
+    using TEvDiskRegistryBasedPartCountersCombined = TResponseEvent<
+        TDiskRegistryBasedPartCountersCombined,
+        EvDiskRegistryBasedPartCountersCombined>;
 
     BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_PROTO_EVENTS)
 
