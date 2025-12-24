@@ -230,10 +230,8 @@ public:
     {}
 
     TServiceError(const NProto::TError& error)
-        : Code(error.GetCode())
-    {
-        Append(error.GetMessage());
-    }
+        : TServiceError("" /* loc */, error)
+    {}
 
     TServiceError(const char* loc, ui32 code)
         : TServiceError(loc, MakeError(code))
@@ -295,7 +293,7 @@ bool HasError(const T& response)
 inline void CheckError(const NProto::TError& error)
 {
     if (HasError(error)) {
-        ythrow TServiceError(error.GetCode()) << error.GetMessage();
+        STORAGE_THROW_SERVICE_ERROR(error.GetCode()) << error.GetMessage();
     }
 }
 
@@ -303,7 +301,7 @@ template <typename T>
 void CheckError(const T& response)
 {
     if (HasError(response)) {
-        ythrow TServiceError(response.GetError().GetCode())
+        STORAGE_THROW_SERVICE_ERROR(response.GetError().GetCode())
             << response.GetError().GetMessage();
     }
 }

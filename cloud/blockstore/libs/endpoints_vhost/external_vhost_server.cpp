@@ -302,7 +302,7 @@ TChild SpawnChild(
         if (childPid == -1) {
             int err = errno;
             char buf[64]{};
-            ythrow TServiceError{MAKE_SYSTEM_ERROR(err)}
+            STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
                 << "fork error: " << ::strerror_r(err, buf, sizeof(buf));
         }
 

@@ -2022,7 +2022,7 @@ THashSet<TString> TDiskRegistryState::CollectForbiddenRacks(
             TStringBuilder() << callerName << ":DiskId: " << diskId
             << ", PlacementGroupId: " << disk.PlacementGroupId);
 
-        ythrow TServiceError(E_FAIL) << message;
+        STORAGE_THROW_SERVICE_ERROR(E_FAIL) << message;
     }
 
     auto* thisDisk = CollectRacks(
@@ -2040,7 +2040,7 @@ THashSet<TString> TDiskRegistryState::CollectForbiddenRacks(
              {"callerName", callerName},
              {"placementGroupId", disk.PlacementGroupId}});
 
-        ythrow TServiceError(E_FAIL) << message;
+        STORAGE_THROW_SERVICE_ERROR(E_FAIL) << message;
     }
 
     return forbiddenRacks;

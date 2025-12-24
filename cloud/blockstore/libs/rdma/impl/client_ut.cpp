@@ -214,7 +214,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             Y_UNUSED(host);
             Y_UNUSED(port);
             Y_UNUSED(hints);
-            throw TServiceError(MAKE_SYSTEM_ERROR(EAGAIN));
+            STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(EAGAIN));
         };
 
         try {
@@ -674,7 +674,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             context->PostRecv = [](auto* qp, auto* wr) {
                 Y_UNUSED(qp);
                 Y_UNUSED(wr);
-                throw TServiceError(ENODEV) << "ibv_post_recv error";
+                STORAGE_THROW_SERVICE_ERROR(ENODEV) << "ibv_post_recv error";
             };
             context->ModifyQP = [&](auto* qp, auto* attr, int mask) {
                 Y_UNUSED(qp);

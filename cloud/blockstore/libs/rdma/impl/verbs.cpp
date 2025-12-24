@@ -28,7 +28,7 @@ namespace NCloud::NBlockStore::NRdma::NVerbs {
 #endif
 
 #define RDMA_THROW_ERROR(method)                                               \
-    throw TServiceError(MAKE_SYSTEM_ERROR(LastSystemError()))                  \
+    STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(LastSystemError()))          \
         << method << " failed with error " << LastSystemError()                \
         << ": " << SafeLastSystemErrorText()                                   \
 // RDMA_THROW_ERROR

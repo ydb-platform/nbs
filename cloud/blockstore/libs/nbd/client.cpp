@@ -153,7 +153,8 @@ private:
         TContIO io(Socket, c);
 
         if (!Handler->NegotiateClient(io, io)) {
-            ythrow TServiceError(UnavailableError) << "failed to negotiate";
+            STORAGE_THROW_SERVICE_ERROR(UnavailableError)
+                << "failed to negotiate";
         }
 
         if (!ExportInfo.HasValue()) {

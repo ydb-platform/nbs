@@ -114,7 +114,7 @@ struct TBootstrap
         auto clientOrError = future.GetValue();
         if (HasError(clientOrError)) {
             const auto& error = clientOrError.GetError();
-            ythrow TServiceError(error.GetCode()) << error.GetMessage();
+            STORAGE_THROW_SERVICE_ERROR(error.GetCode()) << error.GetMessage();
         }
 
         return clientOrError.GetResult();

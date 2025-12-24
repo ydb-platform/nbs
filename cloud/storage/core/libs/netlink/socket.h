@@ -23,7 +23,7 @@ public:
         , SocketTimeoutMs(socketTimeoutMs)
     {
         if (Socket < 0) {
-            ythrow TServiceError(MAKE_SYSTEM_ERROR(LastSystemError()))
+            STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(LastSystemError()))
                 << "Failed to create netlink socket";
         }
         Socket.SetSocketTimeout(0, SocketTimeoutMs);
@@ -34,7 +34,7 @@ public:
     {
         auto ret = Socket.Send(&msg, sizeof(msg));
         if (ret == -1) {
-            ythrow TServiceError(MAKE_SYSTEM_ERROR(LastSystemError()))
+            STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(LastSystemError()))
                 << "Failed to send netlink message";
         }
     }
@@ -44,20 +44,20 @@ public:
     {
         auto ret = Socket.Recv(&response, sizeof(response));
         if (ret < 0) {
-            ythrow TServiceError(MAKE_SYSTEM_ERROR(LastSystemError()))
+            STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(LastSystemError()))
                 << "Failed to receive netlink message";
         }
 
         if (response.NetlinkError.MessageHeader.nlmsg_type == NLMSG_ERROR) {
             if (response.NetlinkError.MessageError.error != 0) {
-                throw TServiceError(
+                STORAGE_THROW_SERVICE_ERROR(
                     MAKE_SYSTEM_ERROR(response.NetlinkError.MessageError.error))
                     << "Netlink error";
             }
         }
 
         if (!NLMSG_OK(&response.NetlinkError.MessageHeader, ret)) {
-            throw TServiceError(MAKE_ERROR(E_FAIL))
+            STORAGE_THROW_SERVICE_ERROR(MAKE_ERROR(E_FAIL))
                 << "Netlink message has incorrect format";
         }
 

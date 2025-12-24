@@ -42,7 +42,7 @@ ui32 GetExpectedKeyLength(NProto::EEncryptionMode mode)
         case NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY:
             return 32;
         default:
-            ythrow TServiceError(E_ARGUMENT)
+            STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
                 << "Unknown encryption mode: "
                 << static_cast<int>(mode);
     }
