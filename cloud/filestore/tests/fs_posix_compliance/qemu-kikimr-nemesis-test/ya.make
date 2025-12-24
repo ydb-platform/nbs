@@ -13,6 +13,10 @@ TEST_SRCS(
 SET(QEMU_VIRTIO fs)
 SET(VHOST_RESTART_INTERVAL 10)
 SET(VHOST_RESTART_FLAG 1)
+SET(
+    NFS_STORAGE_CONFIG_PATCH
+    cloud/filestore/tests/common_configs/nfs-storage-directory-handles-patch.txt
+)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tools/testing/fs_posix_compliance/fs_posix_compliance.inc)
 
