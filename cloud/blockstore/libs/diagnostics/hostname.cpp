@@ -138,16 +138,13 @@ TString GetMonitoringVolumeUrl(
 
     if (data.MonitoringUrlTemplate.empty()) {
         return TStringBuilder()
-        << data.MonitoringUrl << "/projects/" << data.MonitoringProject
-        << "/dashboards/" << data.MonitoringVolumeDashboard
-        << "?from=now-1d&to=now&refresh=60000&p.cluster="
-        << data.MonitoringClusterName << "&p.volume=" << diskId;
+               << data.MonitoringUrl << "/projects/" << data.MonitoringProject
+               << "/dashboards/" << data.MonitoringVolumeDashboard
+               << "?from=now-1d&to=now&refresh=60000&p.cluster="
+               << data.MonitoringClusterName << "&p.volume=" << diskId;
     }
 
-    return GetUrlFromTemplate(
-        data.MonitoringUrlTemplate,
-        config,
-        diskId);
+    return GetUrlFromTemplate(data.MonitoringUrlTemplate, config, diskId);
 }
 
 TString GetMonitoringVolumeUrlWithoutDiskId(const TDiagnosticsConfig& config)
