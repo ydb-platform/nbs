@@ -234,6 +234,8 @@ class FilestoreDaemonConfigGenerator:
         config.MergeFrom(self.__storage_config)
 
         config.DisableLocalService = disableLocalService
+        config.DirectoryHandlesStorageEnabled = True
+        config.DirectoryHandlesTableSize = 2500
         return config
 
     def __generate_diag_txt(self):
