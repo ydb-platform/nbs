@@ -9,8 +9,8 @@
 #include <contrib/ydb/library/actors/interconnect/interconnect_common.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect_tcp_proxy.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect_tcp_server.h>
-#include <contrib/ydb/library/actors/interconnect/poller_actor.h>
-#include <contrib/ydb/library/actors/interconnect/poller_tcp.h>
+#include <contrib/ydb/library/actors/interconnect/poller/poller_actor.h>
+#include <contrib/ydb/library/actors/interconnect/poller/poller_tcp.h>
 #include <contrib/ydb/library/actors/util/should_continue.h>
 
 #include <util/system/sigset.h>

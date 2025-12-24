@@ -4,6 +4,7 @@ PEERDIR(
     contrib/ydb/library/actors/wilson
     library/cpp/deprecated/atomic
     library/cpp/lwtrace
+    contrib/ydb/core/base
     contrib/ydb/core/protos
 )
 
@@ -23,6 +24,7 @@ SRCS(
     vdisk_lsn.h
     vdisk_sync_common.h
     vdisk_priorities.h
+    vdisk_priorities.cpp
     utility.h
 )
 

@@ -42,7 +42,6 @@ class TDatabase {
 public:
     using TMemGlobs = TVector<NPageCollection::TMemGlob>;
     using TCookieAllocator = NPageCollection::TCookieAllocator;
-    using TCounters = TDbStats;
 
     struct TProd {
         THolder<TChange> Change;
@@ -96,16 +95,16 @@ public:
 
     /*_ Call Next() before accessing each row including the 1st row. */
 
-    TAutoPtr<TTableIt> Iterate(ui32 table, TRawVals key, TTagsRef tags, ELookup) const noexcept;
-    TAutoPtr<TTableIt> IterateExact(ui32 table, TRawVals key, TTagsRef tags,
+    TAutoPtr<TTableIter> Iterate(ui32 table, TRawVals key, TTagsRef tags, ELookup) const noexcept;
+    TAutoPtr<TTableIter> IterateExact(ui32 table, TRawVals key, TTagsRef tags,
             TRowVersion snapshot = TRowVersion::Max(),
             const ITransactionMapPtr& visible = nullptr,
             const ITransactionObserverPtr& observer = nullptr) const noexcept;
-    TAutoPtr<TTableIt> IterateRange(ui32 table, const TKeyRange& range, TTagsRef tags,
+    TAutoPtr<TTableIter> IterateRange(ui32 table, const TKeyRange& range, TTagsRef tags,
             TRowVersion snapshot = TRowVersion::Max(),
             const ITransactionMapPtr& visible = nullptr,
             const ITransactionObserverPtr& observer = nullptr) const noexcept;
-    TAutoPtr<TTableReverseIt> IterateRangeReverse(ui32 table, const TKeyRange& range, TTagsRef tags,
+    TAutoPtr<TTableReverseIter> IterateRangeReverse(ui32 table, const TKeyRange& range, TTagsRef tags,
             TRowVersion snapshot = TRowVersion::Max(),
             const ITransactionMapPtr& visible = nullptr,
             const ITransactionObserverPtr& observer = nullptr) const noexcept;
@@ -193,6 +192,13 @@ public:
 
     void NoMoreReadsForTx();
 
+    /**
+     * Will debug assert when current transaction attempts to read tables that
+     * have not been precharged up to this point. Useful to detect missing
+     * precharges that avoid multiple transaction restarts.
+     */
+    void NoMoreUnprechargedReadsForTx();
+
     TAlter& Alter(); /* Begin DDL ALTER script */
 
     TEpoch TxSnapTable(ui32 table);
@@ -214,10 +220,14 @@ public:
     ui64 GetTableIndexSize(ui32 table) const;
     ui64 GetTableSearchHeight(ui32 table) const;
     ui64 EstimateRowSize(ui32 table) const;
-    const TCounters& Counters() const noexcept;
+    const TDbStats& Counters() const noexcept;
+    TDbRuntimeStats RuntimeCounters() const noexcept;
+
+    void UpdateApproximateFreeSharesByChannel(const THashMap<ui32, float>& approximateFreeSpaceShareByChannel);
     TString SnapshotToLog(ui32 table, TTxStamp);
 
-    TAutoPtr<TSubset> Subset(ui32 table, TArrayRef<const TLogoBlobID> bundle, TEpoch before) const;
+    TAutoPtr<TSubset> CompactionSubset(ui32 table, TEpoch before, TArrayRef<const TLogoBlobID> bundle) const;
+    TAutoPtr<TSubset> PartSwitchSubset(ui32 table, TEpoch before, TArrayRef<const TLogoBlobID> bundle, TArrayRef<const TLogoBlobID> txStatus) const;
     TAutoPtr<TSubset> Subset(ui32 table, TEpoch before, TRawVals from, TRawVals to) const;
     TAutoPtr<TSubset> ScanSnapshot(ui32 table, TRowVersion snapshot = TRowVersion::Max());
 
@@ -226,11 +236,15 @@ public:
     TBundleSlicesMap LookupSlices(ui32 table, TArrayRef<const TLogoBlobID> bundles) const;
     void ReplaceSlices(ui32 table, TBundleSlicesMap slices);
 
-    void Replace(ui32 table, TArrayRef<const TPartView>, const TSubset&);
-    void ReplaceTxStatus(ui32 table, TArrayRef<const TIntrusiveConstPtr<TTxStatusPart>>, const TSubset&);
+    void Replace(
+        ui32 table,
+        const TSubset&,
+        TArrayRef<const TPartView>,
+        TArrayRef<const TIntrusiveConstPtr<TTxStatusPart>>);
     void Merge(ui32 table, TPartView);
     void Merge(ui32 table, TIntrusiveConstPtr<TColdPart>);
     void Merge(ui32 table, TIntrusiveConstPtr<TTxStatusPart>);
+    void MergeDone(ui32 table);
 
     void DebugDumpTable(ui32 table, IOutputStream& str, const NScheme::TTypeRegistry& typeRegistry) const;
     void DebugDump(IOutputStream& str, const NScheme::TTypeRegistry& typeRegistry) const;
@@ -290,10 +304,14 @@ private:
     TTable* Require(ui32 tableId) const noexcept;
     TTable* RequireForUpdate(ui32 tableId) const noexcept;
 
+    void CheckReadAllowed(ui32 table) const noexcept;
+    void CheckPrechargeAllowed(ui32 table, TRawVals minKey, TRawVals maxKey) const noexcept;
+
 private:
     const THolder<TDatabaseImpl> DatabaseImpl;
 
-    bool NoMoreReadsFlag;
+    bool NoMoreReadsFlag = false;
+    bool NoMoreUnprechargedReadsFlag = false;
     IPages* Env = nullptr;
     THolder<TChange> Change;
     TAutoPtr<TAlter> Alter_;
@@ -303,8 +321,8 @@ private:
     TVector<ui32> ModifiedRefs;
     TVector<TUpdateOp> ModifiedOps;
 
-    mutable TDeque<TPartSimpleIt> TempIterators; // Keeps the last result of Select() valid
-    mutable THashSet<ui32> IteratedTables;
+    mutable TDeque<TPartIter> TempIterators; // Keeps the last result of Select() valid
+    mutable TVector<ui32> PrechargedTables;
 
     TVector<std::function<void()>> OnCommit_;
     TVector<std::function<void()>> OnRollback_;

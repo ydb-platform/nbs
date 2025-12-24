@@ -6,6 +6,8 @@ LICENSE(Apache-2.0)
 
 LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
+VERSION(20250127.0)
+
 PEERDIR(
     contrib/restricted/abseil-cpp/absl/base
     contrib/restricted/abseil-cpp/absl/debugging
@@ -26,6 +28,7 @@ NO_COMPILER_WARNINGS()
 NO_UTIL()
 
 SRCS(
+    internal/status_internal.cc
     status.cc
     status_payload_printer.cc
 )

@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import datetime as dt
 import errno
 import hashlib
@@ -11,7 +13,18 @@ import socket
 import string
 import sys
 import tarfile
-import urllib2
+
+try:
+    # Python 2
+    import urllib2 as urllib_request
+    from urllib2 import HTTPError, URLError
+except (ImportError, ModuleNotFoundError):
+    # Python 3
+    import urllib.request as urllib_request
+    from urllib.error import HTTPError, URLError
+    # Explicitly enable local imports
+    # Don't forget to add imported scripts to inputs of the calling command!
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import retry
 
@@ -122,12 +135,12 @@ def setup_logging(args, base_name):
 
 def is_temporary(e):
     def is_broken(e):
-        return isinstance(e, urllib2.HTTPError) and e.code in (410, 404)
+        return isinstance(e, HTTPError) and e.code in (410, 404)
 
     if is_broken(e):
         return False
 
-    if isinstance(e, (BadChecksumFetchError, IncompleteFetchError, urllib2.URLError, socket.error)):
+    if isinstance(e, (BadChecksumFetchError, IncompleteFetchError, URLError, socket.error)):
         return True
 
     import error
@@ -147,7 +160,7 @@ def report_to_snowden(value):
             'value': json.dumps(value),
         }
 
-        urllib2.urlopen(
+        urllib_request.urlopen(
             'https://back-snowden.qloud.yandex-team.ru/report/add',
             json.dumps(
                 [
@@ -198,8 +211,8 @@ def git_like_hash_with_size(filepath):
             file_size += len(block)
             sha.update(block)
 
-    sha.update('\0')
-    sha.update(str(file_size))
+    sha.update(b'\0')
+    sha.update(str(file_size).encode('utf-8'))
 
     return sha.hexdigest(), file_size
 
@@ -213,9 +226,9 @@ def size_printer(display_name, size):
         now = dt.datetime.now()
         if last_stamp[0] + dt.timedelta(seconds=10) < now:
             if size:
-                print >> sys.stderr, "##status##{} - [[imp]]{:.1f}%[[rst]]".format(
+                print("##status##{} - [[imp]]{:.1f}%[[rst]]".format(
                     display_name, 100.0 * sz[0] / size if size else 0
-                )
+                ), file=sys.stderr)
             last_stamp[0] = now
 
     return printer
@@ -225,9 +238,9 @@ def fetch_url(url, unpack, resource_file_name, expected_md5=None, expected_sha1=
     logging.info('Downloading from url %s name %s and expected md5 %s', url, resource_file_name, expected_md5)
     tmp_file_name = uniq_string_generator()
 
-    request = urllib2.Request(url, headers={'User-Agent': make_user_agent()})
-    req = retry.retry_func(lambda: urllib2.urlopen(request, timeout=30), tries=tries, delay=5, backoff=1.57079)
-    logging.debug('Headers: %s', req.headers.headers)
+    request = urllib_request.Request(url, headers={'User-Agent': make_user_agent()})
+    req = retry.retry_func(lambda: urllib_request.urlopen(request, timeout=30), tries=tries, delay=5, backoff=1.57079)
+    logging.debug('Headers: %s', req.headers)
     expected_file_size = int(req.headers.get('Content-Length', 0))
     real_md5 = hashlib.md5()
     real_sha1 = hashlib.sha1()
@@ -244,8 +257,8 @@ def fetch_url(url, unpack, resource_file_name, expected_md5=None, expected_sha1=
 
     real_md5 = real_md5.hexdigest()
     real_file_size = os.path.getsize(tmp_file_name)
-    real_sha1.update('\0')
-    real_sha1.update(str(real_file_size))
+    real_sha1.update(b'\0')
+    real_sha1.update(str(real_file_size).encode('utf-8'))
     real_sha1 = real_sha1.hexdigest()
 
     if unpack:
@@ -315,6 +328,10 @@ def chmod(filename, mode):
             raise
 
 
+def make_readonly(filename):
+    chmod(filename, os.stat(filename).st_mode & 0o111 | 0o444)
+
+
 def process(fetched_file, file_name, args, remove=True):
     assert len(args.rename) <= len(args.outputs), ('too few outputs to rename', args.rename, 'into', args.outputs)
 
@@ -326,9 +343,9 @@ def process(fetched_file, file_name, args, remove=True):
     if fetched_file_is_dir:
         for root, _, files in os.walk(fetched_file):
             for filename in files:
-                chmod(os.path.join(root, filename), 0o444)
+                make_readonly(os.path.join(root, filename))
     else:
-        chmod(fetched_file, 0o444)
+        make_readonly(fetched_file)
 
     if args.copy_to:
         hardlink_or_copy(fetched_file, args.copy_to)
@@ -367,7 +384,7 @@ def process(fetched_file, file_name, args, remove=True):
         # Forbid changes to the loaded resource data
         for root, _, files in os.walk(args.untar_to):
             for filename in files:
-                chmod(os.path.join(root, filename), 0o444)
+                make_readonly(os.path.join(root, filename))
 
     for src, dst in zip(args.rename, args.outputs):
         if src == 'RESOURCE':
@@ -379,6 +396,8 @@ def process(fetched_file, file_name, args, remove=True):
             logging.info('Renaming %s to %s', src, dst)
             if os.path.exists(dst):
                 raise ResourceUnpackingError("Target file already exists ({} -> {})".format(src, dst))
+            if not os.path.exists(src):
+                raise ResourceUnpackingError("Source file does not exist ({} in {})".format(src, os.getcwd()))
             if remove:
                 rename_or_copy_and_remove(src, dst)
             else:

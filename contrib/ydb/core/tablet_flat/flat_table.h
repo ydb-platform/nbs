@@ -31,6 +31,7 @@ namespace NTable {
 
 class TTableEpochs;
 class TKeyRangeCache;
+class TKeyRangeCacheNeedGCList;
 
 class TTable: public TAtomicRefCount<TTable> {
 public:
@@ -64,7 +65,7 @@ public:
         TIteratorStats Stats;
     };
 
-    explicit TTable(TEpoch);
+    explicit TTable(TEpoch, const TIntrusivePtr<TKeyRangeCacheNeedGCList>& gcList = nullptr);
     ~TTable();
 
     void PrepareRollback();
@@ -83,7 +84,8 @@ public:
         return Epoch;
     }
 
-    TAutoPtr<TSubset> Subset(TArrayRef<const TLogoBlobID> bundle, TEpoch edge);
+    TAutoPtr<TSubset> CompactionSubset(TEpoch edge, TArrayRef<const TLogoBlobID> bundle);
+    TAutoPtr<TSubset> PartSwitchSubset(TEpoch edge, TArrayRef<const TLogoBlobID> bundle, TArrayRef<const TLogoBlobID> txStatus);
     TAutoPtr<TSubset> Subset(TEpoch edge) const noexcept;
     TAutoPtr<TSubset> ScanSnapshot(TRowVersion snapshot = TRowVersion::Max()) noexcept;
     TAutoPtr<TSubset> Unwrap() noexcept; /* full Subset(..) + final Replace(..) */
@@ -109,8 +111,7 @@ public:
         be displaced from table with Clean() method eventually.
     */
 
-    void Replace(TArrayRef<const TPartView>, const TSubset&) noexcept;
-    void ReplaceTxStatus(TArrayRef<const TIntrusiveConstPtr<TTxStatusPart>>, const TSubset&) noexcept;
+    void Replace(const TSubset&, TArrayRef<const TPartView>, TArrayRef<const TIntrusiveConstPtr<TTxStatusPart>>) noexcept;
 
     /*_ Special interface for clonig flatten part of table for outer usage.
         Cook some TPartView with Subset(...) method and/or TShrink tool first and
@@ -120,7 +121,7 @@ public:
     void Merge(TPartView partView) noexcept;
     void Merge(TIntrusiveConstPtr<TColdPart> part) noexcept;
     void Merge(TIntrusiveConstPtr<TTxStatusPart> txStatus) noexcept;
-    void ProcessCheckTransactions() noexcept;
+    void MergeDone() noexcept;
 
     /**
      * Returns constructed levels for slices
@@ -136,16 +137,16 @@ public:
 
     TVector<TIntrusiveConstPtr<TMemTable>> GetMemTables() const noexcept;
 
-    TAutoPtr<TTableIt> Iterate(TRawVals key, TTagsRef tags, IPages* env, ESeek,
+    TAutoPtr<TTableIter> Iterate(TRawVals key, TTagsRef tags, IPages* env, ESeek,
             TRowVersion snapshot,
             const ITransactionMapPtr& visible = nullptr,
             const ITransactionObserverPtr& observer = nullptr) const noexcept;
-    TAutoPtr<TTableReverseIt> IterateReverse(TRawVals key, TTagsRef tags, IPages* env, ESeek,
+    TAutoPtr<TTableReverseIter> IterateReverse(TRawVals key, TTagsRef tags, IPages* env, ESeek,
             TRowVersion snapshot,
             const ITransactionMapPtr& visible = nullptr,
             const ITransactionObserverPtr& observer = nullptr) const noexcept;
     EReady Select(TRawVals key, TTagsRef tags, IPages* env, TRowState& row,
-                  ui64 flg, TRowVersion snapshot, TDeque<TPartSimpleIt>& tempIterators,
+                  ui64 flg, TRowVersion snapshot, TDeque<TPartIter>& tempIterators,
                   TSelectStats& stats,
                   const ITransactionMapPtr& visible = nullptr,
                   const ITransactionObserverPtr& observer = nullptr) const noexcept;
@@ -183,6 +184,9 @@ public:
 
     const absl::flat_hash_set<ui64>& GetOpenTxs() const;
     size_t GetOpenTxCount() const;
+    size_t GetTxsWithDataCount() const;
+    size_t GetCommittedTxCount() const;
+    size_t GetRemovedTxCount() const;
 
     TPartView GetPartView(const TLogoBlobID &bundle) const
     {
@@ -238,6 +242,8 @@ public:
     {
         return Stat_;
     }
+
+    TTableRuntimeStats RuntimeStats() const noexcept;
 
     ui64 GetMemSize(TEpoch epoch = TEpoch::Max()) const noexcept
     {
@@ -333,7 +339,10 @@ private:
     void RemoveStat(const TPartView& partView);
 
 private:
-    void AddTxRef(ui64 txId);
+    void AddTxDataRef(ui64 txId);
+    void RemoveTxDataRef(ui64 txId);
+    void AddTxStatusRef(ui64 txId);
+    void RemoveTxStatusRef(ui64 txId);
 
 private:
     TEpoch Epoch; /* Monotonic table change number, with holes */
@@ -351,18 +360,39 @@ private:
 
     bool EraseCacheEnabled = false;
     TKeyRangeCacheConfig EraseCacheConfig;
+    const TIntrusivePtr<TKeyRangeCacheNeedGCList> EraseCacheGCList;
 
     TRowVersionRanges RemovedRowVersions;
 
-    absl::flat_hash_map<ui64, size_t> TxRefs;
+    // The number of entities (memtable/sst) that have rows with a TxId. As
+    // long as there is at least one row with a TxId its commit/remove status
+    // must be preserved.
+    absl::flat_hash_map<ui64, size_t> TxDataRefs;
+
+    // The number of entities (memtable/txstatus) that have a commit/remove
+    // status for a TxId. As long as there is at least one such entity the
+    // transaction cannot be used again without artifacts, and must stay
+    // in committed/removed set.
+    absl::flat_hash_map<ui64, size_t> TxStatusRefs;
+
+    // A set of open transactions, i.e. transactions that have rows with the
+    // specified TxId and that have not been committed or removed yet.
     absl::flat_hash_set<ui64> OpenTxs;
-    absl::flat_hash_set<ui64> CheckTransactions;
+
     TTransactionMap CommittedTransactions;
     TTransactionSet RemovedTransactions;
+    TTransactionSet DecidedTransactions;
+    TTransactionSet GarbageTransactions;
     TIntrusivePtr<ITableObserver> TableObserver;
 
+    ui64 RemovedCommittedTxs = 0;
+
 private:
-    struct TRollbackRemoveTxRef {
+    struct TRollbackRemoveTxDataRef {
+        ui64 TxId;
+    };
+
+    struct TRollbackRemoveTxStatusRef {
         ui64 TxId;
     };
 
@@ -383,22 +413,20 @@ private:
         ui64 TxId;
     };
 
-    struct TRollbackAddOpenTx {
-        ui64 TxId;
-    };
-
-    struct TRollbackRemoveOpenTx {
-        ui64 TxId;
-    };
-
     using TRollbackOp = std::variant<
-        TRollbackRemoveTxRef,
+        TRollbackRemoveTxDataRef,
+        TRollbackRemoveTxStatusRef,
         TRollbackAddCommittedTx,
         TRollbackRemoveCommittedTx,
         TRollbackAddRemovedTx,
-        TRollbackRemoveRemovedTx,
-        TRollbackAddOpenTx,
-        TRollbackRemoveOpenTx>;
+        TRollbackRemoveRemovedTx>;
+
+    struct TCommitAddDecidedTx {
+        ui64 TxId;
+    };
+
+    using TCommitOp = std::variant<
+        TCommitAddDecidedTx>;
 
     struct TRollbackState {
         TEpoch Epoch;
@@ -408,6 +436,7 @@ private:
         bool EraseCacheEnabled;
         bool MutableExisted;
         bool MutableUpdated;
+        bool DisableEraseCache;
 
         TRollbackState(TEpoch epoch)
             : Epoch(epoch)
@@ -415,6 +444,7 @@ private:
     };
 
     std::optional<TRollbackState> RollbackState;
+    std::vector<TCommitOp> CommitOps;
     std::vector<TRollbackOp> RollbackOps;
     TIntrusivePtr<TMemTable> MutableBackup;
 };

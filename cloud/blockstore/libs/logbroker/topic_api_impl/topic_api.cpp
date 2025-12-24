@@ -7,9 +7,9 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/iam/common/iam.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_topic/topic.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_types/status_codes.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/iam/iam.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/topic/client.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/types/status_codes.h>
 
 #include <util/generic/overloaded.h>
 #include <util/stream/file.h>
@@ -231,7 +231,9 @@ private:
 
         std::optional<NProto::TError> error;
 
-        while (TVector events = Session->GetEvents()) {
+        for (std::vector events = Session->GetEvents(); !events.empty();
+             events = Session->GetEvents())
+        {
             for (TWriteSessionEvent::TEvent& event: events) {
                 std::visit(TOverloaded {
                     [&] (TWriteSessionEvent::TReadyToAcceptEvent& e) {
@@ -279,14 +281,20 @@ private:
 
     NYdb::TDriverConfig CreateDriverConfig() const
     {
-        auto cfg = NYdb::TDriverConfig()
-            .SetEndpoint(TStringBuilder()
-                << Config->GetAddress() << ":" << Config->GetPort())
-            .SetDatabase(Config->GetDatabase())
-            .SetLog(Logging->CreateLog("BLOCKSTORE_LOGBROKER").ReleaseBackend())
-            .SetDiscoveryMode(NYdb::EDiscoveryMode::Async)
-            .SetDrainOnDtors(true)
-            .SetCredentialsProviderFactory(CredentialsProviderFactory);
+        auto cfg =
+            NYdb::TDriverConfig()
+                .SetEndpoint(
+                    TStringBuilder()
+                    << Config->GetAddress() << ":" << Config->GetPort())
+                .SetDatabase(Config->GetDatabase())
+                .SetLog(
+                    std::unique_ptr<TLogBackend>(
+                        Logging->CreateLog("BLOCKSTORE_LOGBROKER")
+                            .ReleaseBackend()
+                            .Release()))
+                .SetDiscoveryMode(NYdb::EDiscoveryMode::Async)
+                .SetDrainOnDtors(true)
+                .SetCredentialsProviderFactory(CredentialsProviderFactory);
 
         if (Config->GetCaCertFilename()) {
             cfg.UseSecureConnection(

@@ -27,6 +27,7 @@
 #include <contrib/ydb/core/mind/bscontroller/bsc.h>
 #include <contrib/ydb/core/mind/hive/hive.h>
 #include <contrib/ydb/core/mind/tenant_pool.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/security/ticket_parser.h>
 #include <contrib/ydb/core/testlib/tx_helpers.h>
 #include <contrib/ydb/core/tx/coordinator/coordinator.h>
@@ -72,19 +73,18 @@ ui64 ChangeDomain(ui64 tabletId, ui32 domainUid)
 ////////////////////////////////////////////////////////////////////////////////
 
 TTestEnv::TTestEnv(
-        const TTestEnvConfig& config,
-        NProto::TStorageConfig storageConfig,
-        NKikimr::NFake::TCaches cachesConfig,
-        IProfileLogPtr profileLog,
-        NProto::TDiagnosticsConfig diagConfig)
+    const TTestEnvConfig& config,
+    NProto::TStorageConfig storageConfig,
+    const NKikimr::NSharedCache::TSharedCacheConfig* sharedCacheConfig,
+    IProfileLogPtr profileLog,
+    NProto::TDiagnosticsConfig diagConfig)
     : Config(config)
-    , Logging(CreateLoggingService("console", { TLOG_DEBUG }))
+    , Logging(CreateLoggingService("console", {TLOG_DEBUG}))
     , ProfileLog(std::move(profileLog))
-    , TraceSerializer(
-        CreateTraceSerializer(
-            Logging,
-            "NFS_TRACE",
-            NLwTraceMonPage::TraceManager(false)))
+    , TraceSerializer(CreateTraceSerializer(
+          Logging,
+          "NFS_TRACE",
+          NLwTraceMonPage::TraceManager(false)))
     , Runtime(Config.StaticNodes + Config.DynamicNodes, false)
     , NextDynamicNode(Config.StaticNodes)
     , Counters(MakeIntrusive<NMonitoring::TDynamicCounters>())
@@ -101,7 +101,7 @@ TTestEnv::TTestEnv(
     SetupDomain(app);
     app.AddHive(Config.DomainUid, GetHive());
     SetupChannelProfiles(app);
-    SetupTabletServices(Runtime, &app, false, {}, std::move(cachesConfig));
+    SetupTabletServices(Runtime, &app, false, {}, sharedCacheConfig);
     BootTablets();
     SetupStorage();
     SetupLocalServices();
@@ -669,7 +669,9 @@ void TTestEnv::SetupProxies()
 
 void TTestEnv::SetupTicketParser(ui32 nodeIdx)
 {
-    IActor* ticketParser = CreateTicketParser(Runtime.GetAppData().AuthConfig);
+    IActor* ticketParser = CreateTicketParser(
+        {.AuthConfig = Runtime.GetAppData().AuthConfig,
+         .CertificateAuthValues = {}});
     TActorId ticketParserId = Runtime.Register(ticketParser, nodeIdx);
     Runtime.EnableScheduleForActor(ticketParserId);
     Runtime.RegisterService(MakeTicketParserID(), ticketParserId, nodeIdx);

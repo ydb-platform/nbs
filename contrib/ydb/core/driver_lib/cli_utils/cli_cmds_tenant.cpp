@@ -2,12 +2,13 @@
 #include "cli_cmds.h"
 
 
-#include <contrib/ydb/library/grpc/client/grpc_client_low.h>
-#include <contrib/ydb/public/sdk/cpp/client/resources/ydb_resources.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/grpc/client/grpc_client_low.h>
+#include <ydb-cpp-sdk/client/resources/ydb_resources.h>
 
 #include <contrib/ydb/public/api/grpc/ydb_operation_v1.grpc.pb.h>
 #include <contrib/ydb/public/api/grpc/ydb_auth_v1.grpc.pb.h>
 #include <contrib/ydb/public/api/grpc/ydb_cms_v1.grpc.pb.h>
+#include <contrib/ydb/core/protos/console_base.pb.h>
 
 #include <util/string/split.h>
 #include <util/string/join.h>
@@ -141,6 +142,8 @@ public:
         ClientConfig.MaxInFlight = CommandConfig.ClientConfig.MaxInFlight;
         ClientConfig.EnableSsl = CommandConfig.ClientConfig.EnableSsl;
         ClientConfig.SslCredentials.pem_root_certs = CommandConfig.ClientConfig.SslCredentials.pem_root_certs;
+        ClientConfig.SslCredentials.pem_cert_chain = CommandConfig.ClientConfig.SslCredentials.pem_cert_chain;
+        ClientConfig.SslCredentials.pem_private_key = CommandConfig.ClientConfig.SslCredentials.pem_private_key;
     }
 
     int Run(TConfig &config) override
@@ -653,6 +656,7 @@ public:
     {
         TTenantClientGRpcCommand::Parse(config);
         TClientCommandTenantQuotasBase::Parse(config, GRpcRequest);
+        GRpcRequest.set_path(config.Tenant);
     }
 };
 

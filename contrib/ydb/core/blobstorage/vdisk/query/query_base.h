@@ -47,6 +47,9 @@ namespace NKikimr {
             , ReplSchedulerId(replSchedulerId)
             , Span(TWilson::VDiskTopLevel, std::move(BatcherCtx->OrigEv->TraceId), name)
         {
+            if (Span) {
+                Span.Attribute("event", TEvBlobStorage::TEvVGet::ToString(BatcherCtx->OrigEv->Get()->Record));
+            }
             Y_DEBUG_ABORT_UNLESS(Result);
         }
 
@@ -118,10 +121,10 @@ namespace NKikimr {
                 ctx.Send(ReplSchedulerId, new TEvBlobStorage::TEvEnrichNotYet(BatcherCtx->OrigEv, std::move(Result)));
             } else {
                 // send reply event to sender
-                SendVDiskResponse(ctx, BatcherCtx->OrigEv->Sender, Result.release(), BatcherCtx->OrigEv->Cookie);
+                SendVDiskResponse(ctx, BatcherCtx->OrigEv->Sender, Result.release(), BatcherCtx->OrigEv->Cookie, QueryCtx->HullCtx->VCtx, Record.GetHandleClass());
             }
 
-            ctx.Send(ParentId, new TEvents::TEvActorDied);
+            ctx.Send(ParentId, new TEvents::TEvGone);
             self->Die(ctx);
         }
     };

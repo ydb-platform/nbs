@@ -1,8 +1,8 @@
 #pragma once
 #include "defs.h"
 
-#include <contrib/ydb/core/config/init/init.h>
 #include <contrib/ydb/core/protos/config.pb.h>
+#include <contrib/ydb/core/config/init/init.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
@@ -12,6 +12,8 @@
     WITH_SCOPED(tmp, NKikimr::NConsole::NHttp::TCollapsedRef(__stream, target, text __VA_OPT__(,) __VA_ARGS__))
 
 namespace NKikimr::NConsole::NHttp {
+
+using namespace NConfig;
 
 struct TCollapsedRef {
     template <class... TClasses>
@@ -58,7 +60,7 @@ void OutputConfigDebugInfoHTML(
     const NKikimrConfig::TAppConfig &initialConfig,
     const NKikimrConfig::TAppConfig &yamlConfig,
     const NKikimrConfig::TAppConfig &protoConfig,
-    const THashMap<ui32, NConfig::TConfigItemInfo>& configInitInfo,
+    const THashMap<ui32, TConfigItemInfo>& configInitInfo,
     const THashSet<ui32> &dynamicKinds,
     const THashSet<ui32> &nonYamlKinds,
     bool yamlEnabled);

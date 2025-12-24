@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/tx/datashard/range_ops.h>
-#include <contrib/ydb/library/yql/core/issue/yql_issue.h>
+#include <yql/essentials/core/issue/yql_issue.h>
 
 namespace NKikimr::NKqp::NComputeActor {
 

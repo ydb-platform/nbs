@@ -3,7 +3,7 @@
 #include <util/generic/string.h>
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/event_local.h>
-#include <contrib/ydb/library/grpc/client/grpc_client_low.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/grpc/client/grpc_client_low.h>
 
 namespace NCloud {
 
@@ -12,6 +12,7 @@ struct TEvGrpcProtoRequest : NActors::TEventLocal<TEv, TEventType> {
     TProtoMessage Request;
     TString Token;
     TString RequestId;
+    std::unordered_map<TString, TString> Headers;
 };
 
 template <typename TEv, ui32 TEventType, typename TProtoMessage>

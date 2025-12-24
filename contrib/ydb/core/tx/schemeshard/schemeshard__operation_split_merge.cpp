@@ -1,8 +1,10 @@
 #include "schemeshard__operation_part.h"
 #include "schemeshard__operation_common.h"
+#include "schemeshard__data_erasure_manager.h"
 #include "schemeshard_impl.h"
 
 #include <contrib/ydb/core/base/subdomain.h>
+#include <contrib/ydb/core/mind/hive/hive.h>
 
 namespace {
 
@@ -16,7 +18,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
                 << "TSplitMerge TConfigureDestination"
-                << " operationId#" << OperationId;
+                << " operationId# " << OperationId;
     }
 
 public:
@@ -186,7 +188,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
                 << "TSplitMerge TTransferData"
-                << " operationId#" << OperationId;
+                << " operationId# " << OperationId;
     }
 
 public:
@@ -243,6 +245,7 @@ public:
 
         // Replace all Src datashard(s) with Dst datashard(s)
         TVector<TTableShardInfo> newPartitioning;
+        TVector<TShardIdx> newShardsIdx;
         THashSet<TShardIdx> allSrcShardIdxs;
         for (const auto& txShard : txState->Shards) {
             if (txShard.Operation == TTxState::TransferData)
@@ -279,6 +282,7 @@ public:
                     }
 
                     newPartitioning.push_back(dst);
+                    newShardsIdx.push_back(dst.ShardIdx);
                 }
 
                 dstAdded = true;
@@ -292,6 +296,9 @@ public:
         // Delete the whole old partitioning and persist the whole new partitioning as the indexes have changed
         context.SS->PersistTablePartitioningDeletion(db, tableId, tableInfo);
         context.SS->SetPartitioning(tableId, tableInfo, std::move(newPartitioning));
+        if (context.SS->EnableDataErasure && context.SS->DataErasureManager->GetStatus() == EDataErasureStatus::IN_PROGRESS) {
+            context.OnComplete.Send(context.SS->SelfId(), new TEvPrivate::TEvAddNewShardToDataErasure(std::move(newShardsIdx)));
+        }
         context.SS->PersistTablePartitioning(db, tableId, tableInfo);
         context.SS->PersistTablePartitionStats(db, tableId, tableInfo);
 
@@ -704,6 +711,75 @@ public:
         return true;
     }
 
+    bool AllocateDstForOneToOne(
+            const NKikimrSchemeOp::TSplitMergeTablePartitions& info,
+            TTxId txId,
+            const TPathId& pathId,
+            const TVector<ui64>& srcPartitionIdxs,
+            const TTableInfo::TCPtr tableInfo,
+            TTxState& op,
+            const TChannelsBindings& channels,
+            TString& errStr,
+            TOperationContext& context)
+    {
+        Y_UNUSED(errStr);
+
+        // 1 source shard is split/merged into 1 shard
+        Y_ABORT_UNLESS(srcPartitionIdxs.size() == 1);
+        Y_ABORT_UNLESS(info.SplitBoundarySize() == 0);
+
+        TString firstRangeBegin;
+        if (srcPartitionIdxs[0] != 0) {
+            // Take the end of previous shard
+            firstRangeBegin = tableInfo->GetPartitions()[srcPartitionIdxs[0]-1].EndOfRange;
+        } else {
+            TVector<TCell> firstKey;
+            ui32 keyColCount = 0;
+            for (const auto& col : tableInfo->Columns) {
+                if (col.second.IsKey()) {
+                    ++keyColCount;
+                }
+            }
+            // Or start from (NULL, NULL, .., NULL)
+            firstKey.resize(keyColCount);
+            firstRangeBegin = TSerializedCellVec::Serialize(firstKey);
+        }
+
+        op.SplitDescription = std::make_shared<NKikimrTxDataShard::TSplitMergeDescription>();
+        // Fill src shards
+        TString prevRangeEnd = firstRangeBegin;
+        for (ui64 pi : srcPartitionIdxs) {
+            auto* srcRange = op.SplitDescription->AddSourceRanges();
+            auto shardIdx = tableInfo->GetPartitions()[pi].ShardIdx;
+            srcRange->SetShardIdx(ui64(shardIdx.GetLocalId()));
+            srcRange->SetTabletID(ui64(context.SS->ShardInfos[shardIdx].TabletID));
+            srcRange->SetKeyRangeBegin(prevRangeEnd);
+            TString rangeEnd = tableInfo->GetPartitions()[pi].EndOfRange;
+            srcRange->SetKeyRangeEnd(rangeEnd);
+            prevRangeEnd = rangeEnd;
+        }
+
+        // Fill dst shard
+        TShardInfo datashardInfo = TShardInfo::DataShardInfo(txId, pathId);
+        datashardInfo.BindedChannels = channels;
+
+        auto idx = context.SS->RegisterShardInfo(datashardInfo);
+
+        ui64 lastSrcPartition = srcPartitionIdxs.back();
+        TString lastRangeEnd = tableInfo->GetPartitions()[lastSrcPartition].EndOfRange;
+
+        TTxState::TShardOperation dstShardOp(idx, ETabletType::DataShard, TTxState::CreateParts);
+        dstShardOp.RangeEnd = lastRangeEnd;
+        op.Shards.push_back(dstShardOp);
+
+        auto* dstRange = op.SplitDescription->AddDestinationRanges();
+        dstRange->SetShardIdx(ui64(idx.GetLocalId()));
+        dstRange->SetKeyRangeBegin(firstRangeBegin);
+        dstRange->SetKeyRangeEnd(lastRangeEnd);
+
+        return true;
+    }
+
     THolder<TProposeResponse> Propose(const TString&, TOperationContext& context) override {
         const TTabletId ssId = context.SS->SelfTabletId();
 
@@ -780,6 +856,13 @@ public:
         if (tableInfo->IsBackup) {
             TString errMsg = TStringBuilder()
                 << "cannot split/merge backup table " << info.GetTablePath();
+            result->SetError(NKikimrScheme::StatusInvalidParameter, errMsg);
+            return result;
+        }
+
+        if (tableInfo->IsRestore) {
+            TString errMsg = TStringBuilder()
+                << "cannot split/merge restore table " << info.GetTablePath();
             result->SetError(NKikimrScheme::StatusInvalidParameter, errMsg);
             return result;
         }
@@ -921,6 +1004,12 @@ public:
                 result->SetError(NKikimrScheme::StatusInvalidParameter, errStr);
                 return result;
             }
+        } else if (srcPartitionIdxs.size() == 1 && dstCount == 1 && info.GetAllowOneToOneSplitMerge()) {
+            // This is one-to-one split/merge
+            if (!AllocateDstForOneToOne(info, OperationId.GetTxId(), path.Base()->PathId, srcPartitionIdxs, tableInfo, op, channelsBinding, errStr, context)) {
+                result->SetError(NKikimrScheme::StatusInvalidParameter, errStr);
+                return result;
+            }
         } else {
             result->SetError(NKikimrScheme::StatusInvalidParameter, "Invalid request: only 1->N or N->1 are supported");
             return result;
@@ -966,7 +1055,7 @@ public:
             }
         }
 
-        path.DomainInfo()->AddInternalShards(op); //allow over commit for merge
+        path.DomainInfo()->AddInternalShards(op, context.SS); //allow over commit for merge
         path->IncShardsInside(dstCount);
 
         SetState(NextState());

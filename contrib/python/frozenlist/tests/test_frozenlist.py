@@ -1,3 +1,6 @@
+# FIXME:
+# mypy: disable-error-code="misc"
+
 from collections.abc import MutableSequence
 
 import pytest
@@ -8,7 +11,15 @@ from frozenlist import FrozenList, PyFrozenList
 class FrozenListMixin:
     FrozenList = NotImplemented
 
-    SKIP_METHODS = {"__abstractmethods__", "__slots__"}
+    SKIP_METHODS = {
+        "__abstractmethods__",
+        "__slots__",
+        "__static_attributes__",
+        "__firstlineno__",
+    }
+
+    def test___class_getitem__(self) -> None:
+        assert self.FrozenList[str] is not None
 
     def test_subclass(self) -> None:
         assert issubclass(self.FrozenList, MutableSequence)
@@ -85,7 +96,7 @@ class FrozenListMixin:
 
     def test_lt(self) -> None:
         _list = self.FrozenList([1])
-        assert _list <= [3]
+        assert _list < [3]
 
     def test_ge(self) -> None:
         _list = self.FrozenList([1])
@@ -239,8 +250,8 @@ class FrozenListMixin:
 
 
 class TestFrozenList(FrozenListMixin):
-    FrozenList = FrozenList
+    FrozenList = FrozenList  # type: ignore[assignment]  # FIXME
 
 
 class TestFrozenListPy(FrozenListMixin):
-    FrozenList = PyFrozenList
+    FrozenList = PyFrozenList  # type: ignore[assignment]  # FIXME

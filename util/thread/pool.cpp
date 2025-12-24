@@ -57,7 +57,7 @@ namespace {
         bool EnumerateThreads = false;
         std::atomic<ui64> Index{0};
     };
-}
+} // namespace
 
 TThreadFactoryHolder::TThreadFactoryHolder() noexcept
     : Pool_(SystemThreadFactory())
@@ -310,7 +310,7 @@ private:
     public:
         inline TAtforkQueueRestarter() {
 #if defined(_bionic_)
-//no pthread_atfork on android libc
+// no pthread_atfork on android libc
 #elif defined(_unix_)
             pthread_atfork(nullptr, nullptr, ProcessChildAction);
 #endif
@@ -431,7 +431,7 @@ public:
         , Free_(0)
         , IdleTime_(TDuration::Max())
     {
-        sprintf(Name_, "[mtp queue %ld]", ++MtpQueueCounter);
+        snprintf(Name_, sizeof(Name_), "[mtp queue %ld]", ++MtpQueueCounter);
     }
 
     inline ~TImpl() {
@@ -660,7 +660,7 @@ namespace {
             Owned->Process(data);
         }
     };
-}
+} // namespace
 
 void IThreadPool::SafeAdd(IObjectInQueue* obj) {
     Y_ENSURE_EX(Add(obj), TThreadPoolException() << TStringBuf("can not add object to queue"));
@@ -757,7 +757,7 @@ namespace {
         IThreadPool* Parent_;
         TThreadImplRef Impl_;
     };
-}
+} // namespace
 
 IThread* IThreadPool::DoCreate() {
     return new TPoolThread(this);

@@ -3,6 +3,7 @@
 #include "actorsystem.h"
 #include "executor_pool_basic.h"
 #include "scheduler_basic.h"
+#include "debug.h"
 #include "actor_bootstrapped.h"
 
 #include <contrib/ydb/library/actors/testlib/test_runtime.h>
@@ -27,11 +28,14 @@ struct TTestEndDecorator : TDecorator {
         , Pad(pad)
         , ActorsAlive(actorsAlive)
     {
-        AtomicIncrement(*ActorsAlive);
+        auto x = AtomicIncrement(*ActorsAlive);
+        ACTORLIB_DEBUG(EDebugLevel::Test, "TTestEndDecorator::TTestEndDecorator: alive ", x);
     }
 
-    ~TTestEndDecorator() {
-        if (AtomicDecrement(*ActorsAlive) == 0) {
+    virtual ~TTestEndDecorator() {
+        auto alive = AtomicDecrement(*ActorsAlive);
+        ACTORLIB_DEBUG(EDebugLevel::Test, "TTestEndDecorator::~TTestEndDecorator: alive ", alive);
+        if (alive == 0) {
             Pad->Unpark();
         }
     }
@@ -115,9 +119,12 @@ struct TActorBenchmark {
         ui32 Neighbours = 0;
         TEventSharedCounters *SharedCounters;
         ui32 InFlight = 1;
+        bool ToSchedule = false;
+        TDuration DelayForScheduling = TDuration::MicroSeconds(1);
     };
 
     class TSendReceiveActor : public TActorBootstrapped<TSendReceiveActor> {
+        using TBase = TActorBootstrapped<TSendReceiveActor>;
     public:
         static constexpr auto ActorActivityType() {
             return IActorCallback::EActivityType::ACTORLIB_COMMON;
@@ -136,9 +143,12 @@ struct TActorBenchmark {
             , EndlessSending(params.EndlessSending)
             , IsLeader(OwnEventsCounter)
             , InFlight(params.InFlight)
+            , ToSchedule(params.ToSchedule)
+            , DelayForScheduling(params.DelayForScheduling)
         {}
 
-        ~TSendReceiveActor() {
+        virtual ~TSendReceiveActor() {
+            ACTORLIB_DEBUG(EDebugLevel::Test, "TSendReceiveActor::~TSendReceiveActor: ", this->SelfId());
         }
 
         void StoreCounters(std::vector<NThreading::TPadded<std::atomic<ui64>>> &dest) {
@@ -148,6 +158,7 @@ struct TActorBenchmark {
         }
 
         void Bootstrap(const TActorContext &ctx) {
+            ACTORLIB_DEBUG(EDebugLevel::Test, "TSendReceiveActor::Bootstrap: ", this->SelfId());
             if (SharedCounters && IsLeader) {
                 ui32 count = --SharedCounters->NotStarted;
                 if (!count) {
@@ -175,8 +186,11 @@ struct TActorBenchmark {
             EventsCounter++;
             if (own) {
                 --OwnEventsCounter;
+                ACTORLIB_DEBUG(EDebugLevel::Test, "TSendReceiveActor::SpecialSend: own; ", OwnEventsCounter + 1, " -> ", OwnEventsCounter);
             }
-            if (SendingType == ESendingType::Lazy) {
+            if (ToSchedule) {
+                TActivationContext::Schedule(DelayForScheduling, ev.Release());
+            } else if (SendingType == ESendingType::Lazy) {
                 ctx.Send<ESendingType::Lazy>(ev);
             } else if (SendingType == ESendingType::Tail) {
                 ctx.Send<ESendingType::Tail>(ev);
@@ -186,6 +200,7 @@ struct TActorBenchmark {
         }
 
         void Stop() {
+            ACTORLIB_DEBUG(EDebugLevel::Test, "TSendReceiveActor::Stop: ", this->SelfId());
             if (SharedCounters && IsLeader) {
                 if (!SharedCounters->NotStarted++) {
                     StoreCounters(SharedCounters->EndedCounters);
@@ -202,8 +217,14 @@ struct TActorBenchmark {
             this->PassAway();
         }
 
+        void PassAway() override {
+            ACTORLIB_DEBUG(EDebugLevel::Test, "TSendReceiveActor::PassAway: ", this->SelfId());
+            TBase::PassAway();
+        }
+
         bool CheckWorkIsDone() {
             if (OwnEventsCounter || OtherEventsCounter || EndlessSending) {
+                ACTORLIB_DEBUG(EDebugLevel::Test, "TSendReceiveActor::CheckWorkIsDone: ", this->SelfId(), " OwnEventsCounter: ", OwnEventsCounter, " OtherEventsCounter: ", OtherEventsCounter, " EndlessSending: ", EndlessSending);
                 return false;
             }
             Stop();
@@ -211,6 +232,7 @@ struct TActorBenchmark {
         }
 
         STFUNC(StateFunc) {
+            ACTORLIB_DEBUG(EDebugLevel::Test, "TSendReceiveActor::StateFunc: ", this->SelfId());
             ++EventsCounter;
             ui32 counter = ++ReceiveTurn;
             if (SharedCounters) {
@@ -259,6 +281,8 @@ struct TActorBenchmark {
         bool IsLeader = false;
         ui32 InFlight = 1;
         ui32 ReceiveTurn = 0;
+        bool ToSchedule = false;
+        TDuration DelayForScheduling = TDuration::MicroSeconds(1);
     };
 
     static void AddBasicPool(THolder<TActorSystemSetup>& setup, ui32 threads, bool activateEveryEvent, bool hasSharedThread) {
