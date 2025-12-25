@@ -91,6 +91,178 @@ TVector<ui64> FindProcessesWithOpenFile(const TString& targetPath)
     return result;
 }
 
+class TDiskAgentAttachDetachModel
+{
+private:
+    ui64 DiskRegistryGeneration = 0;
+    ui64 DiskAgentGeneration = 0;
+    THashMap<TString, bool> PathAttached;
+
+public:
+    explicit TDiskAgentAttachDetachModel(const TVector<TString>& paths)
+    {
+        for (const auto& path: paths) {
+            PathAttached[path] = true;
+        }
+    }
+
+    bool AttachDetachPath(
+        ui64 diskRegistryGeneration,
+        ui64 diskAgentGeneration,
+        const TVector<TString>& paths,
+        bool attach)
+    {
+        TVector<TString> pathsToPerformAttachDetach;
+
+        for (const auto& path: paths) {
+            if (PathAttached[path] == attach) {
+                continue;
+            }
+
+            pathsToPerformAttachDetach.push_back(path);
+        }
+
+        if (!CheckGenerationAndUpdateItIfNeeded(
+                diskRegistryGeneration,
+                diskAgentGeneration) &&
+            pathsToPerformAttachDetach)
+        {
+            return false;
+        }
+
+        for (const auto& path: pathsToPerformAttachDetach) {
+            auto& isAttached = PathAttached[path];
+            isAttached = attach;
+        }
+
+        return true;
+    }
+
+    bool CheckGenerationAndUpdateItIfNeeded(
+        ui64 diskRegistryGeneration,
+        ui64 diskAgentGeneration)
+    {
+        if (diskRegistryGeneration < DiskRegistryGeneration) {
+            return false;
+        }
+
+        if (diskRegistryGeneration > DiskRegistryGeneration) {
+            DiskAgentGeneration = 0;
+        }
+
+        DiskRegistryGeneration = diskRegistryGeneration;
+
+        if (diskAgentGeneration <= DiskAgentGeneration) {
+            return false;
+        }
+
+        DiskAgentGeneration = diskAgentGeneration;
+
+        return true;
+    }
+
+    [[nodiscard]] bool IsPathAttached(const TString& path) const
+    {
+        return PathAttached.at(path);
+    }
+};
+
+class TAttachDetachRequestsGenerator
+{
+private:
+    static constexpr ui64 GenerationSpread = 100;
+    static constexpr ui64 MoveGenerationWindowPerRun = 10;
+
+    ui64 DevicesCount;
+    TVector<TString> Paths;
+
+    ui64 MinDAGeneration = 1;
+    TVector<bool> GeneratedShouldAttachPath;
+
+    ui64 MinDrGeneration = 1;
+    ui32 GeneratedDrGeneration = 0;
+
+public:
+    explicit TAttachDetachRequestsGenerator(const TVector<TString>& paths)
+        : DevicesCount(paths.size())
+        , Paths(std::move(paths))
+    {}
+
+    ui64 GenerateDrGeneration()
+    {
+        MinDrGeneration += MoveGenerationWindowPerRun;
+        GeneratedDrGeneration =
+            RandomNumber<ui32>(GenerationSpread) + MinDrGeneration;
+        MinDAGeneration = 1;
+
+        return GeneratedDrGeneration;
+    }
+
+    struct TRequest
+    {
+        ui64 DAGeneration;
+        TVector<TString> Paths;
+    };
+
+    TVector<TRequest> GetAttachDetachRequests(bool attach)
+    {
+        GenerateShouldAttachPath();
+        auto pathIdxs = GetPathIdxsToAttachDetach(attach);
+        TVector<TRequest> requests;
+
+        while (pathIdxs.size() > 0) {
+            TRequest request;
+            request.DAGeneration = GenerateDAGeneration();
+
+            auto devicesInRequest =
+                Max(RandomNumber<ui64>(pathIdxs.size() + 1),
+                    static_cast<ui64>(1));
+
+            for (ui64 i = 0; i < devicesInRequest; ++i) {
+                auto pathIdx = pathIdxs.back();
+
+                request.Paths.emplace_back(Paths[pathIdx]);
+
+                pathIdxs.pop_back();
+            }
+
+            requests.push_back(request);
+        }
+
+        return requests;
+    }
+
+private:
+    ui64 GenerateDAGeneration()
+    {
+        MinDAGeneration += MoveGenerationWindowPerRun;
+        return RandomNumber<ui64>(GenerationSpread) + MinDAGeneration;
+    }
+
+    void GenerateShouldAttachPath()
+    {
+        GeneratedShouldAttachPath.clear();
+        for (ui64 i = 0; i < DevicesCount; ++i) {
+            if (RandomNumber<ui64>(2) == 0) {
+                GeneratedShouldAttachPath.push_back(false);
+            } else {
+                GeneratedShouldAttachPath.push_back(true);
+            }
+        }
+    }
+
+    TVector<ui64> GetPathIdxsToAttachDetach(bool attach)
+    {
+        TVector<ui64> result;
+        for (ui64 i = 0; i < DevicesCount; ++i) {
+            if (GeneratedShouldAttachPath[i] == attach) {
+                result.push_back(i);
+            }
+        }
+        return result;
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TTestNvmeManager: NNvme::INvmeManager
@@ -6837,7 +7009,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             1,
             FindProcessesWithOpenFile(Devices[0]).size());
 
-        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}});
+        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}}, 1, 1);
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
@@ -6863,13 +7035,13 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             1,
             FindProcessesWithOpenFile(Devices[0]).size());
 
-        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}});
+        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}}, 1, 1);
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             FindProcessesWithOpenFile(Devices[0]).size());
 
-        diskAgent.AttachPaths(TVector<TString>{{PartLabels[0]}});
+        diskAgent.AttachPaths(TVector<TString>{{PartLabels[0]}}, 1, 2);
 
         UNIT_ASSERT_VALUES_EQUAL(
             1,
@@ -6907,7 +7079,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             1,
             FindProcessesWithOpenFile(Devices[0]).size());
 
-        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}});
+        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}}, 1, 1);
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
@@ -6917,7 +7089,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             nvmeManager->PathToSerial[Devices[0].GetPath()] = "another serial";
         }
 
-        diskAgent.SendAttachPathsRequest(TVector<TString>{{PartLabels[0]}});
+        diskAgent.SendAttachPathsRequest(
+            TVector<TString>{{PartLabels[0]}},
+            1,
+            2);
 
         auto resp = diskAgent.RecvAttachPathsResponse();
 
@@ -6947,7 +7122,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             1,
             FindProcessesWithOpenFile(Devices[0]).size());
 
-        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}});
+        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}}, 1, 1);
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
@@ -6955,7 +7130,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         unlink(PartLabels[0].c_str());
 
-        diskAgent.SendAttachPathsRequest(TVector<TString>{{PartLabels[0]}});
+        diskAgent.SendAttachPathsRequest(
+            TVector<TString>{{PartLabels[0]}},
+            1,
+            2);
 
         auto resp = diskAgent.RecvAttachPathsResponse();
 
@@ -6965,6 +7143,139 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             0,
             FindProcessesWithOpenFile(Devices[0]).size());
     }
-}
 
+    Y_UNIT_TEST_F(ShouldRejectOldattachDetachRequests, TFixture)
+    {
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
+                       .With(storageConfig)
+                       .Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.DetachPaths(
+            TVector<TString>{{PartLabels[0]}},
+            5,     // drGeneration
+            10);   // daGeneration
+
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.SendAttachPathsRequest(
+            TVector<TString>{{PartLabels[0]}},
+            5,    // drGeneration
+            1);   // daGeneration
+
+        auto resp = diskAgent.RecvAttachPathsResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.SendAttachPathsRequest(
+            TVector<TString>{{PartLabels[0]}},
+            4,      // drGeneration
+            100);   // daGeneration
+
+        resp = diskAgent.RecvAttachPathsResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.AttachPaths(
+            TVector<TString>{{PartLabels[0]}},
+            6,    // drGeneration
+            1);   // daGeneration
+
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(Devices[0]).size());
+    }
+
+    Y_UNIT_TEST_F(AttachDetachPathStressTest, TFixture)
+    {
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
+                       .With(storageConfig)
+                       .Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        TVector<TString> paths;
+        for (const auto& fPath : PartLabels) {
+            paths.emplace_back(fPath.GetPath());
+        }
+
+        TAttachDetachRequestsGenerator requestsGenerator(paths);
+        TDiskAgentAttachDetachModel diskAgentModel(paths);
+
+        static constexpr ui64 EventsCount = 100;
+        static constexpr ui64 RegenerateDiskRegistryGenerationInterval = 10;
+
+        ui64 drGeneration = 0;
+
+        for (ui64 eventIdx = 0; eventIdx < EventsCount; ++eventIdx) {
+            if (eventIdx % RegenerateDiskRegistryGenerationInterval == 0) {
+                drGeneration = requestsGenerator.GenerateDrGeneration();
+            }
+
+            auto doRequests = [&](bool attach)
+            {
+                auto requests =
+                    requestsGenerator.GetAttachDetachRequests(attach);
+
+                for (auto& request: requests) {
+                    NProto::TError error;
+
+                    if (attach) {
+                        diskAgent.SendAttachPathsRequest(
+                            request.Paths,
+                            drGeneration,
+                            request.DAGeneration);
+                        error = diskAgent.RecvAttachPathsResponse()->GetError();
+                    } else {
+                        diskAgent.SendDetachPathsRequest(
+                            request.Paths,
+                            drGeneration,
+                            request.DAGeneration);
+                        error = diskAgent.RecvDetachPathsResponse()->GetError();
+                    }
+
+                    bool shouldBeSuccessful = diskAgentModel.AttachDetachPath(
+                        drGeneration,
+                        request.DAGeneration,
+                        request.Paths,
+                        attach);
+
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        shouldBeSuccessful,
+                        !HasError(error));
+                }
+            };
+
+            doRequests(true);
+            doRequests(false);
+
+            for (size_t i = 0; i < Devices.size(); ++i) {
+                auto procesesWithOpenFileExpected =
+                    diskAgentModel.IsPathAttached(PartLabels[i]) ? 1 : 0;
+                UNIT_ASSERT_VALUES_EQUAL(
+                    procesesWithOpenFileExpected,
+                    FindProcessesWithOpenFile(Devices[i]).size());
+            }
+        }
+    }
+}
 }   // namespace NCloud::NBlockStore::NStorage
