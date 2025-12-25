@@ -96,7 +96,7 @@ struct TByteCountOption
 
     ui64 operator()(const TString& v) const
     {
-        if (v.Empty()) {
+        if (v.empty()) {
             return 0;
         }
 
