@@ -67,6 +67,9 @@ private:
 
     THashSet<TString> AttachedPaths;
 
+    ui64 DiskRegistryGeneration = 0;
+    ui64 DiskAgentGeneration = 0;
+
     ITaskQueuePtr BackgroundThreadPool;
 
 public:
@@ -195,6 +198,10 @@ public:
         TVector<NProto::TDeviceConfig> configs,
         TVector<IStoragePtr> devices,
         TVector<TStorageIoStatsPtr> stats);
+
+    NProto::TError CheckAttachDetachPathsRequestGeneration(
+        ui64 diskRegistryGeneration,
+        ui64 diskAgentGeneration);
 
 private:
     TStorageAdapterPtr GetDeviceStorageAdapter(

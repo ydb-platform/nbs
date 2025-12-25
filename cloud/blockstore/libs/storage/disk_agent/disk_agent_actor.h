@@ -178,6 +178,28 @@ private:
 
     TDuration GetMaxRequestTimeout() const;
 
+    struct TCheckAttachDetachPathRequestResult {
+        TVector<TString> AlreadyInWantedStatePaths;
+        TVector<TString> PathToPerformAttachDetach;
+    };
+
+    TResultOrError<TCheckAttachDetachPathRequestResult>
+    CheckAttachDetachPathsRequest(
+        ui64 diskRegistryGeneration,
+        ui64 diskAgentGeneration,
+        TVector<TString> paths,
+        bool attach);
+
+    TResultOrError<TCheckAttachDetachPathRequestResult> CheckAttachPathsRequest(
+        ui64 diskRegistryGeneration,
+        ui64 diskAgentGeneration,
+        TVector<TString> paths);
+
+    TResultOrError<TCheckAttachDetachPathRequestResult> CheckDetachPathsRequest(
+        ui64 diskRegistryGeneration,
+        ui64 diskAgentGeneration,
+        TVector<TString> paths);
+
 private:
     STFUNC(StateInit);
     STFUNC(StateWork);

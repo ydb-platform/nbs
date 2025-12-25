@@ -212,6 +212,10 @@ struct TEvDiskAgentPrivate
     struct TPathsDetached
     {
         TVector<TString> PathsToDetach;
+        TVector<TString> AlreadyDetachedPaths;
+
+        ui64 DiskRegistryGeneration;
+        ui64 DiskAgentGeneration;
     };
 
     //
@@ -226,6 +230,9 @@ struct TEvDiskAgentPrivate
 
         TVector<TString> PathsToAttach;
         TVector<TString> AlreadyAttachedPaths;
+
+        ui64 DiskRegistryGeneration;
+        ui64 DiskAgentGeneration;
     };
 
     //
