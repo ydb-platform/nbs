@@ -91,9 +91,25 @@ void FinalizeProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     const TProtoResponse& response);
 
-void CalculateChecksums(
+/**
+ * @brief Calculates buffer checksums corresponding to the ranges in the
+ * supplied profile-log-request.
+ *
+ * @param buffer - data buffer.
+ * @param blockSize - Filesystem block size.
+ * @param ignoreBufferOverflow - if true, buffer vs ranges inconsistencies will
+ *  be ignored, otherwise a crit event will be raised and calculation will be
+ *  aborted.
+ * @param fsId - this will be added to crit event message.
+ * @param profileLogRequest - Profile log request reference.
+ *
+ * @return false if the input is inconsistent, true - otherwise.
+ */
+bool CalculateChecksums(
     const TStringBuf buffer,
     ui32 blockSize,
+    bool ignoreBufferOverflow,
+    TStringBuf fsId,
     NProto::TProfileLogRequestInfo& profileLogRequest);
 
 /**
@@ -103,8 +119,10 @@ void CalculateChecksums(
  * @param request - Request proto.
  * @param blockSize - Filesystem block size.
  * @param profileLogRequest - Profile log request reference.
+ *
+ * @return false if the input is inconsistent, true - otherwise.
  */
-void CalculateWriteDataRequestChecksums(
+bool CalculateWriteDataRequestChecksums(
     const NProto::TWriteDataRequest& request,
     ui32 blockSize,
     NProto::TProfileLogRequestInfo& profileLogRequest);

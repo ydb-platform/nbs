@@ -38,6 +38,7 @@ namespace NCloud::NFileStore{
     xxx(WriteBackCacheCorruptionError)                                         \
     xxx(ErrorWasSentToTheGuest)                                                \
     xxx(DirectoryHandlesStorageError)                                          \
+    xxx(CalculateChecksumsBufferOverflow)                                      \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_IMPOSSIBLE_EVENTS(xxx)                                       \
@@ -60,7 +61,6 @@ namespace NCloud::NFileStore{
     xxx(FailedToLockNodeRef)                                                   \
     xxx(InvalidNodeRefUponCompleteUnlinkNode)                                  \
     xxx(UnknownOpLogEntry)                                                     \
-    xxx(CalculateChecksumsBufferOverflow)                                      \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////
