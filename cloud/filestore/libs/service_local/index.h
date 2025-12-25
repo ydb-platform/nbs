@@ -196,7 +196,6 @@ public:
         , Log(std::move(log))
         , NodeLoader(std::move(nodeLoader))
     {
-        Init();
     }
 
     TIndexNodePtr LookupNode(ui64 nodeId)
@@ -294,7 +293,6 @@ public:
         Nodes.insert(root);
     }
 
-private:
     void Init()
     {
         auto root = TIndexNode::CreateRoot(RootPath);
@@ -325,13 +323,15 @@ private:
         if (!NodeLoader) {
             NodeTable = std::make_unique<TNodeTable>(
                 (StatePath / "nodes").GetPath(),
-                MaxNodeCount);
+                MaxNodeCount,
+                true  /* lockFile */);
 
             RecoverNodesFromPersistentTable();
         }
 
     }
 
+private:
     void RecoverNodesFromPersistentTable()
     {
         // enties are ordered by NodeId in TMap but this doesn't mean that

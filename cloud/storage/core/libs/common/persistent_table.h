@@ -2,6 +2,7 @@
 
 #include <util/generic/deque.h>
 #include <util/system/file.h>
+#include <util/system/file_lock.h>
 #include <util/system/filemap.h>
 #include <util/system/yassert.h>
 
@@ -21,6 +22,9 @@ public:
 
 private:
     TString FileName;
+    THolder<TFileLock> FileLock;
+    bool ShouldLockFile = false;
+
     size_t RecordCount = 0;
     size_t NextFreeRecord = 0;
 
@@ -141,11 +145,17 @@ public:
     }
 
 public:
-    TPersistentTable(const TString& fileName, size_t initialRecordCount)
+    TPersistentTable(const TString& fileName, size_t initialRecordCount, bool lockFile = false)
         : FileName(fileName)
+        , ShouldLockFile(lockFile)
         , RecordCount(initialRecordCount)
     {
         Init();
+    }
+
+    ~TPersistentTable()
+    {
+        Cleanup();
     }
 
     H* HeaderData()
@@ -205,14 +215,27 @@ public:
         FileMap->ResizeAndRemap(0, 0);
         FileMap.reset();
         FreeRecords.clear();
+        Cleanup();
         Init();
     }
 
 private:
     void Init()
     {
-        // if file doesn't exist create file with zeroed header
+        // If file doesn't exist - create
         TFile file(FileName, OpenAlways | WrOnly);
+
+        // Lock the file if requested
+        if (ShouldLockFile) {
+            FileLock = MakeHolder<TFileLock>(FileName);
+            if (!FileLock->TryAcquire()) {
+                throw yexception()
+                    << "Failed to lock file: [" << FileName.c_str() << "] . "
+                    << "More than ONE PersistentTable use the same state file.";
+            }
+        }
+
+        // Fill in with zeroed header
         if (file.GetLength() == 0) {
             file.Resize(CalcFileSize(0));
         }
@@ -265,6 +288,13 @@ private:
         // shrink table if it fits into requested size after compaction
         if (initialRecordCount < RecordCount && NextFreeRecord <= initialRecordCount) {
             resizeTable(initialRecordCount);
+        }
+    }
+
+    void Cleanup()
+    {
+        if (FileLock) {
+            FileLock->Release();
         }
     }
 
