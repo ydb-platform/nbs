@@ -792,7 +792,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             m.ResizeAndRemap(0, resized.length() + len);
             auto* data = static_cast<char*>(m.Ptr());
             MemCopy(data, initial.data(), initial.length());
-            MemCopy(data + resized.length(), initial.data() - len, 3);
+            const auto* entryData = initial.data() + initial.length() - len;
+            MemCopy(data + resized.length(), entryData, 3);
         }
         {
             TFileRingBuffer rb(f1.GetName(), len, 100);
@@ -812,8 +813,9 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             m.ResizeAndRemap(0, resized.length() + len);
             auto* data = static_cast<char*>(m.Ptr());
             MemCopy(data, initial.data(), initial.length());
-            MemCopy(data + resized.length(), initial.data() - len, len);
-            MemCopy(data + resized.length() - len, initial.data() - len, 3);
+            const auto* entryData = initial.data() + initial.length() - len;
+            MemCopy(data + resized.length(), entryData, len);
+            MemCopy(data + resized.length() - len, entryData, 3);
             *reinterpret_cast<ui64*>(data + 40) = resized.length();
         }
         {
