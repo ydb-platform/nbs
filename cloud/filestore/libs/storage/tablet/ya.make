@@ -134,6 +134,7 @@ RECURSE(
 )
 
 RECURSE_FOR_TESTS(
+    bench
     ut
     ut_cache_stress
     ut_counters
