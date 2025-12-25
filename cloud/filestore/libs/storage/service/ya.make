@@ -2,6 +2,7 @@ LIBRARY(filestore-libs-storage-service)
 
 SRCS(
     helpers.cpp
+    rope_utils.cpp
     service.cpp
     service_actor.cpp
     service_actor_actions_change_storage_config.cpp
