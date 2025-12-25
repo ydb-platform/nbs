@@ -2366,9 +2366,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response1->GetStatus()),
                 response1->GetErrorReason());
-            UNIT_ASSERT_STRING_CONTAINS(
-                response1->Device.GetDeviceUUID(),
-                "vasya");
+            UNIT_ASSERT_STRING_CONTAINS(response1->DeviceUUID, "vasya");
 
             // Request to first device #2
             client.SendRequest(
@@ -2381,15 +2379,13 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response2->GetStatus()),
                 response2->GetErrorReason());
-            UNIT_ASSERT_STRING_CONTAINS(
-                response2->Device.GetDeviceUUID(),
-                "vasya");
+            UNIT_ASSERT_STRING_CONTAINS(response2->DeviceUUID, "vasya");
 
             // Replicas are rotated and requests should return different
             // devices.
             UNIT_ASSERT_STRINGS_UNEQUAL(
-                response1->Device.GetDeviceUUID(),
-                response2->Device.GetDeviceUUID());
+                response1->DeviceUUID,
+                response2->DeviceUUID);
         }
         {
             // Request to second device
@@ -2402,9 +2398,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_STRING_CONTAINS(
-                response->Device.GetDeviceUUID(),
-                "petya");
+            UNIT_ASSERT_STRING_CONTAINS(response->DeviceUUID, "petya");
         }
 
         {   // Request on the border of two devices
@@ -2496,9 +2490,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_STRING_CONTAINS(
-                response->Device.GetDeviceUUID(),
-                "vasya");
+            UNIT_ASSERT_STRING_CONTAINS(response->DeviceUUID, "vasya");
             UNIT_ASSERT_VALUES_EQUAL(
                 TBlockRange64::WithLength(1024, 8),
                 response->DeviceBlockRange);

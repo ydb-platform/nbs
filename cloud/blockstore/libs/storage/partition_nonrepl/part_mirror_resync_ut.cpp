@@ -1858,9 +1858,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_STRING_CONTAINS(
-                response->Device.GetDeviceUUID(),
-                "vasya");
+            UNIT_ASSERT_STRING_CONTAINS(response->DeviceUUID, "vasya");
         }
         {   // Request over not synced range
             client.SendRequest(
@@ -1886,9 +1884,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_STRING_CONTAINS(
-                response->Device.GetDeviceUUID(),
-                "vasya");
+            UNIT_ASSERT_STRING_CONTAINS(response->DeviceUUID, "vasya");
         }
 
         // Resync range [2048..3095].
@@ -1904,9 +1900,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_STRING_CONTAINS(
-                response->Device.GetDeviceUUID(),
-                "petya");
+            UNIT_ASSERT_STRING_CONTAINS(response->DeviceUUID, "petya");
         }
         {   // Request on the border of two devices
             client.SendRequest(

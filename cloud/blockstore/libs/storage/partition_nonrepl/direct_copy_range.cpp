@@ -125,21 +125,21 @@ void TDirectCopyRangeActor::DirectCopy(const NActors::TActorContext& ctx)
     rec.MutableHeaders()->SetIsBackgroundRequest(true);
     rec.MutableHeaders()->SetClientId(TString(BackgroundOpsClientId));
     rec.MutableHeaders()->SetVolumeRequestId(VolumeRequestId);
-    rec.SetSourceDeviceUUID(SourceInfo->Device.GetDeviceUUID());
+    rec.SetSourceDeviceUUID(SourceInfo->DeviceUUID);
     rec.SetSourceStartIndex(SourceInfo->DeviceBlockRange.Start);
     rec.SetBlockSize(BlockSize);
     rec.SetBlockCount(SourceInfo->DeviceBlockRange.Size());
-    rec.SetTargetNodeId(TargetInfo->Device.GetNodeId());
+    rec.SetTargetNodeId(TargetInfo->NodeId);
     rec.SetTargetClientId(
         WriterClientId ? WriterClientId : TString(BackgroundOpsClientId));
-    rec.SetTargetDeviceUUID(TargetInfo->Device.GetDeviceUUID());
+    rec.SetTargetDeviceUUID(TargetInfo->DeviceUUID);
     rec.SetTargetStartIndex(TargetInfo->DeviceBlockRange.Start);
 
     StartTs = ctx.Now();
 
     NCloud::SendWithUndeliveryTracking(
         ctx,
-        MakeDiskAgentServiceId(SourceInfo->Device.GetNodeId()),
+        MakeDiskAgentServiceId(SourceInfo->NodeId),
         std::move(request));
 
     ctx.Schedule(

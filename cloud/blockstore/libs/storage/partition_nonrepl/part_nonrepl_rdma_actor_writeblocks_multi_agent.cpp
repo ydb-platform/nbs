@@ -136,8 +136,8 @@ NProto::TWriteDeviceBlocksRequest MakeWriteDeviceBlocksRequest(
 
     for (const auto& deviceInfo: request.DevicesAndRanges) {
         auto* replicationTarget = result.AddReplicationTargets();
-        replicationTarget->SetNodeId(deviceInfo.Device.GetNodeId());
-        replicationTarget->SetDeviceUUID(deviceInfo.Device.GetDeviceUUID());
+        replicationTarget->SetNodeId(deviceInfo.NodeId);
+        replicationTarget->SetDeviceUUID(deviceInfo.DeviceUUID);
         replicationTarget->SetStartIndex(deviceInfo.DeviceBlockRange.Start);
         replicationTarget->SetTimeout(deviceInfo.RequestTimeout.MilliSeconds());
     }
