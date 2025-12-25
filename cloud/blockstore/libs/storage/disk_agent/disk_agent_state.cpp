@@ -34,6 +34,8 @@
 #include <util/system/fs.h>
 #include <util/system/hostname.h>
 
+#include <algorithm>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NThreading;
@@ -1331,7 +1333,7 @@ TFuture<void> TDiskAgentState::DetachPaths(const TVector<TString>& paths)
 }
 
 auto TDiskAgentState::PreparePaths(TVector<TString> pathsToAttach)
-        -> TFuture<TResultOrError<TPreparePathsResult>>
+    -> TFuture<TResultOrError<TPreparePathsResult>>
 {
     return BackgroundThreadPool->Execute(
         [agentConfig = AgentConfig,
@@ -1391,6 +1393,33 @@ void TDiskAgentState::AttachPaths(
             std::move(storageAdapter));
         AttachedPaths.emplace(d->Config.GetDeviceName());
     }
+}
+
+NProto::TError TDiskAgentState::CheckAttachDetachPathsRequestGeneration(
+    ui64 diskRegistryGeneration,
+    ui64 diskAgentGeneration)
+{
+    if (diskRegistryGeneration < DiskRegistryGeneration) {
+        return MakeError(E_ARGUMENT, "outdated disk registry generation");
+    }
+
+    if (diskRegistryGeneration > DiskRegistryGeneration) {
+        DiskAgentGeneration = 0;
+    }
+
+    DiskRegistryGeneration = diskRegistryGeneration;
+
+    if (diskAgentGeneration <= DiskAgentGeneration) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "outdated disk agent generation " << diskAgentGeneration
+                << " vs " << DiskAgentGeneration);
+    }
+
+    DiskAgentGeneration = diskAgentGeneration;
+
+    return {};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
