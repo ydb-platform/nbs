@@ -31,8 +31,8 @@ auto GetBackup(TDiskRegistryClient& dr)
     -> NProto::TDiskRegistryStateBackup
 {
     auto response = dr.BackupDiskRegistryState(
-        false // localDB
-    );
+        NProto::EBackupDiskRegistryStateSource::
+            BACKUP_DISK_REGISTRY_STATE_SOURCE_RAM);
 
     return response->Record.GetBackup();
 }

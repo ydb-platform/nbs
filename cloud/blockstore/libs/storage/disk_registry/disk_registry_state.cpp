@@ -7027,7 +7027,7 @@ NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
     auto config = GetConfig();
     config.SetLastDiskStateSeqNo(NotificationSystem.GetDiskStateSeqNo());
 
-    backup.MutableConfig()->Swap(&config);
+    backup.MutableConfig()->CopyFrom(config);
 
     return backup;
 }

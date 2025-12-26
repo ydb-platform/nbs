@@ -95,7 +95,7 @@ void TDiskRegistryActor::ScheduleMakeBackup(
     }
     auto request =
         std::make_unique<TEvDiskRegistry::TEvBackupDiskRegistryStateRequest>();
-    request->Record.SetBackupLocalDB(true);
+    request->Record.SetSource(NProto::BACKUP_DISK_REGISTRY_STATE_SOURCE_LOCAL_DB);
     request->Record.SetBackupFilePath(TStringBuilder()
         << backupDirPath << "/" + hostPrefix << FormatIsoLocal(ctx.Now()) << ".json");
 
@@ -723,6 +723,10 @@ STFUNC(TDiskRegistryActor::StateWork)
         HFunc(
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanup);
+        
+        HFunc(
+            TEvDiskRegistry::TEvCompareDiskRegistryStateWithLocalDbRequest,
+            HandleCompareDiskRegistryStateWithLocalDb);
 
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
@@ -843,6 +847,10 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
         HFunc(
             TEvDiskRegistry::TEvGetClusterCapacityRequest,
             HandleGetClusterCapacity);
+        
+        HFunc(
+            TEvDiskRegistry::TEvCompareDiskRegistryStateWithLocalDbRequest,
+            HandleCompareDiskRegistryStateWithLocalDb);
 
         IgnoreFunc(
             TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
