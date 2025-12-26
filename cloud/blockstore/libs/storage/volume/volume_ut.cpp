@@ -3583,11 +3583,11 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 false,
                 HasError(record.error()),
-                extended_msg);
+                extended_msg + ". Error:" + FormatError(record.error()));
             UNIT_ASSERT_VALUES_EQUAL_C(
                 false,
                 HasError(record.status()),
-                extended_msg);
+                extended_msg + ". Error:" + FormatError(record.status()));
             UNIT_ASSERT_VALUES_EQUAL_C(
                 size,
                 record.GetDiskChecksums().DataSize(),
@@ -3740,8 +3740,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         auto response1 = volume.RecvCheckRangeResponse(TDuration::Seconds(5));
         bool resp1NotNull = response1 != nullptr;
         UNIT_ASSERT_VALUES_EQUAL(resp1NotNull, true);
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response1->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response1->Record.GetStatus().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            response1->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            response1->Record.GetStatus().GetCode());
         const auto& record1 = response1->Record;
 
         volume.SendCheckRangeRequest("disk-id", 100, 99);
@@ -10518,7 +10522,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         DoTestShouldCheckRangeWithBrokenBlocks(
             NCloud::NProto::STORAGE_MEDIA_HYBRID);
     }
-    ////////////////////
+    ////////////////////////////////////////////////////////////////////////////
 
     void DoShouldReceiveDeviceOperationStartedAndFinished(bool useRdma)
     {

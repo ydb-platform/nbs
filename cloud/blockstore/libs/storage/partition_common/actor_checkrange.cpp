@@ -74,7 +74,8 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     auto sgList = Buffer.GetGuardedSgList();
     auto sgListOrError = SgListNormalize(sgList.Acquire().Get(), BlockSize);
     if (HasError(sgListOrError)) {
-        ReplyAndDie(ctx, sgListOrError.GetError());
+        auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(sgListOrError.GetError());
+        ReplyAndDie(ctx, std::move(response));
         return;
     }
     SgList.SetSgList(sgListOrError.ExtractResult());
@@ -91,22 +92,6 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     headers->SetIsBackgroundRequest(true);
 
     NCloud::Send(ctx, Partition, std::move(request));
-}
-
-void TCheckRangeActor::ReplyAndDie(
-    const TActorContext& ctx,
-    const NProto::TError& error)
-{
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::PARTITION_WORKER,
-        "%s CheckRangeActor has finished",
-        LogTitle.GetWithTime().c_str());
-
-    auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
-
-    Die(ctx);
 }
 
 void TCheckRangeActor::ReplyAndDie(
@@ -160,7 +145,7 @@ void TCheckRangeActor::HandlePoisonPill(
 
     auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
-    ReplyAndDie(ctx, error);
+    ReplyAndDie(ctx, std::make_unique<TEvVolume::TEvCheckRangeResponse>(error));
 }
 
 void TCheckRangeActor::HandleReadBlocksResponse(

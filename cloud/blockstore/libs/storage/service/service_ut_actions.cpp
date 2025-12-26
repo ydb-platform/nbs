@@ -1861,7 +1861,8 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
         service.CreateVolume(DefaultDiskId);
-        auto sessionId = service.MountVolume(DefaultDiskId)->Record.GetSessionId();
+        auto sessionId =
+            service.MountVolume(DefaultDiskId)->Record.GetSessionId();
         service.WriteBlocks(
             DefaultDiskId,
             TBlockRange64::WithLength(0, 1024),
@@ -1880,12 +1881,15 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             const auto response = service.ExecuteAction("CheckRange", buf);
             NProto::TCheckRangeResponse checkRangeResponse;
 
-            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                            response->Record.GetOutput(),
-                            &checkRangeResponse)
-                            .ok());
+            UNIT_ASSERT(
+                google::protobuf::util::JsonStringToMessage(
+                    response->Record.GetOutput(),
+                    &checkRangeResponse)
+                    .ok());
 
-            UNIT_ASSERT_VALUES_EQUAL(blockCount, checkRangeResponse.GetDiskChecksums().DataSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                blockCount,
+                checkRangeResponse.GetDiskChecksums().DataSize());
         }
     }
 }

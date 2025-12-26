@@ -147,9 +147,9 @@ void TCheckRangeActor::HandleCheckRangeResponse(
     response.MutableStatus()->CopyFrom(record.GetStatus());
     if (record.HasDiskChecksums()) {
         response.MutableDiskChecksums()->Swap(record.MutableDiskChecksums());
-    } else if (record.HasMirrorChecksums()) {
-        response.MutableMirrorChecksums()->Swap(
-            record.MutableMirrorChecksums());
+    } else if (record.HasInconsistentChecksums()) {
+        response.MutableInconsistentChecksums()->Swap(
+            record.MutableInconsistentChecksums());
     }
 
     return ReplyAndDie(ctx, ev->Get()->Record.GetError(), std::move(response));

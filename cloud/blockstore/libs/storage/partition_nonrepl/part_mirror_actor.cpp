@@ -861,6 +861,7 @@ STFUNC(TMirrorPartitionActor::StateWork)
         HFunc(TEvVolume::TEvScanDiskRequest, HandleScanDisk);
         HFunc(TEvVolume::TEvGetScanDiskStatusRequest, HandleGetScanDiskStatus);
         HFunc(TEvVolume::TEvCheckRangeRequest, HandleCheckRange);
+        HFunc(TEvVolume::TEvCheckRangeResponse, HandleCheckRangeResponse);
 
         HFunc(
             TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted,

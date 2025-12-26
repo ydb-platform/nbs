@@ -2698,7 +2698,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         ui32 emptyCheksumsCount{0};
         ui32 nonEmptyCheksumsCount{0};
-        for (const auto& cs: record.GetMirrorChecksums().GetReplicas()) {
+        for (const auto& cs: record.GetInconsistentChecksums().GetReplicas()) {
             if (cs.GetData().size()) {
                 ++nonEmptyCheksumsCount;
             } else {
@@ -2731,7 +2731,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         ui32 EmptyCheksumsCnt{0};
         ui32 NonEmptyCheksumsCnt{0};
-        for (const auto& replica: record.GetMirrorChecksums().GetReplicas()) {
+        for (const auto& replica: record.GetInconsistentChecksums().GetReplicas()) {
             if (replica.GetData().size()) {
                 ++NonEmptyCheksumsCnt;
             } else {
@@ -2743,11 +2743,11 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         int equalsChecksums{0};
         {
             const auto& cs0 =
-                record.GetMirrorChecksums().GetReplicas()[0].GetData();
+                record.GetInconsistentChecksums().GetReplicas()[0].GetData();
             const auto& cs1 =
-                record.GetMirrorChecksums().GetReplicas()[1].GetData();
+                record.GetInconsistentChecksums().GetReplicas()[1].GetData();
             const auto& cs2 =
-                record.GetMirrorChecksums().GetReplicas()[2].GetData();
+                record.GetInconsistentChecksums().GetReplicas()[2].GetData();
             equalsChecksums +=
                 std::equal(cs0.begin(), cs0.end(), cs1.begin(), cs1.end());
             equalsChecksums +=
@@ -2756,6 +2756,61 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 std::equal(cs1.begin(), cs1.end(), cs2.begin(), cs2.end());
         }
         UNIT_ASSERT_VALUES_EQUAL(1, equalsChecksums);
+    }
+
+    Y_UNIT_TEST(ShouldMirrorCheckRangeOneReadUndelivered)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        constexpr ui32 blocksCount = 1024;
+        const ui32 replicaCount = env.ReplicaActors.size();
+        TPartitionClient client(runtime, env.ActorId);
+        client.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, blocksCount),
+            1);
+
+        bool once{false};
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvReadBlocksRequest: {
+                        if (once) {
+                            break;
+                        }
+                        once = true;
+                        runtime.Send(
+                            event->Sender,
+                            env.VolumeActorId,
+                            event->Release<TEvService::TEvReadBlocksRequest>()
+                                .Release());
+
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    default:
+                        break;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        auto response = client.CheckRange("disk-id", 0, blocksCount);
+        const auto& record = response->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, record.GetStatus().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, record.GetDiskChecksums().GetData().size());
+
+        ui32 emptyCheksumsCount{0};
+        ui32 nonEmptyCheksumsCount{0};
+        for (const auto& cs: record.GetInconsistentChecksums().GetReplicas()) {
+            if (cs.GetData().size()) {
+                ++nonEmptyCheksumsCount;
+            } else {
+                ++emptyCheksumsCount;
+            }
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(replicaCount - 1, nonEmptyCheksumsCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, emptyCheksumsCount);
     }
 
     Y_UNIT_TEST(ShouldLockAndDrainRangeForWriteIO)

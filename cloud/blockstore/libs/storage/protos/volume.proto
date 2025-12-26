@@ -713,16 +713,16 @@ message TCheckRangeRequest
 }
 
 // Checksums for requested range for a disk of any type.
-message TDiskChecksums
+message TChecksums
 {
     repeated uint32 Data = 1;
 }
 
 // Checksums for each replica of mirror disk.
 // It's using in case of differ replica checksums.
-message TMirrorChecksums
+message TMirrorInconsistentChecksums
 {
-    repeated TDiskChecksums Replicas = 1;
+    repeated TChecksums Replicas = 1;
 }
 
 message TCheckRangeResponse
@@ -739,11 +739,11 @@ message TCheckRangeResponse
         // DiskChecksums field is set for the next cases:
         //   - non-mirror disks;
         //   - mirror disks if replica checksums are equal.
-        // MirrorChecksums field is set for each replica of mirror disk
+        // InconsistentChecksums field is set for each replica of mirror disk
         //   if replica checksums are different at least for 2 replicas.
 
-        TDiskChecksums DiskChecksums = 5;
-        TMirrorChecksums MirrorChecksums = 6;
+        TChecksums DiskChecksums = 5;
+        TMirrorInconsistentChecksums InconsistentChecksums = 6;
     };
 
     // Request traces.
