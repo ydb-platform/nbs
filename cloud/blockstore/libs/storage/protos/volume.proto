@@ -693,11 +693,11 @@ message TGracefulShutdownResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// CheckRange request/response.
+// CheckRange.
 
 message TCheckRangeRequest
 {
-    reserved 5;
+    reserved 5,6;
 
     // Optional request headers.
     THeaders Headers = 1;
@@ -710,21 +710,41 @@ message TCheckRangeRequest
 
     // Number of blobs per batch.
     uint64 BlocksCount = 4;
+}
 
-    // Number of replicas to read from m3 disks.
-    uint64 ReplicaCount = 6;
+// Checksums for requested range for a disk of any type.
+message TChecksums
+{
+    repeated uint32 Data = 1;
+}
+
+// Checksums for each replica of mirror disk.
+// It's using in case of differ replica checksums.
+message TMirrorInconsistentChecksums
+{
+    repeated TChecksums Replicas = 1;
 }
 
 message TCheckRangeResponse
 {
+    reserved 3;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
     // Status of ReadBlocks operation.
     NCloud.NProto.TError Status = 2;
 
-    // Checksums of blocks
-    repeated uint32 Checksums = 3;
+    oneof ChecksumData {
+        // DiskChecksums field is set for the next cases:
+        //   - non-mirror disks;
+        //   - mirror disks if replica checksums are equal.
+        // InconsistentChecksums field is set for each replica of mirror disk
+        //   if replica checksums are different at least for 2 replicas.
+
+        TChecksums DiskChecksums = 5;
+        TMirrorInconsistentChecksums InconsistentChecksums = 6;
+    };
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 4;
