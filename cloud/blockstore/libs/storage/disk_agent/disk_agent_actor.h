@@ -52,6 +52,12 @@ class TDiskAgentActor final
         Registered,
     };
 
+    enum class EAction
+    {
+        Attach,
+        Detach,
+    };
+
 private:
     const TStorageConfigPtr Config;
     const TDiskAgentConfigPtr AgentConfig;
@@ -177,6 +183,28 @@ private:
         TVector<TString> devicesToDisableIO);
 
     TDuration GetMaxRequestTimeout() const;
+
+    struct TCheckAttachDetachPathRequestResult {
+        TVector<TString> AlreadyInWantedStatePaths;
+        TVector<TString> PathToPerformAttachDetach;
+    };
+
+    TResultOrError<TCheckAttachDetachPathRequestResult>
+    CheckAttachDetachPathsRequest(
+        ui64 diskRegistryGeneration,
+        ui64 diskAgentGeneration,
+        TVector<TString> paths,
+        EAction action);
+
+    TResultOrError<TCheckAttachDetachPathRequestResult> CheckAttachPathsRequest(
+        ui64 diskRegistryGeneration,
+        ui64 diskAgentGeneration,
+        TVector<TString> paths);
+
+    TResultOrError<TCheckAttachDetachPathRequestResult> CheckDetachPathsRequest(
+        ui64 diskRegistryGeneration,
+        ui64 diskAgentGeneration,
+        TVector<TString> paths);
 
 private:
     STFUNC(StateInit);
