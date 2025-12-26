@@ -1119,6 +1119,11 @@ public:
         return std::make_unique<TEvService::TEvListDiskStatesRequest>();
     }
 
+    auto CreateCompareDiskRegistryStateWithLocalDbRequest()
+    {
+        return std::make_unique<TEvDiskRegistry::TEvCompareDiskRegistryStateWithLocalDbRequest>();
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \
