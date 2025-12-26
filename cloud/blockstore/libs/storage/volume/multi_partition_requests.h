@@ -34,7 +34,6 @@ template <typename TMethod>
 struct TPartitionRequest
 {
     NActors::TActorId ActorId;
-    ui64 TabletId = 0;
     ui32 PartitionId = Max<ui32>();
     TBlockRange64 BlockRange;
     std::unique_ptr<typename TMethod::TRequest> Event;
