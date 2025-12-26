@@ -86,13 +86,6 @@ void TIndexTabletActor::CompleteResponse(
     const TCallContextPtr& callContext,
     const NActors::TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s %s: #%lu completed (%s)",
-        LogTag.c_str(),
-        TMethod::Name,
-        callContext->RequestId,
-        FormatError(response.GetError()).c_str());
-
     if (HasError(response.GetError())) {
         auto* e = response.MutableError();
         e->SetMessage(TStringBuilder()
@@ -104,7 +97,17 @@ void TIndexTabletActor::CompleteResponse(
         callContext,
         TMethod::Name);
 
-    BuildTraceInfo(TraceSerializer, callContext, response);
+    const bool builtTraceInfo = BuildTraceInfo(
+        TraceSerializer,
+        callContext,
+        response);
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        "%s %s: #%lu completed (%s), trace-info: %d",
+        LogTag.c_str(),
+        TMethod::Name,
+        callContext->RequestId,
+        FormatError(response.GetError()).c_str(),
+        builtTraceInfo);
     BuildThrottlerInfo(*callContext, response);
 
     Metrics.BusyIdleCalc.OnRequestCompleted();

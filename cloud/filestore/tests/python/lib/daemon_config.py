@@ -240,7 +240,8 @@ class FilestoreDaemonConfigGenerator:
         config = TDiagnosticsConfig()
 
         config.ProfileLogTimeThreshold = 100
-        config.SamplingRate = 100000
+        config.DumpTracksInterval = 100
+        config.SamplingRate = 1
         config.SlowRequestSamplingRate = 1000
         config.HDDSlowRequestThreshold = 1000
         config.SSDSlowRequestThreshold = 1000
@@ -498,4 +499,6 @@ class FilestoreVhostConfigGenerator(FilestoreDaemonConfigGenerator):
     def __generate_diag_txt(self):
         diag = TDiagnosticsConfig()
         diag.ProfileLogTimeThreshold = 100
+        diag.DumpTracksInterval = 100
+        diag.SamplingRate = 1
         return diag

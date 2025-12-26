@@ -121,13 +121,15 @@ struct TEnv
                 requestThresholds,
                 "SlowRequests"
         )};
+        TTraceProcessorConfig traceProcessorConfig;
+        traceProcessorConfig.ComponentName = "STORAGE_TRACE";
         return NCloud::CreateTraceProcessorMon(
             monitoring,
             NCloud::CreateTraceProcessor(
                 Timer,
                 Scheduler,
                 logging,
-                "STORAGE_TRACE",
+                std::move(traceProcessorConfig),
                 *LWManager,
                 std::move(readers))
         );

@@ -148,16 +148,17 @@ void TWriteDataActor::ReplyAndDie(
 
     if (RequestInfo->Sender != Tablet) {
         auto response = std::make_unique<TEvService::TEvWriteDataResponse>(error);
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
-            "%s WriteData: #%lu completed (%s)",
-            LogTag.c_str(),
-            RequestInfo->CallContext->RequestId,
-            FormatError(response->Record.GetError()).c_str());
 
-        BuildTraceInfo(
+        const bool builtTraceInfo = BuildTraceInfo(
             TraceSerializer,
             RequestInfo->CallContext,
             response->Record);
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
+            "%s WriteData: #%lu completed (%s), trace-info: %d",
+            LogTag.c_str(),
+            RequestInfo->CallContext->RequestId,
+            FormatError(response->Record.GetError()).c_str(),
+            builtTraceInfo);
         BuildThrottlerInfo(*RequestInfo->CallContext, response->Record);
 
         NCloud::Reply(ctx, *RequestInfo, std::move(response));

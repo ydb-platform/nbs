@@ -26,11 +26,19 @@ struct ITraceProcessor
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TTraceProcessorConfig
+{
+    TDuration DumpTracksInterval = NCloud::DumpTracksInterval;
+    TString ComponentName;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 ITraceProcessorPtr CreateTraceProcessor(
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
-    TString componentName,
+    TTraceProcessorConfig config,
     NLWTrace::TManager& lwManager,
     TVector<ITraceReaderPtr> keepers);
 

@@ -325,6 +325,10 @@ void TIndexTabletActor::HandleGenerateBlobIds(
     }
 
     response->Record.SetCommitId(commitId);
+    CompleteResponse<TEvIndexTablet::TGenerateBlobIdsMethod>(
+        response->Record,
+        msg->CallContext,
+        ctx);
 
     Metrics.GenerateBlobIds.Count.fetch_add(1, std::memory_order_relaxed);
     Metrics.GenerateBlobIds.RequestBytes.fetch_add(

@@ -530,16 +530,16 @@ void TReadDataActor::ReplyAndDie(
             }
         }
 
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
-            "%s ReadData: #%lu completed (%s)",
-            LogTag.c_str(),
-            RequestInfo->CallContext->RequestId,
-            FormatError(response->Record.GetError()).c_str());
-
-        BuildTraceInfo(
+        const bool builtTraceInfo = BuildTraceInfo(
             TraceSerializer,
             RequestInfo->CallContext,
             response->Record);
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
+            "%s ReadData: #%lu completed (%s), trace-info: %d",
+            LogTag.c_str(),
+            RequestInfo->CallContext->RequestId,
+            FormatError(response->Record.GetError()).c_str(),
+            builtTraceInfo);
         BuildThrottlerInfo(*RequestInfo->CallContext, response->Record);
 
         NCloud::Reply(ctx, *RequestInfo, std::move(response));

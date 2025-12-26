@@ -1,6 +1,7 @@
 #include "service_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
+#include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/core/helpers.h>
@@ -176,9 +177,11 @@ private:
     ui32 RemainingBlobsToWrite = 0;
     bool WriteDataFallbackEnabled = false;
 
-    // Stats for reporting
+    // Metrics / logging
     IRequestStatsPtr RequestStats;
     IProfileLogPtr ProfileLog;
+    ITraceSerializerPtr TraceSerializer;
+
     // Refers to GenerateBlobIds or AddData request, depending on which one is
     // in flight
     TMaybe<TInFlightRequest> InFlightRequest;
@@ -196,6 +199,7 @@ public:
             TString logTag,
             IRequestStatsPtr requestStats,
             IProfileLogPtr profileLog,
+            ITraceSerializerPtr traceSerializer,
             NCloud::NProto::EStorageMediaKind mediaKind)
         : WriteRequest(std::move(request))
         , Range(range)
@@ -204,6 +208,7 @@ public:
         , LogTag(std::move(logTag))
         , RequestStats(std::move(requestStats))
         , ProfileLog(std::move(profileLog))
+        , TraceSerializer(std::move(traceSerializer))
         , MediaKind(mediaKind)
     {}
 
@@ -243,6 +248,11 @@ public:
         InitProfileLogRequestInfo(
             InFlightRequest->ProfileLogRequest,
             request->Record);
+        auto* trace =
+            request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
+        TraceSerializer->BuildTraceRequest(
+            *trace,
+            RequestInfo->CallContext->LWOrbit);
 
         LOG_DEBUG(
             ctx,
@@ -289,7 +299,7 @@ private:
         const TEvIndexTablet::TEvGenerateBlobIdsResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        const auto* msg = ev->Get();
+        auto* msg = ev->Get();
         const auto& error = msg->GetError();
 
         TABLET_VERIFY(InFlightRequest);
@@ -297,6 +307,12 @@ private:
         InFlightRequest->Complete(ctx.Now(), error);
         FinalizeProfileLogRequestInfo(
             InFlightRequest->ProfileLogRequest,
+            msg->Record);
+        HandleServiceTraceInfo(
+            "GenerateBlobIds",
+            ctx,
+            TraceSerializer,
+            RequestInfo->CallContext,
             msg->Record);
 
         if (HasError(error)) {
@@ -398,6 +414,13 @@ private:
                 offset += blobId.BlobSize();
             }
 
+            if (!RequestInfo->CallContext->LWOrbit.Fork(request->Orbit)) {
+                FILESTORE_TRACK(
+                    ForkFailed,
+                    RequestInfo->CallContext,
+                    "TEvBlobStorage::TEvPut");
+            }
+
             NKikimr::TActorId proxy =
                 MakeBlobStorageProxyID(blob.GetBSGroupId());
             LOG_DEBUG(
@@ -420,7 +443,9 @@ private:
         if (WriteDataFallbackEnabled) {
             return;
         }
+
         const auto* msg = ev->Get();
+        RequestInfo->CallContext->LWOrbit.Join(msg->Orbit);
 
         if (msg->Status != NKikimrProto::OK) {
             const auto error =
@@ -546,6 +571,11 @@ private:
         InitProfileLogRequestInfo(
             InFlightRequest->ProfileLogRequest,
             request->Record);
+        auto* trace =
+            request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
+        TraceSerializer->BuildTraceRequest(
+            *trace,
+            RequestInfo->CallContext->LWOrbit);
 
         LOG_DEBUG(
             ctx,
@@ -567,6 +597,12 @@ private:
         InFlightRequest->Complete(ctx.Now(), msg->GetError());
         FinalizeProfileLogRequestInfo(
             InFlightRequest->ProfileLogRequest,
+            msg->Record);
+        HandleServiceTraceInfo(
+            "AddData",
+            ctx,
+            TraceSerializer,
+            RequestInfo->CallContext,
             msg->Record);
 
         if (HasError(msg->GetError())) {
@@ -605,6 +641,11 @@ private:
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
         request->Record = std::move(WriteRequest);
         request->Record.MutableHeaders()->SetThrottlingDisabled(true);
+        auto* trace =
+            request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
+        TraceSerializer->BuildTraceRequest(
+            *trace,
+            RequestInfo->CallContext->LWOrbit);
 
         // forward request through tablet proxy
         ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -615,6 +656,12 @@ private:
         const TActorContext& ctx)
     {
         auto* msg = ev->Get();
+        HandleServiceTraceInfo(
+            "WriteData",
+            ctx,
+            TraceSerializer,
+            RequestInfo->CallContext,
+            msg->Record);
 
         if (HasError(msg->GetError())) {
             HandleError(ctx, msg->GetError());
@@ -788,6 +835,7 @@ void TStorageServiceActor::HandleWriteData(
             std::move(logTag),
             session->RequestStats,
             ProfileLog,
+            TraceSerializer,
             session->MediaKind);
         NCloud::Register(ctx, std::move(actor));
     } else {
