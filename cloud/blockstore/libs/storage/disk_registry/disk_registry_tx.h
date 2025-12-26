@@ -63,6 +63,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(PurgeHostCms,                       __VA_ARGS__)                       \
     xxx(RemoveOrphanDevices,                __VA_ARGS__)                       \
     xxx(AddOutdatedLaggingDevices,          __VA_ARGS__)                       \
+    xxx(RestoreDisksToOnline,               __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1472,6 +1473,25 @@ struct TTxDiskRegistry
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , VolumeOutdatedDevices(std::move(volumeLaggingDevices))
+        {}
+
+        void Clear()
+        {
+            Error.Clear();
+        }
+    };
+
+
+    struct TRestoreDisksToOnline{
+        const TRequestInfoPtr RequestInfo;
+
+        NProto::TError Error;
+        TVector<TString> affectedAgents;
+
+        TRestoreDisksToOnline(
+            TRequestInfoPtr requestInfo
+        )
+        : RequestInfo(std::move(requestInfo))
         {}
 
         void Clear()

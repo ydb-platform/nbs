@@ -753,6 +753,8 @@ public:
     [[nodiscard]] bool GetSendLocalTabletMetricsToHiveEnabled() const;
 
     [[nodiscard]] bool GetEnableVhostDiscardForNewVolumes() const;
+    [[nodiscard]] TDuration GetRestoreAgentsToOnlineInterval() const;
+    [[nodiscard]] TDuration GetCheckAgentsToRestoreToOnlineInterval() const;
 };
 
 ui64 GetAllocationUnit(

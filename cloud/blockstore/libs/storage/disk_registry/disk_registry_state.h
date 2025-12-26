@@ -612,6 +612,12 @@ public:
         TInstant timestamp,
         TString reason,
         TVector<TDiskId>& affectedDisks);
+    
+    NProto::TError RestoreAgentsFromWarning(
+        TDiskRegistryDatabase& db,
+        TInstant timestamp,
+        TDuration restoreInterval,
+        TVector<TString>& affectedAgents);
 
     NProto::TError SwitchAgentDisksToReadOnly(
         TDiskRegistryDatabase& db,

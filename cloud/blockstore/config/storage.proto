@@ -1392,4 +1392,7 @@ message TStorageServiceConfig
 
     // Number of fresh channels per partition for HDD disks.
     optional uint32 FreshChannelCountHDD = 473;
+
+    optional uint32 RestoreAgentsToOnlineInterval = 474;
+    optional uint32 CheckAgentsToRestoreToOnlineInterval = 475;
 }

@@ -297,6 +297,14 @@ void TDiskRegistryActor::ScheduleDiskRegistryAgentListExpiredParamsCleanup(
         new TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup());
 }
 
+void TDiskRegistryActor::ScheduleRestoreDisksToOnline(
+    const NActors::TActorContext& ctx)
+{
+    ctx.Schedule(
+        Config->GetCheckAgentsToRestoreToOnlineInterval(),
+        new TEvDiskRegistryPrivate::TEvDiskRegistryRestoreAgentsToOnline());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryActor::HandlePoisonPill(
@@ -723,6 +731,10 @@ STFUNC(TDiskRegistryActor::StateWork)
         HFunc(
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanup);
+        
+        HFunc(
+            TEvDiskRegistryPrivate::TEvDiskRegistryRestoreAgentsToOnline,
+            TDiskRegistryActor::HandleRestoreAgentsToOnline);
 
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
@@ -772,6 +784,10 @@ STFUNC(TDiskRegistryActor::StateRestore)
         HFunc(
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly);
+
+        HFunc(
+            TEvDiskRegistryPrivate::TEvDiskRegistryRestoreAgentsToOnline,
+            HandleRestoreAgentsToOnlineReadOnly);
 
         IgnoreFunc(TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
 
@@ -843,6 +859,10 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
         HFunc(
             TEvDiskRegistry::TEvGetClusterCapacityRequest,
             HandleGetClusterCapacity);
+
+        HFunc(
+            TEvDiskRegistryPrivate::TEvDiskRegistryRestoreAgentsToOnline,
+            HandleRestoreAgentsToOnlineReadOnly);
 
         IgnoreFunc(
             TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
