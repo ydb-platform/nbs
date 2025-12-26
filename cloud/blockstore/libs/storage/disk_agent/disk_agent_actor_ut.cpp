@@ -176,11 +176,11 @@ private:
     ui64 DevicesCount;
     TVector<TString> Paths;
 
-    ui64 MinDAGeneration = 1;
+    ui64 MinDiskAgentGeneration = 1;
     TVector<bool> GeneratedShouldAttachPath;
 
-    ui64 MinDrGeneration = 1;
-    ui32 GeneratedDrGeneration = 0;
+    ui64 MinDiskRegistryGeneration = 1;
+    ui32 GeneratedDiskRegistryGeneration = 0;
 
 public:
     explicit TAttachDetachRequestsGenerator(const TVector<TString>& paths)
@@ -188,19 +188,19 @@ public:
         , Paths(std::move(paths))
     {}
 
-    ui64 GenerateDrGeneration()
+    ui64 GenerateDiskRegistryGeneration()
     {
-        MinDrGeneration += MoveGenerationWindowPerRun;
-        GeneratedDrGeneration =
-            RandomNumber<ui32>(GenerationSpread) + MinDrGeneration;
-        MinDAGeneration = 1;
+        MinDiskRegistryGeneration += MoveGenerationWindowPerRun;
+        GeneratedDiskRegistryGeneration =
+            RandomNumber<ui32>(GenerationSpread) + MinDiskRegistryGeneration;
+        MinDiskAgentGeneration = 1;
 
-        return GeneratedDrGeneration;
+        return GeneratedDiskRegistryGeneration;
     }
 
     struct TRequest
     {
-        ui64 DAGeneration;
+        ui64 DiskAgentGeneration;
         TVector<TString> Paths;
     };
 
@@ -212,7 +212,7 @@ public:
 
         while (pathIdxs.size() > 0) {
             TRequest request;
-            request.DAGeneration = GenerateDAGeneration();
+            request.DiskAgentGeneration = GenerateDiskAgentGeneration();
 
             auto devicesInRequest =
                 Max(RandomNumber<ui64>(pathIdxs.size() + 1),
@@ -233,10 +233,10 @@ public:
     }
 
 private:
-    ui64 GenerateDAGeneration()
+    ui64 GenerateDiskAgentGeneration()
     {
-        MinDAGeneration += MoveGenerationWindowPerRun;
-        return RandomNumber<ui64>(GenerationSpread) + MinDAGeneration;
+        MinDiskAgentGeneration += MoveGenerationWindowPerRun;
+        return RandomNumber<ui64>(GenerationSpread) + MinDiskAgentGeneration;
     }
 
     void GenerateShouldAttachPath()
@@ -7165,15 +7165,15 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         diskAgent.DetachPaths(
             TVector<TString>{{PartLabels[0]}},
-            5,     // drGeneration
-            10);   // daGeneration
+            5,     // diskRegistryGeneration
+            10);   // diskAgentGeneration
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(Devices[0]).size());
 
         diskAgent.SendAttachPathsRequest(
             TVector<TString>{{PartLabels[0]}},
-            5,    // drGeneration
-            1);   // daGeneration
+            5,    // diskRegistryGeneration
+            1);   // diskAgentGeneration
 
         auto resp = diskAgent.RecvAttachPathsResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
@@ -7182,8 +7182,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         diskAgent.SendAttachPathsRequest(
             TVector<TString>{{PartLabels[0]}},
-            4,      // drGeneration
-            100);   // daGeneration
+            4,      // diskRegistryGeneration
+            100);   // diskAgentGeneration
 
         resp = diskAgent.RecvAttachPathsResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
@@ -7192,8 +7192,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         diskAgent.AttachPaths(
             TVector<TString>{{PartLabels[0]}},
-            6,    // drGeneration
-            1);   // daGeneration
+            6,    // diskRegistryGeneration
+            1);   // diskAgentGeneration
 
         UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(Devices[0]).size());
     }
@@ -7224,11 +7224,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         static constexpr ui64 EventsCount = 100;
         static constexpr ui64 RegenerateDiskRegistryGenerationInterval = 10;
 
-        ui64 drGeneration = 0;
+        ui64 diskRegistryGeneration = 0;
 
         for (ui64 eventIdx = 0; eventIdx < EventsCount; ++eventIdx) {
             if (eventIdx % RegenerateDiskRegistryGenerationInterval == 0) {
-                drGeneration = requestsGenerator.GenerateDrGeneration();
+                diskRegistryGeneration = requestsGenerator.GenerateDiskRegistryGeneration();
             }
 
             auto doRequests = [&](bool attach)
@@ -7242,20 +7242,20 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                     if (attach) {
                         diskAgent.SendAttachPathsRequest(
                             request.Paths,
-                            drGeneration,
-                            request.DAGeneration);
+                            diskRegistryGeneration,
+                            request.DiskAgentGeneration);
                         error = diskAgent.RecvAttachPathsResponse()->GetError();
                     } else {
                         diskAgent.SendDetachPathsRequest(
                             request.Paths,
-                            drGeneration,
-                            request.DAGeneration);
+                            diskRegistryGeneration,
+                            request.DiskAgentGeneration);
                         error = diskAgent.RecvDetachPathsResponse()->GetError();
                     }
 
                     bool shouldBeSuccessful = diskAgentModel.AttachDetachPath(
-                        drGeneration,
-                        request.DAGeneration,
+                        diskRegistryGeneration,
+                        request.DiskAgentGeneration,
                         request.Paths,
                         attach);
 
