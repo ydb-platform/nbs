@@ -48,7 +48,8 @@ auto TDiskAgentActor::CheckAttachDetachPathsRequest(
     TVector<TString> alreadyAttachedPaths = std::move(paths);
     auto pathsToPerformAttachDetachRange = std::ranges::partition(
         alreadyAttachedPaths,
-        [&](const auto& p) { return State->IsPathAttached(p) == attach; });
+        [&](const auto& p)
+        { return State->IsPathAttached(p) == (action == EAction::Attach); });
     TVector<TString> pathsToPerformAttachDetach(
         std::make_move_iterator(pathsToPerformAttachDetachRange.begin()),
         std::make_move_iterator(pathsToPerformAttachDetachRange.end()));
