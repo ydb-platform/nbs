@@ -30,6 +30,15 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TBriefPartitionInfo
+{
+    NActors::TActorId ActorId;
+    ui32 BlockSize = 0;
+    TString DiskId;
+};
+
+using TBriefPartitionInfoList = TVector<TBriefPartitionInfo>;
+
 template <typename TMethod>
 struct TPartitionRequest
 {
@@ -41,7 +50,7 @@ struct TPartitionRequest
 
 template <typename TMethod>
 bool ToPartitionRequests(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
     const typename TMethod::TRequest::TPtr& ev,

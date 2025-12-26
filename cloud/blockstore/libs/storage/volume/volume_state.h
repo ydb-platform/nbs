@@ -223,6 +223,7 @@ private:
     TPartitionInfo::EState PartitionsState = TPartitionInfo::UNKNOWN;
     TActorsStack DiskRegistryBasedPartitionActor;
     TNonreplicatedPartitionConfigPtr NonreplicatedPartitionConfig;
+    TActorsStack MultiPartitionWrapper;
 
     TVector<TPartitionStatInfo> PartitionStatInfos;
 
@@ -495,6 +496,16 @@ public:
         return DiskRegistryBasedPartitionActor.GetTop();
     }
 
+    void SetMultiPartitionWrapperActor(TActorsStack actors)
+    {
+        MultiPartitionWrapper = std::move(actors);
+    }
+
+    NActors::TActorId GetMultiPartitionWrapperActor() const
+    {
+        return MultiPartitionWrapper.GetTop();
+    }
+
     const TNonreplicatedPartitionConfigPtr& GetNonreplicatedPartitionConfig() const
     {
         return NonreplicatedPartitionConfig;
@@ -594,7 +605,7 @@ public:
     TAddClientResult AddClient(
         const NProto::TVolumeClientInfo& info,
         const NActors::TActorId& pipeServerActorId = {},
-        const NActors::TActorId& SenderActorId = {},
+        const NActors::TActorId& senderActorId = {},
         TInstant referenceTimestamp = TInstant::Now());
 
     TInstant GetLastActivityTimestamp(const TString& clientId) const;
