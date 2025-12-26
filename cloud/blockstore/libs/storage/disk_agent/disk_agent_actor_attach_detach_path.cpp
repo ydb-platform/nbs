@@ -18,7 +18,7 @@ auto TDiskAgentActor::CheckAttachDetachPathsRequest(
     ui64 diskRegistryGeneration,
     ui64 diskAgentGeneration,
     TVector<TString> paths,
-    bool attach) -> TResultOrError<TCheckAttachDetachPathRequestResult>
+    EAction action) -> TResultOrError<TCheckAttachDetachPathRequestResult>
 {
     if (!Config->GetAttachDetachPathsEnabled() || Spdk) {
         // DR should handle errors with E_PRECONDITION_FAILED code.
@@ -80,7 +80,7 @@ auto TDiskAgentActor::CheckAttachPathsRequest(
         diskRegistryGeneration,
         diskAgentGeneration,
         std::move(paths),
-        true);   // attach
+        EAction::Attach);
 }
 
 auto TDiskAgentActor::CheckDetachPathsRequest(
@@ -93,7 +93,7 @@ auto TDiskAgentActor::CheckDetachPathsRequest(
         diskRegistryGeneration,
         diskAgentGeneration,
         std::move(paths),
-        false);   // attach
+        EAction::Detach);
 }
 
 void TDiskAgentActor::HandleDetachPaths(
@@ -141,15 +141,15 @@ void TDiskAgentActor::HandleDetachPaths(
          daId,
          pathsToDetach = std::move(pathsToDetach),
          alreadyDetachedPaths = std::move(alreadyDetachedPaths),
-         drGeneration = record.GetDiskRegistryGeneration(),
-         daGeneration = record.GetDiskAgentGeneration()](auto) mutable
+         diskRegistryGeneration = record.GetDiskRegistryGeneration(),
+         diskAgentGeneration = record.GetDiskAgentGeneration()](auto) mutable
         {
             auto response =
                 std::make_unique<TEvDiskAgentPrivate::TEvPathsDetached>();
             response->PathsToDetach = std::move(pathsToDetach);
             response->AlreadyDetachedPaths = std::move(alreadyDetachedPaths);
-            response->DiskRegistryGeneration = drGeneration;
-            response->DiskAgentGeneration = daGeneration;
+            response->DiskRegistryGeneration = diskRegistryGeneration;
+            response->DiskAgentGeneration = diskAgentGeneration;
 
             actorSystem->Send(new IEventHandle{daId, daId, response.release()});
         });
@@ -249,8 +249,8 @@ void TDiskAgentActor::HandleAttachPaths(
          selfId = ctx.SelfID,
          pathsToAttach = std::move(pathsToAttach),
          alreadyAttachedPaths = std::move(alreadyAttachedPaths),
-         drGeneration = record.GetDiskRegistryGeneration(),
-         daGeneration = record.GetDiskAgentGeneration()](
+         diskRegistryGeneration = record.GetDiskRegistryGeneration(),
+         diskAgentGeneration = record.GetDiskAgentGeneration()](
             TFuture<TResultOrError<TDiskAgentState::TPreparePathsResult>>
                 future) mutable
         {
@@ -264,8 +264,8 @@ void TDiskAgentActor::HandleAttachPaths(
             response->Stats = std::move(result.Stats);
             response->Configs = std::move(result.Configs);
 
-            response->DiskRegistryGeneration = drGeneration;
-            response->DiskAgentGeneration = daGeneration;
+            response->DiskRegistryGeneration = diskRegistryGeneration;
+            response->DiskAgentGeneration = diskAgentGeneration;
 
             actorSystem->Send(
                 new IEventHandle{selfId, selfId, response.release()});

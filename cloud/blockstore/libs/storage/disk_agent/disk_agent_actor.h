@@ -52,6 +52,12 @@ class TDiskAgentActor final
         Registered,
     };
 
+    enum class EAction
+    {
+        Attach,
+        Detach,
+    };
+
 private:
     const TStorageConfigPtr Config;
     const TDiskAgentConfigPtr AgentConfig;
@@ -188,7 +194,7 @@ private:
         ui64 diskRegistryGeneration,
         ui64 diskAgentGeneration,
         TVector<TString> paths,
-        bool attach);
+        EAction action);
 
     TResultOrError<TCheckAttachDetachPathRequestResult> CheckAttachPathsRequest(
         ui64 diskRegistryGeneration,
