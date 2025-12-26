@@ -7168,7 +7168,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             5,     // diskRegistryGeneration
             10);   // diskAgentGeneration
 
-        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(Devices[0]).size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
 
         diskAgent.SendAttachPathsRequest(
             TVector<TString>{{PartLabels[0]}},
@@ -7178,7 +7180,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         auto resp = diskAgent.RecvAttachPathsResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(Devices[0]).size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
 
         diskAgent.SendAttachPathsRequest(
             TVector<TString>{{PartLabels[0]}},
@@ -7188,14 +7192,18 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         resp = diskAgent.RecvAttachPathsResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(Devices[0]).size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
 
         diskAgent.AttachPaths(
             TVector<TString>{{PartLabels[0]}},
             6,    // diskRegistryGeneration
             1);   // diskAgentGeneration
 
-        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(Devices[0]).size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[0]).size());
     }
 
     Y_UNIT_TEST_F(AttachDetachPathStressTest, TFixture)
@@ -7214,7 +7222,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         TVector<TString> paths;
-        for (const auto& fPath : PartLabels) {
+        for (const auto& fPath: PartLabels) {
             paths.emplace_back(fPath.GetPath());
         }
 
@@ -7228,7 +7236,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         for (ui64 eventIdx = 0; eventIdx < EventsCount; ++eventIdx) {
             if (eventIdx % RegenerateDiskRegistryGenerationInterval == 0) {
-                diskRegistryGeneration = requestsGenerator.GenerateDiskRegistryGeneration();
+                diskRegistryGeneration =
+                    requestsGenerator.GenerateDiskRegistryGeneration();
             }
 
             auto doRequests = [&](bool attach)
