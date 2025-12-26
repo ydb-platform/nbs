@@ -1858,6 +1858,14 @@ message TDetachPathsRequest
 
     // List of paths we want to detach.
     repeated string PathsToDetach = 2;
+
+    // Monotonously increasing counters needed to order attach/detach
+    // paths requests from one generation of DR tablet.
+    uint64 DiskAgentGeneration = 3;
+
+    // Disk Registry Tablet generation needed to order attach/detach path
+    // requests sent from two different DR generations.
+    uint32 DiskRegistryGeneration = 4;
 }
 
 message TDetachPathsResponse
@@ -1876,6 +1884,14 @@ message TAttachPathsRequest
 
     // List of paths we want to attach.
     repeated string PathsToAttach = 2;
+
+    // Monotonously increasing counters needed to order attach/detach
+    // paths requests from one generation of DR tablet.
+    uint64 DiskAgentGeneration = 3;
+
+    // Disk Registry Tablet generation needed to order attach/detach path
+    // requests sent from two different DR generations.
+    uint32 DiskRegistryGeneration = 4;
 }
 
 message TAttachPathsResponse
