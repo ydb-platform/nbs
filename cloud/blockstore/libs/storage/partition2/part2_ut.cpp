@@ -20,6 +20,7 @@
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
+
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
@@ -29,6 +30,8 @@
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_events.h>
 #include <contrib/ydb/core/testlib/basics/storage.h>
 
+#include <library/cpp/lwtrace/mon/mon_lwtrace.h>
+#include <library/cpp/lwtrace/probes.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/bitmap.h>
@@ -7709,6 +7712,92 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         UNIT_ASSERT_VALUES_EQUAL(true, trimSeen);
         UNIT_ASSERT_VALUES_UNEQUAL(0, trimCounter->Val());
+    }
+
+    Y_UNIT_TEST(ShouldPassTraceIdToBlobstorage)
+    {
+        using namespace NLWTrace;
+        LWTRACE_USING(BLOCKSTORE_SERVER_PROVIDER);
+        LWTRACE_USING(LWTRACE_INTERNAL_PROVIDER);
+
+        auto& probes = NLwTraceMonPage::ProbeRegistry();
+        probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_SERVER_PROVIDER));
+        probes.AddProbesList(LWTRACE_GET_PROBES(LWTRACE_INTERNAL_PROVIDER));
+
+        auto& lwManager = NLwTraceMonPage::TraceManager(true);
+
+        const TVector<std::tuple<TString, TString>> desc = {
+            {"RequestStarted", "BLOCKSTORE_SERVER_PROVIDER"},
+        };
+
+        TQuery query = ProbabilisticQuery(desc, 1, 1000);
+        lwManager.New("Query1", query);
+
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        auto writeReq = partition.CreateWriteBlocksRequest(0, 1);
+        writeReq->CallContext->RequestId = 12345;
+
+        LWTRACK(
+            RequestStarted,
+            writeReq->CallContext->LWOrbit,
+            "WriteBlocks",
+            static_cast<ui32>(NProto::STORAGE_MEDIA_SSD),
+            12345,
+            "vol1",
+            0,
+            4096);
+
+        ui64 spanId = 0;
+        writeReq->CallContext->LWOrbit.ForEachShuttle(
+            [&](const NLWTrace::IShuttle* s) { spanId = s->GetSpanId(); });
+
+        std::optional<NWilson::TTraceId> traceId;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvPut) {
+                    traceId = NWilson::TTraceId(event->TraceId);
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.SendToPipe(std::move(writeReq));
+
+        auto response =
+            partition.RecvResponse<TEvService::TEvWriteBlocksResponse>();
+        UNIT_ASSERT_C(
+            SUCCEEDED(response->GetStatus()),
+            response->GetErrorReason());
+
+        const auto& stats = partition.StatPartition()->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 1);
+
+        UNIT_ASSERT(traceId.has_value());
+
+        NWilson::TTraceId expectedTraceId(
+            {12345, 0},
+            spanId,
+            NWilson::TTraceId::MAX_VERBOSITY,
+            NWilson::TTraceId::MAX_TIME_TO_LIVE);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedTraceId.GetHexTraceId(),
+            traceId->GetHexTraceId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedTraceId.GetVerbosity(),
+            traceId->GetVerbosity());
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedTraceId.GetTimeToLive(),
+            traceId->GetTimeToLive());
     }
 }
 
