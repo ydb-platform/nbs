@@ -18,10 +18,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 BlockSize = 4096;
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TTabletSetup
 {
     TTestEnv Env;
@@ -34,7 +30,14 @@ struct TTabletSetup
             .LogPriority_KiKiMR = NActors::NLog::PRI_ALERT,
             .LogPriority_Others = NActors::NLog::PRI_ALERT})
     {
+        NCloud::NFileStore::NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetMixedBlocksOffloadedRangesCapacity(1e6);
+
+        Env.UpdateStorageConfig(std::move(storageConfig));
+
         Env.CreateSubDomain("nfs");
+        Env.GetRuntime().SetDispatchedEventsLimit(1e9);
 
         ui32 nodeIdx = Env.CreateNode("nfs");
         ui64 tabletId = Env.BootIndexTablet(nodeIdx);
@@ -43,7 +46,7 @@ struct TTabletSetup
             Env.GetRuntime(),
             nodeIdx,
             tabletId,
-            TFileSystemConfig{.BlockSize = BlockSize});
+            TFileSystemConfig{.BlockSize = 4096});
         TabletClient->InitSession("client", "session");
 
         auto nodeId = CreateNode(
