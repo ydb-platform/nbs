@@ -44,6 +44,8 @@ void TIndexTabletActor::HandleWriteData(
         CalculateChecksums(
             buffer,
             GetBlockSize(),
+            false /* ignoreBufferOverflow */,
+            GetFileSystemId(),
             profileLogRequest);
     }
 

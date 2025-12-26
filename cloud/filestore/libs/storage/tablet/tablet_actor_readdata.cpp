@@ -526,6 +526,8 @@ void TReadDataActor::ReplyAndDie(
                 CalculateChecksums(
                     response->Record.GetBuffer(),
                     BlockSize,
+                    true /* ignoreBufferOverflow */,
+                    FileSystemId,
                     ProfileLogRequest);
             }
         }
@@ -1069,6 +1071,8 @@ void TIndexTabletActor::CompleteTx_ReadData(
             CalculateChecksums(
                 response->Record.GetBuffer(),
                 GetBlockSize(),
+                true /* ignoreBufferOverflow */,
+                GetFileSystemId(),
                 args.ProfileLogRequest);
         }
 

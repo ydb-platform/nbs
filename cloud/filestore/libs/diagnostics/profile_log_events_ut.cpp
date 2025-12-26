@@ -1086,6 +1086,7 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         TString data;
         constexpr ui64 Sz = 12_KB;
         constexpr ui32 BlockSize = 4_KB;
+        const TStringBuf fsId = "fs-id";
         data.ReserveAndResize(Sz);
         for (ui64 i = 0; i < Sz; ++i) {
             data[i] = 'a' + i % ('z' - 'a' + 1);
@@ -1118,7 +1119,13 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
             addRange(BlockSize, BlockSize, r);
             addRange(2 * BlockSize, BlockSize, r);
 
-            CalculateChecksums(data, BlockSize, r);
+            bool success = CalculateChecksums(
+                data,
+                BlockSize,
+                false /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(success);
 
             UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
             UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
@@ -1141,7 +1148,13 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
             r.ClearRanges();
             addRange(0, Sz, r);
 
-            CalculateChecksums(data, BlockSize, r);
+            success = CalculateChecksums(
+                data,
+                BlockSize,
+                false /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(success);
 
             UNIT_ASSERT_VALUES_EQUAL(1, r.RangesSize());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -1186,7 +1199,13 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
             TStringBuf shiftedBuffer(
                 data.data() + headOffset,
                 data.size() - headOffset);
-            CalculateChecksums(shiftedBuffer, BlockSize, r);
+            bool success = CalculateChecksums(
+                shiftedBuffer,
+                BlockSize,
+                false /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(success);
 
             UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
             UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
@@ -1230,7 +1249,13 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
             TString block(BlockSize, 0);
             memcpy(block.begin(), data.data() + headOffset, tailLen);
 
-            CalculateChecksums(block, BlockSize, r);
+            bool success = CalculateChecksums(
+                block,
+                BlockSize,
+                false /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(success);
 
             UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
             UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
@@ -1245,7 +1270,13 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
             r.ClearRanges();
             addRange(globalOffset + headOffset, parts[0].size(), r);
 
-            CalculateChecksums(block, BlockSize, r);
+            success = CalculateChecksums(
+                block,
+                BlockSize,
+                false /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(success);
 
             UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
             UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
@@ -1277,7 +1308,13 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
             TString block(BlockSize, 0);
             memcpy(block.begin(), data.data() + headOffset, tailLen);
 
-            CalculateChecksums(block, BlockSize, r);
+            bool success = CalculateChecksums(
+                block,
+                BlockSize,
+                false /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(success);
 
             UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
             UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
@@ -1313,7 +1350,20 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
             TStringBuf shiftedBuffer(
                 data.data() + headOffset,
                 data.size() - headOffset);
-            CalculateChecksums(shiftedBuffer, BlockSize, r);
+            bool success = CalculateChecksums(
+                shiftedBuffer,
+                BlockSize,
+                false /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(!success);
+            success = CalculateChecksums(
+                shiftedBuffer,
+                BlockSize,
+                true /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(success);
 
             UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
             UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
@@ -1328,13 +1378,58 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
             r.ClearRanges();
             addRange(globalOffset + headOffset, parts[0].size() + BlockSize, r);
 
-            CalculateChecksums(shiftedBuffer, BlockSize, r);
+            success = CalculateChecksums(
+                shiftedBuffer,
+                BlockSize,
+                false /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(!success);
+            success = CalculateChecksums(
+                shiftedBuffer,
+                BlockSize,
+                true /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(success);
 
             UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
             UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 expected[0],
                 r.GetRanges(0).GetBlockChecksums(0));
+        }
+
+        //
+        // Range Offset beyond buffer limits.
+        //
+
+        {
+            const ui64 globalOffset = 2_MB;
+            const ui64 dataSize = 1_KB;
+            const ui64 headOffset = data.size();
+
+            TRequest r;
+            addRange(globalOffset + headOffset, dataSize, r);
+
+            TStringBuf emptyBuffer;
+            bool success = CalculateChecksums(
+                emptyBuffer,
+                BlockSize,
+                false /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(!success);
+            success = CalculateChecksums(
+                emptyBuffer,
+                BlockSize,
+                true /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(success);
+
+            UNIT_ASSERT_VALUES_EQUAL(1, r.RangesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, r.GetRanges(0).BlockChecksumsSize());
         }
     }
 
@@ -1390,7 +1485,11 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
             iovec = writeDataRequest.MutableIovecs()->Add();
             iovec->SetBase(reinterpret_cast<ui64>(parts[2].Data()));
             iovec->SetLength(parts[2].Size());
-            CalculateWriteDataRequestChecksums(writeDataRequest, BlockSize, r);
+            const bool success = CalculateWriteDataRequestChecksums(
+                writeDataRequest,
+                BlockSize,
+                r);
+            UNIT_ASSERT(success);
 
             UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
             UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());

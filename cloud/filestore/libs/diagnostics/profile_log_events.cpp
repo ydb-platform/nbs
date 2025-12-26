@@ -96,9 +96,11 @@ ui32 CalculateChecksum(TStringBuf buf)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void CalculateIovecsChecksums(
+bool CalculateIovecsChecksums(
     const google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs,
     ui32 blockSize,
+    bool ignoreBufferOverflow,
+    TStringBuf fsId,
     NProto::TProfileLogRequestInfo& profileLogRequest)
 {
 
@@ -123,7 +125,12 @@ void CalculateIovecsChecksums(
         ptr += iovec.GetLength();
     }
 
-    CalculateChecksums(buffer, blockSize, profileLogRequest);
+    return CalculateChecksums(
+        buffer,
+        blockSize,
+        ignoreBufferOverflow,
+        fsId,
+        profileLogRequest);
 }
 
 } // namespace
@@ -762,14 +769,16 @@ void FinalizeProfileLogRequestInfo(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void CalculateChecksums(
+bool CalculateChecksums(
     const TStringBuf buffer,
     ui32 blockSize,
+    bool ignoreBufferOverflow,
+    TStringBuf fsId,
     NProto::TProfileLogRequestInfo& profileLogRequest)
 {
     auto& profileLogRanges = *profileLogRequest.MutableRanges();
     if (profileLogRanges.empty()) {
-        return;
+        return true;
     }
 
     ui64 minRangeOffset = Max<ui64>();
@@ -784,22 +793,57 @@ void CalculateChecksums(
             Max(profileLogRange.GetBytes(), profileLogRange.GetActualBytes());
         TByteRange range(profileLogRange.GetOffset(), len, blockSize);
 
+        //
+        // Buffer overflow checks.
+        //
+
+        const auto complain = [&] () {
+            ReportCalculateChecksumsBufferOverflow(TStringBuilder()
+                << "FileSystemId: " << fsId
+                << ", Node: " << profileLogRange.GetNodeId()
+                << ", Range: " << range.Describe()
+                << ", MinRangeOffset: " << minRangeOffset
+                << ", BufferSize: " << buffer.size());
+        };
+
         const ui64 relativeRangeOffset = range.Offset - minRangeOffset;
         if (relativeRangeOffset >= buffer.size()) {
-            ReportCalculateChecksumsBufferOverflow();
-            return;
+            if (!ignoreBufferOverflow) {
+                complain();
+                return false;
+            }
+
+            //
+            // There's no data corresponding to this range. Can happen for read
+            // requests with offsets beyond the end of the file.
+            //
+
+            profileLogRange.ClearBlockChecksums();
+            continue;
         }
 
-        //
-        // Sometimes a request range can be wider than the actual buffer - for
-        // example for ReadData requests which are partially beyond file size.
-        //
+        const ui64 dataSize = buffer.size() - relativeRangeOffset;
+        if (dataSize < range.Length) {
+            if (!ignoreBufferOverflow) {
+                complain();
+                return false;
+            }
 
-        range.Length = Min(range.Length, buffer.size() - relativeRangeOffset);
+            //
+            // There's no data corresponding to the tail of this range. Can
+            // happen for read requests with ends beyond the end of the file.
+            // Will calculate checksums only for the subrange for which we have
+            // data.
+            //
+
+            range.Length = dataSize;
+        }
 
         //
         // Calculating checksums for the adjusted range.
         //
+
+        profileLogRange.ClearBlockChecksums();
 
         ui64 bufferOffset = relativeRangeOffset;
         if (range.UnalignedHeadLength()) {
@@ -821,9 +865,11 @@ void CalculateChecksums(
                 range.UnalignedTailLength())));
         }
     }
+
+    return true;
 }
 
-void CalculateWriteDataRequestChecksums(
+bool CalculateWriteDataRequestChecksums(
     const NProto::TWriteDataRequest& request,
     ui32 blockSize,
     NProto::TProfileLogRequestInfo& profileLogRequest)
@@ -831,11 +877,20 @@ void CalculateWriteDataRequestChecksums(
     if (request.GetIovecs().empty()) {
         TStringBuf buffer(request.GetBuffer());
         buffer.Skip(request.GetBufferOffset());
-        CalculateChecksums(buffer, blockSize, profileLogRequest);
-        return;
+        return CalculateChecksums(
+            buffer,
+            blockSize,
+            false /* ignoreBufferOverflow */,
+            request.GetFileSystemId(),
+            profileLogRequest);
     }
 
-    CalculateIovecsChecksums(request.GetIovecs(), blockSize, profileLogRequest);
+    return CalculateIovecsChecksums(
+        request.GetIovecs(),
+        blockSize,
+        false /* ignoreBufferOverflow */,
+        request.GetFileSystemId(),
+        profileLogRequest);
 }
 
 void CalculateReadDataResponseChecksums(
@@ -847,11 +902,21 @@ void CalculateReadDataResponseChecksums(
     if (iovecs.empty()) {
         TStringBuf buffer(response.GetBuffer());
         buffer.Skip(response.GetBufferOffset());
-        CalculateChecksums(buffer, blockSize, profileLogRequest);
+        CalculateChecksums(
+            buffer,
+            blockSize,
+            true /* ignoreBufferOverflow */,
+            {} /* fsId */,
+            profileLogRequest);
         return;
     }
 
-    CalculateIovecsChecksums(iovecs, blockSize, profileLogRequest);
+    CalculateIovecsChecksums(
+        iovecs,
+        blockSize,
+        true /* ignoreBufferOverflow */,
+        {} /* fsId */,
+        profileLogRequest);
 }
 
 }   // namespace NCloud::NFileStore
