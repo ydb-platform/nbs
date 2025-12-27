@@ -74,6 +74,7 @@ private:
     const TStorageConfigPtr StorageConfig;
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;
+    const TSystemCountersPtr SystemCounters;
     const NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
 
     std::unique_ptr<TStorageServiceState> State;
@@ -103,6 +104,7 @@ public:
         IRequestStatsRegistryPtr statsRegistry,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
+        TSystemCountersPtr systemCounters,
         NCloud::NStorage::IStatsFetcherPtr statsFetcher);
     ~TStorageServiceActor();
 

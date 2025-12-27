@@ -18,4 +18,7 @@ using TStorageConfigPtr = std::shared_ptr<TStorageConfig>;
 struct TRequestInfo;
 using TRequestInfoPtr = TIntrusivePtr<TRequestInfo>;
 
+struct TSystemCounters;
+using TSystemCountersPtr = TIntrusivePtr<TSystemCounters>;
+
 }   // namespace NCloud::NFileStore::NStorage

@@ -6,6 +6,7 @@ SRCS(
     model.cpp
     probes.cpp
     request_info.cpp
+    system_counters.cpp
     tablet.cpp
     tablet_counters.cpp
     tablet_schema.cpp
