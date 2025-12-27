@@ -205,6 +205,10 @@ void TIndexTabletActor::CompleteTx_AddData(
             srcBlob.Cookie(),
             srcBlob.PartId());
     }
+
+    NProto::TBackendInfo backendInfo;
+    BuildBackendInfo(*Config, *SystemCounters, &backendInfo);
+
     auto actor = std::make_unique<TAddDataActor>(
         TraceSerializer,
         LogTag,
@@ -216,6 +220,7 @@ void TIndexTabletActor::CompleteTx_AddData(
         std::move(args.UnalignedDataParts),
         TWriteRange{args.NodeId, args.ByteRange.End()},
         ProfileLog,
+        std::move(backendInfo),
         std::move(args.ProfileLogRequest));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));

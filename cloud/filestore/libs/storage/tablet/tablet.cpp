@@ -2,6 +2,8 @@
 
 #include "tablet_actor.h"
 
+#include <cloud/filestore/libs/storage/core/system_counters.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -17,6 +19,7 @@ IActorPtr CreateIndexTablet(
     TDiagnosticsConfigPtr diagConfig,
     IProfileLogPtr profileLog,
     ITraceSerializerPtr traceSerializer,
+    TSystemCountersPtr systemCounters,
     NMetrics::IMetricsRegistryPtr metricsRegistry,
     bool useNoneCompactionPolicy)
 {
@@ -27,6 +30,7 @@ IActorPtr CreateIndexTablet(
         std::move(diagConfig),
         std::move(profileLog),
         std::move(traceSerializer),
+        std::move(systemCounters),
         std::move(metricsRegistry),
         useNoneCompactionPolicy);
 }

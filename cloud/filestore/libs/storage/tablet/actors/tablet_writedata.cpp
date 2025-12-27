@@ -28,6 +28,7 @@ TWriteDataActor::TWriteDataActor(
         TVector<TMergedBlob> blobs,
         TWriteRange writeRange,
         IProfileLogPtr profileLog,
+        NProto::TBackendInfo backendInfo,
         NProto::TProfileLogRequestInfo profileLogRequest)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
@@ -38,6 +39,7 @@ TWriteDataActor::TWriteDataActor(
     , Blobs(std::move(blobs))
     , WriteRange(writeRange)
     , ProfileLog(std::move(profileLog))
+    , BackendInfo(std::move(backendInfo))
     , ProfileLogRequest(std::move(profileLogRequest))
 {
     for (const auto& blob: Blobs) {
@@ -160,6 +162,8 @@ void TWriteDataActor::ReplyAndDie(
             FormatError(response->Record.GetError()).c_str(),
             builtTraceInfo);
         BuildThrottlerInfo(*RequestInfo->CallContext, response->Record);
+        *response->Record.MutableHeaders()->MutableBackendInfo() =
+            std::move(BackendInfo);
 
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
