@@ -68,6 +68,13 @@ message THeaders
 ////////////////////////////////////////////////////////////////////////////////
 // Common response headers.
 
+message TBackendInfo
+{
+    // Using a single boolean flag for now. Maybe we'll add more details in the
+    // future but for now keeping it simple.
+    bool IsOverloaded = 1;
+}
+
 message TResponseHeaders
 {
     // Response traces.
@@ -75,4 +82,7 @@ message TResponseHeaders
 
     // Response throttler info.
     NCloud.NProto.TThrottlerInfo Throttler = 2;
+
+    // Backend info.
+    TBackendInfo BackendInfo = 3;
 }

@@ -109,6 +109,7 @@ void TIndexTabletActor::CompleteResponse(
         FormatError(response.GetError()).c_str(),
         builtTraceInfo);
     BuildThrottlerInfo(*callContext, response);
+    BuildBackendInfo(*Config, *SystemCounters, response);
 
     Metrics.BusyIdleCalc.OnRequestCompleted();
 }

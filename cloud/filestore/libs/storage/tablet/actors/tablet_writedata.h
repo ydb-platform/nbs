@@ -32,6 +32,7 @@ private:
     /*const*/ TVector<TMergedBlob> Blobs;
     const TWriteRange WriteRange;
     IProfileLogPtr ProfileLog;
+    NProto::TBackendInfo BackendInfo;
     NProto::TProfileLogRequestInfo ProfileLogRequest;
     ui32 BlobsSize = 0;
 
@@ -46,6 +47,7 @@ public:
         TVector<TMergedBlob> blobs,
         TWriteRange writeRange,
         IProfileLogPtr profileLog,
+        NProto::TBackendInfo backendInfo,
         NProto::TProfileLogRequestInfo profileLogRequest);
 
     void Bootstrap(const TActorContext& ctx);

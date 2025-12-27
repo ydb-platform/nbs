@@ -340,6 +340,7 @@ private:
     const IBlockBufferPtr Buffer;
     /*const*/ TSet<ui32> MixedBlocksRanges;
     IProfileLogPtr ProfileLog;
+    NProto::TBackendInfo BackendInfo;
     NProto::TProfileLogRequestInfo ProfileLogRequest;
 
 public:
@@ -360,6 +361,7 @@ public:
         IBlockBufferPtr buffer,
         TSet<ui32> mixedBlocksRanges,
         IProfileLogPtr profileLog,
+        NProto::TBackendInfo backendInfo,
         NProto::TTProfileLogRequestInfo profileLogRequest);
 
     void Bootstrap(const TActorContext& ctx);
@@ -400,6 +402,7 @@ TReadDataActor::TReadDataActor(
         IBlockBufferPtr buffer,
         TSet<ui32> mixedBlocksRanges,
         IProfileLogPtr profileLog,
+        NProto::TBackendInfo backendInfo,
         NProto::TTProfileLogRequestInfo profileLogRequest)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
@@ -417,6 +420,7 @@ TReadDataActor::TReadDataActor(
     , Buffer(std::move(buffer))
     , MixedBlocksRanges(std::move(mixedBlocksRanges))
     , ProfileLog(std::move(profileLog))
+    , BackendInfo(std::move(backendInfo))
     , ProfileLogRequest(std::move(profileLogRequest))
 {
     TABLET_VERIFY(ActualRange.IsAligned());
@@ -543,6 +547,8 @@ void TReadDataActor::ReplyAndDie(
             FormatError(response->Record.GetError()).c_str(),
             builtTraceInfo);
         BuildThrottlerInfo(*RequestInfo->CallContext, response->Record);
+        *response->Record.MutableHeaders()->MutableBackendInfo() =
+            std::move(BackendInfo);
 
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
@@ -1095,6 +1101,9 @@ void TIndexTabletActor::CompleteTx_ReadData(
 
     AcquireCollectBarrier(args.CommitId);
 
+    NProto::TBackendInfo backendInfo;
+    BuildBackendInfo(*Config, *SystemCounters, &backendInfo);
+
     auto actor = std::make_unique<TReadDataActor>(
         TraceSerializer,
         LogTag,
@@ -1112,6 +1121,7 @@ void TIndexTabletActor::CompleteTx_ReadData(
         std::move(args.Buffer),
         std::move(args.MixedBlocksRanges),
         ProfileLog,
+        std::move(backendInfo),
         std::move(args.ProfileLogRequest));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));

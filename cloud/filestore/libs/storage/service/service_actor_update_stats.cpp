@@ -1,6 +1,7 @@
 #include "service_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
+#include <cloud/filestore/libs/storage/core/system_counters.h>
 
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
@@ -63,12 +64,12 @@ void TStorageServiceActor::HandleUpdateStats(
     if (StatsFetcher) {
         auto [cpuWait, error] = StatsFetcher->GetCpuWait();
         if (HasError(error)) {
-        auto errorMessage =
-            ReportCpuWaitCounterReadError(error.GetMessage());
-            LOG_WARN_S(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "Failed to get CpuWait stats: " << errorMessage);
+            auto errorMessage =
+                ReportCpuWaitCounterReadError(error.GetMessage());
+                LOG_WARN_S(
+                    ctx,
+                    TFileStoreComponents::SERVICE,
+                    "Failed to get CpuWait stats: " << errorMessage);
         }
 
         auto now = ctx.Monotonic();
@@ -77,6 +78,7 @@ void TStorageServiceActor::HandleUpdateStats(
             auto cpuLack = 100 * cpuWait.MicroSeconds();
             cpuLack /= intervalUs;
             *CpuWaitCounter = cpuLack;
+            SystemCounters->CpuLack.store(cpuLack);
 
             if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
                 LOG_WARN_S(
