@@ -3348,44 +3348,41 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto getSizeFromDirectoryRead = [&]()
         {
             auto rq1 = std::make_shared<TOpenDirRequest>(nodeId + 1);
-            return bootstrap.Fuse->SendRequest(rq1).Apply(
-                [&, rq1](const auto&)
-                {
-                    auto fh = rq1->Out->Body.fh;
-                    auto rq2 =
-                        std::make_shared<TReadDirRequest>(nodeId + 1, fh);
+            auto rq2 = std::make_shared<TReadDirRequest>(nodeId + 1, 0);
+            auto rq3 = std::make_shared<TReleaseDirRequest>(nodeId + 1, 0);
 
-                    return bootstrap.Fuse->SendRequest(rq2)
-                        .Apply(
-                            [rq2](const auto&)
-                            {
-                                auto buf = TStringBuf(
-                                    reinterpret_cast<const char*>(
-                                        rq2->Out->Data()),
-                                    rq2->Out->Header.len -
-                                        sizeof(rq2->Out->Header));
+            return bootstrap.Fuse->SendRequest(rq1)
+                .Apply(
+                    [&, rq1, rq2](const auto&)
+                    {
+                        rq2->In->Body.fh = rq1->Out->Body.fh;
+                        return bootstrap.Fuse->SendRequest(rq2);
+                    })
+                .Apply(
+                    [&, rq1, rq3](const auto&)
+                    {
+                        rq3->In->Body.fh = rq1->Out->Body.fh;
+                        return bootstrap.Fuse->SendRequest(rq3);
+                    })
+                .Apply(
+                    [&, rq2](const auto&)
+                    {
+                        auto buf = TStringBuf(
+                            reinterpret_cast<const char*>(rq2->Out->Data()),
+                            rq2->Out->Header.len - sizeof(rq2->Out->Header));
 
-                                // Skip "." and ".." entries
-                                UNIT_ASSERT_LE(
-                                    sizeof(fuse_direntplus) + 320,
-                                    buf.size());
-                                buf = buf.Skip(320);
+                        // Skip "." and ".." entries
+                        UNIT_ASSERT_LE(
+                            sizeof(fuse_direntplus) + 320,
+                            buf.size());
+                        buf = buf.Skip(320);
 
-                                const auto* de =
-                                    reinterpret_cast<const fuse_direntplus*>(
-                                        buf.data());
+                        const auto* de =
+                            reinterpret_cast<const fuse_direntplus*>(
+                                buf.data());
 
-                                return de->entry_out.attr.size;
-                            })
-                        .Subscribe(
-                            [&, fh](const auto&)
-                            {
-                                auto rq3 = std::make_shared<TReleaseDirRequest>(
-                                    nodeId + 1,
-                                    fh);
-                                bootstrap.Fuse->SendRequest(rq3);
-                            });
-                });
+                        return de->entry_out.attr.size;
+                    });
         };
 
         auto getSizeFromDirectRead = [&]()
