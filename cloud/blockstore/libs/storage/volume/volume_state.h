@@ -441,7 +441,12 @@ public:
     // Partitions
     //
 
-    TPartitionInfoList& GetPartitions()
+    TPartitionInfoList& AccessPartitions()
+    {
+        return Partitions;
+    }
+
+    const TPartitionInfoList& GetPartitions() const
     {
         return Partitions;
     }

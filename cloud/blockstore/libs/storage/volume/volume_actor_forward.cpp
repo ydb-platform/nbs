@@ -180,10 +180,10 @@ bool TVolumeActor::HandleMultipartitionVolumeRequest(
         LOG_TRACE(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s Forward %s request to partition: %lu %s",
+            "%s Forward %s request to partition: %u (%s)",
             LogTitle.GetWithTime().c_str(),
             TMethod::Name,
-            partitionRequest.TabletId,
+            partitionRequest.PartitionId,
             ToString(partitionRequest.ActorId).data());
     }
 
