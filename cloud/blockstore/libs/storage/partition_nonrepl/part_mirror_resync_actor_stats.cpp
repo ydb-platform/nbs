@@ -73,10 +73,7 @@ void TMirrorPartitionResyncActor::HandleGetDiskRegistryBasedPartCounters(
                 MakeError(E_REJECTED, "Mirror resync actor got new request"),
                 SelfId(),
                 PartConfig->GetName(),
-                TPartNonreplCountersData{
-                    .DiskCounters = CreatePartitionDiskCounters(
-                        EPublishingPolicy::DiskRegistryBased,
-                        DiagnosticsConfig->GetHistogramCounterOptions())}));
+                TPartNonreplCountersData{}));
         StatisticRequestInfo.Reset();
     }
 
@@ -132,7 +129,19 @@ void TMirrorPartitionResyncActor::HandleDiskRegistryBasedPartCountersCombined(
 
     auto* msg = ev->Get();
 
+    if(HasError(msg->Error)) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION_NONREPL,
+            "[%s] Failed to send mirror actor statistics due to error: %s",
+            PartConfig->GetName().Quote().c_str(),
+            msg->Error.GetMessage().c_str());
+    }
+
     for (auto& counters: msg->Counters) {
+        if(!counters.CountersData.DiskCounters) {
+            continue;
+        }
         UpdateCounters(ctx, counters.ActorId, std::move(counters.CountersData));
     }
 
