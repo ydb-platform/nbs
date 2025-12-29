@@ -48,6 +48,39 @@ ui32 GetServicePort(EHostService serviceType, const TDiagnosticsConfig& config)
     return DefaultHandleClasses;
 }
 
+TString GetUrlFromTemplate(
+    const TString& templateStr,
+    const TDiagnosticsConfig& config,
+    const TString& diskId)
+{
+    TString result = templateStr;
+    const auto& data = config.GetMonitoringUrlData();
+
+    SubstGlobal(result, "{MonitoringUrl}", data.MonitoringUrl);
+    SubstGlobal(result, "{MonitoringProject}", data.MonitoringProject);
+    SubstGlobal(result, "{MonitoringClusterName}", data.MonitoringClusterName);
+    SubstGlobal(
+        result,
+        "{MonitoringVolumeDashboard}",
+        data.MonitoringVolumeDashboard);
+    SubstGlobal(
+        result,
+        "{MonitoringNBSAlertsDashboard}",
+        data.MonitoringNBSAlertsDashboard);
+    SubstGlobal(
+        result,
+        "{MonitoringNBSTVDashboard}",
+        data.MonitoringNBSTVDashboard);
+    SubstGlobal(result, "{MonitoringYDBProject}", data.MonitoringYDBProject);
+    SubstGlobal(
+        result,
+        "{MonitoringYDBGroupDashboard}",
+        data.MonitoringYDBGroupDashboard);
+    SubstGlobal(result, "{diskId}", diskId);
+
+    return result;
+}
+
 }    // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -102,11 +135,16 @@ TString GetMonitoringVolumeUrl(
     const TString& diskId)
 {
     TMonitoringUrlData data = config.GetMonitoringUrlData();
-    return TStringBuilder()
-           << data.MonitoringUrl << "/projects/" << data.MonitoringProject
-           << "/dashboards/" << data.MonitoringVolumeDashboard
-           << "?from=now-1d&to=now&refresh=60000&p.cluster="
-           << data.MonitoringClusterName << "&p.volume=" << diskId;
+
+    if (data.MonitoringUrlTemplate.empty()) {
+        return TStringBuilder()
+               << data.MonitoringUrl << "/projects/" << data.MonitoringProject
+               << "/dashboards/" << data.MonitoringVolumeDashboard
+               << "?from=now-1d&to=now&refresh=60000&p.cluster="
+               << data.MonitoringClusterName << "&p.volume=" << diskId;
+    }
+
+    return GetUrlFromTemplate(data.MonitoringUrlTemplate, config, diskId);
 }
 
 TString GetMonitoringVolumeUrlWithoutDiskId(const TDiagnosticsConfig& config)
