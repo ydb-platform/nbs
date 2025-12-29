@@ -9,8 +9,8 @@ namespace {
 ui64 GenerateSpanId()
 {
     for (;;) {
-        if (const ui64 res = RandomNumber<ui64>(); res)
-        {   // SpanId can't be zero
+        // SpanId can't be zero
+        if (const ui64 res = RandomNumber<ui64>(); res) {
             return res;
         }
     }

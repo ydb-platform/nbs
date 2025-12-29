@@ -5,7 +5,6 @@
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
-#include <cloud/blockstore/libs/diagnostics/probes.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
@@ -37,7 +36,9 @@
 #include <cloud/storage/core/libs/tablet/blob_id.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
+#include <contrib/ydb/core/blobstorage/lwtrace_probes/blobstorage_probes.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_events.h>
+#include <contrib/ydb/core/tablet_flat/probes.h>
 #include <contrib/ydb/core/testlib/basics/storage.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
@@ -13399,17 +13400,21 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldPassTraceIdToBlobstorage)
     {
         using namespace NLWTrace;
-        LWTRACE_USING(BLOCKSTORE_SERVER_PROVIDER);
-        LWTRACE_USING(LWTRACE_INTERNAL_PROVIDER);
+        LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
+        LWTRACE_USING(BLOBSTORAGE_PROVIDER);
+        LWTRACE_USING(TABLET_FLAT_PROVIDER);
+        LWTRACE_USING(LWTRACE_INTERNAL_PROVIDER)
 
         auto& probes = NLwTraceMonPage::ProbeRegistry();
-        probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_SERVER_PROVIDER));
+        probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_STORAGE_PROVIDER));
+        probes.AddProbesList(LWTRACE_GET_PROBES(BLOBSTORAGE_PROVIDER));
+        probes.AddProbesList(LWTRACE_GET_PROBES(TABLET_FLAT_PROVIDER));
         probes.AddProbesList(LWTRACE_GET_PROBES(LWTRACE_INTERNAL_PROVIDER));
 
         auto& lwManager = NLwTraceMonPage::TraceManager(true);
 
         const TVector<std::tuple<TString, TString>> desc = {
-            {"RequestStarted", "BLOCKSTORE_SERVER_PROVIDER"},
+            {"RequestAdvanced_Volume", "BLOCKSTORE_STORAGE_PROVIDER"},
         };
 
         TQuery query = ProbabilisticQuery(desc, 1, 1000);
@@ -13427,14 +13432,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         writeReq->CallContext->RequestId = 12345;
 
         LWTRACK(
-            RequestStarted,
+            RequestAdvanced_Volume,
             writeReq->CallContext->LWOrbit,
             "WriteBlocks",
-            static_cast<ui32>(NProto::STORAGE_MEDIA_SSD),
-            12345,
-            "vol1",
-            0,
-            4096);
+            12345);
 
         ui64 spanId = 0;
         writeReq->CallContext->LWOrbit.ForEachShuttle(

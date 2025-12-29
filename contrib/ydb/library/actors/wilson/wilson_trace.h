@@ -61,10 +61,10 @@ namespace NWilson {
             : TraceId(traceId)
         {
             if (timeToLive == Max<ui32>()) {
-                timeToLive = 4095;
+                timeToLive = MAX_TIME_TO_LIVE;
             }
-            Y_ABORT_UNLESS(verbosity <= 15);
-            Y_ABORT_UNLESS(timeToLive <= 4095);
+            Y_ABORT_UNLESS(verbosity <= MAX_VERBOSITY);
+            Y_ABORT_UNLESS(timeToLive <= MAX_TIME_TO_LIVE);
             SpanId = spanId;
             Verbosity = verbosity;
             TimeToLive = timeToLive;
