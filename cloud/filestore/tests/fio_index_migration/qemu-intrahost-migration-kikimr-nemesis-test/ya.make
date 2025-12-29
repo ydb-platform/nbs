@@ -20,8 +20,8 @@ TEST_SRCS(
 )
 
 SET(QEMU_VIRTIO fs)
-SET(VHOST_RESTART_INTERVAL 10)
-SET(VHOST_RESTART_FLAG 1)
+#SET(VHOST_RESTART_INTERVAL 10) TODO(myagkov ydb-25-1 migration): enable restarts
+#SET(VHOST_RESTART_FLAG 1)
 SET(
     NFS_STORAGE_CONFIG_PATCH
     cloud/filestore/tests/common_configs/nfs-storage-migration-patch.txt
