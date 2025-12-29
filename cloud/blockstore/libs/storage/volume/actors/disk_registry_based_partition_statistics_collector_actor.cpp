@@ -43,7 +43,8 @@ void TDiskRegistryBasedPartitionStatisticsCollectorActor::ReplyAndDie(
         Owner,
         std::make_unique<TEvNonreplPartitionPrivate::
                              TEvDiskRegistryBasedPartCountersCombined>(
-            std::move(LastError)));
+            std::move(LastError),
+            std::move(Response)));
 
     Die(ctx);
 }
