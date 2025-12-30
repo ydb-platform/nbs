@@ -31,15 +31,15 @@ namespace {
 class TMirrorCheckRangeActor final: public TCheckRangeActor
 {
 private:
-    const ui32 ReplicasNumber;
+    const ui32 TotalReplicaCount;
     ui32 ResponseCount = 0;
     TVector<ui32> ReplicasSummaryChecksums;
-    TVector<NProto::TChecksums> ReplicasChecksums;
+    TVector<NProto::TChecksums> ReplicasBlockByBlockChecksums;
     NProto::TError Status;
 
 public:
     TMirrorCheckRangeActor(
-        ui32 replicasNumber,
+        ui32 totalReplicaCount,
         const NActors::TActorId& partition,
         NProto::TCheckRangeRequest request,
         TRequestInfoPtr requestInfo,
@@ -62,7 +62,7 @@ private:
 };
 
 TMirrorCheckRangeActor::TMirrorCheckRangeActor(
-        ui32 replicasNumber,
+        ui32 totalReplicaCount,
         const NActors::TActorId& partition,
         NProto::TCheckRangeRequest request,
         TRequestInfoPtr requestInfo,
@@ -74,7 +74,7 @@ TMirrorCheckRangeActor::TMirrorCheckRangeActor(
           std::move(requestInfo),
           blockSize,
           std::move(logTitle))
-    , ReplicasNumber{replicasNumber}
+    , TotalReplicaCount{totalReplicaCount}
 {}
 
 bool TMirrorCheckRangeActor::OnMessage(TAutoPtr<NActors::IEventHandle>& ev)
@@ -94,19 +94,17 @@ void TMirrorCheckRangeActor::HandleReadUndelivery(
     const TActorContext& ctx)
 {
     const ui32 replicaIndex = ev->Cookie - 1;
-    TString errorMessage = "reading request for replica " +
-                           std::to_string(replicaIndex) + " is undelivered";
-    LOG_ERROR_S(
-        ctx,
-        TBlockStoreComponents::PARTITION_WORKER,
-        LogTitle.GetWithTime() << errorMessage);
+    TString errorMessage = TStringBuilder()
+                           << LogTitle.GetWithTime()
+                           << ": reading request for replica " << replicaIndex
+                           << " is undelivered; ";
+    LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION_WORKER, errorMessage);
 
     Status = MakeError(E_REJECTED, errorMessage);
-    Status.MutableMessage()->append(
-        TStringBuilder() << " replica index: " << replicaIndex << " ");
+    Status.MutableMessage()->append(errorMessage);
 
     ++ResponseCount;
-    if (ResponseCount == ReplicasNumber) {
+    if (ResponseCount == TotalReplicaCount) {
         Done(ctx);
     }
 }
@@ -115,10 +113,10 @@ void TMirrorCheckRangeActor::HandleReadUndelivery(
 
 void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
-    ReplicasSummaryChecksums.resize(ReplicasNumber);
-    ReplicasChecksums.resize(ReplicasNumber);
+    ReplicasSummaryChecksums.resize(TotalReplicaCount);
+    ReplicasBlockByBlockChecksums.resize(TotalReplicaCount);
 
-    for (ui32 i = 1; i <= ReplicasNumber; ++i) {
+    for (ui32 i = 1; i <= TotalReplicaCount; ++i) {
         auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
 
         request->Record.SetStartIndex(Request.GetStartIndex());
@@ -137,12 +135,13 @@ void TMirrorCheckRangeActor::CalculateChecksums(
     ui32 replicaIndex,
     const NProto::TIOVector& iov)
 {
-    auto* replicaChecksums = ReplicasChecksums[replicaIndex].MutableData();
+    auto* replicasBlockByBlockChecksums =
+        ReplicasBlockByBlockChecksums[replicaIndex].MutableData();
 
     TBlockChecksum summaryChecksum;
     for (const auto& buffer: iov.GetBuffers()) {
         summaryChecksum.Extend(buffer.data(), buffer.size());
-        replicaChecksums->Add(
+        replicasBlockByBlockChecksums->Add(
             TBlockChecksum().Extend(buffer.data(), buffer.size()));
     }
 
@@ -171,7 +170,7 @@ void TMirrorCheckRangeActor::HandleReadBlocksResponse(
     }
 
     ++ResponseCount;
-    if (ResponseCount == ReplicasNumber) {
+    if (ResponseCount == TotalReplicaCount) {
         Done(ctx);
     }
 }
@@ -188,12 +187,15 @@ void TMirrorCheckRangeActor::Done(const NActors::TActorContext& ctx)
             std::not_equal_to{}) != ReplicasSummaryChecksums.end();
 
     if (!HasError(status) && !mismatch) {
-        response->Record.MutableDiskChecksums()->Swap(&ReplicasChecksums[0]);
-    } else {
-        response->Record.MutableInconsistentChecksums()->MutableReplicas()->Assign(
-            std::make_move_iterator(ReplicasChecksums.begin()),
-            std::make_move_iterator(ReplicasChecksums.end()));
+        response->Record.MutableDiskChecksums()->Swap(
+            &ReplicasBlockByBlockChecksums[0]);
+        ReplyAndDie(ctx, std::move(response));
+        return;
     }
+
+    response->Record.MutableInconsistentChecksums()->MutableReplicas()->Assign(
+        std::make_move_iterator(ReplicasBlockByBlockChecksums.begin()),
+        std::make_move_iterator(ReplicasBlockByBlockChecksums.end()));
 
     if (!HasError(status) && mismatch) {
         ui32 flags = 0;
@@ -207,6 +209,20 @@ void TMirrorCheckRangeActor::Done(const NActors::TActorContext& ctx)
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void TMirrorPartitionActor::ReplyError(
+    const NActors::TActorContext& ctx,
+    const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
+    NProto::TError&& error)
+{
+    LOG_ERROR_S(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        LogTitle.GetWithTime() << FormatError(error));
+    auto response =
+        std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(error));
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
 
 void TMirrorPartitionActor::HandleCheckRangeResponse(
     const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
@@ -244,47 +260,35 @@ void TMirrorPartitionActor::HandleCheckRange(
         Config->GetCheckRangeMaxRangeSize());
 
     if (HasError(error)) {
-        LOG_ERROR_S(
-            ctx,
-            TBlockStoreComponents::PARTITION_WORKER,
-            LogTitle.GetWithTime()
-                << "CheckRange request was rejected. " << FormatError(error));
-        auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(
-            std::move(error));
-        NCloud::Reply(ctx, *ev, std::move(response));
+        ReplyError(ctx, ev, std::move(error));
         return;
     }
-
-    auto hasToReject =
-        [this](TBlockRange64 requestedRange) -> std::pair<bool, TString>
-    {
-        if (RequestsInProgress.OverlapsWithWrites(requestedRange)) {
-            return std::make_pair(
-                true,
-                requestedRange.Print() +
-                    ": you have to wait until active write request ends");
-        }
-        if (LockedRanges.OverlapsWithRequest(requestedRange)) {
-            return std::make_pair(
-                true,
-                requestedRange.Print() +
-                    ": you have to wait until this range unlocks");
-        }
-        return std::make_pair(false, TString());
-    };
 
     TBlockRange64 requestedRange = TBlockRange64::WithLength(
         record.GetStartIndex(),
         record.GetBlocksCount());
-    if (auto rejected = hasToReject(requestedRange); rejected.first) {
-        LOG_ERROR_S(
+
+    if (RequestsInProgress.OverlapsWithWrites(requestedRange)) {
+        ReplyError(
             ctx,
-            TBlockStoreComponents::PARTITION_WORKER,
-            LogTitle.GetWithTime()
-                << "CheckRange request was rejected. " << rejected.second);
-        auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(
-            MakeError(E_REJECTED, rejected.second));
-        NCloud::Reply(ctx, *ev, std::move(response));
+            ev,
+            MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << requestedRange.Print()
+                    << ": you have to wait until active write request ends"));
+        return;
+    }
+
+    if (LockedRanges.OverlapsWithRequest(requestedRange)) {
+        ReplyError(
+            ctx,
+            ev,
+            MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << requestedRange.Print()
+                    << ": you have to wait until this range unlocks"));
         return;
     }
 

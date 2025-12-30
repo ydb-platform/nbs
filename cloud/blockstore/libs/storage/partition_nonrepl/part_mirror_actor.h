@@ -164,6 +164,10 @@ private:
     EWriteRequestType SuggestWriteRequestType(
         const NActors::TActorContext& ctx,
         TBlockRange64 range);
+    void ReplyError(
+        const NActors::TActorContext& ctx,
+        const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
+        NProto::TError&& error);
 
 private:
     STFUNC(StateWork);
