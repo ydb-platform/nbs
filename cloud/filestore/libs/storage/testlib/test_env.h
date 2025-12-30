@@ -134,6 +134,11 @@ public:
         return Counters;
     }
 
+    TSystemCountersPtr GetSystemCounters() const
+    {
+        return SystemCounters;
+    }
+
     NMetrics::IMainMetricsRegistryPtr GetRegistry() const
     {
         return Registry;

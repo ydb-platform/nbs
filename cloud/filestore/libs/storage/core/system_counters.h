@@ -23,7 +23,7 @@ namespace NCloud::NFileStore::NStorage {
  */
 struct TSystemCounters: TAtomicRefCount<TSystemCounters>
 {
-    std::atomic<ui64> CpuLack; // measured in percent
+    std::atomic<ui64> CpuLack = {}; // measured in percent
 };
 
 }   // namespace NCloud::NFileStore::NStorage

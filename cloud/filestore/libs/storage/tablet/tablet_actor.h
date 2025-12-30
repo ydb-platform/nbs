@@ -64,8 +64,8 @@ inline void BuildBackendInfo(
     // tablet executor cpu usage.
     //
 
-    backendInfo->SetIsOverloaded(
-        systemCounters.CpuLack.load() >= config.GetCpuLackThreshold());
+    const ui64 cl = systemCounters.CpuLack.load(std::memory_order_relaxed);
+    backendInfo->SetIsOverloaded(cl >= config.GetCpuLackOverloadThreshold());
 }
 
 template <typename T>

@@ -67,10 +67,10 @@ void TStorageServiceActor::HandleUpdateStats(
         if (HasError(error)) {
             auto errorMessage =
                 ReportCpuWaitCounterReadError(error.GetMessage());
-                LOG_WARN_S(
-                    ctx,
-                    TFileStoreComponents::SERVICE,
-                    "Failed to get CpuWait stats: " << errorMessage);
+            LOG_WARN_S(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "Failed to get CpuWait stats: " << errorMessage);
         } else if (LastCpuWaitTs < now) {
             auto intervalUs = (now - LastCpuWaitTs).MicroSeconds();
             auto cpuLack = 100 * cpuWait.MicroSeconds();
