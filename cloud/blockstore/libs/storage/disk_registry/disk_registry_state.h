@@ -617,6 +617,7 @@ public:
         TDiskRegistryDatabase& db,
         TInstant timestamp,
         TDuration restoreInterval,
+        uint32_t agentRestoreLimit,
         TVector<TString>& affectedAgents);
 
     NProto::TError SwitchAgentDisksToReadOnly(

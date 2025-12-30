@@ -326,7 +326,7 @@ private:
 
     void ProcessInitialAgentRejectionPhase(const NActors::TActorContext& ctx);
 
-    void ScheduleRestoreDisksToOnline(const NActors::TActorContext& ctx);
+    void ScheduleRestoreDisksToOnlineIfNeeded(const NActors::TActorContext& ctx, bool immediatly = false);
 
 private:
     STFUNC(StateBoot);

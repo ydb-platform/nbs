@@ -655,6 +655,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(EnableVhostDiscardForNewVolumes,      bool,        false              )\
     xxx(RestoreAgentsToOnlineInterval,        TDuration,   Days(60)           )\
     xxx(CheckAgentsToRestoreToOnlineInterval, TDuration,   Days(1)            )\
+    xxx(RestoreAgentsCountPerTransaction,     ui32,        10                 )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 

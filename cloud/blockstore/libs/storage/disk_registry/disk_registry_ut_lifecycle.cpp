@@ -3094,6 +3094,55 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             }
         }
     }
+
+    Y_UNIT_TEST(ShouldRestoreAgentsToOnline) {
+        TVector agents {
+            CreateAgentConfig("agent-1", {
+                Device("dev-1", "uuid-1.1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-1.2", "rack-1", 10_GB),
+            }),
+            CreateAgentConfig("agent-2", {
+                Device("dev-1", "uuid-2.1", "rack-2", 10_GB),
+            })
+        };
+
+        NProto::TStorageServiceConfig config;
+
+        config.SetRestoreAgentsToOnlineInterval(TDuration::Seconds(5).MicroSeconds());
+        config.SetCheckAgentsToRestoreToOnlineInterval(TDuration::Seconds(10).MicroSeconds());
+        config.SetNonReplicatedDiskRecyclingPeriod(Max<ui32>());
+        config.SetAllocationUnitNonReplicatedSSD(10);
+
+        auto runtime = TTestRuntimeBuilder()
+            .With(config)
+            .WithAgents(agents)
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+
+        RegisterAndWaitForAgents(*runtime, agents);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        runtime->AdvanceCurrentTime(24h);
+        diskRegistry.ChangeAgentState(
+        "agent-1",
+        NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
+        
+        agents[0].SetNodeId(1);
+        diskRegistry.RegisterAgent(agents[0]);
+        auto agent = diskRegistry.GetAgentNodeId("agent-1");
+        UNIT_ASSERT_EQUAL(agent->Record.GetAgentState(), NProto::EAgentState::AGENT_STATE_WARNING);
+
+        runtime->AdvanceCurrentTime(24h);
+        runtime->DispatchEvents({}, 100ms);
+        agent = diskRegistry.GetAgentNodeId("agent-1");
+        UNIT_ASSERT_EQUAL(agent->Record.GetAgentState(), NProto::EAgentState::AGENT_STATE_ONLINE);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
