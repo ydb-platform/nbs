@@ -43,19 +43,20 @@ TSuiteRunner::TSuiteRunner(
         const TString& checkpointId,
         const TString& testName,
         TTestContext& testContext)
-    : AppContext(appContext)
+    : TestName(testName)
+    , AppContext(appContext)
     , Logging(std::move(logging))
     , SuccessOnError(successOnError)
     , CheckpointId(checkpointId)
     , LoggingTag(MakeLoggingTag(testName))
     , TestContext(testContext)
     , StartTime(Now())
-{
-}
+{}
 
 void TSuiteRunner::StartSubtest(const NProto::TRangeTest& range)
 {
     auto runner = CreateTestRunner(
+        TestName,
         Logging,
         TestContext.Session,
         TestContext.Volume,
@@ -84,6 +85,7 @@ void TSuiteRunner::StartReplay(
     ui64 maxRequestsInMemory)
 {
     auto runner = CreateTestRunner(
+        TestName,
         Logging,
         TestContext.Session,
         TestContext.Volume,

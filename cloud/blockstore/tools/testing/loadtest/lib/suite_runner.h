@@ -16,6 +16,7 @@ namespace NCloud::NBlockStore::NLoadTest {
 class TSuiteRunner
 {
 private:
+    const TString TestName;
     TAppContext& AppContext;
     ILoggingServicePtr Logging;
     const TVector<ui32>& SuccessOnError;

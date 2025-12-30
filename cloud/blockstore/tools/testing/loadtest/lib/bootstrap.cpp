@@ -254,7 +254,7 @@ IBlockDigestCalculatorPtr TBootstrap::CreateDigestCalculator()
     return std::make_shared<TDigestCalculatorImpl>();
 }
 
-TClientAppConfigPtr CreateClientConfig(
+TClientAppConfigPtr TBootstrap::CreateClientConfig(
     const TClientAppConfigPtr& config,
     TString clientId)
 {
@@ -268,7 +268,12 @@ TClientAppConfigPtr CreateClientConfig(
     if (!clientId) {
         clientId = CreateGuidAsString();
     }
-    clientConfig.SetClientId(clientId);
+
+    if (Options->TestName) {
+        clientId = Options->TestName + "--" + clientId;
+    }
+
+    clientConfig.SetClientId(std::move(clientId));
 
     return std::make_shared<TClientAppConfig>(appConfig);
 }
@@ -375,13 +380,15 @@ NRdma::IClientPtr TBootstrap::CreateAndStartRdmaClient(TString clientId)
     return client;
 }
 
-IBlockStorePtr TBootstrap::CreateClient(TVector<ui32> nonretriableErrorCodes)
+IBlockStorePtr TBootstrap::CreateClient(
+    TVector<ui32> nonretriableErrorCodes,
+    const TString& clientId)
 {
     if (Options->Host == "filesystem") {
         return CreateAndStartFilesystemClient();
     }
 
-    auto client = CreateAndStartGrpcClient();
+    auto client = CreateAndStartGrpcClient(clientId);
 
     auto clientEndpoint = client->CreateEndpoint();
 
