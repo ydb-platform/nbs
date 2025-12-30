@@ -114,6 +114,8 @@ public:
     [[nodiscard]] ui32 CreateId()
     {
         for (;;) {
+            Y_DEBUG_ABORT_UNLESS(Requests.size() < RDMA_MAX_REQID - 1);
+
             if (RequestIdGenerator >= RDMA_MAX_REQID) {
                 RequestIdGenerator = 0;
             }
@@ -1104,7 +1106,8 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
     requestMsg->In = req->InBuffer;
     requestMsg->Out = req->OutBuffer;
 
-    RDMA_TRACE("SEND " << TWorkRequestId(send->wr.wr_id) << " posted");
+    RDMA_TRACE(
+        "SEND " << TWorkRequestId(send->wr.wr_id) << " posted " << req->ReqId);
 
     try {
         Verbs->PostSend(Connection->qp, &send->wr);
@@ -1201,7 +1204,7 @@ void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv)
 
     auto req = ActiveRequests.Pop(reqId);
     if (!req) {
-        RDMA_ERROR("RECV " << wrId << " request not found");
+        RDMA_ERROR("RECV " << wrId << " request " << reqId << " not found");
         Counters->Error();
         return;
     }
