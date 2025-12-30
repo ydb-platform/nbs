@@ -95,10 +95,12 @@ void TMirrorCheckRangeActor::HandleReadUndelivery(
 {
     const ui32 replicaIndex = ev->Cookie - 1;
     TString errorMessage = TStringBuilder()
-                           << LogTitle.GetWithTime()
-                           << ": reading request for replica " << replicaIndex
+                           << "reading request for replica " << replicaIndex
                            << " is undelivered; ";
-    LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION_WORKER, errorMessage);
+    LOG_ERROR_S(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        TStringBuilder() << LogTitle.GetWithTime() << ": " << errorMessage);
 
     Status = MakeError(E_REJECTED, errorMessage);
     Status.MutableMessage()->append(errorMessage);
