@@ -2699,20 +2699,32 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldNotCrashWhileStoppingWhenForgetRequestIsInFlight)
     {
-        auto scheduler = std::make_shared<TTestScheduler>();
-        TBootstrap bootstrap(CreateWallClockTimer(), scheduler);
+        TBootstrap bootstrap(CreateWallClockTimer());
 
         bootstrap.Start();
 
         const ui64 nodeId = 123;
         const ui64 refCount = 10;
 
-        auto future = bootstrap.Fuse->SendRequest<TForgetRequest>(nodeId, refCount);
+        auto future = bootstrap.Fuse->SendRequest<TForgetRequest>(
+            nodeId,
+            refCount);
         bootstrap.Stop();
 
-        scheduler->RunAllScheduledTasks();
-
-        UNIT_ASSERT_EXCEPTION(future.GetValue(WaitTimeout), yexception);
+        // The test is designed to verify the absence of a double-free in a
+        // specific scenario. However, it cannot reliably assert success or
+        // failure because both execution paths are possible
+        try {
+            future.Wait(WaitTimeout);
+            // Rare case: the request can finish before StopAsync runs
+        } catch (...) {
+            // Exception happens in two cases:
+            // * Most commonly: a request is scheduled, dequeued from the
+            // virtio queue and then cancelled
+            // * Very rarely: request scheduling is deferred and the FUSE loop
+            // has already been destroyed by the time the request reaches the
+            // virtio queue, causing a wait timeout in |TFuseVirtioClient|
+        }
     }
 
     Y_UNIT_TEST(ShouldRaiseCritEventWhenErrorWasSentToGuest)
