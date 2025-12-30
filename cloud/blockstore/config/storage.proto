@@ -1392,4 +1392,14 @@ message TStorageServiceConfig
 
     // Number of fresh channels per partition for HDD disks.
     optional uint32 FreshChannelCountHDD = 473;
+
+    // Change Disk Agent from "back from unavailable" to online if this time
+    // has passed since the last change
+    optional uint32 RestoreAgentsToOnlineInterval = 474;
+
+    // Period for checking the disk agent for disks with status "back from unavailable"
+    optional uint32 CheckAgentsToRestoreToOnlineInterval = 475;
+
+    // Number of disks to restore to online per transaction
+    optional uint32 RestoreAgentsCountPerTransaction = 476;
 }
