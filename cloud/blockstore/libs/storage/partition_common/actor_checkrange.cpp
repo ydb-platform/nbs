@@ -74,8 +74,12 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     auto sgList = Buffer.GetGuardedSgList();
     auto sgListOrError = SgListNormalize(sgList.Acquire().Get(), BlockSize);
     if (HasError(sgListOrError)) {
-        auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(sgListOrError.GetError());
-        ReplyAndDie(ctx, std::move(response));
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::PARTITION_WORKER,
+            LogTitle.GetWithTime() << " sgList error occured: "
+                                   << FormatError(sgListOrError.GetError()));
+        ReplyAndDie(ctx, sgListOrError.GetError());
         return;
     }
     SgList.SetSgList(sgListOrError.ExtractResult());
@@ -96,13 +100,22 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 
 void TCheckRangeActor::ReplyAndDie(
     const TActorContext& ctx,
+    const NProto::TError& error)
+{
+    auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
+    ReplyAndDie(ctx, std::move(response));
+}
+
+void TCheckRangeActor::ReplyAndDie(
+    const TActorContext& ctx,
     std::unique_ptr<TEvVolume::TEvCheckRangeResponse> response)
 {
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "%s CheckRangeActor has finished",
-        LogTitle.GetWithTime().c_str());
+        "%s CheckRangeActor has finished with status %d",
+        LogTitle.GetWithTime().c_str(),
+        response->GetStatus());
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
@@ -144,8 +157,7 @@ void TCheckRangeActor::HandlePoisonPill(
     Y_UNUSED(ev);
 
     auto error = MakeError(E_REJECTED, "tablet is shutting down");
-
-    ReplyAndDie(ctx, std::make_unique<TEvVolume::TEvCheckRangeResponse>(error));
+    ReplyAndDie(ctx, error);
 }
 
 void TCheckRangeActor::HandleReadBlocksResponse(

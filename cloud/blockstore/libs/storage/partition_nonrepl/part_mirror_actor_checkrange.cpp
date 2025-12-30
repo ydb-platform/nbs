@@ -241,11 +241,12 @@ void TMirrorPartitionActor::HandleCheckRangeResponse(
     }
 
     LockedRanges.RemoveRequest(it->second.Range);
+    auto requestInfo = std::move(it->second.RequestInfo);
     CheckRangeRequestsInfo.erase(it);
 
     NCloud::Reply(
         ctx,
-        *it->second.RequestInfo,
+        *requestInfo,
         std::make_unique<TEvVolume::TEvCheckRangeResponse>(ev->Get()->Record));
 }
 

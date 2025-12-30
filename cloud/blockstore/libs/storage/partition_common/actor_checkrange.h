@@ -39,7 +39,11 @@ public:
 protected:
     void ReplyAndDie(
         const NActors::TActorContext& ctx,
-        std::unique_ptr<TEvVolume::TEvCheckRangeResponse>);
+        const NProto::TError& error);
+
+    void ReplyAndDie(
+        const NActors::TActorContext& ctx,
+        std::unique_ptr<TEvVolume::TEvCheckRangeResponse> response);
 
     void HandleReadBlocksResponse(
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
