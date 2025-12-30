@@ -31,6 +31,10 @@ IF (USE_VHOST_UNIX_SOCKET)
     SET_APPEND(RECIPE_ARGS --use-unix-socket)
 ENDIF()
 
+IF (NFS_TRACE_SAMPLING_RATE)
+    SET_APPEND(RECIPE_ARGS --trace-sampling-rate $NFS_TRACE_SAMPLING_RATE)
+ENDIF()
+
 USE_RECIPE(
     cloud/filestore/tests/recipes/vhost/vhost-recipe
     ${RECIPE_ARGS}
