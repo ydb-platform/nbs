@@ -56,7 +56,9 @@ class TNonreplicatedPartitionRdmaActor final
     {
         // Index of the device in the partition config.
         ui32 DeviceIdx = 0;
-        ui64 SentRequestId = 0;
+        // The unique identifier of the request. Generated at the time of
+        // sending the request.
+        ui64 ClientRequestId = 0;
     };
     using TRequestContext = TStackVec<TRunningRdmaRequestInfo, 2>;
 

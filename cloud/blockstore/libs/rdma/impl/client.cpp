@@ -180,11 +180,11 @@ public:
     }
 
     TSimpleList<TRequest> PopCancelledRequests(
-        const THashSet<ui64>& idsToCancel)
+        const THashSet<ui64>& clientRequestIdToCancel)
     {
         TSimpleList<TRequest> cancelledReqs;
         for (auto& [rdmaReqId, req]: Requests) {
-            if (idsToCancel.contains(req->ClientReqId)) {
+            if (clientRequestIdToCancel.contains(req->ClientReqId)) {
                 CancelledRequests.Put(rdmaReqId);
                 cancelledReqs.Enqueue(std::move(req));
             }
@@ -403,7 +403,7 @@ private:
 
 struct TClientRequestId: TListNode<TClientRequestId>
 {
-    ui64 ReqId = 0;
+    ui64 ClientRequestId = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -865,14 +865,14 @@ void TClientEndpoint::HandleQueuedRequests()
     }
 }
 
-void TClientEndpoint::CancelRequest(ui64 reqId) noexcept
+void TClientEndpoint::CancelRequest(ui64 clientRequestId) noexcept
 {
     if (!CheckState(EEndpointState::Connected)) {
         return;
     }
 
     auto reqIdForQueue = std::make_unique<TClientRequestId>();
-    reqIdForQueue->ReqId = reqId;
+    reqIdForQueue->ClientRequestId = clientRequestId;
     Counters->RequestEnqueued();
     CancelRequests.Enqueue(std::move(reqIdForQueue));
 
@@ -908,10 +908,10 @@ bool TClientEndpoint::HandleCancelRequests()
     if (!requests) {
         return false;
     }
-    THashSet<ui64> reqsToCancel;
+    THashSet<ui64> clientRequestIdToCancel;
 
-    for (const auto& reqId: requests) {
-        reqsToCancel.emplace(reqId.ReqId);
+    for (const auto& request: requests) {
+        clientRequestIdToCancel.emplace(request.ClientRequestId);
     }
 
     // We should filter input and queued requests from cancelled ones to not
@@ -920,9 +920,10 @@ bool TClientEndpoint::HandleCancelRequests()
 
     auto cancelledReqs = QueuedRequests.DequeueIf(
         [&](const TRequest& req)
-        { return reqsToCancel.contains(req.ClientReqId); });
+        { return clientRequestIdToCancel.contains(req.ClientReqId); });
 
-    cancelledReqs.Append(ActiveRequests.PopCancelledRequests(reqsToCancel));
+    cancelledReqs.Append(
+        ActiveRequests.PopCancelledRequests(clientRequestIdToCancel));
 
     const bool ret = !!cancelledReqs;
 

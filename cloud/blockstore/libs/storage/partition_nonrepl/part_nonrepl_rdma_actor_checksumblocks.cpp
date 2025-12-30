@@ -222,7 +222,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
             sentRequestCtx[i].DeviceIdx,
             TDeviceOperationTracker::ERequestType::Checksum);
 
-        sentRequestCtx[i].SentRequestId = request.Endpoint->SendRequest(
+        sentRequestCtx[i].ClientRequestId = request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             requestInfo->CallContext);
     }

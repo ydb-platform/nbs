@@ -381,7 +381,7 @@ TNonreplicatedPartitionRdmaActor::SendReadRequests(
             sentRequestCtx[i].DeviceIdx,
             TDeviceOperationTracker::ERequestType::Read);
 
-        sentRequestCtx[i].SentRequestId = request.Endpoint->SendRequest(
+        sentRequestCtx[i].ClientRequestId = request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             callContext);
     }
@@ -758,7 +758,7 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsUnavailable(
                 const auto& agentId = devices[item.DeviceIdx].GetAgentId();
 
                 auto& endpoint = AgentId2Endpoint[agentId];
-                endpoint->CancelRequest(item.SentRequestId);
+                endpoint->CancelRequest(item.ClientRequestId);
             }
         });
 }
