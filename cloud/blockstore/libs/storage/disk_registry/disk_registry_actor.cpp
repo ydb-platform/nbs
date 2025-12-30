@@ -297,9 +297,20 @@ void TDiskRegistryActor::ScheduleDiskRegistryAgentListExpiredParamsCleanup(
         new TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup());
 }
 
-void TDiskRegistryActor::ScheduleRestoreDisksToOnline(
-    const NActors::TActorContext& ctx)
+void TDiskRegistryActor::ScheduleRestoreDisksToOnlineIfNeeded(
+    const NActors::TActorContext& ctx,
+    bool immediatly)
 {
+    if (!Config->GetCheckAgentsToRestoreToOnlineInterval()) {
+        return;
+    }
+    if (immediatly) {
+        ctx.Schedule(
+            TDuration::Zero(),
+            new TEvDiskRegistryPrivate::TEvDiskRegistryRestoreAgentsToOnline());
+        return;
+    }
+
     ctx.Schedule(
         Config->GetCheckAgentsToRestoreToOnlineInterval(),
         new TEvDiskRegistryPrivate::TEvDiskRegistryRestoreAgentsToOnline());

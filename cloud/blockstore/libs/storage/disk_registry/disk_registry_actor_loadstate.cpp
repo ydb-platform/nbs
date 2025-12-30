@@ -209,7 +209,7 @@ void TDiskRegistryActor::CompleteLoadState(
 
     ScheduleDiskRegistryAgentListExpiredParamsCleanup(ctx);
 
-    ScheduleRestoreDisksToOnline(ctx);
+    ScheduleRestoreDisksToOnlineIfNeeded(ctx);
 
     if (auto orphanDevices = State->FindOrphanDevices()) {
         LOG_INFO(

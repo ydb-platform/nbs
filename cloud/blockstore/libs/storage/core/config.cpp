@@ -658,6 +658,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(TabletExecutorRejectionThreshold,     ui32,        0                  )\
     xxx(RestoreAgentsToOnlineInterval,        TDuration,   Days(60)           )\
     xxx(CheckAgentsToRestoreToOnlineInterval, TDuration,   Days(1)            )\
+    xxx(RestoreAgentsCountPerTransaction,     ui32,        10                 )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 

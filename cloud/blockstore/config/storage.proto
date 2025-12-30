@@ -1406,6 +1406,13 @@ message TStorageServiceConfig
     // to the client.
     optional bool OptimizeFastPathReadsOnResync = 476;
 
+    // Change Disk Agent from "back from unavailable" to online if this time
+    // has passed since the last change
     optional uint32 RestoreAgentsToOnlineInterval = 477;
+
+    // Period for checking the disk agent for disks with status "back from unavailable"
     optional uint32 CheckAgentsToRestoreToOnlineInterval = 478;
+
+    // Number of disks to restore to online per transaction
+    optional uint32 RestoreAgentsCountPerTransaction = 479;
 }
