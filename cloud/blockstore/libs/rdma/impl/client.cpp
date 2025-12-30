@@ -86,7 +86,7 @@ struct TRequest
     std::weak_ptr<TClientEndpoint> Endpoint;
 
     TCallContextPtr CallContext;
-    ui32 ReqId = 0;
+    ui32 ReqId = 0;   // 16-bit RDMA request id
     ui64 ClientReqId = 0;
 
     TPooledBuffer InBuffer{};
@@ -109,6 +109,7 @@ struct TRequest
 class TActiveRequests
 {
 private:
+    ui32 RequestIdGenerator = 0;
     THashMap<ui32, TRequestPtr> Requests;
     THistory<ui32> CompletedRequests{REQUEST_HISTORY_SIZE};
     THistory<ui32> TimedOutRequests{REQUEST_HISTORY_SIZE};
@@ -118,9 +119,13 @@ public:
     ui32 CreateId()
     {
         for (;;) {
+            if (RequestIdGenerator >= RDMA_MAX_REQID) {
+                RequestIdGenerator = 0;
+            }
+            const ui32 reqId = ++RequestIdGenerator;
             // must be unique through all in-flight requests
-            ui32 reqId = RandomNumber<ui32>(RDMA_MAX_REQID);
-            if (reqId && Requests.find(reqId) == Requests.end()) {
+            if (Requests.find(reqId) == Requests.end()) {
+                Y_DEBUG_ABORT_UNLESS(reqId > 0 && reqId <= RDMA_MAX_REQID);
                 return reqId;
             }
         }
