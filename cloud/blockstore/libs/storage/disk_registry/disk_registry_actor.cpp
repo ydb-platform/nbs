@@ -304,15 +304,8 @@ void TDiskRegistryActor::ScheduleRestoreDisksToOnlineIfNeeded(
     if (!Config->GetCheckAgentsToRestoreToOnlineInterval()) {
         return;
     }
-    if (immediatly) {
-        ctx.Schedule(
-            TDuration::Zero(),
-            new TEvDiskRegistryPrivate::TEvDiskRegistryRestoreAgentsToOnline());
-        return;
-    }
-
     ctx.Schedule(
-        Config->GetCheckAgentsToRestoreToOnlineInterval(),
+        immediatly ? TDuration::Zero() : Config->GetCheckAgentsToRestoreToOnlineInterval(),
         new TEvDiskRegistryPrivate::TEvDiskRegistryRestoreAgentsToOnline());
 }
 

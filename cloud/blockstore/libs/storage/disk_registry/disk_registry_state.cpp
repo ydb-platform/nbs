@@ -5278,17 +5278,20 @@ NProto::TError TDiskRegistryState::RestoreAgentsFromWarning(
     TInstant timestamp,
     TDuration restoreInterval,
     uint32_t agentRestoreLimit,
-    TVector<TString>& affectedAgents)
+    TVector<TString>& affectedAgents,
+    bool& remainingAgents)
 {
+    remainingAgents = false;
     for (const auto& agent: AgentList.GetAgents()) {
-        if(affectedAgents.size() >= agentRestoreLimit) {
-            break;
-        }
         if (agent.GetState() == NProto::AGENT_STATE_WARNING &&
             agent.GetStateMessage() == BACK_FROM_UNAVAILABLE &&
             timestamp - TInstant::MicroSeconds(agent.GetStateTs()) >
                 restoreInterval)
         {
+            if(affectedAgents.size() >= agentRestoreLimit) {
+                remainingAgents = true;
+                break;
+            }
             TVector<TDiskId> affectedDisks;
             NProto::TError error = UpdateAgentState(
                 db,

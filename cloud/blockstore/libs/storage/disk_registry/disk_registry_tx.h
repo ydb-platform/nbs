@@ -1486,7 +1486,8 @@ struct TTxDiskRegistry
         const TRequestInfoPtr RequestInfo;
 
         NProto::TError Error;
-        TVector<TString> affectedAgents;
+        TVector<TString> AffectedAgents;
+        bool RemainingAgents;
 
         TRestoreDisksToOnline(
             TRequestInfoPtr requestInfo

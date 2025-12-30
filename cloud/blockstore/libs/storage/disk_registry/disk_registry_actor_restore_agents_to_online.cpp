@@ -27,7 +27,8 @@ void TDiskRegistryActor::HandleRestoreAgentsToOnline(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
         "Restoring agents with status \"back from unavailable\" and last state change more than "
-        "RestoreAgentsToOnlineInterval ago");
+        "%s seconds ago",
+        Config->GetRestoreAgentsToOnlineInterval().Seconds());
 
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
@@ -58,7 +59,8 @@ void TDiskRegistryActor::ExecuteRestoreDisksToOnline(
         ctx.Now(),
         Config->GetRestoreAgentsToOnlineInterval(),
         Config->GetRestoreAgentsCountPerTransaction(),
-        args.affectedAgents);
+        args.AffectedAgents,
+        args.RemainingAgents);
 }
 
 void TDiskRegistryActor::CompleteRestoreDisksToOnline(
@@ -67,15 +69,20 @@ void TDiskRegistryActor::CompleteRestoreDisksToOnline(
 {
     Y_UNUSED(args);
 
-    for (const auto& agent : args.affectedAgents) {
-        LOG_INFO(
-            ctx,
-            TBlockStoreComponents::DISK_REGISTRY,
-            "Restored agent to online state: %s",
-            agent.c_str());
+    TStringBuilder affectedAgents;
+
+    for (const auto& agent : args.AffectedAgents) {
+        affectedAgents << agent << ", ";
     }
-    bool immediatly = args.affectedAgents.size() >= Config->GetRestoreAgentsCountPerTransaction();
-    ScheduleRestoreDisksToOnlineIfNeeded(ctx, immediatly);
+
+    affectedAgents.erase(affectedAgents.size()-2, 2);
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "Restored agents to online state: %s",
+        affectedAgents.c_str());
+    ScheduleRestoreDisksToOnlineIfNeeded(ctx, args.RemainingAgents);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
