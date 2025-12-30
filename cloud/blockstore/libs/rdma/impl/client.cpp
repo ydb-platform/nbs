@@ -3,10 +3,10 @@
 #include "adaptive_wait.h"
 #include "buffer.h"
 #include "event.h"
+#include "list.h"
+#include "log.h"
 #include "poll.h"
 #include "rcu.h"
-#include "log.h"
-#include "list.h"
 #include "utils.h"
 #include "verbs.h"
 #include "work_queue.h"
@@ -14,7 +14,6 @@
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
-
 #include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
@@ -30,6 +29,7 @@
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
+#include <util/generic/map.h>
 #include <util/generic/vector.h>
 #include <util/network/interface.h>
 #include <util/random/random.h>
@@ -108,7 +108,7 @@ class TActiveRequests
 {
 private:
     ui32 RequestIdGenerator = 0;
-    THashMap<ui32, TRequestPtr> Requests;
+    TMap<ui32, TRequestPtr> Requests;
 
 public:
     [[nodiscard]] ui32 CreateId()
@@ -187,18 +187,29 @@ public:
     TVector<TRequestPtr> PopTimedOutRequests(ui64 timeoutCycles)
     {
         TVector<TRequestPtr> requests;
-        for (auto& x: Requests) {
-            auto started = x.second->StartedCycles;
-            auto now = GetCycleCount();
+        const ui64 now = GetCycleCount();
 
-            if (started && started + timeoutCycles < now) {
-                requests.push_back(std::move(x.second));
+        auto popTimedOut = [&](decltype(Requests.begin()) it)
+        {
+            for (; it != Requests.end();) {
+                TRequestPtr& request = it->second;
+                if (request->StartedCycles &&
+                    request->StartedCycles + timeoutCycles < now)
+                {
+                    requests.push_back(std::move(request));
+                    it = Requests.erase(it);
+                } else {
+                    break;
+                }
             }
-        }
+        };
 
-        for (const auto& x: requests) {
-            Requests.erase(x->ReqId);
-        }
+        // Since identifiers are reused in a circle, the oldest identifiers need
+        // to be searched in two places - at the very beginning and after the
+        // last one used.
+        // [ old ... GetCurrentId() ... older]
+        popTimedOut(Requests.begin());
+        popTimedOut(Requests.upper_bound(GetCurrentId()));
 
         return requests;
     }
