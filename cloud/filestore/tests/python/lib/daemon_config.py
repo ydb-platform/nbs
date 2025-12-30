@@ -62,6 +62,7 @@ class FilestoreDaemonConfigGenerator:
         secure=False,
         access_service_type=AccessService,
         ic_port=None,
+        trace_sampling_rate=None,
     ):
         self.__binary_path = binary_path
         self.__working_dir, self.__configs_dir = get_directories()
@@ -99,6 +100,8 @@ class FilestoreDaemonConfigGenerator:
                 config_file.flush()
         if self.__is_storage_kikimr():
             self.__storage_config.SchemeShardDir = "/Root/nfs"
+
+        self.__trace_sampling_rate = trace_sampling_rate
 
     @property
     def port(self):
@@ -235,7 +238,7 @@ class FilestoreDaemonConfigGenerator:
 
         config.ProfileLogTimeThreshold = 100
         config.DumpTracksInterval = 100
-        config.SamplingRate = 1
+        config.SamplingRate = self.__trace_sampling_rate or 10000
         config.SlowRequestSamplingRate = 1000
         config.HDDSlowRequestThreshold = 1000
         config.SSDSlowRequestThreshold = 1000
@@ -395,6 +398,7 @@ class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
         secure=False,
         access_service_type=AccessService,
         ic_port=None,
+        trace_sampling_rate=None,
     ):
         super().__init__(
             binary_path,
@@ -413,7 +417,8 @@ class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
             use_secure_registration=use_secure_registration,
             secure=secure,
             access_service_type=access_service_type,
-            ic_port=ic_port
+            ic_port=ic_port,
+            trace_sampling_rate=trace_sampling_rate,
         )
 
 
@@ -434,6 +439,7 @@ class FilestoreVhostConfigGenerator(FilestoreDaemonConfigGenerator):
         ic_port=None,
         access_service_type=AccessService,
         secure=False,
+        trace_sampling_rate=None,
     ):
         super().__init__(
             binary_path,
@@ -452,7 +458,8 @@ class FilestoreVhostConfigGenerator(FilestoreDaemonConfigGenerator):
             use_secure_registration=use_secure_registration,
             ic_port=ic_port,
             access_service_type=access_service_type,
-            secure=secure
+            secure=secure,
+            trace_sampling_rate=trace_sampling_rate,
         )
 
         self.__local_service_port = self._port_manager.get_port()

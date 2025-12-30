@@ -45,6 +45,7 @@ def start(argv):
     parser.add_argument("--storage-config-patch", action="store", default=None)
     parser.add_argument("--direct-io", action="store_true", default=False)
     parser.add_argument("--use-unix-socket", action="store_true", default=False)
+    parser.add_argument("--trace-sampling-rate", action="store", default=None, type=int)
 
     args = parser.parse_args(argv)
 
@@ -156,6 +157,7 @@ def start(argv):
         restart_flag=restart_flag,
         storage_config=storage_config,
         access_service_type=access_service_type,
+        trace_sampling_rate=args.trace_sampling_rate,
     )
 
     filestore_vhost = FilestoreVhost(vhost_configurator)

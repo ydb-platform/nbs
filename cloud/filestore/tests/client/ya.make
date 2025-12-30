@@ -21,6 +21,8 @@ SET(
     cloud/filestore/tests/client/nfs-storage.txt
 )
 
+SET(NFS_TRACE_SAMPLING_RATE 1)
+
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 
 END()

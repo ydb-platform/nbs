@@ -45,6 +45,7 @@ def start(argv):
     parser.add_argument("--server-config-patch", action="store", default=None)
     parser.add_argument("--bs-cache-file-path", action="store", default=None)
     parser.add_argument("--use-unix-socket", action="store_true", default=False)
+    parser.add_argument("--trace-sampling-rate", action="store", default=None, type=int)
     args = parser.parse_args(argv)
 
     kikimr_binary_path = common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
@@ -139,6 +140,7 @@ def start(argv):
         storage_config=storage_config,
         secure=secure,
         access_service_type=access_service_type,
+        trace_sampling_rate=args.trace_sampling_rate,
     )
     filestore_configurator.generate_configs(kikimr_configurator.domains_txt, kikimr_configurator.names_txt)
 
