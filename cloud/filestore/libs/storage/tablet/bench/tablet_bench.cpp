@@ -18,6 +18,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr ui32 BlockSize = 4096;
+constexpr ui64 FileSize = 1_MB;
+constexpr ui64 MixedBlocksOffloadedRangesCapacity = 1000000;
+
 struct TTabletSetup
 {
     TTestEnv Env;
@@ -26,18 +30,20 @@ struct TTabletSetup
 
     TTabletSetup()
         : Env(TTestEnvConfig{
+            // Turn off logging in order to reduce performance overhead
             .LogPriority_NFS = NActors::NLog::PRI_ALERT,
             .LogPriority_KiKiMR = NActors::NLog::PRI_ALERT,
             .LogPriority_Others = NActors::NLog::PRI_ALERT})
     {
         NCloud::NFileStore::NProto::TStorageConfig storageConfig;
         storageConfig.SetInMemoryIndexCacheEnabled(true);
-        storageConfig.SetMixedBlocksOffloadedRangesCapacity(1e6);
+        storageConfig.SetMixedBlocksOffloadedRangesCapacity(
+            MixedBlocksOffloadedRangesCapacity);
 
         Env.UpdateStorageConfig(std::move(storageConfig));
 
         Env.CreateSubDomain("nfs");
-        Env.GetRuntime().SetDispatchedEventsLimit(1e9);
+        Env.GetRuntime().SetDispatchedEventsLimit(Max<ui64>());
 
         ui32 nodeIdx = Env.CreateNode("nfs");
         ui64 tabletId = Env.BootIndexTablet(nodeIdx);
@@ -46,7 +52,7 @@ struct TTabletSetup
             Env.GetRuntime(),
             nodeIdx,
             tabletId,
-            TFileSystemConfig{.BlockSize = 4096});
+            TFileSystemConfig{.BlockSize = BlockSize});
         TabletClient->InitSession("client", "session");
 
         auto nodeId = CreateNode(
@@ -54,13 +60,13 @@ struct TTabletSetup
             TCreateNodeArgs::File(RootNodeId, "test"));
 
         Handle = CreateHandle(*TabletClient, nodeId);
-        TabletClient->WriteData(Handle, 0, 1_MB, '1');
+        TabletClient->WriteData(Handle, 0, FileSize, '1');
     }
 
     void DescribeData(ui64 offset, ui64 length)
     {
         auto response = TabletClient->DescribeData(Handle, offset, length);
-        Y_ABORT_UNLESS(1_MB == response->Record.GetFileSize());
+        Y_ABORT_UNLESS(FileSize == response->Record.GetFileSize());
     }
 };
 
