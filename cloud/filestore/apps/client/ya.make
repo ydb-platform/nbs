@@ -2,6 +2,8 @@ PROGRAM(filestore-client)
 
 ALLOCATOR(TCMALLOC_TC)
 
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/binaries_dependency.inc)
+
 SPLIT_DWARF()
 
 IF (SANITIZER_TYPE)
