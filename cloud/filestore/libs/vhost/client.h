@@ -32,7 +32,12 @@ public:
         : WaitTimeout(timeout)
         , ThreadPool(CreateThreadPool("reqs", 4))
     {
-        Client = std::make_unique<NVHost::TBufferedClient>(SocketPath);
+        NVHost::TBufferedClientParams clientParams = {
+            .WriteTimeout = WaitTimeout
+        };
+        Client = std::make_unique<NVHost::TBufferedClient>(
+            SocketPath,
+            std::move(clientParams));
         ThreadPool->Start();
     }
 
