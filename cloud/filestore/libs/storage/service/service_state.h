@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
 #include <cloud/filestore/libs/diagnostics/public.h>
@@ -113,6 +114,27 @@ enum class ESessionCreateDestroyState
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TShardState: public TAtomicRefCount<TShardState>
+{
+private:
+    TAtomic IsOverloaded = false;
+
+public:
+    void SetIsOverloaded(bool isOverloaded)
+    {
+        AtomicSet(IsOverloaded, static_cast<TAtomicBase>(isOverloaded));
+    }
+
+    bool GetIsOverloaded() const
+    {
+        return static_cast<bool>(AtomicGet(IsOverloaded));
+    }
+};
+
+using TShardStatePtr = TIntrusivePtr<TShardState>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TSessionInfo
     : public TIntrusiveListItem<TSessionInfo>
 {
@@ -133,6 +155,9 @@ struct TSessionInfo
     bool ShouldStop = false;
 
     ui32 ShardSelector = 0;
+
+    TVector<TShardStatePtr> ShardStates;
+    TShardStatePtr MainTabletState;
 
     void GetInfo(NProto::TSessionInfo& info, ui64 seqNo)
     {
@@ -164,7 +189,7 @@ struct TSessionInfo
 
     bool HasSubSession(ui64 seqNo) const
     {
-        return SubSessions.count(seqNo);
+        return SubSessions.count(seqNo) > 0;
     }
 
     void UpdateSubSession(ui64 seqNo, TInstant now)
@@ -174,6 +199,33 @@ struct TSessionInfo
         }
     }
 
+    TShardStatePtr AccessShardState(ui32 shardIdx)
+    {
+        if (shardIdx >= FileStore.ShardFileSystemIdsSize()) {
+            ReportInvalidShardIdx(TStringBuilder() << "ShardIdx: " << shardIdx
+                << ", ShardCount: " << FileStore.ShardFileSystemIdsSize());
+            return MakeIntrusive<TShardState>();
+        }
+
+        if (shardIdx >= ShardStates.size()) {
+            ShardStates.reserve(shardIdx + 1);
+            while (ShardStates.size() <= shardIdx) {
+                ShardStates.emplace_back(MakeIntrusive<TShardState>());
+            }
+        }
+
+        return ShardStates[shardIdx];
+    }
+
+    TShardStatePtr AccessMainTabletState()
+    {
+        if (!MainTabletState) {
+            MainTabletState = MakeIntrusive<TShardState>();
+        }
+
+        return MainTabletState;
+    }
+
     const TString& SelectShard()
     {
         const auto& shards = FileStore.GetShardFileSystemIds();
@@ -181,7 +233,8 @@ struct TSessionInfo
             return Default<TString>();
         }
 
-        return shards[ShardSelector++ % shards.size()];
+        const ui32 shardIdx = ShardSelector++ % shards.size();
+        return shards[static_cast<int>(shardIdx)];
     }
 };
 
