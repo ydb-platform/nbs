@@ -1,5 +1,7 @@
 #include "service_actor.h"
 
+#include <cloud/filestore/libs/storage/core/system_counters.h>
+
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/mon/mon.h>
 
@@ -20,10 +22,12 @@ TStorageServiceActor::TStorageServiceActor(
         IRequestStatsRegistryPtr statsRegistry,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
+        TSystemCountersPtr systemCounters,
         NCloud::NStorage::IStatsFetcherPtr statsFetcher)
     : StorageConfig{std::move(storageConfig)}
     , ProfileLog{std::move(profileLog)}
     , TraceSerializer{std::move(traceSerializer)}
+    , SystemCounters(std::move(systemCounters))
     , StatsFetcher(std::move(statsFetcher))
     , State{std::make_unique<TStorageServiceState>()}
     , StatsRegistry{std::move(statsRegistry)}

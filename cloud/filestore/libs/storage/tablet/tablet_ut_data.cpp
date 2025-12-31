@@ -7659,6 +7659,115 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         const auto& buffer = response->Record.GetBuffer();
         UNIT_ASSERT_VALUES_EQUAL(data2, buffer);
     }
+
+    TABLET_TEST(ShouldReturnBackendInfoForIO)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(2 * tabletConfig.BlockSize);
+        storageConfig.SetCpuLackOverloadThreshold(50);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        auto systemCounters = env.GetSystemCounters();
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        {
+            //
+            // Small write - uses CompleteResponse<> code path.
+            //
+
+            systemCounters->CpuLack.store(30);
+            auto response =
+                tablet.WriteData(handle, 0, tabletConfig.BlockSize, 'a');
+            const auto* backendInfo =
+                &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(!backendInfo->GetIsOverloaded());
+
+            systemCounters->CpuLack.store(60);
+            response = tablet.WriteData(handle, 0, tabletConfig.BlockSize, 'a');
+            backendInfo = &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(backendInfo->GetIsOverloaded());
+        }
+
+        {
+            //
+            // Large write - uses separate actor code path.
+            //
+
+            systemCounters->CpuLack.store(30);
+            auto response =
+                tablet.WriteData(handle, 0, 3 * tabletConfig.BlockSize, 'a');
+            const auto* backendInfo =
+                &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(!backendInfo->GetIsOverloaded());
+
+            systemCounters->CpuLack.store(60);
+            response =
+                tablet.WriteData(handle, 0, 3 * tabletConfig.BlockSize, 'a');
+            backendInfo = &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(backendInfo->GetIsOverloaded());
+        }
+
+        {
+            //
+            // Small read - uses CompleteResponse<> code path.
+            //
+
+            systemCounters->CpuLack.store(30);
+            auto response = tablet.ReadData(handle, 0, tabletConfig.BlockSize);
+            const auto* buffer = &response->Record.GetBuffer();
+            UNIT_ASSERT(CompareBuffer(*buffer, tabletConfig.BlockSize, 'a'));
+            const auto* backendInfo =
+                &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(!backendInfo->GetIsOverloaded());
+
+            systemCounters->CpuLack.store(60);
+            response = tablet.ReadData(handle, 0, tabletConfig.BlockSize);
+            buffer = &response->Record.GetBuffer();
+            UNIT_ASSERT(CompareBuffer(*buffer, tabletConfig.BlockSize, 'a'));
+            backendInfo = &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(backendInfo->GetIsOverloaded());
+        }
+
+        {
+            //
+            // Large read - uses separate actor code path.
+            //
+
+            systemCounters->CpuLack.store(30);
+            auto response =
+                tablet.ReadData(handle, 0, 3 * tabletConfig.BlockSize);
+            const auto* buffer = &response->Record.GetBuffer();
+            UNIT_ASSERT(
+                CompareBuffer(*buffer, 3 * tabletConfig.BlockSize, 'a'));
+            const auto* backendInfo =
+                &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(!backendInfo->GetIsOverloaded());
+
+            systemCounters->CpuLack.store(60);
+            response = tablet.ReadData(handle, 0, 3 * tabletConfig.BlockSize);
+            buffer = &response->Record.GetBuffer();
+            UNIT_ASSERT(
+                CompareBuffer(*buffer, 3 * tabletConfig.BlockSize, 'a'));
+            backendInfo = &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(backendInfo->GetIsOverloaded());
+        }
+
+        tablet.DestroyHandle(handle);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

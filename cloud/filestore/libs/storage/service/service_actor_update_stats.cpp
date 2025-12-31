@@ -1,6 +1,7 @@
 #include "service_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
+#include <cloud/filestore/libs/storage/core/system_counters.h>
 
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
@@ -62,21 +63,20 @@ void TStorageServiceActor::HandleUpdateStats(
 
     if (StatsFetcher) {
         auto [cpuWait, error] = StatsFetcher->GetCpuWait();
+        auto now = ctx.Monotonic();
         if (HasError(error)) {
-        auto errorMessage =
-            ReportCpuWaitCounterReadError(error.GetMessage());
+            auto errorMessage =
+                ReportCpuWaitCounterReadError(error.GetMessage());
             LOG_WARN_S(
                 ctx,
                 TFileStoreComponents::SERVICE,
                 "Failed to get CpuWait stats: " << errorMessage);
-        }
-
-        auto now = ctx.Monotonic();
-        if (LastCpuWaitTs < now) {
+        } else if (LastCpuWaitTs < now) {
             auto intervalUs = (now - LastCpuWaitTs).MicroSeconds();
             auto cpuLack = 100 * cpuWait.MicroSeconds();
             cpuLack /= intervalUs;
             *CpuWaitCounter = cpuLack;
+            SystemCounters->CpuLack.store(cpuLack, std::memory_order_relaxed);
 
             if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
                 LOG_WARN_S(
@@ -84,9 +84,9 @@ void TStorageServiceActor::HandleUpdateStats(
                     TFileStoreComponents::SERVICE,
                     "Cpu wait is " << cpuLack);
             }
-        }
 
-        LastCpuWaitTs = now;
+            LastCpuWaitTs = now;
+        }
     }
 
     StatsRegistry->UpdateStats(true);

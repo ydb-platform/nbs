@@ -21,6 +21,7 @@ NActors::IActorPtr CreateIndexTablet(
     TDiagnosticsConfigPtr diagConfig,
     IProfileLogPtr profileLog,
     ITraceSerializerPtr traceSerializer,
+    TSystemCountersPtr systemCounters,
     NMetrics::IMetricsRegistryPtr metricsRegistry,
     bool useNoneCompactionPolicy);
 

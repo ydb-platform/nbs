@@ -707,4 +707,8 @@ message TStorageConfig
     // Entry timeout for regular entries. See EntryTimeout
     // Passed to filestore-vhost and do not have effect on the tablet
     optional uint32 RegularFileEntryTimeout = 476;
+
+    // If CpuLack goes over this threshold, tablets will start setting the
+    // IsOverloaded flag in their responses.
+    optional uint32 CpuLackOverloadThreshold = 477;
 }

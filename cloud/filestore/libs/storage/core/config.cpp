@@ -312,6 +312,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(ReadBlobDisabled,                  bool,      false                   )\
     xxx(WriteBlobDisabled,                 bool,      false                   )\
+                                                                               \
+    xxx(CpuLackOverloadThreshold,          ui32,      101                     )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
