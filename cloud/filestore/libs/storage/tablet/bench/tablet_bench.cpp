@@ -64,6 +64,12 @@ struct TTabletSetup
     }
 };
 
+// Using a non-owning static variable because the test Actor System crashes
+// during initialization.
+// A singleton also doesn’t work because it causes
+// other issues during deinitialization.
+// A memory leak is the price we pay to prevent the program from crashing.
+// This is acceptable because benchmarks are not run under sanitizers
 std::atomic<TTabletSetup*> Tablet = nullptr;
 
 TTabletSetup* GetOrCreateTablet()
@@ -78,7 +84,6 @@ TTabletSetup* GetOrCreateTablet()
         return Tablet.load();
     }
 
-    // Memory leak is OK here
     return tmp.release();
 }
 
