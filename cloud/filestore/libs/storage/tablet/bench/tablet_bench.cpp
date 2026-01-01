@@ -5,9 +5,9 @@
 
 #include <library/cpp/testing/benchmark/bench.h>
 
+#include <util/generic/singleton.h>
 #include <util/generic/vector.h>
 
-#include <atomic>
 #include <memory>
 
 using namespace NCloud;
@@ -70,27 +70,10 @@ struct TTabletSetup
     }
 };
 
-// Using a non-owning static variable because the test Actor System crashes
-// during initialization.
-// A singleton also doesn’t work because it causes
-// other issues during deinitialization.
-// A memory leak is the price we pay to prevent the program from crashing.
-// This is acceptable because benchmarks are not run under sanitizers
-std::atomic<TTabletSetup*> Tablet = nullptr;
-
 TTabletSetup* GetOrCreateTablet()
 {
-    if (Tablet.load()) {
-        return Tablet.load();
-    }
-
-    auto tmp = std::make_unique<TTabletSetup>();
-    TTabletSetup* expected = nullptr;
-    if (!Tablet.compare_exchange_strong(expected, tmp.get())) {
-        return Tablet.load();
-    }
-
-    return tmp.release();
+    constexpr ui64 Priority = Max<ui64>();
+    return SingletonWithPriority<TTabletSetup, Priority>();
 }
 
 }   // namespace

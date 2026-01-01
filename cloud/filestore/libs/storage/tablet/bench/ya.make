@@ -1,6 +1,8 @@
 Y_BENCHMARK()
 
-NO_SANITIZE()
+IF (SANITIZER_TYPE)
+    TAG(ya:manual)
+ENDIF()
 
 SRCS(
     tablet_bench.cpp
