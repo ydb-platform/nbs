@@ -47,7 +47,7 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
     const TString& methodName,
     const ui64 requestId,
     const NProto::TFileStore& filestore,
-    ui32 shardNo) const
+    ui32& shardNo) const
 {
     const bool multiTabletForwardingEnabled =
         StorageConfig->GetMultiTabletForwardingEnabled()

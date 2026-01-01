@@ -65,6 +65,7 @@ private:
     IProfileLogPtr ProfileLog;
     ITraceSerializerPtr TraceSerializer;
     std::optional<TInFlightRequest> InFlightRequest;
+    TShardStatePtr ShardState;
     const NCloud::NProto::EStorageMediaKind MediaKind;
     const bool UseTwoStageRead;
 
@@ -77,6 +78,7 @@ public:
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
+        TShardStatePtr shardState,
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useTwoStageRead);
 
@@ -125,6 +127,7 @@ TReadDataActor::TReadDataActor(
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
+        TShardStatePtr shardState,
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useTwoStageRead)
     : RequestInfo(std::move(requestInfo))
@@ -141,6 +144,7 @@ TReadDataActor::TReadDataActor(
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
     , TraceSerializer(std::move(traceSerializer))
+    , ShardState(std::move(shardState))
     , MediaKind(mediaKind)
     , UseTwoStageRead(useTwoStageRead)
 {
@@ -313,13 +317,18 @@ void TReadDataActor::HandleDescribeDataResponse(
         return;
     }
 
+    const auto& backendInfo = msg->Record.GetHeaders().GetBackendInfo();
+    ShardState->SetIsOverloaded(backendInfo.GetIsOverloaded());
+
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "%s DescribeData succeeded %lu freshdata + %lu blobpieces",
+        "%s DescribeData succeeded %lu freshdata + %lu blobpieces"
+        ", backend-info: %s",
         LogTag.c_str(),
         msg->Record.FreshDataRangesSize(),
-        msg->Record.BlobPiecesSize());
+        msg->Record.BlobPiecesSize(),
+        backendInfo.ShortUtf8DebugString().Quote().c_str());
 
     DescribeResponse.CopyFrom(msg->Record);
     ReadBlobsIfNeeded(ctx);
@@ -621,11 +630,15 @@ void TReadDataActor::HandleReadDataResponse(
         return;
     }
 
+    const auto& backendInfo = msg->Record.GetHeaders().GetBackendInfo();
+    ShardState->SetIsOverloaded(backendInfo.GetIsOverloaded());
+
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "ReadData succeeded %lu data",
-        msg->Record.GetBuffer().size());
+        "ReadData succeeded %lu data, backend-info: %s",
+        msg->Record.GetBuffer().size(),
+        backendInfo.ShortUtf8DebugString().Quote().c_str());
 
     auto response = std::make_unique<TEvService::TEvReadDataResponse>();
     response->Record = std::move(msg->Record);
@@ -852,18 +865,38 @@ void TStorageServiceActor::HandleReadData(
         }
     }
 
+    const bool isShardNoValid = shardNo > 0 && !fsId.empty();
+    auto shardState = isShardNoValid
+        ? session->AccessShardState(shardNo - 1)
+        : session->AccessMainTabletState();
+
     const ui32 twoStageReadThreshold =
         filestore.GetFeatures().GetTwoStageReadThreshold()
         ? filestore.GetFeatures().GetTwoStageReadThreshold()
         : StorageConfig->GetTwoStageReadThreshold();
+
+    //
+    // For large requests we conservatively decide no to use tablet-side network
+    // for the data in order not to overload the tablet-side NIC.
+    //
+    // For small requests we use tablet-side reads only if the tablet doesn't
+    // consider itself to be overloaded.
+    //
+    // Later on we can start taking NIC usage into account for the IsOverloaded
+    // flag but right now we don't expect it to take network usage into account.
+    //
+
     const bool useTwoStageRead = IsTwoStageReadEnabled(filestore)
-        && msg->Record.GetLength() >= twoStageReadThreshold;
+        && (msg->Record.GetLength() >= twoStageReadThreshold
+            || shardState->GetIsOverloaded());
 
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "read data %s",
-        msg->Record.DebugString().Quote().c_str());
+        "read data %s, use-two-stage-read: %d, shard-is-overloaded: %d",
+        msg->Record.DebugString().Quote().c_str(),
+        useTwoStageRead,
+        shardState->GetIsOverloaded());
 
     TChecksumCalcInfo checksumCalcInfo;
     const bool blockChecksumsEnabled =
@@ -895,6 +928,7 @@ void TStorageServiceActor::HandleReadData(
         session->RequestStats,
         ProfileLog,
         TraceSerializer,
+        std::move(shardState),
         session->MediaKind,
         useTwoStageRead);
 

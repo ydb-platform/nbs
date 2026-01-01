@@ -61,6 +61,7 @@ namespace NCloud::NFileStore{
     xxx(FailedToLockNodeRef)                                                   \
     xxx(InvalidNodeRefUponCompleteUnlinkNode)                                  \
     xxx(UnknownOpLogEntry)                                                     \
+    xxx(InvalidShardIdx)                                                       \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

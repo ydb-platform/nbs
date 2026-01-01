@@ -2235,7 +2235,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     void DoTestShouldUseTwoStageReadThreshold(bool setUpForTablet)
     {
         NProto::TStorageConfig storageConfig;
-        storageConfig.SetFlushThreshold(1); // disabling fresh blocks
+        storageConfig.SetWriteBlobThreshold(1); // disabling fresh blocks
         if (!setUpForTablet) {
             storageConfig.SetTwoStageReadEnabled(true);
             storageConfig.SetTwoStageReadThreshold(8_KB);
@@ -2336,6 +2336,119 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldUseTabletLevelTwoStageReadThreshold)
     {
         DoTestShouldUseTwoStageReadThreshold(true /* setUpForTablet */);
+    }
+
+    Y_UNIT_TEST(ShouldUseTwoStageReadForSmallRequestsIfTabletIsOverloaded)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1); // disabling fresh blocks
+        storageConfig.SetTwoStageReadEnabled(true);
+        storageConfig.SetTwoStageReadThreshold(8_KB);
+        storageConfig.SetCpuLackOverloadThreshold(50);
+
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        auto systemCounters = env.GetSystemCounters();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::STORAGE_MEDIA_SSD);
+
+        auto headers = service.InitSession(fs, "client");
+
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        auto data = TString(4_KB, 'a');
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+
+        //
+        // Small read => no two-stage-read.
+        //
+
+        auto readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
+
+        auto counters = env.GetCounters()
+            ->FindSubgroup("component", "service_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", fs)
+            ->FindSubgroup("client", "client")
+            ->FindSubgroup("cloud", "test_cloud")
+            ->FindSubgroup("folder", "test_folder");
+        {
+            auto subgroup = counters->FindSubgroup("request", "DescribeData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadBlob");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+
+        //
+        // Small read but tablet is overloaded => the first request will still
+        // use direct read, but the next ones will use two-stage-read.
+        //
+
+        systemCounters->CpuLack.store(60);
+
+        const ui32 requestCount = 5;
+        for (ui32 i = 0; i < requestCount - 1; ++i) {
+            readDataResult =
+                service.ReadData(headers, fs, nodeId, handle, 0, data.size());
+            UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
+        }
+
+        {
+            auto subgroup = counters->FindSubgroup("request", "DescribeData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                requestCount - 2,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                requestCount,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadBlob");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                requestCount - 2,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
     }
 
     Y_UNIT_TEST(ShouldFallbackToReadDataIfDescribeDataFails)

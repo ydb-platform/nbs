@@ -143,7 +143,7 @@ void TStorageServiceActor::ForwardXAttrRequest(
     auto* msg = ev->Get();
 
     const ui64 seqNo = GetSessionSeqNo(msg->Record);
-    const auto shardNo = ExtractShardNo(ev->Get()->Record.GetNodeId());
+    auto shardNo = ExtractShardNo(ev->Get()->Record.GetNodeId());
 
     LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
         "[%s][%lu] forward %s #%lu",
