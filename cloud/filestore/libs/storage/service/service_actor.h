@@ -222,7 +222,8 @@ private:
         const TString& methodName,
         const ui64 requestId,
         const NProto::TFileStore& filestore,
-        ui32 shardNo) const;
+        // TODO(#2566): switch from by-reference to by-value
+        ui32& shardNo) const;
 
 private:
     // actions

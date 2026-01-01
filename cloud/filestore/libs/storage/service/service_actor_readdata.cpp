@@ -865,7 +865,8 @@ void TStorageServiceActor::HandleReadData(
         }
     }
 
-    auto shardState = shardNo
+    const bool isShardNoValid = shardNo > 0 && !fsId.empty();
+    auto shardState = isShardNoValid
         ? session->AccessShardState(shardNo - 1)
         : session->AccessMainTabletState();
 
