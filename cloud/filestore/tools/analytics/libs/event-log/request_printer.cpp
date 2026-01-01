@@ -376,6 +376,11 @@ public:
                 << "\t";
         }
 
+        if (request.GetClientId()) {
+            out << PrintValue("client_id", request.GetClientId())
+                << "\t";
+        }
+
         if (out.empty()) {
             out << "{no_info}";
         } else {

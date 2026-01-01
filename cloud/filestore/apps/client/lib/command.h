@@ -153,7 +153,7 @@ class TFileStoreCommand
     : public TFileStoreServiceCommand
 {
 public:
-    TFileStoreCommand();
+    TFileStoreCommand(bool isClientIdRequired = false);
 
     void Start() override;
     void Stop() override;

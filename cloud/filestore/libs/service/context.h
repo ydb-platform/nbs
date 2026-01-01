@@ -28,7 +28,7 @@ public:
     std::atomic<bool> Cancelled = false;
 
     explicit TCallContext(ui64 requestId = 0);
-    TCallContext(TString fileSystemId, ui64 requestId = 0);
+    explicit TCallContext(TString fileSystemId, ui64 requestId = 0);
 
     TString LogString() const;
 };

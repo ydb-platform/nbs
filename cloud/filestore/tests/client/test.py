@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 import time
@@ -752,25 +753,35 @@ def test_io_telemetry():
         BLOCK_SIZE,
         BLOCKS_COUNT)
 
-    client.write(fs_id, "/small", "--data", small_data_file)
+    client.write(
+        fs_id,
+        "/small",
+        "--data", small_data_file,
+        "--client-id", "client0")
     for i in range(len(medium_data_files)):
         client.write(
             fs_id,
             "/medium",
             "--data", medium_data_files[i],
-            "--offset", str(i * medium_chunk_size))
-    client.write(fs_id, "/large", "--data", large_data_file)
+            "--offset", str(i * medium_chunk_size),
+            "--client-id", "client0")
+    client.write(
+        fs_id,
+        "/large",
+        "--data", large_data_file,
+        "--client-id", "client0")
     out = __exec_ls(client, fs_id, "/").decode("utf-8")
     out += "\nread_size=%s\n" % len(client.read(
-        fs_id, "/small", "--length", str(4 * 1024)))
+        fs_id, "/small", "--length", str(4 * 1024), "--client-id", "client0"))
     for i in range(3):
         out += "read_size=%s\n" % len(client.read(
             fs_id,
             "/medium",
             "--length", str(medium_chunk_size),
-            "--offset", str(i * medium_chunk_size)))
+            "--offset", str(i * medium_chunk_size),
+            "--client-id", "client0"))
     out += "read_size=%s\n" % len(client.read(
-        fs_id, "/large", "--length", str(128 * 1024)))
+        fs_id, "/large", "--length", str(128 * 1024), "--client-id", "client0"))
 
     client.destroy(fs_id)
 
@@ -834,8 +845,12 @@ def test_io_telemetry():
         for event_type, event_body in profile_log_events:
             if event_type not in io_events:
                 continue
-            del event_body["handle"]
-            lines.append("%s\t%s\n" % (event_type, event_body))
+            try:
+                del event_body["handle"]
+                lines.append("%s\t%s\n" % (event_type, event_body))
+            except Exception as e:
+                logging.error("failed to process event: %s" % event_body)
+                raise e
 
         lines.sort()
         for line in lines:
