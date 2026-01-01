@@ -72,6 +72,7 @@ struct TTabletSetup
 
 TTabletSetup* GetOrCreateTablet()
 {
+    // Ensure this singleton is destroyed first to avoid a crash
     constexpr ui64 Priority = Max<ui64>();
     return SingletonWithPriority<TTabletSetup, Priority>();
 }
