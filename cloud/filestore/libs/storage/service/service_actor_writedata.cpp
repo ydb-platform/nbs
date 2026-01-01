@@ -818,6 +818,7 @@ void TStorageServiceActor::HandleWriteData(
             startTime);
 
         InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+        inflight->ProfileLogRequest.SetClientId(session->ClientId);
         if (blockChecksumsEnabled) {
             CalculateWriteDataRequestChecksums(
                 msg->Record,
@@ -844,7 +845,7 @@ void TStorageServiceActor::HandleWriteData(
             TFileStoreComponents::SERVICE,
             "Forwarding WriteData request to tablet");
         MoveIovecsToBuffer(msg->Record);
-        return ForwardRequest<TEvService::TWriteDataMethod>(ctx, ev);
+        ForwardRequest<TEvService::TWriteDataMethod>(ctx, ev);
     }
 }
 

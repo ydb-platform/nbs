@@ -883,6 +883,7 @@ void TStorageServiceActor::HandleReadData(
         startTime);
 
     InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+    inflight->ProfileLogRequest.SetClientId(session->ClientId);
 
     auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 

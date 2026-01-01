@@ -34,12 +34,13 @@ def get_profile_log_events(profile_tool_bin_path, profile_log_path, fs_name):
     for line in proc.stdout.decode("utf-8").splitlines():
         parts = line.rstrip().split("\t")
         request_type = parts[2]
-        body_str = re.sub(r"[{}\[\]]", "", parts[-1])
-        body_parts = body_str.split(", ")
         body_dict = {}
-        for body_part in body_parts:
-            kv = body_part.split("=", 2)
-            body_dict[kv[0]] = kv[1] if len(kv) == 2 else None
+        for i in range(5, len(parts)):
+            body_str = re.sub(r"[{}\[\]]", "", parts[i])
+            body_parts = body_str.split(", ")
+            for body_part in body_parts:
+                kv = body_part.split("=", 2)
+                body_dict[kv[0]] = kv[1] if len(kv) == 2 else None
 
         events.append((request_type, body_dict))
 

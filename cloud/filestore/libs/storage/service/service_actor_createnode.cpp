@@ -376,6 +376,7 @@ void TStorageServiceActor::HandleCreateNode(
                 ctx.Now());
 
             InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+            inflight->ProfileLogRequest.SetClientId(session->ClientId);
 
             auto requestInfo =
                 CreateRequestInfo(SelfId(), cookie, msg->CallContext);

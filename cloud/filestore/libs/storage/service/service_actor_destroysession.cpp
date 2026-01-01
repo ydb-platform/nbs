@@ -213,6 +213,7 @@ void TStorageServiceActor::HandleDestroySession(
         ctx.Now());
 
     InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+    inflight->ProfileLogRequest.SetClientId(clientId);
 
     auto reply = [&, inflight = std::move(inflight)] (auto error) {
         auto response =
