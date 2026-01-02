@@ -39,6 +39,8 @@ namespace NCloud::NFileStore{
     xxx(ErrorWasSentToTheGuest)                                                \
     xxx(DirectoryHandlesStorageError)                                          \
     xxx(CalculateChecksumsBufferOverflow)                                      \
+    xxx(FakeBlobWasRead)                                                       \
+    xxx(FakeBlobWasWritten)                                                    \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_IMPOSSIBLE_EVENTS(xxx)                                       \

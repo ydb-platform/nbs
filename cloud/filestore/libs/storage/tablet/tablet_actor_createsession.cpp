@@ -97,6 +97,8 @@ void FillFeatures(
 
     features->SetBlockChecksumsInProfileLogEnabled(
         config.GetBlockChecksumsInProfileLogEnabled());
+
+    features->SetReadBlobDisabled(config.GetReadBlobDisabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
