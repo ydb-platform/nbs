@@ -79,12 +79,26 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
     const NProto::TFileStore& filestore,
     const ui32 shardNo) const
 {
+    const auto& shardIds = filestore.GetShardFileSystemIds();
+    if (shardIds.empty()) {
+        //
+        // This filesystem itself might be a shard. We do not expect direct
+        // requests to shards from real clients but such requests may happen
+        // during some of our debugging/ops activities.
+        //
+        // TODO(#2566): switch to using filestore.GetShardNo() > 0 when we are
+        // confident that the release with TFileStore::ShardNo is deployed
+        // everywhere.
+        //
+
+        return TString();
+    }
+
     const bool multiTabletForwardingEnabled =
         StorageConfig->GetMultiTabletForwardingEnabled()
         && !disableMultiTabletForwarding;
 
     if (multiTabletForwardingEnabled && shardNo) {
-        const auto& shardIds = filestore.GetShardFileSystemIds();
         const int shardIdx = SafeIntegerCast<int>(shardNo - 1);
 
         if (shardIds.size() <= shardIdx) {

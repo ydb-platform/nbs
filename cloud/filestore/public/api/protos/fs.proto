@@ -73,6 +73,9 @@ message TFileStore
     TFileStoreFeatures Features = 11;
 
     repeated string ShardFileSystemIds = 12;
+
+    // Zero for main fs, non-zero for shards.
+    uint32 ShardNo = 13;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

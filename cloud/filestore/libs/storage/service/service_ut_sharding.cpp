@@ -4497,6 +4497,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 shard2Id,
                 fileStore.GetShardFileSystemIds(1));
+            UNIT_ASSERT_VALUES_EQUAL(0, fileStore.GetShardNo());
         }
 
         // shard order change not allowed
@@ -4584,6 +4585,44 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 S_OK,
                 response->GetStatus(),
                 response->GetErrorReason());
+        }
+    }
+
+    SERVICE_TEST_SIMPLE(ShouldCreateSessionDirectlyInShard)
+    {
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ui32 shardNo = 0;
+        for (const auto& shardId: {shard1Id, shard2Id}) {
+            NProtoPrivate::TConfigureAsShardRequest request;
+            request.SetFileSystemId(shardId);
+            request.SetShardNo(++shardNo);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("configureasshard", buf);
+            NProtoPrivate::TConfigureAsShardResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+
+            auto createSessionResponse =
+                service.CreateSession(THeaders{shardId, "client", ""});
+            const auto& fileStore =
+                createSessionResponse->Record.GetFileStore();
+            UNIT_ASSERT_VALUES_EQUAL(0, fileStore.ShardFileSystemIdsSize());
+            UNIT_ASSERT_VALUES_EQUAL(shardNo, fileStore.GetShardNo());
         }
     }
 
