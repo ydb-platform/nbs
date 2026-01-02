@@ -235,11 +235,11 @@ void TStorageServiceActor::HandleGetNodeAttr(
     auto* msg = ev->Get();
 
     if (msg->Record.GetName().empty()) {
-        // handle creation by NodeId can be handled directly by the shard
+        // GetNodeAttr by NodeId can be handled directly by the shard
         ForwardRequestToShard<TEvService::TGetNodeAttrMethod>(
             ctx,
             ev,
-            ExtractShardNo(msg->Record.GetNodeId()));
+            msg->Record.GetNodeId());
         return;
     }
 
@@ -259,7 +259,9 @@ void TStorageServiceActor::HandleGetNodeAttr(
     auto& headers = *msg->Record.MutableHeaders();
     headers.SetBehaveAsDirectoryTablet(
         filestore.GetFeatures().GetDirectoryCreationInShardsEnabled());
-    if (auto shardNo = ExtractShardNo(msg->Record.GetNodeId())) {
+    if (const ui32 shardNo =
+            ExtractShardNoSafe(filestore, msg->Record.GetNodeId()))
+    {
         // parent directory is managed by a shard
         auto [shardId, error] = SelectShard(
             ctx,

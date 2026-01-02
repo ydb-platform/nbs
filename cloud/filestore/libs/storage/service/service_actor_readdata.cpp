@@ -826,7 +826,8 @@ void TStorageServiceActor::HandleReadData(
 
     // In handleless IO mode, if the handle is not set, we use the nodeId to
     // infer the shard number
-    ui32 shardNo = ExtractShardNo(
+    const ui32 shardNo = ExtractShardNoSafe(
+        filestore,
         filestore.GetFeatures().GetAllowHandlelessIO() &&
                 msg->Record.GetHandle() == InvalidHandle
             ? msg->Record.GetNodeId()

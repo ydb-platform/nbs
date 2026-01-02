@@ -1248,7 +1248,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.DestroyHandle(headers, fsConfig.FsId, nodeId2, handle2);
     }
 
-    SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldNotFailOnLegacyHandlesWithHighBits)
+    SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldReturnErrorForInvalidShardNo)
     {
         config.SetMultiTabletForwardingEnabled(true);
         TTestEnv env({}, config);
@@ -1291,15 +1291,25 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(111, ExtractShardNo(handle1));
 
         auto data = GenerateValidateData(256_KB);
-        service.WriteData(headers, fsId, nodeId1, handle1, 0, data);
-        auto readDataResponse = service.ReadData(
+
+        service.SendWriteDataRequest(headers, fsId, nodeId1, handle1, 0, data);
+        auto writeDataResponse = service.RecvWriteDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_INVALID_STATE,
+            writeDataResponse->GetStatus(),
+            writeDataResponse->GetErrorReason());
+        service.SendReadDataRequest(
             headers,
             fsId,
             nodeId1,
             handle1,
             0,
-            data.size())->Record;
-        UNIT_ASSERT_VALUES_EQUAL(data, readDataResponse.GetBuffer());
+            data.size());
+        auto readDataResponse = service.RecvReadDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_INVALID_STATE,
+            readDataResponse->GetStatus(),
+            readDataResponse->GetErrorReason());
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER(
@@ -6294,7 +6304,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             0,
             1);
 
-        UNIT_ASSERT_EQUAL(fsId + "_s1", fsIdFromRequest);
+        UNIT_ASSERT_VALUES_EQUAL(fsId + "_s1", fsIdFromRequest);
 
         // Test handle that contains zero shard
         service.AssertReadDataFailed(
@@ -6305,7 +6315,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             0,
             1);
 
-        UNIT_ASSERT_EQUAL(fsId, fsIdFromRequest);
+        UNIT_ASSERT_VALUES_EQUAL(fsId, fsIdFromRequest);
     }
 }
 

@@ -670,7 +670,9 @@ void TStorageServiceActor::HandleListNodes(
     auto& headers = *msg->Record.MutableHeaders();
     headers.SetBehaveAsDirectoryTablet(
         filestore.GetFeatures().GetDirectoryCreationInShardsEnabled());
-    if (auto shardNo = ExtractShardNo(msg->Record.GetNodeId())) {
+    if (const ui32 shardNo =
+            ExtractShardNoSafe(filestore, msg->Record.GetNodeId()))
+    {
         // parent directory is managed by a shard
         auto [shardId, error] = SelectShard(
             ctx,
