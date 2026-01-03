@@ -9,6 +9,7 @@
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/tablet/model/sparse_segment.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
+
 #include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
@@ -50,6 +51,7 @@ private:
     // Filesystem-specific params
     const TString LogTag;
     const ui32 BlockSize;
+    const bool ReadBlobDisabled;
 
     // Response data
     const TByteRange OriginByteRange;
@@ -75,6 +77,7 @@ public:
         NProto::TReadDataRequest readRequest,
         TString logTag,
         ui32 blockSize,
+        bool readBlobDisabled,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
@@ -124,6 +127,7 @@ TReadDataActor::TReadDataActor(
         NProto::TReadDataRequest readRequest,
         TString logTag,
         ui32 blockSize,
+        bool readBlobDisabled,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
@@ -134,6 +138,7 @@ TReadDataActor::TReadDataActor(
     , ReadRequest(std::move(readRequest))
     , LogTag(std::move(logTag))
     , BlockSize(blockSize)
+    , ReadBlobDisabled(readBlobDisabled)
     , OriginByteRange(
         ReadRequest.GetOffset(),
         ReadRequest.GetLength(),
@@ -340,6 +345,12 @@ void TReadDataActor::ReadBlobsIfNeeded(const TActorContext& ctx)
 {
     RemainingBlobsToRead = DescribeResponse.GetBlobPieces().size();
     if (RemainingBlobsToRead == 0) {
+        ReplyAndDie(ctx);
+        return;
+    }
+
+    if (ReadBlobDisabled) {
+        ReportFakeBlobWasRead();
         ReplyAndDie(ctx);
         return;
     }
@@ -925,6 +936,7 @@ void TStorageServiceActor::HandleReadData(
         std::move(msg->Record),
         filestore.GetFileSystemId(),
         filestore.GetBlockSize(),
+        filestore.GetFeatures().GetReadBlobDisabled(),
         session->RequestStats,
         ProfileLog,
         TraceSerializer,
