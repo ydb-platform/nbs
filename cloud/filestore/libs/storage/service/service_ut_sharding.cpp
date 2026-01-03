@@ -1251,6 +1251,41 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldReturnErrorForInvalidShardNo)
     {
         config.SetMultiTabletForwardingEnabled(true);
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        auto createHandleResponse = service.CreateHandle(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1",
+            TCreateHandleArgs::CREATE_EXL)->Record;
+
+        auto data = GenerateValidateData(256_KB);
+
+        const ui64 nodeId1 = createHandleResponse.GetNodeAttr().GetId();
+        const ui64 handle1 = createHandleResponse.GetHandle();
+
+        service.SendWriteDataRequest(
+            headers,
+            fsConfig.FsId,
+            nodeId1,
+            ShardedId(handle1, 111),
+            0,
+            data);
+        auto writeDataResponse = service.RecvWriteDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_INVALID_STATE,
+            writeDataResponse->GetStatus(),
+            writeDataResponse->GetErrorReason());
+    }
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER(
+        ShouldNotReturnInvalidShardNoErrorForDirectShardRequests)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -1295,7 +1330,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.SendWriteDataRequest(headers, fsId, nodeId1, handle1, 0, data);
         auto writeDataResponse = service.RecvWriteDataResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
-            E_INVALID_STATE,
+            S_OK,
             writeDataResponse->GetStatus(),
             writeDataResponse->GetErrorReason());
         service.SendReadDataRequest(
@@ -1307,9 +1342,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             data.size());
         auto readDataResponse = service.RecvReadDataResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
-            E_INVALID_STATE,
+            S_OK,
             readDataResponse->GetStatus(),
             readDataResponse->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL(data, readDataResponse->Record.GetBuffer());
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER(
