@@ -551,6 +551,7 @@ void TIndexTabletActor::TMetrics::Register(
 
     REGISTER_LOCAL(CurrentLoad, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(Suffer, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(OverloadedCount, EMetricType::MT_DERIVATIVE);
 
 #undef REGISTER_REQUEST
 #undef REGISTER_LOCAL

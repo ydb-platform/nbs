@@ -110,6 +110,12 @@ void TIndexTabletActor::CompleteResponse(
         builtTraceInfo);
     BuildThrottlerInfo(*callContext, response);
     BuildBackendInfo(*Config, *SystemCounters, response);
+    if constexpr (HasResponseHeaders<decltype(response)>()) {
+        const auto& responseHeaders = response.GetHeaders();
+        if (responseHeaders.GetBackendInfo().GetIsOverloaded()) {
+            Metrics.OverloadedCount.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
 
     Metrics.BusyIdleCalc.OnRequestCompleted();
 }

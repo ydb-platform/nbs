@@ -114,7 +114,8 @@ void TAddDataActor::ReplyAndDie(
             1,
             BlobsSize,
             ctx.Now() - RequestInfo->StartedTs,
-            CommitId);
+            CommitId,
+            BackendInfo.GetIsOverloaded());
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 

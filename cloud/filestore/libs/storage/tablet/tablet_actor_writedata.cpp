@@ -193,6 +193,9 @@ void TIndexTabletActor::HandleWriteDataCompleted(
     EnqueueBlobIndexOpIfNeeded(ctx);
 
     Metrics.WriteData.Update(msg->Count, msg->Size, msg->Time);
+    if (msg->IsOverloaded) {
+        Metrics.OverloadedCount.fetch_add(1, std::memory_order_relaxed);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

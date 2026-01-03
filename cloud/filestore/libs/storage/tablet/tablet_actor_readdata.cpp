@@ -504,7 +504,8 @@ void TReadDataActor::ReplyAndDie(
             CommitId,
             1,
             OriginByteRange.Length,
-            ctx.Now() - RequestInfo->StartedTs);
+            ctx.Now() - RequestInfo->StartedTs,
+            BackendInfo.GetIsOverloaded());
 
         NCloud::Send(ctx, Tablet, std::move(response));
     }
@@ -684,6 +685,9 @@ void TIndexTabletActor::HandleReadDataCompleted(
     WorkerActors.erase(ev->Sender);
 
     Metrics.ReadData.Update(msg->Count, msg->Size, msg->Time);
+    if (msg->IsOverloaded) {
+        Metrics.OverloadedCount.fetch_add(1, std::memory_order_relaxed);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
