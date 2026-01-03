@@ -8,6 +8,8 @@
 
 namespace NCloud {
 
+////////////////////////////////////////////////////////////////////////////////
+
 using namespace NMonitoring;
 
 namespace {
@@ -91,13 +93,23 @@ TString ReportCriticalEvent(
     return fullMessage;
 }
 
+void ReportCriticalEventWithoutLogging(const TString& sensorName)
+{
+    if (CriticalEvents) {
+        auto counter = CriticalEvents->GetCounter(
+            sensorName,
+            true);
+        counter->Inc();
+    }
+}
+
 #define STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE(name)                            \
     TString Report##name(const TString& message)                               \
     {                                                                          \
         return ReportCriticalEvent(                                            \
             GetCriticalEventFor##name(),                                       \
             message,                                                           \
-            false);                                                            \
+            false); /* verifyDebug */                                          \
     }                                                                          \
                                                                                \
     const TString GetCriticalEventFor##name()                                  \
@@ -115,7 +127,7 @@ TString ReportCriticalEvent(
         return ReportCriticalEvent(                                            \
             GetImpossibleEventFor##name(),                                     \
             message,                                                           \
-            true);                                                             \
+            true);  /* verifyDebug */                                          \
     }                                                                          \
                                                                                \
     const TString GetImpossibleEventFor##name()                                \

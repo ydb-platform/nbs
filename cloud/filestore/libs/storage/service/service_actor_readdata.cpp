@@ -350,8 +350,7 @@ void TReadDataActor::ReadBlobsIfNeeded(const TActorContext& ctx)
     }
 
     if (ReadBlobDisabled) {
-        ReportFakeBlobWasRead(
-            LogTag + " fake blob was read (ReadBlobDisabled=true)");
+        ReportFakeBlobWasRead();
         ReplyAndDie(ctx);
         return;
     }

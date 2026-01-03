@@ -35,6 +35,8 @@ TString ReportCriticalEvent(
     const TString& message,
     bool verifyDebug);
 
+void ReportCriticalEventWithoutLogging(const TString& sensorName);
+
 #define STORAGE_DECLARE_CRITICAL_EVENT_ROUTINE(name)                           \
     TString Report##name(const TString& message = "");                         \
     const TString GetCriticalEventFor##name();                                 \

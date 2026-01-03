@@ -31,17 +31,33 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
         return ReportCriticalEvent(                                            \
             GetCriticalEventFor##name(),                                       \
             message,                                                           \
-            false);                                                            \
+            false); /* verifyDebug */                                          \
     }                                                                          \
                                                                                \
     const TString GetCriticalEventFor##name()                                  \
     {                                                                          \
         return "AppCriticalEvents/"#name;                                      \
-    }                                                                        \
+    }                                                                          \
 // FILESTORE_DEFINE_CRITICAL_EVENT_ROUTINE
 
     FILESTORE_CRITICAL_EVENTS(FILESTORE_DEFINE_CRITICAL_EVENT_ROUTINE)
 #undef FILESTORE_DEFINE_CRITICAL_EVENT_ROUTINE
+
+#define FILESTORE_DEFINE_CRITICAL_EVENT_WITHOUT_LOGGING_ROUTINE(name)          \
+    void Report##name()                                                        \
+    {                                                                          \
+        ReportCriticalEventWithoutLogging(GetCriticalEventFor##name());        \
+    }                                                                          \
+                                                                               \
+    const TString GetCriticalEventFor##name()                                  \
+    {                                                                          \
+        return "AppCriticalEvents/"#name;                                      \
+    }                                                                          \
+// FILESTORE_DEFINE_CRITICAL_EVENT_WITHOUT_LOGGING_ROUTINE
+
+    FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(
+        FILESTORE_DEFINE_CRITICAL_EVENT_WITHOUT_LOGGING_ROUTINE)
+#undef FILESTORE_DEFINE_CRITICAL_EVENT_WITHOUT_LOGGING_ROUTINE
 
 #define FILESTORE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE(name)                        \
     TString Report##name(const TString& message)                               \
@@ -49,7 +65,7 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
         return ReportCriticalEvent(                                            \
             GetCriticalEventFor##name(),                                       \
             message,                                                           \
-            true);                                                             \
+            true);  /* verifyDebug */                                          \
     }                                                                          \
                                                                                \
     const TString GetCriticalEventFor##name()                                  \

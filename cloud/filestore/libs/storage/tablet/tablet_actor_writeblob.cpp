@@ -139,8 +139,7 @@ void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
         "WriteBlob");
 
     if (WriteBlobDisabled) {
-        ReportFakeBlobWasWritten(
-            LogTag + " fake blob was written (WriteBlobDisabled=true)");
+        ReportFakeBlobWasWritten();
         ReplyAndDie(ctx);
         return;
     }
