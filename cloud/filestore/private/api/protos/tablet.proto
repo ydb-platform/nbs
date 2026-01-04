@@ -378,6 +378,10 @@ message TDescribeDataResponse
     // File size.
     uint64 FileSize = 4;
 
+    // This constitutes a “fake” response, meaning it is not related to real
+    // blobs and is used solely for performance modeling and testing purposes
+    bool FakeResponse = 5;
+
     // Optional response headers.
     NProto.TResponseHeaders Headers = 1000;
 }
