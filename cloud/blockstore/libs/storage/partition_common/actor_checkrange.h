@@ -43,12 +43,13 @@ protected:
 
     void ReplyAndDie(
         const NActors::TActorContext& ctx,
-        std::unique_ptr<TEvVolume::TEvCheckRangeResponse>);
+        std::unique_ptr<TEvVolume::TEvCheckRangeResponse> response);
 
     void HandleReadBlocksResponse(
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    virtual bool OnMessage(TAutoPtr<NActors::IEventHandle>& ev);
     virtual void SendReadBlocksRequest(const NActors::TActorContext& ctx);
 
 private:

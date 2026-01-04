@@ -43,6 +43,19 @@ TDuration CalculateScrubbingInterval(
     ui64 maxBandwidth,
     ui64 minBandwidth);
 
+struct TCheckRangeRequestInfo
+{
+    TCheckRangeRequestInfo() = default;
+
+    TCheckRangeRequestInfo(TRequestInfoPtr requestInfo, TBlockRange64 range)
+        : RequestInfo(std::move(requestInfo))
+        , Range(range)
+    {}
+
+    TRequestInfoPtr RequestInfo;
+    TBlockRange64 Range;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TMirrorPartitionActor final
@@ -74,6 +87,7 @@ private:
     TDuration CpuUsage;
 
     THashSet<ui64> DirtyReadRequestIds;
+    THashMap<NActors::TActorId, TCheckRangeRequestInfo> CheckRangeRequestsInfo;
     TRequestsInProgress<
         EAllowedRequests::ReadWrite,
         ui64,   // key
@@ -150,6 +164,10 @@ private:
     EWriteRequestType SuggestWriteRequestType(
         const NActors::TActorContext& ctx,
         TBlockRange64 range);
+    void ReplyError(
+        const NActors::TActorContext& ctx,
+        const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
+        NProto::TError&& error);
 
 private:
     STFUNC(StateWork);
@@ -226,6 +244,10 @@ private:
 
     void HandlePoisonTaken(
         const NActors::TEvents::TEvPoisonTaken::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleCheckRangeResponse(
+        const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>
