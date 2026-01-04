@@ -1,5 +1,6 @@
 #include "service_actor.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -394,14 +395,27 @@ void TReadDataActor::HandleDescribeDataResponse(
 
 void TReadDataActor::ReadBlobsIfNeeded(const TActorContext& ctx)
 {
-    RemainingBlobsToRead = DescribeResponse.GetBlobPieces().size();
-    if (RemainingBlobsToRead == 0) {
-        ReplyTwoStageAndDie(ctx);
+    if (DescribeResponse.GetFakeResponse() || ReadBlobDisabled) {
+        if (ReadBlobDisabled) {
+            ReportFakeBlobWasRead();
+            ReplyTwoStageAndDie(ctx);
+            return;
+        }
+
+        ReportUnexpectedFakeDescribeDataResponse(LogTag);
+
+        // It is better to hang IO, otherwise, returning a fatal error or
+        // success could leave the filesystem in a broken or corrupted state
+        auto error = MakeError(
+            E_REJECTED,
+            "misconfiguration: fake DescribeData received when "
+            "ReadBlobDisabled=false");
+        HandleError(ctx, std::move(error));
         return;
     }
 
-    if (ReadBlobDisabled) {
-        ReportFakeBlobWasRead();
+    RemainingBlobsToRead = DescribeResponse.GetBlobPieces().size();
+    if (RemainingBlobsToRead == 0) {
         ReplyTwoStageAndDie(ctx);
         return;
     }

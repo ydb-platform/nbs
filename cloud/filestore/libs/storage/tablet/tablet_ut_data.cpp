@@ -1,5 +1,6 @@
 #include "tablet_schema.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 #include <cloud/filestore/libs/storage/tablet/model/operation.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
@@ -62,6 +63,7 @@ public:
 }   // namespace
 
 using namespace NKikimr;
+using namespace NMonitoring;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -4763,6 +4765,55 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             });
             // clang-format on
         }
+    }
+
+    void DoTestShouldHandleFakeDescribeData(
+        const TFileSystemConfig& tabletConfig,
+        ui32 fakeDescribeDataLatencyUs)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetFakeDescribeDataEnabled(true);
+        storageConfig.SetFakeDescribeDataLatencyUs(
+            fakeDescribeDataLatencyUs);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto fakeDescribeDataHappened = counters->GetCounter(
+            "AppCriticalEvents/FakeDescribeDataHappened",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, fakeDescribeDataHappened->Val());
+
+        auto response = tablet.DescribeData(0, 0, 256_KB);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1_GB,
+            response->Record.GetFileSize());
+        UNIT_ASSERT(response->Record.GetFakeResponse());
+
+        const auto& blobPieces = response->Record.GetBlobPieces();
+        UNIT_ASSERT_VALUES_EQUAL(4, blobPieces.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, fakeDescribeDataHappened->Val());
+    }
+
+    TABLET_TEST_16K(ShouldHandleFakeDescribeData)
+    {
+        // Zero is a special value
+        DoTestShouldHandleFakeDescribeData(tabletConfig, 0);
+        DoTestShouldHandleFakeDescribeData(tabletConfig, 100);
+        DoTestShouldHandleFakeDescribeData(tabletConfig, 1000);
     }
 
     // See #2737 for more details
