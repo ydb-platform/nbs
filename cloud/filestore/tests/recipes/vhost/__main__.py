@@ -43,7 +43,7 @@ def start(argv):
     parser.add_argument("--restart-flag", action="store", default=None)
     parser.add_argument("--restart-flag-on-demand", action="store_true", default=False)
     parser.add_argument("--storage-config-patch", action="store", default=None)
-    parser.add_argument("--direct-io", action="store_true", default=False)
+    parser.add_argument("--local-service-config-patch", action="store", default=None)
     parser.add_argument("--use-unix-socket", action="store_true", default=False)
     parser.add_argument("--trace-sampling-rate", action="store", default=None, type=int)
 
@@ -95,12 +95,17 @@ def start(argv):
         service_endpoint.ClientConfig.Host = "localhost"
         service_endpoint.ClientConfig.Port = int(os.getenv("NFS_SERVER_PORT"))
     elif service_type == "local-noserver":
-        config.VhostServiceConfig.LocalServiceConfig.CopyFrom(TLocalServiceConfig())
+        local_service_config = TLocalServiceConfig()
+        if args.local_service_config_patch:
+            with open(common.source_path(args.local_service_config_patch)) as p:
+                local_service_config = text_format.Parse(
+                    p.read(),
+                    TLocalServiceConfig())
 
         fs_root_path = common.ram_drive_path()
         if fs_root_path:
-            config.VhostServiceConfig.LocalServiceConfig.RootPath = fs_root_path
-        config.VhostServiceConfig.LocalServiceConfig.DirectIoEnabled = args.direct_io
+            local_service_config.RootPath = fs_root_path
+        config.VhostServiceConfig.LocalServiceConfig.CopyFrom(local_service_config)
     elif service_type == "kikimr":
         kikimr_port = os.getenv("KIKIMR_SERVER_PORT")
         domain = os.getenv("NFS_DOMAIN")
