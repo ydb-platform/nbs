@@ -16,6 +16,7 @@
 #include <util/system/mutex.h>
 
 #include <atomic>
+#include <list>
 
 namespace NCloud::NFileStore::NLoadTest {
 
@@ -127,17 +128,23 @@ private:
 
     std::atomic<ui64> LastRequestId = 0;
 
+    std::list<ui64> AvailableBaseOffsets;
+    ui64 RegionId = 0;
+
 public:
     TDataRequestGenerator(
             NProto::TDataLoadSpec spec,
             ILoggingServicePtr logging,
             ISessionPtr session,
             TString filesystemId,
-            NProto::THeaders headers)
+            NProto::THeaders headers,
+            ui64 maxIoDepth,
+            ui64 regionId)
         : Spec(std::move(spec))
         , FileSystemId(std::move(filesystemId))
         , Headers(std::move(headers))
         , Session(std::move(session))
+        , RegionId(regionId)
     {
         Log = logging->CreateLog(Headers.GetClientId());
 
@@ -194,6 +201,10 @@ public:
         }
 
         Y_ENSURE(!Actions.empty(), "please specify at least one action for the test spec");
+
+        for(ui64 i = 0; i < maxIoDepth; ++i) {
+            AvailableBaseOffsets.push_back(i*1024*1024);
+        }
     }
 
     bool HasNextRequest() override
@@ -403,6 +414,13 @@ private:
         request->SetHandle(handleInfo.Handle);
         request->SetOffset(byteOffset);
         request->SetLength(ReadBytes);
+        request->SetRegionId(RegionId);
+        auto iovecs = request->MutableIovecs();
+        auto iovec = iovecs->Add();
+        auto base = AvailableBaseOffsets.front();
+        AvailableBaseOffsets.pop_front();
+        iovec->SetBase(base);
+        iovec->SetLength(ReadBytes);
 
         auto self = weak_from_this();
         return Session->ReadData(CreateCallContext(), std::move(request)).Apply(
@@ -412,7 +430,8 @@ private:
                         future,
                         handleInfo,
                         started,
-                        byteOffset
+                        byteOffset,
+                        base
                     );
                 }
 
@@ -427,7 +446,8 @@ private:
         const TFuture<NProto::TReadDataResponse>& future,
         THandleInfo handleInfo,
         TInstant started,
-        ui64 byteOffset)
+        ui64 byteOffset,
+        ui64 base)
     {
         try {
             const auto& response = future.GetValue();
@@ -463,6 +483,7 @@ private:
 
             with_lock (StateLock) {
                 HandleInfos.emplace_back(std::move(handleInfo));
+                AvailableBaseOffsets.push_back(base);
             }
 
             return {NProto::ACTION_READ, started, response.GetError()};
@@ -505,7 +526,7 @@ private:
 
         ++LastWriteRequestId;
 
-        TString buffer(WriteBytes, '\0');
+        TString buffer(WriteBytes, 'A');
         ui64 segmentId = byteOffset / SEGMENT_SIZE;
         for (ui64 offset = 0; offset < WriteBytes; offset += SEGMENT_SIZE) {
             TSegment* segment =
@@ -630,14 +651,18 @@ IRequestGeneratorPtr CreateDataRequestGenerator(
     ILoggingServicePtr logging,
     ISessionPtr session,
     TString filesystemId,
-    NProto::THeaders headers)
+    NProto::THeaders headers,
+    ui64 maxIoDepth,
+    ui64 regionId)
 {
     return std::make_shared<TDataRequestGenerator>(
         std::move(spec),
         std::move(logging),
         std::move(session),
         std::move(filesystemId),
-        std::move(headers));
+        std::move(headers),
+        maxIoDepth,
+        regionId);
 }
 
 }   // namespace NCloud::NFileStore::NLoadTest
