@@ -13,6 +13,7 @@
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/logoblob.h>
+#include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/testlib/basics/storage.h>
 
 #include <util/generic/size_literals.h>
@@ -7764,6 +7765,81 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 CompareBuffer(*buffer, 3 * tabletConfig.BlockSize, 'a'));
             backendInfo = &response->Record.GetHeaders().GetBackendInfo();
             UNIT_ASSERT(backendInfo->GetIsOverloaded());
+        }
+
+        tablet.DestroyHandle(handle);
+    }
+
+    TABLET_TEST(ShouldHandleCommitIdOverflowAndPreserveLastWrittenData)
+    {
+        const auto block = tabletConfig.BlockSize;
+        const auto maxCommitId = 5;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxCommitId(maxCommitId);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const auto id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        bool pipeDestroyed = false;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case NKikimr::TEvTabletPipe::EvClientDestroyed: {
+                        auto msg = event->template Get<
+                            NKikimr::TEvTabletPipe::TEvClientDestroyed>();
+                        if (msg->TabletId == tabletId) {
+                            pipeDestroyed = true;
+                        }
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        auto reconnectAndRecreateHandleIfNeeded = [&]()
+        {
+            if (pipeDestroyed) {
+                tablet.ReconnectPipe();
+                tablet.WaitReady();
+                tablet.RecoverSession();
+                handle = CreateHandle(tablet, id);
+                pipeDestroyed = false;
+            }
+        };
+
+        for (char c = 'a'; c < 'e';) {
+            tablet.SendWriteDataRequest(handle, 0, block, c);
+            auto responseWrite = tablet.RecvWriteDataResponse();
+            reconnectAndRecreateHandleIfNeeded();
+
+            if (FAILED(responseWrite->GetStatus())) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_REJECTED,
+                    responseWrite->GetError().GetCode());
+                continue;
+            }
+
+            auto responseRead = tablet.ReadData(handle, 0, block);
+            UNIT_ASSERT(
+                CompareBuffer(responseRead->Record.GetBuffer(), block, c));
+            ++c;
         }
 
         tablet.DestroyHandle(handle);

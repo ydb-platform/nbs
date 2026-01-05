@@ -1721,7 +1721,6 @@ struct TTxIndexTablet
         ui64 CommitId = InvalidCommitId;
         ui64 NodeId = InvalidNodeId;
         TMaybe<IIndexTabletDatabase::TNode> Node;
-        bool CommitIdOverflow = false;
 
         TWriteData(
                 TRequestInfoPtr requestInfo,
