@@ -71,13 +71,13 @@ clang-format-18 --dry-run -Werror file.cpp  # Verify without modifying
 - Exported types/functions: `PascalCase` (e.g., `TaskScheduler`, `CreateImage`)
 - Unexported types/functions: `camelCase` (e.g., `service`, `initMetrics`)
 - Variables/parameters: `camelCase` (e.g., `snapshotID`, `bytesCount`)
-- Use `ID` not `Id` in all identifiers (except protobufs)
+- Use `ID` not `Id` in all identifiers (protobufs use generated naming)
 
 **Style Rules:**
 - 80 columns max
 - Multiline function signatures require empty line at beginning of function body
 - Comments are valid sentences: start with capital, end with period
-- Underscores allowed in package names
+- Package names: lowercase, underscores allowed (e.g., `disk_manager`)
 - Newline before `)` in multiline calls
 
 ### Python Style
