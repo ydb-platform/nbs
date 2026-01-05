@@ -7704,26 +7704,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         {
             //
-            // Large write - uses separate actor code path.
-            //
-
-            systemCounters->CpuLack.store(30);
-            auto response =
-                tablet.WriteData(handle, 0, 3 * tabletConfig.BlockSize, 'a');
-            const auto* backendInfo =
-                &response->Record.GetHeaders().GetBackendInfo();
-            UNIT_ASSERT(!backendInfo->GetIsOverloaded());
-
-            systemCounters->CpuLack.store(60);
-            response =
-                tablet.WriteData(handle, 0, 3 * tabletConfig.BlockSize, 'a');
-            backendInfo = &response->Record.GetHeaders().GetBackendInfo();
-            UNIT_ASSERT(backendInfo->GetIsOverloaded());
-        }
-
-        {
-            //
-            // Small read - uses CompleteResponse<> code path.
+            // Fresh read - uses CompleteResponse<> code path.
             //
 
             systemCounters->CpuLack.store(30);
@@ -7744,7 +7725,26 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         {
             //
-            // Large read - uses separate actor code path.
+            // Large write - uses separate actor code path.
+            //
+
+            systemCounters->CpuLack.store(30);
+            auto response =
+                tablet.WriteData(handle, 0, 3 * tabletConfig.BlockSize, 'a');
+            const auto* backendInfo =
+                &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(!backendInfo->GetIsOverloaded());
+
+            systemCounters->CpuLack.store(60);
+            response =
+                tablet.WriteData(handle, 0, 3 * tabletConfig.BlockSize, 'a');
+            backendInfo = &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(backendInfo->GetIsOverloaded());
+        }
+
+        {
+            //
+            // Blob read - uses separate actor code path.
             //
 
             systemCounters->CpuLack.store(30);
@@ -7765,6 +7765,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             backendInfo = &response->Record.GetHeaders().GetBackendInfo();
             UNIT_ASSERT(backendInfo->GetIsOverloaded());
         }
+
+        auto registry = env.GetRegistry();
+        TTestRegistryVisitor visitor;
+        // clang-format off
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{{"sensor", "OverloadedCount"}, {"filesystem", "test"}}, 4},
+        });
+        // clang-format on
 
         tablet.DestroyHandle(handle);
     }

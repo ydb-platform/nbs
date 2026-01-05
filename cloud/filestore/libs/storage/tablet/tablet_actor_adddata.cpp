@@ -549,6 +549,9 @@ void TIndexTabletActor::HandleAddDataCompleted(
             FormatError(msg->Error).Quote().c_str());
     } else {
         Metrics.AddData.Update(msg->Count, msg->Size, msg->Time);
+        if (msg->IsOverloaded) {
+            Metrics.OverloadedCount.fetch_add(1, std::memory_order_relaxed);
+        }
     }
 
     // We try to release commit barrier twice: once for the lock

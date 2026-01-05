@@ -374,6 +374,7 @@ private:
         // performance evaluation
         std::atomic<i64> CurrentLoad{0};
         std::atomic<i64> Suffer{0};
+        std::atomic<i64> OverloadedCount{0};
 
         const NMetrics::IMetricsRegistryPtr StorageRegistry;
         const NMetrics::IMetricsRegistryPtr StorageFsRegistry;
