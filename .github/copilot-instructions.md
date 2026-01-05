@@ -5,7 +5,7 @@ Network Block Store (NBS) and Network File Store: YDB BlobStorage-based storage 
 - **NBS**: Block devices via NBD/vhost-blk/gRPC
 - **NFS**: POSIX filesystem via FUSE/virtiofs
 - **Size**: ~2.2GB repo with C++ (40K+ files), Go (disk_manager/tasks), Python (tests)
-- **Build**: `ya` tool (requires `devtools-registry.s3.yandex.net` access)
+- **Build**: `ya` tool
 
 **Key Directories:** `cloud/blockstore/` (NBS), `cloud/filestore/` (NFS), `cloud/disk_manager/` (Go snapshot service), `cloud/storage/core/` (common libs), `contrib/` (OSS deps), `example/` (local dev scripts).
 
@@ -14,7 +14,7 @@ Network Block Store (NBS) and Network File Store: YDB BlobStorage-based storage 
 ## Build & Test
 
 ### Prerequisites
-**System:** x86_64, Ubuntu 20.04+ (18.04 EOL but may work), 80GB+ disk (SSD), 16GB+ RAM. **Network:** Access to `devtools-registry.s3.yandex.net` required.
+**System:** x86_64, Ubuntu 20.04+ (18.04 EOL but may work), 80GB+ disk (SSD), 16GB+ RAM.
 ```bash
 # Install deps
 sudo apt-get install -y git python3-pip antlr3 libidn11-dev qemu-kvm libaio clang-format-18
@@ -63,6 +63,27 @@ clang-format-18 --dry-run -Werror file.cpp  # Verify without modifying
 - Namespaces: `NCamelCase`, Functions: `CamelCase`, Variables: `camelBack`, Macros: `UPPER_CASE`
 
 **Style Rules**: 80 columns max, 4-space indent, custom braces (after class/function/struct, not namespace)
+
+### Go Style
+**Based on:** [Effective Go](https://go.dev/doc/effective_go) and [Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments)
+
+**Naming Conventions:**
+- Exported types/functions: `PascalCase` (e.g., `TaskScheduler`, `CreateImage`)
+- Unexported types/functions: `camelCase` (e.g., `service`, `initMetrics`)
+- Variables/parameters: `camelCase` (e.g., `snapshotID`, `bytesCount`)
+- Use `ID` not `Id` in all identifiers (except protobufs)
+
+**Style Rules:**
+- 80 columns max
+- Multiline function signatures require empty line at beginning of function body
+- Comments are valid sentences: start with capital, end with period
+- Underscores allowed in package names
+- Newline before `)` in multiline calls
+
+### Python Style
+- Follow PEP 8
+- Run `flake8` and `black` for linting/formatting
+- 80 columns max
 
 ### Linting & Pre-Commit (REQUIRED)
 ```bash
@@ -132,27 +153,9 @@ sudo ./6-attach_disk.sh --disk-id vol0 -d /dev/nbd0
 
 ## Known Issues & Workarounds
 
-1. **ya tool access:** Requires `devtools-registry.s3.yandex.net` - ensure network access or use cached ya tools
-2. **TSAN + gRPC:** Run with `TSAN_OPTIONS='report_atomic_races=0'`
-3. **OOM during linking:** Reduce threads with `-j<N>` or increase RAM/swap
-4. **Runtime libs:** Set `LD_LIBRARY_PATH` for built binaries if needed
-5. **CMake build:** Deprecated, may not work - use ya
-
-## Agent Workflow
-
-**Making changes with code style/review focus:**
-
-1. **Before coding:** Review existing code style in target area, check related tests
-2. **While coding:** Follow naming (TCamelCase/ICamelCase/camelBack), keep ≤80 cols, comment complex logic
-3. **Before commit (MANDATORY):**
-   ```bash
-   clang-format-18 -i $(git diff --name-only --diff-filter=AM | grep -E '\.(cpp|h)$')
-   git diff --check  # No trailing whitespace
-   ./ya make <target>  # Build without warnings
-   ./ya make -t --test-size=small,medium --test-type=unittest,clang_tidy <target>
-   ```
-4. **Self-review:** Check naming conventions, no debug prints/unexplained commented code, tests cover edge cases
-5. **Verify checklist:** Format ✓, naming ✓, whitespace ✓, tests ✓, builds ✓, linting ✓
-6. **Local testing:** Use `example/` scripts for runtime verification if needed
+1. **TSAN + gRPC:** Run with `TSAN_OPTIONS='report_atomic_races=0'`
+2. **OOM during linking:** Reduce threads with `-j<N>` or increase RAM/swap
+3. **Runtime libs:** Set `LD_LIBRARY_PATH` for built binaries if needed
+4. **CMake build:** Deprecated, may not work - use ya
 
 **Quick Ref:** Build all: `./ya make cloud/blockstore/buildall -r` | Test: `./ya make -t cloud/blockstore/` | Format: `clang-format-18 -i file.cpp` | Sanitizer: `./ya make --sanitize=address <target>` | Docs: `doc/REPOSITORY_STRUCTURE.md`
