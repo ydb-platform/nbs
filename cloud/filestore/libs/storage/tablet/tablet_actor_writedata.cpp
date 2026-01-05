@@ -461,8 +461,7 @@ void TIndexTabletActor::CompleteTx_WriteData(
     if (args.CommitId == InvalidCommitId) {
         args.Error = MakeError(E_REJECTED, "CommitId overflow");
         reply(ctx, args);
-        RebootTabletOnCommitOverflow(ctx, "WriteData");
-        return;
+        return RebootTabletOnCommitOverflow(ctx, "WriteData");
     }
 
     ui32 blobIndex = 0;
