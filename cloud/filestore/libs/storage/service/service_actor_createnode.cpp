@@ -301,7 +301,9 @@ void TStorageServiceActor::HandleCreateNode(
     auto& headers = *msg->Record.MutableHeaders();
     headers.SetBehaveAsDirectoryTablet(
         filestore.GetFeatures().GetDirectoryCreationInShardsEnabled());
-    if (auto shardNo = ExtractShardNo(msg->Record.GetNodeId())) {
+    if (const ui32 shardNo =
+            ExtractShardNoSafe(filestore, msg->Record.GetNodeId()))
+    {
         // parent directory is managed by a shard
         auto [shardId, error] = SelectShard(
             ctx,
@@ -348,7 +350,9 @@ void TStorageServiceActor::HandleCreateNode(
                         "Parentless filestore only supports creating files")));
         }
     } else if (msg->Record.HasLink()) {
-        auto shardNo = ExtractShardNo(msg->Record.GetLink().GetTargetNode());
+        const ui32 shardNo = ExtractShardNoSafe(
+            filestore,
+            msg->Record.GetLink().GetTargetNode());
 
         auto [shardId, error] = SelectShard(
             ctx,

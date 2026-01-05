@@ -39,20 +39,13 @@ void CalculateRequestChecksums(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<TString> TStorageServiceActor::SelectShard(
-    const NActors::TActorContext& ctx,
-    const TString& sessionId,
-    const ui64 seqNo,
-    const bool disableMultiTabletForwarding,
-    const TString& methodName,
-    const ui64 requestId,
+ui32 TStorageServiceActor::ExtractShardNoSafe(
     const NProto::TFileStore& filestore,
-    ui32& shardNo) const
+    ui64 entityId)
 {
-    const bool multiTabletForwardingEnabled =
-        StorageConfig->GetMultiTabletForwardingEnabled()
-        && !disableMultiTabletForwarding;
+    ui32 shardNo = ExtractShardNo(entityId);
 
+    //
     // It is now possible to have more than 255 shards, with the maximum
     // number specified by TStorageConfig::MaxShardCount. The current code
     // reserves the two most significant bytes for shardNo, but handles
@@ -63,15 +56,53 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
     // handles with the new code.
     // TODO(#2566): Remove this code when there are no filesystems with
     // shardIds.size() <= 255 and handles that use 7th byte.
-    if (shardNo && filestore.GetShardFileSystemIds().size() <= 255) {
-        shardNo &= 0xff;
+    //
+
+    const ui32 mask = 0xFF;
+    const ui32 shardCount = filestore.GetShardFileSystemIds().size();
+    if (shardNo && shardCount <= mask) {
+        shardNo &= mask;
     }
 
-    if (multiTabletForwardingEnabled && shardNo) {
-        const auto& shardIds = filestore.GetShardFileSystemIds();
+    return shardNo;
+}
 
-        if (shardIds.size() < static_cast<int>(shardNo)) {
-            LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
+////////////////////////////////////////////////////////////////////////////////
+
+TResultOrError<TString> TStorageServiceActor::SelectShard(
+    const NActors::TActorContext& ctx,
+    const TString& sessionId,
+    const ui64 seqNo,
+    const bool disableMultiTabletForwarding,
+    const TString& methodName,
+    const ui64 requestId,
+    const NProto::TFileStore& filestore,
+    const ui32 shardNo) const
+{
+    const auto& shardIds = filestore.GetShardFileSystemIds();
+    if (shardIds.empty()) {
+        //
+        // This filesystem itself might be a shard. We do not expect direct
+        // requests to shards from real clients but such requests may happen
+        // during some of our debugging/ops activities.
+        //
+        // TODO(#2566): switch to using filestore.GetShardNo() > 0 when we are
+        // confident that the release with TFileStore::ShardNo is deployed
+        // everywhere.
+        //
+
+        return TString();
+    }
+
+    const bool multiTabletForwardingEnabled =
+        StorageConfig->GetMultiTabletForwardingEnabled()
+        && !disableMultiTabletForwarding;
+
+    if (multiTabletForwardingEnabled && shardNo) {
+        const int shardIdx = SafeIntegerCast<int>(shardNo - 1);
+
+        if (shardIds.size() <= shardIdx) {
+            LOG_ERROR(ctx, TFileStoreComponents::SERVICE,
                 "[%s][%lu] forward %s #%lu - invalid shardNo: %u/%d"
                 " (legacy handle?)",
                 sessionId.Quote().c_str(),
@@ -81,11 +112,15 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
                 shardNo,
                 shardIds.size());
 
-            // TODO(#1350): uncomment when there are no legacy handles anymore
-            //return MakeError(E_INVALID_STATE, TStringBuilder() << "shardNo="
-            //        << shardNo << ", shardIds.size=" << shardIds.size());
-            return TString();
+            auto message = ReportInvalidShardNo(TStringBuilder()
+                << "FileSystemId: " << filestore.GetFileSystemId()
+                << ", shardNo: "
+                << shardNo << ", shardCount: " << shardIds.size());
+
+            return MakeError(E_INVALID_STATE, std::move(message));
         }
+
+        const auto& shardId = shardIds[shardIdx];
 
         LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
             "[%s][%lu] forward %s #%lu to shard %s",
@@ -93,9 +128,9 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
             seqNo,
             methodName.c_str(),
             requestId,
-            shardIds[shardNo - 1].c_str());
+            shardId.c_str());
 
-        return shardIds[shardNo - 1];
+        return shardId;
     }
 
     return TString();
@@ -168,7 +203,7 @@ template <typename TMethod>
 void TStorageServiceActor::ForwardRequestToShard(
     const TActorContext& ctx,
     const typename TMethod::TRequest::TPtr& ev,
-    ui32 shardNo)
+    ui64 entityId)
 {
     auto* msg = ev->Get();
 
@@ -191,6 +226,7 @@ void TStorageServiceActor::ForwardRequestToShard(
     }
     const NProto::TFileStore& filestore = session->FileStore;
 
+    const ui32 shardNo = ExtractShardNoSafe(filestore, entityId);
     auto [fsId, error] = SelectShard(
         ctx,
         sessionId,
@@ -257,7 +293,7 @@ void TStorageServiceActor::ForwardRequestToShard(
         ForwardRequestToShard<ns::T##name##Method>(                            \
             ctx,                                                               \
             ev,                                                                \
-            ExtractShardNo(ev->Get()->Record.GetNodeId()));                    \
+            ev->Get()->Record.GetNodeId());                                    \
     }                                                                          \
 
     FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_NODE_ID(
@@ -274,7 +310,7 @@ void TStorageServiceActor::ForwardRequestToShard(
         ForwardRequestToShard<ns::T##name##Method>(                            \
             ctx,                                                               \
             ev,                                                                \
-            ExtractShardNo(ev->Get()->Record.GetHandle()));                    \
+            ev->Get()->Record.GetHandle());                                    \
     }                                                                          \
 
     FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_HANDLE(
@@ -295,30 +331,30 @@ template void
 TStorageServiceActor::ForwardRequestToShard<TEvService::TCreateHandleMethod>(
     const TActorContext& ctx,
     const TEvService::TCreateHandleMethod::TRequest::TPtr& ev,
-    ui32 shardNo);
+    ui64 entityId);
 
 template void
 TStorageServiceActor::ForwardRequestToShard<TEvService::TGetNodeAttrMethod>(
     const TActorContext& ctx,
     const TEvService::TGetNodeAttrMethod::TRequest::TPtr& ev,
-    ui32 shardNo);
+    ui64 entityId);
 
 template void
 TStorageServiceActor::ForwardRequestToShard<TEvService::TGetNodeXAttrMethod>(
     const TActorContext& ctx,
     const TEvService::TGetNodeXAttrMethod::TRequest::TPtr& ev,
-    ui32 shardNo);
+    ui64 entityId);
 
 template void
 TStorageServiceActor::ForwardRequestToShard<TEvService::TSetNodeXAttrMethod>(
     const TActorContext& ctx,
     const TEvService::TSetNodeXAttrMethod::TRequest::TPtr& ev,
-    ui32 shardNo);
+    ui64 entityId);
 
 template void
 TStorageServiceActor::ForwardRequestToShard<TEvService::TListNodeXAttrMethod>(
     const TActorContext& ctx,
     const TEvService::TListNodeXAttrMethod::TRequest::TPtr& ev,
-    ui32 shardNo);
+    ui64 entityId);
 
 }   // namespace NCloud::NFileStore::NStorage

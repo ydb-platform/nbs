@@ -137,7 +137,7 @@ private:
     void ForwardRequestToShard(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
-        ui32 shardNo);
+        ui64 entityId);
 
     template <typename TMethod>
     TSessionInfo* GetAndValidateSession(
@@ -214,6 +214,10 @@ private:
         const TString& sessionId,
         const NActors::TActorContext& ctx);
 
+    static ui32 ExtractShardNoSafe(
+        const NProto::TFileStore& filestore,
+        ui64 entityId);
+
     TResultOrError<TString> SelectShard(
         const NActors::TActorContext& ctx,
         const TString& sessionId,
@@ -222,8 +226,7 @@ private:
         const TString& methodName,
         const ui64 requestId,
         const NProto::TFileStore& filestore,
-        // TODO(#2566): switch from by-reference to by-value
-        ui32& shardNo) const;
+        const ui32 shardNo) const;
 
 private:
     // actions

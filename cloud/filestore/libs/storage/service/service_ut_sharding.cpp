@@ -1248,7 +1248,42 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.DestroyHandle(headers, fsConfig.FsId, nodeId2, handle2);
     }
 
-    SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldNotFailOnLegacyHandlesWithHighBits)
+    SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldReturnErrorForInvalidShardNo)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        auto createHandleResponse = service.CreateHandle(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1",
+            TCreateHandleArgs::CREATE_EXL)->Record;
+
+        auto data = GenerateValidateData(256_KB);
+
+        const ui64 nodeId1 = createHandleResponse.GetNodeAttr().GetId();
+        const ui64 handle1 = createHandleResponse.GetHandle();
+
+        service.SendWriteDataRequest(
+            headers,
+            fsConfig.FsId,
+            nodeId1,
+            ShardedId(handle1, 111),
+            0,
+            data);
+        auto writeDataResponse = service.RecvWriteDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_INVALID_STATE,
+            writeDataResponse->GetStatus(),
+            writeDataResponse->GetErrorReason());
+    }
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER(
+        ShouldNotReturnInvalidShardNoErrorForDirectShardRequests)
     {
         config.SetMultiTabletForwardingEnabled(true);
         TTestEnv env({}, config);
@@ -1291,15 +1326,26 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(111, ExtractShardNo(handle1));
 
         auto data = GenerateValidateData(256_KB);
-        service.WriteData(headers, fsId, nodeId1, handle1, 0, data);
-        auto readDataResponse = service.ReadData(
+
+        service.SendWriteDataRequest(headers, fsId, nodeId1, handle1, 0, data);
+        auto writeDataResponse = service.RecvWriteDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            writeDataResponse->GetStatus(),
+            writeDataResponse->GetErrorReason());
+        service.SendReadDataRequest(
             headers,
             fsId,
             nodeId1,
             handle1,
             0,
-            data.size())->Record;
-        UNIT_ASSERT_VALUES_EQUAL(data, readDataResponse.GetBuffer());
+            data.size());
+        auto readDataResponse = service.RecvReadDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            readDataResponse->GetStatus(),
+            readDataResponse->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL(data, readDataResponse->Record.GetBuffer());
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER(
@@ -4487,6 +4533,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 shard2Id,
                 fileStore.GetShardFileSystemIds(1));
+            UNIT_ASSERT_VALUES_EQUAL(0, fileStore.GetShardNo());
         }
 
         // shard order change not allowed
@@ -4574,6 +4621,44 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 S_OK,
                 response->GetStatus(),
                 response->GetErrorReason());
+        }
+    }
+
+    SERVICE_TEST_SIMPLE(ShouldCreateSessionDirectlyInShard)
+    {
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ui32 shardNo = 0;
+        for (const auto& shardId: {shard1Id, shard2Id}) {
+            NProtoPrivate::TConfigureAsShardRequest request;
+            request.SetFileSystemId(shardId);
+            request.SetShardNo(++shardNo);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("configureasshard", buf);
+            NProtoPrivate::TConfigureAsShardResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+
+            auto createSessionResponse =
+                service.CreateSession(THeaders{shardId, "client", ""});
+            const auto& fileStore =
+                createSessionResponse->Record.GetFileStore();
+            UNIT_ASSERT_VALUES_EQUAL(0, fileStore.ShardFileSystemIdsSize());
+            UNIT_ASSERT_VALUES_EQUAL(shardNo, fileStore.GetShardNo());
         }
     }
 
@@ -6294,7 +6379,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             0,
             1);
 
-        UNIT_ASSERT_EQUAL(fsId + "_s1", fsIdFromRequest);
+        UNIT_ASSERT_VALUES_EQUAL(fsId + "_s1", fsIdFromRequest);
 
         // Test handle that contains zero shard
         service.AssertReadDataFailed(
@@ -6305,7 +6390,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             0,
             1);
 
-        UNIT_ASSERT_EQUAL(fsId, fsIdFromRequest);
+        UNIT_ASSERT_VALUES_EQUAL(fsId, fsIdFromRequest);
     }
 }
 
