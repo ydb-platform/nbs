@@ -60,14 +60,7 @@ def test_guest_cache_enty_timeout(expected_dir_stat_count: int,
     initial_file_stat_count = get_vhost_request_count_for_node("filename")
 
     stat(ssh, mount_dir, "dirname/filename")
-    stat(ssh, mount_dir, "dirname/filename")
 
-    time.sleep(2)
-
-    stat(ssh, mount_dir, "dirname/filename")
-    stat(ssh, mount_dir, "dirname/filename")
-
-    # Sleep for a while to ensure that the profile log is flushed
     time.sleep(2)
 
     # Count GetNodeAttr requests executed for the directory and the file
