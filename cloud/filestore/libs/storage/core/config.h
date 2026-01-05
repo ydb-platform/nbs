@@ -366,6 +366,8 @@ public:
     bool GetWriteBlobDisabled() const;
 
     ui32 GetCpuLackOverloadThreshold() const;
+
+    ui32 GetMaxCommitId() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

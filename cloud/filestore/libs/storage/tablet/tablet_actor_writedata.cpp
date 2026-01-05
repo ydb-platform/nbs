@@ -282,6 +282,8 @@ void TIndexTabletActor::ExecuteTx_WriteData(
 {
     FILESTORE_VALIDATE_TX_ERROR(WriteData, args);
 
+    Y_UNUSED(ctx);
+
     if (args.ShouldWriteBlob()) {
         return;
     }
@@ -290,7 +292,9 @@ void TIndexTabletActor::ExecuteTx_WriteData(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "WriteData");
+        args.Error = MakeError(E_REJECTED, "CommitId overflow");
+        args.CommitIdOverflow = true;
+        return;
     }
 
     MarkFreshBlocksDeleted(
@@ -410,6 +414,9 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
     if (FAILED(args.Error.GetCode())) {
         reply(ctx, args);
+        if (args.CommitIdOverflow) {
+            RebootTabletOnCommitOverflow(ctx, "WriteData");
+        }
         return;
     }
 
@@ -453,7 +460,11 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "WriteData");
+        args.Error = MakeError(E_REJECTED, "CommitId overflow");
+        args.CommitIdOverflow = true;
+        reply(ctx, args);
+        RebootTabletOnCommitOverflow(ctx, "WriteData");
+        return;
     }
 
     ui32 blobIndex = 0;

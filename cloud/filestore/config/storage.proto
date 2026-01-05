@@ -711,4 +711,9 @@ message TStorageConfig
     // If CpuLack goes over this threshold, tablets will start setting the
     // IsOverloaded flag in their responses.
     optional uint32 CpuLackOverloadThreshold = 477;
+
+    // Maximum value for commit ID. This
+    // parameter is supposed to be used only for testing purposes
+    // Default is 0 which means Max<ui32>().
+    optional uint32 MaxCommitId = 478;
 }

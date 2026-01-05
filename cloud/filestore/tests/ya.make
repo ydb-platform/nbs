@@ -16,6 +16,7 @@ RECURSE_FOR_TESTS(
     config_dispatcher
     directory_handles
     endpoints
+    eternal_load
     fio
     fio_index
     fio_index_migration

@@ -224,6 +224,8 @@ private:
     /*const*/ ui64 LargeDeletionMarkersCleanupThreshold = 0;
     /*const*/ ui64 LargeDeletionMarkersThresholdForBackpressure = 0;
 
+    /*const*/ ui32 MaxCommitId = Max<ui32>();
+
     bool StateLoaded = false;
 
 protected:
@@ -312,7 +314,7 @@ public:
 
     ui64 GenerateCommitId()
     {
-        if (LastStep == Max<ui32>()) {
+        if (LastStep == MaxCommitId) {
             return InvalidCommitId;
         }
 
