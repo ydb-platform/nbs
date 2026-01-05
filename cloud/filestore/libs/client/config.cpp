@@ -31,8 +31,8 @@ TDuration MSeconds(ui64 x)
     xxx(Host,                   TString,        "localhost"                   )\
     xxx(Port,                   ui32,           9021                          )\
                                                                                \
-    xxx(ThreadsCount,           ui32,           1                             )\
-    xxx(GrpcThreadsLimit,       ui32,           4                             )\
+    xxx(ThreadsCount,           ui32,           16                            )\
+    xxx(GrpcThreadsLimit,       ui32,           32                            )\
     xxx(MaxMessageSize,         ui32,           64_MB                         )\
     xxx(MemoryQuotaBytes,       ui32,           0                             )\
                                                                                \

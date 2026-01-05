@@ -34,6 +34,8 @@
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
 
+#include <filesystem>
+#include <fstream>
 #include <variant>
 
 namespace NCloud::NFileStore::NLoadTest {
@@ -288,6 +290,8 @@ private:
 
     bool ShutdownFlag = false;
 
+    TString ShmPath;
+
 public:
     TLoadTest(
             NProto::TLoadTest config,
@@ -521,6 +525,29 @@ private:
         headers.SetClientId(Config.GetClientId());
         headers.SetSessionId(SessionId);
 
+        srand(time(0));
+        TString shmFileName = "nfs_" + std::to_string(rand()) + ".shm";
+        ShmPath = "/Berkanavt/nfs-server/shm/" + shmFileName;
+
+        std::ofstream ofs(ShmPath);
+        ofs << "this is some text in the new file\n";
+        ofs.close();
+        std::filesystem::resize_file(
+            std::string(ShmPath),
+            Config.GetIODepth() * 1024 * 1024);   // resize to 10 MB
+
+        auto request = std::make_shared<NProto::TMmapRequest>();
+        request->SetFilePath(shmFileName);
+        request->SetSize(Config.GetIODepth() * 1024 * 1024);
+
+        TCallContextPtr ctx = MakeIntrusive<TCallContext>();
+        auto resp = Client->Mmap(ctx, request).ExtractValueSync();
+        if(HasError(resp.GetError())) {
+            std::runtime_error("Failed to map region");
+        }
+        auto regionId = resp.GetId();
+        std::cout << "Recieved region id: " << regionId << std::endl;
+
         switch (Config.GetSpecsCase()) {
             case NProto::TLoadTest::kIndexLoadSpec:
                 RequestGenerator = CreateIndexRequestGenerator(
@@ -536,7 +563,9 @@ private:
                     Logging,
                     Session,
                     FileSystemId,
-                    headers);
+                    headers,
+                    MaxIoDepth,
+                    regionId);
                 break;
             case NProto::TLoadTest::kReplayFsSpec:
                 RequestGenerator = CreateReplayRequestGeneratorFs(

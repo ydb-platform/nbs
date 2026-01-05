@@ -273,6 +273,9 @@ struct TEvService
         EvToggleServiceStateRequest = EvBegin + 97,
         EvToggleServiceStateResponse,
 
+        EvMmapRequest = EvBegin + 99,
+        EvMmapResponse,
+
         EvEnd
     };
 
