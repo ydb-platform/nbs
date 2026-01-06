@@ -92,7 +92,7 @@ struct TReferenceImplementation
         if (!Empty()) {
             if (ReadPos < WritePos) {
                 const auto avail = MaxWeight - WritePos;
-                if (avail <= sz) {
+                if (avail < sz) {
                     if (ReadPos <= sz) {
                         // out of space
                         return false;
