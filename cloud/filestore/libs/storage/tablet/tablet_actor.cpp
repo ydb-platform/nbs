@@ -1063,18 +1063,6 @@ void TIndexTabletActor::HandleSessionDisconnected(
     const TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
-        "%s Server disconnected, ev->Sender: %s",
-        LogTag.c_str(),
-        ev->Sender.ToString().c_str());
-
-    OrphanSession(ev->Sender, ctx.Now());
-}
-
-void TIndexTabletActor::HandleSessionDisconnectedInWork(
-    const TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
-    const TActorContext& ctx)
-{
     const auto& msg = *ev->Get();
 
     LOG_INFO(
@@ -1090,6 +1078,8 @@ void TIndexTabletActor::HandleSessionDisconnectedInWork(
     // from this client connection. Unconfirmed data keeps this actor id from
     // GenerateBlobIds, so clean it up when the pipe disconnects.
     DeleteUnconfirmedDataForPipeServer(msg.ServerId, ctx);
+
+    OrphanSession(msg.ServerId, ctx.Now());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1581,10 +1571,9 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
+        HFunc(TEvTabletPipe::TEvServerDisconnected, HandleSessionDisconnected);
+
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
-        HFunc(
-            TEvTabletPipe::TEvServerDisconnected,
-            HandleSessionDisconnectedInWork);
 
         HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
         HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
@@ -1683,9 +1672,7 @@ STFUNC(TIndexTabletActor::StateAdapter)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
-        HFunc(
-            TEvTabletPipe::TEvServerDisconnected,
-            HandleSessionDisconnectedInWork);
+        HFunc(TEvTabletPipe::TEvServerDisconnected, HandleSessionDisconnected);
 
         HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
         HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
