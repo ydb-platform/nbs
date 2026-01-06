@@ -711,4 +711,10 @@ message TStorageConfig
     // If CpuLack goes over this threshold, tablets will start setting the
     // IsOverloaded flag in their responses.
     optional uint32 CpuLackOverloadThreshold = 477;
+
+    // Enables “fake” DescribeData responses, meaning the responses are not
+    // related to real blobs and are used solely for performance modeling and
+    // testing purposes
+    optional bool FakeDescribeDataEnabled = 478;
+    optional uint32 FakeDescribeDataLatencyUs = 479;
 }

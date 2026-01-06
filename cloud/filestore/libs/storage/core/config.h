@@ -366,6 +366,9 @@ public:
     bool GetWriteBlobDisabled() const;
 
     ui32 GetCpuLackOverloadThreshold() const;
+
+    bool GetFakeDescribeDataEnabled() const;
+    ui32 GetFakeDescribeDataLatencyUs() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

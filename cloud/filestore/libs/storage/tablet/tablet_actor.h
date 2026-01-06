@@ -856,6 +856,10 @@ private:
         const TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleFakeDescribeData(
+        const TEvIndexTablet::TEvDescribeDataRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
