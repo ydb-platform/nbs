@@ -398,9 +398,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         {
             auto response = Tablet->ReadData(handle, 0, sz);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, sz, 'a'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, sz, 'a');
         }
 
         {
@@ -549,9 +547,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         {
             auto response = Tablet->ReadData(handle, 0, sz);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, sz, 'a'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, sz, 'a');
         }
 
         {

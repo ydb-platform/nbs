@@ -560,9 +560,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, tabletConfig.BlockSize);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, tabletConfig.BlockSize, 'a'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, tabletConfig.BlockSize, 'a');
         }
 
         tablet.WriteData(handle, 0, tabletConfig.BlockSize, 'b');
@@ -570,9 +568,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, tabletConfig.BlockSize);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, tabletConfig.BlockSize, 'b'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, tabletConfig.BlockSize, 'b');
         }
 
         tablet.DestroyHandle(handle);
@@ -627,9 +623,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, tabletConfig.BlockSize);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, tabletConfig.BlockSize, 'a'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, tabletConfig.BlockSize, 'a');
         }
 
         {
@@ -638,9 +632,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 tabletConfig.BlockSize,
                 tabletConfig.BlockSize);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, tabletConfig.BlockSize, 'b'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, tabletConfig.BlockSize, 'b');
         }
 
         tablet.DestroyHandle(handle);
@@ -681,9 +673,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, sz);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, sz, 'a'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, sz, 'a');
         }
 
         tablet.DestroyHandle(handle);
@@ -755,17 +745,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, block, 'b'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, block, 'b');
         }
 
         {
             auto response = tablet.ReadData(handle, block, block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, block, 'b'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, block, 'b');
         }
 
         tablet.DestroyHandle(handle);
@@ -946,17 +932,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, block, 'a'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, block, 'a');
         }
 
         {
             auto response = tablet.ReadData(handle, block, block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, block, 'b'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, block, 'b');
         }
 
         tablet.DestroyHandle(handle);
@@ -1176,9 +1158,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, block, 'b'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, block, 'b');
         }
 
         tablet.WriteData(handle, 0, block, 'c');
@@ -1562,17 +1542,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, 2 * block, 'g'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, 2 * block, 'g');
         }
 
         {
             auto response = tablet.ReadData(handle, 2 * block, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, 2 * block, 'h'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, 2 * block, 'h');
         }
 
         tablet.DestroyHandle(handle);
@@ -1921,17 +1897,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, 2 * block, 'd'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, 2 * block, 'd');
         }
 
         {
             auto response = tablet.ReadData(handle, 2 * block, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, 2 * block, 'e'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, 2 * block, 'e');
         }
 
         tablet.DestroyHandle(handle);
@@ -1996,41 +1968,31 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, 2 * block, 'a'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, 2 * block, 'a');
         }
 
         {
             auto response = tablet.ReadData(handle, 2 * block, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, 2 * block, 'e'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, 2 * block, 'e');
         }
 
         {
             auto response = tablet.ReadData(handle, 256_KB, 3 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, 3 * block, 'b'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, 3 * block, 'b');
         }
 
         {
             auto response = tablet.ReadData(handle, 512_KB, 3 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, 3 * block, 'c'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, 3 * block, 'c');
         }
 
         {
             auto response = tablet.ReadData(handle, 768_KB, 3 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, 3 * block, 'd'),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, 3 * block, 'd');
         }
 
         tablet.DestroyHandle(handle);
@@ -7768,9 +7730,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             systemCounters->CpuLack.store(30);
             auto response = tablet.ReadData(handle, 0, tabletConfig.BlockSize);
             const auto* buffer = &response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(*buffer, tabletConfig.BlockSize, 'a'),
-                TString(buffer->data(), Min<size_t>(20, buffer->size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(*buffer, tabletConfig.BlockSize, 'a');
             const auto* backendInfo =
                 &response->Record.GetHeaders().GetBackendInfo();
             UNIT_ASSERT(!backendInfo->GetIsOverloaded());
@@ -7778,9 +7738,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             systemCounters->CpuLack.store(60);
             response = tablet.ReadData(handle, 0, tabletConfig.BlockSize);
             buffer = &response->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(*buffer, tabletConfig.BlockSize, 'a'),
-                TString(buffer->data(), Min<size_t>(20, buffer->size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(*buffer, tabletConfig.BlockSize, 'a');
             backendInfo = &response->Record.GetHeaders().GetBackendInfo();
             UNIT_ASSERT(backendInfo->GetIsOverloaded());
         }
@@ -7880,9 +7838,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
             auto responseRead = tablet.ReadData(handle, 0, block);
             const auto& buffer = responseRead->Record.GetBuffer();
-            UNIT_ASSERT_C(
-                CompareBuffer(buffer, block, c),
-                TString(buffer.data(), Min<size_t>(20, buffer.size())));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, block, c);
             ++c;
         }
 
