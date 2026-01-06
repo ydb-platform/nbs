@@ -709,12 +709,15 @@ void TIndexTabletActor::HandleSessionDisconnected(
     const TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
-        "%s Server disconnected, ev->Sender: %s",
-        LogTag.c_str(),
-        ev->Sender.ToString().c_str());
+    auto* msg = ev->Get();
 
-    OrphanSession(ev->Sender, ctx.Now());
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s Server disconnected, ev->Sender: %s, msg->ServerId: %s",
+        LogTag.c_str(),
+        ev->Sender.ToString().c_str(),
+        msg->ServerId.ToString().c_str());
+
+    OrphanSession(msg->ServerId, ctx.Now());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1148,8 +1151,9 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
+        HFunc(TEvTabletPipe::TEvServerDisconnected, HandleSessionDisconnected);
+
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
-        IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
         HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
         HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
