@@ -189,7 +189,7 @@ private:
         if (args.CommitId == InvalidCommitId) {
             return Tablet.ScheduleRebootTabletOnCommitIdOverflow(
                 ctx,
-                "AddBlobWrite");
+                GetAddBlobModeName(args.Mode));
         }
 
         TVector<bool> isMixedBlobWritten(args.MixedBlobs.size());
@@ -542,7 +542,7 @@ void TIndexTabletActor::CompleteTx_AddBlob(
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "AddBlobWrite");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, GetAddBlobModeName(args.Mode));
     }
 
     EnqueueCollectGarbageIfNeeded(ctx);
