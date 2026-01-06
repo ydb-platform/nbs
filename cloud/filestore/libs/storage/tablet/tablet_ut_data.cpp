@@ -7796,6 +7796,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui64 handle = CreateHandle(tablet, id);
 
         bool pipeDestroyed = false;
+        bool flagPipeDestroyedAtLeastOnce = false;
         env.GetRuntime().SetEventFilter(
             [&](auto& runtime, auto& event)
             {
@@ -7806,6 +7807,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                             NKikimr::TEvTabletPipe::TEvClientDestroyed>();
                         if (msg->TabletId == tabletId) {
                             pipeDestroyed = true;
+                            flagPipeDestroyedAtLeastOnce = true;
                         }
                         break;
                     }
@@ -7843,6 +7845,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         tablet.DestroyHandle(handle);
+        UNIT_ASSERT(flagPipeDestroyedAtLeastOnce);
     }
 }
 

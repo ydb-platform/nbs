@@ -542,7 +542,9 @@ void TIndexTabletActor::CompleteTx_AddBlob(
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, GetAddBlobModeName(args.Mode));
+        return ScheduleRebootTabletOnCommitIdOverflow(
+            ctx,
+            GetAddBlobModeName(args.Mode));
     }
 
     EnqueueCollectGarbageIfNeeded(ctx);

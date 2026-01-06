@@ -143,7 +143,7 @@ enum class EAddBlobMode
     Compaction,
 };
 
-inline TStringBuf GetAddBlobModeName(EAddBlobMode mode)
+inline TString GetAddBlobModeName(EAddBlobMode mode)
 {
     switch (mode) {
         case EAddBlobMode::Write:
