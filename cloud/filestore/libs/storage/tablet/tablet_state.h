@@ -745,6 +745,7 @@ public:
         ui64 seqNo,
         bool readOnly,
         const NActors::TActorId& owner,
+        const NActors::TActorId& pipeServer,
         const NProto::TSessionOptions& sessionOptions);
 
     void RemoveSession(
@@ -762,7 +763,9 @@ public:
         TSession* session,
         ui64 sessionSeqNo,
         bool readOnly,
-        const NActors::TActorId& owner);
+        const NActors::TActorId& owner,
+        const NActors::TActorId& pipeServer);
+
     void RegisterSessionByPipeServer(
         const NActors::TActorId& pipeServer,
         const TString& sessionId);
@@ -801,6 +804,7 @@ private:
         ui64 seqNo,
         bool readOnly,
         const NActors::TActorId& owner,
+        const NActors::TActorId& pipeServer,
         const NProto::TSessionOptions& sessionOptions);
 
     void RemoveSession(TSession* session);
