@@ -36,6 +36,7 @@ struct TIndexTabletState::TImpl
     TSessionList OrphanSessions;
     TSessionMap SessionById;
     TSessionOwnerMap SessionByOwner;
+    TSessionOwnerByPipeServerMap SessionOwnerByPipeServerId;
     TSessionClientMap SessionByClient;
     TSessionHistoryList SessionHistoryList;
 
