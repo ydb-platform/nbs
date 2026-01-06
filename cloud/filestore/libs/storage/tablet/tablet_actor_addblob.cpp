@@ -83,6 +83,8 @@ private:
         TABLET_VERIFY(!args.SrcBlobs);
         TABLET_VERIFY(!args.MixedBlobs);
 
+        Y_UNUSED(ctx);
+
         AddBlobsInfo(
             Tablet.GetBlockSize(),
             args.MergedBlobs,
@@ -93,7 +95,8 @@ private:
         // and mark overwritten blocks now
         args.CommitId = Tablet.GenerateCommitId();
         if (args.CommitId == InvalidCommitId) {
-            return Tablet.RebootTabletOnCommitOverflow(ctx, "AddBlobWrite");
+            args.Error = MakeError(E_REJECTED, "CommitId overflow");
+            return;
         }
 
         for (const auto& part: args.UnalignedDataParts) {
@@ -535,6 +538,10 @@ void TIndexTabletActor::CompleteTx_AddBlob(
     auto response =
         std::make_unique<TEvIndexTabletPrivate::TEvAddBlobResponse>(args.Error);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    if (FAILED(args.Error.GetCode()) && args.CommitId == InvalidCommitId) {
+        return RebootTabletOnCommitOverflow(ctx, "AddBlobWrite");
+    }
 
     EnqueueCollectGarbageIfNeeded(ctx);
 }

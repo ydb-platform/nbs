@@ -214,6 +214,8 @@ bool TIndexTabletActor::PrepareTx_WriteData(
         return true;
     }
 
+    args.CommitId = GetCurrentCommitId();
+
     if (Config->GetAllowHandlelessIO()) {
         if (args.ExplicitNodeId == InvalidNodeId) {
             args.Error = ErrorInvalidTarget(args.ExplicitNodeId);
@@ -235,7 +237,6 @@ bool TIndexTabletActor::PrepareTx_WriteData(
 
         args.NodeId = handle->GetNodeId();
     }
-    args.CommitId = GetCurrentCommitId();
 
     LOG_TRACE(ctx, TFileStoreComponents::TABLET,
         "%s WriteNodeData tx %lu @%lu %s",
