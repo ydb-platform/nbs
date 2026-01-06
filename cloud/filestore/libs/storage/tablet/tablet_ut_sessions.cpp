@@ -1092,6 +1092,51 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             tablet.DestroySession();
         }
     }
+
+    Y_UNIT_TEST(ShouldMarkSessionAsOrphanAfterPipeDisconnetion)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        
+        bool pipeDisconnectionObserved = false;
+        env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case NKikimr::TEvTabletPipe::EvServerDisconnected: {
+                    pipeDisconnectionObserved = true;
+                }
+            }
+
+            return false;
+        });
+
+        tablet.InitSession("client", "session");
+
+        tablet.DisconnectPipe();
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+        // Check that pipe was disconnected
+        UNIT_ASSERT(pipeDisconnectionObserved);
+
+        // Check that the tablet handles pipe disconnection 
+        // and marks the session as orphaned.
+        {
+            tablet.ReconnectPipe();
+            auto sessions = tablet.DescribeSessions();
+            UNIT_ASSERT_VALUES_EQUAL(sessions->Record.SessionsSize(), 1);
+            const auto& session = sessions->Record.GetSessions(0);
+            UNIT_ASSERT_VALUES_EQUAL(session.GetClientId(), "client");
+            UNIT_ASSERT_VALUES_EQUAL(session.GetSessionId(), "session");
+            UNIT_ASSERT_VALUES_EQUAL(session.GetIsOrphan(), true);
+        }
+    
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
