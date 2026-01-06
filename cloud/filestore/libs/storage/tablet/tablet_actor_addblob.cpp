@@ -541,7 +541,7 @@ void TIndexTabletActor::CompleteTx_AddBlob(
         std::make_unique<TEvIndexTabletPrivate::TEvAddBlobResponse>(args.Error);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-    if (FAILED(args.Error.GetCode()) && args.CommitId == InvalidCommitId) {
+    if (args.CommitId == InvalidCommitId) {
         return ScheduleRebootTabletOnCommitIdOverflow(ctx, "AddBlobWrite");
     }
 
