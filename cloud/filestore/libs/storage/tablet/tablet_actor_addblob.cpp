@@ -187,7 +187,9 @@ private:
         // and mark overwritten blocks now
         args.CommitId = Tablet.GenerateCommitId();
         if (args.CommitId == InvalidCommitId) {
-            return Tablet.RebootTabletOnCommitOverflow(ctx, "AddBlobWrite");
+            return Tablet.ScheduleRebootTabletOnCommitIdOverflow(
+                ctx,
+                "AddBlobWrite");
         }
 
         TVector<bool> isMixedBlobWritten(args.MixedBlobs.size());
@@ -540,7 +542,7 @@ void TIndexTabletActor::CompleteTx_AddBlob(
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     if (FAILED(args.Error.GetCode()) && args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "AddBlobWrite");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "AddBlobWrite");
     }
 
     EnqueueCollectGarbageIfNeeded(ctx);

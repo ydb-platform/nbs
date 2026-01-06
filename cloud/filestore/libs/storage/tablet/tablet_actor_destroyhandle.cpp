@@ -99,7 +99,7 @@ void TIndexTabletActor::ExecuteTx_DestroyHandle(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "DestroyHandle");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "DestroyHandle");
     }
 
     if (args.Node->Attrs.GetLinks() == 0 &&

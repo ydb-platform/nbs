@@ -706,7 +706,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "CreateNode");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "CreateNode");
     }
 
     if (args.TargetNodeId == InvalidNodeId) {

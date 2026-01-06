@@ -412,7 +412,7 @@ void TIndexTabletActor::ExecuteTx_WriteBatch(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "WriteBatch");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "WriteBatch");
     }
 
     for (auto& write: args.WriteBatch) {
@@ -580,7 +580,7 @@ void TIndexTabletActor::CompleteTx_WriteBatch(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "WriteBatch");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "WriteBatch");
     }
 
     ui32 blobIndex = 0;

@@ -265,7 +265,7 @@ void TIndexTabletActor::HandleGenerateBlobIds(
 
     ui64 commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "GenerateBlobIds");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "GenerateBlobIds");
     }
 
     auto validator = [&](const NProtoPrivate::TGenerateBlobIdsRequest& request)

@@ -74,7 +74,7 @@ void TIndexTabletActor::ExecuteTx_ZeroRange(
 
     ui64 commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "ZeroRange");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "ZeroRange");
     }
 
     AddRange(
