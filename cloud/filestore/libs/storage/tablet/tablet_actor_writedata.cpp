@@ -293,7 +293,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        args.Error = MakeError(E_REJECTED, "CommitId overflow");
+        args.Error = ErrorCommitIdOverflow();
         return;
     }
 
@@ -460,7 +460,7 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        args.Error = MakeError(E_REJECTED, "CommitId overflow");
+        args.Error = ErrorCommitIdOverflow();
         reply(ctx, args);
         return ScheduleRebootTabletOnCommitIdOverflow(ctx, "WriteData");
     }

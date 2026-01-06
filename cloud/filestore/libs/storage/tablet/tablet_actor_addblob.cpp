@@ -95,7 +95,7 @@ private:
         // and mark overwritten blocks now
         args.CommitId = Tablet.GenerateCommitId();
         if (args.CommitId == InvalidCommitId) {
-            args.Error = MakeError(E_REJECTED, "CommitId overflow");
+            args.Error = ErrorCommitIdOverflow();
             return;
         }
 
