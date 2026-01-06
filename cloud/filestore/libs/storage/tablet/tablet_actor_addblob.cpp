@@ -80,10 +80,10 @@ private:
         TIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
+        Y_UNUSED(ctx);
+
         TABLET_VERIFY(!args.SrcBlobs);
         TABLET_VERIFY(!args.MixedBlobs);
-
-        Y_UNUSED(ctx);
 
         AddBlobsInfo(
             Tablet.GetBlockSize(),

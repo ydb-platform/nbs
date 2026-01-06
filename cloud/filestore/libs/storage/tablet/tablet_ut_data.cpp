@@ -7782,6 +7782,28 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         env.CreateSubDomain("nfs");
 
         const ui32 nodeIdx = env.CreateNode("nfs");
+
+        bool pipeDestroyed = false;
+        TSet<ui32> generations;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case NKikimr::TEvTablet::EvBoot: {
+                        auto* msg =
+                            event->template Get<NKikimr::TEvTablet::TEvBoot>();
+                        generations.insert(msg->Generation);
+                        break;
+                    }
+                    case NKikimr::TEvTabletPipe::EvClientDestroyed: {
+                        pipeDestroyed = true;
+                        break;
+                    }
+                }
+                return false;
+            });
+
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(
@@ -7794,26 +7816,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         const auto id =
             CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tablet, id);
-
-        bool pipeDestroyed = false;
-        bool flagPipeDestroyedAtLeastOnce = false;
-        env.GetRuntime().SetEventFilter(
-            [&](auto& runtime, auto& event)
-            {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case NKikimr::TEvTabletPipe::EvClientDestroyed: {
-                        auto msg = event->template Get<
-                            NKikimr::TEvTabletPipe::TEvClientDestroyed>();
-                        if (msg->TabletId == tabletId) {
-                            pipeDestroyed = true;
-                            flagPipeDestroyedAtLeastOnce = true;
-                        }
-                        break;
-                    }
-                }
-                return false;
-            });
 
         auto reconnectAndRecreateHandleIfNeeded = [&]()
         {
@@ -7845,7 +7847,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         tablet.DestroyHandle(handle);
-        UNIT_ASSERT(flagPipeDestroyedAtLeastOnce);
+        UNIT_ASSERT_C(
+            generations.size() >= 2,
+            "Expected at least 2 different generations due to tablet reboot");
     }
 }
 
