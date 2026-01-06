@@ -367,7 +367,7 @@ public:
 
     ui32 GetCpuLackOverloadThreshold() const;
 
-    ui32 GetMaxCommitId() const;
+    ui32 GetMaxTabletStep() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

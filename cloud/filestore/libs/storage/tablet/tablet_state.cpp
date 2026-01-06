@@ -118,7 +118,7 @@ void TIndexTabletState::LoadState(
     LargeDeletionMarkersThresholdForBackpressure =
         config.GetLargeDeletionMarkersThresholdForBackpressure();
 
-    MaxCommitId = Max(config.GetMaxCommitId(), LastStep);
+    MaxTabletStep = Max(config.GetMaxTabletStep(), LastStep);
 
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);

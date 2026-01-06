@@ -7773,10 +7773,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     TABLET_TEST(ShouldHandleCommitIdOverflowAndPreserveLastWrittenData)
     {
         const auto block = tabletConfig.BlockSize;
-        const auto maxCommitId = 5;
+        const auto maxTabletStep = 5;
 
         NProto::TStorageConfig storageConfig;
-        storageConfig.SetMaxCommitId(maxCommitId);
+        storageConfig.SetMaxTabletStep(maxTabletStep);
 
         TTestEnv env({}, std::move(storageConfig));
         env.CreateSubDomain("nfs");
