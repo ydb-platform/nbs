@@ -315,7 +315,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(CpuLackOverloadThreshold,          ui32,      101                     )\
                                                                                \
-    xxx(MaxCommitId,                       ui32,      0                       )\
+    xxx(MaxCommitId,                       ui32,      Max<ui32>()             )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
