@@ -49,15 +49,17 @@ void TStorageServiceActor::HandleUpdateStats(
         HddTabletCount->Set(hddTablets);
     }
 
-    auto nowCycle = GetCycleCount();
-    for (auto it = InFlightRequests.begin(); it != InFlightRequests.end(); ) {
-        const auto& request = it->second;
-        if (!request.IsCompleted()) {
-            StatsRegistry->AddIncompleteRequest(
-                request.ToIncompleteRequest(nowCycle));
-            ++it;
-        } else {
-            InFlightRequests.erase(it++);
+    {
+        const ui64 nowCycles = GetCycleCount();
+        const auto keys = InFlightRequests->GetKeys();
+        for (const ui64 key: keys) {
+            const auto* request = InFlightRequests->Find(key);
+            if (!request->IsCompleted()) {
+                StatsRegistry->AddIncompleteRequest(
+                    request->ToIncompleteRequest(nowCycles));
+            } else {
+                InFlightRequests->Erase(key);
+            }
         }
     }
 

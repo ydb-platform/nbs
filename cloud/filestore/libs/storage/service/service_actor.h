@@ -67,6 +67,15 @@ void HandleServiceTraceInfo(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TMethod>
+void CompleteRequestImpl(
+    const NActors::TActorContext& ctx,
+    const ITraceSerializerPtr& traceSerializer,
+    typename TMethod::TResponse::ProtoRecordType& record,
+    TInFlightRequest *request);
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TStorageServiceActor final
     : public NActors::TActorBootstrapped<TStorageServiceActor>
 {
@@ -78,10 +87,10 @@ private:
     const NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
 
     std::unique_ptr<TStorageServiceState> State;
-    ui64 ProxyCounter = 0;
 
     IRequestStatsRegistryPtr StatsRegistry;
-    THashMap<ui64, TInFlightRequest> InFlightRequests;
+    TInFlightRequestStoragePtr InFlightRequests;
+    ui64 InFlightRequestCounter = 0;
 
     NMonitoring::TDynamicCounters::TCounterPtr CpuWaitCounter;
 
@@ -190,9 +199,12 @@ private:
         const TEvServicePrivate::TEvSessionDestroyed::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    ui64 GenerateRequestCookie();
+    static bool ValidateRequestCookie(ui64 cookie);
+
     std::pair<ui64, TInFlightRequest*> CreateInFlightRequest(
         const TRequestInfo& info,
-        NProto::EStorageMediaKind media,
+        NProto::EStorageMediaKind mediaKind,
         IRequestStatsPtr requestStats,
         TInstant currentTs);
 

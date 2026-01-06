@@ -12,8 +12,7 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define MAKE_PROXY_COOKIE(cookie)        ((cookie) | (1llu << 63))
-#define VALIDATE_PROXY_COOKIE(cookie)    ((cookie) & (1llu << 63))
+constexpr ui32 RequestCookieBit = 63;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -31,6 +30,7 @@ TStorageServiceActor::TStorageServiceActor(
     , StatsFetcher(std::move(statsFetcher))
     , State{std::make_unique<TStorageServiceState>()}
     , StatsRegistry{std::move(statsRegistry)}
+    , InFlightRequests(MakeIntrusive<TInFlightRequestStorage>(ProfileLog))
 {}
 
 TStorageServiceActor::~TStorageServiceActor()
@@ -104,40 +104,44 @@ std::pair<ui64, TInFlightRequest*> TStorageServiceActor::CreateInFlightRequest(
         start);
 }
 
-std::pair<ui64, TInFlightRequest*> TStorageServiceActor::CreateInFlightRequest(
-    const TRequestInfo& info,
-    NProto::EStorageMediaKind media,
-    TChecksumCalcInfo checksumCalcInfo,
-    IRequestStatsPtr requestStats,
-    TInstant start)
+ui64 TStorageServiceActor::GenerateRequestCookie()
 {
-    const ui64 cookie = MAKE_PROXY_COOKIE(++ProxyCounter);
-    auto [it, inserted] = InFlightRequests.emplace(
-        std::piecewise_construct,
-        std::forward_as_tuple(cookie),
-        std::forward_as_tuple(
-            info,
-            ProfileLog,
-            media,
-            std::move(checksumCalcInfo),
-            requestStats));
-
-    Y_ABORT_UNLESS(inserted);
-    it->second.Start(start);
-
-    it->second.ProfileLogRequest.SetLoopThreadId(
-        it->second.CallContext->LoopThreadId);
-
-    return std::make_pair(cookie, &it->second);
+    return (++InFlightRequestCounter) | (1LLU << RequestCookieBit);
 }
 
-TInFlightRequest* TStorageServiceActor::FindInFlightRequest(ui64 cookie)
+bool TStorageServiceActor::ValidateRequestCookie(ui64 cookie)
 {
-    if (!VALIDATE_PROXY_COOKIE(cookie)) {
+    return (cookie & (1LLU << RequestCookieBit)) != 0;
+}
+
+std::pair<ui64, TInFlightRequest*> TStorageServiceActor::CreateInFlightRequest(
+    const TRequestInfo& info,
+    NProto::EStorageMediaKind mediaKind,
+    TChecksumCalcInfo checksumCalcInfo,
+    IRequestStatsPtr requestStats,
+    TInstant currentTs)
+{
+    const ui64 requestCookie = GenerateRequestCookie();
+    auto* request = InFlightRequests->Register(
+        info.Sender,
+        info.Cookie,
+        info.CallContext,
+        mediaKind,
+        std::move(checksumCalcInfo),
+        std::move(requestStats),
+        currentTs,
+        requestCookie);
+
+    return std::make_pair(requestCookie, request);
+}
+
+TInFlightRequest* TStorageServiceActor::FindInFlightRequest(ui64 requestCookie)
+{
+    if (!ValidateRequestCookie(requestCookie)) {
         return nullptr;
     }
 
-    return InFlightRequests.FindPtr(cookie);
+    return InFlightRequests->Find(requestCookie);
 }
 
 TString TStorageServiceActor::LogTag(

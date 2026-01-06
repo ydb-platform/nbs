@@ -52,13 +52,53 @@ void CalculateResponseChecksums(
 ////////////////////////////////////////////////////////////////////////////////
 
 template<typename TMethod>
+void CompleteRequestImpl(
+    const TActorContext& ctx,
+    const ITraceSerializerPtr& traceSerializer,
+    typename TMethod::TResponse::ProtoRecordType& record,
+    TInFlightRequest *request)
+{
+    LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
+        "#%lu completed %s (%s)",
+        request->CallContext->RequestId,
+        TMethod::Name,
+        FormatError(record.GetError()).c_str());
+
+    const auto& checksumCalcInfo = request->GetChecksumCalcInfo();
+    if (checksumCalcInfo.BlockChecksumsEnabled) {
+        CalculateResponseChecksums(
+            checksumCalcInfo.Iovecs,
+            record,
+            checksumCalcInfo.BlockSize,
+            request->ProfileLogRequest);
+    }
+
+    FinalizeProfileLogRequestInfo(request->ProfileLogRequest, record);
+    HandleServiceTraceInfo(
+        TMethod::Name,
+        ctx,
+        traceSerializer,
+        request->CallContext,
+        record);
+    HandleThrottlerInfo(*request->CallContext, record);
+
+    FILESTORE_TRACK(
+        ResponseSent_Service,
+        request->CallContext,
+        TMethod::Name);
+
+    const auto& error = record.GetError();
+    request->Complete(ctx.Now(), error);
+}
+
+template<typename TMethod>
 void TStorageServiceActor::CompleteRequest(
     const TActorContext& ctx,
     const typename TMethod::TResponse::TPtr& ev)
 {
     auto* msg = ev->Get();
 
-    auto request = FindInFlightRequest(ev->Cookie);
+    auto* request = FindInFlightRequest(ev->Cookie);
     if (!request) {
         LOG_CRIT(ctx, TFileStoreComponents::SERVICE,
             "failed to complete %s: invalid cookie (%d)",
@@ -67,29 +107,7 @@ void TStorageServiceActor::CompleteRequest(
         return;
     }
 
-    LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
-        "#%lu completed %s (%s)",
-        request->CallContext->RequestId,
-        TMethod::Name,
-        FormatError(msg->Record.GetError()).c_str());
-
-    const auto& checksumCalcInfo = request->GetChecksumCalcInfo();
-    if (checksumCalcInfo.BlockChecksumsEnabled) {
-        CalculateResponseChecksums(
-            checksumCalcInfo.Iovecs,
-            msg->Record,
-            checksumCalcInfo.BlockSize,
-            request->ProfileLogRequest);
-    }
-
-    FinalizeProfileLogRequestInfo(request->ProfileLogRequest, msg->Record);
-    HandleServiceTraceInfo(
-        TMethod::Name,
-        ctx,
-        TraceSerializer,
-        request->CallContext,
-        msg->Record);
-    HandleThrottlerInfo(*request->CallContext, msg->Record);
+    CompleteRequestImpl<TMethod>(ctx, TraceSerializer, msg->Record, request);
 
     STORAGE_VERIFY_C(
         ev->HasEvent(),
@@ -105,13 +123,6 @@ void TStorageServiceActor::CompleteRequest(
         // undeliveredRequestActor
         nullptr);
 
-    FILESTORE_TRACK(
-        ResponseSent_Service,
-        request->CallContext,
-        TMethod::Name);
-
-    const auto& error = msg->Record.GetError();
-    request->Complete(ctx.Now(), error);
     ctx.Send(event);
 }
 
