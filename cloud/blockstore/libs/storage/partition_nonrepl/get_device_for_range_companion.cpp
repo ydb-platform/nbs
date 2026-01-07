@@ -101,7 +101,8 @@ void TGetDeviceForRangeCompanion::HandleGetDeviceForRange(
         response->RequestTimeout = deviceStat.WorstRequestTime();
     }
 
-    response->Device = requests[0].Device;
+    response->NodeId = requests[0].Device.GetNodeId();
+    response->DeviceUUID = requests[0].Device.GetDeviceUUID();
     response->DeviceBlockRange = requests[0].DeviceBlockRange;
     response->RequestTimeout =
         Max(response->RequestTimeout, GetMinRequestTimeout());

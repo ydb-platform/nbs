@@ -26,8 +26,8 @@ TStatsServiceActor::TStatsServiceActor(
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , StatsUploader(std::move(uploader))
     , ClientStatsAggregator(std::move(clientStatsAggregator))
-    , State(*Config, *DiagnosticsConfig)
     , UserCounters(CreateUserCounterSupplier())
+    , State(*Config, *DiagnosticsConfig)
 {}
 
 void TStatsServiceActor::Bootstrap(const TActorContext& ctx)

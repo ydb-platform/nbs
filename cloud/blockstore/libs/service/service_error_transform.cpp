@@ -3,6 +3,8 @@
 #include "context.h"
 #include "service.h"
 
+#include <cloud/blockstore/libs/service/service_method.h>
+
 #include <util/string/builder.h>
 
 namespace NCloud::NBlockStore {
@@ -14,7 +16,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TErrorTransformService final
-    : public IBlockStore
+    : public TBlockStoreImpl<TErrorTransformService, IBlockStore>
 {
     using TErrorTransformMap = TMap<EErrorKind, EWellKnownResultCodes>;
 
@@ -46,21 +48,20 @@ public:
         return Service->AllocateBuffer(bytesCount);
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr ctx,                                                   \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        auto result = Service->name(std::move(ctx), std::move(request));       \
-        return result.Apply([map = ErrorTransformMap] (const auto& future) {   \
-            return HandleResponse(future, *map);                               \
-        });                                                                    \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
-
-    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr ctx,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        auto result =
+            TMethod::Execute(Service.get(), std::move(ctx), std::move(request));
+        return result.Apply(
+            [map = ErrorTransformMap]   //
+            (const TFuture<typename TMethod::TResponse>& future)
+            {
+                return HandleResponse(future, *map);   //
+            });
+    }
 
 private:
     template <typename TResponse>

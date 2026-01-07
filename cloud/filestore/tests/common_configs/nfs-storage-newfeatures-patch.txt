@@ -25,6 +25,9 @@ MaxBackground: 16384
 MaxFuseLoopThreads: 4
 StrictFileSystemSizeEnforcementEnabled: true
 ZeroCopyWriteEnabled: true
+ZeroCopyReadEnabled: true
 GuestKeepCacheAllowed: true
 SessionHandleOffloadedStatsCapacity: 100
 GuestCachingType: GCT_ANY_READ
+DirectoryHandlesStorageEnabled: true
+DirectoryHandlesTableSize: 1200

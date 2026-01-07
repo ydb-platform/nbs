@@ -1,8 +1,28 @@
 #include "stats_service_state.h"
 
+#include <cloud/blockstore/libs/storage/model/volume_label.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TDiskPerfData::Register(
+    TIntrusivePtr<NMonitoring::TDynamicCounters> serviceVolumeCounters)
+{
+    DiskCounters.Register(serviceVolumeCounters, false);
+    VolumeSelfCounters.Register(serviceVolumeCounters, false);
+    VolumeBindingCounter =
+        serviceVolumeCounters->GetCounter("LocalVolume", false);
+}
+
+void TDiskPerfData::Publish(TInstant now)
+{
+    DiskCounters.Publish(now);
+    VolumeSelfCounters.Publish(now);
+    *VolumeBindingCounter = !IsPreempted;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -173,16 +193,20 @@ void TBlobLoadCounters::Publish(
 
 void TStatsServiceState::RemoveVolume(TInstant now, const TString& diskId)
 {
-    auto it = VolumesById.find(diskId);
+    const TString logicalDiskId = GetLogicalDiskId(diskId);
+
+    auto it = VolumesById.find(logicalDiskId);
     if (it == VolumesById.end()) {
         return;
     }
 
+    Y_DEBUG_ABORT_UNLESS(it->second.RealDiskIds.empty());
+
     RecentVolumes.push_back({
-        diskId,
-        it->second.VolumeInfo.GetIsSystem(),
-        it->second.VolumeInfo.GetStorageMediaKind(),
-        now,
+        .DiskId = logicalDiskId,
+        .IsSystem = it->second.VolumeInfo.GetIsSystem(),
+        .StorageMediaKind = it->second.VolumeInfo.GetStorageMediaKind(),
+        .RemoveTs = now,
     });
     auto last = std::prev(RecentVolumes.end());
     RecentVolumesById[last->DiskId] = last;
@@ -192,7 +216,7 @@ void TStatsServiceState::RemoveVolume(TInstant now, const TString& diskId)
 
 TVolumeStatsInfo* TStatsServiceState::GetVolume(const TString& diskId)
 {
-    auto it = VolumesById.find(diskId);
+    auto it = VolumesById.find(GetLogicalDiskId(diskId));
     return it != VolumesById.end() ? &it->second : nullptr;
 }
 
@@ -200,15 +224,17 @@ TVolumeStatsInfo* TStatsServiceState::GetOrAddVolume(
     const TString& diskId,
     NProto::TVolume config)
 {
-    TVolumesMap::insert_ctx ctx;
-    auto it = VolumesById.find(diskId, ctx);
+    const TString logicalDiskId = GetLogicalDiskId(diskId);
+    TVolumesMap::insert_ctx ctx = nullptr;
+    auto it = VolumesById.find(logicalDiskId, ctx);
     if (it == VolumesById.end()) {
+        config.SetDiskId(logicalDiskId);
         it = VolumesById.emplace_direct(
             ctx,
-            diskId,
+            logicalDiskId,
             TVolumeStatsInfo(std::move(config), HistCounterOptions));
 
-        auto rit = RecentVolumesById.find(diskId);
+        auto rit = RecentVolumesById.find(logicalDiskId);
         if (rit != RecentVolumesById.end()) {
             auto listIt = rit->second;
             // we should delete from RecentVolumesById first because it holds
@@ -217,6 +243,7 @@ TVolumeStatsInfo* TStatsServiceState::GetOrAddVolume(
             RecentVolumes.erase(listIt);
         }
     }
+    it->second.RealDiskIds.insert(diskId);
 
     return &it->second;
 }
@@ -226,7 +253,7 @@ TStatsServiceState::UpdateAndGetRecentVolumes(TInstant now)
 {
     const TDuration ttl = TDuration::Hours(1);
 
-    while (RecentVolumes.size()) {
+    while (!RecentVolumes.empty()) {
         auto& rv = RecentVolumes.front();
 
         if (rv.RemoveTs + ttl >= now) {

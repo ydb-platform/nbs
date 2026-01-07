@@ -167,6 +167,8 @@ TString PrintRanges(
     TStringBuf offsetLabel,
     TStringBuf bytesLabel,
     TStringBuf actualBytesLabel,
+    TStringBuf actualOffsetLabel,
+    TStringBuf checksumsLabel,
     const google::protobuf::RepeatedPtrField<NProto::TProfileLogBlockRange>& ranges)
 {
     TStringBuilder out;
@@ -191,6 +193,17 @@ TString PrintRanges(
         }
         if (range.HasActualBytes()) {
             currentRange << PrintValue(actualBytesLabel, range.GetActualBytes()) << ", ";
+        }
+        if (range.HasBufferOffset()) {
+            currentRange << PrintValue(actualOffsetLabel, range.GetBufferOffset()) << ", ";
+        }
+        if (range.BlockChecksumsSize() > 0) {
+            TStringBuilder checksumsStr;
+            for (const auto checksum: range.GetBlockChecksums()) {
+                checksumsStr << checksum << " ";
+            }
+            checksumsStr.pop_back();
+            currentRange << PrintValue(checksumsLabel, checksumsStr) << ", ";
         }
 
         if (currentRange.empty()) {
@@ -232,6 +245,8 @@ TString PrintBlobsInfo(
                 "offset",
                 "bytes",
                 "actual_bytes",
+                "actual_offset",
+                "checksums",
                 blob.GetRanges())
             << '\t';
     }
@@ -343,6 +358,8 @@ public:
                 "offset",
                 "bytes",
                 "actual_bytes",
+                "actual_offset",
+                "checksums",
                 request.GetRanges()) << "\t";
         }
 
@@ -352,6 +369,16 @@ public:
 
         if (!request.GetBlobsInfo().empty()) {
             out << PrintBlobsInfo(request.GetBlobsInfo()) << "\t";
+        }
+
+        if (request.GetLoopThreadId()) {
+            out << PrintValue("loop_thread_id", request.GetLoopThreadId())
+                << "\t";
+        }
+
+        if (request.GetClientId()) {
+            out << PrintValue("client_id", request.GetClientId())
+                << "\t";
         }
 
         if (out.empty()) {
@@ -508,16 +535,36 @@ public:
     TString DumpInfo(const NProto::TProfileLogRequestInfo& request) const override
     {
         if (!request.GetRanges().empty()) {
+
+            //
+            // legacy format - info stored as a Range
+            //
+
             return PrintRanges(
                 "current_collect_commid_id",
                 "last_collect_commit_id",
                 "new_blobs",
                 "garbage_blobs",
                 "",
+                "",
+                "checksums",
                 request.GetRanges());
         }
 
-        return "{no_info}";
+        const auto& info = request.GetCollectGarbageInfo();
+        if (info.ByteSize() == 0) {
+            return "{no_info}";
+        }
+
+        TStringBuilder out;
+        out << "{"
+            << "current_collect_commit_id=" << info.GetCollectCommitId()
+            << ", last_collect_commit_id=" << info.GetLastCollectCommitId()
+            << ", new_blobs=" << info.GetNewBlobsCount()
+            << ", garbage_blobs=" << info.GetGarbageBlobsCount()
+            << "}";
+
+        return out;
     }
 };
 
@@ -536,6 +583,8 @@ public:
                 "new_blobs",
                 "garbage_blobs",
                 "",
+                "",
+                "checksums",
                 request.GetRanges());
         }
 
@@ -558,6 +607,8 @@ public:
                 "offset",
                 "bytes",
                 "actual_bytes",
+                "actual_offset",
+                "checksums",
                 request.GetRanges());
         }
 

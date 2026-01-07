@@ -397,6 +397,9 @@ struct THistogramRequestCounters
         EPublishingPolicy::Repl,
         HistCounterOptions};
     TLowResCounter ConfirmBlobs{EPublishingPolicy::Repl, HistCounterOptions};
+    TLowResCounter DeleteUnconfirmedBlobs{
+        EPublishingPolicy::Repl,
+        HistCounterOptions};
 
     // BlobStorage based with kind and size
     TLowResCounter WriteBlob{
@@ -423,6 +426,7 @@ struct THistogramRequestCounters
         MakeMeta<&THistogramRequestCounters::AddConfirmedBlobs>(),
         MakeMeta<&THistogramRequestCounters::AddUnconfirmedBlobs>(),
         MakeMeta<&THistogramRequestCounters::ConfirmBlobs>(),
+        MakeMeta<&THistogramRequestCounters::DeleteUnconfirmedBlobs>(),
 
         MakeMeta<&THistogramRequestCounters::WriteBlob>(),
         MakeMeta<&THistogramRequestCounters::ReadBlob>(),
@@ -612,6 +616,10 @@ struct TVolumeSelfSimpleCounters
         EPublishingPolicy::DiskRegistryBased,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter DiskAgentCount{
+        EPublishingPolicy::DiskRegistryBased,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
 
     static constexpr TMeta AllCounters[] = {
         MakeMeta<&TVolumeSelfSimpleCounters::MaxReadBandwidth>(),
@@ -644,6 +652,7 @@ struct TVolumeSelfSimpleCounters
         MakeMeta<&TVolumeSelfSimpleCounters::HasLaggingDevices>(),
         MakeMeta<&TVolumeSelfSimpleCounters::LaggingDevicesCount>(),
         MakeMeta<&TVolumeSelfSimpleCounters::LaggingMigrationProgress>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::DiskAgentCount>(),
     };
 };
 static_assert(

@@ -32,8 +32,8 @@ enum ECheckpointState
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
 // Mean time between failures.
+
 message TMeanTimeBetweenFailures
 {
     // Work time in seconds.
@@ -1846,4 +1846,43 @@ message TGetClusterCapacityResponse
 
     // List of capacities.
     repeated TClusterCapacityInfo Capacity = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// DetachPaths
+
+message TDetachPathsRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // List of paths we want to detach.
+    repeated string PathsToDetach = 2;
+}
+
+message TDetachPathsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// AttachPaths
+
+message TAttachPathsRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // List of paths we want to attach.
+    repeated string PathsToAttach = 2;
+}
+
+message TAttachPathsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // List of attached devices.
+    repeated TDeviceConfig AttachedDevices = 2;
 }

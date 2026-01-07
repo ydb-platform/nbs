@@ -161,8 +161,7 @@ private:
     // calling MigrationOwner->OnMigrationProgress().
     bool MigrationThresholdAchieved = false;
 
-    TRequestsInProgress<EAllowedRequests::WriteOnly, ui64, TBlockRange64>
-        WriteAndZeroRequestsInProgress;
+    TRequestsInProgress<EAllowedRequests::WriteOnly, ui64> WriteAndZeroRequestsInProgress;
     TDrainActorCompanion DrainActorCompanion{
         WriteAndZeroRequestsInProgress,
         DiskId};

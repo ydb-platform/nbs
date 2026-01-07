@@ -99,17 +99,65 @@ ForEachMacros:
 IfMacros:
   - KJ_IF_MAYBE
   - with_lock
+  - BODY
+  - CAPTION
+  - CAPTION_CLASS
+  - DD
+  - DD_CLASS
   - DIV
   - DIV_CLASS
+  - DIV_CLASS_ID
+  - DL
+  - DL_CLASS
+  - DT
+  - DT_CLASS
+  - FORM
+  - FORM_CLASS
+  - H1_CLASS
+  - H2_CLASS
+  - H3_CLASS
+  - H4_CLASS
+  - H5_CLASS
+  - H6_CLASS
+  - HEAD
+  - HREF
   - HTML
+  - HTML_OUTPUT_PARAM
+  - HTML_OUTPUT_TIME_PARAM
+  - HTML_TAG
+  - LABEL
+  - LABEL_CLASS
+  - LABEL_CLASS_FOR
+  - LI
+  - LI_CLASS
+  - OL
+  - OL_CLASS
+  - PARA
+  - PARA_CLASS
+  - PRE
+  - SMALL
   - SPAN_CLASS
+  - SPAN_CLASS_STYLE
+  - STRONG
+  - TABLE
   - TABLE_CLASS
+  - TABLE_SORTABLE
+  - TABLE_SORTABLE_CLASS
+  - TABLEBODY
+  - TABLEBODY_CLASS
   - TABLED
   - TABLED_ATTRS
+  - TABLED_CLASS
   - TABLEH
+  - TABLEH_CLASS
   - TABLEHEAD
+  - TABLEHEAD_CLASS
   - TABLER
+  - TABLER_CLASS
   - TAG
+  - UL
+  - UL_CLASS
+
 IncludeBlocks:   Regroup
 IncludeCategories:
   - Regex:           '^\"public.h\"'
@@ -250,7 +298,7 @@ RemoveBracesLLVM: false
 RemoveSemicolon: true
 RequiresClausePosition: OwnLine
 RequiresExpressionIndentation: OuterScope
-SeparateDefinitionBlocks: Leave
+SeparateDefinitionBlocks: Always
 ShortNamespaceLines: 1
 SortIncludes:    CaseSensitive
 SortJavaStaticImport: Before
@@ -293,10 +341,27 @@ Standard:        Auto
 StatementAttributeLikeMacros:
   - Q_EMIT
 StatementMacros:
-  - Q_UNUSED
-  - QT_REQUIRE_VERSION
-  - HFunc
   - xxx
+  - HFuncCtx
+  - HFunc
+  - hFunc
+  - HFuncTraced
+  - hFuncTraced
+  - HTemplFunc
+  - hTemplFunc
+  - SFunc
+  - sFunc
+  - CFunc
+  - CFuncCtx
+  - cFunc
+  - FFunc
+  - fFunc
+  - IgnoreFunc
+  - ExceptionFunc
+  - ExceptionFuncEv
+  - AnyExceptionFunc
+  - AnyExceptionFuncEv
+  - Y_DEFER
 TabWidth:        8
 UseTab:          Never
 WhitespaceSensitiveMacros:
@@ -305,4 +370,3 @@ WhitespaceSensitiveMacros:
   - NS_SWIFT_NAME
   - PP_STRINGIZE
   - STRINGIZE
-...

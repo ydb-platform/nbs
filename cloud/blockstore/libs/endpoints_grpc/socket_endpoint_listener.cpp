@@ -3,11 +3,13 @@
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
+#include <cloud/blockstore/libs/server/client_storage_factory.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/libs/service/service_method.h>
 #include <cloud/blockstore/libs/service/storage.h>
-#include <cloud/blockstore/libs/server/client_storage_factory.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/uds/endpoint_poller.h>
@@ -22,23 +24,18 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TEndpointServiceBase
-    : public IBlockStore
+    : public TBlockStoreImpl<TEndpointServiceBase, IBlockStore>
 {
 public:
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-        {                                                                      \
-            return CreateUnsupportedResponse<NProto::T##name##Response>(       \
-                std::move(callContext),                                        \
-                std::move(request));                                           \
-        }                                                                      \
-// BLOCKSTORE_IMPLEMENT_METHOD
-
-    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr callContext,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        return CreateUnsupportedResponse<typename TMethod::TResponse>(
+            std::move(callContext),
+            std::move(request));
+    }
 
 private:
     template <typename TResponse, typename TRequest>

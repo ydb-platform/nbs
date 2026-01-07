@@ -16,7 +16,7 @@ SRCS(
 
 PEERDIR(
     cloud/contrib/vhost
-    contrib/libs/virtiofsd
+    cloud/contrib/virtiofsd
 )
 
 END()

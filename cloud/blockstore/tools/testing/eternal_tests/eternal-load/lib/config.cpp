@@ -42,9 +42,11 @@ private:
 public:
     explicit TConfigHolder(IInputStream* input);
     explicit TConfigHolder(const TCreateTestConfigArguments& args);
+    explicit TConfigHolder(const TTestConfig& config);
 
     TTestConfig& GetConfig() override;
     void DumpConfig(const TString& filePath) override;
+    IConfigHolderPtr Clone() override;
 
 private:
     void GenerateMissingFields();
@@ -62,6 +64,7 @@ TConfigHolder::TConfigHolder(const TCreateTestConfigArguments& args)
 {
     Config.SetFilePath(args.FilePath);
     Config.SetFileSize(args.FileSize);
+    Config.SetTestCount(args.TestCount);
     Config.SetBlockSize(args.BlockSize);
     Config.SetWriteRate(args.WriteRate);
     Config.SetIoDepth(args.IoDepth);
@@ -92,6 +95,10 @@ TConfigHolder::TConfigHolder(const TCreateTestConfigArguments& args)
     fileTestConfig.SetMinRegionByteCount(args.MinRegionByteCount);
     fileTestConfig.SetMaxRegionByteCount(args.MaxRegionByteCount);
 }
+
+TConfigHolder::TConfigHolder(const TTestConfig& config)
+    : Config(config)
+{}
 
 void TConfigHolder::GenerateMissingFields()
 {
@@ -142,6 +149,11 @@ void TConfigHolder::DumpConfig(const TString& filePath)
 
     TString config = NProtobufJson::Proto2Json(Config, {.FormatOutput = true});
     file.Write(config.data(), config.length());
+}
+
+IConfigHolderPtr TConfigHolder::Clone()
+{
+    return std::make_unique<TConfigHolder>(Config);
 }
 
 }    //  namespace

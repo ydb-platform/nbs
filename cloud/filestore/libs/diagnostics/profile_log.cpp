@@ -97,8 +97,10 @@ void TProfileLog::Flush()
     TVector<TRecord> records;
     Records.DequeueAllSingleConsumer(&records);
 
-    if (records.size() && Settings.MaxFlushRecords) {
-        records.resize(std::min(records.size(), Settings.MaxFlushRecords));
+    ui64 discardedRequestCount = 0;
+    if (Settings.MaxFlushRecords && records.size() > Settings.MaxFlushRecords) {
+        discardedRequestCount = records.size() - Settings.MaxFlushRecords;
+        records.resize(Settings.MaxFlushRecords);
     }
 
     auto recordsRef = MakeArrayRef(records);
@@ -121,6 +123,12 @@ void TProfileLog::Flush()
 
         for (auto& x: fsId2records) {
             NProto::TProfileLogRecord pb;
+
+            if (discardedRequestCount) {
+                pb.SetDiscardedRequestCount(discardedRequestCount);
+                discardedRequestCount = 0;
+            }
+
             pb.SetFileSystemId(x.first);
             for (const auto r: x.second) {
                 auto& record = frameRecords[r];

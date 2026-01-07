@@ -238,7 +238,11 @@ TTestSession CreateTestSession(const TString& diskId, const TString& sessionId)
         };
     }
 
-    auto switchableClient = CreateSwitchableClient(logging, diskId, client);
+    auto switchableClient = CreateSwitchableClient(
+        logging,
+        ISessionSwitcherWeakPtr(),
+        diskId,
+        client);
 
     auto durable = CreateDurableClient(
         config,

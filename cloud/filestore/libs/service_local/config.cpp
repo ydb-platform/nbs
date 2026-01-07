@@ -40,8 +40,14 @@ namespace {
     xxx(MaxResponseEntries,          ui32,          10000                     )\
     xxx(MaxBackground,               ui32,          0                         )\
     xxx(MaxFuseLoopThreads,          ui32,          1                         )\
-    xxx(ZeroCopyWriteEnabled,        bool,          false                     )\
     xxx(FSyncQueueDisabled,          bool,          false                     )\
+    xxx(EntryTimeout,                TDuration,     TDuration::Seconds(15)    )\
+    xxx(NegativeEntryTimeout,        TDuration,     TDuration::Zero()         )\
+    xxx(AttrTimeout,                 TDuration,     TDuration::Seconds(15)    )\
+    xxx(XAttrCacheTimeout,           TDuration,     TDuration::Seconds(15)    )\
+    xxx(DirectoryHandlesStorageEnabled, bool,       false                     )\
+    xxx(DirectoryHandlesTableSize,   ui64,          100'000                   )\
+    xxx(GuestHandleKillPrivV2Enabled,   bool,       false                     )\
 // FILESTORE_SERVICE_CONFIG
 
 #define FILESTORE_SERVICE_NULL_FILE_IO_CONFIG(xxx)                             \
@@ -56,6 +62,7 @@ namespace {
     xxx(ShareKernelWorkers,          bool,          false                     )\
     xxx(MaxKernelWorkersCount,       ui32,          0                         )\
     xxx(ForceAsyncIO,                bool,          false                     )\
+    xxx(PropagateAffinityToKernelWorkers, bool,     false                     )\
 // FILESTORE_SERVICE_IO_URING_CONFIG
 
 #define FILESTORE_SERVICE_DECLARE_CONFIG(name, type, value)                    \
@@ -128,6 +135,71 @@ FILESTORE_SERVICE_CONFIG(FILESTORE_CONFIG_GETTER)
 
 #undef FILESTORE_CONFIG_GETTER
 
+#define FILESTORE_BINARY_FEATURES(xxx)                                         \
+    xxx(DirectoryHandlesStorageEnabled)                                        \
+
+// FILESTORE_BINARY_FEATURES
+
+#define FILESTORE_DURATION_FEATURES(xxx)                                       \
+    xxx(EntryTimeout)                                                          \
+    xxx(NegativeEntryTimeout)                                                  \
+    xxx(AttrTimeout)                                                           \
+    xxx(XAttrCacheTimeout)                                                     \
+
+// FILESTORE_DURATION_FEATURES
+
+#define FILESTORE_BINARY_FEATURE_GETTER(name)                                  \
+bool TLocalFileStoreConfig::Get##name(                                         \
+    const TString& cloudId,                                                    \
+    const TString& folderId,                                                   \
+    const TString& fsId) const                                                 \
+{                                                                              \
+    if (!FeaturesConfig) {                                                     \
+        return Get##name();                                                    \
+    }                                                                          \
+                                                                               \
+    return FeaturesConfig->IsFeatureEnabled(                                   \
+        cloudId,                                                               \
+        folderId,                                                              \
+        fsId,                                                                  \
+        #name);                                                                \
+}                                                                              \
+
+// FILESTORE_BINARY_FEATURE_GETTER
+
+FILESTORE_BINARY_FEATURES(FILESTORE_BINARY_FEATURE_GETTER)
+
+#undef FILESTORE_BINARY_FEATURE_GETTER
+
+#define FILESTORE_DURATION_FEATURE_GETTER(name)                                \
+TDuration TLocalFileStoreConfig::Get##name(                                    \
+    const TString& cloudId,                                                    \
+    const TString& folderId,                                                   \
+    const TString& fsId) const                                                 \
+{                                                                              \
+    if (!FeaturesConfig) {                                                     \
+        return Get##name();                                                    \
+    }                                                                          \
+                                                                               \
+    auto val = FeaturesConfig->GetFeatureValue(cloudId, folderId, fsId, #name);\
+    if (!val) {                                                                \
+        return Get##name();                                                    \
+    }                                                                          \
+                                                                               \
+    TDuration res;                                                             \
+    if (!TDuration::TryParse(val, res)) {                                      \
+        return Get##name();                                                    \
+    }                                                                          \
+                                                                               \
+    return res;                                                                \
+}                                                                              \
+
+// FILESTORE_DURATION_FEATURE_GETTER
+
+FILESTORE_DURATION_FEATURES(FILESTORE_DURATION_FEATURE_GETTER)
+
+#undef FILESTORE_DURATION_FEATURE_GETTER
+
 TFileIOConfig TLocalFileStoreConfig::GetFileIOConfig() const
 {
     using EFileIOConfigCase = NProto::TLocalServiceConfig::FileIOConfigCase;
@@ -193,6 +265,12 @@ void TLocalFileStoreConfig::DumpHtml(IOutputStream& out) const
     }
 
 #undef FILESTORE_CONFIG_DUMP
+}
+
+void TLocalFileStoreConfig::SetFeaturesConfig(
+    NFeatures::TFeaturesConfigPtr featuresConfig)
+{
+    FeaturesConfig = std::move(featuresConfig);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

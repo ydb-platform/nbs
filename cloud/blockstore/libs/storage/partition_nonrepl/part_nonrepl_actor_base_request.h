@@ -47,8 +47,7 @@ public:
         TNonreplicatedPartitionConfigPtr partConfig,
         NActors::TActorId volumeActorId,
         const NActors::TActorId& part,
-        TChildLogTitle logTitle,
-        ui64 deviceOperationId);
+        TChildLogTitle logTitle);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -82,11 +81,13 @@ protected:
 
     void OnRequestStarted(
         const NActors::TActorContext& ctx,
-        const TString& deviceUUID,
+        const TString& agentId,
         TDeviceOperationTracker::ERequestType requestType,
-        ui32 cookie);
+        size_t requestIndex);
 
-    void OnRequestFinished(const NActors::TActorContext& ctx, ui32 cookie);
+    void OnRequestFinished(
+        const NActors::TActorContext& ctx,
+        size_t requestIndex);
 
 private:
     void StateWork(TAutoPtr<NActors::IEventHandle>& ev);

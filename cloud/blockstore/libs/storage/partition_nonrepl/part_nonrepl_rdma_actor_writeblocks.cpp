@@ -36,8 +36,7 @@ NProto::TWriteDeviceBlocksRequest CreateWriteDeviceBlocksRequest(
     const TDeviceRequest& deviceRequest,
     const NProto::TWriteBlocksRequest& sourceRequest,
     const TNonreplicatedPartitionConfigPtr& partConfig,
-    bool assignIdToWriteAndZeroRequestsEnabled,
-    ui32 requestIndex)
+    bool assignIdToWriteAndZeroRequestsEnabled)
 {
     NProto::TWriteDeviceBlocksRequest request;
     request.MutableHeaders()->CopyFrom(sourceRequest.GetHeaders());
@@ -49,8 +48,9 @@ NProto::TWriteDeviceBlocksRequest CreateWriteDeviceBlocksRequest(
             sourceRequest.GetHeaders().GetVolumeRequestId());
     }
 
-    if (requestIndex < sourceRequest.ChecksumsSize()) {
-        const auto& checksum = sourceRequest.GetChecksums(requestIndex);
+    if (deviceRequest.RelativeDeviceIdx < sourceRequest.ChecksumsSize()) {
+        const auto& checksum =
+            sourceRequest.GetChecksums(deviceRequest.RelativeDeviceIdx);
         if (checksum.GetByteCount() ==
             deviceRequest.BlockRange.Size() * partConfig->GetBlockSize())
         {
@@ -92,6 +92,7 @@ public:
             size_t requestCount,
             bool replyLocal,
             ui32 requestBlockCount,
+            NActors::TActorId volumeActorId,
             NActors::TActorId parentActorId,
             ui64 requestId)
         : TBase(
@@ -99,6 +100,7 @@ public:
               std::move(partConfig),
               std::move(requestInfo),
               requestId,
+              volumeActorId,
               parentActorId,
               requestBlockCount,
               requestCount)
@@ -156,7 +158,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
         ui32 errorCode,
         TString errorReason)
     {
-        auto response = std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
+        auto response = std::make_unique<TEvService::TEvWriteBlocksResponse>(
             PartConfig->MakeError(errorCode, std::move(errorReason)));
 
         LWTRACK(
@@ -209,6 +211,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
             deviceRequests.size(),
             false,
             blockRange.Size(),
+            VolumeActorId,
             SelfId(),
             requestId);
 
@@ -221,12 +224,21 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
 
     TRequestContext sentRequestCtx;
 
-    if (deviceRequests.size() == 1) {
-        CombineChecksumsInPlace(*msg->Record.MutableChecksums());
+    // Single device request can either indicate that the request is over a
+    // single device. In that case we should combine checksums. Or it can
+    // indicate that this partition has some "holes" in its config (e.g. target
+    // of a migration can have only one device).
+    if (deviceRequests.size() == 1 && msg->Record.ChecksumsSize() > 1) {
+        const ui32 idx = deviceRequests[0].RelativeDeviceIdx;
+        const ui32 checksumBlockCount =
+            msg->Record.GetChecksums(idx).GetByteCount() /
+            PartConfig->GetBlockSize();
+        if (checksumBlockCount < deviceRequests[0].BlockRange.Size()) {
+            CombineChecksumsInPlace(*msg->Record.MutableChecksums());
+        }
     }
 
-    for (ui32 i = 0; i < deviceRequests.size(); ++i) {
-        const auto& deviceRequest = deviceRequests[i];
+    for (const auto& deviceRequest: deviceRequests) {
         auto ep = AgentId2Endpoint[deviceRequest.Device.GetAgentId()];
         Y_ABORT_UNLESS(ep);
 
@@ -234,13 +246,13 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
             deviceRequest,
             msg->Record,
             PartConfig,
-            AssignIdToWriteAndZeroRequestsEnabled,
-            i);
+            AssignIdToWriteAndZeroRequestsEnabled);
 
-        auto context = std::make_unique<TDeviceRequestRdmaContext>();
-        context->DeviceIdx = deviceRequest.DeviceIdx;
+        auto context = std::make_unique<TDeviceRequestRdmaContext>(
+            deviceRequest.DeviceIdx);
 
-        sentRequestCtx.emplace_back(deviceRequest.DeviceIdx);
+        sentRequestCtx.emplace_back(
+            TRunningRdmaRequestInfo{.DeviceIdx = deviceRequest.DeviceIdx});
 
         auto [req, err] = ep->AllocateRequest(
             requestResponseHandler,
@@ -263,12 +275,11 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
                 ctx,
                 deviceRequest.Device.GetDeviceUUID());
 
-            using TResponse = TEvService::TEvWriteBlocksResponse;
             NCloud::Reply(
                 ctx,
                 *requestInfo,
-                std::make_unique<TResponse>(std::move(err)));
-
+                std::make_unique<TEvService::TEvWriteBlocksResponse>(
+                    std::move(err)));
             return;
         }
 
@@ -287,17 +298,23 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
             request,
             sglist);
 
-        requests.push_back({std::move(ep), std::move(req)});
+        requests.push_back(
+            {.Endpoint = std::move(ep), .ClientRequest = std::move(req)});
     }
 
     for (size_t i = 0; i < requests.size(); ++i) {
         auto& request = requests[i];
-        sentRequestCtx[i].SentRequestId = request.Endpoint->SendRequest(
+
+        requestResponseHandler->OnRequestStarted(
+            sentRequestCtx[i].DeviceIdx,
+            TDeviceOperationTracker::ERequestType::Write);
+
+        sentRequestCtx[i].ClientRequestId = request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             requestInfo->CallContext);
     }
 
-    RequestsInProgress.AddWriteRequest(requestId, sentRequestCtx);
+    RequestsInProgress.AddWriteRequest(requestId, blockRange, sentRequestCtx);
 }
 
 void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
@@ -375,6 +392,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
             deviceRequests.size(),
             true,
             blockRange.Size(),
+            VolumeActorId,
             SelfId(),
             requestId);
 
@@ -383,13 +401,23 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
     TVector<TDeviceRequestInfo> requests;
     TRequestContext sentRequestCtx;
 
-    if (deviceRequests.size() == 1) {
-        CombineChecksumsInPlace(*msg->Record.MutableChecksums());
+    // Single device request can either indicate that the request is over a
+    // single device. In that case we should combine checksums. Or it can
+    // indicate that this partition has some "holes" in its config (e.g. target
+    // of a migration can have only one device).
+    if (deviceRequests.size() == 1 && msg->Record.ChecksumsSize() > 1) {
+        const ui32 idx = deviceRequests[0].RelativeDeviceIdx;
+        const ui32 checksumBlockCount =
+            msg->Record.GetChecksums(idx).GetByteCount() /
+            PartConfig->GetBlockSize();
+        if (checksumBlockCount < deviceRequests[0].BlockRange.Size()) {
+            CombineChecksumsInPlace(*msg->Record.MutableChecksums());
+        }
     }
 
-    ui64 blocks = 0;
-    for (ui32 i = 0; i < deviceRequests.size(); ++i) {
-        const auto& deviceRequest = deviceRequests[i];
+    ui64 blocks =
+        deviceRequests[0].BlockRange.Start - msg->Record.GetStartIndex();
+    for (const auto& deviceRequest: deviceRequests) {
         auto ep = AgentId2Endpoint[deviceRequest.Device.GetAgentId()];
         Y_ABORT_UNLESS(ep);
 
@@ -399,11 +427,10 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
             deviceRequest,
             msg->Record,
             PartConfig,
-            AssignIdToWriteAndZeroRequestsEnabled,
-            i);
+            AssignIdToWriteAndZeroRequestsEnabled);
 
-        auto context = std::make_unique<TDeviceRequestRdmaContext>();
-        context->DeviceIdx = deviceRequest.DeviceIdx;
+        auto context = std::make_unique<TDeviceRequestRdmaContext>(
+            deviceRequest.DeviceIdx);
 
         auto [req, err] = ep->AllocateRequest(
             requestResponseHandler,
@@ -426,11 +453,11 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
                 ctx,
                 deviceRequest.Device.GetDeviceUUID());
 
-            using TResponse = TEvService::TEvWriteBlocksLocalResponse;
             NCloud::Reply(
                 ctx,
                 *requestInfo,
-                std::make_unique<TResponse>(std::move(err)));
+                std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
+                    std::move(err)));
 
             return;
         }
@@ -451,17 +478,23 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
 
         blocks += deviceRequest.DeviceBlockRange.Size();
 
-        requests.push_back({std::move(ep), std::move(req)});
+        requests.push_back(
+            {.Endpoint = std::move(ep), .ClientRequest = std::move(req)});
     }
 
     for (size_t i = 0; i < requests.size(); ++i) {
         auto& request = requests[i];
-        sentRequestCtx[i].SentRequestId = request.Endpoint->SendRequest(
+
+        requestResponseHandler->OnRequestStarted(
+            sentRequestCtx[i].DeviceIdx,
+            TDeviceOperationTracker::ERequestType::Write);
+
+        sentRequestCtx[i].ClientRequestId = request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             requestInfo->CallContext);
     }
 
-    RequestsInProgress.AddWriteRequest(requestId, sentRequestCtx);
+    RequestsInProgress.AddWriteRequest(requestId, blockRange, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

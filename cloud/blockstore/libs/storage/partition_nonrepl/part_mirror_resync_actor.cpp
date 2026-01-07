@@ -353,8 +353,10 @@ STFUNC(TMirrorPartitionResyncActor::StateZombie)
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvResyncNextRange);
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvRangeResynced);
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvReadResyncFastPathResponse);
+        IgnoreFunc(TEvVolume::TEvResyncStateUpdated);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
+        IgnoreFunc(TEvVolume::TEvScrubberCounters);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);

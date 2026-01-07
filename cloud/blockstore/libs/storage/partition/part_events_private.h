@@ -179,6 +179,7 @@ using TFlushedCommitIds = TVector<TFlushedCommitId>;
     xxx(PatchBlob,                 __VA_ARGS__)                                \
     xxx(AddConfirmedBlobs,         __VA_ARGS__)                                \
     xxx(AddUnconfirmedBlobs,       __VA_ARGS__)                                \
+    xxx(DeleteUnconfirmedBlobs,    __VA_ARGS__)                                \
 // BLOCKSTORE_PARTITION_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -699,6 +700,26 @@ struct TEvPartitionPrivate
     };
 
     //
+    // DeleteUnconfirmedBlobs
+    //
+
+    struct TDeleteUnconfirmedBlobsRequest
+    {
+        ui64 CommitId = 0;
+
+        TDeleteUnconfirmedBlobsRequest() = default;
+
+        explicit TDeleteUnconfirmedBlobsRequest(ui64 commitId)
+            : CommitId(commitId)
+        {}
+    };
+
+    struct TDeleteUnconfirmedBlobsResponse
+    {
+        ui64 ExecCycles = 0;
+    };
+
+    //
     // OperationCompleted
     //
 
@@ -750,18 +771,18 @@ struct TEvPartitionPrivate
         : TOperationCompleted
     {
         const bool CollectGarbageBarrierAcquired = false;
-        const bool UnconfirmedBlobsAdded = false;
+        const bool AddingUnconfirmedBlobsRequested = false;
         const bool TrimFreshLogBarrierAcquired = false;
         // needed to pass block checksums to PartState
         TVector<TBlobToConfirm> BlobsToConfirm;
 
         TWriteBlocksCompleted(
                 bool collectGarbageBarrierAcquired,
-                bool unconfirmedBlobsAdded,
+                bool addingUnconfirmedBlobsRequested,
                 bool trimFreshLogBarrierAcquired,
                 TVector<TBlobToConfirm> blobsToConfirm)
             : CollectGarbageBarrierAcquired(collectGarbageBarrierAcquired)
-            , UnconfirmedBlobsAdded(unconfirmedBlobsAdded)
+            , AddingUnconfirmedBlobsRequested(addingUnconfirmedBlobsRequested)
             , TrimFreshLogBarrierAcquired(trimFreshLogBarrierAcquired)
             , BlobsToConfirm(std::move(blobsToConfirm))
         {
@@ -778,12 +799,12 @@ struct TEvPartitionPrivate
         }
 
         static TWriteBlocksCompleted CreateMergedBlocksCompleted(
-            bool unconfirmedBlobsAdded,
+            bool addingUnconfirmedBlobsRequested,
             TVector<TBlobToConfirm>&& blobsToConfirm)
         {
             return TWriteBlocksCompleted(
                 true,
-                unconfirmedBlobsAdded,
+                addingUnconfirmedBlobsRequested,
                 false,
                 std::move(blobsToConfirm));
         }

@@ -1,5 +1,7 @@
 #include "part_mirror_split_request_helpers.h"
 
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
+
 #include <cloud/storage/core/libs/common/sglist_block_range.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -19,6 +21,7 @@ TResponse MergeReadBlocksResponsesImpl(std::span<TResponse> responsesToMerge)
     bool allZeros = true;
     bool allBlocksEmpty = true;
 
+    TVector<NProto::TChecksum> checksums;
     for (const auto& response: responsesToMerge) {
         if (HasError(response)) {
             return response;
@@ -26,10 +29,16 @@ TResponse MergeReadBlocksResponsesImpl(std::span<TResponse> responsesToMerge)
         allZeros &= response.GetAllZeroes();
         allBlocksEmpty &= response.GetBlocks().BuffersSize() == 0;
         throttlerDelaySum += response.GetThrottlerDelay();
+        checksums.push_back(response.GetChecksum());
     }
 
     result.SetThrottlerDelay(throttlerDelaySum);
     result.SetAllZeroes(allZeros);
+    if (NProto::TChecksum checksum = CombineChecksums(checksums);
+        checksum.GetByteCount() > 0)
+    {
+        *result.MutableChecksum() = std::move(checksum);
+    }
 
     if (allBlocksEmpty) {
         return result;

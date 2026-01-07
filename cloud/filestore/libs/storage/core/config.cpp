@@ -163,6 +163,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(MaxResponseBytes,              ui32,      4_MB                        )\
     xxx(MaxResponseEntries,            ui32,      1000                        )\
+    xxx(MaxBytesMultiplier,            ui32,      10                          )\
                                                                                \
     xxx(DupCacheEntryCount,            ui32,      1024/*iod 128 but NBS-4016*/)\
     xxx(DisableLocalService,           bool,      false                       )\
@@ -188,6 +189,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
             NCloud::NProto::AUTHORIZATION_IGNORE                              )\
                                                                                \
     xxx(TwoStageReadEnabled,             bool,      false                     )\
+    xxx(TwoStageReadThreshold,           ui32,      0                         )\
     xxx(TwoStageReadDisabledForHDD,      bool,      false                     )\
     xxx(ThreeStageWriteEnabled,          bool,      false                     )\
     xxx(ThreeStageWriteThreshold,        ui32,      64_KB                     )\
@@ -200,6 +202,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ReadAheadCacheMaxHandlesPerNode,        ui32,      128                )\
     xxx(NodeIndexCacheMaxNodes,                 ui32,        0                )\
     xxx(EntryTimeout,                    TDuration, TDuration::Zero()         )\
+    xxx(RegularFileEntryTimeout,         TDuration, TDuration::Zero()         )\
     xxx(NegativeEntryTimeout,            TDuration, TDuration::Zero()         )\
     xxx(AttrTimeout,                     TDuration, TDuration::Zero()         )\
     xxx(MaxOutOfOrderCompactionMapLoadRequestsInQueue,  ui32,      5          )\
@@ -295,6 +298,24 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ZeroCopyWriteEnabled,              bool,      false                   )\
                                                                                \
     xxx(FSyncQueueDisabled,                bool,      false                   )\
+                                                                               \
+    xxx(DirectoryHandlesStorageEnabled,    bool,      false                   )\
+    xxx(DirectoryHandlesTableSize,         ui64,      100'000                 )\
+    xxx(GuestHandleKillPrivV2Enabled,      bool,      false                   )\
+    xxx(AllowAdditionalSystemTablets,      bool,      false                   )\
+                                                                               \
+    xxx(ZeroCopyReadEnabled,               bool,      false                   )\
+                                                                               \
+    xxx(BlockChecksumsInProfileLogEnabled, bool,      false                   )\
+                                                                               \
+    xxx(MaxShardCount,                     ui32,      254                     )\
+                                                                               \
+    xxx(ReadBlobDisabled,                  bool,      false                   )\
+    xxx(WriteBlobDisabled,                 bool,      false                   )\
+                                                                               \
+    xxx(CpuLackOverloadThreshold,          ui32,      101                     )\
+                                                                               \
+    xxx(MaxTabletStep,                     ui32,      Max<ui32>()             )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

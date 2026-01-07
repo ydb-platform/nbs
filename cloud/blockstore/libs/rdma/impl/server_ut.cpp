@@ -117,7 +117,8 @@ Y_UNIT_TEST_SUITE(TRdmaServerTest)
             Y_UNUSED(id);
             Y_UNUSED(backlog);
 
-            throw TServiceError(ENODEV) << "rdma_listen error: No such device";
+            STORAGE_THROW_SERVICE_ERROR(ENODEV)
+                << "rdma_listen error: No such device";
         };
 
         auto verbs = NVerbs::CreateTestVerbs(std::move(context));
@@ -158,12 +159,12 @@ Y_UNIT_TEST_SUITE(TRdmaServerTest)
         context->CreateQP = [](rdma_cm_id* id, ibv_qp_init_attr* attr) {
             Y_UNUSED(id);
             Y_UNUSED(attr);
-            throw TServiceError(MAKE_SYSTEM_ERROR(EINVAL));
+            STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(EINVAL));
         };
 
         context->DestroyQP = [](rdma_cm_id* id) {
             if (id->qp == nullptr) {
-                throw TServiceError(MAKE_SYSTEM_ERROR(EINVAL));
+                STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(EINVAL));
             }
         };
 

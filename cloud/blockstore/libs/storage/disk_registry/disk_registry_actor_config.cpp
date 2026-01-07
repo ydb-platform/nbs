@@ -18,10 +18,13 @@ void TDiskRegistryActor::HandleUpdateConfig(
     const auto* msg = ev->Get();
     auto newConfig = msg->Record.GetConfig();
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received UpdateConfig request: Version=%u",
-        TabletID(),
-        newConfig.GetVersion());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received UpdateConfig request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
@@ -67,8 +70,11 @@ void TDiskRegistryActor::CompleteUpdateConfig(
     TTxDiskRegistry::TUpdateConfig& args)
 {
     if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "UpdateConfig error: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s UpdateConfig error: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(args.Error).c_str());
     }
 
@@ -99,9 +105,13 @@ void TDiskRegistryActor::HandleDescribeConfig(
 {
     BLOCKSTORE_DISK_REGISTRY_COUNTER(DescribeConfig);
 
+    const auto* msg = ev->Get();
+
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received DescribeConfig request",
-        TabletID());
+        "%s Received DescribeConfig request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     auto response = std::make_unique<TEvDiskRegistry::TEvDescribeConfigResponse>();
 

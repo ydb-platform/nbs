@@ -270,7 +270,8 @@ private:
     TString SourceDiskId;
     TFollowerDisks FollowerDisks;
     TLeaderDisks LeaderDisks;
-    TString PrincipalDiskId;
+    TString PrincipalDiskId;   // Set when in ELeadershipStatus::Outdated
+    ELeadershipStatus LeadershipStatus = ELeadershipStatus::Principal;
 
     struct TLaggingAgentMigrationInfo
     {
@@ -440,7 +441,12 @@ public:
     // Partitions
     //
 
-    TPartitionInfoList& GetPartitions()
+    TPartitionInfoList& AccessPartitions()
+    {
+        return Partitions;
+    }
+
+    const TPartitionInfoList& GetPartitions() const
     {
         return Partitions;
     }
@@ -576,6 +582,7 @@ public:
         NProto::TError Error;
         TVector<TString> RemovedClientIds;
         bool ForceTabletRestart = false;
+        bool VolumeClientMigrationInProgress = false;
 
         TAddClientResult() = default;
 
@@ -834,6 +841,7 @@ public:
     void RemoveLeader(const TLeaderFollowerLink& link);
     const TLeaderDisks& GetAllLeaders() const;
     TString GetPrincipalDiskId() const;
+    ELeadershipStatus GetLeadershipStatus() const;
 
     //
     // Scrubbing
@@ -850,11 +858,11 @@ private:
     bool CanPreemptClient(
         const TString& oldClientId,
         TInstant referenceTimestamp,
-        ui64 clientMountSeqNumber);
+        ui64 clientMountSeqNumber) const;
 
     bool CanAcceptClient(
         ui64 newFillSeqNumber,
-        ui64 proposedFillGeneration);
+        ui64 proposedFillGeneration) const;
 
     bool ShouldForceTabletRestart(const NProto::TVolumeClientInfo& info) const;
 
@@ -862,7 +870,9 @@ private:
 
     [[nodiscard]] bool ShouldTrackUsedBlocks() const;
 
-    void UpdatePrincipalDiskId();
+    void UpdateLeadershipStatus();
+
+    [[nodiscard]] bool IsVolumeClientMigrationInProgress() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

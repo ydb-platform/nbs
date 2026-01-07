@@ -89,8 +89,6 @@ private:
         GetCycleCount(),
         TLogTitle::TPartitionNonrepl{.DiskId = PartConfig->GetName()}};
 
-    ui64 DeviceOperationIdGenerator = 1;
-
 public:
     TNonreplicatedPartitionActor(
         TStorageConfigPtr config,
@@ -201,8 +199,6 @@ private:
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
-
-    ui64 GenerateOperationId(size_t deviceRequestsCount);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(WriteBlocks, TEvService);

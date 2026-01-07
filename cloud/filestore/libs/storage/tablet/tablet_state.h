@@ -148,6 +148,13 @@ struct TMiscNodeStats
     i64 OrphanNodesCount{0};
 };
 
+struct THandlesStats
+{
+    i64 UsedDirectHandlesCount{0};
+    // TODO(2566) get rid of this counter after migration
+    i64 SevenBytesHandlesCount{0};
+};
+
 struct TWriteMixedBlocksResult
 {
     ui32 GarbageBlocksCount = 0;
@@ -216,6 +223,8 @@ private:
     /*const*/ ui64 LargeDeletionMarkersThreshold = 0;
     /*const*/ ui64 LargeDeletionMarkersCleanupThreshold = 0;
     /*const*/ ui64 LargeDeletionMarkersThresholdForBackpressure = 0;
+
+    /*const*/ ui32 MaxTabletStep = Max<ui32>();
 
     bool StateLoaded = false;
 
@@ -305,7 +314,7 @@ public:
 
     ui64 GenerateCommitId()
     {
-        if (LastStep == Max<ui32>()) {
+        if (LastStep == MaxTabletStep) {
             return InvalidCommitId;
         }
 
@@ -341,6 +350,7 @@ public:
     }
 
     TMiscNodeStats GetMiscNodeStats() const;
+    THandlesStats GetHandlesStats() const;
 
     const NProto::TFileStorePerformanceProfile& GetPerformanceProfile() const;
 
@@ -354,7 +364,7 @@ public:
         return AllocatorRegistry.GetAllocator(tag);
     }
 
-    ui64 CalculateExpectedShardCount() const;
+    ui64 CalculateExpectedShardCount(ui32 maxShardCount) const;
 
     NProto::TError SelectShard(ui64 fileSize, TString* shardId);
 
@@ -1428,6 +1438,7 @@ public:
     void UpdateInMemoryIndexState(
         TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates);
     void MarkNodeRefsLoadComplete();
+    void MarkNodeRefsExhaustive(ui64 nodeId);
     TInMemoryIndexStateStats GetInMemoryIndexStateStats() const;
 };
 

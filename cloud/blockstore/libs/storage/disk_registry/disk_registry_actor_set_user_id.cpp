@@ -19,11 +19,13 @@ void TDiskRegistryActor::HandleSetUserId(
     const auto& diskId = msg->Record.GetDiskId();
     const auto& userId = msg->Record.GetUserId();
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received SetUserId request: DiskId=%s UserId=%s",
-        TabletID(),
-        diskId.c_str(),
-        userId.c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received SetUserId request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
@@ -65,8 +67,11 @@ void TDiskRegistryActor::CompleteSetUserId(
     TTxDiskRegistry::TSetUserId& args)
 {
     if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "SetUserId error: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s SetUserId error: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(args.Error).c_str());
     }
 

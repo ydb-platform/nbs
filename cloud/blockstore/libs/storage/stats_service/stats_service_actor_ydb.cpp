@@ -467,8 +467,8 @@ void TStatsServiceActor::HandleUploadDisksStats(
     StatsUploadScheduled = false;
 
     if (!VolumeIdQueueForYdbStatsUpload) {
-        for (auto& p: State.GetVolumes()) {
-            VolumeIdQueueForYdbStatsUpload.push_back(p.first);
+        for (const auto& [logicalDiskId, _]: State.GetVolumes()) {
+            VolumeIdQueueForYdbStatsUpload.push_back(logicalDiskId);
         }
     }
 

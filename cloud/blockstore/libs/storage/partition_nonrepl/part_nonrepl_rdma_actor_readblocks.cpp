@@ -47,6 +47,7 @@ public:
             TRequestInfoPtr requestInfo,
             size_t requestCount,
             ui32 blockCount,
+            NActors::TActorId volumeActorId,
             NActors::TActorId parentActorId,
             ui64 requestId,
             bool checkVoidBlocks)
@@ -55,6 +56,7 @@ public:
               std::move(partConfig),
               std::move(requestInfo),
               requestId,
+              volumeActorId,
               parentActorId,
               blockCount,
               requestCount)
@@ -192,6 +194,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocks(
         requestInfo,
         deviceRequests.size(),
         blockRange.Size(),
+        VolumeActorId,
         SelfId(),
         requestId,
         Config->GetOptimizeVoidBuffersTransferForReadsEnabled());
@@ -213,7 +216,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocks(
         return;
     }
 
-    RequestsInProgress.AddReadRequest(requestId, sentRequestCtx);
+    RequestsInProgress.AddReadRequest(requestId, blockRange, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

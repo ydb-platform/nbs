@@ -207,17 +207,22 @@ void TResyncRangeActor::ReadBlocks(const TActorContext& ctx)
     ReadStartTs = ctx.Now();
 }
 
-void TResyncRangeActor::WriteBlocks(const TActorContext& ctx)
+void TResyncRangeActor::WriteBlocks(
+    const TActorContext& ctx,
+    const NProto::TReadBlocksResponse& readResponse)
 {
     for (int idx: ActorsToResync) {
         WriteRangeInfo.ReplicaChecksums.push_back(MakeChecksums(idx, SgList));
-        WriteReplicaBlocks(ctx, idx);
+        WriteReplicaBlocks(ctx, readResponse, idx);
     }
 
     WriteStartTs = ctx.Now();
 }
 
-void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
+void TResyncRangeActor::WriteReplicaBlocks(
+    const TActorContext& ctx,
+    const NProto::TReadBlocksResponse& readResponse,
+    int idx)
 {
     auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
     request->Record.MutableHeaders()->SetVolumeRequestId(VolumeRequestId);
@@ -227,6 +232,9 @@ void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
     request->Record.BlocksCount = Range.Size();
     request->Record.BlockSize = BlockSize;
     request->Record.Sglist = SgList;
+    if (readResponse.HasChecksum()) {
+        *request->Record.MutableChecksums()->Add() = readResponse.GetChecksum();
+    }
 
     auto* headers = request->Record.MutableHeaders();
     headers->SetIsBackgroundRequest(true);
@@ -371,7 +379,7 @@ void TResyncRangeActor::HandleReadResponse(
     ReadRangeInfo.ReplicaChecksums.push_back(
         MakeChecksums(ReplicaIndexToReadFrom, SgList));
 
-    WriteBlocks(ctx);
+    WriteBlocks(ctx, msg->Record);
 }
 
 void TResyncRangeActor::HandleWriteUndelivery(

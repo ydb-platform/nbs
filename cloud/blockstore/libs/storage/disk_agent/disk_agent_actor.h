@@ -97,6 +97,10 @@ private:
 
     NActors::TActorId HealthCheckActor;
 
+    TRequestInfoPtr PendingAttachDetachPathsRequest;
+
+    ITaskQueuePtr BackgroundThreadPool;
+
 public:
     TDiskAgentActor(
         TStorageConfigPtr config,
@@ -109,7 +113,8 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ILoggingServicePtr logging,
         NRdma::IServerPtr rdmaServer,
-        NNvme::INvmeManagerPtr nvmeManager);
+        NNvme::INvmeManagerPtr nvmeManager,
+        ITaskQueuePtr backgroundThreadPool);
 
     ~TDiskAgentActor() override;
 
@@ -238,6 +243,14 @@ private:
     void HandleMultiAgentWriteDeviceBlocks(
         const TEvDiskAgentPrivate::TEvMultiAgentWriteDeviceBlocksRequest::TPtr&
             ev,
+        const NActors::TActorContext& ctx);
+
+    void HandlePathsDetached(
+        const TEvDiskAgentPrivate::TEvPathsDetached::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandlePathsPrepared(
+        const TEvDiskAgentPrivate::TEvPathsPrepared::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

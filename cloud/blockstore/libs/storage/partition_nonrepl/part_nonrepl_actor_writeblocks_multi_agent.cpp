@@ -1,7 +1,6 @@
 #include "part_nonrepl_actor.h"
 
 #include "part_nonrepl_actor_base_request.h"
-#include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/common/request_checksum_helpers.h>
@@ -52,8 +51,7 @@ public:
         TActorId volumeActorId,
         const TActorId& part,
         bool assignVolumeRequestId,
-        TChildLogTitle logTitle,
-        ui64 deviceOperationId);
+        TChildLogTitle logTitle);
 
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
@@ -82,8 +80,7 @@ TDiskAgentMultiWriteActor::TDiskAgentMultiWriteActor(
         TActorId volumeActorId,
         const TActorId& part,
         bool assignVolumeRequestId,
-        TChildLogTitle logTitle,
-        ui64 deviceOperationId)
+        TChildLogTitle logTitle)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -93,8 +90,7 @@ TDiskAgentMultiWriteActor::TDiskAgentMultiWriteActor(
           std::move(partConfig),
           volumeActorId,
           part,
-          std::move(logTitle),
-          deviceOperationId)
+          std::move(logTitle))
     , AssignVolumeRequestId(assignVolumeRequestId)
     , Request(std::move(request))
 {}
@@ -110,8 +106,8 @@ void TDiskAgentMultiWriteActor::SendRequest(const TActorContext& ctx)
 
     for (const auto& deviceInfo: Request.DevicesAndRanges) {
         auto* replicationTarget = request->Record.AddReplicationTargets();
-        replicationTarget->SetNodeId(deviceInfo.Device.GetNodeId());
-        replicationTarget->SetDeviceUUID(deviceInfo.Device.GetDeviceUUID());
+        replicationTarget->SetNodeId(deviceInfo.NodeId);
+        replicationTarget->SetDeviceUUID(deviceInfo.DeviceUUID);
         replicationTarget->SetStartIndex(deviceInfo.DeviceBlockRange.Start);
         replicationTarget->SetTimeout(deviceInfo.RequestTimeout.MilliSeconds());
     }
@@ -141,12 +137,12 @@ void TDiskAgentMultiWriteActor::SendRequest(const TActorContext& ctx)
 
     OnRequestStarted(
         ctx,
-        Request.DevicesAndRanges[0].Device.GetDeviceUUID(),
+        Request.DevicesAndRanges[0].DeviceUUID,
         TDeviceOperationTracker::ERequestType::Write,
         0);
 
     auto event = std::make_unique<NActors::IEventHandle>(
-        MakeDiskAgentServiceId(Request.DevicesAndRanges[0].Device.GetNodeId()),
+        MakeDiskAgentServiceId(Request.DevicesAndRanges[0].NodeId),
         ctx.SelfID,
         request.release(),
         NActors::IEventHandle::FlagForwardOnNondelivery,
@@ -182,13 +178,16 @@ void TDiskAgentMultiWriteActor::HandleWriteDeviceBlocksUndelivery(
 {
     Y_UNUSED(ev);
 
+    OnRequestFinished(ctx, ev->Cookie);
+
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "%s MultiAgentWriteBlocks request #%lu undelivered. Device: %s",
+        "%s MultiAgentWriteBlocks request #%lu undelivered. Device: %s@%u",
         LogTitle.GetWithTime().c_str(),
         GetRequestId(Request),
-        LogDevice(Request.DevicesAndRanges[0].Device).c_str());
+        Request.DevicesAndRanges[0].DeviceUUID.c_str(),
+        Request.DevicesAndRanges[0].NodeId);
 
     // Ignore undelivered event. Wait for TEvWakeup.
 }
@@ -198,6 +197,8 @@ void TDiskAgentMultiWriteActor::HandleWriteDeviceBlocksResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
+    OnRequestFinished(ctx, ev->Cookie);
 
     auto replyInconsistentError = [&]()
     {
@@ -240,8 +241,6 @@ void TDiskAgentMultiWriteActor::HandleWriteDeviceBlocksResponse(
         return;
     }
 
-    OnRequestFinished(ctx, 0);
-
     Y_DEBUG_ABORT_UNLESS(error.GetCode() == S_OK);
     Done(ctx, MakeResponse(std::move(error)), EStatus::Success);
 }
@@ -277,6 +276,8 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWrite(
         ev->Cookie,
         msg->CallContext);
 
+    auto blockRange = msg->Record.Range;
+
     TRequestScope timer(*requestInfo);
 
     LWTRACK(
@@ -311,7 +312,7 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWrite(
         *msg,
         ctx,
         *requestInfo,
-        msg->Record.Range,
+        blockRange,
         &deviceRequests,
         &timeoutPolicy,
         &request);
@@ -326,7 +327,7 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWrite(
         // requests are response with an error if the request hits two disk-agents.
         ReportMultiAgentRequestAffectsTwoDevices(
             "partActor",
-            {{"disk", PartConfig->GetName()}, {"range", msg->Record.Range}});
+            {{"disk", PartConfig->GetName()}, {"range", blockRange}});
         replyError(
             E_ARGUMENT,
             "Can't execute MultiAgentWriteBlocks request cross device borders");
@@ -335,8 +336,6 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWrite(
 
     timeoutPolicy.Timeout =
         CalcOverallTimeout(msg->Record, Config->GetNetworkForwardingTimeout());
-
-    ui64 operationId = GenerateOperationId(deviceRequests.size());
 
     auto actorId = NCloud::Register<TDiskAgentMultiWriteActor>(
         ctx,
@@ -348,10 +347,9 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWrite(
         VolumeActorId,
         SelfId(),
         Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
-        LogTitle.GetChild(GetCycleCount()),
-        operationId);
+        LogTitle.GetChild(GetCycleCount()));
 
-    RequestsInProgress.AddWriteRequest(actorId, std::move(request));
+    RequestsInProgress.AddWriteRequest(actorId, blockRange, std::move(request));
 }
 
 void TNonreplicatedPartitionActor::HandleMultiAgentWriteBlocksCompleted(
@@ -380,7 +378,7 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWriteBlocksCompleted(
     NetworkBytes += requestBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
-    RequestsInProgress.RemoveRequest(ev->Sender);
+    RequestsInProgress.RemoveWriteRequest(ev->Sender);
     OnRequestCompleted(*msg, ctx.Now());
 
     DrainActorCompanion.ProcessDrainRequests(ctx);

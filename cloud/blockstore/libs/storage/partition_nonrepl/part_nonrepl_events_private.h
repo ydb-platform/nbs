@@ -238,9 +238,10 @@ struct TEvNonreplPartitionPrivate
 
         struct TDeviceRequestResult
         {
-            // Index of device that participated in the request and the
-            // result of the request for that device.
-            ui32 DeviceIndex = 0;
+            // Index of the device in the partition config.
+            ui32 DeviceIdx = 0;
+
+            // Result of the request for that device.
             NProto::TError Error;
         };
 
@@ -273,7 +274,8 @@ struct TEvNonreplPartitionPrivate
 
     struct TGetDeviceForRangeResponse
     {
-        NProto::TDeviceConfig Device;
+        ui32 NodeId = 0;
+        TString DeviceUUID;
         TBlockRange64 DeviceBlockRange;
         TDuration RequestTimeout;
         TNonreplicatedPartitionConfigPtr PartConfig;

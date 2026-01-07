@@ -47,9 +47,9 @@ ui32 GetSystemErrorCode()
     return MAKE_FILESTORE_ERROR(error);
 }
 
-TFileStat GetFileStat(const struct stat& fs)
+TFileStatEx GetFileStat(const struct stat& fs)
 {
-    TFileStat st;
+    TFileStatEx st;
     st.Mode = fs.st_mode;
     st.NLinks = fs.st_nlink;
     st.Uid = fs.st_uid;
@@ -59,6 +59,7 @@ TFileStat GetFileStat(const struct stat& fs)
     st.MTime = fs.st_mtime;
     st.CTime = fs.st_ctime;
     st.INode = fs.st_ino;
+    st.Dev = fs.st_rdev;
     return st;
 }
 
@@ -197,6 +198,20 @@ void MkFifoAt(const TFileHandle& handle, const TString& name, int mode)
             << LastSystemErrorText());
 }
 
+void MkCharDeviceAt(const TFileHandle& handle, const TString& name, int mode, dev_t dev) {
+    int res = mknodat(Fd(handle), name.data(), mode | S_IFCHR, dev);
+    Y_ENSURE_EX(res != -1, TServiceError(GetSystemErrorCode())
+        << "failed to create char device: " << name.Quote()
+        << ": " << LastSystemErrorText());
+}
+
+void MkBlockDeviceAt(const TFileHandle& handle, const TString& name, int mode, dev_t dev) {
+    int res = mknodat(Fd(handle), name.data(), mode | S_IFBLK, dev);
+    Y_ENSURE_EX(res != -1, TServiceError(GetSystemErrorCode())
+        << "failed to create block device: " << name.Quote()
+        << ": " << LastSystemErrorText());
+}
+
 void LinkAt(
     const TFileHandle& node,
     const TFileHandle& parent,
@@ -257,7 +272,7 @@ void UnlinkAt(const TFileHandle& handle, const TString& name, bool directory)
         << ": " << LastSystemErrorText());
 }
 
-TFileStat Stat(const TFileHandle& handle)
+TFileStatEx Stat(const TFileHandle& handle)
 {
     struct stat fs = {};
     int res = fstat(Fd(handle), &fs);
@@ -267,7 +282,7 @@ TFileStat Stat(const TFileHandle& handle)
     return GetFileStat(fs);
 }
 
-TFileStat StatAt(const TFileHandle& handle, const TString& name)
+TFileStatEx StatAt(const TFileHandle& handle, const TString& name)
 {
     struct stat fs = {};
     int res = fstatat(Fd(handle), name.data(), &fs, AT_SYMLINK_NOFOLLOW);
@@ -301,7 +316,7 @@ TListDirResult ListDirAt(
     auto* dir = fdopendir(fd);
     if (!dir) {
         close(fd);
-        ythrow TServiceError(GetSystemErrorCode())
+        STORAGE_THROW_SERVICE_ERROR(GetSystemErrorCode())
             << "failed to list dir: "
             << LastSystemErrorText();
     }
@@ -359,6 +374,16 @@ TListDirResult ListDirAt(
     return res;
 }
 
+void Fsync(const TFileHandle& handle, bool datasync)
+{
+    int res = datasync ? fdatasync(Fd(handle)) : fsync(Fd(handle));
+    if (res != 0) {
+        STORAGE_THROW_SERVICE_ERROR(GetSystemErrorCode())
+            << "failed to fsync, datasync=" << datasync << " "
+            << LastSystemErrorText();
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void Access(const TFileHandle& handle, int mode)
@@ -368,7 +393,7 @@ void Access(const TFileHandle& handle, int mode)
 
     int res = access(path, mode);
     if (res != 0) {
-        ythrow TServiceError(GetSystemErrorCode())
+        STORAGE_THROW_SERVICE_ERROR(GetSystemErrorCode())
             << "access failed: "
             << LastSystemErrorText();
     }
@@ -381,7 +406,7 @@ void Chmod(const TFileHandle& handle, int mode)
 
     int res = chmod(path, mode);
     if (res != 0) {
-        ythrow TServiceError(GetSystemErrorCode())
+        STORAGE_THROW_SERVICE_ERROR(GetSystemErrorCode())
             << "chmod failed: "
             << LastSystemErrorText();
     }
@@ -394,7 +419,7 @@ void Chown(const TFileHandle& handle, uid_t uid, gid_t gid)
 
     int res = chown(path, uid, gid);
     if (res != 0) {
-        ythrow TServiceError(GetSystemErrorCode())
+        STORAGE_THROW_SERVICE_ERROR(GetSystemErrorCode())
             << "chown failed: "
             << LastSystemErrorText();
     }
@@ -409,7 +434,7 @@ void Utimes(const TFileHandle& handle, TInstant atime, TInstant mtime)
 
     int res = utimensat(AT_FDCWD, path, tv, 0);
     if (res != 0) {
-        ythrow TServiceError(GetSystemErrorCode())
+        STORAGE_THROW_SERVICE_ERROR(GetSystemErrorCode())
             << "utime failed: "
             << LastSystemErrorText();
     }
@@ -422,7 +447,7 @@ void Truncate(const TFileHandle& handle, size_t size)
 
     int res = truncate(path, size);
     if (res != 0) {
-        ythrow TServiceError(GetSystemErrorCode())
+        STORAGE_THROW_SERVICE_ERROR(GetSystemErrorCode())
             << "truncate failed: "
             << LastSystemErrorText();
     }
@@ -442,13 +467,13 @@ TString ReadLink(const TFileHandle& handle)
 
     int res = readlinkat(Fd(handle), "", &link[0], link.size());
     if (res == -1) {
-        ythrow TServiceError(GetSystemErrorCode())
+        STORAGE_THROW_SERVICE_ERROR(GetSystemErrorCode())
             << "readlink failed: "
             << LastSystemErrorText();
     }
 
     if ((size_t)res == link.size()) {
-        ythrow TServiceError(GetSystemErrorCode())
+        STORAGE_THROW_SERVICE_ERROR(GetSystemErrorCode())
             << "readlink failed: name is too long";
     }
 
@@ -473,7 +498,7 @@ TString GetXAttr(const TFileHandle& handle, const TString& name)
             0);
 
         if (res < 0) {
-            ythrow TServiceError(ErrorAttributeDoesNotExist(name));
+            STORAGE_THROW_SERVICE_ERROR(ErrorAttributeDoesNotExist(name));
         }
 
         buf.resize(res + 1);
@@ -489,7 +514,7 @@ TString GetXAttr(const TFileHandle& handle, const TString& name)
                 continue;
             }
 
-            ythrow TServiceError(E_IO)
+            STORAGE_THROW_SERVICE_ERROR(E_IO)
                 << "failed to get attribute (" << name.Quote() << "): "
                 << LastSystemErrorText();
         }
@@ -515,7 +540,7 @@ void SetXAttr(
         0 /*create or replace*/);
 
     if (res != 0) {
-        ythrow TServiceError(E_IO)
+        STORAGE_THROW_SERVICE_ERROR(E_IO)
             << "failed to set attribute (" << name.Quote() << ", " << value.Quote() << "): "
             << LastSystemErrorText();
     }
@@ -528,7 +553,7 @@ void RemoveXAttr(const TFileHandle& handle, const TString& name)
 
     int res = removexattr(path, name.c_str());
     if (res != 0) {
-        ythrow TServiceError(E_IO)
+        STORAGE_THROW_SERVICE_ERROR(E_IO)
             << "failed to remove attribute (" << name.Quote() << "): "
             << LastSystemErrorText();
     }
@@ -548,7 +573,7 @@ TVector<TString> ListXAttrs(const TFileHandle& handle)
             0);
 
         if (res < 0) {
-            ythrow TServiceError(E_IO)
+            STORAGE_THROW_SERVICE_ERROR(E_IO)
                 << "failed to list attributes: "
                 << LastSystemErrorText();
         }
@@ -565,7 +590,7 @@ TVector<TString> ListXAttrs(const TFileHandle& handle)
                 continue;
             }
 
-            ythrow TServiceError(E_IO)
+            STORAGE_THROW_SERVICE_ERROR(E_IO)
                 << "failed to list attributes: "
                 << LastSystemErrorText();
         }
@@ -596,7 +621,7 @@ bool AcquireLock(
     int res = fcntl(Fd(handle), F_OFD_SETLK, &lck);
     if (res != 0) {
         if (errno != EAGAIN) {
-            ythrow TServiceError(GetSystemErrorCode())
+            STORAGE_THROW_SERVICE_ERROR(GetSystemErrorCode())
                 << "lock failed at (" << offset << ", " << len << "): "
                 << LastSystemErrorText();
         }
@@ -617,7 +642,7 @@ bool TestLock(const TFileHandle& handle, off_t offset, off_t len, bool shared)
 
     int res = fcntl(Fd(handle), F_OFD_GETLK, &lck);
     if (res != 0) {
-        ythrow TServiceError(GetSystemErrorCode())
+        STORAGE_THROW_SERVICE_ERROR(GetSystemErrorCode())
             << "test lock failed at (" << offset << ", " << len << "): "
             << LastSystemErrorText();
     }
@@ -635,7 +660,7 @@ void ReleaseLock(const TFileHandle& handle, off_t offset, off_t len)
 
     int res = fcntl(Fd(handle), F_OFD_SETLK, &lck);
     if (res != 0) {
-        ythrow TServiceError(GetSystemErrorCode())
+        STORAGE_THROW_SERVICE_ERROR(GetSystemErrorCode())
             << "unlock failed at (" << offset << ", " << len << "): "
             << LastSystemErrorText();
     }
@@ -646,7 +671,7 @@ bool Flock(const TFileHandle& handle, int operation)
     int res = flock(Fd(handle), operation);
     if (res != 0) {
         if (errno != EAGAIN) {
-            ythrow TServiceError(GetSystemErrorCode())
+            STORAGE_THROW_SERVICE_ERROR(GetSystemErrorCode())
                 << "flock failed: " << LastSystemErrorText();
         }
         return false;

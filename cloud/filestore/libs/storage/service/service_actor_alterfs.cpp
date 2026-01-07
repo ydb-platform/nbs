@@ -23,10 +23,12 @@ namespace {
 // ResizeStateWork. Alter mode is quite simple and consits of the following
 // steps: Describe main filestore, Alter main filestore
 // The steps of the resize mode:
-// 1. Describe main filestore. Gets main file system size, config version,
-// calculates desired number of shards
-// 2. Get filesystem topology. Gets number of exsiting shards, calculates number
-// of shards to be created.
+// 1. Describe main filestore. Store NKikimrFileStore::TConfig of the main
+// filesystem for later use.
+// 2. Get filesystem topology. Using the topology and the config from the
+// previous step, calculate all parameters of the transformation performed by
+// resize action: ShardsToCreate, ShardsToConfigure, ShardsToAlter,
+// ShouldConfigureMainFileStore.
 // 3. Describe shards. We need this step to get config version of shards in case
 // we need to resize them.
 // 4. Alter (actually resize) main filestore.
@@ -40,7 +42,7 @@ class TAlterFileStoreActor final
     : public TActorBootstrapped<TAlterFileStoreActor>
 {
 private:
-    const TStorageConfigPtr StorageConfig;
+    TStorageConfigPtr StorageConfig;
     const TRequestInfoPtr RequestInfo;
     const TString FileSystemId;
     const NProto::TFileStorePerformanceProfile PerformanceProfile;
@@ -49,6 +51,7 @@ private:
     const ui32 ExplicitShardCount;
 
     NKikimrFileStore::TConfig TargetConfig;
+    NKikimrFileStore::TConfig MainFileStoreOriginalConfig;
 
     TMultiShardFileStoreConfig FileStoreConfig;
 
@@ -57,10 +60,14 @@ private:
     ui32 ShardsToConfigure = 0;
     ui32 ShardsToAlter = 0;
     ui32 ShardsToDescribe = 0;
+    ui32 MaxShardCount = 0;
     // These flags are set by HandleGetFileSystemTopologyResponse.
     bool DirectoryCreationInShardsEnabled = false;
+    bool EnableDirectoryCreationInShards = false;
+
     bool StrictFileSystemSizeEnforcementEnabled = false;
     bool EnableStrictFileSystemSizeEnforcement = false;
+
     bool ShouldConfigureMainFileStore = false;
 
     const ui64 MainFileStoreCookie = Max<ui64>();
@@ -90,6 +97,9 @@ private:
     void CreateShards(const TActorContext& ctx);
     void ConfigureShards(const TActorContext& ctx);
     void ConfigureMainFileStore(const TActorContext& ctx);
+
+    void PatchStorageConfig();
+    void FillMultiShardFileStoreConfig(const TActorContext& ctx);
 
     void HandleDescribeFileStoreForAlterResponse(
         const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
@@ -135,20 +145,11 @@ private:
         const TActorContext& ctx,
         const NProto::TError& error = {});
 
-    void ReportInvaildCookieAndDie(const TActorContext& ctx, ui64 cookie);
+    void ReportInvalidCookieAndDie(const TActorContext& ctx, ui64 cookie);
 
     const char* GetOperationString() const
     {
         return !Alter ? "resize" : "alter";
-    }
-
-    const TString& GetFileSytemIdByCookie(const ui64 cookie) const
-    {
-        if (cookie == MainFileStoreCookie) {
-            return FileSystemId;
-        } else {
-            return FileStoreConfig.ShardConfigs[cookie].GetFileSystemId();
-        }
     }
 
     bool IsCookieValid(const ui64 cookie) const
@@ -157,6 +158,18 @@ private:
                cookie < FileStoreConfig.ShardConfigs.size();
     }
 
+    TString GetFileSystemIdForLogByCookie(const ui64 cookie) const
+    {
+        if (!IsCookieValid(cookie)) {
+            return "UNKNOWN";
+        }
+
+        if (cookie == MainFileStoreCookie) {
+            return FileSystemId;
+        }
+
+        return FileStoreConfig.ShardConfigs[cookie].GetFileSystemId();
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -189,6 +202,8 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , Alter(false)
     , Force(request.GetForce())
     , ExplicitShardCount(request.GetShardCount())
+    , EnableDirectoryCreationInShards(
+          request.GetEnableDirectoryCreationInShards())
     , EnableStrictFileSystemSizeEnforcement(
           request.GetEnableStrictFileSystemSizeEnforcement())
 {
@@ -249,8 +264,7 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
             TFileStoreComponents::SERVICE,
             "[%s] Describing filestore %s (cookie: %lu) failed: %s",
             FileSystemId.c_str(),
-            isCookieValid ? GetFileSytemIdByCookie(ev->Cookie).Quote().c_str()
-                          : "\"UNKNOWN\"",
+            GetFileSystemIdForLogByCookie(ev->Cookie).Quote().c_str(),
             ev->Cookie,
             FormatError(msg->GetError()).c_str());
 
@@ -259,15 +273,30 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
     }
 
     if (!isCookieValid) {
-        ReportInvaildCookieAndDie(ctx, ev->Cookie);
+        ReportInvalidCookieAndDie(ctx, ev->Cookie);
         return;
     }
 
     const auto& fileStore = msg->PathDescription.GetFileStoreDescription();
+    NKikimrFileStore::TConfig currentConfig = fileStore.GetConfig();
 
     // A shard is described
     if (ev->Cookie != MainFileStoreCookie) {
-        FileStoreConfig.ShardConfigs[ev->Cookie].SetVersion(
+        const ui64 shardNo = ev->Cookie;
+        const ui64 blocksCount =
+            FileStoreConfig.ShardConfigs[shardNo].GetBlocksCount();
+        FileStoreConfig.ShardConfigs[shardNo] = currentConfig;
+        FileStoreConfig.ShardConfigs[shardNo].SetBlocksCount(blocksCount);
+        // We need to reconfigure the shard, as only at this point do we know
+        // the original number of channels, and the calculated number of
+        // channels may be less than the real.
+        SetupFileStorePerformanceAndChannels(
+            false /* allocateMixed0Channel */,
+            *StorageConfig,
+            FileStoreConfig.ShardConfigs[shardNo],
+            PerformanceProfile);
+
+        FileStoreConfig.ShardConfigs[shardNo].SetVersion(
             fileStore.GetConfig().GetVersion());
 
         Y_ABORT_UNLESS(ShardsToDescribe);
@@ -277,7 +306,24 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
         return;
     }
 
-    NKikimrFileStore::TConfig currentConfig = fileStore.GetConfig();
+    MainFileStoreOriginalConfig = currentConfig;
+
+    GetFileSystemTopology(ctx);
+}
+
+void TAlterFileStoreActor::PatchStorageConfig()
+{
+    NProto::TStorageConfig protoConfig;
+    protoConfig.SetStrictFileSystemSizeEnforcementEnabled(
+        StrictFileSystemSizeEnforcementEnabled);
+    protoConfig.SetMaxShardCount(MaxShardCount);
+    StorageConfig->Merge(protoConfig);
+}
+
+void TAlterFileStoreActor::FillMultiShardFileStoreConfig(
+    const TActorContext& ctx)
+{
+    NKikimrFileStore::TConfig currentConfig = MainFileStoreOriginalConfig;
 
     // Allocate legacy mixed0 channel in case it was already present
     Y_ABORT_UNLESS(currentConfig.ExplicitChannelProfilesSize() >= 4);
@@ -323,16 +369,13 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
     if (const auto version = TargetConfig.GetVersion()) {
         FileStoreConfig.MainFileSystemConfig.SetVersion(version);
     }
-
-    FileStoreConfig.MainFileSystemConfig.ClearBlockSize();
-
-    GetFileSystemTopology(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void TAlterFileStoreActor::AlterFileStore(const TActorContext& ctx)
 {
+    FileStoreConfig.MainFileSystemConfig.ClearBlockSize();
     FileStoreConfig.MainFileSystemConfig.SetAlterTs(ctx.Now().MicroSeconds());
     auto request = std::make_unique<TEvSSProxy::TEvAlterFileStoreRequest>(
         FileStoreConfig.MainFileSystemConfig);
@@ -371,8 +414,7 @@ void TAlterFileStoreActor::HandleAlterFileStoreResponse(
             TFileStoreComponents::SERVICE,
             "[%s] Altering of filestore %s (cookie: %lu) failed: %s",
             FileSystemId.c_str(),
-            isCookieValid ? GetFileSytemIdByCookie(ev->Cookie).Quote().c_str()
-                          : "\"UNKNOWN\"",
+            GetFileSystemIdForLogByCookie(ev->Cookie).Quote().c_str(),
             ev->Cookie,
             FormatError(msg->GetError()).Quote().c_str());
 
@@ -381,7 +423,7 @@ void TAlterFileStoreActor::HandleAlterFileStoreResponse(
     }
 
     if (!isCookieValid) {
-        ReportInvaildCookieAndDie(ctx, ev->Cookie);
+        ReportInvalidCookieAndDie(ctx, ev->Cookie);
         return;
     }
 
@@ -430,10 +472,15 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
     }
 
     DirectoryCreationInShardsEnabled =
+        EnableDirectoryCreationInShards ||
         msg->Record.GetDirectoryCreationInShardsEnabled();
     StrictFileSystemSizeEnforcementEnabled =
         EnableStrictFileSystemSizeEnforcement ||
         msg->Record.GetStrictFileSystemSizeEnforcementEnabled();
+    MaxShardCount = msg->Record.GetMaxShardCount();
+
+    PatchStorageConfig();
+    FillMultiShardFileStoreConfig(ctx);
 
     for (auto& shardId: *msg->Record.MutableShardFileSystemIds()) {
         ExistingShardIds.push_back(std::move(shardId));
@@ -446,17 +493,16 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
                 MakeError(E_ARGUMENT, "Cannot decrease number of shards"));
             return;
         } else {
-            // In strict mode we just resize all the shards
-            const auto oldSize = FileStoreConfig.ShardConfigs.size();
-            Y_ABORT_UNLESS(oldSize);
-            FileStoreConfig.ShardConfigs.resize(ExistingShardIds.size());
-            for (auto i = oldSize; i < FileStoreConfig.ShardConfigs.size(); ++i)
-            {
-                FileStoreConfig.ShardConfigs[i] =
-                    FileStoreConfig.ShardConfigs[oldSize - 1];
-                FileStoreConfig.ShardConfigs[i].SetFileSystemId(
-                    ExistingShardIds[i]);
-            }
+            // We can't reduce shards count but in strict mode we should resize
+            // all the shards to have the same size as the main filesystem.
+            // So, FileStoreConfig.ShardConfigs should have the same size as
+            // ExistingShardIds.
+            FileStoreConfig.ShardConfigs.clear();
+            FileStoreConfig = SetupMultiShardFileStorePerformanceAndChannels(
+                *StorageConfig,
+                FileStoreConfig.MainFileSystemConfig,
+                PerformanceProfile,
+                ExistingShardIds.size());
         }
     }
 
@@ -509,6 +555,16 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
             ShardsToAlter == 0 && ShardsToDescribe == 0 &&
             !ShouldConfigureMainFileStore);
 
+        if (StrictFileSystemSizeEnforcementEnabled) {
+            ReplyAndDie(
+                ctx,
+                MakeError(
+                    E_ARGUMENT,
+                    "Cannot change shard size if "
+                    "'StrictFileSystemSizeEnforcementEnabled'"));
+            return;
+        }
+
         FileStoreConfig.ShardConfigs.clear();
 
     } else {
@@ -520,7 +576,9 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
             FileStoreConfig.ShardConfigs.size());
         ShardsToCreate =
             FileStoreConfig.ShardConfigs.size() - ExistingShardIds.size();
-        if (ShardsToCreate || EnableStrictFileSystemSizeEnforcement) {
+        if (ShardsToCreate || EnableStrictFileSystemSizeEnforcement ||
+            EnableDirectoryCreationInShards)
+        {
             ShouldConfigureMainFileStore = true;
             ShardsToConfigure = FileStoreConfig.ShardConfigs.size();
         }
@@ -573,15 +631,13 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
 {
     const auto* msg = ev->Get();
 
-    const bool isCookieValid = ev->Cookie < FileStoreConfig.ShardConfigs.size();
     if (HasError(msg->GetError())) {
         LOG_ERROR(
             ctx,
             TFileStoreComponents::SERVICE,
             "[%s] Shard %s (cookie: %lu) creation failed: %s",
             FileSystemId.c_str(),
-            isCookieValid ? GetFileSytemIdByCookie(ev->Cookie).Quote().c_str()
-                          : "\"UNKNOWN\"",
+            GetFileSystemIdForLogByCookie(ev->Cookie).Quote().c_str(),
             ev->Cookie,
             FormatError(msg->GetError()).Quote().c_str());
 
@@ -659,8 +715,7 @@ void TAlterFileStoreActor::HandleConfigureShardResponse(
             TFileStoreComponents::SERVICE,
             "[%s] Shard %s (cookie: %lu) configuration failed: %s",
             FileSystemId.c_str(),
-            isCookieValid ? GetFileSytemIdByCookie(ev->Cookie).Quote().c_str()
-                          : "\"UNKNOWN\"",
+            GetFileSystemIdForLogByCookie(ev->Cookie).Quote().c_str(),
             ev->Cookie,
             FormatError(msg->GetError()).Quote().c_str());
 
@@ -669,7 +724,7 @@ void TAlterFileStoreActor::HandleConfigureShardResponse(
     }
 
     if (!isCookieValid) {
-        ReportInvaildCookieAndDie(ctx, ev->Cookie);
+        ReportInvalidCookieAndDie(ctx, ev->Cookie);
         return;
     }
 
@@ -839,13 +894,13 @@ void TAlterFileStoreActor::ReplyAndDie(
     Die(ctx);
 }
 
-void TAlterFileStoreActor::ReportInvaildCookieAndDie(const TActorContext& ctx, ui64 cookie)
+void TAlterFileStoreActor::ReportInvalidCookieAndDie(const TActorContext& ctx, ui64 cookie)
 {
     ReplyAndDie(
         ctx,
         MakeError(
             E_INVALID_STATE,
-            TStringBuilder() << "invalid coockie: " << cookie));
+            TStringBuilder() << "invalid cookie: " << cookie));
 }
 
 STFUNC(TAlterFileStoreActor::AlterStateWork)

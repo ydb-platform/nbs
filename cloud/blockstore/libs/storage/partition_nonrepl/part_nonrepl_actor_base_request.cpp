@@ -5,6 +5,8 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
+
 #include <util/string/join.h>
 
 using namespace NActors;
@@ -26,14 +28,14 @@ TDiskAgentBaseRequestActor::TDiskAgentBaseRequestActor(
         TNonreplicatedPartitionConfigPtr partConfig,
         TActorId volumeActorId,
         const TActorId& part,
-        TChildLogTitle logTitle,
-        ui64 deviceOperationId)
+        TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , DeviceRequests(std::move(deviceRequests))
     , PartConfig(std::move(partConfig))
     , VolumeActorId(volumeActorId)
     , Part(part)
-    , DeviceOperationId(deviceOperationId)
+    , DeviceOperationId(
+          TDeviceOperationTracker::GenerateId(DeviceRequests.size()))
     , LogTitle(std::move(logTitle))
     , RequestName(std::move(requestName))
     , RequestId(requestId)
@@ -108,7 +110,7 @@ void TDiskAgentBaseRequestActor::Done(
 
     for (const auto& dr: DeviceRequests) {
         completion.Body->RequestResults.push_back(
-            {.DeviceIndex = dr.DeviceIdx, .Error = {}});
+            {.DeviceIdx = dr.DeviceIdx, .Error = {}});
     }
 
     NCloud::Send(ctx, Part, std::move(completion.Event));
@@ -118,36 +120,38 @@ void TDiskAgentBaseRequestActor::Done(
 
 void TDiskAgentBaseRequestActor::OnRequestStarted(
     const NActors::TActorContext& ctx,
-    const TString& deviceUUID,
+    const TString& agentId,
     TDeviceOperationTracker::ERequestType requestType,
-    ui32 cookie)
+    size_t requestIndex)
 {
     if (!DeviceOperationId) {
+        // Tracking of this request is disabled.
         return;
     }
 
     auto startEvent = std::make_unique<
         TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted>(
-        deviceUUID,
+        agentId,
         requestType,
-        DeviceOperationId + cookie);
+        DeviceOperationId + requestIndex);
 
-    ctx.Send(VolumeActorId, startEvent.release());
+    ctx.Send(VolumeActorId, std::move(startEvent));
 }
 
 void TDiskAgentBaseRequestActor::OnRequestFinished(
     const NActors::TActorContext& ctx,
-    ui32 cookie)
+    size_t requestIndex)
 {
     if (!DeviceOperationId) {
+        // Tracking of this request is disabled.
         return;
     }
 
     auto finishEvent = std::make_unique<
         TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished>(
-        DeviceOperationId + cookie);
+        DeviceOperationId + requestIndex);
 
-    ctx.Send(VolumeActorId, finishEvent.release());
+    ctx.Send(VolumeActorId, std::move(finishEvent));
 }
 
 void TDiskAgentBaseRequestActor::HandleCancelRequest(
@@ -155,6 +159,12 @@ void TDiskAgentBaseRequestActor::HandleCancelRequest(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
+    for (size_t requestIndex = 0; requestIndex < DeviceRequests.size();
+         ++requestIndex)
+    {
+        OnRequestFinished(ctx, requestIndex);
+    }
 
     TVector<TString> devices;
     for (const auto& request: DeviceRequests) {

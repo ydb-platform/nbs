@@ -5,7 +5,12 @@ import contrib.ydb.tests.library.common.yatest_common as yatest_common
 from cloud.blockstore.config.discovery_pb2 import TDiscoveryServiceConfig
 from cloud.blockstore.config.grpc_client_pb2 import TGrpcClientConfig
 from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig
-from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, TKikimrServiceConfig
+from cloud.blockstore.config.server_pb2 import (
+    TKikimrServiceConfig,
+    TServerAppConfig,
+    TServerConfig,
+)
+from cloud.blockstore.config.cells_pb2 import TCellsConfig, TCellConfig, TCellHostConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.tests.python.lib.disk_agent_runner import LocalDiskAgent
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
@@ -40,7 +45,10 @@ class NbsLauncher:
         compute_port=0,
         kms_port=0,
         destruction_allowed_only_for_disks_with_id_prefixes=[],
-        disk_agent_count=1
+        disk_agent_count=1,
+        nbs_secure_port=None,
+        cell_id=None,
+        cells=None,
     ):
         self.__ydb_port = ydb_port
         self.__domains_txt = domains_txt
@@ -50,7 +58,8 @@ class NbsLauncher:
 
         self.__port_manager = yatest_common.PortManager()
         nbs_port = self.__port_manager.get_port()
-        nbs_secure_port = self.__port_manager.get_port()
+        if nbs_secure_port is None:
+            nbs_secure_port = self.__port_manager.get_port()
 
         server_app_config = TServerAppConfig()
         server_app_config.ServerConfig.CopyFrom(TServerConfig())
@@ -67,6 +76,25 @@ class NbsLauncher:
         cert.CertFile = cert_file
         cert.CertPrivateKeyFile = cert_key_file
 
+        cells_config = None
+        if cell_id is not None:
+            cells_config = TCellsConfig()
+            cells_config.CellId = cell_id
+
+            if cells is None:
+                cells = []
+
+            for cell in cells:
+                cell_config = TCellConfig()
+                cell_config.CellId = cell["cell_id"]
+
+                for host in cell["hosts"]:
+                    cell_host_config = TCellHostConfig()
+                    cell_host_config.Fqdn = host
+                    cell_config.Hosts.append(cell_host_config)
+
+                cells_config.Cells.append(cell_config)
+
         storage_config_patch = TStorageServiceConfig()
         storage_config_patch.AllocationUnitNonReplicatedSSD = 1
         storage_config_patch.AllocationUnitNonReplicatedHDD = 1
@@ -81,7 +109,6 @@ class NbsLauncher:
 
         # TODO: Actualize blockstore storage config.
         storage_config_patch.FreshChannelWriteRequestsEnabled = True
-        storage_config_patch.FreshChannelCount = 1
 
         # Needed for tests on blockstore client https://github.com/ydb-platform/nbs/pull/3067
         storage_config_patch.MaxDisksInPlacementGroup = 2
@@ -134,15 +161,16 @@ class NbsLauncher:
             kms_config.Insecure = True
 
         features_config_patch = TFeaturesConfig()
-        encryption_at_rest = features_config_patch.Features.add()
-        encryption_at_rest.Name = 'EncryptionAtRestForDiskRegistryBasedDisks'
-        encryption_at_rest.Whitelist.FolderIds.append("encrypted-folder")
+        root_kms_encryption = features_config_patch.Features.add()
+        root_kms_encryption.Name = 'RootKmsEncryptionForDiskRegistryBasedDisks'
+        root_kms_encryption.Whitelist.FolderIds.append("encrypted-folder")
 
         self.__nbs = LocalNbs(
             ydb_port,
             domains_txt,
             server_app_config=server_app_config,
             storage_config_patches=[storage_config_patch],
+            cells_config=cells_config,
             discovery_config=discovery_config,
             enable_tls=True,
             dynamic_storage_pools=dynamic_storage_pools,
@@ -154,6 +182,7 @@ class NbsLauncher:
             compute_config=compute_config,
             kms_config=kms_config,
             features_config_patch=features_config_patch)
+        self.__disk_agents = []
 
     @property
     def nbs(self):
@@ -182,7 +211,10 @@ class NbsLauncher:
         )
 
         for i in range(self.__disk_agent_count):
-            self.__run_disk_agent(i)
+            self.__disk_agents.append(
+                self.__run_disk_agent(i),
+            )
+
         wait_for_secure_erase(self.__nbs.mon_port)
 
     def __run_disk_agent(self, index):
@@ -210,6 +242,11 @@ class NbsLauncher:
         wait_for_disk_agent(disk_agent.mon_port)
         register_process(DISK_AGENT_SERVICE_NAME, disk_agent.pid)
         return disk_agent
+
+    def stop_service(self):
+        self.nbs.stop()
+        for disk_agent in self.__disk_agents:
+            disk_agent.stop()
 
     @staticmethod
     def stop():

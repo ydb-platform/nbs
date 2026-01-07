@@ -453,7 +453,7 @@ private:
 
                     TString message;
                     if (!Compare(segments[segmentId], *segment, &message)) {
-                        throw TServiceError(E_FAIL)
+                        STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                             << Sprintf("Validation failed: %s", message.c_str());
                     }
                 }
@@ -596,7 +596,7 @@ private:
     void CheckResponse(const T& response)
     {
         if (HasError(response)) {
-            throw TServiceError(response.GetError());
+            STORAGE_THROW_SERVICE_ERROR(response.GetError());
         }
     }
 

@@ -347,9 +347,12 @@ TVolumeClient::CreateUpdateVolumeConfigRequest(
     return request;
 }
 
-std::unique_ptr<TEvVolume::TEvWaitReadyRequest> TVolumeClient::CreateWaitReadyRequest()
+std::unique_ptr<TEvVolume::TEvWaitReadyRequest>
+TVolumeClient::CreateWaitReadyRequest(TString diskId)
 {
-    return std::make_unique<TEvVolume::TEvWaitReadyRequest>();
+    auto request = std::make_unique<TEvVolume::TEvWaitReadyRequest>();
+    request->Record.SetDiskId(std::move(diskId));
+    return request;
 }
 
 std::unique_ptr<TEvVolume::TEvAddClientRequest> TVolumeClient::CreateAddClientRequest(
@@ -398,6 +401,19 @@ std::unique_ptr<TEvService::TEvReadBlocksRequest> TVolumeClient::CreateReadBlock
     request->Record.SetCheckpointId(checkpointId);
     request->Record.MutableHeaders()->SetClientId(clientId);
 
+    return request;
+}
+
+std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
+TVolumeClient::CreateCheckRangeRequest(
+    const TString& diskId,
+    ui32 startIndex,
+    ui32 size)
+{
+    auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
+    request->Record.SetDiskId(diskId);
+    request->Record.SetStartIndex(startIndex);
+    request->Record.SetBlocksCount(size);
     return request;
 }
 
@@ -1000,18 +1016,33 @@ std::unique_ptr<TTestActorRuntime> TTestRuntimeBuilder::Build()
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TVolumeClientInfo CreateVolumeClientInfo(
+    TString clientId,
     NProto::EVolumeAccessMode accessMode,
     NProto::EVolumeMountMode mountMode,
     ui32 mountFlags,
     ui64 mountSeqNumber)
 {
     NProto::TVolumeClientInfo info;
-    info.SetClientId(CreateGuidAsString());
+    info.SetClientId(clientId);
     info.SetVolumeAccessMode(accessMode);
     info.SetMountSeqNumber(mountSeqNumber);
     info.SetVolumeMountMode(mountMode);
     info.SetMountFlags(mountFlags);
     return info;
+}
+
+NProto::TVolumeClientInfo CreateVolumeClientInfo(
+    NProto::EVolumeAccessMode accessMode,
+    NProto::EVolumeMountMode mountMode,
+    ui32 mountFlags,
+    ui64 mountSeqNumber)
+{
+    return CreateVolumeClientInfo(
+        CreateGuidAsString(),
+        accessMode,
+        mountMode,
+        mountFlags,
+        mountSeqNumber);
 }
 
 TString BuildRemoteHttpQuery(ui64 tabletId, const TVector<std::pair<TString, TString>>& keyValues)
@@ -1164,6 +1195,23 @@ void CheckRebuildMetadata(ui32 partCount, ui32 blocksPerStripe)
     auto progress = volume.GetRebuildMetadataStatus();
     UNIT_ASSERT(progress->Record.GetProgress().GetProcessed() != 0);
     UNIT_ASSERT(progress->Record.GetProgress().GetTotal() != 0);
+}
+
+TVector<NProto::TDeviceConfig> MakeDeviceList(ui32 agentCount, ui32 deviceCount)
+{
+    TVector<NProto::TDeviceConfig> result;
+    for (ui32 i = 1; i <= agentCount; i++) {
+        for (ui32 j = 0; j < deviceCount; j++) {
+            auto device = MakeDevice(
+                Sprintf("uuid-%u.%u", i, j),
+                Sprintf("dev%u", j),
+                Sprintf("transport%u-%u", i, j));
+            device.SetNodeId(i - 1);
+            device.SetAgentId(Sprintf("agent-%u", i));
+            result.push_back(std::move(device));
+        }
+    }
+    return result;
 }
 
 }   // namespace NTestVolume

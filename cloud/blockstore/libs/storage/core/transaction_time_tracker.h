@@ -91,6 +91,7 @@ public:
     void ResetStats();
 
     [[nodiscard]] const TInflightMap& GetInflightOperations() const;
+    [[nodiscard]] TString GetInflightInfo(ui64 nowCycles) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

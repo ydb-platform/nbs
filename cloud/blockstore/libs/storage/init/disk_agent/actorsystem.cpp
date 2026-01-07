@@ -121,7 +121,8 @@ public:
                 Args.BlockDigestGenerator,
                 Args.Logging,
                 Args.RdmaServer,
-                Args.NvmeManager);
+                Args.NvmeManager,
+                Args.BackgroundThreadPool);
 
             setup->LocalServices.emplace_back(
                 MakeDiskAgentServiceId(Args.NodeId),

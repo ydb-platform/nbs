@@ -1427,6 +1427,7 @@ NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
         TDeviceList::TAllocationQuery query {
             .ForbiddenRacks = CollectForbiddenRacks(diskId, disk, "ReplaceDevice"),
             .PreferredRacks = CollectPreferredRacks(diskId),
+            .NodeRankingFunc = GetNodeRankingFunc(diskId, disk.CloudId),
             .LogicalBlockSize = disk.LogicalBlockSize,
             .BlockCount = logicalBlockCount,
             .PoolName = devicePtr->GetPoolName(),
@@ -1670,6 +1671,7 @@ TDeviceList::TAllocationQuery TDiskRegistryState::MakeMigrationQuery(
     TDeviceList::TAllocationQuery query {
         .ForbiddenRacks = CollectForbiddenRacks(sourceDiskId, disk, "StartDeviceMigration"),
         .PreferredRacks = CollectPreferredRacks(sourceDiskId),
+        .NodeRankingFunc = GetNodeRankingFunc(sourceDiskId, disk.CloudId),
         .LogicalBlockSize = disk.LogicalBlockSize,
         .BlockCount = logicalBlockCount,
         .PoolName = sourceDevice.GetPoolName(),
@@ -1830,6 +1832,7 @@ TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::StartDeviceMigration(
 
         NProto::TDeviceConfig targetDevice
             = DeviceList.AllocateDevice(sourceDiskId, query);
+
         if (targetDevice.GetDeviceUUID().empty()) {
             return MakeError(E_BS_DISK_ALLOCATION_FAILED, TStringBuilder() <<
                 "can't allocate target for " << sourceDeviceId.Quote());
@@ -1841,7 +1844,6 @@ TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::StartDeviceMigration(
         return MakeError(e.GetCode(), e.what());
     }
 }
-
 
 TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::StartDeviceMigration(
     TInstant now,
@@ -2020,7 +2022,7 @@ THashSet<TString> TDiskRegistryState::CollectForbiddenRacks(
             TStringBuilder() << callerName << ":DiskId: " << diskId
             << ", PlacementGroupId: " << disk.PlacementGroupId);
 
-        ythrow TServiceError(E_FAIL) << message;
+        STORAGE_THROW_SERVICE_ERROR(E_FAIL) << message;
     }
 
     auto* thisDisk = CollectRacks(
@@ -2038,7 +2040,7 @@ THashSet<TString> TDiskRegistryState::CollectForbiddenRacks(
              {"callerName", callerName},
              {"placementGroupId", disk.PlacementGroupId}});
 
-        ythrow TServiceError(E_FAIL) << message;
+        STORAGE_THROW_SERVICE_ERROR(E_FAIL) << message;
     }
 
     return forbiddenRacks;
@@ -2102,13 +2104,16 @@ THashSet<TString> TDiskRegistryState::CollectPreferredRacks(
 {
     THashSet<TString> thisDiskRacks;
 
-    auto diskIt = Disks.find(diskId);
-    if (diskIt == Disks.end()) {
-        return thisDiskRacks;
-    }
+    const TDiskState* ds = Disks.FindPtr(diskId);
 
-    for (const TString& deviceId: diskIt->second.Devices) {
-        thisDiskRacks.insert(DeviceList.FindRack(deviceId));
+    if (ds) {
+        for (const TString& deviceId: ds->Devices) {
+            thisDiskRacks.insert(DeviceList.FindRack(deviceId));
+        }
+
+        for (const auto& [_, deviceId]: ds->MigrationSource2Target) {
+            thisDiskRacks.insert(DeviceList.FindRack(deviceId));
+        }
     }
 
     return thisDiskRacks;
@@ -2138,6 +2143,70 @@ NProto::TError TDiskRegistryState::ValidateDiskLocation(
     }
 
     return {};
+}
+
+TDeviceList::TNodeRankingFunc TDiskRegistryState::GetNodeRankingFunc(
+    const TString& newDiskId,
+    const TString& cloudId) const
+{
+    if (StorageConfig->GetNonreplAllocationPolicy() !=
+        NProto::NONREPL_ALLOC_POLICY_USER_ANTI_AFFINITY)
+    {
+        return {};
+    }
+
+    if (cloudId.empty()) {
+        return {};
+    }
+
+    return std::bind_front(
+        &TDiskRegistryState::UserAntiAffinityNodeRankingFunc,
+        this,
+        newDiskId,
+        cloudId);
+}
+
+void TDiskRegistryState::UserAntiAffinityNodeRankingFunc(
+    const TString& newDiskId,
+    const TString& cloudId,
+    std::span<ui32> nodeIds) const
+{
+    THashMap<TNodeId, i32> nodesWeights;
+
+    for (const auto& [diskId, ds]: Disks) {
+        if (ds.CloudId != cloudId) {
+            continue;
+        }
+
+        THashSet<TNodeId> diskNodeIds;
+
+        for (const auto& uuid: ds.Devices) {
+            if (TNodeId nodeId = DeviceList.FindNodeId(uuid)) {
+                diskNodeIds.insert(nodeId);
+            }
+        }
+
+        for (const auto& [uuid, _]: ds.MigrationTarget2Source) {
+            if (TNodeId nodeId = DeviceList.FindNodeId(uuid)) {
+                diskNodeIds.insert(nodeId);
+            }
+        }
+
+        if (diskId == newDiskId) {
+            // For resize and migration the same node should be prefered.
+            for (TNodeId nodeId: diskNodeIds) {
+                nodesWeights[nodeId] = Min<i32>();
+            }
+        } else {
+            for (TNodeId nodeId: diskNodeIds) {
+                ++nodesWeights[nodeId];
+            }
+        }
+    }
+
+    StableSortBy(nodeIds, [&](TNodeId nodeId) {
+        return nodesWeights.Value(nodeId, 0);
+    });
 }
 
 TResultOrError<TDeviceList::TAllocationQuery> TDiskRegistryState::PrepareAllocationQuery(
@@ -2202,6 +2271,7 @@ TResultOrError<TDeviceList::TAllocationQuery> TDiskRegistryState::PrepareAllocat
     return TDeviceList::TAllocationQuery {
         .ForbiddenRacks = std::move(forbiddenDiskRacks),
         .PreferredRacks = std::move(preferredDiskRacks),
+        .NodeRankingFunc = GetNodeRankingFunc(params.DiskId, params.CloudId),
         .LogicalBlockSize = params.BlockSize,
         .BlockCount = blocksToAllocate,
         .PoolName = params.PoolName,
@@ -3673,25 +3743,26 @@ auto TDiskRegistryState::CalcConfigUpdateEffect(
         }
     }
 
-    THashSet<TString> allKnownDevices;
-    TKnownAgents newKnownAgents;
+    THashSet<TString> newKnownDevices;
+    newKnownDevices.reserve(DeviceList.Size() * 2);
+
+    THashSet<TString> newKnownAgents;
+    newKnownAgents.reserve(newConfig.KnownAgentsSize() * 2);
 
     for (const auto& agent: newConfig.GetKnownAgents()) {
         const auto& agentId = agent.GetAgentId();
-        if (newKnownAgents.contains(agentId)) {
+        auto [_, inserted] = newKnownAgents.insert(agentId);
+        if (!inserted) {
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder() << "duplicate of an agent " << agentId);
         }
 
-        TKnownAgent& knownAgent = newKnownAgents[agentId];
-
         for (const auto& device: agent.GetDevices()) {
             const auto& deviceId = device.GetDeviceUUID();
 
-            knownAgent.Devices.emplace(deviceId, device);
-            auto [_, ok] = allKnownDevices.insert(deviceId);
-            if (!ok) {
+            auto [_, inserted] = newKnownDevices.insert(deviceId);
+            if (!inserted) {
                 return MakeError(
                     E_ARGUMENT,
                     TStringBuilder() << "duplicate of a device " << deviceId);
@@ -3705,30 +3776,37 @@ auto TDiskRegistryState::CalcConfigUpdateEffect(
     for (const auto& agent: AgentList.GetAgents()) {
         const auto& agentId = agent.GetAgentId();
 
-        for (const auto& d: agent.GetDevices()) {
-            const auto& uuid = d.GetDeviceUUID();
+        for (const auto& device: agent.GetUnknownDevices()) {
+            const auto& uuid = device.GetDeviceUUID();
 
-            if (!allKnownDevices.contains(uuid)) {
+            // Device is added.
+            if (newKnownDevices.contains(uuid)) {
+                affectedAgents.insert(agentId);
+                break;
+            }
+        }
+    }
+
+    for (const auto& agent: CurrentConfig.GetKnownAgents()) {
+        const auto& agentId = agent.GetAgentId();
+
+        for (const auto& device: agent.GetDevices()) {
+            const auto& uuid = device.GetDeviceUUID();
+
+            // Device is removed.
+            if (!newKnownDevices.contains(uuid)) {
                 removedDevices.push_back(uuid);
                 affectedAgents.insert(agentId);
             }
         }
 
-        for (const auto& d: agent.GetUnknownDevices()) {
-            const auto& uuid = d.GetDeviceUUID();
-
-            if (allKnownDevices.contains(uuid)) {
-                affectedAgents.insert(agentId);
-            }
-        }
-
+        // Agent is removed.
         if (!newKnownAgents.contains(agentId)) {
             affectedAgents.insert(agentId);
         }
     }
 
     THashSet<TString> diskIds;
-
     for (const auto& uuid: removedDevices) {
         auto diskId = DeviceList.FindDiskId(uuid);
         if (diskId) {
@@ -5565,6 +5643,11 @@ NProto::TError TDiskRegistryState::RegisterUnknownDevices(
     NProto::TAgentConfig& agent,
     TInstant now)
 {
+    // There is no need to add agent to config if it has no unknown devices.
+    if (agent.GetUnknownDevices().empty()) {
+        return {};
+    }
+
     TVector<TDeviceId> ids;
     for (const auto& device: agent.GetUnknownDevices()) {
         ids.push_back(device.GetDeviceUUID());

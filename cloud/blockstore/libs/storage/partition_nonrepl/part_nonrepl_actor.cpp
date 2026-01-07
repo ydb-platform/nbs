@@ -577,25 +577,31 @@ void TNonreplicatedPartitionActor::HandleAgentIsUnavailable(
         }
     }
 
-    // Cancel all write/zero requests that intersects with the rows of the lagging
-    // agent. And read requests to the lagging replica.
-    for (const auto& [actorId, requestData]: RequestsInProgress.AllRequests()) {
-        for (int deviceIndex: requestData.Value.DeviceIndices) {
-            const bool shouldCancelRequest =
-                laggingRows.contains(deviceIndex) &&
-                (requestData.IsWrite ||
-                 getAgentIdByRow(deviceIndex) == laggingAgentId);
+    // Cancel all write/zero requests that intersects with the rows of the
+    // lagging agent. And read requests to the lagging replica.
+    RequestsInProgress.EnumerateRequests(
+        [&](NActors::TActorId actorId,
+            bool isWrite,
+            TBlockRange64 range,
+            const TRequestData& requestData)
+        {
+            Y_UNUSED(range);
 
-            if (shouldCancelRequest) {
-                NCloud::Send<TEvNonreplPartitionPrivate::TEvCancelRequest>(
-                    ctx,
-                    actorId,
-                    0,   // cookie
-                    EReason::Canceled);
-                break;
+            for (int deviceIndex: requestData.DeviceIndices) {
+                const bool shouldCancelRequest =
+                    laggingRows.contains(deviceIndex) &&
+                    (isWrite || getAgentIdByRow(deviceIndex) == laggingAgentId);
+
+                if (shouldCancelRequest) {
+                    NCloud::Send<TEvNonreplPartitionPrivate::TEvCancelRequest>(
+                        ctx,
+                        actorId,
+                        0,   // cookie
+                        EReason::Canceled);
+                    break;
+                }
             }
-        }
-    }
+        });
 }
 
 void TNonreplicatedPartitionActor::HandleAgentIsBackOnline(
@@ -656,19 +662,6 @@ bool TNonreplicatedPartitionActor::HandleRequests(STFUNC_SIG)
     }
 
     return true;
-}
-
-ui64 TNonreplicatedPartitionActor::GenerateOperationId(
-    size_t deviceRequestsCount)
-{
-    const ui32 trackingFreq = Config->GetDeviceOperationTrackingFrequency();
-    const ui64 operationId =
-        (trackingFreq > 0 && DeviceOperationIdGenerator % trackingFreq == 0)
-            ? DeviceOperationIdGenerator
-            : 0;
-
-    DeviceOperationIdGenerator += deviceRequestsCount;
-    return operationId;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -771,6 +764,9 @@ STFUNC(TNonreplicatedPartitionActor::StateZombie)
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
             GetDeviceForRangeCompanion.RejectGetDeviceForRange);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest,
+            RejectMultiAgentWrite);
 
         HFunc(TEvNonreplPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
         HFunc(TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);

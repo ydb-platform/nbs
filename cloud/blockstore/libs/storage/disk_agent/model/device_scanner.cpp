@@ -26,13 +26,13 @@ ui32 GetBlockSize(const std::string& path)
 
     if (::stat(path.c_str(), &s)) {
         const int ec = errno;
-        ythrow TServiceError {MAKE_SYSTEM_ERROR(ec)}
+        STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(ec))
             << "can't get information about a file " << path << ": "
             << ::strerror(ec);
     }
 
     if (!s.st_blksize) {
-        ythrow TServiceError {E_FAIL} << "zero block size: " << path;
+        STORAGE_THROW_SERVICE_ERROR(E_FAIL) << "zero block size: " << path;
     }
 
     return s.st_blksize;
@@ -46,7 +46,7 @@ ui64 GetFileLength(const std::string& path)
 
     if (!file.IsOpen()) {
         const int ec = errno;
-        ythrow TServiceError(MAKE_SYSTEM_ERROR(ec))
+        STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(ec))
             << "unable to open file " << path << " error: " << ::strerror(ec);
     }
 
@@ -54,12 +54,12 @@ ui64 GetFileLength(const std::string& path)
 
     if (size == -1) {
         const int ec = errno;
-        ythrow TServiceError(MAKE_SYSTEM_ERROR(ec))
+        STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(ec))
             << "unable to retrive file size " << path;
     }
 
     if (!size) {
-        ythrow TServiceError {E_FAIL} << "zero file size: " << path;
+        STORAGE_THROW_SERVICE_ERROR(E_FAIL) << "zero file size: " << path;
     }
 
     return size;
@@ -71,6 +71,7 @@ ui64 GetFileLength(const std::string& path)
 
 NProto::TError FindDevices(
     const NProto::TStorageDiscoveryConfig& config,
+    const THashSet<TString>& allowedPaths,
     TDeviceCallback cb)
 {
     namespace NFs = std::filesystem;
@@ -88,6 +89,9 @@ NProto::TError FindDevices(
 
             for (const auto& entry: NFs::directory_iterator {pathRegExp.parent_path()}) {
                 const auto& path = entry.path();
+                if (allowedPaths && !allowedPaths.contains(path.c_str())) {
+                    continue;
+                }
                 const auto filename = path.filename().string();
 
                 std::smatch match;

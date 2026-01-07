@@ -383,7 +383,8 @@ public:
         };
     }
 
-    std::unique_ptr<TEvVolume::TEvWaitReadyRequest> CreateWaitReadyRequest();
+    std::unique_ptr<TEvVolume::TEvWaitReadyRequest> CreateWaitReadyRequest(
+        TString diskId = {});
 
     std::unique_ptr<TEvVolume::TEvAddClientRequest> CreateAddClientRequest(
         const NProto::TVolumeClientInfo& info);
@@ -406,6 +407,9 @@ public:
         const TGuardedSgList& sglist,
         const TString& clientId,
         const TString& checkpointId = {});
+
+    static std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
+    CreateCheckRangeRequest(const TString& diskId, ui32 startIndex, ui32 size);
 
     std::unique_ptr<TEvService::TEvWriteBlocksRequest> CreateWriteBlocksRequest(
         const TBlockRange64& writeRange,
@@ -611,6 +615,13 @@ struct TTestRuntimeBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TVolumeClientInfo CreateVolumeClientInfo(
+    TString clientId,
+    NProto::EVolumeAccessMode accessMode,
+    NProto::EVolumeMountMode mountMode,
+    ui32 mountFlags,
+    ui64 mountSeqNumber = 0);
+
+NProto::TVolumeClientInfo CreateVolumeClientInfo(
     NProto::EVolumeAccessMode accessMode,
     NProto::EVolumeMountMode mountMode,
     ui32 mountFlags,
@@ -650,6 +661,10 @@ void CheckVolumeSendsStatsEvenIfPartitionsAreDead(
     bool isReplicatedVolume);
 
 void CheckRebuildMetadata(ui32 partCount, ui32 blocksPerStripe);
+
+TVector<NProto::TDeviceConfig> MakeDeviceList(
+    ui32 agentCount,
+    ui32 deviceCount);
 
 }   // namespace NTestVolume
 

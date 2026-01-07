@@ -343,7 +343,8 @@ void TConfigInitializer::SetupLogConfig(NKikimrConfig::TLogConfig& logConfig) co
     }
 }
 
-void TConfigInitializer::SetupDiskAgentConfig(NProto::TDiskAgentConfig& config) const
+void TConfigInitializer::SetupDiskAgentConfig(
+    NProto::TDiskAgentConfig& config) const
 {
     if (!config.GetDedicatedDiskAgent()) {
         config.SetEnabled(false);
@@ -360,6 +361,13 @@ void TConfigInitializer::SetupDiskAgentConfig(NProto::TDiskAgentConfig& config) 
     if (Options->RdmaTargetPort != 0) {
         config.MutableRdmaTarget()->MutableEndpoint()->SetPort(
             Options->RdmaTargetPort);
+    }
+
+    if (!config.HasDataIntegrityValidationPolicyForDrBasedDisks() &&
+        config.GetEnableDataIntegrityValidationForDrBasedDisks())
+    {
+        config.SetDataIntegrityValidationPolicyForDrBasedDisks(
+            NProto::DIVP_ENABLED);
     }
 }
 

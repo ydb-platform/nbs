@@ -25,8 +25,17 @@ namespace {
 
 struct TDeviceChecksumRequestContext: public TDeviceRequestRdmaContext
 {
-    ui64 RangeStartIndex = 0;
-    ui32 RangeSize = 0;
+    const ui64 RangeStartIndex = 0;
+    const ui32 RangeSize = 0;
+
+    TDeviceChecksumRequestContext(
+        ui32 deviceIdx,
+        ui64 rangeStartIndex,
+        ui32 rangeSize)
+        : TDeviceRequestRdmaContext(deviceIdx)
+        , RangeStartIndex(rangeStartIndex)
+        , RangeSize(rangeSize)
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -144,6 +153,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
         PartConfig,
         requestInfo,
         requestId,
+        VolumeActorId,
         SelfId(),
         msg->Record.GetBlocksCount(),
         deviceRequests.size());
@@ -160,10 +170,10 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
     for (auto& r: deviceRequests) {
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
         Y_ABORT_UNLESS(ep);
-        auto dc = std::make_unique<TDeviceChecksumRequestContext>();
-        dc->RangeStartIndex = r.BlockRange.Start;
-        dc->RangeSize = r.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
-        dc->DeviceIdx = r.DeviceIdx;
+        auto dc = std::make_unique<TDeviceChecksumRequestContext>(
+            r.DeviceIdx,
+            r.BlockRange.Start,
+            r.DeviceBlockRange.Size() * PartConfig->GetBlockSize());
 
         sentRequestCtx.emplace_back(r.DeviceIdx);
 
@@ -207,12 +217,17 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
 
     for (size_t i = 0; i < requests.size(); ++i) {
         auto& request = requests[i];
-        sentRequestCtx[i].SentRequestId = request.Endpoint->SendRequest(
+
+        requestContext->OnRequestStarted(
+            sentRequestCtx[i].DeviceIdx,
+            TDeviceOperationTracker::ERequestType::Checksum);
+
+        sentRequestCtx[i].ClientRequestId = request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             requestInfo->CallContext);
     }
 
-    RequestsInProgress.AddReadRequest(requestId, sentRequestCtx);
+    RequestsInProgress.AddReadRequest(requestId, blockRange, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

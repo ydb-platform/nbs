@@ -61,7 +61,6 @@ struct IRdmaTarget: IStartable
         const NProto::TError& error) = 0;
 };
 
-using TStorageAdapterPtr = std::shared_ptr<TStorageAdapter>;
 using IRdmaTargetPtr = std::shared_ptr<IRdmaTarget>;
 
 IRdmaTargetPtr CreateRdmaTarget(
@@ -71,6 +70,6 @@ IRdmaTargetPtr CreateRdmaTarget(
     NRdma::IServerPtr server,
     TDeviceClientPtr deviceClient,
     IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
-    THashMap<TString, TStorageAdapterPtr> devices);
+    TVector<TString> devices);
 
 }   // namespace NCloud::NBlockStore::NStorage

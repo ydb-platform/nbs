@@ -148,7 +148,6 @@ message TLoadTest
     uint32 RequestsCount = 11;
     uint32 TestDuration = 12;
     uint32 SessionPingTimeout = 13;
-    uint32 SessionRetryTimeout = 14;
 
     TMigrationSpec MigrationSpec = 15;
 

@@ -54,6 +54,7 @@ public:
             TRequestInfoPtr requestInfo,
             ui32 requestBlockCount,
             size_t replicationTargetCount,
+            NActors::TActorId volumeActorId,
             NActors::TActorId parentActorId,
             ui64 requestId)
         : TBase(
@@ -61,6 +62,7 @@ public:
               std::move(partConfig),
               std::move(requestInfo),
               requestId,
+              volumeActorId,
               parentActorId,
               requestBlockCount,
               1)
@@ -134,8 +136,8 @@ NProto::TWriteDeviceBlocksRequest MakeWriteDeviceBlocksRequest(
 
     for (const auto& deviceInfo: request.DevicesAndRanges) {
         auto* replicationTarget = result.AddReplicationTargets();
-        replicationTarget->SetNodeId(deviceInfo.Device.GetNodeId());
-        replicationTarget->SetDeviceUUID(deviceInfo.Device.GetDeviceUUID());
+        replicationTarget->SetNodeId(deviceInfo.NodeId);
+        replicationTarget->SetDeviceUUID(deviceInfo.DeviceUUID);
         replicationTarget->SetStartIndex(deviceInfo.DeviceBlockRange.Start);
         replicationTarget->SetTimeout(deviceInfo.RequestTimeout.MilliSeconds());
     }
@@ -187,6 +189,8 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         "MultiAgentWriteBlocks",
         requestInfo->CallContext->RequestId);
 
+    auto blockRange = msg->Record.Range;
+
     auto replyError = [&](ui32 errorCode, TString errorReason)
     {
         auto response = std::make_unique<
@@ -222,7 +226,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         *msg,
         ctx,
         *requestInfo,
-        msg->Record.Range,
+        blockRange,
         &deviceRequests);
 
     if (!ok) {
@@ -235,7 +239,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         // requests are response with an error if the request hits two disk-agents.
         ReportMultiAgentRequestAffectsTwoDevices(
             "rdmaActor",
-            {{"disk", PartConfig->GetName()}, {"range", msg->Record.Range}});
+            {{"disk", PartConfig->GetName()}, {"range", blockRange}});
         replyError(
             E_ARGUMENT,
             "Can't execute MultiAgentWriteBlocks request cross device borders");
@@ -256,8 +260,9 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
             ctx.ActorSystem(),
             PartConfig,
             requestInfo,
-            msg->Record.Range.Size(),
+            blockRange.Size(),
             msg->Record.DevicesAndRanges.size(),
+            VolumeActorId,
             SelfId(),
             requestId);
 
@@ -269,7 +274,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         std::make_unique<TDeviceRequestRdmaContext>(deviceRequest.DeviceIdx),
         NRdma::TProtoMessageSerializer::MessageByteSize(
             writeDeviceBlocksRequest,
-            msg->Record.Range.Size() * msg->Record.BlockSize),
+            blockRange.Size() * msg->Record.BlockSize),
         4_KB);
 
     if (HasError(err)) {
@@ -299,14 +304,16 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         writeDeviceBlocksRequest,
         GetSgList(msg->Record.GetBlocks()));
 
-    const auto sentRequestId =
-        ep->SendRequest(std::move(req), requestInfo->CallContext);
+    requestResponseHandler->OnRequestStarted(
+        deviceRequest.DeviceIdx,
+        TDeviceOperationTracker::ERequestType::Write);
 
-    RequestsInProgress.AddWriteRequest(
-        requestId,
-        TRequestContext{TDeviceRequestContext{
-            .DeviceIndex = deviceRequest.DeviceIdx,
-            .SentRequestId = sentRequestId}});
+    TRequestContext sentRequestCtx{
+        {.DeviceIdx = deviceRequest.DeviceIdx,
+         .ClientRequestId =
+             ep->SendRequest(std::move(req), requestInfo->CallContext)}};
+
+    RequestsInProgress.AddWriteRequest(requestId, blockRange, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

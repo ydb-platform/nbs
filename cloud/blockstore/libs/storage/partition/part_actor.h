@@ -139,7 +139,9 @@ private:
     // Requests in-progress
     TRunningActors Actors;
     TIntrusiveList<TRequestInfo> ActiveTransactions;
-    TDrainActorCompanion DrainActorCompanion{*this, TabletID()};
+    TDrainActorCompanion DrainActorCompanion{
+        *this,
+        PartitionConfig.GetDiskId()};
     ui32 WriteAndZeroRequestsInProgress = 0;
 
     TPartitionDiskCountersPtr PartCounters;
@@ -246,6 +248,12 @@ private:
     bool WriteRequestInProgress() const override
     {
         return WriteAndZeroRequestsInProgress != 0;
+    }
+
+    bool OverlapsWithWrites(TBlockRange64 range) const override
+    {
+        Y_UNUSED(range);
+        Y_ABORT("Unimplemented");
     }
 
     void WaitForInFlightWrites() override

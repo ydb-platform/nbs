@@ -327,6 +327,39 @@ TVector<NProto::TDeviceConfig> GetReplacedDevices(
     return result;
 }
 
+TVector<const NProto::TDeviceConfig*> GetAllDevices(
+    const NProto::TVolumeMeta& meta)
+{
+    TVector<const NProto::TDeviceConfig*> result;
+
+    for (const auto& device: meta.GetDevices()) {
+        result.push_back(&device);
+    }
+
+    for (const auto& replica: meta.GetReplicas()) {
+        for (const auto& device: replica.GetDevices()) {
+            result.push_back(&device);
+        }
+    }
+
+    for (const auto& migration: meta.GetMigrations()) {
+        result.push_back(&migration.GetTargetDevice());
+    }
+
+    return result;
+}
+
+TSet<TString> GetAllAgents(const NProto::TVolumeMeta& meta)
+{
+    TSet<TString> result;
+
+    for (const auto& device: GetAllDevices(meta)) {
+        result.insert(device->GetAgentId());
+    }
+
+    return result;
+}
+
 TMap<TString, TString> ParseTags(const TString& tags)
 {
     TMap<TString, TString> result;

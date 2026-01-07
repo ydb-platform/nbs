@@ -1,5 +1,7 @@
 #include "service_actor.h"
 
+#include <cloud/filestore/libs/storage/core/system_counters.h>
+
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/mon/mon.h>
 
@@ -20,10 +22,12 @@ TStorageServiceActor::TStorageServiceActor(
         IRequestStatsRegistryPtr statsRegistry,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
+        TSystemCountersPtr systemCounters,
         NCloud::NStorage::IStatsFetcherPtr statsFetcher)
     : StorageConfig{std::move(storageConfig)}
     , ProfileLog{std::move(profileLog)}
     , TraceSerializer{std::move(traceSerializer)}
+    , SystemCounters(std::move(systemCounters))
     , StatsFetcher(std::move(statsFetcher))
     , State{std::make_unique<TStorageServiceState>()}
     , StatsRegistry{std::move(statsRegistry)}
@@ -92,6 +96,21 @@ std::pair<ui64, TInFlightRequest*> TStorageServiceActor::CreateInFlightRequest(
     IRequestStatsPtr requestStats,
     TInstant start)
 {
+    return CreateInFlightRequest(
+        info,
+        media,
+        {} /* checksumCalcInfo */,
+        std::move(requestStats),
+        start);
+}
+
+std::pair<ui64, TInFlightRequest*> TStorageServiceActor::CreateInFlightRequest(
+    const TRequestInfo& info,
+    NProto::EStorageMediaKind media,
+    TChecksumCalcInfo checksumCalcInfo,
+    IRequestStatsPtr requestStats,
+    TInstant start)
+{
     const ui64 cookie = MAKE_PROXY_COOKIE(++ProxyCounter);
     auto [it, inserted] = InFlightRequests.emplace(
         std::piecewise_construct,
@@ -100,10 +119,14 @@ std::pair<ui64, TInFlightRequest*> TStorageServiceActor::CreateInFlightRequest(
             info,
             ProfileLog,
             media,
+            std::move(checksumCalcInfo),
             requestStats));
 
     Y_ABORT_UNLESS(inserted);
     it->second.Start(start);
+
+    it->second.ProfileLogRequest.SetLoopThreadId(
+        it->second.CallContext->LoopThreadId);
 
     return std::make_pair(cookie, &it->second);
 }

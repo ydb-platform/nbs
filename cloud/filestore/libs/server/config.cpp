@@ -39,8 +39,12 @@ constexpr TDuration Seconds(int s)
     xxx(Certs,                       TVector<TCertificate>,     {}            )\
     xxx(UnixSocketPath,              TString,                   {}            )\
     xxx(UnixSocketBacklog,           ui32,                      16            )\
+    xxx(UnixSocketAccessMode,        ui32,                      0660          )\
                                                                                \
     xxx(ActionsNoAuth,               TVector<TString>,          {}            )\
+                                                                               \
+    xxx(SharedMemoryTransportEnabled, bool,                     false         )\
+    xxx(SharedMemoryBasePath,         TString,                  "/dev/shm"    )\
 // FILESTORE_SERVER_CONFIG
 
 #define FILESTORE_SERVER_DECLARE_CONFIG(name, type, value)                     \

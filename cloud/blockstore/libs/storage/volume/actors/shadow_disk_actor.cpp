@@ -9,6 +9,8 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 using namespace NActors;
@@ -63,6 +65,7 @@ class TAcquireShadowDiskActor
     : public NActors::TActorBootstrapped<TAcquireShadowDiskActor>
 {
 private:
+    const TChildLogTitle LogTitle;
     const TString ShadowDiskId;
     const TShadowDiskActor::EAcquireReason AcquireReason;
     const bool ReadOnlyMount;
@@ -85,6 +88,7 @@ private:
 
 public:
     TAcquireShadowDiskActor(
+        TChildLogTitle logTitle,
         TStorageConfigPtr config,
         TString shadowDiskId,
         TDevices shadowDiskDevices,
@@ -148,6 +152,7 @@ private:
 ///////////////////////////////////////////////////////////////////////////////
 
 TAcquireShadowDiskActor::TAcquireShadowDiskActor(
+        TChildLogTitle logTitle,
         TStorageConfigPtr config,
         TString shadowDiskId,
         TDevices shadowDiskDevices,
@@ -158,7 +163,8 @@ TAcquireShadowDiskActor::TAcquireShadowDiskActor(
         ui64 mountSeqNumber,
         ui32 generation,
         TActorId parentActor)
-    : ShadowDiskId(std::move(shadowDiskId))
+    : LogTitle(std::move(logTitle))
+    , ShadowDiskId(std::move(shadowDiskId))
     , AcquireReason(acquireReason)
     , ReadOnlyMount(readOnlyMount)
     , TotalTimeout(
@@ -208,10 +214,11 @@ void TAcquireShadowDiskActor::ReleaseShadowDisk(
         return;
     }
 
-    LOG_INFO_S(
+    LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "Releasing shadow disk " << ShadowDiskId.Quote());
+        "%s Releasing shadow disk",
+        LogTitle.GetWithTime().c_str());
 
     WaitingForDiskToBeReleased = true;
     NCloud::Send(
@@ -228,10 +235,11 @@ void TAcquireShadowDiskActor::DescribeShadowDisk(
         // already know them.
         return;
     }
-    LOG_INFO_S(
+    LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "Describing shadow disk " << ShadowDiskId.Quote());
+        "%s Describing shadow disk",
+        LogTitle.GetWithTime().c_str());
 
     NCloud::Send(
         ctx,
@@ -248,13 +256,14 @@ void TAcquireShadowDiskActor::AcquireShadowDisk(
 
     if (AcquireReason != TShadowDiskActor::EAcquireReason::PeriodicalReAcquire)
     {
-        LOG_INFO_S(
+        LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Acquiring shadow disk " << ShadowDiskId.Quote() << " by clientId "
-                                     << RwClientId.Quote() << " with timeout "
-                                     << TotalTimeout.ToString() << " for "
-                                     << (ReadOnlyMount ? "read" : "write"));
+            "%s Acquiring shadow disk by clientId %s with timeout %s for %s",
+            LogTitle.GetWithTime().c_str(),
+            RwClientId.Quote().c_str(),
+            FormatDuration(TotalTimeout).c_str(),
+            (ReadOnlyMount ? "read" : "write"));
     }
 
     NCloud::Send(
@@ -302,11 +311,13 @@ void TAcquireShadowDiskActor::HandleDiskRegistryError(
     std::unique_ptr<IEventHandle> retryEvent,
     const TString& actionName)
 {
-    LOG_DEBUG_S(
+    LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "Can't " << actionName << " shadow disk " << ShadowDiskId.Quote()
-                 << " Error: " << FormatError(error));
+        "%s Can't %s shadow disk. Error: %s",
+        LogTitle.GetWithTime().c_str(),
+        actionName.c_str(),
+        FormatError(error).c_str());
 
     const TInstant timeoutElapsedAt = AcquireStartedAt + TotalTimeout;
 
@@ -320,13 +331,14 @@ void TAcquireShadowDiskActor::HandleDiskRegistryError(
         (retriableError || sessionError) && timeoutElapsedAt > ctx.Now();
 
     if (canRetry) {
-        LOG_WARN_S(
+        LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Will soon retry " << actionName << " shadow disk "
-                               << ShadowDiskId.Quote()
-                               << " Error: " << FormatError(error)
-                               << " with delay " << RetryDelayProvider.GetDelay().ToString());
+            "%s Will soon retry %s shadow disk. Error: %s with delay %s",
+            LogTitle.GetWithTime().c_str(),
+            actionName.c_str(),
+            FormatError(error).c_str(),
+            FormatDuration(RetryDelayProvider.GetDelay()).c_str());
 
         if (sessionError) {
             ReleaseShadowDisk(ctx, true);
@@ -337,12 +349,13 @@ void TAcquireShadowDiskActor::HandleDiskRegistryError(
             std::move(retryEvent),
             nullptr);
     } else {
-        LOG_ERROR_S(
+        LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Will not retry " << actionName << " shadow disk "
-                              << ShadowDiskId.Quote()
-                              << " Error: " << FormatError(error));
+            "%s Will not retry %s shadow disk. Error: %s",
+            LogTitle.GetWithTime().c_str(),
+            actionName.c_str(),
+            FormatError(error).c_str());
         ReplyAndDie(ctx, error);
     }
 }
@@ -444,11 +457,12 @@ void TAcquireShadowDiskActor::HandleReleaseDiskResponse(
     auto& record = msg->Record;
 
     if (HasError(record.GetError())) {
-        LOG_WARN_S(
+        LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Shadow disk " << ShadowDiskId.Quote() << " release error: "
-                           << FormatError(record.GetError()));
+            "%s Shadow disk release error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(record.GetError()).c_str());
     }
 
     WaitingForDiskToBeReleased = false;
@@ -461,10 +475,11 @@ void TAcquireShadowDiskActor::HandleWakeup(
 {
     Y_UNUSED(ev);
 
-    LOG_ERROR_S(
+    LOG_ERROR(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "Acquire timeout. Shadow disk " << ShadowDiskId.Quote());
+        "%s Acquire timeout",
+        LogTitle.GetWithTime().c_str());
 
     ReplyAndDie(ctx, MakeError(E_TIMEOUT));
 }
@@ -513,11 +528,12 @@ void TAcquireShadowDiskActor::MaybeReady(const NActors::TActorContext& ctx)
 
     if (AcquireReason != TShadowDiskActor::EAcquireReason::PeriodicalReAcquire)
     {
-        LOG_INFO_S(
+        LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Acquired shadow disk " << ShadowDiskId.Quote() << " by clientId "
-                                    << RwClientId.Quote());
+            "%s Acquired shadow disk by clientId %s",
+            LogTitle.GetWithTime().c_str(),
+            RwClientId.Quote().c_str());
     }
 
     ReplyAndDie(ctx, MakeError(S_OK));
@@ -528,6 +544,7 @@ void TAcquireShadowDiskActor::MaybeReady(const NActors::TActorContext& ctx)
 ///////////////////////////////////////////////////////////////////////////////
 
 TShadowDiskActor::TShadowDiskActor(
+        TChildLogTitle logTitle,
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticConfig,
         NRdma::IClientPtr rdmaClient,
@@ -557,6 +574,7 @@ TShadowDiskActor::TShadowDiskActor(
           config->GetMaxShadowDiskFillIoDepth(),
           volumeActorId,
           EDirectCopyPolicy::CanUse)
+    , LogTitle(std::move(logTitle))
     , RdmaClient(std::move(rdmaClient))
     , SrcConfig(std::move(srcConfig))
     , CheckpointId(checkpointInfo.CheckpointId)
@@ -752,6 +770,7 @@ void TShadowDiskActor::AcquireShadowDisk(
     AcquireActorId = NCloud::Register(
         ctx,
         std::make_unique<TAcquireShadowDiskActor>(
+            LogTitle,
             GetConfig(),
             ShadowDiskId,
             ShadowDiskDevices,
@@ -911,6 +930,7 @@ void TShadowDiskActor::SetErrorState(const NActors::TActorContext& ctx)
 bool TShadowDiskActor::CanJustForwardWritesToSrcDisk() const
 {
     return State == EActorState::CheckpointReady ||
+           State == EActorState::WaitAcquireForRead ||
            State == EActorState::Error ||
            State == EActorState::WaitAcquireForPrepareStart;
 }
@@ -1054,34 +1074,34 @@ void TShadowDiskActor::HandleUpdateShadowDiskStateResponse(
             STORAGE_CHECK_PRECONDITION(
                 msg->NewState != EShadowDiskState::New &&
                 msg->NewState != EShadowDiskState::None);
-            LOG_ERROR_S(
+            LOG_ERROR(
                 ctx,
                 TBlockStoreComponents::VOLUME,
-                "State of shadow disk " << ShadowDiskId.Quote()
-                                        << " unexpectedly changed to "
-                                        << ToString(msg->NewState));
+                "%s State of shadow disk unexpectedly changed to %s",
+                LogTitle.GetWithTime().c_str(),
+                ToString(msg->NewState).c_str());
             State = EActorState::Error;
         } break;
         case EShadowDiskState::Preparing: {
-            LOG_INFO_S(
+            LOG_INFO(
                 ctx,
                 TBlockStoreComponents::VOLUME,
-                "State of shadow disk "
-                    << ShadowDiskId.Quote() << " changed to "
-                    << ToString(msg->NewState)
-                    << ", processed block count: " << msg->ProcessedBlockCount);
+                "%s State of shadow disk changed to %s, processed block: %lu",
+                LogTitle.GetWithTime().c_str(),
+                ToString(msg->NewState).c_str(),
+                msg->ProcessedBlockCount);
             if (State != EActorState::Preparing) {
                 State = EActorState::Preparing;
             }
             STORAGE_CHECK_PRECONDITION(Acquired());
         } break;
         case EShadowDiskState::Ready: {
-            LOG_INFO_S(
+            LOG_INFO(
                 ctx,
                 TBlockStoreComponents::VOLUME,
-                "State of shadow disk " << ShadowDiskId.Quote()
-                                        << " changed to "
-                                        << ToString(msg->NewState));
+                "%s State of shadow disk changed to %s",
+                LogTitle.GetWithTime().c_str(),
+                ToString(msg->NewState).c_str());
             State = EActorState::CheckpointReady;
 
             if (CurrentShadowDiskClientId !=
@@ -1093,12 +1113,12 @@ void TShadowDiskActor::HandleUpdateShadowDiskStateResponse(
             STORAGE_CHECK_PRECONDITION(Acquired());
         } break;
         case EShadowDiskState::Error: {
-            LOG_WARN_S(
+            LOG_WARN(
                 ctx,
                 TBlockStoreComponents::VOLUME,
-                "State of shadow disk " << ShadowDiskId.Quote()
-                                        << " changed to "
-                                        << ToString(msg->NewState));
+                "%s State of shadow disk changed to %s",
+                LogTitle.GetWithTime().c_str(),
+                ToString(msg->NewState).c_str());
             State = EActorState::Error;
         } break;
     }
@@ -1143,10 +1163,11 @@ void TShadowDiskActor::HandleReacquireDisk(
     // shadow disk will not lead to blocking of the source disk. In that case,
     // we are trying to reacquire during long period MaxNonBlockingTotalTimeout.
 
-    LOG_WARN_S(
+    LOG_WARN(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "Got TEvReacquireDisk for shadow disk " << ShadowDiskId.Quote());
+        "%s Got TEvReacquireDisk for shadow disk",
+        LogTitle.GetWithTime().c_str());
 
     switch (State) {
         case EActorState::WaitAcquireForPrepareStart:
@@ -1165,13 +1186,14 @@ bool TShadowDiskActor::HandleRWClientIdChanged(
     const TEvVolume::TEvRWClientIdChanged::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    LOG_INFO_S(
+    LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "Changed clientId for disk "
-            << SrcConfig->GetName().Quote() << ", shadow disk "
-            << ShadowDiskId.Quote() << " from " << SourceDiskClientId.Quote()
-            << " to " << ev->Get()->RWClientId);
+        "%s Changed clientId for disk %s from %s to %s",
+        LogTitle.GetWithTime().c_str(),
+        SrcConfig->GetName().Quote().c_str(),
+        SourceDiskClientId.Quote().c_str(),
+        ev->Get()->RWClientId.c_str());
 
     SourceDiskClientId = ev->Get()->RWClientId;
 
@@ -1212,18 +1234,24 @@ void TShadowDiskActor::HandleGetChangedBlocks(
         return;
     }
 
-    LOG_INFO_S(
+    const auto range = TBlockRange64::WithLength(
+        msg->Record.GetStartIndex(),
+        msg->Record.GetBlocksCount());
+
+    LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "GetChangedBlocks for shadow disk " << ShadowDiskId.Quote());
+        "%s GetChangedBlocks %s",
+        LogTitle.GetWithTime().c_str(),
+        range.Print().c_str());
 
     if (State != EActorState::CheckpointReady) {
-        LOG_ERROR_S(
+        LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Shadow disk: "
-                << ShadowDiskId.Quote()
-                << " Can't GetChangedBlocks when shadow disk is not ready.");
+            "%s Can't GetChangedBlocks when shadow disk is not ready. %s",
+            LogTitle.GetWithTime().c_str(),
+            range.Print().c_str());
 
         auto response =
             std::make_unique<TEvService::TEvGetChangedBlocksResponse>();
@@ -1243,9 +1271,6 @@ void TShadowDiskActor::HandleGetChangedBlocks(
     }
 
     auto response = std::make_unique<TEvService::TEvGetChangedBlocksResponse>();
-    auto range = TBlockRange64::WithLength(
-        msg->Record.GetStartIndex(),
-        msg->Record.GetBlocksCount());
     response->Record.SetMask(GetNonZeroBlocks(range));
 
     NCloud::Reply(ctx, *ev, std::move(response));

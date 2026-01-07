@@ -88,4 +88,20 @@ message TFileSystemConfig
 
     // Disable fsync queue which is used to synchronize data/metadata ops during fsync
     optional bool FSyncQueueDisabled = 26;
+
+    // Enable directory handles storage functionality
+    optional bool DirectoryHandlesStorageEnabled = 27;
+
+    // Capacity for DirectoryHandles persistent table.
+    optional uint64 DirectoryHandlesTableSize = 28;
+
+    // Enable FUSE_HANDLE_KILLPRIV_V2 on guest (FUSE client)
+    optional bool GuestHandleKillPrivV2Enabled = 29;
+
+    // Enable zero-copy for read operations in the VFS FUSE layer
+    optional bool ZeroCopyReadEnabled = 30;
+
+    // Inode entry timeout for regular entries (e.g. files)
+    // Only applies if set. Not set by default
+    optional uint32 RegularFileEntryTimeout = 31;
 }

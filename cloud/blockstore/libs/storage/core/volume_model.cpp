@@ -2,6 +2,8 @@
 
 #include "config.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
+
 #include <cloud/storage/core/libs/common/media.h>
 
 #include <contrib/ydb/core/protos/blockstore_config.pb.h>
@@ -475,16 +477,28 @@ ui32 ComputeAllocationUnitCount(
     return unitCount;
 }
 
+ui32 GetExistingChannelCount(
+    const TVolumeParams& volumeParams,
+    EChannelDataKind dataKind)
+{
+    ui32 existingChannelCount = 0;
+    for (const auto& dc: volumeParams.DataChannels) {
+        if (dc.DataKind == dataKind) {
+            ++existingChannelCount;
+        }
+    }
+    return existingChannelCount;
+}
+
 ui32 GetExistingMergedChannelCount(
     const TVolumeParams& volumeParams)
 {
-    ui32 existingMergedChannelCount = 0;
-    for (const auto& dc: volumeParams.DataChannels) {
-        if (dc.DataKind == EChannelDataKind::Merged) {
-            ++existingMergedChannelCount;
-        }
-    }
-    return existingMergedChannelCount;
+    return GetExistingChannelCount(volumeParams, EChannelDataKind::Merged);
+}
+
+ui32 GetExistingFreshChannelCount(const TVolumeParams& volumeParams)
+{
+    return GetExistingChannelCount(volumeParams, EChannelDataKind::Fresh);
 }
 
 ui32 ComputeMergedChannelCount(
@@ -509,6 +523,17 @@ void SetupChannels(
     const NProto::TResizeVolumeRequestFlags& flags,
     NKikimrBlockStore::TVolumeConfig& volumeConfig)
 {
+    constexpr NCloud::NProto::EStorageMediaKind MediaKindAllowedList[]{
+        NCloud::NProto::STORAGE_MEDIA_SSD,
+        NCloud::NProto::STORAGE_MEDIA_HDD,
+        NCloud::NProto::STORAGE_MEDIA_HYBRID};
+
+    if (!FindPtr(MediaKindAllowedList, volumeParams.MediaKind)) {
+        ReportSetupChannelsOnWrongMediaKindVolume(
+            "Trying to setup channels on wrong media kind",
+            {{"diskId", volumeConfig.GetDiskId()},
+             {"mediaKind", volumeParams.MediaKind}});
+    }
     const auto existingMergedChannelCount =
         GetExistingMergedChannelCount(volumeParams);
     ui32 mergedChannelCount = ComputeMergedChannelCount(
@@ -518,14 +543,15 @@ void SetupChannels(
         volumeParams);
     ui32 mixedChannelCount = 0;
 
-    ui32 freshChannelCount = config.GetFreshChannelCount();
-    const bool isFreshChannelEnabled =
-        config.IsAllocateFreshChannelFeatureEnabled(
-            volumeConfig.GetCloudId(),
-            volumeConfig.GetFolderId(),
-            volumeConfig.GetDiskId());
+    const auto freshChannelCountForMediaKind =
+        volumeParams.MediaKind == NCloud::NProto::STORAGE_MEDIA_SSD
+            ? config.GetFreshChannelCountSSD()
+            : config.GetFreshChannelCountHDD();
 
-    if (isFreshChannelEnabled || volumeConfig.GetTabletVersion() == 2) {
+    ui32 freshChannelCount =
+        Max(GetExistingFreshChannelCount(volumeParams),
+            freshChannelCountForMediaKind);
+    if (volumeConfig.GetTabletVersion() == 2) {
         freshChannelCount = 1;
     }
 

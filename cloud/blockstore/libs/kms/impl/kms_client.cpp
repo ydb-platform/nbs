@@ -1,19 +1,21 @@
 #include "kms_client.h"
 
-#include <contrib/ydb/public/api/client/yc_private/kms/symmetric_crypto_service.grpc.pb.h>
-#include <contrib/ydb/public/api/client/yc_private/kms/symmetric_crypto_service.pb.h>
-
 #include <cloud/blockstore/libs/kms/iface/kms_client.h>
+
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/time_point_specialization.h>
 
 #include <contrib/libs/grpc/include/grpcpp/channel.h>
 #include <contrib/libs/grpc/include/grpcpp/client_context.h>
-#include <contrib/libs/grpc/include/grpcpp/create_channel.h>
 #include <contrib/libs/grpc/include/grpcpp/completion_queue.h>
+#include <contrib/libs/grpc/include/grpcpp/create_channel.h>
 #include <contrib/libs/grpc/include/grpcpp/security/credentials.h>
+#include <contrib/ydb/public/api/client/yc_private/kms/symmetric_crypto_service.grpc.pb.h>
+#include <contrib/ydb/public/api/client/yc_private/kms/symmetric_crypto_service.pb.h>
 
+#include <util/generic/guid.h>
 #include <util/string/builder.h>
 #include <util/string/join.h>
 #include <util/system/thread.h>
@@ -30,6 +32,7 @@ namespace kms = yandex::cloud::priv::kms::v1;
 
 const char AUTH_HEADER[] = "authorization";
 const char AUTH_METHOD[] = "Bearer";
+const char REQUEST_ID_HEADER[] = "x-request-id";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -38,6 +41,9 @@ class TRequestHandler final
 private:
     using TReader = grpc::ClientAsyncResponseReader<kms::SymmetricDecryptResponse>;
     using TResult = TResultOrError<TString>;
+
+    const TString RequestId = CreateGuidAsString();
+    const TInstant StartTime = TInstant::Now();
 
     grpc::ClientContext ClientContext;
     grpc::Status Status;
@@ -56,6 +62,8 @@ public:
         const TString& keyId,
         const TString& ciphertext)
     {
+        ClientContext.AddMetadata(REQUEST_ID_HEADER, RequestId);
+
         if (timeout != TDuration::Zero()) {
             ClientContext.set_deadline(TInstant::Now() + timeout);
         }
@@ -86,9 +94,12 @@ public:
     void Complete()
     {
         if (!Status.ok()) {
+            const TDuration execTime = TInstant::Now() - StartTime;
             Promise.SetValue(MakeError(
                 MAKE_GRPC_ERROR(Status.error_code()),
-                Status.error_message()));
+                TStringBuilder() << "RequestId: " << RequestId
+                                 << ", time: " << FormatDuration(execTime)
+                                 << ", error: " << Status.error_message()));
         } else {
             Promise.SetValue(Response.plaintext());
         }

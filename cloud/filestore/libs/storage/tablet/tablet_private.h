@@ -8,11 +8,12 @@
 #include <cloud/filestore/libs/storage/api/events.h>
 #include <cloud/filestore/libs/storage/core/request_info.h>
 #include <cloud/filestore/libs/storage/model/public.h>
-#include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 #include <cloud/filestore/libs/storage/tablet/model/shard_balancer.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+
+#include <cloud/storage/core/libs/common/byte_range.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 
@@ -141,6 +142,24 @@ enum class EAddBlobMode
     FlushBytes,
     Compaction,
 };
+
+inline TString GetAddBlobModeName(EAddBlobMode mode)
+{
+    switch (mode) {
+        case EAddBlobMode::Write:
+            return "AddBlobWrite";
+        case EAddBlobMode::WriteBatch:
+            return "AddBlobWriteBatch";
+        case EAddBlobMode::Flush:
+            return "AddBlobFlush";
+        case EAddBlobMode::FlushBytes:
+            return "AddBlobFlushBytes";
+        case EAddBlobMode::Compaction:
+            return "AddBlobCompaction";
+        default:
+            return "AddBlobUnknown";
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -342,7 +361,27 @@ struct TEvIndexTabletPrivate
     // ReadWrite completion
     //
 
-    using TReadWriteCompleted = TOperationCompleted;
+    struct TReadWriteCompleted: TOperationCompleted
+    {
+        const bool IsOverloaded;
+
+        TReadWriteCompleted(
+                TSet<ui32> mixedBlocksRanges,
+                ui64 commitId,
+                ui32 requestCount,
+                ui32 requestBytes,
+                TDuration d,
+                bool isOverloaded)
+            : TOperationCompleted(
+                std::move(mixedBlocksRanges),
+                commitId,
+                requestCount,
+                requestBytes,
+                d)
+            , IsOverloaded(isOverloaded)
+        {
+        }
+    };
 
     //
     // AddData completion
@@ -351,14 +390,17 @@ struct TEvIndexTabletPrivate
     struct TAddDataCompleted: TDataOperationCompleted
     {
         const ui64 CommitId;
+        const bool IsOverloaded;
 
         TAddDataCompleted(
                 ui32 requestCount,
                 ui32 requestBytes,
                 TDuration d,
-                ui64 commitId)
+                ui64 commitId,
+                bool isOverloaded)
             : TDataOperationCompleted(requestCount, requestBytes, d)
             , CommitId(commitId)
+            , IsOverloaded(isOverloaded)
         {
         }
     };

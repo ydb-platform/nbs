@@ -76,6 +76,7 @@ void RegisterServiceVolume(
     const TString& cloudId,
     const TString& folderId,
     const TString& diskId,
+    EHistogramCounterOptions histogramCounterOptions,
     TDynamicCounterPtr src)
 {
     const auto commonLabels =
@@ -98,7 +99,8 @@ void RegisterServiceVolume(
         dsc,
         commonLabels,
         {{readSub, "ThrottlerDelay"}},
-        DISK_READ_THROTTLER_DELAY);
+        DISK_READ_THROTTLER_DELAY,
+        histogramCounterOptions);
 
     auto writeSub = src->FindSubgroup("request", "WriteBlocks");
     auto zeroSub = src->FindSubgroup("request", "ZeroBlocks");
@@ -107,7 +109,8 @@ void RegisterServiceVolume(
         dsc,
         commonLabels,
         {{writeSub, "ThrottlerDelay"}, {zeroSub, "ThrottlerDelay"}},
-        DISK_WRITE_THROTTLER_DELAY);
+        DISK_WRITE_THROTTLER_DELAY,
+        histogramCounterOptions);
 }
 
 void UnregisterServiceVolume(
@@ -132,6 +135,7 @@ void RegisterServerVolumeInstance(
     const TString& diskId,
     const TString& instanceId,
     const bool reportZeroBlocksMetrics,
+    EHistogramCounterOptions histogramCounterOptions,
     TDynamicCounterPtr src)
 {
     if (instanceId.empty()) {
@@ -184,11 +188,12 @@ void RegisterServerVolumeInstance(
         {{readSub, "MaxInProgressBytes"}},
         DISK_READ_BYTES_IN_FLIGHT_BURST);
     AddHistogramUserMetric(
-        GetUsBuckets(),
+        GetTimeBuckets(histogramCounterOptions),
         dsc,
         commonLabels,
         {{readSub, "Time"}},
-        DISK_READ_LATENCY);
+        DISK_READ_LATENCY,
+        histogramCounterOptions);
 
     auto writeSubgroup = src->FindSubgroup("request", "WriteBlocks");
     auto zeroSubgroup = src->FindSubgroup("request", "ZeroBlocks");
@@ -242,11 +247,12 @@ void RegisterServerVolumeInstance(
         getWriteCounters("MaxInProgressBytes"),
         DISK_WRITE_BYTES_IN_FLIGHT_BURST);
     AddHistogramUserMetric(
-        GetUsBuckets(),
+        GetTimeBuckets(histogramCounterOptions),
         dsc,
         commonLabels,
         getWriteCounters("Time"),
-        DISK_WRITE_LATENCY);
+        DISK_WRITE_LATENCY,
+        histogramCounterOptions);
 }
 
 void UnregisterServerVolumeInstance(

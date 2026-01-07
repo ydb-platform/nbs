@@ -233,13 +233,46 @@ func (c *client) DescribeModel(
 	}, nil
 }
 
+func (c *client) CreateCheckpoint(
+	ctx context.Context,
+	session Session,
+	filesystemID string,
+	checkpointID string,
+	nodeID uint64,
+) error {
+
+	return c.nfs.CreateCheckpoint(
+		ctx,
+		nfs_client.Session(session),
+		filesystemID,
+		&nfs_client.CreateCheckpointOpts{
+			CheckpointID: checkpointID,
+			NodeID:       nodeID,
+		},
+	)
+}
+
+func (c *client) DestroyCheckpoint(
+	ctx context.Context,
+	filesystemID string,
+	checkpointID string,
+) error {
+
+	return c.nfs.DestroyCheckpoint(
+		ctx,
+		filesystemID,
+		checkpointID,
+	)
+}
+
 func (c *client) CreateSession(
 	ctx context.Context,
 	fileSystemID string,
+	checkpointID string,
 	readonly bool,
 ) (Session, error) {
 
-	session, err := c.nfs.CreateSession(ctx, fileSystemID, readonly)
+	session, err := c.nfs.CreateSession(ctx, fileSystemID, checkpointID, readonly)
 	return Session(session), wrapError(err)
 }
 

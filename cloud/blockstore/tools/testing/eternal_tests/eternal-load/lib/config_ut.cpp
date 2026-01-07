@@ -18,6 +18,7 @@ Y_UNIT_TEST_SUITE(ConfigTest)
         {
         "FileSize":10737418240,
         "IoDepth":12,
+        "TestCount":13,
         "Ranges":
             [
             {
@@ -171,6 +172,7 @@ Y_UNIT_TEST_SUITE(ConfigTest)
         UNIT_ASSERT_EQUAL(config.GetFilePath(), "/dev/vdb");
         UNIT_ASSERT_EQUAL(config.GetFileSize(), 10 * 1_GB);
         UNIT_ASSERT_EQUAL(config.GetIoDepth(), 12);
+        UNIT_ASSERT_EQUAL(config.GetTestCount(), 13);
         UNIT_ASSERT_EQUAL(config.GetBlockSize(), 4096);
         UNIT_ASSERT_EQUAL(config.GetWriteRate(), 50);
         UNIT_ASSERT_EQUAL(config.GetRangeBlockCount(), 218453);
@@ -198,6 +200,7 @@ Y_UNIT_TEST_SUITE(ConfigTest)
         auto configHolder = CreateTestConfig(
             {.FilePath = "/dev/vdb",
              .FileSize = 10 * 1_GB,
+             .TestCount = 13,
              .IoDepth = 12,
              .BlockSize = 4096,
              .WriteRate = 50,

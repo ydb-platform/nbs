@@ -60,6 +60,26 @@ TIndexNodePtr TIndexNode::CreateFifo(const TString& name, int mode)
     return std::make_shared<TIndexNode>(stat.INode, std::move(node));
 }
 
+TIndexNodePtr TIndexNode::CreateCharDevice(const TString& name, int mode, dev_t dev)
+{
+    NLowLevel::MkCharDeviceAt(NodeFd, name, mode, dev);
+
+    auto node = NLowLevel::OpenAt(NodeFd, name, O_PATH, 0);
+    auto stat = NLowLevel::Stat(node);
+
+    return std::make_shared<TIndexNode>(stat.INode, std::move(node));
+}
+
+TIndexNodePtr TIndexNode::CreateBlockDevice(const TString& name, int mode, dev_t dev)
+{
+    NLowLevel::MkBlockDeviceAt(NodeFd, name, mode, dev);
+
+    auto node = NLowLevel::OpenAt(NodeFd, name, O_PATH, 0);
+    auto stat = NLowLevel::Stat(node);
+
+    return std::make_shared<TIndexNode>(stat.INode, std::move(node));
+}
+
 TIndexNodePtr TIndexNode::CreateLink(const TIndexNode& parent, const TString& name)
 {
     NLowLevel::LinkAt(NodeFd, parent.NodeFd, name);
@@ -117,12 +137,12 @@ TIndexNode::List(uint64_t offset, size_t entriesLimit, bool ignoreErrors)
     return NLowLevel::ListDirAt(NodeFd, offset, entriesLimit, ignoreErrors);
 }
 
-TFileStat TIndexNode::Stat()
+NLowLevel::TFileStatEx TIndexNode::Stat()
 {
     return NLowLevel::Stat(NodeFd);
 }
 
-TFileStat TIndexNode::Stat(const TString& name)
+NLowLevel::TFileStatEx TIndexNode::Stat(const TString& name)
 {
     return NLowLevel::StatAt(NodeFd, name);
 }
@@ -199,7 +219,7 @@ TNodeLoader::TNodeLoader(const TIndexNodePtr& rootNode)
     case NLowLevel::TFileId::EFileIdType::VastNfs:
         break;
     default:
-        ythrow TServiceError(E_FS_NOTSUPP)
+        STORAGE_THROW_SERVICE_ERROR(E_FS_NOTSUPP)
             << "Not supported hande type, RootFileId=" << RootFileId.ToString();
     }
 }
@@ -232,7 +252,7 @@ TIndexNodePtr TNodeLoader::LoadNode(ui64 nodeId) const
         fileId.VastNfsInodeId.FileType = S_IFREG;
         break;
     default:
-        ythrow TServiceError(E_FS_NOTSUPP);
+        STORAGE_THROW_SERVICE_ERROR(E_FS_NOTSUPP);
     }
 
     auto handle =  fileId.Open(RootHandle, O_PATH);

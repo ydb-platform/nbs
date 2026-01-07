@@ -119,7 +119,8 @@ class FilestoreCliClient:
         blk_count,
         force=False,
         shard_count=None,
-        enable_strict=False
+        enable_strict=False,
+        enable_directory_creation_in_shards=False,
     ):
         cmd = [
             self.__binary_path, "resize",
@@ -135,6 +136,9 @@ class FilestoreCliClient:
 
         if enable_strict:
             cmd.append("--enable-strict")
+
+        if enable_directory_creation_in_shards:
+            cmd.append("--enable-directory-creation-in-shards")
 
         logger.info("resizing filestore: " + " ".join(cmd))
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
@@ -282,12 +286,16 @@ class FilestoreCliClient:
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
-    def find(self, fs, depth, glob=None):
+    def find(self, fs, depth, glob=None, root_node_id=None):
         cmd = [
             self.__binary_path, "find",
             "--filesystem", fs,
             "--depth", str(depth),
-        ] + (["--glob", glob] if glob is not None else []) + self.__cmd_opts()
+        ] + (
+            ["--glob", glob] if glob is not None else []
+        ) + (
+            ["--root", str(root_node_id)] if root_node_id is not None else []
+        ) + self.__cmd_opts()
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 

@@ -1,5 +1,6 @@
 #include "part_actor.h"
 
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -347,13 +348,29 @@ void TPartitionActor::HandleWriteBlocksCompleted(
         ProfileLog->Write(std::move(record));
     }
 
-    if (msg->UnconfirmedBlobsAdded) {
-        // blobs are confirmed, but AddBlobs request will be executed
-        // (for this commit) later
-        State->BlobsConfirmed(commitId, std::move(msg->BlobsToConfirm));
-        Y_DEBUG_ABORT_UNLESS(msg->CollectGarbageBarrierAcquired);
+    if (msg->AddingUnconfirmedBlobsRequested) {
+        if (HasError(msg->GetError())) {
+            // blobs are obsolete, delete them directly
+            auto request = std::make_unique<
+                TEvPartitionPrivate::TEvDeleteUnconfirmedBlobsRequest>(
+                MakeIntrusive<TCallContext>(CreateRequestId()),
+                commitId);
+            NCloud::Send(ctx, SelfId(), std::move(request));
+        } else {
+            // blobs are confirmed, but AddBlobs request will be executed
+            // (for this commit) later
+            State->BlobsConfirmed(commitId, std::move(msg->BlobsToConfirm));
+        }
+        STORAGE_VERIFY(
+            msg->CollectGarbageBarrierAcquired,
+            TWellKnownEntityTypes::TABLET,
+            TabletID());
+        STORAGE_VERIFY(
+            !msg->TrimFreshLogBarrierAcquired,
+            TWellKnownEntityTypes::TABLET,
+            TabletID());
         // commit & garbage queue barriers will be released when confirmed
-        // blobs are added
+        // blobs are added or when obsolete blobs are deleted
     } else {
         LOG_TRACE(
             ctx,

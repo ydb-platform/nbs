@@ -41,9 +41,11 @@ def start(argv):
     parser.add_argument("--service", action="store", default=None)
     parser.add_argument("--restart-interval", action="store", default=None)
     parser.add_argument("--restart-flag", action="store", default=None)
+    parser.add_argument("--restart-flag-on-demand", action="store_true", default=False)
     parser.add_argument("--storage-config-patch", action="store", default=None)
     parser.add_argument("--direct-io", action="store_true", default=False)
     parser.add_argument("--use-unix-socket", action="store_true", default=False)
+    parser.add_argument("--trace-sampling-rate", action="store", default=None, type=int)
 
     args = parser.parse_args(argv)
 
@@ -78,6 +80,11 @@ def start(argv):
     write_back_cache_path = common.work_path() + "/writebackcache-" + uid
     pathlib.Path(write_back_cache_path).mkdir(parents=True, exist_ok=True)
     config.VhostServiceConfig.WriteBackCachePath = write_back_cache_path
+
+    directory_handles_storage_path = common.work_path() + "/directoryhandlesstorage-" + uid
+    pathlib.Path(directory_handles_storage_path).mkdir(parents=True, exist_ok=True)
+    config.VhostServiceConfig.DirectoryHandlesStoragePath = directory_handles_storage_path
+    config.VhostServiceConfig.DirectoryHandlesInitialDataSize = 1000100
 
     service_type = args.service or "local"
     kikimr_port = 0
@@ -150,6 +157,7 @@ def start(argv):
         restart_flag=restart_flag,
         storage_config=storage_config,
         access_service_type=access_service_type,
+        trace_sampling_rate=args.trace_sampling_rate,
     )
 
     filestore_vhost = FilestoreVhost(vhost_configurator)
@@ -163,7 +171,10 @@ def start(argv):
     wait_for_filestore_vhost(filestore_vhost, vhost_configurator.port)
 
     if restart_interval:
-        if restart_flag is not None:
+        set_env("VHOST_RESTART_INTERVAL", str(restart_interval))
+        if args.restart_flag_on_demand:
+            set_env("VHOST_RESTART_FLAG_ON_DEMAND", restart_flag)
+        elif restart_flag is not None:
             set_env("QEMU_SET_READY_FLAG", restart_flag)
 
     set_env("NFS_VHOST_PORT", str(vhost_configurator.port))

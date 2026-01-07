@@ -35,6 +35,7 @@ type Session struct {
 	SessionID    string
 	SessionSeqNo uint64
 	FileSystemID string
+	CheckpointId string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -191,11 +192,16 @@ func (client *Client) GetFileStoreInfo(
 
 func (client *Client) CreateCheckpoint(
 	ctx context.Context,
+	session Session,
 	fileSystemID string,
 	opts *CreateCheckpointOpts,
 ) error {
 	req := &protos.TCreateCheckpointRequest{
 		FileSystemId: fileSystemID,
+		Headers: &protos.THeaders{
+			SessionSeqNo: session.SessionSeqNo,
+			SessionId:    []byte(session.SessionID),
+		},
 	}
 
 	if opts != nil {
@@ -245,12 +251,14 @@ func (client *Client) DescribeFileStoreModel(
 func (client *Client) CreateSession(
 	ctx context.Context,
 	fileSystemID string,
+	checkpointId string,
 	readonly bool,
 ) (Session, error) {
 
 	req := &protos.TCreateSessionRequest{
 		FileSystemId:         fileSystemID,
 		ReadOnly:             readonly,
+		CheckpointId:         checkpointId,
 		RestoreClientSession: false,
 	}
 	resp, err := client.Impl.CreateSession(ctx, req)
@@ -263,6 +271,7 @@ func (client *Client) CreateSession(
 		SessionID:    session.GetSessionId(),
 		SessionSeqNo: session.GetSessionSeqNo(),
 		FileSystemID: fileSystemID,
+		CheckpointId: checkpointId,
 	}, nil
 }
 
@@ -422,8 +431,7 @@ type StartEndpointOpts struct {
 	SocketPath string
 	ReadOnly   bool
 
-	SessionRetryTimeout uint32
-	SessionPingTimeout  uint32
+	SessionPingTimeout uint32
 
 	ServiceEndpoint string
 }
@@ -449,8 +457,7 @@ func (client *EndpointClient) StartEndpoint(
 		SocketPath: opts.SocketPath,
 		ReadOnly:   opts.ReadOnly,
 
-		SessionRetryTimeout: opts.SessionRetryTimeout,
-		SessionPingTimeout:  opts.SessionPingTimeout,
+		SessionPingTimeout: opts.SessionPingTimeout,
 
 		ServiceEndpoint: opts.ServiceEndpoint,
 	}

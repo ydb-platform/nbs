@@ -53,9 +53,24 @@ type Client interface {
 		kind types.FilesystemKind,
 	) (FilesystemModel, error)
 
+	CreateCheckpoint(
+		ctx context.Context,
+		session Session,
+		filesystemID string,
+		checkpointID string,
+		nodeID uint64,
+	) error
+
+	DestroyCheckpoint(
+		ctx context.Context,
+		filesystemID string,
+		checkpointID string,
+	) error
+
 	CreateSession(
 		ctx context.Context,
 		fileSystemID string,
+		checkpointID string,
 		readonly bool,
 	) (Session, error)
 

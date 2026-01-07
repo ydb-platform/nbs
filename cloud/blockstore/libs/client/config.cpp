@@ -44,6 +44,13 @@ TDuration MSeconds(ui64 x)
     xxx(GrpcReconnectBackoff,           TDuration,      MSeconds(100)         )\
     xxx(DiskRegistryBasedDiskInitialRetryTimeout,  TDuration,  MSeconds(500)  )\
     xxx(YDBBasedDiskInitialRetryTimeout,           TDuration,  MSeconds(500)  )\
+    xxx(EnableListBasedRetryRules,      bool,           false                 )\
+    xxx(NonRetriableErrorsForReliableMedia,                                    \
+        TVector<EWellKnownResultCodes>,                                        \
+        {})                                                                    \
+    xxx(NonRetriableErrorsForUnreliableMedia,                                  \
+        TVector<EWellKnownResultCodes>,                                        \
+        {})                                                                    \
                                                                                \
     xxx(MemoryQuotaBytes,       ui32,             0                           )\
     xxx(SecurePort,             ui32,             0                           )\
@@ -89,7 +96,7 @@ TTarget ConvertValue(TSource value)
 }
 
 template <>
-TDuration ConvertValue<TDuration, ui32>(ui32 value)
+TDuration ConvertValue<TDuration, const ui32&>(const ui32& value)
 {
     return TDuration::MilliSeconds(value);
 }
@@ -102,9 +109,28 @@ ConvertValue<TRequestThresholds, TProtoRequestThresholds>(
     return ConvertRequestThresholds(value);
 }
 
+template <>
+TVector<EWellKnownResultCodes> ConvertValue<
+    TVector<EWellKnownResultCodes>,
+    const google::protobuf::RepeatedField<ui32>&>(
+    const google::protobuf::RepeatedField<ui32>& value)
+{
+    TVector<EWellKnownResultCodes> v;
+    for (const auto& x: value) {
+        v.push_back(static_cast<EWellKnownResultCodes>(x));
+    }
+    return v;
+}
+
+template <typename T>
+bool IsEmpty(const google::protobuf::RepeatedField<T>& value)
+{
+    return value.empty();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
-IOutputStream& operator <<(IOutputStream& out, NProto::EClientIpcType ipcType)
+IOutputStream& operator <<(IOutputStream& out, const NProto::EClientIpcType& ipcType)
 {
     switch (ipcType) {
         case NProto::IPC_GRPC:
@@ -124,6 +150,22 @@ IOutputStream& operator <<(IOutputStream& out, NProto::EClientIpcType ipcType)
     }
 }
 
+template <typename T>
+void DumpImpl(const T& t, IOutputStream& os)
+{
+    os << t;
+}
+
+void DumpImpl(const TVector<EWellKnownResultCodes>& value, IOutputStream& os)
+{
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (i) {
+            os << ",";
+        }
+        os << value[i];
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -136,12 +178,42 @@ TClientAppConfig::TClientAppConfig(NProto::TClientAppConfig appConfig)
     , IamConfig(AppConfig.GetIamConfig())
 {}
 
-#define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
-type TClientAppConfig::Get##name() const                                       \
-{                                                                              \
-    auto has = ClientConfig.Has##name();                                       \
-    return has ? ConvertValue<type>(ClientConfig.Get##name()) : Default##name; \
-}                                                                              \
+#define DECLARE_FIELD_CHECKER(name, type, ...)                               \
+    template <typename TProtoConfig, typename = void>                        \
+    struct Has##name##Method: std::false_type                                \
+    {                                                                        \
+    };                                                                       \
+                                                                             \
+    template <typename TProtoConfig>                                         \
+    struct Has##name##Method<                                                \
+        TProtoConfig,                                                        \
+        std::void_t<decltype(std::declval<TProtoConfig>().Has##name())>>     \
+        : std::true_type                                                     \
+    {                                                                        \
+    };                                                                       \
+                                                                             \
+    template <typename TProtoConfig, typename TProtoValue>                   \
+    bool IsEmpty##name(const TProtoConfig& config, const TProtoValue& value) \
+    {                                                                        \
+        if constexpr (Has##name##Method<TProtoConfig>::value) {              \
+            return !config.Has##name();                                      \
+        } else {                                                             \
+            return IsEmpty(value);                                           \
+        }                                                                    \
+    }
+
+BLOCKSTORE_CLIENT_CONFIG(DECLARE_FIELD_CHECKER)
+
+#undef DECLARE_FIELD_CHECKER
+
+#define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                \
+    type TClientAppConfig::Get##name() const                     \
+    {                                                            \
+        const auto& value = ClientConfig.Get##name();            \
+        return IsEmpty##name(ClientConfig, value)                \
+                   ? Default##name                               \
+                   : ConvertValue<type, decltype(value)>(value); \
+    }
 // BLOCKSTORE_CONFIG_GETTER
 
 BLOCKSTORE_CLIENT_CONFIG(BLOCKSTORE_CONFIG_GETTER)
@@ -154,9 +226,11 @@ TRequestThresholds TClientAppConfig::GetRequestThresholds() const {
 
 void TClientAppConfig::Dump(IOutputStream& out) const
 {
-#define BLOCKSTORE_CONFIG_DUMP(name, ...)                                      \
-    out << #name << ": " << Get##name() << Endl;                               \
-// BLOCKSTORE_CONFIG_DUMP
+#define BLOCKSTORE_CONFIG_DUMP(name, ...) \
+    out << #name << ": ";                 \
+    DumpImpl(Get##name(), out);           \
+    out << Endl;                          \
+    // BLOCKSTORE_CONFIG_DUMP
 
     BLOCKSTORE_CLIENT_CONFIG(BLOCKSTORE_CONFIG_DUMP);
 
@@ -168,7 +242,7 @@ void TClientAppConfig::DumpHtml(IOutputStream& out) const
 #define BLOCKSTORE_CONFIG_DUMP(name, ...)                                      \
     TABLER() {                                                                 \
         TABLED() { out << #name; }                                             \
-        TABLED() { out << Get##name(); }                                       \
+        TABLED() { DumpImpl(Get##name(), out); }                               \
     }                                                                          \
 // BLOCKSTORE_CONFIG_DUMP
 

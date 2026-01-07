@@ -261,13 +261,15 @@ void TBootstrapBase::Init()
 
     auto diagnosticsConfig = Configs->DiagnosticsConfig;
     if (TraceReaders.size()) {
+        TTraceProcessorConfig traceProcessorConfig;
+        traceProcessorConfig.ComponentName = "BLOCKSTORE_TRACE";
         TraceProcessor = CreateTraceProcessorMon(
             Monitoring,
             CreateTraceProcessor(
                 Timer,
                 BackgroundScheduler,
                 Logging,
-                "BLOCKSTORE_TRACE",
+                std::move(traceProcessorConfig),
                 NLwTraceMonPage::TraceManager(diagnosticsConfig->GetUnsafeLWTrace()),
                 TraceReaders));
 
@@ -300,7 +302,8 @@ void TBootstrapBase::Init()
     RequestStats = CreateServerRequestStats(
         serverGroup,
         Timer,
-        Configs->DiagnosticsConfig->GetHistogramCounterOptions());
+        Configs->DiagnosticsConfig->GetHistogramCounterOptions(),
+        Configs->DiagnosticsConfig->GetExecutionTimeSizeClasses());
 
     if (!VolumeStats) {
         VolumeStats = CreateVolumeStats(
@@ -790,9 +793,9 @@ void TBootstrapBase::InitLocalService()
             NvmeManager,
             {.DirectIO = false,
              .UseSubmissionThread = false,
-             .EnableDataIntegrityValidation =
+             .DataIntegrityValidationPolicy =
                  Configs->DiskAgentConfig
-                     ->GetEnableDataIntegrityValidationForDrBasedDisks()}));
+                     ->GetDataIntegrityValidationPolicyForDrBasedDisks()}));
 }
 
 void TBootstrapBase::InitNullService()
@@ -928,7 +931,6 @@ void TBootstrapBase::Start()
     START_KIKIMR_COMPONENT(NotifyService);
     START_COMMON_COMPONENT(Monitoring);
     START_COMMON_COMPONENT(ProfileLog);
-    START_KIKIMR_COMPONENT(StatsFetcher);
     START_COMMON_COMPONENT(DiscoveryService);
     START_COMMON_COMPONENT(TraceProcessor);
     START_KIKIMR_COMPONENT(TraceSerializer);
@@ -1042,7 +1044,6 @@ void TBootstrapBase::Stop()
     STOP_KIKIMR_COMPONENT(TraceSerializer);
     STOP_COMMON_COMPONENT(TraceProcessor);
     STOP_COMMON_COMPONENT(DiscoveryService);
-    STOP_KIKIMR_COMPONENT(StatsFetcher);
     STOP_COMMON_COMPONENT(ProfileLog);
     STOP_COMMON_COMPONENT(Monitoring);
     STOP_KIKIMR_COMPONENT(LogbrokerService);

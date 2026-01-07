@@ -1,5 +1,4 @@
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
-#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/getopt/small/last_getopt.h>
 
@@ -54,15 +53,9 @@ int main(int argc, const char** argv)
 {
     TOptions options(argc, argv);
 
-    auto logging =
-        NCloud::CreateLoggingService("console", NCloud::TLogSettings{});
-    auto Log = logging->CreateLog(options.ComponentName);
     auto statsFetcher = NCloud::NStorage::CreateCgroupStatsFetcher(
         options.ComponentName,
-        logging,
         options.Path);
-
-    statsFetcher->Start();
 
     TDuration pollInterval = TDuration::Seconds(options.PollPeriod);
 

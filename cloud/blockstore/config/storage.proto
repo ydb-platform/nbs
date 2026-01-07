@@ -84,6 +84,16 @@ enum EResyncPolicy
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+enum ENonreplAllocationPolicy
+{
+    NONREPL_ALLOC_POLICY_NOT_SPECIFIED = 0;
+
+    // Try to allocate disk devices of the same user on different hosts if possible.
+    NONREPL_ALLOC_POLICY_USER_ANTI_AFFINITY = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 //
 //  !!!IMPORTANT!!!
 //  Even though StorageServiceConfig is usually stored in textual format, it may
@@ -504,8 +514,8 @@ message TStorageServiceConfig
     optional string SSDFreshChannelPoolKind = 177;
     optional string HybridFreshChannelPoolKind = 178;
 
-    // Number of fresh channels per partition.
-    optional uint32 FreshChannelCount = 179;
+    // Number of fresh channels per partition for SSD disks.
+    optional uint32 FreshChannelCountSSD = 179;
 
     // Enables fresh channel write requests.
     optional bool FreshChannelWriteRequestsEnabled = 180;
@@ -1113,7 +1123,7 @@ message TStorageServiceConfig
     // agents devices and suspend local devices.
     optional bool DiskRegistryCleanupConfigOnRemoveHost = 392;
 
-    // Enables the encryption at rest for Disk Registry based disks.
+    // Enables the encryption at rest for Disk Registry based disks. Currently not implemented.
     optional bool EncryptionAtRestForDiskRegistryBasedDisksEnabled = 393;
 
     // Enabling direct copying of data between disk agents.
@@ -1363,4 +1373,23 @@ message TStorageServiceConfig
     //   N = track every Nth operation
     // Higher values reduce monitoring overhead but provide less granular statistics.
     optional uint32 DeviceOperationTrackingFrequency = 467;
+
+    // Enable to attach or detach hardware devices in runtime in Disk Agent.
+    optional bool AttachDetachPathsEnabled = 468;
+
+    // Policy for allocating nonreplicated disks.
+    optional ENonreplAllocationPolicy NonreplAllocationPolicy = 469;
+
+    // Enable to send metrics from local tablets to hive.
+    optional bool SendLocalTabletMetricsToHiveEnabled = 470;
+
+    // Enables encryption with DEK provided by the Root KMS for Disk Registry based disks.
+    optional bool RootKmsEncryptionForDiskRegistryBasedDisksEnabled = 471;
+
+    // Sets the VhostDiscardEnabled flag in VolumeConfig when creating a volume.
+    // Applies to network-ssd and network-hdd disks.
+    optional bool EnableVhostDiscardForNewVolumes = 472;
+
+    // Number of fresh channels per partition for HDD disks.
+    optional uint32 FreshChannelCountHDD = 473;
 }

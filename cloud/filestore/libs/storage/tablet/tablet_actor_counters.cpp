@@ -345,6 +345,8 @@ void TIndexTabletActor::TMetrics::Register(
 
     REGISTER_AGGREGATABLE_SUM(UsedSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedHandlesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(UsedDirectHandlesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(SevenBytesHandlesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedLocksCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(StatefulSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(StatelessSessionsCount, EMetricType::MT_ABSOLUTE);
@@ -352,6 +354,11 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(OrphanSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(SessionTimeouts, EMetricType::MT_DERIVATIVE);
     REGISTER_AGGREGATABLE_SUM(SessionCleanupAttempts, EMetricType::MT_DERIVATIVE);
+
+    REGISTER_LOCAL(
+        StrictFileSystemSizeEnforcementEnabled,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(DirectoryCreationInShardsEnabled, EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(ReassignCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(WritableChannelCount, EMetricType::MT_ABSOLUTE);
@@ -518,6 +525,9 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_REQUEST(AddData);
     REGISTER_REQUEST(GenerateBlobIds);
     REGISTER_REQUEST(ListNodes);
+    REGISTER_AGGREGATABLE_SUM(
+        ListNodes.RequestedBytesPrecharge,
+        EMetricType::MT_DERIVATIVE);
     REGISTER_REQUEST(GetNodeAttr);
     REGISTER_REQUEST(CreateHandle);
     REGISTER_REQUEST(DestroyHandle);
@@ -541,6 +551,7 @@ void TIndexTabletActor::TMetrics::Register(
 
     REGISTER_LOCAL(CurrentLoad, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(Suffer, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(OverloadedCount, EMetricType::MT_DERIVATIVE);
 
 #undef REGISTER_REQUEST
 #undef REGISTER_LOCAL
@@ -568,7 +579,8 @@ void TIndexTabletActor::TMetrics::Update(
     const TInMemoryIndexStateStats& inMemoryIndexStateStats,
     const TBlobMetaMapStats& blobMetaMapStats,
     const TIndexTabletState::TBackpressureThresholds& backpressureThresholds,
-    const TIndexTabletState::TBackpressureValues& backpressureValues)
+    const TIndexTabletState::TBackpressureValues& backpressureValues,
+    const THandlesStats& handlesStats)
 {
     const ui32 blockSize = fileSystem.GetBlockSize();
 
@@ -580,7 +592,16 @@ void TIndexTabletActor::TMetrics::Update(
 
     Store(UsedSessionsCount, stats.GetUsedSessionsCount());
     Store(UsedHandlesCount, stats.GetUsedHandlesCount());
+    Store(UsedDirectHandlesCount, handlesStats.UsedDirectHandlesCount);
+    Store(SevenBytesHandlesCount, handlesStats.SevenBytesHandlesCount);
     Store(UsedLocksCount, stats.GetUsedLocksCount());
+
+    Store(
+        StrictFileSystemSizeEnforcementEnabled,
+        fileSystem.GetStrictFileSystemSizeEnforcementEnabled());
+    Store(
+        DirectoryCreationInShardsEnabled,
+        fileSystem.GetDirectoryCreationInShardsEnabled());
 
     Store(FreshBytesCount, stats.GetFreshBytesCount());
     Store(FreshBytesItemCount, stats.GetFreshBytesItemCount());
@@ -816,7 +837,8 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
         GetInMemoryIndexStateStats(),
         GetBlobMetaMapStats(),
         BuildBackpressureThresholds(),
-        GetBackpressureValues());
+        GetBackpressureValues(),
+        GetHandlesStats());
 
     // TabletStartTimestamp is intialised once per tablet lifetime and thus it is
     // acceptable to set it in RegisterStatCounters if it is not set yet.
@@ -876,7 +898,8 @@ void TIndexTabletActor::HandleUpdateCounters(
         GetInMemoryIndexStateStats(),
         GetBlobMetaMapStats(),
         BuildBackpressureThresholds(),
-        GetBackpressureValues());
+        GetBackpressureValues(),
+        GetHandlesStats());
     SendMetricsToExecutor(ctx);
 
     UpdateCountersScheduled = false;
@@ -903,6 +926,13 @@ void TIndexTabletActor::HandleUpdateCounters(
         }
         if (shardIds.empty()) {
             CachedAggregateStats = std::move(*stats);
+            Store(
+                Metrics.AggregateUsedBytesCount,
+                CachedAggregateStats.GetUsedBlocksCount() * GetBlockSize());
+            Store(
+                Metrics.AggregateUsedNodesCount,
+                CachedAggregateStats.GetUsedNodesCount());
+
             return;
         }
 

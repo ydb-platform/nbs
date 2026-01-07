@@ -350,6 +350,18 @@ func (c *ClientMock) Stat(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (c *ClientMock) ModifyTags(
+	ctx context.Context,
+	saveState func() error,
+	diskID string,
+	tagsToAdd []string,
+	tagsToRemove []string,
+) error {
+
+	args := c.Called(ctx, saveState, diskID, tagsToAdd, tagsToRemove)
+	return args.Error(0)
+}
+
 func (c *ClientMock) Freeze(
 	ctx context.Context,
 	saveState func() error,

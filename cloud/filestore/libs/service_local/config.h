@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/storage/core/libs/features/features_config.h>
+
 #include <cloud/filestore/config/server.pb.h>
 
 #include <util/datetime/base.h>
@@ -55,6 +57,7 @@ public:
     [[nodiscard]] bool GetShareKernelWorkers() const;
     [[nodiscard]] ui32 GetMaxKernelWorkersCount() const;
     [[nodiscard]] bool GetForceAsyncIO() const;
+    [[nodiscard]] bool GetPropagateAffinityToKernelWorkers() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -68,11 +71,14 @@ class TLocalFileStoreConfig
 {
 private:
     NProto::TLocalServiceConfig ProtoConfig;
+    NFeatures::TFeaturesConfigPtr FeaturesConfig;
 
 public:
     TLocalFileStoreConfig(NProto::TLocalServiceConfig protoConfig = {})
         : ProtoConfig(std::move(protoConfig))
     {}
+
+    void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
 
     TString GetRootPath() const;
     TString GetPathPrefix() const;
@@ -113,9 +119,41 @@ public:
 
     ui32 GetMaxFuseLoopThreads() const;
 
-    bool GetZeroCopyWriteEnabled() const;
-
     bool GetFSyncQueueDisabled() const;
+
+    TDuration GetEntryTimeout() const;
+    TDuration GetEntryTimeout(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fsId) const;
+
+    TDuration GetNegativeEntryTimeout() const;
+    TDuration GetNegativeEntryTimeout(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fsId) const;
+
+    TDuration GetAttrTimeout() const;
+    TDuration GetAttrTimeout(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fsId) const;
+
+    TDuration GetXAttrCacheTimeout() const;
+    TDuration GetXAttrCacheTimeout(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fsId) const;
+
+    bool GetDirectoryHandlesStorageEnabled() const;
+    bool GetDirectoryHandlesStorageEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fsId) const;
+
+    ui64 GetDirectoryHandlesTableSize() const;
+
+    bool GetGuestHandleKillPrivV2Enabled() const;
 };
 
 }   // namespace NCloud::NFileStore

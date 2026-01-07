@@ -1,5 +1,4 @@
-#include "common_constants.h"
-#include "request_bounds_tracker.h"
+#include "requests_in_progress.h"
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -19,28 +18,38 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
         UNIT_ASSERT_EQUAL(requestsInProgress.GetRequestCount(), 0);
         UNIT_ASSERT(!interface->WriteRequestInProgress());
 
-        auto readId1 = requestsInProgress.AddReadRequest("Read Request 1");
-        auto writeId1 = requestsInProgress.AddWriteRequest("Write Request 1");
-        auto readId2 = requestsInProgress.AddReadRequest("Read Request 2");
-        auto writeId2 = requestsInProgress.AddWriteRequest("Write Request 2");
-        auto readId3 = requestsInProgress.AddReadRequest("Read Request 3");
+        auto readId1 = requestsInProgress.AddReadRequest(
+            TBlockRange64::MakeOneBlock(1),
+            "Read Request 1");
+        auto writeId1 = requestsInProgress.AddWriteRequest(
+            TBlockRange64::MakeOneBlock(1),
+            "Write Request 1");
+        auto readId2 = requestsInProgress.AddReadRequest(
+            TBlockRange64::MakeOneBlock(2),
+            "Read Request 2");
+        auto writeId2 = requestsInProgress.AddWriteRequest(
+            TBlockRange64::MakeOneBlock(2),
+            "Write Request 2");
+        auto readId3 = requestsInProgress.AddReadRequest(
+            TBlockRange64::MakeOneBlock(3),
+            "Read Request 3");
 
         UNIT_ASSERT_EQUAL(requestsInProgress.GetRequestCount(), 5);
         UNIT_ASSERT(interface->WriteRequestInProgress());
 
-        requestsInProgress.RemoveRequest(readId3);
-        requestsInProgress.RemoveRequest(writeId1);
+        requestsInProgress.RemoveReadRequest(readId3);
+        requestsInProgress.RemoveWriteRequest(writeId1);
 
         UNIT_ASSERT_EQUAL(requestsInProgress.GetRequestCount(), 3);
         UNIT_ASSERT(interface->WriteRequestInProgress());
 
-        requestsInProgress.RemoveRequest(writeId2);
+        requestsInProgress.RemoveWriteRequest(writeId2);
 
         UNIT_ASSERT_EQUAL(requestsInProgress.GetRequestCount(), 2);
         UNIT_ASSERT(!interface->WriteRequestInProgress());
 
-        requestsInProgress.RemoveRequest(readId1);
-        requestsInProgress.RemoveRequest(readId2);
+        requestsInProgress.RemoveReadRequest(readId1);
+        requestsInProgress.RemoveReadRequest(readId2);
 
         UNIT_ASSERT_EQUAL(requestsInProgress.GetRequestCount(), 0);
         UNIT_ASSERT(!interface->WriteRequestInProgress());
@@ -52,17 +61,23 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
             requestsInProgress;
         IRequestsInProgress* interface = &requestsInProgress;
 
-        requestsInProgress.AddReadRequest(100, "Read Request 1");
-        requestsInProgress.AddWriteRequest(200, "Write Request 1");
+        requestsInProgress.AddReadRequest(
+            100,
+            TBlockRange64::MakeOneBlock(1),
+            "Read Request 1");
+        requestsInProgress.AddWriteRequest(
+            200,
+            TBlockRange64::MakeOneBlock(1),
+            "Write Request 1");
 
         UNIT_ASSERT_EQUAL(requestsInProgress.GetRequestCount(), 2);
         UNIT_ASSERT(interface->WriteRequestInProgress());
 
-        requestsInProgress.RemoveRequest(100);
+        requestsInProgress.RemoveReadRequest(100);
         UNIT_ASSERT_EQUAL(requestsInProgress.GetRequestCount(), 1);
         UNIT_ASSERT(interface->WriteRequestInProgress());
 
-        requestsInProgress.RemoveRequest(200);
+        requestsInProgress.RemoveWriteRequest(200);
         UNIT_ASSERT_EQUAL(requestsInProgress.GetRequestCount(), 0);
         UNIT_ASSERT(!interface->WriteRequestInProgress());
     }
@@ -73,10 +88,14 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
             requestsInProgress;
 
         requestsInProgress.SetRequestIdentityKey(1000);
-        auto id1 = requestsInProgress.AddReadRequest("Read Request 1");
+        auto id1 = requestsInProgress.AddReadRequest(
+            TBlockRange64::MakeOneBlock(1),
+            "Read Request 1");
         UNIT_ASSERT_EQUAL(id1, 1000);
 
-        auto id2 = requestsInProgress.AddWriteRequest("Write Request 1");
+        auto id2 = requestsInProgress.AddWriteRequest(
+            TBlockRange64::MakeOneBlock(1),
+            "Write Request 1");
         UNIT_ASSERT_EQUAL(id2, 1001);
     }
 
@@ -90,38 +109,68 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
         UNIT_ASSERT_UNEQUAL(id1, id2);
     }
 
-    Y_UNIT_TEST(AllRequests)
+    Y_UNIT_TEST(EnumerateRequests)
     {
         using TRequests =
             TRequestsInProgress<EAllowedRequests::ReadWrite, ui32, TString>;
 
-        TMap<ui32, TRequests::TRequest> testData{
-            {0, {.Value = "Read Request 1", .IsWrite = false}},
-            {1, {.Value = "Write Request 1", .IsWrite = true}},
-            {10, {.Value = "Read Request 2", .IsWrite = false}},
-            {20, {.Value = "Write Request 2", .IsWrite = true}},
+        struct TComparator
+        {
+            bool operator()(
+                const TRequests::TItem& lhs,
+                const TRequests::TItem& rhs) const
+            {
+                return lhs.Key < rhs.Key;
+            }
+        };
+
+        TSet<TRequests::TItem, TComparator> testReadData{
+            {.Key = 0,
+             .Range = TBlockRange64::MakeOneBlock(1),
+             .Value = "Read Request 1"},
+            {.Key = 10,
+             .Range = TBlockRange64::MakeOneBlock(2),
+             .Value = "Read Request 2"},
+        };
+
+        TSet<TRequests::TItem, TComparator> testWriteData{
+            {.Key = 1,
+             .Range = TBlockRange64::MakeOneBlock(3),
+             .Value = "Write Request 1"},
+            {.Key = 20,
+             .Range = TBlockRange64::MakeOneBlock(4),
+             .Value = "Write Request 2"},
         };
 
         TRequests requestsInProgress;
-        for (const auto& item: testData) {
-            if (item.second.IsWrite) {
-                requestsInProgress.AddWriteRequest(
-                    item.first,
-                    TString(item.second.Value));
-            } else {
-                requestsInProgress.AddReadRequest(
-                    item.first,
-                    TString(item.second.Value));
-            }
+        for (const auto& item: testReadData) {
+            requestsInProgress.AddReadRequest(item.Key, item.Range, item.Value);
+        }
+        for (const auto& item: testWriteData) {
+            requestsInProgress.AddWriteRequest(
+                item.Key,
+                item.Range,
+                item.Value);
         }
 
-        for (const auto& request: requestsInProgress.AllRequests()) {
-            ui32 id = request.first;
-            const TRequests::TRequest& item = request.second;
-            const auto& testItem = testData[id];
-            UNIT_ASSERT_EQUAL(testItem.IsWrite, item.IsWrite);
-            UNIT_ASSERT_EQUAL(testItem.Value, item.Value);
-        }
+        requestsInProgress.EnumerateRequests(
+            [&](ui32 key,
+                bool isWrite,
+                TBlockRange64 range,
+                const TString& value)
+            {
+                auto it = testWriteData.end();
+                if (isWrite) {
+                    it = testWriteData.find(TRequests::TItem{.Key = key});
+
+                } else {
+                    it = testReadData.find(TRequests::TItem{.Key = key});
+                }
+                UNIT_ASSERT_UNEQUAL(testWriteData.end(), it);
+                UNIT_ASSERT_UNEQUAL(testReadData.end(), it);
+                UNIT_ASSERT_EQUAL(it->Range, range);
+                UNIT_ASSERT_EQUAL(it->Value, value);
+            });
     }
 
     Y_UNIT_TEST(ShouldWaitForInFlightWrites)
@@ -129,11 +178,22 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
         using TRequests =
             TRequestsInProgress<EAllowedRequests::ReadWrite, ui32, TString>;
 
-        TMap<ui32, TRequests::TRequest> testData{
-            {0, {.Value = "Read Request 1", .IsWrite = false}},
-            {1, {.Value = "Write Request 1", .IsWrite = true}},
-            {10, {.Value = "Read Request 2", .IsWrite = false}},
-            {20, {.Value = "Write Request 2", .IsWrite = true}},
+        TVector<TRequests::TItem> testReadData{
+            {.Key = 0,
+             .Range = TBlockRange64::MakeOneBlock(1),
+             .Value = "Read Request 1"},
+            {.Key = 10,
+             .Range = TBlockRange64::MakeOneBlock(2),
+             .Value = "Read Request 2"},
+        };
+
+        TVector<TRequests::TItem> testWriteData{
+            {.Key = 1,
+             .Range = TBlockRange64::MakeOneBlock(3),
+             .Value = "Write Request 1"},
+            {.Key = 20,
+             .Range = TBlockRange64::MakeOneBlock(4),
+             .Value = "Write Request 2"},
         };
 
         // When there is no in-flight requests waiting does nothing.
@@ -142,25 +202,23 @@ Y_UNIT_TEST_SUITE(TRequestsInProgressTest)
         requestsInProgress.WaitForInFlightWrites();
         UNIT_ASSERT(!requestsInProgress.IsWaitingForInFlightWrites());
 
-        for (const auto& item: testData) {
-            if (item.second.IsWrite) {
-                requestsInProgress.AddWriteRequest(
-                    item.first,
-                    TString(item.second.Value));
-            } else {
-                requestsInProgress.AddReadRequest(
-                    item.first,
-                    TString(item.second.Value));
-            }
+        for (const auto& item: testReadData) {
+            requestsInProgress.AddReadRequest(item.Key, item.Range, item.Value);
+        }
+        for (const auto& item: testWriteData) {
+            requestsInProgress.AddWriteRequest(
+                item.Key,
+                item.Range,
+                item.Value);
         }
 
         UNIT_ASSERT(!requestsInProgress.IsWaitingForInFlightWrites());
         requestsInProgress.WaitForInFlightWrites();
         UNIT_ASSERT(requestsInProgress.IsWaitingForInFlightWrites());
 
-        requestsInProgress.RemoveRequest(1);
+        requestsInProgress.RemoveWriteRequest(1);
         UNIT_ASSERT(requestsInProgress.IsWaitingForInFlightWrites());
-        requestsInProgress.RemoveRequest(20);
+        requestsInProgress.RemoveWriteRequest(20);
         UNIT_ASSERT(!requestsInProgress.IsWaitingForInFlightWrites());
     }
 }

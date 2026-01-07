@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include "config.h"
+#include "directory_handles_storage.h"
 #include "fs.h"
 #include "handle_ops_queue.h"
 #include "node_cache.h"
@@ -56,6 +57,23 @@ struct TReleaseRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class EServerWriteBackCacheState
+{
+    // Requests should bypass WriteBackCache and go directly to the session
+    // (even if WriteBackCache is initialized)
+    Disabled,
+
+    // Requests should go to the WriteBackCache
+    Enabled,
+
+    // WriteBackCache is in the transition from Enabled to Disabled state.
+    // Requests should wait until WriteBackCache is flushed and then go
+    // directly to the session
+    Draining
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TFileSystem final
     : public IFileSystem
     , public std::enable_shared_from_this<TFileSystem>
@@ -89,6 +107,8 @@ private:
     THandleOpsQueuePtr HandleOpsQueue;
     TMutex HandleOpsQueueLock;
 
+    TDirectoryHandlesStoragePtr DirectoryHandlesStorage;
+
     TQueue<TReleaseRequest> DelayedReleaseQueue;
     TMutex DelayedReleaseQueueLock;
 
@@ -105,6 +125,7 @@ public:
         IRequestStatsPtr stats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
+        TDirectoryHandlesStoragePtr directoryHandlesStorage,
         TWriteBackCache writeBackCache);
 
     ~TFileSystem();
@@ -391,7 +412,14 @@ private:
         fuse_ino_t ino,
         uint64_t fh);
 
-    bool ShouldUseServerWriteBackCache(const fuse_file_info* fi) const;
+    EServerWriteBackCacheState GetServerWriteBackCacheState(
+        const fuse_file_info* fi) const;
+
+    TDuration GetEntryCacheTimeout(const NProto::TNodeAttr& attrs) const;
+
+    void AdjustNodeSize(
+        NProto::TNodeAttr& attrs
+    );
 
     bool UpdateNodeCache(
         const NProto::TNodeAttr& attrs,
@@ -445,6 +473,14 @@ private:
 
     void ScheduleProcessHandleOpsQueue();
     void ProcessHandleOpsQueue();
+
+    void DoWrite(
+        TCallContextPtr callContext,
+        fuse_req_t req,
+        fuse_ino_t ino,
+        std::shared_ptr<NProto::TWriteDataRequest> request,
+        ui64 size,
+        fuse_file_info* fi);
 
 #define FILESYSTEM_REPLY_IMPL(name, ...)                                       \
     template<typename... TArgs>                                                \

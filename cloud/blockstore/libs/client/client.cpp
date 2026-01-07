@@ -1124,7 +1124,7 @@ bool TClient::InitControlEndpoint()
 
         auto channel = CreateTcpSocketChannel(address, secureEndpoint);
         if (!channel) {
-            ythrow TServiceError(E_FAIL)
+            STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                 << "could not start gRPC client";
         }
 
@@ -1150,7 +1150,7 @@ bool TClient::InitDataEndpoint()
         auto channel = CreateTcpSocketChannel(address, secureEndpoint);
 
         if (!channel) {
-            ythrow TServiceError(E_FAIL)
+            STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                 << "could not start gRPC client";
         }
 
@@ -1207,7 +1207,7 @@ IBlockStorePtr TMultiHostClient::CreateEndpoint(
 
         auto channel = CreateTcpSocketChannel(address, isSecure);
         if (!channel) {
-            ythrow TServiceError(E_FAIL)
+            STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                 << "could not start gRPC client";
         }
 
@@ -1234,7 +1234,7 @@ IBlockStorePtr TMultiHostClient::CreateDataEndpoint(
 
         auto channel = CreateTcpSocketChannel(address, isSecure);
         if (!channel) {
-            ythrow TServiceError(E_FAIL)
+            STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                 << "could not start gRPC client";
         }
 

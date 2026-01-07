@@ -9,9 +9,9 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr TDuration OutdatedLeaderDestructionBackoffDelay =
-    TDuration::Seconds(5);
+    TDuration::Seconds(30);
 constexpr TDuration OutdatedLeaderDestructionMaxBackoffDelay =
-    TDuration::Seconds(60);
+    TDuration::Seconds(180);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -230,33 +230,20 @@ void TVolumeActor::DestroyOutdatedLeaderIfNeeded(
             leader.Link.GetHash()   // cookie
         );
 
-        if (OutdatedLeaderDestruction->TryCount > 1) {
-            LOG_INFO(
-                ctx,
-                TBlockStoreComponents::VOLUME,
-                "%s Schedule destroying old leader DiskId=%s, try# %lu after "
-                "%s",
-                LogTitle.GetWithTime().c_str(),
-                leader.Link.LeaderDiskId.Quote().c_str(),
-                OutdatedLeaderDestruction->TryCount,
-                FormatDuration(
-                    OutdatedLeaderDestruction->DelayProvider.GetDelay())
-                    .c_str());
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Schedule destroying old leader DiskId=%s, try# %lu after "
+            "%s",
+            LogTitle.GetWithTime().c_str(),
+            leader.Link.LeaderDiskId.Quote().c_str(),
+            OutdatedLeaderDestruction->TryCount,
+            FormatDuration(OutdatedLeaderDestruction->DelayProvider.GetDelay())
+                .c_str());
 
-            ctx.Schedule(
-                OutdatedLeaderDestruction->DelayProvider.GetDelay(),
-                std::move(event));
-        } else {
-            LOG_INFO(
-                ctx,
-                TBlockStoreComponents::VOLUME,
-                "%s destroying old leader DiskId=%s, try# %lu",
-                LogTitle.GetWithTime().c_str(),
-                leader.Link.LeaderDiskId.Quote().c_str(),
-                OutdatedLeaderDestruction->TryCount);
-
-            ctx.Send(std::move(event));
-        }
+        ctx.Schedule(
+            OutdatedLeaderDestruction->DelayProvider.GetDelay(),
+            std::move(event));
     }
 }
 

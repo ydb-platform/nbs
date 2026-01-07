@@ -173,7 +173,7 @@ ICellManagerPtr CreateCellManager(
         std::move(serverStats));
 
     if (HasError(result)) {
-        ythrow TServiceError(E_FAIL) << "unable to create gRPC client";
+        STORAGE_THROW_SERVICE_ERROR(E_FAIL) << "unable to create gRPC client";
     }
 
     auto rdmaTaskQueue =

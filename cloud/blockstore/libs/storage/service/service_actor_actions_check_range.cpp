@@ -80,7 +80,6 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
     request->Record.SetStartIndex(Request.GetStartIndex());
     request->Record.SetBlocksCount(Request.GetBlocksCount());
     request->Record.mutable_headers()->SetReplicaCount(Request.GetReplicaCount());
-    request->Record.SetCalculateChecksums(Request.GetCalculateChecksums());
 
     LOG_INFO(
         ctx,

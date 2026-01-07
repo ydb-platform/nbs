@@ -165,7 +165,7 @@ Time_count{component="server",method="/csi.v1.Controller/ControllerPublishVolume
 `)
 }
 
-func TestShouldReportRetriableErros(t *testing.T) {
+func TestShouldReportRetriableErrors(t *testing.T) {
 	mon := NewTestMonitoring(defaultRetriableErrorsThreshold)
 	method := "/csi.v1.Node/NodeStageVolume"
 	timestamp := time.Now()
@@ -185,6 +185,9 @@ func TestShouldReportRetriableErros(t *testing.T) {
 	mon.ReportRequestReceived(method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.Canceled, ""), timestamp.Add(duration), -1)
+	mon.ReportRequestReceived(method)
+	mon.ReportRequestCompleted(volumeId1, method,
+		status.Error(codes.DeadlineExceeded, ""), timestamp.Add(2*duration), -1)
 
 	serv := httptest.NewServer(mon.Handler)
 	defer serv.Close()
@@ -195,7 +198,10 @@ func TestShouldReportRetriableErros(t *testing.T) {
 	assert.Equal(t, getResponseBody(response),
 		`# HELP Count
 # TYPE Count counter
-Count{component="server",method="/csi.v1.Node/NodeStageVolume"} 5
+Count{component="server",method="/csi.v1.Node/NodeStageVolume"} 6
+# HELP CriticalRetriableErrors
+# TYPE CriticalRetriableErrors counter
+CriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 1
 # HELP InflightCount
 # TYPE InflightCount gauge
 InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume"} 0

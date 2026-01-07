@@ -9,6 +9,7 @@ import (
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -38,14 +39,61 @@ func NewCellSelector(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// If config is nil, returns copy of disk with original zone ID.
+func (s *cellSelector) ReplaceZoneIdWithCellIdInDiskMeta(
+	ctx context.Context,
+	storage resources.Storage,
+	disk *types.Disk,
+) (*types.Disk, error) {
+
+	if s.config == nil {
+		return &types.Disk{
+			DiskId: disk.DiskId,
+			ZoneId: disk.ZoneId,
+		}, nil
+	}
+
+	diskMeta, err := storage.GetDiskMeta(ctx, disk.DiskId)
+	if err != nil {
+		return nil, err
+	}
+	if diskMeta == nil {
+		return nil, errors.NewNonCancellableErrorf(
+			"no such disk: %v",
+			disk.DiskId,
+		)
+	}
+
+	// A correct zone ID must be provided; using a cell ID will cause a failure.
+	if !s.ZoneContainsCell(disk.ZoneId, diskMeta.ZoneID) {
+		return nil, errors.NewNonCancellableErrorf(
+			"disk %s is not in zone %s",
+			disk.DiskId,
+			disk.ZoneId,
+		)
+	}
+
+	return &types.Disk{
+		DiskId: disk.DiskId,
+		ZoneId: diskMeta.ZoneID,
+	}, nil
+}
+
 func (s *cellSelector) SelectCell(
 	ctx context.Context,
 	zoneID string,
 	folderID string,
 	kind types.DiskKind,
+	requireExactCellIDMatch bool,
 ) (nbs.Client, error) {
 
-	cellID, err := s.selectCell(ctx, zoneID, folderID, kind)
+	cellID, err := s.selectCell(
+		ctx,
+		zoneID,
+		folderID,
+		kind,
+		requireExactCellIDMatch,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -194,6 +242,7 @@ func (s *cellSelector) selectCell(
 	zoneID string,
 	folderID string,
 	kind types.DiskKind,
+	requireExactCellIDMatch bool,
 ) (string, error) {
 
 	if s.config == nil {
@@ -215,6 +264,8 @@ func (s *cellSelector) selectCell(
 			"incorrect zone ID provided: %q",
 			zoneID,
 		)
+	} else if requireExactCellIDMatch {
+		return zoneID, nil
 	}
 
 	switch s.config.GetCellSelectionPolicy() {

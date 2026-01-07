@@ -113,6 +113,20 @@ private:
         bool success,
         ui64 finishTime);
 
+    struct TThroughputTracker
+    {
+        ui64 LastResetTime = 0;
+        ui64 TotalBlockCount = 0;
+        ui64 TotalOps = 0;
+
+        void AddOperation(ui64 blockCount);
+        std::pair<ui64, ui64> GetRatesAndReset(
+            ui64 currentTime,
+            ui32 blockSize);
+    };
+
+    std::array<TThroughputTracker, RequestTypeCount> ThroughputCounters;
+
 public:
     explicit TRequestsTimeTracker(const ui64 constructionTime);
 
@@ -131,7 +145,7 @@ public:
     [[nodiscard]] std::optional<TFirstSuccessStat>
     OnRequestFinished(ui64 requestId, bool success, ui64 finishTime);
 
-    [[nodiscard]] TString GetStatJson(ui64 nowCycles, ui32 blockSize) const;
+    [[nodiscard]] TString GetStatJson(ui64 nowCycles, ui32 blockSize);
 
     void ResetStats();
 

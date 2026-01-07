@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
@@ -1359,41 +1360,46 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         TPartitionClient client(runtime, env.ActorId);
 
-        runtime.SetEventFilter(
-            [&](auto&, TAutoPtr<IEventHandle>& event)
-            {
-                if (event->GetTypeRewrite() ==
-                    TEvDiskAgent::EvReadDeviceBlocksResponse)
+        for (int ec: {EIO, EREMOTEIO}) {
+            runtime.SetEventFilter(
+                [&](auto&, TAutoPtr<IEventHandle>& event)
                 {
-                    auto response = std::make_unique<
-                        TEvDiskAgent::TEvReadDeviceBlocksResponse>(MakeError(
-                        MAKE_SYSTEM_ERROR(EIO),
-                        "async IO operation failed"));
+                    if (event->GetTypeRewrite() ==
+                        TEvDiskAgent::EvReadDeviceBlocksResponse)
+                    {
+                        auto response = std::make_unique<
+                            TEvDiskAgent::TEvReadDeviceBlocksResponse>(
+                            MakeError(
+                                MAKE_SYSTEM_ERROR(ec),
+                                "async IO operation failed"));
 
-                    std::unique_ptr<IEventHandle> handle{new IEventHandle(
-                        event->Recipient,
-                        event->Sender,
-                        response.release(),
-                        0,
-                        event->Cookie)};
-                    event.Reset(handle.release());
-                }
+                        std::unique_ptr<IEventHandle> handle{new IEventHandle(
+                            event->Recipient,
+                            event->Sender,
+                            response.release(),
+                            0,
+                            event->Cookie)};
+                        event.Reset(handle.release());
+                    }
 
-                return false;
-            });
+                    return false;
+                });
 
-        client.SendReadBlocksRequest(
-            TBlockRange64::MakeClosedInterval(0, 1024));
+            client.SendReadBlocksRequest(
+                TBlockRange64::MakeClosedInterval(0, 1024));
 
-        auto response = client.RecvReadBlocksResponse();
-        UNIT_ASSERT_C(
-            HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT),
-            FormatError(response->GetError()));
-        UNIT_ASSERT_C(
-            HasProtoFlag(
-                response->GetError().GetFlags(),
-                NProto::EF_HW_PROBLEMS_DETECTED),
-            FormatError(response->GetError()));
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_C(
+                HasProtoFlag(
+                    response->GetError().GetFlags(),
+                    NProto::EF_SILENT),
+                FormatError(response->GetError()));
+            UNIT_ASSERT_C(
+                HasProtoFlag(
+                    response->GetError().GetFlags(),
+                    NProto::EF_HW_PROBLEMS_DETECTED),
+                FormatError(response->GetError()));
+        }
     }
 
     Y_UNIT_TEST(ShouldHandleLostDevice)
@@ -1947,7 +1953,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_VALUES_EQUAL("vasya", response->Device.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("vasya", response->DeviceUUID);
             UNIT_ASSERT_VALUES_EQUAL(
                 TBlockRange64::WithLength(2040, 8),
                 response->DeviceBlockRange);
@@ -1964,7 +1970,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_VALUES_EQUAL("petya", response->Device.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("petya", response->DeviceUUID);
             UNIT_ASSERT_VALUES_EQUAL(
                 TBlockRange64::WithLength(0, 8),
                 response->DeviceBlockRange);
@@ -1978,233 +1984,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             auto response = client.RecvResponse<TEvGetDeviceForRangeResponse>();
             UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->Error.GetCode());
         }
-    }
-
-    Y_UNIT_TEST(ShouldCheckRange)
-    {
-        TTestBasicRuntime runtime;
-
-        TTestEnv env(runtime);
-        TPartitionClient client(runtime, env.ActorId);
-
-        client.WriteBlocks(
-            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
-            1);
-
-        ui32 status = -1;
-        ui32 error = -1;
-
-        runtime.SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
-            {
-                switch (event->GetTypeRewrite()) {
-                    case TEvVolume::EvCheckRangeResponse: {
-                        using TEv = TEvVolume::TEvCheckRangeResponse;
-                        const auto* msg = event->Get<TEv>();
-                        error = msg->GetStatus();
-                        status = msg->Record.GetStatus().GetCode();
-
-                        break;
-                    }
-                }
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
-
-        const auto checkRange = [&](ui32 idx, ui32 size)
-        {
-            status = -1;
-            error = -1;
-
-            const auto response = client.CheckRange("id", idx, size);
-
-            TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
-            runtime.DispatchEvents(options, TDuration::Seconds(3));
-
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, status);
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
-        };
-
-        checkRange(0, 1024);
-        checkRange(1024, 512);
-        checkRange(1, 1);
-        checkRange(1000, 1000);
-    }
-
-    Y_UNIT_TEST(ShouldCheckRangeWithBrokenBlocks)
-    {
-        TTestBasicRuntime runtime;
-
-        TTestEnv env(runtime);
-        TPartitionClient client(runtime, env.ActorId);
-
-        client.WriteBlocks(
-            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
-            1);
-
-        ui32 status = -1;
-        ui32 error = -1;
-
-        runtime.SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
-            {
-                switch (event->GetTypeRewrite()) {
-                    case TEvVolume::EvCheckRangeResponse: {
-                        using TEv = TEvVolume::TEvCheckRangeResponse;
-                        const auto* msg = event->Get<TEv>();
-                        error = msg->GetStatus();
-                        status = msg->Record.GetStatus().GetCode();
-
-                        break;
-                    }
-                    case TEvService::EvReadBlocksLocalResponse: {
-                        using TEv = TEvService::TEvReadBlocksLocalResponse;
-
-                        auto response = std::make_unique<TEv>(
-                            MakeError(E_IO, "block is broken"));
-
-                        runtime.Send(
-                            new IEventHandle(
-                                event->Recipient,
-                                event->Sender,
-                                response.release(),
-                                0,   // flags
-                                event->Cookie),
-                            0);
-
-                        return TTestActorRuntime::EEventAction::DROP;
-
-                    }
-                }
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
-
-        const auto checkRange = [&](ui32 idx, ui32 size)
-        {
-            status = -1;
-
-            client.SendCheckRangeRequest("id", idx, size);
-            const auto response =
-                client.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
-
-            TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
-            runtime.DispatchEvents(options, TDuration::Seconds(3));
-
-            UNIT_ASSERT_VALUES_EQUAL(E_IO, status);
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
-        };
-
-        checkRange(0, 1024);
-        checkRange(1024, 512);
-        checkRange(1, 1);
-        checkRange(1000, 1000);
-    }
-
-    Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmpty)
-    {
-        TTestBasicRuntime runtime;
-
-        TTestEnv env(runtime);
-        TPartitionClient client(runtime, env.ActorId);
-
-        const ui32 idx = 0;
-        const ui32 size = 1;
-        const auto response = client.CheckRange("id", idx, size);
-
-        TDispatchOptions options;
-        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
-
-        runtime.DispatchEvents(options, TDuration::Seconds(1));
-
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetStatus().GetCode());
-    }
-
-    Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCount)
-    {
-        TTestBasicRuntime runtime;
-
-        TTestEnv env(runtime);
-        TPartitionClient client(runtime, env.ActorId);
-
-        const ui32 idx = 0;
-
-        client.SendCheckRangeRequest("id", idx, 16_MB/DefaultBlockSize + 1);
-        const auto response =
-            client.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
-
-        TDispatchOptions options;
-        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
-
-        runtime.DispatchEvents(options, TDuration::Seconds(1));
-
-        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
-    }
-
-    Y_UNIT_TEST(ShouldGetSameChecksumsWhileCheckRangeSimmilarDisks)
-    {
-        TTestBasicRuntime runtime;
-
-        TTestEnv env(runtime);
-        TPartitionClient partition1(runtime, env.ActorId);
-        TPartitionClient partition2(runtime, env.ActorId);
-
-        partition1.WriteBlocks(
-            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
-            1);
-
-        partition2.WriteBlocks(
-            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
-            1);
-
-        const auto response1 = partition1.CheckRange("id", 0, 1024, true);
-        const auto response2 = partition2.CheckRange("id", 0, 1024, true);
-
-        const auto& checksums1 = response1->Record.GetChecksums();
-        const auto& checksums2 = response2->Record.GetChecksums();
-
-        ASSERT_VECTORS_EQUAL(
-            TVector<ui32>(checksums1.begin(), checksums1.end()),
-            TVector<ui32>(checksums2.begin(), checksums2.end()));
-    }
-
-    Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeDifferentDisks)
-    {
-        TTestBasicRuntime runtime;
-
-        TTestEnv env(runtime);
-        TPartitionClient partition1(runtime, env.ActorId);
-        TPartitionClient partition2(runtime, env.ActorId);
-
-        partition1.WriteBlocks(
-            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
-            1);
-
-        partition2.WriteBlocks(
-            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
-            77);
-
-        const auto response1 = partition1.CheckRange("id", 0, 1024, true);
-        const auto response2 = partition2.CheckRange("id", 0, 1024, true);
-
-        const auto& checksums1 = response1->Record.GetChecksums();
-        const auto& checksums2 = response2->Record.GetChecksums();
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            checksums1.size(),
-            checksums2.size());
-
-        ui32 totalChecksums = 0;
-        ui32 differentChecksums = 0;
-        for (int i = 0; i < checksums1.size(); ++i) {
-            if (checksums1.at(i) != checksums2.at(i)) {
-                ++differentChecksums;
-            }
-            ++totalChecksums;
-        }
-
-        UNIT_ASSERT_LT(differentChecksums * 2, totalChecksums);
     }
 
     Y_UNIT_TEST(ShouldHandleTimedOutDevices)

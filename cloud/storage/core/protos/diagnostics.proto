@@ -12,4 +12,3 @@ enum EStatsFetcherType
     CGROUP = 0;
     TASKSTATS = 1;
 };
-

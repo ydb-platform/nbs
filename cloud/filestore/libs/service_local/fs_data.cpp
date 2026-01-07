@@ -44,7 +44,7 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
         request.GetGid(),
         Config->GetGuestOnlyPermissionsCheckEnabled());
     TFileHandle handle;
-    TFileStat stat;
+    NLowLevel::TFileStatEx stat;
     ui64 nodeId;
     if (const auto& pathname = request.GetName()) {
         handle = node->OpenHandle(pathname, flags, mode);
@@ -289,11 +289,7 @@ NProto::TFsyncResponse TLocalFileSystem::Fsync(
         return TErrorResponse(ErrorInvalidHandle(request.GetHandle()));
     }
 
-    const bool flushed =
-        request.GetDataSync() ? handle->FlushData() : handle->Flush();
-    if (!flushed) {
-        return TErrorResponse(E_IO, "flush failed");
-    }
+    NLowLevel::Fsync(*handle, request.GetDataSync());
 
     return {};
 }
@@ -310,11 +306,7 @@ NProto::TFsyncDirResponse TLocalFileSystem::FsyncDir(
     }
 
     auto handle = node->OpenHandle(O_RDONLY|O_DIRECTORY);
-    const bool flushed =
-        request.GetDataSync() ? handle.FlushData() : handle.Flush();
-    if (!flushed) {
-        return TErrorResponse(E_IO, "flush failed");
-    }
+    NLowLevel::Fsync(handle, request.GetDataSync());
 
     return {};
 }

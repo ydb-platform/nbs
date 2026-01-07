@@ -497,6 +497,17 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
 
     if (exists) {
         ++LostNodeCount;
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "Node found in leader but missing in shard. Node observed in "
+            "leader: (name: %s, node proto: %s). Listing request proto: %s. "
+            "Validation response proto: %s",
+            name.Quote().c_str(),
+            node.ShortDebugString().Quote().c_str(),
+            ListNodesRequest.ShortDebugString().Quote().c_str(),
+            msg->Record.ShortDebugString().Quote().c_str());
+
         ReportNodeNotFoundInShard();
     }
 
@@ -659,7 +670,9 @@ void TStorageServiceActor::HandleListNodes(
     auto& headers = *msg->Record.MutableHeaders();
     headers.SetBehaveAsDirectoryTablet(
         filestore.GetFeatures().GetDirectoryCreationInShardsEnabled());
-    if (auto shardNo = ExtractShardNo(msg->Record.GetNodeId())) {
+    if (const ui32 shardNo =
+            ExtractShardNoSafe(filestore, msg->Record.GetNodeId()))
+    {
         // parent directory is managed by a shard
         auto [shardId, error] = SelectShard(
             ctx,
@@ -686,6 +699,7 @@ void TStorageServiceActor::HandleListNodes(
         ctx.Now());
 
     InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+    inflight->ProfileLogRequest.SetClientId(session->ClientId);
 
     auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 

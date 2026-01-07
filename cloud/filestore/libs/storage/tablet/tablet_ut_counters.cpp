@@ -398,7 +398,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         {
             auto response = Tablet->ReadData(handle, 0, sz);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, sz, 'a'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, sz, 'a');
         }
 
         {
@@ -547,7 +547,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         {
             auto response = Tablet->ReadData(handle, 0, sz);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, sz, 'a'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, sz, 'a');
         }
 
         {
@@ -685,8 +685,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             {{{"sensor", "FreshBlocksCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "MixedBlobsCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "CMMixedBlobsCount"}, {"filesystem", "test"}}, 1},
-            {{{"sensor", "DeletionMarkersCount"}, {"filesystem", "test"}}, 64},
-            {{{"sensor", "CMDeletionMarkersCount"}, {"filesystem", "test"}}, 64},
+            {{{"sensor", "DeletionMarkersCount"}, {"filesystem", "test"}}, 65},
+            {{{"sensor", "CMDeletionMarkersCount"}, {"filesystem", "test"}}, 65},
             {{{"sensor", "MixedBytesCount"}, {"filesystem", "test"}}, sz},
             {{{"sensor", "CMGarbageBlocksCount"}, {"filesystem", "test"}}, 0},
         });
@@ -881,6 +881,143 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                  return val > static_cast<i64>(startTime);
              }},
         });
+    }
+
+    Y_UNIT_TEST(ShouldReportDirectHandleMetrics)
+    {
+        TTestEnv env;
+        auto registry = env.GetRegistry();
+
+        env.CreateSubDomain("nfs");
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        const auto nodeId =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        auto advanceTime = [&]()
+        {
+            env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+            NActors::TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvIndexTabletPrivate::EvUpdateCounters);
+            env.GetRuntime().DispatchEvents(options);
+        };
+
+        auto checkHandlesCounters =
+            [&](i64 expectedDirectHandles, i64 expectedUsedHandles)
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "UsedDirectHandlesCount"}, {"filesystem", "test"}},
+                 expectedDirectHandles},
+                {{{"sensor", "UsedHandlesCount"}, {"filesystem", "test"}},
+                 expectedUsedHandles},
+            });
+        };
+
+        advanceTime();
+        checkHandlesCounters(0, 0);
+
+        const auto handleWithoutDirect =
+            CreateHandle(tablet, nodeId, {}, TCreateHandleArgs::RDWR);
+
+        advanceTime();
+        checkHandlesCounters(0, 1);
+
+        const auto handleWithDirect = CreateHandle(
+            tablet,
+            nodeId,
+            {},
+            TCreateHandleArgs::RDWR | TCreateHandleArgs::DIRECT);
+
+        advanceTime();
+        checkHandlesCounters(1, 2);
+
+        const auto anotherDirectHandle = CreateHandle(
+            tablet,
+            nodeId,
+            {},
+            TCreateHandleArgs::RDWR | TCreateHandleArgs::DIRECT);
+
+        advanceTime();
+        checkHandlesCounters(2, 3);
+
+        tablet.DestroyHandle(handleWithoutDirect);
+
+        advanceTime();
+        checkHandlesCounters(2, 2);
+
+        tablet.DestroyHandle(handleWithDirect);
+
+        advanceTime();
+        checkHandlesCounters(1, 1);
+
+        tablet.DestroyHandle(anotherDirectHandle);
+
+        advanceTime();
+        checkHandlesCounters(0, 0);
+    }
+
+    Y_UNIT_TEST(ShouldPersistUsedDirectHandlesCountAfterRestart)
+    {
+        TTestEnv env;
+        auto registry = env.GetRegistry();
+
+        env.CreateSubDomain("nfs");
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        const auto nodeId =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        auto checkHandlesCounters =
+            [&](i64 expectedDirectHandles, i64 expectedUsedHandles)
+        {
+            TTestRegistryVisitor visitor;
+            tablet.SendRequest(tablet.CreateUpdateCounters());
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "UsedDirectHandlesCount"}, {"filesystem", "test"}},
+                 expectedDirectHandles},
+                {{{"sensor", "UsedHandlesCount"}, {"filesystem", "test"}},
+                 expectedUsedHandles},
+            });
+        };
+
+        checkHandlesCounters(0, 0);
+
+        const auto handle1 = CreateHandle(
+            tablet,
+            nodeId,
+            {},
+            TCreateHandleArgs::RDWR | TCreateHandleArgs::DIRECT);
+
+        const auto handle2 = CreateHandle(
+            tablet,
+            nodeId,
+            {},
+            TCreateHandleArgs::RDWR | TCreateHandleArgs::DIRECT);
+        checkHandlesCounters(2, 2);
+
+        tablet.RebootTablet();
+        tablet.RecoverSession();
+
+        checkHandlesCounters(2, 2);
+
+        tablet.DestroyHandle(handle1);
+        checkHandlesCounters(1, 1);
+
+        tablet.DestroyHandle(handle2);
+        checkHandlesCounters(0, 0);
     }
 }
 

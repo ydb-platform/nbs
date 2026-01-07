@@ -164,12 +164,11 @@ void TCollectGarbageActor::CollectGarbage(const TActorContext& ctx)
     auto garbageBlobs = GarbageBlobs;
     RemoveDuplicates(newBlobs, garbageBlobs, CollectCommitId);
 
-    AddRange(
-        CollectCommitId,
-        LastCollectCommitId,
-        newBlobs.size(),
-        garbageBlobs.size(),
-        ProfileLogRequest);
+    auto& collectGarbageInfo = *ProfileLogRequest.MutableCollectGarbageInfo();
+    collectGarbageInfo.SetCollectCommitId(CollectCommitId);
+    collectGarbageInfo.SetLastCollectCommitId(LastCollectCommitId);
+    collectGarbageInfo.SetNewBlobsCount(newBlobs.size());
+    collectGarbageInfo.SetGarbageBlobsCount(garbageBlobs.size());
 
     auto requests = BuildGCRequests(
         *TabletInfo,
@@ -365,7 +364,7 @@ void TIndexTabletActor::HandleCollectGarbage(
     const TActorContext& ctx)
 {
     NProto::TProfileLogRequestInfo profileLogRequest;
-    InitProfileLogRequestInfo(
+    InitTabletProfileLogRequestInfo(
         profileLogRequest,
         EFileStoreSystemRequest::CollectGarbage,
         ctx.Now());

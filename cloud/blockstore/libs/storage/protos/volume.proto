@@ -130,6 +130,10 @@ message TAddClientResponse
 
     // Signal that volume tablet should be restarted.
     bool ForceTabletRestart = 7;
+
+    // Destination client will be mounted as local and with read-only access
+    // at the VM migration begin.
+    bool VolumeClientMigrationInProgress = 8;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -693,6 +697,8 @@ message TGracefulShutdownResponse
 
 message TCheckRangeRequest
 {
+    reserved 5;
+
     // Optional request headers.
     THeaders Headers = 1;
 
@@ -704,9 +710,6 @@ message TCheckRangeRequest
 
     // Number of blobs per batch.
     uint64 BlocksCount = 4;
-
-    // Is it necessary to calculate and include checksums in the response
-    bool CalculateChecksums = 5;
 
     // Number of replicas to read from m3 disks.
     uint64 ReplicaCount = 6;

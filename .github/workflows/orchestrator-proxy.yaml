@@ -1,0 +1,72 @@
+name: Orchestrator Proxy
+run-name: ${{ format('Orchestrator Proxy ({0} {1})', github.event_name, inputs.run_heavy == 'yes' && 'heavy' || 'light') }}
+      
+on:
+  workflow_dispatch:
+    inputs:
+      workflow_name:
+        description: 'Name of the workflow to run'
+        type: choice
+        options:
+          - orchestrator-light.yaml
+          - orchestrator-heavy.yaml
+      provision_mode:
+        description: 'Provision mode (if set to initial it will use ubuntu-latest image)'
+        type: choice
+        options:
+          - initial
+          - regular
+        required: true
+        default: 'regular'
+      loop:
+        description: 'Loop the action'
+        type: choice
+        options:
+          - "yes"
+          - "no"
+        required: false
+        default: "no"
+      run_light:
+        description: 'Run light VMs'
+        type: choice
+        options:
+          - "yes"
+          - "no"
+        required: false
+        default: "yes"
+      run_heavy:
+        description: 'Run heavy VMs'
+        type: choice
+        options:
+          - "yes"
+          - "no"
+        required: false
+        default: "yes"
+
+concurrency:
+  group: orchestrator-proxy
+
+jobs:
+  
+  restart:
+    name: Run ${{ inputs.workflow_name }}
+    if: ${{ !cancelled() }}
+    runs-on: ${{ inputs.provision_mode == 'initial' && fromJson('["ubuntu-latest"]') || fromJson('["self-hosted", "runner_light"]') }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: '.github'
+      - name: Set up gh cli
+        uses: ./.github/actions/gh_cli
+      - name: Sleep to wait for orchestrator.yaml to finish
+        run: sleep 15
+      - name: Run gh cli to start this workflow with the same arguments
+        if: ${{ always() }}
+        shell: bash --noprofile --norc -eo pipefail -x {0} 
+        run: |
+          gh workflow run "${WORKFLOW_NAME}" -R "${GITHUB_REPO}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          WORKFLOW_NAME: ${{ inputs.workflow_name }}

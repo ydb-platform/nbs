@@ -52,9 +52,16 @@ message TServerConfig
     // Unix-socket details.
     optional string UnixSocketPath = 17;
     optional uint32 UnixSocketBacklog = 18;
+    optional uint32 UnixSocketAccessMode = 20;
 
     // List of actions served by the server without authorization.
     repeated string ActionsNoAuth = 19;
+
+    // Enable shared memory transport for gRPC. Some data-intensive operations
+    // like read/write can use shared memory to pass data to the server instead
+    // of gRPC messages.
+    optional bool SharedMemoryTransportEnabled = 21;
+    optional string SharedMemoryBasePath = 22;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -88,6 +95,9 @@ message TIoUringConfig
 
     // Force offloading IO to the kernel thread pool.
     optional bool ForceAsyncIO = 4;
+
+    // Propagate parent thread affinity to io_uring kernel threads.
+    optional bool PropagateAffinityToKernelWorkers = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -171,6 +181,31 @@ message TLocalServiceConfig
 
     // Disable fsync queue which is used to synchronize data/metadata ops during fsync
     optional bool FSyncQueueDisabled = 29;
+
+    // Inode entry timeout.
+    optional uint32 EntryTimeout = 30;
+
+    // Inode entry timeout for negative responses (responses with errors).
+    // The most notable one is ENOENT for getattr.
+    optional uint32 NegativeEntryTimeout = 31;
+
+    // Node attributes timeout.
+    optional uint32 AttrTimeout = 32;
+
+    // X Attrs cache timeout
+    optional uint32 XAttrCacheTimeout = 33;
+
+    // Enable directory handles storage functionality
+    optional bool DirectoryHandlesStorageEnabled = 34;
+
+    // Capacity for DirectoryHandles persistent table.
+    optional uint64 DirectoryHandlesTableSize = 35;
+
+    // Enable FUSE_HANDLE_KILLPRIV_V2 on guest (FUSE client)
+    optional bool GuestHandleKillPrivV2Enabled = 36;
+
+    // Enable zero-copy for read operations in the VFS FUSE layer
+    optional bool ZeroCopyReadEnabled = 37;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

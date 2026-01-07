@@ -165,6 +165,7 @@ public:
 
     ui32 GetMaxResponseBytes() const;
     ui32 GetMaxResponseEntries() const;
+    ui32 GetMaxBytesMultiplier() const;
 
     ui32 GetDefaultNodesLimit() const;
     ui32 GetSizeToNodesRatio() const;
@@ -200,10 +201,12 @@ public:
     NCloud::NProto::EAuthorizationMode GetAuthorizationMode() const;
 
     bool GetTwoStageReadEnabled() const;
+    ui32 GetTwoStageReadThreshold() const;
     bool GetThreeStageWriteEnabled() const;
     ui32 GetThreeStageWriteThreshold() const;
     bool GetUnalignedThreeStageWriteEnabled() const;
     TDuration GetEntryTimeout() const;
+    TDuration GetRegularFileEntryTimeout() const;
     TDuration GetNegativeEntryTimeout() const;
     TDuration GetAttrTimeout() const;
     ui32 GetPreferredBlockSizeMultiplier() const;
@@ -345,6 +348,26 @@ public:
     bool GetZeroCopyWriteEnabled() const;
 
     bool GetFSyncQueueDisabled() const;
+
+    bool GetDirectoryHandlesStorageEnabled() const;
+    ui64 GetDirectoryHandlesTableSize() const;
+
+    bool GetGuestHandleKillPrivV2Enabled() const;
+
+    [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
+
+    bool GetZeroCopyReadEnabled() const;
+
+    [[nodiscard]] bool GetBlockChecksumsInProfileLogEnabled() const;
+
+    ui32 GetMaxShardCount() const;
+
+    bool GetReadBlobDisabled() const;
+    bool GetWriteBlobDisabled() const;
+
+    ui32 GetCpuLackOverloadThreshold() const;
+
+    ui32 GetMaxTabletStep() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

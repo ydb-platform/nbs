@@ -26,19 +26,22 @@ void TDiskRegistryActor::HandleSwitchAgentDisksToReadOnly(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Ignoring SwitchAgentDisksToReadOnly request"
+            "%s Ignoring SwitchAgentDisksToReadOnly request"
             " since AgentId=%s reconnected",
-            TabletID(),
+            LogTitle.GetWithTime().c_str(),
             msg->AgentId.c_str());
         return;
     }
 
     BLOCKSTORE_DISK_REGISTRY_COUNTER(SwitchAgentDisksToReadOnly);
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received SwitchAgentDisksToReadOnly request: AgentId=%s",
-        TabletID(),
-        msg->AgentId.c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received SwitchAgentDisksToReadOnly request: AgentId=%s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->AgentId.c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TSwitchAgentDisksToReadOnly>(
         ctx,
@@ -81,8 +84,11 @@ void TDiskRegistryActor::CompleteSwitchAgentDisksToReadOnly(
     TTxDiskRegistry::TSwitchAgentDisksToReadOnly& args)
 {
     if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "UpdateAgentState error: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s UpdateAgentState error: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(args.Error).c_str());
     }
 

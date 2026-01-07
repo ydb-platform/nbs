@@ -91,6 +91,26 @@ NProto::TError EnableRing(io_uring* ring)
     return {};
 }
 
+NProto::TError ApplyAffinityToKernelWorkers(io_uring* ring)
+{
+    cpu_set_t cpuset;
+
+    int ret = sched_getaffinity(0, sizeof(cpuset), &cpuset);
+    if (ret < 0) {
+        return MakeSystemError(-ret, "failed to call sched_getaffinity");
+    }
+
+    // dummy enter io uring to initialize per thread io wq
+    io_uring_enter(ring->enter_ring_fd, 1, 0, 0, NULL);
+
+    ret = io_uring_register_iowq_aff(ring, sizeof(cpuset), &cpuset);
+    if (ret < 0) {
+        return MakeSystemError(-ret, "failed to call io_uring_register_iowq_aff");
+    }
+
+    return {};
+}
+
 NProto::TError InitRing(io_uring* ring, ui32 entries, io_uring* wqOwner)
 {
     io_uring_params params{
@@ -129,6 +149,7 @@ TContext::TContext(TParams params)
               &TContext::CompletionThreadProc,
               this,
               std::move(params.CompletionThreadName)))
+    , PropagateAffinityToKernelWorkers(params.PropagateAffinityToKernelWorkers)
 {
     const auto error = InitRing(
         &Ring,
@@ -167,11 +188,23 @@ void TContext::Start()
     Started = SubmissionThread->Execute(
         [this]
         {
+            cpu_set_t set;
+            CPU_ZERO(&set);
+            CPU_SET(0, &set);
+
             const auto error = EnableRing(&Ring);
             Y_ABORT_IF(
                 HasError(error),
                 "can't enable the ring: %s",
                 FormatError(error).c_str());
+
+            if (PropagateAffinityToKernelWorkers) {
+                const auto error = ApplyAffinityToKernelWorkers(&Ring);
+                Y_ABORT_IF(
+                    HasError(error),
+                    "can't apply io wq thread affinity: %s",
+                    FormatError(error).c_str());
+            }
 
             // Start the completion thread only after enabling the ring.
             CompletionThread.Start();

@@ -5,6 +5,7 @@
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -33,13 +34,17 @@ public:
         ISchedulerPtr scheduler,
         ITimerPtr timer,
         IWriteBackCacheStatsPtr stats,
+        TLog log,
+        const TString& fileSystemId,
+        const TString& clientId,
         const TString& filePath,
-        ui32 capacityBytes,
+        ui64 capacityBytes,
         TDuration automaticFlushPeriod,
         TDuration flushRetryPeriod,
         ui32 maxWriteRequestSize,
         ui32 maxWriteRequestsCount,
-        ui32 maxSumWriteRequestsSize);
+        ui32 maxSumWriteRequestsSize,
+        bool zeroCopyWriteEnabled);
 
     ~TWriteBackCache();
 
@@ -60,19 +65,32 @@ public:
 
     NThreading::TFuture<void> FlushAllData();
 
+    bool IsEmpty() const;
+
+    // Keep information about MinNodeSize for flushed nodes
+    ui64 AcquireNodeStateRef();
+    void ReleaseNodeStateRef(ui64 refId);
+
+    ui64 GetCachedNodeSize(ui64 nodeId) const;
+    void SetCachedNodeSize(ui64 nodeId, ui64 size);
+
     enum class EWriteDataRequestStatus;
     struct TPersistentQueueStats;
 
 private:
     // Only for testing purposes
-    friend struct TCalculateDataPartsToReadTestBootstrap;
+    friend struct TTestUtilBootstrap;
 
+    struct TCachedWriteDataRequest;
+    struct TGlobalListTag;
+    struct TNodeListTag;
     class TWriteDataEntry;
+    struct TWriteDataEntryDeserializationStats;
     struct TWriteDataEntryPart;
     struct TNodeState;
     struct TFlushState;
     class TUtil;
-    struct TPendingOperations;
+    struct TQueuedOperations;
     class TContiguousWriteDataEntryPartsReader;
     class TWriteDataEntryIntervalMap;
 };
@@ -108,9 +126,6 @@ enum class TWriteBackCache::EWriteDataRequestStatus
     // Write request has been stored in the persistent buffer
     // The caller code observes the request as completed
     Cached,
-
-    // Flush has been requested for the write request
-    FlushRequested,
 
     // Write request is being flushed
     Flushing,

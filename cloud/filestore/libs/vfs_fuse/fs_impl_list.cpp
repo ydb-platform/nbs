@@ -1,5 +1,7 @@
 #include "fs_impl.h"
 
+#include "fs_directory_handle.h"
+
 #include <util/generic/buffer.h>
 #include <util/generic/map.h>
 #include <util/random/random.h>
@@ -11,108 +13,6 @@ namespace NCloud::NFileStore::NFuse {
 
 using namespace NCloud::NFileStore::NVFS;
 
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-using TBufferPtr = std::shared_ptr<TBuffer>;
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TDirectoryContent
-{
-    TBufferPtr Content = nullptr;
-    size_t Offset = 0;
-    size_t Size = 0;
-
-    const char* GetData() const
-    {
-        return Content ? Content->Data() + Offset : nullptr;
-    }
-
-    size_t GetSize() const
-    {
-        return Content ? Min(Size, Content->Size() - Offset) : 0;
-    }
-};
-
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TDirectoryHandle
-{
-private:
-    TMap<ui64, TBufferPtr> Content;
-    TMutex Lock;
-
-public:
-    const fuse_ino_t Index;
-    TString Cookie;
-
-    explicit TDirectoryHandle(fuse_ino_t ino)
-        : Index(ino)
-    {}
-
-    TDirectoryContent UpdateContent(
-        size_t size,
-        size_t offset,
-        const TBufferPtr& content,
-        TString cookie)
-    {
-        with_lock (Lock) {
-            size_t end = offset + content->size();
-            Y_ABORT_UNLESS(Content.upper_bound(end) == Content.end());
-            Content[end] = content;
-            Cookie = std::move(cookie);
-        }
-
-        return TDirectoryContent{content, 0, size};
-    }
-
-    TMaybe<TDirectoryContent> ReadContent(size_t size, size_t offset, TLog& Log)
-    {
-        size_t end = 0;
-        TBufferPtr content = nullptr;
-
-        with_lock (Lock) {
-            auto it = Content.upper_bound(offset);
-            if (it != Content.end()) {
-                end = it->first;
-                content = it->second;
-            } else if (Cookie) {
-                return Nothing();
-            }
-        }
-
-        TDirectoryContent result;
-        if (content) {
-            offset = offset - (end - content->size());
-            if (offset >= content->size()) {
-                STORAGE_ERROR("off %lu size %lu", offset, content->size());
-                return Nothing();
-            }
-            result = {content, offset, size};
-        }
-
-        return result;
-    }
-
-    void ResetContent()
-    {
-        with_lock (Lock) {
-            Content.clear();
-            Cookie.clear();
-        }
-    }
-
-    TString GetCookie()
-    {
-        with_lock (Lock) {
-            return Cookie;
-        }
-    }
-};
 
 namespace {
 
@@ -237,6 +137,10 @@ void TFileSystem::OpenDir(
         do {
             id = RandomNumber<ui64>();
         } while (!DirectoryHandles.try_emplace(id, handle).second);
+
+        if (DirectoryHandlesStorage) {
+            DirectoryHandlesStorage->StoreHandle(id, TDirectoryHandleChunk{.Index = ino});
+        }
     }
 
     fuse_file_info info = {};
@@ -248,6 +152,9 @@ void TFileSystem::OpenDir(
         // syscall was interrupted
         with_lock (DirectoryHandlesLock) {
             DirectoryHandles.erase(id);
+            if (DirectoryHandlesStorage) {
+                DirectoryHandlesStorage->RemoveHandle(id);
+            }
         }
     }
 }
@@ -262,7 +169,8 @@ void TFileSystem::ReadDir(
 {
     STORAGE_DEBUG("ReadDir #" << ino
         << " offset:" << offset
-        << " size:" << size);
+        << " size:" << size
+        << " fh:" << fi->fh);
 
     std::shared_ptr<TDirectoryHandle> handle;
     with_lock (DirectoryHandlesLock) {
@@ -298,6 +206,9 @@ void TFileSystem::ReadDir(
     if (!offset) {
         // directory contents need to be refreshed on rewinddir()
         handle->ResetContent();
+        if (DirectoryHandlesStorage) {
+            DirectoryHandlesStorage->ResetHandle(fi->fh);
+        }
     } else if (auto content = handle->ReadContent(size, offset, Log)) {
         reply(*this, *content);
         return;
@@ -307,75 +218,120 @@ void TFileSystem::ReadDir(
     request->SetCookie(handle->GetCookie());
     request->SetMaxBytes(Config->GetMaxBufferSize());
 
+    // We don't know the nodes yet so we have to adjust the node size after
+    // receiving ListNodes response.
+    //
+    // During ListNodes call, a node may be flushed and the information
+    // about the node may be removed from WriteBackCache, and ListNodes
+    // may return size without considering cached WriteData requests.
+    //
+    // Acquiring a node state reference prevents metadata from removal
+    // for flushed nodes.
+    const ui64 nodeStateRefId =
+        WriteBackCache ? WriteBackCache.AcquireNodeStateRef() : 0;
+
     Session->ListNodes(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) -> void {
-            auto self = ptr.lock();
-            const auto& response = future.GetValue();
-            if (!CheckResponse(self, *callContext, req, response)) {
-                return;
-            }
+        .Subscribe(
+            [=, fh = fi->fh, ptr = weak_from_this()](auto future) -> void
+            {
+                auto self = ptr.lock();
 
-            if (response.NodesSize() != response.NamesSize()) {
-                STORAGE_ERROR("listnodes #" << fuse_req_unique(req)
-                    << " names/nodes count mismatch");
-
-                self->ReplyError(
-                    *callContext,
-                    response.GetError(),
-                    req,
-                    EIO);
-                return;
-            }
-
-            TDirectoryBuilder builder(size);
-            if (offset == 0) {
-                builder.Add(req, ".", { .attr = {.st_ino = MissingNodeId}}, offset);
-                builder.Add(req, "..", { .attr = {.st_ino = MissingNodeId}}, offset);
-            }
-
-            for (size_t i = 0; i < response.NodesSize(); ++i) {
-                const auto& attr = response.GetNodes(i);
-                const auto& name = response.GetNames(i);
-
-                fuse_entry_param entry = {
-                    .ino = attr.GetId(),
-                    .attr_timeout = Config->GetAttrTimeout().SecondsFloat(),
-                    .entry_timeout = Config->GetEntryTimeout().SecondsFloat(),
+                Y_DEFER
+                {
+                    if (self && nodeStateRefId) {
+                        self->WriteBackCache.ReleaseNodeStateRef(
+                            nodeStateRefId);
+                    }
                 };
 
-                ConvertAttr(Config->GetPreferredBlockSize(), attr, entry.attr);
-                if (!entry.attr.st_ino) {
-                    const auto error = MakeError(
-                        E_IO,
-                        TStringBuilder() << "#" << fuse_req_unique(req)
-                        << " listed invalid entry: parent " << ino << ", name "
-                        << name.Quote() << ", stat " << DumpMessage(attr));
+                NProto::TListNodesResponse response = future.ExtractValue();
+                if (!CheckResponse(self, *callContext, req, response)) {
+                    return;
+                }
 
-                    STORAGE_ERROR(error.GetMessage());
+                if (response.NodesSize() != response.NamesSize()) {
+                    STORAGE_ERROR(
+                        "listnodes #" << fuse_req_unique(req)
+                                      << " names/nodes count mismatch");
+
                     self->ReplyError(
                         *callContext,
-                        error,
+                        response.GetError(),
                         req,
                         EIO);
                     return;
                 }
 
-                builder.Add(req, name, entry, offset);
-            }
+                TDirectoryBuilder builder(size);
+                if (offset == 0) {
+                    builder.Add(
+                        req,
+                        ".",
+                        {.attr = {.st_ino = MissingNodeId}},
+                        offset);
+                    builder.Add(
+                        req,
+                        "..",
+                        {.attr = {.st_ino = MissingNodeId}},
+                        offset);
+                }
 
-            auto content = handle->UpdateContent(
-                size,
-                offset,
-                builder.Finish(),
-                response.GetCookie());
+                if (WriteBackCache) {
+                    for (auto& attr: *response.MutableNodes()) {
+                        AdjustNodeSize(attr);
+                    }
+                }
 
-            STORAGE_TRACE("# " << fuse_req_unique(req)
-                << " offset: " << offset
-                << " limit: " << size
-                << " actual size " << content.GetSize());
+                for (size_t i = 0; i < response.NodesSize(); ++i) {
+                    const auto& attr = response.GetNodes(i);
+                    const auto& name = response.GetNames(i);
 
-            reply(*self, content);
-        });
+                    const auto entryTimeout =
+                        GetEntryCacheTimeout(attr).SecondsFloat();
+
+                    fuse_entry_param entry = {
+                        .ino = attr.GetId(),
+                        .attr_timeout = Config->GetAttrTimeout().SecondsFloat(),
+                        .entry_timeout = entryTimeout,
+                    };
+
+                    ConvertAttr(
+                        Config->GetPreferredBlockSize(),
+                        attr,
+                        entry.attr);
+                    if (!entry.attr.st_ino) {
+                        const auto error = MakeError(
+                            E_IO,
+                            TStringBuilder() << "#" << fuse_req_unique(req)
+                                             << " listed invalid entry: parent "
+                                             << ino << ", name " << name.Quote()
+                                             << ", stat " << DumpMessage(attr));
+
+                        STORAGE_ERROR(error.GetMessage());
+                        self->ReplyError(*callContext, error, req, EIO);
+                        return;
+                    }
+
+                    builder.Add(req, name, entry, offset);
+                }
+
+                auto handleChunk = handle->UpdateContent(
+                    size,
+                    offset,
+                    builder.Finish(),
+                    response.GetCookie());
+
+                STORAGE_TRACE(
+                    "# " << fuse_req_unique(req) << " offset: " << offset
+                         << " limit: " << size << " actual size "
+                         << handleChunk.DirectoryContent.GetSize());
+
+                if (DirectoryHandlesStorage) {
+                    DirectoryHandlesStorage->UpdateHandle(fh, handleChunk);
+                }
+
+                reply(*self, handleChunk.DirectoryContent);
+            });
 }
 
 void TFileSystem::ReleaseDir(
@@ -391,6 +347,10 @@ void TFileSystem::ReleaseDir(
         if (it != DirectoryHandles.end()) {
             CheckDirectoryHandle(req, ino, *it->second, Log, __func__);
             DirectoryHandles.erase(it);
+
+            if (DirectoryHandlesStorage) {
+                DirectoryHandlesStorage->RemoveHandle(fi->fh);
+            }
         }
     }
 

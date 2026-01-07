@@ -8,6 +8,7 @@
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/public.h>
+#include <cloud/filestore/libs/storage/core/system_counters.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/diagnostics/public.h>
@@ -86,6 +87,7 @@ private:
     TDiagnosticsConfigPtr DiagConfig;
     IProfileLogPtr ProfileLog;
     ITraceSerializerPtr TraceSerializer;
+    TSystemCountersPtr SystemCounters;
 
     NKikimr::TTestBasicRuntime Runtime;
     TVector<ui32> GroupIds;
@@ -100,12 +102,14 @@ private:
     NMetrics::IMainMetricsRegistryPtr Registry;
 
 public:
-    TTestEnv(
-        const TTestEnvConfig& config = {},
+    explicit TTestEnv(
+        TTestEnvConfig config = {},
         NProto::TStorageConfig storageConfig = {},
         NKikimr::NFake::TCaches cachesConfig = {},
         IProfileLogPtr profileLog = CreateProfileLogStub(),
         NProto::TDiagnosticsConfig diagConfig = {});
+
+    void UpdateStorageConfig(NProto::TStorageConfig storageConfig);
 
     NActors::TTestActorRuntime& GetRuntime()
     {
@@ -130,6 +134,11 @@ public:
         return Counters;
     }
 
+    TSystemCountersPtr GetSystemCounters() const
+    {
+        return SystemCounters;
+    }
+
     NMetrics::IMainMetricsRegistryPtr GetRegistry() const
     {
         return Registry;
@@ -140,6 +149,7 @@ public:
     ui64 AllocateTxId();
     void CreateSubDomain(const TString& name);
     ui32 CreateNode(const TString& name);
+    void CreateAndRegisterStorageService(ui32 nodeIdx);
 
     ui64 BootIndexTablet(ui32 nodeIdx);
     void UpdateTabletStorageInfo(ui64 tabletId, ui32 channelCount);

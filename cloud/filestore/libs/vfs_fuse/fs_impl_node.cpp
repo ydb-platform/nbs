@@ -25,12 +25,25 @@ void TFileSystem::Lookup(
     auto request = StartRequest<NProto::TGetNodeAttrRequest>(parent);
     request->SetName(std::move(name));
 
+    // We don't know ino yet so we have to adjust the node size after
+    // receiving GetNodeAttr response.
+    //
+    // During GetNodeAttr call, a node may be flushed and the information
+    // about the node may be removed from WriteBackCache, and GetNodeAttr
+    // may return size without considering cached WriteData requests.
+    //
+    // Acquiring a node state reference prevents metadata from removal
+    // for flushed nodes.
+    const ui64 nodeStateRefId =
+        WriteBackCache ? WriteBackCache.AcquireNodeStateRef() : 0;
+
     Session->GetNodeAttr(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
+        .Subscribe([=, ptr = weak_from_this()] (auto future) {
             if (auto self = ptr.lock()) {
-                const auto& response = future.GetValue();
+                NProto::TGetNodeAttrResponse response = future.ExtractValue();
                 const auto& error = response.GetError();
                 if (!HasError(response)) {
+                    self->AdjustNodeSize(*response.MutableNode());
                     self->ReplyEntry(
                         *callContext,
                         error,
@@ -47,6 +60,9 @@ void TFileSystem::Lookup(
                         error,
                         req,
                         &entry);
+                }
+                if (nodeStateRefId) {
+                    self->WriteBackCache.ReleaseNodeStateRef(nodeStateRefId);
                 }
             }
         });
@@ -164,11 +180,8 @@ void TFileSystem::MkNode(
     mode_t mode,
     dev_t rdev)
 {
-    // TODO
-    Y_UNUSED(rdev);
-
     STORAGE_DEBUG("MkNode #" << parent << " " << name.Quote()
-        << " mode: " << mode);
+        << " mode: " << mode << " rdev: " << rdev);
 
     if (!ValidateNodeId(*callContext, req, parent)) {
         return;
@@ -189,6 +202,14 @@ void TFileSystem::MkNode(
     } else if (S_ISFIFO(mode)) {
         auto* fifo = request->MutableFifo();
         fifo->SetMode(mode & ~(S_IFMT));
+    } else if (S_ISCHR(mode)) {
+        auto* charDevice = request->MutableCharDevice();
+        charDevice->SetMode(mode & ~(S_IFMT));
+        charDevice->SetDevice(rdev);
+    } else if (S_ISBLK(mode)) {
+        auto* blockDevice = request->MutableBlockDevice();
+        blockDevice->SetMode(mode & ~(S_IFMT));
+        blockDevice->SetDevice(rdev);
     } else {
         ReplyError(*callContext, ErrorNotSupported(""), req, ENOTSUP);
         return;

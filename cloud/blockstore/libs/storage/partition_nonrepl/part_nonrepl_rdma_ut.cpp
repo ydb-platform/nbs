@@ -1,4 +1,5 @@
 #include "part_nonrepl_rdma.h"
+
 #include "part_nonrepl_rdma_actor.h"
 #include "ut_env.h"
 
@@ -13,6 +14,7 @@
 #include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
@@ -155,6 +157,7 @@ struct TTestEnv
             CreateDiagnosticsConfig(),
             std::move(partConfig),
             RdmaClient,
+            VolumeActorId,
             VolumeActorId
         );
 
@@ -604,6 +607,39 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         UNIT_ASSERT_VALUES_EQUAL(env.VolumeActorId, notifiedActor);
         UNIT_ASSERT_VALUES_EQUAL(1, notificationCount);
+    }
+
+    Y_UNIT_TEST(ShouldHandleMultiAgentWriteRequestWhileInZombieState)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime);
+        TPartitionClient client(runtime, env.ActorId);
+
+        auto promise = NThreading::NewPromise();
+        env.Rdma().InjectFutureToWaitBeforeRequestProcessing(
+            promise.GetFuture());
+        env.Rdma().InitAllEndpoints();
+
+        // Freeze one request
+        client.SendWriteBlocksRequest(TBlockRange64::WithLength(0, 1), 'A');
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        // Poison should not destroy the actor because of the frozen request
+        auto poisonRequest = std::make_unique<TEvents::TEvPoisonPill>();
+        runtime.Send(new IEventHandle(
+            env.ActorId,
+            runtime.AllocateEdgeActor(),
+            poisonRequest.release()));
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        // MultiAgentWrite shoild be rejected since the actor is in zombie state
+        client.SendMultiAgentWriteRequest(
+            TBlockRange64::WithLength(0, 1),
+            TVector<TEvNonreplPartitionPrivate::TGetDeviceForRangeResponse>{},
+            'B');
+        auto response = client.RecvMultiAgentWriteResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
     }
 
     Y_UNIT_TEST(ShouldSendDeviceTimedOutOnResponseError)
@@ -1677,7 +1713,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_VALUES_EQUAL("vasya", response->Device.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("vasya", response->DeviceUUID);
             UNIT_ASSERT_VALUES_EQUAL(
                 TBlockRange64::WithLength(2040, 8),
                 response->DeviceBlockRange);
@@ -1693,7 +1729,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_VALUES_EQUAL("petya", response->Device.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("petya", response->DeviceUUID);
             UNIT_ASSERT_VALUES_EQUAL(
                 TBlockRange64::WithLength(0, 8),
                 response->DeviceBlockRange);

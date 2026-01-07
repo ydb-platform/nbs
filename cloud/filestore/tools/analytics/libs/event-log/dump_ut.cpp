@@ -94,7 +94,7 @@ Y_UNIT_TEST_SUITE(TDumpTest)
     {
         const auto requests = GetRequestTypes();
 
-        UNIT_ASSERT_VALUES_EQUAL(74, requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(73, requests.size());
 
         ui32 index = 0;
 #define TEST_REQUEST_TYPE(id, name)                                            \
@@ -163,7 +163,6 @@ Y_UNIT_TEST_SUITE(TDumpTest)
         TEST_REQUEST_TYPE(55, AddData);
         TEST_REQUEST_TYPE(56, ReadBlob);
         TEST_REQUEST_TYPE(57, WriteBlob);
-        TEST_REQUEST_TYPE(58, ToggleServiceState);
 
         // Fuse
         TEST_REQUEST_TYPE(1001, Flush);
@@ -220,6 +219,19 @@ Y_UNIT_TEST_SUITE(TDumpTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "1970-01-01T00:00:00.000010Z\tfs\tReadData\t0.000020s\tS_OK\t{no_info}\n"
             "1970-01-01T00:00:00.000050Z\tfs\tCompaction\t0.000060s\tS_FALSE\t{no_info}\n",
+            testStream.Str());
+    }
+
+    Y_UNIT_TEST(ShouldDumpDiscardedRequestsCount)
+    {
+        NProto::TProfileLogRecord record;
+        record.SetDiscardedRequestCount(77);
+
+        TStringStream testStream;
+
+        DumpDiscardedRequestCount(record, &testStream);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "Discarded 77 requests\n",
             testStream.Str());
     }
 }

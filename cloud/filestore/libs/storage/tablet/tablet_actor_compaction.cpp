@@ -599,7 +599,7 @@ bool TIndexTabletActor::PrepareTx_Compaction(
     TTransactionContext& tx,
     TTxIndexTablet::TCompaction& args)
 {
-    InitProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
+    InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
     TIndexTabletDatabase db(tx.DB);
 
@@ -776,7 +776,7 @@ void TIndexTabletActor::CompleteTx_Compaction(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "Compaction");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "Compaction");
     }
 
     ui32 blobIndex = 0;

@@ -16,7 +16,6 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
         case EFileStoreRequest::DestroySession:
         case EFileStoreRequest::ResetSession:
         case EFileStoreRequest::PingSession:
-        case EFileStoreRequest::ToggleServiceState:
         case EFileStoreRequest::SubscribeSession:
         case EFileStoreRequest::GetSessionEvents:
         case EFileStoreRequest::GetSessionEventsStream:

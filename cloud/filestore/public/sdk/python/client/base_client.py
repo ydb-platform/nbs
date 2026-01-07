@@ -35,6 +35,12 @@ CLIENT_METHODS = [
     "create_handle",
     "read_data",
     "write_data",
+
+    # shared memory transport methods
+    "mmap",
+    "munmap",
+    "list_mmap_regions",
+    "ping_mmap_region",
 ]
 
 ENDPOINT_METHODS = [

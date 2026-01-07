@@ -218,6 +218,8 @@ IFileIOServicePtr CreateFileIOService(const TLocalFileStoreConfig& config)
                     .MaxKernelWorkersCount = ring.GetMaxKernelWorkersCount(),
                     .ShareKernelWorkers = ring.GetShareKernelWorkers(),
                     .ForceAsyncIO = ring.GetForceAsyncIO(),
+                    .PropagateAffinityToKernelWorkers =
+                        ring.GetPropagateAffinityToKernelWorkers(),
                 });
 
                 if (config.GetNumThreads() <= 1) {
@@ -342,6 +344,7 @@ void TBootstrapVhost::InitEndpoints()
     if (localServiceConfig) {
         auto serviceConfig = std::make_shared<TLocalFileStoreConfig>(
             *localServiceConfig);
+        serviceConfig->SetFeaturesConfig(Configs->FeaturesConfig);
         ThreadPool = CreateThreadPool("svc", serviceConfig->GetNumThreads());
         FileIOService = CreateFileIOService(*serviceConfig);
         LocalService = CreateLocalFileStore(
@@ -419,7 +422,12 @@ void TBootstrapVhost::InitEndpoints()
                     ->GetWriteBackCacheFlushMaxWriteRequestsCount(),
             .FlushMaxSumWriteRequestsSize =
                 Configs->VhostServiceConfig
-                    ->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
+                    ->GetWriteBackCacheFlushMaxSumWriteRequestsSize()
+        },
+        TDirectoryHandlesStorageConfig{
+            .PathPrefix = Configs->VhostServiceConfig->GetDirectoryHandlesStoragePath(),
+            .InitialDataSize =
+                Configs->VhostServiceConfig->GetDirectoryHandlesInitialDataSize()
         }
     );
 

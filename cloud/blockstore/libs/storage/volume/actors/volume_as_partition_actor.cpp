@@ -61,10 +61,10 @@ void TVolumeAsPartitionActor::ForwardRequestToFollower(
     msg->Record.MutableHeaders()->SetExactDiskIdMatch(true);
 
     const ui64 requestId = RequestsInProgress.AddWriteRequest(
+        BuildRequestBlockRange(*msg, OriginalBlockSize),
         TRequestCtx{
             .OriginalSender = ev->Sender,
             .OriginalCookie = ev->Cookie,
-            .BlockRange = BuildRequestBlockRange(*msg, OriginalBlockSize),
             .ReplyType = replyType});
 
     NActors::TActorId nondeliveryActor = SelfId();
@@ -122,7 +122,7 @@ void TVolumeAsPartitionActor::ReplyUndelivery(
 {
     if (auto requestCtx = RequestsInProgress.ExtractRequest(cookie)) {
         auto message = TStringBuilder() << "Undelivery " << TMethod::Name << " "
-                                        << requestCtx->Value.BlockRange.Print();
+                                        << requestCtx->Range.Print();
 
         LOG_WARN(
             ctx,

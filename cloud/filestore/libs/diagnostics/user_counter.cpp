@@ -93,6 +93,7 @@ void RegisterFilestore(
     const TString& folderId,
     const TString& filestoreId,
     const TString& instanceId,
+    EHistogramCounterOptions histogramCounterOptions,
     NMonitoring::TDynamicCounterPtr src)
 {
     if (instanceId.empty() || !src) {
@@ -129,11 +130,12 @@ void RegisterFilestore(
         { { readSub, "Errors/Fatal" } },
         FILESTORE_READ_ERRORS);
     AddHistogramUserMetric(
-        GetUsBuckets(),
+        GetTimeBuckets(histogramCounterOptions),
         dsc,
         commonLabels,
         { { readSub, "Time" } },
-        FILESTORE_READ_LATENCY);
+        FILESTORE_READ_LATENCY,
+        histogramCounterOptions);
 
     auto writeSub = src->FindSubgroup("request", "WriteData");
     AddUserMetric(
@@ -162,11 +164,12 @@ void RegisterFilestore(
         { { writeSub, "Errors/Fatal" } },
         FILESTORE_WRITE_ERRORS);
     AddHistogramUserMetric(
-        GetUsBuckets(),
+        GetTimeBuckets(histogramCounterOptions),
         dsc,
         commonLabels,
         { { writeSub, "Time" } },
-        FILESTORE_WRITE_LATENCY);
+        FILESTORE_WRITE_LATENCY,
+        histogramCounterOptions);
 
     TVector<TBaseDynamicCounters> indexOpsCounters;
     TVector<TBaseDynamicCounters> indexErrorCounters;
@@ -204,11 +207,12 @@ void RegisterFilestore(
                     FILESTORE_INDEX_CUMULATIVE_TIME
                 );
                 AddHistogramUserMetric(
-                    GetUsBuckets(),
+                    GetTimeBuckets(histogramCounterOptions),
                     dsc,
                     labels,
                     {{ indexSubgroup, "Time" }},
-                    FILESTORE_INDEX_LATENCY);
+                    FILESTORE_INDEX_LATENCY,
+                    histogramCounterOptions);
                 AddUserMetric(
                     dsc,
                     labels,

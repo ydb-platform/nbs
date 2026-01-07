@@ -115,6 +115,38 @@ func TestDeleteFilesystem(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestCreateCheckpoint(t *testing.T) {
+	ctx := newContext()
+	client := newClient(t, ctx)
+
+	filesystemID := t.Name()
+
+	err := client.Create(ctx, filesystemID, nfs.CreateFilesystemParams{
+		FolderID:    "folder",
+		CloudID:     "cloud",
+		BlocksCount: 1024,
+		BlockSize:   4096,
+		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
+	})
+	require.NoError(t, err)
+	defer client.Delete(ctx, filesystemID)
+
+	checkpointID := "checkpoint_1"
+	nodeID := uint64(0)
+	session, err := client.CreateSession(ctx, filesystemID, "", false)
+	require.NoError(t, err)
+	defer client.DestroySession(ctx, session)
+
+	err = client.CreateCheckpoint(
+		ctx,
+		session,
+		filesystemID,
+		checkpointID,
+		nodeID,
+	)
+	require.NoError(t, err)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type node struct {
@@ -339,7 +371,7 @@ func TestListNodesFileSystem(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Delete(ctx, filesystemID)
 
-	session, err := client.CreateSession(ctx, filesystemID, false)
+	session, err := client.CreateSession(ctx, filesystemID, "", false)
 	require.NoError(t, err)
 	defer client.DestroySession(ctx, session)
 
@@ -394,4 +426,72 @@ func TestListNodesFileSystem(t *testing.T) {
 		"log",
 	}
 	require.Equal(t, expectedNames, nodeNames(nodes))
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestListNodesFromCheckpoint(t *testing.T) {
+	ctx := newContext()
+	client := newClient(t, ctx)
+
+	filesystemID := t.Name()
+	err := client.Create(ctx, filesystemID, nfs.CreateFilesystemParams{
+		FolderID:    "folder",
+		CloudID:     "cloud",
+		BlocksCount: 1024,
+		BlockSize:   4096,
+		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
+	})
+	require.NoError(t, err)
+	defer client.Delete(ctx, filesystemID)
+
+	session, err := client.CreateSession(ctx, filesystemID, "", false)
+	require.NoError(t, err)
+	defer client.DestroySession(ctx, session)
+
+	rootDir := root(dir("first"), file("second"))
+	model := newFileSystemModel(t, ctx, client, session, rootDir)
+	model.create()
+
+	checkpointID := "checkpoint_1"
+	nodeID := uint64(0)
+	err = client.CreateCheckpoint(
+		ctx,
+		session,
+		filesystemID,
+		checkpointID,
+		nodeID,
+	)
+	require.NoError(t, err)
+	defer client.DestroyCheckpoint(
+		ctx,
+		filesystemID,
+		checkpointID,
+	)
+
+	model.createNodes(rootNodeID, dir("after_checkpoint"))
+	nodes := model.listAllNodesRecursively()
+	require.Equal(t, []string{
+		"after_checkpoint",
+		"first",
+		"second",
+	}, nodeNames(nodes))
+
+	// Create a session for the checkpoint
+	checkpointSession, err := client.CreateSession(
+		ctx,
+		filesystemID,
+		checkpointID,
+		false,
+	)
+	require.NoError(t, err)
+	defer client.DestroySession(ctx, checkpointSession)
+	model.session = checkpointSession
+
+	// Verify that only files created before the checkpoint are visible
+	nodes = model.listAllNodesRecursively()
+	require.Equal(t, []string{
+		"first",
+		"second",
+	}, nodeNames(nodes))
 }

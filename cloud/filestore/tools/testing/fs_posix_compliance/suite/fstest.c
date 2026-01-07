@@ -40,7 +40,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/param.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 #ifndef HAS_TRUNCATE64
@@ -67,6 +69,7 @@ enum action
     ACTION_RENAME,
     ACTION_MKFIFO,
     ACTION_MKNOD,
+    ACTION_BIND,
     ACTION_CHMOD,
 #ifdef HAS_LCHMOD
     ACTION_LCHMOD,
@@ -82,6 +85,7 @@ enum action
     ACTION_TRUNCATE,
     ACTION_STAT,
     ACTION_LSTAT,
+    ACTION_PATHCONF,
     ACTION_OPENDIR,
 };
 
@@ -113,6 +117,7 @@ static struct syscall_desc syscalls[] = {
     {"rename", ACTION_RENAME, {TYPE_STRING, TYPE_STRING, TYPE_NONE}},
     {"mkfifo", ACTION_MKFIFO, {TYPE_STRING, TYPE_NUMBER, TYPE_NONE}},
     {"mknod", ACTION_MKNOD, { TYPE_STRING, TYPE_STRING, TYPE_NUMBER, TYPE_NUMBER, TYPE_NUMBER, TYPE_NONE}},
+    {"bind", ACTION_BIND, { TYPE_STRING, TYPE_NONE }},
     {"chmod", ACTION_CHMOD, {TYPE_STRING, TYPE_NUMBER, TYPE_NONE}},
 #ifdef HAS_LCHMOD
     {"lchmod", ACTION_LCHMOD, {TYPE_STRING, TYPE_NUMBER, TYPE_NONE}},
@@ -130,6 +135,7 @@ static struct syscall_desc syscalls[] = {
     {"truncate", ACTION_TRUNCATE, {TYPE_STRING, TYPE_NUMBER, TYPE_NONE}},
     {"stat", ACTION_STAT, {TYPE_STRING, TYPE_STRING, TYPE_NONE}},
     {"lstat", ACTION_LSTAT, {TYPE_STRING, TYPE_STRING, TYPE_NONE}},
+    {"pathconf", ACTION_PATHCONF, { TYPE_STRING, TYPE_STRING, TYPE_NONE }},
     {"opendir", ACTION_OPENDIR, {TYPE_STRING, TYPE_NONE}},
     {NULL, -1, {TYPE_NONE}}};
 
@@ -222,6 +228,29 @@ static struct flag chflags_flags[] = {
     {0, NULL}};
 #endif
 
+
+struct name {
+    int n_name;
+    const char* n_str;
+};
+
+static struct name pathconf_names[] = {
+#ifdef _PC_LINK_MAX
+    {_PC_LINK_MAX, "_PC_LINK_MAX"},
+#endif
+#ifdef _PC_NAME_MAX
+    {_PC_NAME_MAX, "_PC_NAME_MAX"},
+#endif
+#ifdef _PC_PATH_MAX
+    {_PC_PATH_MAX, "_PC_PATH_MAX"},
+#endif
+#ifdef _PC_SYMLINK_MAX
+    {_PC_SYMLINK_MAX, "_PC_SYMLINK_MAX"},
+#endif
+    {0, NULL}
+};
+
+
 static const char* err2str(int error);
 
 static void usage(void)
@@ -279,6 +308,19 @@ static char* flags2str(struct flag* tflags, long long flags)
 }
 #endif
 
+static int
+str2name(struct name *names, char *name)
+{
+    unsigned int i;
+
+    for (i = 0; names[i].n_str != NULL; i++) {
+        if (strcmp(names[i].n_str, name) == 0) {
+            return (names[i].n_name);
+        }
+    }
+    return (-1);
+}
+
 static struct syscall_desc* find_syscall(const char* name)
 {
     int i;
@@ -313,15 +355,15 @@ static void show_stat(struct stat64* sp, const char* what)
         printf("%lld", (long long)sp->st_mtime);
     } else if (strcmp(what, "ctime") == 0) {
         printf("%lld", (long long)sp->st_ctime);
-    }
 #ifdef HAS_CHFLAGS
-    else if (strcmp(what, "flags") == 0)
-    {
+    } else if (strcmp(what, "flags") == 0)
         printf("%s", flags2str(chflags_flags, sp->st_flags));
-    }
 #endif
-    else if (strcmp(what, "type") == 0)
-    {
+    } else if (strcmp(what, "major") == 0) {
+        printf("%u", (unsigned int)major(sp->st_rdev));
+    } else if (strcmp(what, "minor") == 0) {
+        printf("%u", (unsigned int)minor(sp->st_rdev));
+    } else if (strcmp(what, "type") == 0) {
         switch (sp->st_mode & S_IFMT) {
             case S_IFIFO:
                 printf("fifo");
@@ -372,7 +414,7 @@ static unsigned int call_syscall(struct syscall_desc* scall, char* argv[])
     long long flags;
     unsigned int i;
     char* endp;
-    int rval;
+    int name, rval;
     union {
         char* str;
         long long num;
@@ -494,6 +536,19 @@ static unsigned int call_syscall(struct syscall_desc* scall, char* argv[])
 
             break;
         }
+        case ACTION_BIND: {
+            struct sockaddr_un sunx;
+
+            sunx.sun_family = AF_UNIX;
+            strncpy(sunx.sun_path, STR(0), sizeof(sunx.sun_path) - 1);
+            sunx.sun_path[sizeof(sunx.sun_path) - 1] = '\0';
+            rval = socket(AF_UNIX, SOCK_STREAM, 0);
+            if (rval < 0) {
+                break;
+            }
+            rval = bind(rval, (struct sockaddr *)&sunx, sizeof(sunx));
+            break;
+        }
         case ACTION_CHMOD:
             rval = chmod(STR(0), NUM(1));
             break;
@@ -535,6 +590,26 @@ static unsigned int call_syscall(struct syscall_desc* scall, char* argv[])
                 return (i);
             }
             break;
+        case ACTION_PATHCONF: {
+            long lrval;
+
+            name = str2name(pathconf_names, STR(1));
+            if (name == -1) {
+                fprintf(stderr, "unknown name %s", STR(1));
+                exit(1);
+            }
+            errno = 0;
+            lrval = pathconf(STR(0), name);
+            if (lrval == -1 && errno == 0) {
+                printf("unlimited\n");
+                return (i);
+            } else if (lrval >= 0) {
+                printf("%ld\n", lrval);
+                return (i);
+            }
+            rval = -1;
+            break;
+        }
         case ACTION_OPENDIR: {
             DIR* dir = opendir(STR(0));
             if (dir != NULL) {

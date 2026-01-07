@@ -143,7 +143,6 @@ void TStorageServiceActor::ForwardXAttrRequest(
     auto* msg = ev->Get();
 
     const ui64 seqNo = GetSessionSeqNo(msg->Record);
-    const auto shardNo = ExtractShardNo(ev->Get()->Record.GetNodeId());
 
     LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
         "[%s][%lu] forward %s #%lu",
@@ -153,6 +152,9 @@ void TStorageServiceActor::ForwardXAttrRequest(
         msg->CallContext->RequestId);
 
     const NProto::TFileStore& filestore = session->FileStore;
+
+    const ui32 shardNo =
+        ExtractShardNoSafe(filestore, ev->Get()->Record.GetNodeId());
 
     auto [fsId, error] = SelectShard(
         ctx,

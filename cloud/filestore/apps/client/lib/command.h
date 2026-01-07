@@ -153,7 +153,7 @@ class TFileStoreCommand
     : public TFileStoreServiceCommand
 {
 public:
-    TFileStoreCommand();
+    TFileStoreCommand(bool isClientIdRequired = false);
 
     void Start() override;
     void Stop() override;
@@ -174,7 +174,7 @@ protected:
     static void CheckResponse(const T& response)
     {
         if (HasError(response)) {
-            throw TServiceError(response.GetError());
+            STORAGE_THROW_SERVICE_ERROR(response.GetError());
         }
     }
 

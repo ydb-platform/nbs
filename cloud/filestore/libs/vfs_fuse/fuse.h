@@ -5,7 +5,7 @@ extern "C" {
 #endif
 
 #if defined(FUSE_VIRTIO)
-#   include <contrib/libs/virtiofsd/fuse_lowlevel.h>
+#   include <cloud/contrib/virtiofsd/fuse_lowlevel.h>
 #else
 #   include <contrib/libs/fuse/include/fuse_lowlevel.h>
 #endif

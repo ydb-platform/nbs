@@ -21,6 +21,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_snapshot"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
@@ -294,6 +295,7 @@ func registerControlplaneTasks(
 		resourceStorage,
 		nbsFactory,
 		poolService,
+		cellSelector,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register image tasks: %v", err)
@@ -308,6 +310,7 @@ func registerControlplaneTasks(
 		taskScheduler,
 		resourceStorage,
 		nbsFactory,
+		cellSelector,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register snapshot tasks: %v", err)
@@ -327,6 +330,16 @@ func registerControlplaneTasks(
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to register filesystem tasks: %v", err)
+			return err
+		}
+
+		err = filesystem_snapshot.RegisterForExecution(
+			ctx,
+			taskRegistry,
+			taskScheduler,
+		)
+		if err != nil {
+			logging.Error(ctx, "Failed to register filesystem snapshot tasks: %v", err)
 			return err
 		}
 	}
@@ -397,11 +410,16 @@ func initControlplane(
 	poolService := pools.NewService(taskScheduler, poolStorage)
 
 	var filesystemService filesystem.Service
+	var filesystemSnapshotService filesystem_snapshot.Service
 	if config.GetFilesystemConfig() != nil {
 		filesystemService = filesystem.NewService(
 			taskScheduler,
 			config.GetFilesystemConfig(),
 			nfsFactory,
+		)
+
+		filesystemSnapshotService = filesystem_snapshot.NewService(
+			taskScheduler,
 		)
 	}
 
@@ -423,6 +441,7 @@ func initControlplane(
 		config.GetImagesConfig().GetStorageFolder(),
 		config.GetSnapshotsConfig().GetStorageFolder(),
 		filesystemStorageFolder,
+		config.GetFilesystemSnapshotsConfig().GetStorageFolder(),
 		config.GetPlacementGroupConfig().GetStorageFolder(),
 		db,
 		endedMigrationExpirationTimeout,
@@ -518,6 +537,14 @@ func initControlplane(
 			server,
 			taskScheduler,
 			filesystemService,
+		)
+	}
+
+	if filesystemSnapshotService != nil {
+		facade.RegisterFilesystemSnapshotService(
+			server,
+			taskScheduler,
+			filesystemSnapshotService,
 		)
 	}
 

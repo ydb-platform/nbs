@@ -288,6 +288,10 @@ message TVolume
 
     // Set of volume tags. Value can be empty.
     map<string, string> Tags = 38;
+
+    // Enables discard (ZeroBlocks) requests for the volume.
+    // If this flag is set, it should never be unset anymore!
+    optional bool VhostDiscardEnabled = 39;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -473,6 +477,8 @@ message TCreateVolumeRequest
 
     // Mount requests with incorrect FillGeneration will be rejected unless filling is finished.
     uint64 FillGeneration = 21;
+
+    string TagsStr = 22;
 }
 
 message TCreateVolumeResponse

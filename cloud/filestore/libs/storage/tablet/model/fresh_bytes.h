@@ -4,7 +4,7 @@
 
 #include "block.h"
 
-#include <cloud/filestore/libs/storage/model/range.h>
+#include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/common/byte_vector.h>
 #include <cloud/storage/core/libs/common/error.h>
 

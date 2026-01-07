@@ -302,7 +302,7 @@ bool TIndexTabletActor::PrepareTx_TruncateRange(
 {
     Y_UNUSED(tx);
 
-    InitProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
+    InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
     return true;
 }
@@ -318,7 +318,7 @@ void TIndexTabletActor::ExecuteTx_TruncateRange(
 
     ui64 commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "TruncateRange");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "TruncateRange");
     }
 
     AddRange(

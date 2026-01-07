@@ -353,6 +353,56 @@ void TFileSystem::Read(
     request->SetOffset(offset);
     request->SetLength(size);
 
+    if (Config->GetZeroCopyReadEnabled()) {
+        // TODO(issue-4800): Support ZeroCopyReadEnabled for local filestore
+        struct iovec* iov = nullptr;
+        int count = 0;
+        int ret = fuse_out_buf(req, &iov, &count);
+        if (ret == -1 || count <= 1) {
+            STORAGE_ERROR(
+                "Invalid fuse out buffers, ret=%d, count=%d",
+                ret,
+                count);
+            ReplyError(
+                *callContext,
+                MakeError(E_FS_INVAL, "Invalid fuse out buffers"),
+                req,
+                EINVAL);
+            return;
+        }
+
+        auto* iovecs = request->MutableIovecs();
+        iovecs->Reserve(count);
+
+        size_t remainingSize = request->GetLength();
+        // skip first fuse out iovec where headers are kept rest of the iovecs
+        // contain pointers to data buffers
+        for (int index = 1; index < count; index++) {
+            if (remainingSize == 0) {
+                break;
+            }
+            auto dataSize = std::min(remainingSize, iov[index].iov_len);
+            auto* iovec = iovecs->Add();
+            iovec->SetBase(reinterpret_cast<ui64>(iov[index].iov_base));
+            iovec->SetLength(dataSize);
+            remainingSize -= dataSize;
+        }
+
+        if (remainingSize != 0) {
+            STORAGE_WARN(
+                "Read request length exceeds fuse buffer space, remainingSize="
+                << remainingSize);
+            ReplyError(
+                *callContext,
+                MakeError(
+                    E_FS_INVAL,
+                    "request length exceeds fuse buffer space"),
+                req,
+                EINVAL);
+            return;
+        }
+    }
+
     TFuture<NProto::TReadDataResponse> future;
     if (WriteBackCache) {
         future = WriteBackCache.ReadData(callContext, std::move(request));
@@ -368,14 +418,26 @@ void TFileSystem::Read(
 
         const auto& response = future.GetValue();
         if (CheckResponse(self, *callContext, req, response)) {
+            // Depending on the configuration of the filestore, data may still
+            // be returned as a Buffer even when I/O vectors are provided in the
+            // request.
             const auto& buffer = response.GetBuffer();
-            ui32 bufferOffset = response.GetBufferOffset();
-            self->ReplyBuf(
-                *callContext,
-                response.GetError(),
-                req,
-                buffer.data() + bufferOffset,
-                buffer.size() - bufferOffset);
+            if (buffer.empty()) {
+                self->ReplyBuf(
+                    *callContext,
+                    response.GetError(),
+                    req,
+                    nullptr,
+                    response.GetLength());
+            } else {
+                ui32 bufferOffset = response.GetBufferOffset();
+                self->ReplyBuf(
+                    *callContext,
+                    response.GetError(),
+                    req,
+                    buffer.data() + bufferOffset,
+                    buffer.size() - bufferOffset);
+            }
         }
     });
 }
@@ -412,48 +474,74 @@ void TFileSystem::Write(
     request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
     request->SetBuffer(alignedBuffer.TakeBuffer());
 
-    const auto size = buffer.size();
+    DoWrite(callContext, req, ino, std::move(request), buffer.size(), fi);
+}
 
-    if (ShouldUseServerWriteBackCache(fi)) {
-        WriteBackCache.WriteData(callContext, std::move(request))
-            .Subscribe(
-                [=,
-                 ptr = weak_from_this()] (const auto& future)
-                {
-                    auto self = ptr.lock();
-                    if (!self) {
-                        return;
-                    }
-
-                    const auto& response = future.GetValue();
-                    const auto& error = response.GetError();
-
-                    if (CheckResponse(self, *callContext, req, response)) {
-                        self->ReplyWrite(*callContext, error, req, size);
-                    }
-                });
-        return;
-    }
+void TFileSystem::DoWrite(
+    TCallContextPtr callContext,
+    fuse_req_t req,
+    fuse_ino_t ino,
+    std::shared_ptr<NProto::TWriteDataRequest> request,
+    ui64 size,
+    fuse_file_info* fi)
+{
+    const auto wbcState = GetServerWriteBackCacheState(fi);
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
+
+    auto callback = [=, ptr = weak_from_this()](const auto& future)
+    {
+        auto self = ptr.lock();
+        if (!self) {
+            return;
+        }
+
+        const auto& response = future.GetValue();
+        const auto& error = response.GetError();
+
+        if (wbcState != EServerWriteBackCacheState::Enabled) {
+            self->FSyncQueue
+                ->Dequeue(reqId, error, TNodeId{ino}, THandle{handle});
+        }
+
+        if (self->CheckResponse(self, *callContext, req, response)) {
+            self->ReplyWrite(*callContext, error, req, size);
+        }
+    };
+
+    if (wbcState == EServerWriteBackCacheState::Enabled) {
+        WriteBackCache.WriteData(callContext, std::move(request))
+            .Subscribe(std::move(callback));
+        return;
+    }
+
     FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
 
-    Session->WriteData(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+    if (wbcState == EServerWriteBackCacheState::Disabled) {
+        Session->WriteData(callContext, std::move(request))
+            .Subscribe(std::move(callback));
+        return;
+    }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
+    Y_ABORT_UNLESS(
+        wbcState == EServerWriteBackCacheState::Draining,
+        "Invalid EServerWriteBackCacheState value = %d",
+        wbcState);
 
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyWrite(*callContext, error, req, size);
-            }
-        });
+    WriteBackCache.FlushNodeData(request->GetNodeId())
+        .Subscribe(
+            [ptr = weak_from_this(),
+             callback = std::move(callback),
+             callContext = std::move(callContext),
+             request = std::move(request)](const auto& f) mutable
+            {
+                f.GetValue();
+                if (auto self = ptr.lock()) {
+                    self->Session->WriteData(callContext, std::move(request))
+                        .Subscribe(std::move(callback));
+                }
+            });
 }
 
 void TFileSystem::WriteBufLocal(
@@ -539,9 +627,7 @@ void TFileSystem::WriteBuf(
         || !IsAligned(size, Config->GetBlockSize());
     auto request = StartRequest<NProto::TWriteDataRequest>(ino);
 
-    // TODO(myagkov): Support iovecs in WriteBackCache
-    const bool isZeroCopyWrite = Config->GetZeroCopyWriteEnabled() &&
-                                 !Config->GetServerWriteBackCacheEnabled();
+    const bool isZeroCopyWrite = Config->GetZeroCopyWriteEnabled();
     if (!isZeroCopyWrite) {
         TAlignedBuffer alignedBuffer(size, align);
 
@@ -579,45 +665,7 @@ void TFileSystem::WriteBuf(
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
 
-    if (ShouldUseServerWriteBackCache(fi)) {
-        WriteBackCache.WriteData(callContext, std::move(request))
-            .Subscribe(
-                [=, ptr = weak_from_this()] (const auto& future)
-                {
-                    auto self = ptr.lock();
-                    if (!self) {
-                        return;
-                    }
-
-                    const auto& response = future.GetValue();
-                    const auto& error = response.GetError();
-
-                    if (CheckResponse(self, *callContext, req, response)) {
-                        self->ReplyWrite(*callContext, error, req, size);
-                    }
-                });
-        return;
-    }
-
-    const auto handle = fi->fh;
-    const auto reqId = callContext->RequestId;
-    FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
-
-    Session->WriteData(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
-
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
-
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyWrite(*callContext, error, req, size);
-            }
-        });
+    DoWrite(callContext, req, ino, std::move(request), size, fi);
 }
 
 void TFileSystem::FAllocate(
@@ -706,6 +754,7 @@ void TFileSystem::Flush(
     NProto::TProfileLogRequestInfo requestInfo;
     InitProfileLogRequestInfo(requestInfo, EFileStoreFuseRequest::Flush, Now());
     InitNodeInfo(requestInfo, true, TNodeId{ino}, THandle{fi->fh});
+    requestInfo.SetLoopThreadId(callContext->LoopThreadId);
 
     auto callback = [=, ptr = weak_from_this(), requestInfo = std::move(requestInfo)]
         (const auto& future) mutable {
@@ -768,6 +817,7 @@ void TFileSystem::FSync(
         datasync,
         TNodeId{fi ? ino : InvalidNodeId},
         THandle{fi ? fi->fh : InvalidHandle});
+    requestInfo.SetLoopThreadId(callContext->LoopThreadId);
 
     std::function<void(const TFuture<NProto::TError>&)>
     callback = [=, ptr = weak_from_this(), requestInfo = std::move(requestInfo)]
@@ -892,6 +942,7 @@ void TFileSystem::FSyncDir(
         datasync,
         TNodeId{ino},
         THandle{fi->fh});
+    requestInfo.SetLoopThreadId(callContext->LoopThreadId);
 
     auto callback = [=, ptr = weak_from_this(), requestInfo = std::move(requestInfo)]
         (const auto& future) mutable {
@@ -962,17 +1013,23 @@ void TFileSystem::FSyncDir(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TFileSystem::ShouldUseServerWriteBackCache(const fuse_file_info* fi) const
+EServerWriteBackCacheState TFileSystem::GetServerWriteBackCacheState(
+    const fuse_file_info* fi) const
 {
-    if (!WriteBackCache || !Config->GetServerWriteBackCacheEnabled()) {
-        return false;
+    if (!WriteBackCache) {
+        return EServerWriteBackCacheState::Disabled;
     }
 
     if (fi->flags & O_DIRECT) {
-        return false;
+        return EServerWriteBackCacheState::Disabled;
     }
 
-    return true;
+    if (Config->GetServerWriteBackCacheEnabled()) {
+        return EServerWriteBackCacheState::Enabled;
+    }
+
+    return WriteBackCache.IsEmpty() ? EServerWriteBackCacheState::Disabled
+                                    : EServerWriteBackCacheState::Draining;
 }
 
 }   // namespace NCloud::NFileStore::NFuse

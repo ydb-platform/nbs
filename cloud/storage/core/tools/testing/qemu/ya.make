@@ -4,5 +4,6 @@ RECURSE(
     build-image
     image
     image-noble
+    image-plucky
     lib
 )

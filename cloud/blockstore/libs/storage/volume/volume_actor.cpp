@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler_logger.h>
@@ -819,28 +820,9 @@ void TVolumeActor::InitializeDeviceOperationTracker()
         return;
     }
 
-    TVector<TDeviceOperationTracker::TDeviceInfo> deviceInfos;
-    THashSet<TString> seenDevices;
-
-    for (const auto& device: State->GetMeta().GetDevices()) {
-        const TString deviceUUID = device.GetDeviceUUID();
-        if (seenDevices.insert(deviceUUID).second) {
-            deviceInfos.push_back(
-                {.DeviceUUID = deviceUUID, .AgentId = device.GetAgentId()});
-        }
-    }
-
-    for (const auto& replica: State->GetMeta().GetReplicas()) {
-        for (const auto& device: replica.GetDevices()) {
-            const TString deviceUUID = device.GetDeviceUUID();
-            if (seenDevices.insert(deviceUUID).second) {
-                deviceInfos.push_back(
-                    {.DeviceUUID = deviceUUID, .AgentId = device.GetAgentId()});
-            }
-        }
-    }
-
-    DeviceOperationTracker.UpdateDevices(std::move(deviceInfos));
+    DeviceOperationTracker.UpdateAgents(GetAllAgents(State->GetMeta()));
+    TDeviceOperationTracker::UpdateTrackingFrequency(
+        Config->GetDeviceOperationTrackingFrequency());
 }
 
 void TVolumeActor::HandleDiskRegistryDeviceOperationStarted(
@@ -853,7 +835,7 @@ void TVolumeActor::HandleDiskRegistryDeviceOperationStarted(
 
     DeviceOperationTracker.OnStarted(
         msg->OperationId,
-        msg->DeviceUUID,
+        msg->AgentId,
         msg->RequestType,
         GetCycleCount());
 }
@@ -1183,12 +1165,14 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
         IgnoreFunc(TEvStatsService::TEvVolumePartCounters);
         IgnoreFunc(TEvVolumePrivate::TEvPartStatsSaved);
+        IgnoreFunc(TEvVolumePrivate::TEvWriteOrZeroCompleted);
 
         IgnoreFunc(TEvPartition::TEvWaitReadyResponse);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
         HFunc(TEvTablet::TEvTabletStop, HandleTabletStop);
+        HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
@@ -1213,6 +1197,9 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvPartitionCommonPrivate::TEvPartCountersCombined);
 
         IgnoreFunc(TEvService::TEvDestroyVolumeResponse);
+
+        IgnoreFunc(TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted);
+        IgnoreFunc(TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished);
 
         default:
             if (!RejectRequests(ev)) {

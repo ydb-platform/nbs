@@ -22,7 +22,7 @@ private:
     const ITimerPtr Timer;
     const ISchedulerPtr Scheduler;
     const ILoggingServicePtr Logging;
-    const TString ComponentName;
+    const TTraceProcessorConfig Config;
     NLWTrace::TManager& LWManager;
     TVector<ITraceReaderPtr> Readers;
 
@@ -34,20 +34,20 @@ public:
         ITimerPtr timer,
         ISchedulerPtr scheduler,
         ILoggingServicePtr logging,
-        TString componentName,
+        TTraceProcessorConfig config,
         NLWTrace::TManager& lwManager,
         TVector<ITraceReaderPtr> readers)
         : Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
-        , ComponentName(std::move(componentName))
+        , Config(std::move(config))
         , LWManager(lwManager)
         , Readers(std::move(readers))
     {}
 
     void Start() override
     {
-        Log = Logging->CreateLog(ComponentName);
+        Log = Logging->CreateLog(Config.ComponentName);
         ScheduleProcessLWDepot();
     }
 
@@ -73,7 +73,7 @@ private:
         auto weak_ptr = weak_from_this();
 
         Scheduler->Schedule(
-            Timer->Now() + DumpTracksInterval,
+            Timer->Now() + Config.DumpTracksInterval,
             [weak_ptr = std::move(weak_ptr)]
             {
                 if (auto p = weak_ptr.lock()) {
@@ -122,7 +122,7 @@ ITraceProcessorPtr CreateTraceProcessor(
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
-    TString componentName,
+    TTraceProcessorConfig config,
     NLWTrace::TManager& lwManager,
     TVector<ITraceReaderPtr> readers)
 {
@@ -130,7 +130,7 @@ ITraceProcessorPtr CreateTraceProcessor(
         std::move(timer),
         std::move(scheduler),
         std::move(logging),
-        std::move(componentName),
+        std::move(config),
         lwManager,
         std::move(readers));
 }

@@ -264,7 +264,7 @@ void TStorageServiceActor::HandleCreateHandle(
         ForwardRequestToShard<TEvService::TCreateHandleMethod>(
             ctx,
             ev,
-            ExtractShardNo(msg->Record.GetNodeId()));
+            msg->Record.GetNodeId());
         return;
     }
 
@@ -283,7 +283,9 @@ void TStorageServiceActor::HandleCreateHandle(
     auto& headers = *msg->Record.MutableHeaders();
     headers.SetBehaveAsDirectoryTablet(
         filestore.GetFeatures().GetDirectoryCreationInShardsEnabled());
-    if (auto shardNo = ExtractShardNo(msg->Record.GetNodeId())) {
+    if (const ui32 shardNo =
+            ExtractShardNoSafe(filestore, msg->Record.GetNodeId()))
+    {
         // parent directory is managed by a shard
         auto [shardId, error] = SelectShard(
             ctx,
@@ -327,6 +329,7 @@ void TStorageServiceActor::HandleCreateHandle(
         ctx.Now());
 
     InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+    inflight->ProfileLogRequest.SetClientId(session->ClientId);
 
     auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 

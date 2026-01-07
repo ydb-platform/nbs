@@ -22,6 +22,7 @@ namespace {
     xxx(TracesSyslogIdentifier,     TString,    ""                            )\
                                                                                \
     xxx(ProfileLogTimeThreshold,    TDuration,  TDuration::Seconds(15)        )\
+    xxx(DumpTracksInterval,         TDuration,  NCloud::DumpTracksInterval    )\
     xxx(LWTraceShuttleCount,        ui32,       2000                          )\
                                                                                \
     xxx(CpuWaitServiceName,         TString,    ""                            )\
@@ -38,11 +39,13 @@ namespace {
     xxx(MonitoringUrlData,               TMonitoringUrlData,  {}              )\
     xxx(ReportHistogramAsMultipleCounters,  bool,            true             )\
     xxx(ReportHistogramAsSingleCounter,     bool,            false            )\
+    xxx(UseMsUnitsForTimeHistogram,         bool,            false            )\
                                                                                \
     xxx(HDDFileSystemPerformanceProfile,    TFileSystemPerformanceProfile, {} )\
     xxx(SSDFileSystemPerformanceProfile,    TFileSystemPerformanceProfile, {} )\
                                                                                \
-    xxx(StatsFetcherType, NCloud::NProto::EStatsFetcherType, NCloud::NProto::EStatsFetcherType::CGROUP )\
+    xxx(StatsFetcherType,          NCloud::NProto::EStatsFetcherType,          \
+                                   NCloud::NProto::EStatsFetcherType::CGROUP  )\
                                                                                \
     xxx(ProfileLogMaxFlushRecords,      ui64, 0                               )\
     xxx(ProfileLogMaxFrameFlushRecords, ui64, 0                               )\
@@ -149,6 +152,10 @@ EHistogramCounterOptions TDiagnosticsConfig::GetHistogramCounterOptions() const
     }
     if (GetReportHistogramAsSingleCounter()) {
         histogramCounterOptions |= EHistogramCounterOption::ReportSingleCounter;
+    }
+    if (GetUseMsUnitsForTimeHistogram()) {
+        histogramCounterOptions |=
+            EHistogramCounterOption::UseMsUnitsForTimeHistogram;
     }
     return histogramCounterOptions;
 }

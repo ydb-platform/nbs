@@ -1423,6 +1423,91 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         // Check that volume got statistics
         UNIT_ASSERT(updated);
     }
+
+    static void DoShouldDiskAgentCountStat(
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        ui32 agentCount,
+        ui32 deviceCount,
+        ui32 replicaCount)
+    {
+        auto diskRegistryState = MakeIntrusive<TDiskRegistryState>();
+        diskRegistryState->Devices = MakeDeviceList(agentCount, deviceCount);
+        diskRegistryState->AllocateDiskReplicasOnDifferentNodes = true;
+        diskRegistryState->ReplicaCount = replicaCount;
+        TVector<TDiskAgentStatePtr> agentStates;
+        for (ui32 i = 0; i < agentCount; i++) {
+            agentStates.push_back(TDiskAgentStatePtr{});
+        }
+
+        NProto::TStorageServiceConfig config;
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            diskRegistryState,
+            {},
+            {},
+            std::move(agentStates));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind);
+        volume.WaitReady();
+
+        ui32 counter{0};
+        auto obs = [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvStatsService::EvVolumeSelfCounters)
+            {
+                auto* msg =
+                    event->Get<TEvStatsService::TEvVolumeSelfCounters>();
+                counter =
+                    msg->VolumeSelfCounters->Simple.DiskAgentCount.Value;
+            }
+
+            return false;
+        };
+
+        runtime->SetEventFilter(obs);
+        runtime->AdvanceCurrentTime(UpdateCountersInterval);
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(counter, agentCount);
+    }
+
+    Y_UNIT_TEST(ShouldDiskAgentCountStatNonRepl)
+    {
+        DoShouldDiskAgentCountStat(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1,
+            1,
+            0);
+    }
+
+    Y_UNIT_TEST(ShouldDiskAgentCountStatMirror2)
+    {
+        DoShouldDiskAgentCountStat(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
+            2,
+            2,
+            1);
+    }
+
+    Y_UNIT_TEST(ShouldDiskAgentCountStatMirror3)
+    {
+        DoShouldDiskAgentCountStat(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            3,
+            3,
+            2);
+    }
+
+    Y_UNIT_TEST(ShouldNotDiskAgentCountStatSSD)
+    {
+        DoShouldDiskAgentCountStat(
+            NCloud::NProto::STORAGE_MEDIA_SSD,
+            0,
+            1,
+            0);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

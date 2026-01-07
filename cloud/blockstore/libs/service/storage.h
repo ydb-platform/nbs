@@ -99,4 +99,6 @@ public:
     size_t Shutdown(ITimerPtr timer);
 };
 
+using TStorageAdapterPtr = std::shared_ptr<TStorageAdapter>;
+
 }   // namespace NCloud::NBlockStore

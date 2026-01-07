@@ -10,8 +10,6 @@
 #include <util/generic/string.h>
 #include <util/string/builder.h>
 
-#include <ranges>
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -22,21 +20,9 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 TDrainActorCompanion::TDrainActorCompanion(
         IRequestsInProgress& requestsInProgress,
-        TString loggingId,
-        const TRequestBoundsTracker* requestBoundsTracker)
+        TString loggingId)
     : RequestsInProgress(requestsInProgress)
-    , RequestBoundsTracker(requestBoundsTracker)
     , LoggingId(std::move(loggingId))
-{}
-
-TDrainActorCompanion::TDrainActorCompanion(
-        IRequestsInProgress& requestsInProgress,
-        ui64 tabletID,
-        const TRequestBoundsTracker* requestBoundsTracker)
-    : TDrainActorCompanion(
-          requestsInProgress,
-          ToString(tabletID),
-          requestBoundsTracker)
 {}
 
 void TDrainActorCompanion::HandleDrain(
@@ -45,10 +31,8 @@ void TDrainActorCompanion::HandleDrain(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -115,7 +99,6 @@ void TDrainActorCompanion::AddDrainRangeRequest(
     TRequestInfoPtr reqInfo,
     TBlockRange64 range)
 {
-    Y_DEBUG_ABORT_UNLESS(RequestBoundsTracker);
     DrainRangeRequests.emplace_back(std::move(reqInfo), range);
     DoProcessDrainRangeRequests(ctx);
 }
@@ -126,9 +109,7 @@ void TDrainActorCompanion::ProcessDrainRequests(const TActorContext& ctx)
 {
     DoProcessDrainRequests(ctx);
     DoProcessWaitForInFlightWritesRequests(ctx);
-    if (RequestBoundsTracker) {
-        DoProcessDrainRangeRequests(ctx);
-    }
+    DoProcessDrainRangeRequests(ctx);
 }
 
 void TDrainActorCompanion::DoProcessDrainRequests(const TActorContext& ctx)
@@ -184,8 +165,6 @@ void TDrainActorCompanion::RemoveDrainRangeRequest(
     const TActorContext& ctx,
     TBlockRange64 range)
 {
-    Y_DEBUG_ABORT_UNLESS(RequestBoundsTracker);
-
     auto cancelRemovedRequest = [&](const TDrainRangeInfo& drainRequest)
     {
         if (drainRequest.RangeToDrain != range) {
@@ -206,18 +185,9 @@ void TDrainActorCompanion::RemoveDrainRangeRequest(
 
 void TDrainActorCompanion::DoProcessDrainRangeRequests(const TActorContext& ctx)
 {
-    Y_DEBUG_ABORT_UNLESS(RequestBoundsTracker);
-    if (!RequestBoundsTracker) {
-        return;
-    }
-
-    TVector<ui64> reqsToErase;
-
     auto checkNoRequestsInRange = [&](const TDrainRangeInfo& drainRequest)
     {
-        if (RequestBoundsTracker->OverlapsWithRequest(
-                drainRequest.RangeToDrain))
-        {
+        if (RequestsInProgress.OverlapsWithWrites(drainRequest.RangeToDrain)) {
             return false;
         }
 
@@ -232,4 +202,4 @@ void TDrainActorCompanion::DoProcessDrainRangeRequests(const TActorContext& ctx)
     EraseIf(DrainRangeRequests, checkNoRequestsInRange);
 }
 
-}  // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore::NStorage

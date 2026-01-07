@@ -196,8 +196,8 @@ func toEncryptionMode(
 		return protos.EEncryptionMode_NO_ENCRYPTION, nil
 	case types.EncryptionMode_ENCRYPTION_AES_XTS:
 		return protos.EEncryptionMode_ENCRYPTION_AES_XTS, nil
-	case types.EncryptionMode_ENCRYPTION_AT_REST:
-		return protos.EEncryptionMode_ENCRYPTION_AT_REST, nil
+	case types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY:
+		return protos.EEncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY, nil
 	default:
 		return 0, errors.NewNonRetriableErrorf(
 			"unknown encryption mode %v",
@@ -215,8 +215,8 @@ func fromEncryptionMode(
 		return types.EncryptionMode_NO_ENCRYPTION, nil
 	case protos.EEncryptionMode_ENCRYPTION_AES_XTS:
 		return types.EncryptionMode_ENCRYPTION_AES_XTS, nil
-	case protos.EEncryptionMode_ENCRYPTION_AT_REST:
-		return types.EncryptionMode_ENCRYPTION_AT_REST, nil
+	case protos.EEncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY:
+		return types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY, nil
 	default:
 		return 0, errors.NewNonRetriableErrorf(
 			"unknown encryption mode %v",
@@ -1694,6 +1694,37 @@ func (c *client) QueryAvailableStorage(
 	}
 
 	return infos, nil
+}
+
+func (c *client) ModifyTags(
+	ctx context.Context,
+	saveState func() error,
+	diskID string,
+	tagsToAdd []string,
+	tagsToRemove []string,
+) (err error) {
+
+	defer c.metrics.StatRequest("ModifyTags")(&err)
+
+	return c.updateVolume(
+		ctx,
+		saveState,
+		diskID,
+		func(volume *protos.TVolume) error {
+			response := &private_protos.TModifyTagsResponse{}
+			return c.executeAction(
+				ctx,
+				"ModifyTags",
+				&private_protos.TModifyTagsRequest{
+					DiskId:        diskID,
+					TagsToAdd:     tagsToAdd,
+					TagsToRemove:  tagsToRemove,
+					ConfigVersion: volume.ConfigVersion,
+				},
+				response,
+			)
+		},
+	)
 }
 
 func (c *client) Freeze(

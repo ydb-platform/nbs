@@ -3,18 +3,14 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
-
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/common/helpers.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 
-#include <util/generic/algorithm.h>
 #include <util/generic/hash_set.h>
-#include <util/generic/utility.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -26,21 +22,29 @@ using TMigrations = google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>
 struct TDeviceRequest
 {
     const NProto::TDeviceConfig& Device;
+    // Index of the device in the partition config.
     const ui32 DeviceIdx;
+    // Index of the device in original request. E.g. when the request is split
+    // between two devices, this will be 0 for the first deviceRequest and 1 for
+    // the second.
+    const ui32 RelativeDeviceIdx;
+    // Request block range.
     const TBlockRange64 BlockRange;
+    // Block range that is relative to the device borders.
     const TBlockRange64 DeviceBlockRange;
 
     TDeviceRequest(
             const NProto::TDeviceConfig& device,
             const ui32 deviceIdx,
+            const ui32 relativeDeviceIdx,
             const TBlockRange64& blockRange,
             const TBlockRange64& deviceBlockRange)
         : Device(device)
         , DeviceIdx(deviceIdx)
+        , RelativeDeviceIdx(relativeDeviceIdx)
         , BlockRange(blockRange)
         , DeviceBlockRange(deviceBlockRange)
-    {
-    }
+    {}
 };
 
 class TNonreplicatedPartitionConfig
@@ -117,7 +121,7 @@ public:
     };
 
 private:
-    TDevices Devices;
+    const TDevices Devices;
     const NProto::EVolumeIOMode IOMode;
     const TString Name;
     const ui32 BlockSize;
@@ -133,77 +137,16 @@ private:
     const TDuration MaxTimedOutDeviceStateDuration;
     const bool MaxTimedOutDeviceStateDurationOverridden;
     const bool UseSimpleMigrationBandwidthLimiter;
-
-    TVector<ui64> BlockIndices;
+    const TVector<ui64> BlockIndices;
+    const bool CanReadFromAllDevices = false;
 
 public:
     explicit TNonreplicatedPartitionConfig(
-            TNonreplicatedPartitionConfigInitParams params)
-        : Devices(std::move(params.Devices))
-        , IOMode(params.IOMode)
-        , Name(std::move(params.Name))
-        , BlockSize(params.BlockSize)
-        , VolumeInfo(params.VolumeInfo)
-        , ParentActorId(std::move(params.ParentActorId))
-        , MuteIOErrors(params.MuteIOErrors)
-        , FreshDeviceIds(std::move(params.FreshDeviceIds))
-        , OutdatedDeviceIds(std::move(params.OutdatedDeviceIds))
-        , LaggingDevicesAllowed(params.LaggingDevicesAllowed)
-        , MaxTimedOutDeviceStateDuration(params.MaxTimedOutDeviceStateDuration)
-        , MaxTimedOutDeviceStateDurationOverridden(
-              params.MaxTimedOutDeviceStateDurationOverridden)
-        , UseSimpleMigrationBandwidthLimiter(
-              params.UseSimpleMigrationBandwidthLimiter)
-    {
-        Y_ABORT_UNLESS(Devices.size());
+        TNonreplicatedPartitionConfigInitParams params);
 
-        ui64 blockIndex = 0;
-        for (const auto& device: Devices) {
-            BlockIndices.push_back(blockIndex);
-            blockIndex += device.GetBlocksCount();
-        }
-    }
-
-public:
-    TNonreplicatedPartitionConfigPtr Fork(TDevices devices) const
-    {
-        THashSet<TString> freshDeviceIds;
-        THashSet<TString> outdatedDeviceIds;
-        for (const auto& device: devices) {
-            const auto& uuid = device.GetDeviceUUID();
-
-            if (FreshDeviceIds.contains(uuid)) {
-                freshDeviceIds.insert(uuid);
-            }
-            if (OutdatedDeviceIds.contains(uuid)) {
-                outdatedDeviceIds.insert(uuid);
-            }
-        }
-
-        TNonreplicatedPartitionConfigInitParams params{
-            std::move(devices),
-            VolumeInfo,
-            Name,
-            BlockSize,
-            ParentActorId,
-            IOMode,
-            MuteIOErrors,
-            std::move(freshDeviceIds),
-            std::move(outdatedDeviceIds),
-            LaggingDevicesAllowed,
-            MaxTimedOutDeviceStateDuration,
-            MaxTimedOutDeviceStateDurationOverridden,
-            UseSimpleMigrationBandwidthLimiter};
-        return std::make_shared<TNonreplicatedPartitionConfig>(
-            std::move(params));
-    }
+    TNonreplicatedPartitionConfigPtr Fork(TDevices devices) const;
 
     const auto& GetDevices() const
-    {
-        return Devices;
-    }
-
-    auto& AccessDevices()
     {
         return Devices;
     }
@@ -218,7 +161,7 @@ public:
         return MuteIOErrors;
     }
 
-    const auto& GetName() const
+    const TString& GetName() const
     {
         return Name;
     }
@@ -228,22 +171,22 @@ public:
         return BlockIndices.back() + Devices.rbegin()->GetBlocksCount();
     }
 
-    auto GetBlockSize() const
+    ui32 GetBlockSize() const
     {
         return BlockSize;
     }
 
-    const auto& GetVolumeInfo() const
+    const TVolumeInfo& GetVolumeInfo() const
     {
         return VolumeInfo;
     }
 
-    const auto& GetParentActorId() const
+    NActors::TActorId GetParentActorId() const
     {
         return ParentActorId;
     }
 
-    const auto& GetFreshDeviceIds() const
+    const THashSet<TString>& GetFreshDeviceIds() const
     {
         return FreshDeviceIds;
     }
@@ -258,177 +201,53 @@ public:
         return LaggingDevicesAllowed;
     }
 
-    auto GetMaxTimedOutDeviceStateDuration() const
+    TDuration GetMaxTimedOutDeviceStateDuration() const
     {
         return MaxTimedOutDeviceStateDuration;
     }
 
-    auto IsMaxTimedOutDeviceStateDurationOverridden() const
+    bool IsMaxTimedOutDeviceStateDurationOverridden() const
     {
         return MaxTimedOutDeviceStateDurationOverridden;
     }
 
-    auto GetUseSimpleMigrationBandwidthLimiter() const
+    bool GetUseSimpleMigrationBandwidthLimiter() const
     {
         return UseSimpleMigrationBandwidthLimiter;
     }
 
-public:
-    TVector<TDeviceRequest> ToDeviceRequests(const TBlockRange64 blockRange) const
-    {
-        TVector<TDeviceRequest> res;
-        VisitDeviceRequests(
-            blockRange,
-            [&] (
-                const ui32 i,
-                const TBlockRange64 requestRange,
-                const TBlockRange64 relativeRange)
-            {
-                if (Devices[i].GetDeviceUUID()) {
-                    res.emplace_back(
-                        Devices[i],
-                        i,
-                        requestRange,
-                        relativeRange);
-                }
+    TVector<TDeviceRequest> ToDeviceRequests(
+        const TBlockRange64 blockRange) const;
 
-                return false;
-            });
-
-        return res;
-    }
-
-    bool DevicesReadyForReading(const TBlockRange64 blockRange) const
-    {
-        return DevicesReadyForReading(blockRange, {});
-    }
-
+    bool DevicesReadyForReading(const TBlockRange64 blockRange) const;
     bool DevicesReadyForReading(
         const TBlockRange64 blockRange,
-        const THashSet<TString>& excludeAgentIds) const
-    {
-        const bool result = VisitDeviceRequests(
-            blockRange,
-            [&](const ui32 i,
-                const TBlockRange64 requestRange,
-                const TBlockRange64 relativeRange)
-            {
-                Y_UNUSED(requestRange);
-                Y_UNUSED(relativeRange);
+        const THashMap<TString, NProto::TLaggingAgent>& laggingAgents) const;
 
-                return !Devices[i].GetDeviceUUID() ||
-                       excludeAgentIds.contains(Devices[i].GetAgentId()) ||
-                       FreshDeviceIds.contains(Devices[i].GetDeviceUUID()) ||
-                       OutdatedDeviceIds.contains(Devices[i].GetDeviceUUID());
-            });
-        return result;
-    }
+    void AugmentErrorFlags(NCloud::NProto::TError& error) const;
 
-    void AugmentErrorFlags(NCloud::NProto::TError& error) const
-    {
-        if (MuteIOErrors) {
-            SetErrorProtoFlag(error, NCloud::NProto::EF_HW_PROBLEMS_DETECTED);
-        }
-        if (error.GetCode() == E_IO_SILENT) {
-            SetErrorProtoFlag(error, NCloud::NProto::EF_SILENT);
-        }
-    }
+    NCloud::NProto::TError
+    MakeError(ui32 code, TString message, ui32 flags = 0) const;
 
-    NCloud::NProto::TError MakeError(
-        ui32 code,
-        TString message,
-        ui32 flags = 0) const
-    {
-        auto error = NCloud::MakeError(code, std::move(message), flags);
-        AugmentErrorFlags(error);
-        return error;
-    }
+    NCloud::NProto::TError MakeIOError(TString message) const;
 
-    NCloud::NProto::TError MakeIOError(TString message) const
-    {
-        ui32 flags = 0;
-        ui32 code = E_IO;
-        if (MuteIOErrors) {
-            SetProtoFlag(flags, NCloud::NProto::EF_SILENT);
-            // for legacy clients
-            code = E_IO_SILENT;
-        }
-
-        return MakeError(code, std::move(message), flags);
-    }
-
-    auto SplitBlockRangeByDevicesBorder(const TBlockRange64 blockRange) const
-        -> TVector<TBlockRange64>
-    {
-        TVector<TBlockRange64> result;
-        VisitDeviceRequests(
-            blockRange,
-            [&](const ui32 i,
-                const TBlockRange64 requestRange,
-                const TBlockRange64 relativeRange)
-            {
-                Y_UNUSED(relativeRange);
-                Y_UNUSED(i);
-                result.emplace_back(requestRange);
-                return false;
-            });
-
-        return result;
-    }
+    TVector<TBlockRange64> SplitBlockRangeByDevicesBorder(
+        const TBlockRange64 blockRange) const;
 
 private:
-    TBlockRange64 DeviceRange(ui32 i) const
-    {
-        return TBlockRange64::WithLength(
-            BlockIndices[i],
-            Devices[i].GetBlocksCount()
-        );
-    }
-
     using TDeviceRequestVisitor = std::function<bool(
         const ui32 deviceIndex,
+        const ui32 relativeDeviceIndex,
         const TBlockRange64 requestRange,
-        const TBlockRange64 relativeRange
-    )>;
+        const TBlockRange64 relativeRange)>;
+
+    TBlockRange64 DeviceRange(ui32 i) const;
 
     bool VisitDeviceRequests(
         const TBlockRange64 blockRange,
-        const TDeviceRequestVisitor& visitor) const
-    {
-        const auto f = UpperBound(
-            BlockIndices.begin(),
-            BlockIndices.end(),
-            blockRange.Start
-        );
+        const TDeviceRequestVisitor& visitor) const;
 
-        const auto l = UpperBound(
-            BlockIndices.begin(),
-            BlockIndices.end(),
-            blockRange.End
-        );
-
-        const auto fi = std::distance(BlockIndices.begin(), f) - 1;
-        const auto li = std::distance(BlockIndices.begin(), l) - 1;
-
-        Y_ABORT_UNLESS(fi < Devices.size());
-        Y_ABORT_UNLESS(li < Devices.size());
-
-        for (ui32 i = fi; i <= li; ++i) {
-            const auto subRange = DeviceRange(i).Intersect(blockRange);
-            const auto interrupted = visitor(
-                i,
-                subRange,
-                TBlockRange64::MakeClosedInterval(
-                    subRange.Start - BlockIndices[i],
-                    subRange.End - BlockIndices[i]));
-
-            if (interrupted) {
-                return false;
-            }
-        }
-
-        return true;
-    }
+    bool IsDeviceReadyForReading(const NProto::TDeviceConfig& device) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

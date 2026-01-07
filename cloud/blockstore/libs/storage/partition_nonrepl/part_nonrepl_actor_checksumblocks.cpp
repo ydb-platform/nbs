@@ -45,8 +45,7 @@ public:
         TNonreplicatedPartitionConfigPtr partConfig,
         TActorId volumeActorId,
         const TActorId& part,
-        TChildLogTitle logTitle,
-        ui64 deviceOperationId);
+        TChildLogTitle logTitle);
 
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
@@ -74,8 +73,7 @@ TDiskAgentChecksumActor::TDiskAgentChecksumActor(
         TNonreplicatedPartitionConfigPtr partConfig,
         TActorId volumeActorId,
         const TActorId& part,
-        TChildLogTitle logTitle,
-        ui64 deviceOperationId)
+        TChildLogTitle logTitle)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -85,8 +83,7 @@ TDiskAgentChecksumActor::TDiskAgentChecksumActor(
           std::move(partConfig),
           volumeActorId,
           part,
-          std::move(logTitle),
-          deviceOperationId)
+          std::move(logTitle))
     , Request(std::move(request))
 {}
 
@@ -106,7 +103,7 @@ void TDiskAgentChecksumActor::SendRequest(const TActorContext& ctx)
 
         OnRequestStarted(
             ctx,
-            deviceRequest.Device.GetDeviceUUID(),
+            deviceRequest.Device.GetAgentId(),
             TDeviceOperationTracker::ERequestType::Checksum,
             cookie);
 
@@ -146,6 +143,8 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksUndelivery(
     const TEvDiskAgent::TEvChecksumDeviceBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    OnRequestFinished(ctx, ev->Cookie);
+
     const auto& device = DeviceRequests[ev->Cookie].Device;
     LOG_WARN(
         ctx,
@@ -164,6 +163,8 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
+    OnRequestFinished(ctx, ev->Cookie);
+
     if (HasError(msg->GetError())) {
         HandleError(ctx, msg->GetError(), EStatus::Fail);
         return;
@@ -173,8 +174,6 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksResponse(
     const auto rangeStart = deviceRequest.BlockRange.Start;
     const auto rangeSize = deviceRequest.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
     Checksums[rangeStart] = {msg->Record.GetChecksum(), rangeSize};
-
-    OnRequestFinished(ctx, ev->Cookie);
 
     if (++RequestsCompleted < DeviceRequests.size()) {
         return;
@@ -249,8 +248,6 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
         return;
     }
 
-    ui64 operationId = GenerateOperationId(deviceRequests.size());
-
     auto actorId = NCloud::Register<TDiskAgentChecksumActor>(
         ctx,
         requestInfo,
@@ -260,10 +257,9 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
         PartConfig,
         VolumeActorId,
         SelfId(),
-        LogTitle.GetChild(GetCycleCount()),
-        operationId);
+        LogTitle.GetChild(GetCycleCount()));
 
-    RequestsInProgress.AddReadRequest(actorId, std::move(request));
+    RequestsInProgress.AddReadRequest(actorId, blockRange, std::move(request));
 }
 
 void TNonreplicatedPartitionActor::HandleChecksumBlocksCompleted(
@@ -285,7 +281,7 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocksCompleted(
     NetworkBytes += sizeof(ui64);   //  Checksum is sent as a 64-bit integer.
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
-    RequestsInProgress.RemoveRequest(ev->Sender);
+    RequestsInProgress.RemoveReadRequest(ev->Sender);
     OnRequestCompleted(*msg, ctx.Now());
     if (RequestsInProgress.Empty() && Poisoner) {
         ReplyAndDie(ctx);

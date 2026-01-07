@@ -16,6 +16,7 @@ NActors::IActorPtr CreateStorageService(
     IRequestStatsRegistryPtr statsRegistry,
     IProfileLogPtr profileLog,
     ITraceSerializerPtr traceSerialzer,
-    NCloud::NStorage::IStatsFetcherPtr xtatsFetcher);
+    TSystemCountersPtr systemCounters,
+    NCloud::NStorage::IStatsFetcherPtr statsFetcher);
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -11,6 +11,7 @@ ELSE()
 ENDIF()
 
 SRCS(
+    ../block_range_map_benchmark.cpp
     ../iovector_benchmark.cpp
 )
 

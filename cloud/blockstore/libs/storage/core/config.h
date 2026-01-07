@@ -286,7 +286,8 @@ public:
     ui32 GetChannelMinFreeSpace() const;
 
     ui32 GetMinChannelCount() const;
-    ui32 GetFreshChannelCount() const;
+    [[nodiscard]] ui32 GetFreshChannelCountSSD() const;
+    [[nodiscard]] ui32 GetFreshChannelCountHDD() const;
 
     ui32 GetZoneBlockCount() const;
     ui32 GetHotZoneRequestCountFactor() const;
@@ -327,10 +328,6 @@ public:
         const TString& folderId,
         const TString& diskId) const;
     bool IsMultipartitionVolumesFeatureEnabled(
-        const TString& cloudId,
-        const TString& folderId,
-        const TString& diskId) const;
-    bool IsAllocateFreshChannelFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;
@@ -376,11 +373,21 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsRootKmsEncryptionForDiskRegistryBasedDisksFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     [[nodiscard]] bool IsLaggingDevicesForMirror2DisksFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;
     [[nodiscard]] bool IsLaggingDevicesForMirror3DisksFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
+    [[nodiscard]] bool IsEnableVhostDiscardForNewVolumesFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;
@@ -668,6 +675,7 @@ public:
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeoutSSD() const;
 
     [[nodiscard]] bool GetEncryptionAtRestForDiskRegistryBasedDisksEnabled() const;
+    [[nodiscard]] bool GetRootKmsEncryptionForDiskRegistryBasedDisksEnabled() const;
 
     [[nodiscard]] bool GetDisableFullPlacementGroupCountCalculation() const;
     [[nodiscard]] double GetDiskRegistryInitialAgentRejectionThreshold() const;
@@ -737,6 +745,14 @@ public:
     [[nodiscard]] TDuration GetDynamicNodeRegistrationTimeout() const;
 
     [[nodiscard]] bool GetComputeDigestForEveryBlockOnCompaction() const;
+
+    [[nodiscard]] bool GetAttachDetachPathsEnabled() const;
+
+    [[nodiscard]] NProto::ENonreplAllocationPolicy GetNonreplAllocationPolicy() const;
+
+    [[nodiscard]] bool GetSendLocalTabletMetricsToHiveEnabled() const;
+
+    [[nodiscard]] bool GetEnableVhostDiscardForNewVolumes() const;
 };
 
 ui64 GetAllocationUnit(

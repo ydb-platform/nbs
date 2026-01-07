@@ -52,7 +52,7 @@ TAlignedBuffer::TAlignedBuffer(TString&& buffer, ui32 align)
         Y_DEBUG_ABORT_UNLESS(IsPowerOf2(align));   // align should be power of 2
         AlignedData = AlignUp(Buffer.data(), align);
         if (AlignedData > Buffer.end()) {
-            ythrow TServiceError(E_ARGUMENT)
+            STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
                 << "Initializing from unaligned buffer "
                 << static_cast<void*>(Buffer.begin())
                 << " with alignment " << align
@@ -104,7 +104,7 @@ size_t TAlignedBuffer::Size() const
 void TAlignedBuffer::TrimSize(size_t size)
 {
     if (size > Size()) {
-        ythrow TServiceError(E_ARGUMENT)
+        STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
             << "Tried to trim to size " << size << " > " << Size();
     }
     Buffer.resize(AlignedDataOffset() + size);

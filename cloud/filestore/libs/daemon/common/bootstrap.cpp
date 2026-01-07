@@ -86,7 +86,6 @@ void TBootstrapCommon::Start()
     FILESTORE_LOG_START_COMPONENT(BackgroundThreadPool);
     FILESTORE_LOG_START_COMPONENT(ProfileLog);
     FILESTORE_LOG_START_COMPONENT(RequestStatsUpdater);
-    FILESTORE_LOG_START_COMPONENT(StatsFetcher);
 
     StartComponents();
 
@@ -115,7 +114,6 @@ void TBootstrapCommon::Stop()
 
     StopComponents();
 
-    FILESTORE_LOG_STOP_COMPONENT(StatsFetcher);
     FILESTORE_LOG_STOP_COMPONENT(RequestStatsUpdater);
     FILESTORE_LOG_STOP_COMPONENT(ProfileLog);
     FILESTORE_LOG_STOP_COMPONENT(BackgroundThreadPool);
@@ -283,8 +281,7 @@ void TBootstrapCommon::InitActorSystem()
             ? NCloud::NStorage::BuildCpuWaitStatsFilename(
                   Configs->DiagnosticsConfig->GetCpuWaitServiceName())
             : std::move(cpuWaitFilename),
-        Log,
-        logging);
+        Log);
 
     STORAGE_INFO("StatsFetcher initialized");
 
@@ -382,13 +379,17 @@ void TBootstrapCommon::InitLWTrace(
     }
 
     if (traceReaders.size()) {
+        TTraceProcessorConfig traceProcessorConfig;
+        traceProcessorConfig.ComponentName = "NFS_TRACE";
+        traceProcessorConfig.DumpTracksInterval =
+            Configs->DiagnosticsConfig->GetDumpTracksInterval();
         TraceProcessor = CreateTraceProcessorMon(
             Monitoring,
             CreateTraceProcessor(
                 Timer,
                 BackgroundScheduler,
                 Logging,
-                "NFS_TRACE",
+                std::move(traceProcessorConfig),
                 NLwTraceMonPage::TraceManager(false),
                 std::move(traceReaders)));
 

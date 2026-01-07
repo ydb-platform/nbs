@@ -38,6 +38,8 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/daemon/mlock.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
@@ -119,8 +121,10 @@ bool AgentHasDevices(
     }
 
     NStorage::TDeviceGenerator gen{std::move(log), agentConfig->GetAgentId()};
-    auto error =
-        FindDevices(agentConfig->GetStorageDiscoveryConfig(), std::ref(gen));
+    auto error = FindDevices(
+        agentConfig->GetStorageDiscoveryConfig(),
+        {},   // allowedPaths
+        std::ref(gen));
     if (HasError(error)) {
         return false;
     }
@@ -268,6 +272,7 @@ void TBootstrap::Init()
 
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
+    BackgroundThreadPool = CreateThreadPool("Background", 1);
 
     if (!InitKikimrService()) {
         InitHTTPServer();
@@ -279,13 +284,15 @@ void TBootstrap::Init()
 
     auto diagnosticsConfig = Configs->DiagnosticsConfig;
     if (TraceReaders.size()) {
+        TTraceProcessorConfig traceProcessorConfig;
+        traceProcessorConfig.ComponentName = "BLOCKSTORE_TRACE";
         TraceProcessor = CreateTraceProcessorMon(
             Monitoring,
             CreateTraceProcessor(
                 Timer,
                 Scheduler,
                 Logging,
-                "BLOCKSTORE_TRACE",
+                std::move(traceProcessorConfig),
                 NLwTraceMonPage::TraceManager(diagnosticsConfig->GetUnsafeLWTrace()),
                 TraceReaders));
 
@@ -504,8 +511,7 @@ bool TBootstrap::InitKikimrService()
     StatsFetcher = NCloud::NStorage::BuildStatsFetcher(
         Configs->DiagnosticsConfig->GetStatsFetcherType(),
         Configs->DiagnosticsConfig->GetCpuWaitFilename(),
-        Log,
-        logging);
+        Log);
 
     STORAGE_INFO("StatsFetcher initialized");
 
@@ -541,6 +547,7 @@ bool TBootstrap::InitKikimrService()
     args.Logging = logging;
     args.NvmeManager = NvmeManager;
     args.StatsFetcher = StatsFetcher;
+    args.BackgroundThreadPool = BackgroundThreadPool;
 
     ActorSystem = NStorage::CreateDiskAgentActorSystem(args);
 
@@ -646,9 +653,9 @@ void TBootstrap::Start()
     }                                                                          \
 // START_COMPONENT
 
+    START_COMPONENT(BackgroundThreadPool);
     START_COMPONENT(AsyncLogger);
     START_COMPONENT(Logging);
-    START_COMPONENT(StatsFetcher);
     START_COMPONENT(Monitoring);
     START_COMPONENT(ProfileLog);
     START_COMPONENT(TraceProcessor);
@@ -702,9 +709,9 @@ void TBootstrap::Stop()
     STOP_COMPONENT(TraceProcessor);
     STOP_COMPONENT(ProfileLog);
     STOP_COMPONENT(Monitoring);
-    STOP_COMPONENT(StatsFetcher);
     STOP_COMPONENT(Logging);
     STOP_COMPONENT(AsyncLogger);
+    STOP_COMPONENT(BackgroundThreadPool);
 
 #undef STOP_COMPONENT
 }

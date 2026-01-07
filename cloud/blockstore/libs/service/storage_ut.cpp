@@ -11,8 +11,9 @@ namespace NCloud::NBlockStore {
 
 using namespace NThreading;
 
-////////////////////////////////////////////////////////////////////////////////
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TTickOnGetNowTimer: public ITimer
 {
@@ -600,6 +601,95 @@ Y_UNIT_TEST_SUITE(TStorageTest)
         DoShouldReadCorrectData(true, false);
     }
 
+    Y_UNIT_TEST(ShouldConvertSystemIoErrorsToE_IO)
+    {
+        auto storage = std::make_shared<TTestStorage>();
+
+        auto adapter = std::make_shared<TStorageAdapter>(
+            storage,
+            4_KB,                // storageBlockSize
+            false,               // normalize,
+            TDuration::Zero(),   // maxRequestDuration
+            TDuration::Zero()    // shutdownTimeout
+        );
+
+        for (int ec: {EIO, EREMOTEIO}) {
+            storage->ZeroBlocksHandler = [ec](auto...)
+            {
+                NProto::TZeroBlocksResponse response;
+                *response.MutableError() =
+                    MakeError(MAKE_SYSTEM_ERROR(ec), "Zero IO error");
+                return MakeFuture(response);
+            };
+            storage->WriteBlocksLocalHandler = [ec](auto...)
+            {
+                NProto::TWriteBlocksLocalResponse response;
+                *response.MutableError() =
+                    MakeError(MAKE_SYSTEM_ERROR(ec), "Write IO error");
+                return MakeFuture(response);
+            };
+            storage->ReadBlocksLocalHandler = [ec](auto...)
+            {
+                NProto::TReadBlocksLocalResponse response;
+                *response.MutableError() =
+                    MakeError(MAKE_SYSTEM_ERROR(ec), "Read IO error");
+                return MakeFuture(response);
+            };
+
+            {
+                auto request =
+                    std::make_shared<NProto::TReadBlocksLocalRequest>();
+                request->SetStartIndex(1000);
+                request->SetBlocksCount(1);
+
+                auto future = adapter->ReadBlocks(
+                    Now(),
+                    MakeIntrusive<TCallContext>(),
+                    std::move(request),
+                    4_KB,   // requestBlockSize
+                    {}      // no data buffer
+                );
+
+                const auto& error = future.GetValueSync().GetError();
+                UNIT_ASSERT_VALUES_EQUAL(E_IO, error.GetCode());
+            }
+
+            {
+                auto request =
+                    std::make_shared<NProto::TWriteBlocksLocalRequest>();
+                request->SetStartIndex(1000);
+                auto& iov = *request->MutableBlocks();
+                auto& buffers = *iov.MutableBuffers();
+                auto& buffer = *buffers.Add();
+                buffer.ReserveAndResize(1_MB);
+
+                auto future = adapter->WriteBlocks(
+                    Now(),
+                    MakeIntrusive<TCallContext>(),
+                    std::move(request),
+                    4_KB,   // requestBlockSize
+                    {}      // no data buffer
+                );
+
+                const auto& error = future.GetValueSync().GetError();
+                UNIT_ASSERT_VALUES_EQUAL(E_IO, error.GetCode());
+            }
+
+            {
+                auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+                request->SetStartIndex(1000);
+                request->SetBlocksCount(1);
+                auto future = adapter->ZeroBlocks(
+                    Now(),
+                    MakeIntrusive<TCallContext>(),
+                    std::move(request),
+                    4_KB);
+
+                const auto& error = future.GetValueSync().GetError();
+                UNIT_ASSERT_VALUES_EQUAL(E_IO, error.GetCode());
+            }
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore

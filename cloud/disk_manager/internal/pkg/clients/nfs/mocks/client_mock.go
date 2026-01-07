@@ -61,13 +61,36 @@ func (c *ClientMock) DescribeModel(
 	return res, args.Error(1)
 }
 
+func (c *ClientMock) CreateCheckpoint(
+	ctx context.Context,
+	session nfs.Session,
+	filesystemID string,
+	checkpointID string,
+	nodeID uint64,
+) error {
+
+	args := c.Called(ctx, session, filesystemID, checkpointID, nodeID)
+	return args.Error(0)
+}
+
+func (c *ClientMock) DestroyCheckpoint(
+	ctx context.Context,
+	filesystemID string,
+	checkpointID string,
+) error {
+
+	args := c.Called(ctx, filesystemID, checkpointID)
+	return args.Error(0)
+}
+
 func (c *ClientMock) CreateSession(
 	ctx context.Context,
 	fileSystemID string,
+	checkpointID string,
 	readonly bool,
 ) (nfs.Session, error) {
 
-	args := c.Called(ctx, fileSystemID, readonly)
+	args := c.Called(ctx, fileSystemID, checkpointID, readonly)
 	res, _ := args.Get(0).(nfs.Session)
 	return res, args.Error(1)
 }

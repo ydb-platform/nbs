@@ -310,7 +310,7 @@ func newNbsClientClientConfig() *nbs_config.ClientConfig {
 				Endpoints: []string{
 					fmt.Sprintf(
 						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NBS2_PORT"),
+						os.Getenv("DISK_MANAGER_RECIPE_NBS4_PORT"),
 					),
 				},
 			},
@@ -318,7 +318,7 @@ func newNbsClientClientConfig() *nbs_config.ClientConfig {
 				Endpoints: []string{
 					fmt.Sprintf(
 						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NBS3_PORT"),
+						os.Getenv("DISK_MANAGER_RECIPE_NBS5_PORT"),
 					),
 				},
 			},
@@ -575,6 +575,7 @@ func newResourceStorage(ctx context.Context) (resources.Storage, error) {
 		"images",
 		"snapshot",
 		"filesystems",
+		"filesystem_snapshots",
 		"placement_groups",
 		db,
 		endedMigrationExpirationTimeout,

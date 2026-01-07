@@ -1,7 +1,10 @@
 import json
+import logging
 import os
 import re
+import time
 
+import cloud.filestore.tools.testing.profile_log.common as profile
 import yatest.common as common
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
@@ -225,6 +228,33 @@ def test_ls():
     return ret
 
 
+def test_ls_max_bytes():
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+
+    for i in range(200):
+        client.touch("fs0", f"/file_{i:03d}")
+
+    out = client.ls("fs0", "/", "--max-bytes", "10", "--limit", "1")
+    out += client.ls("fs0", "/", "--max-bytes", "100", "--limit", "10")
+    out += client.ls("fs0", "/", "--max-bytes", "1", "--all")
+
+    # replace timestamps with a constant value
+    out = re.sub(
+        rb"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)",
+        b"1970-01-01T00:00:00Z",
+        out,
+    )
+
+    client.destroy("fs0")
+
+    with open(results_path, "wb") as results_file:
+        results_file.write(out)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
+
+
 def test_find():
     client, results_path = __init_test()
     client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
@@ -249,6 +279,10 @@ def test_find():
     client.touch("fs0", "/a0/g3.txt")
     out = client.find("fs0", depth=2)
     out += client.find("fs0", depth=2, glob="f*.txt")
+
+    a1_node_id = json.loads(client.stat("fs0", "/a1"))["Id"]
+    out += client.find("fs0", depth=3, root_node_id=a1_node_id)
+
     client.destroy("fs0")
 
     with open(results_path, "wb") as results_file:
@@ -677,6 +711,153 @@ def test_forced_compaction():
 
     with open(results_path, "w") as results_file:
         results_file.write(result)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
+
+
+def test_io_telemetry():
+    client, results_path = __init_test()
+
+    small_data_file = os.path.join(common.output_path(), "small_data.txt")
+    with open(small_data_file, "w") as f:
+        f.write("some data")
+
+    def write_block(block_no, f):
+        c = chr(ord('a') + block_no % (ord('z') - ord('a') + 1))
+        f.write(c * 4096)
+
+    medium_chunk_block_count = 4
+    medium_chunk_size = medium_chunk_block_count * 4096
+    medium_data_files = []
+    for i in range(3):
+        medium_data_file = os.path.join(
+            common.output_path(),
+            "medium_data_%s.txt" % i)
+        with open(medium_data_file, "w") as f:
+            for block_no in range(medium_chunk_block_count):
+                write_block(block_no + i * medium_chunk_block_count, f)
+        medium_data_files.append(medium_data_file)
+
+    large_data_file = os.path.join(common.output_path(), "large_data.txt")
+    with open(large_data_file, "w") as f:
+        for block_no in range(32):
+            write_block(block_no, f)
+
+    fs_id = "test_profile_log_io_requests"
+
+    client.create(
+        fs_id,
+        "test_cloud",
+        "test_folder",
+        BLOCK_SIZE,
+        BLOCKS_COUNT)
+
+    client.write(
+        fs_id,
+        "/small",
+        "--data", small_data_file,
+        "--client-id", "client0")
+    for i in range(len(medium_data_files)):
+        client.write(
+            fs_id,
+            "/medium",
+            "--data", medium_data_files[i],
+            "--offset", str(i * medium_chunk_size),
+            "--client-id", "client0")
+    client.write(
+        fs_id,
+        "/large",
+        "--data", large_data_file,
+        "--client-id", "client0")
+    out = __exec_ls(client, fs_id, "/").decode("utf-8")
+    out += "\nread_size=%s\n" % len(client.read(
+        fs_id, "/small", "--length", str(4 * 1024), "--client-id", "client0"))
+    for i in range(3):
+        out += "read_size=%s\n" % len(client.read(
+            fs_id,
+            "/medium",
+            "--length", str(medium_chunk_size),
+            "--offset", str(i * medium_chunk_size),
+            "--client-id", "client0"))
+    out += "read_size=%s\n" % len(client.read(
+        fs_id, "/large", "--length", str(128 * 1024), "--client-id", "client0"))
+
+    client.destroy(fs_id)
+
+    #
+    # Sleep for a while to ensure that the profile log is flushed
+    # before we start analyzing it
+    # The default value of ProfileLogTimeThreshold for tests is 100ms
+    # TODO(#568) - here and in other similar places - introduce and use a
+    # private api method which would force profile-log flush
+    #
+
+    time.sleep(2)
+
+    profile_tool_bin_path = common.binary_path(
+        "cloud/filestore/tools/analytics/profile_tool/filestore-profile-tool"
+    )
+    profile_log_events = profile.get_profile_log_events(
+        profile_tool_bin_path, common.output_path("nfs-profile.log"), fs_id
+    )
+
+    #
+    # Profile log is flushed => tracks should be flushed as well, their dump
+    # interval is the same.
+    #
+
+    probes = {
+        "ReadData": 0,
+        "DescribeData": 0,
+        "ReadBlobs": 0,
+        "WriteData": 0,
+        "GenerateBlobIds": 0,
+        "WriteBlobs": 0,
+        "AddData": 0,
+    }
+
+    with open(common.output_path("filestore-server.err")) as err:
+        for line in err.readlines():
+            parts = line.rstrip().split(" ", maxsplit=4)
+            component = parts[1]
+            message = parts[3]
+            if component == ":NFS_TRACE":
+                track = json.loads(message)
+                for probe in track:
+                    if len(probe) < 3:
+                        continue
+
+                    probe_name = probe[2]
+                    if probe_name in probes:
+                        probes[probe_name] += 1
+
+    #
+    # Printing profile events and probe info into our canonical results file.
+    #
+
+    with open(results_path, "w") as results_file:
+        results_file.write(out)
+
+        io_events = ["ReadData", "DescribeData", "WriteData", "AddData"]
+
+        lines = []
+        for event_type, event_body in profile_log_events:
+            if event_type not in io_events:
+                continue
+            try:
+                del event_body["handle"]
+                lines.append("%s\t%s\n" % (event_type, event_body))
+            except Exception as e:
+                logging.error("failed to process event: %s" % event_body)
+                raise e
+
+        lines.sort()
+        for line in lines:
+            results_file.write(line)
+
+        probe_list = sorted([(k, v > 0) for k, v in probes.items()])
+        results_file.write("%s\n" % probe_list)
 
     ret = common.canonical_file(results_path, local=True)
     return ret

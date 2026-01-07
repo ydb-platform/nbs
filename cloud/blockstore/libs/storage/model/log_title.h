@@ -48,6 +48,11 @@ public:
         TString DiskId;
     };
 
+    struct TPartitionMirror
+    {
+        TString DiskId;
+    };
+
     struct TSession
     {
         TString SessionId;
@@ -66,6 +71,12 @@ public:
         ui32 Generation = 0;
     };
 
+    struct TDiskRegistry
+    {
+        ui64 TabletId = 0;
+        ui32 Generation = 0;
+    };
+
 private:
     using TData = std::variant<
         TVolume,
@@ -73,7 +84,9 @@ private:
         TPartition,
         TPartitionNonrepl,
         TSession,
-        TClient>;
+        TClient,
+        TDiskRegistry,
+        TPartitionMirror>;
 
     ui64 StartTime = 0;
     TData Data;

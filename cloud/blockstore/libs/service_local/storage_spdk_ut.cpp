@@ -250,7 +250,8 @@ IStoragePtr CreateSpdkStorage(
         CreateServerRequestStats(
             serverGroup,
             CreateWallClockTimer(),
-            EHistogramCounterOption::ReportMultipleCounters),
+            EHistogramCounterOption::ReportMultipleCounters,
+            {}),
         CreateVolumeStatsStub());
 
     auto storageProvider = CreateSpdkStorageProvider(

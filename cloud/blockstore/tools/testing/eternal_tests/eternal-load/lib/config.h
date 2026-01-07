@@ -17,6 +17,8 @@ struct IConfigHolder
 
     virtual void DumpConfig(const TString& filePath) = 0;
 
+    virtual IConfigHolderPtr Clone() = 0;
+
     virtual ~IConfigHolder() = default;
 };
 
@@ -26,6 +28,7 @@ struct TCreateTestConfigArguments
 {
     TString FilePath;
     ui64 FileSize = 0;
+    ui32 TestCount = 0;
     ui16 IoDepth = 0;
     ui64 BlockSize = 0;
     ui16 WriteRate = 0;

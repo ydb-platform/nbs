@@ -78,8 +78,8 @@ func prepareEncryptionMode(
 		return types.EncryptionMode_NO_ENCRYPTION, nil
 	case disk_manager.EncryptionMode_ENCRYPTION_AES_XTS:
 		return types.EncryptionMode_ENCRYPTION_AES_XTS, nil
-	case disk_manager.EncryptionMode_ENCRYPTION_AT_REST:
-		return types.EncryptionMode_ENCRYPTION_AT_REST, nil
+	case disk_manager.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY:
+		return types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY, nil
 	default:
 		return 0, common.NewInvalidArgumentError(
 			"unknown encryption mode %v",
@@ -288,6 +288,7 @@ func (s *service) prepareCreateDiskParams(
 		StoragePoolName:         req.StoragePoolName,
 		AgentIds:                req.AgentIds,
 		EncryptionDesc:          encryptionDesc,
+		RequireExactCellIdMatch: req.RequireExactCellIdMatch,
 	}, nil
 }
 
@@ -732,6 +733,7 @@ func (s *service) MigrateDisk(
 			DstZoneId:                  req.DstZoneId,
 			DstPlacementGroupId:        req.DstPlacementGroupId,
 			DstPlacementPartitionIndex: req.DstPlacementPartitionIndex,
+			IsMigrationBetweenCells:    req.IsMigrationBetweenCells,
 		},
 	)
 }

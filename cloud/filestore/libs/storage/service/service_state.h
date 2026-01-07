@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
 #include <cloud/filestore/libs/diagnostics/public.h>
@@ -26,6 +27,25 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TChecksumCalcInfo
+{
+    ui32 BlockSize;
+    bool BlockChecksumsEnabled;
+    using TIovecs = google::protobuf::RepeatedPtrField<NProto::TIovec>;
+    TIovecs Iovecs;
+
+    TChecksumCalcInfo()
+        : BlockSize(0)
+        , BlockChecksumsEnabled(false)
+    {}
+
+    TChecksumCalcInfo(ui32 blockSize, TIovecs iovecs)
+        : BlockSize(blockSize)
+        , BlockChecksumsEnabled(true)
+        , Iovecs(std::move(iovecs))
+    {}
+};
+
 struct TInFlightRequest
     : public TRequestInfo
 {
@@ -34,6 +54,7 @@ public:
 
 private:
     const NCloud::NProto::EStorageMediaKind MediaKind;
+    const TChecksumCalcInfo ChecksumCalcInfo;
     const IRequestStatsPtr RequestStats;
     const IProfileLogPtr ProfileLog;
 
@@ -45,8 +66,23 @@ public:
             IProfileLogPtr profileLog,
             NCloud::NProto::EStorageMediaKind mediaKind,
             IRequestStatsPtr requestStats)
+        : TInFlightRequest(
+            info,
+            std::move(profileLog),
+            mediaKind,
+            {} /* checksumCalcInfo */,
+            std::move(requestStats))
+    {}
+
+    TInFlightRequest(
+            const TRequestInfo& info,
+            IProfileLogPtr profileLog,
+            NCloud::NProto::EStorageMediaKind mediaKind,
+            TChecksumCalcInfo checksumCalcInfo,
+            IRequestStatsPtr requestStats)
         : TRequestInfo(info.Sender, info.Cookie, info.CallContext)
         , MediaKind(mediaKind)
+        , ChecksumCalcInfo(std::move(checksumCalcInfo))
         , RequestStats(std::move(requestStats))
         , ProfileLog(std::move(profileLog))
     {}
@@ -54,6 +90,11 @@ public:
     void Start(TInstant currentTs);
     void Complete(TInstant currentTs, const NCloud::NProto::TError& error);
     bool IsCompleted() const;
+
+    const TChecksumCalcInfo& GetChecksumCalcInfo() const
+    {
+        return ChecksumCalcInfo;
+    }
 
     TIncompleteRequest ToIncompleteRequest(ui64 nowCycles) const;
 };
@@ -70,6 +111,27 @@ enum class ESessionCreateDestroyState
     STATE_CREATE_SESSION,
     STATE_DESTROY_SESSION
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TShardState: public TAtomicRefCount<TShardState>
+{
+private:
+    TAtomic IsOverloaded = false;
+
+public:
+    void SetIsOverloaded(bool isOverloaded)
+    {
+        AtomicSet(IsOverloaded, static_cast<TAtomicBase>(isOverloaded));
+    }
+
+    bool GetIsOverloaded() const
+    {
+        return static_cast<bool>(AtomicGet(IsOverloaded));
+    }
+};
+
+using TShardStatePtr = TIntrusivePtr<TShardState>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -93,6 +155,9 @@ struct TSessionInfo
     bool ShouldStop = false;
 
     ui32 ShardSelector = 0;
+
+    TVector<TShardStatePtr> ShardStates;
+    TShardStatePtr MainTabletState;
 
     void GetInfo(NProto::TSessionInfo& info, ui64 seqNo)
     {
@@ -124,7 +189,7 @@ struct TSessionInfo
 
     bool HasSubSession(ui64 seqNo) const
     {
-        return SubSessions.count(seqNo);
+        return SubSessions.count(seqNo) > 0;
     }
 
     void UpdateSubSession(ui64 seqNo, TInstant now)
@@ -134,6 +199,33 @@ struct TSessionInfo
         }
     }
 
+    TShardStatePtr AccessShardState(ui32 shardIdx)
+    {
+        if (shardIdx >= FileStore.ShardFileSystemIdsSize()) {
+            ReportInvalidShardIdx(TStringBuilder() << "ShardIdx: " << shardIdx
+                << ", ShardCount: " << FileStore.ShardFileSystemIdsSize());
+            return MakeIntrusive<TShardState>();
+        }
+
+        if (shardIdx >= ShardStates.size()) {
+            ShardStates.reserve(shardIdx + 1);
+            while (ShardStates.size() <= shardIdx) {
+                ShardStates.emplace_back(MakeIntrusive<TShardState>());
+            }
+        }
+
+        return ShardStates[shardIdx];
+    }
+
+    TShardStatePtr AccessMainTabletState()
+    {
+        if (!MainTabletState) {
+            MainTabletState = MakeIntrusive<TShardState>();
+        }
+
+        return MainTabletState;
+    }
+
     const TString& SelectShard()
     {
         const auto& shards = FileStore.GetShardFileSystemIds();
@@ -141,7 +233,8 @@ struct TSessionInfo
             return Default<TString>();
         }
 
-        return shards[ShardSelector++ % shards.size()];
+        const ui32 shardIdx = ShardSelector++ % shards.size();
+        return shards[static_cast<int>(shardIdx)];
     }
 };
 

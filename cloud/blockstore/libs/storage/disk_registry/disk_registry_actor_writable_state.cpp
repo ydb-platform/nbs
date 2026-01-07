@@ -18,10 +18,13 @@ void TDiskRegistryActor::HandleSetWritableState(
     const auto* msg = ev->Get();
     const bool writableState = msg->Record.GetState();
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received SetWritableState request: State=%s",
-        TabletID(),
-        writableState ? "true" : "false");
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received SetWritableState request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
@@ -35,8 +38,11 @@ void TDiskRegistryActor::HandleSetWritableState(
             << "Can't change state in "
             << States[CurrentState].Name
             << " state";
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "SetWritableState error: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s SetWritableState error: %s",
+            LogTitle.GetWithTime().c_str(),
             errorMsg.c_str());
         auto response =
             std::make_unique<TEvDiskRegistry::TEvSetWritableStateResponse>(

@@ -7,10 +7,10 @@
 #include <cloud/contrib/vhost/logging.h>
 #include <cloud/contrib/vhost/platform.h>
 
-#include <contrib/libs/virtiofsd/fuse.h>
-#include <contrib/libs/virtiofsd/fuse_i.h>
-#include <contrib/libs/virtiofsd/fuse_lowlevel.h>
-#include <contrib/libs/virtiofsd/fuse_virtio.h>
+#include <cloud/contrib/virtiofsd/fuse.h>
+#include <cloud/contrib/virtiofsd/fuse_i.h>
+#include <cloud/contrib/virtiofsd/fuse_lowlevel.h>
+#include <cloud/contrib/virtiofsd/fuse_virtio.h>
 
 #include <stdatomic.h>
 #include <sys/stat.h>
@@ -19,6 +19,14 @@
 
 #ifndef Y_UNUSED
 #define Y_UNUSED(x) (void)x;
+#endif
+
+#if __has_feature(thread_sanitizer)
+#define TSAN_ACQUIRE(x) __tsan_acquire(x)
+#define TSAN_RELEASE(x) __tsan_release(x)
+#else
+#define TSAN_ACQUIRE(x)
+#define TSAN_RELEASE(x)
 #endif
 
 struct fuse_virtio_dev
@@ -104,8 +112,22 @@ static void iov_copy_to_iov(
             // to dst buffers. This is done when zero copy is enabled for read
             // requests
             if (src_iov[0].iov_base) {
-                memcpy(dst_iov[0].iov_base + dst_offset,
-                       src_iov[0].iov_base + src_offset, dst_len);
+                void* dst = dst_iov[0].iov_base + dst_offset;
+                void* src = src_iov[0].iov_base + src_offset;
+                memcpy(dst, src, dst_len);
+                // Each fuse requests comes with iovec that is splitted into in
+                // and out iovecs. The in iovec is read in iov_iter_to_buf to
+                // copy it's content to allocated buffer. The out iovec is
+                // written in iov_copy_to_iov to send data response.
+                //
+                // It looks like tsan is not tracking the memory access well
+                // across guest vm. The guest may resend new request with in
+                // iovec containing out iovec address from previously responded
+                // request and tsan shadow memory still thinks that the memory
+                // is read during write.
+                //
+                // See https://github.com/ydb-platform/nbs/pull/4600
+                TSAN_RELEASE(dst);
             }
             src_len -= dst_len;
             to_copy -= dst_len;
@@ -187,7 +209,23 @@ static size_t iov_iter_to_buf(struct iov_iter *it, void *buf, size_t len)
     while (it->idx < it->count && len) {
         struct iovec *iov = &it->iov[it->idx];
         size_t cplen = MIN(len, iov->iov_len - it->off);
-        memcpy(ptr, iov->iov_base + it->off, cplen);
+
+        void* src = iov->iov_base + it->off;
+        // Each fuse requests comes with iovec that is splitted into in
+        // and out iovecs. The in iovec is read in iov_iter_to_buf to
+        // copy it's content to allocated buffer. The out iovec is
+        // written in iov_copy_to_iov to send data response.
+        //
+        // It looks like tsan is not tracking the memory access well
+        // across guest vm. The guest may resend new request with in
+        // iovec containing out iovec address from previously responded
+        // request and tsan shadow memory still thinks that the memory
+        // is read during write.
+        //
+        // See https://github.com/ydb-platform/nbs/pull/4600
+        TSAN_ACQUIRE(src);
+        memcpy(ptr, src, cplen);
+
         ptr += cplen;
         len -= cplen;
         it->off += cplen;
@@ -392,15 +430,15 @@ int virtio_session_mount(struct fuse_session* se)
 
     // no need to supply tag here - it will be handled by the QEMU
     dev->fsdev.socket_path = se->vu_socket_path;
-    dev->fsdev.num_queues = se->num_backend_queues;
+    dev->fsdev.num_queues = se->num_frontend_queues;
 
     VHD_LOG_INFO(
-        "starting device %s, num_backend_queues=%d, num_frontend_queues=%d",
+        "starting device %s, num_frontend_queues=%d, num_backend_queues=%d",
         dev->fsdev.socket_path,
-        se->num_backend_queues,
-        se->num_frontend_queues);
+        se->num_frontend_queues,
+        se->num_backend_queues);
 
-    dev->rq_count = se->num_frontend_queues;
+    dev->rq_count = se->num_backend_queues;
     dev->rqs = vhd_zalloc(sizeof(dev->rqs[0]) * dev->rq_count);
 
     for (queue_index = 0; queue_index < dev->rq_count; queue_index++) {

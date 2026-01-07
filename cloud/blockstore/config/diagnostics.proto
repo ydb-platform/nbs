@@ -78,6 +78,28 @@ message TMonitoringUrlData
 
     optional string MonitoringYDBProject = 8;
     optional string MonitoringYDBGroupDashboard = 9;
+
+    // Monitoring dashboard url template
+    // For example
+    // {MonitoringUrl}/projects/{MonitoringProject}/dashboards/{MonitoringVolumeDashboard}
+    // ?from=now-1d&to=now&refresh=60000&p.cluster={MonitoringClusterName}&p.volume={diskId}"
+    // or
+    // {MonitoringUrl}/d/{MonitoringVolumeDashboard}?orgId=1
+    // &from=now-1d&to=now&refresh=60000
+    // &var-datasource={MonitoringProject}
+    // &var-disk_id={diskId}
+    // Possible template parameters:
+    // - MonitoringUrl
+    // - MonitoringProject
+    // - MonitoringClusterName
+    // - MonitoringVolumeDashboard
+    // - MonitoringNBSAlertsDashboard
+    // - MonitoringNBSTVDashboard
+    // - MonitoringYDBProject
+    // - MonitoringYDBGroupDashboard
+    // - diskId
+    optional string MonitoringUrlTemplate = 10;
+
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -230,5 +252,21 @@ message TDiagnosticsConfig
     // Skip reporting ZeroBlocks metrics as part of WriteBlocks metrics
     optional bool SkipReportingZeroBlocksMetricsForYDBBasedDisks = 53;
 
+    // Opentelemetry trace config
     optional NCloud.NProto.TOpentelemetryTraceConfig OpentelemetryTraceConfig = 54;
+
+    // Represents [Start, End) interval.
+    message TInterval
+    {
+        required uint64 Start = 1;
+        required uint64 End = 2;
+    };
+
+    // Request size intervals that should be measured separately (in bytes).
+    // Intersections between ExecutionTimeSizeClasses are not allowed.
+    repeated TInterval ExecutionTimeSizeClasses = 56;
+
+    // Report time histograms with milliseconds buckets. Percentiles are still
+    // reported in microseconds.
+    optional bool UseMsUnitsForTimeHistogram = 57;
 }

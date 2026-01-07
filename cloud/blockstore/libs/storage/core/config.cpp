@@ -371,7 +371,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(ChannelFreeSpaceThreshold,                      ui32,   25            )\
     xxx(ChannelMinFreeSpace,                            ui32,   10            )\
     xxx(MinChannelCount,                                ui32,   4             )\
-    xxx(FreshChannelCount,                              ui32,   0             )\
+    xxx(FreshChannelCountSSD,                           ui32,   1             )\
+    xxx(FreshChannelCountHDD,                           ui32,   1             )\
                                                                                \
     xxx(ZoneBlockCount,                            ui32,   32 * MaxBlocksCount)\
     xxx(HotZoneRequestCountFactor,                 ui32,   10                 )\
@@ -592,6 +593,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(BlobStorageAsyncRequestTimeoutSSD,              TDuration, Seconds(0)    )\
                                                                                \
     xxx(EncryptionAtRestForDiskRegistryBasedDisksEnabled, bool,    false      )\
+    xxx(RootKmsEncryptionForDiskRegistryBasedDisksEnabled,bool,    false      )\
     xxx(DisableFullPlacementGroupCountCalculation,        bool,    false      )\
     xxx(DiskRegistryInitialAgentRejectionThreshold,       double,    50       )\
     xxx(EnableToChangeStatesFromDiskRegistryMonpage,      bool,    false      )\
@@ -642,6 +644,15 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(HiveLocalServiceMemoryResourceLimit,  ui64,        0                  )\
     xxx(HiveLocalServiceNetworkResourceLimit, ui64,        0                  )\
     xxx(DynamicNodeRegistrationTimeout,       TDuration,   Seconds(5)         )\
+    xxx(AttachDetachPathsEnabled,             bool,        false              )\
+                                                                               \
+    xxx(NonreplAllocationPolicy,                                               \
+        NProto::ENonreplAllocationPolicy,                                      \
+        NProto::NONREPL_ALLOC_POLICY_NOT_SPECIFIED                            )\
+                                                                               \
+    xxx(SendLocalTabletMetricsToHiveEnabled,  bool,        false              )\
+                                                                               \
+    xxx(EnableVhostDiscardForNewVolumes,      bool,        false              )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
@@ -662,7 +673,6 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(Balancer)                                                              \
     xxx(IncrementalCompaction)                                                 \
     xxx(MultipartitionVolumes)                                                 \
-    xxx(AllocateFreshChannel)                                                  \
     xxx(FreshChannelWriteRequests)                                             \
     xxx(MixedIndexCacheV1)                                                     \
     xxx(BatchCompaction)                                                       \
@@ -673,8 +683,10 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(UseNonReplicatedHDDInsteadOfReplicated)                                \
     xxx(AddingUnconfirmedBlobs)                                                \
     xxx(EncryptionAtRestForDiskRegistryBasedDisks)                             \
+    xxx(RootKmsEncryptionForDiskRegistryBasedDisks)                            \
     xxx(LaggingDevicesForMirror2Disks)                                         \
     xxx(LaggingDevicesForMirror3Disks)                                         \
+    xxx(EnableVhostDiscardForNewVolumes)                                       \
 
 // BLOCKSTORE_BINARY_FEATURES
 
@@ -762,6 +774,13 @@ IOutputStream& operator <<(
 IOutputStream& operator<<(IOutputStream& out, NProto::EResyncPolicy pt)
 {
     return out << NProto::EResyncPolicy_Name(pt);
+}
+
+IOutputStream& operator<<(
+    IOutputStream& out,
+    NProto::ENonreplAllocationPolicy pt)
+{
+    return out << NProto::ENonreplAllocationPolicy_Name(pt);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1193,6 +1212,13 @@ void AdaptNodeRegistrationParams(
     {
         storageConfig.SetNodeRegistrationToken(
             serverConfig.GetNodeRegistrationToken());
+    }
+
+    if (!storageConfig.HasEnableVhostDiscardForNewVolumes() &&
+        serverConfig.HasVhostDiscardEnabled())
+    {
+        storageConfig.SetEnableVhostDiscardForNewVolumes(
+            serverConfig.GetVhostDiscardEnabled());
     }
 
     if (overriddenNodeType) {

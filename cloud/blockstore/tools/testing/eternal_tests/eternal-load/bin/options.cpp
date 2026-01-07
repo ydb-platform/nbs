@@ -2,6 +2,9 @@
 
 #include <library/cpp/getopt/small/last_getopt.h>
 
+#include <util/generic/size_literals.h>
+#include <util/string/cast.h>
+
 namespace NCloud::NBlockStore {
 
 using namespace NLastGetopt;
@@ -15,7 +18,9 @@ const THashMap<TString, ECommand> nameToCommand = {
 
 const THashMap<TString, EScenario> nameToScenario = {
     {"aligned", EScenario::Aligned},
-    {"unaligned", EScenario::Unaligned}
+    {"unaligned", EScenario::Unaligned},
+    {"sequential", EScenario::Sequential},
+    {"random", EScenario::Random}
 };
 
 const THashMap<TString, EIoEngine> nameToEngine = {
@@ -61,6 +66,55 @@ TOpt& operator|(TOpt& opt, const TMapOption<T>& map)
         map.Target,
         [map = map.Map](const TString& v) { return map.at(v); });
 }
+
+template <class T>
+struct TByteCountOption
+{
+    T* Target = nullptr;
+    ui64 DefaultMultiplier = 0;
+
+    explicit TByteCountOption(T* target, char defaultSuffix = 'b')
+        : Target(target)
+        , DefaultMultiplier(GetMultiplier(defaultSuffix))
+    {}
+
+    static ui64 GetMultiplier(char suffix)
+    {
+        switch (suffix) {
+            case 'b':
+                return 1;
+            case 'k':
+                return 1_KB;
+            case 'm':
+                return 1_MB;
+            case 'g':
+                return 1_GB;
+            default:
+                Y_ABORT("Unsupported suffix '%c'", suffix);
+        }
+    }
+
+    ui64 operator()(const TString& v) const
+    {
+        if (v.empty()) {
+            return 0;
+        }
+
+        if (v.back() >= '0' && v.back() <= '9') {
+            return FromString<ui64>(v) * DefaultMultiplier;
+        }
+
+        return FromString<ui64>(TStringBuf(v).Chop(1)) *
+               GetMultiplier(v.back());
+    }
+};
+
+template <class T>
+TOpt& operator|(TOpt& opt, const TByteCountOption<T>& arg)
+{
+    opt.RequiredArgument("STR");
+    return opt.StoreMappedResultT<TString>(arg.Target, arg);
+};
 
 }   // namespace
 
@@ -115,9 +169,20 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("STR")
         .StoreResult(&FilePath);
 
-    opts.AddLongOption("filesize", "size of file or block device in GB")
+    opts.AddLongOption(
+        "filesize",
+        "size of file or block device in GiB or other unit "
+        "by suffix: b - bytes, k - KiB, m - MiB, g - GiB")
+        | TByteCountOption(&FileSize, 'g');
+
+    opts.AddLongOption(
+        "test-count",
+        "run several test scenarios in parallel, "
+        "each with own file, the parameter --file "
+        "should have a placeholder {}")
         .RequiredArgument("NUM")
-        .StoreResult(&FileSize);
+        .StoreResult(&TestCount)
+        .DefaultValue(0);
 
     opts.AddLongOption(
         "request-block-count",
@@ -133,7 +198,7 @@ void TOptions::Parse(int argc, char** argv)
         .StoreResult(&BlockSize)
         .DefaultValue(4096);
 
-    opts.AddLongOption("iodepth")
+    opts.AddLongOption("iodepth", "number of workers in a scenario")
         .RequiredArgument("NUM")
         .DefaultValue(32)
         .StoreResult(&IoDepth);

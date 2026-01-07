@@ -147,12 +147,12 @@ struct TEndpointCounters
         ActiveRead = counters.GetCounter("ActiveRead");
         ActiveWrite = counters.GetCounter("ActiveWrite");
 
-        SendErrors = counters.GetCounter("SendErrors");
-        RecvErrors = counters.GetCounter("RecvErrors");
-        ReadErrors = counters.GetCounter("ReadErrors");
-        WriteErrors = counters.GetCounter("WriteErrors");
+        SendErrors = counters.GetCounter("SendErrors", true);
+        RecvErrors = counters.GetCounter("RecvErrors", true);
+        ReadErrors = counters.GetCounter("ReadErrors", true);
+        WriteErrors = counters.GetCounter("WriteErrors", true);
 
-        CompletionErrors = counters.GetCounter("CompletionErrors");
+        CompletionErrors = counters.GetCounter("CompletionErrors", true);
     }
 
     void RequestEnqueued()

@@ -76,7 +76,8 @@ void TIndexTabletActor::HandleListNodes(
         ctx,
         std::move(requestInfo),
         msg->Record,
-        maxBytes);
+        maxBytes,
+        Config->GetMaxBytesMultiplier());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -224,6 +225,9 @@ void TIndexTabletActor::CompleteTx_ListNodes(
             1,
             requestBytes,
             ctx.Now() - args.RequestInfo->StartedTs);
+        Metrics.ListNodes.RequestedBytesPrecharge.fetch_add(
+            args.BytesToPrecharge,
+            std::memory_order_relaxed);
     }
 
     CompleteResponse<TEvService::TListNodesMethod>(

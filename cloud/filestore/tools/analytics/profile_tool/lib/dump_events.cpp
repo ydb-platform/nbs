@@ -38,6 +38,8 @@ public:
         auto* message =
             dynamic_cast<const NProto::TProfileLogRecord*>(ev->GetProto());
         if (message) {
+            DumpDiscardedRequestCount(*message, out);
+
             const auto filtered_message = Filter->GetFilteredRecord(*message);
             const auto order = GetItemOrder(filtered_message);
 

@@ -2,6 +2,8 @@ PROGRAM(nbsd-lightweight)
 
 ALLOCATOR(TCMALLOC_TC)
 
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/binaries_dependency.inc)
+
 SRCS(
     main.cpp
 )

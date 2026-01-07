@@ -5,6 +5,7 @@
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/storage/core/request_info.h>
+#include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -21,20 +22,28 @@ LWTRACE_USING(FILESTORE_STORAGE_PROVIDER);
 TAddDataActor::TAddDataActor(
         ITraceSerializerPtr traceSerializer,
         TString logTag,
+        TString fileSystemId,
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
         TVector<TMergedBlob> blobs,
         TVector<TBlockBytesMeta> unalignedDataParts,
-        TWriteRange writeRange)
+        TWriteRange writeRange,
+        IProfileLogPtr profileLog,
+        NProto::TBackendInfo backendInfo,
+        NProto::TProfileLogRequestInfo profileLogRequest)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
+    , FileSystemId(std::move(fileSystemId))
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
     , CommitId(commitId)
     , Blobs(std::move(blobs))
     , UnalignedDataParts(std::move(unalignedDataParts))
     , WriteRange(writeRange)
+    , ProfileLog(std::move(profileLog))
+    , BackendInfo(std::move(backendInfo))
+    , ProfileLogRequest(std::move(profileLogRequest))
 {
     for (const auto& blob: Blobs) {
         BlobsSize += blob.BlobId.BlobSize();
@@ -90,6 +99,13 @@ void TAddDataActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
+    FinalizeProfileLogRequestInfo(
+        std::move(ProfileLogRequest),
+        ctx.Now(),
+        FileSystemId,
+        error,
+        ProfileLog);
+
     {
         // notify tablet
         using TCompletion = TEvIndexTabletPrivate::TEvAddDataCompleted;
@@ -98,7 +114,8 @@ void TAddDataActor::ReplyAndDie(
             1,
             BlobsSize,
             ctx.Now() - RequestInfo->StartedTs,
-            CommitId);
+            CommitId,
+            BackendInfo.GetIsOverloaded());
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
@@ -110,19 +127,22 @@ void TAddDataActor::ReplyAndDie(
     if (RequestInfo->Sender != Tablet) {
         auto response =
             std::make_unique<TEvIndexTablet::TEvAddDataResponse>(error);
-        LOG_DEBUG(
-            ctx,
-            TFileStoreComponents::TABLET_WORKER,
-            "%s AddData: #%lu completed (%s)",
-            LogTag.c_str(),
-            RequestInfo->CallContext->RequestId,
-            FormatError(response->Record.GetError()).c_str());
 
-        BuildTraceInfo(
+        const bool builtTraceInfo = BuildTraceInfo(
             TraceSerializer,
             RequestInfo->CallContext,
             response->Record);
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s AddData: #%lu completed (%s), trace-info: %d",
+            LogTag.c_str(),
+            RequestInfo->CallContext->RequestId,
+            FormatError(response->Record.GetError()).c_str(),
+            builtTraceInfo);
         BuildThrottlerInfo(*RequestInfo->CallContext, response->Record);
+        *response->Record.MutableHeaders()->MutableBackendInfo() =
+            std::move(BackendInfo);
 
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }

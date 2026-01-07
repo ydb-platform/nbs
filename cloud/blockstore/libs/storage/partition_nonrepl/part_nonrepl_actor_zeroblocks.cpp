@@ -38,8 +38,7 @@ public:
         const TActorId& part,
         ui32 blockSize,
         bool assignVolumeRequestId,
-        TChildLogTitle logTitle,
-        ui64 deviceOperationId);
+        TChildLogTitle logTitle);
 
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
@@ -69,8 +68,7 @@ TDiskAgentZeroActor::TDiskAgentZeroActor(
         const TActorId& part,
         ui32 blockSize,
         bool assignVolumeRequestId,
-        TChildLogTitle logTitle,
-        ui64 deviceOperationId)
+        TChildLogTitle logTitle)
     :TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -80,8 +78,7 @@ TDiskAgentZeroActor::TDiskAgentZeroActor(
           std::move(partConfig),
           volumeActorId,
           part,
-          std::move(logTitle),
-          deviceOperationId)
+          std::move(logTitle))
     , Request(std::move(request))
     , BlockSize(blockSize)
     , AssignVolumeRequestId(assignVolumeRequestId)
@@ -105,7 +102,7 @@ void TDiskAgentZeroActor::SendRequest(const TActorContext& ctx)
 
         OnRequestStarted(
             ctx,
-            deviceRequest.Device.GetDeviceUUID(),
+            deviceRequest.Device.GetAgentId(),
             TDeviceOperationTracker::ERequestType::Zero,
             cookie);
 
@@ -144,6 +141,8 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksUndelivery(
     const TEvDiskAgent::TEvZeroDeviceBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    OnRequestFinished(ctx, ev->Cookie);
+
     const auto& device = DeviceRequests[ev->Cookie].Device;
     LOG_WARN(
         ctx,
@@ -162,12 +161,12 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
+    OnRequestFinished(ctx, ev->Cookie);
+
     if (HasError(msg->GetError())) {
         HandleError(ctx, msg->GetError(), EStatus::Fail);
         return;
     }
-
-    OnRequestFinished(ctx, ev->Cookie);
 
     if (++RequestsCompleted < DeviceRequests.size()) {
         return;
@@ -235,8 +234,6 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
         return;
     }
 
-    ui64 operationId = GenerateOperationId(deviceRequests.size());
-
     auto actorId = NCloud::Register<TDiskAgentZeroActor>(
         ctx,
         requestInfo,
@@ -248,10 +245,9 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
         SelfId(),
         PartConfig->GetBlockSize(),
         Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
-        LogTitle.GetChild(GetCycleCount()),
-        operationId);
+        LogTitle.GetChild(GetCycleCount()));
 
-    RequestsInProgress.AddWriteRequest(actorId, std::move(request));
+    RequestsInProgress.AddWriteRequest(actorId, blockRange, std::move(request));
 }
 
 void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(
@@ -274,7 +270,7 @@ void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
-    RequestsInProgress.RemoveRequest(ev->Sender);
+    RequestsInProgress.RemoveWriteRequest(ev->Sender);
     OnRequestCompleted(*msg, ctx.Now());
     DrainActorCompanion.ProcessDrainRequests(ctx);
 

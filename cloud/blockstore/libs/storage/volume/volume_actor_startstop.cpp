@@ -321,6 +321,9 @@ TActorsStack TVolumeActor::WrapWithShadowDiskActorIfNeeded(
 
         auto actorId = NCloud::Register<TShadowDiskActor>(
             ctx,
+            LogTitle.GetChildWithTags(
+                GetCycleCount(),
+                {{"ShadowDiskId", checkpointInfo.ShadowDiskId}}),
             Config,
             DiagnosticsConfig,
             GetRdmaClient(),
@@ -368,7 +371,8 @@ TActorsStack TVolumeActor::WrapWithFollowerActorIfNeeded(
                 break;
             }
             case TFollowerDiskInfo::EState::Preparing:
-            case TFollowerDiskInfo::EState::DataReady: {
+            case TFollowerDiskInfo::EState::DataReady:
+            case TFollowerDiskInfo::EState::LeadershipTransferred: {
                 // Creating an actor wrapper.
                 auto actorId = NCloud::Register<TFollowerDiskActor>(
                     ctx,
@@ -428,7 +432,7 @@ void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
     State->SetReadWriteError({});
 
     // Request storage info for partitions
-    for (auto& partition: State->GetPartitions()) {
+    for (auto& partition: State->AccessPartitions()) {
         partition.ExternalBootTimeout = Config->GetMinExternalBootRequestTimeout();
         SendBootExternalRequest(ctx, partition);
     }
@@ -525,7 +529,7 @@ void TVolumeActor::StopPartitions(
     // onPartitionStopped should used for DiskRegistry based volumes.
     Y_DEBUG_ABORT_UNLESS(!onPartitionStopped);
 
-    for (auto& part: State->GetPartitions()) {
+    for (auto& part: State->AccessPartitions()) {
         // Reset previous boot attempts
         part.RetryCookie.Detach();
         part.RequestingBootExternal = false;

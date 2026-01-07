@@ -160,14 +160,7 @@ bool TNonreplicatedPartitionMigrationCommonActor::IsIoDepthLimitReached() const
 bool TNonreplicatedPartitionMigrationCommonActor::
     OverlapsWithInflightWriteAndZero(TBlockRange64 range) const
 {
-    for (const auto& [key, requestInfo]:
-         WriteAndZeroRequestsInProgress.AllRequests())
-    {
-        if (range.Overlaps(requestInfo.Value)) {
-            return true;
-        }
-    }
-    return false;
+    return WriteAndZeroRequestsInProgress.OverlapsWithWrites(range);
 }
 
 std::optional<TBlockRange64>

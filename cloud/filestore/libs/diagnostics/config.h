@@ -114,6 +114,7 @@ public:
     TString GetTracesSyslogIdentifier() const;
 
     TDuration GetProfileLogTimeThreshold() const;
+    TDuration GetDumpTracksInterval() const;
     ui32 GetLWTraceShuttleCount() const;
 
     TString GetCpuWaitServiceName() const;
@@ -133,6 +134,7 @@ public:
     bool GetReportHistogramAsMultipleCounters() const;
     bool GetReportHistogramAsSingleCounter() const;
     EHistogramCounterOptions GetHistogramCounterOptions() const;
+    bool GetUseMsUnitsForTimeHistogram() const;
 
     TFileSystemPerformanceProfile GetHDDFileSystemPerformanceProfile() const;
     TFileSystemPerformanceProfile GetSSDFileSystemPerformanceProfile() const;

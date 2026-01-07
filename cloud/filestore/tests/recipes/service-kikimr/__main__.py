@@ -42,8 +42,10 @@ def start(argv):
     parser.add_argument("--in-memory-pdisks", action="store_true", default=False)
     parser.add_argument("--restart-interval", action="store", default=None)
     parser.add_argument("--storage-config-patch", action="store", default=None)
+    parser.add_argument("--server-config-patch", action="store", default=None)
     parser.add_argument("--bs-cache-file-path", action="store", default=None)
     parser.add_argument("--use-unix-socket", action="store_true", default=False)
+    parser.add_argument("--trace-sampling-rate", action="store", default=None, type=int)
     args = parser.parse_args(argv)
 
     kikimr_binary_path = common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
@@ -92,6 +94,17 @@ def start(argv):
             pathlib.Path(tempfile.mkdtemp(dir="/tmp")) / "filestore.sock")
         set_env("NFS_SERVER_UNIX_SOCKET_PATH", server_unix_socket_path)
         server_config.ServerConfig.UnixSocketPath = server_unix_socket_path
+    if args.server_config_patch:
+        with open(common.source_path(args.server_config_patch)) as p:
+            server_config_patch = text_format.Parse(
+                p.read(),
+                TServerAppConfig())
+            server_config.MergeFrom(server_config_patch)
+
+    if server_config.ServerConfig.SharedMemoryBasePath != "":
+        shared_memory_base_path = os.path.join(common.output_path(), "shm")
+        os.makedirs(shared_memory_base_path, exist_ok=True)
+        server_config.ServerConfig.SharedMemoryBasePath = shared_memory_base_path
 
     secure = False
     if access_service_port:
@@ -127,6 +140,7 @@ def start(argv):
         storage_config=storage_config,
         secure=secure,
         access_service_type=access_service_type,
+        trace_sampling_rate=args.trace_sampling_rate,
     )
     filestore_configurator.generate_configs(kikimr_configurator.domains_txt, kikimr_configurator.names_txt)
 

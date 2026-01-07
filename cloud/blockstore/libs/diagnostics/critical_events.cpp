@@ -128,11 +128,11 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
         return ReportCriticalEvent(                                            \
             GetCriticalEventFor##name(),                                       \
             FormatKeyValueList(keyValues),                                     \
-            false);                                                            \
+            false); /* verifyDebug */                                          \
     }                                                                          \
     const TString GetCriticalEventFor##name()                                  \
     {                                                                          \
-        return "DiskAgentCriticalEvents/"#name;                             \
+        return "DiskAgentCriticalEvents/"#name;                                \
     }                                                                          \
 // BLOCKSTORE_DEFINE_DISK_AGENT_CRITICAL_EVENT_ROUTINE
 
@@ -146,7 +146,7 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
         return ReportCriticalEvent(                                            \
             GetCriticalEventFor##name(),                                       \
             message,                                                           \
-            true);                                                             \
+            true);  /* verifyDebug */                                          \
     }                                                                          \
     TString Report##name(                                                      \
         const TString& message,                                                \
@@ -162,7 +162,7 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
         return ReportCriticalEvent(                                            \
             GetCriticalEventFor##name(),                                       \
             FormatKeyValueList(keyValues),                                     \
-            false);                                                            \
+            false); /* verifyDebug */                                          \
     }                                                                          \
     const TString GetCriticalEventFor##name()                                  \
     {                                                                          \

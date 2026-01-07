@@ -570,6 +570,19 @@ TSessionHandle* TIndexTabletState::CreateHandle(
 {
     auto handle = std::make_unique<TSessionHandle>(session, proto);
 
+    if (HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
+        ++Impl->HandlesStats.UsedDirectHandlesCount;
+    }
+
+    // TIndexTabletState::CreateHandle is called from
+    // TIndexTabletState::LoadSessions. Therefore, we can count the number of
+    // 'bad' handles that use the seventh byte, and then wait until all such
+    // 'bad' handles are gone. After that, we can safely use the freed seventh
+    // byte to store long shard numbers.
+    if (IsSeventhByteUsed(handle->GetHandle())) {
+        ++Impl->HandlesStats.SevenBytesHandlesCount;
+    }
+
     session->Handles.PushBack(handle.get());
     session->HandleStatsByNode.RegisterHandle(proto);
     Impl->HandleById.emplace(handle->GetHandle(), handle.get());
@@ -599,6 +612,14 @@ TSessionHandle* TIndexTabletState::CreateHandle(
 
 void TIndexTabletState::RemoveHandle(TSessionHandle* handle)
 {
+    if (HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
+        --Impl->HandlesStats.UsedDirectHandlesCount;
+    }
+
+    if (IsSeventhByteUsed(handle->GetHandle())) {
+        --Impl->HandlesStats.SevenBytesHandlesCount;
+    }
+
     std::unique_ptr<TSessionHandle> holder(handle);
 
     handle->Unlink();

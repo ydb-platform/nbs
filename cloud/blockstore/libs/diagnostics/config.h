@@ -4,7 +4,8 @@
 
 #include <cloud/blockstore/config/diagnostics.pb.h>
 
-#include "cloud/storage/core/libs/diagnostics/histogram_counter_options.h"
+#include <cloud/storage/core/libs/common/size_interval.h>
+#include <cloud/storage/core/libs/diagnostics/histogram_counter_options.h>
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
 
 #include <util/generic/string.h>
@@ -82,6 +83,7 @@ struct TMonitoringUrlData: public TAtomicRefCount<TMonitoringUrlData>
     TString MonitoringNBSTVDashboard;
     TString MonitoringYDBProject;
     TString MonitoringYDBGroupDashboard;
+    TString MonitoringUrlTemplate;
 
     TMonitoringUrlData()
         : MonitoringProject("nbs")
@@ -98,6 +100,7 @@ struct TMonitoringUrlData: public TAtomicRefCount<TMonitoringUrlData>
         , MonitoringNBSTVDashboard(data.GetMonitoringNBSTVDashboard())
         , MonitoringYDBProject(data.GetMonitoringYDBProject())
         , MonitoringYDBGroupDashboard(data.GetMonitoringYDBGroupDashboard())
+        , MonitoringUrlTemplate(data.GetMonitoringUrlTemplate())
     {}
 };
 
@@ -158,6 +161,7 @@ public:
 
     TRequestThresholds GetRequestThresholds() const;
     EHistogramCounterOptions GetHistogramCounterOptions() const;
+    bool GetUseMsUnitsForTimeHistogram() const;
 
     NCloud::NProto::EStatsFetcherType GetStatsFetcherType() const;
 
@@ -165,6 +169,8 @@ public:
 
     [[nodiscard]] NCloud::NProto::TOpentelemetryTraceConfig
     GetOpentelemetryTraceConfig() const;
+
+    [[nodiscard]] TVector<TSizeInterval> GetExecutionTimeSizeClasses() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

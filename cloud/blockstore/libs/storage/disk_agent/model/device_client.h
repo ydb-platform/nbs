@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/blockstore/config/disk.pb.h>
+#include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -35,6 +36,8 @@ private:
         TSessionInfo WriterSession;
         TVector<TSessionInfo> ReaderSessions;
 
+        TStorageAdapterPtr StorageAdapter;
+
         // If the value is set, it is returned as the result of IO
         // operations and the device is considered to be disabled.
         std::optional<ui32> IOErrorCode;
@@ -51,7 +54,7 @@ private:
 public:
     TDeviceClient(
         TDuration releaseInactiveSessionsTimeout,
-        TVector<TString> uuids,
+        TVector<std::pair<TString, TStorageAdapterPtr>> uuidToDevice,
         TLog log,
         bool kickOutOldClientsEnabled);
 
@@ -78,10 +81,16 @@ public:
         const TString& diskId,
         ui32 volumeGeneration) const;
 
-    NCloud::NProto::TError AccessDevice(
+    TResultOrError<TStorageAdapterPtr> AccessDevice(
         const TString& uuid,
         const TString& clientId,
         NProto::EVolumeAccessMode accessMode) const;
+
+    TResultOrError<TStorageAdapterPtr> AccessDevice(const TString& uuid) const;
+
+    TStorageAdapterPtr DetachDevice(const TString& uuid) const;
+
+    void AttachDevice(const TString& uuid, TStorageAdapterPtr adapter) const;
 
     TSessionInfo GetWriterSession(const TString& uuid) const;
     TVector<TSessionInfo> GetReaderSessions(const TString& uuid) const;
@@ -102,7 +111,8 @@ public:
     TVector<NProto::TDiskAgentDeviceSession> GetSessions() const;
 
 private:
-    static TDevicesState MakeDevices(TVector<TString> uuids);
+    static TDevicesState MakeDevices(
+        TVector<std::pair<TString, TStorageAdapterPtr>> uuidToDevice);
     [[nodiscard]] TDeviceState* GetDeviceState(const TString& uuid) const;
 
     void SetDeviceIOErrorCode(
