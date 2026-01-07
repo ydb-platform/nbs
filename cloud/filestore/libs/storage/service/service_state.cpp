@@ -51,10 +51,11 @@ bool TInFlightRequest::IsCompleted() const
     return Completed.load(std::memory_order_acquire);
 }
 
-TIncompleteRequest TInFlightRequest::ToIncompleteRequest(ui64 nowCycles) const
+std::unique_ptr<TIncompleteRequest> TInFlightRequest::ToIncompleteRequest(
+    ui64 nowCycles) const
 {
     const auto time = CallContext->CalcRequestTime(nowCycles);
-    return TIncompleteRequest(
+    return std::make_unique<TIncompleteRequest>(
         MediaKind,
         CallContext->RequestType,
         time.ExecutionTime,
@@ -106,6 +107,21 @@ TInFlightRequest* TInFlightRequestStorage::Find(ui64 key)
     auto g = Guard(Lock);
 
     return Requests.FindPtr(key);
+}
+
+TInFlightRequestStorage::TLockedRequest TInFlightRequestStorage::FindAndLock(
+    ui64 key)
+{
+    Lock.lock();
+
+    auto* request = Requests.FindPtr(key);
+    TLockedRequest result(Lock, request);
+
+    if (!request) {
+        Lock.unlock();
+    }
+
+    return result;
 }
 
 void TInFlightRequestStorage::Erase(ui64 key)

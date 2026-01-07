@@ -219,6 +219,7 @@ void TStorageServiceActor::HandleDestroySession(
         auto response =
             std::make_unique<TEvService::TEvDestroySessionResponse>(error);
         inflight->Complete(ctx.Now(), std::move(error));
+        InFlightRequests->Erase(cookie);
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
@@ -340,6 +341,7 @@ void TStorageServiceActor::HandleSessionDestroyed(
     NCloud::Reply(ctx, *inflight, std::move(response));
 
     inflight->Complete(ctx.Now(), msg->GetError());
+    InFlightRequests->Erase(ev->Cookie);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

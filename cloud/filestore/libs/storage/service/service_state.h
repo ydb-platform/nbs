@@ -135,7 +135,12 @@ public:
         return ChecksumCalcInfo;
     }
 
-    TIncompleteRequest ToIncompleteRequest(ui64 nowCycles) const;
+    //
+    // Thread-safe.
+    //
+
+    std::unique_ptr<TIncompleteRequest> ToIncompleteRequest(
+        ui64 nowCycles) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -162,6 +167,55 @@ public:
         ui64 key);
 
     TInFlightRequest* Find(ui64 key);
+
+    class TLockedRequest {
+    private:
+        TAdaptiveLock* Lock;
+        TInFlightRequest* Request;
+
+    private:
+        TLockedRequest(TAdaptiveLock& l, TInFlightRequest* r)
+            : Lock(&l)
+            , Request(r)
+        {
+        }
+
+        friend class TInFlightRequestStorage;
+
+    public:
+        ~TLockedRequest()
+        {
+            if (Request) {
+                Lock->unlock();
+            }
+        }
+
+        TLockedRequest(const TLockedRequest& other) = delete;
+        TLockedRequest& operator=(const TLockedRequest& other) = delete;
+
+        TLockedRequest(TLockedRequest&& other) noexcept
+            : Lock(other.Lock)
+            , Request(other.Request)
+        {
+            other.Request = nullptr;
+        }
+
+        TLockedRequest& operator=(TLockedRequest&& other) noexcept
+        {
+            Lock = other.Lock;
+            Request = other.Request;
+            other.Request = nullptr;
+            return *this;
+        }
+
+    public:
+        TInFlightRequest* Get()
+        {
+            return Request;
+        }
+    };
+
+    TLockedRequest FindAndLock(ui64 key);
 
     void Erase(ui64 key);
 

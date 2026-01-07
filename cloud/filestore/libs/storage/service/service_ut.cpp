@@ -3844,6 +3844,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             ->FindSubgroup("component", "service")
             ->GetCounter("TabletCount", false);
 
+        auto inFlightRequestCounter = counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service")
+            ->GetCounter("InFlightRequestCount", false);
+
         auto hddTabletCounter = counters
             ->FindSubgroup("counters", "filestore")
             ->FindSubgroup("component", "service")
@@ -3863,6 +3868,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, ssdFsCounter->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdTabletCounter->GetAtomic());
 
+        // smoke
+        UNIT_ASSERT_VALUES_EQUAL(0, inFlightRequestCounter->GetAtomic());
+
         service.UnregisterLocalFileStore("test", 1);
 
         env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
@@ -3874,6 +3882,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, hddTabletCounter->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdFsCounter->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdTabletCounter->GetAtomic());
+
+        // smoke
+        UNIT_ASSERT_VALUES_EQUAL(0, inFlightRequestCounter->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldUseThreeStageWriteAndTwoStageReadForHandlelessIO)

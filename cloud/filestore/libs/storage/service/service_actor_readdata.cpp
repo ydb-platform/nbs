@@ -824,12 +824,9 @@ void TReadDataActor::SendResponseAndDie(
         TraceSerializer,
         response->Record,
         MainInFlightRequest);
+    InFlightRequests->Erase(RequestCookie);
 
-    ctx.Send(
-        MainInFlightRequest->Sender,
-        response.release(),
-        0,  // flags
-        MainInFlightRequest->Cookie);
+    ctx.Send(Sender, response.release(), 0 /* flags */, Cookie);
 
     Die(ctx);
 }

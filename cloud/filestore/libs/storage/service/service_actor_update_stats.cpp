@@ -52,13 +52,20 @@ void TStorageServiceActor::HandleUpdateStats(
     {
         const ui64 nowCycles = GetCycleCount();
         const auto keys = InFlightRequests->GetKeys();
+        InFlightRequestCount->Set(keys.size());
         for (const ui64 key: keys) {
-            const auto* request = InFlightRequests->Find(key);
-            if (!request->IsCompleted()) {
-                StatsRegistry->AddIncompleteRequest(
-                    request->ToIncompleteRequest(nowCycles));
-            } else {
-                InFlightRequests->Erase(key);
+            std::unique_ptr<TIncompleteRequest> incompleteRequest;
+
+            {
+                auto lockedRequest = InFlightRequests->FindAndLock(key);
+                auto* request = lockedRequest.Get();
+                if (request && !request->IsCompleted()) {
+                    incompleteRequest = request->ToIncompleteRequest(nowCycles);
+                }
+            }
+
+            if (incompleteRequest) {
+                StatsRegistry->AddIncompleteRequest(*incompleteRequest);
             }
         }
     }

@@ -96,6 +96,7 @@ private:
 
     NMonitoring::TDynamicCounters::TCounterPtr TotalFileSystemCount;
     NMonitoring::TDynamicCounters::TCounterPtr TotalTabletCount;
+    NMonitoring::TDynamicCounters::TCounterPtr InFlightRequestCount;
 
     NMonitoring::TDynamicCounters::TCounterPtr HddFileSystemCount;
     NMonitoring::TDynamicCounters::TCounterPtr HddTabletCount;

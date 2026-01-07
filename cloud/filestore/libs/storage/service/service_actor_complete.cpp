@@ -107,21 +107,32 @@ void TStorageServiceActor::CompleteRequest(
         return;
     }
 
+    //
+    // Copying the contents that we'll need from request before completing it
+    // to be able to erase it immediately. Prior to this immediate erase we had
+    // async erase in HandleUpdateStats() so this request couldn't be used after
+    // completion anyway.
+    //
+
+    auto callContext = request->CallContext;
+    const auto requestSender = request->Sender;
+    const ui64 initialCookie = request->Cookie;
+
     CompleteRequestImpl<TMethod>(ctx, TraceSerializer, msg->Record, request);
+    InFlightRequests->Erase(ev->Cookie);
 
     STORAGE_VERIFY_C(
         ev->HasEvent(),
         TWellKnownEntityTypes::FILESYSTEM,
-        request->CallContext->FileSystemId,
+        callContext->FileSystemId,
         "unexpected missing event before forwarding");
     TAutoPtr<IEventHandle> event = new IEventHandle(
-        request->Sender,
+        requestSender,
         ev->Sender,
         ev->ReleaseBase().Release(),
         ev->Flags,
-        request->Cookie,
-        // undeliveredRequestActor
-        nullptr);
+        initialCookie,
+        nullptr /* forwardOnNondelivery */);
 
     ctx.Send(event);
 }

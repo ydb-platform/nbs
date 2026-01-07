@@ -459,6 +459,7 @@ void TStorageServiceActor::HandleCreateFileStore(
     if (HasError(error)) {
         auto response = std::make_unique<TEvService::TEvCreateFileStoreResponse>(error);
         inflight->Complete(ctx.Now(), error);
+        InFlightRequests->Erase(cookie);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }

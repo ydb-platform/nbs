@@ -73,6 +73,8 @@ void TStorageServiceActor::RegisterCounters(const NActors::TActorContext& ctx)
     auto serviceCounters = rootGroup->GetSubgroup("component", "service");
     TotalFileSystemCount = serviceCounters->GetCounter("FileSystemCount", false);
     TotalTabletCount = serviceCounters->GetCounter("TabletCount", false);
+    InFlightRequestCount =
+        serviceCounters->GetCounter("InFlightRequestCount", false);
 
     auto hddCounters = serviceCounters->GetSubgroup("type", "hdd");
     HddFileSystemCount = hddCounters->GetCounter("FileSystemCount", false);
