@@ -206,6 +206,7 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ITraceSerializerPtr TraceSerializer;
     const NRdma::IClientPtr RdmaClient;
+    const TPartitionBudgetManagerPtr PartitionBudgetManager;
     NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const EVolumeStartMode StartMode;
     TLogTitle LogTitle;
@@ -444,6 +445,7 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ITraceSerializerPtr traceSerializer,
         NRdma::IClientPtr rdmaClient,
+        TPartitionBudgetManagerPtr partitionBudgetManager,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         EVolumeStartMode startMode,
         TString diskId);

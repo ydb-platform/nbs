@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
+#include <cloud/blockstore/libs/storage/core/partition_budget_manager.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/unimplemented.h>
@@ -57,6 +58,7 @@ TMirrorPartitionActor::TMirrorPartitionActor(
         TMigrations migrations,
         TVector<TDevices> replicas,
         NRdma::IClientPtr rdmaClient,
+        TPartitionBudgetManagerPtr partitionBudgetManager,
         TActorId volumeActorId,
         TActorId statActorId,
         TActorId resyncActorId)
@@ -65,6 +67,7 @@ TMirrorPartitionActor::TMirrorPartitionActor(
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(digestGenerator))
     , RdmaClient(std::move(rdmaClient))
+    , PartitionBudgetManager(std::move(partitionBudgetManager))
     , DiskId(partConfig->GetName())
     , VolumeActorId(volumeActorId)
     , StatActorId(statActorId)
@@ -76,9 +79,6 @@ TMirrorPartitionActor::TMirrorPartitionActor(
           std::move(partConfig),
           std::move(migrations),
           std::move(replicas))
-    , MultiAgentWriteEnabled(Config->GetMultiAgentWriteEnabled())
-    , MultiAgentWriteRequestSizeThreshold(
-          Config->GetMultiAgentWriteRequestSizeThreshold())
 {}
 
 TMirrorPartitionActor::~TMirrorPartitionActor() = default;
@@ -356,24 +356,11 @@ TMirrorPartitionActor::SuggestWriteRequestType(
     const TActorContext& ctx,
     TBlockRange64 range)
 {
-    if (!MultiAgentWriteEnabled || range.Size() * State.GetBlockSize() <
-                                       MultiAgentWriteRequestSizeThreshold)
-    {
-        return EWriteRequestType::DirectWrite;
-    }
-
-    if (!Config->GetDirectWriteBandwidthQuota()) {
-        return EWriteRequestType::MultiAgentWrite;
-    }
-
-    const bool hasEnoughBudget =
-        DirectWriteBandwidthQuota.Register(
-            ctx.Now(),
-            static_cast<double>(range.Size() * State.GetBlockSize()) /
-                Config->GetDirectWriteBandwidthQuota()) == 0;
-
-    return hasEnoughBudget ? EWriteRequestType::DirectWrite
-                           : EWriteRequestType::MultiAgentWrite;
+    return PartitionBudgetManager->HasEnoughDirectWriteBudget(
+               ctx.Now(),
+               range.Size() * State.GetBlockSize())
+               ? EWriteRequestType::DirectWrite
+               : EWriteRequestType::MultiAgentWrite;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -694,7 +681,6 @@ void TMirrorPartitionActor::HandleInconsistentDiskAgent(
 
     ReportDiskAgentInconsistentMultiWriteResponse(
         {{"disk", DiskId}, {"DiskAgent", msg->AgentId}});
-    MultiAgentWriteEnabled = false;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

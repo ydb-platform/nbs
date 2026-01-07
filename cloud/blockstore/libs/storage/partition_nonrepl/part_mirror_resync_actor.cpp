@@ -33,6 +33,7 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
         TMigrations migrations,
         TVector<TDevices> replicaDevices,
         NRdma::IClientPtr rdmaClient,
+        TPartitionBudgetManagerPtr partitionBudgetManager,
         NActors::TActorId volumeActorId,
         NActors::TActorId statActorId,
         ui64 initialResyncIndex,
@@ -42,6 +43,8 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(digestGenerator))
+    , RdmaClient(std::move(rdmaClient))
+    , PartitionBudgetManager(std::move(partitionBudgetManager))
     , ResyncPolicy(resyncPolicy)
     , CritOnChecksumMismatch(critOnChecksumMismatch)
     , VolumeActorId(volumeActorId)
@@ -49,7 +52,6 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
     , PartConfig(std::move(partConfig))
     , Migrations(std::move(migrations))
     , ReplicaDevices(std::move(replicaDevices))
-    , RdmaClient(std::move(rdmaClient))
     , StatActorId(statActorId)
     , State(Config, RWClientId, PartConfig, ReplicaDevices, initialResyncIndex)
     , BackoffProvider(
@@ -123,6 +125,7 @@ void TMirrorPartitionResyncActor::SetupPartitions(const TActorContext& ctx)
             Migrations,
             ReplicaDevices,
             RdmaClient,
+            PartitionBudgetManager,
             VolumeActorId,
             SelfId(),
             SelfId()));

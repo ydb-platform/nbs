@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/partition_budget_manager.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
@@ -301,6 +302,7 @@ struct TTestEnv
             TMigrations(),
             Replicas,
             nullptr, // rdmaClient
+            std::make_shared<TPartitionBudgetManager>(Config),
             VolumeActorId,
             TActorId(), // statActorId
             // resync actor id should be set since mirror actor should be aware
@@ -374,6 +376,7 @@ struct TTestEnv
             TMigrations(),
             Replicas,
             nullptr,   // rdmaClient
+            std::make_shared<TPartitionBudgetManager>(Config),
             VolumeActorId,
             VolumeActorId,
             initialResyncIndex,
