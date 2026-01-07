@@ -776,7 +776,7 @@ void TIndexTabletActor::CompleteTx_Compaction(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "Compaction");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "Compaction");
     }
 
     ui32 blobIndex = 0;

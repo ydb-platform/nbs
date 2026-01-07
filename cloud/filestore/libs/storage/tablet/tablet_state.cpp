@@ -118,6 +118,8 @@ void TIndexTabletState::LoadState(
     LargeDeletionMarkersThresholdForBackpressure =
         config.GetLargeDeletionMarkersThresholdForBackpressure();
 
+    MaxTabletStep = Max(config.GetMaxTabletStep(), LastStep);
+
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);
     TabletStorageInfo.CopyFrom(tabletStorageInfo);

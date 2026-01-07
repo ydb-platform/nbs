@@ -189,7 +189,9 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "RenameNodeInDestination");
+        return ScheduleRebootTabletOnCommitIdOverflow(
+            ctx,
+            "RenameNodeInDestination");
     }
 
     if (args.NewChildRef) {

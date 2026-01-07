@@ -336,7 +336,7 @@ void TIndexTabletActor::HandleFlush(
 
     ui64 commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "Flush");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "Flush");
     }
 
     ui32 blobIndex = 0;

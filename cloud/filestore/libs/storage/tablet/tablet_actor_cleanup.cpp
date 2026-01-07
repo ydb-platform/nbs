@@ -75,7 +75,7 @@ void TIndexTabletActor::HandleCleanup(
 
     ui64 collectBarrier = GenerateCommitId();
     if (collectBarrier == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "Cleanup");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "Cleanup");
     }
 
     ExecuteTx<TCleanup>(

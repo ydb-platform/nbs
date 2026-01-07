@@ -283,7 +283,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
     // TODO: check if session is read only
     args.WriteCommitId = GenerateCommitId();
     if (args.WriteCommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "CreateHandle");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "CreateHandle");
     }
 
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);

@@ -217,6 +217,8 @@ bool TIndexTabletActor::PrepareTx_WriteData(
         return true;
     }
 
+    args.CommitId = GetCurrentCommitId();
+
     if (Config->GetAllowHandlelessIO()) {
         if (args.ExplicitNodeId == InvalidNodeId) {
             args.Error = ErrorInvalidTarget(args.ExplicitNodeId);
@@ -238,7 +240,6 @@ bool TIndexTabletActor::PrepareTx_WriteData(
 
         args.NodeId = handle->GetNodeId();
     }
-    args.CommitId = GetCurrentCommitId();
 
     LOG_TRACE(ctx, TFileStoreComponents::TABLET,
         "%s WriteNodeData tx %lu @%lu %s",
@@ -285,6 +286,8 @@ void TIndexTabletActor::ExecuteTx_WriteData(
 {
     FILESTORE_VALIDATE_TX_ERROR(WriteData, args);
 
+    Y_UNUSED(ctx);
+
     if (args.ShouldWriteBlob()) {
         return;
     }
@@ -293,7 +296,8 @@ void TIndexTabletActor::ExecuteTx_WriteData(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "WriteData");
+        args.Error = ErrorCommitIdOverflow();
+        return;
     }
 
     MarkFreshBlocksDeleted(
@@ -413,6 +417,9 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
     if (FAILED(args.Error.GetCode())) {
         reply(ctx, args);
+        if (args.CommitId == InvalidCommitId) {
+            ScheduleRebootTabletOnCommitIdOverflow(ctx, "WriteData");
+        }
         return;
     }
 
@@ -456,7 +463,9 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "WriteData");
+        args.Error = ErrorCommitIdOverflow();
+        reply(ctx, args);
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "WriteData");
     }
 
     ui32 blobIndex = 0;

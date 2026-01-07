@@ -711,4 +711,8 @@ message TStorageConfig
     // If CpuLack goes over this threshold, tablets will start setting the
     // IsOverloaded flag in their responses.
     optional uint32 CpuLackOverloadThreshold = 477;
+
+    // Maximum step value for the tablet. This
+    // parameter is supposed to be used only for testing purposes.
+    optional uint32 MaxTabletStep = 478;
 }

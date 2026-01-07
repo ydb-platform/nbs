@@ -318,7 +318,7 @@ void TIndexTabletActor::ExecuteTx_TruncateRange(
 
     ui64 commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "TruncateRange");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "TruncateRange");
     }
 
     AddRange(

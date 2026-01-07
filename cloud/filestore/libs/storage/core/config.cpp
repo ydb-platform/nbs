@@ -314,6 +314,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(WriteBlobDisabled,                 bool,      false                   )\
                                                                                \
     xxx(CpuLackOverloadThreshold,          ui32,      101                     )\
+                                                                               \
+    xxx(MaxTabletStep,                     ui32,      Max<ui32>()             )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

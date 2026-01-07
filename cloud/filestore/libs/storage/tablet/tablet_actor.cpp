@@ -1283,7 +1283,7 @@ STFUNC(TIndexTabletActor::StateBroken)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::RebootTabletOnCommitOverflow(
+void TIndexTabletActor::ScheduleRebootTabletOnCommitIdOverflow(
     const TActorContext& ctx,
     const TString& request)
 {

@@ -484,7 +484,7 @@ public:
 
     static TString GetStateName(ui32 state);
 
-    void RebootTabletOnCommitOverflow(
+    void ScheduleRebootTabletOnCommitIdOverflow(
         const NActors::TActorContext& ctx,
         const TString& request);
 

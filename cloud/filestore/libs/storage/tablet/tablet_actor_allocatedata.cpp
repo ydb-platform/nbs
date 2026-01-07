@@ -198,7 +198,7 @@ void TIndexTabletActor::ExecuteTx_AllocateData(
         // Here we should zero range in current file
         args.CommitId = GenerateCommitId();
         if (args.CommitId == InvalidCommitId) {
-            return RebootTabletOnCommitOverflow(ctx, "AllocateData");
+            return ScheduleRebootTabletOnCommitIdOverflow(ctx, "AllocateData");
         }
         auto e = ZeroRange(
             db,
@@ -221,7 +221,7 @@ void TIndexTabletActor::ExecuteTx_AllocateData(
     if (!shouldTruncateExistentRange) {
         args.CommitId = GenerateCommitId();
         if (args.CommitId == InvalidCommitId) {
-            return RebootTabletOnCommitOverflow(ctx, "AllocateData");
+            return ScheduleRebootTabletOnCommitIdOverflow(ctx, "AllocateData");
         }
     }
 
