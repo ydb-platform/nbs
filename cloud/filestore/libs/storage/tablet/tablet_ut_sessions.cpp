@@ -854,6 +854,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetZeroCopyReadEnabled(true);
         config.SetBlockChecksumsInProfileLogEnabled(true);
         config.SetReadBlobDisabled(true);
+        config.SetWriteBlobDisabled(true);
 
         features.SetTwoStageReadEnabled(true);
         features.SetTwoStageReadThreshold(64_KB);
@@ -876,6 +877,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetZeroCopyReadEnabled(true);
         features.SetBlockChecksumsInProfileLogEnabled(true);
         features.SetReadBlobDisabled(true);
+        features.SetWriteBlobDisabled(true);
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
     }

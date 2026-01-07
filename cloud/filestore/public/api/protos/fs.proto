@@ -49,6 +49,7 @@ message TFileStoreFeatures
     bool BlockChecksumsInProfileLogEnabled = 34;
     uint32 RegularFileEntryTimeout = 35;
     bool ReadBlobDisabled = 36;
+    bool WriteBlobDisabled = 37;
 }
 
 message TFileStore

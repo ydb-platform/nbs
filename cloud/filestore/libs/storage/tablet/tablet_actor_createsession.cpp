@@ -99,6 +99,7 @@ void FillFeatures(
         config.GetBlockChecksumsInProfileLogEnabled());
 
     features->SetReadBlobDisabled(config.GetReadBlobDisabled());
+    features->SetWriteBlobDisabled(config.GetWriteBlobDisabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
