@@ -45,16 +45,16 @@ def run_replay(name):
     )
 
     # Canonize directory structure and file sizes
-    proc = common.execute(
-        [
-            "bash",
-            "-xc",
-            " cd "
-            + dir_out_path
-            + " && find . -type f -iname '*' -printf '%h/%f %s \n' | sort ",
-        ]
-    )
-    return proc.stdout.decode("utf-8")
+    # To create results.txt run: find . -type f -iname '*' -printf '%h/%f %s\n' | sort
+    files_info = []
+    for file_path in sorted(pathlib.Path(dir_out_path).rglob("*")):
+        if file_path.is_file():
+            relative_path = file_path.relative_to(dir_out_path)
+            size = file_path.stat().st_size
+            files_info.append(f"./{relative_path} {size}")
+
+    result = "\n".join(files_info) + "\n"
+    return result
 
 
 @pytest.mark.parametrize("name", tests)
