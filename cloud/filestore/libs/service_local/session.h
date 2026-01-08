@@ -17,6 +17,7 @@
 #include <util/stream/file.h>
 #include <util/string/builder.h>
 #include <util/system/file.h>
+#include <util/system/file_lock.h>
 #include <util/system/rwlock.h>
 #include <util/system/tempfile.h>
 
@@ -70,6 +71,9 @@ private:
 
     TLocalIndex Index;
     THashMap<ui64, std::pair<bool, TInstant>> SubSessions;
+
+    THolder<TFileLock> HandlesFileLock;
+    THolder<TFileLock> IndexFileLock;
 public:
     TSession(
              const TString& fileSystemId,
@@ -99,9 +103,27 @@ public:
               Log)
     {}
 
-    void Init(bool restoreClientSession)
+    virtual ~TSession()
+    {
+        UnlockFile(HandlesFileLock);
+        UnlockFile(IndexFileLock);
+    }
+
+    NProto::TError TryInit(bool restoreClientSession)
     {
         auto handlesPath = StatePath / "handles";
+        auto indexPath = StatePath / "nodes";
+
+        if (!TryLockFile(handlesPath, HandlesFileLock) ||
+            !TryLockFile(indexPath, IndexFileLock))
+        {
+            return MakeError(
+                E_FAIL,
+                TStringBuilder()
+                    << "Failed to lock state file, path: " << handlesPath);
+        }
+
+        Index.Init();
 
         bool isNewSession = !restoreClientSession || !HasStateFile("session") ||
                             !HasStateFile("fuse_state");
@@ -128,7 +150,6 @@ public:
             ", MaxHandleCount=" << MaxHandleCount <<
             ", OpenNodeByHandleEnabled=" << OpenNodeByHandleEnabled
         );
-
 
         HandleTable = std::make_unique<THandleTable>(
             handlesPath.GetPath(),
@@ -172,6 +193,8 @@ public:
         }
 
         NextHandleId = maxHandleId + 1;
+
+        return NProto::TError{};
     }
 
     [[nodiscard]] TResultOrError<ui64>
@@ -332,6 +355,18 @@ private:
     void DeleteStateFile(const TString &fileName)
     {
         return (StatePath / fileName).DeleteIfExists();
+    }
+
+    static bool TryLockFile(const TFsPath& filePath, THolder<TFileLock>& fileLock)
+    {
+        filePath.Touch();
+        fileLock = MakeHolder<TFileLock>(filePath.GetPath());
+        return fileLock->TryAcquire();
+    }
+
+    static void UnlockFile(THolder<TFileLock>& fileLock)
+    {
+        fileLock->Release();
     }
 };
 
