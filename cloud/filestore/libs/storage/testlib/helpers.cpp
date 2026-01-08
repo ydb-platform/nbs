@@ -7,8 +7,7 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::function<
-    bool(NActors::TTestActorRuntimeBase&, TAutoPtr<NActors::IEventHandle>&)>
+NActors::TTestActorRuntimeBase::TEventFilter
 TTabletRebootTracker::GetEventFilter()
 {
     return [this](auto& runtime, auto& event)

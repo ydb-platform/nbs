@@ -357,9 +357,7 @@ private:
     TSet<ui32> Generations;
 
 public:
-    std::function<
-        bool(NActors::TTestActorRuntimeBase&, TAutoPtr<NActors::IEventHandle>&)>
-    GetEventFilter();
+    NActors::TTestActorRuntimeBase::TEventFilter GetEventFilter();
 
     bool IsPipeDestroyed() const;
     void ClearPipeDestroyed();
