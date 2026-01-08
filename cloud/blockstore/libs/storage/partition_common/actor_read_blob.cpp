@@ -3,6 +3,8 @@
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/storage/api/public.h>
 
+#include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -85,6 +87,9 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
             ? NKikimrBlobStorage::AsyncRead
             : NKikimrBlobStorage::FastRead);
 
+    auto traceId = GetTraceIdForRequestId(
+        RequestInfo->CallContext->LWOrbit,
+        RequestInfo->CallContext->RequestId);
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
     RequestSent = ctx.Now();
@@ -92,7 +97,9 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
     SendToBSProxy(
         ctx,
         Request->Proxy,
-        request.release());
+        request.release(),
+        RequestInfo->Cookie,
+        std::move(traceId));
 }
 
 void TReadBlobActor::NotifyCompleted(
