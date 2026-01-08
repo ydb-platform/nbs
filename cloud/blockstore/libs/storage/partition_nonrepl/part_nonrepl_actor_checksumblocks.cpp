@@ -101,6 +101,7 @@ void TDiskAgentChecksumActor::SendRequest(const TActorContext& ctx)
         request->Record.SetBlockSize(blockSize);
         request->Record.SetBlocksCount(deviceRequest.DeviceBlockRange.Size());
 
+        AddNetworkBytes(request->Record.ByteSizeLong());
         OnRequestStarted(
             ctx,
             deviceRequest.Device.GetAgentId(),
@@ -135,6 +136,7 @@ TDiskAgentChecksumActor::MakeCompletionResponse(ui32 blocks)
         TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted>();
 
     completion->Stats.MutableSysChecksumCounters()->SetBlocksCount(blocks);
+    completion->NetworkBytes = GetNetworkBytes();
 
     return TCompletionEventAndBody(std::move(completion));
 }
@@ -163,6 +165,7 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
+    AddNetworkBytes(msg->Record.ByteSizeLong());
     OnRequestFinished(ctx, ev->Cookie);
 
     if (HasError(msg->GetError())) {
@@ -278,7 +281,8 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocksCompleted(
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ChecksumBlocks.AddRequest(time, requestBytes);
-    NetworkBytes += sizeof(ui64);   //  Checksum is sent as a 64-bit integer.
+
+    NetworkBytes += msg->NetworkBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveReadRequest(ev->Sender);
