@@ -907,6 +907,7 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvScrubbingNextRange);
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest);
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse);
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvRangeResynced);
 
         HFunc(TEvService::TEvReadBlocksRequest, RejectReadBlocks);
         HFunc(TEvService::TEvWriteBlocksRequest, RejectWriteBlocks);
