@@ -2,8 +2,6 @@
 
 #include <cloud/filestore/libs/service/filestore.h>
 
-#include <contrib/ydb/core/base/tablet.h>
-#include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/library/actors/testlib/test_runtime.h>
 
 #include <util/generic/set.h>

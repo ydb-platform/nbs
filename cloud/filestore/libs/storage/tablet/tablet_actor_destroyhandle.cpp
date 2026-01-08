@@ -113,7 +113,8 @@ void TIndexTabletActor::ExecuteTx_DestroyHandle(
                 db,
                 TStringBuilder() << "DestroyHandle: " << args.SessionId
                                  << ", Handle: " << args.Request.GetHandle()
-                                 << ", NodeId: " << args.Node->NodeId,
+                                 << ", RemoveNode: " << args.Node->NodeId
+                                 << ", Error: " << FormatError(e),
                 args.Node->NodeId);
         }
     }
