@@ -24,19 +24,20 @@ void TDiskRegistryActor::HandleBackupDiskRegistryState(
         LogTitle.GetWithTime().c_str(),
         msg->Record.ShortDebugString().c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
+    
+    NProto::TBackupDiskRegistryStateResponse record;
+    if (msg->Record.GetSource() == NProto::BACKUP_DISK_REGISTRY_STATE_SOURCE_RAM) {
 
-    if (!msg->Record.GetBackupLocalDB()) {
-        auto response = std::make_unique<
-            TEvDiskRegistry::TEvBackupDiskRegistryStateResponse>();
-        *response->Record.MutableBackupFilePath() =
+        *record.MutableBackupFilePath() =
             msg->Record.GetBackupFilePath();
-        *response->Record.MutableBackup() =
-            State->BackupState();
-        response->Record.MutableBackup()->MutableConfig()
+        record.MutableBackup()->CopyFrom(State->BackupState());
+        record.MutableBackup()->MutableConfig()
             ->SetWritableState(CurrentState != STATE_READ_ONLY);
 
+        auto response = std::make_unique<
+            TEvDiskRegistry::TEvBackupDiskRegistryStateResponse>();
+        response->Record = std::move(record);
         NCloud::Reply(ctx, *ev, std::move(response));
-
         return;
     }
 
@@ -48,7 +49,8 @@ void TDiskRegistryActor::HandleBackupDiskRegistryState(
     ExecuteTx<TBackupDiskRegistryState>(
         ctx,
         std::move(requestInfo),
-        msg->Record.GetBackupFilePath());
+        msg->Record.GetBackupFilePath(),
+        msg->Record.GetSource());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -59,6 +61,12 @@ bool TDiskRegistryActor::PrepareBackupDiskRegistryState(
     TTxDiskRegistry::TBackupDiskRegistryState& args)
 {
     Y_UNUSED(ctx);
+
+    if (args.Source == NProto::BACKUP_DISK_REGISTRY_STATE_SOURCE_BOTH) {
+        args.RamSnapshot = State->BackupState();
+        args.RamSnapshot.MutableConfig()->SetWritableState(
+            CurrentState != STATE_READ_ONLY);
+    }
 
     TDiskRegistryDatabase db(tx.DB);
     return LoadState(db, args.Snapshot);
@@ -82,6 +90,7 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
 {
     auto response = std::make_unique<
         TEvDiskRegistry::TEvBackupDiskRegistryStateResponse>();
+
     *response->Record.MutableBackupFilePath() = args.BackupFilePath;
 
     // if new fields are added to TDiskRegistryStateSnapshot
@@ -124,7 +133,7 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
         src.clear();
     };
 
-    auto& backup = *response->Record.MutableBackup();
+    auto backup = NProto::TDiskRegistryStateBackup();
 
     for (auto & [uuid, diskId]: dirtyDevices) {
         backup.AddOldDirtyDevices(uuid);
@@ -173,6 +182,27 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
     backup.MutableConfig()->Swap(&config);
     backup.MutableConfig()->SetLastDiskStateSeqNo(lastDiskStateSeqNo);
     backup.MutableConfig()->SetWritableState(writableState);
+
+    switch (args.Source) {
+        case NProto::BACKUP_DISK_REGISTRY_STATE_SOURCE_LOCAL_DB:
+            response->Record.MutableBackup()->Swap(&backup);
+            break;
+        case NProto::BACKUP_DISK_REGISTRY_STATE_SOURCE_BOTH:
+            response->Record.MutableBothSourcesBackup()
+                ->MutableLocalDbBackup()
+                ->CopyFrom(backup);
+            response->Record.MutableBothSourcesBackup()
+                ->MutableRamBackup()
+                ->CopyFrom(args.RamSnapshot);
+            break;
+
+        case NProto::BACKUP_DISK_REGISTRY_STATE_SOURCE_RAM:
+        case NProto::
+            EBackupDiskRegistryStateSource_INT_MIN_SENTINEL_DO_NOT_USE_:
+        case NProto::
+            EBackupDiskRegistryStateSource_INT_MAX_SENTINEL_DO_NOT_USE_:
+            break;
+    }
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

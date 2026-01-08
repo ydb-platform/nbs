@@ -1348,12 +1348,12 @@ message TFinishMigrationResponse
 // Backup Disk Registry state
 
 message TBackupDiskRegistryStateRequest
-{
+{   
     // Optional request headers.
     THeaders Headers = 1;
 
-    // Backup local DB instead of memory state.
-    bool BackupLocalDB = 2;
+    // Source of Disk Registry state backup
+    EBackupDiskRegistryStateSource Source = 2;
 
     // File to save backup file.
     string BackupFilePath = 3;
@@ -1365,10 +1365,19 @@ message TBackupDiskRegistryStateResponse
     NCloud.NProto.TError Error = 1;
 
     // Disk Regsitry state backup
-    TDiskRegistryStateBackup Backup = 2;
+    oneof BackupKind {
+        TDiskRegistryStateBackup Backup = 2;
+        TBackupDiskRegistryStateBoth BothSourcesBackup = 3;
+    }
 
     // File to save backup file.
-    string BackupFilePath = 3;
+    string BackupFilePath = 4;
+
+    message TBackupDiskRegistryStateBoth
+    {
+        TDiskRegistryStateBackup RamBackup = 1;
+        TDiskRegistryStateBackup LocalDbBackup = 2;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1885,4 +1894,17 @@ message TAttachPathsResponse
 
     // List of attached devices.
     repeated TDeviceConfig AttachedDevices = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// CompareDiskRegistryStateWithLocalDb request/response.
+
+message TCompareDiskRegistryStateWithLocalDbRequest
+{
+}
+
+message TCompareDiskRegistryStateWithLocalDbResponse
+{
+    NCloud.NProto.TError Error = 1;
+    string Differs = 2;
 }

@@ -328,3 +328,13 @@ message TListDiskStatesResponse
     // List of all disk states.
     repeated TDiskState DiskStates = 2;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+// Backup Disk Registry state
+
+enum EBackupDiskRegistryStateSource
+{
+    BACKUP_DISK_REGISTRY_STATE_SOURCE_RAM = 0;
+    BACKUP_DISK_REGISTRY_STATE_SOURCE_LOCAL_DB = 1;
+    BACKUP_DISK_REGISTRY_STATE_SOURCE_BOTH = 2;
+}
