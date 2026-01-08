@@ -113,7 +113,7 @@ jobs:
         repo_owner: ${{ github.repository_owner }}
         repo: ${{ github.event.repository.name }}
         vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
-        vm_id: ${{ steps.start-runner.outputs.instance-id }}
+        vm_id: ${{ steps.start-runner.outputs.INSTANCE_ID }}
 
     - name: Set new image id
       run: |
