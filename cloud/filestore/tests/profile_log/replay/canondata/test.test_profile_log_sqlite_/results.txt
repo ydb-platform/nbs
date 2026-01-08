@@ -682,10 +682,10 @@
 ./sqlite/ext/wasm/demo-worker1.js 11733
 ./sqlite/ext/wasm/dist.make 6049
 ./sqlite/ext/wasm/example_extra_init.c 708
+./sqlite/ext/wasm/fiddle.make 7837
 ./sqlite/ext/wasm/fiddle/fiddle-worker.js 13827
 ./sqlite/ext/wasm/fiddle/fiddle.js 32135
 ./sqlite/ext/wasm/fiddle/index.html 10298
-./sqlite/ext/wasm/fiddle.make 7837
 ./sqlite/ext/wasm/index-dist.html 4758
 ./sqlite/ext/wasm/index.html 7097
 ./sqlite/ext/wasm/jaccwabyt/jaccwabyt.js 25820
