@@ -292,6 +292,10 @@ void TNotificationSystem::OnDiskStateChanged(
     NProto::EDiskState newState,
     TInstant timestamp)
 {
+    if (!SupportsNotifications.contains(diskId)) {
+        return;
+    }
+
     NProto::TDiskState diskState = CreateDiskState(diskId, newState);
 
     const auto seqNo = DiskStateSeqNo++;
@@ -304,7 +308,7 @@ void TNotificationSystem::OnDiskStateChanged(
             auto notif = MakeBlankNotification(seqNo, timestamp);
             notif.MutableDiskError()->SetDiskId(diskId);
             AddUserNotification(db, std::move(notif));
-         }
+        }
     } else {
         if (oldState >= NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE) {
             auto notif = MakeBlankNotification(seqNo, timestamp);
@@ -313,9 +317,7 @@ void TNotificationSystem::OnDiskStateChanged(
         }
     }
 
-    if (SupportsNotifications.contains(diskId)) {
-        DiskStateUpdates.emplace_back(std::move(diskState), seqNo);
-    }
+    DiskStateUpdates.emplace_back(std::move(diskState), seqNo);
 }
 
 void TNotificationSystem::DeleteDiskStateUpdate(
