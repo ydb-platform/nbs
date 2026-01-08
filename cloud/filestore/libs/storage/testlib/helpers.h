@@ -2,6 +2,11 @@
 
 #include <cloud/filestore/libs/service/filestore.h>
 
+#include <contrib/ydb/core/base/tablet.h>
+#include <contrib/ydb/core/base/tablet_pipe.h>
+
+#include <util/generic/set.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -339,5 +344,53 @@ inline TString GetErrorReason(const std::unique_ptr<T>& response)
     }
     return response->GetErrorReason();
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Helper class for tracking tablet reboots in tests.
+// Tracks pipe destruction events and tablet generation changes.
+class TTabletRebootTracker
+{
+private:
+    bool PipeDestroyed = false;
+    TSet<ui32> Generations;
+
+public:
+    auto GetEventFilter()
+    {
+        return [this](auto& runtime, auto& event)
+        {
+            Y_UNUSED(runtime);
+            switch (event->GetTypeRewrite()) {
+                case NKikimr::TEvTablet::EvBoot: {
+                    auto* msg =
+                        event->template Get<NKikimr::TEvTablet::TEvBoot>();
+                    Generations.insert(msg->Generation);
+                    break;
+                }
+                case NKikimr::TEvTabletPipe::EvClientDestroyed: {
+                    PipeDestroyed = true;
+                    break;
+                }
+            }
+            return false;
+        };
+    }
+
+    bool IsPipeDestroyed() const
+    {
+        return PipeDestroyed;
+    }
+
+    void ClearPipeDestroyed()
+    {
+        PipeDestroyed = false;
+    }
+
+    size_t GetGenerationsCount() const
+    {
+        return Generations.size();
+    }
+};
 
 }   // namespace NCloud::NFileStore::NStorage

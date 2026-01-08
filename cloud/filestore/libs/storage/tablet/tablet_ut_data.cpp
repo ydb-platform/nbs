@@ -7792,26 +7792,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         const ui32 nodeIdx = env.CreateNode("nfs");
 
-        bool pipeDestroyed = false;
-        TSet<ui32> generations;
-        env.GetRuntime().SetEventFilter(
-            [&](auto& runtime, auto& event)
-            {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case NKikimr::TEvTablet::EvBoot: {
-                        auto* msg =
-                            event->template Get<NKikimr::TEvTablet::TEvBoot>();
-                        generations.insert(msg->Generation);
-                        break;
-                    }
-                    case NKikimr::TEvTabletPipe::EvClientDestroyed: {
-                        pipeDestroyed = true;
-                        break;
-                    }
-                }
-                return false;
-            });
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
 
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
@@ -7828,12 +7810,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         auto reconnectAndRecreateHandleIfNeeded = [&]()
         {
-            if (pipeDestroyed) {
+            if (rebootTracker.IsPipeDestroyed()) {
                 tablet.ReconnectPipe();
                 tablet.WaitReady();
                 tablet.RecoverSession();
                 handle = CreateHandle(tablet, id);
-                pipeDestroyed = false;
+                rebootTracker.ClearPipeDestroyed();
             }
         };
 
@@ -7857,7 +7839,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         tablet.DestroyHandle(handle);
         UNIT_ASSERT_C(
-            generations.size() >= 2,
+            rebootTracker.GetGenerationsCount() >= 2,
             "Expected at least 2 different generations due to tablet reboot");
     }
 }

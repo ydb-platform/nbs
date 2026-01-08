@@ -148,6 +148,101 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         UNIT_ASSERT(!createHandleResponse->Record.GetGuestKeepCache());
         tablet.DestroyHandle(createHandleResponse->Record.GetHandle());
     }
+
+    Y_UNIT_TEST(ShouldHandleCommitIdOverflowInCreateDestroyHandle)
+    {
+        const ui32 block = 4_KB;
+        const ui32 maxTabletStep = 5;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxTabletStep(maxTabletStep);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto reconnectIfNeeded = [&]()
+        {
+            if (rebootTracker.IsPipeDestroyed()) {
+                tablet.ReconnectPipe();
+                tablet.WaitReady();
+                tablet.RecoverSession();
+                rebootTracker.ClearPipeDestroyed();
+            }
+        };
+
+        TVector<ui64> successfulHandles;
+        const size_t targetSuccessfulHandles = 4;
+
+        while (successfulHandles.size() < targetSuccessfulHandles) {
+            TString fileName = TStringBuilder()
+                               << "file_" << successfulHandles.size();
+
+            tablet.SendCreateHandleRequest(
+                RootNodeId,
+                fileName,
+                TCreateHandleArgs::CREATE);
+            auto handleResponse = tablet.RecvCreateHandleResponse();
+            reconnectIfNeeded();
+
+            if (FAILED(handleResponse->GetStatus())) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_REJECTED,
+                    handleResponse->GetError().GetCode());
+                continue;
+            }
+
+            ui64 handle = handleResponse->Record.GetHandle();
+
+            tablet.SendWriteDataRequest(handle, 0, block, 'a');
+            auto writeResponse = tablet.RecvWriteDataResponse();
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, writeResponse->GetStatus());
+
+            successfulHandles.push_back(handle);
+        }
+
+        UNIT_ASSERT_C(
+            rebootTracker.GetGenerationsCount() >= 2,
+            "Expected at least 2 different generations due to tablet reboot");
+        UNIT_ASSERT_VALUES_EQUAL(
+            successfulHandles.size(),
+            targetSuccessfulHandles);
+
+        for (size_t i = 0; i < successfulHandles.size();) {
+            tablet.SendDestroyHandleRequest(successfulHandles[i]);
+            auto destroyResponse = tablet.RecvDestroyHandleResponse();
+            reconnectIfNeeded();
+
+            if (FAILED(destroyResponse->GetStatus())) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_REJECTED,
+                    destroyResponse->GetError().GetCode());
+                continue;
+            }
+
+            tablet.SendReadDataRequest(successfulHandles[i], 0, block);
+            auto readResponse = tablet.RecvReadDataResponse();
+            reconnectIfNeeded();
+
+            UNIT_ASSERT(S_OK != readResponse->GetStatus());
+
+            ++i;
+        }
+
+        UNIT_ASSERT_C(
+            rebootTracker.GetGenerationsCount() >= 3,
+            "Expected at least 3 different generations due to tablet reboot");
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

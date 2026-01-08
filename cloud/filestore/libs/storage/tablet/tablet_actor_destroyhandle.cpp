@@ -97,8 +97,21 @@ void TIndexTabletActor::ExecuteTx_DestroyHandle(
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
     DestroyHandle(db, handle);
 
+    auto writeOrphanNode = [&] {
+        if (args.Node->Attrs.GetLinks() == 0 &&
+            !HasOpenHandles(args.Node->NodeId))
+        {
+            WriteOrphanNode(db, TStringBuilder()
+                << "DestroyHandle: " << args.SessionId
+                << ", Handle: " << args.Request.GetHandle()
+                << ", NodeId: " << args.Node->NodeId,
+                args.Node->NodeId);
+        }
+    };
+
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
+        writeOrphanNode();
         return ScheduleRebootTabletOnCommitIdOverflow(ctx, "DestroyHandle");
     }
 
@@ -112,11 +125,7 @@ void TIndexTabletActor::ExecuteTx_DestroyHandle(
             commitId);
 
         if (HasError(e)) {
-            WriteOrphanNode(db, TStringBuilder()
-                << "DestroyHandle: " << args.SessionId
-                << ", Handle: " << args.Request.GetHandle()
-                << ", RemoveNode: " << args.Node->NodeId
-                << ", Error: " << FormatError(e), args.Node->NodeId);
+            writeOrphanNode();
         }
     }
 
