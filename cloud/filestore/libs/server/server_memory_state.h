@@ -43,8 +43,7 @@ public:
             TString filePath,
             void* address,
             size_t size,
-            ui64 id,
-            TFileHandle fd)
+            ui64 id)
         : Metadata{
             .FilePath = std::move(filePath),
             .Address = address,
@@ -52,7 +51,6 @@ public:
             .Id = id,
             .LatestActivityTimestamp = TInstant::Now()
         }
-        , Fd(std::move(fd))
     {}
 
     TMmapRegionMetadata ToMetadata() const
@@ -67,7 +65,6 @@ public:
 
 private:
     TMmapRegionMetadata Metadata;
-    TFileHandle Fd;
 };
 
 class TServerState
