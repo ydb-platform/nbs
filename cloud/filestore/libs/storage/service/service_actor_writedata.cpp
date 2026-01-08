@@ -1,5 +1,6 @@
 #include "service_actor.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
@@ -170,6 +171,9 @@ private:
     // Filesystem-specific params
     const TString LogTag;
 
+    // Turns off writes to blob storage for performance testing purposes
+    const bool WriteBlobDisabled;
+
     // generated blob id and associated data
     NProtoPrivate::TGenerateBlobIdsResponse GenerateBlobIdsResponse;
 
@@ -197,6 +201,7 @@ public:
             TByteRange range,
             TRequestInfoPtr requestInfo,
             TString logTag,
+            bool writeBlobDisabled,
             IRequestStatsPtr requestStats,
             IProfileLogPtr profileLog,
             ITraceSerializerPtr traceSerializer,
@@ -206,6 +211,7 @@ public:
         , BlobRange(Range.AlignedSubRange())
         , RequestInfo(std::move(requestInfo))
         , LogTag(std::move(logTag))
+        , WriteBlobDisabled(writeBlobDisabled)
         , RequestStats(std::move(requestStats))
         , ProfileLog(std::move(profileLog))
         , TraceSerializer(std::move(traceSerializer))
@@ -332,6 +338,16 @@ private:
             "%s GenerateBlobIds response received: %s",
             LogTag.c_str(),
             GenerateBlobIdsResponse.DebugString().Quote().c_str());
+
+        if (WriteBlobDisabled) {
+            // Pretend that the blobs were written and trigger a critical event
+            // to alert the on-call engineer, as fake blobs should never be
+            // written in production
+            ReportFakeBlobWasWritten();
+            // Proceed to the final part: adding fake blobs to the index
+            AddData(ctx);
+            return;
+        }
 
         WriteBlobs(ctx);
     }
@@ -835,6 +851,7 @@ void TStorageServiceActor::HandleWriteData(
             range,
             std::move(requestInfo),
             std::move(logTag),
+            filestore.GetFeatures().GetWriteBlobDisabled(),
             session->RequestStats,
             ProfileLog,
             TraceSerializer,
