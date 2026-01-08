@@ -20,12 +20,11 @@ runs:
       shell: bash
       env:
         SA_JSON: ${{ inputs.sa_json }}
-        HOME: ${{ github.workspace }}
       run: |
         set -x
         if [ ! -f "$HOME/.nebius/bin/nebius" ];
         then 
-          curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | VERBOSE=1 bash
+          curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
           cat <<EOF > sa.json
         ${SA_JSON}
         EOF
