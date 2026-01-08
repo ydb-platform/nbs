@@ -41,7 +41,7 @@ namespace NKikimr {
                 UpdateStorageRatioForDb(startTime, stat);
                 TInstant finishTime(TAppData::TimeProvider->Now());
                 if (HullCtx->VCtx->ActorSystem) {
-                    LOG_INFO(*HullCtx->VCtx->ActorSystem, NKikimrServices::BS_HULLCOMP,
+                    LOG_DEBUG(*HullCtx->VCtx->ActorSystem, NKikimrServices::BS_HULLCOMP,
                             VDISKP(HullCtx->VCtx->VDiskLogPrefix,
                                 "%s: StorageRatio: timeSpent# %s stat# %s",
                                 PDiskSignatureForHullDbKey<TKey>().ToString().data(),
@@ -163,11 +163,9 @@ namespace NKikimr {
                     ratio->HugeDataTotal += hugeDataSize;
                     // calculate keep status
                     bool allowKeepFlags = HullCtx->AllowKeepFlags;
-                    NGc::TKeepStatus keep = BarriersEssence->Keep(dbIt.GetCurKey(),
-                                                                  dbMerger.GetMemRec(),
-                                                                  dbMerger.GetMemRecsMerged(),
-                                                                  allowKeepFlags,
-                                                                  AllowGarbageCollection);
+                    NGc::TKeepStatus keep = BarriersEssence->Keep(dbIt.GetCurKey(), dbMerger.GetMemRec(),
+                        {subsMerger.GetNumKeepFlags(), subsMerger.GetNumDoNotKeepFlags(), dbMerger.GetNumKeepFlags(),
+                        dbMerger.GetNumDoNotKeepFlags()}, allowKeepFlags, AllowGarbageCollection);
                     if (keep.KeepIndex) {
                         // calculate index overhead
                         ratio->IndexItemsKeep++;

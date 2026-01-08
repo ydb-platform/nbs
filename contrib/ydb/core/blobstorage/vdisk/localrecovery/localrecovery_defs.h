@@ -4,6 +4,7 @@
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_mongroups.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_pdiskctx.h>
+#include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk.h>
 
 namespace NKikimr {
     namespace NLocRecovery {

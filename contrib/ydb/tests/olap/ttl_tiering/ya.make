@@ -1,0 +1,32 @@
+PY3TEST()
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/ydbd_dep.inc)
+ENV(MOTO_SERVER_PATH="contrib/python/moto/bin/moto_server")
+ENV(YDB_ADDITIONAL_LOG_CONFIGS="TX_TIERING:DEBUG")
+
+TEST_SRCS(
+    base.py
+    data_correctness.py
+    data_migration_when_alter_ttl.py
+    ttl_delete_s3.py
+    ttl_portion_size.py
+    ttl_unavailable_s3.py
+    unstable_connection.py
+)
+
+SIZE(MEDIUM)
+
+PEERDIR(
+    contrib/ydb/tests/library
+    contrib/ydb/tests/library/test_meta
+    contrib/ydb/public/sdk/python
+    contrib/ydb/public/sdk/python/enable_v3_new_behavior
+    contrib/python/boto3
+    library/recipes/common
+)
+
+DEPENDS(
+    contrib/python/moto/bin
+)
+
+END()
+

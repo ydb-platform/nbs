@@ -137,7 +137,7 @@ class TestWithMultipleAgents(object):
     def setup(self):
         self.__configurator = KikimrConfigGenerator(
             erasure=None,
-            binary_path=self.kikimr_binary_path,
+            binary_paths=[self.kikimr_binary_path],
             use_in_memory_pdisks=True,
             dynamic_storage_pools=[
                 dict(name="dynamic_storage_pool:1",

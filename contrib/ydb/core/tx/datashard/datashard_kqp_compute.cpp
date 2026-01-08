@@ -7,7 +7,7 @@
 #include <contrib/ydb/core/kqp/runtime/kqp_scan_data.h>
 #include <contrib/ydb/core/tx/datashard/datashard_impl.h>
 
-#include <contrib/ydb/library/yql/minikql/mkql_node.h>
+#include <yql/essentials/minikql/mkql_node.h>
 
 namespace NKikimr {
 namespace NMiniKQL {
@@ -149,6 +149,7 @@ void TKqpDatashardComputeContext::TouchTableRange(const TTableId& tableId, const
     if (UserDb.GetLockTxId()) {
         Shard->SysLocksTable().SetLock(tableId, range);
     }
+    UserDb.SetPerformedUserReads(true);
     Shard->SetTableAccessTime(tableId, UserDb.GetNow());
 }
 
@@ -156,6 +157,7 @@ void TKqpDatashardComputeContext::TouchTablePoint(const TTableId& tableId, const
     if (UserDb.GetLockTxId()) {
         Shard->SysLocksTable().SetLock(tableId, key);
     }
+    UserDb.SetPerformedUserReads(true);
     Shard->SetTableAccessTime(tableId, UserDb.GetNow());
 }
 
@@ -170,14 +172,14 @@ void TKqpDatashardComputeContext::SetLockTxId(ui64 lockTxId, ui32 lockNodeId) {
     UserDb.SetLockNodeId(lockNodeId);
 }
 
-void TKqpDatashardComputeContext::SetReadVersion(TRowVersion readVersion) {
-    UserDb.SetReadVersion(readVersion);
+void TKqpDatashardComputeContext::SetMvccVersion(TRowVersion mvccVersion) {
+    UserDb.SetMvccVersion(mvccVersion);
 }
 
-TRowVersion TKqpDatashardComputeContext::GetReadVersion() const {
-    Y_ABORT_UNLESS(!UserDb.GetReadVersion().IsMin(), "Cannot perform reads without ReadVersion set");
+TRowVersion TKqpDatashardComputeContext::GetMvccVersion() const {
+    Y_ABORT_UNLESS(!UserDb.GetMvccVersion().IsMin(), "Cannot perform reads without ReadVersion set");
 
-    return UserDb.GetReadVersion();
+    return UserDb.GetMvccVersion();
 }
 
 TEngineHostCounters& TKqpDatashardComputeContext::GetDatashardCounters() {
@@ -276,7 +278,7 @@ bool TKqpDatashardComputeContext::PinPages(const TVector<IEngineFlat::TValidated
                                          adjustLimit(key.RangeLimits.ItemsLimit),
                                          adjustLimit(key.RangeLimits.BytesLimit),
                                          key.Reverse ? NTable::EDirection::Reverse : NTable::EDirection::Forward,
-                                         GetReadVersion());
+                                         GetMvccVersion());
 
         LOG_TRACE_S(*TlsActivationContext, NKikimrServices::TX_DATASHARD, "Run precharge on table " << tableInfo->Name
             << ", columns: [" << JoinSeq(", ", columnTags) << "]"
@@ -377,7 +379,7 @@ bool TKqpDatashardComputeContext::ReadRow(const TTableId& tableId, TArrayRef<con
     NTable::TRowState dbRow;
     NTable::TSelectStats stats;
     ui64 flags = DisableByKeyFilter ? (ui64) NTable::NoByKey : 0;
-    auto ready = Database->Select(localTid, keyValues, columnTags, dbRow, stats, flags, GetReadVersion(),
+    auto ready = Database->Select(localTid, keyValues, columnTags, dbRow, stats, flags, GetMvccVersion(),
             UserDb.GetReadTxMap(tableId),
             UserDb.GetReadTxObserver(tableId));
 
@@ -415,7 +417,7 @@ bool TKqpDatashardComputeContext::ReadRow(const TTableId& tableId, TArrayRef<con
     return true;
 }
 
-TAutoPtr<NTable::TTableIt> TKqpDatashardComputeContext::CreateIterator(const TTableId& tableId, const TTableRange& range,
+TAutoPtr<NTable::TTableIter> TKqpDatashardComputeContext::CreateIterator(const TTableId& tableId, const TTableRange& range,
     const TSmallVec<NTable::TTag>& columnTags)
 {
     auto localTid = Shard->GetLocalTableId(tableId);
@@ -433,12 +435,12 @@ TAutoPtr<NTable::TTableIt> TKqpDatashardComputeContext::CreateIterator(const TTa
     keyRange.MaxInclusive = range.InclusiveTo;
 
     TouchTableRange(tableId, range);
-    return Database->IterateRange(localTid, keyRange, columnTags, GetReadVersion(),
+    return Database->IterateRange(localTid, keyRange, columnTags, GetMvccVersion(),
             UserDb.GetReadTxMap(tableId),
             UserDb.GetReadTxObserver(tableId));
 }
 
-TAutoPtr<NTable::TTableReverseIt> TKqpDatashardComputeContext::CreateReverseIterator(const TTableId& tableId,
+TAutoPtr<NTable::TTableReverseIter> TKqpDatashardComputeContext::CreateReverseIterator(const TTableId& tableId,
     const TTableRange& range, const TSmallVec<NTable::TTag>& columnTags)
 {
     auto localTid = Shard->GetLocalTableId(tableId);
@@ -456,7 +458,7 @@ TAutoPtr<NTable::TTableReverseIt> TKqpDatashardComputeContext::CreateReverseIter
     keyRange.MaxInclusive = range.InclusiveTo;
 
     TouchTableRange(tableId, range);
-    return Database->IterateRangeReverse(localTid, keyRange, columnTags, GetReadVersion(),
+    return Database->IterateRangeReverse(localTid, keyRange, columnTags, GetMvccVersion(),
             UserDb.GetReadTxMap(tableId),
             UserDb.GetReadTxObserver(tableId));
 }
@@ -565,28 +567,28 @@ bool TKqpDatashardComputeContext::ReadRowWideImpl(const TTableId& tableId, TRead
     return false;
 }
 
-bool TKqpDatashardComputeContext::ReadRow(const TTableId& tableId, NTable::TTableIt& iterator,
+bool TKqpDatashardComputeContext::ReadRow(const TTableId& tableId, NTable::TTableIter& iterator,
     const TSmallVec<NTable::TTag>& systemColumnTags, const TSmallVec<bool>& skipNullKeys,
     const THolderFactory& holderFactory, NUdf::TUnboxedValue& result, TKqpTableStats& stats)
 {
     return ReadRowImpl(tableId, iterator, systemColumnTags, skipNullKeys, holderFactory, result, stats);
 }
 
-bool TKqpDatashardComputeContext::ReadRow(const TTableId& tableId, NTable::TTableReverseIt& iterator,
+bool TKqpDatashardComputeContext::ReadRow(const TTableId& tableId, NTable::TTableReverseIter& iterator,
     const TSmallVec<NTable::TTag>& systemColumnTags, const TSmallVec<bool>& skipNullKeys,
     const THolderFactory& holderFactory, NUdf::TUnboxedValue& result, TKqpTableStats& stats)
 {
     return ReadRowImpl(tableId, iterator, systemColumnTags, skipNullKeys, holderFactory, result, stats);
 }
 
-bool TKqpDatashardComputeContext::ReadRowWide(const TTableId& tableId, NTable::TTableIt& iterator,
+bool TKqpDatashardComputeContext::ReadRowWide(const TTableId& tableId, NTable::TTableIter& iterator,
     const TSmallVec<NTable::TTag>& systemColumnTags, const TSmallVec<bool>& skipNullKeys,
     NUdf::TUnboxedValue* const* result, TKqpTableStats& stats)
 {
     return ReadRowWideImpl(tableId, iterator, systemColumnTags, skipNullKeys,result, stats);
 }
 
-bool TKqpDatashardComputeContext::ReadRowWide(const TTableId& tableId, NTable::TTableReverseIt& iterator,
+bool TKqpDatashardComputeContext::ReadRowWide(const TTableId& tableId, NTable::TTableReverseIter& iterator,
     const TSmallVec<NTable::TTag>& systemColumnTags, const TSmallVec<bool>& skipNullKeys,
     NUdf::TUnboxedValue* const* result, TKqpTableStats& stats)
 {

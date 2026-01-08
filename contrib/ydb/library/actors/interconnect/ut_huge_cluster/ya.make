@@ -1,11 +1,12 @@
 UNITTEST()
 
 IF (SANITIZER_TYPE OR WITH_VALGRIND)
-    TIMEOUT(3600)
     SIZE(LARGE)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
+    REQUIREMENTS(
+        ram:32
+    )
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
@@ -21,14 +22,10 @@ PEERDIR(
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/interconnect
     contrib/ydb/library/actors/interconnect/ut/lib
+    contrib/ydb/library/actors/interconnect/ut/lib/port_manager
     contrib/ydb/library/actors/interconnect/ut/protos
     library/cpp/testing/unittest
     contrib/ydb/library/actors/testlib
-)
-
-REQUIREMENTS(
-    cpu:4
-    ram:32
 )
 
 END()

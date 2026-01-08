@@ -402,8 +402,8 @@ YQL_UDF_CONTRIB(clickhouse_client_udf)
         contrib/libs/apache/orc
         contrib/libs/apache/avro
         library/cpp/sanitizer/include
-        contrib/ydb/library/yql/minikql/dom
-        contrib/ydb/library/yql/utils
+        yql/essentials/minikql/dom
+        yql/essentials/utils
     )
 
     ADDINCL(
@@ -414,7 +414,7 @@ YQL_UDF_CONTRIB(clickhouse_client_udf)
         contrib/libs/pdqsort
         contrib/libs/lz4
         contrib/libs/apache/arrow/src
-        contrib/libs/apache/avro
+        contrib/libs/apache/avro/include
         contrib/libs/apache/orc/c++/include
         contrib/ydb/library/yql/udfs/common/clickhouse/client/base
         contrib/ydb/library/yql/udfs/common/clickhouse/client/base/pcg-random

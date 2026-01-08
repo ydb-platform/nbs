@@ -1,4 +1,5 @@
 #include "abstract.h"
+#include <contrib/ydb/core/formats/arrow/accessor/abstract/request.h>
 #include <contrib/ydb/core/formats/arrow/serializer/abstract.h>
 #include <contrib/ydb/core/formats/arrow/dictionary/diff.h>
 
@@ -13,9 +14,12 @@ private:
     static inline auto Registrator = TFactory::TRegistrator<TAlterColumnOperation>(GetTypeName());
 
     TString ColumnName;
+    std::optional<TString> StorageId;
 
     NArrow::NSerialization::TSerializerContainer Serializer;
     NArrow::NDictionary::TEncodingDiff DictionaryEncodingDiff;
+    std::optional<TString> DefaultValue;
+    NArrow::NAccessor::TRequestedConstructorContainer AccessorConstructor;
 public:
     TConclusionStatus DoDeserialize(NYql::TObjectSettingsImpl::TFeaturesExtractor& features) override;
 

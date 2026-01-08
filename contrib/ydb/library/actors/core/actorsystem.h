@@ -8,7 +8,6 @@
 #include "log_settings.h"
 #include "scheduler_cookie.h"
 #include "cpu_manager.h"
-#include "executor_thread.h"
 
 #include <library/cpp/threading/future/future.h>
 #include <contrib/ydb/library/actors/util/ticket_lock.h>
@@ -16,6 +15,10 @@
 #include <util/generic/vector.h>
 #include <util/datetime/base.h>
 #include <util/system/mutex.h>
+
+namespace NInterconnect::NRdma {
+    class IMemPool;
+}
 
 namespace NActors {
     class IActor;
@@ -85,6 +88,20 @@ namespace NActors {
         TProxyWrapperFactory ProxyWrapperFactory;
     };
 
+    class TRdmaAllocatorWithFallback : public IRcBufAllocator {
+    public:
+        TRdmaAllocatorWithFallback(std::shared_ptr<NInterconnect::NRdma::IMemPool>  memPool) noexcept;
+        TRcBuf AllocRcBuf(size_t size, size_t headRoom, size_t tailRoom) noexcept override;
+        TRcBuf AllocPageAlignedRcBuf(size_t size, size_t tailRoom) noexcept override;
+        std::shared_ptr<NInterconnect::NRdma::IMemPool> GetRdmaMemPool() noexcept {
+            return RdmaMemPool;
+        }
+    private:
+        template<bool pageAligned>
+        std::optional<TRcBuf> TryAllocRdmaRcBuf(size_t size, size_t headRoom, size_t tailRoom) noexcept;
+        std::shared_ptr<NInterconnect::NRdma::IMemPool> RdmaMemPool;
+    };
+
     struct TActorSystemSetup {
         ui32 NodeId = 0;
 
@@ -102,6 +119,8 @@ namespace NActors {
 
         using TLocalServices = TVector<std::pair<TActorId, TActorSetupCmd>>;
         TLocalServices LocalServices;
+
+        std::shared_ptr<IRcBufAllocator> RcBufAllocator;
 
         ui32 GetExecutorsCount() const {
             return Executors ? ExecutorsCount : CpuManager.GetExecutorsCount();
@@ -153,6 +172,8 @@ namespace NActors {
         THolder<NSchedulerQueue::TQueueType> ScheduleQueue;
         mutable TTicketLock ScheduleLock;
 
+        mutable IRcBufAllocator* RcBufAllocator;
+
         friend class TExecutorThread;
 
         THolder<TActorSystemSetup> SystemSetup;
@@ -161,10 +182,11 @@ namespace NActors {
         TIntrusivePtr<NLog::TSettings> LoggerSettings0;
         TProxyWrapperFactory ProxyWrapperFactory;
         TMutex ProxyCreationLock;
+        mutable std::vector<TActorId> DynamicProxies;
 
-        bool StartExecuted;
-        bool StopExecuted;
-        bool CleanupExecuted;
+        bool StartExecuted = false;
+        bool StopExecuted = false;
+        bool CleanupExecuted = false;
 
         std::deque<std::function<void()>> DeferredPreStop;
     public:
@@ -175,6 +197,8 @@ namespace NActors {
         void Start();
         void Stop();
         void Cleanup();
+
+        static bool IsStopped();
 
         template <ESendingType SendingType = ESendingType::Common>
         TActorId Register(IActor* actor, TMailboxType::EType mailboxType = TMailboxType::HTSwap, ui32 executorPool = 0,
@@ -286,6 +310,7 @@ namespace NActors {
         }
 
         void GetPoolStats(ui32 poolId, TExecutorPoolStats& poolStats, TVector<TExecutorThreadStats>& statsCopy) const;
+        void GetPoolStats(ui32 poolId, TExecutorPoolStats& poolStats, TVector<TExecutorThreadStats>& statsCopy, TVector<TExecutorThreadStats>& sharedStats) const;
 
         THarmonizerStats GetHarmonizerStats() const;
 
@@ -304,5 +329,11 @@ namespace NActors {
             return CpuManager->GetBasicExecutorPools();
         }
 
+        void GetExecutorPoolState(i16 poolId, TExecutorPoolState &state) const;
+        void GetExecutorPoolStates(std::vector<TExecutorPoolState> &states) const;
+
+        IRcBufAllocator* GetRcBufAllocator() const {
+            return RcBufAllocator;
+        }
     };
 }
