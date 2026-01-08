@@ -25,6 +25,7 @@ QEMU_FIRMWARE_REL=/usr/share/qemu
       tar -xzf $QEMU_BIN_TAR -C $QEMU_BIN_DIR
 
 : ${QMP_PORT:=4444}
+: ${NET_PORT:=3389}
 : ${DISK_IMAGE:=$QEMU_DIR/image-plucky/rootfs.img}
 : ${VHOST_SOCKET_PATH:=/tmp/vhost.sock}
 
@@ -47,20 +48,20 @@ args=(
     -object memory-backend-memfd,id=mem,size=$MEM_SIZE,share=on
     -numa node,memdev=mem
 
-    -netdev user,id=netdev0,hostfwd=tcp::3389-:3389
+    -netdev user,id=netdev0,hostfwd=tcp::$NET_PORT-:$NET_PORT
     -device virtio-net-pci,netdev=netdev0,id=net0
 
     -drive format=qcow2,file="$DISK_IMAGE",id=hdd0,if=none,aio=native,cache=none,discard=unmap
     -device virtio-blk-pci,id=vblk0,drive=hdd0,num-queues=$NCORES,bootindex=1
 
     -chardev socket,path=$VHOST_SOCKET_PATH,id=vhost0,reconnect=1
-    -device vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,num-request-queues=8,queue-size=512
+    -device vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,num-request-queues=8,queue-size=1024
 
     -serial stdio
     -nographic
     ${KERNEL_IMAGE:+-kernel $KERNEL_IMAGE}
     ${KCMDLINE:+-append "$KCMDLINE"}
-    -s
+    # -s
 )
 
 # QEMU="ya tool gdb --args $QEMU"

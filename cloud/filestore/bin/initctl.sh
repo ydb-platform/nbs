@@ -17,6 +17,7 @@ BLOCK_COUNT=${BLOCK_COUNT:-10485760} # 40GiB
 BLOCK_SIZE=${BLOCK_SIZE:-4096}
 SHARD_COUNT=${SHARD_COUNT:-8}
 MOUNT_POINT=${MOUNT_POINT:-"$HOME/filestore_mounts/$FS"}
+CLIENT_ID=${CLIENT_ID:-"local-qemu"}
 VHOST_SOCKET_PATH=${VHOST_SOCKET_PATH:-/tmp/vhost.sock}
 VHOST_QUEUE_COUNT=${VHOST_QUEUE_COUNT:-9}
 
@@ -163,7 +164,7 @@ if [[ "$1" == "startendpoint" ]]; then
         --server-port       "$VHOST_PORT"           \
         --filesystem        "$FS"                   \
         --socket-path       "$VHOST_SOCKET_PATH"    \
-        --client-id         "local-qemu"            \
+        --client-id         "$CLIENT_ID"            \
         --vhost-queue-count "$VHOST_QUEUE_COUNT"    \
         --persistent
     echo "started endpoint at $VHOST_SOCKET_PATH"

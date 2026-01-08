@@ -16,7 +16,11 @@ usermod -a -G kvm $USER
 To build run the following command from the repository root folder:
 
 ```bash
-./ya make -r -- cloud/filestore/buildall
+./ya make -r -- cloud/filestore/buildall -D CFLAGS="-fno-omit-frame-pointer"
+```
+or
+```bash
+./ya make --build=profile -- cloud/filestore/buildall
 ```
 
 ### 2. Configuring
@@ -61,6 +65,16 @@ qemu@test> sudo mount -t virtiofs fs0 mnt    # creates mount point for the files
 - or you can mount filestore localy
 ```bash
 ./initctl.sh mount
+```
+
+To run second (third, fourth, etc.) VM:
+```bash
+CLIENT_ID="local-qemu2" VHOST_SOCKET_PATH="/tmp/vhost2.sock" ./initctl.sh startendpoint
+QMP_PORT=4445 NET_PORT=3390 VHOST_SOCKET_PATH="/tmp/vhost2.sock" ./run_test_qemu.sh
+```
+```bash
+CLIENT_ID="local-qemu3" VHOST_SOCKET_PATH="/tmp/vhost3.sock" ./initctl.sh startendpoint
+QMP_PORT=4446 NET_PORT=3391 VHOST_SOCKET_PATH="/tmp/vhost3.sock" ./run_test_qemu.sh
 ```
 
 Thanks for flying NFS
