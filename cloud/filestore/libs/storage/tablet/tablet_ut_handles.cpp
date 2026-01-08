@@ -203,17 +203,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
 
             ui64 handle = handleResponse->Record.GetHandle();
 
-            tablet.SendWriteDataRequest(handle, 0, block, 'a');
-            auto writeResponse = tablet.RecvWriteDataResponse();
-
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, writeResponse->GetStatus());
+            tablet.WriteData(handle, 0, block, 'a');
 
             successfulHandles.push_back(handle);
         }
 
         UNIT_ASSERT_C(
             rebootTracker.GetGenerationCount() >= 2,
-            "Expected at least 2 different generations due to tablet reboot");
+            "Expected at least 2 different generations due to tablet reboot, "
+            "got "
+                << rebootTracker.GetGenerationCount());
         UNIT_ASSERT_VALUES_EQUAL(
             successfulHandles.size(),
             targetSuccessfulHandles);
@@ -234,14 +233,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
             auto readResponse = tablet.RecvReadDataResponse();
             reconnectIfNeeded();
 
-            UNIT_ASSERT(S_OK != readResponse->GetStatus());
+            UNIT_ASSERT_VALUES_UNEQUAL(S_OK, readResponse->GetStatus());
 
             ++i;
         }
 
         UNIT_ASSERT_C(
             rebootTracker.GetGenerationCount() >= 3,
-            "Expected at least 3 different generations due to tablet reboot");
+            "Expected at least 3 different generations due to tablet reboot, "
+            "got "
+                << rebootTracker.GetGenerationCount());
     }
 }
 
