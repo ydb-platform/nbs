@@ -212,7 +212,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         }
 
         UNIT_ASSERT_C(
-            rebootTracker.GetGenerationsCount() >= 2,
+            rebootTracker.GetGenerationCount() >= 2,
             "Expected at least 2 different generations due to tablet reboot");
         UNIT_ASSERT_VALUES_EQUAL(
             successfulHandles.size(),
@@ -240,7 +240,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         }
 
         UNIT_ASSERT_C(
-            rebootTracker.GetGenerationsCount() >= 3,
+            rebootTracker.GetGenerationCount() >= 3,
             "Expected at least 3 different generations due to tablet reboot");
     }
 }

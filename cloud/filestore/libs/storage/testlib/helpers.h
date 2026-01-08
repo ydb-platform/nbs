@@ -4,8 +4,11 @@
 
 #include <contrib/ydb/core/base/tablet.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
+#include <contrib/ydb/library/actors/testlib/test_runtime.h>
 
 #include <util/generic/set.h>
+
+#include <functional>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -356,41 +359,14 @@ private:
     TSet<ui32> Generations;
 
 public:
-    auto GetEventFilter()
-    {
-        return [this](auto& runtime, auto& event)
-        {
-            Y_UNUSED(runtime);
-            switch (event->GetTypeRewrite()) {
-                case NKikimr::TEvTablet::EvBoot: {
-                    auto* msg =
-                        event->template Get<NKikimr::TEvTablet::TEvBoot>();
-                    Generations.insert(msg->Generation);
-                    break;
-                }
-                case NKikimr::TEvTabletPipe::EvClientDestroyed: {
-                    PipeDestroyed = true;
-                    break;
-                }
-            }
-            return false;
-        };
-    }
+    std::function<
+        bool(NActors::TTestActorRuntimeBase&, TAutoPtr<NActors::IEventHandle>&)>
+    GetEventFilter();
 
-    bool IsPipeDestroyed() const
-    {
-        return PipeDestroyed;
-    }
+    bool IsPipeDestroyed() const;
+    void ClearPipeDestroyed();
 
-    void ClearPipeDestroyed()
-    {
-        PipeDestroyed = false;
-    }
-
-    size_t GetGenerationsCount() const
-    {
-        return Generations.size();
-    }
+    size_t GetGenerationCount() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

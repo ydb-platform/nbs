@@ -285,6 +285,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
     // TODO: check if session is read only
     args.WriteCommitId = GenerateCommitId();
     if (args.WriteCommitId == InvalidCommitId) {
+        args.CommitIdOverflowDetected = true;
         args.Error = ErrorCommitIdOverflow();
         return;
     }
@@ -496,7 +497,7 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-    if (args.Error.GetCode() == E_REJECTED && args.WriteCommitId == InvalidCommitId) {
+    if (args.CommitIdOverflowDetected) {
         ScheduleRebootTabletOnCommitIdOverflow(ctx, "CreateHandle");
     }
 }

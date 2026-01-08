@@ -7839,7 +7839,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         tablet.DestroyHandle(handle);
         UNIT_ASSERT_C(
-            rebootTracker.GetGenerationsCount() >= 2,
+            rebootTracker.GetGenerationCount() >= 2,
             "Expected at least 2 different generations due to tablet reboot");
     }
 }
