@@ -402,7 +402,7 @@ private:
         }
 
         auto handleInfo = GetHandleInfo();
-        if (handleInfo.Size < ReadBytes) {
+        if (handleInfo.Size < std::min(ReadBytes, 10_MB)) {
             return DoWrite(handleInfo);
         }
 
@@ -453,8 +453,6 @@ private:
             const auto& response = future.GetValue();
             CheckResponse(response);
 
-            AvailableBaseOffsets.push_back(base);
-
             const auto& buffer = response.GetBuffer();
             const auto& bufferOffset = response.GetBufferOffset();
             if (buffer.empty()) {
@@ -485,6 +483,7 @@ private:
 
             with_lock (StateLock) {
                 HandleInfos.emplace_back(std::move(handleInfo));
+                AvailableBaseOffsets.push_back(base);
             }
 
             return {NProto::ACTION_READ, started, response.GetError()};
@@ -525,7 +524,7 @@ private:
 
         ++LastWriteRequestId;
 
-        TString buffer(WriteBytes, '\0');
+        TString buffer(WriteBytes, 'A');
         ui64 segmentId = byteOffset / SEGMENT_SIZE;
         for (ui64 offset = 0; offset < WriteBytes; offset += SEGMENT_SIZE) {
             TSegment* segment =
