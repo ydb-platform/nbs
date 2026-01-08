@@ -61,28 +61,35 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
-    // The method returns a future that is fulfilled when all WriteData requests
-    // associated with the node and started before the call are flushed - this
-    // affects both cached and pending requests.
-    // An error is returned if any of the WriteData requests is failed to flush.
-    // (this does not lead to data loss, retry attempts will go in background)
+    /* The method returns a future that is fulfilled when all WriteData requests
+     * associated with the node and started before the call are flushed - this
+     * affects both cached and pending requests.
+     *
+     * If an error occurs while flushing WriteData requests, returns the error.
+     * Unflushed requests will remain in the cache and will be retried later.
+     * If multiple errors occur, returns any of them.
+     */
     NThreading::TFuture<NProto::TError> FlushNodeData(ui64 nodeId);
 
-    // The method returns a future that is fulfilled when all WriteData requests
-    // started before the call are flushed - this affects both cached and
-    // pending requests.
-    NThreading::TFuture<NProto::TError> FlushAllData();
+    /* The method returns a future that is fulfilled when all WriteData requests
+     * started before the call are flushed - this affects both cached and
+     * pending requests. */
+     NThreading::TFuture<NProto::TError> FlushAllData();
 
-    // Ensures that the handle is safe to be destroyed.
-    // The method returns a future that is fulfilled when there are no cached or
-    // pending WriteData requests associated with the handle.
-    // An error is returned if:
-    // - all handles are to be released
-    // - flush has failed
-    // In this case:
-    // - the cached data is dropped
-    // - pending WriteData requests are failed
-    // Note: the method doesn't call Session::DestroyHandle
+    /* Ensures that the handle is safe to be destroyed.
+     *
+     * The method returns a future that is fulfilled when there are no cached or
+     * pending WriteData requests associated with the handle. Unlike
+     * FlushNodeData, it doesn't fail if flush fails and waits instead.
+     *
+     * If all handles used by WriteBackCache for the node are requested for the
+     * release and flush fails:
+     * - cached WriteData requests are dropped;
+     * - pending WriteData requests are failed;
+     * - executing ReleaseHandle returns an error.
+     *
+     * Note: the method doesn't call Session::DestroyHandle
+     */
     NThreading::TFuture<NProto::TError> ReleaseHandle(
         ui64 nodeId,
         ui64 handle);

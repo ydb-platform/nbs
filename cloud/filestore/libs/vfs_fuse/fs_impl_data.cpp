@@ -266,10 +266,13 @@ void TFileSystem::Release(
     }
 
     if (WriteBackCache) {
-        // TODO
-        WriteBackCache.FlushNodeData(ino).Subscribe(
+        // ReleaseHandle ensures that the handle is no longer in use
+        // by WriteBackCache and can be safely destroyed.
+        WriteBackCache.ReleaseHandle(ino, handle).Subscribe(
             [=, ptr = weak_from_this()] (const auto&)
             {
+                // We ignore the result of ReleaseHandle, as the errors are
+                // reported by WriteBackCache.
                 if (auto self = ptr.lock()) {
                     self->ReleaseImpl(callContext, req, ino, handle);
                 }
