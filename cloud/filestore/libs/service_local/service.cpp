@@ -233,28 +233,37 @@ public:
     void Start() override;
     void Stop() override;
 
-#define FILESTORE_IMPLEMENT_METHOD_SYNC(name, ...)                             \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        Y_UNUSED(callContext);                                                 \
-        return TaskQueue->Execute([this, request = std::move(request)] {       \
-            return ExecuteWithProfileLog<T##name##Method>(*request);           \
-        });                                                                    \
-    }                                                                          \
+#define FILESTORE_IMPLEMENT_METHOD_SYNC(name, ...)                  \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr callContext,                                \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        return TaskQueue->Execute(                                  \
+            [this,                                                  \
+             callContext = std::move(callContext),                  \
+             request = std::move(request)] {                        \
+                return ExecuteWithProfileLog<T##name##Method>(      \
+                    std::move(callContext),                         \
+                    *request);                                      \
+            });                                                     \
+    }                                                               \
 // FILESTORE_IMPLEMENT_METHOD_SYNC
 
-#define FILESTORE_IMPLEMENT_METHOD_ASYNC(name, ...)                            \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        Y_UNUSED(callContext);                                                 \
-        return TaskQueue->Execute([this, request = std::move(request)] {       \
-            return ExecuteWithProfileLogAsync<T##name##Method>(*request);      \
-        });                                                                    \
-    }                                                                          \
+#define FILESTORE_IMPLEMENT_METHOD_ASYNC(name, ...)                 \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr callContext,                                \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        return TaskQueue->Execute(                                  \
+            [this,                                                  \
+             callContext = std::move(callContext),                  \
+             request = std::move(request)]                          \
+            {                                                       \
+                return ExecuteWithProfileLogAsync<T##name##Method>( \
+                    std::move(callContext),                         \
+                    *request);                                      \
+            });                                                     \
+    }                                                               \
 // FILESTORE_IMPLEMENT_METHOD_ASYNC
 
 FILESTORE_SERVICE_LOCAL_SYNC(FILESTORE_IMPLEMENT_METHOD_SYNC)
@@ -346,9 +355,12 @@ private:
     }
 
     template <typename T>
-    typename T::TResult ExecuteWithProfileLog(typename T::TRequest& request)
+    typename T::TResult ExecuteWithProfileLog(
+        TCallContextPtr callContext,
+        typename T::TRequest& request)
     {
         NProto::TProfileLogRequestInfo logRequest;
+        logRequest.SetLoopThreadId(callContext->LoopThreadId);
         ProfileLogInit<T>(logRequest, request);
 
         auto response = Execute<T>(request, logRequest);
@@ -370,9 +382,12 @@ private:
     }
 
     template <typename T>
-    typename T::TResult ExecuteWithProfileLogAsync(typename T::TRequest& request)
+    typename T::TResult ExecuteWithProfileLogAsync(
+        TCallContextPtr callContext,
+        typename T::TRequest& request)
     {
         auto logRequest = std::make_shared<NProto::TProfileLogRequestInfo>();
+        logRequest->SetLoopThreadId(callContext->LoopThreadId);
         ProfileLogInit<T>(*logRequest, request);
 
         return Execute<T>(request, *logRequest)
