@@ -140,6 +140,7 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
 
         builder.BuildNextRequest(request->Record);
 
+        AddNetworkBytes(request->Record.ByteSizeLong());
         OnRequestStarted(
             ctx,
             deviceRequest.Device.GetAgentId(),
@@ -178,6 +179,7 @@ TDiskAgentWriteActor::MakeCompletionResponse(ui32 blocks)
         std::make_unique<TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted>();
 
     completion->Stats.MutableUserWriteCounters()->SetBlocksCount(blocks);
+    completion->NetworkBytes = GetNetworkBytes();
 
     return TCompletionEventAndBody(std::move(completion));
 }
@@ -206,6 +208,7 @@ void TDiskAgentWriteActor::HandleWriteDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
+    AddNetworkBytes(msg->Record.ByteSizeLong());
     OnRequestFinished(ctx, ev->Cookie);
 
     if (HasError(msg->GetError())) {
@@ -461,7 +464,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksCompleted(
     PartCounters->Interconnect.WriteBytes.Increment(requestBytes);
     PartCounters->Interconnect.WriteCount.Increment(1);
 
-    NetworkBytes += requestBytes;
+    NetworkBytes += msg->NetworkBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveWriteRequest(ev->Sender);

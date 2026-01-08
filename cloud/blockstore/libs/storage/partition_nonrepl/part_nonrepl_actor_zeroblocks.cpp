@@ -100,6 +100,7 @@ void TDiskAgentZeroActor::SendRequest(const TActorContext& ctx)
                 Request.GetHeaders().GetVolumeRequestId());
         }
 
+        AddNetworkBytes(request->Record.ByteSizeLong());
         OnRequestStarted(
             ctx,
             deviceRequest.Device.GetAgentId(),
@@ -133,6 +134,7 @@ TDiskAgentZeroActor::MakeCompletionResponse(ui32 blocks)
         std::make_unique<TEvNonreplPartitionPrivate::TEvZeroBlocksCompleted>();
 
     completion->Stats.MutableUserWriteCounters()->SetBlocksCount(blocks);
+    completion->NetworkBytes = GetNetworkBytes();
 
     return TCompletionEventAndBody(std::move(completion));
 }
@@ -161,6 +163,7 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
+    AddNetworkBytes(msg->Record.ByteSizeLong());
     OnRequestFinished(ctx, ev->Cookie);
 
     if (HasError(msg->GetError())) {
@@ -268,6 +271,8 @@ void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
+
+    NetworkBytes += msg->NetworkBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveWriteRequest(ev->Sender);

@@ -154,6 +154,16 @@ void TDiskAgentBaseRequestActor::OnRequestFinished(
     ctx.Send(VolumeActorId, std::move(finishEvent));
 }
 
+void TDiskAgentBaseRequestActor::AddNetworkBytes(ui64 bytes)
+{
+    NetworkBytes += bytes;
+}
+
+ui64 TDiskAgentBaseRequestActor::GetNetworkBytes() const
+{
+    return NetworkBytes;
+}
+
 void TDiskAgentBaseRequestActor::HandleCancelRequest(
     const TEvNonreplPartitionPrivate::TEvCancelRequest::TPtr& ev,
     const TActorContext& ctx)

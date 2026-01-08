@@ -35,6 +35,7 @@ private:
     const ui64 RequestId;
     const TRequestTimeoutPolicy TimeoutPolicy;
 
+    ui64 NetworkBytes = 0;
     TInstant StartTime;
 
 public:
@@ -88,6 +89,9 @@ protected:
     void OnRequestFinished(
         const NActors::TActorContext& ctx,
         size_t requestIndex);
+
+    void AddNetworkBytes(ui64 bytes);
+    ui64 GetNetworkBytes() const;
 
 private:
     void StateWork(TAutoPtr<NActors::IEventHandle>& ev);

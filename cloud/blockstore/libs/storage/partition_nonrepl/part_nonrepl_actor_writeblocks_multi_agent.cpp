@@ -135,6 +135,7 @@ void TDiskAgentMultiWriteActor::SendRequest(const TActorContext& ctx)
         }
     }
 
+    AddNetworkBytes(request->Record.ByteSizeLong());
     OnRequestStarted(
         ctx,
         Request.DevicesAndRanges[0].DeviceUUID,
@@ -168,6 +169,7 @@ TDiskAgentMultiWriteActor::MakeCompletionResponse(ui32 blocks)
         TEvNonreplPartitionPrivate::TEvMultiAgentWriteBlocksCompleted>();
 
     completion->Stats.MutableUserWriteCounters()->SetBlocksCount(blocks);
+    completion->NetworkBytes = GetNetworkBytes();
 
     return TCompletionEventAndBody(std::move(completion));
 }
@@ -198,6 +200,7 @@ void TDiskAgentMultiWriteActor::HandleWriteDeviceBlocksResponse(
 {
     const auto* msg = ev->Get();
 
+    AddNetworkBytes(msg->Record.ByteSizeLong());
     OnRequestFinished(ctx, ev->Cookie);
 
     auto replyInconsistentError = [&]()
@@ -375,7 +378,7 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWriteBlocksCompleted(
     PartCounters->Interconnect.WriteBytesMultiAgent.Increment(requestBytes);
     PartCounters->Interconnect.WriteCountMultiAgent.Increment(1);
 
-    NetworkBytes += requestBytes;
+    NetworkBytes += msg->NetworkBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveWriteRequest(ev->Sender);
