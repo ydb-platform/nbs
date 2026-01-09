@@ -571,19 +571,28 @@ void TFileSystem::DoWrite(
         "Invalid EServerWriteBackCacheState value = %d",
         wbcState);
 
-    WriteBackCache.FlushNodeData(request->GetNodeId())
-        .Subscribe(
-            [ptr = weak_from_this(),
-             callback = std::move(callback),
-             callContext = std::move(callContext),
-             request = std::move(request)](const auto& f) mutable
-            {
-                f.GetValue();
-                if (auto self = ptr.lock()) {
-                    self->Session->WriteData(callContext, std::move(request))
-                        .Subscribe(std::move(callback));
-                }
-            });
+    auto flushFuture = WriteBackCache.FlushNodeData(request->GetNodeId());
+    flushFuture.Subscribe(
+        [ptr = weak_from_this(),
+         callback = std::move(callback),
+         callContext = std::move(callContext),
+         request = std::move(request)](const auto& f) mutable
+        {
+            const NProto::TError& error = f.GetValue();
+            if (HasError(error)) {
+                // An attempt to flush data has failed - we cannot write new
+                // requests until the cache is empty.
+                // FlushNodeData returns an error for an unsuccessful WriteData
+                // attempt during flush - we can just propagate this error to
+                // the response for the current WriteData request.
+                NProto::TWriteDataResponse response;
+                *response.MutableError() = error;
+                callback(MakeFuture(std::move(response)));
+            } else if (auto self = ptr.lock()) {
+                self->Session->WriteData(callContext, std::move(request))
+                    .Subscribe(std::move(callback));
+            }
+        });
 }
 
 void TFileSystem::WriteBufLocal(
