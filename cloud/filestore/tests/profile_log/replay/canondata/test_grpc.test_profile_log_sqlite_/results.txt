@@ -57,7 +57,7 @@
 ./sqlite/autoconf/tea/win/rules.vc 61475
 ./sqlite/autoconf/tea/win/targets.vc 2508
 ./sqlite/config.guess 48216
-./sqlite/config.log 273
+./sqlite/config.log 5473
 ./sqlite/config.sub 31617
 ./sqlite/configure 411167
 ./sqlite/configure.ac 23438
