@@ -4287,6 +4287,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         TVector<TString> expected = {fsId, fsId + "_s1", fsId + "_s2"};
 
         service.CreateFileStore(fsId, 2_GB / 4_KB);
+        WaitForTabletStart(service);
+
         auto listing = service.ListFileStores();
         auto fsIds = listing->Record.GetFileStores();
         TVector<TString> ids(fsIds.begin(), fsIds.end());
@@ -6288,6 +6290,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         const ui64 filesCount = shardCount * 2;
         ui64 shardNo = 1;
+        ui64 sevenBytesHandlesCount = 0;
         for (ui64 i = 0; i < filesCount; ++i) {
             auto createNodeResponse =
                 service.CreateNode(
@@ -6298,6 +6301,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     ->Record;
             const ui64 nodeId = createNodeResponse.GetNode().GetId();
 
+            sevenBytesHandlesCount += IsSeventhByteUsed(nodeId);
             UNIT_ASSERT_VALUES_EQUAL(shardNo > 0xff, IsSeventhByteUsed(nodeId));
             UNIT_ASSERT_VALUES_EQUAL(shardNo, ExtractShardNo(nodeId));
 
@@ -6311,13 +6315,64 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT_VALUES_EQUAL(shardNo > 0xff, IsSeventhByteUsed(handle));
             UNIT_ASSERT_VALUES_EQUAL(shardNo, ExtractShardNo(handle));
 
-            service.DestroyHandle(headers, fsId, nodeId, handle);
-
             shardNo++;
             if (shardNo > shardCount) {
                 shardNo = 1;
             }
         }
+
+        // We created 2 files in each shard. Files in the shards with
+        // shardNo > 255 have handles that use 7th byte.
+        UNIT_ASSERT_VALUES_EQUAL(
+            (shardCount - 0xff) * 2,
+            sevenBytesHandlesCount);
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(16));
+
+        // Update counters in all the shards.
+        TDispatchOptions options;
+        options.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+            TEvIndexTabletPrivate::EvAggregateStatsCompleted,
+            shardCount + 1)};
+        service.AccessRuntime().DispatchEvents(options);
+
+        const auto mainStats = GetStorageStats(service, fsId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            sevenBytesHandlesCount,
+            mainStats.GetStats().GetSevenBytesHandlesCount());
+
+        // Forcefully leave only shard with nembers >= 256
+        const auto mainFsTopology = GetFileSystemTopology(service, fsId);
+        NProtoPrivate::TConfigureShardsRequest configureShardsRequest;
+        configureShardsRequest.SetFileSystemId(fsId);
+        configureShardsRequest.SetForce(true);
+        configureShardsRequest.SetDirectoryCreationInShardsEnabled(
+            mainFsTopology.GetDirectoryCreationInShardsEnabled());
+        configureShardsRequest.SetStrictFileSystemSizeEnforcementEnabled(
+            mainFsTopology.GetStrictFileSystemSizeEnforcementEnabled());
+
+        const auto& mainFsShards = mainFsTopology.GetShardFileSystemIds();
+        for (int i = 0xff; i < mainFsShards.size(); ++i) {
+            configureShardsRequest.AddShardFileSystemIds(mainFsShards[i]);
+        }
+
+        TString buf;
+        google::protobuf::util::MessageToJsonString(
+            configureShardsRequest,
+            &buf);
+        auto jsonResponse = service.ExecuteAction("configureshards", buf);
+        NProtoPrivate::TConfigureShardsResponse response;
+        UNIT_ASSERT(
+            google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(),
+                &response)
+                .ok());
+
+        WaitForTabletStart(service);
+
+        // We should get error when we try to increase number of shards to more
+        // than 255 and there are handles with non-zero 7th byte
+        service.AssertResizeFileStoreFailed(fsId, fsSize);
     }
 
     SERVICE_TEST_SIMPLE(ShouldUseOldHandles)
