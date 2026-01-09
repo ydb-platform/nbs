@@ -24,8 +24,6 @@ void TInFlightRequest::Complete(
     TInstant currentTs,
     const NCloud::NProto::TError& error)
 {
-    Completed = true;
-
     RequestStats->RequestCompleted(*CallContext, error);
 
     ProfileLogRequest.SetDurationMcs(
@@ -38,21 +36,112 @@ void TInFlightRequest::Complete(
     {
         ProfileLog->Write({CallContext->FileSystemId, std::move(ProfileLogRequest)});
     }
+
+    //
+    // Signalling request completion - after this line this request may be
+    // deallocated and no one should touch it apart from the cleanup code
+    // in service_actor_update_stats.cpp
+    //
+
+    Completed.store(true, std::memory_order_release);
 }
 
 bool TInFlightRequest::IsCompleted() const
 {
-    return Completed;
+    return Completed.load(std::memory_order_acquire);
 }
 
-TIncompleteRequest TInFlightRequest::ToIncompleteRequest(ui64 nowCycles) const
+std::unique_ptr<TIncompleteRequest> TInFlightRequest::ToIncompleteRequest(
+    ui64 nowCycles) const
 {
     const auto time = CallContext->CalcRequestTime(nowCycles);
-    return TIncompleteRequest(
+    return std::make_unique<TIncompleteRequest>(
         MediaKind,
         CallContext->RequestType,
         time.ExecutionTime,
         time.TotalTime);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TInFlightRequestStorage::TInFlightRequestStorage(IProfileLogPtr profileLog)
+    : ProfileLog(std::move(profileLog))
+{
+}
+
+TInFlightRequest* TInFlightRequestStorage::Register(
+    NActors::TActorId sender,
+    ui64 cookie,
+    TCallContextPtr callContext,
+    NProto::EStorageMediaKind mediaKind,
+    TChecksumCalcInfo checksumCalcInfo,
+    IRequestStatsPtr requestStats,
+    TInstant start,
+    ui64 key)
+{
+    auto g = Guard(Lock);
+
+    auto [it, inserted] = Requests.emplace(
+        std::piecewise_construct,
+        std::forward_as_tuple(key),
+        std::forward_as_tuple(
+            sender,
+            cookie,
+            std::move(callContext),
+            ProfileLog,
+            mediaKind,
+            std::move(checksumCalcInfo),
+            std::move(requestStats)));
+
+    Y_ABORT_UNLESS(inserted);
+    it->second.Start(start);
+
+    it->second.ProfileLogRequest.SetLoopThreadId(
+        it->second.CallContext->LoopThreadId);
+
+    return &it->second;
+}
+
+TInFlightRequest* TInFlightRequestStorage::Find(ui64 key)
+{
+    auto g = Guard(Lock);
+
+    return Requests.FindPtr(key);
+}
+
+TInFlightRequestStorage::TLockedRequest TInFlightRequestStorage::FindAndLock(
+    ui64 key)
+{
+    Lock.lock();
+
+    auto* request = Requests.FindPtr(key);
+    TLockedRequest result(Lock, request);
+
+    if (!request) {
+        Lock.unlock();
+    }
+
+    return result;
+}
+
+void TInFlightRequestStorage::Erase(ui64 key)
+{
+    auto g = Guard(Lock);
+
+    Requests.erase(key);
+}
+
+TVector<ui64> TInFlightRequestStorage::GetKeys() const
+{
+    auto g = Guard(Lock);
+
+    TVector<ui64> keys;
+    keys.reserve(Requests.size());
+    for (const auto& [key, _]: Requests) {
+        keys.push_back(key);
+    }
+
+    return keys;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

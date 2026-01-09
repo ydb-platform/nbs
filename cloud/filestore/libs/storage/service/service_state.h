@@ -58,16 +58,20 @@ private:
     const IRequestStatsPtr RequestStats;
     const IProfileLogPtr ProfileLog;
 
-    NAtomic::TBool Completed = false;
+    std::atomic_bool Completed = false;
 
 public:
     TInFlightRequest(
-            const TRequestInfo& info,
+            NActors::TActorId sender,
+            ui64 cookie,
+            TCallContextPtr callContext,
             IProfileLogPtr profileLog,
             NCloud::NProto::EStorageMediaKind mediaKind,
             IRequestStatsPtr requestStats)
         : TInFlightRequest(
-            info,
+            sender,
+            cookie,
+            std::move(callContext),
             std::move(profileLog),
             mediaKind,
             {} /* checksumCalcInfo */,
@@ -75,16 +79,51 @@ public:
     {}
 
     TInFlightRequest(
+            NActors::TActorId sender,
+            ui64 cookie,
+            TCallContextPtr callContext,
+            IProfileLogPtr profileLog,
+            NCloud::NProto::EStorageMediaKind mediaKind,
+            TChecksumCalcInfo checksumCalcInfo,
+            IRequestStatsPtr requestStats)
+        : TRequestInfo(sender, cookie, std::move(callContext))
+        , MediaKind(mediaKind)
+        , ChecksumCalcInfo(std::move(checksumCalcInfo))
+        , RequestStats(std::move(requestStats))
+        , ProfileLog(std::move(profileLog))
+    {}
+
+    // deprecated
+    TInFlightRequest(
+            const TRequestInfo& info,
+            IProfileLogPtr profileLog,
+            NCloud::NProto::EStorageMediaKind mediaKind,
+            IRequestStatsPtr requestStats)
+        : TInFlightRequest(
+            info.Sender,
+            info.Cookie,
+            info.CallContext,
+            std::move(profileLog),
+            mediaKind,
+            {} /* checksumCalcInfo */,
+            std::move(requestStats))
+    {}
+
+    // deprecated
+    TInFlightRequest(
             const TRequestInfo& info,
             IProfileLogPtr profileLog,
             NCloud::NProto::EStorageMediaKind mediaKind,
             TChecksumCalcInfo checksumCalcInfo,
             IRequestStatsPtr requestStats)
-        : TRequestInfo(info.Sender, info.Cookie, info.CallContext)
-        , MediaKind(mediaKind)
-        , ChecksumCalcInfo(std::move(checksumCalcInfo))
-        , RequestStats(std::move(requestStats))
-        , ProfileLog(std::move(profileLog))
+        : TInFlightRequest(
+            info.Sender,
+            info.Cookie,
+            info.CallContext,
+            std::move(profileLog),
+            mediaKind,
+            std::move(checksumCalcInfo),
+            std::move(requestStats))
     {}
 
     void Start(TInstant currentTs);
@@ -96,8 +135,94 @@ public:
         return ChecksumCalcInfo;
     }
 
-    TIncompleteRequest ToIncompleteRequest(ui64 nowCycles) const;
+    //
+    // Thread-safe.
+    //
+
+    std::unique_ptr<TIncompleteRequest> ToIncompleteRequest(
+        ui64 nowCycles) const;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TInFlightRequestStorage: public TAtomicRefCount<TInFlightRequestStorage>
+{
+private:
+    IProfileLogPtr ProfileLog;
+    THashMap<ui64, TInFlightRequest> Requests;
+    mutable TAdaptiveLock Lock;
+
+public:
+    explicit TInFlightRequestStorage(IProfileLogPtr profileLog);
+
+public:
+    TInFlightRequest* Register(
+        NActors::TActorId sender,
+        ui64 cookie,
+        TCallContextPtr callContext,
+        NProto::EStorageMediaKind mediaKind,
+        TChecksumCalcInfo checksumCalcInfo,
+        IRequestStatsPtr requestStats,
+        TInstant start,
+        ui64 key);
+
+    TInFlightRequest* Find(ui64 key);
+
+    class TLockedRequest {
+    private:
+        TAdaptiveLock* Lock;
+        TInFlightRequest* Request;
+
+    private:
+        TLockedRequest(TAdaptiveLock& l, TInFlightRequest* r)
+            : Lock(&l)
+            , Request(r)
+        {
+        }
+
+        friend class TInFlightRequestStorage;
+
+    public:
+        ~TLockedRequest()
+        {
+            if (Request) {
+                Lock->unlock();
+            }
+        }
+
+        TLockedRequest(const TLockedRequest& other) = delete;
+        TLockedRequest& operator=(const TLockedRequest& other) = delete;
+
+        TLockedRequest(TLockedRequest&& other) noexcept
+            : Lock(other.Lock)
+            , Request(other.Request)
+        {
+            other.Request = nullptr;
+        }
+
+        TLockedRequest& operator=(TLockedRequest&& other) noexcept
+        {
+            Lock = other.Lock;
+            Request = other.Request;
+            other.Request = nullptr;
+            return *this;
+        }
+
+    public:
+        TInFlightRequest* Get()
+        {
+            return Request;
+        }
+    };
+
+    TLockedRequest FindAndLock(ui64 key);
+
+    void Erase(ui64 key);
+
+    [[nodiscard]] TVector<ui64> GetKeys() const;
+};
+
+using TInFlightRequestStoragePtr = TIntrusivePtr<TInFlightRequestStorage>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -686,9 +686,7 @@ void TStorageServiceActor::HandleCreateSession(
     const auto& checkpointId = msg->Record.GetCheckpointId();
     auto originFqdn = GetOriginFqdn(msg->Record);
 
-    ui64 cookie;
-    TInFlightRequest* inflight;
-    std::tie(cookie, inflight) = CreateInFlightRequest(
+    auto [cookie, inflight] = CreateInFlightRequest(
         TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT,
         StatsRegistry->GetRequestStats(),
@@ -707,6 +705,7 @@ void TStorageServiceActor::HandleCreateSession(
             *response->Record.MutableSession(),
             GetSessionSeqNo(msg->Record));
         inflight->Complete(ctx.Now(), std::move(error));
+        InFlightRequests->Erase(cookie);
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
@@ -961,6 +960,7 @@ void TStorageServiceActor::HandleSessionCreated(
 
         NCloud::Reply(ctx, *inflight, std::move(response));
         inflight->Complete(ctx.Now(), msg->GetError());
+        InFlightRequests->Erase(msg->RequestInfo->Cookie);
     }
 }
 
