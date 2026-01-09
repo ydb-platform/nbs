@@ -172,6 +172,9 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
 
 #undef FILESTORE_TABLET_MERGE_COUNTER
 
+    dst.SetSevenBytesHandlesCount(
+        dst.GetSevenBytesHandlesCount() + src.GetSevenBytesHandlesCount());
+
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET_WORKER,
@@ -1004,6 +1007,8 @@ void TIndexTabletActor::FillSelfStorageStats(
     stats->SetTotalBlocksCount(GetFileSystem().GetBlocksCount());
 
     stats->SetFreshBytesItemCount(GetFreshBytesItemCount());
+
+    stats->SetSevenBytesHandlesCount(Metrics.SevenBytesHandlesCount);
 }
 
 void TIndexTabletActor::HandleGetStorageStats(
