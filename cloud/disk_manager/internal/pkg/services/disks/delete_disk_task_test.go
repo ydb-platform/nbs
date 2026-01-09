@@ -61,7 +61,7 @@ func testDeleteDiskTaskRun(t *testing.T, sync bool) {
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-	).Return(diskMeta, nil).Once()
+	).Return(*diskMeta, nil).Once()
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
 
 	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
@@ -122,7 +122,7 @@ func TestDeleteDiskTaskRunWithDiskCreatedFromImage(t *testing.T) {
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-	).Return(&resources.DiskMeta{
+	).Return(resources.DiskMeta{
 		ZoneID:       "zone",
 		SrcImageID:   "image",
 		Kind:         "ssd",
@@ -183,7 +183,7 @@ func TestDeleteDiskTaskCancel(t *testing.T) {
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-	).Return(&resources.DiskMeta{
+	).Return(resources.DiskMeta{
 		ZoneID:       "zone",
 		Kind:         "ssd",
 		SrcImageID:   "image",
@@ -223,9 +223,10 @@ func TestDeleteDiskTaskWithNonExistentDisk(t *testing.T) {
 	scheduler := tasks_mocks.NewSchedulerMock()
 	poolService := pools_mocks.NewServiceMock()
 	nbsFactory := nbs_mocks.NewFactoryMock()
+	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
 
-	disk := &types.Disk{DiskId: "disk"}
+	disk := &types.Disk{DiskId: "disk", ZoneId: "zone"}
 	request := &protos.DeleteDiskRequest{Disk: disk}
 
 	task := &deleteDiskTask{
@@ -237,13 +238,33 @@ func TestDeleteDiskTaskWithNonExistentDisk(t *testing.T) {
 		state:       &protos.DeleteDiskTaskState{},
 	}
 
+	// There is no such disk in storage, return tombstone without ZoneID.
 	storage.On(
 		"DeleteDisk",
 		ctx,
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-	).Return((*resources.DiskMeta)(nil), nil)
+	).Return(resources.DiskMeta{
+		ID:           "disk",
+		ZoneID:       "",
+		DeleteTaskID: "toplevel_task_id",
+	}, nil)
+	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
+
+	// Should proceed deleting even if the disk is absent it the storage.
+	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
+	nbsClient.On("Delete", ctx, "disk").Return(nil)
+
+	scheduler.On(
+		"ScheduleTask",
+		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_delete_disk_from_incremental"),
+		"dataplane.DeleteDiskFromIncremental",
+		"",
+		mock.Anything,
+	).Return("deleteTask", nil)
+
+	scheduler.On("WaitTask", ctx, execCtx, "deleteTask").Return(nil, nil)
 
 	err := task.Run(ctx, execCtx)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, execCtx)
@@ -308,7 +329,7 @@ func testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-	).Return(diskMeta, nil).Once()
+	).Return(*diskMeta, nil).Once()
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
 
 	if expectedEstimatedInflightDuration > 0 {
