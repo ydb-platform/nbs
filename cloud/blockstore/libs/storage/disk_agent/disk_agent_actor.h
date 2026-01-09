@@ -38,6 +38,9 @@ namespace NCloud::NBlockStore::NStorage {
 class TDiskAgentActor final
     : public NActors::TActorBootstrapped<TDiskAgentActor>
 {
+    using TControlPlaneRequestNumber =
+        TEvDiskAgentPrivate::TControlPlaneRequestNumber;
+
     struct TPostponedRequest
     {
         ui64 VolumeRequestId = 0;
@@ -50,12 +53,6 @@ class TDiskAgentActor final
         NotStarted,
         InProgress,
         Registered,
-    };
-
-    enum class EAction
-    {
-        Attach,
-        Detach,
     };
 
 private:
@@ -103,7 +100,8 @@ private:
 
     NActors::TActorId HealthCheckActor;
 
-    TRequestInfoPtr PendingAttachDetachPathsRequest;
+    TRequestInfoPtr PendingControlPlaneRequest;
+    TControlPlaneRequestNumber ControlPlaneRequestNumber;
 
     ITaskQueuePtr BackgroundThreadPool;
 
@@ -184,27 +182,14 @@ private:
 
     TDuration GetMaxRequestTimeout() const;
 
-    struct TCheckAttachDetachPathRequestResult {
-        TVector<TString> AlreadyInWantedStatePaths;
-        TVector<TString> PathToPerformAttachDetach;
-    };
+    NProto::TError IsAttachDetachPathsAvailable() const;
+    NProto::TError UpdateControlPlaneRequestNumber(
+        TControlPlaneRequestNumber controlPlaneRequestNumber);
 
-    TResultOrError<TCheckAttachDetachPathRequestResult>
-    CheckAttachDetachPathsRequest(
-        ui64 diskRegistryGeneration,
-        ui64 diskAgentGeneration,
-        TVector<TString> paths,
-        EAction action);
-
-    TResultOrError<TCheckAttachDetachPathRequestResult> CheckAttachPathsRequest(
-        ui64 diskRegistryGeneration,
-        ui64 diskAgentGeneration,
-        TVector<TString> paths);
-
-    TResultOrError<TCheckAttachDetachPathRequestResult> CheckDetachPathsRequest(
-        ui64 diskRegistryGeneration,
-        ui64 diskAgentGeneration,
-        TVector<TString> paths);
+    // Separates valid paths into attached and detached categories, filtering out unknown paths.
+    // Returns: [attached paths, detached paths]
+    auto SplitPaths(TVector<TString> paths) const
+        -> std::pair<TVector<TString>, TVector<TString>>;
 
 private:
     STFUNC(StateInit);

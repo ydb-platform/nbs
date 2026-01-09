@@ -124,8 +124,7 @@ public:
 
         if (!CheckGenerationAndUpdateItIfNeeded(
                 diskRegistryGeneration,
-                diskAgentGeneration) &&
-            pathsToPerformAttachDetach)
+                diskAgentGeneration))
         {
             return false;
         }
@@ -214,9 +213,8 @@ public:
             TRequest request;
             request.DiskAgentGeneration = GenerateDiskAgentGeneration();
 
-            auto devicesInRequest =
-                Max(RandomNumber<ui64>(pathIdxs.size() + 1),
-                    static_cast<ui64>(1));
+            const ui64 devicesInRequest =
+                Max(RandomNumber<ui64>(pathIdxs.size() + 1), ui64{1});
 
             for (ui64 i = 0; i < devicesInRequest; ++i) {
                 auto pathIdx = pathIdxs.back();
@@ -243,11 +241,7 @@ private:
     {
         GeneratedShouldAttachPath.clear();
         for (ui64 i = 0; i < DevicesCount; ++i) {
-            if (RandomNumber<ui64>(2) == 0) {
-                GeneratedShouldAttachPath.push_back(false);
-            } else {
-                GeneratedShouldAttachPath.push_back(true);
-            }
+            GeneratedShouldAttachPath.push_back(RandomNumber<ui64>(2) != 0);
         }
     }
 
@@ -7221,10 +7215,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
-        TVector<TString> paths;
-        for (const auto& fPath: PartLabels) {
-            paths.emplace_back(fPath.GetPath());
-        }
+        TVector<TString> paths(PartLabels.begin(), PartLabels.end());
 
         TAttachDetachRequestsGenerator requestsGenerator(paths);
         TDiskAgentAttachDetachModel diskAgentModel(paths);
@@ -7240,8 +7231,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                     requestsGenerator.GenerateDiskRegistryGeneration();
             }
 
-            auto doRequests = [&](bool attach)
-            {
+            for (bool attach: {true, false}) {
                 auto requests =
                     requestsGenerator.GetAttachDetachRequests(attach);
 
@@ -7272,10 +7262,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                         shouldBeSuccessful,
                         !HasError(error));
                 }
-            };
-
-            doRequests(true);
-            doRequests(false);
+            }
 
             for (size_t i = 0; i < Devices.size(); ++i) {
                 auto procesesWithOpenFileExpected =
