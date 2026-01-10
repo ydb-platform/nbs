@@ -62,7 +62,9 @@ TMirrorPartitionResyncActor::~TMirrorPartitionResyncActor() = default;
 void TMirrorPartitionResyncActor::Bootstrap(const TActorContext& ctx)
 {
     SetupPartitions(ctx);
-    ScheduleCountersUpdate(ctx);
+    if (!Config->GetUsePullSchemeForVolumeStatistics()) {
+        ScheduleCountersUpdate(ctx);
+    }
     ContinueResyncIfNeeded(ctx);
 
     Become(&TThis::StateWork);
@@ -310,6 +312,14 @@ STFUNC(TMirrorPartitionResyncActor::StateWork)
             TEvVolume::TEvDiskRegistryBasedPartitionCounters,
             HandlePartCounters);
         HFunc(TEvVolume::TEvScrubberCounters, HandleScrubberCounters);
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest,
+            HandleGetDiskRegistryBasedPartCounters);
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvDiskRegistryBasedPartCountersCombined,
+            HandleDiskRegistryBasedPartCountersCombined);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
@@ -357,6 +367,10 @@ STFUNC(TMirrorPartitionResyncActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
         IgnoreFunc(TEvVolume::TEvScrubberCounters);
+        IgnoreFunc(TEvNonreplPartitionPrivate::
+                       TEvGetDiskRegistryBasedPartCountersRequest);
+        IgnoreFunc(TEvNonreplPartitionPrivate::
+                       TEvDiskRegistryBasedPartCountersCombined);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);

@@ -188,12 +188,14 @@ private:
         const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
+        auto* msg = ev->Get();
+
         auto event = std::make_unique<NActors::IEventHandle>(
             MakeStorageStatsServiceId(),
             ev->Sender,
             new TEvStatsService::TEvVolumePartCounters(
                 "",   // diskId
-                std::move(ev->Get()->DiskCounters),
+                std::move(msg->CountersData.DiskCounters),
                 0,
                 0,
                 false,

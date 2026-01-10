@@ -113,6 +113,8 @@ private:
     const size_t MultiAgentWriteRequestSizeThreshold = 0;
     size_t MultiAgentWriteRoundRobinSeed = 0;
 
+    TRequestInfoPtr StatisticRequestInfo;
+
 public:
     TMirrorPartitionActor(
         TStorageConfigPtr config,
@@ -150,6 +152,12 @@ private:
     EWriteRequestType SuggestWriteRequestType(
         const NActors::TActorContext& ctx,
         TBlockRange64 range);
+    TPartNonreplCountersData ExtractPartCounters(
+        const NActors::TActorContext& ctx);
+    void UpdateCounters(
+        const NActors::TActorContext& ctx,
+        const NActors::TActorId& sender,
+        TPartNonreplCountersData partCountersData);
 
 private:
     STFUNC(StateWork);
@@ -226,6 +234,16 @@ private:
 
     void HandlePoisonTaken(
         const NActors::TEvents::TEvPoisonTaken::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetDiskRegistryBasedPartCounters(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDiskRegistryBasedPartCountersCombined(
+        const TEvNonreplPartitionPrivate::
+            TEvDiskRegistryBasedPartCountersCombined::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>
