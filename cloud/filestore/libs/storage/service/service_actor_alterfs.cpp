@@ -584,7 +584,7 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         }
 
         // The shards are resized only if
-        // StrictFileSystemSizeEnforcementEnabled, otherwise the shards doesn't
+        // StrictFileSystemSizeEnforcementEnabled, otherwise the shards don't
         // change their size.
         if (StrictFileSystemSizeEnforcementEnabled) {
             ShardsToDescribe = ExistingShardIds.size();
