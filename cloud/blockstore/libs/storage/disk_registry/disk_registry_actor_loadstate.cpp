@@ -209,6 +209,8 @@ void TDiskRegistryActor::CompleteLoadState(
 
     ScheduleDiskRegistryAgentListExpiredParamsCleanup(ctx);
 
+    ScheduleCompareDiskRegistryStateWithLocalDb(ctx);
+
     if (auto orphanDevices = State->FindOrphanDevices()) {
         LOG_INFO(
             ctx,

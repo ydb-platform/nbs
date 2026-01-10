@@ -1886,3 +1886,16 @@ message TAttachPathsResponse
     // List of attached devices.
     repeated TDeviceConfig AttachedDevices = 2;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// CompareDiskRegistryStateWithLocalDb request/response.
+
+message TCompareDiskRegistryStateWithLocalDbRequest
+{
+}
+
+message TCompareDiskRegistryStateWithLocalDbResponse
+{
+    NCloud.NProto.TError Error = 1;
+    string Differs = 2;
+}

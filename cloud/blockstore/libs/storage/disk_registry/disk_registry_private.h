@@ -766,6 +766,9 @@ struct TEvDiskRegistryPrivate
     struct TDiskRegistryAgentListExpiredParamsCleanup
     {};
 
+    struct TCompareDiskRegistyStateWithLocalDb
+    {};
+
     //
     // Switch to ReadOnly all disks associated with the agent
     //
@@ -801,6 +804,8 @@ struct TEvDiskRegistryPrivate
 
         EvDiskRegistryAgentListExpiredParamsCleanup,
 
+        EvCompareDiskRegistryStateWithLocalDb,
+
         EvEnd
     };
 
@@ -823,6 +828,10 @@ struct TEvDiskRegistryPrivate
     using TEvDiskRegistryAgentListExpiredParamsCleanup = TRequestEvent<
         TDiskRegistryAgentListExpiredParamsCleanup,
         EvDiskRegistryAgentListExpiredParamsCleanup>;
+
+    using TEvCompareDiskRegistryStateWithLocalDb = TRequestEvent<
+        TCompareDiskRegistyStateWithLocalDb,
+        EvCompareDiskRegistryStateWithLocalDb>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
