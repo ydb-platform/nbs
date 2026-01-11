@@ -70,7 +70,9 @@ IRequestGeneratorPtr CreateDataRequestGenerator(
     ILoggingServicePtr logging,
     NClient::ISessionPtr session,
     TString filesystemId,
-    NProto::THeaders headers);
+    NProto::THeaders headers,
+    ui64 maxIoDepth,
+    ui64 regionData);
 
 IRequestGeneratorPtr CreateReplayRequestGeneratorFs(
     NProto::TReplaySpec spec,
