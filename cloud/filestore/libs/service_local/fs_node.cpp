@@ -208,7 +208,7 @@ NProto::TAccessNodeResponse TLocalFileSystem::AccessNode(
 NProto::TListNodesResponse TLocalFileSystem::ListNodes(
     const NProto::TListNodesRequest& request)
 {
-    STORAGE_TRACE("ListNodes " << DumpMessage(request));
+    STORAGE_INFO("ListNodes " << DumpMessage(request));
 
     auto session = GetSession(request);
     auto parent = session->LookupNode(request.GetNodeId());
@@ -262,6 +262,7 @@ NProto::TListNodesResponse TLocalFileSystem::ListNodes(
     }
 
     response.SetCookie(ToString(listRes.DirOffset));
+    STORAGE_INFO("ListNodes RSP: " << DumpMessage(response));
     return response;
 }
 

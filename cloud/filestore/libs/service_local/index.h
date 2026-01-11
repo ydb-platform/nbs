@@ -111,6 +111,7 @@ struct INodeLoader
 {
     virtual ~INodeLoader() = default;
     virtual TIndexNodePtr LoadNode(ui64 nodeId) const = 0;
+    virtual TIndexNodePtr LoadSnapshotsNode() const = 0;
     virtual TString ToString() const = 0;
 };
 
@@ -118,15 +119,22 @@ class TNodeLoader
     : public INodeLoader
 {
 private:
+    using EFileIdType = NLowLevel::TFileId::EFileIdType;
+    using TFileId = NLowLevel::TFileId;
     TFileHandle RootHandle;
     NLowLevel::TFileId RootFileId;
 
 public:
     TNodeLoader(const TIndexNodePtr& rootNode);
 
-    [[nodiscard]] TIndexNodePtr LoadNode(ui64 nodeId) const;
+    [[nodiscard]] TIndexNodePtr LoadNode(ui64 nodeId) const override;
 
-    TString ToString() const;
+    [[nodiscard]] TIndexNodePtr LoadSnapshotsNode() const override;
+
+    TString ToString() const override;
+
+private:
+    EFileIdType GetRootNodeType() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

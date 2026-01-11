@@ -1,5 +1,6 @@
 #include "index.h"
 
+#include <util/stream/format.h>
 #include <util/string/builder.h>
 
 namespace NCloud::NFileStore {
@@ -257,8 +258,23 @@ TIndexNodePtr TNodeLoader::LoadNode(ui64 nodeId) const
         STORAGE_THROW_SERVICE_ERROR(E_FS_NOTSUPP);
     }
 
+    Cerr << "LoadNode nodeId=" << Hex(nodeId) << " ,fileId=" << fileId.ToString() << Endl;
     auto handle =  fileId.Open(RootHandle, O_PATH);
     return std::make_shared<TIndexNode>(nodeId, std::move(handle));
+}
+
+TNodeLoader::EFileIdType TNodeLoader::GetRootNodeType() const
+{
+    return NLowLevel::TFileId::EFileIdType(RootFileId.FileHandle.handle_type);
+}
+
+TIndexNodePtr TNodeLoader::LoadSnapshotsNode() const
+{
+    if (GetRootNodeType() != EFileIdType::Weka) {
+        return nullptr;
+    }
+
+    return LoadNode((0x2 << 16) & RootFileId.WekaInodeId.AntiCollisionId);
 }
 
 TString TNodeLoader::ToString() const

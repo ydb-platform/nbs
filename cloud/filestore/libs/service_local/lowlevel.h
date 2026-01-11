@@ -48,12 +48,9 @@ struct TFileId
         } LustreFid;
         struct Y_PACKED
         {
-            union {
-                ui64 Id;
-                struct {
-                    ui64 InodeId :48;
-                    ui64 AntiCollisionId :16;
-                }
+            struct {
+                ui64 InodeId :48;
+                ui64 AntiCollisionId :16;
             };
             ui32 SnapViewId;
             ui32 FsId;

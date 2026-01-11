@@ -236,6 +236,11 @@ struct NodeLoaderStub
         return nullptr;
     }
 
+    TIndexNodePtr LoadSnapshotsNode() const override
+    {
+        return nullptr;
+    }
+
     TString ToString() const override
     {
         return "NodeLoaderStub";

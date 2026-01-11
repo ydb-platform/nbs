@@ -73,7 +73,7 @@ NProto::TSetNodeAttrResponse TLocalFileSystem::SetNodeAttr(
 NProto::TGetNodeAttrResponse TLocalFileSystem::GetNodeAttr(
     const NProto::TGetNodeAttrRequest& request)
 {
-    STORAGE_TRACE("GetNodeAttr " << DumpMessage(request));
+    STORAGE_INFO("GetNodeAttr " << DumpMessage(request));
 
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());
@@ -105,6 +105,7 @@ NProto::TGetNodeAttrResponse TLocalFileSystem::GetNodeAttr(
     NProto::TGetNodeAttrResponse response;
     ConvertStats(stat, *response.MutableNode());
 
+    STORAGE_INFO("GetNodeAttr RSP: " << DumpMessage(response));
     return response;
 }
 
