@@ -342,18 +342,15 @@ void TNodeMapper::EnsureSnapshotsInodeLoaded()
     SnapshotsInode = 8888;
 }
 
-std::optional<ui64> TNodeMapper::ResolveSpecialChild(ui64 parentId, const TString& name)
+TIndexNodePtr TNodeMapper::ResolveSpecialChild(
+    ui64 parentNodeId,
+    const TString& name)
 {
-    if (!IsSnapshotsName(parentId, name)) {
-        return std::nullopt;
+    if (parentNodeId == RootNodeId && name == ".snapshots") {
+        return SnapshotsNode;
     }
 
-    EnsureSnapshotsInodeLoaded();
-    if (!SnapshotsInode.has_value()) {
-        return std::nullopt;
-    }
-
-    return *SnapshotsInode;
+    return nullptr;
 }
 
 bool TNodeMapper::IsSpecialDir(ui64 inode)

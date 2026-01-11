@@ -83,7 +83,13 @@ NProto::TGetNodeAttrResponse TLocalFileSystem::GetNodeAttr(
 
     NLowLevel::TFileStatEx stat;
     if (const auto& name = request.GetName()) {
-        stat = node->Stat(name);
+        auto specialNode =
+            session->ResolveSpecialChild(node->GetNodeId(), name);
+        if (specialNode) {
+            stat = specialNode->Stat();
+        } else {
+            stat = node->Stat(name);
+        }
         if (!session->LookupNode(stat.INode)) {
             auto child = TIndexNode::Create(*node, name);
             // TODO: better? race between statting one child and creating another one

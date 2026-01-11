@@ -232,6 +232,11 @@ public:
         return Index.LookupNode(nodeId);
     }
 
+    TIndexNodePtr ResolveSpecialChild(ui64 parentNodeId, const TString& name)
+    {
+        return Index.ResolveSpecialChild(parentNodeId, name);
+    }
+
     [[nodiscard]] bool TryInsertNode(
         TIndexNodePtr node,
         ui64 parentNodeId,

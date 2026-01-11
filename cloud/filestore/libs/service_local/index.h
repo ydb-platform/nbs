@@ -151,7 +151,7 @@ public:
 
     explicit TNodeMapper(std::shared_ptr<INodeLoader> loader);
 
-    std::optional<ui64> ResolveSpecialChild(ui64 parentId, const TString& name);
+    TIndexNodePtr ResolveSpecialChild(ui64 parentNodeId, const TString& name);
     bool IsSpecialDir(ui64 inode);
 
     std::optional<NLowLevel::TFileStatEx> RemapListedEntry(
@@ -271,6 +271,15 @@ public:
         }
 
         return node;
+    }
+
+    TIndexNodePtr ResolveSpecialChild(ui64 parentNodeId, const TString& name)
+    {
+        if (!NodeMapper) {
+            return nullptr;
+        }
+
+        return NodeMapper->ResolveSpecialChild(parentNodeId, name);
     }
 
     [[nodiscard]] bool
