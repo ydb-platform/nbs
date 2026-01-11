@@ -33,6 +33,9 @@ using ICompactionPolicyPtr = std::shared_ptr<ICompactionPolicy>;
 struct TManuallyPreemptedVolumes;
 using TManuallyPreemptedVolumesPtr = std::shared_ptr<TManuallyPreemptedVolumes>;
 
+class TPartitionBudgetManager;
+using TPartitionBudgetManagerPtr = std::shared_ptr<TPartitionBudgetManager>;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 enum class EStorageAccessMode

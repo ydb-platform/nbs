@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/notify/iface/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/root_kms/iface/public.h>
+#include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/ydbstats/public.h>
 
 #include <cloud/storage/core/config/grpc_client.pb.h>
@@ -111,6 +112,7 @@ private:
     IRootKmsClientPtr RootKmsClient;
     ITraceServiceClientPtr TraceServiceClient;
     std::function<void(TLog& log)> SpdkLogInitializer;
+    NStorage::TPartitionBudgetManagerPtr PartitionBudgetManager;
 
 public:
     TBootstrapYdb(

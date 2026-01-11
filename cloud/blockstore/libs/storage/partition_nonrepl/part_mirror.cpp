@@ -18,6 +18,7 @@ IActorPtr CreateMirrorPartition(
     TMigrations migrations,
     TVector<TDevices> replicas,
     NRdma::IClientPtr rdmaClient,
+    TPartitionBudgetManagerPtr partitionBudgetManager,
     NActors::TActorId volumeActorId,
     NActors::TActorId statActorId,
     NActors::TActorId resyncActorId)
@@ -32,6 +33,7 @@ IActorPtr CreateMirrorPartition(
         std::move(migrations),
         std::move(replicas),
         std::move(rdmaClient),
+        std::move(partitionBudgetManager),
         volumeActorId,
         statActorId,
         resyncActorId);

@@ -1,9 +1,8 @@
 #include "test_env.h"
 
-#include "test_runtime.h"
-
 #include "disk_registry_proxy_mock.h"
 #include "root_kms_key_provider_mock.h"
+#include "test_runtime.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -22,6 +21,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
+#include <cloud/blockstore/libs/storage/core/partition_budget_manager.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/service/service.h>
 #include <cloud/blockstore/libs/storage/ss_proxy/ss_proxy.h>
@@ -234,7 +234,11 @@ ui32 TTestEnv::CreateBlockStoreNode(
 
     auto subDomainPath = "/local/" + name;
 
-    auto factory = [=, this] (const TActorId& owner, TTabletStorageInfo* storage) {
+    auto partitionBudgetManager =
+        std::make_shared<TPartitionBudgetManager>(storageConfig);
+
+    auto factory = [=, this](const TActorId& owner, TTabletStorageInfo* storage)
+    {
         UNIT_ASSERT_EQUAL(storage->TabletType, TTabletTypes::BlockStoreVolume);
         auto actor = CreateVolumeTablet(
             owner,
@@ -245,6 +249,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
             CreateBlockDigestGeneratorStub(),
             TraceSerializer,
             nullptr,   // RdmaClient
+            partitionBudgetManager,
             NServer::CreateEndpointEventProxy(),
             EVolumeStartMode::ONLINE,
             {}   // diskId
@@ -380,6 +385,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
         TraceSerializer,
         NServer::CreateEndpointEventProxy(),
         nullptr,   // rdmaClient
+        partitionBudgetManager,
         CreateVolumeStatsStub(),
         std::move(manuallyPreemptedVolumes),
         CreateRootKmsKeyProviderMock(),

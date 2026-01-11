@@ -53,6 +53,7 @@ private:
     const ITraceSerializerPtr TraceSerializer;
     const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const NRdma::IClientPtr RdmaClient;
+    const TPartitionBudgetManagerPtr PartitionBudgetManager;
     const std::shared_ptr<NKikimr::TTabletCountersBase> Counters;
     const TSharedServiceCountersPtr SharedCounters;
     const TString InitialClientId;
@@ -93,6 +94,7 @@ public:
         ITraceSerializerPtr traceSerializer,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         NRdma::IClientPtr rdmaClient,
+        TPartitionBudgetManagerPtr partitionBudgetManager,
         std::shared_ptr<NKikimr::TTabletCountersBase> counters,
         TSharedServiceCountersPtr sharedCounters,
         TString clientId,
@@ -105,6 +107,7 @@ public:
         , TraceSerializer(std::move(traceSerializer))
         , EndpointEventHandler(std::move(endpointEventHandler))
         , RdmaClient(std::move(rdmaClient))
+        , PartitionBudgetManager(std::move(partitionBudgetManager))
         , Counters(std::move(counters))
         , SharedCounters(std::move(sharedCounters))
         , InitialClientId(std::move(clientId))

@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/partition_budget_manager.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
@@ -243,6 +244,7 @@ struct TTestEnv
             Migrations,
             Replicas,
             RdmaClient,
+            std::make_shared<TPartitionBudgetManager>(Config),
             VolumeActorId,
             VolumeActorId,
             TActorId()   // resyncActorId

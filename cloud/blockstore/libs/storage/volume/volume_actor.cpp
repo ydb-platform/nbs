@@ -67,6 +67,7 @@ TVolumeActor::TVolumeActor(
     IBlockDigestGeneratorPtr blockDigestGenerator,
     ITraceSerializerPtr traceSerializer,
     NRdma::IClientPtr rdmaClient,
+    TPartitionBudgetManagerPtr partitionBudgetManager,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
     EVolumeStartMode startMode,
     TString diskId)
@@ -79,6 +80,7 @@ TVolumeActor::TVolumeActor(
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , TraceSerializer(std::move(traceSerializer))
     , RdmaClient(std::move(rdmaClient))
+    , PartitionBudgetManager(std::move(partitionBudgetManager))
     , EndpointEventHandler(std::move(endpointEventHandler))
     , StartMode(startMode)
     , LogTitle(

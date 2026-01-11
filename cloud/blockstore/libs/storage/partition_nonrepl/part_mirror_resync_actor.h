@@ -43,6 +43,8 @@ private:
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    NRdma::IClientPtr RdmaClient;
+    const TPartitionBudgetManagerPtr PartitionBudgetManager;
     const NProto::EResyncPolicy ResyncPolicy;
     const bool CritOnChecksumMismatch;
     const NActors::TActorId VolumeActorId;
@@ -50,7 +52,6 @@ private:
     TNonreplicatedPartitionConfigPtr PartConfig;
     TMigrations Migrations;
     TVector<TDevices> ReplicaDevices;
-    NRdma::IClientPtr RdmaClient;
     NActors::TActorId StatActorId;
 
     TMirrorPartitionResyncState State;
@@ -104,6 +105,7 @@ public:
         TMigrations migrations,
         TVector<TDevices> replicaDevices,
         NRdma::IClientPtr rdmaClient,
+        TPartitionBudgetManagerPtr partitionBudgetManager,
         NActors::TActorId volumeActorId,
         NActors::TActorId statActorId,
         ui64 initialResyncIndex,

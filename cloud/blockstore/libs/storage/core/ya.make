@@ -20,6 +20,7 @@ SRCS(
     monitoring_utils.cpp
     mount_token.cpp
     pending_request.cpp
+    partition_budget_manager.cpp
     probes.cpp
     proto_helpers.cpp
     request_buffer.cpp

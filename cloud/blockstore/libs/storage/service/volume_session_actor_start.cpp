@@ -52,6 +52,7 @@ private:
     const ITraceSerializerPtr TraceSerializer;
     const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const NRdma::IClientPtr RdmaClient;
+    const TPartitionBudgetManagerPtr PartitionBudgetManager;
     const TString DiskId;
     const ui64 VolumeTabletId;
 
@@ -93,6 +94,7 @@ public:
         ITraceSerializerPtr traceSerializer,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         NRdma::IClientPtr rdmaClient,
+        TPartitionBudgetManagerPtr partitionBudgetManager,
         TString diskId,
         ui64 volumeTabletId = 0);
 
@@ -187,6 +189,7 @@ TStartVolumeActor::TStartVolumeActor(
         ITraceSerializerPtr traceSerializer,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         NRdma::IClientPtr rdmaClient,
+        TPartitionBudgetManagerPtr partitionBudgetManager,
         TString diskId,
         ui64 volumeTabletId)
     : SessionActorId(sessionActorId)
@@ -197,6 +200,7 @@ TStartVolumeActor::TStartVolumeActor(
     , TraceSerializer(std::move(traceSerializer))
     , EndpointEventHandler(std::move(endpointEventHandler))
     , RdmaClient(std::move(rdmaClient))
+    , PartitionBudgetManager(std::move(partitionBudgetManager))
     , DiskId(std::move(diskId))
     , VolumeTabletId(volumeTabletId)
 {}
@@ -587,6 +591,7 @@ void TStartVolumeActor::StartTablet(const TActorContext& ctx)
     auto traceSerializer = TraceSerializer;
     auto endpointEventHandler = EndpointEventHandler;
     auto rdmaClient = RdmaClient;
+    auto partitionBudgetManager = PartitionBudgetManager;
 
     auto factory =
         [config,
@@ -596,6 +601,7 @@ void TStartVolumeActor::StartTablet(const TActorContext& ctx)
          traceSerializer,
          rdmaClient,
          endpointEventHandler,
+         partitionBudgetManager,
          diskId = DiskId](const TActorId& owner, TTabletStorageInfo* storage)
     {
         Y_ABORT_UNLESS(storage->TabletType == TTabletTypes::BlockStoreVolume);
@@ -609,6 +615,7 @@ void TStartVolumeActor::StartTablet(const TActorContext& ctx)
             blockDigestGenerator,
             traceSerializer,
             rdmaClient,
+            partitionBudgetManager,
             endpointEventHandler,
             EVolumeStartMode::MOUNTED,
             diskId);
@@ -1114,6 +1121,7 @@ void TVolumeSessionActor::HandleStartVolumeRequest(
             TraceSerializer,
             EndpointEventHandler,
             RdmaClient,
+            PartitionBudgetManager,
             diskId,
             TabletId);
         return;
