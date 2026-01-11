@@ -776,8 +776,10 @@ TString TFileId::ToString() const
             << ")";
         break;
     case EFileIdType::Weka:
-        out << ", Weka(InodeId=" << Hex(WekaInodeId.InodeId)
+        out << ", Weka(InodeContext=" << Hex(WekaInodeId.InodeContext)
+            << ", InodeId=" << Hex(WekaInodeId.InodeId)
             << ", AntiCollisionId=" << Hex(WekaInodeId.AntiCollisionId)
+            << ", InodeSupplemental=" << Hex(WekaInodeId.InodeSupplemental)
             << ", SnapViewId=" << Hex(WekaInodeId.SnapViewId)
             << ", FsId=" << Hex(WekaInodeId.FsId)
             << ", ParentContext=" << Hex(WekaInodeId.ParentContext)

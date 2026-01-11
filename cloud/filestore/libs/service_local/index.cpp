@@ -274,12 +274,126 @@ TIndexNodePtr TNodeLoader::LoadSnapshotsNode() const
         return nullptr;
     }
 
-    return LoadNode((0x2 << 16) & RootFileId.WekaInodeId.AntiCollisionId);
+    NLowLevel::TFileId snapshotFileId(RootFileId);
+    snapshotFileId.WekaInodeId.InodeId = 0x2;
+    return LoadNode(snapshotFileId.WekaInodeId.InodeContext);
 }
 
 TString TNodeLoader::ToString() const
 {
     return TStringBuilder() << "NodeLoader(" << RootFileId.ToString() << ")";
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TNodeMapper::TNodeMapper(std::shared_ptr<INodeLoader> loader)
+    : Loader(loader)
+{
+    if (!Loader) {
+        STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT) << "Uninitialized NodeLoader";
+    }
+
+    SnapshotsNode = std::move(Loader->LoadSnapshotsNode());
+    if (!SnapshotsNode) {
+        STORAGE_THROW_SERVICE_ERROR(E_NOT_FOUND)
+            << "Snapshots directory not found";
+    }
+}
+
+TString TNodeMapper::ToString() const
+{
+    return TStringBuilder() << "NodeMapper(SnapshotsNodeId=0x"
+                            << Hex(SnapshotsNode->GetNodeId()) << ")";
+}
+
+std::shared_ptr<INodeLoader> TNodeMapper::GetLoader() const
+{
+    return Loader ? Loader : nullptr;
+}
+
+bool TNodeMapper::IsSnapshotsName(ui64 parentId, const TString& name) const
+{
+    return parentId == RootNodeId && name == ".snapshots";
+}
+
+void TNodeMapper::EnsureSnapshotsInodeLoaded()
+{
+    if (SnapshotsInode.has_value()) {
+        return;
+    }
+
+    auto loader = GetLoader();
+    if (!loader) {
+        return;
+    }
+
+    auto root = loader->LoadNode(RootNodeId);
+    if (!root) {
+        return;
+    }
+
+    try {
+        auto stat = root->Stat(".snapshots");
+        SnapshotsInode = stat.INode;
+        return;
+    } catch (...) {
+    }
+
+    SnapshotsInode = 8888;
+}
+
+std::optional<ui64> TNodeMapper::ResolveSpecialChild(ui64 parentId, const TString& name)
+{
+    if (!IsSnapshotsName(parentId, name)) {
+        return std::nullopt;
+    }
+
+    EnsureSnapshotsInodeLoaded();
+    if (!SnapshotsInode.has_value()) {
+        return std::nullopt;
+    }
+
+    return *SnapshotsInode;
+}
+
+bool TNodeMapper::IsSpecialDir(ui64 inode)
+{
+    EnsureSnapshotsInodeLoaded();
+    return SnapshotsInode.has_value() && inode == *SnapshotsInode;
+}
+
+std::optional<NLowLevel::TFileStatEx> TNodeMapper::RemapListedEntry(
+    ui64 parentId,
+    const TString& entryName,
+    const NLowLevel::TFileStatEx& entryStat,
+    const TEntryPredicate& predicate)
+{
+    Y_UNUSED(entryName);
+
+    if (!IsSpecialDir(parentId)) {
+        return std::nullopt;
+    }
+
+    auto loader = GetLoader();
+    if (!loader) {
+        return std::nullopt;
+    }
+
+    auto node = loader->LoadNode(entryStat.INode);
+    if (!node) {
+        return std::nullopt;
+    }
+
+    const auto list = node->List(true);
+    for (const auto& [childName, childStat]: list) {
+        if (predicate(childName)) {
+            auto remapped = entryStat;
+            remapped.INode = childStat.INode;
+            return remapped;
+        }
+    }
+
+    return std::nullopt;
 }
 
 }   // namespace NCloud::NFileStore

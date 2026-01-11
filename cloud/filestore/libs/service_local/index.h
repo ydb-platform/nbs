@@ -139,6 +139,36 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TNodeMapper
+{
+private:
+    std::shared_ptr<INodeLoader> Loader = nullptr;
+    std::optional<ui64> SnapshotsInode;
+    TIndexNodePtr SnapshotsNode;
+
+public:
+    using TEntryPredicate = std::function<bool(const TString&)>;
+
+    explicit TNodeMapper(std::shared_ptr<INodeLoader> loader);
+
+    std::optional<ui64> ResolveSpecialChild(ui64 parentId, const TString& name);
+    bool IsSpecialDir(ui64 inode);
+
+    std::optional<NLowLevel::TFileStatEx> RemapListedEntry(
+        ui64 parentId,
+        const TString& entryName,
+        const NLowLevel::TFileStatEx& entryStat,
+        const TEntryPredicate& predicate);
+    TString ToString() const;
+
+private:
+    std::shared_ptr<INodeLoader> GetLoader() const;
+    bool IsSnapshotsName(ui64 parentId, const TString& name) const;
+    void EnsureSnapshotsInodeLoaded();
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TLocalIndex
 {
 private:
@@ -184,6 +214,7 @@ private:
     TRWMutex NodesLock;
     TLog Log;
     std::shared_ptr<INodeLoader> NodeLoader;
+    std::shared_ptr<TNodeMapper> NodeMapper;
     TIntrusiveList<TIndexNode> NodeInsertOrderList;
     bool ShouldCleanupNodes = false;
 
@@ -203,6 +234,7 @@ public:
         , NodeCleanupBatchSize(nodeCleanupBatchSize)
         , Log(std::move(log))
         , NodeLoader(std::move(nodeLoader))
+        , NodeMapper(nullptr)
     {
         Init();
     }
@@ -324,6 +356,20 @@ private:
             } catch (...) {
                 STORAGE_ERROR(
                     "Failed to initialize NodeLoader" <<
+                    ", Exception=" << CurrentExceptionMessage());
+            }
+
+            try {
+                if (NodeLoader) {
+                    NodeMapper = std::make_unique<TNodeMapper>(NodeLoader);
+                }
+
+                STORAGE_INFO(
+                    "Inititialize NodeMapper, NodeMapper="
+                    << NodeMapper->ToString());
+            } catch (...) {
+                STORAGE_ERROR(
+                    "Failed to initialize NodeMapper" <<
                     ", Exception=" << CurrentExceptionMessage());
             }
         }
