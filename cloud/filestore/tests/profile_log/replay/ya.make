@@ -2,7 +2,11 @@ RECURSE_FOR_TESTS(data)
 
 PY3TEST()
 
-INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
+IF (SANITIZER_TYPE OR WITH_VALGRIND)
+    INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/large.inc)
+ELSE()
+    INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
+ENDIF()
 
 DEPENDS(
     cloud/filestore/tools/testing/loadtest/bin
