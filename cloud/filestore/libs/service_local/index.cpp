@@ -234,7 +234,9 @@ TIndexNodePtr TNodeLoader::LoadNode(ui64 nodeId) const
         fileId.LustreFid.Seq = (nodeId >> 24) & 0xffffffffff;
         break;
     case NLowLevel::TFileId::EFileIdType::Weka:
-        fileId.WekaInodeId.Id = nodeId;
+        fileId.WekaInodeId.InodeId = nodeId >> 16;
+        fileId.WekaInodeId.AntiCollisionId = nodeId & 0xffff;
+        fileId.WekaInodeId.SnapViewId = fileId.WekaInodeId.AntiCollisionId;
         break;
     case NLowLevel::TFileId::EFileIdType::VastNfs:
         fileId.VastNfsInodeId.IdHigh32 = (nodeId >> 32) & 0xffffffff;
