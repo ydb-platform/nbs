@@ -237,6 +237,14 @@ public:
         return Index.ResolveSpecialChild(parentNodeId, name);
     }
 
+    bool RemapListedEntry(
+        ui64 parentNodeId,
+        const TString& name,
+        NLowLevel::TFileStatEx& stat)
+    {
+        return Index.RemapListedEntry(parentNodeId, name, stat);
+    }
+
     [[nodiscard]] bool TryInsertNode(
         TIndexNodePtr node,
         ui64 parentNodeId,

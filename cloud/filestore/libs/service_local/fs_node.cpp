@@ -236,6 +236,13 @@ NProto::TListNodesResponse TLocalFileSystem::ListNodes(
     response.MutableNodes()->Reserve(entries.size());
 
     for (auto& entry: entries) {
+        if (!session->RemapListedEntry(
+                parent->GetNodeId(),
+                entry.first,
+                entry.second))
+        {
+            continue;
+        }
         // If we can open node by handle there is no need to cache nodes when
         // listing. Instead we will resolve the node during the actual usage
         // getattr/read/write. This optimization will help us to avoid

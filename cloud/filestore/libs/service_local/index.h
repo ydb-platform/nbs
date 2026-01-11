@@ -112,6 +112,7 @@ struct INodeLoader
     virtual ~INodeLoader() = default;
     virtual TIndexNodePtr LoadNode(ui64 nodeId) const = 0;
     virtual TIndexNodePtr LoadSnapshotsNode() const = 0;
+    virtual TIndexNodePtr LoadSnapshotsNode(ui64 nodeId) const = 0;
     virtual TString ToString() const = 0;
 };
 
@@ -131,6 +132,8 @@ public:
 
     [[nodiscard]] TIndexNodePtr LoadSnapshotsNode() const override;
 
+    [[nodiscard]] TIndexNodePtr LoadSnapshotsNode(ui64 nodeId) const override;
+
     TString ToString() const override;
 
 private:
@@ -143,28 +146,17 @@ class TNodeMapper
 {
 private:
     std::shared_ptr<INodeLoader> Loader = nullptr;
-    std::optional<ui64> SnapshotsInode;
-    TIndexNodePtr SnapshotsNode;
+    TIndexNodePtr SnapshotsNode = nullptr;
 
 public:
-    using TEntryPredicate = std::function<bool(const TString&)>;
-
     explicit TNodeMapper(std::shared_ptr<INodeLoader> loader);
 
     TIndexNodePtr ResolveSpecialChild(ui64 parentNodeId, const TString& name);
-    bool IsSpecialDir(ui64 inode);
-
-    std::optional<NLowLevel::TFileStatEx> RemapListedEntry(
-        ui64 parentId,
-        const TString& entryName,
-        const NLowLevel::TFileStatEx& entryStat,
-        const TEntryPredicate& predicate);
+    bool RemapListedEntry(
+        ui64 parentNodeId,
+        const TString& name,
+        NLowLevel::TFileStatEx& stat);
     TString ToString() const;
-
-private:
-    std::shared_ptr<INodeLoader> GetLoader() const;
-    bool IsSnapshotsName(ui64 parentId, const TString& name) const;
-    void EnsureSnapshotsInodeLoaded();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -280,6 +272,18 @@ public:
         }
 
         return NodeMapper->ResolveSpecialChild(parentNodeId, name);
+    }
+
+    bool RemapListedEntry(
+        ui64 parentNodeId,
+        const TString& name,
+        NLowLevel::TFileStatEx& stat)
+    {
+        if (!NodeMapper) {
+            return true;
+        }
+
+        return NodeMapper->RemapListedEntry(parentNodeId, name, stat);
     }
 
     [[nodiscard]] bool

@@ -279,6 +279,18 @@ TIndexNodePtr TNodeLoader::LoadSnapshotsNode() const
     return LoadNode(snapshotFileId.WekaInodeId.InodeContext);
 }
 
+TIndexNodePtr TNodeLoader::LoadSnapshotsNode(ui64 nodeId) const
+{
+    if (GetRootNodeType() != EFileIdType::Weka) {
+        return nullptr;
+    }
+
+    NLowLevel::TFileId snapshotFileId(RootFileId);
+    snapshotFileId.WekaInodeId.AntiCollisionId = nodeId & 0xff;
+    snapshotFileId.WekaInodeId.SnapViewId = nodeId & 0xff;
+    return LoadNode(snapshotFileId.WekaInodeId.InodeContext);
+}
+
 TString TNodeLoader::ToString() const
 {
     return TStringBuilder() << "NodeLoader(" << RootFileId.ToString() << ")";
@@ -306,42 +318,6 @@ TString TNodeMapper::ToString() const
                             << Hex(SnapshotsNode->GetNodeId()) << ")";
 }
 
-std::shared_ptr<INodeLoader> TNodeMapper::GetLoader() const
-{
-    return Loader ? Loader : nullptr;
-}
-
-bool TNodeMapper::IsSnapshotsName(ui64 parentId, const TString& name) const
-{
-    return parentId == RootNodeId && name == ".snapshots";
-}
-
-void TNodeMapper::EnsureSnapshotsInodeLoaded()
-{
-    if (SnapshotsInode.has_value()) {
-        return;
-    }
-
-    auto loader = GetLoader();
-    if (!loader) {
-        return;
-    }
-
-    auto root = loader->LoadNode(RootNodeId);
-    if (!root) {
-        return;
-    }
-
-    try {
-        auto stat = root->Stat(".snapshots");
-        SnapshotsInode = stat.INode;
-        return;
-    } catch (...) {
-    }
-
-    SnapshotsInode = 8888;
-}
-
 TIndexNodePtr TNodeMapper::ResolveSpecialChild(
     ui64 parentNodeId,
     const TString& name)
@@ -350,47 +326,35 @@ TIndexNodePtr TNodeMapper::ResolveSpecialChild(
         return SnapshotsNode;
     }
 
-    return nullptr;
-}
-
-bool TNodeMapper::IsSpecialDir(ui64 inode)
-{
-    EnsureSnapshotsInodeLoaded();
-    return SnapshotsInode.has_value() && inode == *SnapshotsInode;
-}
-
-std::optional<NLowLevel::TFileStatEx> TNodeMapper::RemapListedEntry(
-    ui64 parentId,
-    const TString& entryName,
-    const NLowLevel::TFileStatEx& entryStat,
-    const TEntryPredicate& predicate)
-{
-    Y_UNUSED(entryName);
-
-    if (!IsSpecialDir(parentId)) {
-        return std::nullopt;
-    }
-
-    auto loader = GetLoader();
-    if (!loader) {
-        return std::nullopt;
-    }
-
-    auto node = loader->LoadNode(entryStat.INode);
-    if (!node) {
-        return std::nullopt;
-    }
-
-    const auto list = node->List(true);
-    for (const auto& [childName, childStat]: list) {
-        if (predicate(childName)) {
-            auto remapped = entryStat;
-            remapped.INode = childStat.INode;
-            return remapped;
+    if (parentNodeId == SnapshotsNode->GetNodeId()) {
+        try {
+            auto stat = SnapshotsNode->Stat(name);
+            return Loader->LoadSnapshotsNode(stat.INode);
+        } catch (...) {
         }
     }
 
-    return std::nullopt;
+    return nullptr;
+}
+
+bool TNodeMapper::RemapListedEntry(
+    ui64 parentNodeId,
+    const TString& name,
+    NLowLevel::TFileStatEx& stat)
+{
+    Y_UNUSED(name);
+    if (parentNodeId != SnapshotsNode->GetNodeId()) {
+        return true;
+    }
+
+    try {
+        auto node = Loader->LoadSnapshotsNode(stat.INode);
+        stat = node->Stat();
+        return true;
+    } catch (...) {
+    }
+
+    return false;
 }
 
 }   // namespace NCloud::NFileStore
