@@ -206,6 +206,14 @@ message TLocalServiceConfig
 
     // Enable zero-copy for read operations in the VFS FUSE layer
     optional bool ZeroCopyReadEnabled = 37;
+
+    // Propagate .snapshots dir from backend file system (currently supported
+    // only on weka)
+    optional bool SnapshotsDirEnabled = 38;
+
+    // Refresh .snapshots entries every SnapshotsDirRefreshInterval ms.
+    optional uint32 SnapshotsDirRefreshInterval = 39;
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////

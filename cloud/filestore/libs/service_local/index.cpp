@@ -1,5 +1,6 @@
 #include "index.h"
 
+#include <util/stream/format.h>
 #include <util/string/builder.h>
 
 namespace NCloud::NFileStore {
@@ -209,34 +210,66 @@ void TIndexNode::RemoveXAttr(const TString& name)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TNodeLoader::TNodeLoader(const TIndexNodePtr& rootNode)
-    : RootHandle(rootNode->OpenHandle(O_RDONLY))
-    , RootFileId(RootHandle)
+class TNodeLoader: public INodeLoader
 {
-    switch (NLowLevel::TFileId::EFileIdType(RootFileId.FileHandle.handle_type)) {
-    case NLowLevel::TFileId::EFileIdType::Lustre:
-    case NLowLevel::TFileId::EFileIdType::Weka:
-    case NLowLevel::TFileId::EFileIdType::VastNfs:
-        break;
-    default:
-        STORAGE_THROW_SERVICE_ERROR(E_FS_NOTSUPP)
-            << "Not supported hande type, RootFileId=" << RootFileId.ToString();
+protected:
+    using EFileIdType = NLowLevel::TFileId::EFileIdType;
+    using TFileId = NLowLevel::TFileId;
+    TFileHandle RootHandle;
+    TFileId RootFileId;
+
+public:
+    TNodeLoader(TFileHandle&& rootHandle, TFileId&& rootFileId)
+        : RootHandle(std::move(rootHandle))
+        , RootFileId(std::move(rootFileId))
+    {}
+
+    TString ToString() const override
+    {
+        return TStringBuilder()
+               << "NodeLoader(" << RootFileId.ToString() << ")";
     }
-}
 
-TIndexNodePtr TNodeLoader::LoadNode(ui64 nodeId) const
+    TIndexNodePtr LoadSnapshotsDirNode() override
+    {
+        return nullptr;
+    }
+
+    TIndexNodePtr LoadSnapshotDirNode(ui64 snapshotDirNodeId) override
+    {
+        Y_UNUSED(snapshotDirNodeId);
+        return nullptr;
+    }
+};
+
+class TLustreNodeLoader: public TNodeLoader
 {
-    NLowLevel::TFileId fileId(RootFileId);
+public:
+    TLustreNodeLoader(TFileHandle&& rootHandle, TFileId&& rootFileId)
+        : TNodeLoader(std::move(rootHandle), std::move(rootFileId))
+    {}
 
-    switch (NLowLevel::TFileId::EFileIdType(fileId.FileHandle.handle_type)) {
-    case NLowLevel::TFileId::EFileIdType::Lustre:
+    TIndexNodePtr LoadNode(ui64 nodeId) const override
+    {
+        NLowLevel::TFileId fileId(RootFileId);
         fileId.LustreFid.Oid = nodeId & 0xffffff;
         fileId.LustreFid.Seq = (nodeId >> 24) & 0xffffffffff;
-        break;
-    case NLowLevel::TFileId::EFileIdType::Weka:
-        fileId.WekaInodeId.Id = nodeId;
-        break;
-    case NLowLevel::TFileId::EFileIdType::VastNfs:
+
+        auto handle = fileId.Open(RootHandle, O_PATH);
+        return std::make_shared<TIndexNode>(nodeId, std::move(handle));
+    }
+};
+
+class TVastNfsNodeLoader: public TNodeLoader
+{
+public:
+    TVastNfsNodeLoader(TFileHandle&& rootHandle, TFileId&& rootFileId)
+        : TNodeLoader(std::move(rootHandle), std::move(rootFileId))
+    {}
+
+    TIndexNodePtr LoadNode(ui64 nodeId) const override
+    {
+        NLowLevel::TFileId fileId(RootFileId);
         fileId.VastNfsInodeId.IdHigh32 = (nodeId >> 32) & 0xffffffff;
         fileId.VastNfsInodeId.IdLow32 = nodeId & 0xffffffff;
         fileId.VastNfsInodeId.ServerId = nodeId;
@@ -250,18 +283,272 @@ TIndexNodePtr TNodeLoader::LoadNode(ui64 nodeId) const
         // there
         // https://github.com/torvalds/linux/blob/dd83757f6e686a2188997cb58b5975f744bb7786/fs/nfs/export.c#L98
         fileId.VastNfsInodeId.FileType = S_IFREG;
-        break;
-    default:
-        STORAGE_THROW_SERVICE_ERROR(E_FS_NOTSUPP);
+
+        auto handle = fileId.Open(RootHandle, O_PATH);
+        return std::make_shared<TIndexNode>(nodeId, std::move(handle));
+    }
+};
+
+class TWekaNodeLoader: public TNodeLoader
+{
+private:
+    TIndexNodePtr SnapshotsDirNode;
+    const TDuration SnapshotsDirRefreshInterval;
+    ui64 LastSnapshotsDirRefreshCycles = 0;
+    TMap<ui16, ui32> AntiCollisionToSnapViewMap;
+
+public:
+    TWekaNodeLoader(
+        TFileHandle&& rootHandle,
+        TFileId&& rootFileId,
+        const TDuration& snapshotsDirRefreshInterval)
+        : TNodeLoader(std::move(rootHandle), std::move(rootFileId))
+        , SnapshotsDirRefreshInterval(snapshotsDirRefreshInterval)
+    {}
+
+    TIndexNodePtr LoadNode(ui64 nodeId) const override
+    {
+        NLowLevel::TFileId fileId(RootFileId);
+        fileId.WekaInodeId.InodeId = nodeId >> 16;
+        fileId.WekaInodeId.AntiCollisionId = nodeId & 0xffff;
+        auto snapViewId = GetSnapViewId(fileId.WekaInodeId.AntiCollisionId);
+        if (!snapViewId) {
+            return nullptr;
+        }
+        fileId.WekaInodeId.SnapViewId = *snapViewId;
+
+        try {
+            auto handle = fileId.Open(RootHandle, O_PATH);
+            return std::make_shared<TIndexNode>(nodeId, std::move(handle));
+        } catch (...) {
+        }
+
+        return nullptr;
     }
 
-    auto handle =  fileId.Open(RootHandle, O_PATH);
-    return std::make_shared<TIndexNode>(nodeId, std::move(handle));
-}
+    TIndexNodePtr LoadSnapshotsDirNode() override
+    {
+        // We need a handle to the snapshots dir which resides at the root
+        // of weka file system. The mount root (fsdir) is also resides at this
+        // level.
+        // Example:
+        //   root:                  /mnt/weka/wekadir/fsdir
+        //   snapshots dir:         /mnt/weka/wekadir/.snapshots
+        //
+        // This is a special directory with InodeId == 0x2
+        if (!SnapshotsDirNode) {
+            NLowLevel::TFileId snapshotFileId(RootFileId);
+            snapshotFileId.WekaInodeId.InodeId = 0x2;
+            SnapshotsDirNode =
+                std::move(LoadNode(snapshotFileId.WekaInodeId.InodeContext));
 
-TString TNodeLoader::ToString() const
+            RefreshAntiCollisionToSnapViewMap();
+        }
+
+        return SnapshotsDirNode;
+    }
+
+    TIndexNodePtr LoadSnapshotDirNode(ui64 snapshotDirNodeId) override
+    {
+        RefreshAntiCollisionToSnapViewMap();
+
+        // We need a handle to the snapshot view of the mount root.
+        // Example:
+        //   root:                  /mnt/weka/wekadir/fsdir
+        //   snapshots dir:         /mnt/weka/wekadir/.snapshots
+        //   snapshot dir:          /mnt/weka/wekadir/.snapshots/snap1
+        //   snapshot view of root: /mnt/weka/wekadir/.snapshots/snap1/fsdir
+        // We are given the inode (snapshotRootNodeId) for the snapshot dir:
+        //   /mnt/weka/wekadir/.snapshots/snap1
+        // We can build a handle to the snapshot view of the mount root by
+        // taking a handle for the mount root inode, but replace its
+        // AntiCollisionId and SnapViewId with those from the snapshot inode
+        // so the handle resolves to the snapshot view of fsdir.
+
+        // Copy InodeId and FsId from RootFileId
+        NLowLevel::TFileId snapshotFileId(RootFileId);
+
+        // Use AntiCollisionId from the snapshot dir inode
+        snapshotFileId.WekaInodeId.AntiCollisionId =
+            snapshotDirNodeId & 0xffff;
+
+        auto snapViewId =
+            GetSnapViewId(snapshotFileId.WekaInodeId.AntiCollisionId);
+        if (!snapViewId) {
+            return nullptr;
+        }
+        snapshotFileId.WekaInodeId.SnapViewId = *snapViewId;
+
+        return LoadNode(snapshotFileId.WekaInodeId.InodeContext);
+    }
+
+private:
+    std::optional<ui32> GetSnapViewId(ui16 antiCollisionId) const
+    {
+        if (antiCollisionId == RootFileId.WekaInodeId.AntiCollisionId) {
+            return {RootFileId.WekaInodeId.SnapViewId};
+        }
+
+        auto it = AntiCollisionToSnapViewMap.find(antiCollisionId);
+        if (it != AntiCollisionToSnapViewMap.end()) {
+            return {it->second};
+        }
+
+        return {};
+    }
+
+    void RefreshAntiCollisionToSnapViewMap()
+    {
+        if (!SnapshotsDirNode) {
+            return;
+        }
+
+        if (LastSnapshotsDirRefreshCycles &&
+            CyclesToDurationSafe(
+                GetCycleCount() - LastSnapshotsDirRefreshCycles) <
+                SnapshotsDirRefreshInterval)
+        {
+            return;
+        }
+
+        TMap<ui16, ui32> newMap;
+        TVector<NLowLevel::TDirEntry> entries;
+
+        try {
+            entries = SnapshotsDirNode->List(true /* ignore errors */);
+        } catch (...) {
+        }
+
+        for (auto& entry: entries) {
+            try {
+                if (!entry.second.IsDir()) {
+                    continue;
+                }
+
+                auto handle =
+                    SnapshotsDirNode->OpenHandle(entry.first, O_RDONLY, 0);
+                TFileId fileId(handle);
+                newMap[fileId.WekaInodeId.AntiCollisionId] =
+                    fileId.WekaInodeId.SnapViewId;
+            } catch (...) {
+            }
+        }
+
+        AntiCollisionToSnapViewMap = std::move(newMap);
+        LastSnapshotsDirRefreshCycles = GetCycleCount();
+    }
+};
+
+INodeLoaderPtr CreateNodeLoader(
+    const TIndexNodePtr& rootNode,
+    const TDuration& snapshotsDirRefreshInterval)
 {
-    return TStringBuilder() << "NodeLoader(" << RootFileId.ToString() << ")";
+    using TFileId = NLowLevel::TFileId;
+    using EFileIdType = NLowLevel::TFileId::EFileIdType;
+
+    auto rootHandle = rootNode->OpenHandle(O_RDONLY);
+    TFileId rootFileId(rootHandle);
+    EFileIdType fsType(EFileIdType(rootFileId.FileHandle.handle_type));
+
+    switch (fsType) {
+        case EFileIdType::Lustre:
+            return std::make_shared<TLustreNodeLoader>(
+                std::move(rootHandle),
+                std::move(rootFileId));
+        case EFileIdType::Weka:
+            return std::make_shared<TWekaNodeLoader>(
+                std::move(rootHandle),
+                std::move(rootFileId),
+                snapshotsDirRefreshInterval);
+        case EFileIdType::VastNfs:
+            return std::make_shared<TVastNfsNodeLoader>(
+                std::move(rootHandle),
+                std::move(rootFileId));
+    }
+
+    STORAGE_THROW_SERVICE_ERROR(E_FS_NOTSUPP)
+        << "Not supported hande type, RootFileId=" << rootFileId.ToString();
+
+    return nullptr;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+TNodeMapper::TNodeMapper(
+        INodeLoader& nodeLoader,
+        TRWMutex& nodeLoaderLock,
+        bool snapshotsDirEnabled)
+    : NodeLoader(nodeLoader)
+    , NodeLoaderLock(nodeLoaderLock)
+    , SnapshotsDirEnabled(snapshotsDirEnabled)
+{
+    if (!SnapshotsDirEnabled) {
+        return;
+    }
+
+    TWriteGuard guard(NodeLoaderLock);
+
+    SnapshotsNode = std::move(NodeLoader.LoadSnapshotsDirNode());
+    if (!SnapshotsNode) {
+        SnapshotsDirEnabled = false;
+    }
+}
+
+TString TNodeMapper::ToString() const
+{
+    auto str = TStringBuilder()
+               << "NodeMapper(SnapshotsDirEnabled=" << SnapshotsDirEnabled;
+    if (SnapshotsNode) {
+        str << ", SnapshotsNodeId=0x" << Hex(SnapshotsNode->GetNodeId());
+    }
+    str << ")";
+    return str;
+}
+
+std::optional<TIndexNodePtr> TNodeMapper::RemapNode(
+    ui64 parentNodeId,
+    const TString& name)
+{
+    if (!SnapshotsDirEnabled) {
+        return {};
+    }
+
+    if (parentNodeId == RootNodeId && name == ".snapshots") {
+        return SnapshotsNode;
+    }
+
+    if (parentNodeId != SnapshotsNode->GetNodeId()) {
+        return {};
+    }
+
+    try {
+        auto stat = SnapshotsNode->Stat(name);
+        TWriteGuard guard(NodeLoaderLock);
+        return {NodeLoader.LoadSnapshotDirNode(stat.INode)};
+    } catch (...) {
+    }
+
+    return {nullptr};
+}
+
+std::optional<TIndexNodePtr> TNodeMapper::RemapNode(
+    ui64 parentNodeId,
+    ui64 nodeId)
+{
+    if (!SnapshotsDirEnabled) {
+        return {};
+    }
+
+    if (parentNodeId != SnapshotsNode->GetNodeId()) {
+        return {};
+    }
+
+    try {
+        TWriteGuard guard(NodeLoaderLock);
+        return {NodeLoader.LoadSnapshotDirNode(nodeId)};
+    } catch (...) {
+    }
+
+    return {nullptr};
+}
 }   // namespace NCloud::NFileStore
