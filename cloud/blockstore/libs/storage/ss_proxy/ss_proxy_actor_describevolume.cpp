@@ -49,6 +49,7 @@ private:
     const bool ExactDiskIdMatch = false;
 
     EState State = EState::DescribePrimaryDeprecated;
+    TVector<TString> CheckedPaths;
 
 public:
     TDescribeVolumeActor(
@@ -148,6 +149,10 @@ void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
     auto request =
         std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(GetFullPath());
 
+    if (CheckedPaths.empty() || CheckedPaths.back() != GetFullPath()) {
+        CheckedPaths.push_back(GetFullPath());
+    }
+
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
 }
 
@@ -207,7 +212,8 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
             ctx,
             std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
                 error,
-                GetFullPath()));
+                GetFullPath(),
+                std::move(CheckedPaths)));
         return;
     }
 

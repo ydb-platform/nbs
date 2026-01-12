@@ -42,7 +42,7 @@ private:
     TString HandleError(
         const TActorContext& ctx,
         const NProto::TError& error,
-        const TString& path);
+        const TVector<TString>& paths);
 
     TString BuildHtmlResponse(ui64 tabletId, const TString& path);
 
@@ -92,14 +92,13 @@ void THttpFindVolumeActor::Notify(const TActorContext& ctx, TString html)
 TString THttpFindVolumeActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error,
-    const TString& path)
+    const TVector<TString>& paths)
 {
     TStringStream out;
-    out << "Could not resolve path " << path.Quote()
-        << " for volume " << DiskId.Quote()
-        << ": " << FormatError(error);
+    out << "Could not resolve paths [\"" << JoinStrings(paths, "\", \"")
+        << "\"] for volume " << DiskId.Quote() << ": " << FormatError(error);
 
-    LOG_ERROR(ctx, TBlockStoreComponents::SERVICE, out.Str());
+    LOG_WARN(ctx, TBlockStoreComponents::SERVICE, out.Str());
     return out.Str();
 }
 
@@ -158,7 +157,7 @@ void THttpFindVolumeActor::HandleDescribeResponse(
     TString out;
 
     if (FAILED(error.GetCode())) {
-        Notify(ctx, HandleError(ctx, error, msg->Path));
+        Notify(ctx, HandleError(ctx, error, msg->CheckedPaths));
     } else {
         const auto& pathDescr = msg->PathDescription;
         const auto& volumeTabletID =
