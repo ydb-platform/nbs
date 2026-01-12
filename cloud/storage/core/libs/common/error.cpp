@@ -145,6 +145,13 @@ EDiagnosticsErrorKind GetDiagnosticsErrorKind(const NProto::TError& e)
         return EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint;
     }
 
+    if (code == E_TRY_AGAIN &&
+        e.GetMessage().StartsWith(
+            "Unable to allocate local disk: secure erase has not finished yet"))
+    {
+        return EDiagnosticsErrorKind::ErrorSilent;
+    }
+
     if (HasProtoFlag(e.GetFlags(), NProto::EF_SILENT)
         || code == E_IO_SILENT) // TODO: NBS-3124#622886b937bf95501db66aad
     {

@@ -10,6 +10,7 @@
 
 #include <cloud/storage/core/protos/error.pb.h>
 
+#include <library/cpp/digest/crc32c/crc32c.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <array>
@@ -1078,6 +1079,474 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Record.Request.GetRanges().size());
         UNIT_ASSERT(!profileLog->Record.Request.HasNodeInfo());
         UNIT_ASSERT(!profileLog->Record.Request.HasLockInfo());
+    }
+
+    Y_UNIT_TEST(ShouldCalculateChecksums)
+    {
+        TString data;
+        constexpr ui64 Sz = 12_KB;
+        constexpr ui32 BlockSize = 4_KB;
+        const TStringBuf fsId = "fs-id";
+        data.ReserveAndResize(Sz);
+        for (ui64 i = 0; i < Sz; ++i) {
+            data[i] = 'a' + i % ('z' - 'a' + 1);
+        }
+
+        using TRequest = NProto::TProfileLogRequestInfo;
+        auto addRange = [] (ui64 offset, ui32 sz, TRequest& request) {
+            auto* range = request.AddRanges();
+            range->SetOffset(offset);
+            range->SetBytes(sz);
+        };
+
+        //
+        // Aligned buffer.
+        //
+
+        {
+            const TVector<ui32> expected = {
+                Crc32c(data.data(), BlockSize),
+                Crc32c(data.data() + BlockSize, BlockSize),
+                Crc32c(data.data() + 2 * BlockSize, BlockSize),
+            };
+
+            //
+            // 1 range per block.
+            //
+
+            TRequest r;
+            addRange(0, BlockSize, r);
+            addRange(BlockSize, BlockSize, r);
+            addRange(2 * BlockSize, BlockSize, r);
+
+            bool success = CalculateChecksums(
+                data,
+                BlockSize,
+                false /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(success);
+
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[0],
+                r.GetRanges(0).GetBlockChecksums(0));
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(1).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[1],
+                r.GetRanges(1).GetBlockChecksums(0));
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(2).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[2],
+                r.GetRanges(2).GetBlockChecksums(0));
+
+            //
+            // All blocks in 1 range.
+            //
+
+            r.ClearRanges();
+            addRange(0, Sz, r);
+
+            success = CalculateChecksums(
+                data,
+                BlockSize,
+                false /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(success);
+
+            UNIT_ASSERT_VALUES_EQUAL(1, r.RangesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected.size(),
+                r.GetRanges(0).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[0],
+                r.GetRanges(0).GetBlockChecksums(0));
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[1],
+                r.GetRanges(0).GetBlockChecksums(1));
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[2],
+                r.GetRanges(0).GetBlockChecksums(2));
+        }
+
+        //
+        // Unaligned buffer.
+        //
+
+        {
+            const ui64 globalOffset = 2_MB;
+            const ui64 headOffset = 1_KB;
+
+            const TVector<TStringBuf> parts = {
+                TStringBuf(data).substr(headOffset, BlockSize - headOffset),
+                TStringBuf(data).substr(BlockSize, BlockSize),
+                TStringBuf(data).substr(2 * BlockSize, headOffset),
+            };
+
+            const TVector<ui32> expected = {
+                Crc32c(parts[0].data(), parts[0].size()),
+                Crc32c(parts[1].data(), parts[1].size()),
+                Crc32c(parts[2].data(), parts[2].size()),
+            };
+
+            TRequest r;
+            addRange(globalOffset + headOffset, parts[0].size(), r);
+            addRange(globalOffset + BlockSize, BlockSize, r);
+            addRange(globalOffset + 2 * BlockSize, parts[2].size(), r);
+
+            TStringBuf shiftedBuffer(
+                data.data() + headOffset,
+                data.size() - headOffset);
+            bool success = CalculateChecksums(
+                shiftedBuffer,
+                BlockSize,
+                false /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(success);
+
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[0],
+                r.GetRanges(0).GetBlockChecksums(0));
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(1).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[1],
+                r.GetRanges(1).GetBlockChecksums(0));
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(2).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[2],
+                r.GetRanges(2).GetBlockChecksums(0));
+        }
+
+        //
+        // Zeroes at the end.
+        //
+
+        {
+            const ui64 globalOffset = 2_MB;
+            const ui64 headOffset = 2 * BlockSize;
+            const ui64 tailLen = 1_KB;
+
+            const TVector<TStringBuf> parts = {
+                TStringBuf(data).substr(headOffset, tailLen),
+            };
+
+            const TVector<ui32> expected = {
+                Crc32c(parts[0].data(), parts[0].size()),
+            };
+
+            //
+            // Zeroes in unaligned tail.
+            //
+
+            TRequest r;
+            addRange(globalOffset + headOffset, parts[0].size() + 10, r);
+
+            TString block(BlockSize, 0);
+            memcpy(block.begin(), data.data() + headOffset, tailLen);
+
+            bool success = CalculateChecksums(
+                block,
+                BlockSize,
+                false /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(success);
+
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[0],
+                r.GetRanges(0).GetBlockChecksums(0));
+
+            //
+            // Zeroes in aligned part.
+            //
+
+            r.ClearRanges();
+            addRange(globalOffset + headOffset, parts[0].size(), r);
+
+            success = CalculateChecksums(
+                block,
+                BlockSize,
+                false /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(success);
+
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[0],
+                r.GetRanges(0).GetBlockChecksums(0));
+        }
+
+        //
+        // Zeroes at an offset not divisible by word size.
+        //
+
+        {
+            const ui64 globalOffset = 2_MB;
+            const ui64 headOffset = 2 * BlockSize;
+            const ui64 tailLen = 1_KB + 10;
+
+            const TVector<TStringBuf> parts = {
+                TStringBuf(data).substr(headOffset, tailLen),
+            };
+
+            const TVector<ui32> expected = {
+                Crc32c(parts[0].data(), parts[0].size()),
+            };
+
+            TRequest r;
+            addRange(globalOffset + headOffset, parts[0].size() + 100, r);
+
+            TString block(BlockSize, 0);
+            memcpy(block.begin(), data.data() + headOffset, tailLen);
+
+            bool success = CalculateChecksums(
+                block,
+                BlockSize,
+                false /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(success);
+
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[0],
+                r.GetRanges(0).GetBlockChecksums(0));
+        }
+
+        //
+        // Range End() beyond buffer limits.
+        //
+
+        {
+            const ui64 globalOffset = 2_MB;
+            const ui64 tailLen = 1_KB;
+            const ui64 headOffset = 3 * BlockSize - tailLen;
+
+            const TVector<TStringBuf> parts = {
+                TStringBuf(data).substr(headOffset, tailLen),
+            };
+
+            const TVector<ui32> expected = {
+                Crc32c(parts[0].data(), parts[0].size()),
+            };
+
+            //
+            // Unaligned tail case.
+            //
+
+            TRequest r;
+            addRange(globalOffset + headOffset, parts[0].size() + 10, r);
+
+            TStringBuf shiftedBuffer(
+                data.data() + headOffset,
+                data.size() - headOffset);
+            bool success = CalculateChecksums(
+                shiftedBuffer,
+                BlockSize,
+                false /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(!success);
+            success = CalculateChecksums(
+                shiftedBuffer,
+                BlockSize,
+                true /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(success);
+
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[0],
+                r.GetRanges(0).GetBlockChecksums(0));
+
+            //
+            // Aligned tail case.
+            //
+
+            r.ClearRanges();
+            addRange(globalOffset + headOffset, parts[0].size() + BlockSize, r);
+
+            success = CalculateChecksums(
+                shiftedBuffer,
+                BlockSize,
+                false /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(!success);
+            success = CalculateChecksums(
+                shiftedBuffer,
+                BlockSize,
+                true /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(success);
+
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[0],
+                r.GetRanges(0).GetBlockChecksums(0));
+        }
+
+        //
+        // Range Offset beyond buffer limits.
+        //
+
+        {
+            const ui64 globalOffset = 2_MB;
+            const ui64 dataSize = 1_KB;
+            const ui64 headOffset = data.size();
+
+            TRequest r;
+            addRange(globalOffset + headOffset, dataSize, r);
+
+            TStringBuf emptyBuffer;
+            bool success = CalculateChecksums(
+                emptyBuffer,
+                BlockSize,
+                false /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(!success);
+            success = CalculateChecksums(
+                emptyBuffer,
+                BlockSize,
+                true /* ignoreBufferOverflow */,
+                fsId,
+                r);
+            UNIT_ASSERT(success);
+
+            UNIT_ASSERT_VALUES_EQUAL(1, r.RangesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, r.GetRanges(0).BlockChecksumsSize());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCalculateIovecChecksums)
+    {
+        TString data;
+        constexpr ui64 Sz = 12_KB;
+        constexpr ui32 BlockSize = 4_KB;
+        data.ReserveAndResize(Sz);
+        for (ui64 i = 0; i < Sz; ++i) {
+            data[i] = 'a' + i % ('z' - 'a' + 1);
+        }
+
+        using TRequest = NProto::TProfileLogRequestInfo;
+        auto addRange = [] (ui64 offset, ui32 sz, TRequest& request) {
+            auto* range = request.AddRanges();
+            range->SetOffset(offset);
+            range->SetBytes(sz);
+        };
+
+        const ui64 globalOffset = 2_MB;
+        const ui64 headOffset = 1_KB;
+
+        const TVector<TStringBuf> parts = {
+            TStringBuf(data).substr(headOffset, BlockSize - headOffset),
+            TStringBuf(data).substr(BlockSize, BlockSize),
+            TStringBuf(data).substr(2 * BlockSize, headOffset),
+        };
+
+        const TVector<ui32> expected = {
+            Crc32c(parts[0].data(), parts[0].size()),
+            Crc32c(parts[1].data(), parts[1].size()),
+            Crc32c(parts[2].data(), parts[2].size()),
+        };
+
+        //
+        // WriteData.
+        //
+
+        {
+            TRequest r;
+            addRange(globalOffset + headOffset, parts[0].size(), r);
+            addRange(globalOffset + BlockSize, BlockSize, r);
+            addRange(globalOffset + 2 * BlockSize, parts[2].size(), r);
+
+            NProto::TWriteDataRequest writeDataRequest;
+            auto* iovec = writeDataRequest.MutableIovecs()->Add();
+            iovec->SetBase(reinterpret_cast<ui64>(parts[0].Data()));
+            iovec->SetLength(parts[0].Size());
+            iovec = writeDataRequest.MutableIovecs()->Add();
+            iovec->SetBase(reinterpret_cast<ui64>(parts[1].Data()));
+            iovec->SetLength(parts[1].Size());
+            iovec = writeDataRequest.MutableIovecs()->Add();
+            iovec->SetBase(reinterpret_cast<ui64>(parts[2].Data()));
+            iovec->SetLength(parts[2].Size());
+            const bool success = CalculateWriteDataRequestChecksums(
+                writeDataRequest,
+                BlockSize,
+                r);
+            UNIT_ASSERT(success);
+
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[0],
+                r.GetRanges(0).GetBlockChecksums(0));
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(1).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[1],
+                r.GetRanges(1).GetBlockChecksums(0));
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(2).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[2],
+                r.GetRanges(2).GetBlockChecksums(0));
+        }
+
+        //
+        // ReadData.
+        //
+
+        {
+            TRequest r;
+            addRange(globalOffset + headOffset, parts[0].size(), r);
+            addRange(globalOffset + BlockSize, BlockSize, r);
+            addRange(globalOffset + 2 * BlockSize, parts[2].size(), r);
+
+            NProto::TReadDataRequest readDataRequest;
+            NProto::TReadDataResponse readDataResponse;
+            auto* iovec = readDataRequest.MutableIovecs()->Add();
+            iovec->SetBase(reinterpret_cast<ui64>(parts[0].Data()));
+            iovec->SetLength(parts[0].Size());
+            iovec = readDataRequest.MutableIovecs()->Add();
+            iovec->SetBase(reinterpret_cast<ui64>(parts[1].Data()));
+            iovec->SetLength(parts[1].Size());
+            iovec = readDataRequest.MutableIovecs()->Add();
+            iovec->SetBase(reinterpret_cast<ui64>(parts[2].Data()));
+            iovec->SetLength(parts[2].Size());
+            CalculateReadDataResponseChecksums(
+                readDataRequest.GetIovecs(),
+                readDataResponse,
+                BlockSize,
+                r);
+
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[0],
+                r.GetRanges(0).GetBlockChecksums(0));
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(1).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[1],
+                r.GetRanges(1).GetBlockChecksums(0));
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(2).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[2],
+                r.GetRanges(2).GetBlockChecksums(0));
+        }
     }
 }
 

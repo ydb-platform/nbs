@@ -581,8 +581,15 @@ TString TCommand::GetIamTokenFromClient()
 void TCommand::InitClientConfig()
 {
     NProto::TClientAppConfig appConfig;
+
     if (NFs::Exists(ConfigFile)) {
-        ParseFromTextFormat(ConfigFile, appConfig);
+        TStringStream errmsg;
+        ParseFromTextFormat(ConfigFile, appConfig,
+            EParseFromTextFormatOption::AllowUnknownField, &errmsg);
+        if (errmsg) {
+            GetErrorStream() << "Some unknown parameters ignored in config file"
+                << " '" << ConfigFile << "': " << errmsg.Str() << Endl;
+        }
     }
 
     auto& clientConfig = *appConfig.MutableClientConfig();

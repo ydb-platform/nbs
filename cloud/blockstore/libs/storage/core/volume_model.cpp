@@ -2,6 +2,8 @@
 
 #include "config.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
+
 #include <cloud/storage/core/libs/common/media.h>
 
 #include <contrib/ydb/core/protos/blockstore_config.pb.h>
@@ -521,6 +523,17 @@ void SetupChannels(
     const NProto::TResizeVolumeRequestFlags& flags,
     NKikimrBlockStore::TVolumeConfig& volumeConfig)
 {
+    constexpr NCloud::NProto::EStorageMediaKind MediaKindAllowedList[]{
+        NCloud::NProto::STORAGE_MEDIA_SSD,
+        NCloud::NProto::STORAGE_MEDIA_HDD,
+        NCloud::NProto::STORAGE_MEDIA_HYBRID};
+
+    if (!FindPtr(MediaKindAllowedList, volumeParams.MediaKind)) {
+        ReportSetupChannelsOnWrongMediaKindVolume(
+            "Trying to setup channels on wrong media kind",
+            {{"diskId", volumeConfig.GetDiskId()},
+             {"mediaKind", volumeParams.MediaKind}});
+    }
     const auto existingMergedChannelCount =
         GetExistingMergedChannelCount(volumeParams);
     ui32 mergedChannelCount = ComputeMergedChannelCount(
@@ -530,9 +543,14 @@ void SetupChannels(
         volumeParams);
     ui32 mixedChannelCount = 0;
 
+    const auto freshChannelCountForMediaKind =
+        volumeParams.MediaKind == NCloud::NProto::STORAGE_MEDIA_SSD
+            ? config.GetFreshChannelCountSSD()
+            : config.GetFreshChannelCountHDD();
+
     ui32 freshChannelCount =
         Max(GetExistingFreshChannelCount(volumeParams),
-            config.GetFreshChannelCount());
+            freshChannelCountForMediaKind);
     if (volumeConfig.GetTabletVersion() == 2) {
         freshChannelCount = 1;
     }

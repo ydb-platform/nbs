@@ -19,9 +19,9 @@ FileStore {
   ShardFileSystemIds: "fs0_s1"
 }
 
-{"ShardFileSystemIds":["fs0_s1"]}
-{"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3"],"StrictFileSystemSizeEnforcementEnabled":true}
-{"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3"],"ShardNo":1,"StrictFileSystemSizeEnforcementEnabled":true}
-{"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3"],"ShardNo":2,"StrictFileSystemSizeEnforcementEnabled":true}
-{"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3"],"ShardNo":3,"StrictFileSystemSizeEnforcementEnabled":true}
+{"ShardFileSystemIds":["fs0_s1"],"MaxShardCount":254}
+{"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3"],"StrictFileSystemSizeEnforcementEnabled":true,"MaxShardCount":254}
+{"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3"],"ShardNo":1,"StrictFileSystemSizeEnforcementEnabled":true,"MaxShardCount":254}
+{"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3"],"ShardNo":2,"StrictFileSystemSizeEnforcementEnabled":true,"MaxShardCount":254}
+{"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3"],"ShardNo":3,"StrictFileSystemSizeEnforcementEnabled":true,"MaxShardCount":254}
 

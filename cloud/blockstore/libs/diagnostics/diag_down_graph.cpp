@@ -75,7 +75,7 @@ void TSvgWithDownGraph::Init()
 
         Str << Sprintf(SvgHeader.data(), MaxWidth, HEIGHT, MaxWidth, HEIGHT);
     } catch (const yexception& ex) {
-        ReportMonitoringSvgTemplatesNotFound(ex.what());
+        ReportMonitoringResourceNotFound(ex.what());
         SvgHeader = "";
         SvgFooter = "";
         SvgElement = "";

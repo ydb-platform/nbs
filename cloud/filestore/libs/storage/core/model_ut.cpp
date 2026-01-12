@@ -2244,6 +2244,7 @@ Y_UNIT_TEST_SUITE(TModel)
         StorageConfig.SetShardAllocationUnit(4_TB);
         StorageConfig.SetAutomaticallyCreatedShardSize(5_TB);
         StorageConfig.SetSSDMaxWriteIops(Max<ui32>());
+        StorageConfig.SetMaxShardCount(254);
 
         auto OldMaxWriteIops = ClientPerformanceProfile.GetMaxWriteIops();
         ClientPerformanceProfile.ClearMaxWriteIops();

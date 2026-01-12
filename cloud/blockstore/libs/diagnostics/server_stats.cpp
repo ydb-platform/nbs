@@ -330,7 +330,9 @@ void TServerStats::RequestStarted(
     auto started = RequestStats->RequestStarted(
         req.MediaKind,
         req.RequestType,
-        req.RequestBytes);
+        req.RequestBytes,
+        req.AccessMode,
+        req.MountMode);
     callContext.SetRequestStartedCycles(started);
 
     if (req.VolumeInfo) {
@@ -436,7 +438,9 @@ void TServerStats::RequestCompleted(
         errorFlags,
         req.Unaligned,
         calcMaxTime,
-        responseSentCycles);
+        responseSentCycles,
+        req.AccessMode,
+        req.MountMode);
 
     ui32 blockSize = DefaultBlockSize;
 

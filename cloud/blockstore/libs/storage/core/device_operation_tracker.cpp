@@ -16,13 +16,27 @@ namespace {
 
 std::atomic<ui32> TrackingFrequency = 0;
 
+TString EscapeAgentId(const TString& agentId)
+{
+    TString result;
+    result.reserve(agentId.size());
+    for (auto c: agentId) {
+        if (IsAsciiAlnum(c)) {
+            result.append(c);
+        } else {
+            result.append("-");
+        }
+    }
+    return result;
+}
+
 }   // namespace
 
 TString TDeviceOperationTracker::TKey::GetHtmlPrefix() const
 {
     TStringBuilder builder;
 
-    builder << RequestType << "_" << DeviceUUID;
+    builder << RequestType << "_" << EscapeAgentId(AgentId);
 
     switch (Status) {
         case EStatus::Finished: {
@@ -41,7 +55,6 @@ ui64 TDeviceOperationTracker::THash::operator()(const TKey& key) const
 {
     return MultiHash(
         key.RequestType,
-        key.DeviceUUID,
         key.AgentId,
         static_cast<size_t>(key.Status));
 }
@@ -68,65 +81,17 @@ ui64 TDeviceOperationTracker::GenerateId(ui64 identifiersToReserve)
     return 0;
 }
 
-void TDeviceOperationTracker::RebuildFromDeviceInfos()
-{
-    DeviceToAgent.clear();
-    for (const auto& deviceInfo: DeviceInfos) {
-        DeviceToAgent[deviceInfo.DeviceUUID] = deviceInfo.AgentId;
-    }
-
-    Histograms.clear();
-    Inflight.clear();
-
-    const ERequestType requestTypes[] = {
-        ERequestType::Read,
-        ERequestType::Write,
-        ERequestType::Zero,
-        ERequestType::Checksum};
-
-    for (const auto& requestType: requestTypes) {
-        for (const auto& deviceInfo: DeviceInfos) {
-            Histograms.try_emplace(TKey{
-                .RequestType = requestType,
-                .DeviceUUID = deviceInfo.DeviceUUID,
-                .AgentId = deviceInfo.AgentId,
-                .Status = EStatus::Finished});
-        }
-
-        Histograms.try_emplace(TKey{
-            .RequestType = requestType,
-            .DeviceUUID = "Total",
-            .AgentId = "Total",
-            .Status = EStatus::Finished});
-    }
-}
-
-TDeviceOperationTracker::TDeviceOperationTracker(
-    TVector<TDeviceInfo> deviceInfos)
-    : DeviceInfos(std::move(deviceInfos))
-{
-    RebuildFromDeviceInfos();
-}
-
 void TDeviceOperationTracker::OnStarted(
     TOperationId operationId,
-    const TString& deviceUUID,
+    const TString& agentId,
     ERequestType requestType,
     ui64 startTime)
 {
-    auto it = DeviceToAgent.find(deviceUUID);
-    if (it == DeviceToAgent.end()) {
-        return;
-    }
-
-    const TString& agentId = it->second;
-
     Inflight.emplace(
         operationId,
         TOperationInFlight{
             .StartTime = startTime,
             .RequestType = requestType,
-            .DeviceUUID = deviceUUID,
             .AgentId = agentId});
 }
 
@@ -144,7 +109,6 @@ void TDeviceOperationTracker::OnFinished(
 
     TKey specificKey{
         .RequestType = operation.RequestType,
-        .DeviceUUID = std::move(operation.DeviceUUID),
         .AgentId = std::move(operation.AgentId),
         .Status = EStatus::Finished};
 
@@ -175,13 +139,12 @@ TString TDeviceOperationTracker::GetStatJson(ui64 nowCycles) const
     }
 
     auto getInflightHtmlKey = [](ERequestType requestType,
-                                 const TString& deviceUUID,
+                                 const TString& agentId,
                                  TStringBuf timeBucketName)
     {
         auto key = TKey{
             .RequestType = requestType,
-            .DeviceUUID = deviceUUID,
-            .AgentId = "",
+            .AgentId = agentId,
             .Status = EStatus::Inflight};
         return key.GetHtmlPrefix() + timeBucketName;
     };
@@ -194,11 +157,11 @@ TString TDeviceOperationTracker::GetStatJson(ui64 nowCycles) const
 
         ++inflight[getInflightHtmlKey(
             operation.RequestType,
-            operation.DeviceUUID,
+            operation.AgentId,
             timeBucketName)];
         ++inflight[getInflightHtmlKey(
             operation.RequestType,
-            operation.DeviceUUID,
+            operation.AgentId,
             "Total")];
     }
 
@@ -214,10 +177,33 @@ TString TDeviceOperationTracker::GetStatJson(ui64 nowCycles) const
     return out.Str();
 }
 
-void TDeviceOperationTracker::UpdateDevices(TVector<TDeviceInfo> deviceInfos)
+void TDeviceOperationTracker::UpdateAgents(TSet<TString> agents)
 {
-    DeviceInfos = std::move(deviceInfos);
-    RebuildFromDeviceInfos();
+    Agents = std::move(agents);
+    Histograms.clear();
+    Inflight.clear();
+
+    const ERequestType requestTypes[] = {
+        ERequestType::Read,
+        ERequestType::Write,
+        ERequestType::Zero,
+        ERequestType::Checksum};
+
+    for (const auto& requestType: requestTypes) {
+        for (const auto& agentId: Agents) {
+            Histograms.try_emplace(
+                TKey{
+                    .RequestType = requestType,
+                    .AgentId = agentId,
+                    .Status = EStatus::Finished});
+        }
+
+        Histograms.try_emplace(
+            TKey{
+                .RequestType = requestType,
+                .AgentId = "Total",
+                .Status = EStatus::Finished});
+    }
 }
 
 auto TDeviceOperationTracker::GetTimeBuckets() const -> TVector<TBucketInfo>
@@ -239,18 +225,27 @@ auto TDeviceOperationTracker::GetTimeBuckets() const -> TVector<TBucketInfo>
         result.push_back(std::move(bucket));
     }
 
-    result.push_back(TBucketInfo{
-        .Key = "Total",
-        .Description = "Total",
-        .Tooltip = "Total operations"});
+    result.push_back(
+        TBucketInfo{
+            .Key = "Total",
+            .Description = "Total",
+            .Tooltip = "Total operations"});
 
     return result;
 }
 
-TVector<TDeviceOperationTracker::TDeviceInfo>
-TDeviceOperationTracker::GetDeviceInfos() const
+TVector<TDeviceOperationTracker::TBucketInfo>
+TDeviceOperationTracker::GetAgents() const
 {
-    return DeviceInfos;
+    TVector<TBucketInfo> result;
+    for (const auto& agent: Agents) {
+        result.push_back(
+            TBucketInfo{
+                .Key = EscapeAgentId(agent),
+                .Description = agent,
+                .Tooltip = ""});
+    }
+    return result;
 }
 
 void TDeviceOperationTracker::ResetStats()

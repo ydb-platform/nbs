@@ -1,4 +1,5 @@
 #include "client.h"
+
 #include "test_verbs.h"
 
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
@@ -214,7 +215,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             Y_UNUSED(host);
             Y_UNUSED(port);
             Y_UNUSED(hints);
-            throw TServiceError(MAKE_SYSTEM_ERROR(EAGAIN));
+            STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(EAGAIN));
         };
 
         try {
@@ -291,72 +292,98 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
 
         size_t requestBytes = 1024;
         size_t responseBytes = 1024;
-        auto r = ep->AllocateRequest(
-            std::make_shared<TClientHandler>(),
-            makeContext(),
-            requestBytes,
-            responseBytes);
-        auto request = r.ExtractResult();
-        auto callContext = MakeIntrusive<TCallContext>();
 
-        // make sure that time spent on request processing before SendRequest
-        // won't be counted towards rdma timeout
-        auto retryDelay =
-            DurationToCyclesSafe(clientConfig->MaxResponseDelay) + 1;
+        auto handleRequest = [&]()
+        {
+            while (true) {
+                with_lock (testContext->CompletionLock) {
+                    if (testContext->RecvEvents && testContext->ReqIds) {
+                        auto* re = testContext->RecvEvents.front();
+                        auto* responseMsg = reinterpret_cast<TResponseMessage*>(
+                            re->sg_list[0].addr);
+                        Zero(*responseMsg);
+                        InitMessageHeader(responseMsg, RDMA_PROTO_VERSION);
+                        responseMsg->ReqId = testContext->ReqIds.front();
 
-        callContext->SetRequestStartedCycles(GetCycleCount() - retryDelay);
-        ep->SendRequest(std::move(request), callContext);
-
-        // handle the request
-        while (true) {
-            with_lock (testContext->CompletionLock) {
-                if (testContext->RecvEvents && testContext->ReqIds) {
-                    auto* re = testContext->RecvEvents.front();
-                    auto* responseMsg = reinterpret_cast<TResponseMessage*>(
-                        re->sg_list[0].addr);
-                    Zero(*responseMsg);
-                    InitMessageHeader(responseMsg, RDMA_PROTO_VERSION);
-                    responseMsg->ReqId = testContext->ReqIds.front();
-
-                    testContext->ReqIds.pop_front();
-                    testContext->RecvEvents.pop_front();
-                    testContext->ProcessedRecvEvents.push_back(re);
-                    testContext->CompletionHandle.Set();
-                    break;
+                        testContext->ReqIds.pop_front();
+                        testContext->RecvEvents.pop_front();
+                        testContext->ProcessedRecvEvents.push_back(re);
+                        testContext->CompletionHandle.Set();
+                        break;
+                    }
                 }
             }
+        };
+
+        for (size_t i = 0; i < RDMA_MAX_REQID - 1; ++i) {
+            {   // Successful request
+                auto r = ep->AllocateRequest(
+                    std::make_shared<TClientHandler>(),
+                    makeContext(),
+                    requestBytes,
+                    responseBytes);
+                auto request = r.ExtractResult();
+                auto callContext = MakeIntrusive<TCallContext>();
+
+                // make sure that time spent on request processing before
+                // SendRequest won't be counted towards rdma timeout
+                auto retryDelay =
+                    DurationToCyclesSafe(clientConfig->MaxResponseDelay) + 1;
+
+                callContext->SetRequestStartedCycles(
+                    GetCycleCount() - retryDelay);
+                ep->SendRequest(std::move(request), callContext);
+
+                handleRequest();
+
+                ev.WaitT(TDuration::Seconds(5));
+                UNIT_ASSERT(response.Received);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    static_cast<ui32>(RDMA_PROTO_OK),
+                    response.Status);
+
+                ev.Reset();
+                response = TResponse{};
+            }
+
+            // Timed out request
+            if (i == 0 || i == RDMA_MAX_REQID - 3) {
+                auto r = ep->AllocateRequest(
+                    std::make_shared<TClientHandler>(),
+                    makeContext(),
+                    requestBytes,
+                    responseBytes);
+                auto request = r.ExtractResult();
+                auto callContext = MakeIntrusive<TCallContext>();
+
+                // make sure that time spent on request processing before
+                // SendRequest won't be counted towards rdma timeout
+                auto retryDelay =
+                    DurationToCyclesSafe(clientConfig->MaxResponseDelay) + 1;
+                callContext->SetRequestStartedCycles(
+                    GetCycleCount() - retryDelay);
+                ep->SendRequest(std::move(request), callContext);
+
+                // we didn't handle the request in time
+                ev.WaitT(TDuration::Seconds(5));
+                UNIT_ASSERT(response.Received);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    static_cast<ui32>(RDMA_PROTO_FAIL),
+                    response.Status);
+
+                NProto::TError error;
+                bool parsed = error.ParseFromArray(
+                    response.Buffer.Head(response.Bytes).data(),
+                    response.Bytes);
+
+                UNIT_ASSERT_VALUES_EQUAL(parsed, true);
+                UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, error.GetCode());
+
+                handleRequest();
+                ev.Reset();
+                response = TResponse{};
+            }
         }
-
-        ev.WaitT(TDuration::Seconds(5));
-        UNIT_ASSERT(response.Received);
-        UNIT_ASSERT_VALUES_EQUAL(0, response.Status);
-
-        response.Received = false;
-        response.Status = 0;
-        ev.Reset();
-
-        r = ep->AllocateRequest(
-            std::make_shared<TClientHandler>(),
-            makeContext(),
-            requestBytes,
-            responseBytes);
-        request = r.ExtractResult();
-        callContext = MakeIntrusive<TCallContext>();
-        callContext->SetRequestStartedCycles(GetCycleCount());
-        ep->SendRequest(std::move(request), callContext);
-
-        // we didn't handle the request in time
-        ev.WaitT(TDuration::Seconds(5));
-        UNIT_ASSERT(response.Received);
-        UNIT_ASSERT_VALUES_EQUAL((ui32)RDMA_PROTO_FAIL, response.Status);
-
-        NProto::TError error;
-        bool parsed = error.ParseFromArray(
-            response.Buffer.Head(response.Bytes).data(),
-            response.Bytes);
-
-        UNIT_ASSERT_VALUES_EQUAL(parsed, true);
-        UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, error.GetCode());
     }
 
     Y_UNIT_TEST(ShouldCancelRequests)
@@ -674,7 +701,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             context->PostRecv = [](auto* qp, auto* wr) {
                 Y_UNUSED(qp);
                 Y_UNUSED(wr);
-                throw TServiceError(ENODEV) << "ibv_post_recv error";
+                STORAGE_THROW_SERVICE_ERROR(ENODEV) << "ibv_post_recv error";
             };
             context->ModifyQP = [&](auto* qp, auto* attr, int mask) {
                 Y_UNUSED(qp);

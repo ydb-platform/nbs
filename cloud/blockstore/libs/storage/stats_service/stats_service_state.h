@@ -11,6 +11,8 @@
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actorid.h>
 
+#include <library/cpp/containers/sorted_vector/sorted_vector.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
 #include <util/generic/ptr.h>
@@ -130,6 +132,13 @@ public:
 
 struct TVolumeStatsInfo
 {
+    // A list of real disk identifiers that use this logical disk identifier.
+    // For logical diskId "SomeDiskId" it can contain one or two names:
+    // "SomeDiskId" and|or "SomeDiskId-copy". VolumeStatsInfo can be deleted
+    // when it is no longer referenced by real disks, i.e. RealDiskIds is empty.
+    NSorted::TSimpleSet<TString> RealDiskIds;
+
+    // VolumeInfo contains logical disk identifier.
     NProto::TVolume VolumeInfo;
     ui64 VolumeTabletId = 0;
 
@@ -145,10 +154,13 @@ struct TVolumeStatsInfo
     THashMap<ui64, TVector<NKikimr::TTabletChannelInfo>> ChannelInfos;
 
     TVolumeStatsInfo(
-            NProto::TVolume config,
-            EHistogramCounterOptions histCounterOptions)
+        NProto::TVolume config,
+        EHistogramCounterOptions histCounterOptions)
         : VolumeInfo(std::move(config))
-        , PerfCounters(EPublishingPolicy::All, histCounterOptions)
+        , PerfCounters(
+              IsDiskRegistryBased() ? EPublishingPolicy::DiskRegistryBased
+                                    : EPublishingPolicy::Repl,
+              histCounterOptions)
     {}
 
     bool IsDiskRegistryBased() const
@@ -166,6 +178,14 @@ struct TRecentVolumeStatsInfo
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// If the disk has been copied, statistics can be sent both on behalf of the
+// source disk (logicalDiskId) and on behalf of the copied disk
+// (logicalDiskId-copy). The client should not know anything about the real
+// names of the disks - it only knows the logical name. For this reason, we save
+// statistics under the name of the logical disk and publish it under the same
+// name. At the same time, we keep track of the names of the real disks
+// associated with the logical disk.
 
 class TStatsServiceState
 {

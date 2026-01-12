@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -23,13 +24,15 @@ protected:
     const ui64 BlockSize;
     TGuardedBuffer<TString> Buffer;
     TGuardedSgList SgList;
+    const TChildLogTitle LogTitle;
 
 public:
     TCheckRangeActor(
         const NActors::TActorId& partition,
-        NProto::TCheckRangeRequest&& request,
+        NProto::TCheckRangeRequest request,
         TRequestInfoPtr requestInfo,
-        ui64 blockSize);
+        ui64 blockSize,
+        TChildLogTitle logTitle);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -42,7 +45,7 @@ protected:
         const NActors::TActorContext& ctx,
         std::unique_ptr<TEvVolume::TEvCheckRangeResponse>);
 
-    virtual void HandleReadBlocksResponse(
+    void HandleReadBlocksResponse(
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
@@ -55,6 +58,7 @@ private:
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+protected:
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
         const NActors::TActorContext& ctx);

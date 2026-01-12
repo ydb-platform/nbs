@@ -320,6 +320,17 @@ public:
         return request;
     }
 
+    auto CreateAttachPathsRequest(const TVector<TString>& paths)
+    {
+        auto request = std::make_unique<TEvDiskAgent::TEvAttachPathsRequest>();
+
+        for (const auto& path: paths) {
+            request->Record.AddPathsToAttach(path);
+        }
+
+        return request;
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \

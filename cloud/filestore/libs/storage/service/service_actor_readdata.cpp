@@ -1,11 +1,15 @@
 #include "service_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
+#include <cloud/filestore/libs/diagnostics/trace_serializer.h>
+#include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/tablet/model/sparse_segment.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
+
 #include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
@@ -15,6 +19,8 @@
 #include <memory>
 
 namespace NCloud::NFileStore::NStorage {
+
+LWTRACE_USING(FILESTORE_STORAGE_PROVIDER);
 
 using namespace NActors;
 
@@ -39,12 +45,12 @@ class TReadDataActor final: public TActorBootstrapped<TReadDataActor>
 {
 private:
     // Original request
-    const TRequestInfoPtr RequestInfo;
     NProto::TReadDataRequest ReadRequest;
 
     // Filesystem-specific params
     const TString LogTag;
     const ui32 BlockSize;
+    const bool ReadBlobDisabled;
 
     // Response data
     const TByteRange OriginByteRange;
@@ -58,18 +64,42 @@ private:
     // Stats for reporting
     IRequestStatsPtr RequestStats;
     IProfileLogPtr ProfileLog;
+    ITraceSerializerPtr TraceSerializer;
+    TInFlightRequestStoragePtr InFlightRequests; // holding this IntrusivePtr
+                                                 // to guarantee that
+                                                 // MainInFlightRequest is not
+                                                 // deallocated
+    const TActorId Sender;
+    const ui64 Cookie;
+    TCallContextPtr CallContext; // invalid after Bootstrap()
+    TChecksumCalcInfo ChecksumCalcInfo; // invalid after Bootstrap()
+    const TInstant StartTime;
+    const ui64 RequestCookie;
+    TString ClientId; // invalid after Bootstrap()
+    TInFlightRequest* MainInFlightRequest;
     std::optional<TInFlightRequest> InFlightRequest;
+    TShardStatePtr ShardState;
     const NCloud::NProto::EStorageMediaKind MediaKind;
     const bool UseTwoStageRead;
 
 public:
     TReadDataActor(
-        TRequestInfoPtr requestInfo,
         NProto::TReadDataRequest readRequest,
         TString logTag,
         ui32 blockSize,
+        bool readBlobDisabled,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
+        ITraceSerializerPtr traceSerializer,
+        TInFlightRequestStoragePtr inFlightRequests,
+        NActors::TActorId sender,
+        ui64 cookie,
+        TCallContextPtr callContext,
+        TChecksumCalcInfo checksumCalcInfo,
+        TInstant startTime,
+        ui64 requestCookie,
+        TString clientId,
+        TShardStatePtr shardState,
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useTwoStageRead);
 
@@ -84,7 +114,7 @@ private:
         const TEvIndexTablet::TEvDescribeDataResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void ReadBlobIfNeeded(const TActorContext& ctx);
+    void ReadBlobsIfNeeded(const TActorContext& ctx);
 
     void HandleReadBlobResponse(
         const TEvBlobStorage::TEvGetResult::TPtr& ev,
@@ -104,34 +134,57 @@ private:
         const TActorContext& ctx,
         NProto::TReadDataResponse& response);
 
-    void ReplyAndDie(const TActorContext& ctx);
+    void SendResponseAndDie(
+        const TActorContext& ctx,
+        std::unique_ptr<TEvService::TEvReadDataResponse> response);
+    void ReplyTwoStageAndDie(const TActorContext& ctx);
     void HandleError(const TActorContext& ctx, const NProto::TError& error);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TReadDataActor::TReadDataActor(
-        TRequestInfoPtr requestInfo,
         NProto::TReadDataRequest readRequest,
         TString logTag,
         ui32 blockSize,
+        bool readBlobDisabled,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
+        ITraceSerializerPtr traceSerializer,
+        TInFlightRequestStoragePtr inFlightRequests,
+        NActors::TActorId sender,
+        ui64 cookie,
+        TCallContextPtr callContext,
+        TChecksumCalcInfo checksumCalcInfo,
+        TInstant startTime,
+        ui64 requestCookie,
+        TString clientId,
+        TShardStatePtr shardState,
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useTwoStageRead)
-    : RequestInfo(std::move(requestInfo))
-    , ReadRequest(std::move(readRequest))
+    : ReadRequest(std::move(readRequest))
     , LogTag(std::move(logTag))
     , BlockSize(blockSize)
+    , ReadBlobDisabled(readBlobDisabled)
     , OriginByteRange(
         ReadRequest.GetOffset(),
         ReadRequest.GetLength(),
         BlockSize)
     , AlignedByteRange(OriginByteRange.AlignedSuperRange())
     , BlockBuffer(std::make_unique<TString>())
-    , ZeroIntervals(TDefaultAllocator::Instance(), 0, AlignedByteRange.Length)
+    , ZeroIntervals(TDefaultAllocator::Instance(), 0, OriginByteRange.Length)
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
+    , TraceSerializer(std::move(traceSerializer))
+    , InFlightRequests(std::move(inFlightRequests))
+    , Sender(sender)
+    , Cookie(cookie)
+    , CallContext(std::move(callContext))
+    , ChecksumCalcInfo(std::move(checksumCalcInfo))
+    , StartTime(startTime)
+    , RequestCookie(requestCookie)
+    , ClientId(std::move(clientId))
+    , ShardState(std::move(shardState))
     , MediaKind(mediaKind)
     , UseTwoStageRead(useTwoStageRead)
 {
@@ -143,7 +196,24 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
     // a block buffer leads to memory allocation (and initialization) which is
     // heavy and we would like to execute that on a separate thread (instead of
     // this actor's parent thread)
-    BlockBuffer->ReserveAndResize(AlignedByteRange.Length);
+    BlockBuffer->ReserveAndResize(ReadRequest.GetLength());
+
+    // Registering InFlightRequest here for the same reason - it's quite
+    // expensive so we don't want to do it in TStorageServiceActor
+    MainInFlightRequest = InFlightRequests->Register(
+        Sender,
+        Cookie,
+        std::move(CallContext),
+        MediaKind,
+        std::move(ChecksumCalcInfo),
+        RequestStats,
+        StartTime,
+        RequestCookie);
+
+    InitProfileLogRequestInfo(
+        MainInFlightRequest->ProfileLogRequest,
+        ReadRequest);
+    MainInFlightRequest->ProfileLogRequest.SetClientId(std::move(ClientId));
 
     if (UseTwoStageRead) {
         DescribeData(ctx);
@@ -155,6 +225,11 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
 
 void TReadDataActor::DescribeData(const TActorContext& ctx)
 {
+    FILESTORE_TRACK(
+        RequestReceived_ServiceWorker,
+        MainInFlightRequest->CallContext,
+        "DescribeData");
+
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
@@ -176,15 +251,14 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
     request->Record.SetLength(ReadRequest.GetLength());
 
     auto describeCallContext = MakeIntrusive<TCallContext>(
-        RequestInfo->CallContext->FileSystemId,
-        RequestInfo->CallContext->RequestId);
+        MainInFlightRequest->CallContext->FileSystemId,
+        MainInFlightRequest->CallContext->RequestId);
     describeCallContext->SetRequestStartedCycles(GetCycleCount());
     describeCallContext->RequestType = EFileStoreRequest::DescribeData;
     InFlightRequest.emplace(
-        TRequestInfo(
-            RequestInfo->Sender,
-            RequestInfo->Cookie,
-            std::move(describeCallContext)),
+        Sender,
+        Cookie,
+        std::move(describeCallContext),
         ProfileLog,
         MediaKind,
         RequestStats);
@@ -193,6 +267,9 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
     InitProfileLogRequestInfo(
         InFlightRequest->ProfileLogRequest,
         request->Record);
+    TraceSerializer->BuildTraceRequest(
+        *request->Record.MutableHeaders()->MutableInternal()->MutableTrace(),
+        MainInFlightRequest->CallContext->LWOrbit);
 
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -218,7 +295,7 @@ void ApplyFreshDataRange(
     const TActorContext& ctx,
     const NProtoPrivate::TFreshDataRange& sourceFreshData,
     TString& targetBuffer,
-    TByteRange alignedTargetByteRange,
+    TByteRange targetByteRange,
     ui32 blockSize,
     ui64 offset,
     ui64 length,
@@ -239,25 +316,24 @@ void ApplyFreshDataRange(
         "common byte range found: source: %s, target: %s, original request: "
         "[%lu, %lu), response: %s",
         sourceByteRange.Describe().c_str(),
-        alignedTargetByteRange.Describe().c_str(),
+        targetByteRange.Describe().c_str(),
         offset,
         length,
         DescribeResponseDebugString(describeResponse).Quote().c_str());
 
-    auto commonRange = sourceByteRange.Intersect(alignedTargetByteRange);
+    auto commonRange = sourceByteRange.Intersect(targetByteRange);
 
-    Y_ABORT_UNLESS(sourceByteRange == commonRange);
     if (commonRange.Length == 0) {
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
             "common range is empty: source: %s, target: %s",
             sourceByteRange.Describe().c_str(),
-            alignedTargetByteRange.Describe().c_str());
+            targetByteRange.Describe().c_str());
         return;
     }
 
-    const ui64 relOffset = commonRange.Offset - alignedTargetByteRange.Offset;
+    const ui64 relOffset = commonRange.Offset - targetByteRange.Offset;
     memcpy(
         &targetBuffer[relOffset],
         sourceFreshData.GetContent().data() +
@@ -272,7 +348,7 @@ void TReadDataActor::HandleDescribeDataResponse(
     const TEvIndexTablet::TEvDescribeDataResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
     const auto& error = msg->GetError();
 
     TABLET_VERIFY(InFlightRequest);
@@ -280,6 +356,12 @@ void TReadDataActor::HandleDescribeDataResponse(
     InFlightRequest->Complete(ctx.Now(), error);
     FinalizeProfileLogRequestInfo(
         InFlightRequest->ProfileLogRequest,
+        msg->Record);
+    HandleServiceTraceInfo(
+        "DescribeData",
+        ctx,
+        TraceSerializer,
+        MainInFlightRequest->CallContext,
         msg->Record);
 
     if (FAILED(msg->GetStatus())) {
@@ -291,40 +373,55 @@ void TReadDataActor::HandleDescribeDataResponse(
         return;
     }
 
+    const auto& backendInfo = msg->Record.GetHeaders().GetBackendInfo();
+    ShardState->SetIsOverloaded(backendInfo.GetIsOverloaded());
+
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "%s DescribeData succeeded %lu freshdata + %lu blobpieces",
+        "%s DescribeData succeeded %lu freshdata + %lu blobpieces"
+        ", backend-info: %s",
         LogTag.c_str(),
         msg->Record.FreshDataRangesSize(),
-        msg->Record.BlobPiecesSize());
+        msg->Record.BlobPiecesSize(),
+        backendInfo.ShortUtf8DebugString().Quote().c_str());
 
     DescribeResponse.CopyFrom(msg->Record);
-    ReadBlobIfNeeded(ctx);
+    ReadBlobsIfNeeded(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TReadDataActor::ReadBlobIfNeeded(const TActorContext& ctx)
+void TReadDataActor::ReadBlobsIfNeeded(const TActorContext& ctx)
 {
     RemainingBlobsToRead = DescribeResponse.GetBlobPieces().size();
     if (RemainingBlobsToRead == 0) {
-        ReplyAndDie(ctx);
+        ReplyTwoStageAndDie(ctx);
         return;
     }
 
+    if (ReadBlobDisabled) {
+        ReportFakeBlobWasRead();
+        ReplyTwoStageAndDie(ctx);
+        return;
+    }
+
+    FILESTORE_TRACK(
+        RequestReceived_ServiceWorker,
+        MainInFlightRequest->CallContext,
+        "ReadBlobs");
+
     auto readBlobCallContext = MakeIntrusive<TCallContext>(
-        RequestInfo->CallContext->FileSystemId,
-        RequestInfo->CallContext->RequestId);
+        MainInFlightRequest->CallContext->FileSystemId,
+        MainInFlightRequest->CallContext->RequestId);
     readBlobCallContext->SetRequestStartedCycles(GetCycleCount());
     readBlobCallContext->RequestType = EFileStoreRequest::ReadBlob;
     ui32 blobPieceId = 0;
 
     InFlightRequest.emplace(
-        TRequestInfo(
-            RequestInfo->Sender,
-            RequestInfo->Cookie,
-            std::move(readBlobCallContext)),
+        Sender,
+        Cookie,
+        std::move(readBlobCallContext),
         ProfileLog,
         MediaKind,
         RequestStats);
@@ -365,6 +462,13 @@ void TReadDataActor::ReadBlobIfNeeded(const TActorContext& ctx)
             TInstant::Max(),
             NKikimrBlobStorage::FastRead);
 
+        if (!MainInFlightRequest->CallContext->LWOrbit.Fork(request->Orbit)) {
+            FILESTORE_TRACK(
+                ForkFailed,
+                MainInFlightRequest->CallContext,
+                "TEvBlobStorage::TEvGet");
+        }
+
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
@@ -387,6 +491,7 @@ void TReadDataActor::HandleReadBlobResponse(
     }
 
     const auto* msg = ev->Get();
+    MainInFlightRequest->CallContext->LWOrbit.Join(msg->Orbit);
 
     if (msg->Status != NKikimrProto::OK) {
         LOG_WARN(
@@ -467,7 +572,6 @@ void TReadDataActor::HandleReadBlobResponse(
             return;
         }
 
-        auto dataIter = response.Buffer.begin();
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
@@ -487,18 +591,34 @@ void TReadDataActor::HandleReadBlobResponse(
             response.Buffer.size());
         TABLET_VERIFY(blobRange.GetOffset() >= AlignedByteRange.Offset);
 
-        const ui64 relOffset = blobRange.GetOffset() - AlignedByteRange.Offset;
-        dataIter.ExtractPlainDataAndAdvance(
-            &(*BlockBuffer)[relOffset],
-            blobRange.GetLength());
-        ZeroIntervals.PunchHole(relOffset, relOffset + blobRange.GetLength());
+        const auto blobByteRange =
+            TByteRange{blobRange.GetOffset(), blobRange.GetLength(), BlockSize};
+        const auto commonRange = OriginByteRange.Intersect(blobByteRange);
+        if (commonRange.Length != 0) {
+            const auto relOffset = commonRange.Offset - OriginByteRange.Offset;
+            auto dataIter = response.Buffer.begin();
+            dataIter += commonRange.Offset - blobByteRange.Offset;
+            dataIter.ExtractPlainDataAndAdvance(
+                &(*BlockBuffer)[relOffset],
+                commonRange.Length);
+            ZeroIntervals.PunchHole(
+                relOffset,
+                relOffset + commonRange.Length);
+        } else {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "common range is empty: origin range: %s, blob range: %s",
+                OriginByteRange.Describe().c_str(),
+                blobByteRange.Describe().c_str());
+        }
     }
 
     --RemainingBlobsToRead;
     if (RemainingBlobsToRead == 0) {
         InFlightRequest->Complete(ctx.Now(), {});
 
-        ReplyAndDie(ctx);
+        ReplyTwoStageAndDie(ctx);
     }
 }
 
@@ -518,6 +638,11 @@ void TReadDataActor::ReadData(
     const TActorContext& ctx,
     const TString& fallbackReason)
 {
+    FILESTORE_TRACK(
+        RequestReceived_ServiceWorker,
+        MainInFlightRequest->CallContext,
+        "ReadData");
+
     ReadDataFallbackEnabled = true;
 
     if (fallbackReason) {
@@ -537,6 +662,9 @@ void TReadDataActor::ReadData(
     auto request = std::make_unique<TEvService::TEvReadDataRequest>();
     request->Record = std::move(ReadRequest);
     request->Record.MutableHeaders()->SetThrottlingDisabled(true);
+    TraceSerializer->BuildTraceRequest(
+        *request->Record.MutableHeaders()->MutableInternal()->MutableTrace(),
+        MainInFlightRequest->CallContext->LWOrbit);
 
     // Original iovecs should be preserved in this request and pruned during
     // this forwarding on the tablet side
@@ -551,25 +679,34 @@ void TReadDataActor::HandleReadDataResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+    HandleServiceTraceInfo(
+        "ReadData",
+        ctx,
+        TraceSerializer,
+        MainInFlightRequest->CallContext,
+        msg->Record);
 
     if (FAILED(msg->GetStatus())) {
         HandleError(ctx, msg->GetError());
         return;
     }
 
+    const auto& backendInfo = msg->Record.GetHeaders().GetBackendInfo();
+    ShardState->SetIsOverloaded(backendInfo.GetIsOverloaded());
+
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "ReadData succeeded %lu data",
-        msg->Record.GetBuffer().size());
+        "ReadData succeeded %lu data, backend-info: %s",
+        msg->Record.GetBuffer().size(),
+        backendInfo.ShortUtf8DebugString().Quote().c_str());
 
     auto response = std::make_unique<TEvService::TEvReadDataResponse>();
     response->Record = std::move(msg->Record);
 
     MoveBufferToIovecsIfNeeded(ctx, response->Record);
 
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
-    Die(ctx);
+    SendResponseAndDie(ctx, std::move(response));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -622,7 +759,7 @@ void TReadDataActor::MoveBufferToIovecsIfNeeded(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
+void TReadDataActor::ReplyTwoStageAndDie(const TActorContext& ctx)
 {
     auto response = std::make_unique<TEvService::TEvReadDataResponse>();
 
@@ -637,7 +774,7 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
             ctx,
             freshDataRange,
             *BlockBuffer,
-            AlignedByteRange,
+            OriginByteRange,
             BlockSize,
             ReadRequest.GetOffset(),
             ReadRequest.GetLength(),
@@ -664,16 +801,32 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
     if (end <= OriginByteRange.Offset) {
         BlockBuffer->clear();
     } else {
-        BlockBuffer->ReserveAndResize(end - AlignedByteRange.Offset);
-        const auto bufferOffset =
-            OriginByteRange.Offset - AlignedByteRange.Offset;
+        BlockBuffer->ReserveAndResize(end - OriginByteRange.Offset);
         response->Record.set_allocated_buffer(BlockBuffer.release());
-        response->Record.SetBufferOffset(bufferOffset);
     }
 
     MoveBufferToIovecsIfNeeded(ctx, response->Record);
 
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    SendResponseAndDie(ctx, std::move(response));
+}
+
+void TReadDataActor::SendResponseAndDie(
+    const TActorContext& ctx,
+    std::unique_ptr<TEvService::TEvReadDataResponse> response)
+{
+    FILESTORE_TRACK(
+        ResponseSent_ServiceWorker,
+        MainInFlightRequest->CallContext,
+        "ReadData");
+
+    CompleteRequestImpl<TEvService::TReadDataMethod>(
+        ctx,
+        TraceSerializer,
+        response->Record,
+        MainInFlightRequest);
+    InFlightRequests->Erase(RequestCookie);
+
+    ctx.Send(Sender, response.release(), 0 /* flags */, Cookie);
 
     Die(ctx);
 }
@@ -682,9 +835,9 @@ void TReadDataActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvReadDataResponse>(error);
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
-    Die(ctx);
+    SendResponseAndDie(
+        ctx,
+        std::make_unique<TEvService::TEvReadDataResponse>(error));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -722,6 +875,8 @@ void TStorageServiceActor::HandleReadData(
     TInstant startTime = ctx.Now();
     auto* msg = ev->Get();
 
+    FILESTORE_TRACK(RequestReceived_Service, msg->CallContext, "ReadData");
+
     const auto& clientId = GetClientId(msg->Record);
     const auto& sessionId = GetSessionId(msg->Record);
     const ui64 seqNo = GetSessionSeqNo(msg->Record);
@@ -736,7 +891,8 @@ void TStorageServiceActor::HandleReadData(
 
     // In handleless IO mode, if the handle is not set, we use the nodeId to
     // infer the shard number
-    ui32 shardNo = ExtractShardNo(
+    const ui32 shardNo = ExtractShardNoSafe(
+        filestore,
         filestore.GetFeatures().GetAllowHandlelessIO() &&
                 msg->Record.GetHandle() == InvalidHandle
             ? msg->Record.GetNodeId()
@@ -775,32 +931,66 @@ void TStorageServiceActor::HandleReadData(
         }
     }
 
+    const bool isShardNoValid = shardNo > 0 && !fsId.empty();
+    auto shardState = isShardNoValid
+        ? session->AccessShardState(shardNo - 1)
+        : session->AccessMainTabletState();
+
+    const ui32 twoStageReadThreshold =
+        filestore.GetFeatures().GetTwoStageReadThreshold()
+        ? filestore.GetFeatures().GetTwoStageReadThreshold()
+        : StorageConfig->GetTwoStageReadThreshold();
+
+    //
+    // For large requests we conservatively decide not to use tablet-side
+    // network for the data in order not to overload the tablet-side NIC.
+    //
+    // For small requests we use tablet-side reads only if the tablet doesn't
+    // consider itself to be overloaded.
+    //
+    // Later on we can start taking NIC usage into account for the IsOverloaded
+    // flag but right now we don't expect it to take network usage into account.
+    //
+
     const bool useTwoStageRead = IsTwoStageReadEnabled(filestore)
-        && msg->Record.GetLength() >= StorageConfig->GetTwoStageReadThreshold();
+        && (msg->Record.GetLength() >= twoStageReadThreshold
+            || shardState->GetIsOverloaded());
 
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "read data %s",
-        msg->Record.DebugString().Quote().c_str());
+        "read data %s, use-two-stage-read: %d, shard-is-overloaded: %d",
+        msg->Record.DebugString().Quote().c_str(),
+        useTwoStageRead,
+        shardState->GetIsOverloaded());
 
-    auto [cookie, inflight] = CreateInFlightRequest(
-        TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-        session->MediaKind,
-        session->RequestStats,
-        startTime);
-
-    InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
-
-    auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
+    TChecksumCalcInfo checksumCalcInfo;
+    const bool blockChecksumsEnabled =
+        filestore.GetFeatures().GetBlockChecksumsInProfileLogEnabled()
+        || StorageConfig->GetBlockChecksumsInProfileLogEnabled();
+    if (blockChecksumsEnabled) {
+        checksumCalcInfo = TChecksumCalcInfo(
+            filestore.GetBlockSize(),
+            msg->Record.GetIovecs());
+    }
 
     auto actor = std::make_unique<TReadDataActor>(
-        std::move(requestInfo),
         std::move(msg->Record),
         filestore.GetFileSystemId(),
         filestore.GetBlockSize(),
+        filestore.GetFeatures().GetReadBlobDisabled(),
         session->RequestStats,
         ProfileLog,
+        TraceSerializer,
+        InFlightRequests,
+        ev->Sender,
+        ev->Cookie,
+        std::move(msg->CallContext),
+        std::move(checksumCalcInfo),
+        startTime,
+        GenerateRequestCookie(),
+        session->ClientId,
+        std::move(shardState),
         session->MediaKind,
         useTwoStageRead);
 

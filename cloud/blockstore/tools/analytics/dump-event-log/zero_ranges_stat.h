@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/tools/analytics/dump-event-log/profile_log_event_handler.h>
 
+#include <library/cpp/json/writer/json_value.h>
+
 #include <util/generic/bitmap.h>
 #include <util/generic/map.h>
 #include <util/generic/string.h>
@@ -23,7 +25,7 @@ class TZeroRangesStat: public IProfileLogEventHandler
 
     public:
         void Set(ui64 rangeIndx, bool isZero);
-        [[nodiscard]] TString Print() const;
+        [[nodiscard]] NJson::TJsonValue Dump() const;
     };
 
     class TZeroRangesBySegmentSize
@@ -32,7 +34,7 @@ class TZeroRangesStat: public IProfileLogEventHandler
 
     public:
         void Set(ui64 rangeIndx4MiB, bool isZero);
-        [[nodiscard]] TString Print() const;
+        [[nodiscard]] NJson::TJsonValue Dump() const;
     };
 
     const TString Filename;
@@ -42,18 +44,16 @@ class TZeroRangesStat: public IProfileLogEventHandler
 
 public:
     explicit TZeroRangesStat(const TString& filename);
-    ~TZeroRangesStat() override;
 
     void ProcessRequest(
-        const TString& diskId,
-        TInstant timestamp,
+        const TDiskInfo& diskInfo,
+        const TTimeData& timeData,
         ui32 requestType,
         TBlockRange64 blockRange,
-        TDuration duration,
-        const TReplicaChecksums& replicaChecksums) override;
+        const TReplicaChecksums& replicaChecksums,
+        const TInflightData& inflightData) override;
 
-private:
-    void Dump();
+    void Finish() override;
 };
 
 }   // namespace NCloud::NBlockStore

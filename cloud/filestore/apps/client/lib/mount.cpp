@@ -84,7 +84,7 @@ public:
             auto error = FileSystemLoop->StartAsync().GetValueSync();
             if (FAILED(error.GetCode())) {
                 STORAGE_ERROR("failed to start driver: " << FormatError(error))
-                ythrow TServiceError(error);
+                STORAGE_THROW_SERVICE_ERROR(error);
             }
         }
     }

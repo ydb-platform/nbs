@@ -137,6 +137,8 @@ public:
 
     TVector<TString> GetDeviceIds() const;
     TVector<TString> GetDeviceIdsByPath(const TString& path);
+    TVector<NProto::TDeviceConfig> GetDevicesByPath(
+        std::span<const TString> paths);
 
     ui32 GetDevicesCount() const;
 
@@ -178,6 +180,21 @@ public:
     bool GetPartiallySuspended() const;
 
     NThreading::TFuture<void> DetachPaths(const TVector<TString>& paths);
+
+    struct TPreparePathsResult
+    {
+        TVector<NProto::TDeviceConfig> Configs;
+        TVector<IStoragePtr> Devices;
+        TVector<TStorageIoStatsPtr> Stats;
+    };
+
+    NThreading::TFuture<TResultOrError<TPreparePathsResult>> PreparePaths(
+        TVector<TString> pathsToAttach);
+
+    void AttachPaths(
+        TVector<NProto::TDeviceConfig> configs,
+        TVector<IStoragePtr> devices,
+        TVector<TStorageIoStatsPtr> stats);
 
 private:
     TStorageAdapterPtr GetDeviceStorageAdapter(

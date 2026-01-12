@@ -64,7 +64,7 @@ void TIndexTabletActor::ExecuteTx_CreateCheckpoint(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "CreateCheckpoint");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "CreateCheckpoint");
     }
 
     auto* checkpoint = CreateCheckpoint(

@@ -103,7 +103,7 @@ void TDiskAgentChecksumActor::SendRequest(const TActorContext& ctx)
 
         OnRequestStarted(
             ctx,
-            deviceRequest.Device.GetDeviceUUID(),
+            deviceRequest.Device.GetAgentId(),
             TDeviceOperationTracker::ERequestType::Checksum,
             cookie);
 
@@ -259,7 +259,7 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
         SelfId(),
         LogTitle.GetChild(GetCycleCount()));
 
-    RequestsInProgress.AddReadRequest(actorId, std::move(request));
+    RequestsInProgress.AddReadRequest(actorId, blockRange, std::move(request));
 }
 
 void TNonreplicatedPartitionActor::HandleChecksumBlocksCompleted(
@@ -281,7 +281,7 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocksCompleted(
     NetworkBytes += sizeof(ui64);   //  Checksum is sent as a 64-bit integer.
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
-    RequestsInProgress.RemoveRequest(ev->Sender);
+    RequestsInProgress.RemoveReadRequest(ev->Sender);
     OnRequestCompleted(*msg, ctx.Now());
     if (RequestsInProgress.Empty() && Poisoner) {
         ReplyAndDie(ctx);

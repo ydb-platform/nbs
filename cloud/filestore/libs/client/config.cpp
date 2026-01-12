@@ -64,7 +64,6 @@ FILESTORE_CLIENT_CONFIG(FILESTORE_CLIENT_DECLARE_CONFIG)
     xxx(FileSystemId,           TString,        {}                            )\
     xxx(ClientId,               TString,        {}                            )\
     xxx(SessionPingTimeout,     TDuration,      Seconds(1)                    )\
-    xxx(SessionRetryTimeout,    TDuration,      Seconds(1)                    )\
 // FILESTORE_SESSION_CONFIG
 
 #define FILESTORE_SESSION_DECLARE_CONFIG(name, type, value)                    \

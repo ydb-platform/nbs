@@ -102,7 +102,7 @@ void TDiskAgentZeroActor::SendRequest(const TActorContext& ctx)
 
         OnRequestStarted(
             ctx,
-            deviceRequest.Device.GetDeviceUUID(),
+            deviceRequest.Device.GetAgentId(),
             TDeviceOperationTracker::ERequestType::Zero,
             cookie);
 
@@ -247,7 +247,7 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
         Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
         LogTitle.GetChild(GetCycleCount()));
 
-    RequestsInProgress.AddWriteRequest(actorId, std::move(request));
+    RequestsInProgress.AddWriteRequest(actorId, blockRange, std::move(request));
 }
 
 void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(
@@ -270,7 +270,7 @@ void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
-    RequestsInProgress.RemoveRequest(ev->Sender);
+    RequestsInProgress.RemoveWriteRequest(ev->Sender);
     OnRequestCompleted(*msg, ctx.Now());
     DrainActorCompanion.ProcessDrainRequests(ctx);
 

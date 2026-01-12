@@ -59,10 +59,30 @@ func (t *replicateDiskTask) Run(
 
 	for {
 		if t.state.FinalIteration == 0 {
-			if execCtx.HasEvent(
+			shouldFinishReplication := t.shouldFinishReplicationBetweenCells() || execCtx.HasEvent(
 				ctx,
 				int64(protos.ReplicateDiskTaskEvents_FINISH_REPLICATION),
-			) {
+			)
+
+			if shouldFinishReplication {
+				if t.request.IsReplicationBetweenCells {
+					client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+					if err != nil {
+						return err
+					}
+
+					err = client.Freeze(
+						ctx,
+						func() error {
+							return execCtx.SaveState(ctx)
+						},
+						t.request.SrcDisk.DiskId,
+					)
+					if err != nil {
+						return err
+					}
+				}
+
 				t.state.FinalIteration = t.state.Iteration + 1
 
 				err := execCtx.SaveState(ctx)
@@ -96,6 +116,24 @@ func (t *replicateDiskTask) Cancel(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
+	if t.request.IsReplicationBetweenCells {
+		client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+		if err != nil {
+			return err
+		}
+
+		err = client.Unfreeze(
+			ctx,
+			func() error {
+				return execCtx.SaveState(ctx)
+			},
+			t.request.SrcDisk.DiskId,
+		)
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -149,6 +187,12 @@ func (t *replicateDiskTask) saveProgress(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func (t *replicateDiskTask) shouldFinishReplicationBetweenCells() bool {
+	return t.request.IsReplicationBetweenCells && t.state.Iteration > 0 &&
+		t.state.SecondsRemaining <=
+			t.config.GetReplicationBetweenCellsSecondsRemainingThreshold()
+}
 
 func (t *replicateDiskTask) checkReplicationProgress(
 	ctx context.Context,

@@ -3,10 +3,10 @@
 #include "adaptive_wait.h"
 #include "buffer.h"
 #include "event.h"
+#include "list.h"
+#include "log.h"
 #include "poll.h"
 #include "rcu.h"
-#include "log.h"
-#include "list.h"
 #include "utils.h"
 #include "verbs.h"
 #include "work_queue.h"
@@ -14,7 +14,6 @@
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
-
 #include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
@@ -30,6 +29,7 @@
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
+#include <util/generic/map.h>
 #include <util/generic/vector.h>
 #include <util/network/interface.h>
 #include <util/random/random.h>
@@ -55,8 +55,6 @@ constexpr TDuration MIN_CONNECT_TIMEOUT = TDuration::Seconds(1);
 constexpr TDuration FLUSH_TIMEOUT = TDuration::Seconds(10);
 constexpr TDuration MIN_RECONNECT_DELAY = TDuration::MilliSeconds(10);
 constexpr TDuration INSTANT_RECONNECT_DELAY = TDuration::MicroSeconds(1);
-
-constexpr size_t REQUEST_HISTORY_SIZE = 1024;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -86,7 +84,7 @@ struct TRequest
     std::weak_ptr<TClientEndpoint> Endpoint;
 
     TCallContextPtr CallContext;
-    ui32 ReqId = 0;
+    ui32 ReqId = 0;   // 16-bit RDMA request id
     ui64 ClientReqId = 0;
 
     TPooledBuffer InBuffer{};
@@ -109,21 +107,30 @@ struct TRequest
 class TActiveRequests
 {
 private:
-    THashMap<ui32, TRequestPtr> Requests;
-    THistory<ui32> CompletedRequests{REQUEST_HISTORY_SIZE};
-    THistory<ui32> TimedOutRequests{REQUEST_HISTORY_SIZE};
-    THistory<ui32> CancelledRequests{REQUEST_HISTORY_SIZE};
+    ui32 RequestIdGenerator = 0;
+    TMap<ui32, TRequestPtr> Requests;
 
 public:
-    ui32 CreateId()
+    [[nodiscard]] ui32 CreateId()
     {
         for (;;) {
+            Y_DEBUG_ABORT_UNLESS(Requests.size() < RDMA_MAX_REQID - 1);
+
+            if (RequestIdGenerator >= RDMA_MAX_REQID) {
+                RequestIdGenerator = 0;
+            }
+            const ui32 reqId = ++RequestIdGenerator;
             // must be unique through all in-flight requests
-            ui32 reqId = RandomNumber<ui32>(RDMA_MAX_REQID);
-            if (reqId && Requests.find(reqId) == Requests.end()) {
+            if (Requests.find(reqId) == Requests.end()) {
+                Y_DEBUG_ABORT_UNLESS(reqId > 0 && reqId <= RDMA_MAX_REQID);
                 return reqId;
             }
         }
+    }
+
+    [[nodiscard]] ui32 GetCurrentId() const
+    {
+        return RequestIdGenerator;
     }
 
     void Push(TRequestPtr req)
@@ -136,7 +143,6 @@ public:
         auto it = Requests.find(reqId);
         if (it != Requests.end()) {
             TRequestPtr req = std::move(it->second);
-            CompletedRequests.Put(it->first);
             Requests.erase(it);
             return req;
         }
@@ -150,7 +156,6 @@ public:
         }
         auto it = std::begin(Requests);
         TRequestPtr req = std::move(it->second);
-        CompletedRequests.Put(it->first);
         Requests.erase(it);
         return req;
     }
@@ -164,28 +169,12 @@ public:
         return nullptr;
     }
 
-    bool TimedOut(ui32 reqId) const
-    {
-        return TimedOutRequests.Contains(reqId);
-    }
-
-    bool Completed(ui32 reqId) const
-    {
-        return CompletedRequests.Contains(reqId);
-    }
-
-    [[nodiscard]] bool Cancelled(ui32 reqId) const
-    {
-        return CancelledRequests.Contains(reqId);
-    }
-
     TSimpleList<TRequest> PopCancelledRequests(
-        const THashSet<ui64>& idsToCancel)
+        const THashSet<ui64>& clientRequestIdToCancel)
     {
         TSimpleList<TRequest> cancelledReqs;
         for (auto& [rdmaReqId, req]: Requests) {
-            if (idsToCancel.contains(req->ClientReqId)) {
-                CancelledRequests.Put(rdmaReqId);
+            if (clientRequestIdToCancel.contains(req->ClientReqId)) {
                 cancelledReqs.Enqueue(std::move(req));
             }
         }
@@ -200,19 +189,29 @@ public:
     TVector<TRequestPtr> PopTimedOutRequests(ui64 timeoutCycles)
     {
         TVector<TRequestPtr> requests;
-        for (auto& x: Requests) {
-            auto started = x.second->StartedCycles;
-            auto now = GetCycleCount();
+        const ui64 now = GetCycleCount();
 
-            if (started && started + timeoutCycles < now) {
-                requests.push_back(std::move(x.second));
+        auto popTimedOut = [&](decltype(Requests.begin()) it)
+        {
+            for (; it != Requests.end();) {
+                TRequestPtr& request = it->second;
+                if (request->StartedCycles &&
+                    request->StartedCycles + timeoutCycles < now)
+                {
+                    requests.push_back(std::move(request));
+                    it = Requests.erase(it);
+                } else {
+                    break;
+                }
             }
-        }
+        };
 
-        for (const auto& x: requests) {
-            TimedOutRequests.Put(x->ReqId);
-            Requests.erase(x->ReqId);
-        }
+        // Since identifiers are reused in a circle, the oldest identifiers need
+        // to be searched in two places - at the very beginning and after the
+        // last one used.
+        // [ old ... GetCurrentId() ... older]
+        popTimedOut(Requests.begin());
+        popTimedOut(Requests.upper_bound(GetCurrentId()));
 
         return requests;
     }
@@ -403,7 +402,7 @@ private:
 
 struct TClientRequestId: TListNode<TClientRequestId>
 {
-    ui64 ReqId = 0;
+    ui64 ClientRequestId = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -865,14 +864,14 @@ void TClientEndpoint::HandleQueuedRequests()
     }
 }
 
-void TClientEndpoint::CancelRequest(ui64 reqId) noexcept
+void TClientEndpoint::CancelRequest(ui64 clientRequestId) noexcept
 {
     if (!CheckState(EEndpointState::Connected)) {
         return;
     }
 
     auto reqIdForQueue = std::make_unique<TClientRequestId>();
-    reqIdForQueue->ReqId = reqId;
+    reqIdForQueue->ClientRequestId = clientRequestId;
     Counters->RequestEnqueued();
     CancelRequests.Enqueue(std::move(reqIdForQueue));
 
@@ -908,10 +907,10 @@ bool TClientEndpoint::HandleCancelRequests()
     if (!requests) {
         return false;
     }
-    THashSet<ui64> reqsToCancel;
+    THashSet<ui64> clientRequestIdToCancel;
 
-    for (const auto& reqId: requests) {
-        reqsToCancel.emplace(reqId.ReqId);
+    for (const auto& request: requests) {
+        clientRequestIdToCancel.emplace(request.ClientRequestId);
     }
 
     // We should filter input and queued requests from cancelled ones to not
@@ -920,9 +919,10 @@ bool TClientEndpoint::HandleCancelRequests()
 
     auto cancelledReqs = QueuedRequests.DequeueIf(
         [&](const TRequest& req)
-        { return reqsToCancel.contains(req.ClientReqId); });
+        { return clientRequestIdToCancel.contains(req.ClientReqId); });
 
-    cancelledReqs.Append(ActiveRequests.PopCancelledRequests(reqsToCancel));
+    cancelledReqs.Append(
+        ActiveRequests.PopCancelledRequests(clientRequestIdToCancel));
 
     const bool ret = !!cancelledReqs;
 
@@ -1106,7 +1106,8 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
     requestMsg->In = req->InBuffer;
     requestMsg->Out = req->OutBuffer;
 
-    RDMA_TRACE("SEND " << TWorkRequestId(send->wr.wr_id) << " posted");
+    RDMA_TRACE(
+        "SEND " << TWorkRequestId(send->wr.wr_id) << " posted " << req->ReqId);
 
     try {
         Verbs->PostSend(Connection->qp, &send->wr);
@@ -1147,27 +1148,10 @@ void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
             SendRequestCompleted,
             req->CallContext->LWOrbit,
             req->CallContext->RequestId);
-
-    } else if (ActiveRequests.TimedOut(reqId)) {
-        RDMA_INFO(
-            "SEND "
-            << wrId
-            << " request has timed out before receiving send completion");
-
-    } else if (ActiveRequests.Completed(reqId)) {
-        RDMA_INFO(
-            "SEND "
-            << wrId
-            << " request has been completed before receiving send completion");
-
-    } else if (ActiveRequests.Cancelled(reqId)) {
-        RDMA_INFO(
-            "SEND "
-            << wrId
-            << " request was cancelled before receiving send completion");
-
     } else {
-        RDMA_ERROR("SEND " << wrId << " request not found")
+        RDMA_ERROR(
+            "SEND " << wrId << " request not found. Current wrId "
+                    << ActiveRequests.GetCurrentId());
         Counters->Error();
     }
 }
@@ -1220,7 +1204,7 @@ void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv)
 
     auto req = ActiveRequests.Pop(reqId);
     if (!req) {
-        RDMA_ERROR("RECV " << wrId << " request not found");
+        RDMA_ERROR("RECV " << wrId << " request " << reqId << " not found");
         Counters->Error();
         return;
     }

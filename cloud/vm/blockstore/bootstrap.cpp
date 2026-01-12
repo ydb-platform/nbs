@@ -137,13 +137,15 @@ void TBootstrap::Init()
     }
 
     if (TraceReaders.size()) {
+        TTraceProcessorConfig traceProcessorConfig;
+        traceProcessorConfig.ComponentName = "BLOCKSTORE_TRACE";
         TraceProcessor = CreateTraceProcessorMon(
             Monitoring,
             CreateTraceProcessor(
                 Timer,
                 Scheduler,
                 Logging,
-                "BLOCKSTORE_TRACE",
+                std::move(traceProcessorConfig),
                 TLWTraceSafeManager::Instance(),
                 TraceReaders));
     }

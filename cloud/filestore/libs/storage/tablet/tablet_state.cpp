@@ -118,6 +118,8 @@ void TIndexTabletState::LoadState(
     LargeDeletionMarkersThresholdForBackpressure =
         config.GetLargeDeletionMarkersThresholdForBackpressure();
 
+    MaxTabletStep = Max(config.GetMaxTabletStep(), LastStep);
+
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);
     TabletStorageInfo.CopyFrom(tabletStorageInfo);
@@ -239,7 +241,8 @@ THandlesStats TIndexTabletState::GetHandlesStats() const
     return Impl->HandlesStats;
 }
 
-ui64 TIndexTabletState::CalculateExpectedShardCount() const
+ui64 TIndexTabletState::CalculateExpectedShardCount(
+    const ui32 maxShardCount) const
 {
     if (FileSystem.GetShardNo()) {
         // sharding is flat
@@ -254,7 +257,8 @@ ui64 TIndexTabletState::CalculateExpectedShardCount() const
         autoShardCount = ComputeShardCount(
             FileSystem.GetBlocksCount(),
             FileSystem.GetBlockSize(),
-            FileSystem.GetShardAllocationUnit());
+            FileSystem.GetShardAllocationUnit(),
+            maxShardCount);
     }
 
     return Max(currentShardCount, autoShardCount);

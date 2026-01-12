@@ -1785,7 +1785,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         b.WriteToCacheSync(1, 0, "abc");
 
-        b.TempFileHandle.Pwrite("Corrupt cache", 13, 41);
+        b.TempFileHandle.Pwrite("Corrupt cache", 13, 256);
         b.TempFileHandle.Flush();
 
         b.RecreateCache();
@@ -2262,6 +2262,75 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             "yz23456" + TString(5, '\0'),
             readFromCache(4, 12));
         UNIT_ASSERT_VALUES_EQUAL(TString(5, '\0'), readFromCache(13, 5));
+    }
+
+    Y_UNIT_TEST(ShouldReportMinNodeSize)
+    {
+        TBootstrap b;
+
+        // The node is node cached
+        b.Cache.SetCachedNodeSize(1, 2);
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+
+        // The node is cached
+        b.WriteToCacheSync(1, 0, "abc");
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedNodeSize(1));
+        b.Cache.SetCachedNodeSize(1, 4);
+        UNIT_ASSERT_VALUES_EQUAL(4, b.Cache.GetCachedNodeSize(1));
+        b.FlushCache(1);
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+
+        // Single reference - flush before release
+        b.WriteToCacheSync(1, 0, "abc");
+        auto ref1 = b.Cache.AcquireNodeStateRef();
+        b.FlushCache(1);
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedNodeSize(1));
+        b.Cache.SetCachedNodeSize(1, 4);
+        UNIT_ASSERT_VALUES_EQUAL(4, b.Cache.GetCachedNodeSize(1));
+        b.Cache.ReleaseNodeStateRef(ref1);
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+
+        // Single reference - flush after release
+        b.WriteToCacheSync(1, 0, "abc");
+        auto ref2 = b.Cache.AcquireNodeStateRef();
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedNodeSize(1));
+        b.Cache.SetCachedNodeSize(1, 4);
+        UNIT_ASSERT_VALUES_EQUAL(4, b.Cache.GetCachedNodeSize(1));
+        b.Cache.ReleaseNodeStateRef(ref2);
+        UNIT_ASSERT_VALUES_EQUAL(4, b.Cache.GetCachedNodeSize(1));
+        b.FlushCache(1);
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+
+        // Single reference - resurrect node state
+        b.WriteToCacheSync(1, 0, "abc");
+        auto ref3 = b.Cache.AcquireNodeStateRef();
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedNodeSize(1));
+        b.FlushCache(1);
+        b.WriteToCacheSync(1, 0, "abcd");
+        b.Cache.ReleaseNodeStateRef(ref3);
+        UNIT_ASSERT_VALUES_EQUAL(4, b.Cache.GetCachedNodeSize(1));
+        b.FlushCache(1);
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+
+        // Multiple references
+        b.WriteToCacheSync(1, 0, "abc");
+        auto ref4 = b.Cache.AcquireNodeStateRef();
+        auto ref5 = b.Cache.AcquireNodeStateRef();
+        b.FlushCache(1);
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedNodeSize(1));
+        b.Cache.ReleaseNodeStateRef(ref5);
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedNodeSize(1));
+        b.Cache.ReleaseNodeStateRef(ref4);
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+
+        // Newer references don't affect deleted node states
+        b.WriteToCacheSync(1, 0, "abc");
+        auto ref6 = b.Cache.AcquireNodeStateRef();
+        b.FlushCache(1);
+        auto ref7 = b.Cache.AcquireNodeStateRef();
+        b.Cache.ReleaseNodeStateRef(ref6);
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+        b.Cache.ReleaseNodeStateRef(ref7);
     }
 }
 

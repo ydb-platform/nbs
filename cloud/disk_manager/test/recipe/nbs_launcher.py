@@ -109,7 +109,6 @@ class NbsLauncher:
 
         # TODO: Actualize blockstore storage config.
         storage_config_patch.FreshChannelWriteRequestsEnabled = True
-        storage_config_patch.FreshChannelCount = 1
 
         # Needed for tests on blockstore client https://github.com/ydb-platform/nbs/pull/3067
         storage_config_patch.MaxDisksInPlacementGroup = 2
@@ -163,7 +162,7 @@ class NbsLauncher:
 
         features_config_patch = TFeaturesConfig()
         root_kms_encryption = features_config_patch.Features.add()
-        root_kms_encryption.Name = 'RootKmsEncryptionForDiskRegistryBasedDisksEnabled'
+        root_kms_encryption.Name = 'RootKmsEncryptionForDiskRegistryBasedDisks'
         root_kms_encryption.Whitelist.FolderIds.append("encrypted-folder")
 
         self.__nbs = LocalNbs(

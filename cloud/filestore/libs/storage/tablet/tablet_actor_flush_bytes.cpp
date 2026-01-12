@@ -833,7 +833,7 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "FlushBytes");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "FlushBytes");
     }
 
     ui32 blobIndex = 0;

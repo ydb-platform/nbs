@@ -26,6 +26,11 @@ TRequestCounters MakeRequestCounters(
             const auto bt = static_cast<EBlockStoreRequest>(t);
             return IsNonLocalReadWriteRequest(bt);
         },
+        [] (TRequestCounters::TRequestType t) {
+            Y_DEBUG_ABORT_UNLESS(t < BlockStoreRequestsCount);
+            const auto bt = static_cast<EBlockStoreRequest>(t);
+            return bt == EBlockStoreRequest::StartEndpoint;
+        },
         options,
         histogramCounterOptions,
         executionTimeSizeClasses);

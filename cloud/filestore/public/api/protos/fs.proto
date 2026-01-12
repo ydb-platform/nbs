@@ -44,6 +44,12 @@ message TFileStoreFeatures
     bool DirectoryHandlesStorageEnabled = 29;
     uint64 DirectoryHandlesTableSize = 30;
     bool GuestHandleKillPrivV2Enabled = 31;
+    bool ZeroCopyReadEnabled = 32;
+    uint32 TwoStageReadThreshold = 33;
+    bool BlockChecksumsInProfileLogEnabled = 34;
+    uint32 RegularFileEntryTimeout = 35;
+    bool ReadBlobDisabled = 36;
+    bool WriteBlobDisabled = 37;
 }
 
 message TFileStore
@@ -69,6 +75,9 @@ message TFileStore
     TFileStoreFeatures Features = 11;
 
     repeated string ShardFileSystemIds = 12;
+
+    // Zero for main fs, non-zero for shards.
+    uint32 ShardNo = 13;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -256,6 +265,9 @@ message TResizeFileStoreRequest
 
     // Turn on strict size enforcement mode for the whole filesystem.
     bool EnableStrictFileSystemSizeEnforcement = 8;
+
+    // Turn on directory creation in shards for the whole filesystem.
+    bool EnableDirectoryCreationInShards = 9;
 }
 
 message TResizeFileStoreResponse

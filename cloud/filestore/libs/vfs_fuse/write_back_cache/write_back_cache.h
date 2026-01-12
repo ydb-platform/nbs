@@ -67,6 +67,13 @@ public:
 
     bool IsEmpty() const;
 
+    // Keep information about MinNodeSize for flushed nodes
+    ui64 AcquireNodeStateRef();
+    void ReleaseNodeStateRef(ui64 refId);
+
+    ui64 GetCachedNodeSize(ui64 nodeId) const;
+    void SetCachedNodeSize(ui64 nodeId, ui64 size);
+
     enum class EWriteDataRequestStatus;
     struct TPersistentQueueStats;
 

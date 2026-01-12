@@ -206,6 +206,7 @@ public:
     ui32 GetThreeStageWriteThreshold() const;
     bool GetUnalignedThreeStageWriteEnabled() const;
     TDuration GetEntryTimeout() const;
+    TDuration GetRegularFileEntryTimeout() const;
     TDuration GetNegativeEntryTimeout() const;
     TDuration GetAttrTimeout() const;
     ui32 GetPreferredBlockSizeMultiplier() const;
@@ -354,6 +355,19 @@ public:
     bool GetGuestHandleKillPrivV2Enabled() const;
 
     [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
+
+    bool GetZeroCopyReadEnabled() const;
+
+    [[nodiscard]] bool GetBlockChecksumsInProfileLogEnabled() const;
+
+    ui32 GetMaxShardCount() const;
+
+    bool GetReadBlobDisabled() const;
+    bool GetWriteBlobDisabled() const;
+
+    ui32 GetCpuLackOverloadThreshold() const;
+
+    ui32 GetMaxTabletStep() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

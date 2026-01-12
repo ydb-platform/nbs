@@ -60,9 +60,11 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         features->SetXAttrCacheTimeout(
             Config->GetXAttrCacheTimeout(cloudId, folderId, fsId)
                 .MilliSeconds());
+        const bool directoryHandlesStorageEnabled =
+            Config->GetDirectoryHandlesStorageEnabled(cloudId, folderId, fsId);
         features->SetDirectoryHandlesStorageEnabled(
-            Config->GetDirectoryHandlesStorageEnabled());
-        if (Config->GetDirectoryHandlesStorageEnabled()) {
+            directoryHandlesStorageEnabled);
+        if (directoryHandlesStorageEnabled) {
             features->SetDirectoryHandlesTableSize(
                 Config->GetDirectoryHandlesTableSize());
         }

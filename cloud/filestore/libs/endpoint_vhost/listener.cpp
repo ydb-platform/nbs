@@ -1,5 +1,7 @@
 #include "listener.h"
 
+#include "helpers.h"
+
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/endpoint/listener.h>
@@ -99,15 +101,12 @@ public:
 
         auto filestore = FileStoreEndpoints->GetEndpoint(serviceEndpoint);
         if (!filestore) {
-            ythrow TServiceError(E_ARGUMENT)
+            STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
                 << "invalid service endpoint " << serviceEndpoint.Quote();
         }
 
         NProto::TSessionConfig sessionConfig;
-        sessionConfig.SetFileSystemId(config.GetFileSystemId());
-        sessionConfig.SetClientId(config.GetClientId());
-        sessionConfig.SetSessionPingTimeout(config.GetSessionPingTimeout());
-        sessionConfig.SetSessionRetryTimeout(config.GetSessionRetryTimeout());
+        EndpointConfigToSessionConfig(config, &sessionConfig);
 
         auto session = CreateSession(
             Logging,

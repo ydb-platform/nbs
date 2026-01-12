@@ -426,7 +426,7 @@ void TAppContext::ValidateRequest(
         bool result = TryParseSourceFd(peer, &fd);
 
         if (!result) {
-            ythrow TServiceError(E_FAIL)
+            STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                 << "failed to parse request source fd: " << peer;
         }
 
@@ -434,7 +434,7 @@ void TAppContext::ValidateRequest(
         // so pretend they are coming from data channel.
         auto src = SessionStorage->FindSourceByFd(fd);
         if (!src) {
-            ythrow TServiceError(E_GRPC_UNAVAILABLE)
+            STORAGE_THROW_SERVICE_ERROR(E_GRPC_UNAVAILABLE)
                 << "endpoint has been stopped (fd = " << fd << ").";
         }
 
@@ -442,7 +442,7 @@ void TAppContext::ValidateRequest(
     }
 
     if (headers.HasInternal()) {
-        ythrow TServiceError(E_ARGUMENT)
+        STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
             << "internal field should not be set by client";
     }
 
@@ -467,6 +467,46 @@ using TExecutorContext = NStorage::NGrpc::
 
 using TExecutor = NStorage::NGrpc::
     TExecutor<grpc::ServerCompletionQueue, TRequestsInFlight>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError TryAdjustIovecOffsets(
+    const TLog& Log,
+    TServerState* state,
+    google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs,
+    ui64 regionId)
+{
+    TResultOrError<TMmapRegionMetadata> region = state->GetMmapRegion(regionId);
+    if (NCloud::HasError(region.GetError())) {
+        STORAGE_DEBUG(
+            "Failed to get mmap region " << regionId << ": "
+                                         << region.GetError().GetMessage());
+        return region.GetError();
+    }
+
+    const auto& metadata = region.GetResult();
+    STORAGE_DEBUG(
+        "Adjusting iovecs for region " << regionId
+                                       << ": address=" << metadata.Address
+                                       << " size=" << metadata.Size);
+
+    for (auto& iovec: iovecs) {
+        ui64 offset = iovec.GetBase();
+        ui64 length = iovec.GetLength();
+
+        if (offset + length > metadata.Size) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "Iovec out of bounds: offset=" << offset
+                                 << " length=" << length
+                                 << " region_size=" << metadata.Size);
+        }
+
+        iovec.SetBase(offset + reinterpret_cast<ui64>(metadata.Address));
+    }
+
+    return {};
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -669,31 +709,53 @@ private:
         AppCtx.Stats->RequestStarted(Log, *CallContext);
         Started = true;
 
-        try {
-            AppCtx.ValidateRequest(
-                *Context,
-                *Request->MutableHeaders());
+        if constexpr (
+            (std::is_same_v<TRequest, NProto::TWriteDataRequest> ||
+             std::is_same_v<TRequest, NProto::TReadDataRequest>) &&
+            std::is_same_v<TAppContext, TFileStoreContext>)
+        {
+            if (AppCtx.State && Request->IovecsSize() > 0) {
+                auto error = TryAdjustIovecOffsets(
+                    Log,
+                    this->AppCtx.State.get(),
+                    *Request->MutableIovecs(),
+                    Request->GetRegionId());
+                if (HasError(error)) {
+                    TResponse response;
+                    response.MutableError()->Swap(&error);
+                    Response = MakeFuture(std::move(response));
+                }
+            }
+        }
 
-            Response = TMethod::Execute(
-                *AppCtx.ServiceImpl,
-                CallContext,
-                std::move(Request));
-        } catch (const TServiceError& e) {
-            STORAGE_WARN(
-                TMethod::RequestName
-                << " #" << RequestId
-                << " request error: " << e);
+        if (!Response.HasValue()) {
+            try {
+                AppCtx.ValidateRequest(*Context, *Request->MutableHeaders());
 
-            Response = MakeFuture(
-                ErrorResponse<TResponse>(e.GetCode(), TString(e.GetMessage())));
-        } catch (...) {
-            STORAGE_ERROR(
-                TMethod::RequestName
-                << " #" << RequestId
-                << " unexpected error: " << CurrentExceptionMessage());
+                Response = TMethod::Execute(
+                    *AppCtx.ServiceImpl,
+                    CallContext,
+                    std::move(Request));
+            } catch (const TServiceError& e) {
+                STORAGE_WARN(
+                    TMethod::RequestName << " #" << RequestId
+                                         << " request error: " << e);
 
-            Response = MakeFuture(
-                ErrorResponse<TResponse>(E_FAIL, CurrentExceptionMessage()));
+                Response = MakeFuture(
+                    ErrorResponse<TResponse>(
+                        e.GetCode(),
+                        TString(e.GetMessage())));
+            } catch (...) {
+                STORAGE_ERROR(
+                    TMethod::RequestName
+                    << " #" << RequestId
+                    << " unexpected error: " << CurrentExceptionMessage());
+
+                Response = MakeFuture(
+                    ErrorResponse<TResponse>(
+                        E_FAIL,
+                        CurrentExceptionMessage()));
+            }
         }
 
         auto* tag = AcquireCompletionTag();
@@ -1228,6 +1290,8 @@ public:
             regionInfo->SetId(region.Id);
             regionInfo->SetFilePath(region.FilePath);
             regionInfo->SetSize(region.Size);
+            regionInfo->SetLatestActivityTimestamp(
+                region.LatestActivityTimestamp.MicroSeconds());
         }
         this->Writer.Finish(response, grpc::Status::OK, AcquireCompletionTag());
     }
@@ -1365,6 +1429,61 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TPingMmapRegionCustomHandler final
+    : public TCustomHandlerBase<
+          NProto::TPingMmapRegionRequest,
+          NProto::TPingMmapRegionResponse,
+          TPingMmapRegionCustomHandler>
+{
+    using TBase = TCustomHandlerBase<
+        NProto::TPingMmapRegionRequest,
+        NProto::TPingMmapRegionResponse,
+        TPingMmapRegionCustomHandler>;
+
+public:
+    using TBase::TBase;
+
+    void PrepareRequestImpl()
+    {
+        this->AppCtx.Service.RequestPingMmapRegion(
+            this->Context.get(),
+            this->Request.get(),
+            &this->Writer,
+            this->ExecCtx.CompletionQueue.get(),
+            this->ExecCtx.CompletionQueue.get(),
+            this);
+    }
+
+    void ProcessAndSendResponse()
+    {
+        Error = this->AppCtx.State->PingMmapRegion(this->Request->GetId());
+
+        NProto::TPingMmapRegionResponse response;
+        if (NCloud::HasError(Error)) {
+            *response.MutableError() = Error;
+        }
+
+        this->Writer.Finish(response, grpc::Status::OK, AcquireCompletionTag());
+    }
+
+    void CompleteRequest()
+    {
+        auto& Log = this->AppCtx.Log;
+        if (!NCloud::HasError(Error)) {
+            STORAGE_INFO("PingMmapRegion #" << this->RequestId << " completed");
+        } else {
+            STORAGE_INFO(
+                "PingMmapRegion #" << this->RequestId
+                              << " failed: " << FormatError(Error));
+        }
+    }
+
+private:
+    NCloud::NProto::TError Error;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename T>
 using TFileStoreHandler = TRequestHandler<TFileStoreContext, T>;
 
@@ -1388,6 +1507,7 @@ void StartRequests(TExecutorContext& execCtx, TFileStoreContext& appCtx)
         TListMmapRegionsCustomHandler::Start(execCtx, appCtx);
         TMmapCustomHandler::Start(execCtx, appCtx);
         TMunmapCustomHandler::Start(execCtx, appCtx);
+        TPingMmapRegionCustomHandler::Start(execCtx, appCtx);
     }
 }
 
@@ -1536,7 +1656,7 @@ public:
 
         AppCtx.Server = builder.BuildAndStart();
         if (!AppCtx.Server) {
-            ythrow TServiceError(E_FAIL)
+            STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                 << "could not start gRPC server";
         }
 

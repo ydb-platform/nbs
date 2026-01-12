@@ -80,6 +80,8 @@ private:
         TIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
+        Y_UNUSED(ctx);
+
         TABLET_VERIFY(!args.SrcBlobs);
         TABLET_VERIFY(!args.MixedBlobs);
 
@@ -93,7 +95,8 @@ private:
         // and mark overwritten blocks now
         args.CommitId = Tablet.GenerateCommitId();
         if (args.CommitId == InvalidCommitId) {
-            return Tablet.RebootTabletOnCommitOverflow(ctx, "AddBlobWrite");
+            args.Error = ErrorCommitIdOverflow();
+            return;
         }
 
         for (const auto& part: args.UnalignedDataParts) {
@@ -184,7 +187,9 @@ private:
         // and mark overwritten blocks now
         args.CommitId = Tablet.GenerateCommitId();
         if (args.CommitId == InvalidCommitId) {
-            return Tablet.RebootTabletOnCommitOverflow(ctx, "AddBlobWrite");
+            return Tablet.ScheduleRebootTabletOnCommitIdOverflow(
+                ctx,
+                GetAddBlobModeName(args.Mode));
         }
 
         TVector<bool> isMixedBlobWritten(args.MixedBlobs.size());
@@ -535,6 +540,12 @@ void TIndexTabletActor::CompleteTx_AddBlob(
     auto response =
         std::make_unique<TEvIndexTabletPrivate::TEvAddBlobResponse>(args.Error);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    if (args.CommitId == InvalidCommitId) {
+        return ScheduleRebootTabletOnCommitIdOverflow(
+            ctx,
+            GetAddBlobModeName(args.Mode));
+    }
 
     EnqueueCollectGarbageIfNeeded(ctx);
 }

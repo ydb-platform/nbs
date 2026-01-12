@@ -284,13 +284,15 @@ void TBootstrap::Init()
 
     auto diagnosticsConfig = Configs->DiagnosticsConfig;
     if (TraceReaders.size()) {
+        TTraceProcessorConfig traceProcessorConfig;
+        traceProcessorConfig.ComponentName = "BLOCKSTORE_TRACE";
         TraceProcessor = CreateTraceProcessorMon(
             Monitoring,
             CreateTraceProcessor(
                 Timer,
                 Scheduler,
                 Logging,
-                "BLOCKSTORE_TRACE",
+                std::move(traceProcessorConfig),
                 NLwTraceMonPage::TraceManager(diagnosticsConfig->GetUnsafeLWTrace()),
                 TraceReaders));
 

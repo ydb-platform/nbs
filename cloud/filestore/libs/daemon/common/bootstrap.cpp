@@ -379,13 +379,17 @@ void TBootstrapCommon::InitLWTrace(
     }
 
     if (traceReaders.size()) {
+        TTraceProcessorConfig traceProcessorConfig;
+        traceProcessorConfig.ComponentName = "NFS_TRACE";
+        traceProcessorConfig.DumpTracksInterval =
+            Configs->DiagnosticsConfig->GetDumpTracksInterval();
         TraceProcessor = CreateTraceProcessorMon(
             Monitoring,
             CreateTraceProcessor(
                 Timer,
                 BackgroundScheduler,
                 Logging,
-                "NFS_TRACE",
+                std::move(traceProcessorConfig),
                 NLwTraceMonPage::TraceManager(false),
                 std::move(traceReaders)));
 

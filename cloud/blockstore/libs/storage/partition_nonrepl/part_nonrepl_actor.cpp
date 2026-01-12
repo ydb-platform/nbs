@@ -577,25 +577,31 @@ void TNonreplicatedPartitionActor::HandleAgentIsUnavailable(
         }
     }
 
-    // Cancel all write/zero requests that intersects with the rows of the lagging
-    // agent. And read requests to the lagging replica.
-    for (const auto& [actorId, requestData]: RequestsInProgress.AllRequests()) {
-        for (int deviceIndex: requestData.Value.DeviceIndices) {
-            const bool shouldCancelRequest =
-                laggingRows.contains(deviceIndex) &&
-                (requestData.IsWrite ||
-                 getAgentIdByRow(deviceIndex) == laggingAgentId);
+    // Cancel all write/zero requests that intersects with the rows of the
+    // lagging agent. And read requests to the lagging replica.
+    RequestsInProgress.EnumerateRequests(
+        [&](NActors::TActorId actorId,
+            bool isWrite,
+            TBlockRange64 range,
+            const TRequestData& requestData)
+        {
+            Y_UNUSED(range);
 
-            if (shouldCancelRequest) {
-                NCloud::Send<TEvNonreplPartitionPrivate::TEvCancelRequest>(
-                    ctx,
-                    actorId,
-                    0,   // cookie
-                    EReason::Canceled);
-                break;
+            for (int deviceIndex: requestData.DeviceIndices) {
+                const bool shouldCancelRequest =
+                    laggingRows.contains(deviceIndex) &&
+                    (isWrite || getAgentIdByRow(deviceIndex) == laggingAgentId);
+
+                if (shouldCancelRequest) {
+                    NCloud::Send<TEvNonreplPartitionPrivate::TEvCancelRequest>(
+                        ctx,
+                        actorId,
+                        0,   // cookie
+                        EReason::Canceled);
+                    break;
+                }
             }
-        }
-    }
+        });
 }
 
 void TNonreplicatedPartitionActor::HandleAgentIsBackOnline(

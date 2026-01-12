@@ -143,6 +143,24 @@ enum class EAddBlobMode
     Compaction,
 };
 
+inline TString GetAddBlobModeName(EAddBlobMode mode)
+{
+    switch (mode) {
+        case EAddBlobMode::Write:
+            return "AddBlobWrite";
+        case EAddBlobMode::WriteBatch:
+            return "AddBlobWriteBatch";
+        case EAddBlobMode::Flush:
+            return "AddBlobFlush";
+        case EAddBlobMode::FlushBytes:
+            return "AddBlobFlushBytes";
+        case EAddBlobMode::Compaction:
+            return "AddBlobCompaction";
+        default:
+            return "AddBlobUnknown";
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 enum class EDeleteCheckpointMode
@@ -343,7 +361,27 @@ struct TEvIndexTabletPrivate
     // ReadWrite completion
     //
 
-    using TReadWriteCompleted = TOperationCompleted;
+    struct TReadWriteCompleted: TOperationCompleted
+    {
+        const bool IsOverloaded;
+
+        TReadWriteCompleted(
+                TSet<ui32> mixedBlocksRanges,
+                ui64 commitId,
+                ui32 requestCount,
+                ui32 requestBytes,
+                TDuration d,
+                bool isOverloaded)
+            : TOperationCompleted(
+                std::move(mixedBlocksRanges),
+                commitId,
+                requestCount,
+                requestBytes,
+                d)
+            , IsOverloaded(isOverloaded)
+        {
+        }
+    };
 
     //
     // AddData completion
@@ -352,14 +390,17 @@ struct TEvIndexTabletPrivate
     struct TAddDataCompleted: TDataOperationCompleted
     {
         const ui64 CommitId;
+        const bool IsOverloaded;
 
         TAddDataCompleted(
                 ui32 requestCount,
                 ui32 requestBytes,
                 TDuration d,
-                ui64 commitId)
+                ui64 commitId,
+                bool isOverloaded)
             : TDataOperationCompleted(requestCount, requestBytes, d)
             , CommitId(commitId)
+            , IsOverloaded(isOverloaded)
         {
         }
     };

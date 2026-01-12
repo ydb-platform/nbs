@@ -7,10 +7,10 @@
 #include <cloud/contrib/vhost/logging.h>
 #include <cloud/contrib/vhost/platform.h>
 
-#include <contrib/libs/virtiofsd/fuse.h>
-#include <contrib/libs/virtiofsd/fuse_i.h>
-#include <contrib/libs/virtiofsd/fuse_lowlevel.h>
-#include <contrib/libs/virtiofsd/fuse_virtio.h>
+#include <cloud/contrib/virtiofsd/fuse.h>
+#include <cloud/contrib/virtiofsd/fuse_i.h>
+#include <cloud/contrib/virtiofsd/fuse_lowlevel.h>
+#include <cloud/contrib/virtiofsd/fuse_virtio.h>
 
 #include <stdatomic.h>
 #include <sys/stat.h>
@@ -430,15 +430,15 @@ int virtio_session_mount(struct fuse_session* se)
 
     // no need to supply tag here - it will be handled by the QEMU
     dev->fsdev.socket_path = se->vu_socket_path;
-    dev->fsdev.num_queues = se->num_backend_queues;
+    dev->fsdev.num_queues = se->num_frontend_queues;
 
     VHD_LOG_INFO(
-        "starting device %s, num_backend_queues=%d, num_frontend_queues=%d",
+        "starting device %s, num_frontend_queues=%d, num_backend_queues=%d",
         dev->fsdev.socket_path,
-        se->num_backend_queues,
-        se->num_frontend_queues);
+        se->num_frontend_queues,
+        se->num_backend_queues);
 
-    dev->rq_count = se->num_frontend_queues;
+    dev->rq_count = se->num_backend_queues;
     dev->rqs = vhd_zalloc(sizeof(dev->rqs[0]) * dev->rq_count);
 
     for (queue_index = 0; queue_index < dev->rq_count; queue_index++) {

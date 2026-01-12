@@ -142,7 +142,7 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
 
         OnRequestStarted(
             ctx,
-            deviceRequest.Device.GetDeviceUUID(),
+            deviceRequest.Device.GetAgentId(),
             TDeviceOperationTracker::ERequestType::Write,
             index);
 
@@ -323,7 +323,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         false,   // replyLocal
         LogTitle.GetChild(GetCycleCount()));
 
-    RequestsInProgress.AddWriteRequest(actorId, std::move(request));
+    RequestsInProgress.AddWriteRequest(actorId, blockRange, std::move(request));
 }
 
 void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
@@ -437,7 +437,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
         true,   // replyLocal
         LogTitle.GetChild(GetCycleCount()));
 
-    RequestsInProgress.AddWriteRequest(actorId, std::move(request));
+    RequestsInProgress.AddWriteRequest(actorId, blockRange, std::move(request));
 }
 
 void TNonreplicatedPartitionActor::HandleWriteBlocksCompleted(
@@ -464,7 +464,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksCompleted(
     NetworkBytes += requestBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
-    RequestsInProgress.RemoveRequest(ev->Sender);
+    RequestsInProgress.RemoveWriteRequest(ev->Sender);
     OnRequestCompleted(*msg, ctx.Now());
 
     DrainActorCompanion.ProcessDrainRequests(ctx);

@@ -409,7 +409,7 @@ private:
         auto err = Chmod(socketPath, mode);
 
         if (err != 0) {
-            ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
+            STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
                 << "failed to chmod socket " << socketPath;
         }
     }
@@ -426,7 +426,7 @@ private:
         if (IsUnixAddress(addr)) {
             const auto& socketPath = TFsPath(GetSocketPath(addr));
             if (!socketPath.Parent().Exists()) {
-                ythrow TServiceError(E_NOT_FOUND)
+                STORAGE_THROW_SERVICE_ERROR(E_NOT_FOUND)
                     << "Invalid socket path " << socketPath;
             }
         }

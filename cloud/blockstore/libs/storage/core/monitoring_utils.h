@@ -206,8 +206,6 @@ void RenderAutoRefreshScript(
     int intervalMs,
     const TString& jsUpdateFunctionName);
 
-void AddGroupLatencyCSS(IOutputStream& out);
-
 void DumpLatencyForOperations(
     IOutputStream& out,
     const TBSGroupOperationTimeTracker& tracker);

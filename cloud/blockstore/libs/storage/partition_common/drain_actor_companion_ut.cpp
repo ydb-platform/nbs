@@ -114,7 +114,7 @@ class TActorWithDrain
 {
     ui32 CurrentWriteRequestInProgress = 0;
     bool WaitingForInFlightWrites = false;
-    TDrainActorCompanion drainCompanion{*this, "LoggingId"};
+    TDrainActorCompanion DrainCompanion{*this, "LoggingId"};
 
 public:
     TActorWithDrain()
@@ -137,32 +137,41 @@ public:
         }
     }
 
-private:
+    // IRequestsInProgress implementation
     bool WriteRequestInProgress() const override
     {
         return CurrentWriteRequestInProgress != 0;
     }
 
-    void WaitForInFlightWrites() override {
+    bool OverlapsWithWrites(TBlockRange64 range) const override
+    {
+        Y_UNUSED(range);
+        Y_ABORT("Unimplemented");
+    }
+
+    void WaitForInFlightWrites() override
+    {
         WaitingForInFlightWrites = true;
     }
 
-    bool IsWaitingForInFlightWrites() const override {
+    bool IsWaitingForInFlightWrites() const override
+    {
         return WaitingForInFlightWrites && WriteRequestInProgress();
     }
 
+private:
     void HandleDrain(
         const NPartition::TEvPartition::TEvDrainRequest::TPtr& ev,
         const TActorContext& ctx)
     {
-        drainCompanion.HandleDrain(ev, ctx);
+        DrainCompanion.HandleDrain(ev, ctx);
     }
 
     void HandleWaitForInFlightWrites(
         const NPartition::TEvPartition::TEvWaitForInFlightWritesRequest::TPtr& ev,
         const TActorContext& ctx)
     {
-        drainCompanion.HandleWaitForInFlightWrites(ev, ctx);
+        DrainCompanion.HandleWaitForInFlightWrites(ev, ctx);
     }
 
     void HandleSetWriteCount(
@@ -173,7 +182,7 @@ private:
         if (!WriteRequestInProgress()) {
             WaitingForInFlightWrites = false;
         }
-        drainCompanion.ProcessDrainRequests(ctx);
+        DrainCompanion.ProcessDrainRequests(ctx);
     }
 };
 

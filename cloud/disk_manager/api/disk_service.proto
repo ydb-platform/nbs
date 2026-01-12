@@ -148,6 +148,7 @@ message MigrateDiskRequest {
     string dst_zone_id = 2;
     string dst_placement_group_id = 3;
     uint32 dst_placement_partition_index = 4;
+    bool is_migration_between_cells = 5;
 }
 
 message MigrateDiskMetadata {

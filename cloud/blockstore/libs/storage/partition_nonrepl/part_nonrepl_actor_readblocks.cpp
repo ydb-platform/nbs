@@ -124,7 +124,7 @@ void TDiskAgentReadActor::SendRequest(const TActorContext& ctx)
 
         OnRequestStarted(
             ctx,
-            deviceRequest.Device.GetDeviceUUID(),
+            deviceRequest.Device.GetAgentId(),
             TDeviceOperationTracker::ERequestType::Read,
             cookie);
 
@@ -302,7 +302,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocks(
         SelfId(),
         LogTitle.GetChild(GetCycleCount()));
 
-    RequestsInProgress.AddReadRequest(actorId, std::move(request));
+    RequestsInProgress.AddReadRequest(actorId, blockRange, std::move(request));
 }
 
 void TNonreplicatedPartitionActor::HandleReadBlocksCompleted(
@@ -338,7 +338,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocksCompleted(
     NetworkBytes += nonVoidBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
-    RequestsInProgress.RemoveRequest(ev->Sender);
+    RequestsInProgress.RemoveReadRequest(ev->Sender);
     OnRequestCompleted(*msg, ctx.Now());
 
     if (RequestsInProgress.Empty() && Poisoner) {

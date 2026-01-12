@@ -114,6 +114,7 @@ public:
     TString GetTracesSyslogIdentifier() const;
 
     TDuration GetProfileLogTimeThreshold() const;
+    TDuration GetDumpTracksInterval() const;
     ui32 GetLWTraceShuttleCount() const;
 
     TString GetCpuWaitServiceName() const;

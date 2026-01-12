@@ -2,6 +2,7 @@ PY3_PROGRAM()
 
 PY_SRCS(
     __main__.py
+    common.py
     compute_launcher.py
     disk_manager_launcher.py
     kms_launcher.py

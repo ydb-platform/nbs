@@ -1,6 +1,7 @@
 #include "service_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
+#include <cloud/filestore/libs/storage/core/system_counters.h>
 
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
@@ -48,35 +49,43 @@ void TStorageServiceActor::HandleUpdateStats(
         HddTabletCount->Set(hddTablets);
     }
 
-    auto nowCycle = GetCycleCount();
-    for (auto it = InFlightRequests.begin(); it != InFlightRequests.end(); ) {
-        const auto& request = it->second;
-        if (!request.IsCompleted()) {
-            StatsRegistry->AddIncompleteRequest(
-                request.ToIncompleteRequest(nowCycle));
-            ++it;
-        } else {
-            InFlightRequests.erase(it++);
+    {
+        const ui64 nowCycles = GetCycleCount();
+        const auto keys = InFlightRequests->GetKeys();
+        InFlightRequestCount->Set(keys.size());
+        for (const ui64 key: keys) {
+            std::unique_ptr<TIncompleteRequest> incompleteRequest;
+
+            {
+                auto lockedRequest = InFlightRequests->FindAndLock(key);
+                auto* request = lockedRequest.Get();
+                if (request && !request->IsCompleted()) {
+                    incompleteRequest = request->ToIncompleteRequest(nowCycles);
+                }
+            }
+
+            if (incompleteRequest) {
+                StatsRegistry->AddIncompleteRequest(*incompleteRequest);
+            }
         }
     }
 
     if (StatsFetcher) {
         auto [cpuWait, error] = StatsFetcher->GetCpuWait();
+        auto now = ctx.Monotonic();
         if (HasError(error)) {
-        auto errorMessage =
-            ReportCpuWaitCounterReadError(error.GetMessage());
+            auto errorMessage =
+                ReportCpuWaitCounterReadError(error.GetMessage());
             LOG_WARN_S(
                 ctx,
                 TFileStoreComponents::SERVICE,
                 "Failed to get CpuWait stats: " << errorMessage);
-        }
-
-        auto now = ctx.Monotonic();
-        if (LastCpuWaitTs < now) {
+        } else if (LastCpuWaitTs < now) {
             auto intervalUs = (now - LastCpuWaitTs).MicroSeconds();
             auto cpuLack = 100 * cpuWait.MicroSeconds();
             cpuLack /= intervalUs;
             *CpuWaitCounter = cpuLack;
+            SystemCounters->CpuLack.store(cpuLack, std::memory_order_relaxed);
 
             if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
                 LOG_WARN_S(
@@ -84,9 +93,9 @@ void TStorageServiceActor::HandleUpdateStats(
                     TFileStoreComponents::SERVICE,
                     "Cpu wait is " << cpuLack);
             }
-        }
 
-        LastCpuWaitTs = now;
+            LastCpuWaitTs = now;
+        }
     }
 
     StatsRegistry->UpdateStats(true);

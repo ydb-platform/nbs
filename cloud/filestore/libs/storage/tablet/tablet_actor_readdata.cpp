@@ -327,6 +327,8 @@ private:
     const ITraceSerializerPtr TraceSerializer;
     const TString LogTag;
     const TString FileSystemId;
+    const bool ShouldCalculateChecksums;
+    const ui32 BlockSize;
     const TActorId Tablet;
     const TRequestInfoPtr RequestInfo;
     const ui64 CommitId;
@@ -338,6 +340,7 @@ private:
     const IBlockBufferPtr Buffer;
     /*const*/ TSet<ui32> MixedBlocksRanges;
     IProfileLogPtr ProfileLog;
+    NProto::TBackendInfo BackendInfo;
     NProto::TProfileLogRequestInfo ProfileLogRequest;
 
 public:
@@ -345,6 +348,8 @@ public:
         ITraceSerializerPtr traceSerializer,
         TString logTag,
         TString fileSystemId,
+        bool shouldCalculateChecksums,
+        ui32 blockSize,
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
@@ -356,6 +361,7 @@ public:
         IBlockBufferPtr buffer,
         TSet<ui32> mixedBlocksRanges,
         IProfileLogPtr profileLog,
+        NProto::TBackendInfo backendInfo,
         NProto::TTProfileLogRequestInfo profileLogRequest);
 
     void Bootstrap(const TActorContext& ctx);
@@ -383,6 +389,8 @@ TReadDataActor::TReadDataActor(
         ITraceSerializerPtr traceSerializer,
         TString logTag,
         TString fileSystemId,
+        bool shouldCalculateChecksums,
+        ui32 blockSize,
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
@@ -394,10 +402,13 @@ TReadDataActor::TReadDataActor(
         IBlockBufferPtr buffer,
         TSet<ui32> mixedBlocksRanges,
         IProfileLogPtr profileLog,
+        NProto::TBackendInfo backendInfo,
         NProto::TTProfileLogRequestInfo profileLogRequest)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
     , FileSystemId(std::move(fileSystemId))
+    , ShouldCalculateChecksums(shouldCalculateChecksums)
+    , BlockSize(blockSize)
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
     , CommitId(commitId)
@@ -409,6 +420,7 @@ TReadDataActor::TReadDataActor(
     , Buffer(std::move(buffer))
     , MixedBlocksRanges(std::move(mixedBlocksRanges))
     , ProfileLog(std::move(profileLog))
+    , BackendInfo(std::move(backendInfo))
     , ProfileLogRequest(std::move(profileLogRequest))
 {
     TABLET_VERIFY(ActualRange.IsAligned());
@@ -483,13 +495,6 @@ void TReadDataActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    FinalizeProfileLogRequestInfo(
-        std::move(ProfileLogRequest),
-        ctx.Now(),
-        FileSystemId,
-        error,
-        ProfileLog);
-
     {
         // notify tablet
         using TCompletion = TEvIndexTabletPrivate::TEvReadDataCompleted;
@@ -499,7 +504,8 @@ void TReadDataActor::ReplyAndDie(
             CommitId,
             1,
             OriginByteRange.Length,
-            ctx.Now() - RequestInfo->StartedTs);
+            ctx.Now() - RequestInfo->StartedTs,
+            BackendInfo.GetIsOverloaded());
 
         NCloud::Send(ctx, Tablet, std::move(response));
     }
@@ -520,22 +526,40 @@ void TReadDataActor::ReplyAndDie(
                 TotalSize,
                 *Buffer,
                 response->Record.MutableBuffer());
+
+            if (ShouldCalculateChecksums) {
+                CalculateChecksums(
+                    response->Record.GetBuffer(),
+                    BlockSize,
+                    true /* ignoreBufferOverflow */,
+                    FileSystemId,
+                    ProfileLogRequest);
+            }
         }
 
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
-            "%s ReadData: #%lu completed (%s)",
-            LogTag.c_str(),
-            RequestInfo->CallContext->RequestId,
-            FormatError(response->Record.GetError()).c_str());
-
-        BuildTraceInfo(
+        const bool builtTraceInfo = BuildTraceInfo(
             TraceSerializer,
             RequestInfo->CallContext,
             response->Record);
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
+            "%s ReadData: #%lu completed (%s), trace-info: %d",
+            LogTag.c_str(),
+            RequestInfo->CallContext->RequestId,
+            FormatError(response->Record.GetError()).c_str(),
+            builtTraceInfo);
         BuildThrottlerInfo(*RequestInfo->CallContext, response->Record);
+        *response->Record.MutableHeaders()->MutableBackendInfo() =
+            std::move(BackendInfo);
 
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
+
+    FinalizeProfileLogRequestInfo(
+        std::move(ProfileLogRequest),
+        ctx.Now(),
+        FileSystemId,
+        error,
+        ProfileLog);
 
     Die(ctx);
 }
@@ -661,6 +685,9 @@ void TIndexTabletActor::HandleReadDataCompleted(
     WorkerActors.erase(ev->Sender);
 
     Metrics.ReadData.Update(msg->Count, msg->Size, msg->Time);
+    if (msg->IsOverloaded) {
+        Metrics.OverloadedCount.fetch_add(1, std::memory_order_relaxed);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -893,6 +920,14 @@ bool TIndexTabletActor::PrepareTx_ReadData(
         return false;
     }
 
+    //
+    // NodeId might be missing in the original request but at this stage we
+    // have already read the Node and we can properly set NodeId in all request
+    // ranges.
+    //
+
+    UpdateRangeNodeIds(args.ProfileLogRequest, args.Node->NodeId);
+
     TReadDataVisitor visitor(LogTag, args);
 
     FindFreshBlocks(
@@ -1042,6 +1077,15 @@ void TIndexTabletActor::CompleteTx_ReadData(
             *args.Buffer,
             response->Record.MutableBuffer());
 
+        if (Config->GetBlockChecksumsInProfileLogEnabled()) {
+            CalculateChecksums(
+                response->Record.GetBuffer(),
+                GetBlockSize(),
+                true /* ignoreBufferOverflow */,
+                GetFileSystemId(),
+                args.ProfileLogRequest);
+        }
+
         CompleteResponse<TEvService::TReadDataMethod>(
             response->Record,
             args.RequestInfo->CallContext,
@@ -1061,10 +1105,15 @@ void TIndexTabletActor::CompleteTx_ReadData(
 
     AcquireCollectBarrier(args.CommitId);
 
+    NProto::TBackendInfo backendInfo;
+    BuildBackendInfo(*Config, *SystemCounters, &backendInfo);
+
     auto actor = std::make_unique<TReadDataActor>(
         TraceSerializer,
         LogTag,
         GetFileSystemId(),
+        Config->GetBlockChecksumsInProfileLogEnabled(),
+        GetBlockSize(),
         ctx.SelfID,
         args.RequestInfo,
         args.CommitId,
@@ -1076,6 +1125,7 @@ void TIndexTabletActor::CompleteTx_ReadData(
         std::move(args.Buffer),
         std::move(args.MixedBlocksRanges),
         ProfileLog,
+        std::move(backendInfo),
         std::move(args.ProfileLogRequest));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));

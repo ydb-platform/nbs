@@ -40,6 +40,7 @@ TIndexTabletActor::TIndexTabletActor(
         TDiagnosticsConfigPtr diagConfig,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
+        TSystemCountersPtr systemCounters,
         NMetrics::IMetricsRegistryPtr metricsRegistry,
         bool useNoneCompactionPolicy)
     : TActor(&TThis::StateBoot)
@@ -47,6 +48,7 @@ TIndexTabletActor::TIndexTabletActor(
     , Metrics{std::move(metricsRegistry)}
     , ProfileLog(std::move(profileLog))
     , TraceSerializer(std::move(traceSerializer))
+    , SystemCounters(std::move(systemCounters))
     , ThrottlerLogger(
         [this](ui32 opType, TDuration time) {
             UpdateDelayCounter(
@@ -784,6 +786,7 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
         GetFileSystem().GetDirectoryCreationInShardsEnabled());
     response->Record.SetStrictFileSystemSizeEnforcementEnabled(
         GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled());
+    response->Record.SetMaxShardCount(Config->GetMaxShardCount());
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,
@@ -1280,7 +1283,7 @@ STFUNC(TIndexTabletActor::StateBroken)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::RebootTabletOnCommitOverflow(
+void TIndexTabletActor::ScheduleRebootTabletOnCommitIdOverflow(
     const TActorContext& ctx,
     const TString& request)
 {

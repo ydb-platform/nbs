@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 #include <cloud/filestore/libs/storage/tablet/model/operation.h>
+#include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
@@ -12,6 +13,7 @@
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/logoblob.h>
+#include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/testlib/basics/storage.h>
 
 #include <util/generic/size_literals.h>
@@ -30,6 +32,32 @@ TString GenerateValidateData(ui32 size, ui32 seed = 0)
     }
     return data;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TTestProfileLog
+    : public IProfileLog
+{
+public:
+    TMap<ui32, TVector<TRecord>> Requests;
+
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
+    void Write(TRecord record) override
+    {
+        UNIT_ASSERT(record.Request.HasRequestType());
+        Requests[record.Request.GetRequestType()].push_back(std::move(record));
+    }
+
+    const auto* GetRecords(EFileStoreSystemRequest requestType) const
+    {
+        return Requests.FindPtr(static_cast<ui32>(requestType));
+    }
+};
 
 }   // namespace
 
@@ -532,7 +560,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, tabletConfig.BlockSize);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, tabletConfig.BlockSize, 'a'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, tabletConfig.BlockSize, 'a');
         }
 
         tablet.WriteData(handle, 0, tabletConfig.BlockSize, 'b');
@@ -540,7 +568,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, tabletConfig.BlockSize);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, tabletConfig.BlockSize, 'b'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, tabletConfig.BlockSize, 'b');
         }
 
         tablet.DestroyHandle(handle);
@@ -595,7 +623,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, tabletConfig.BlockSize);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, tabletConfig.BlockSize, 'a'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, tabletConfig.BlockSize, 'a');
         }
 
         {
@@ -604,7 +632,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 tabletConfig.BlockSize,
                 tabletConfig.BlockSize);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, tabletConfig.BlockSize, 'b'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, tabletConfig.BlockSize, 'b');
         }
 
         tablet.DestroyHandle(handle);
@@ -645,7 +673,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, sz);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, sz, 'a'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, sz, 'a');
         }
 
         tablet.DestroyHandle(handle);
@@ -717,13 +745,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, block, 'b'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, block, 'b');
         }
 
         {
             auto response = tablet.ReadData(handle, block, block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, block, 'b'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, block, 'b');
         }
 
         tablet.DestroyHandle(handle);
@@ -904,13 +932,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, block, 'a'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, block, 'a');
         }
 
         {
             auto response = tablet.ReadData(handle, block, block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, block, 'b'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, block, 'b');
         }
 
         tablet.DestroyHandle(handle);
@@ -1130,7 +1158,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, block, 'b'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, block, 'b');
         }
 
         tablet.WriteData(handle, 0, block, 'c');
@@ -1514,13 +1542,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, 2 * block, 'g'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, 2 * block, 'g');
         }
 
         {
             auto response = tablet.ReadData(handle, 2 * block, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, 2 * block, 'h'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, 2 * block, 'h');
         }
 
         tablet.DestroyHandle(handle);
@@ -1869,13 +1897,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, 2 * block, 'd'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, 2 * block, 'd');
         }
 
         {
             auto response = tablet.ReadData(handle, 2 * block, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, 2 * block, 'e'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, 2 * block, 'e');
         }
 
         tablet.DestroyHandle(handle);
@@ -1940,31 +1968,31 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, 2 * block, 'a'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, 2 * block, 'a');
         }
 
         {
             auto response = tablet.ReadData(handle, 2 * block, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, 2 * block, 'e'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, 2 * block, 'e');
         }
 
         {
             auto response = tablet.ReadData(handle, 256_KB, 3 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, 3 * block, 'b'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, 3 * block, 'b');
         }
 
         {
             auto response = tablet.ReadData(handle, 512_KB, 3 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, 3 * block, 'c'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, 3 * block, 'c');
         }
 
         {
             auto response = tablet.ReadData(handle, 768_KB, 3 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, 3 * block, 'd'));
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, 3 * block, 'd');
         }
 
         tablet.DestroyHandle(handle);
@@ -5682,6 +5710,113 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(ShouldLogBackgroundOpsToProfileLog)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetFlushThreshold(1_GB);
+        storageConfig.SetFlushBytesThreshold(1_GB);
+        storageConfig.SetCollectGarbageThreshold(1_GB);
+        storageConfig.SetWriteBlobThreshold(2 * block);
+
+        const auto profileLog = std::make_shared<TTestProfileLog>();
+        TTestEnv env({}, std::move(storageConfig), {}, profileLog);
+        auto registry = env.GetRegistry();
+
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        tablet.WriteData(handle, 0, block, 'a');
+        tablet.Flush();
+
+        const auto* flushRequests =
+            profileLog->GetRecords(EFileStoreSystemRequest::Flush);
+        UNIT_ASSERT(flushRequests);
+        UNIT_ASSERT_VALUES_EQUAL(1, flushRequests->size());
+        const auto& flushBlobsInfo = (*flushRequests)[0].Request.GetBlobsInfo();
+        UNIT_ASSERT_VALUES_EQUAL(1, flushBlobsInfo.size());
+        const auto& flushRanges = flushBlobsInfo[0].GetRanges();
+        UNIT_ASSERT_VALUES_EQUAL(1, flushRanges.size());
+        UNIT_ASSERT_VALUES_EQUAL(id, flushRanges[0].GetNodeId());
+
+        ui32 rangeId = GetMixedRangeIndex(id, 0);
+        tablet.Compaction(rangeId);
+
+        const auto* compactionRequests =
+            profileLog->GetRecords(EFileStoreSystemRequest::Compaction);
+        UNIT_ASSERT(compactionRequests);
+        UNIT_ASSERT_VALUES_EQUAL(1, compactionRequests->size());
+        const auto& compactionBlobsInfo =
+            (*compactionRequests)[0].Request.GetBlobsInfo();
+        UNIT_ASSERT_VALUES_EQUAL(1, compactionBlobsInfo.size());
+        const auto& compactionRanges = compactionBlobsInfo[0].GetRanges();
+        UNIT_ASSERT_VALUES_EQUAL(1, compactionRanges.size());
+        UNIT_ASSERT_VALUES_EQUAL(id, compactionRanges[0].GetNodeId());
+
+        tablet.WriteData(handle, 0, block, 'b');
+
+        tablet.Cleanup(rangeId);
+
+        const auto* cleanupRequests =
+            profileLog->GetRecords(EFileStoreSystemRequest::Cleanup);
+        UNIT_ASSERT(cleanupRequests);
+        UNIT_ASSERT_VALUES_EQUAL(1, cleanupRequests->size());
+        const auto& cleanupBlobsInfo =
+            (*cleanupRequests)[0].Request.GetBlobsInfo();
+        UNIT_ASSERT_VALUES_EQUAL(1, cleanupBlobsInfo.size());
+        const auto& cleanupRanges = cleanupBlobsInfo[0].GetRanges();
+        UNIT_ASSERT_VALUES_EQUAL(1, cleanupRanges.size());
+        UNIT_ASSERT_VALUES_EQUAL(id, cleanupRanges[0].GetNodeId());
+
+        tablet.WriteData(handle, 0, 1_KB, 'a');
+        tablet.FlushBytes();
+
+        const auto* flushBytesRequests =
+            profileLog->GetRecords(EFileStoreSystemRequest::FlushBytes);
+        UNIT_ASSERT(flushBytesRequests);
+        UNIT_ASSERT_VALUES_EQUAL(1, flushBytesRequests->size());
+        const auto& flushBytesBlobsInfo =
+            (*flushBytesRequests)[0].Request.GetBlobsInfo();
+        UNIT_ASSERT_VALUES_EQUAL(0, flushBytesBlobsInfo.size());
+        const auto& flushBytesRanges =
+            (*flushBytesRequests)[0].Request.GetRanges();
+        UNIT_ASSERT_VALUES_EQUAL(1, flushBytesRanges.size());
+        UNIT_ASSERT_VALUES_EQUAL(id, flushBytesRanges[0].GetNodeId());
+
+        tablet.GenerateCommitId();
+        tablet.CollectGarbage();
+
+        const auto* collectGarbageRequests =
+            profileLog->GetRecords(EFileStoreSystemRequest::CollectGarbage);
+        UNIT_ASSERT(collectGarbageRequests);
+        UNIT_ASSERT_VALUES_EQUAL(1, collectGarbageRequests->size());
+        const auto& collectGarbageRanges =
+            (*collectGarbageRequests)[0].Request.GetRanges();
+        UNIT_ASSERT_VALUES_EQUAL(0, collectGarbageRanges.size());
+        const auto& collectGarbageInfo =
+            (*collectGarbageRequests)[0].Request.GetCollectGarbageInfo();
+        UNIT_ASSERT_GT(collectGarbageInfo.GetCollectCommitId(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(1, collectGarbageInfo.GetNewBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, collectGarbageInfo.GetGarbageBlobsCount());
+
+        tablet.DestroyHandle(handle);
+    }
+
     TABLET_TEST(ShouldTrimFreshBytesDeletionMarkers)
     {
         const ui64 block = tabletConfig.BlockSize;
@@ -7524,6 +7659,190 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto response = tablet.ReadData(handle, lastOffset, requestSize);
         const auto& buffer = response->Record.GetBuffer();
         UNIT_ASSERT_VALUES_EQUAL(data2, buffer);
+    }
+
+    TABLET_TEST(ShouldReturnBackendInfoForIO)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(2 * tabletConfig.BlockSize);
+        storageConfig.SetCpuLackOverloadThreshold(50);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        auto systemCounters = env.GetSystemCounters();
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        {
+            //
+            // Small write - uses CompleteResponse<> code path.
+            //
+
+            systemCounters->CpuLack.store(30);
+            auto response =
+                tablet.WriteData(handle, 0, tabletConfig.BlockSize, 'a');
+            const auto* backendInfo =
+                &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(!backendInfo->GetIsOverloaded());
+
+            systemCounters->CpuLack.store(60);
+            response = tablet.WriteData(handle, 0, tabletConfig.BlockSize, 'a');
+            backendInfo = &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(backendInfo->GetIsOverloaded());
+        }
+
+        {
+            //
+            // Fresh read - uses CompleteResponse<> code path.
+            //
+
+            systemCounters->CpuLack.store(30);
+            auto response = tablet.ReadData(handle, 0, tabletConfig.BlockSize);
+            const auto* buffer = &response->Record.GetBuffer();
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(*buffer, tabletConfig.BlockSize, 'a');
+            const auto* backendInfo =
+                &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(!backendInfo->GetIsOverloaded());
+
+            systemCounters->CpuLack.store(60);
+            response = tablet.ReadData(handle, 0, tabletConfig.BlockSize);
+            buffer = &response->Record.GetBuffer();
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(*buffer, tabletConfig.BlockSize, 'a');
+            backendInfo = &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(backendInfo->GetIsOverloaded());
+        }
+
+        {
+            //
+            // Large write - uses separate actor code path.
+            //
+
+            systemCounters->CpuLack.store(30);
+            auto response =
+                tablet.WriteData(handle, 0, 3 * tabletConfig.BlockSize, 'a');
+            const auto* backendInfo =
+                &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(!backendInfo->GetIsOverloaded());
+
+            systemCounters->CpuLack.store(60);
+            response =
+                tablet.WriteData(handle, 0, 3 * tabletConfig.BlockSize, 'a');
+            backendInfo = &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(backendInfo->GetIsOverloaded());
+        }
+
+        {
+            //
+            // Blob read - uses separate actor code path.
+            //
+
+            systemCounters->CpuLack.store(30);
+            auto response =
+                tablet.ReadData(handle, 0, 3 * tabletConfig.BlockSize);
+            const auto* buffer = &response->Record.GetBuffer();
+            UNIT_ASSERT(
+                CompareBuffer(*buffer, 3 * tabletConfig.BlockSize, 'a'));
+            const auto* backendInfo =
+                &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(!backendInfo->GetIsOverloaded());
+
+            systemCounters->CpuLack.store(60);
+            response = tablet.ReadData(handle, 0, 3 * tabletConfig.BlockSize);
+            buffer = &response->Record.GetBuffer();
+            UNIT_ASSERT(
+                CompareBuffer(*buffer, 3 * tabletConfig.BlockSize, 'a'));
+            backendInfo = &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(backendInfo->GetIsOverloaded());
+        }
+
+        auto registry = env.GetRegistry();
+        TTestRegistryVisitor visitor;
+        // clang-format off
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{{"sensor", "OverloadedCount"}, {"filesystem", "test"}}, 4},
+        });
+        // clang-format on
+
+        tablet.DestroyHandle(handle);
+    }
+
+    TABLET_TEST(ShouldHandleCommitIdOverflowAndPreserveLastWrittenData)
+    {
+        const auto block = tabletConfig.BlockSize;
+        const auto maxTabletStep = 5;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxTabletStep(maxTabletStep);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const auto id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto reconnectAndRecreateHandleIfNeeded = [&]()
+        {
+            if (rebootTracker.IsPipeDestroyed()) {
+                tablet.ReconnectPipe();
+                tablet.WaitReady();
+                tablet.RecoverSession();
+                handle = CreateHandle(tablet, id);
+                rebootTracker.ClearPipeDestroyed();
+            }
+        };
+
+        for (char c = 'a'; c < 'e';) {
+            tablet.SendWriteDataRequest(handle, 0, block, c);
+            auto responseWrite = tablet.RecvWriteDataResponse();
+            reconnectAndRecreateHandleIfNeeded();
+
+            if (FAILED(responseWrite->GetStatus())) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_REJECTED,
+                    responseWrite->GetError().GetCode());
+                continue;
+            }
+
+            auto responseRead = tablet.ReadData(handle, 0, block);
+            const auto& buffer = responseRead->Record.GetBuffer();
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, block, c);
+            ++c;
+        }
+
+        tablet.DestroyHandle(handle);
+        UNIT_ASSERT_C(
+            rebootTracker.GetGenerationCount() >= 2,
+            "Expected at least 2 different generations due to tablet reboot, "
+            "got "
+                << rebootTracker.GetGenerationCount());
     }
 }
 

@@ -218,12 +218,33 @@ void TFileSystem::ReadDir(
     request->SetCookie(handle->GetCookie());
     request->SetMaxBytes(Config->GetMaxBufferSize());
 
+    // We don't know the nodes yet so we have to adjust the node size after
+    // receiving ListNodes response.
+    //
+    // During ListNodes call, a node may be flushed and the information
+    // about the node may be removed from WriteBackCache, and ListNodes
+    // may return size without considering cached WriteData requests.
+    //
+    // Acquiring a node state reference prevents metadata from removal
+    // for flushed nodes.
+    const ui64 nodeStateRefId =
+        WriteBackCache ? WriteBackCache.AcquireNodeStateRef() : 0;
+
     Session->ListNodes(callContext, std::move(request))
         .Subscribe(
-            [=, fh = fi->fh, ptr = weak_from_this()](const auto& future) -> void
+            [=, fh = fi->fh, ptr = weak_from_this()](auto future) -> void
             {
                 auto self = ptr.lock();
-                const auto& response = future.GetValue();
+
+                Y_DEFER
+                {
+                    if (self && nodeStateRefId) {
+                        self->WriteBackCache.ReleaseNodeStateRef(
+                            nodeStateRefId);
+                    }
+                };
+
+                NProto::TListNodesResponse response = future.ExtractValue();
                 if (!CheckResponse(self, *callContext, req, response)) {
                     return;
                 }
@@ -255,15 +276,23 @@ void TFileSystem::ReadDir(
                         offset);
                 }
 
+                if (WriteBackCache) {
+                    for (auto& attr: *response.MutableNodes()) {
+                        AdjustNodeSize(attr);
+                    }
+                }
+
                 for (size_t i = 0; i < response.NodesSize(); ++i) {
                     const auto& attr = response.GetNodes(i);
                     const auto& name = response.GetNames(i);
 
+                    const auto entryTimeout =
+                        GetEntryCacheTimeout(attr).SecondsFloat();
+
                     fuse_entry_param entry = {
                         .ino = attr.GetId(),
                         .attr_timeout = Config->GetAttrTimeout().SecondsFloat(),
-                        .entry_timeout =
-                            Config->GetEntryTimeout().SecondsFloat(),
+                        .entry_timeout = entryTimeout,
                     };
 
                     ConvertAttr(

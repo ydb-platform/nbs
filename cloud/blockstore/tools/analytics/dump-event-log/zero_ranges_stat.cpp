@@ -3,6 +3,9 @@
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/service/request.h>
 
+#include <library/cpp/json/json_writer.h>
+#include <library/cpp/json/writer/json_value.h>
+
 #include <util/stream/file.h>
 #include <util/string/builder.h>
 
@@ -40,16 +43,19 @@ void TZeroRangesStat::TZeroRanges::Set(ui64 rangeIndx, bool isZero)
     }
 }
 
-TString TZeroRangesStat::TZeroRanges::Print() const
+NJson::TJsonValue TZeroRangesStat::TZeroRanges::Dump() const
 {
-    TStringBuilder sb;
-    size_t known = KnownRanges.Count();
-    size_t nonZero = NonZeroRanges.Count();
-    size_t zero = known - nonZero;
-    sb << known << "\t" << zero << "\t" << (100.0 * zero / known);
+    const size_t known = KnownRanges.Count();
+    const size_t nonZero = NonZeroRanges.Count();
+    const size_t zero = known - nonZero;
 
-    return sb;
+    NJson::TJsonValue result;
+    result["Known"] = known;
+    result["Zero"] = nonZero;
+    result["Fraction"] = 100.0 * zero / known;
+    return result;
 }
+
 void TZeroRangesStat::TZeroRangesBySegmentSize::Set(
     ui64 rangeIndx4Mib,
     bool isZero)
@@ -62,16 +68,19 @@ void TZeroRangesStat::TZeroRangesBySegmentSize::Set(
     }
 }
 
-TString TZeroRangesStat::TZeroRangesBySegmentSize::Print() const
+NJson::TJsonValue TZeroRangesStat::TZeroRangesBySegmentSize::Dump() const
 {
-    TStringBuilder sb;
+    NJson::TJsonValue result;
     for (size_t segmentSize = MinSegmentSize; segmentSize <= MaxSegmentSize;
          segmentSize *= 2)
     {
-        sb << BySegmentSize.FindPtr(segmentSize)->Print()
-           << (segmentSize == MaxSegmentSize ? "" : "\t");
+        if (const auto* a = BySegmentSize.FindPtr(segmentSize)) {
+            auto stat = a->Dump();
+            stat["SegmentSize"] = segmentSize;
+            result.AppendValue(std::move(stat));
+        }
     }
-    return sb;
+    return result;
 }
 
 TZeroRangesStat::TZeroRangesStat(const TString& filename)
@@ -79,21 +88,16 @@ TZeroRangesStat::TZeroRangesStat(const TString& filename)
     , ZeroChecksum(CalcZeroChecksum())
 {}
 
-TZeroRangesStat::~TZeroRangesStat()
-{
-    Dump();
-}
-
 void TZeroRangesStat::ProcessRequest(
-    const TString& diskId,
-    TInstant timestamp,
+    const TDiskInfo& diskInfo,
+    const TTimeData& timeData,
     ui32 requestType,
     TBlockRange64 blockRange,
-    TDuration duration,
-    const TReplicaChecksums& replicaChecksums)
+    const TReplicaChecksums& replicaChecksums,
+    const TInflightData& inflightData)
 {
-    Y_UNUSED(timestamp);
-    Y_UNUSED(duration);
+    Y_UNUSED(timeData);
+    Y_UNUSED(inflightData);
 
     if (requestType != static_cast<ui32>(ESysRequestType::Scrubbing)) {
         return;
@@ -106,33 +110,28 @@ void TZeroRangesStat::ProcessRequest(
         }
     }
 
-    auto& volume = Volumes[diskId];
+    auto& volume = Volumes[diskInfo.DiskId];
     const ui32 rangeIndex4MiB = blockRange.Start / blockRange.Size();
     volume.Set(rangeIndex4MiB, isZeroRange);
 }
 
-void TZeroRangesStat::Dump()
+void TZeroRangesStat::Finish()
 {
     TFileOutput out(Filename);
-    {
-        TStringBuilder sb;
-        sb << "DiskId\t";
-        for (size_t segmentSize = MinSegmentSize; segmentSize <= MaxSegmentSize;
-             segmentSize *= 2)
-        {
-            sb << "Known_" << segmentSize / 1_MB << "\t";
-            sb << "Zero_" << segmentSize / 1_MB << "\t";
-            sb << "Ratio_" << segmentSize / 1_MB << "%\t";
-        }
-        sb << "\n";
-        out.Write(sb);
+
+    NJson::TJsonValue all;
+    for (const auto& [diskId, volume]: Volumes) {
+        all[diskId] = volume.Dump();
     }
 
-    for (const auto& [diskId, volume]: Volumes) {
-        TStringBuilder sb;
-        sb << diskId << "\t" << volume.Print() << "\n";
-        out.Write(sb);
-    }
+    NJson::WriteJson(
+        &out,
+        &all,
+        NJson::TJsonWriterConfig{
+            .FormatOutput = true,
+            .SortKeys = true,
+            .WriteNanAsString = true,
+        });
 }
 
 }   // namespace NCloud::NBlockStore

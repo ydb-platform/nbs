@@ -40,6 +40,15 @@ void TIndexTabletActor::HandleWriteData(
         GetBlockSize()
     );
 
+    if (Config->GetBlockChecksumsInProfileLogEnabled()) {
+        CalculateChecksums(
+            buffer,
+            GetBlockSize(),
+            false /* ignoreBufferOverflow */,
+            GetFileSystemId(),
+            profileLogRequest);
+    }
+
     auto replyError = [&] (const NProto::TError& error)
     {
         FILESTORE_TRACK(
@@ -184,6 +193,9 @@ void TIndexTabletActor::HandleWriteDataCompleted(
     EnqueueBlobIndexOpIfNeeded(ctx);
 
     Metrics.WriteData.Update(msg->Count, msg->Size, msg->Time);
+    if (msg->IsOverloaded) {
+        Metrics.OverloadedCount.fetch_add(1, std::memory_order_relaxed);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -204,6 +216,8 @@ bool TIndexTabletActor::PrepareTx_WriteData(
             args.SessionSeqNo);
         return true;
     }
+
+    args.CommitId = GetCurrentCommitId();
 
     if (Config->GetAllowHandlelessIO()) {
         if (args.ExplicitNodeId == InvalidNodeId) {
@@ -226,7 +240,6 @@ bool TIndexTabletActor::PrepareTx_WriteData(
 
         args.NodeId = handle->GetNodeId();
     }
-    args.CommitId = GetCurrentCommitId();
 
     LOG_TRACE(ctx, TFileStoreComponents::TABLET,
         "%s WriteNodeData tx %lu @%lu %s",
@@ -248,6 +261,15 @@ bool TIndexTabletActor::PrepareTx_WriteData(
         args.Error = ErrorInvalidTarget(args.NodeId);
         return true;
     }
+
+    //
+    // NodeId might be missing in the original request but at this stage we
+    // have already read the Node and we can properly set NodeId in all request
+    // ranges.
+    //
+
+    UpdateRangeNodeIds(args.ProfileLogRequest, args.Node->NodeId);
+
     // TODO: access check
     if (!HasSpaceLeft(args.Node->Attrs.GetSize(), args.ByteRange.End())) {
         args.Error = ErrorNoSpaceLeft();
@@ -264,6 +286,8 @@ void TIndexTabletActor::ExecuteTx_WriteData(
 {
     FILESTORE_VALIDATE_TX_ERROR(WriteData, args);
 
+    Y_UNUSED(ctx);
+
     if (args.ShouldWriteBlob()) {
         return;
     }
@@ -272,7 +296,8 @@ void TIndexTabletActor::ExecuteTx_WriteData(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "WriteData");
+        args.Error = ErrorCommitIdOverflow();
+        return;
     }
 
     MarkFreshBlocksDeleted(
@@ -392,6 +417,9 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
     if (FAILED(args.Error.GetCode())) {
         reply(ctx, args);
+        if (args.CommitId == InvalidCommitId) {
+            ScheduleRebootTabletOnCommitIdOverflow(ctx, "WriteData");
+        }
         return;
     }
 
@@ -435,7 +463,9 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "WriteData");
+        args.Error = ErrorCommitIdOverflow();
+        reply(ctx, args);
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "WriteData");
     }
 
     ui32 blobIndex = 0;
@@ -458,6 +488,9 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
     AcquireCollectBarrier(args.CommitId);
 
+    NProto::TBackendInfo backendInfo;
+    BuildBackendInfo(*Config, *SystemCounters, &backendInfo);
+
     auto actor = std::make_unique<TWriteDataActor>(
         TraceSerializer,
         LogTag,
@@ -468,6 +501,7 @@ void TIndexTabletActor::CompleteTx_WriteData(
         std::move(blobs),
         TWriteRange{args.NodeId, args.ByteRange.End()},
         ProfileLog,
+        std::move(backendInfo),
         std::move(args.ProfileLogRequest));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));

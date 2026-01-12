@@ -205,6 +205,10 @@ void TIndexTabletActor::CompleteTx_AddData(
             srcBlob.Cookie(),
             srcBlob.PartId());
     }
+
+    NProto::TBackendInfo backendInfo;
+    BuildBackendInfo(*Config, *SystemCounters, &backendInfo);
+
     auto actor = std::make_unique<TAddDataActor>(
         TraceSerializer,
         LogTag,
@@ -216,6 +220,7 @@ void TIndexTabletActor::CompleteTx_AddData(
         std::move(args.UnalignedDataParts),
         TWriteRange{args.NodeId, args.ByteRange.End()},
         ProfileLog,
+        std::move(backendInfo),
         std::move(args.ProfileLogRequest));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
@@ -260,7 +265,7 @@ void TIndexTabletActor::HandleGenerateBlobIds(
 
     ui64 commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "GenerateBlobIds");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "GenerateBlobIds");
     }
 
     auto validator = [&](const NProtoPrivate::TGenerateBlobIdsRequest& request)
@@ -325,6 +330,10 @@ void TIndexTabletActor::HandleGenerateBlobIds(
     }
 
     response->Record.SetCommitId(commitId);
+    CompleteResponse<TEvIndexTablet::TGenerateBlobIdsMethod>(
+        response->Record,
+        msg->CallContext,
+        ctx);
 
     Metrics.GenerateBlobIds.Count.fetch_add(1, std::memory_order_relaxed);
     Metrics.GenerateBlobIds.RequestBytes.fetch_add(
@@ -540,6 +549,9 @@ void TIndexTabletActor::HandleAddDataCompleted(
             FormatError(msg->Error).Quote().c_str());
     } else {
         Metrics.AddData.Update(msg->Count, msg->Size, msg->Time);
+        if (msg->IsOverloaded) {
+            Metrics.OverloadedCount.fetch_add(1, std::memory_order_relaxed);
+        }
     }
 
     // We try to release commit barrier twice: once for the lock

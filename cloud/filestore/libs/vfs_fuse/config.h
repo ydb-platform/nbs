@@ -27,6 +27,7 @@ public:
 
     TDuration GetLockRetryTimeout() const;
     TDuration GetEntryTimeout() const;
+    TDuration GetRegularFileEntryTimeout() const;
     TDuration GetNegativeEntryTimeout() const;
     TDuration GetAttrTimeout() const;
 
@@ -62,6 +63,7 @@ public:
     ui32 GetMaxFuseLoopThreads() const;
 
     bool GetZeroCopyWriteEnabled() const;
+    bool GetZeroCopyReadEnabled() const;
 
     bool GetFSyncQueueDisabled() const;
 

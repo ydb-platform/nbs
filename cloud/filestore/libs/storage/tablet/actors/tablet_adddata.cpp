@@ -30,6 +30,7 @@ TAddDataActor::TAddDataActor(
         TVector<TBlockBytesMeta> unalignedDataParts,
         TWriteRange writeRange,
         IProfileLogPtr profileLog,
+        NProto::TBackendInfo backendInfo,
         NProto::TProfileLogRequestInfo profileLogRequest)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
@@ -41,6 +42,7 @@ TAddDataActor::TAddDataActor(
     , UnalignedDataParts(std::move(unalignedDataParts))
     , WriteRange(writeRange)
     , ProfileLog(std::move(profileLog))
+    , BackendInfo(std::move(backendInfo))
     , ProfileLogRequest(std::move(profileLogRequest))
 {
     for (const auto& blob: Blobs) {
@@ -112,7 +114,8 @@ void TAddDataActor::ReplyAndDie(
             1,
             BlobsSize,
             ctx.Now() - RequestInfo->StartedTs,
-            CommitId);
+            CommitId,
+            BackendInfo.GetIsOverloaded());
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
@@ -124,19 +127,22 @@ void TAddDataActor::ReplyAndDie(
     if (RequestInfo->Sender != Tablet) {
         auto response =
             std::make_unique<TEvIndexTablet::TEvAddDataResponse>(error);
-        LOG_DEBUG(
-            ctx,
-            TFileStoreComponents::TABLET_WORKER,
-            "%s AddData: #%lu completed (%s)",
-            LogTag.c_str(),
-            RequestInfo->CallContext->RequestId,
-            FormatError(response->Record.GetError()).c_str());
 
-        BuildTraceInfo(
+        const bool builtTraceInfo = BuildTraceInfo(
             TraceSerializer,
             RequestInfo->CallContext,
             response->Record);
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s AddData: #%lu completed (%s), trace-info: %d",
+            LogTag.c_str(),
+            RequestInfo->CallContext->RequestId,
+            FormatError(response->Record.GetError()).c_str(),
+            builtTraceInfo);
         BuildThrottlerInfo(*RequestInfo->CallContext, response->Record);
+        *response->Record.MutableHeaders()->MutableBackendInfo() =
+            std::move(BackendInfo);
 
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }

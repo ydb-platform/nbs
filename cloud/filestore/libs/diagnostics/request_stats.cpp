@@ -57,6 +57,11 @@ TRequestCountersPtr MakeRequestCounters(
         [] (TRequestCounters::TRequestType t) {
             return IsReadWriteRequest(static_cast<EFileStoreRequest>(t));
         },
+        [] (TRequestCounters::TRequestType t) {
+            Y_DEBUG_ABORT_UNLESS(t < FileStoreRequestCount);
+            const auto bt = static_cast<EFileStoreRequest>(t);
+            return bt == EFileStoreRequest::StartEndpoint;
+        },
         options,
         histogramCounterOptions,
         TVector<TSizeInterval>{}

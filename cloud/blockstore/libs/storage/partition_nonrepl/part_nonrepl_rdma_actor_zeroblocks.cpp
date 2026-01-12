@@ -171,12 +171,12 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
             sentRequestCtx[i].DeviceIdx,
             TDeviceOperationTracker::ERequestType::Zero);
 
-        sentRequestCtx[i].SentRequestId = request.Endpoint->SendRequest(
+        sentRequestCtx[i].ClientRequestId = request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             requestInfo->CallContext);
     }
 
-    RequestsInProgress.AddWriteRequest(requestId, sentRequestCtx);
+    RequestsInProgress.AddWriteRequest(requestId, blockRange, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -52,14 +52,14 @@ ui64 GetFileLength(const TString& path)
         | EOpenModeFlag::OpenExisting);
 
     if (!file.IsOpen()) {
-        ythrow TServiceError(E_ARGUMENT)
+        STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
             << "unable to open file " << path << " error: " << strerror(errno);
     }
 
     const ui64 size = file.Seek(0, sEnd);
 
     if (!size) {
-        ythrow TServiceError(E_ARGUMENT)
+        STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
             << "unable to retrive file size " << path;
     }
 
@@ -643,7 +643,7 @@ TFuture<TInitializeStorageResult> TInitializer::CreateStorages()
             if (AgentConfig->GetDeviceLockingEnabled() &&
                 !Guard.Lock(Configs[i].GetDeviceName()))
             {
-                ythrow TServiceError(E_ARGUMENT)
+                STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
                     << "unable to lock file "
                     << Configs[i].GetDeviceName();
             }

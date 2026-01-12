@@ -309,12 +309,12 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
             sentRequestCtx[i].DeviceIdx,
             TDeviceOperationTracker::ERequestType::Write);
 
-        sentRequestCtx[i].SentRequestId = request.Endpoint->SendRequest(
+        sentRequestCtx[i].ClientRequestId = request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             requestInfo->CallContext);
     }
 
-    RequestsInProgress.AddWriteRequest(requestId, sentRequestCtx);
+    RequestsInProgress.AddWriteRequest(requestId, blockRange, sentRequestCtx);
 }
 
 void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
@@ -489,12 +489,12 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
             sentRequestCtx[i].DeviceIdx,
             TDeviceOperationTracker::ERequestType::Write);
 
-        sentRequestCtx[i].SentRequestId = request.Endpoint->SendRequest(
+        sentRequestCtx[i].ClientRequestId = request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             requestInfo->CallContext);
     }
 
-    RequestsInProgress.AddWriteRequest(requestId, sentRequestCtx);
+    RequestsInProgress.AddWriteRequest(requestId, blockRange, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

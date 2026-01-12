@@ -270,6 +270,8 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
     TTransactionContext& tx,
     TTxIndexTablet::TCreateHandle& args)
 {
+    Y_UNUSED(ctx);
+
     FILESTORE_VALIDATE_TX_ERROR(CreateHandle, args);
 
     auto* session = FindSession(args.SessionId);
@@ -283,7 +285,9 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
     // TODO: check if session is read only
     args.WriteCommitId = GenerateCommitId();
     if (args.WriteCommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "CreateHandle");
+        args.CommitIdOverflowDetected = true;
+        args.Error = ErrorCommitIdOverflow();
+        return;
     }
 
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
@@ -492,6 +496,10 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    if (args.CommitIdOverflowDetected) {
+        ScheduleRebootTabletOnCommitIdOverflow(ctx, "CreateHandle");
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

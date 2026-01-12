@@ -546,6 +546,14 @@ private:
                     FileSystemId,
                     headers);
                 break;
+            case NProto::TLoadTest::kReplayGrpcSpec:
+                RequestGenerator = CreateReplayRequestGeneratorGRPC(
+                    Config.GetReplayGrpcSpec(),
+                    Logging,
+                    Session,
+                    FileSystemId,
+                    headers);
+                break;
             default:
                 ythrow yexception()
                     << MakeTestTag()
@@ -559,7 +567,6 @@ private:
         proto.SetFileSystemId(FileSystemId);
         proto.SetClientId(ClientId);
         proto.SetSessionPingTimeout(Config.GetSessionPingTimeout());
-        proto.SetSessionRetryTimeout(Config.GetSessionRetryTimeout());
 
         Session = NClient::CreateSession(
             Logging,

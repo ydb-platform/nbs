@@ -2232,12 +2232,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         CheckTwoStageReads(NProto::STORAGE_MEDIA_SSD, false);
     }
 
-    Y_UNIT_TEST(ShouldUseTwoStageReadThreshold)
+    void DoTestShouldUseTwoStageReadThreshold(bool setUpForTablet)
     {
         NProto::TStorageConfig storageConfig;
-        storageConfig.SetTwoStageReadEnabled(true);
-        storageConfig.SetFlushThreshold(1); // disabling fresh blocks
-        storageConfig.SetTwoStageReadThreshold(8_KB);
+        storageConfig.SetWriteBlobThreshold(1); // disabling fresh blocks
+        if (!setUpForTablet) {
+            storageConfig.SetTwoStageReadEnabled(true);
+            storageConfig.SetTwoStageReadThreshold(8_KB);
+        }
 
         TTestEnv env({}, storageConfig);
         env.CreateSubDomain("nfs");
@@ -2251,6 +2253,23 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             1000,
             DefaultBlockSize,
             NProto::STORAGE_MEDIA_SSD);
+
+        if (setUpForTablet) {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetTwoStageReadEnabled(true);
+            newConfig.SetTwoStageReadThreshold(8_KB);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                response.GetStorageConfig().GetTwoStageReadEnabled());
+            UNIT_ASSERT_VALUES_EQUAL(
+                8_KB,
+                response.GetStorageConfig().GetTwoStageReadThreshold());
+
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+        }
 
         auto headers = service.InitSession(fs, "client");
 
@@ -2305,6 +2324,129 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             UNIT_ASSERT(subgroup);
             UNIT_ASSERT_VALUES_EQUAL(
                 1,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUseGlobalTwoStageReadThreshold)
+    {
+        DoTestShouldUseTwoStageReadThreshold(false /* setUpForTablet */);
+    }
+
+    Y_UNIT_TEST(ShouldUseTabletLevelTwoStageReadThreshold)
+    {
+        DoTestShouldUseTwoStageReadThreshold(true /* setUpForTablet */);
+    }
+
+    Y_UNIT_TEST(ShouldUseTwoStageReadForSmallRequestsIfTabletIsOverloaded)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1); // disabling fresh blocks
+        storageConfig.SetTwoStageReadEnabled(true);
+        storageConfig.SetTwoStageReadThreshold(8_KB);
+        storageConfig.SetCpuLackOverloadThreshold(50);
+
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        auto systemCounters = env.GetSystemCounters();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::STORAGE_MEDIA_SSD);
+
+        auto headers = service.InitSession(fs, "client");
+
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        auto data = TString(4_KB, 'a');
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+
+        //
+        // Small read => no two-stage-read.
+        //
+
+        auto readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
+
+        auto counters = env.GetCounters()
+            ->FindSubgroup("component", "service_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", fs)
+            ->FindSubgroup("client", "client")
+            ->FindSubgroup("cloud", "test_cloud")
+            ->FindSubgroup("folder", "test_folder");
+        {
+            auto subgroup = counters->FindSubgroup("request", "DescribeData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadBlob");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+
+        //
+        // Small read but tablet is overloaded => the first request will still
+        // use direct read, but the next ones will use two-stage-read.
+        //
+
+        systemCounters->CpuLack.store(60);
+
+        const ui32 requestCount = 5;
+        for (ui32 i = 0; i < requestCount - 1; ++i) {
+            readDataResult =
+                service.ReadData(headers, fs, nodeId, handle, 0, data.size());
+            UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
+        }
+
+        {
+            auto subgroup = counters->FindSubgroup("request", "DescribeData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                requestCount - 2,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                requestCount,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadBlob");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                requestCount - 2,
                 subgroup->GetCounter("Count")->GetAtomic());
         }
     }
@@ -2377,7 +2519,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             service.ReadData(headers, fs, nodeId, handle, 0, data.size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
         UNIT_ASSERT_VALUES_EQUAL(2, describeDataResponses);
-        UNIT_ASSERT_VALUES_EQUAL(4, readDataResponses);
+
+        // 3 responses:
+        // 1. TIndexTabletActor -> TIndexTabletProxyActor
+        // 2. TIndexTabletProxyActor -> TReadDataActor
+        // 3. TReadDataActor -> TServiceClient
+        UNIT_ASSERT_VALUES_EQUAL(3, readDataResponses);
     }
 
     Y_UNIT_TEST(ShouldFallbackToReadDataIfEvGetFails)
@@ -2462,7 +2609,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
         UNIT_ASSERT_VALUES_EQUAL(2, describeDataResponses);
         UNIT_ASSERT_VALUES_EQUAL(8, evGets);
-        UNIT_ASSERT_VALUES_EQUAL(4, readDataResponses);
+
+        // 3 responses:
+        // 1. TIndexTabletActor -> TIndexTabletProxyActor
+        // 2. TIndexTabletProxyActor -> TReadDataActor
+        // 3. TReadDataActor -> TServiceClient
+        UNIT_ASSERT_VALUES_EQUAL(3, readDataResponses);
 
         auto counters = env.GetCounters()
                             ->FindSubgroup("component", "service_fs")
@@ -3064,7 +3216,80 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("InProgress")->GetAtomic());
     }
 
-    Y_UNIT_TEST(ShouldThrottleMulipleStageReadsAndWrites)
+    Y_UNIT_TEST(ShouldWriteDataWhenWriteBlobDisabled)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        const auto kind = NProto::STORAGE_MEDIA_SSD;
+        service.CreateFileStore(fs, 1000, DefaultBlockSize, kind);
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetThreeStageWriteEnabled(true);
+            newConfig.SetThreeStageWriteThreshold(1);
+            newConfig.SetWriteBlobDisabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            UNIT_ASSERT(
+                response.GetStorageConfig().GetThreeStageWriteEnabled());
+            UNIT_ASSERT(
+                response.GetStorageConfig().GetWriteBlobDisabled());
+
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId = service
+            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+            ->Record.GetNode()
+            .GetId();
+        ui64 handle = service
+            .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+            ->Record.GetHandle();
+
+        TString data = GenerateValidateData(256_KB);
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+
+        auto counters = env.GetCounters()
+            ->FindSubgroup("component", "service_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", fs)
+            ->FindSubgroup("client", "client")
+            ->FindSubgroup("cloud", "test_cloud")
+            ->FindSubgroup("folder", "test_folder");
+        {
+            auto subgroup = counters->FindSubgroup("request", "AddData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                subgroup->GetCounter("Count")->GetAtomic());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                subgroup->GetCounter("Errors")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "WriteData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "WriteBlob");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldThrottleMultipleStageReadsAndWrites)
     {
         const auto maxBandwidth = 10000;
         NProto::TStorageConfig config;
@@ -3692,6 +3917,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             ->FindSubgroup("component", "service")
             ->GetCounter("TabletCount", false);
 
+        auto inFlightRequestCounter = counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service")
+            ->GetCounter("InFlightRequestCount", false);
+
         auto hddTabletCounter = counters
             ->FindSubgroup("counters", "filestore")
             ->FindSubgroup("component", "service")
@@ -3711,6 +3941,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, ssdFsCounter->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdTabletCounter->GetAtomic());
 
+        // smoke
+        UNIT_ASSERT_VALUES_EQUAL(0, inFlightRequestCounter->GetAtomic());
+
         service.UnregisterLocalFileStore("test", 1);
 
         env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
@@ -3722,6 +3955,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, hddTabletCounter->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdFsCounter->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdTabletCounter->GetAtomic());
+
+        // smoke
+        UNIT_ASSERT_VALUES_EQUAL(0, inFlightRequestCounter->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldUseThreeStageWriteAndTwoStageReadForHandlelessIO)
@@ -3791,14 +4027,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 data.size());
 
             const auto& buffer = response->Record.GetBuffer();
-            const auto& offset = response->Record.GetBufferOffset();
-            UNIT_ASSERT_VALUES_EQUAL(
-                data.size() + DefaultBlockSize - 1,
-                buffer.size());
-            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize - 1, offset);
-            UNIT_ASSERT_VALUES_EQUAL(
-                data,
-                TString(buffer.data() + offset, data.size()));
+            UNIT_ASSERT_VALUES_EQUAL(data.size(), buffer.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetBufferOffset());
+            UNIT_ASSERT_VALUES_EQUAL(data, buffer);
         }
         {
             // Small unaligned data
@@ -3813,12 +4044,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 dataOffset,
                 data.size());
             const auto& buffer = response->Record.GetBuffer();
-            const auto& offset = response->Record.GetBufferOffset();
-            UNIT_ASSERT_VALUES_EQUAL(data.size() + dataOffset, buffer.size());
-            UNIT_ASSERT_VALUES_EQUAL(dataOffset, offset);
-            UNIT_ASSERT_EQUAL(
-                data,
-                TString(buffer.data() + offset, data.size()));
+            UNIT_ASSERT_VALUES_EQUAL(data.size(), buffer.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetBufferOffset());
+            UNIT_ASSERT_EQUAL(data, buffer);
         }
         {
             // Multiple blobs

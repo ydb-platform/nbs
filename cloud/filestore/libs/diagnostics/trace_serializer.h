@@ -12,35 +12,39 @@ namespace NCloud::NFileStore {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-void HandleTraceInfo(
+bool HandleTraceInfo(
     const ITraceSerializerPtr& traceSerializer,
     const TCallContextBasePtr& ctx,
     T& record)
 {
     if constexpr (HasResponseHeaders<T>()) {
         if (!ctx->LWOrbit.HasShuttles()) {
-            return;
+            return false;
         }
 
+        auto& headers = *record.MutableHeaders();
         traceSerializer->HandleTraceInfo(
-            record.GetHeaders().GetTrace(),
+            std::move(*headers.MutableTrace()),
             ctx->LWOrbit,
             ctx->GetRequestStartedCycles(),
             GetCycleCount());
 
-        record.MutableHeaders()->ClearTrace();
+        headers.ClearTrace();
+        return true;
     }
+
+    return false;
 }
 
 template <typename T>
-void BuildTraceInfo(
+bool BuildTraceInfo(
     const ITraceSerializerPtr& traceSerializer,
     const TCallContextBasePtr& ctx,
     T& record)
 {
     if constexpr (HasResponseHeaders<T>()) {
         if (!traceSerializer->IsTraced(ctx->LWOrbit)) {
-            return;
+            return false;
         }
 
         traceSerializer->BuildTraceInfo(
@@ -48,7 +52,10 @@ void BuildTraceInfo(
             ctx->LWOrbit,
             ctx->GetRequestStartedCycles(),
             GetCycleCount());
+        return true;
     }
+
+    return false;
 }
 
 }   // namespace NCloud::NFileStore

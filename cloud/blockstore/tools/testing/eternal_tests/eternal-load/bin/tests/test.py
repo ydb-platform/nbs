@@ -1,3 +1,5 @@
+import os
+import subprocess
 import pytest
 import tempfile
 import time
@@ -21,8 +23,13 @@ _SCENARIOS = [
     ("unaligned", "sync", False)
 ]
 
+_SIMPLE_SCENARIOS = [
+    ("sequential", "sync", False),
+    ("random", "sync", False),
+]
 
-def __run_load_test(file_name, scenario="aligned", engine="asyncio", direct=True, timeout=None):
+
+def __run_load_test(file_name, scenario="aligned", engine="asyncio", direct=True, timeout=None, test_count=0):
     eternal_load = yatest_common.binary_path(_BINARY_PATH)
 
     params = [
@@ -36,7 +43,8 @@ def __run_load_test(file_name, scenario="aligned", engine="asyncio", direct=True
         '--filesize', str(_FILE_SIZE),
         '--iodepth', str(_IO_DEPTH),
         '--write-rate', '70',
-        '--debug'
+        '--debug',
+        '--test-count', str(test_count)
     ]
 
     if not direct:
@@ -67,7 +75,7 @@ def test_load_fails(scenario, engine, direct):
         assert (result.returncode == 1) and (result.stderr.find('Wrong') != -1) and (result.stderr.find('MiB/s') != -1)
 
 
-@pytest.mark.parametrize("scenario,engine,direct", _SCENARIOS)
+@pytest.mark.parametrize("scenario,engine,direct", _SCENARIOS + _SIMPLE_SCENARIOS)
 def test_load_works(scenario, engine, direct):
     timeout = 30
     tmp_file = tempfile.NamedTemporaryFile(suffix=".test")
@@ -77,3 +85,77 @@ def test_load_works(scenario, engine, direct):
         pass
     else:
         pytest.fail(f"Eternal load should not have finished within {timeout} seconds")
+
+
+@pytest.fixture
+def fixture_mount_very_small_tmpfs(request):
+    loopback_path = "/tmp/fs.img"
+    mount_dir = "/tmp/testfs"
+
+    os.makedirs(mount_dir, exist_ok=True)
+
+    subprocess.run(
+        ["dd", "if=/dev/zero", f"of={loopback_path}", "bs=1M", "count=64"],
+        check=True,
+    )
+
+    subprocess.run(
+        ["mkfs.ext4", "-q", "-O", "^has_journal", loopback_path],
+        check=True,
+    )
+
+    subprocess.run(
+        ["sudo", "mount", "-o", "loop", loopback_path, mount_dir],
+        check=True,
+    )
+
+    subprocess.run(
+        ["sudo", "chown", f"{os.getuid()}:{os.getgid()}", mount_dir],
+        check=True,
+    )
+
+    def fin():
+        subprocess.run(["sudo", "umount", "-l", mount_dir], check=False)
+        subprocess.run(["rm", loopback_path], check=False)
+
+    request.addfinalizer(fin)
+    return mount_dir
+
+
+def test_load_async_io_fails(fixture_mount_very_small_tmpfs):
+    mount_dir = fixture_mount_very_small_tmpfs
+
+    # Run async-io eternal-load on a small tmpfs to raise ENOSPC error
+    with (
+        ThreadPoolExecutor(max_workers=1) as executor,
+        tempfile.NamedTemporaryFile(suffix='.test', dir=mount_dir) as tmp_file
+    ):
+        future = executor.submit(
+            __run_load_test, tmp_file.name, 'aligned', 'asyncio', True)
+
+        result = future.result()
+
+        assert result.returncode == 1
+        msg = 'Can\'t write to file: (yexception) (No space left on device) ' \
+            'async IO operation failed'
+        assert result.stderr.find(msg) != -1
+
+
+def test_multiple_files():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        timeout = 10
+        pattern = os.path.join(tmpdir, "testfile_{}.test")
+        test_count = 5
+        tmp_files = [pattern.format(i) for i in range(test_count)]
+
+        try:
+            assert __run_load_test(pattern, scenario="unaligned", engine="sync", direct=False, timeout=timeout, test_count=test_count).returncode == 0
+        except TimeoutExpired:
+            pass
+        else:
+            pytest.fail(f"Eternal load should not have finished within {timeout} seconds")
+
+        for f in tmp_files:
+            assert os.path.exists(f), f"Expected file {f} to exist"
+
+        assert not os.path.exists(pattern), f"Pattern string {pattern} should not have been created as a literal file"

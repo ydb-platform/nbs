@@ -83,6 +83,7 @@ struct TMonitoringUrlData: public TAtomicRefCount<TMonitoringUrlData>
     TString MonitoringNBSTVDashboard;
     TString MonitoringYDBProject;
     TString MonitoringYDBGroupDashboard;
+    TString MonitoringUrlTemplate;
 
     TMonitoringUrlData()
         : MonitoringProject("nbs")
@@ -99,6 +100,7 @@ struct TMonitoringUrlData: public TAtomicRefCount<TMonitoringUrlData>
         , MonitoringNBSTVDashboard(data.GetMonitoringNBSTVDashboard())
         , MonitoringYDBProject(data.GetMonitoringYDBProject())
         , MonitoringYDBGroupDashboard(data.GetMonitoringYDBGroupDashboard())
+        , MonitoringUrlTemplate(data.GetMonitoringUrlTemplate())
     {}
 };
 

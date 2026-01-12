@@ -161,6 +161,11 @@ NProto::TError ErrorNoSpaceLeft()
             << "no space left");
 }
 
+NProto::TError ErrorCommitIdOverflow()
+{
+    return MakeError(E_REJECTED, "CommitId overflow");
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TError ErrorInvalidArgument()

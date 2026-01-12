@@ -834,6 +834,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
 
         config.SetTwoStageReadEnabled(true);
+        config.SetTwoStageReadThreshold(64_KB);
         config.SetThreeStageWriteEnabled(true);
         config.SetThreeStageWriteThreshold(10_MB);
         config.SetEntryTimeout(TDuration::Seconds(10).MilliSeconds());
@@ -850,8 +851,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetAllowHandlelessIO(true);
         config.SetZeroCopyWriteEnabled(true);
         config.SetGuestHandleKillPrivV2Enabled(true);
+        config.SetZeroCopyReadEnabled(true);
+        config.SetBlockChecksumsInProfileLogEnabled(true);
+        config.SetReadBlobDisabled(true);
+        config.SetWriteBlobDisabled(true);
 
         features.SetTwoStageReadEnabled(true);
+        features.SetTwoStageReadThreshold(64_KB);
         features.SetEntryTimeout(TDuration::Seconds(10).MilliSeconds());
         features.SetNegativeEntryTimeout(TDuration::Seconds(1).MilliSeconds());
         features.SetAttrTimeout(TDuration::Seconds(20).MilliSeconds());
@@ -868,6 +874,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetAllowHandlelessIO(true);
         features.SetZeroCopyWriteEnabled(true);
         features.SetGuestHandleKillPrivV2Enabled(true);
+        features.SetZeroCopyReadEnabled(true);
+        features.SetBlockChecksumsInProfileLogEnabled(true);
+        features.SetReadBlobDisabled(true);
+        features.SetWriteBlobDisabled(true);
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
     }

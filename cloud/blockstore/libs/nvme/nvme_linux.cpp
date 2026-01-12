@@ -37,7 +37,7 @@ nvme_ctrlr_data NVMeIdentifyCtrl(TFileHandle& device)
 
     if (err) {
         int err = errno;
-        ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
+        STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
             << "NVMeIdentifyCtrl failed: " << strerror(err);
     }
 
@@ -60,7 +60,7 @@ nvme_ns_data NVMeIdentifyNs(TFileHandle& device, ui32 nsId)
 
     if (err) {
         int err = errno;
-        ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
+        STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
             << "NVMeIdentifyNs failed: " << strerror(err);
     }
 
@@ -85,7 +85,7 @@ void NVMeFormatImpl(
 
     if (err) {
         int err = errno;
-        ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
+        STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
             << "NVMeFormatImpl failed: " << strerror(err);
     }
 }
@@ -96,7 +96,7 @@ bool IsBlockOrCharDevice(TFileHandle& device)
 
     if (fstat(device, &deviceStat) < 0) {
         int err = errno;
-        ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
+        STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
             << "fstat error: " << strerror(err);
     }
 
@@ -110,7 +110,7 @@ hd_driveid HDIdentity(TFileHandle& device)
 
     if (err) {
         int err = errno;
-        ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
+        STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
             << "HDIdentity failed: " << strerror(err);
     }
 
@@ -179,7 +179,7 @@ private:
         int err = ioctl(device, BLKGETSIZE64, &devSizeBytes);
         if (err) {
             err = errno;
-            ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
+            STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
                 << "NVMeDeallocateImpl failed to read device size: "
                 << strerror(err);
         }
@@ -194,7 +194,7 @@ private:
         err = ioctl(device, BLKDISCARD, range);
         if (err) {
             err = errno;
-            ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
+            STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
                 << "NVMeDeallocateImpl failed to deallocate: "
                 << strerror(err);
         }
@@ -269,7 +269,7 @@ public:
 
             auto [isRot, error] = IsRotational(device);
             if (HasError(error)) {
-                ythrow TServiceError(error.GetCode())
+                STORAGE_THROW_SERVICE_ERROR(error.GetCode())
                     << "NVMeIsSsd failed: " << error.GetMessage();
             }
 

@@ -2,6 +2,12 @@
 
 #include <cloud/filestore/libs/service/filestore.h>
 
+#include <contrib/ydb/library/actors/testlib/test_runtime.h>
+
+#include <util/generic/set.h>
+
+#include <functional>
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -317,6 +323,11 @@ inline bool CompareBuffer(TStringBuf buffer, size_t len, char fill)
     return true;
 }
 
+#define UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, sz, c) \
+    UNIT_ASSERT_C( \
+        CompareBuffer(buffer, sz, c), \
+        TString((buffer).data(), Min<size_t>(20, (buffer).size())))
+
 template <typename T>
 inline bool Succeeded(const std::unique_ptr<T>& response)
 {
@@ -334,5 +345,24 @@ inline TString GetErrorReason(const std::unique_ptr<T>& response)
     }
     return response->GetErrorReason();
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Helper class for tracking tablet reboots in tests.
+// Tracks pipe destruction events and tablet generation changes.
+class TTabletRebootTracker
+{
+private:
+    bool PipeDestroyed = false;
+    TSet<ui32> Generations;
+
+public:
+    NActors::TTestActorRuntimeBase::TEventFilter GetEventFilter();
+
+    bool IsPipeDestroyed() const;
+    void ClearPipeDestroyed();
+
+    size_t GetGenerationCount() const;
+};
 
 }   // namespace NCloud::NFileStore::NStorage

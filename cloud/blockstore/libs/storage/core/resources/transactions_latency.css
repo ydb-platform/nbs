@@ -1,0 +1,57 @@
+.table-latency {
+    width: 100%;
+    border-collapse: collapse;
+    padding: 0;
+}
+
+.table-latency th,
+.table-latency td {
+    padding: 0 8px 0 8px;
+    border: 1px solid black;
+}
+
+.table-latency th {
+    font-weight: bold;
+    text-align: center;
+}
+
+.table-latency td {
+    padding: 0 8px 0 8px;
+    border-top: none;
+    border-bottom: none;
+}
+
+.table-latency tr:last-child {
+    border-bottom: 1px solid black;
+}
+
+.tooltip-latency {
+    position: relative;
+    display: inline-block;
+}
+
+.tooltip-latency .tooltiptext-latency {
+    visibility: hidden;
+    width: 120px;
+    background-color: black;
+    color: #fff;
+    text-align: center;
+    border-radius: 6px;
+    padding: 5px 0;
+    position: absolute;
+    z-index: 1;
+}
+
+.tooltip-latency:hover .tooltiptext-latency {
+    visibility: visible;
+}
+
+.latency-item {
+    display: flex;
+    width: 100%;
+}
+
+.latency-item>div {
+    flex: 1 1 0;
+    text-align: right;
+}

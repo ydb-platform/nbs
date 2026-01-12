@@ -280,4 +280,64 @@ Y_UNIT_TEST_SUITE(TOrbitMultithreadedUsage)
             numThreads * operationsPerThread,
             totalOperations.load());
     }
+
+    Y_UNIT_TEST(ForEachShuttleAndReuseShuttle)
+    {
+        struct TState
+        {
+            TShuttlePtr Shuttle = nullptr;
+            TAtomic IsAvailable = 0;
+            TAtomic Drops = 0;
+        } state;
+
+        class TReusableShuttle: public TMockShuttle
+        {
+        private:
+            TState& State;
+
+        public:
+            TReusableShuttle(ui64 traceIdx, ui64 spanId, TState& state)
+                : TMockShuttle(traceIdx, spanId)
+                , State(state)
+            {}
+
+        protected:
+            void DoDrop() override
+            {
+                AtomicIncrement(State.Drops);
+                const auto prev = AtomicSwap(&State.IsAvailable, 1);
+                UNIT_ASSERT_VALUES_EQUAL(0, prev);
+            }
+        };
+
+        state.Shuttle = new TReusableShuttle(1, 0 /* spanId */, state);
+        AtomicSet(state.IsAvailable, 1);
+
+        const ui32 iters = 1000;
+
+        auto serializer = [&]()
+        {
+            for (ui32 i = 0; i < iters; ++i) {
+                while (true) {
+                    if (AtomicCas(&state.IsAvailable, 0, 1)) {
+                        TOrbit orbit;
+                        orbit.AddShuttle(state.Shuttle);
+
+                        TShuttleTrace trace;
+                        orbit.Serialize(1, trace);
+                        break;
+                    }
+                }
+            }
+        };
+
+        TThread t1(serializer);
+        TThread t2(serializer);
+
+        t1.Start();
+        t2.Start();
+
+        t1.Join();
+        t2.Join();
+    }
 }

@@ -179,6 +179,7 @@ using TFlushedCommitIds = TVector<TFlushedCommitId>;
     xxx(PatchBlob,                 __VA_ARGS__)                                \
     xxx(AddConfirmedBlobs,         __VA_ARGS__)                                \
     xxx(AddUnconfirmedBlobs,       __VA_ARGS__)                                \
+    xxx(DeleteUnconfirmedBlobs,    __VA_ARGS__)                                \
 // BLOCKSTORE_PARTITION_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -694,6 +695,26 @@ struct TEvPartitionPrivate
     };
 
     struct TAddUnconfirmedBlobsResponse
+    {
+        ui64 ExecCycles = 0;
+    };
+
+    //
+    // DeleteUnconfirmedBlobs
+    //
+
+    struct TDeleteUnconfirmedBlobsRequest
+    {
+        ui64 CommitId = 0;
+
+        TDeleteUnconfirmedBlobsRequest() = default;
+
+        explicit TDeleteUnconfirmedBlobsRequest(ui64 commitId)
+            : CommitId(commitId)
+        {}
+    };
+
+    struct TDeleteUnconfirmedBlobsResponse
     {
         ui64 ExecCycles = 0;
     };

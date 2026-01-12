@@ -119,8 +119,6 @@ public:
 
     ui32 GetMaxFuseLoopThreads() const;
 
-    bool GetZeroCopyWriteEnabled() const;
-
     bool GetFSyncQueueDisabled() const;
 
     TDuration GetEntryTimeout() const;
@@ -148,6 +146,10 @@ public:
         const TString& fsId) const;
 
     bool GetDirectoryHandlesStorageEnabled() const;
+    bool GetDirectoryHandlesStorageEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fsId) const;
 
     ui64 GetDirectoryHandlesTableSize() const;
 

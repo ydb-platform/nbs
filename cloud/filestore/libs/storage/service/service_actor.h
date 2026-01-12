@@ -6,6 +6,7 @@
 #include "service_state.h"
 
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
+#include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/api/service.h>
@@ -31,6 +32,50 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename T>
+void HandleServiceTraceInfo(
+    const char* methodName,
+    const NActors::TActorContext& ctx,
+    const ITraceSerializerPtr& traceSerializer,
+    const TCallContextBasePtr& callContext,
+    T& record)
+{
+    const bool handled =
+        HandleTraceInfo(traceSerializer, callContext, record);
+    if (handled) {
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "%s: trace handled",
+            methodName);
+        return;
+    }
+
+    if constexpr (HasResponseHeaders<T>()) {
+        if (record.GetHeaders().HasTrace()) {
+            const auto& trace = record.GetHeaders().GetTrace();
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "%s: trace not handled: %s",
+                methodName,
+                trace.Utf8DebugString().Quote().c_str(),
+                handled);
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TMethod>
+void CompleteRequestImpl(
+    const NActors::TActorContext& ctx,
+    const ITraceSerializerPtr& traceSerializer,
+    typename TMethod::TResponse::ProtoRecordType& record,
+    TInFlightRequest *request);
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TStorageServiceActor final
     : public NActors::TActorBootstrapped<TStorageServiceActor>
 {
@@ -38,18 +83,20 @@ private:
     const TStorageConfigPtr StorageConfig;
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;
+    const TSystemCountersPtr SystemCounters;
     const NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
 
     std::unique_ptr<TStorageServiceState> State;
-    ui64 ProxyCounter = 0;
 
     IRequestStatsRegistryPtr StatsRegistry;
-    THashMap<ui64, TInFlightRequest> InFlightRequests;
+    TInFlightRequestStoragePtr InFlightRequests;
+    ui64 InFlightRequestCounter = 0;
 
     NMonitoring::TDynamicCounters::TCounterPtr CpuWaitCounter;
 
     NMonitoring::TDynamicCounters::TCounterPtr TotalFileSystemCount;
     NMonitoring::TDynamicCounters::TCounterPtr TotalTabletCount;
+    NMonitoring::TDynamicCounters::TCounterPtr InFlightRequestCount;
 
     NMonitoring::TDynamicCounters::TCounterPtr HddFileSystemCount;
     NMonitoring::TDynamicCounters::TCounterPtr HddTabletCount;
@@ -67,6 +114,7 @@ public:
         IRequestStatsRegistryPtr statsRegistry,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
+        TSystemCountersPtr systemCounters,
         NCloud::NStorage::IStatsFetcherPtr statsFetcher);
     ~TStorageServiceActor();
 
@@ -99,7 +147,7 @@ private:
     void ForwardRequestToShard(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
-        ui32 shardNo);
+        ui64 entityId);
 
     template <typename TMethod>
     TSessionInfo* GetAndValidateSession(
@@ -152,9 +200,19 @@ private:
         const TEvServicePrivate::TEvSessionDestroyed::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    ui64 GenerateRequestCookie();
+    static bool ValidateRequestCookie(ui64 cookie);
+
+    std::pair<ui64, TInFlightRequest*> CreateInFlightRequest(
+        const TRequestInfo& info,
+        NProto::EStorageMediaKind mediaKind,
+        IRequestStatsPtr requestStats,
+        TInstant currentTs);
+
     std::pair<ui64, TInFlightRequest*> CreateInFlightRequest(
         const TRequestInfo& info,
         NProto::EStorageMediaKind media,
+        TChecksumCalcInfo checksumCalcInfo,
         IRequestStatsPtr requestStats,
         TInstant currentTs);
 
@@ -168,6 +226,10 @@ private:
     void RemoveSession(
         const TString& sessionId,
         const NActors::TActorContext& ctx);
+
+    static ui32 ExtractShardNoSafe(
+        const NProto::TFileStore& filestore,
+        ui64 entityId);
 
     TResultOrError<TString> SelectShard(
         const NActors::TActorContext& ctx,

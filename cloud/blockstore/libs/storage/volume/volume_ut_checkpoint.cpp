@@ -4027,6 +4027,112 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         UNIT_ASSERT(tryWriteBlock(expectedBlockCount - 1, 0));
     }
 
+    Y_UNIT_TEST(ShouldNotBlockWritesWhenShadowDiskEmptyOrReady)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        config.SetMaxShadowDiskFillBandwidth(1);
+        config.SetMaxAcquireShadowDiskTotalTimeoutWhenBlocked(5000);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        const ui64 expectedBlockCount = 8192;
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            expectedBlockCount);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        auto tryWriteBlock = [&](ui64 blockIndx, ui8 content) -> bool
+        {
+            auto request = volume.CreateWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(blockIndx),
+                clientInfo.GetClientId(),
+                GetBlockContent(content));
+            volume.SendToPipe(std::move(request));
+            auto response =
+                volume.RecvResponse<TEvService::TEvWriteBlocksResponse>();
+            if (response->GetStatus() != S_OK) {
+                UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "Can't write to source disk while shadow disk \"vol0-c1\" "
+                    "not ready yet.",
+                    response->GetError().GetMessage());
+                return false;
+            }
+            return true;
+        };
+
+        // Steal the acquire response.
+        std::unique_ptr<IEventHandle> stolenAcquireResponse;
+        auto stealAcquireResponse = [&](TTestActorRuntimeBase& runtime,
+                                        TAutoPtr<IEventHandle>& event) -> bool
+        {
+            Y_UNUSED(runtime);
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvAcquireDiskResponse)
+            {
+                stolenAcquireResponse.reset(event.Release());
+                return true;
+            }
+            return false;
+        };
+        auto oldFilter = runtime->SetEventFilter(stealAcquireResponse);
+
+        // Create checkpoint.
+        volume.CreateCheckpoint("c1");
+
+        // Reconnect pipe since partition has restarted.
+        volume.ReconnectPipe();
+
+        // Check that the acquire response was stolen.
+        UNIT_ASSERT(stolenAcquireResponse);
+
+        // Check that attempts to write to the source disk will be successful,
+        // despite the fact that the shadow disk could not be acquired.
+        // Because the filling of the shadow disk has not yet begun.
+        UNIT_ASSERT(tryWriteBlock(0, 'a'));
+
+        // Return stolen acquire response. The acquiring should be completed.
+        runtime->Send(stolenAcquireResponse.release());
+
+        // Wait for checkpoint get ready.
+        for (;;) {
+            auto status = volume.GetCheckpointStatus("c1");
+            if (status->Record.GetCheckpointStatus() ==
+                NProto::ECheckpointStatus::READY)
+            {
+                break;
+            }
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        }
+
+        // Reboot volume tablet.
+        volume.RebootTablet();
+
+        // Check that the acquire response was stolen.
+        UNIT_ASSERT(stolenAcquireResponse);
+        runtime->SetEventFilter(oldFilter);
+
+        // Check that attempts to write to the source disk will be successful,
+        // despite the fact that the shadow disk could not be acquired.
+        // Because the filling of the shadow disk has already been completed.
+        UNIT_ASSERT(tryWriteBlock(0, 'a'));
+    }
+
     Y_UNIT_TEST(ShouldNotReleaseWhenPeriodicalReAcquiringExceptForSessionError)
     {
         NProto::TStorageServiceConfig config;

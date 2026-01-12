@@ -246,7 +246,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static ui32 CalcBackendVhostQueuesCount(const TVFSConfig& vfsConfig)
+static ui32 CalcFrontendVhostQueueCount(const TVFSConfig& vfsConfig)
 {
     // HIPRIO + number of requests queues
     return Max(2u, vfsConfig.GetVhostQueuesCount());
@@ -272,9 +272,9 @@ public:
         }
 
         AddArg(
-            "--num-backend-queues=" +
-            ToString(CalcBackendVhostQueuesCount(config)));
-        AddArg("--num-frontend-queues=" + ToString(threadsCount));
+            "--num-frontend-queues=" +
+            ToString(CalcFrontendVhostQueueCount(config)));
+        AddArg("--num-backend-queues=" + ToString(threadsCount));
 #else
         Y_UNUSED(threadsCount);
         if (config.GetReadOnly()) {
@@ -473,7 +473,7 @@ class TFuseLoopThread final
 private:
     TSession& Session;
     const ui32 FuseLoopIndex = 0;
-    const ui32 FrontendQueueIndex = 0;
+    const ui32 BackendQueueIndex = 0;
     bool InterruptSignaled = false;
     TLog Log;
 
@@ -483,11 +483,11 @@ public:
     TFuseLoopThread(
             TSession& session,
             ui32 fuseLoopIndex,
-            ui32 frontendQueueIndex,
+            ui32 backendQueueIndex,
             TLog log)
         : Session(session)
         , FuseLoopIndex(fuseLoopIndex)
-        , FrontendQueueIndex(frontendQueueIndex)
+        , BackendQueueIndex(backendQueueIndex)
         , Log(std::move(log))
     {}
 
@@ -510,14 +510,14 @@ public:
     {
         STORAGE_INFO(
             "stopping FUSE loop thread " << FuseLoopIndex << "."
-                                         << FrontendQueueIndex);
+                                         << BackendQueueIndex);
 
         SignalInterrupt();
         Join();
 
         STORAGE_INFO(
             "stopped FUSE loop thread " << FuseLoopIndex << "."
-                                        << FrontendQueueIndex);
+                                        << BackendQueueIndex);
     }
 
 private:
@@ -525,12 +525,12 @@ private:
     {
         ::NCloud::SetCurrentThreadName(
             "FUSE" + ToString(FuseLoopIndex) + "." +
-                ToString(FrontendQueueIndex),
+                ToString(BackendQueueIndex),
             4);
 
         AtomicSet(ThreadId, pthread_self());
 #if defined(FUSE_VIRTIO)
-        fuse_session_loop(Session, FrontendQueueIndex);
+        fuse_session_loop(Session, BackendQueueIndex);
 #else
         fuse_session_loop(Session);
 #endif
@@ -545,7 +545,7 @@ private:
     TLog Log;
     TSession Session;
 
-    TVector<std::unique_ptr<TFuseLoopThread>> FrontendQueueThreads;
+    TVector<std::unique_ptr<TFuseLoopThread>> BackendQueueThreads;
 
 public:
     TFuseLoop(
@@ -557,13 +557,13 @@ public:
             void* context)
         : Log(std::move(log))
         , Session(config, threadsCount, ops, state, context)
-        , FrontendQueueThreads(threadsCount)
+        , BackendQueueThreads(threadsCount)
     {
         static std::atomic<ui64> NextFuseLoopIndex = 0;
         ui64 fuseLoopIndex = NextFuseLoopIndex++;
 
-        for (ui32 queueIndex = 0; queueIndex < FrontendQueueThreads.size(); queueIndex++) {
-            FrontendQueueThreads[queueIndex] = std::make_unique<TFuseLoopThread>(
+        for (ui32 queueIndex = 0; queueIndex < BackendQueueThreads.size(); queueIndex++) {
+            BackendQueueThreads[queueIndex] = std::make_unique<TFuseLoopThread>(
                 Session,
                 fuseLoopIndex,
                 queueIndex,
@@ -573,7 +573,7 @@ public:
 
     void Start()
     {
-        for (auto& thread: FrontendQueueThreads) {
+        for (auto& thread: BackendQueueThreads) {
             thread->Start();
         }
     }
@@ -584,11 +584,11 @@ public:
 
         Session.Exit();
 
-        for (auto& thread: FrontendQueueThreads) {
+        for (auto& thread: BackendQueueThreads) {
             thread->SignalInterrupt();
         }
 
-        for (auto& thread: FrontendQueueThreads) {
+        for (auto& thread: BackendQueueThreads) {
             thread->Stop();
         }
 
@@ -924,12 +924,13 @@ private:
                 }
             }
 
-            if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
-                if (Config->GetWriteBackCachePath()) {
-                    auto path = TFsPath(Config->GetWriteBackCachePath()) /
-                        FileSystemConfig->GetFileSystemId() /
-                        SessionId;
+            if (Config->GetWriteBackCachePath()) {
+                auto path = TFsPath(Config->GetWriteBackCachePath()) /
+                            FileSystemConfig->GetFileSystemId() / SessionId;
 
+                if (path.Exists() ||
+                    FileSystemConfig->GetServerWriteBackCacheEnabled())
+                {
                     auto error = CreateAndLockFile(
                         path,
                         WriteBackCacheFileName,
@@ -960,15 +961,14 @@ private:
                         Config->GetWriteBackCacheFlushMaxWriteRequestSize(),
                         Config->GetWriteBackCacheFlushMaxWriteRequestsCount(),
                         Config->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
-                        FileSystemConfig->GetZeroCopyWriteEnabled()
-                    );
-                } else {
-                    ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
-                        "[f:%s][c:%s] Error initializing WriteBackCache: "
-                        "WriteBackCachePath is not set",
-                        Config->GetFileSystemId().Quote().c_str(),
-                        Config->GetClientId().Quote().c_str()));
+                        FileSystemConfig->GetZeroCopyWriteEnabled());
                 }
+            } else if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
+                ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
+                    "[f:%s][c:%s] Error initializing WriteBackCache: "
+                    "WriteBackCachePath is not set",
+                    Config->GetFileSystemId().Quote().c_str(),
+                    Config->GetClientId().Quote().c_str()));
             }
 
             TDirectoryHandlesStoragePtr directoryHandlesStorage;
@@ -1024,7 +1024,7 @@ private:
 
             ui32 fuseLoopThreadCount =
                 Min(FileSystemConfig->GetMaxFuseLoopThreads(),
-                    CalcBackendVhostQueuesCount(*Config));
+                    CalcFrontendVhostQueueCount(*Config));
             if (fuseLoopThreadCount == 0) {
                 fuseLoopThreadCount = 1;
             }
@@ -1084,6 +1084,10 @@ private:
         if (features.GetEntryTimeout()) {
             config.SetEntryTimeout(features.GetEntryTimeout());
         }
+        if (features.GetRegularFileEntryTimeout()) {
+            config.SetRegularFileEntryTimeout(
+                features.GetRegularFileEntryTimeout());
+        }
         if (features.GetNegativeEntryTimeout()) {
             config.SetNegativeEntryTimeout(features.GetNegativeEntryTimeout());
         }
@@ -1124,6 +1128,7 @@ private:
         config.SetMaxFuseLoopThreads(features.GetMaxFuseLoopThreads());
 
         config.SetZeroCopyWriteEnabled(features.GetZeroCopyWriteEnabled());
+        config.SetZeroCopyReadEnabled(features.GetZeroCopyReadEnabled());
 
         config.SetFSyncQueueDisabled(features.GetFSyncQueueDisabled());
 
@@ -1351,6 +1356,7 @@ private:
             fuse_req_unique(req));
         callContext->RequestType = requestType;
         callContext->RequestSize = requestSize;
+        callContext->LoopThreadId = TThread::CurrentThreadNumericId();
 
         if (auto cancelCode = pThis->CompletionQueue->Enqueue(req, callContext)) {
             STORAGE_DEBUG("driver is stopping, cancel request");

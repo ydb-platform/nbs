@@ -4,6 +4,8 @@
 
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
+
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -72,6 +74,7 @@ private:
     const IBlockBufferPtr Buffer;
     const ui32 BlockSize;
     const TString FileSystemId;
+    const bool ReadBlobDisabled;
     const IProfileLogPtr ProfileLog;
 
     TVector<TReadBlobRequest> Requests;
@@ -87,6 +90,7 @@ public:
         IBlockBufferPtr buffer,
         ui32 blockSize,
         TString fileSystemId,
+        bool readBlobDisabled,
         IProfileLogPtr profileLog,
         TVector<TReadBlobRequest> requests,
         NProto::TProfileLogRequestInfo profileLogRequest);
@@ -124,6 +128,7 @@ TReadBlobActor::TReadBlobActor(
         IBlockBufferPtr buffer,
         ui32 blockSize,
         TString fileSystemId,
+        bool readBlobDisabled,
         IProfileLogPtr profileLog,
         TVector<TReadBlobRequest> requests,
         NProto::TProfileLogRequestInfo profileLogRequest)
@@ -133,6 +138,7 @@ TReadBlobActor::TReadBlobActor(
     , Buffer(std::move(buffer))
     , BlockSize(blockSize)
     , FileSystemId(std::move(fileSystemId))
+    , ReadBlobDisabled(readBlobDisabled)
     , ProfileLog(std::move(profileLog))
     , Requests(std::move(requests))
     , ProfileLogRequest(std::move(profileLogRequest))
@@ -144,6 +150,12 @@ void TReadBlobActor::Bootstrap(const TActorContext& ctx)
         RequestReceived_TabletWorker,
         RequestInfo->CallContext,
         "ReadBlob");
+
+    if (ReadBlobDisabled) {
+        ReportFakeBlobWasRead();
+        ReplyAndDie(ctx);
+        return;
+    }
 
     SendRequests(ctx);
     Become(&TThis::StateWork);
@@ -433,6 +445,7 @@ void TIndexTabletActor::HandleReadBlob(
         std::move(msg->Buffer),
         blockSize,
         GetFileSystemId(),
+        Config->GetReadBlobDisabled(),
         ProfileLog,
         std::move(requests),
         std::move(profileLogRequest));

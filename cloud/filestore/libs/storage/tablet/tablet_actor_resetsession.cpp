@@ -133,7 +133,7 @@ void TIndexTabletActor::ExecuteTx_ResetSession(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "ResetSession");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "ResetSession");
     }
 
     auto handle = session->Handles.begin();

@@ -41,7 +41,6 @@ private:
     {
         const NActors::TActorId OriginalSender;
         const ui64 OriginalCookie = 0;
-        const TBlockRange64 BlockRange;
         const EReplyType ReplyType = EReplyType::Ordinary;
     };
 

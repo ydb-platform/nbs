@@ -22,9 +22,9 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleWriteOrZeroCompleted(
     const TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto * msg = ev->Get();
-    const auto counter = msg->RequestId;
-    if (!WriteAndZeroRequestsInProgress.RemoveRequest(counter)) {
+    const auto * msg = ev->Get();
+
+    if (!WriteAndZeroRequestsInProgress.RemoveWriteRequest(msg->RequestId)) {
         Y_DEBUG_ABORT_UNLESS(0);
     }
 

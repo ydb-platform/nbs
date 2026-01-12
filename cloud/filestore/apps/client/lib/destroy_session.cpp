@@ -28,14 +28,11 @@ private:
 
 public:
     TDestroySessionCommand()
+        : TFileStoreCommand(true /* isClientIdRequired */)
     {
         Opts.AddLongOption("session-id")
             .RequiredArgument("SESSION_ID")
             .StoreResult(&SessionId);
-
-        Opts.AddLongOption("client-id")
-            .RequiredArgument("CLIENT_ID")
-            .StoreResult(&ClientId);
 
         Opts.AddLongOption("seq-no")
             .RequiredArgument("SEQ_NO")

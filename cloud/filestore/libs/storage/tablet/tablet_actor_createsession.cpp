@@ -24,12 +24,15 @@ void FillFeatures(
 {
     auto* features = fileStore.MutableFeatures();
     features->SetTwoStageReadEnabled(config.GetTwoStageReadEnabled());
+    features->SetTwoStageReadThreshold(config.GetTwoStageReadThreshold());
     features->SetThreeStageWriteEnabled(config.GetThreeStageWriteEnabled());
     features->SetTwoStageReadDisabledForHDD(
         config.GetTwoStageReadDisabledForHDD());
     features->SetThreeStageWriteDisabledForHDD(
         config.GetThreeStageWriteDisabledForHDD());
     features->SetEntryTimeout(config.GetEntryTimeout().MilliSeconds());
+    features->SetRegularFileEntryTimeout(
+        config.GetRegularFileEntryTimeout().MilliSeconds());
     features->SetNegativeEntryTimeout(
         config.GetNegativeEntryTimeout().MilliSeconds());
     features->SetAttrTimeout(config.GetAttrTimeout().MilliSeconds());
@@ -89,6 +92,14 @@ void FillFeatures(
 
     features->SetGuestHandleKillPrivV2Enabled(
         config.GetGuestHandleKillPrivV2Enabled());
+
+    features->SetZeroCopyReadEnabled(config.GetZeroCopyReadEnabled());
+
+    features->SetBlockChecksumsInProfileLogEnabled(
+        config.GetBlockChecksumsInProfileLogEnabled());
+
+    features->SetReadBlobDisabled(config.GetReadBlobDisabled());
+    features->SetWriteBlobDisabled(config.GetWriteBlobDisabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -157,6 +168,7 @@ void Convert(
     fileStore.SetStorageMediaKind(fileSystem.GetStorageMediaKind());
     fileStore.MutableShardFileSystemIds()->CopyFrom(
         fileSystem.GetShardFileSystemIds());
+    fileStore.SetShardNo(fileSystem.GetShardNo());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -186,7 +198,8 @@ void TIndexTabletActor::HandleCreateSession(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    const auto expectedShardCount = CalculateExpectedShardCount();
+    const auto expectedShardCount =
+        CalculateExpectedShardCount(Config->GetMaxShardCount());
     const auto actualShardCount = GetFileSystem().ShardFileSystemIdsSize();
     if (actualShardCount < expectedShardCount) {
         auto message = TStringBuilder() << "Shard count smaller than expected: "

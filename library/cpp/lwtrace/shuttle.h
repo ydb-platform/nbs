@@ -111,10 +111,11 @@ namespace NLWTrace {
 
         // Shuttle was dropped from orbit
         TShuttlePtr Drop() {
+            auto ret = Detach(); // Detached from orbit on Drop
             UnlessDead([&] {
                 DoDrop();
             });
-            return Detach(); // Detached from orbit on Drop
+            return ret;
         }
 
         TShuttlePtr Detach() {

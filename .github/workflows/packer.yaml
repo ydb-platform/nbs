@@ -56,27 +56,11 @@ jobs:
         pip install -r .github/scripts/requirements.txt
         echo "PATH=$PATH:$HOME/nebius-cloud/bin:$HOME/.nebius/bin" >> $GITHUB_ENV
 
-    - name: Set up Nebius CLI
-      run: |
-        curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
-        cat <<EOF > sa.json
-        ${SA_JSON}
-        EOF
-
-        jq -r '."subject-credentials"."private-key"'  sa.json > private.pem
-        echo "::add-mask::$(jq -r '."subject-credentials"."kid"' sa.json)"
-        public_key_id=$(jq -r '."subject-credentials"."kid"' sa.json)
-        echo "::add-mask::$(jq -r '."subject-credentials"."iss"' sa.json)"
-        service_account_id=$(jq -r '."subject-credentials"."iss"' sa.json)
-        echo "::add-mask::tenant-e00en3r863f7me6wtd"
-        nebius profile create --endpoint api.eu-north1.nebius.cloud \
-                              --profile nbs-github-user-sa \
-                              --parent-id tenant-e00en3r863f7me6wtd \
-                              --public-key-id "${public_key_id}" \
-                              --private-key-file private.pem \
-                              --service-account-id "${service_account_id}"
-      env:
-        SA_JSON: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+    - name: set up nebius cli
+      id: cli
+      uses: ./.github/actions/nebius_cli
+      with:
+        sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
 
     - name: Get latest image ID from Nebius
       id: get-image-id
@@ -129,7 +113,7 @@ jobs:
         repo_owner: ${{ github.repository_owner }}
         repo: ${{ github.event.repository.name }}
         vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
-        vm_id: ${{ steps.start-runner.outputs.instance-id }}
+        vm_id: ${{ steps.start-runner.outputs.INSTANCE_ID }}
 
     - name: Set new image id
       run: |

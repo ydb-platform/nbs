@@ -134,7 +134,8 @@ void RegisterFilestore(
         dsc,
         commonLabels,
         { { readSub, "Time" } },
-        FILESTORE_READ_LATENCY);
+        FILESTORE_READ_LATENCY,
+        histogramCounterOptions);
 
     auto writeSub = src->FindSubgroup("request", "WriteData");
     AddUserMetric(
@@ -167,7 +168,8 @@ void RegisterFilestore(
         dsc,
         commonLabels,
         { { writeSub, "Time" } },
-        FILESTORE_WRITE_LATENCY);
+        FILESTORE_WRITE_LATENCY,
+        histogramCounterOptions);
 
     TVector<TBaseDynamicCounters> indexOpsCounters;
     TVector<TBaseDynamicCounters> indexErrorCounters;
@@ -209,7 +211,8 @@ void RegisterFilestore(
                     dsc,
                     labels,
                     {{ indexSubgroup, "Time" }},
-                    FILESTORE_INDEX_LATENCY);
+                    FILESTORE_INDEX_LATENCY,
+                    histogramCounterOptions);
                 AddUserMetric(
                     dsc,
                     labels,

@@ -74,7 +74,7 @@ TString GetNetworkAddress(const TString& host)
         }
     }
 
-    ythrow TServiceError(E_FAIL)
+    STORAGE_THROW_SERVICE_ERROR(E_FAIL)
         << "could not resolve address for host: " << host;
 }
 
@@ -510,7 +510,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
     }
 
     if (!addrs) {
-        ythrow TServiceError(E_FAIL)
+        STORAGE_THROW_SERVICE_ERROR(E_FAIL)
             << "cannot register dynamic node: "
             << "neither NodeBrokerAddress nor NodeBrokerPort specified";
     }
@@ -528,7 +528,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
         if (HasError(error)) {
             const auto& msg = error.GetMessage();
             if (attempts == options.Settings.MaxAttempts) {
-                ythrow TServiceError(E_FAIL)
+                STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                     << "Cannot register dynamic node: " << msg;
             }
 
@@ -569,7 +569,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
         if (HasError(error)) {
             const auto& msg = error.GetMessage();
             if (deadline < timer->Now()) {
-                ythrow TServiceError(E_FAIL)
+                STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                     << "Cannot configure dynamic node: " << msg;
             }
 

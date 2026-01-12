@@ -14,6 +14,7 @@
 #include <cloud/filestore/libs/storage/api/service.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/core/config.h>
+#include <cloud/filestore/libs/storage/core/system_counters.h>
 #include <cloud/filestore/libs/storage/core/tablet.h>
 #include <cloud/filestore/libs/storage/model/public.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
@@ -49,6 +50,36 @@ struct ICodec;
 }   // namespace NBlockCodecs
 
 namespace NCloud::NFileStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+inline void BuildBackendInfo(
+    const TStorageConfig& config,
+    const TSystemCounters& systemCounters,
+    NProto::TBackendInfo* backendInfo)
+{
+    //
+    // Keeping it simple for now - checking only CpuWait. We might decide to add
+    // some other metrics into consideration here - e.g. network usage and
+    // tablet executor cpu usage.
+    //
+
+    const ui64 cl = systemCounters.CpuLack.load(std::memory_order_relaxed);
+    backendInfo->SetIsOverloaded(cl >= config.GetCpuLackOverloadThreshold());
+}
+
+template <typename T>
+void BuildBackendInfo(
+    const TStorageConfig& config,
+    const TSystemCounters& systemCounters,
+    T& response)
+{
+    if constexpr (HasResponseHeaders<T>()) {
+        auto* responseHeaders = response.MutableHeaders();
+        auto* backendInfo = responseHeaders->MutableBackendInfo();
+        BuildBackendInfo(config, systemCounters, backendInfo);
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -343,6 +374,7 @@ private:
         // performance evaluation
         std::atomic<i64> CurrentLoad{0};
         std::atomic<i64> Suffer{0};
+        std::atomic<i64> OverloadedCount{0};
 
         const NMetrics::IMetricsRegistryPtr StorageRegistry;
         const NMetrics::IMetricsRegistryPtr StorageFsRegistry;
@@ -388,6 +420,7 @@ private:
 
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;
+    const TSystemCountersPtr SystemCounters;
 
     static const TStateInfo States[];
     EState CurrentState = STATE_BOOT;
@@ -441,6 +474,7 @@ public:
         TDiagnosticsConfigPtr diagConfig,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
+        TSystemCountersPtr systemCounters,
         NMetrics::IMetricsRegistryPtr metricsRegistry,
         bool useNoneCompactionPolicy);
     ~TIndexTabletActor() override;
@@ -450,7 +484,7 @@ public:
 
     static TString GetStateName(ui32 state);
 
-    void RebootTabletOnCommitOverflow(
+    void ScheduleRebootTabletOnCommitIdOverflow(
         const NActors::TActorContext& ctx,
         const TString& request);
 

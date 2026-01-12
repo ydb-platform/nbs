@@ -668,14 +668,14 @@ private:
             bool result = TryParseSourceFd(peer, &fd);
 
             if (!result) {
-                ythrow TServiceError(E_FAIL)
+                STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                     << "failed to parse request source fd: " << peer;
             }
 
             auto src = NProto::SOURCE_FD_DATA_CHANNEL;
             SessionService = AppCtx.SessionStorage->GetSessionService(fd, src);
             if (SessionService == nullptr) {
-                ythrow TServiceError(E_GRPC_UNAVAILABLE)
+                STORAGE_THROW_SERVICE_ERROR(E_GRPC_UNAVAILABLE)
                     << "endpoint has been stopped (fd = " << fd << ").";
             }
 
@@ -687,19 +687,19 @@ private:
         const bool isDataService = IsDataService<TService>();
 
         if (isDataChannel != isDataService) {
-            ythrow TServiceError(E_GRPC_UNIMPLEMENTED)
+            STORAGE_THROW_SERVICE_ERROR(E_GRPC_UNIMPLEMENTED)
                 << "mismatched request channel";
         }
 
         if (Request->GetHeaders().HasInternal()) {
-            ythrow TServiceError(E_ARGUMENT)
+            STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
                 << "internal field should not be set by client";
         }
 
         if (*source == NProto::SOURCE_TCP_DATA_CHANNEL &&
             TMethod::Request != EBlockStoreRequest::UploadClientMetrics)
         {
-            ythrow TServiceError(E_ARGUMENT)
+            STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
                 << "unsupported request in tcp data channel: "
                 << GetBlockStoreRequestName(TMethod::Request).Quote();
         }
@@ -721,7 +721,7 @@ private:
                     msg,
                     {{"expected", AppCtx.CellId}, {"actual", cellId}});
 
-                ythrow TServiceError(E_REJECTED) << msg;
+                STORAGE_THROW_SERVICE_ERROR(E_REJECTED) << msg;
             }
         }
     }
@@ -1106,7 +1106,7 @@ void TServer::Start()
 
     Server = builder.BuildAndStart();
     if (!Server) {
-        ythrow TServiceError(E_FAIL)
+        STORAGE_THROW_SERVICE_ERROR(E_FAIL)
             << "could not start gRPC server";
     }
 

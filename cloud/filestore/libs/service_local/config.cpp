@@ -40,7 +40,6 @@ namespace {
     xxx(MaxResponseEntries,          ui32,          10000                     )\
     xxx(MaxBackground,               ui32,          0                         )\
     xxx(MaxFuseLoopThreads,          ui32,          1                         )\
-    xxx(ZeroCopyWriteEnabled,        bool,          false                     )\
     xxx(FSyncQueueDisabled,          bool,          false                     )\
     xxx(EntryTimeout,                TDuration,     TDuration::Seconds(15)    )\
     xxx(NegativeEntryTimeout,        TDuration,     TDuration::Zero()         )\
@@ -136,7 +135,43 @@ FILESTORE_SERVICE_CONFIG(FILESTORE_CONFIG_GETTER)
 
 #undef FILESTORE_CONFIG_GETTER
 
-#define DURATION_FEATURE_GETTER(name)                                          \
+#define FILESTORE_BINARY_FEATURES(xxx)                                         \
+    xxx(DirectoryHandlesStorageEnabled)                                        \
+
+// FILESTORE_BINARY_FEATURES
+
+#define FILESTORE_DURATION_FEATURES(xxx)                                       \
+    xxx(EntryTimeout)                                                          \
+    xxx(NegativeEntryTimeout)                                                  \
+    xxx(AttrTimeout)                                                           \
+    xxx(XAttrCacheTimeout)                                                     \
+
+// FILESTORE_DURATION_FEATURES
+
+#define FILESTORE_BINARY_FEATURE_GETTER(name)                                  \
+bool TLocalFileStoreConfig::Get##name(                                         \
+    const TString& cloudId,                                                    \
+    const TString& folderId,                                                   \
+    const TString& fsId) const                                                 \
+{                                                                              \
+    if (!FeaturesConfig) {                                                     \
+        return Get##name();                                                    \
+    }                                                                          \
+                                                                               \
+    return FeaturesConfig->IsFeatureEnabled(                                   \
+        cloudId,                                                               \
+        folderId,                                                              \
+        fsId,                                                                  \
+        #name);                                                                \
+}                                                                              \
+
+// FILESTORE_BINARY_FEATURE_GETTER
+
+FILESTORE_BINARY_FEATURES(FILESTORE_BINARY_FEATURE_GETTER)
+
+#undef FILESTORE_BINARY_FEATURE_GETTER
+
+#define FILESTORE_DURATION_FEATURE_GETTER(name)                                \
 TDuration TLocalFileStoreConfig::Get##name(                                    \
     const TString& cloudId,                                                    \
     const TString& folderId,                                                   \
@@ -159,14 +194,11 @@ TDuration TLocalFileStoreConfig::Get##name(                                    \
     return res;                                                                \
 }                                                                              \
 
-// DURATION_FEATURE_GETTER
+// FILESTORE_DURATION_FEATURE_GETTER
 
-DURATION_FEATURE_GETTER(EntryTimeout)
-DURATION_FEATURE_GETTER(NegativeEntryTimeout)
-DURATION_FEATURE_GETTER(AttrTimeout)
-DURATION_FEATURE_GETTER(XAttrCacheTimeout)
+FILESTORE_DURATION_FEATURES(FILESTORE_DURATION_FEATURE_GETTER)
 
-#undef DURATION_FEATURE_GETTER
+#undef FILESTORE_DURATION_FEATURE_GETTER
 
 TFileIOConfig TLocalFileStoreConfig::GetFileIOConfig() const
 {

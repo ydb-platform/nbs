@@ -56,7 +56,6 @@ class EndpointClient(object):
             client_id,
             socket_path,
             read_only=False,
-            retry_timeout=0,
             ping_timeout=0,
             service_endpoint="",
             idempotence_id=None,
@@ -68,7 +67,6 @@ class EndpointClient(object):
             ClientId=client_id,
             SocketPath=socket_path,
             ReadOnly=read_only,
-            SessionRetryTimeout=retry_timeout,
             SessionPingTimeout=ping_timeout,
             ServiceEndpoint=service_endpoint
         )
@@ -91,7 +89,6 @@ class EndpointClient(object):
             client_id,
             socket_path,
             read_only=False,
-            retry_timeout=0,
             ping_timeout=0,
             service_endpoint="",
             idempotence_id=None,
@@ -104,7 +101,6 @@ class EndpointClient(object):
             ClientId=client_id,
             SocketPath=socket_path,
             ReadOnly=read_only,
-            SessionRetryTimeout=retry_timeout,
             SessionPingTimeout=ping_timeout,
             ServiceEndpoint=service_endpoint,
             Persistent=persistent,

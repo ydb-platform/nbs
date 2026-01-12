@@ -219,7 +219,7 @@ TNodeLoader::TNodeLoader(const TIndexNodePtr& rootNode)
     case NLowLevel::TFileId::EFileIdType::VastNfs:
         break;
     default:
-        ythrow TServiceError(E_FS_NOTSUPP)
+        STORAGE_THROW_SERVICE_ERROR(E_FS_NOTSUPP)
             << "Not supported hande type, RootFileId=" << RootFileId.ToString();
     }
 }
@@ -252,7 +252,7 @@ TIndexNodePtr TNodeLoader::LoadNode(ui64 nodeId) const
         fileId.VastNfsInodeId.FileType = S_IFREG;
         break;
     default:
-        ythrow TServiceError(E_FS_NOTSUPP);
+        STORAGE_THROW_SERVICE_ERROR(E_FS_NOTSUPP);
     }
 
     auto handle =  fileId.Open(RootHandle, O_PATH);

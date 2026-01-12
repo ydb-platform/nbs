@@ -1,5 +1,7 @@
 PROGRAM(filestore-vhost)
 
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/binaries_dependency.inc)
+
 IF (PROFILE_MEMORY_ALLOCATIONS)
     ALLOCATOR(LF_DBG)
 ELSE()

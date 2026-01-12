@@ -460,6 +460,9 @@ message TGenerateBlobIdsResponse
 
     // AcquireCollectBarrier has been executed for this commit id.
     uint64 CommitId = 4;
+
+    // Optional response headers.
+    NProto.TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -506,6 +509,9 @@ message TAddDataResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
+
+    // Optional response headers.
+    NProto.TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -765,6 +771,8 @@ message TGetFileSystemTopologyResponse
     bool DirectoryCreationInShardsEnabled = 4;
 
     bool StrictFileSystemSizeEnforcementEnabled = 5;
+
+    uint32 MaxShardCount = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

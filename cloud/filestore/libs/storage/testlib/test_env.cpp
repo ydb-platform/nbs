@@ -72,12 +72,12 @@ ui64 ChangeDomain(ui64 tabletId, ui32 domainUid)
 ////////////////////////////////////////////////////////////////////////////////
 
 TTestEnv::TTestEnv(
-        const TTestEnvConfig& config,
+        TTestEnvConfig config,
         NProto::TStorageConfig storageConfig,
         NKikimr::NFake::TCaches cachesConfig,
         IProfileLogPtr profileLog,
         NProto::TDiagnosticsConfig diagConfig)
-    : Config(config)
+    : Config(std::move(config))
     , Logging(CreateLoggingService("console", { TLOG_DEBUG }))
     , ProfileLog(std::move(profileLog))
     , TraceSerializer(
@@ -85,6 +85,7 @@ TTestEnv::TTestEnv(
             Logging,
             "NFS_TRACE",
             NLwTraceMonPage::TraceManager(false)))
+    , SystemCounters(MakeIntrusive<TSystemCounters>())
     , Runtime(Config.StaticNodes + Config.DynamicNodes, false)
     , NextDynamicNode(Config.StaticNodes)
     , Counters(MakeIntrusive<NMonitoring::TDynamicCounters>())
@@ -204,6 +205,7 @@ void TTestEnv::CreateAndRegisterStorageService(ui32 nodeIdx)
         StatsRegistry,
         ProfileLog,
         TraceSerializer,
+        SystemCounters,
         CreateStatsFetcherStub());
     auto indexServiceId = Runtime.Register(
         indexService.release(),
@@ -478,6 +480,7 @@ ui64 TTestEnv::BootIndexTablet(ui32 nodeIdx)
             DiagConfig,
             ProfileLog,
             TraceSerializer,
+            SystemCounters,
             Registry,
             true);
         return actor.release();
@@ -640,6 +643,7 @@ void TTestEnv::SetupLocalServiceConfig(
             DiagConfig,
             ProfileLog,
             TraceSerializer,
+            SystemCounters,
             Registry,
             true);
         return actor.release();

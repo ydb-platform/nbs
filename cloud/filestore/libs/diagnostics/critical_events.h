@@ -38,7 +38,13 @@ namespace NCloud::NFileStore{
     xxx(WriteBackCacheCorruptionError)                                         \
     xxx(ErrorWasSentToTheGuest)                                                \
     xxx(DirectoryHandlesStorageError)                                          \
+    xxx(CalculateChecksumsBufferOverflow)                                      \
 // FILESTORE_CRITICAL_EVENTS
+
+#define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \
+    xxx(FakeBlobWasRead)                                                       \
+    xxx(FakeBlobWasWritten)                                                    \
+// FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING
 
 #define FILESTORE_IMPOSSIBLE_EVENTS(xxx)                                       \
     xxx(CancelRoutineIsNotSet)                                                 \
@@ -60,6 +66,7 @@ namespace NCloud::NFileStore{
     xxx(FailedToLockNodeRef)                                                   \
     xxx(InvalidNodeRefUponCompleteUnlinkNode)                                  \
     xxx(UnknownOpLogEntry)                                                     \
+    xxx(InvalidShardIdx)                                                       \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -73,6 +80,15 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
     FILESTORE_CRITICAL_EVENTS(FILESTORE_DECLARE_CRITICAL_EVENT_ROUTINE)
 #undef FILESTORE_DECLARE_CRITICAL_EVENT_ROUTINE
+
+#define FILESTORE_DECLARE_CRITICAL_EVENT_WITHOUT_LOGGING_ROUTINE(name)         \
+    void Report##name();                                                       \
+    const TString GetCriticalEventFor##name();                                 \
+// FILESTORE_DECLARE_CRITICAL_EVENT_WITHOUT_LOGGING_ROUTINE
+
+    FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(
+        FILESTORE_DECLARE_CRITICAL_EVENT_WITHOUT_LOGGING_ROUTINE)
+#undef FILESTORE_DECLARE_CRITICAL_EVENT_WITHOUT_LOGGING_ROUTINE
 
 #define FILESTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE(name)                       \
     TString Report##name(const TString& message = "");                         \

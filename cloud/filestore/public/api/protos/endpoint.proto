@@ -25,7 +25,7 @@ message TEndpointConfig
     bool ReadOnly = 4;
 
     // Session options.
-    uint32 SessionRetryTimeout = 5;
+    // uint32 SessionRetryTimeout = 5; // obsolete
     uint32 SessionPingTimeout = 6;
 
     // Service endpoint name.

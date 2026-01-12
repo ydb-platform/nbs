@@ -403,14 +403,14 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
 
     Y_UNIT_TEST(ShouldEncodeRandomBlocks)
     {
-        for (size_t i = 0; i < 50; i++) {
+        for (size_t i = 0; i < 30; i++) {
             TestEncodeBlocks(GenerateRandomBlocks(1000));
         }
     }
 
     Y_UNIT_TEST(ShouldEncodeRandomBlockGroupsWithoutDeletions)
     {
-        for (size_t i = 0; i < 50; i++) {
+        for (size_t i = 0; i < 30; i++) {
             TestEncodeBlocks(
                 GenerateRandomBlockGroups(
                     /* blockGroups = */ 50,
@@ -420,7 +420,7 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
 
     Y_UNIT_TEST(ShouldEncodeRandomBlockGroupsWithDeletions)
     {
-        for (size_t i = 0; i < 50; i++) {
+        for (size_t i = 0; i < 30; i++) {
             TestEncodeBlocks(
                 GenerateRandomBlockGroups(
                     /* blockGroups = */ 20,

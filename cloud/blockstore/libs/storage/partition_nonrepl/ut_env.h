@@ -128,6 +128,7 @@ class TDummyActor final
 {
 private:
     TMigrationStatePtr MigrationState;
+    ui64 VolumeRequestIdGenerator = 0;
 
 public:
     TDummyActor(TMigrationStatePtr migrationState = nullptr)
@@ -157,6 +158,9 @@ private:
 
             HFunc(TEvVolume::TEvPreparePartitionMigrationRequest, HandlePreparePartitionMigration);
             HFunc(TEvVolume::TEvUpdateMigrationState, HandleUpdateMigrationState);
+            HFunc(
+                TEvVolumePrivate::TEvTakeVolumeRequestIdRequest,
+                HandleTakeVolumeRequestId);
 
             IgnoreFunc(TEvVolume::TEvReacquireDisk);
 
@@ -260,6 +264,17 @@ private:
             ctx,
             *ev,
             std::make_unique<TEvVolume::TEvMigrationStateUpdated>());
+    }
+
+    void HandleTakeVolumeRequestId(
+        const TEvVolumePrivate::TEvTakeVolumeRequestIdRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdResponse>(
+                ++VolumeRequestIdGenerator));
     }
 };
 
@@ -478,24 +493,22 @@ public:
     }
 
     std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
-    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, bool calculateChecksums = false)
+    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size)
     {
         auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
         request->Record.SetDiskId(id);
         request->Record.SetStartIndex(startIndex);
         request->Record.SetBlocksCount(size);
-        request->Record.SetCalculateChecksums(calculateChecksums);
         return request;
     }
 
     std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
-    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, ui32 replicaCount, bool calculateChecksums = false)
+    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, ui32 replicaCount)
     {
         auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
         request->Record.SetDiskId(id);
         request->Record.SetStartIndex(startIndex);
         request->Record.SetBlocksCount(size);
-        request->Record.SetCalculateChecksums(calculateChecksums);
         request->Record.mutable_headers()->SetReplicaCount(replicaCount);
         return request;
     }

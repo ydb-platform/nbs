@@ -227,7 +227,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
         return;
     }
 
-    RequestsInProgress.AddReadRequest(requestId, sentRequestCtx);
+    RequestsInProgress.AddReadRequest(requestId, blockRange, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

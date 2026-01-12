@@ -249,6 +249,10 @@ private:
         const TEvDiskAgentPrivate::TEvPathsDetached::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandlePathsPrepared(
+        const TEvDiskAgentPrivate::TEvPathsPrepared::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     bool HandleRequests(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);
 

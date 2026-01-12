@@ -19,9 +19,10 @@ IReplayRequestGenerator::IReplayRequestGenerator(
         NProto::TReplaySpec spec,
         ILoggingServicePtr logging,
         NClient::ISessionPtr session,
-        TString /*filesystemId*/,
+        TString filesystemId,
         NProto::THeaders headers)
     : Spec(std::move(spec))
+    , TargetFilesystemId(std::move(filesystemId))
     , Headers(std::move(headers))
     , Session(std::move(session))
 {
@@ -101,6 +102,13 @@ void IReplayRequestGenerator::Advance()
             continue;
         }
 
+        if (TargetFilesystemId.empty() && !fileSystemId.empty()) {
+            TargetFilesystemId = fileSystemId;
+            STORAGE_INFO(
+                "Using FileSystemId from profile log %s",
+                TargetFilesystemId.c_str());
+        }
+
         EventMessageNumber = MessagePtr->GetRequests().size();
         return;
     }
@@ -143,6 +151,7 @@ TFuture<TCompletedRequest> IReplayRequestGenerator::ProcessRequest(
         case EFileStoreRequest::Ping:
         case EFileStoreRequest::DescribeData:
         case EFileStoreRequest::AddData:
+        case EFileStoreRequest::GetNodeXAttr:
             return {};
 
         default:

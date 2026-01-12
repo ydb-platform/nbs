@@ -349,6 +349,17 @@ TVector<const NProto::TDeviceConfig*> GetAllDevices(
     return result;
 }
 
+TSet<TString> GetAllAgents(const NProto::TVolumeMeta& meta)
+{
+    TSet<TString> result;
+
+    for (const auto& device: GetAllDevices(meta)) {
+        result.insert(device->GetAgentId());
+    }
+
+    return result;
+}
+
 TMap<TString, TString> ParseTags(const TString& tags)
 {
     TMap<TString, TString> result;

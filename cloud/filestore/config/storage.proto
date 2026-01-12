@@ -656,6 +656,9 @@ message TStorageConfig
     // prototxt.
     optional bool UseBinaryFormatForTabletBootInfoBackup = 442;
 
+    // Enable zero-copy for read operations in the VFS FUSE layer
+    optional bool ZeroCopyReadEnabled = 443;
+
     // Allows to set node's priority for system (tenant) tablets (hive,
     // schemeshard, etc.). Lower value means lower priority.
     // NOTE: can be negative.
@@ -684,4 +687,32 @@ message TStorageConfig
     // If TwoStageReadEnabled is true, reads that exceed this threshold will use
     // the two-stage read path.
     optional uint32 TwoStageReadThreshold = 471;
+
+    // Enables checksum calculation for all blocks upon IO requests and
+    // background requests like Compaction and Cleanup. Checksums are logged
+    // to profile log.
+    optional bool BlockChecksumsInProfileLogEnabled = 472;
+
+    // MaxShardCount used to be hardcoded and equal to 254.
+    // Now it is configurable with the default == 254
+    optional uint32 MaxShardCount = 473;
+
+    // These 2 parameters convert ReadBlob and WriteBlob ops to no-op. These
+    // parameters are supposed to be used only for testing purposes - to test
+    // fuse / service / tablet layer performance without direct blobstorage
+    // reads / writes. Tablet local DB still continues to use blobstorage.
+    optional bool ReadBlobDisabled = 474;
+    optional bool WriteBlobDisabled = 475;
+
+    // Entry timeout for regular entries. See EntryTimeout
+    // Passed to filestore-vhost and do not have effect on the tablet
+    optional uint32 RegularFileEntryTimeout = 476;
+
+    // If CpuLack goes over this threshold, tablets will start setting the
+    // IsOverloaded flag in their responses.
+    optional uint32 CpuLackOverloadThreshold = 477;
+
+    // Maximum step value for the tablet. This
+    // parameter is supposed to be used only for testing purposes.
+    optional uint32 MaxTabletStep = 478;
 }

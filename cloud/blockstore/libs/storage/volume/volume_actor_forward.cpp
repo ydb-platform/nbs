@@ -180,10 +180,10 @@ bool TVolumeActor::HandleMultipartitionVolumeRequest(
         LOG_TRACE(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s Forward %s request to partition: %lu %s",
+            "%s Forward %s request to partition: %u (%s)",
             LogTitle.GetWithTime().c_str(),
             TMethod::Name,
-            partitionRequest.TabletId,
+            partitionRequest.PartitionId,
             ToString(partitionRequest.ActorId).data());
     }
 
@@ -757,7 +757,8 @@ void TVolumeActor::ForwardRequest(
      *  Validation for reads and writes for the leader and follower
      */
     if constexpr (IsReadOrWriteMethod<TMethod>) {
-        const bool isCopyingClient = clientId == CopyVolumeClientId;
+        const bool isCopyingClient =
+            clientId == CopyVolumeClientId || clientId == DMCopyVolumeClientId;
 
         auto makeMessage = [&](NLog::EPriority priority) -> TString
         {

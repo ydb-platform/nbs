@@ -82,25 +82,19 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
     const auto resyncRange =
         RangeId2BlockRange(rangeId, PartConfig->GetBlockSize());
 
-    for (const auto& [key, requestInfo] :
-         WriteAndZeroRequestsInProgress.AllRequests())
-    {
-        const auto& requestRange = requestInfo.Value;
-        if (resyncRange.Overlaps(requestRange)) {
-            LOG_DEBUG(
-                ctx,
-                TBlockStoreComponents::PARTITION,
-                "[%s] Resyncing range %s rejected due to inflight write to %s",
-                PartConfig->GetName().c_str(),
-                DescribeRange(resyncRange).c_str(),
-                DescribeRange(requestRange).c_str());
+    if (WriteAndZeroRequestsInProgress.OverlapsWithWrites(resyncRange)) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%s] Resyncing range %s rejected due to inflight write",
+            PartConfig->GetName().c_str(),
+            DescribeRange(resyncRange).c_str());
 
-            // Reschedule range
-            State.FinishResyncRange(rangeId);
-            State.AddPendingResyncRange(rangeId);
-            ScheduleResyncNextRange(ctx);
-            return;
-        }
+        // Reschedule range
+        State.FinishResyncRange(rangeId);
+        State.AddPendingResyncRange(rangeId);
+        ScheduleResyncNextRange(ctx);
+        return;
     }
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,

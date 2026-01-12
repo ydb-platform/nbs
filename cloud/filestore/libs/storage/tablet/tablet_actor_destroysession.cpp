@@ -151,7 +151,7 @@ void TIndexTabletActor::ExecuteTx_DestroySession(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "DestroySession");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "DestroySession");
     }
 
     auto handle = session->Handles.begin();
