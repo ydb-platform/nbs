@@ -783,20 +783,30 @@ void TPartitionState::ConfirmBlobs(
     TPartitionDatabase& db,
     const TVector<TPartialBlobId>& unrecoverableBlobs)
 {
+    THashSet<ui64> unrecoverableCommitIds;
     for (auto blobId: unrecoverableBlobs) {
-        db.DeleteUnconfirmedBlob(blobId);
+        unrecoverableCommitIds.insert(blobId.CommitId());
+    }
 
-        auto& blobs = UnconfirmedBlobs[blobId.CommitId()];
-        EraseIf(blobs, [&] (const auto& blob) {
-            return blob.UniqueId == blobId.UniqueId();
-        });
-
-        if (blobs.empty()) {
-            UnconfirmedBlobs.erase(blobId.CommitId());
-
-            GarbageQueue.ReleaseBarrier(blobId.CommitId());
-            CommitQueue.ReleaseBarrier(blobId.CommitId());
+    for (ui64 commitId: unrecoverableCommitIds) {
+        auto it = UnconfirmedBlobs.find(commitId);
+        if (it == UnconfirmedBlobs.end()) {
+            Y_DEBUG_ABORT_UNLESS(false, "CommitId %lu not found in UnconfirmedBlobs", commitId);
+            continue;
         }
+
+        auto& blobs = it->second;
+
+        for (const auto& blob: blobs) {
+            auto blobId = MakePartialBlobId(commitId, blob.UniqueId);
+            db.DeleteUnconfirmedBlob(blobId);
+            --UnconfirmedBlobCount;
+        }
+
+        UnconfirmedBlobs.erase(it);
+
+        GarbageQueue.ReleaseBarrier(commitId);
+        CommitQueue.ReleaseBarrier(commitId);
     }
 
     ConfirmedBlobs = std::move(UnconfirmedBlobs);
