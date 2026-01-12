@@ -38,6 +38,8 @@ namespace NCloud::NBlockStore::NStorage {
 class TDiskAgentActor final
     : public NActors::TActorBootstrapped<TDiskAgentActor>
 {
+    using TControlPlaneRequestNumber =
+        TEvDiskAgentPrivate::TControlPlaneRequestNumber;
     struct TPostponedRequest
     {
         ui64 VolumeRequestId = 0;
@@ -52,6 +54,7 @@ class TDiskAgentActor final
         Registered,
     };
 
+public:
     enum class EAction
     {
         Attach,
@@ -103,7 +106,8 @@ private:
 
     NActors::TActorId HealthCheckActor;
 
-    TRequestInfoPtr PendingAttachDetachPathsRequest;
+    TRequestInfoPtr PendingControlPlaneRequest;
+    TControlPlaneRequestNumber ControlPlaneRequestNumber;
 
     ITaskQueuePtr BackgroundThreadPool;
 
@@ -184,27 +188,23 @@ private:
 
     TDuration GetMaxRequestTimeout() const;
 
-    struct TCheckAttachDetachPathRequestResult {
-        TVector<TString> AlreadyInWantedStatePaths;
-        TVector<TString> PathToPerformAttachDetach;
-    };
+    NProto::TError CheckAttachDetachPathsAvailable() const;
 
-    TResultOrError<TCheckAttachDetachPathRequestResult>
-    CheckAttachDetachPathsRequest(
-        ui64 diskRegistryGeneration,
-        ui64 diskAgentGeneration,
+    NProto::TError UpdateControlPlaneRequestNumber(
+        TControlPlaneRequestNumber controlPlaneRequestNumber);
+
+    // Separates valid paths into attached and detached categories, filtering
+    // out unknown paths.
+    // Returns: [attached paths, detached paths]
+    auto SplitPaths(TVector<TString> paths) const
+        -> std::pair<TVector<TString>, TVector<TString>>;
+
+    // Returns: error or [attached paths, detached paths]
+    auto CheckAttachDetachPathsRequest(
+        TControlPlaneRequestNumber controlPlaneRequestNumber,
         TVector<TString> paths,
-        EAction action);
-
-    TResultOrError<TCheckAttachDetachPathRequestResult> CheckAttachPathsRequest(
-        ui64 diskRegistryGeneration,
-        ui64 diskAgentGeneration,
-        TVector<TString> paths);
-
-    TResultOrError<TCheckAttachDetachPathRequestResult> CheckDetachPathsRequest(
-        ui64 diskRegistryGeneration,
-        ui64 diskAgentGeneration,
-        TVector<TString> paths);
+        EAction action)
+        -> TResultOrError<std::pair<TVector<TString>, TVector<TString>>>;
 
 private:
     STFUNC(StateInit);
