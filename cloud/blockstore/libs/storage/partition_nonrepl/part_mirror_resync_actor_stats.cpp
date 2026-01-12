@@ -32,9 +32,9 @@ void TMirrorPartitionResyncActor::UpdateCounters(
         return;
     }
 
-    if (!MirrorCounters || !partCountersData.DiskCounters) {
+    if (!MirrorCounters) {
         MirrorCounters = std::move(partCountersData.DiskCounters);
-    } else {
+    } else if (partCountersData.DiskCounters) {
         MirrorCounters->AggregateWith(*partCountersData.DiskCounters);
     }
 
