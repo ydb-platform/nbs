@@ -16,7 +16,11 @@ TEST_SRCS(
 )
 
 SET(QEMU_VIRTIO fs)
-SET(VHOST_DIRECT_IO 1)
+
+SET(
+    NFS_LOCAL_SERVICE_CONFIG_PATCH
+    cloud/filestore/tests/fio/qemu-local-noserver-direct-io-test/local-service-patch.txt
+)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-local-noserver.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-endpoint.inc)
