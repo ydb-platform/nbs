@@ -2780,10 +2780,14 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                         }
                         once = true;
                         runtime.Send(
-                            event->Sender,
-                            env.VolumeActorId,
-                            event->Release<TEvService::TEvReadBlocksRequest>()
-                                .Release());
+                            new IEventHandle(
+                                event->Sender,
+                                event->Sender,
+                                event->ReleaseBase().Release(),
+                                0,
+                                event->Cookie,
+                                nullptr),
+                            0);
 
                         return TTestActorRuntime::EEventAction::DROP;
                     }

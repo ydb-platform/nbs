@@ -94,6 +94,8 @@ void TMirrorCheckRangeActor::HandleReadUndelivery(
     const TActorContext& ctx)
 {
     const ui32 replicaIndex = ev->Cookie - 1;
+    Y_ABORT_UNLESS(replicaIndex < TotalReplicaCount);
+
     TString errorMessage = TStringBuilder()
                            << "reading request for replica " << replicaIndex
                            << " is undelivered; ";
@@ -103,7 +105,6 @@ void TMirrorCheckRangeActor::HandleReadUndelivery(
         TStringBuilder() << LogTitle.GetWithTime() << ": " << errorMessage);
 
     Status = MakeError(E_REJECTED, errorMessage);
-    Status.MutableMessage()->append(errorMessage);
 
     ++ResponseCount;
     if (ResponseCount == TotalReplicaCount) {
@@ -155,6 +156,7 @@ void TMirrorCheckRangeActor::HandleReadBlocksResponse(
     const TActorContext& ctx)
 {
     const ui32 replicaIndex = ev->Cookie - 1;
+    Y_ABORT_UNLESS(replicaIndex < TotalReplicaCount);
     auto& record = ev->Get()->Record;
 
     if (HasError(record)) {
