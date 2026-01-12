@@ -320,8 +320,11 @@ public:
             request->Record.AddPathsToDetach(path);
         }
 
-        request->Record.SetDiskRegistryGeneration(diskRegistryGeneration);
-        request->Record.SetDiskAgentGeneration(diskAgentGeneration);
+        auto* controlPlaneRequestNumber =
+            request->Record.MutableControlPlaneRequestNumber();
+        controlPlaneRequestNumber->SetDiskRegistryGeneration(
+            diskRegistryGeneration);
+        controlPlaneRequestNumber->SetDiskAgentGeneration(diskAgentGeneration);
 
         return request;
     }
@@ -337,8 +340,11 @@ public:
             request->Record.AddPathsToAttach(path);
         }
 
-        request->Record.SetDiskRegistryGeneration(diskRegistryGeneration);
-        request->Record.SetDiskAgentGeneration(diskAgentGeneration);
+        auto* controlPlaneRequestNumber =
+            request->Record.MutableControlPlaneRequestNumber();
+        controlPlaneRequestNumber->SetDiskRegistryGeneration(
+            diskRegistryGeneration);
+        controlPlaneRequestNumber->SetDiskAgentGeneration(diskAgentGeneration);
 
         return request;
     }

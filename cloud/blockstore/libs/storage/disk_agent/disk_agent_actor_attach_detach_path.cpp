@@ -12,13 +12,41 @@ using namespace NActors;
 using namespace NKikimr;
 using namespace NThreading;
 
+namespace {
+
+TString DescribeRequest(
+    TDiskAgentActor::EAction action,
+    const TVector<TString>& attachedPaths,
+    const TVector<TString>& detachedPaths,
+    TEvDiskAgentPrivate::TControlPlaneRequestNumber controlPlaneRequestNumber)
+{
+    return Sprintf(
+        "%s request, Attached paths [%s], Detached paths [%s], "
+        "ControlPlaneRequestNumber [%s]",
+        action == TDiskAgentActor::EAction::Attach ? "Attach" : "Detach",
+        JoinSeq(",", attachedPaths).c_str(),
+        JoinSeq(",", detachedPaths).c_str(),
+        ToString(controlPlaneRequestNumber).c_str());
+}
+
+TString DescribeRequest(
+    TDiskAgentActor::EAction action,
+    const TVector<TString>& paths,
+    TEvDiskAgentPrivate::TControlPlaneRequestNumber controlPlaneRequestNumber)
+{
+    return Sprintf(
+        "%s request, Paths [%s], "
+        "ControlPlaneRequestNumber [%s]",
+        action == TDiskAgentActor::EAction::Attach ? "Attach" : "Detach",
+        JoinSeq(",", paths).c_str(),
+        ToString(controlPlaneRequestNumber).c_str());
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
-auto TDiskAgentActor::CheckAttachDetachPathsRequest(
-    ui64 diskRegistryGeneration,
-    ui64 diskAgentGeneration,
-    TVector<TString> paths,
-    EAction action) -> TResultOrError<TCheckAttachDetachPathRequestResult>
+NProto::TError TDiskAgentActor::CheckAttachDetachPathsAvailable() const
 {
     if (!Config->GetAttachDetachPathsEnabled() || Spdk) {
         // DR should handle errors with E_PRECONDITION_FAILED code.
@@ -26,11 +54,33 @@ auto TDiskAgentActor::CheckAttachDetachPathsRequest(
             E_PRECONDITION_FAILED,
             "attach/detach paths is disabled");
     }
+    return {};
+}
 
-    if (PendingAttachDetachPathsRequest) {
+NProto::TError TDiskAgentActor::UpdateControlPlaneRequestNumber(
+    TControlPlaneRequestNumber controlPlaneRequestNumber)
+{
+    if (controlPlaneRequestNumber <= ControlPlaneRequestNumber) {
+        return MakeError(
+            E_ARGUMENT,
+            Sprintf(
+                "outdated control plane request: [%s] vs [%s]",
+                ToString(ControlPlaneRequestNumber).c_str(),
+                ToString(controlPlaneRequestNumber).c_str()));
+    }
+
+    if (PendingControlPlaneRequest) {
         return MakeError(E_REJECTED, "another request is in progress");
     }
 
+    ControlPlaneRequestNumber = controlPlaneRequestNumber;
+
+    return {};
+}
+
+auto TDiskAgentActor::SplitPaths(TVector<TString> paths) const
+    -> std::pair<TVector<TString>, TVector<TString>>
+{
     THashSet<TString> allKnownPaths;
     for (const auto& device: State->GetDevices()) {
         allKnownPaths.insert(device.GetDeviceName());
@@ -43,58 +93,40 @@ auto TDiskAgentActor::CheckAttachDetachPathsRequest(
         [&](const auto& p) { return allKnownPaths.contains(p); });
     paths.erase(unknownPaths.begin(), unknownPaths.end());
 
-    // Split on paths that are already in desired state and paths that we want
-    // to perform attach/detach.
-    TVector<TString> alreadyAttachedPaths = std::move(paths);
-    auto pathsToPerformAttachDetachRange = std::ranges::partition(
-        alreadyAttachedPaths,
-        [&](const auto& p)
-        { return State->IsPathAttached(p) == (action == EAction::Attach); });
-    TVector<TString> pathsToPerformAttachDetach(
-        std::make_move_iterator(pathsToPerformAttachDetachRange.begin()),
-        std::make_move_iterator(pathsToPerformAttachDetachRange.end()));
-    alreadyAttachedPaths.erase(
-        pathsToPerformAttachDetachRange.begin(),
-        pathsToPerformAttachDetachRange.end());
+    TVector<TString> attachedPaths = std::move(paths);
+    auto detachedPathsRange = std::ranges::partition(
+        attachedPaths,
+        [&](const auto& p) { return State->IsPathAttached(p); });
+    TVector<TString> detachedPaths(
+        std::make_move_iterator(detachedPathsRange.begin()),
+        std::make_move_iterator(detachedPathsRange.end()));
+    attachedPaths.erase(detachedPathsRange.begin(), detachedPathsRange.end());
 
-    if (auto error = State->CheckAttachDetachPathsRequestGeneration(
-            diskRegistryGeneration,
-            diskAgentGeneration);
-        HasError(error) && pathsToPerformAttachDetach)
+    return {std::move(attachedPaths), std::move(detachedPaths)};
+}
+
+auto TDiskAgentActor::CheckAttachDetachPathsRequest(
+    TControlPlaneRequestNumber controlPlaneRequestNumber,
+    TVector<TString> paths,
+    EAction action)
+    -> TResultOrError<std::pair<TVector<TString>, TVector<TString>>>
+{
+    if (auto error = CheckAttachDetachPathsAvailable(); HasError(error)) {
+        return error;
+    }
+
+    auto [attachedPaths, detachedPaths] = SplitPaths(std::move(paths));
+
+    auto& pathsToSwitchState =
+        action == EAction::Attach ? detachedPaths : attachedPaths;
+
+    if (auto error = UpdateControlPlaneRequestNumber(controlPlaneRequestNumber);
+        HasError(error) && pathsToSwitchState)
     {
         return error;
     }
 
-    return TCheckAttachDetachPathRequestResult{
-        .AlreadyInWantedStatePaths = alreadyAttachedPaths,
-        .PathToPerformAttachDetach = pathsToPerformAttachDetach,
-    };
-}
-
-auto TDiskAgentActor::CheckAttachPathsRequest(
-    ui64 diskRegistryGeneration,
-    ui64 diskAgentGeneration,
-    TVector<TString> paths)
-    -> TResultOrError<TCheckAttachDetachPathRequestResult>
-{
-    return CheckAttachDetachPathsRequest(
-        diskRegistryGeneration,
-        diskAgentGeneration,
-        std::move(paths),
-        EAction::Attach);
-}
-
-auto TDiskAgentActor::CheckDetachPathsRequest(
-    ui64 diskRegistryGeneration,
-    ui64 diskAgentGeneration,
-    TVector<TString> paths)
-    -> TResultOrError<TCheckAttachDetachPathRequestResult>
-{
-    return CheckAttachDetachPathsRequest(
-        diskRegistryGeneration,
-        diskAgentGeneration,
-        std::move(paths),
-        EAction::Detach);
+    return std::make_pair(std::move(attachedPaths), std::move(detachedPaths));
 }
 
 void TDiskAgentActor::HandleDetachPaths(
@@ -104,55 +136,74 @@ void TDiskAgentActor::HandleDetachPaths(
     auto* msg = ev->Get();
     const auto& record = msg->Record;
 
+    const auto controlPlaneRequestNumber = TControlPlaneRequestNumber{
+        .Generation =
+            record.GetControlPlaneRequestNumber().GetDiskRegistryGeneration(),
+        .RequestNumber =
+            record.GetControlPlaneRequestNumber().GetDiskAgentGeneration(),
+    };
+
     auto reply = [&](const NProto::TError& error)
     {
+        bool hasError = HasError(error);
+        TString errorDescription = hasError ? " " + FormatError(error) : "";
+        LOG_LOG(
+            ctx,
+            hasError ? NLog::EPriority::PRI_ERROR : NLog::EPriority::PRI_INFO,
+            TBlockStoreComponents::DISK_AGENT,
+            "%s: %s%s",
+            hasError ? "Failed request" : "Successful request",
+            DescribeRequest(
+                EAction::Detach,
+                {record.GetPathsToDetach().begin(),
+                 record.GetPathsToDetach().end()},
+                controlPlaneRequestNumber)
+                .c_str(),
+            errorDescription.c_str());
+
         NCloud::Reply(
             ctx,
             *ev,
             std::make_unique<TEvDiskAgent::TEvDetachPathsResponse>(error));
     };
 
-    auto [checkRes, error] = CheckDetachPathsRequest(
-        record.GetDiskRegistryGeneration(),
-        record.GetDiskAgentGeneration(),
-        {record.GetPathsToDetach().begin(), record.GetPathsToDetach().end()});
+    auto [checkRes, error] = CheckAttachDetachPathsRequest(
+        controlPlaneRequestNumber,
+        {record.GetPathsToDetach().begin(), record.GetPathsToDetach().end()},
+        EAction::Detach);
 
     if (HasError(error)) {
         reply(error);
         return;
     }
 
-    auto [alreadyDetachedPaths, pathsToDetach] = std::move(checkRes);
+    auto [attachedPaths, detachedPaths] = std::move(checkRes);
 
-    if (!pathsToDetach) {
+    if (!attachedPaths) {
         reply({});
         return;
     }
 
-    PendingAttachDetachPathsRequest =
+    PendingControlPlaneRequest =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    auto future = State->DetachPaths(pathsToDetach);
-
-    auto* actorSystem = TActivationContext::ActorSystem();
-    auto daId = ctx.SelfID;
+    auto future = State->DetachPaths(attachedPaths);
 
     future.Subscribe(
-        [actorSystem,
-         daId,
-         pathsToDetach = std::move(pathsToDetach),
-         alreadyDetachedPaths = std::move(alreadyDetachedPaths),
-         diskRegistryGeneration = record.GetDiskRegistryGeneration(),
-         diskAgentGeneration = record.GetDiskAgentGeneration()](auto) mutable
+        [actorSystem = TActivationContext::ActorSystem(),
+         selfId = ctx.SelfID,
+         pathsToDetach = std::move(attachedPaths),
+         alreadyDetachedPaths = std::move(detachedPaths),
+         controlPlaneRequestNumber](auto) mutable
         {
             auto response =
                 std::make_unique<TEvDiskAgentPrivate::TEvPathsDetached>();
             response->PathsToDetach = std::move(pathsToDetach);
             response->AlreadyDetachedPaths = std::move(alreadyDetachedPaths);
-            response->DiskRegistryGeneration = diskRegistryGeneration;
-            response->DiskAgentGeneration = diskAgentGeneration;
+            response->ControlPlaneRequestNumber = controlPlaneRequestNumber;
 
-            actorSystem->Send(new IEventHandle{daId, daId, response.release()});
+            actorSystem->Send(
+                new IEventHandle{selfId, selfId, response.release()});
         });
 }
 
@@ -162,38 +213,33 @@ void TDiskAgentActor::HandlePathsDetached(
 {
     const auto& error = ev->Get()->Error;
     auto pathsToDetach = std::move(ev->Get()->PathsToDetach);
+    auto alreadyDetachedPaths = std::move(ev->Get()->AlreadyDetachedPaths);
 
     Y_DEFER
     {
-        PendingAttachDetachPathsRequest.Reset();
+        PendingControlPlaneRequest.Reset();
     };
 
-    if (HasError(error)) {
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::DISK_AGENT,
-            "Failed to detach paths [%s] with DR Generation: %lu DA "
-            "Generation: %lu: %s",
-            JoinSeq(",", pathsToDetach).c_str(),
-            ev->Get()->DiskRegistryGeneration,
-            ev->Get()->DiskAgentGeneration,
-            FormatError(error).c_str());
-    } else {
-        RestartDeviceHealthChecking(ctx);
-        LOG_INFO(
-            ctx,
-            TBlockStoreComponents::DISK_AGENT,
-            "Detached paths [%s] with DR Generation: %lu DA Generation: %lu "
-            "Already detached paths [%s]",
-            JoinSeq(",", pathsToDetach).c_str(),
-            ev->Get()->DiskRegistryGeneration,
-            ev->Get()->DiskAgentGeneration,
-            JoinSeq(",", ev->Get()->AlreadyDetachedPaths).c_str());
-    }
+    auto requestDescription = DescribeRequest(
+        EAction::Detach,
+        pathsToDetach,
+        alreadyDetachedPaths,
+        ev->Get()->ControlPlaneRequestNumber);
+
+    bool hasError = HasError(error);
+    TString errorDescription = hasError ? FormatError(error) : "";
+    LOG_LOG(
+        ctx,
+        hasError ? NLog::EPriority::PRI_ERROR : NLog::EPriority::PRI_INFO,
+        TBlockStoreComponents::DISK_AGENT,
+        "%s: %s%s",
+        hasError ? "Failed request" : "Successful request",
+        requestDescription.c_str(),
+        errorDescription.c_str());
 
     auto response =
         std::make_unique<TEvDiskAgent::TEvDetachPathsResponse>(error);
-    NCloud::Reply(ctx, *PendingAttachDetachPathsRequest, std::move(response));
+    NCloud::Reply(ctx, *PendingControlPlaneRequest, std::move(response));
 }
 
 void TDiskAgentActor::HandleAttachPaths(
@@ -203,12 +249,31 @@ void TDiskAgentActor::HandleAttachPaths(
     auto* msg = ev->Get();
     const auto& record = msg->Record;
 
-    auto [checkRes, error] = CheckAttachPathsRequest(
-        record.GetDiskRegistryGeneration(),
-        record.GetDiskAgentGeneration(),
-        {record.GetPathsToAttach().begin(), record.GetPathsToAttach().end()});
+    const auto controlPlaneRequestNumber = TControlPlaneRequestNumber{
+        .Generation =
+            record.GetControlPlaneRequestNumber().GetDiskRegistryGeneration(),
+        .RequestNumber =
+            record.GetControlPlaneRequestNumber().GetDiskAgentGeneration(),
+    };
+
+    auto [checkRes, error] = CheckAttachDetachPathsRequest(
+        controlPlaneRequestNumber,
+        {record.GetPathsToAttach().begin(), record.GetPathsToAttach().end()},
+        EAction::Attach);
 
     if (HasError(error)) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
+            "Failed request: %s: %s",
+            DescribeRequest(
+                EAction::Attach,
+                {record.GetPathsToAttach().begin(),
+                 record.GetPathsToAttach().end()},
+                controlPlaneRequestNumber)
+                .c_str(),
+            FormatError(error).c_str());
+
         NCloud::Reply(
             ctx,
             *ev,
@@ -217,19 +282,21 @@ void TDiskAgentActor::HandleAttachPaths(
         return;
     }
 
-    auto [alreadyAttachedPaths, pathsToAttach] = std::move(checkRes);
+    auto [attachedPaths, detachedPaths] = std::move(checkRes);
 
-    if (!pathsToAttach) {
+    if (!detachedPaths) {
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_AGENT,
-            "No paths to attach. Attached paths: [%s], DR generation: %lu, DA "
-            "generation: %lu",
-            JoinSeq(",", alreadyAttachedPaths).c_str(),
-            record.GetDiskRegistryGeneration(),
-            record.GetDiskAgentGeneration());
+            "Successful request: %s",
+            DescribeRequest(
+                EAction::Attach,
+                attachedPaths,
+                {},
+                controlPlaneRequestNumber)
+                .c_str());
 
-        auto deviceConfigs = State->GetDevicesByPath(alreadyAttachedPaths);
+        auto deviceConfigs = State->GetDevicesByPath(attachedPaths);
         auto response =
             std::make_unique<TEvDiskAgent::TEvAttachPathsResponse>();
         response->Record.MutableAttachedDevices()->Assign(
@@ -240,18 +307,17 @@ void TDiskAgentActor::HandleAttachPaths(
         return;
     }
 
-    PendingAttachDetachPathsRequest =
+    PendingControlPlaneRequest =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    auto future = State->PreparePaths(pathsToAttach);
+    auto future = State->PreparePaths(detachedPaths);
 
     future.Subscribe(
         [actorSystem = TActivationContext::ActorSystem(),
          selfId = ctx.SelfID,
-         pathsToAttach = std::move(pathsToAttach),
-         alreadyAttachedPaths = std::move(alreadyAttachedPaths),
-         diskRegistryGeneration = record.GetDiskRegistryGeneration(),
-         diskAgentGeneration = record.GetDiskAgentGeneration()](
+         pathsToAttach = std::move(detachedPaths),
+         alreadyAttachedPaths = std::move(attachedPaths),
+         controlPlaneRequestNumber](
             TFuture<TResultOrError<TDiskAgentState::TPreparePathsResult>>
                 future) mutable
         {
@@ -265,8 +331,7 @@ void TDiskAgentActor::HandleAttachPaths(
             response->Stats = std::move(result.Stats);
             response->Configs = std::move(result.Configs);
 
-            response->DiskRegistryGeneration = diskRegistryGeneration;
-            response->DiskAgentGeneration = diskAgentGeneration;
+            response->ControlPlaneRequestNumber = controlPlaneRequestNumber;
 
             actorSystem->Send(
                 new IEventHandle{selfId, selfId, response.release()});
@@ -278,26 +343,31 @@ void TDiskAgentActor::HandlePathsPrepared(
     const NActors::TActorContext& ctx)
 {
     auto* msg = ev->Get();
+    auto pathsToAttach = std::move(msg->PathsToAttach);
+    auto alreadyAttachedPaths = std::move(msg->AlreadyAttachedPaths);
 
     Y_DEFER
     {
-        PendingAttachDetachPathsRequest.Reset();
+        PendingControlPlaneRequest.Reset();
     };
+
+    const auto requestDescription = DescribeRequest(
+        EAction::Attach,
+        alreadyAttachedPaths,
+        pathsToAttach,
+        msg->ControlPlaneRequestNumber);
 
     if (HasError(msg->Error)) {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::DISK_AGENT,
-            "Failed to attach paths[%s] with DR Generation %lu and DA "
-            "Generation %lu: %s",
-            JoinSeq(",", msg->PathsToAttach).c_str(),
-            msg->DiskRegistryGeneration,
-            msg->DiskAgentGeneration,
+            "Failed request: %s: %s",
+            requestDescription.c_str(),
             FormatError(msg->Error).c_str());
 
         auto response =
             std::make_unique<TEvDiskAgent::TEvAttachPathsResponse>(msg->Error);
-        NCloud::Reply(ctx, *PendingAttachDetachPathsRequest, std::move(response));
+        NCloud::Reply(ctx, *PendingControlPlaneRequest, std::move(response));
         return;
     }
 
@@ -320,15 +390,10 @@ void TDiskAgentActor::HandlePathsPrepared(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_AGENT,
-        "Attached paths [%s] with DR generation %lu and DA generation %lu "
-        "Already attached "
-        "paths [%s]",
-        JoinSeq(",", msg->PathsToAttach).c_str(),
-        msg->DiskRegistryGeneration,
-        msg->DiskAgentGeneration,
-        JoinSeq(",", msg->AlreadyAttachedPaths).c_str());
+        "Successful request: %s",
+        requestDescription.c_str());
 
-    NCloud::Reply(ctx, *PendingAttachDetachPathsRequest, std::move(response));
+    NCloud::Reply(ctx, *PendingControlPlaneRequest, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

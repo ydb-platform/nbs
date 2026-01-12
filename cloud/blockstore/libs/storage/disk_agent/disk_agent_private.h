@@ -27,6 +27,15 @@ namespace NCloud::NBlockStore::NStorage {
 
 struct TEvDiskAgentPrivate
 {
+    struct TControlPlaneRequestNumber
+    {
+        ui64 Generation = 0;
+        ui64 RequestNumber = 0;
+
+        std::strong_ordering operator<=>(
+            const TControlPlaneRequestNumber&) const = default;
+    };
+
     //
     // InitAgent
     //
@@ -214,8 +223,7 @@ struct TEvDiskAgentPrivate
         TVector<TString> PathsToDetach;
         TVector<TString> AlreadyDetachedPaths;
 
-        ui64 DiskRegistryGeneration;
-        ui64 DiskAgentGeneration;
+        TControlPlaneRequestNumber ControlPlaneRequestNumber;
     };
 
     //
@@ -231,8 +239,7 @@ struct TEvDiskAgentPrivate
         TVector<TString> PathsToAttach;
         TVector<TString> AlreadyAttachedPaths;
 
-        ui64 DiskRegistryGeneration;
-        ui64 DiskAgentGeneration;
+        TControlPlaneRequestNumber ControlPlaneRequestNumber;
     };
 
     //
@@ -306,3 +313,7 @@ struct TEvDiskAgentPrivate
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
+
+TString ToString(
+    NCloud::NBlockStore::NStorage::TEvDiskAgentPrivate::
+        TControlPlaneRequestNumber controlPlaneRequestNumber);

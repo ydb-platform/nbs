@@ -1395,31 +1395,4 @@ void TDiskAgentState::AttachPaths(
     }
 }
 
-NProto::TError TDiskAgentState::CheckAttachDetachPathsRequestGeneration(
-    ui64 diskRegistryGeneration,
-    ui64 diskAgentGeneration)
-{
-    if (diskRegistryGeneration < DiskRegistryGeneration) {
-        return MakeError(E_ARGUMENT, "outdated disk registry generation");
-    }
-
-    if (diskRegistryGeneration > DiskRegistryGeneration) {
-        DiskAgentGeneration = 0;
-    }
-
-    DiskRegistryGeneration = diskRegistryGeneration;
-
-    if (diskAgentGeneration <= DiskAgentGeneration) {
-        return MakeError(
-            E_ARGUMENT,
-            TStringBuilder()
-                << "outdated disk agent generation " << diskAgentGeneration
-                << " vs " << DiskAgentGeneration);
-    }
-
-    DiskAgentGeneration = diskAgentGeneration;
-
-    return {};
-}
-
 }   // namespace NCloud::NBlockStore::NStorage
