@@ -1474,6 +1474,7 @@ struct TTxIndexTablet
         TString ShardId;
         TString ShardNodeName;
         bool IsNewShardNode = false;
+        bool CommitIdOverflowDetected = false;
         TMaybe<IIndexTabletDatabase::TNode> TargetNode;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
         TVector<ui64> UpdatedNodes;
@@ -1507,6 +1508,7 @@ struct TTxIndexTablet
             ShardId.clear();
             ShardNodeName.clear();
             IsNewShardNode = false;
+            CommitIdOverflowDetected = false;
             TargetNode.Clear();
             ParentNode.Clear();
             UpdatedNodes.clear();
@@ -1530,6 +1532,7 @@ struct TTxIndexTablet
         const NProto::TDestroyHandleRequest Request;
 
         TMaybe<IIndexTabletDatabase::TNode> Node;
+        bool CommitIdOverflowDetected = false;
 
         TDestroyHandle(
                 TRequestInfoPtr requestInfo,
@@ -1543,6 +1546,7 @@ struct TTxIndexTablet
         {
             TIndexStateNodeUpdates::Clear();
             Node.Clear();
+            CommitIdOverflowDetected = false;
         }
     };
 

@@ -94,29 +94,28 @@ void TIndexTabletActor::ExecuteTx_DestroyHandle(
     auto* handle = FindHandle(args.Request.GetHandle());
     TABLET_VERIFY(handle);
 
+    auto commitId = GenerateCommitId();
+    if (commitId == InvalidCommitId) {
+        args.Error = ErrorCommitIdOverflow();
+        args.CommitIdOverflowDetected = true;
+        return;
+    }
+
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
     DestroyHandle(db, handle);
 
-    auto commitId = GenerateCommitId();
-    if (commitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "DestroyHandle");
-    }
-
-    if (args.Node->Attrs.GetLinks() == 0 &&
-        !HasOpenHandles(args.Node->NodeId))
+    if (args.Node->Attrs.GetLinks() == 0 && !HasOpenHandles(args.Node->NodeId))
     {
-        auto e = RemoveNode(
-            db,
-            *args.Node,
-            args.Node->MinCommitId,
-            commitId);
+        auto e = RemoveNode(db, *args.Node, args.Node->MinCommitId, commitId);
 
         if (HasError(e)) {
-            WriteOrphanNode(db, TStringBuilder()
-                << "DestroyHandle: " << args.SessionId
-                << ", Handle: " << args.Request.GetHandle()
-                << ", RemoveNode: " << args.Node->NodeId
-                << ", Error: " << FormatError(e), args.Node->NodeId);
+            WriteOrphanNode(
+                db,
+                TStringBuilder() << "DestroyHandle: " << args.SessionId
+                                 << ", Handle: " << args.Request.GetHandle()
+                                 << ", RemoveNode: " << args.Node->NodeId
+                                 << ", Error: " << FormatError(e),
+                args.Node->NodeId);
         }
     }
 
@@ -144,6 +143,10 @@ void TIndexTabletActor::CompleteTx_DestroyHandle(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    if (args.CommitIdOverflowDetected) {
+        ScheduleRebootTabletOnCommitIdOverflow(ctx, "DestroyHandle");
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
