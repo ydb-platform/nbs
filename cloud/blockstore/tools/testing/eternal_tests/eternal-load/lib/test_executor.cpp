@@ -138,7 +138,8 @@ TTestExecutor::TTestExecutor(
         auto scenario = std::make_unique<TTestScenario>();
 
         scenario->Scenario = it.TestScenario;
-        scenario->File = {it.FilePath, GetFileOpenMode(settings.NoDirect)};
+        TFileHandle handle(it.FilePath, GetFileOpenMode(settings.NoDirect));
+        scenario->File.Swap(handle);
         scenario->File.Resize(static_cast<i64>(it.FileSize));
 
         for (ui32 i = 0; i < it.TestScenario->GetWorkerCount(); i++) {
