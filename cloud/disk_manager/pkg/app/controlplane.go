@@ -335,8 +335,10 @@ func registerControlplaneTasks(
 
 		err = filesystem_snapshot.RegisterForExecution(
 			ctx,
+			config.GetFilesystemSnapshotsConfig(),
 			taskRegistry,
 			taskScheduler,
+			resourceStorage,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to register filesystem snapshot tasks: %v", err)
