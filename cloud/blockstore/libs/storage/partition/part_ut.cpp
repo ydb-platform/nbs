@@ -13031,7 +13031,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 switch (ev->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvAddConfirmedBlobsRequest: {
                         return true;
-                        break;
                     }
                 }
                 return false;

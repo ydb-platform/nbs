@@ -791,7 +791,10 @@ void TPartitionState::ConfirmBlobs(
     for (ui64 commitId: unrecoverableCommitIds) {
         auto it = UnconfirmedBlobs.find(commitId);
         if (it == UnconfirmedBlobs.end()) {
-            Y_DEBUG_ABORT_UNLESS(false, "CommitId %lu not found in UnconfirmedBlobs", commitId);
+            Y_DEBUG_ABORT_UNLESS(
+                false,
+                "CommitId %lu not found in UnconfirmedBlobs",
+                commitId);
             continue;
         }
 
@@ -800,6 +803,7 @@ void TPartitionState::ConfirmBlobs(
         for (const auto& blob: blobs) {
             auto blobId = MakePartialBlobId(commitId, blob.UniqueId);
             db.DeleteUnconfirmedBlob(blobId);
+            Y_DEBUG_ABORT_UNLESS(UnconfirmedBlobCount >= 1);
             --UnconfirmedBlobCount;
         }
 
