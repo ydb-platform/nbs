@@ -168,6 +168,7 @@ public:
     {
         for (const auto& [prerequisiteEvent, dependentEvent]: eventOrders) {
             EventDependencies[dependentEvent] = prerequisiteEvent;
+            PrerequisiteEvents.insert(prerequisiteEvent);
         }
     }
 
@@ -198,7 +199,6 @@ public:
             auto& delayedEventsByRecipient = DelayedEvents[recipient];
             auto delayedEventIt = delayedEventsByRecipient.find(eventType);
             if (delayedEventIt != delayedEventsByRecipient.end()) {
-                ProcessedEvents[recipient].insert(eventType);
                 TAutoPtr<IEventHandle> delayedEvent =
                     std::move(delayedEventIt->second);
                 delayedEventsByRecipient.erase(delayedEventIt);
@@ -212,6 +212,10 @@ public:
                 Runtime.Schedule(delayedEvent, TDuration::MilliSeconds(100));
             }
 
+            if (PrerequisiteEvents.contains(eventType)) {
+                ProcessedEvents[recipient].insert(eventType);
+            }
+
             return baseFilterResult;
         };
     }
@@ -219,6 +223,7 @@ public:
 private:
     TTestActorRuntimeBase& Runtime;
     THashMap<ui32, ui32> EventDependencies;
+    THashSet<ui32> PrerequisiteEvents;
     THashMap<TActorId, THashSet<ui32>> ProcessedEvents;
     // Map of delayed events by recipient and event type
     THashMap<TActorId, THashMap<ui32, TAutoPtr<IEventHandle>>> DelayedEvents;
