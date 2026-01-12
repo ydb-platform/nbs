@@ -566,6 +566,7 @@ namespace NKikimr {
             for (ui64 itemIdx = 0; itemIdx < record.ItemsSize(); ++itemIdx) {
                 auto &item = *record.MutableItems(itemIdx);
                 TLogoBlobID blobId = LogoBlobIDFromLogoBlobID(item.GetBlobID());
+                size_t bufSize = ev->Get()->GetItemBuffer(itemIdx).size();
                 putsInfo.emplace_back(blobId, ev->Get()->GetItemBuffer(itemIdx), item.MutableExtraBlockChecks(),
                     item.HasTraceId() ? item.GetTraceId() : NWilson::TTraceId());
                 TVPutInfo &info = putsInfo.back();
@@ -573,8 +574,12 @@ namespace NKikimr {
                 try {
                     info.IsHugeBlob = HugeBlobCtx->IsHugeBlob(VCtx->Top->GType, blobId.FullID(), MinREALHugeBlobInBytes);
                     if (info.IsHugeBlob) {
+                        ui64 maxPartSize = VCtx->Top->GType.MaxPartSize(blobId.FullID());
+                        size_t blobHeaderSize = (HugeBlobCtx->AddHeader ? TDiskBlob::HeaderSize : 0);
+
                         LOG_CRIT_S(ctx, BS_VDISK_PUT, VCtx->VDiskLogPrefix << "TEvVMultiPut: TEvVMultiPut has huge blob# "
-                            << blobId << " Marker# BSVS08");
+                            << blobId << " gtype.MaxPartSize# " << maxPartSize << " blobHeaderSize# " << blobHeaderSize
+                            << " MinREALHugeBlobInBytes# " << MinREALHugeBlobInBytes << " ropeSize# " << bufSize <<  " Marker# BSVS08");
                         info.HullStatus = THullCheckStatus(NKikimrProto::ERROR, "TEvVMultiPut with huge blob");
                     }
                 } catch (const std::exception& ex) {
@@ -1852,7 +1857,7 @@ namespace NKikimr {
             // check status
             if (ev->Get()->Status == NKikimrProto::OK) {
                 ApplyHugeBlobSize(Config->MinHugeBlobInBytes);
-                Y_ABORT_UNLESS(MinREALHugeBlobInBytes); 
+                Y_ABORT_UNLESS(MinREALHugeBlobInBytes);
                 // handle special case when donor disk starts and finds out that it has been wiped out
                 if (ev->Get()->LsnMngr->GetOriginallyRecoveredLsn() == 0 && Config->BaseInfo.DonorMode) {
                     // send drop donor cmd to NodeWarden
@@ -2428,7 +2433,7 @@ namespace NKikimr {
                 TActivationContext::Send(new IEventHandle(TEvBlobStorage::EvCommenceRepl, 0, Db->ReplID, SelfId(), nullptr, 0));
             }
         }
-        
+
         void PassAway() override {
             Send(NConsole::MakeConfigsDispatcherID(SelfId().NodeId()), new NConsole::TEvConfigsDispatcher::TEvRemoveConfigSubscriptionRequest(
                 SelfId()
