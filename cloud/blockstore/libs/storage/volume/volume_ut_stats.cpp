@@ -1530,7 +1530,6 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         {
             ui64 ReadByteCount = 0;
             ui64 WriteByteCount = 0;
-            ui64 DirectCopyByteCount = 0;
         };
         TMap<TString, TReadAndWriteByteCount> statsForDisks;
         auto statEventInterceptor = runtime->AddObserver<TEvStatsService::TEvVolumePartCounters>(
@@ -1540,8 +1539,6 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                     msg->DiskCounters->RequestCounters.ReadBlocks.RequestBytes;
                 statsForDisks[msg->DiskId].WriteByteCount +=
                     msg->DiskCounters->RequestCounters.WriteBlocks.RequestBytes;
-                statsForDisks[msg->DiskId].DirectCopyByteCount +=
-                    msg->DiskCounters->RequestCounters.CopyBlocks.RequestBytes;
             });
 
         auto _ = runtime->AddObserver<TEvVolumePrivate::TEvPartStatsSaved>(
@@ -1594,8 +1591,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
         // Check that statistics was updated
         UNIT_ASSERT(statUpdated);
-        UNIT_ASSERT(statsForDisks["vol0"].WriteByteCount != 0);
-        UNIT_ASSERT(statsForDisks["vol0"].ReadByteCount != 0);
+        UNIT_ASSERT_VALUES_EQUAL(statsForDisks["vol0"].WriteByteCount, 12582912);
+        UNIT_ASSERT_VALUES_EQUAL(statsForDisks["vol0"].ReadByteCount, 4194304);
     }
 
     Y_UNIT_TEST(

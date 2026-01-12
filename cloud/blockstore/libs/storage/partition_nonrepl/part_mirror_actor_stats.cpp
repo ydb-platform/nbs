@@ -183,14 +183,11 @@ void TMirrorPartitionActor::HandleDiskRegistryBasedPartCountersCombined(
             ctx,
             TBlockStoreComponents::PARTITION_NONREPL,
             "[%s] Failed to send mirror actor statistics due to error: %s",
-            DiskId.Quote().c_str(),
-            msg->Error.GetMessage().c_str());
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->Error).c_str());
     }
 
     for (auto& counters: msg->Counters) {
-        if(!counters.CountersData.DiskCounters) {
-            continue;
-        }
         UpdateCounters(ctx, counters.ActorId, std::move(counters.CountersData));
     }
 

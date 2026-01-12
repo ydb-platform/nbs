@@ -32,7 +32,7 @@ void TMirrorPartitionResyncActor::UpdateCounters(
         return;
     }
 
-    if (!MirrorCounters) {
+    if (!MirrorCounters || !partCountersData.DiskCounters) {
         MirrorCounters = std::move(partCountersData.DiskCounters);
     } else {
         MirrorCounters->AggregateWith(*partCountersData.DiskCounters);
@@ -133,15 +133,12 @@ void TMirrorPartitionResyncActor::HandleDiskRegistryBasedPartCountersCombined(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::PARTITION_NONREPL,
-            "[%s] Failed to send mirror actor statistics due to error: %s",
-            PartConfig->GetName().Quote().c_str(),
-            msg->Error.GetMessage().c_str());
+            "[%s] Failed to send mirror resync actor statistics due to error: %s",
+            PartConfig->GetName().Quote().c_str());,
+            FormatError(msg->Error).c_str());
     }
 
     for (auto& counters: msg->Counters) {
-        if(!counters.CountersData.DiskCounters) {
-            continue;
-        }
         UpdateCounters(ctx, counters.ActorId, std::move(counters.CountersData));
     }
 
