@@ -984,6 +984,13 @@ public:
             Triggers.pop_front();
         }
     }
+
+    void ProceedOne()
+    {
+        Y_ABORT_UNLESS(!Triggers.empty());
+        Triggers.front().SetValue();
+        Triggers.pop_front();
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2613,6 +2620,74 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         }
 
         UNIT_ASSERT_STRINGS_EQUAL("", b.ReadDataFromCacheSync(1, 0, 3));
+    }
+
+    Y_UNIT_TEST(FlushAllShouldFailWhenFlushFailsForAllNodes)
+    {
+        TBootstrap b({.UseTestTimerAndScheduler = true});
+
+        TDeque<ui32> responses =
+            {E_TIMEOUT, E_TIMEOUT, E_TIMEOUT, E_TIMEOUT, S_OK, E_TIMEOUT, S_OK};
+
+        b.Session->WriteDataHandler = [&](auto, auto) {
+            UNIT_ASSERT(!responses.empty());
+            NProto::TWriteDataResponse response;
+            *response.MutableError() = MakeError(responses.front());
+            responses.pop_front();
+            return MakeFuture(std::move(response));
+        };
+
+        // Prevent write requests initiated by Flush from completing immediately
+        TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
+
+        UNIT_ASSERT(b.WriteToCache(1, 1, 0, b.TestData, {}).HasValue());
+        UNIT_ASSERT(b.WriteToCache(2, 2, 0, b.TestData, {}).HasValue());
+
+        auto future = b.Cache.FlushAllData();
+        UNIT_ASSERT(!future.HasValue());
+
+        writeRequests.ProceedOne();
+        UNIT_ASSERT(!future.HasValue());
+
+        writeRequests.ProceedOne();
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT(HasError(future.GetValue()));
+
+        // Flush is expected to retry in background
+        auto future2 = b.Cache.FlushAllData();
+        UNIT_ASSERT(!future2.HasValue());
+        b.RunAllScheduledTasks();
+
+        writeRequests.ProceedOne();
+        UNIT_ASSERT(!future2.HasValue());
+
+        writeRequests.ProceedOne();
+        UNIT_ASSERT(future2.HasValue());
+        UNIT_ASSERT(HasError(future2.GetValue()));
+
+        // Keep node 1 state
+        b.Cache.AcquireNodeStateRef();
+        auto future3 = b.Cache.FlushAllData();
+        UNIT_ASSERT(!future3.HasValue());
+        b.RunAllScheduledTasks();
+
+        writeRequests.ProceedOne();
+        UNIT_ASSERT(!future3.HasValue());
+
+        writeRequests.ProceedOne();
+        UNIT_ASSERT(future3.HasValue());
+        UNIT_ASSERT(HasError(future3.GetValue()));
+
+        // Complete flush
+        auto future4 = b.Cache.FlushAllData();
+        UNIT_ASSERT(!future4.HasValue());
+        b.RunAllScheduledTasks();
+
+        writeRequests.ProceedOne();
+        UNIT_ASSERT(future4.HasValue());
+        UNIT_ASSERT(!HasError(future4.GetValue()));
+
+        UNIT_ASSERT(responses.empty());
     }
 }
 

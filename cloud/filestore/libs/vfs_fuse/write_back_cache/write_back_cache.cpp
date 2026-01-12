@@ -172,6 +172,54 @@ struct THandleReleaseRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TFlushFailureTracker
+{
+private:
+    THashMap<ui64, ui64> NodeIdToFlushFailureRequestIdMap;
+    TSet<ui64> FlushFailureRequestIdMap;
+
+public:
+    void FlushSucceeded(ui64 nodeId) {
+        auto it = NodeIdToFlushFailureRequestIdMap.find(nodeId);
+        if (it != NodeIdToFlushFailureRequestIdMap.end()) {
+            FlushFailureRequestIdMap.erase(it->second);
+            NodeIdToFlushFailureRequestIdMap.erase(it);
+        }
+    }
+
+    void FlushFailed(ui64 nodeId, ui64 requestId) {
+        auto it = NodeIdToFlushFailureRequestIdMap.find(nodeId);
+        if (it != NodeIdToFlushFailureRequestIdMap.end()) {
+            FlushFailureRequestIdMap.erase(it->second);
+            FlushFailureRequestIdMap.insert(requestId);
+            it->second = requestId;
+        } else {
+            NodeIdToFlushFailureRequestIdMap[nodeId] = requestId;
+            FlushFailureRequestIdMap.insert(requestId);
+        }
+    }
+
+    ui64 Size() const {
+        return FlushFailureRequestIdMap.size();
+    }
+
+    ui64 MinRequestId() const
+    {
+        return FlushFailureRequestIdMap.empty()
+                   ? Max<ui64>()
+                   : *FlushFailureRequestIdMap.begin();
+    }
+
+    ui64 MaxRequestId() const
+    {
+        return FlushFailureRequestIdMap.empty()
+                   ? 0
+                   : *FlushFailureRequestIdMap.rbegin();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 ui64 SaturationSub(ui64 x, ui64 y)
 {
     return x > y ? x - y : 0;
@@ -504,6 +552,7 @@ private:
     // FlushAll requests are stored in chronological order: RequestId values are
     // strictly increasing so newer flush requests have larger RequestId.
     TDeque<TFlushRequest> FlushAllRequests;
+    TFlushFailureTracker FlushFailureTracker;
 
     // Operations to execute after completing the main operation
     TQueuedOperations QueuedOperations;
@@ -886,6 +935,10 @@ public:
         }
 
         ui64 maxRequestId = AllEntries.Back()->GetRequestId();
+        if (FlushFailureTracker.Size() > 0) {
+            maxRequestId =
+                Max(maxRequestId, FlushFailureTracker.MaxRequestId());
+        }
 
         if (!FlushAllRequests.empty() &&
             FlushAllRequests.back().RequestId >= maxRequestId)
@@ -1559,15 +1612,25 @@ private:
             }
             flushRequests.clear();
         } else {
-            const ui64 minRequestId = entries.Front()->GetRequestId();
-            while (!flushRequests.empty() &&
-                   flushRequests.front().RequestId < minRequestId)
-            {
-                QueuedOperations.FlushOrReleaseCompleted.push_back(
-                    {.Promise = std::move(flushRequests.front().Promise),
-                     .Result = {}});
-                flushRequests.pop_front();
-            }
+            EnqueueFlushCompletions(
+                flushRequests,
+                entries.Front()->GetRequestId());
+        }
+    }
+
+    // should be protected by |Lock|
+    void EnqueueFlushCompletions(
+        TDeque<TFlushRequest>& flushRequests,
+        const ui64 minRequestId,
+        const NProto::TError& error = {})
+    {
+        while (!flushRequests.empty() &&
+               flushRequests.front().RequestId < minRequestId)
+        {
+            QueuedOperations.FlushOrReleaseCompleted.push_back(
+                {.Promise = std::move(flushRequests.front().Promise),
+                 .Result = error});
+            flushRequests.pop_front();
         }
     }
 
@@ -1606,6 +1669,8 @@ private:
                 nodeState->Handles.erase(handle);
             }
         }
+
+        FlushFailureTracker.FlushSucceeded(nodeState->NodeId);
 
         EnqueueFlushCompletions(
             nodeState->FlushRequests,
@@ -1681,6 +1746,16 @@ private:
         }
 
         nodeState->FlushRequests.clear();
+
+        FlushFailureTracker.FlushFailed(nodeState->NodeId, NextRequestId++);
+        if (FlushFailureTracker.Size() + DeletedNodeStates.size() ==
+            NodeStates.size())
+        {
+            EnqueueFlushCompletions(
+                FlushAllRequests,
+                FlushFailureTracker.MinRequestId(),
+                error);
+        }
 
         const bool shouldDropCache =
             nodeState->ReleasingHandleCount == nodeState->Handles.size();
