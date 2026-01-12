@@ -9,6 +9,7 @@ import (
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -22,18 +23,21 @@ type cellSelector struct {
 	config     *cells_config.CellsConfig
 	storage    storage.Storage
 	nbsFactory nbs.Factory
+	nfsFactory nfs.Factory
 }
 
 func NewCellSelector(
 	config *cells_config.CellsConfig,
 	storage storage.Storage,
 	nbsFactory nbs.Factory,
+	nfsFactory nfs.Factory,
 ) CellSelector {
 
 	return &cellSelector{
 		config:     config,
 		storage:    storage,
 		nbsFactory: nbsFactory,
+		nfsFactory: nfsFactory,
 	}
 }
 
@@ -79,7 +83,7 @@ func (s *cellSelector) ReplaceZoneIdWithCellIdInDiskMeta(
 	}, nil
 }
 
-func (s *cellSelector) SelectCell(
+func (s *cellSelector) SelectCellForDisk(
 	ctx context.Context,
 	zoneID string,
 	folderID string,
@@ -182,6 +186,20 @@ func (s *cellSelector) SelectCellForLocalDisk(
 			agentIDs,
 		)
 	}
+}
+
+func (s *cellSelector) SelectCellForFilesystem(
+	ctx context.Context,
+	zoneID string,
+	folderID string,
+) (nfs.Client, error) {
+
+	cellID, err := s.selectCellForFilesystem(zoneID, folderID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.nfsFactory.NewClient(ctx, cellID)
 }
 
 func (s *cellSelector) ZoneContainsCell(zoneID string, cellID string) bool {
@@ -306,4 +324,35 @@ func (s *cellSelector) selectCell(
 			s.config.GetCellSelectionPolicy().String(),
 		)
 	}
+}
+
+func (s *cellSelector) selectCellForFilesystem(
+	zoneID string,
+	folderID string,
+) (string, error) {
+
+	if s.config == nil {
+		return zoneID, nil
+	}
+
+	if !s.isFolderAllowed(folderID) {
+		return zoneID, nil
+	}
+
+	cells := s.getCells(zoneID)
+
+	if len(cells) == 0 {
+		if s.isCell(zoneID) {
+			return zoneID, nil
+		}
+
+		return "", errors.NewNonCancellableErrorf(
+			"incorrect zone ID provided: %q",
+			zoneID,
+		)
+	}
+
+	// For filesystems, we always use the first cell in config.
+	// MAX_FREE_BYTES policy is not implemented for filesystems yet.
+	return cells[0], nil
 }
