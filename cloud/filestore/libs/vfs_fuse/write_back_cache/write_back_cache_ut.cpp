@@ -456,10 +456,8 @@ struct TBootstrap
                 request->GetOffset() + request->GetBuffer().length(),
                 unflushed.length());
 
-            auto from = TStringBuf(unflushed).SubString(
-                request->GetOffset(),
-                request->GetBuffer().length());
-            UNIT_ASSERT_VALUES_EQUAL(from, request->GetBuffer());
+            auto from = TStringBuf(request->GetBuffer())
+                            .Skip(request->GetBufferOffset());
 
             auto& to = FlushedData[nodeId];
             // Append zeroes if needed
@@ -1448,6 +1446,106 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     {
         TestShouldReadAfterWriteRandomized(
             {.WithCacheRecreation = true, .ZeroCopyWriteEnabled = true});
+    }
+
+    Y_UNIT_TEST(FullyRandomized)
+    {
+        const ui32 NodeCount = 4;
+        const ui32 RecreationProbability = 10;
+        const ui32 FlushProbability = 10;
+        const ui32 WriteDataFailureProbability = 20;
+        const ui32 Iterations = 10000;
+        const ui32 MaxOffset = 1000;
+        const ui32 MaxLength = 100;
+
+        TBootstrap b({.UseTestTimerAndScheduler = true});
+
+        b.Session->WriteDataHandler =
+            [prevHandler = std::move(
+                 b.Session->WriteDataHandler)](auto context, auto request)
+        {
+            if (RandomNumber(100u) < WriteDataFailureProbability) {
+                return MakeFuture<NProto::TWriteDataResponse>(
+                    TErrorResponse(E_REJECTED, "Simulated WriteData failure"));
+            } else {
+                return prevHandler(std::move(context), std::move(request));
+            }
+        };
+
+        ui32 flushSucceededCount = 0;
+        ui32 flushFailedCount = 0;
+
+        for (ui32 i = 0; i < Iterations; i++)
+        {
+            {
+                const ui32 nodeId = RandomNumber(NodeCount);
+                const ui64 offset = RandomNumber(MaxOffset);
+                const ui64 length = RandomNumber(MaxLength) + 1;
+
+                auto buffer =
+                    NUnitTest::RandomString(length, RandomNumber<ui32>());
+
+                auto future = b.WriteToCache(nodeId, offset, std::move(buffer));
+                while (!future.HasValue()) {
+                    UNIT_ASSERT(!future.HasException());
+                    b.RunAllScheduledTasks();
+                }
+            }
+
+            if (RandomNumber(100u) < FlushProbability) {
+                const ui32 nodeId = RandomNumber(NodeCount);
+                auto future = b.Cache.FlushNodeData(nodeId);
+                while (!future.HasValue()) {
+                    UNIT_ASSERT(!future.HasException());
+                    b.RunAllScheduledTasks();
+                }
+                if (HasError(future.GetValue())) {
+                    flushFailedCount++;
+                } else {
+                    flushSucceededCount++;
+                }
+            }
+
+            {
+                const ui32 nodeId = RandomNumber(NodeCount);
+                const ui64 offset = RandomNumber(MaxOffset);
+                const ui64 length = RandomNumber(MaxLength) + 1;
+
+                auto future = b.ReadFromCache(nodeId, offset, length);
+                while (!future.HasValue()) {
+                    UNIT_ASSERT(!future.HasException());
+                    b.RunAllScheduledTasks();
+                }
+
+                TString expectedResult = "";
+                {
+                    std::unique_lock lock(b.ExpectedDataMutex);
+                    auto* ptr = b.ExpectedData.FindPtr(nodeId);
+                    if (ptr != nullptr) {
+                        auto buf = TStringBuf(*ptr);
+                        buf = buf.Skip(Min(offset, buf.size()));
+                        buf = buf.Trunc(Min(length, buf.size()));
+                        expectedResult = buf;
+                    }
+                }
+
+                const auto& resp = future.GetValue();
+                UNIT_ASSERT_STRINGS_EQUAL_C(
+                    expectedResult,
+                    resp.GetBuffer().substr(resp.GetBufferOffset()),
+                    TStringBuilder()
+                        << " while reading @" << nodeId << " at offset "
+                        << offset << " and length " << length);
+            }
+
+            if (RandomNumber(100u) < RecreationProbability) {
+                b.RecreateCache();
+            }
+        }
+
+        // Ensure that randomized test works correctly
+        UNIT_ASSERT_LT(0, flushSucceededCount);
+        UNIT_ASSERT_LT(0, flushFailedCount);
     }
 
     Y_UNIT_TEST(ShouldWriteAndFlushConcurrently)
@@ -2507,6 +2605,12 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(HasError(pendingWriteDataRequest1.GetValue()));
         UNIT_ASSERT(pendingWriteDataRequest2.HasValue());
         UNIT_ASSERT(HasError(pendingWriteDataRequest2.GetValue()));
+
+        // Cache is dropped
+        {
+            std::unique_lock lock(b.ExpectedDataMutex);
+            b.ExpectedData[1] = {};
+        }
 
         UNIT_ASSERT_STRINGS_EQUAL("", b.ReadDataFromCacheSync(1, 0, 3));
     }
