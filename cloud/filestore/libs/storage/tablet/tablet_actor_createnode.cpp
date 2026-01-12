@@ -628,6 +628,14 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
         args.Error = ErrorIsNotDirectory(args.ParentNodeId);
         return true;
     }
+    if (Config->GetGidPropagationEnabled()) {
+        if (args.ParentNode->Attrs.GetMode() & S_ISGID) {
+            args.Attrs.SetGid(args.ParentNode->Attrs.GetGid());
+            if (args.Request.HasDirectory()) {
+                args.Attrs.SetMode(args.Attrs.GetMode() | S_ISGID);
+            }
+        }
+    }
 
     // TODO: AccessCheck
 

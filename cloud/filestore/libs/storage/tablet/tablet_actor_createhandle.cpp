@@ -185,6 +185,12 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
             return true;
         }
 
+        if (Config->GetGidPropagationEnabled()) {
+            if (args.ParentNode->Attrs.GetMode() & S_ISGID) {
+                args.Gid = args.ParentNode->Attrs.GetGid();
+            }
+        }
+
         // check whether child node exists
         TMaybe<IIndexTabletDatabase::TNodeRef> ref;
         if (!ReadNodeRef(db, args.NodeId, args.ReadCommitId, args.Name, ref)) {
