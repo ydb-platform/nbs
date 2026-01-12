@@ -13011,7 +13011,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldConfirmBlobsWithUnrecoverableBlobs)
+    Y_UNIT_TEST(ShouldDropAllCommitBlobsWhenUnrecoverableBlobExists)
     {
         auto config = DefaultConfig();
 
