@@ -72,14 +72,12 @@ func (t *deleteDiskTask) deleteDisk(
 		return err
 	}
 
+	if len(diskMeta.ZoneID) == 0 {
+		// Disk does not exist, nothing to do.
+		return nil
+	}
+
 	zoneID := diskMeta.ZoneID
-	if len(zoneID) == 0 {
-		// Should proceed deleting even if the disk is absent it the storage.
-		zoneID = t.request.Disk.ZoneId
-	}
-	if len(zoneID) == 0 {
-		return t.storage.DiskDeleted(ctx, diskID, time.Now())
-	}
 
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
