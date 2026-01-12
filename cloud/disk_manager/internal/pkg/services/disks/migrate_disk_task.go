@@ -84,6 +84,21 @@ func (t *migrateDiskTask) Run(
 				return err
 			}
 
+			if !t.request.IsMigrationBetweenCells {
+				// In the case of migration between cells, the source disk ID tag should be
+				// deleted only after the source disk itself is deleted, since both disks
+				// are in the same zone.
+				// However, in the case of migration between zones, we need to delete
+				// the source disk ID tag from the destination disk at this step,
+				// because the compute service should be able to kick endpoint after replication
+				// is finished. To do this, the tag must not be present.
+				// This is safe, since the disks are in different zones in this case.
+				err := t.deleteSourceDiskIdTag(ctx, execCtx)
+				if err != nil {
+					return err
+				}
+			}
+
 			t.state.Status = protos.MigrationStatus_ReplicationFinished
 			err = execCtx.SaveState(ctx)
 			if err != nil {
@@ -411,6 +426,35 @@ func (t *migrateDiskTask) incrementFillGeneration(
 	return fillGeneration, nil
 }
 
+func (t *migrateDiskTask) deleteSourceDiskIdTag(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	dstZoneClient, err := t.nbsFactory.GetClient(ctx, t.request.DstZoneId)
+	if err != nil {
+		return err
+	}
+
+	err = dstZoneClient.ModifyTags(
+		ctx,
+		func() error {
+			return execCtx.SaveState(ctx)
+		},
+		t.request.Disk.DiskId,
+		[]string{},
+		[]string{
+			t.getSourceDiskIdTagStr(),
+		},
+	)
+	if err != nil {
+		return err
+	}
+	t.logInfo(ctx, execCtx, "source-disk-id tag %v removed from dst disk", t.getSourceDiskIdTagStr())
+
+	return nil
+}
+
 func (t *migrateDiskTask) finishFillDisk(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
@@ -493,26 +537,10 @@ func (t *migrateDiskTask) finishMigration(
 	}
 	t.logInfo(ctx, execCtx, "deleted src disk")
 
-	dstZoneClient, err := t.nbsFactory.GetClient(ctx, t.request.DstZoneId)
+	err = t.deleteSourceDiskIdTag(ctx, execCtx)
 	if err != nil {
 		return err
 	}
-
-	err = dstZoneClient.ModifyTags(
-		ctx,
-		func() error {
-			return execCtx.SaveState(ctx)
-		},
-		t.request.Disk.DiskId,
-		[]string{},
-		[]string{
-			t.getSourceDiskIdTagStr(),
-		},
-	)
-	if err != nil {
-		return err
-	}
-	t.logInfo(ctx, execCtx, "source-disk-id tag removed from dst disk")
 
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
