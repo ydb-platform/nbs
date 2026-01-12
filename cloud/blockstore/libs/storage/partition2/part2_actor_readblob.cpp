@@ -4,9 +4,9 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 
 #include <cloud/storage/core/libs/common/alloc.h>
+#include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
@@ -140,6 +140,9 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
             ? NKikimrBlobStorage::AsyncRead
             : NKikimrBlobStorage::FastRead);
 
+    auto traceId = GetTraceIdForRequestId(
+        RequestInfo->CallContext->LWOrbit,
+        RequestInfo->CallContext->RequestId);
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
     RequestSent = ctx.Now();
@@ -147,7 +150,9 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
     SendToBSProxy(
         ctx,
         Request->Proxy,
-        request.release());
+        request.release(),
+        RequestInfo->Cookie,
+        std::move(traceId));
 }
 
 void TReadBlobActor::NotifyCompleted(

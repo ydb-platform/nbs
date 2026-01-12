@@ -3,8 +3,9 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
+#include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
 
+#include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
@@ -138,6 +139,10 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
             ? NKikimrBlobStorage::AsyncBlob
             : NKikimrBlobStorage::UserData);
 
+    auto traceId = GetTraceIdForRequestId(
+        RequestInfo->CallContext->LWOrbit,
+        RequestInfo->CallContext->RequestId);
+
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
     RequestSent = ctx.Now();
@@ -145,7 +150,9 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
     SendToBSProxy(
         ctx,
         Request->Proxy,
-        request.release());
+        request.release(),
+        RequestInfo->Cookie,
+        std::move(traceId));
 }
 
 void TWriteBlobActor::NotifyCompleted(

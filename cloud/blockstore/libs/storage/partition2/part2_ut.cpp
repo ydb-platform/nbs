@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
@@ -47,6 +48,8 @@ using namespace NActors;
 using namespace NKikimr;
 
 using namespace NCloud::NStorage;
+
+using namespace NLWTrace;
 
 namespace {
 
@@ -1341,6 +1344,43 @@ void SendUndeliverableRequest(
             &undeliveryActor),
         0);
 }
+
+class TMockShuttle: public IShuttle
+{
+public:
+    TMockShuttle(ui64 traceIdx, ui64 spanId)
+        : IShuttle(traceIdx, spanId)
+    {}
+
+protected:
+    bool DoAddProbe(TProbe*, const TParams&, ui64) override
+    {
+        return true;
+    }
+
+    void DoEndOfTrack() override
+    {}
+
+    void DoDrop() override
+    {}
+
+    void DoSerialize(TShuttleTrace&) override
+    {}
+
+    bool DoFork(TShuttlePtr& child) override
+    {
+        auto shuttle = MakeIntrusive<TMockShuttle>(GetTraceIdx(), GetSpanId());
+        shuttle->SetNext(child);
+        child = shuttle;
+        child->SetParentSpanId(GetSpanId());
+        return true;
+    }
+
+    bool DoJoin(const TShuttlePtr&) override
+    {
+        return true;
+    }
+};
 
 }   // namespace
 
@@ -7718,27 +7758,6 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
     Y_UNIT_TEST(ShouldPassTraceIdToBlobstorage)
     {
-        using namespace NLWTrace;
-        LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
-        LWTRACE_USING(BLOBSTORAGE_PROVIDER);
-        LWTRACE_USING(TABLET_FLAT_PROVIDER);
-        LWTRACE_USING(LWTRACE_INTERNAL_PROVIDER)
-
-        auto& probes = NLwTraceMonPage::ProbeRegistry();
-        probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_STORAGE_PROVIDER));
-        probes.AddProbesList(LWTRACE_GET_PROBES(BLOBSTORAGE_PROVIDER));
-        probes.AddProbesList(LWTRACE_GET_PROBES(TABLET_FLAT_PROVIDER));
-        probes.AddProbesList(LWTRACE_GET_PROBES(LWTRACE_INTERNAL_PROVIDER));
-
-        auto& lwManager = NLwTraceMonPage::TraceManager(true);
-
-        const TVector<std::tuple<TString, TString>> desc = {
-            {"RequestAdvanced_Volume", "BLOCKSTORE_STORAGE_PROVIDER"},
-        };
-
-        TQuery query = ProbabilisticQuery(desc, 1, 1000);
-        lwManager.New("Query1", query);
-
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
 
@@ -7750,11 +7769,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         auto writeReq = partition.CreateWriteBlocksRequest(0, 1);
         writeReq->CallContext->RequestId = 12345;
 
-        LWTRACK(
-            RequestAdvanced_Volume,
-            writeReq->CallContext->LWOrbit,
-            "WriteBlocks",
-            12345);
+        auto shuttle = MakeIntrusive<TMockShuttle>(ui64{10}, ui64{10});
+        writeReq->CallContext->LWOrbit.AddShuttle(shuttle);
 
         ui64 spanId = 0;
         writeReq->CallContext->LWOrbit.ForEachShuttle(
