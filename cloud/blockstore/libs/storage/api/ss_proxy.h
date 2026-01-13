@@ -187,6 +187,7 @@ struct TEvSSProxy
     {
         const TString Path;
         const NKikimrSchemeOp::TPathDescription PathDescription;
+        const TVector<TString> CheckedPaths;
 
         TDescribeVolumeResponse() = default;
 
@@ -197,8 +198,13 @@ struct TEvSSProxy
             , PathDescription(std::move(pathDescription))
         {}
 
+        TDescribeVolumeResponse(TString path, TVector<TString> checkedPaths)
+            : Path(std::move(path))
+            , CheckedPaths(std::move(checkedPaths))
+        {}
+
         TDescribeVolumeResponse(TString path)
-            : TDescribeVolumeResponse(std::move(path), {})
+            : Path(std::move(path))
         {}
     };
 
