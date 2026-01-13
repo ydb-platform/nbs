@@ -383,11 +383,12 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
                     VolumeActorId,
                     VolumeTabletId,
                     BlockSize,
-                    false, // shouldCalculateChecksums
+                    false,   // shouldCalculateChecksums
                     Mode,
                     std::move(currentRequest),
                     LongRunningThreshold,
-                    0ull);
+                    0ull,
+                    false);   // passTraceIdToBlobstorage
                 currentRequest = std::make_unique<
                     TEvPartitionCommonPrivate::TEvReadBlobRequest>();
                 currentRequest->Deadline = TInstant::Max();
@@ -411,11 +412,12 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
             VolumeActorId,
             VolumeTabletId,
             BlockSize,
-            false, // shouldCalculateChecksums
+            false,   // shouldCalculateChecksums
             EStorageAccessMode::Default,
             std::move(currentRequest),
             LongRunningThreshold,
-            0ull);
+            0ull,
+            false);   // passTraceIdToBlobstorage
     }
 }
 

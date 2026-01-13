@@ -37,6 +37,8 @@ private:
     const EStorageAccessMode StorageAccessMode;
     const std::unique_ptr<TRequest> Request;
 
+    bool PassTraceIdToBlobstorage;
+
     TInstant RequestSent;
     TInstant ResponseReceived;
 
@@ -49,7 +51,8 @@ public:
         ui64 tabletId,
         ui32 blockSize,
         const EStorageAccessMode storageAccessMode,
-        std::unique_ptr<TRequest> request);
+        std::unique_ptr<TRequest> request,
+        bool passTraceIdToBlobstorage);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -87,13 +90,15 @@ TReadBlobActor::TReadBlobActor(
         ui64 tabletId,
         ui32 blockSize,
         const EStorageAccessMode storageAccessMode,
-        std::unique_ptr<TRequest> request)
+        std::unique_ptr<TRequest> request,
+        bool passTraceIdToBlobstorage)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
     , TabletId(tabletId)
     , BlockSize(blockSize)
     , StorageAccessMode(storageAccessMode)
     , Request(std::move(request))
+    , PassTraceIdToBlobstorage(passTraceIdToBlobstorage)
 {}
 
 void TReadBlobActor::Bootstrap(const TActorContext& ctx)
@@ -140,9 +145,12 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
             ? NKikimrBlobStorage::AsyncRead
             : NKikimrBlobStorage::FastRead);
 
-    auto traceId = GetTraceIdForRequestId(
-        RequestInfo->CallContext->LWOrbit,
-        RequestInfo->CallContext->RequestId);
+    NWilson::TTraceId traceId;
+    if (PassTraceIdToBlobstorage) {
+        traceId = GetTraceIdForRequestId(
+            RequestInfo->CallContext->LWOrbit,
+            RequestInfo->CallContext->RequestId);
+    }
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
     RequestSent = ctx.Now();
@@ -388,7 +396,8 @@ void TPartitionActor::HandleReadBlob(
         TabletID(),
         State->GetBlockSize(),
         StorageAccessMode,
-        std::unique_ptr<TEvPartitionPrivate::TEvReadBlobRequest>(msg.Release()));
+        std::unique_ptr<TEvPartitionPrivate::TEvReadBlobRequest>(msg.Release()),
+        DiagnosticsConfig->GetPassTraceIdToBlobstorage());
 
     if (blob.TabletID() != TabletID()) {
         // Treat this situation as we were reading from base disk.

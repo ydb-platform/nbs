@@ -123,7 +123,9 @@ NProto::TStorageServiceConfig DefaultConfig(ui32 flushBlobSizeThreshold = 4_KB)
 
 TDiagnosticsConfigPtr CreateTestDiagnosticsConfig()
 {
-    return std::make_shared<TDiagnosticsConfig>(NProto::TDiagnosticsConfig());
+    NProto::TDiagnosticsConfig config;
+    config.SetPassTraceIdToBlobstorage(true);
+    return std::make_shared<TDiagnosticsConfig>(std::move(config));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

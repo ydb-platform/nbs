@@ -24,7 +24,8 @@ TReadBlobActor::TReadBlobActor(
         const EStorageAccessMode storageAccessMode,
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
-        ui64 bsGroupOperationId)
+        ui64 bsGroupOperationId,
+        bool passTraceIdToBlobstorage)
     : TLongRunningOperationCompanion(
           partitionActorId,
           volumeActorId,
@@ -39,6 +40,7 @@ TReadBlobActor::TReadBlobActor(
     , StorageAccessMode(storageAccessMode)
     , Request(std::move(request))
     , BSGroupOperationId(bsGroupOperationId)
+    , PassTraceIdToBlobstorage(passTraceIdToBlobstorage)
 {}
 
 void TReadBlobActor::Bootstrap(const TActorContext& ctx)
@@ -87,9 +89,12 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
             ? NKikimrBlobStorage::AsyncRead
             : NKikimrBlobStorage::FastRead);
 
-    auto traceId = GetTraceIdForRequestId(
-        RequestInfo->CallContext->LWOrbit,
-        RequestInfo->CallContext->RequestId);
+    NWilson::TTraceId traceId;
+    if (PassTraceIdToBlobstorage) {
+        traceId = GetTraceIdForRequestId(
+            RequestInfo->CallContext->LWOrbit,
+            RequestInfo->CallContext->RequestId);
+    }
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
     RequestSent = ctx.Now();

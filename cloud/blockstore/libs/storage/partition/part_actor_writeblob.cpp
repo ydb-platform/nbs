@@ -45,6 +45,8 @@ private:
 
     const ui64 BSGroupOperationId;
 
+    const bool PassTraceIdToBlobstorage = false;
+
     TInstant RequestSent;
     TInstant ResponseReceived;
     TStorageStatusFlags StorageStatusFlags;
@@ -62,7 +64,8 @@ public:
         TDuration longRunningThreshold,
         ui32 groupId,
         TChildLogTitle logTitle,
-        ui64 bsGroupOperationId);
+        ui64 bsGroupOperationId,
+        bool shouldSendTraceIdToBlobstorage);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -104,7 +107,8 @@ TWriteBlobActor::TWriteBlobActor(
         TDuration longRunningThreshold,
         ui32 groupId,
         TChildLogTitle logTitle,
-        ui64 bsGroupOperationId)
+        ui64 bsGroupOperationId,
+        bool shouldSendTraceIdToBlobstorage)
     : TLongRunningOperationCompanion(
           tabletActorId,
           volumeActorId,
@@ -119,6 +123,7 @@ TWriteBlobActor::TWriteBlobActor(
     , GroupId(groupId)
     , LogTitle(std::move(logTitle))
     , BSGroupOperationId(bsGroupOperationId)
+    , PassTraceIdToBlobstorage(shouldSendTraceIdToBlobstorage)
 {}
 
 void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
@@ -187,9 +192,12 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
             ? NKikimrBlobStorage::AsyncBlob
             : NKikimrBlobStorage::UserData);
 
-    auto traceId = GetTraceIdForRequestId(
-        RequestInfo->CallContext->LWOrbit,
-        RequestInfo->CallContext->RequestId);
+    NWilson::TTraceId traceId;
+    if (PassTraceIdToBlobstorage) {
+        traceId = GetTraceIdForRequestId(
+            RequestInfo->CallContext->LWOrbit,
+            RequestInfo->CallContext->RequestId);
+    }
 
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
@@ -423,7 +431,8 @@ void TPartitionActor::HandleWriteBlob(
                 PartitionConfig.GetStorageMediaKind()),
             groupId,
             LogTitle.GetChild(GetCycleCount()),
-            bsGroupOperationId),
+            bsGroupOperationId,
+            DiagnosticsConfig->GetPassTraceIdToBlobstorage()),
         bsGroupOperationId,
         groupId,
         TBSGroupOperationTimeTracker::EOperationType::Write,
