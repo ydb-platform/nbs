@@ -754,7 +754,7 @@ public:
 
     [[nodiscard]] bool GetEnableVhostDiscardForNewVolumes() const;
 
-    [[nodiscard]]double GetProbabilisticRequestRejectionThreshold() const;
+    [[nodiscard]] double GetProbabilisticRequestRejectionThreshold() const;
 };
 
 ui64 GetAllocationUnit(
