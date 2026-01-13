@@ -333,8 +333,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
 
     Y_UNIT_TEST(ShouldHandleCommitIdOverflowInCreateCheckpoint)
     {
-        const auto block = 4_KB;
-        const auto maxTabletStep = 8;
+        const ui32 block = 4_KB;
+        const ui32 maxTabletStep = 8;
 
         NProto::TStorageConfig storageConfig;
         storageConfig.SetMaxTabletStep(maxTabletStep);
@@ -355,6 +355,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
         const auto id =
             CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tablet, id);
+
+        ui32 createCheckpointRejectedCount = 0;
 
         auto reconnectAndRecreateHandleIfNeeded = [&](bool createHandle = true)
         {
@@ -377,7 +379,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
             auto writeResponse = tablet.RecvWriteDataResponse();
             reconnectAndRecreateHandleIfNeeded();
 
-            if (FAILED(writeResponse->GetStatus())) {
+            if (HasError(writeResponse->GetError())) {
                 UNIT_ASSERT_VALUES_EQUAL(
                     E_REJECTED,
                     writeResponse->GetError().GetCode());
@@ -390,10 +392,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
             auto checkpointResponse = tablet.RecvCreateCheckpointResponse();
             reconnectAndRecreateHandleIfNeeded();
 
-            if (FAILED(checkpointResponse->GetStatus())) {
+            if (HasError(checkpointResponse->GetError())) {
                 UNIT_ASSERT_VALUES_EQUAL(
                     E_REJECTED,
                     checkpointResponse->GetError().GetCode());
+                ++createCheckpointRejectedCount;
                 continue;
             }
 
@@ -412,7 +415,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
             auto handleResponse = tablet.RecvCreateHandleResponse();
             reconnectAndRecreateHandleIfNeeded(false);
 
-            if (FAILED(handleResponse->GetStatus())) {
+            if (HasError(handleResponse->GetError())) {
                 UNIT_ASSERT_VALUES_EQUAL(
                     E_REJECTED,
                     handleResponse->GetError().GetCode());
@@ -436,6 +439,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
             "Expected at least 2 different generations due to tablet reboot,"
             "got "
                 << rebootTracker.GetGenerationCount());
+
+        UNIT_ASSERT_C(
+            createCheckpointRejectedCount >= 1,
+            "Expected at least 1 checkpoint to overflow commit id, "
+            "got "
+                << createCheckpointRejectedCount);
     }
 }
 
