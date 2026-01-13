@@ -1394,5 +1394,5 @@ message TStorageServiceConfig
     optional uint32 FreshChannelCountHDD = 473;
 
     // Reject request if GetRejectProbability()*100 is greater than this value
-    optional uint32 ProbabilisticRequestRejectionThreshold = 474; 
+    optional uint32 TabletExecutorRejectionThreshold = 474; 
 }
