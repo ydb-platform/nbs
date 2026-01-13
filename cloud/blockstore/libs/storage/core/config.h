@@ -753,6 +753,8 @@ public:
     [[nodiscard]] bool GetSendLocalTabletMetricsToHiveEnabled() const;
 
     [[nodiscard]] bool GetEnableVhostDiscardForNewVolumes() const;
+
+    [[nodiscard]]double GetProbabilisticRequestRejectionThreshold() const;
 };
 
 ui64 GetAllocationUnit(
