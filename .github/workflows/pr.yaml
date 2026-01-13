@@ -557,7 +557,7 @@ jobs:
     needs:
       - check-running-allowed
       - create-build-and-test-target-var
-    if: needs.check-running-allowed.outputs.result == 'true' && contains(github.event.pull_request.labels.*.name, 'ubsan') && (vars.NEBIUS_SCHEDULING_TYPE == 'hybrid' && contains(github.event.pull_request.labels.*.name, 'hybrid'))
+    if: needs.check-running-allowed.outputs.result == 'true' && contains(github.event.pull_request.labels.*.name, 'ubsan') && (vars.NEBIUS_SCHEDULING_TYPE == 'hybrid' || contains(github.event.pull_request.labels.*.name, 'hybrid'))
     name: Build and test (ubsan) (hybrid)
     uses: ./.github/workflows/on_hybrid_build_and_test.yaml
     with:
