@@ -259,8 +259,8 @@ void TPartitionActor::WriteBlocks(
         return;
     }
 
-    if (Config->GetProbabilisticRequestRejectionThreshold() > 10e-5 &&
-        Executor()->GetRejectProbability() >
+    if (Config->GetProbabilisticRequestRejectionThreshold() &&
+        Executor()->GetRejectProbability() * 100 >
             Config->GetProbabilisticRequestRejectionThreshold())
     {
         replyError(ctx, MakeError(E_REJECTED, "rejected by tablet executor"));

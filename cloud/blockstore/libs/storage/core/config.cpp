@@ -166,7 +166,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
         TVector<NProto::TLinkedDiskFillBandwidth>,                             \
         {}                                                                    )\
     xxx(ComputeDigestForEveryBlockOnCompaction,     bool,            false    )\
-    xxx(ProbabilisticRequestRejectionThreshold,     double,          0.0      )\
+    xxx(ProbabilisticRequestRejectionThreshold,     ui32,            0.0      )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \

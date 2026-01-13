@@ -1393,6 +1393,6 @@ message TStorageServiceConfig
     // Number of fresh channels per partition for HDD disks.
     optional uint32 FreshChannelCountHDD = 473;
 
-    // Reject request if GetRejectProbability() is greater than this value
-    optional double ProbabilisticRequestRejectionThreshold = 474; 
+    // Reject request if GetRejectProbability()*100 is greater than this value
+    optional uint32 ProbabilisticRequestRejectionThreshold = 474; 
 }
