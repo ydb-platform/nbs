@@ -136,6 +136,7 @@ struct TTestPartitionInfo
     ui64 BaseTabletId = 0;
     NCloud::NProto::EStorageMediaKind MediaKind =
         NCloud::NProto::STORAGE_MEDIA_DEFAULT;
+    TMaybe<ui32> MaxBlocksInBlob;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -168,6 +169,7 @@ public:
     {
         for (const auto& [prerequisiteEvent, dependentEvent]: eventOrders) {
             EventDependencies[dependentEvent] = prerequisiteEvent;
+            PrerequisiteEvents.insert(prerequisiteEvent);
         }
     }
 
@@ -198,7 +200,6 @@ public:
             auto& delayedEventsByRecipient = DelayedEvents[recipient];
             auto delayedEventIt = delayedEventsByRecipient.find(eventType);
             if (delayedEventIt != delayedEventsByRecipient.end()) {
-                ProcessedEvents[recipient].insert(eventType);
                 TAutoPtr<IEventHandle> delayedEvent =
                     std::move(delayedEventIt->second);
                 delayedEventsByRecipient.erase(delayedEventIt);
@@ -212,6 +213,10 @@ public:
                 Runtime.Schedule(delayedEvent, TDuration::MilliSeconds(100));
             }
 
+            if (PrerequisiteEvents.contains(eventType)) {
+                ProcessedEvents[recipient].insert(eventType);
+            }
+
             return baseFilterResult;
         };
     }
@@ -219,6 +224,7 @@ public:
 private:
     TTestActorRuntimeBase& Runtime;
     THashMap<ui32, ui32> EventDependencies;
+    THashSet<ui32> PrerequisiteEvents;
     THashMap<TActorId, THashSet<ui32>> ProcessedEvents;
     // Map of delayed events by recipient and event type
     THashMap<TActorId, THashMap<ui32, TAutoPtr<IEventHandle>>> DelayedEvents;
@@ -251,6 +257,10 @@ void InitTestActorRuntime(
 
     partConfig.SetBlockSize(DefaultBlockSize);
     partConfig.SetBlocksCount(blockCount);
+
+    if (partitionInfo.MaxBlocksInBlob) {
+        partConfig.SetMaxBlocksInBlob(*partitionInfo.MaxBlocksInBlob);
+    }
 
     auto* cps = partConfig.MutableExplicitChannelProfiles();
     cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::System));
@@ -1461,7 +1471,8 @@ TPartitionWithRuntime SetupOverlayPartition(
     TMaybe<ui32> channelsCount = {},
     ui32 blockSize = DefaultBlockSize,
     ui32 blockCount = 1024,
-    const NProto::TStorageServiceConfig& config = DefaultConfig())
+    const NProto::TStorageServiceConfig& config = DefaultConfig(),
+    TMaybe<ui32> MaxBlocksInBlob = {})
 {
     TPartitionWithRuntime result;
 
@@ -1475,7 +1486,8 @@ TPartitionWithRuntime SetupOverlayPartition(
             "checkpoint",
             overlayTabletId,
             baseTabletId,
-            NCloud::NProto::STORAGE_MEDIA_DEFAULT
+            NCloud::NProto::STORAGE_MEDIA_DEFAULT,
+            MaxBlocksInBlob
         },
         std::make_unique<TTestVolumeProxyActor>(
             baseTabletId,
@@ -12996,6 +13008,92 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldDropAllCommitBlobsWhenUnrecoverableBlobExists)
+    {
+        auto config = DefaultConfig();
+
+        config.SetWriteBlobThreshold(1);
+        config.SetAddingUnconfirmedBlobsEnabled(true);
+
+        // Set MaxBlocksInBlob to 1 so writing 2 blocks will create 2 blobs
+        TTestPartitionInfo partitionInfo;
+        partitionInfo.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID;
+        partitionInfo.MaxBlocksInBlob = 1;
+
+        auto runtime = PrepareTestActorRuntime(config, 4096, {}, partitionInfo);
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvAddConfirmedBlobsRequest: {
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(2, 2), 2);
+        partition.WriteBlocks(TBlockRange32::WithLength(4, 2), 2);
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetConfirmedBlobCount());
+        }
+
+        bool tabletActivated = false;
+        ui32 filterCallCount = 0;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case NKikimr::TEvLocal::EvTabletMetrics: {
+                        tabletActivated = true;
+                        return false;
+                    }
+                    case TEvBlobStorage::EvGetResult: {
+                        auto* msg = ev->Get<TEvBlobStorage::TEvGetResult>();
+                        auto* mutableMsg =
+                            const_cast<TEvBlobStorage::TEvGetResult*>(msg);
+
+                        if (tabletActivated) {
+                            if (filterCallCount == 0) {
+                                mutableMsg->Responses[0].Status =
+                                    NKikimrProto::NODATA;
+                            } else if (filterCallCount == 2) {
+                                mutableMsg->Responses[0].Status =
+                                    NKikimrProto::ERROR;
+                            }
+                            ++filterCallCount;
+                        }
+                        return false;
+                    }
+                }
+                return false;
+            });
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetConfirmedBlobCount());
         }
     }
 

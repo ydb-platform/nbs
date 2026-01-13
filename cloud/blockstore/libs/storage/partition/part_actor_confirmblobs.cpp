@@ -280,6 +280,22 @@ void TPartitionActor::ExecuteConfirmBlobs(
         "%s ConfirmBlobs: execute tx",
         LogTitle.GetWithTime().c_str());
 
+    if (!args.UnrecoverableBlobs.empty()) {
+        TStringStream ss;
+        ss << "Unrecoverable blobs: ";
+        for (const auto& blobId: args.UnrecoverableBlobs) {
+            ss << "[CommitId=" << blobId.CommitId() << ", BlobId="
+               << MakePartialBlobId(blobId.CommitId(), blobId.UniqueId())
+               << "] ";
+        }
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s %s",
+            LogTitle.GetWithTime().c_str(),
+            ss.Str().c_str());
+    }
+
     TPartitionDatabase db(tx.DB);
     State->ConfirmBlobs(db, args.UnrecoverableBlobs);
 }

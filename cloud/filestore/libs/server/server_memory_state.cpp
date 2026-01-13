@@ -85,10 +85,7 @@ TResultOrError<TMmapRegionMetadata> TServerState::CreateMmapRegion(
     }
 
     ui64 mmapId = ClampVal(RandomNumber<ui64>(), 1ul, Max<ui64>());
-
-    // passing ownership of fd to the TMmapRegion struct
-    TMmapRegion
-        region(std::move(fullPath), addr, size, mmapId, std::move(file));
+    TMmapRegion region(std::move(fullPath), addr, size, mmapId);
 
     TLightWriteGuard guard(StateLock);
 

@@ -1183,6 +1183,7 @@ STFUNC(TIndexTabletActor::StateZombie)
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
 
