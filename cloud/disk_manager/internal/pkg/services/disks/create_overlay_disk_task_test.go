@@ -326,7 +326,7 @@ func TestCancelCreateOverlayDiskTask(t *testing.T) {
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-	).Return(&resources.DiskMeta{
+	).Return(resources.DiskMeta{
 		ID:           "disk",
 		ZoneID:       "zone",
 		DeleteTaskID: "toplevel_task_id",
@@ -384,14 +384,18 @@ func TestCancelCreateOverlayDiskTaskBeforeRunIsCalled(t *testing.T) {
 		state:       &protos.CreateOverlayDiskTaskState{},
 	}
 
-	// Must return disk without specified ZoneID.
+	// There is no such disk in storage, return tombstone without ZoneID.
 	storage.On(
 		"DeleteDisk",
 		ctx,
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-	).Return((*resources.DiskMeta)(nil), nil)
+	).Return(resources.DiskMeta{
+		ID:           "disk",
+		ZoneID:       "",
+		DeleteTaskID: "toplevel_task_id",
+	}, nil)
 
 	err := task.Cancel(ctx, execCtx)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, execCtx)

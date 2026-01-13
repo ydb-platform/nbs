@@ -481,11 +481,11 @@ func (s *storageYDB) deleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
-) (*DiskMeta, error) {
+) (DiskMeta, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
 	if err != nil {
-		return nil, err
+		return DiskMeta{}, err
 	}
 	defer tx.Rollback(ctx)
 
@@ -501,13 +501,13 @@ func (s *storageYDB) deleteDisk(
 		persistence.ValueParam("$id", persistence.UTF8Value(diskID)),
 	)
 	if err != nil {
-		return nil, err
+		return DiskMeta{}, err
 	}
 	defer res.Close()
 
 	states, err := scanDiskStates(ctx, res)
 	if err != nil {
-		return nil, err
+		return DiskMeta{}, err
 	}
 
 	var state diskState
@@ -520,15 +520,10 @@ func (s *storageYDB) deleteDisk(
 
 			err = tx.Commit(ctx)
 			if err != nil {
-				return nil, err
+				return DiskMeta{}, err
 			}
 
-			// Should be idempotent.
-			if state.status == diskStatusDeleted {
-				return nil, nil
-			}
-
-			return state.toDiskMeta(), nil
+			return *state.toDiskMeta(), nil
 		}
 
 		state.status = diskStatusDeleting
@@ -546,20 +541,15 @@ func (s *storageYDB) deleteDisk(
 
 	err = s.updateDiskState(ctx, tx, state)
 	if err != nil {
-		return nil, err
+		return DiskMeta{}, err
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		return nil, err
+		return DiskMeta{}, err
 	}
 
-	// Should be idempotent.
-	if state.status == diskStatusDeleted {
-		return nil, nil
-	}
-
-	return state.toDiskMeta(), nil
+	return *state.toDiskMeta(), nil
 }
 
 func (s *storageYDB) diskDeleted(
@@ -979,9 +969,9 @@ func (s *storageYDB) DeleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
-) (*DiskMeta, error) {
+) (DiskMeta, error) {
 
-	var disk *DiskMeta
+	var disk DiskMeta
 
 	err := s.db.Execute(
 		ctx,
