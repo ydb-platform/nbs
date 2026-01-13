@@ -73,17 +73,19 @@ func (t *deleteDiskTask) deleteDisk(
 	}
 
 	zoneID := ""
-	if diskMeta != nil {
-		// Disk exists in the database.
-		zoneID = diskMeta.ZoneID
-	}
-	if len(zoneID) == 0 {
-		// Disk does not exist in the database. Nevertheless, proceed deleting.
+	if diskMeta == nil {
+		// Disk does not exist in the database.
+		if !t.request.DeleteIfNonExistent {
+			return nil
+		}
+
 		zoneID = t.request.Disk.ZoneId
-	}
-	if len(zoneID) == 0 {
-		// Zone was not specified in the request.
-		return t.storage.DiskDeleted(ctx, diskID, time.Now())
+		if len(zoneID) == 0 {
+			// Zone was not specified in the request.
+			return t.storage.DiskDeleted(ctx, diskID, time.Now())
+		}
+	} else {
+		zoneID = diskMeta.ZoneID
 	}
 
 	taskID, err := t.scheduler.ScheduleTask(
