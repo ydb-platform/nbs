@@ -552,12 +552,17 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
 
     const bool isMainWithLocalNodes =
         IsMainTablet() && GetLastNodeId() > RootNodeId;
+    const bool isParentNodeLinkRequest =
+        args.Request.HasLink() && args.Request.GetLink().GetShardNodeName();
 
     if (!BehaveAsShard(args.Request.GetHeaders())
             && Config->GetShardIdSelectionInLeaderEnabled()
             && !GetFileSystem().GetShardFileSystemIds().empty()
             && (args.Attrs.GetType() == NProto::E_REGULAR_NODE
                 || GetFileSystem().GetDirectoryCreationInShardsEnabled()
+                // hard link shard ids are selected by the tablet client (i.e.
+                // service actor)
+                && !isParentNodeLinkRequest
                 // otherwise there might be some local nodes which breaks
                 // current cross-shard RenameNode implementation
                 && !isMainWithLocalNodes))
@@ -569,10 +574,18 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
     }
 
     // For multishard filestore, selection of the shard node name for
-    // hard links is done by the client, not the leader. Thus, the
-    // client is able to provide the shard node name explicitly:
-    if (args.Request.HasLink() && args.Request.GetLink().GetShardNodeName()) {
+    // hard links is done by the tablet client (i.e. service actor), not the
+    // leader. Thus, the client is able to provide the shard node name
+    // explicitly.
+    if (isParentNodeLinkRequest) {
         args.ShardNodeName = args.Request.GetLink().GetShardNodeName();
+        if (args.ShardId.empty()) {
+            auto message = ReportCreateLinkRequestWithShardNodeNameAndNoShardId(
+                TStringBuilder() << "CreateNode: "
+                << args.Request.ShortDebugString());
+            args.Error = MakeError(E_ARGUMENT, std::move(message));
+            return true;
+        }
     } else if (args.ShardId) {
         args.ShardNodeName = CreateGuidAsString();
     }

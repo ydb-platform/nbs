@@ -5723,7 +5723,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
-        TShardedFileSystemConfig fsConfig{.DirectoryCreationInShardsEnabled = true};
+        TShardedFileSystemConfig fsConfig{
+            .DirectoryCreationInShardsEnabled = true};
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
@@ -5731,6 +5732,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // /
         // └── dir              (shard 1)
         //     ├── file         (shard 1)
+        //     ├── file-link    (shard 1, same as file)
+        //     ├── file-link2   (shard 1, same as file)
         //     └── subdir       (shard 2)
         //         └── file     (shard 1)
 
@@ -5741,7 +5744,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                          ->Record.GetNode()
                          .GetId();
         Cerr << "dirId: " << dirId << Endl;
-        service.CreateNode(headers, TCreateNodeArgs::File(dirId, "file"));
+        auto dirFileId = service.CreateNode(
+                                headers,
+                                TCreateNodeArgs::File(dirId, "file"))
+                            ->Record.GetNode().GetId();
+        Cerr << "dirFileId: " << dirFileId << Endl;
         auto subdirId = service
                             .CreateNode(
                                 headers,
@@ -5749,6 +5756,22 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                             ->Record.GetNode()
                             .GetId();
         Cerr << "subdirId: " << subdirId << Endl;
+        auto dirFileLinkId = service.CreateNode(
+                                headers,
+                                TCreateNodeArgs::Link(
+                                    dirId,
+                                    "file-link",
+                                    dirFileId))
+                            ->Record.GetNode().GetId();
+        Cerr << "dirFileLinkId: " << dirFileLinkId << Endl;
+        auto dirFileLinkId2 = service.CreateNode(
+                                headers,
+                                TCreateNodeArgs::Link(
+                                    dirId,
+                                    "file-link2",
+                                    dirFileId))
+                            ->Record.GetNode().GetId();
+        Cerr << "dirFileLinkId2: " << dirFileLinkId2 << Endl;
         UNIT_ASSERT(ExtractShardNo(dirId) != ExtractShardNo(subdirId));
         auto fileId =
             service
@@ -5756,7 +5779,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 ->Record.GetNode()
                 .GetId();
         Cerr << "fileId: " << fileId << Endl;
-        Y_UNUSED(fileId);
 
         auto unlinkResponse =
             service.SendAndRecvUnlinkNode(headers, dirId, "subdir", true);
@@ -5783,6 +5805,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                        .GetId();
         // unlinking the subdir should now succeed
         service.UnlinkNode(headers, dirId, "subdir", true);
+
+        // unlinking other stuff
+        // service.UnlinkNode(headers, dirId, "file-link", false);
+        service.UnlinkNode(headers, dirId, "file", false);
+
+        // checking that listing works
+        auto listing = service.ListNodes(headers, fsConfig.FsId, dirId)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(2, listing.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(2, listing.NamesSize());
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
