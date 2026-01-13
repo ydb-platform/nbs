@@ -94,7 +94,11 @@ void TFileSystem::SetAttr(
         }
     };
 
-    if (!WriteBackCache) {
+    const bool setSize =
+        (request->GetFlags() &
+         ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE)) != 0;
+
+    if (!setSize || !WriteBackCache) {
         Session->SetNodeAttr(callContext, std::move(request))
             .Subscribe(std::move(callback));
         return;
@@ -122,13 +126,9 @@ void TFileSystem::SetAttr(
                 return;
             }
 
-            if (request->GetFlags() &
-                ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE))
-            {
-                self->WriteBackCache.SetCachedNodeSize(
-                    request->GetNodeId(),
-                    request->GetUpdate().GetSize());
-            }
+            self->WriteBackCache.SetCachedNodeSize(
+                request->GetNodeId(),
+                request->GetUpdate().GetSize());
 
             self->Session->SetNodeAttr(callContext, std::move(request))
                 .Subscribe(std::move(callback));
