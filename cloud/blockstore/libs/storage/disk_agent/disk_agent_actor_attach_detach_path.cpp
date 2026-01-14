@@ -210,8 +210,10 @@ void TDiskAgentActor::HandleDetachPaths(
          selfId = ctx.SelfID,
          pathsToDetach = std::move(attachedPaths),
          alreadyDetachedPaths = std::move(detachedPaths),
-         controlPlaneRequestNumber](auto) mutable
+         controlPlaneRequestNumber](const auto& future) mutable
         {
+            Y_UNUSED(future);
+
             auto response = MakePathsDetachedResponse(
                 {},   // error
                 std::move(pathsToDetach),
