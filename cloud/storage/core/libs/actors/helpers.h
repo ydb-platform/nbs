@@ -26,6 +26,11 @@ void LogUnexpectedEvent(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Returns true if event was forwarded through pipe from another node.
+bool IsCrossNodeEvent(const NActors::IEventHandle& ev);
+
+////////////////////////////////////////////////////////////////////////////////
+
 inline NActors::TActorId Register(
     const NActors::TActorContext& ctx,
     NActors::IActorPtr actor)

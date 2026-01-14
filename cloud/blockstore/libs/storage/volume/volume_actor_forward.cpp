@@ -659,8 +659,7 @@ void TVolumeActor::ForwardRequest(
 
     bool isTraced = false;
 
-    if (ev->Recipient != ev->GetRecipientRewrite())
-    {
+    if (IsCrossNodeEvent(*ev)) {
         if (TraceSerializer->IsTraced(msg->CallContext->LWOrbit)) {
             isTraced = true;
             now = msg->Record.GetHeaders().GetInternal().GetTraceTs();
@@ -922,7 +921,7 @@ void TVolumeActor::ForwardRequest(
             auto& clientInfo = clientsIt->second;
             NProto::TError error;
 
-            if (ev->Recipient != ev->GetRecipientRewrite()) {
+            if (IsCrossNodeEvent(*ev)) {
                 error = clientInfo.CheckPipeRequest(
                     ev->Recipient,
                     RequiresReadWriteAccess<TMethod>,

@@ -73,4 +73,11 @@ void LogUnexpectedEvent(
     LogUnexpectedEvent(*ev, component, location);
 }
 
+bool IsCrossNodeEvent(const NActors::IEventHandle& ev)
+{
+    // If event was forwarded through pipe from another node, its recipient and
+    // recipient rewrite would be different
+    return ev.Recipient != ev.GetRecipientRewrite();
+}
+
 }   // namespace NCloud

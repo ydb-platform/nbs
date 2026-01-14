@@ -400,10 +400,8 @@ void TVolumeActor::HandleAddClient(
     const auto fillGeneration = msg->Record.GetFillGeneration();
     const auto& host = msg->Record.GetHost();
 
-    // If event was forwarded through pipe, its recipient and recipient rewrite
-    // would be different
     TActorId pipeServerActorId;
-    if (ev->Recipient != ev->GetRecipientRewrite()) {
+    if (IsCrossNodeEvent(*ev)) {
         pipeServerActorId = ev->Recipient;
     }
 
