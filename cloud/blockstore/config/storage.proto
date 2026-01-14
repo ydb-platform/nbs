@@ -1392,4 +1392,14 @@ message TStorageServiceConfig
 
     // Number of fresh channels per partition for HDD disks.
     optional uint32 FreshChannelCountHDD = 473;
+
+    // Interval between resync range requests (in milliseconds).
+    optional uint32 ResyncNextRangeInterval = 474;
+
+    // Allows to reply to the client after reading data and 1 checksum.
+    // 3 checksums comparison (for mirror-3 disks) is still performed after the
+    // 2nd checksum is read.
+    // When disabled, fast path waits for data and 2 checksums before replying
+    // to the client.
+    optional bool OptimizeFastPathReadsOnResync = 475;
 }

@@ -521,6 +521,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(ForceResyncPolicy,                                                     \
         NProto::EResyncPolicy,                                                 \
         NProto::EResyncPolicy::RESYNC_POLICY_MINOR_AND_MAJOR_4MB              )\
+    xxx(ResyncNextRangeInterval,                   TDuration, MSeconds(1)     )\
+    xxx(OptimizeFastPathReadsOnResync,             bool,      false           )\
     xxx(MirrorReadReplicaCount,                    ui32,      0               )\
                                                                                \
     xxx(PingMetricsHalfDecayInterval,              TDuration, Seconds(15)     )\
