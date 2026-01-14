@@ -105,7 +105,6 @@ bool TIndexTabletActor::PrepareTx_AddData(
         return false;
     }
 
-    // TODO: access check
     // TODO: replace VERIFY with a check + critical event
     TABLET_VERIFY(args.Node || Config->GetAllowHandlelessIO());
     if (!args.Node) {
