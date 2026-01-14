@@ -1388,6 +1388,7 @@ add_placeholder_variable(const char *name, int elevel)
  * can only happen when create_placeholders is true, so callers passing
  * false need not think terribly hard about this.)
  */
+__attribute__((no_sanitize("undefined")))
 static struct config_generic *
 find_option(const char *name, bool create_placeholders, bool skip_errors,
 			int elevel)
@@ -1402,6 +1403,7 @@ find_option(const char *name, bool create_placeholders, bool skip_errors,
 	 * By equating const char ** with struct config_generic *, we are assuming
 	 * the name field is first in config_generic.
 	 */
+	/// -fsanitize-nonnull-attribute
 	res = (struct config_generic **) bsearch((void *) &key,
 											 (void *) guc_variables,
 											 num_guc_variables,
