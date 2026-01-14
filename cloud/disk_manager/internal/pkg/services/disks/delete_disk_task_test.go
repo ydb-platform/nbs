@@ -218,8 +218,8 @@ func TestDeleteDiskTaskCancel(t *testing.T) {
 }
 
 func testDeleteDiskTaskWithNonExistentDisk(
-	deleteIfNonExistent bool,
 	t *testing.T,
+	deleteIfNonExistent bool,
 ) {
 
 	ctx := context.Background()
@@ -280,11 +280,11 @@ func testDeleteDiskTaskWithNonExistentDisk(
 }
 
 func TestDeleteDiskTaskNonExistentDisk(t *testing.T) {
-	testDeleteDiskTaskWithNonExistentDisk(false /* deleteIfNonExistent */, t)
+	testDeleteDiskTaskWithNonExistentDisk(t, false /* deleteIfNonExistent */)
 }
 
 func TestDeleteDiskTaskNonExistentDiskWithDeletionFromBlockstore(t *testing.T) {
-	testDeleteDiskTaskWithNonExistentDisk(true /* deleteIfNonExistent */, t)
+	testDeleteDiskTaskWithNonExistentDisk(t, true /* deleteIfNonExistent */)
 }
 
 func testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(
