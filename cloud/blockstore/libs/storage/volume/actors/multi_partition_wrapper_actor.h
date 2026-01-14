@@ -2,7 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
-#include <cloud/blockstore/libs/storage/volume/multi_partition_requests.h>
+#include <cloud/blockstore/libs/storage/volume/actors/multi_partition_requests.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/actorid.h>
@@ -11,6 +11,12 @@ namespace NCloud::NBlockStore::NStorage {
 
 ///////////////////////////////////////////////////////////////////////////////
 
+// Wrapper for multi-partitioned YDB-based disks. Hides the partitioning details
+// from volume actor.
+// For incoming requests, the wrapper determines whether to send the request to
+// one or multiple partitions. If the request needs to be executed in multiple
+// partitions, a TMultiPartitionRequestActor is created to handle the request.
+// The response is sent directly to the volume actor, bypassing the wrapper.
 class TMultiPartitionWrapperActor final
     : public NActors::TActorBootstrapped<TMultiPartitionWrapperActor>
 {

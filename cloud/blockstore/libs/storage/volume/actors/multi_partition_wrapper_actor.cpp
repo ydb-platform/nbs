@@ -3,7 +3,6 @@
 
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
-#include <cloud/blockstore/libs/storage/volume/multi_partition_requests.h>
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 
@@ -164,12 +163,13 @@ void TMultiPartitionWrapperActor::HandleRequest(
         auto newEvent = typename TMethod::TRequest::TPtr(
             static_cast<typename TMethod::TRequest::THandle*>(new IEventHandle(
                 partitionRequests.front().ActorId,
-                ev->Sender,   // set Sender so that the response comes directly,
-                              // bypassing this actor.
+                ev->Sender,   // The response is sent directly to the volume
+                              // actor, bypassing the wrapper.
                 partitionRequests.front().Event.release(),
                 IEventHandle::FlagForwardOnNondelivery,   // flags
                 ev->Cookie,                               // cookie
-                &ev->Sender   // forwardOnNondelivery
+                &ev->Sender   // The non-delivery error of the request is also
+                              // handled by the volume actor
                 )));
 
         ctx.Send(newEvent.Release());

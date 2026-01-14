@@ -1,15 +1,12 @@
 #pragma once
 
-#include "partition_info.h"
-#include "tracing.h"
-
 #include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/volume/model/merge.h>
 #include <cloud/blockstore/libs/storage/volume/model/stripe.h>
-#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+#include <cloud/blockstore/libs/storage/volume/model/tracing.h>
 
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 

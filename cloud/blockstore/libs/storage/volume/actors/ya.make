@@ -8,6 +8,7 @@ SRCS(
     create_volume_link_actor.cpp
     follower_disk_actor.cpp
     forward_write_and_mark_used.cpp
+    multi_partition_requests.cpp
     multi_partition_wrapper_actor.cpp
     partition_statistics_collector_actor.cpp
     propagate_to_follower.cpp
