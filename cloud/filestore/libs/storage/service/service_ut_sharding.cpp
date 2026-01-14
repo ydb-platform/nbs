@@ -5806,14 +5806,25 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // unlinking the subdir should now succeed
         service.UnlinkNode(headers, dirId, "subdir", true);
 
-        // unlinking other stuff
-        // service.UnlinkNode(headers, dirId, "file-link", false);
+        // unlinking the file but keeping the hardlinks to check that they are
+        // listed correctly
         service.UnlinkNode(headers, dirId, "file", false);
 
         // checking that listing works
         auto listing = service.ListNodes(headers, fsConfig.FsId, dirId)->Record;
         UNIT_ASSERT_VALUES_EQUAL(2, listing.NodesSize());
         UNIT_ASSERT_VALUES_EQUAL(2, listing.NamesSize());
+
+        // dirFileLinkId and dirFileLinkId2 should be equal to each other and
+        // to dirFileId but let's explicitly compare the ids in the listing to
+        // dirFileLinkId and dirFileLinkId2 to make the test a bit more flexible
+        // if we decide to change this internal API layer to return the ids of
+        // the link nodes (in sharded filesystems we have separate hidden link
+        // nodes)
+        UNIT_ASSERT_VALUES_EQUAL(dirFileLinkId, listing.GetNodes(0).GetId());
+        UNIT_ASSERT_VALUES_EQUAL("file-link", listing.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL(dirFileLinkId2, listing.GetNodes(1).GetId());
+        UNIT_ASSERT_VALUES_EQUAL("file-link2", listing.GetNames(1));
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
