@@ -74,12 +74,12 @@ TRope CreateRope(
     return rope;
 }
 
-TRope CreateRope(TString& buffer)
+TRope CreateRope(const char* data, ui64 size)
 {
     return TRope(TRcBuf(
         MakeIntrusive<TIovecContiguousChunk<>>(
-            reinterpret_cast<ui64>(buffer.data()),
-            buffer.size())));
+            reinterpret_cast<ui64>(data),
+            size)));
 }
 
 }   // namespace NCloud::NFileStore::NStorage
