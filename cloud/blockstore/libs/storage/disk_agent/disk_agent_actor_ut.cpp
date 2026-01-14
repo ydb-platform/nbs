@@ -6994,7 +6994,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         diskAgent.DetachPaths(
             TVector<TString>{{PartLabels[0]}},
             5,     // diskRegistryGeneration
-            10);   // diskAgentGeneration
+            10);   // requestNumber
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
@@ -7003,7 +7003,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         diskAgent.SendAttachPathsRequest(
             TVector<TString>{{PartLabels[0]}},
             5,    // diskRegistryGeneration
-            1);   // diskAgentGeneration
+            1);   // requestNumber
 
         auto resp = diskAgent.RecvAttachPathsResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
@@ -7015,7 +7015,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         diskAgent.SendAttachPathsRequest(
             TVector<TString>{{PartLabels[0]}},
             4,      // diskRegistryGeneration
-            100);   // diskAgentGeneration
+            100);   // requestNumber
 
         resp = diskAgent.RecvAttachPathsResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
@@ -7027,7 +7027,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         diskAgent.AttachPaths(
             TVector<TString>{{PartLabels[0]}},
             6,    // diskRegistryGeneration
-            1);   // diskAgentGeneration
+            1);   // requestNumber
 
         UNIT_ASSERT_VALUES_EQUAL(
             1,

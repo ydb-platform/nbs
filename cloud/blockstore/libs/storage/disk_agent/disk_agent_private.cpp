@@ -1,11 +1,14 @@
 #include "disk_agent_private.h"
 
-TString ToString(
+#include <util/stream/output.h>
+
+Y_DECLARE_OUT_SPEC(
+    ,
     NCloud::NBlockStore::NStorage::TEvDiskAgentPrivate::
-        TControlPlaneRequestNumber controlPlaneRequestNumber)
+        TControlPlaneRequestNumber,
+    o,
+    v)
 {
-    return Sprintf(
-        "Generation: %lu, RequestNumber: %lu",
-        controlPlaneRequestNumber.Generation,
-        controlPlaneRequestNumber.RequestNumber);
+    o << "[Generation: " << v.Generation
+      << ", RequestNumber: " << v.RequestNumber << "]";
 }

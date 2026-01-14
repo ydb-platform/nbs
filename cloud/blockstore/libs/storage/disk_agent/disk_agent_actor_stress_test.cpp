@@ -256,7 +256,7 @@ class TDiskAgentAttachDetachModel
 {
 private:
     ui64 DiskRegistryGeneration = 0;
-    ui64 DiskAgentGeneration = 0;
+    ui64 RequestNumber = 0;
     THashMap<TString, bool> PathAttached;
 
 public:
@@ -269,7 +269,7 @@ public:
 
     bool AttachDetachPath(
         ui64 diskRegistryGeneration,
-        ui64 diskAgentGeneration,
+        ui64 requestNumber,
         const TVector<TString>& paths,
         bool attach)
     {
@@ -285,7 +285,7 @@ public:
 
         if (!CheckGenerationAndUpdateItIfNeeded(
                 diskRegistryGeneration,
-                diskAgentGeneration) &&
+                requestNumber) &&
             pathsToPerformAttachDetach)
         {
             return false;
@@ -301,23 +301,23 @@ public:
 
     bool CheckGenerationAndUpdateItIfNeeded(
         ui64 diskRegistryGeneration,
-        ui64 diskAgentGeneration)
+        ui64 requestNumber)
     {
         if (diskRegistryGeneration < DiskRegistryGeneration) {
             return false;
         }
 
         if (diskRegistryGeneration > DiskRegistryGeneration) {
-            DiskAgentGeneration = 0;
+            RequestNumber = 0;
         }
 
         DiskRegistryGeneration = diskRegistryGeneration;
 
-        if (diskAgentGeneration <= DiskAgentGeneration) {
+        if (requestNumber <= RequestNumber) {
             return false;
         }
 
-        DiskAgentGeneration = diskAgentGeneration;
+        RequestNumber = requestNumber;
 
         return true;
     }
@@ -337,7 +337,7 @@ private:
     ui64 DevicesCount;
     TVector<TString> Paths;
 
-    ui64 MinDiskAgentGeneration = 1;
+    ui64 MinRequestNumber = 1;
     TVector<bool> GeneratedShouldAttachPath;
 
     ui64 MinDiskRegistryGeneration = 1;
@@ -354,14 +354,14 @@ public:
         MinDiskRegistryGeneration += MoveGenerationWindowPerRun;
         GeneratedDiskRegistryGeneration =
             RandomNumber<ui32>(GenerationSpread) + MinDiskRegistryGeneration;
-        MinDiskAgentGeneration = 1;
+        MinRequestNumber = 1;
 
         return GeneratedDiskRegistryGeneration;
     }
 
     struct TRequest
     {
-        ui64 DiskAgentGeneration;
+        ui64 RequestNumber;
         TVector<TString> Paths;
     };
 
@@ -373,7 +373,7 @@ public:
 
         while (pathIdxs.size() > 0) {
             TRequest request;
-            request.DiskAgentGeneration = GenerateDiskAgentGeneration();
+            request.RequestNumber = GenerateRequestNumber();
 
             const ui64 devicesInRequest =
                 Max(RandomNumber<ui64>(pathIdxs.size() + 1), ui64{1});
@@ -393,10 +393,10 @@ public:
     }
 
 private:
-    ui64 GenerateDiskAgentGeneration()
+    ui64 GenerateRequestNumber()
     {
-        MinDiskAgentGeneration += MoveGenerationWindowPerRun;
-        return RandomNumber<ui64>(GenerationSpread) + MinDiskAgentGeneration;
+        MinRequestNumber += MoveGenerationWindowPerRun;
+        return RandomNumber<ui64>(GenerationSpread) + MinRequestNumber;
     }
 
     void GenerateShouldAttachPath()
@@ -470,19 +470,19 @@ Y_UNIT_TEST_SUITE(TDiskAgentStressTest)
                         diskAgent.SendAttachPathsRequest(
                             request.Paths,
                             diskRegistryGeneration,
-                            request.DiskAgentGeneration);
+                            request.RequestNumber);
                         error = diskAgent.RecvAttachPathsResponse()->GetError();
                     } else {
                         diskAgent.SendDetachPathsRequest(
                             request.Paths,
                             diskRegistryGeneration,
-                            request.DiskAgentGeneration);
+                            request.RequestNumber);
                         error = diskAgent.RecvDetachPathsResponse()->GetError();
                     }
 
                     bool shouldBeSuccessful = diskAgentModel.AttachDetachPath(
                         diskRegistryGeneration,
-                        request.DiskAgentGeneration,
+                        request.RequestNumber,
                         request.Paths,
                         attach);
 

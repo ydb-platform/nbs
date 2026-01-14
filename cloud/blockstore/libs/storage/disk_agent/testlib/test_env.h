@@ -312,7 +312,7 @@ public:
     auto CreateDetachPathsRequest(
         const TVector<TString>& paths,
         ui64 diskRegistryGeneration,
-        ui64 diskAgentGeneration)
+        ui64 requestNumber)
     {
         auto request = std::make_unique<TEvDiskAgent::TEvDetachPathsRequest>();
 
@@ -324,7 +324,7 @@ public:
             request->Record.MutableControlPlaneRequestNumber();
         controlPlaneRequestNumber->SetDiskRegistryGeneration(
             diskRegistryGeneration);
-        controlPlaneRequestNumber->SetDiskAgentGeneration(diskAgentGeneration);
+        controlPlaneRequestNumber->SetRequestNumber(requestNumber);
 
         return request;
     }
@@ -332,7 +332,7 @@ public:
     auto CreateAttachPathsRequest(
         const TVector<TString>& paths,
         ui64 diskRegistryGeneration,
-        ui64 diskAgentGeneration)
+        ui64 requestNumber)
     {
         auto request = std::make_unique<TEvDiskAgent::TEvAttachPathsRequest>();
 
@@ -344,7 +344,7 @@ public:
             request->Record.MutableControlPlaneRequestNumber();
         controlPlaneRequestNumber->SetDiskRegistryGeneration(
             diskRegistryGeneration);
-        controlPlaneRequestNumber->SetDiskAgentGeneration(diskAgentGeneration);
+        controlPlaneRequestNumber->SetRequestNumber(requestNumber);
 
         return request;
     }
