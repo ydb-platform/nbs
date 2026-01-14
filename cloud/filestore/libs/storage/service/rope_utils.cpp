@@ -74,7 +74,7 @@ TRope CreateRope(
     return rope;
 }
 
-TRope CreateRope(const char* data, ui64 size)
+TRope CreateRope(void* data, ui64 size)
 {
     return TRope(TRcBuf(
         MakeIntrusive<TIovecContiguousChunk<>>(
