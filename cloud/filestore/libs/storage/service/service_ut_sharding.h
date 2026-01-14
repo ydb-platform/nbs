@@ -1,3 +1,5 @@
+#pragma once
+
 #include "cloud/filestore/libs/storage/api/ss_proxy.h"
 
 #include <cloud/filestore/libs/storage/api/tablet.h>
