@@ -1,6 +1,7 @@
 #include "service.h"
 #include "service_private.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
@@ -22,6 +23,7 @@ namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
+using namespace NMonitoring;
 
 namespace {
 
@@ -3203,7 +3205,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, evPuts);
         // clang-format on
 
-
         auto counters = env.GetCounters()
                             ->FindSubgroup("component", "service_fs")
                             ->FindSubgroup("host", "cluster")
@@ -4428,6 +4429,135 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             NProto::EServiceState::SERVICE_STATE_STOPPING,
             pingResponse->Record.GetServiceState(),
             pingResponse->Record.ShortDebugString());
+    }
+
+    Y_UNIT_TEST(ShouldReadFakeDataWhenReadBlobDisabled)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::STORAGE_MEDIA_SSD);
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetTwoStageReadEnabled(true);
+            newConfig.SetReadBlobDisabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                response.GetStorageConfig().GetTwoStageReadEnabled());
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        auto headers = service.InitSession(fs, "client");
+
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto fakeBlobWasRead = counters->GetCounter(
+            "AppCriticalEvents/FakeBlobWasRead",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, fakeBlobWasRead->Val());
+
+        TString data(1_MB, 'b');
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+        service.ReadData(headers, fs, nodeId, handle, 0, data.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, fakeBlobWasRead->Val());
+    }
+
+    Y_UNIT_TEST(ShouldReadFakeDataWhenFakeDescribeDataEnabled)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::STORAGE_MEDIA_SSD);
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetTwoStageReadEnabled(true);
+            // Enabled fake DescribeData but forgot to set ReadBlobDisabled
+            newConfig.SetFakeDescribeDataEnabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        auto headers = service.InitSession(fs, "client");
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto fakeBlobWasRead = counters->GetCounter(
+            "AppCriticalEvents/FakeBlobWasRead",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, fakeBlobWasRead->Val());
+        auto unexpectedFakeDescribeDataResponse = counters->GetCounter(
+            "AppCriticalEvents/UnexpectedFakeDescribeDataResponse",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            unexpectedFakeDescribeDataResponse->Val());
+
+        service.SendReadDataRequest(headers, fs, 0, 0, 0, 1_MB);
+        auto response = service.RecvReadDataResponse();
+        // Misconfiguration: requests should hang until ReadBlobDisabled is
+        // set
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, fakeBlobWasRead->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, unexpectedFakeDescribeDataResponse->Val());
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetTwoStageReadEnabled(true);
+            newConfig.SetFakeDescribeDataEnabled(true);
+            // Fix misconfiguration by setting ReadBlobDisabled
+            newConfig.SetReadBlobDisabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        headers = service.InitSession(fs, "client");
+
+        // Should succeed because FakeDescribeDataEnabled and ReadBlobDisabled
+        // are set
+        service.ReadData(headers, fs, 0, 0, 0, 1_MB);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, fakeBlobWasRead->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, unexpectedFakeDescribeDataResponse->Val());
     }
 }
 

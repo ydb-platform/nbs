@@ -368,6 +368,9 @@ public:
     ui32 GetCpuLackOverloadThreshold() const;
 
     ui32 GetMaxTabletStep() const;
+
+    bool GetFakeDescribeDataEnabled() const;
+    ui32 GetFakeDescribeDataLatencyUs() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
