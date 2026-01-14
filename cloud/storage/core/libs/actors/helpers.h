@@ -26,6 +26,11 @@ void LogUnexpectedEvent(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Returns true if event was forwarded through pipe (see note in implementation)
+bool IsForwardedEvent(const NActors::IEventHandle& ev);
+
+////////////////////////////////////////////////////////////////////////////////
+
 inline NActors::TActorId Register(
     const NActors::TActorContext& ctx,
     NActors::IActorPtr actor)

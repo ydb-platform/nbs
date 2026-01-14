@@ -2,9 +2,8 @@
 
 #include "helpers.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
-
-#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>

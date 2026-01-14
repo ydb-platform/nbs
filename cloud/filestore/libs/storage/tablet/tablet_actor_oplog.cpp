@@ -89,6 +89,7 @@ void TIndexTabletActor::ReplayOpLog(
                 ReportFailedToLockNodeRef(TStringBuilder() << "Request: "
                     << request.GetOriginalRequest().ShortUtf8DebugString());
             }
+
             RegisterRenameNodeInDestinationActor(
                 ctx,
                 nullptr, // requestInfo

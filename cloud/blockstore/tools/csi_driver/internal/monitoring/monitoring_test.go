@@ -86,11 +86,26 @@ func TestShouldReportInflightAndCount(t *testing.T) {
 Count{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 1
 Count{component="server",method="/csi.v1.Controller/CreateVolume"} 2
 Count{component="server",method="/csi.v1.Controller/DeleteVolume"} 1
+# HELP CriticalRetriableErrors
+# TYPE CriticalRetriableErrors counter
+CriticalRetriableErrors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
+CriticalRetriableErrors{component="server",method="/csi.v1.Controller/CreateVolume"} 0
+CriticalRetriableErrors{component="server",method="/csi.v1.Controller/DeleteVolume"} 0
+# HELP Errors
+# TYPE Errors counter
+Errors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
+Errors{component="server",method="/csi.v1.Controller/CreateVolume"} 0
+Errors{component="server",method="/csi.v1.Controller/DeleteVolume"} 0
 # HELP InflightCount
 # TYPE InflightCount gauge
 InflightCount{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 1
 InflightCount{component="server",method="/csi.v1.Controller/CreateVolume"} 2
 InflightCount{component="server",method="/csi.v1.Controller/DeleteVolume"} 1
+# HELP RetriableErrors
+# TYPE RetriableErrors counter
+RetriableErrors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
+RetriableErrors{component="server",method="/csi.v1.Controller/CreateVolume"} 0
+RetriableErrors{component="server",method="/csi.v1.Controller/DeleteVolume"} 0
 `)
 }
 
@@ -115,12 +130,18 @@ func TestShouldReportErrorsAndSuccess(t *testing.T) {
 		`# HELP Count
 # TYPE Count counter
 Count{component="server",method="/csi.v1.Controller/CreateVolume"} 4
+# HELP CriticalRetriableErrors
+# TYPE CriticalRetriableErrors counter
+CriticalRetriableErrors{component="server",method="/csi.v1.Controller/CreateVolume"} 0
 # HELP Errors
 # TYPE Errors counter
 Errors{component="server",method="/csi.v1.Controller/CreateVolume"} 1
 # HELP InflightCount
 # TYPE InflightCount gauge
 InflightCount{component="server",method="/csi.v1.Controller/CreateVolume"} 1
+# HELP RetriableErrors
+# TYPE RetriableErrors counter
+RetriableErrors{component="server",method="/csi.v1.Controller/CreateVolume"} 0
 # HELP Success
 # TYPE Success counter
 Success{component="server",method="/csi.v1.Controller/CreateVolume"} 2
@@ -143,9 +164,18 @@ func TestShouldReportTimeBuckets(t *testing.T) {
 		`# HELP Count
 # TYPE Count counter
 Count{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 1
+# HELP CriticalRetriableErrors
+# TYPE CriticalRetriableErrors counter
+CriticalRetriableErrors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
+# HELP Errors
+# TYPE Errors counter
+Errors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
 # HELP InflightCount
 # TYPE InflightCount gauge
 InflightCount{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
+# HELP RetriableErrors
+# TYPE RetriableErrors counter
+RetriableErrors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
 # HELP Success
 # TYPE Success counter
 Success{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 1
@@ -202,6 +232,9 @@ Count{component="server",method="/csi.v1.Node/NodeStageVolume"} 6
 # HELP CriticalRetriableErrors
 # TYPE CriticalRetriableErrors counter
 CriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 1
+# HELP Errors
+# TYPE Errors counter
+Errors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
 # HELP InflightCount
 # TYPE InflightCount gauge
 InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
@@ -264,6 +297,12 @@ func TestShouldReportRetriableErrosAfterExceedingThresholdForVolume(t *testing.T
 		`# HELP Count
 # TYPE Count counter
 Count{component="server",method="/csi.v1.Node/NodeStageVolume"} 5
+# HELP CriticalRetriableErrors
+# TYPE CriticalRetriableErrors counter
+CriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+# HELP Errors
+# TYPE Errors counter
+Errors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
 # HELP InflightCount
 # TYPE InflightCount gauge
 InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
@@ -286,6 +325,12 @@ RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 1
 		`# HELP Count
 # TYPE Count counter
 Count{component="server",method="/csi.v1.Node/NodeStageVolume"} 7
+# HELP CriticalRetriableErrors
+# TYPE CriticalRetriableErrors counter
+CriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+# HELP Errors
+# TYPE Errors counter
+Errors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
 # HELP InflightCount
 # TYPE InflightCount gauge
 InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
@@ -310,6 +355,12 @@ RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 3
 		`# HELP Count
 # TYPE Count counter
 Count{component="server",method="/csi.v1.Node/NodeStageVolume"} 9
+# HELP CriticalRetriableErrors
+# TYPE CriticalRetriableErrors counter
+CriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+# HELP Errors
+# TYPE Errors counter
+Errors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
 # HELP InflightCount
 # TYPE InflightCount gauge
 InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
