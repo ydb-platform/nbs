@@ -326,7 +326,7 @@ private:
 
     void ProcessInitialAgentRejectionPhase(const NActors::TActorContext& ctx);
 
-    void ScheduleRestoreDisksToOnlineIfNeeded(const NActors::TActorContext& ctx, bool immediatly = false);
+    void ScheduleRestoreDisksToOnlineIfNeeded(const NActors::TActorContext& ctx, bool immediately);
 
 private:
     STFUNC(StateBoot);
@@ -521,10 +521,6 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleRestoreAgentsToOnline(
-        const TEvDiskRegistryPrivate::TEvDiskRegistryRestoreAgentsToOnline::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleRestoreAgentsToOnlineReadOnly(
         const TEvDiskRegistryPrivate::TEvDiskRegistryRestoreAgentsToOnline::TPtr& ev,
         const NActors::TActorContext& ctx);
 

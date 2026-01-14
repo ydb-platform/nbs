@@ -299,13 +299,13 @@ void TDiskRegistryActor::ScheduleDiskRegistryAgentListExpiredParamsCleanup(
 
 void TDiskRegistryActor::ScheduleRestoreDisksToOnlineIfNeeded(
     const NActors::TActorContext& ctx,
-    bool immediatly)
+    bool immediately)
 {
     if (!Config->GetCheckAgentsToRestoreToOnlineInterval()) {
         return;
     }
     ctx.Schedule(
-        immediatly ? TDuration::Zero() : Config->GetCheckAgentsToRestoreToOnlineInterval(),
+        immediately ? TDuration::Zero() : Config->GetCheckAgentsToRestoreToOnlineInterval(),
         new TEvDiskRegistryPrivate::TEvDiskRegistryRestoreAgentsToOnline());
 }
 
@@ -789,9 +789,8 @@ STFUNC(TDiskRegistryActor::StateRestore)
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly);
 
-        HFunc(
-            TEvDiskRegistryPrivate::TEvDiskRegistryRestoreAgentsToOnline,
-            HandleRestoreAgentsToOnlineReadOnly);
+        IgnoreFunc(
+            TEvDiskRegistryPrivate::TEvDiskRegistryRestoreAgentsToOnline);
 
         IgnoreFunc(TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
 
@@ -864,9 +863,8 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
             TEvDiskRegistry::TEvGetClusterCapacityRequest,
             HandleGetClusterCapacity);
 
-        HFunc(
-            TEvDiskRegistryPrivate::TEvDiskRegistryRestoreAgentsToOnline,
-            HandleRestoreAgentsToOnlineReadOnly);
+        IgnoreFunc(
+            TEvDiskRegistryPrivate::TEvDiskRegistryRestoreAgentsToOnline);
 
         IgnoreFunc(
             TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);

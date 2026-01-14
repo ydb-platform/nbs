@@ -1481,23 +1481,23 @@ struct TTxDiskRegistry
         }
     };
 
+    //
+    // RestoreDisksToOnline
+    //
 
-    struct TRestoreDisksToOnline{
-        const TRequestInfoPtr RequestInfo;
-
+    struct TRestoreDisksToOnline
+    {
         NProto::TError Error;
         TVector<TString> AffectedAgents;
-        bool RemainingAgents;
+        bool RemainingAgents = false;
 
-        TRestoreDisksToOnline(
-            TRequestInfoPtr requestInfo
-        )
-        : RequestInfo(std::move(requestInfo))
-        {}
+        TRestoreDisksToOnline() = default;
 
         void Clear()
         {
             Error.Clear();
+            AffectedAgents.clear();
+            RemainingAgents = false;
         }
     };
 };

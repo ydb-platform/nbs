@@ -3097,19 +3097,33 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST(ShouldRestoreAgentsToOnline)
     {
-        TVector agents{CreateAgentConfig(
-            "agent-1",
-            {
-                Device("dev-1", "uuid-1.1", "rack-1", 10_GB),
-                Device("dev-2", "uuid-1.2", "rack-1", 10_GB),
-            })};
+        TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {
+                    Device("dev-1", "uuid-1.1", "rack-1", 10_GB),
+                    Device("dev-2", "uuid-1.2", "rack-1", 10_GB),
+                }),
+            CreateAgentConfig(
+                "agent-2",
+                {
+                    Device("dev-10", "uuid-10.1", "rack-10", 10_GB),
+                    Device("dev-20", "uuid-10.2", "rack-10", 10_GB),
+                }),
+            CreateAgentConfig(
+                "agent-3",
+                {
+                    Device("dev-11", "uuid-11.1", "rack-11", 10_GB),
+                    Device("dev-21", "uuid-11.2", "rack-11", 10_GB),
+                })};
 
         NProto::TStorageServiceConfig config;
 
-        config.SetRestoreAgentsToOnlineInterval(
+        config.SetRestoreBackFromUnavailableAgentsDelay(
             TDuration::Minutes(12).MilliSeconds());
         config.SetCheckAgentsToRestoreToOnlineInterval(
             TDuration::Minutes(1).MilliSeconds());
+        config.SetRestoreAgentsCountPerTransaction(2);
         config.SetNonReplicatedDiskRecyclingPeriod(Max<ui32>());
         config.SetAllocationUnitNonReplicatedSSD(10);
 
@@ -3130,44 +3144,39 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             return states;
         };
 
+        auto assertAgentStatus = [&](NProto::EAgentState expectedState, TString expectedMessage) {
+            for(auto& agent: agents) {
+                auto agent_response = diskRegistry.GetAgentNodeId(agent.agentid());
+                UNIT_ASSERT_EQUAL(
+                    agent_response->Record.GetAgentState(),
+                    expectedState);
+                for (auto& state: listDiskStates()) {
+                    UNIT_ASSERT_EQUAL(state.GetStateMessage(), expectedMessage);
+                }
+            }
+        };
+
         RegisterAndWaitForAgents(*runtime, agents);
 
-        diskRegistry.ChangeAgentState(
-            "agent-1",
+        for(size_t i = 0; i < agents.size(); i++) {
+            auto& agent = agents[i];
+            diskRegistry.ChangeAgentState(
+            agent.agentid(),
             NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
 
-        agents[0].SetNodeId(1);
-        diskRegistry.RegisterAgent(agents[0]);
-
-        auto agent = diskRegistry.GetAgentNodeId("agent-1");
-        UNIT_ASSERT_EQUAL(
-            agent->Record.GetAgentState(),
-            NProto::EAgentState::AGENT_STATE_WARNING);
-        for (auto& state: listDiskStates()) {
-            UNIT_ASSERT_EQUAL(state.GetStateMessage(), "back from unavailable");
+            agent.SetNodeId(i+1);
+            diskRegistry.RegisterAgent(agent);
         }
+
+        assertAgentStatus(NProto::EAgentState::AGENT_STATE_WARNING, "back from unavailable");
+        
+        runtime->AdvanceCurrentTime(6min);
+        runtime->DispatchEvents({}, 100ms);
+        assertAgentStatus(NProto::EAgentState::AGENT_STATE_WARNING, "back from unavailable");
 
         runtime->AdvanceCurrentTime(6min);
         runtime->DispatchEvents({}, 100ms);
-        agent = diskRegistry.GetAgentNodeId("agent-1");
-        UNIT_ASSERT_EQUAL(
-            agent->Record.GetAgentState(),
-            NProto::EAgentState::AGENT_STATE_WARNING);
-        for (auto& state: listDiskStates()) {
-            UNIT_ASSERT_EQUAL(state.GetStateMessage(), "back from unavailable");
-        }
-
-        runtime->AdvanceCurrentTime(6min);
-        runtime->DispatchEvents({}, 100ms);
-        agent = diskRegistry.GetAgentNodeId("agent-1");
-        UNIT_ASSERT_EQUAL(
-            agent->Record.GetAgentState(),
-            NProto::EAgentState::AGENT_STATE_ONLINE);
-        for (auto& state: listDiskStates()) {
-            UNIT_ASSERT_EQUAL(
-                state.GetStateMessage(),
-                "automaticly restored to online");
-        }
+        assertAgentStatus(NProto::EAgentState::AGENT_STATE_ONLINE, "automaticly restored to online");
     }
 }
 

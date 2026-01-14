@@ -1408,7 +1408,7 @@ message TStorageServiceConfig
 
     // Change Disk Agent from "back from unavailable" to online if this time
     // has passed since the last change
-    optional uint32 RestoreAgentsToOnlineInterval = 477;
+    optional uint32 RestoreBackFromUnavailableAgentsDelay = 477;
 
     // Period for checking the disk agent for disks with status "back from unavailable"
     optional uint32 CheckAgentsToRestoreToOnlineInterval = 478;
