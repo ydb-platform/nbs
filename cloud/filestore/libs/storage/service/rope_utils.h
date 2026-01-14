@@ -10,6 +10,6 @@ TRope CreateRope(
     const ::google::protobuf::RepeatedPtrField<
         ::NCloud::NFileStore::NProto::TIovec>& iovecs);
 
-TRope CreateRope(const TString& buffer);
+TRope CreateRope(TString& buffer);
 
 }   // namespace NCloud::NFileStore::NStorage

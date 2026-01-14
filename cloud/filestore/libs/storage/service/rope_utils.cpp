@@ -4,6 +4,8 @@ namespace NCloud::NFileStore::NStorage {
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 template <bool Owner = false>
 class TIovecContiguousChunk: public IContiguousChunk
 {
@@ -51,7 +53,7 @@ public:
     }
 };
 
-} // namespace
+}   // namespace
 
 TRope CreateRope(
     const ::google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs)
@@ -72,7 +74,7 @@ TRope CreateRope(
     return rope;
 }
 
-TRope CreateRope(const TString& buffer)
+TRope CreateRope(TString& buffer)
 {
     return TRope(TRcBuf(
         MakeIntrusive<TIovecContiguousChunk<>>(
