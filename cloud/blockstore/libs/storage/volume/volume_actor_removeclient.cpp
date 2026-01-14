@@ -181,7 +181,7 @@ void TVolumeActor::HandleRemoveClient(
     const bool isMonRequest = msg->Record.GetIsMonRequest();
 
     TActorId pipeServerActorId;
-    if (IsCrossNodeEvent(*ev)) {
+    if (IsForwardedEvent(*ev)) {
         pipeServerActorId = ev->Recipient;
     }
 

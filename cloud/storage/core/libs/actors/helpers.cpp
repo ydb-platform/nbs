@@ -73,10 +73,14 @@ void LogUnexpectedEvent(
     LogUnexpectedEvent(*ev, component, location);
 }
 
-bool IsCrossNodeEvent(const NActors::IEventHandle& ev)
+bool IsForwardedEvent(const NActors::IEventHandle& ev)
 {
-    // If event was forwarded through pipe from another node, its recipient and
-    // recipient rewrite would be different
+    // https://github.com/ydb-platform/ydb-rfc/blob/main/ydb_book/02-Actor-system-and-interconnect/02.07-Message-forwarding-in-chain.md
+    //
+    // Recipient and recipient rewrite would be different in cases:
+    // 1. If event was forwarded through pipe from another node
+    // 2. Returning or forwarding an undelivered message
+    // 3. Multiple forwarding of a message along a chain of actors
     return ev.Recipient != ev.GetRecipientRewrite();
 }
 
