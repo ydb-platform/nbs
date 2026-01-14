@@ -1,6 +1,7 @@
 #include "part_mirror_resync_fastpath_actor.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
@@ -25,15 +26,19 @@ TMirrorPartitionResyncFastPathActor::TMirrorPartitionResyncFastPathActor(
         TBlockRange64 range,
         TGuardedSgList sgList,
         TVector<TReplicaDescriptor> replicas,
-        TString clientId)
+        TString clientId,
+        bool optimizeFastPathReadsOnResync)
     : RequestInfo(std::move(requestInfo))
     , DiskId(std::move(diskId))
     , BlockSize(blockSize)
     , Range(range)
     , Replicas(std::move(replicas))
     , ClientId(std::move(clientId))
+    , OptimizeFastPathReadsOnResync(optimizeFastPathReadsOnResync)
     , SgList(std::move(sgList))
-{}
+{
+    Y_ABORT_UNLESS(!Replicas.empty());
+}
 
 void TMirrorPartitionResyncFastPathActor::Bootstrap(const TActorContext& ctx)
 {
@@ -59,56 +64,6 @@ void TMirrorPartitionResyncFastPathActor::ChecksumBlocks(
     }
 }
 
-void TMirrorPartitionResyncFastPathActor::ChecksumReplicaBlocks(
-    const TActorContext& ctx,
-    int idx)
-{
-    auto request = std::make_unique<
-        TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest>();
-    request->Record.SetStartIndex(Range.Start);
-    request->Record.SetBlocksCount(Range.Size());
-
-    auto* headers = request->Record.MutableHeaders();
-    headers->SetIsBackgroundRequest(true);
-    headers->SetClientId(TString(BackgroundOpsClientId));
-
-    auto event = std::make_unique<IEventHandle>(
-        Replicas[idx].ActorId,
-        ctx.SelfID,
-        request.release(),
-        IEventHandle::FlagForwardOnNondelivery,
-        idx,          // cookie
-        &ctx.SelfID   // forwardOnNondelivery
-    );
-
-    ctx.Send(std::move(event));
-}
-
-void TMirrorPartitionResyncFastPathActor::CompareChecksums(
-    const TActorContext& ctx)
-{
-    const ui64 firstChecksum = Checksums[0];
-    for (const auto& [idx, checksum]: Checksums) {
-        if (firstChecksum != checksum) {
-            LOG_INFO(
-                ctx,
-                TBlockStoreComponents::PARTITION,
-                "[%s] Resync range %s: checksum mismatch, %lu (0) != %lu (%u)"
-                ", fast path reading is not available",
-                DiskId.c_str(),
-                DescribeRange(Range).c_str(),
-                firstChecksum,
-                checksum,
-                idx);
-            Error = MakeError(E_REJECTED, "Checksum mismatch detected");
-            Done(ctx);
-            return;
-        }
-    }
-
-    Done(ctx);
-}
-
 void TMirrorPartitionResyncFastPathActor::ReadBlocks(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
@@ -118,7 +73,6 @@ void TMirrorPartitionResyncFastPathActor::ReadBlocks(const TActorContext& ctx)
     request->Record.Sglist = SgList;
 
     auto* headers = request->Record.MutableHeaders();
-    headers->SetIsBackgroundRequest(true);
     auto clientId = ClientId;
     if (!clientId) {
         clientId = BackgroundOpsClientId;
@@ -137,23 +91,148 @@ void TMirrorPartitionResyncFastPathActor::ReadBlocks(const TActorContext& ctx)
     ctx.Send(std::move(event));
 }
 
-void TMirrorPartitionResyncFastPathActor::CalculateChecksum()
+void TMirrorPartitionResyncFastPathActor::ChecksumReplicaBlocks(
+    const TActorContext& ctx,
+    int idx)
 {
-    if (auto guard = SgList.Acquire()) {
-        TBlockChecksum checksum;
-        const TSgList& sgList = guard.Get();
-        for (auto blockData: sgList) {
-            checksum.Extend(blockData.Data(), blockData.Size());
-        }
-        Checksums.insert({0, checksum.GetValue()});
+    auto request = std::make_unique<
+        TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest>();
+    request->Record.SetStartIndex(Range.Start);
+    request->Record.SetBlocksCount(Range.Size());
+
+    auto* headers = request->Record.MutableHeaders();
+    headers->SetClientId(TString(BackgroundOpsClientId));
+
+    auto event = std::make_unique<IEventHandle>(
+        Replicas[idx].ActorId,
+        ctx.SelfID,
+        request.release(),
+        IEventHandle::FlagForwardOnNondelivery,
+        idx,          // cookie
+        &ctx.SelfID   // forwardOnNondelivery
+    );
+
+    ctx.Send(std::move(event));
+}
+
+void TMirrorPartitionResyncFastPathActor::CompareChecksums(
+    const NActors::TActorContext& ctx)
+{
+    Y_DEBUG_ABORT_UNLESS(!Checksums.empty());
+    Y_DEBUG_ABORT_UNLESS(DataChecksum);
+
+    if (!OptimizeFastPathReadsOnResync && !AllChecksumsReceived()) {
+        return;
+    }
+
+    const auto mismatchedReplica = FindChecksumMismatch();
+    if (mismatchedReplica) {
+        Error = MakeError(E_REJECTED, "Checksum mismatch detected");
+
+        const ui32 checksum = Checksums[*mismatchedReplica];
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION_WORKER,
+            "[%s] Resync range %s: checksum mismatch, %u (data) != %u "
+            "(%u), %s",
+            DiskId.c_str(),
+            DescribeRange(Range).c_str(),
+            *DataChecksum,
+            checksum,
+            *mismatchedReplica,
+            (ReplySent ? "fast path reading is not available"
+                       : "fast resync failed"));
+    } else {
+        Error = NProto::TError();
     }
 }
 
-void TMirrorPartitionResyncFastPathActor::Done(const TActorContext& ctx)
+void TMirrorPartitionResyncFastPathActor::MaybeCompareChecksums(
+    const TActorContext& ctx)
 {
+    if (!DataChecksum) {
+        return;
+    }
+
+    if (Replicas.size() == 1) {
+        if (!Error) {
+            Error = NProto::TError();
+        }
+        ReplyAndDie(ctx);
+        return;
+    }
+
+    if (Checksums.empty()) {
+        return;
+    }
+
+    CompareChecksums(ctx);
+    MaybeReplyAndDie(ctx);
+}
+
+bool TMirrorPartitionResyncFastPathActor::MaybeReplyAndDie(
+    const NActors::TActorContext& ctx)
+{
+    if (!Error) {
+        return false;
+    }
+
+    if (!ReplySent) {
+        Reply(ctx);
+        if (!OptimizeFastPathReadsOnResync || HasError(*Error)) {
+            Die(ctx);
+            return true;
+        }
+    }
+
+    if (AllChecksumsReceived() || HasError(*Error)) {
+        FinishResync(ctx);
+        Die(ctx);
+        return true;
+    }
+
+    return false;
+}
+
+void TMirrorPartitionResyncFastPathActor::CalculateChecksum(
+    const TActorContext& ctx)
+{
+    auto guard = SgList.Acquire();
+    if (!guard) {
+        Error = MakeError(E_CANCELLED, "Failed to acquire sglist");
+        ReplyAndDie(ctx);
+        return;
+    }
+
+    const auto checksum = NCloud::NBlockStore::CalculateChecksum(guard.Get());
+    Y_DEBUG_ABORT_UNLESS(checksum.GetByteCount() == Range.Size() * BlockSize);
+    DataChecksum = checksum.GetChecksum();
+}
+
+std::optional<ui32>
+TMirrorPartitionResyncFastPathActor::FindChecksumMismatch() const
+{
+    for (auto [idx, checksum]: Checksums) {
+        if (*DataChecksum != checksum) {
+            return idx;
+        }
+    }
+    return std::nullopt;
+}
+
+bool TMirrorPartitionResyncFastPathActor::AllChecksumsReceived() const {
+    return Checksums.size() + 1 >= Replicas.size();
+}
+
+void TMirrorPartitionResyncFastPathActor::Reply(
+    const TActorContext& ctx)
+{
+    Y_ABORT_UNLESS(Error);
+    Y_DEBUG_ABORT_UNLESS(!ReplySent);
+    ReplySent = true;
+
     auto response = std::make_unique<
-        TEvNonreplPartitionPrivate::TEvReadResyncFastPathResponse>(
-        std::move(Error));
+        TEvNonreplPartitionPrivate::TEvResyncFastPathReadResponse>(*Error);
     LWTRACK(
         ResponseSent_PartitionWorker,
         RequestInfo->CallContext->LWOrbit,
@@ -161,7 +240,22 @@ void TMirrorPartitionResyncFastPathActor::Done(const TActorContext& ctx)
         RequestInfo->CallContext->RequestId);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
+}
 
+void TMirrorPartitionResyncFastPathActor::FinishResync(const TActorContext& ctx)
+{
+    Y_ABORT_UNLESS(Error);
+    auto response = std::make_unique<
+        TEvNonreplPartitionPrivate::TEvResyncFastPathChecksumCompareResponse>(
+        *Error,
+        Range);
+
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+}
+
+void TMirrorPartitionResyncFastPathActor::ReplyAndDie(const TActorContext& ctx)
+{
+    Reply(ctx);
     Die(ctx);
 }
 
@@ -174,8 +268,8 @@ void TMirrorPartitionResyncFastPathActor::HandleChecksumUndelivery(
     Y_UNUSED(ev);
 
     Error = MakeError(E_REJECTED, "ChecksumBlocks request undelivered");
-
-    Done(ctx);
+    const bool dead = MaybeReplyAndDie(ctx);
+    Y_DEBUG_ABORT_UNLESS(dead);
 }
 
 void TMirrorPartitionResyncFastPathActor::HandleChecksumResponse(
@@ -184,43 +278,43 @@ void TMirrorPartitionResyncFastPathActor::HandleChecksumResponse(
 {
     auto* msg = ev->Get();
 
-    Error = msg->Record.GetError();
-
-    if (HasError(Error)) {
-        Done(ctx);
+    if (HasError(msg->Record.GetError())) {
+        Error = std::move(*msg->Record.MutableError());
+        const bool dead = MaybeReplyAndDie(ctx);
+        Y_DEBUG_ABORT_UNLESS(dead);
         return;
     }
 
-    Checksums.insert({ev->Cookie, msg->Record.GetChecksum()});
-    if (Checksums.size() == Replicas.size()) {
-        CompareChecksums(ctx);
-    }
+    Checksums.emplace(
+        ev->Cookie,
+        SafeIntegerCast<ui32>(msg->Record.GetChecksum()));
+    MaybeCompareChecksums(ctx);
 }
 
 void TMirrorPartitionResyncFastPathActor::HandleReadResponse(
     const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
-    Error = ev->Get()->GetError();
-    if (HasError(Error)) {
-        Done(ctx);
+    auto* msg = ev->Get();
+
+    if (HasError(msg->Record.GetError())) {
+        Error = std::move(*msg->Record.MutableError());
+        ReplyAndDie(ctx);
         return;
     }
 
-    CalculateChecksum();
-    if (Checksums.size() == Replicas.size()) {
-        CompareChecksums(ctx);
-    }
+    CalculateChecksum(ctx);
+    MaybeCompareChecksums(ctx);
 }
 
 void TMirrorPartitionResyncFastPathActor::HandleReadUndelivery(
     const TEvService::TEvReadBlocksLocalRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     Y_UNUSED(ev);
 
     Error = MakeError(E_REJECTED, "ReadBlocksLocal request undelivered");
-    Done(ctx);
+    ReplyAndDie(ctx);
 }
 
 void TMirrorPartitionResyncFastPathActor::HandlePoisonPill(
@@ -230,7 +324,7 @@ void TMirrorPartitionResyncFastPathActor::HandlePoisonPill(
     Y_UNUSED(ev);
 
     Error = MakeError(E_REJECTED, "Dead");
-    Done(ctx);
+    MaybeReplyAndDie(ctx);
 }
 
 STFUNC(TMirrorPartitionResyncFastPathActor::StateWork)

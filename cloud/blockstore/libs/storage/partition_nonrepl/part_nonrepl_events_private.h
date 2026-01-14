@@ -205,12 +205,25 @@ struct TEvNonreplPartitionPrivate
     };
 
     //
-    // ReadResyncFastPathResponse
+    // ResyncFastPathReadResponse
     //
 
-    struct TReadResyncFastPathResponse
+    struct TResyncFastPathReadResponse
     {
-        NProto::TError Error;
+    };
+
+    //
+    // ResyncFastPathChecksumCompareResponse
+    //
+
+    struct TResyncFastPathChecksumCompareResponse
+    {
+        TBlockRange64 BlockRange;
+
+        explicit TResyncFastPathChecksumCompareResponse(
+                TBlockRange64 blockRange)
+            : BlockRange(blockRange)
+        {}
     };
 
     //
@@ -449,7 +462,8 @@ struct TEvNonreplPartitionPrivate
         EvChecksumBlocksCompleted,
         EvResyncNextRange,
         EvRangeResynced,
-        EvReadResyncFastPathResponse,
+        EvResyncFastPathReadResponse,
+        EvResyncFastPathChecksumCompareResponse,
         EvGetDeviceForRangeRequest,
         EvGetDeviceForRangeResponse,
         EvCancelRequest,
@@ -512,9 +526,14 @@ struct TEvNonreplPartitionPrivate
         EvRangeResynced
     >;
 
-    using TEvReadResyncFastPathResponse = TResponseEvent<
-        TReadResyncFastPathResponse,
-        EvReadResyncFastPathResponse
+    using TEvResyncFastPathReadResponse = TResponseEvent<
+        TResyncFastPathReadResponse,
+        EvResyncFastPathReadResponse
+    >;
+
+    using TEvResyncFastPathChecksumCompareResponse = TResponseEvent<
+        TResyncFastPathChecksumCompareResponse,
+        EvResyncFastPathChecksumCompareResponse
     >;
 
     using TEvGetDeviceForRangeRequest = TResponseEvent<
