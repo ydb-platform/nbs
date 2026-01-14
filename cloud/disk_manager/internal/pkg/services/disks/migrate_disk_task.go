@@ -450,7 +450,12 @@ func (t *migrateDiskTask) deleteSourceDiskIdTag(
 	if err != nil {
 		return err
 	}
-	t.logInfo(ctx, execCtx, "source-disk-id tag %v removed from dst disk", t.getSourceDiskIdTagStr())
+	t.logInfo(
+		ctx,
+		execCtx,
+		"source-disk-id tag %v removed from dst disk",
+		t.getSourceDiskIdTagStr(),
+	)
 
 	return nil
 }
