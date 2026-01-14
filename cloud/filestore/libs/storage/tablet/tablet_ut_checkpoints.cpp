@@ -1,5 +1,6 @@
 #include "tablet.h"
 
+#include <cloud/filestore/libs/storage/testlib/helpers.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
@@ -328,6 +329,122 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
 
         tablet.DestroyHandle(handle1);
         tablet.DestroyHandle(handle2);
+    }
+
+    Y_UNIT_TEST(ShouldHandleCommitIdOverflowInCreateCheckpoint)
+    {
+        const ui32 block = 4_KB;
+        const ui32 maxTabletStep = 8;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxTabletStep(maxTabletStep);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        const auto id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        ui32 createCheckpointRejectedCount = 0;
+
+        auto reconnectAndRecreateHandleIfNeeded = [&](bool createHandle = true)
+        {
+            if (rebootTracker.IsPipeDestroyed()) {
+                tablet.ReconnectPipe();
+                tablet.WaitReady();
+                tablet.RecoverSession();
+                if (createHandle) {
+                    handle = CreateHandle(tablet, id);
+                }
+                rebootTracker.ClearPipeDestroyed();
+            }
+        };
+
+        TVector<std::pair<TString, char>> successfulCheckpoints;
+        const int targetSuccessfulCheckpoints = 4;
+
+        for (int i = 0; i < targetSuccessfulCheckpoints;) {
+            tablet.SendWriteDataRequest(handle, 0, block, 'a' + i);
+            auto writeResponse = tablet.RecvWriteDataResponse();
+            reconnectAndRecreateHandleIfNeeded();
+
+            if (HasError(writeResponse->GetError())) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_REJECTED,
+                    writeResponse->GetError().GetCode());
+                continue;
+            }
+
+            TString checkpointId = TStringBuilder() << "checkpoint_" << i;
+
+            tablet.SendCreateCheckpointRequest(checkpointId);
+            auto checkpointResponse = tablet.RecvCreateCheckpointResponse();
+            reconnectAndRecreateHandleIfNeeded();
+
+            if (HasError(checkpointResponse->GetError())) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_REJECTED,
+                    checkpointResponse->GetError().GetCode());
+                ++createCheckpointRejectedCount;
+                continue;
+            }
+
+            successfulCheckpoints.push_back(
+                std::make_pair(checkpointId, 'a' + i));
+
+            ++i;
+        }
+
+        for (int i = 0; i < targetSuccessfulCheckpoints;) {
+            tablet.InitSession(
+                "client",
+                TStringBuilder() << "session_" << i,
+                successfulCheckpoints[i].first);
+            tablet.SendCreateHandleRequest(id, TCreateHandleArgs::RDWR);
+            auto handleResponse = tablet.RecvCreateHandleResponse();
+            reconnectAndRecreateHandleIfNeeded(false);
+
+            if (HasError(handleResponse->GetError())) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_REJECTED,
+                    handleResponse->GetError().GetCode());
+                continue;
+            }
+
+            ui64 checkpointHandle = handleResponse->Record.GetHandle();
+
+            auto response = tablet.ReadData(checkpointHandle, 0, block);
+            const auto& buffer = response->Record.GetBuffer();
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(
+                buffer,
+                block,
+                successfulCheckpoints[i].second);
+
+            ++i;
+        }
+
+        UNIT_ASSERT_C(
+            rebootTracker.GetGenerationCount() >= 2,
+            "Expected at least 2 different generations due to tablet reboot,"
+            "got "
+                << rebootTracker.GetGenerationCount());
+
+        UNIT_ASSERT_C(
+            createCheckpointRejectedCount >= 1,
+            "Expected at least 1 checkpoint to overflow commit id, "
+            "got "
+                << createCheckpointRejectedCount);
     }
 }
 
