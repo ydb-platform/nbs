@@ -40,6 +40,7 @@ namespace NCloud::NFileStore{
     xxx(DirectoryHandlesStorageError)                                          \
     xxx(CalculateChecksumsBufferOverflow)                                      \
     xxx(UnexpectedFakeDescribeDataResponse)                                    \
+    xxx(CreateLinkRequestWithShardNodeNameAndNoShardId)                        \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \
