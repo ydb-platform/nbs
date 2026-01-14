@@ -58,13 +58,16 @@ void TIndexTabletActor::ExecuteTx_CreateCheckpoint(
     TTransactionContext& tx,
     TTxIndexTablet::TCreateCheckpoint& args)
 {
+    Y_UNUSED(ctx);
+
     FILESTORE_VALIDATE_TX_ERROR(CreateCheckpoint, args);
 
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "CreateCheckpoint");
+        args.Error = ErrorCommitIdOverflow();
+        return;
     }
 
     auto* checkpoint = CreateCheckpoint(
@@ -89,6 +92,10 @@ void TIndexTabletActor::CompleteTx_CreateCheckpoint(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    if (args.CommitId == InvalidCommitId) {
+        ScheduleRebootTabletOnCommitIdOverflow(ctx, "CreateCheckpoint");
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

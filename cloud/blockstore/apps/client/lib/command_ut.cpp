@@ -838,16 +838,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         client->ExecuteActionHandler =
             [&](std::shared_ptr<NProto::TExecuteActionRequest> request)
         {
-            NJson::TJsonValue json;
-
-            UNIT_ASSERT(NJson::ReadJsonTree(request->GetInput(), &json));
-            ui32 replicaCount = json["ReplicaCount"].GetUIntegerRobust();
-
-            if(requestCount == 0){
-                UNIT_ASSERT_VALUES_EQUAL(3, replicaCount);
-            } else {
-                UNIT_ASSERT_VALUES_UNEQUAL(3, replicaCount);
-            }
+            Y_UNUSED(request);
             requestCount++;
 
             NProto::TExecuteActionResponse response;
