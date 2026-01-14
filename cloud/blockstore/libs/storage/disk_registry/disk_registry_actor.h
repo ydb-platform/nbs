@@ -93,6 +93,9 @@ private:
     bool AutomaticallyReplacedDevicesDeletionInProgress = false;
     THashSet<TString> SecureEraseInProgressPerPool;
     bool StartMigrationInProgress = false;
+    bool RestoreAgentsToOnlineInProgress = false;
+
+    uint32_t RestoreAgentsToOnlineIterations = 1;
 
     TVector<TString> DisksBeingDestroyed;
     TVector<TDiskNotification> DisksBeingNotified;
@@ -326,7 +329,7 @@ private:
 
     void ProcessInitialAgentRejectionPhase(const NActors::TActorContext& ctx);
 
-    void ScheduleRestoreDisksToOnlineIfNeeded(const NActors::TActorContext& ctx, bool immediately);
+    void ProcessRestoreAgentsToOnline(const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateBoot);

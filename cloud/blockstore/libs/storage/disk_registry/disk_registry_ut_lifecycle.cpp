@@ -3176,6 +3176,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         runtime->AdvanceCurrentTime(6min);
         runtime->DispatchEvents({}, 100ms);
+        runtime->AdvanceCurrentTime(1min);
+        runtime->DispatchEvents({}, 100ms);
         assertAgentStatus(NProto::EAgentState::AGENT_STATE_ONLINE, "automaticly restored to online");
     }
 }

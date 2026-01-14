@@ -9,12 +9,14 @@ using namespace NActors;
 using namespace NKikimr::NTabletFlatExecutor;
 
 
-void TDiskRegistryActor::HandleRestoreAgentsToOnline(
-    const TEvDiskRegistryPrivate::TEvDiskRegistryRestoreAgentsToOnline::TPtr&
-        ev,
+void TDiskRegistryActor::ProcessRestoreAgentsToOnline(
     const NActors::TActorContext& ctx)
 {
-    Y_UNUSED(ev);
+    const auto delay = RestoreAgentsToOnlineIterations * Config->GetCheckAgentsToRestoreToOnlineInterval();
+
+    if(!delay || RestoreAgentsToOnlineInProgress || ctx.Now() < StartTime() + delay) {
+        return;
+    }
 
     LOG_INFO(
         ctx,
@@ -23,13 +25,14 @@ void TDiskRegistryActor::HandleRestoreAgentsToOnline(
         "%s ago",
         FormatDuration(Config->GetRestoreBackFromUnavailableAgentsDelay()).c_str());
 
-    ExecuteTx<TRestoreDisksToOnline>(ctx);
+    RestoreAgentsToOnlineInProgress = true;
+    ExecuteTx<TRestoreAgentsToOnline>(ctx);
 }
 
-bool TDiskRegistryActor::PrepareRestoreDisksToOnline(
+bool TDiskRegistryActor::PrepareRestoreAgentsToOnline(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TRestoreDisksToOnline& args)
+    TTxDiskRegistry::TRestoreAgentsToOnline& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
@@ -38,10 +41,10 @@ bool TDiskRegistryActor::PrepareRestoreDisksToOnline(
     return true;
 }
 
-void TDiskRegistryActor::ExecuteRestoreDisksToOnline(
+void TDiskRegistryActor::ExecuteRestoreAgentsToOnline(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TRestoreDisksToOnline& args)
+    TTxDiskRegistry::TRestoreAgentsToOnline& args)
 {
     TDiskRegistryDatabase db(tx.DB);
     args.Error = State->RestoreAgentsFromWarning(
@@ -53,16 +56,19 @@ void TDiskRegistryActor::ExecuteRestoreDisksToOnline(
         args.RemainingAgents);
 }
 
-void TDiskRegistryActor::CompleteRestoreDisksToOnline(
+void TDiskRegistryActor::CompleteRestoreAgentsToOnline(
     const TActorContext& ctx,
-    TTxDiskRegistry::TRestoreDisksToOnline& args)
+    TTxDiskRegistry::TRestoreAgentsToOnline& args)
 {
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
         "Restored agents to online state: %s",
         JoinSeq(", ", args.AffectedAgents).c_str());
-    ScheduleRestoreDisksToOnlineIfNeeded(ctx, args.RemainingAgents);
+    if(!args.RemainingAgents) {
+        RestoreAgentsToOnlineIterations++;
+    }
+    RestoreAgentsToOnlineInProgress = false;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
