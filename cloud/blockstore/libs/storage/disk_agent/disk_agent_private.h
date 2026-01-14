@@ -32,6 +32,14 @@ struct TEvDiskAgentPrivate
         ui64 Generation = 0;
         ui64 RequestNumber = 0;
 
+        TControlPlaneRequestNumber() = default;
+
+        explicit TControlPlaneRequestNumber(
+            const NProto::TControlPlaneRequestNumber& controlPlaneRequestNumber)
+            : Generation(controlPlaneRequestNumber.GetDiskRegistryGeneration())
+            , RequestNumber(controlPlaneRequestNumber.GetRequestNumber())
+        {}
+
         std::strong_ordering operator<=>(
             const TControlPlaneRequestNumber&) const = default;
     };
@@ -313,7 +321,3 @@ struct TEvDiskAgentPrivate
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
-
-TString ToString(
-    NCloud::NBlockStore::NStorage::TEvDiskAgentPrivate::
-        TControlPlaneRequestNumber controlPlaneRequestNumber);

@@ -578,13 +578,13 @@ message TReplicationTarget
 
 message TControlPlaneRequestNumber
 {
-    // Monotonously increasing counters needed to order attach/detach
-    // paths requests from one generation of DR tablet.
-    uint64 DiskAgentGeneration = 1;
-
     // Disk Registry Tablet generation needed to order attach/detach path
     // requests sent from two different DR generations.
-    uint32 DiskRegistryGeneration = 2;
+    uint32 DiskRegistryGeneration = 1;
+
+    // Monotonously increasing counters needed to order attach/detach
+    // paths requests from one generation of DR tablet.
+    uint64 RequestNumber = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

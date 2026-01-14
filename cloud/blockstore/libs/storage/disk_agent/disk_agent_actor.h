@@ -199,13 +199,6 @@ private:
     auto SplitPaths(TVector<TString> paths) const
         -> std::pair<TVector<TString>, TVector<TString>>;
 
-    // Returns: error or [attached paths, detached paths]
-    auto CheckAttachDetachPathsRequest(
-        TControlPlaneRequestNumber controlPlaneRequestNumber,
-        TVector<TString> paths,
-        EAction action)
-        -> TResultOrError<std::pair<TVector<TString>, TVector<TString>>>;
-
 private:
     STFUNC(StateInit);
     STFUNC(StateWork);
