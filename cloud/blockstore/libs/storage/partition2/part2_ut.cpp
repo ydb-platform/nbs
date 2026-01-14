@@ -7489,8 +7489,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
         runtime->DispatchEvents(options, TDuration::Seconds(3));
 
-        const auto& checksums1 = response1->Record.GetChecksums();
-        const auto& checksums2 = response2->Record.GetChecksums();
+        const auto& checksums1 = response1->Record.GetDiskChecksums().GetData();
+        const auto& checksums2 = response2->Record.GetDiskChecksums().GetData();
 
         ASSERT_VECTORS_EQUAL(
             TVector<ui32>(checksums1.begin(), checksums1.end()),
@@ -7524,8 +7524,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
         runtime->DispatchEvents(options, TDuration::Seconds(3));
 
-        const auto& checksums1 = response1->Record.GetChecksums();
-        const auto& checksums2 = response2->Record.GetChecksums();
+        const auto& checksums1 = response1->Record.GetDiskChecksums().GetData();
+        const auto& checksums2 = response2->Record.GetDiskChecksums().GetData();
 
         UNIT_ASSERT_VALUES_EQUAL(
             checksums1.size(),
