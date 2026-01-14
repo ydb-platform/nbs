@@ -1,3 +1,5 @@
+#pragma once
+
 #include "factory.h"
 
 namespace NCloud::NFileStore::NClient {

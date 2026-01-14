@@ -1,3 +1,5 @@
+#pragma once
+
 #include "tablet_actor.h"
 
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
