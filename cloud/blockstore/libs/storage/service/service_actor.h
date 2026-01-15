@@ -443,6 +443,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    TResultOrError<NActors::IActorPtr> CreateSwitchVhostDiscardOptionActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     // Local NVMe disks
 
     TResultOrError<NActors::IActorPtr> CreateListNVMeDevicesActor(
