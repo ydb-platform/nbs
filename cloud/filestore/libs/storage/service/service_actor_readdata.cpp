@@ -200,9 +200,7 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
         // initialization) which is heavy and we would like to execute that on a
         // separate thread (instead of this actor's parent thread)
         BlockBuffer->ReserveAndResize(ReadRequest.GetLength());
-        TargetBuffers = CreateRope(
-            const_cast<char*>(BlockBuffer->data()),
-            BlockBuffer->size());
+        TargetBuffers = CreateRope(BlockBuffer->begin(), BlockBuffer->size());
     } else {
         TargetBuffers = CreateRope(ReadRequest.GetIovecs());
     }
