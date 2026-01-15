@@ -36,6 +36,53 @@ using namespace NCloud::NStorage;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO:_ where should I place this function?
+// TODO:_ add two of the functions to .h file
+void TVolumeActor::SendSetVhostDiscardEnabledKekFlagRequestIfNeeded(
+    const TActorContext& ctx)
+{
+    Y_ABORT_UNLESS(State);
+
+    const auto& volueConfig = State->GetMeta().GetConfig();
+    bool discardCurrentlyEnabled = volueConfig.GetVhostDiscardEnabled();
+    bool discardShouldBeEnabled =
+        (Config->GetVhostDiscardEnabledOnVolumeRestart() ||
+         Config->IsVhostDiscardEnabledOnVolumeRestartFeatureEnabled(
+             volueConfig.GetCloudId(),
+             volueConfig.GetFolderId(),
+             State->GetDiskId())) &&
+        !State->IsDiskRegistryMediaKind();
+
+    if (discardCurrentlyEnabled == discardShouldBeEnabled) {
+        // TODO:_ print as string or as bool?
+        // The same question for other similar places.
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s skip sending VhostDiscardEnabledKekFlagRequest, "
+            "currently enabled: [%s], should be enabled: [%s]",
+            LogTitle.GetWithTime().c_str(),
+            discardCurrentlyEnabled ? "true" : "false",
+            discardShouldBeEnabled ? "true" : "false");
+        return;
+    }
+
+    auto request =
+        std::make_unique<TEvService::TEvSetVhostDiscardEnabledKekFlagRequest>(
+            State->GetDiskId(),
+            discardShouldBeEnabled);
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s sending VhostDiscardEnabledKekFlagRequest, "
+        "currently enabled: [%s], should be enabled: [%s]",
+        LogTitle.GetWithTime().c_str(),
+        discardCurrentlyEnabled ? "true" : "false",
+        discardShouldBeEnabled ? "true" : "false");
+    NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
+}
+
 bool TVolumeActor::SendBootExternalRequest(
     const TActorContext& ctx,
     TPartitionInfo& partition)
@@ -716,35 +763,21 @@ void TVolumeActor::HandleRetryStartPartition(
     }
 }
 
-void TVolumeActor::HandleBootExternalResponse(
-    const TEvHiveProxy::TEvBootExternalResponse::TPtr& ev,
+// TODO:_ where we should place this function?
+// TODO:_ do we even need to handle response?
+void TVolumeActor::HandleSetVhostDiscardEnabledKekFlagResponse(
+    const TEvHiveProxy::TEvSetVhostDiscardEnabledKekFlagResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    const ui64 partTabletId = ev->Cookie;
-
-    auto* part = State->GetPartition(partTabletId);
-
-    if (!part || !part->RequestingBootExternal || part->Bootstrapper) {
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "%s Received unexpected external boot info for part %lu",
-            LogTitle.GetWithTime().c_str(),
-            partTabletId);
-        return;
-    }
-
-    part->RequestingBootExternal = false;
-
     const auto& error = msg->GetError();
+
     if (FAILED(error.GetCode())) {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s BootExternalRequest for part %lu failed: %s",
+            "%s SetVhostDiscardEnabledKekFlag request failed: %s",
             LogTitle.GetWithTime().c_str(),
-            partTabletId,
             FormatError(error).c_str());
 
         part->ExternalBootTimeout = Min(
@@ -905,16 +938,8 @@ void TVolumeActor::HandleTabletStatus(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s Ignored status message %lu from outdated bootstrapper %s for "
-            "partition %lu",
-            LogTitle.GetWithTime().c_str(),
-            static_cast<ui32>(msg->Status),
-            ToString(ev->Sender).c_str(),
-            msg->TabletId);
-        // CompleteUpdateConfig calls StopPartitions, and then it
-        // calls StartPartitions with a completely new state.
-        // Ignore any signals from outdated bootstrappers.
-        return;
+            "%s SetVhostDiscardEnabledKekFlag request succeeded",
+            LogTitle.GetWithTime().c_str());
     }
 
     bool shouldRestart = false;
@@ -1001,23 +1026,294 @@ void TVolumeActor::HandleTabletStatus(
     }
 }
 
+void TVolumeActor::HandleBootExternalResponse(
+    const TEvHiveProxy::TEvBootExternalResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    const ui64 partTabletId = ev->Cookie;
+
+    auto* part = State->GetPartition(partTabletId);
+
+    if (!part || !part->RequestingBootExternal || part->Bootstrapper) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Received unexpected external boot info for part %lu",
+            LogTitle.GetWithTime().c_str(),
+            partTabletId);
+        return;
+    }
+
+    part->RequestingBootExternal = false;
+
+    const auto& error = msg->GetError();
+    if (FAILED(error.GetCode())) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s BootExternalRequest for part %lu failed: %s",
+            LogTitle.GetWithTime().c_str(),
+            partTabletId,
+            FormatError(error).c_str());
+
+        part->ExternalBootTimeout =
+            Min(part->ExternalBootTimeout +
+                    Config->GetExternalBootRequestTimeoutIncrement(),
+                Config->GetMaxExternalBootRequestTimeout());
+
+        ++FailedBoots;
+
+        part->SetFailed(
+            TStringBuilder()
+            << "BootExternalRequest failed: " << FormatError(error));
+        ScheduleRetryStartPartition(ctx, *part);
+        return;
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Received external boot info for part %lu",
+        LogTitle.GetWithTime().c_str(),
+        partTabletId);
+
+    if (msg->StorageInfo->TabletType != TTabletTypes::BlockStorePartition &&
+        msg->StorageInfo->TabletType != TTabletTypes::BlockStorePartition2)
+    {
+        // Partitions use specific tablet factory
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Unexpected part %lu with type %s",
+            LogTitle.GetWithTime().c_str(),
+            partTabletId,
+            ToString(msg->StorageInfo->TabletType).c_str());
+        part->SetFailed(
+            TStringBuilder()
+            << "Unexpected tablet type: " << msg->StorageInfo->TabletType);
+        // N.B.: this is a fatal error, don't retry
+        return;
+    }
+
+    Y_ABORT_UNLESS(
+        msg->StorageInfo->TabletID == partTabletId,
+        "Tablet IDs mismatch: %lu vs %lu",
+        msg->StorageInfo->TabletID,
+        partTabletId);
+
+    {
+        auto request = std::make_unique<
+            TEvStatsService::TEvPartitionBootExternalCompleted>(
+            State->GetDiskId(),
+            partTabletId,
+            msg->StorageInfo->Channels);
+        NCloud::Send(ctx, MakeStorageStatsServiceId(), std::move(request));
+    }
+
+    if (msg->SuggestedGeneration > part->SuggestedGeneration) {
+        part->SuggestedGeneration = msg->SuggestedGeneration;
+    }
+    part->StorageInfo = msg->StorageInfo;
+
+    const auto* appData = AppData(ctx);
+
+    auto config = Config;
+    auto partitionConfig = part->PartitionConfig;
+    auto diagnosticsConfig = DiagnosticsConfig;
+    auto profileLog = ProfileLog;
+    auto blockDigestGenerator = BlockDigestGenerator;
+    auto storageAccessMode = State->GetStorageAccessMode();
+    auto partitionIndex = part->PartitionIndex;
+    auto siblingCount = State->GetPartitions().size();
+    auto selfId = SelfId();
+    auto volumeTabletId = TabletID();
+
+    auto factory =
+        [=](const TActorId& owner, TTabletStorageInfo* storage) mutable
+    {
+        Y_ABORT_UNLESS(
+            storage->TabletType == TTabletTypes::BlockStorePartition ||
+            storage->TabletType == TTabletTypes::BlockStorePartition2);
+
+        if (storage->TabletType == TTabletTypes::BlockStorePartition) {
+            return NPartition::CreatePartitionTablet(
+                       owner,
+                       storage,
+                       std::move(config),
+                       std::move(diagnosticsConfig),
+                       std::move(profileLog),
+                       std::move(blockDigestGenerator),
+                       std::move(partitionConfig),
+                       storageAccessMode,
+                       partitionIndex,
+                       siblingCount,
+                       selfId,
+                       volumeTabletId)
+                .release();
+        } else {
+            return NPartition2::CreatePartitionTablet(
+                       owner,
+                       storage,
+                       std::move(config),
+                       std::move(diagnosticsConfig),
+                       std::move(profileLog),
+                       std::move(blockDigestGenerator),
+                       std::move(partitionConfig),
+                       storageAccessMode,
+                       siblingCount,
+                       selfId,
+                       volumeTabletId)
+                .release();
+        }
+    };
+
+    auto setupInfo = MakeIntrusive<TTabletSetupInfo>(
+        factory,
+        TMailboxType::ReadAsFilled,
+        appData->UserPoolId,
+        TMailboxType::ReadAsFilled,
+        appData->SystemPoolId);
+
+    TBootstrapperConfig bootConfig;
+    bootConfig.SuggestedGeneration = part->SuggestedGeneration;
+    bootConfig.BootAttemptsThreshold = 1;
+
+    auto bootstrapper = NCloud::RegisterLocal(
+        ctx,
+        CreateBootstrapper(
+            bootConfig,
+            SelfId(),
+            part->StorageInfo,
+            std::move(setupInfo)));
+
+    part->Init(bootstrapper);
+
+    NCloud::Send<TEvBootstrapper::TEvStart>(ctx, bootstrapper);
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Starting partition [%s g:%u] with bootstrapper %s",
+        LogTitle.GetWithTime().c_str(),
+        TLogTitle::GetPartitionPrefix(
+            partTabletId,
+            partitionIndex,
+            siblingCount)
+            .c_str(),
+        bootConfig.SuggestedGeneration,
+        ToString(bootstrapper).c_str());
+}
+
+void TVolumeActor::HandleTabletStatus(
+    const TEvBootstrapper::TEvStatus::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    auto* partition = State->GetPartition(msg->TabletId);
+    Y_ABORT_UNLESS(
+        partition,
+        "Missing partition state for %lu",
+        msg->TabletId);
+
+    if (partition->Bootstrapper != ev->Sender) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Ignored status message %lu from outdated bootstrapper %s "
+            "for "
+            "partition %lu",
+            LogTitle.GetWithTime().c_str(),
+            static_cast<ui32>(msg->Status),
+            ToString(ev->Sender).c_str(),
+            msg->TabletId);
+        // CompleteUpdateConfig calls StopPartitions, and then it
+        // calls StartPartitions with a completely new state.
+        // Ignore any signals from outdated bootstrappers.
+        return;
+    }
+
+    bool shouldRestart = false;
+    bool suggestOutdated = false;
+
+    switch (msg->Status) {
+        case TEvBootstrapper::STARTED: {
+            auto actorStack = TActorsStack(
+                msg->TabletUser,
+                TActorsStack::EActorPurpose::BlobStoragePartitionTablet);
+            actorStack = WrapWithFollowerActorIfNeeded(
+                ctx,
+                std::move(actorStack),
+                true);
+            partition->SetStarted(std::move(actorStack));
+            NCloud::Send<TEvPartition::TEvWaitReadyRequest>(
+                ctx,
+                msg->TabletUser,
+                msg->TabletId);
+            break;
+        }
+        case TEvBootstrapper::STOPPED: {
+            partition->RetryPolicy.Reset(ctx.Now());
+            partition->Bootstrapper = {};
+            partition->SetStopped();
+            break;
+        }
+        case TEvBootstrapper::RACE: {
+            shouldRestart = true;
+            partition->RetryPolicy.Reset(ctx.Now());
+            break;
+        }
+        case TEvBootstrapper::SUGGEST_OUTDATED: {
+            shouldRestart = true;
+            suggestOutdated = true;
+            // Retry immediately when hive generation is out of sync
+            partition->RetryPolicy.Reset(ctx.Now());
+            break;
+        }
+        case TEvBootstrapper::FAILED: {
+            if (partition->State == TPartitionInfo::EState::READY &&
+                ctx.Now() > partition->RetryPolicy.GetCurrentDeadline())
+            {
+                partition->RetryPolicy.Reset(ctx.Now());
+            }
+            shouldRestart = true;
+            break;
+        }
+    }
+
+    if (shouldRestart) {
+        partition->Bootstrapper = {};
+        partition->SetFailed(msg->Message);
+        if (partition->StorageInfo) {
+            partition->StorageInfo = {};
+            if (suggestOutdated) {
+                partition->SuggestedGeneration += 1;
+            } else {
+                partition->SuggestedGeneration = 0;
+            }
+            ScheduleRetryStartPartition(ctx, *partition);
+        }
+    }
+
+    auto state = State->UpdatePartitionsState();
+
+    if (state == TPartitionInfo::READY) {
+        // All partitions ready, it's time to reply to requests
+        OnStarted(ctx);
+    }
+}
+
 void TVolumeActor::HandleWaitReadyResponse(
     const TEvPartition::TEvWaitReadyResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto oldState = State->GetPartitionsState();
-    Y_DEFER
-    {
-        OnPartitionStateChanged(ctx, oldState);
-    };
-
     const ui64 tabletId = ev->Cookie;
 
     auto* partition = State->GetPartition(tabletId);
 
     // Drop unexpected responses in case of restart races
-    if (partition &&
-        partition->State == TPartitionInfo::STARTED &&
+    if (partition && partition->State == TPartitionInfo::STARTED &&
         partition->IsKnownActorId(ev->Sender))
     {
         partition->SetReady();

@@ -210,6 +210,8 @@ void TVolumeActor::CompleteLoadState(
 
     if (State) {
         ProcessNextPendingClientRequest(ctx);
+        // TODO:_ ok here?
+        SendSetVhostDiscardEnabledKekFlagRequestIfNeeded(ctx);
     }
 }
 

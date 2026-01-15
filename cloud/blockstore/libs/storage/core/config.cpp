@@ -660,6 +660,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(SendLocalTabletMetricsToHiveEnabled,  bool,        false              )\
                                                                                \
     xxx(EnableVhostDiscardForNewVolumes,      bool,        false              )\
+    xxx(VhostDiscardEnabledOnVolumeRestart,   bool,        false              )\
+                                                                               \
     xxx(TabletExecutorRejectionThreshold,     ui32,        0                  )\
                                                                                \
     xxx(VolumeProxyPipeInactivityTimeout,     TDuration,   Minutes(1)         )\
@@ -700,6 +702,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(LaggingDevicesForMirror2Disks)                                         \
     xxx(LaggingDevicesForMirror3Disks)                                         \
     xxx(EnableVhostDiscardForNewVolumes)                                       \
+    xxx(VhostDiscardEnabledOnVolumeRestart)                                       \
 
 // BLOCKSTORE_BINARY_FEATURES
 
@@ -1237,6 +1240,10 @@ void AdaptNodeRegistrationParams(
         storageConfig.SetEnableVhostDiscardForNewVolumes(
             serverConfig.GetVhostDiscardEnabled());
     }
+
+    // TODO:_ need to set VhostDiscardEnabledOnVolumeRestart here?
+    // maybe no, because we want to be able to turn off discards for
+    // concrete volume.
 
     if (overriddenNodeType) {
         storageConfig.SetNodeType(overriddenNodeType);

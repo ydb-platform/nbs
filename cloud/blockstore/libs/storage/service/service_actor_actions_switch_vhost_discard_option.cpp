@@ -28,18 +28,28 @@ namespace {
 
 class TSetVhostDiscardEnabledFlagActionActor final
     : public TActorBootstrapped<TSetVhostDiscardEnabledFlagActionActor>
+class TSetVhostDiscardEnabledFlagActionActor final
+    : public TActorBootstrapped<TSetVhostDiscardEnabledFlagActionActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
     const TString Input;
 
     NPrivateProto::TSetVhostDiscardEnabledFlagRequest Request;
+    NPrivateProto::TSetVhostDiscardEnabledFlagRequest Request;
     NKikimrBlockStore::TVolumeConfig VolumeConfig;
+
+    using TResponseCreateFunc =
+        std::function<NActors::IEventBasePtr(NProto::TError)>;
+
+    TResponseCreateFunc CreateResponse;
 
 public:
     TSetVhostDiscardEnabledFlagActionActor(
+    TSetVhostDiscardEnabledFlagActionActor(
         TRequestInfoPtr requestInfo,
-        TString input);
+        TString input,
+        TResponseCreateFunc createResponse);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -74,12 +84,16 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TSetVhostDiscardEnabledFlagActionActor::TSetVhostDiscardEnabledFlagActionActor(
+TSetVhostDiscardEnabledFlagActionActor::TSetVhostDiscardEnabledFlagActionActor(
     TRequestInfoPtr requestInfo,
-    TString input)
+    TString input,
+    TResponseCreateFunc createResponse)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
+    , CreateResponse(std::move(createResponse))
 {}
 
+void TSetVhostDiscardEnabledFlagActionActor::Bootstrap(const TActorContext& ctx)
 void TSetVhostDiscardEnabledFlagActionActor::Bootstrap(const TActorContext& ctx)
 {
     if (!google::protobuf::util::JsonStringToMessage(Input, &Request).ok()) {
@@ -101,6 +115,7 @@ void TSetVhostDiscardEnabledFlagActionActor::Bootstrap(const TActorContext& ctx)
 }
 
 void TSetVhostDiscardEnabledFlagActionActor::DescribeVolume(
+void TSetVhostDiscardEnabledFlagActionActor::DescribeVolume(
     const TActorContext& ctx)
 {
     Become(&TThis::StateDescribeVolume);
@@ -119,6 +134,7 @@ void TSetVhostDiscardEnabledFlagActionActor::DescribeVolume(
 }
 
 void TSetVhostDiscardEnabledFlagActionActor::AlterVolume(
+void TSetVhostDiscardEnabledFlagActionActor::AlterVolume(
     const TActorContext& ctx,
     const TString& path,
     ui64 pathId,
@@ -130,6 +146,7 @@ void TSetVhostDiscardEnabledFlagActionActor::AlterVolume(
         ctx,
         TBlockStoreComponents::SERVICE,
         "Sending SetVhostDiscardEnabledFlag->Alter request for %s",
+        "Sending SetVhostDiscardEnabledFlag->Alter request for %s",
         path.Quote().c_str());
 
     auto request = CreateModifySchemeRequestForAlterVolume(
@@ -140,6 +157,7 @@ void TSetVhostDiscardEnabledFlagActionActor::AlterVolume(
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
 }
 
+void TSetVhostDiscardEnabledFlagActionActor::WaitReady(const TActorContext& ctx)
 void TSetVhostDiscardEnabledFlagActionActor::WaitReady(const TActorContext& ctx)
 {
     Become(&TThis::StateWaitReady);
@@ -157,18 +175,16 @@ void TSetVhostDiscardEnabledFlagActionActor::WaitReady(const TActorContext& ctx)
 }
 
 void TSetVhostDiscardEnabledFlagActionActor::ReplyAndDie(
+void TSetVhostDiscardEnabledFlagActionActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
-        std::move(error));
-    google::protobuf::util::MessageToJsonString(
-        NPrivateProto::TSetVhostDiscardEnabledFlagResponse(),
-        response->Record.MutableOutput());
+    auto response = CreateResponse(std::move(error));
 
     LWTRACK(
         ResponseSent_Service,
         RequestInfo->CallContext->LWOrbit,
+        "ExecuteAction_setvhostdiscardenabledflag",
         "ExecuteAction_setvhostdiscardenabledflag",
         RequestInfo->CallContext->RequestId);
 
@@ -178,6 +194,7 @@ void TSetVhostDiscardEnabledFlagActionActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TSetVhostDiscardEnabledFlagActionActor::HandleDescribeVolumeResponse(
 void TSetVhostDiscardEnabledFlagActionActor::HandleDescribeVolumeResponse(
     const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -228,6 +245,7 @@ void TSetVhostDiscardEnabledFlagActionActor::HandleDescribeVolumeResponse(
 }
 
 void TSetVhostDiscardEnabledFlagActionActor::HandleAlterVolumeResponse(
+void TSetVhostDiscardEnabledFlagActionActor::HandleAlterVolumeResponse(
     const TEvSSProxy::TEvModifySchemeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -240,6 +258,7 @@ void TSetVhostDiscardEnabledFlagActionActor::HandleAlterVolumeResponse(
             ctx,
             TBlockStoreComponents::SERVICE,
             "SetVhostDiscardEnabledFlag->Alter of volume %s failed: %s",
+            "SetVhostDiscardEnabledFlag->Alter of volume %s failed: %s",
             Request.GetDiskId().Quote().c_str(),
             msg->GetErrorReason().c_str());
 
@@ -250,6 +269,7 @@ void TSetVhostDiscardEnabledFlagActionActor::HandleAlterVolumeResponse(
     WaitReady(ctx);
 }
 
+void TSetVhostDiscardEnabledFlagActionActor::HandleWaitReadyResponse(
 void TSetVhostDiscardEnabledFlagActionActor::HandleWaitReadyResponse(
     const TEvVolume::TEvWaitReadyResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -262,8 +282,7 @@ void TSetVhostDiscardEnabledFlagActionActor::HandleWaitReadyResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "SetVhostDiscardEnabledFlag->WaitReady request failed for volume "
-            "%s, "
+            "SetVhostDiscardEnabledFlag->WaitReady request failed for volume %s, "
             "error: %s",
             Request.GetDiskId().Quote().c_str(),
             msg->GetErrorReason().Quote().c_str());
@@ -271,6 +290,7 @@ void TSetVhostDiscardEnabledFlagActionActor::HandleWaitReadyResponse(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::SERVICE,
+            "Successfully done SetVhostDiscardEnabledFlag for volume %s",
             "Successfully done SetVhostDiscardEnabledFlag for volume %s",
             Request.GetDiskId().Quote().c_str());
     }
@@ -280,6 +300,7 @@ void TSetVhostDiscardEnabledFlagActionActor::HandleWaitReadyResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+STFUNC(TSetVhostDiscardEnabledFlagActionActor::StateDescribeVolume)
 STFUNC(TSetVhostDiscardEnabledFlagActionActor::StateDescribeVolume)
 {
     switch (ev->GetTypeRewrite()) {
@@ -297,6 +318,7 @@ STFUNC(TSetVhostDiscardEnabledFlagActionActor::StateDescribeVolume)
 }
 
 STFUNC(TSetVhostDiscardEnabledFlagActionActor::StateAlterVolume)
+STFUNC(TSetVhostDiscardEnabledFlagActionActor::StateAlterVolume)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvSSProxy::TEvModifySchemeResponse, HandleAlterVolumeResponse);
@@ -310,6 +332,7 @@ STFUNC(TSetVhostDiscardEnabledFlagActionActor::StateAlterVolume)
     }
 }
 
+STFUNC(TSetVhostDiscardEnabledFlagActionActor::StateWaitReady)
 STFUNC(TSetVhostDiscardEnabledFlagActionActor::StateWaitReady)
 {
     switch (ev->GetTypeRewrite()) {
@@ -328,14 +351,63 @@ STFUNC(TSetVhostDiscardEnabledFlagActionActor::StateWaitReady)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO:_ how can we guarantee that SetVhostDiscardEnabledFlagActionActor will not
+// leak in case of multiple lablet reboots?
+void TServiceActor::HandleSetVhostDiscardEnabledKekFlag(
+    const TEvService::TEvSetVhostDiscardEnabledKekFlagRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+
+    NPrivateProto::TSetVhostDiscardEnabledFlagRequest
+        setVhostDiscardEnabledFlagRequest;
+    setVhostDiscardEnabledFlagRequest.SetDiskId(msg->DiskId);
+    setVhostDiscardEnabledFlagRequest.SetVhostDiscardEnabled(
+        msg->VhostDiscardEnabled);
+
+    TString input;
+    google::protobuf::util::MessageToJsonString(
+        setVhostDiscardEnabledFlagRequest,
+        &input);
+
+    NCloud::Register(
+        ctx,
+        std::make_unique<TSetVhostDiscardEnabledFlagActionActor>(
+            std::move(requestInfo),
+            std::move(input),
+            [](NProto::TError error)
+            {
+                auto response = std::make_unique<
+                    TEvService::TEvSetVhostDiscardEnabledKekFlagResponse>(
+                    std::move(error));
+                return response;
+            }));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TResultOrError<IActorPtr>
+TServiceActor::CreateSetVhostDiscardEnabledFlagActionActor(
 TServiceActor::CreateSetVhostDiscardEnabledFlagActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
     return {std::make_unique<TSetVhostDiscardEnabledFlagActionActor>(
+    return {std::make_unique<TSetVhostDiscardEnabledFlagActionActor>(
         std::move(requestInfo),
-        std::move(input))};
+        std::move(input),
+        [](NProto::TError error)
+        {
+            auto response =
+                std::make_unique<TEvService::TEvExecuteActionResponse>(
+                    std::move(error));
+            google::protobuf::util::MessageToJsonString(
+                NPrivateProto::TSetVhostDiscardEnabledFlagResponse(),
+                response->Record.MutableOutput());
+        })};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

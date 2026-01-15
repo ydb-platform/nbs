@@ -15,11 +15,14 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO:_ want name, different from action name!!!
+// TODO:_ do we really need new request/response here?
 #define BLOCKSTORE_SERVICE_REQUESTS(xxx, ...)                                  \
-    xxx(ChangeVolumeBinding,     __VA_ARGS__)                                  \
-    xxx(GetVolumeStats,          __VA_ARGS__)                                  \
-    xxx(RunVolumesLivenessCheck, __VA_ARGS__)                                  \
-    xxx(AddTags,                 __VA_ARGS__)                                  \
+    xxx(ChangeVolumeBinding,        __VA_ARGS__)                               \
+    xxx(GetVolumeStats,             __VA_ARGS__)                               \
+    xxx(RunVolumesLivenessCheck,    __VA_ARGS__)                               \
+    xxx(AddTags,                    __VA_ARGS__)                               \
+    xxx(SetVhostDiscardEnabledKekFlag, __VA_ARGS__)                               \
 // BLOCKSTORE_SERVICE_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -201,6 +204,28 @@ struct TEvService
     };
 
     //
+    // SetVhostDiscardEnabledKekFlag
+    //
+
+    struct TSetVhostDiscardEnabledKekFlagRequest
+    {
+        const TString DiskId;
+        const bool VhostDiscardEnabled;
+
+        TAddTagsRequest() = default;
+
+        TAddTagsRequest(
+                TString diskId,
+                bool vhostDiscardEnabled)
+            : DiskId(std::move(diskId))
+            , VhostDiscardEnabled(vhostDiscardEnabled)
+        {}
+    };
+
+    struct TSetVhostDiscardEnabledKekFlagResponse
+    {};
+
+    //
     // Events declaration
     //
 
@@ -348,6 +373,9 @@ struct TEvService
 
         EvDestroyVolumeLinkRequest = EvBegin + 97,
         EvDestroyVolumeLinkResponse = EvBegin + 98,
+
+        EvSetVhostDiscardEnabledKekFlagRequest = EvBegin + 99,
+        EvSetVhostDiscardEnabledKekFlagResponse = EvBegin + 100,
 
         EvEnd
     };

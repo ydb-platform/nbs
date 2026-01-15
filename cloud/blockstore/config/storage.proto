@@ -1419,4 +1419,8 @@ message TStorageServiceConfig
 
     // Timeout for attach/detach path requests (in milliseconds).
     optional uint32 AttachDetachPathRequestTimeout = 480;
+
+    // TODO:_ comment.
+    // TODO:_ better name of the parameter.
+    optional bool VhostDiscardEnabledOnVolumeRestart = 481;
 }
