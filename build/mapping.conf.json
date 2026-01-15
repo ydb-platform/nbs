@@ -153,12 +153,14 @@
         "2980468199": "{registry_endpoint}/2980468199",
         "5562224408": "{registry_endpoint}/5562224408",
         "8580453620": "{registry_endpoint}/8580453620",
+        "1023476176": "{registry_endpoint}/1023476176",
         "8580445392": "{registry_endpoint}/8580445392"
     },
     "resources_descriptions": {
         "2214720943": "Clang 11.0.0 for darwin-arm64",
         "2214542408": "Clang 11.0.0 for darwin-x86_64 from task/828474520 with LTO and PGO",
         "1886578148": "Clang 11.0.0 for linux-x86_64 from task/846665983 with LTO and PGO at r7671799",
+        "1023476176": "Clang 11.0.0 for linux-aarch64",
         "2813906025": "Clang 12.0.1 for darwin-arm64",
         "2813915651": "Clang 12.0.1 for darwin-x86_64",
         "2813921697": "Clang 12.0.1 for linux-ppc64le",
