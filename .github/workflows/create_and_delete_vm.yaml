@@ -169,7 +169,7 @@ jobs:
     needs:
       - provide-runner
       - build-and-test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
     if: always()
     steps:
       - name: checkout PR
