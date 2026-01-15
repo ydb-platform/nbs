@@ -39,6 +39,7 @@ namespace NCloud::NFileStore{
     xxx(ErrorWasSentToTheGuest)                                                \
     xxx(DirectoryHandlesStorageError)                                          \
     xxx(CalculateChecksumsBufferOverflow)                                      \
+    xxx(TryingToUseTwoBytesShardNoWithObsoleteHandles)                         \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \

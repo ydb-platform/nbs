@@ -48,7 +48,7 @@ private:
     const NProto::TFileStorePerformanceProfile PerformanceProfile;
     const bool Alter;
     const bool Force;
-    const ui32 ExplicitShardCount;
+    ui32 ExplicitShardCount;
 
     NKikimrFileStore::TConfig TargetConfig;
     NKikimrFileStore::TConfig MainFileStoreOriginalConfig;
@@ -528,16 +528,18 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         ExistingShardIds.push_back(std::move(shardId));
     }
 
-    if (SevenBytesHandlesCount > 0 && ExistingShardIds.size() <= Max<ui8>() &&
-        FileStoreConfig.ShardConfigs.size() > Max<ui8>())
+    if (SevenBytesHandlesCount > 0 &&
+        ExistingShardIds.size() <= MaxOneByteShardCount &&
+        FileStoreConfig.ShardConfigs.size() > MaxOneByteShardCount)
     {
-        ReplyAndDie(
-            ctx,
-            MakeError(
-                E_ARGUMENT,
-                "Cannot increase the shard count to more than 255 if there are "
-                "handles with the non-zero 7th byte."));
-        return;
+        ReportTryingToUseTwoBytesShardNoWithObsoleteHandles(
+            TStringBuilder()
+            << "Filesystem: " << FileSystemId
+            << ". Cannot increase the shard count to more than 255 if there "
+               "are handles with the non-zero 7th byte.");
+
+        ExplicitShardCount = MaxOneByteShardCount;
+        FillMultiShardFileStoreConfig(ctx);
     }
 
     if (FileStoreConfig.ShardConfigs.size() < ExistingShardIds.size()) {

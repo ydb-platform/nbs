@@ -6324,7 +6324,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // We created 2 files in each shard. Files in the shards with
         // shardNo > 255 have handles that use 7th byte.
         UNIT_ASSERT_VALUES_EQUAL(
-            (shardCount - 0xff) * 2,
+            (shardCount - MaxOneByteShardCount) * 2,
             sevenBytesHandlesCount);
 
         env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(16));
@@ -6341,8 +6341,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             sevenBytesHandlesCount,
             mainStats.GetStats().GetSevenBytesHandlesCount());
 
-        // Forcefully leave only shard with nembers >= 256
-        const auto mainFsTopology = GetFileSystemTopology(service, fsId);
+        // Forcefully leave only shard with numbers >= 256
+        auto mainFsTopology = GetFileSystemTopology(service, fsId);
         NProtoPrivate::TConfigureShardsRequest configureShardsRequest;
         configureShardsRequest.SetFileSystemId(fsId);
         configureShardsRequest.SetForce(true);
@@ -6370,9 +6370,19 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         WaitForTabletStart(service);
 
+        service.AssertResizeFileStoreFailed(fsId, fsSize);
+
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter = counters->GetCounter(
+            "AppCriticalEvents/TryingToUseTwoBytesShardNoWithObsoleteHandles");
+
+        UNIT_ASSERT_EQUAL(1, counter->GetAtomic());
+
         // We should get error when we try to increase number of shards to more
         // than 255 and there are handles with non-zero 7th byte
-        service.AssertResizeFileStoreFailed(fsId, fsSize);
+        // service.AssertResizeFileStoreFailed(fsId, fsSize);
     }
 
     SERVICE_TEST_SIMPLE(ShouldUseOldHandles)
