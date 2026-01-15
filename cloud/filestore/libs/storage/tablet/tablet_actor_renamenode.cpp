@@ -347,7 +347,8 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "RenameNode");
+        args.Error = ErrorCommitIdOverflow();
+        return;
     }
 
     // remove existing source ref
@@ -567,6 +568,10 @@ void TIndexTabletActor::CompleteTx_RenameNode(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    if (args.CommitId == InvalidCommitId) {
+        ScheduleRebootTabletOnCommitIdOverflow(ctx, "RenameNode");
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
