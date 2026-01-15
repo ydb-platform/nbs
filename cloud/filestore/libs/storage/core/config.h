@@ -371,6 +371,8 @@ public:
 
     bool GetFakeDescribeDataEnabled() const;
     ui32 GetFakeDescribeDataLatencyUs() const;
+
+    bool GetGidPropagationEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

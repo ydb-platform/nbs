@@ -182,7 +182,7 @@ jobs:
         if: always()
         uses: ./.github/actions/nebius_threads_calculator
         with:
-          vm_preset: ${{ steps.start-runner.outputs.vm-preset }}
+          vm_preset: ${{ steps.start-runner.outputs.VM_PRESET }}
           tests_size: ${{ inputs.test_size }}
 
   build-and-test:

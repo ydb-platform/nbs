@@ -628,6 +628,20 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
         args.Error = ErrorIsNotDirectory(args.ParentNodeId);
         return true;
     }
+    if (Config->GetGidPropagationEnabled()) {
+        if (args.ParentNode->Attrs.GetMode() & S_ISGID) {
+            // args.Attrs are the ones that will be used for the new node
+            // created in ExecuteTx_CreateNode and args.Request are the ones
+            // sent to shard (if any). Thus, we need to update both
+            args.Attrs.SetGid(args.ParentNode->Attrs.GetGid());
+            args.Request.SetGid(args.ParentNode->Attrs.GetGid());
+
+            if (args.Request.HasDirectory()) {
+                args.Attrs.SetMode(args.Attrs.GetMode() | S_ISGID);
+                args.Request.MutableDirectory()->SetMode(args.Attrs.GetMode());
+            }
+        }
+    }
 
     // TODO: AccessCheck
 

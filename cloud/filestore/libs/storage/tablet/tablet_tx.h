@@ -696,7 +696,7 @@ struct TTxIndexTablet
         const ui64 ParentNodeId;
         const ui64 TargetNodeId;
         const TString Name;
-        const NProto::TNode Attrs;
+        NProto::TNode Attrs;
         const TString RequestShardId;
         TString ShardId;
         TString ShardNodeName;
@@ -1464,7 +1464,7 @@ struct TTxIndexTablet
         const ui32 Flags;
         const ui32 Mode;
         const ui32 Uid;
-        const ui32 Gid;
+        ui32 Gid;
         const TString RequestShardId;
         NProto::TCreateHandleRequest Request;
 

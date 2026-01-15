@@ -270,7 +270,6 @@ bool TIndexTabletActor::PrepareTx_WriteData(
 
     UpdateRangeNodeIds(args.ProfileLogRequest, args.Node->NodeId);
 
-    // TODO: access check
     if (!HasSpaceLeft(args.Node->Attrs.GetSize(), args.ByteRange.End())) {
         args.Error = ErrorNoSpaceLeft();
         return true;
