@@ -37,7 +37,6 @@ void TServiceActor::HandleExecuteAction(
 
     using TFunc =
         TResultOrError<NActors::IActorPtr>(TServiceActor::*)(TRequestInfoPtr, TString);
-    // TODO:_ alphabet order?
     const THashMap<TString, TFunc> actions = {
         {"diskregistrysetwritablestate",      &TServiceActor::CreateWritableStateActionActor               },
         {"backupdiskregistrystate",           &TServiceActor::CreateBackupDiskRegistryStateActor           },

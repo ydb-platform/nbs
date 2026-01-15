@@ -1902,36 +1902,27 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateVolume(DefaultDiskId);
 
-        auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
-        UNIT_ASSERT_VALUES_EQUAL(false, volumeConfig.GetVhostDiscardEnabled());
-
+        auto switchVhostDiscardOptionAndCheckResult = [&](bool discardEnabled)
         {
             NPrivateProto::TSwitchVhostDiscardOptionRequest request;
             request.SetDiskId(DefaultDiskId);
-            request.SetConfigVersion(1);
-            request.SetVhostDiscardEnabled(true);
+            request.SetVhostDiscardEnabled(discardEnabled);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
             service.ExecuteAction("switchvhostdiscardoption", buf);
-        }
 
-        volumeConfig = GetVolumeConfig(service, DefaultDiskId);
-        UNIT_ASSERT_VALUES_EQUAL(true, volumeConfig.GetVhostDiscardEnabled());
+            auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                discardEnabled,
+                volumeConfig.GetVhostDiscardEnabled());
+        };
 
-        {
-            NPrivateProto::TSwitchVhostDiscardOptionRequest request;
-            request.SetDiskId(DefaultDiskId);
-            request.SetConfigVersion(2);
-            request.SetVhostDiscardEnabled(false);
-
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("switchvhostdiscardoption", buf);
-        }
-
-        volumeConfig = GetVolumeConfig(service, DefaultDiskId);
-        UNIT_ASSERT_VALUES_EQUAL(false, volumeConfig.GetVhostDiscardEnabled());
+        switchVhostDiscardOptionAndCheckResult(false);
+        switchVhostDiscardOptionAndCheckResult(false);
+        switchVhostDiscardOptionAndCheckResult(true);
+        switchVhostDiscardOptionAndCheckResult(true);
+        switchVhostDiscardOptionAndCheckResult(false);
     }
 
     Y_UNIT_TEST(ShouldValidateSwitchVhostDiscardOption)
@@ -1943,14 +1934,28 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateVolume(DefaultDiskId);
 
-        auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
-        UNIT_ASSERT_VALUES_EQUAL(false, volumeConfig.GetVhostDiscardEnabled());
+        {
+            // Correct ConfigVersion.
+            NPrivateProto::TSwitchVhostDiscardOptionRequest request;
+            request.SetDiskId(DefaultDiskId);
+            request.SetConfigVersion(1);
+            request.SetVhostDiscardEnabled(false);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("switchvhostdiscardoption", buf);
+
+            auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                volumeConfig.GetVhostDiscardEnabled());
+        }
 
         {
             // Incorrect ConfigVersion.
             NPrivateProto::TSwitchVhostDiscardOptionRequest request;
             request.SetDiskId(DefaultDiskId);
-            request.SetConfigVersion(2);
+            request.SetConfigVersion(3);
             request.SetVhostDiscardEnabled(true);
 
             TString buf;
@@ -1958,25 +1963,16 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             service.SendExecuteActionRequest("SwitchVhostDiscardOption", buf);
             auto response = service.RecvExecuteActionResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->GetStatus());
-        }
 
-        {
-            // ConfigVersion should be supplied.
-            NPrivateProto::TSwitchVhostDiscardOptionRequest request;
-            request.SetDiskId(DefaultDiskId);
-            request.SetVhostDiscardEnabled(true);
-
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.SendExecuteActionRequest("SwitchVhostDiscardOption", buf);
-            auto response = service.RecvExecuteActionResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                volumeConfig.GetVhostDiscardEnabled());
         }
 
         {
             // DiskId should be supplied.
             NPrivateProto::TSwitchVhostDiscardOptionRequest request;
-            request.SetConfigVersion(1);
             request.SetVhostDiscardEnabled(true);
 
             TString buf;
@@ -1984,23 +1980,12 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             service.SendExecuteActionRequest("SwitchVhostDiscardOption", buf);
             auto response = service.RecvExecuteActionResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+
+            auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                volumeConfig.GetVhostDiscardEnabled());
         }
-
-        {
-            // VhostDiscardEnabled should be supplied.
-            NPrivateProto::TSwitchVhostDiscardOptionRequest request;
-            request.SetDiskId(DefaultDiskId);
-            request.SetConfigVersion(1);
-
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.SendExecuteActionRequest("SwitchVhostDiscardOption", buf);
-            auto response = service.RecvExecuteActionResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
-        }
-
-        auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
-        UNIT_ASSERT_VALUES_EQUAL(false, volumeConfig.GetVhostDiscardEnabled());
     }
 }
 

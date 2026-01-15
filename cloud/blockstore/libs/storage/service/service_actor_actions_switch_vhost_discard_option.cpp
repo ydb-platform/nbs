@@ -1,10 +1,10 @@
 #include "service_actor.h"
 
+#include "cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor.h"
+
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
-#include <cloud/blockstore/libs/storage/core/probes.h>  // TODO:_ do we really need it?
-#include "cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor.h"
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -75,8 +75,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TSwitchVhostDiscardOptionActionActor::TSwitchVhostDiscardOptionActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -93,44 +93,30 @@ void TSwitchVhostDiscardOptionActionActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    // TODO:_ should require config version?
-    // Maybe allow to take version from description,
-    // like in modify tags actor?
-    if (!Request.GetConfigVersion()) {
-        ReplyAndDie(
-            ctx,
-            MakeError(E_ARGUMENT, "ConfigVersion should be supplied")
-        );
-        return;
-    }
-
-    if (!Request.GetVhostDiscardEnabled()) {
-        ReplyAndDie(
-            ctx,
-            MakeError(E_ARGUMENT, "VhostDiscardEnabled should be supplied")
-        );
-        return;
-    }
-
     VolumeConfig.SetDiskId(Request.GetDiskId());
-    // TODO:_ do we need to wait for schemeshard release?
-    VolumeConfig.SetVhostDiscardEnabled(Request.GetVhostDiscardEnabled());
-    VolumeConfig.SetVersion(Request.GetConfigVersion());
+    if (Request.GetConfigVersion()) {
+        VolumeConfig.SetVersion(Request.GetConfigVersion());
+    }
+
     DescribeVolume(ctx);
 }
 
-void TSwitchVhostDiscardOptionActionActor::DescribeVolume(const TActorContext& ctx)
+void TSwitchVhostDiscardOptionActionActor::DescribeVolume(
+    const TActorContext& ctx)
 {
     Become(&TThis::StateDescribeVolume);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending describe request for volume %s",
         Request.GetDiskId().Quote().c_str());
 
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(Request.GetDiskId()));
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+            Request.GetDiskId()));
 }
 
 void TSwitchVhostDiscardOptionActionActor::AlterVolume(
@@ -141,12 +127,17 @@ void TSwitchVhostDiscardOptionActionActor::AlterVolume(
 {
     Become(&TThis::StateAlterVolume);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending SwitchVhostDiscardOption->Alter request for %s",
         path.Quote().c_str());
 
     auto request = CreateModifySchemeRequestForAlterVolume(
-        path, pathId, version, VolumeConfig);
+        path,
+        pathId,
+        version,
+        VolumeConfig);
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
 }
 
@@ -154,30 +145,27 @@ void TSwitchVhostDiscardOptionActionActor::WaitReady(const TActorContext& ctx)
 {
     Become(&TThis::StateWaitReady);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending WaitReady request to volume %s",
         Request.GetDiskId().Quote().c_str());
 
     auto request = std::make_unique<TEvVolume::TEvWaitReadyRequest>();
     request->Record.SetDiskId(Request.GetDiskId());
 
-    NCloud::Send(
-        ctx,
-        MakeVolumeProxyServiceId(),
-        std::move(request)
-    );
+    NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
 }
 
 void TSwitchVhostDiscardOptionActionActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    auto response =
-        std::make_unique<TEvService::TEvExecuteActionResponse>(std::move(error));
+    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
+        std::move(error));
     google::protobuf::util::MessageToJsonString(
         NPrivateProto::TSwitchVhostDiscardOptionResponse(),
-        response->Record.MutableOutput()
-    );
+        response->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,
@@ -199,13 +187,39 @@ void TSwitchVhostDiscardOptionActionActor::HandleDescribeVolumeResponse(
 
     NProto::TError error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Volume %s: describe failed: %s",
             Request.GetDiskId().Quote().c_str(),
             FormatError(error).c_str());
         ReplyAndDie(ctx, std::move(error));
         return;
     }
+
+    const auto& volumeDescription =
+        msg->PathDescription.GetBlockStoreVolumeDescription();
+
+    if (!VolumeConfig.GetVersion()) {
+        VolumeConfig.SetVersion(
+            volumeDescription.GetVolumeConfig().GetVersion());
+    }
+
+    if (volumeDescription.GetVolumeConfig().GetVhostDiscardEnabled() ==
+        Request.GetVhostDiscardEnabled())
+    {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Skipping setting VhostDiscardEnabled to %d; "
+            "VhostDiscardEnabled option is alreasy as desired for volume %s",
+            Request.GetVhostDiscardEnabled(),
+            Request.GetDiskId().Quote().c_str());
+        ReplyAndDie(ctx, error);
+        return;
+    }
+
+    VolumeConfig.SetVhostDiscardEnabled(Request.GetVhostDiscardEnabled());
 
     AlterVolume(
         ctx,
@@ -223,7 +237,9 @@ void TSwitchVhostDiscardOptionActionActor::HandleAlterVolumeResponse(
     ui32 errorCode = error.GetCode();
 
     if (FAILED(errorCode)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "SwitchVhostDiscardOption->Alter of volume %s failed: %s",
             Request.GetDiskId().Quote().c_str(),
             msg->GetErrorReason().c_str());
@@ -244,12 +260,17 @@ void TSwitchVhostDiscardOptionActionActor::HandleWaitReadyResponse(
     NProto::TError error = msg->GetError();
 
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "SwitchVhostDiscardOption->WaitReady request failed for volume %s, error: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "SwitchVhostDiscardOption->WaitReady request failed for volume %s, "
+            "error: %s",
             Request.GetDiskId().Quote().c_str(),
             msg->GetErrorReason().Quote().c_str());
     } else {
-        LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Successfully done SwitchVhostDiscardOption for volume %s",
             Request.GetDiskId().Quote().c_str());
     }
@@ -262,7 +283,9 @@ void TSwitchVhostDiscardOptionActionActor::HandleWaitReadyResponse(
 STFUNC(TSwitchVhostDiscardOptionActionActor::StateDescribeVolume)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvDescribeVolumeResponse, HandleDescribeVolumeResponse);
+        HFunc(
+            TEvSSProxy::TEvDescribeVolumeResponse,
+            HandleDescribeVolumeResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -305,7 +328,8 @@ STFUNC(TSwitchVhostDiscardOptionActionActor::StateWaitReady)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<IActorPtr> TServiceActor::CreateSwitchVhostDiscardOptionActionActor(
+TResultOrError<IActorPtr>
+TServiceActor::CreateSwitchVhostDiscardOptionActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
