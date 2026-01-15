@@ -217,7 +217,11 @@ public:
 
     TLockedRequest FindAndLock(ui64 key);
 
-    void Erase(ui64 key);
+    void CompleteAndErase(
+        TInstant currentTs,
+        const NCloud::NProto::TError& error,
+        TInFlightRequest& request,
+        ui64 key);
 
     [[nodiscard]] TVector<ui64> GetKeys() const;
 };

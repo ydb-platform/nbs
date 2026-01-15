@@ -4,6 +4,8 @@
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
 
+#include <cloud/storage/core/libs/common/verify.h>
+
 #include <util/datetime/cputimer.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -124,10 +126,19 @@ TInFlightRequestStorage::TLockedRequest TInFlightRequestStorage::FindAndLock(
     return result;
 }
 
-void TInFlightRequestStorage::Erase(ui64 key)
+void TInFlightRequestStorage::CompleteAndErase(
+    TInstant currentTs,
+    const NCloud::NProto::TError& error,
+    TInFlightRequest& request,
+    ui64 key)
 {
-    auto g = Guard(Lock);
+    request.Complete(currentTs, error);
 
+    auto g = Guard(Lock);
+    STORAGE_VERIFY_DEBUG(
+        &request == Requests.FindPtr(key),
+        request.CallContext->FileSystemId,
+        TWellKnownEntityTypes::FILESYSTEM);
     Requests.erase(key);
 }
 
