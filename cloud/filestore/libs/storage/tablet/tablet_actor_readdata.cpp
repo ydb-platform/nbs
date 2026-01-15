@@ -899,7 +899,6 @@ bool TIndexTabletActor::PrepareTx_ReadData(
             args.Error = ErrorInvalidTarget(args.NodeId);
             return true;
         }
-        // TODO: access check
     }
 
     TSet<ui32> ranges;
