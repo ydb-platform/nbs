@@ -56,10 +56,6 @@ inputs:
   vm_allow_downgrade:
     required: false
     description: "allow downgrade"
-  region:
-    required: false
-    description: "nebius region"
-    default: "eu-north1"
 
 outputs:
   LABEL:
@@ -110,7 +106,6 @@ runs:
       run: |
         export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
         python3 -m scripts.nebius_manage_vm create ${ORG} ${TEAM} ${VM_ALLOW_DOWNGRADE} \
-          --api-endpoint api.${REGION}.nebius.cloud \
           --github-repo-owner "${REPO_OWNER}" \
           --github-repo "${REPO}" \
           --service-account-key "${SERVICE_ACCOUNT_KEY}" \
@@ -126,7 +121,6 @@ runs:
           --apply
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
-        REGION: ${{ inputs.region }}
         ORG: ${{ inputs.org && format('--github-org {0}', inputs.org) || ''}}
         TEAM: ${{ inputs.team && format('--github-team-slug {0}', inputs.team) || ''}}
         REPO_OWNER: ${{ inputs.repo_owner }}

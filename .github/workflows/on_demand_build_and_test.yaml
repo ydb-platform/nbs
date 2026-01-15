@@ -160,7 +160,6 @@ jobs:
         uses: ./.github/actions/nebius_runner_create
         timeout-minutes: 60
         with:
-          region: ${{ vars.NEBIUS_REGION }}
           org: ydb-platform
           team: nbs
           repo_owner: ${{ github.repository_owner }}
@@ -329,7 +328,6 @@ jobs:
         if: ${{ steps.decider.outputs.result == 'true' }}
         timeout-minutes: 60
         with:
-          region: ${{ vars.NEBIUS_REGION }}
           service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           repo_owner: ${{ github.repository_owner }}
