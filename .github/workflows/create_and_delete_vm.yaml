@@ -114,7 +114,7 @@ jobs:
           repo: ${{ github.event.repository.name }}
           service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          vm_parent_id: ${{ vars.POOLED_HEAVY_PARENTS_ID }}
+          vm_parent_id: ${{ vars.POOLED_HEAVY_PARENT_ID }}
           vm_name: ${{ github.event.pull_request.number && format('pr-{0}{1}-{2}-{3}', github.event.pull_request.number, inputs.vm_name_suffix, github.run_id, github.run_attempt) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
           vm_platform_id: ${{ vars.NEBIUS_PLATFORM_ID }}
           vm_preset: ${{ env.large_tests == 'true' && vars.NEBIUS_VM_PRESET || '16vcpu-64gb' }}
@@ -202,5 +202,5 @@ jobs:
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           repo_owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
-          vm_parent_id: ${{ vars.POOLED_HEAVY_PARENTS_ID }}
+          vm_parent_id: ${{ vars.POOLED_HEAVY_PARENT_ID }}
           vm_id: ${{ needs.provide-runner.outputs.instance-id }}

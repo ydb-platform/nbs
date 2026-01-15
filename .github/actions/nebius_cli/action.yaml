@@ -45,7 +45,7 @@ runs:
           service_account_id=$(jq -r '."subject-credentials"."iss"' sa.json)
           echo "::add-mask::tenant-e00en3r863f7me6wtd"
           
-          nebius profile create --endpoint api.${REGION}.nebius.cloud \
+          nebius profile create --endpoint api.nebius.cloud \
                                 --profile nbs-github-user-sa \
                                 --parent-id tenant-e00en3r863f7me6wtd \
                                 --public-key-id "${public_key_id}" \
