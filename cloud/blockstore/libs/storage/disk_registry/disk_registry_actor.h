@@ -93,7 +93,6 @@ private:
     bool AutomaticallyReplacedDevicesDeletionInProgress = false;
     THashSet<TString> SecureEraseInProgressPerPool;
     bool StartMigrationInProgress = false;
-    bool RestoreAgentsToOnlineInProgress = false;
 
     uint32_t RestoreAgentsToOnlineIterations = 1;
 

@@ -617,7 +617,7 @@ public:
         TDiskRegistryDatabase& db,
         TInstant timestamp,
         TDuration restoreInterval,
-        uint32_t agentRestoreLimit,
+        ui32 agentRestoreLimit,
         TVector<TString>& affectedAgents,
         bool& remainingAgents);
 

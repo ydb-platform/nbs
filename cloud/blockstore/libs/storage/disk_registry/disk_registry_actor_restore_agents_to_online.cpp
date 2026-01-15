@@ -1,4 +1,5 @@
 #include "disk_registry_actor.h"
+
 #include "cloud/storage/core/libs/common/format.h"
 #include "util/string/join.h"
 
@@ -8,24 +9,25 @@ using namespace NActors;
 
 using namespace NKikimr::NTabletFlatExecutor;
 
-
 void TDiskRegistryActor::ProcessRestoreAgentsToOnline(
     const NActors::TActorContext& ctx)
 {
-    const auto delay = RestoreAgentsToOnlineIterations * Config->GetCheckAgentsToRestoreToOnlineInterval();
+    const auto delay = RestoreAgentsToOnlineIterations *
+                       Config->GetBackFromUnavailableAgentsRestoreInterval();
 
-    if(!delay || RestoreAgentsToOnlineInProgress || ctx.Now() < StartTime() + delay) {
+    if (!delay || ctx.Now() < StartTime() + delay) {
         return;
     }
 
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "Restoring agents with status \"back from unavailable\" and last state change more than "
+        "Restoring agents with status \"back from unavailable\" and last state "
+        "change more than "
         "%s ago",
-        FormatDuration(Config->GetRestoreBackFromUnavailableAgentsDelay()).c_str());
+        FormatDuration(Config->GetRestoreBackFromUnavailableAgentsDelay())
+            .c_str());
 
-    RestoreAgentsToOnlineInProgress = true;
     ExecuteTx<TRestoreAgentsToOnline>(ctx);
 }
 
@@ -51,7 +53,7 @@ void TDiskRegistryActor::ExecuteRestoreAgentsToOnline(
         db,
         ctx.Now(),
         Config->GetRestoreBackFromUnavailableAgentsDelay(),
-        Config->GetRestoreAgentsCountPerTransaction(),
+        Config->GetRestoreAgentCountPerTransaction(),
         args.AffectedAgents,
         args.RemainingAgents);
 }
@@ -65,10 +67,9 @@ void TDiskRegistryActor::CompleteRestoreAgentsToOnline(
         TBlockStoreComponents::DISK_REGISTRY,
         "Restored agents to online state: %s",
         JoinSeq(", ", args.AffectedAgents).c_str());
-    if(!args.RemainingAgents) {
+    if (!args.RemainingAgents) {
         RestoreAgentsToOnlineIterations++;
     }
-    RestoreAgentsToOnlineInProgress = false;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

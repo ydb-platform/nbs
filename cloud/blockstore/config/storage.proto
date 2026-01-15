@@ -1411,8 +1411,8 @@ message TStorageServiceConfig
     optional uint32 RestoreBackFromUnavailableAgentsDelay = 477;
 
     // Period for checking the disk agent for disks with status "back from unavailable"
-    optional uint32 CheckAgentsToRestoreToOnlineInterval = 478;
+    optional uint32 BackFromUnavailableAgentsRestoreInterval = 478;
 
     // Number of disks to restore to online per transaction
-    optional uint32 RestoreAgentsCountPerTransaction = 479;
+    optional uint32 RestoreAgentCountPerTransaction = 479;
 }

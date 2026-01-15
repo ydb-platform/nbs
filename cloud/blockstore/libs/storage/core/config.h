@@ -759,8 +759,8 @@ public:
     [[nodiscard]] ui32 GetTabletExecutorRejectionThreshold() const;
 
     [[nodiscard]] TDuration GetRestoreBackFromUnavailableAgentsDelay() const;
-    [[nodiscard]] TDuration GetCheckAgentsToRestoreToOnlineInterval() const;
-    [[nodiscard]] ui32 GetRestoreAgentsCountPerTransaction() const;
+    [[nodiscard]] TDuration GetBackFromUnavailableAgentsRestoreInterval() const;
+    [[nodiscard]] ui32 GetRestoreAgentCountPerTransaction() const;
 };
 
 ui64 GetAllocationUnit(
