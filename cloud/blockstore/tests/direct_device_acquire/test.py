@@ -28,6 +28,7 @@ from contrib.ydb.tests.library.harness.kikimr_runner import \
 
 DEVICE_SIZE = 1024 ** 3  # 1 GiB
 DEVICES_PER_PATH = 6
+INACTIVE_CLIENTS_TIMEOUT = 1  # in seconds
 
 KNOWN_DEVICE_POOLS = {
     "KnownDevicePools": [
@@ -43,11 +44,19 @@ def start_ydb_cluster():
     ydb_cluster.stop()
 
 
-def apply_common_params_to_config(cfg):
+def apply_common_params_to_config(cfg, params):
     cfg.files["storage"].NonReplicatedDontSuspendDevices = True
     cfg.files["storage"].AllocationUnitNonReplicatedSSD = 1
     cfg.files["storage"].NonReplicatedVolumeDirectAcquireEnabled = True
     cfg.files["storage"].AcquireNonReplicatedDevices = True
+    cfg.files["storage"].InactiveClientsTimeout = INACTIVE_CLIENTS_TIMEOUT * 1000
+
+    timeout = params.get("NonReplicatedAgentTimeout", 60000)
+    cfg.files["storage"].NonReplicatedAgentMinTimeout = timeout
+    cfg.files["storage"].NonReplicatedAgentMaxTimeout = timeout
+
+    cfg.files["storage"].NonReplicatedVolumeAcquireDiskAfterAddClientEnabled = params.get(
+        "NonReplicatedVolumeAcquireDiskAfterAddClientEnabled", False)
 
     cfg.files["server"].ServerConfig.VhostEnabled = True
     cfg.files["server"].ServerConfig.VhostServerPath = yatest_common.binary_path(
@@ -59,15 +68,12 @@ def start_nbs_daemon_with_dr(request, ydb):
     cfg = NbsConfigurator(ydb)
     cfg.generate_default_nbs_configs()
 
-    apply_common_params_to_config(cfg)
-    cfg.files["storage"].DisableLocalService = False
-
-    timeout = 60000
+    params = {}
     if hasattr(request, 'param'):
-        timeout = request.param
+        params = request.param
 
-    cfg.files["storage"].NonReplicatedAgentMinTimeout = timeout
-    cfg.files["storage"].NonReplicatedAgentMaxTimeout = timeout
+    apply_common_params_to_config(cfg, params)
+    cfg.files["storage"].DisableLocalService = False
 
     daemon = start_nbs(cfg)
 
@@ -81,12 +87,16 @@ def start_nbs_daemon_with_dr(request, ydb):
 
 
 @pytest.fixture(name='nbs')
-def start_nbs_daemon(ydb):
+def start_nbs_daemon(request, ydb):
 
     cfg = NbsConfigurator(ydb)
     cfg.generate_default_nbs_configs()
 
-    apply_common_params_to_config(cfg)
+    params = {}
+    if hasattr(request, 'param'):
+        params = request.param
+
+    apply_common_params_to_config(cfg, params)
     cfg.files["storage"].DisableLocalService = True
 
     daemon = start_nbs(cfg)
@@ -191,6 +201,22 @@ def restart_volume(client, disk_id):
     restart_tablet(client, tablet_id)
 
 
+def wait_for_all_volumes_to_be_notified(client, timeout=60):
+    start_time = time.time()
+    while True:
+        bkp = client.backup_disk_registry_state()
+        if not ("DisksToNotify" in bkp):
+            break
+        if time.time() - start_time > timeout:
+            raise TimeoutError(
+                f"Timeout waiting for all volumes to be notified (waited {timeout} seconds). Last state: {bkp}")
+        time.sleep(1)
+
+
+@pytest.mark.parametrize("nbs", [
+    ({"NonReplicatedVolumeAcquireDiskAfterAddClientEnabled": True}),
+    ({})
+], indirect=["nbs"])
 def test_should_mount_volume_with_unknown_devices(
         nbs_with_dr,
         nbs,
@@ -260,7 +286,7 @@ def test_should_mount_volume_with_unknown_devices(
     assert len(r.ActionResults) == 1
     assert r.ActionResults[0].Result.Code == 0
 
-    time.sleep(1)
+    wait_for_all_volumes_to_be_notified(client)
 
     nbs_with_dr.kill()
     restart_volume(client, "vol1")
@@ -277,6 +303,10 @@ def test_should_mount_volume_with_unknown_devices(
     session.unmount_volume()
 
 
+@pytest.mark.parametrize("nbs", [
+    ({"NonReplicatedVolumeAcquireDiskAfterAddClientEnabled": True}),
+    ({})
+], indirect=["nbs"])
 def test_should_mount_volume_without_dr(nbs_with_dr, nbs, agent_ids, disk_agent_configurators):
 
     logger = logging.getLogger("client")
@@ -334,12 +364,18 @@ def test_should_mount_volume_without_dr(nbs_with_dr, nbs, agent_ids, disk_agent_
     session.unmount_volume()
 
 
-@pytest.mark.parametrize("nbs_with_dr", [(6000)], indirect=["nbs_with_dr"])
+@pytest.mark.parametrize("should_break_device", [True, False])
+@pytest.mark.parametrize("nbs_with_dr", [{"NonReplicatedAgentTimeout": 6000}], indirect=["nbs_with_dr"])
+@pytest.mark.parametrize("nbs", [
+    ({"NonReplicatedVolumeAcquireDiskAfterAddClientEnabled": True}),
+    ({})
+], indirect=["nbs"])
 def test_should_mount_volume_with_unavailable_agents(
         nbs_with_dr,
         nbs,
         agent_ids,
-        disk_agent_configurators):
+        disk_agent_configurators,
+        should_break_device):
 
     logger = logging.getLogger("client")
     logger.setLevel(logging.DEBUG)
@@ -385,10 +421,22 @@ def test_should_mount_volume_with_unavailable_agents(
 
     session.unmount_volume()
 
+    if should_break_device:
+        client.execute_DiskRegistryChangeState(
+            Message="test",
+            ChangeDeviceState={
+                "DeviceUUID": bkp['Agents'][0]["Devices"][0]["DeviceUUID"],
+                "State": 2,    # DEVICE_STATE_ERROR
+            })
+
+        wait_for_all_volumes_to_be_notified(client)
+
     # stop the agent
     agents[0].kill()
 
     client.wait_agent_state(agent_ids[0], "AGENT_STATE_UNAVAILABLE")
+
+    wait_for_all_volumes_to_be_notified(client)
 
     nbs_with_dr.kill()
     restart_volume(client, "vol1")
@@ -408,10 +456,85 @@ def test_should_mount_volume_with_unavailable_agents(
     session.unmount_volume()
 
 
+@pytest.mark.parametrize("nbs, pass_client_id", [({"NonReplicatedVolumeAcquireDiskAfterAddClientEnabled": True}, False), ({}, True)], indirect=["nbs"])
 def test_should_stop_not_restored_endpoint(nbs_with_dr,
                                            nbs,
                                            agent_ids,
-                                           disk_agent_configurators):
+                                           disk_agent_configurators,
+                                           pass_client_id):
+
+    client = CreateTestClient(f"localhost:{nbs.port}")
+
+    test_disk_id = "vol0"
+
+    agent_id = agent_ids[0]
+    configurator = disk_agent_configurators[0]
+    agent = start_disk_agent(configurator, name=agent_id)
+    agent.wait_for_registration()
+    r = client.add_host(agent_id)
+    assert len(r.ActionResults) == 1
+    assert r.ActionResults[0].Result.Code == 0
+
+    client.create_volume(
+        disk_id=test_disk_id,
+        block_size=4096,
+        blocks_count=DEVICE_SIZE//4096,
+        storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED,
+        cloud_id="test")
+
+    socket = tempfile.NamedTemporaryFile()
+    client.start_endpoint(
+        unix_socket_path=socket.name,
+        disk_id=test_disk_id,
+        ipc_type=IPC_VHOST,
+        access_mode=VOLUME_ACCESS_READ_WRITE,
+        client_id=f"{socket.name}-id",
+        seq_number=0
+    )
+
+    nbs.kill()
+    if not pass_client_id:
+        time.sleep(INACTIVE_CLIENTS_TIMEOUT + 1)
+    nbs.start()
+
+    client.stop_endpoint(
+        unix_socket_path=socket.name,
+    )
+
+    if pass_client_id:
+        client.stop_endpoint(
+            unix_socket_path=socket.name,
+            client_id=f"{socket.name}-id",
+            disk_id=test_disk_id,
+        )
+
+    assert not Path(socket.name).exists()
+
+    another_socket = tempfile.NamedTemporaryFile()
+    client.start_endpoint(
+        unix_socket_path=another_socket.name,
+        disk_id=test_disk_id,
+        ipc_type=IPC_VHOST,
+        access_mode=VOLUME_ACCESS_READ_WRITE,
+        client_id=f"{another_socket.name}-id-1",
+        seq_number=0
+    )
+
+    client.stop_endpoint(
+        unix_socket_path=another_socket.name,
+    )
+
+    assert not Path(another_socket.name).exists()
+
+
+@pytest.mark.parametrize("nbs", [
+    ({"NonReplicatedVolumeAcquireDiskAfterAddClientEnabled": True}),
+    ({})
+], indirect=["nbs"])
+def test_should_stop_not_restored_endpoint_when_volume_was_deleted(nbs_with_dr,
+                                                                   nbs,
+                                                                   agent_ids,
+                                                                   disk_agent_configurators):
 
     client = CreateTestClient(f"localhost:{nbs.port}")
 
@@ -445,8 +568,9 @@ def test_should_stop_not_restored_endpoint(nbs_with_dr,
     nbs.kill()
     nbs.start()
 
-    client.stop_endpoint(
-        unix_socket_path=socket.name,
+    client.destroy_volume(
+        disk_id=test_disk_id,
+        sync=True
     )
 
     client.stop_endpoint(
@@ -456,21 +580,3 @@ def test_should_stop_not_restored_endpoint(nbs_with_dr,
     )
 
     assert not Path(socket.name).exists()
-
-    another_socket = tempfile.NamedTemporaryFile()
-    client.start_endpoint(
-        unix_socket_path=another_socket.name,
-        disk_id=test_disk_id,
-        ipc_type=IPC_VHOST,
-        access_mode=VOLUME_ACCESS_READ_WRITE,
-        client_id=f"{another_socket.name}-id-1",
-        seq_number=0
-    )
-
-    client.stop_endpoint(
-        unix_socket_path=another_socket.name,
-        client_id=f"{another_socket.name}-id-1",
-        disk_id=test_disk_id,
-    )
-
-    assert not Path(another_socket.name).exists()

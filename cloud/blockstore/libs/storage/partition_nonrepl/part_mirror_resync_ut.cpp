@@ -1,4 +1,5 @@
 #include "part_mirror.h"
+
 #include "part_mirror_actor.h"
 #include "part_mirror_resync_actor.h"
 #include "part_mirror_resync_util.h"
@@ -24,13 +25,18 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/algorithm.h>
+#include <util/generic/map.h>
 #include <util/string/builder.h>
+
+#include <google/protobuf/util/message_differencer.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
 using namespace std::chrono_literals;
+using MessageDifferencer = google::protobuf::util::MessageDifferencer;
 
 namespace {
 
@@ -232,6 +238,7 @@ struct TTestEnv
         storageConfig.SetMaxTimedOutDeviceStateDuration(20'000);
         storageConfig.SetNonReplicatedMinRequestTimeoutSSD(1'000);
         storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
+        storageConfig.SetInitialRetryDelayForServiceRequests(10);
         storageConfig.SetAssignIdToWriteAndZeroRequestsEnabled(
             enableVolumeRequestId);
         storageConfig.SetRejectLateRequestsAtDiskAgentEnabled(
@@ -255,6 +262,7 @@ struct TTestEnv
             }
         }
 
+        DiskAgentState->EnableDataIntegrityValidation = true;
         Runtime.AddLocalService(
             MakeDiskAgentServiceId(nodeId),
             TActorSetupCmd(
@@ -293,6 +301,7 @@ struct TTestEnv
             TMigrations(),
             Replicas,
             nullptr, // rdmaClient
+            VolumeActorId,
             TActorId(), // statActorId
             // resync actor id should be set since mirror actor should be aware
             // of the fact that resync is in progress
@@ -365,6 +374,7 @@ struct TTestEnv
             TMigrations(),
             Replicas,
             nullptr,   // rdmaClient
+            VolumeActorId,
             VolumeActorId,
             initialResyncIndex,
             resyncPolicy,
@@ -449,6 +459,7 @@ struct TTestEnv
             Config,
             CreateDiagnosticsConfig(),
             partConfig,
+            VolumeActorId,
             TActorId() // do not send stats
         );
 
@@ -662,6 +673,145 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize * range.Size(),
             counters.RequestCounters.ReadBlocks.RequestBytes);
+    }
+
+    void ShouldUseDataIntegrityChecksums(
+        NProto::EResyncPolicy resyncPolicy,
+        bool multiBlockCorruption)
+    {
+        constexpr ui32 BlockSize = 4_KB;
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, BlockSize);
+
+        const auto range =
+            TBlockRange64::WithLength(0, 5120 * 4_KB / BlockSize);
+
+        env.WriteMirror(range, 'A');
+        env.WriteReplica(1, range, 'B');
+        env.WriteReplica(2, range, 'B');
+
+        // Corrupt multiple blocks to engage blobk by block resyncing logic.
+        if (multiBlockCorruption) {
+            env.WriteReplica(0, TBlockRange64::WithLength(0, 1), '0');
+            env.WriteReplica(1, TBlockRange64::WithLength(0, 1), '0');
+
+            env.WriteReplica(1, TBlockRange64::WithLength(1, 1), '1');
+            env.WriteReplica(2, TBlockRange64::WithLength(1, 1), '1');
+
+            env.WriteReplica(0, TBlockRange64::WithLength(2, 1), '2');
+            env.WriteReplica(2, TBlockRange64::WithLength(2, 1), '2');
+        }
+
+        TVector<NProto::TChecksum> checksums;
+        auto selectMajorityChecksum = [&]() -> NProto::TChecksum
+        {
+            if (resyncPolicy == NProto::RESYNC_POLICY_MINOR_AND_MAJOR_4MB) {
+                return checksums.back();
+            }
+
+            struct TChecksumComparator
+            {
+                bool operator()(
+                    const NProto::TChecksum& a,
+                    const NProto::TChecksum& b) const
+                {
+                    return std::make_pair(a.GetChecksum(), a.GetByteCount()) <
+                           std::make_pair(b.GetChecksum(), b.GetByteCount());
+                }
+            };
+            TMap<NProto::TChecksum, ui32, TChecksumComparator> checksumCount;
+            for (size_t i = checksums.size() - 3; i < checksums.size(); ++i) {
+                checksumCount[checksums[i]]++;
+            }
+            UNIT_ASSERT_VALUES_EQUAL(2, checksumCount.size());
+            return FindIfPtr(
+                       checksumCount,
+                       [](const auto& item) { return item.second > 1; })
+                ->first;
+        };
+
+        bool seenWrites = false;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) -> bool
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskAgent::EvReadDeviceBlocksResponse: {
+                        auto* msg = event->Get<
+                            TEvDiskAgent::TEvReadDeviceBlocksResponse>();
+                        UNIT_ASSERT(msg->Record.HasChecksum());
+                        checksums.push_back(msg->Record.GetChecksum());
+                        break;
+                    }
+                    case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
+                        seenWrites = true;
+                        auto* msg = event->Get<
+                            TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+                        UNIT_ASSERT(msg->Record.HasChecksum());
+                        UNIT_ASSERT(!checksums.empty());
+                        const auto expectedChecksum =
+                            multiBlockCorruption ? CalculateChecksum(
+                                                       msg->Record.GetBlocks(),
+                                                       BlockSize)
+                                                 : selectMajorityChecksum();
+
+                        // The first checksum should be calculated after the
+                        // block by block resync.
+                        if (multiBlockCorruption && checksums.size() == 3) {
+                            UNIT_ASSERT(!MessageDifferencer::Equals(
+                                expectedChecksum,
+                                checksums.back()));
+                        }
+                        UNIT_ASSERT_C(
+                            MessageDifferencer::Equals(
+                                msg->Record.GetChecksum(),
+                                expectedChecksum),
+                            TStringBuilder()
+                                << "Checksum mismatch: "
+                                << expectedChecksum.ShortUtf8DebugString()
+                                       .Quote()
+                                << " != "
+                                << msg->Record.GetChecksum()
+                                       .ShortUtf8DebugString()
+                                       .Quote());
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                return false;
+            });
+
+        env.StartResync(0, resyncPolicy);
+        env.ResyncController.WaitForResyncedRangeCount(5);
+        UNIT_ASSERT(env.ResyncController.ResyncFinished);
+        UNIT_ASSERT(seenWrites);
+        const ui32 expectedChecksumsCount =
+            resyncPolicy == NProto::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK
+                ? 15
+                : 5;
+        UNIT_ASSERT_VALUES_EQUAL(expectedChecksumsCount, checksums.size());
+    }
+
+    Y_UNIT_TEST(ShouldUseDataIntegrityChecksums_4MB)
+    {
+        ShouldUseDataIntegrityChecksums(
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_4MB,
+            false);
+    }
+
+    Y_UNIT_TEST(ShouldUseDataIntegrityChecksums_BlockByBlock)
+    {
+        ShouldUseDataIntegrityChecksums(
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK,
+            false);
+    }
+
+    Y_UNIT_TEST(
+        ShouldUseDataIntegrityChecksums_BlockByBlock_MultiBlockCorruption)
+    {
+        ShouldUseDataIntegrityChecksums(
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK,
+            true);
     }
 
     void DoTestShouldResyncWholeDisk(
@@ -1708,9 +1858,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_STRING_CONTAINS(
-                response->Device.GetDeviceUUID(),
-                "vasya");
+            UNIT_ASSERT_STRING_CONTAINS(response->DeviceUUID, "vasya");
         }
         {   // Request over not synced range
             client.SendRequest(
@@ -1736,9 +1884,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_STRING_CONTAINS(
-                response->Device.GetDeviceUUID(),
-                "vasya");
+            UNIT_ASSERT_STRING_CONTAINS(response->DeviceUUID, "vasya");
         }
 
         // Resync range [2048..3095].
@@ -1754,9 +1900,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
                 response->GetErrorReason());
-            UNIT_ASSERT_STRING_CONTAINS(
-                response->Device.GetDeviceUUID(),
-                "petya");
+            UNIT_ASSERT_STRING_CONTAINS(response->DeviceUUID, "petya");
         }
         {   // Request on the border of two devices
             client.SendRequest(
@@ -1924,6 +2068,57 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
                     buffer);
             }
         }
+    }
+
+    Y_UNIT_TEST(ShouldRetryIfResyncRangeFail)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        TBlockRange64 rejectedRange;
+        bool seenRetry = false;
+        bool isRejected = false;
+
+        auto filter = [&](TTestActorRuntimeBase& runtime,
+                          TAutoPtr<IEventHandle>& event) -> bool
+        {
+            if (event->GetTypeRewrite() ==
+                TEvNonreplPartitionPrivate::EvRangeResynced)
+            {
+                auto* msg =
+                    event->Get<TEvNonreplPartitionPrivate::TEvRangeResynced>();
+
+                if (msg->Range == rejectedRange && isRejected) {
+                    seenRetry = true;
+                    return false;
+                }
+
+                if (isRejected) {
+                    return false;
+                }
+
+                rejectedRange = msg->Range;
+                isRejected = true;
+                runtime.Send(
+                    event->Recipient,
+                    event->Sender,
+                    new TEvNonreplPartitionPrivate::TEvRangeResynced(
+                        MakeError(E_REJECTED),
+                        *msg));
+
+                return true;
+            }
+
+            return false;
+        };
+
+        runtime.SetEventFilter(filter);
+
+        env.StartResync(0);
+        env.ResyncController.WaitForResyncedRangeCount(1);
+
+        UNIT_ASSERT(isRejected);
+        UNIT_ASSERT(seenRetry);
     }
 }
 

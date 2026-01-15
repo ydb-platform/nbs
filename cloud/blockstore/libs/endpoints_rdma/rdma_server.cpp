@@ -103,7 +103,7 @@ private:
     NProto::TError HandleZeroBlocksRequest(
         void* context,
         TCallContextPtr callContext,
-        NProto::TZeroBlocksRequest& request,
+        NProto::TZeroBlocksRequest* request,
         TStringBuf requestData,
         TStringBuf out);
 };
@@ -186,7 +186,7 @@ NProto::TError TRdmaEndpoint::DoHandleRequest(
             return HandleZeroBlocksRequest(
                 context,
                 std::move(callContext),
-                static_cast<NProto::TZeroBlocksRequest&>(*request.Proto),
+                static_cast<NProto::TZeroBlocksRequest*>(&*request.Proto),
                 request.Data,
                 out);
 
@@ -311,13 +311,13 @@ NProto::TError TRdmaEndpoint::HandleWriteBlocksRequest(
 NProto::TError TRdmaEndpoint::HandleZeroBlocksRequest(
     void* context,
     TCallContextPtr callContext,
-    NProto::TZeroBlocksRequest& request,
+    NProto::TZeroBlocksRequest* request,
     TStringBuf requestData,
     TStringBuf out)
 {
     Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
 
-    auto req = std::make_shared<NProto::TZeroBlocksRequest>(std::move(request));
+    auto req = std::make_shared<NProto::TZeroBlocksRequest>(std::move(*request));
 
     auto future = Session->ZeroBlocks(
         std::move(callContext),

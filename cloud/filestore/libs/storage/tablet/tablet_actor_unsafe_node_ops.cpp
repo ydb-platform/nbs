@@ -60,7 +60,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeDeleteNode(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "UnsafeDeleteNode");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnsafeDeleteNode");
     }
 
     if (!args.Node) {
@@ -144,7 +144,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeUpdateNode(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "UnsafeUpdateNode");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnsafeUpdateNode");
     }
 
     NProto::TNode prevNode;

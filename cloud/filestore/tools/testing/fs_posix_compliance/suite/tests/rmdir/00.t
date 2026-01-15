@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # $FreeBSD: src/tools/regression/fstest/tests/rmdir/00.t,v 1.1 2007/01/17 01:42:11 pjd Exp $
 
 desc="rmdir removes directories"
@@ -19,7 +19,7 @@ expect ENOENT lstat ${n0} type
 expect 0 mkdir ${n0} 0755
 expect 0 mkdir ${n0}/${n1} 0755
 time=`${fstest} stat ${n0} ctime`
-sleep 1
+sleep 2
 expect 0 rmdir ${n0}/${n1}
 mtime=`${fstest} stat ${n0} mtime`
 test_check $time -lt $mtime

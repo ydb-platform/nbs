@@ -10,4 +10,5 @@ from cloud.filestore.public.api.protos.headers_pb2 import *     # noqa
 from cloud.filestore.public.api.protos.locks_pb2 import *       # noqa
 from cloud.filestore.public.api.protos.node_pb2 import *        # noqa
 from cloud.filestore.public.api.protos.ping_pb2 import *        # noqa
+from cloud.filestore.public.api.protos.server_pb2 import *      # noqa
 from cloud.filestore.public.api.protos.session_pb2 import *     # noqa

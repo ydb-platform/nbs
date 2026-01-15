@@ -137,13 +137,15 @@ void TBootstrap::Init()
     }
 
     if (TraceReaders.size()) {
+        TTraceProcessorConfig traceProcessorConfig;
+        traceProcessorConfig.ComponentName = "BLOCKSTORE_TRACE";
         TraceProcessor = CreateTraceProcessorMon(
             Monitoring,
             CreateTraceProcessor(
                 Timer,
                 Scheduler,
                 Logging,
-                "BLOCKSTORE_TRACE",
+                std::move(traceProcessorConfig),
                 TLWTraceSafeManager::Instance(),
                 TraceReaders));
     }
@@ -264,21 +266,23 @@ void TBootstrap::InitLWTrace()
     if (auto samplingRate = tracingConfig.GetSamplingRate()) {
         NLWTrace::TQuery query = ProbabilisticQuery(desc, samplingRate);
         TLWTraceSafeManager::Instance().New(TraceLoggerId, query);
-        TraceReaders.push_back(CreateTraceLogger(
+        TraceReaders.push_back(SetupTraceReaderWithLog(
             TraceLoggerId,
             traceLog,
-            "BLOCKSTORE_TRACE"
+            "BLOCKSTORE_TRACE",
+            "AllRequests"
         ));
     }
 
     if (auto samplingRate = tracingConfig.GetSlowRequestSamplingRate()) {
         NLWTrace::TQuery query = ProbabilisticQuery(desc, samplingRate);
         TLWTraceSafeManager::Instance().New(SlowRequestsFilterId, query);
-        TraceReaders.push_back(CreateSlowRequestsFilter(
+        TraceReaders.push_back(SetupTraceReaderForSlowRequests(
             SlowRequestsFilterId,
             traceLog,
             "BLOCKSTORE_TRACE",
-            ClientConfig->GetRequestThresholds()));
+            ClientConfig->GetRequestThresholds(),
+            "SlowRequests"));
     }
 }
 

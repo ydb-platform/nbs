@@ -24,6 +24,8 @@ message ReplicateDiskTaskRequest {
 
     bool IgnoreBaseDisk = 5;
     bool UseProxyOverlayDisk = 6;
+
+    bool IsReplicationBetweenCells = 7;
 }
 
 message ReplicateDiskTaskState {

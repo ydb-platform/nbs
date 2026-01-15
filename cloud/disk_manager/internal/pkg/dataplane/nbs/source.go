@@ -225,6 +225,16 @@ func (s *diskSource) ChunkCount(ctx context.Context) (uint32, error) {
 	return s.chunkCount, nil
 }
 
+func (s *diskSource) EstimatedBytesToRead(ctx context.Context) (uint64, error) {
+	return s.client.GetChangedBytes(
+		ctx,
+		s.diskID,
+		s.baseCheckpointID,
+		s.checkpointID,
+		s.ignoreBaseDisk,
+	)
+}
+
 func (s *diskSource) Close(ctx context.Context) {
 	s.session.Close(ctx)
 }

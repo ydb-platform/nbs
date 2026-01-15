@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
 #include <cloud/blockstore/libs/storage/core/compaction_type.h>
+#include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/request_buffer.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/ts_ring_buffer.h>
@@ -25,6 +26,8 @@
 #include <cloud/blockstore/libs/storage/partition/model/mixed_index_cache.h>
 #include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
+
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 #include <cloud/storage/core/libs/tablet/gc_logic.h>
 
@@ -260,6 +263,18 @@ struct TScanDiskState
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TQueuedRequest
+{
+    NActors::IActorPtr Actor;
+    ui64 BSGroupOperationId = 0;
+    ui32 Group = 0;
+    TBSGroupOperationTimeTracker::EOperationType OperationType =
+        TBSGroupOperationTimeTracker::EOperationType::Read;
+    ui32 BlockSize = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TChannelState
 {
     EChannelPermissions Permissions = EChannelPermission::UserWritesAllowed
@@ -268,7 +283,7 @@ struct TChannelState
     double FreeSpaceScore = 0;
     bool ReassignRequestedByBlobStorage = false;
 
-    std::list<NActors::IActorPtr> IORequests;
+    std::list<TQueuedRequest> IORequests;
     size_t IORequestsInFlight = 0;
     size_t IORequestsQueued = 0;
 };
@@ -327,6 +342,9 @@ public:
         const TFreeSpaceConfig& freeSpaceConfig,
         ui32 maxIORequestsInFlight,
         ui32 reassignChannelsPercentageThreshold,
+        ui32 reassignFreshChannelsPercentageThreshold,
+        ui32 reassignMixedChannelsPercentageThreshold,
+        bool reassignSystemChannelsImmediately,
         ui32 lastCommitId,
         ui32 channelCount,
         ui32 mixedIndexCacheSize,
@@ -425,6 +443,9 @@ private:
 
     const ui32 MaxIORequestsInFlight;
     const ui32 ReassignChannelsPercentageThreshold;
+    const ui32 ReassignFreshChannelsPercentageThreshold;
+    const ui32 ReassignMixedChannelsPercentageThreshold;
+    const bool ReassignSystemChannelsImmediately;
 
 public:
     ui32 GetChannelCount() const
@@ -452,9 +473,14 @@ public:
     TVector<ui32> GetChannelsToReassign() const;
     TBackpressureReport CalculateCurrentBackpressure() const;
     ui32 GetAlmostFullChannelCount() const;
-
-    void EnqueueIORequest(ui32 channel, NActors::IActorPtr requestActor);
-    NActors::IActorPtr DequeueIORequest(ui32 channel);
+    void EnqueueIORequest(
+        ui32 channel,
+        NActors::IActorPtr requestActor,
+        ui64 bsGroupOperationId,
+        ui32 group,
+        TBSGroupOperationTimeTracker::EOperationType operationType,
+        ui32 blockSize);
+    std::optional<TQueuedRequest> DequeueIORequest(ui32 channel);
     void CompleteIORequest(ui32 channel);
     ui32 GetIORequestsInFlight() const;
     ui32 GetIORequestsQueued() const;
@@ -746,7 +772,8 @@ public:
 
     ui32 GetUnflushedFreshBlocksCount() const
     {
-        return Stats.GetFreshBlocksCount() + UnflushedFreshBlocksFromChannelCount;
+        return GetStats().GetFreshBlocksCount() +
+               UnflushedFreshBlocksFromChannelCount;
     }
 
     ui32 IncrementUnflushedFreshBlocksFromDbCount(size_t value);
@@ -995,8 +1022,8 @@ public:
 
     void UpdateBlocksCountersAfterMetadataRebuild(ui64 mixed, ui64 merged)
     {
-        Stats.SetMixedBlocksCount(mixed);
-        Stats.SetMergedBlocksCount(merged);
+        AccessStats().SetMixedBlocksCount(mixed);
+        AccessStats().SetMergedBlocksCount(merged);
     }
 
     //
@@ -1228,7 +1255,10 @@ private:
     TBarriers TrimFreshLogBarriers;
     TOperationState TrimFreshLogState;
     ui64 LastTrimFreshLogToCommitId = 0;
-    TDuration TrimFreshLogTimeout;
+    TBackoffDelayProvider TrimFreshLogBackoffDelayProvider{
+        TDuration::Zero(),
+        TDuration::MilliSeconds(100),
+        TDuration::Seconds(5)};
 
 public:
     TBarriers& GetTrimFreshLogBarriers()
@@ -1251,22 +1281,19 @@ public:
         return TrimFreshLogState;
     }
 
-    TDuration GetTrimFreshLogTimeout()
+    TDuration GetTrimFreshLogBackoffDelay()
     {
-        return TrimFreshLogTimeout;
+        return TrimFreshLogBackoffDelayProvider.GetDelay();
     }
 
     void RegisterTrimFreshLogError()
     {
-        TrimFreshLogTimeout = Min(
-            TDuration::Seconds(5),
-            Max(TDuration::MilliSeconds(100), TrimFreshLogTimeout * 2)
-        );
+        TrimFreshLogBackoffDelayProvider.IncreaseDelay();
     }
 
     void RegisterTrimFreshLogSuccess()
     {
-        TrimFreshLogTimeout = {};
+        TrimFreshLogBackoffDelayProvider.Reset();
     }
 
     ui64 GetLastTrimFreshLogToCommitId() const
@@ -1343,6 +1370,10 @@ public:
         ui64 commitId,
         const TBlobToConfirm& blob);
 
+    void DeleteUnconfirmedBlobs(
+        TPartitionDatabase& db,
+        ui64 commitId);
+
     void ConfirmedBlobsAdded(TPartitionDatabase& db, ui64 commitId);
 
     void BlobsConfirmed(ui64 commitId, TVector<TBlobToConfirm> blobs);
@@ -1386,7 +1417,6 @@ public:
     //
 
 private:
-    NProto::TPartitionStats& Stats;
     THashMap<ui32, TDowntimeHistoryHolder> GroupId2Downtimes;
 
 public:
@@ -1400,18 +1430,18 @@ public:
 
     const NProto::TPartitionStats& GetStats() const
     {
-        return Stats;
+        return Meta.GetStats();
     }
 
     NProto::TPartitionStats& AccessStats()
     {
-        return Stats;
+        return *Meta.MutableStats();
     }
 
 #define BLOCKSTORE_PARTITION_DECLARE_COUNTER(name)                             \
     ui64 Get##name() const                                                     \
     {                                                                          \
-        return Stats.Get##name();                                              \
+        return GetStats().Get##name();                                         \
     }                                                                          \
                                                                                \
     ui64 Increment##name(size_t value);                                        \
@@ -1425,7 +1455,7 @@ public:
     template <typename T>
     void UpdateStats(T&& update)
     {
-        update(Stats);
+        update(AccessStats());
     }
 
     void DumpHtml(IOutputStream& out) const;

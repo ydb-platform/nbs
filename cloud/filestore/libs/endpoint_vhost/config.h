@@ -37,6 +37,13 @@ public:
     TString GetWriteBackCachePath() const;
     ui64 GetWriteBackCacheCapacity() const;
     TDuration GetWriteBackCacheAutomaticFlushPeriod() const;
+    TDuration GetWriteBackCacheFlushRetryPeriod() const;
+    ui32 GetWriteBackCacheFlushMaxWriteRequestSize() const;
+    ui32 GetWriteBackCacheFlushMaxWriteRequestsCount() const;
+    ui32 GetWriteBackCacheFlushMaxSumWriteRequestsSize() const;
+
+    TString GetDirectoryHandlesStoragePath() const;
+    ui64 GetDirectoryHandlesInitialDataSize() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

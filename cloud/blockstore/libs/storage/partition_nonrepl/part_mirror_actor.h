@@ -16,10 +16,13 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/model/request_bounds_tracker.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
-#include <cloud/blockstore/libs/storage/partition_common/get_device_for_range_companion.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/get_device_for_range_companion.h>
+
+#include <cloud/storage/core/libs/throttling/leaky_bucket.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -40,11 +43,30 @@ TDuration CalculateScrubbingInterval(
     ui64 maxBandwidth,
     ui64 minBandwidth);
 
+struct TCheckRangeRequestInfo
+{
+    TCheckRangeRequestInfo() = default;
+
+    TCheckRangeRequestInfo(TRequestInfoPtr requestInfo, TBlockRange64 range)
+        : RequestInfo(std::move(requestInfo))
+        , Range(range)
+    {}
+
+    TRequestInfoPtr RequestInfo;
+    TBlockRange64 Range;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TMirrorPartitionActor final
     : public NActors::TActorBootstrapped<TMirrorPartitionActor>
 {
+    enum class EWriteRequestType
+    {
+        DirectWrite,
+        MultiAgentWrite,
+    };
+
 private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
@@ -52,9 +74,11 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     NRdma::IClientPtr RdmaClient;
     const TString DiskId;
+    const NActors::TActorId VolumeActorId;
     const NActors::TActorId StatActorId;
     const NActors::TActorId ResyncActorId;
 
+    TLogTitle LogTitle;
     TMirrorPartitionState State;
 
     TDeque<TPartitionDiskCountersPtr> ReplicaCounters;
@@ -63,17 +87,17 @@ private:
     TDuration CpuUsage;
 
     THashSet<ui64> DirtyReadRequestIds;
-    TRequestsInProgressWithBlockRangeTracking<
+    THashMap<NActors::TActorId, TCheckRangeRequestInfo> CheckRangeRequestsInfo;
+    TRequestsInProgress<
         EAllowedRequests::ReadWrite,
         ui64,   // key
         ui64>   // volume request id
-        RequestsInProgress{State.GetBlockSize()};
-    TDrainActorCompanion DrainActorCompanion{
-        RequestsInProgress,
-        DiskId,
-        &RequestsInProgress.GetRequestBoundsTracker()};
+        RequestsInProgress;
+    TDrainActorCompanion DrainActorCompanion{RequestsInProgress, DiskId};
     TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
         TGetDeviceForRangeCompanion::EAllowedOperation::Read};
+
+    TLeakyBucket DirectWriteBandwidthQuota{1.0, 1.0, 1.0};
 
     TRequestInfoPtr Poisoner;
     size_t AliveReplicas = 0;
@@ -96,7 +120,8 @@ private:
     TBlockRangeSet64 Fixed;
     TBlockRangeSet64 FixedPartial;
 
-    TRequestBoundsTracker BlockRangeRequests{State.GetBlockSize()};
+    // The ranges are locked for migrations and filling of fresh replicas.
+    TRequestBoundsTracker LockedRanges{State.GetBlockSize()};
 
     bool MultiAgentWriteEnabled = true;
     const size_t MultiAgentWriteRequestSizeThreshold = 0;
@@ -113,6 +138,7 @@ public:
         TMigrations migrations,
         TVector<TDevices> replicas,
         NRdma::IClientPtr rdmaClient,
+        NActors::TActorId volumeActorId,
         NActors::TActorId statActorId,
         NActors::TActorId resyncActorId);
 
@@ -135,7 +161,13 @@ private:
     void StartResyncRange(const NActors::TActorContext& ctx, bool isMinor);
     void AddTagForBufferCopying(const NActors::TActorContext& ctx);
     ui64 TakeNextRequestIdentifier();
-    bool CanMakeMultiAgentWrite(TBlockRange64 range) const;
+    EWriteRequestType SuggestWriteRequestType(
+        const NActors::TActorContext& ctx,
+        TBlockRange64 range);
+    void ReplyError(
+        const NActors::TActorContext& ctx,
+        const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
+        NProto::TError&& error);
 
 private:
     STFUNC(StateWork);
@@ -214,10 +246,19 @@ private:
         const NActors::TEvents::TEvPoisonTaken::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleCheckRangeResponse(
+        const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     template <typename TMethod>
     void MirrorRequest(
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    // returns new request identity key
+    [[nodiscard]] ui64 RegisterNewReadBlocksRequest(
+        ui64 volumeRequestId,
+        TBlockRange64 blockRange);
 
     template <typename TMethod>
     void ReadBlocks(

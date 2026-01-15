@@ -36,6 +36,8 @@ struct TClientConfig
     TDuration AdaptiveWaitSleepDelay = TDuration::MilliSeconds(10);
     TDuration AdaptiveWaitSleepDuration = TDuration::MicroSeconds(100);
     bool AlignedDataEnabled = false;
+    ui8 IpTypeOfService = 0;
+    TString SourceInterface;
 
     TClientConfig() = default;
 
@@ -103,12 +105,13 @@ struct IClientEndpoint
         size_t requestBytes,
         size_t responseBytes) = 0;
 
-    // Returns id of sent request. It can be used to cancel this request.
+    // Returns clientRequestId of sent request. It can be used to cancel this
+    // request.
     virtual ui64 SendRequest(
         TClientRequestPtr req,
         TCallContextPtr callContext) = 0;
 
-    virtual void CancelRequest(ui64 reqId) = 0;
+    virtual void CancelRequest(ui64 clientRequestId) = 0;
 
     virtual NThreading::TFuture<void> Stop() = 0;
 

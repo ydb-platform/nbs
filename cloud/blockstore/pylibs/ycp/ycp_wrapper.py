@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from cloud.blockstore.pylibs.clusters.test_config import FolderDesc
 
@@ -54,6 +54,7 @@ class YcpWrapper:
                         cores: int,
                         memory: int,
                         compute_node: str = None,
+                        compute_nodes_list: List[str] = None,
                         placement_group_name: str = None,
                         host_group: str = None,
                         image_name: str = None,
@@ -65,6 +66,7 @@ class YcpWrapper:
                         description: str = None,
                         underlay_vm: bool = False) -> Ycp.Instance:
         self._logger.info('Creating instance')
+
         create_instance_cfg = Ycp.CreateInstanceConfig(
             name=name or '{}{}'.format(self.TMP_INSTANCE_PREFIX, self._ycp_engine.generate_id()),
             cores=cores,
@@ -76,6 +78,7 @@ class YcpWrapper:
             subnet_id=self._folder_desc.subnet_id,
             folder_id=self._folder_desc.folder_id,
             compute_node=compute_node,
+            compute_nodes_list=compute_nodes_list,
             placement_group_name=placement_group_name,
             host_group=host_group,
             filesystem_id=self._folder_desc.filesystem_id,

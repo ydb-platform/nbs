@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -24,7 +25,10 @@ protected:
     const TRequestInfoPtr RequestInfo;
     const TVector<TDeviceRequest> DeviceRequests;
     const TNonreplicatedPartitionConfigPtr PartConfig;
+    const NActors::TActorId VolumeActorId;
     const NActors::TActorId Part;
+    const ui64 DeviceOperationId;
+    TChildLogTitle LogTitle;
 
 private:
     const TString RequestName;
@@ -41,7 +45,9 @@ public:
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
-        const NActors::TActorId& part);
+        NActors::TActorId volumeActorId,
+        const NActors::TActorId& part,
+        TChildLogTitle logTitle);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -72,6 +78,16 @@ protected:
         const NActors::TActorContext& ctx,
         NActors::IEventBasePtr response,
         EStatus status);
+
+    void OnRequestStarted(
+        const NActors::TActorContext& ctx,
+        const TString& agentId,
+        TDeviceOperationTracker::ERequestType requestType,
+        size_t requestIndex);
+
+    void OnRequestFinished(
+        const NActors::TActorContext& ctx,
+        size_t requestIndex);
 
 private:
     void StateWork(TAutoPtr<NActors::IEventHandle>& ev);

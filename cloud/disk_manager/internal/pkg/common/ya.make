@@ -1,5 +1,10 @@
 GO_LIBRARY()
 
+SET(
+    GO_VET_FLAGS
+    -printf=false
+)
+
 SRCS(
     assert.go
     channel_with_cancellation.go

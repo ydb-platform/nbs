@@ -30,6 +30,12 @@ ui32 CalculateChecksum(
 {
     Y_UNUSED(request);
 
+    // If checksum is already calculated by the disk agent, we can use it instead
+    // of calculating it again.
+    if (response.HasChecksum() && response.GetChecksum().GetByteCount() > 0) {
+        return response.GetChecksum().GetChecksum();
+    }
+
     TBlockChecksum checksum;
     for (const auto& buffer: response.GetBlocks().GetBuffers()) {
         checksum.Extend(buffer.data(), buffer.size());
@@ -41,7 +47,11 @@ ui32 CalculateChecksum(
     const TEvService::TEvReadBlocksLocalRequest::ProtoRecordType& request,
     const TEvService::TEvReadBlocksLocalResponse::ProtoRecordType& response)
 {
-    Y_UNUSED(response);
+    // If checksum is already calculated by the disk agent, we can use it instead
+    // of calculating it again.
+    if (response.HasChecksum() && response.GetChecksum().GetByteCount() > 0) {
+        return response.GetChecksum().GetChecksum();
+    }
 
     auto g = request.Sglist.Acquire();
     if (!g) {
@@ -237,7 +247,14 @@ void TRequestActor<TMethod>::CompareChecksums(const TActorContext& ctx)
                 DescribeRange(Range).c_str(),
                 errorMessage.c_str());
 
-            *Response.MutableError() = MakeError(E_REJECTED, errorMessage);
+            ui32 flags = 0;
+            // If it's a minor replica mismatch, the instant retry will minimize
+            // the latency. If it's a major, the durable client won't retry one
+            // request instantly more than once and this will not cause the
+            // retry storm.
+            SetProtoFlag(flags, NProto::EF_INSTANT_RETRIABLE);
+            *Response.MutableError() =
+                MakeError(E_REJECTED, std::move(errorMessage), flags);
             ChecksumMismatchObserved = true;
             break;
         }
@@ -511,6 +528,23 @@ auto TMirrorPartitionActor::SelectReplicasToReadFrom(
     return replicaActorIds;
 }
 
+ui64 TMirrorPartitionActor::RegisterNewReadBlocksRequest(
+    ui64 volumeRequestId,
+    TBlockRange64 blockRange)
+{
+    const ui64 requestIdentityKey = TakeNextRequestIdentifier();
+    RequestsInProgress.AddReadRequest(
+        requestIdentityKey,
+        blockRange,
+        volumeRequestId);
+
+    if (RequestsInProgress.OverlapsWithWrites(blockRange)) {
+        DirtyReadRequestIds.insert(requestIdentityKey);
+    }
+
+    return requestIdentityKey;
+}
+
 template <typename TMethod>
 void TMirrorPartitionActor::ReadBlocks(
     const typename TMethod::TRequest::TPtr& ev,
@@ -582,6 +616,10 @@ void TMirrorPartitionActor::ReadBlocks(
         return;
     }
 
+    const ui64 requestIdentityKey = RegisterNewReadBlocksRequest(
+        record.GetHeaders().GetVolumeRequestId(),
+        blockRange);
+
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
@@ -589,12 +627,6 @@ void TMirrorPartitionActor::ReadBlocks(
         DiskId.c_str(),
         DescribeRange(blockRange).c_str(),
         replicaActorIds.size());
-
-    const auto requestIdentityKey = TakeNextRequestIdentifier();
-    RequestsInProgress.AddReadRequest(
-        requestIdentityKey,
-        blockRange,
-        record.GetHeaders().GetVolumeRequestId());
 
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
@@ -644,12 +676,6 @@ NProto::TError TMirrorPartitionActor::SplitReadBlocks(
         return error;
     }
 
-    const auto requestIdentityKey = TakeNextRequestIdentifier();
-    RequestsInProgress.AddReadRequest(
-        requestIdentityKey,
-        blockRange,
-        record.GetHeaders().GetVolumeRequestId());
-
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
@@ -657,6 +683,10 @@ NProto::TError TMirrorPartitionActor::SplitReadBlocks(
         "with few requests",
         DiskId.c_str(),
         DescribeRange(blockRange).c_str());
+
+    const ui64 requestIdentityKey = RegisterNewReadBlocksRequest(
+        record.GetHeaders().GetVolumeRequestId(),
+        blockRange);
 
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);

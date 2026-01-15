@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_executor.h>
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_scenarios/aligned_test_scenario.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/range-validator/lib/validate.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -27,20 +28,27 @@ Y_UNIT_TEST_SUITE(ValidateTest)
         auto filePath = MakeTempName();
 
         auto configHolder = CreateTestConfig(
-            filePath,
-            1_MB, // fileSize
-            1,    // ioDepth
-            4096, // blockSize
-            100,  // writeRage
-            1,    // requestBlockCount
-            1,    // writeParts
-            "0",    // alternatingPhase
-            maxWriteRequestCount);
+            {.FilePath = filePath,
+             .FileSize = 1_MB,
+             .IoDepth = 1,
+             .BlockSize = 4096,
+             .WriteRate = 100,
+             .RequestBlockCount = 1,
+             .WriteParts = 1,
+             .AlternatingPhase = "",
+             .MaxWriteRequestCount = maxWriteRequestCount});
 
-        auto executor = CreateTestExecutor(
-            configHolder,
-            logging->CreateLog("ETERNAL_EXECUTOR")
-        );
+        auto log = logging->CreateLog("ETERNAL_EXECUTOR");
+
+        auto executor = NTesting::CreateTestExecutor(
+            {.TestScenarios = {{
+                 .TestScenario =
+                     NTesting::CreateAlignedTestScenario(configHolder, log),
+                 .FilePath = filePath,
+             }},
+             .FileService = NTesting::ETestExecutorFileService::AsyncIo,
+             .Log = log});
+
         UNIT_ASSERT(executor->Run());
 
         TFile file(filePath, EOpenModeFlag::RdOnly | EOpenModeFlag::DirectAligned);

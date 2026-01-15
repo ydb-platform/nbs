@@ -14,13 +14,14 @@
 #include <cloud/filestore/libs/storage/api/service.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/core/config.h>
+#include <cloud/filestore/libs/storage/core/system_counters.h>
 #include <cloud/filestore/libs/storage/core/tablet.h>
 #include <cloud/filestore/libs/storage/model/public.h>
-#include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
+#include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/diagnostics/busy_idle_calculator.h>
 #include <cloud/storage/core/libs/throttling/public.h>
@@ -49,6 +50,36 @@ struct ICodec;
 }   // namespace NBlockCodecs
 
 namespace NCloud::NFileStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+inline void BuildBackendInfo(
+    const TStorageConfig& config,
+    const TSystemCounters& systemCounters,
+    NProto::TBackendInfo* backendInfo)
+{
+    //
+    // Keeping it simple for now - checking only CpuWait. We might decide to add
+    // some other metrics into consideration here - e.g. network usage and
+    // tablet executor cpu usage.
+    //
+
+    const ui64 cl = systemCounters.CpuLack.load(std::memory_order_relaxed);
+    backendInfo->SetIsOverloaded(cl >= config.GetCpuLackOverloadThreshold());
+}
+
+template <typename T>
+void BuildBackendInfo(
+    const TStorageConfig& config,
+    const TSystemCounters& systemCounters,
+    T& response)
+{
+    if constexpr (HasResponseHeaders<T>()) {
+        auto* responseHeaders = response.MutableHeaders();
+        auto* backendInfo = responseHeaders->MutableBackendInfo();
+        BuildBackendInfo(config, systemCounters, backendInfo);
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -86,10 +117,16 @@ private:
 
         std::atomic<i64> TotalNodesCount{0};
         std::atomic<i64> UsedNodesCount{0};
+        std::atomic<i64> AggregateUsedNodesCount{0};
 
         std::atomic<i64> UsedSessionsCount{0};
         std::atomic<i64> UsedHandlesCount{0};
+        std::atomic<i64> UsedDirectHandlesCount{0};
+        std::atomic<i64> SevenBytesHandlesCount{0};
         std::atomic<i64> UsedLocksCount{0};
+
+        std::atomic<i64> StrictFileSystemSizeEnforcementEnabled{0};
+        std::atomic<i64> DirectoryCreationInShardsEnabled{0};
 
         // Session stats
         std::atomic<i64> StatefulSessionsCount{0};
@@ -126,6 +163,8 @@ private:
         std::atomic<i64> InMemoryIndexStateNodeRefsCapacity;
         std::atomic<i64> InMemoryIndexStateNodeAttrsCount;
         std::atomic<i64> InMemoryIndexStateNodeAttrsCapacity;
+        std::atomic<i64> InMemoryIndexStateNodeRefsExhaustivenessCount;
+        std::atomic<i64> InMemoryIndexStateNodeRefsExhaustivenessCapacity;
         std::atomic<i64> InMemoryIndexStateIsExhaustive;
 
         // Mixed index in-memory stats
@@ -171,6 +210,9 @@ private:
         std::atomic<i64> BusyTime{0};
         std::atomic<i64> IdleTime{0};
         TBusyIdleTimeCalculatorAtomics BusyIdleCalc;
+
+        // Tablet-specific stats
+        std::atomic<i64> TabletStartTimestamp{0};
 
         // Blob compression stats
         std::atomic<i64> UncompressedBytesWritten{0};
@@ -287,6 +329,11 @@ private:
             std::atomic<i64> DudCount{0};
         };
 
+        struct TListNodesMetrics: TRequestMetrics
+        {
+            std::atomic<i64> RequestedBytesPrecharge{0};
+        };
+
         // private requests
         TRequestMetrics ReadBlob;
         TRequestMetrics WriteBlob;
@@ -298,7 +345,7 @@ private:
         TRequestMetrics WriteData;
         TRequestMetrics AddData;
         TRequestMetrics GenerateBlobIds;
-        TRequestMetrics ListNodes;
+        TListNodesMetrics ListNodes;
         TRequestMetrics GetNodeAttr;
         TRequestMetrics CreateHandle;
         TRequestMetrics DestroyHandle;
@@ -327,6 +374,7 @@ private:
         // performance evaluation
         std::atomic<i64> CurrentLoad{0};
         std::atomic<i64> Suffer{0};
+        std::atomic<i64> OverloadedCount{0};
 
         const NMetrics::IMetricsRegistryPtr StorageRegistry;
         const NMetrics::IMetricsRegistryPtr StorageFsRegistry;
@@ -358,7 +406,8 @@ private:
             const TBlobMetaMapStats& blobMetaMapStats,
             const TIndexTabletState::TBackpressureThresholds&
                 backpressureThresholds,
-            const TIndexTabletState::TBackpressureValues& backpressureValues);
+            const TIndexTabletState::TBackpressureValues& backpressureValues,
+            const THandlesStats& handlesStats);
         void UpdatePerformanceMetrics(
             TInstant now,
             const TDiagnosticsConfig& diagConfig,
@@ -371,6 +420,7 @@ private:
 
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;
+    const TSystemCountersPtr SystemCounters;
 
     static const TStateInfo States[];
     EState CurrentState = STATE_BOOT;
@@ -424,6 +474,7 @@ public:
         TDiagnosticsConfigPtr diagConfig,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
+        TSystemCountersPtr systemCounters,
         NMetrics::IMetricsRegistryPtr metricsRegistry,
         bool useNoneCompactionPolicy);
     ~TIndexTabletActor() override;
@@ -433,7 +484,7 @@ public:
 
     static TString GetStateName(ui32 state);
 
-    void RebootTabletOnCommitOverflow(
+    void ScheduleRebootTabletOnCommitIdOverflow(
         const NActors::TActorContext& ctx,
         const TString& request);
 
@@ -789,8 +840,8 @@ private:
         const TEvIndexTabletPrivate::TEvNodeRenamedInDestination::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleGetShardStatsCompleted(
-        const TEvIndexTabletPrivate::TEvGetShardStatsCompleted::TPtr& ev,
+    void HandleAggregateStatsCompleted(
+        const TEvIndexTabletPrivate::TEvAggregateStatsCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleShardRequestCompleted(
@@ -803,6 +854,10 @@ private:
 
     void HandleEnqueueBlobIndexOpIfNeeded(
         const TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleFakeDescribeData(
+        const TEvIndexTablet::TEvDescribeDataRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);
@@ -839,6 +894,9 @@ private:
     void UnregisterFileStore(const NActors::TActorContext& ctx);
 
     void UpdateLogTag();
+
+    bool HasBlocksLeft(ui64 blocksRequired) const;
+    bool HasSpaceLeft(ui64 prevSize, ui64 newSize) const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

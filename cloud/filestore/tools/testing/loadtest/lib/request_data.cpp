@@ -430,15 +430,21 @@ private:
         ui64 byteOffset)
     {
         try {
-            auto response = future.GetValue();
+            const auto& response = future.GetValue();
             CheckResponse(response);
 
             const auto& buffer = response.GetBuffer();
+            const auto& bufferOffset = response.GetBufferOffset();
+            if (buffer.empty()) {
+                Y_ABORT_UNLESS(bufferOffset == 0);
+            } else {
+                Y_ABORT_UNLESS(bufferOffset < buffer.size());
+            }
 
             ui64 segmentId = byteOffset / SEGMENT_SIZE;
             for (ui64 offset = 0; offset < ReadBytes; offset += SEGMENT_SIZE) {
-                const TSegment* segment =
-                    reinterpret_cast<const TSegment*>(buffer.data() + offset);
+                const TSegment* segment = reinterpret_cast<const TSegment*>(
+                    buffer.data() + bufferOffset + offset);
                 if (Spec.GetValidationEnabled()) {
                     Y_ABORT_UNLESS(handleInfo.Segments);
 
@@ -447,7 +453,7 @@ private:
 
                     TString message;
                     if (!Compare(segments[segmentId], *segment, &message)) {
-                        throw TServiceError(E_FAIL)
+                        STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                             << Sprintf("Validation failed: %s", message.c_str());
                     }
                 }
@@ -541,7 +547,7 @@ private:
         TInstant started)
     {
         try {
-            auto response = future.GetValue();
+            const auto& response = future.GetValue();
             CheckResponse(response);
 
             with_lock (StateLock) {
@@ -590,7 +596,7 @@ private:
     void CheckResponse(const T& response)
     {
         if (HasError(response)) {
-            throw TServiceError(response.GetError());
+            STORAGE_THROW_SERVICE_ERROR(response.GetError());
         }
     }
 

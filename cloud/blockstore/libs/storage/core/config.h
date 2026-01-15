@@ -43,6 +43,8 @@ public:
 
     void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
 
+    void SetVolumePreemptionType(NProto::EVolumePreemptionType volumePreemptionType);
+
     void Register(NKikimr::TControlBoard& controlBoard);
 
     static TStorageConfigPtr Merge(
@@ -284,7 +286,8 @@ public:
     ui32 GetChannelMinFreeSpace() const;
 
     ui32 GetMinChannelCount() const;
-    ui32 GetFreshChannelCount() const;
+    [[nodiscard]] ui32 GetFreshChannelCountSSD() const;
+    [[nodiscard]] ui32 GetFreshChannelCountHDD() const;
 
     ui32 GetZoneBlockCount() const;
     ui32 GetHotZoneRequestCountFactor() const;
@@ -325,10 +328,6 @@ public:
         const TString& folderId,
         const TString& diskId) const;
     bool IsMultipartitionVolumesFeatureEnabled(
-        const TString& cloudId,
-        const TString& folderId,
-        const TString& diskId) const;
-    bool IsAllocateFreshChannelFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;
@@ -374,11 +373,21 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsRootKmsEncryptionForDiskRegistryBasedDisksFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     [[nodiscard]] bool IsLaggingDevicesForMirror2DisksFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;
     [[nodiscard]] bool IsLaggingDevicesForMirror3DisksFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
+    [[nodiscard]] bool IsEnableVhostDiscardForNewVolumesFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;
@@ -450,6 +459,7 @@ public:
     ui32 GetExpectedDiskAgentSize() const;
     ui32 GetMaxNonReplicatedDeviceMigrationsInProgress() const;
     ui32 GetMaxNonReplicatedDeviceMigrationPercentageInProgress() const;
+    ui32 GetMaxNonReplicatedDeviceMigrationBatchSize() const;
 
     bool GetMirroredMigrationStartAllowed() const;
 
@@ -487,6 +497,9 @@ public:
     bool GetDiskRegistryCleanupConfigOnRemoveHost() const;
     TDuration GetReassignRequestRetryTimeout() const;
     ui32 GetReassignChannelsPercentageThreshold() const;
+    ui32 GetReassignMixedChannelsPercentageThreshold() const;
+    bool GetReassignSystemChannelsImmediately() const;
+    ui32 GetReassignFreshChannelsPercentageThreshold() const;
 
     TString GetCommonSSDPoolKind() const;
     ui64 GetMaxSSDGroupWriteBandwidth() const;
@@ -520,7 +533,10 @@ public:
     TString GetTabletBootInfoBackupFilePath() const;
     bool GetHiveProxyFallbackMode() const;
     TString GetPathDescriptionBackupFilePath() const;
+    bool GetUseBinaryFormatForPathDescriptionBackup() const;
+    bool GetUseBinaryFormatForTabletBootInfoBackup() const;
     bool GetSSProxyFallbackMode() const;
+    bool GetUseSchemeCache() const;
     bool GetDontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode() const;
 
     ui32 GetRdmaTargetPort() const;
@@ -571,6 +587,9 @@ public:
 
     TVector<TString> GetKnownSpareNodes() const;
     ui32 GetSpareNodeProbability() const;
+    [[nodiscard]] i32 GetSystemTabletsPriority() const;
+
+    ui32 GetDeviceOperationTrackingFrequency() const;
 
     bool GetRejectLateRequestsAtDiskAgentEnabled() const;
     bool GetAssignIdToWriteAndZeroRequestsEnabled() const;
@@ -607,8 +626,6 @@ public:
 
     TDuration GetWaitDependentDisksRetryRequestDelay() const;
 
-    TDuration GetVolumeProxyCacheRetryDuration() const;
-
     TDuration GetServiceSelfPingInterval() const;
 
     bool GetDataScrubbingEnabled() const;
@@ -619,6 +636,7 @@ public:
     ui64 GetMaxScrubbingBandwidth() const;
     ui64 GetMinScrubbingBandwidth() const;
     bool GetAutomaticallyEnableBufferCopyingAfterChecksumMismatch() const;
+    bool GetDisableUsingIntermediateWriteBuffer() const;
     NProto::EResyncPolicy GetScrubbingResyncPolicy() const;
 
     bool GetOptimizeVoidBuffersTransferForReadsEnabled() const;
@@ -657,6 +675,7 @@ public:
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeoutSSD() const;
 
     [[nodiscard]] bool GetEncryptionAtRestForDiskRegistryBasedDisksEnabled() const;
+    [[nodiscard]] bool GetRootKmsEncryptionForDiskRegistryBasedDisksEnabled() const;
 
     [[nodiscard]] bool GetDisableFullPlacementGroupCountCalculation() const;
     [[nodiscard]] double GetDiskRegistryInitialAgentRejectionThreshold() const;
@@ -695,6 +714,45 @@ public:
     [[nodiscard]] ui32 GetMaxOutOfOrderCompactionMapChunksInflight() const;
 
     [[nodiscard]] TDuration GetPartitionBootTimeout() const;
+
+    [[nodiscard]] ui64 GetDirectWriteBandwidthQuota() const;
+
+    [[nodiscard]] bool GetUsePullSchemeForVolumeStatistics() const;
+
+    [[nodiscard]] TDuration GetInitialRetryDelayForServiceRequests() const;
+    [[nodiscard]] TDuration GetMaxRetryDelayForServiceRequests() const;
+
+    [[nodiscard]] bool GetVolumeThrottlingManagerEnabled() const;
+    [[nodiscard]] TDuration
+    GetVolumeThrottlingManagerNotificationPeriodSeconds() const;
+
+    [[nodiscard]] TDuration GetRetryAcquireReleaseDiskInitialDelay() const;
+    [[nodiscard]] TDuration GetRetryAcquireReleaseDiskMaxDelay() const;
+
+    [[nodiscard]] bool
+    GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() const;
+
+    [[nodiscard]] TDuration GetTrimFreshLogTimeout() const;
+    [[nodiscard]] TDuration GetCollectGarbageTimeoutSSD() const;
+    [[nodiscard]] TDuration GetCollectGarbageTimeoutHDD() const;
+
+    [[nodiscard]] bool GetEnableDataIntegrityValidationForYdbBasedDisks() const;
+
+    [[nodiscard]] ui64 GetHiveLocalServiceCpuResourceLimit() const;
+    [[nodiscard]] ui64 GetHiveLocalServiceMemoryResourceLimit() const;
+    [[nodiscard]] ui64 GetHiveLocalServiceNetworkResourceLimit() const;
+
+    [[nodiscard]] TDuration GetDynamicNodeRegistrationTimeout() const;
+
+    [[nodiscard]] bool GetComputeDigestForEveryBlockOnCompaction() const;
+
+    [[nodiscard]] bool GetAttachDetachPathsEnabled() const;
+
+    [[nodiscard]] NProto::ENonreplAllocationPolicy GetNonreplAllocationPolicy() const;
+
+    [[nodiscard]] bool GetSendLocalTabletMetricsToHiveEnabled() const;
+
+    [[nodiscard]] bool GetEnableVhostDiscardForNewVolumes() const;
 };
 
 ui64 GetAllocationUnit(

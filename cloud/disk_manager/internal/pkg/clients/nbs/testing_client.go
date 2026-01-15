@@ -270,6 +270,15 @@ func (c *testingClient) CalculateCrc32WithEncryption(
 		return DiskContentInfo{}, err
 	}
 
+	// Disks created with the encryption at rest option, or within a folder with
+	// encryption at rest enabled, must be mounted without the encryption option.
+	// NBS processes encryption on its side.
+	if encryptionSpec != nil {
+		if encryptionSpec.Mode == protos.EEncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY {
+			encryptionSpec.Mode = protos.EEncryptionMode_NO_ENCRYPTION
+		}
+	}
+
 	opts := nbs_client.MountVolumeOpts{
 		MountFlags:     protoFlags(protos.EMountFlag_MF_THROTTLING_DISABLED),
 		MountSeqNumber: 0,
@@ -425,9 +434,21 @@ func (c *testingClient) ValidateCrc32WithEncryption(
 	actualBlockCrc32s := actualDiskContentInfo.BlockCrc32s
 	expectedBlockCrc32s := expectedDiskContentInfo.BlockCrc32s
 
+	if len(expectedBlockCrc32s) == 0 {
+		if actualCrc32 != expectedCrc32 {
+			return fmt.Errorf(
+				"%v crc32 doesn't match, expected %v, actual %v",
+				diskID,
+				expectedCrc32,
+				actualCrc32,
+			)
+		}
+
+		return nil
+	}
+
 	if len(actualBlockCrc32s) != len(expectedBlockCrc32s) {
-		logging.Debug(
-			ctx,
+		return fmt.Errorf(
 			"%v blocksCrc32 length doesn't match, expected %v, actual %v",
 			diskID,
 			len(expectedBlockCrc32s),
@@ -436,8 +457,7 @@ func (c *testingClient) ValidateCrc32WithEncryption(
 	} else {
 		for i := range expectedDiskContentInfo.BlockCrc32s {
 			if actualBlockCrc32s[i] != expectedBlockCrc32s[i] {
-				logging.Debug(
-					ctx,
+				return fmt.Errorf(
 					"%v block with index %v crc32 doesn't match, expected %v, actual %v",
 					diskID,
 					i,
@@ -446,15 +466,6 @@ func (c *testingClient) ValidateCrc32WithEncryption(
 				)
 			}
 		}
-	}
-
-	if actualCrc32 != expectedCrc32 {
-		return fmt.Errorf(
-			"%v crc32 doesn't match, expected %v, actual %v",
-			diskID,
-			expectedCrc32,
-			actualCrc32,
-		)
 	}
 
 	return nil

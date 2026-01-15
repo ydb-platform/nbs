@@ -91,6 +91,15 @@ func (c *NbsClientMock) ListVolumes(
 	return args.Get(0).(*protos.TListVolumesResponse), args.Error(1)
 }
 
+func (c *NbsClientMock) ListDiskStates(
+	ctx context.Context,
+	req *protos.TListDiskStatesRequest,
+) (*protos.TListDiskStatesResponse, error) {
+
+	args := c.Called(ctx, req)
+	return args.Get(0).(*protos.TListDiskStatesResponse), args.Error(1)
+}
+
 func (c *NbsClientMock) DescribeVolume(
 	ctx context.Context,
 	req *protos.TDescribeVolumeRequest,

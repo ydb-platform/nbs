@@ -79,7 +79,7 @@ void TDirectCopyRangeActor::Bootstrap(const TActorContext& ctx)
 void TDirectCopyRangeActor::GetVolumeRequestId(
     const NActors::TActorContext& ctx)
 {
-    NCloud::Send(
+    NCloud::SendWithUndeliveryTracking(
         ctx,
         VolumeActorId,
         std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdRequest>());
@@ -87,7 +87,7 @@ void TDirectCopyRangeActor::GetVolumeRequestId(
 
 void TDirectCopyRangeActor::LockAndDrainRange(const TActorContext& ctx)
 {
-    NCloud::Send(
+    NCloud::SendWithUndeliveryTracking(
         ctx,
         ActorToLockAndDrainRange,
         std::make_unique<TEvPartition::TEvLockAndDrainRangeRequest>(Range));
@@ -98,21 +98,22 @@ void TDirectCopyRangeActor::GetDevicesInfo(const TActorContext& ctx)
     using EPurpose =
         TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::EPurpose;
 
-    ctx.Send(
+    NCloud::SendWithUndeliveryTracking(
+        ctx,
         SourceActor,
         std::make_unique<
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest>(
             EPurpose::ForReading,
             Range),
-        0,
         SourcePartitionTag);
-    ctx.Send(
+
+    NCloud::SendWithUndeliveryTracking(
+        ctx,
         TargetActor,
         std::make_unique<
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest>(
             EPurpose::ForWriting,
             Range),
-        0,
         TargetPartitionTag);
 }
 
@@ -124,27 +125,23 @@ void TDirectCopyRangeActor::DirectCopy(const NActors::TActorContext& ctx)
     rec.MutableHeaders()->SetIsBackgroundRequest(true);
     rec.MutableHeaders()->SetClientId(TString(BackgroundOpsClientId));
     rec.MutableHeaders()->SetVolumeRequestId(VolumeRequestId);
-    rec.SetSourceDeviceUUID(SourceInfo->Device.GetDeviceUUID());
+    rec.SetSourceDeviceUUID(SourceInfo->DeviceUUID);
     rec.SetSourceStartIndex(SourceInfo->DeviceBlockRange.Start);
     rec.SetBlockSize(BlockSize);
     rec.SetBlockCount(SourceInfo->DeviceBlockRange.Size());
-    rec.SetTargetNodeId(TargetInfo->Device.GetNodeId());
+    rec.SetTargetNodeId(TargetInfo->NodeId);
     rec.SetTargetClientId(
         WriterClientId ? WriterClientId : TString(BackgroundOpsClientId));
-    rec.SetTargetDeviceUUID(TargetInfo->Device.GetDeviceUUID());
+    rec.SetTargetDeviceUUID(TargetInfo->DeviceUUID);
     rec.SetTargetStartIndex(TargetInfo->DeviceBlockRange.Start);
 
-    auto event = std::make_unique<IEventHandle>(
-        MakeDiskAgentServiceId(SourceInfo->Device.GetNodeId()),
-        ctx.SelfID,
-        request.release(),
-        IEventHandle::FlagForwardOnNondelivery,
-        0,
-        &ctx.SelfID   // forwardOnNondelivery
-    );
-
     StartTs = ctx.Now();
-    ctx.Send(std::move(event));
+
+    NCloud::SendWithUndeliveryTracking(
+        ctx,
+        MakeDiskAgentServiceId(SourceInfo->NodeId),
+        std::move(request));
+
     ctx.Schedule(
         SourceInfo->RequestTimeout + TargetInfo->RequestTimeout,
         new TEvents::TEvWakeup());
@@ -223,7 +220,7 @@ void TDirectCopyRangeActor::Done(const TActorContext& ctx, NProto::TError error)
     Die(ctx);
 }
 
-void TDirectCopyRangeActor::HandleVolumeRequestId(
+void TDirectCopyRangeActor::HandleVolumeRequestIdResponse(
     const TEvVolumePrivate::TEvTakeVolumeRequestIdResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
@@ -255,7 +252,7 @@ void TDirectCopyRangeActor::HandleLockAndDrainRangeResponse(
     GetDevicesInfo(ctx);
 }
 
-void TDirectCopyRangeActor::HandleGetDeviceForRange(
+void TDirectCopyRangeActor::HandleGetDeviceForRangeResponse(
     const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
@@ -279,6 +276,33 @@ void TDirectCopyRangeActor::HandleGetDeviceForRange(
     DirectCopy(ctx);
 }
 
+void TDirectCopyRangeActor::HandleVolumeRequestIdUndelivery(
+    const TEvVolumePrivate::TEvTakeVolumeRequestIdRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    Done(ctx, MakeError(E_REJECTED, "TakeVolumeRequestIdRequest undelivered"));
+}
+
+void TDirectCopyRangeActor::HandleLockAndDrainUndelivery(
+    const NPartition::TEvPartition::TEvLockAndDrainRangeRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    Done(ctx, MakeError(E_REJECTED, "LockAndDrainRangeRequest undelivered"));
+}
+
+void TDirectCopyRangeActor::HandleDiscoveryUndelivery(
+    const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    Done(ctx, MakeError(E_REJECTED, "GetDeviceForRangeRequest undelivered"));
+}
+
 void TDirectCopyRangeActor::HandleDirectCopyUndelivered(
     const TEvDiskAgent::TEvDirectCopyBlocksRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
@@ -298,7 +322,7 @@ void TDirectCopyRangeActor::HandleDirectCopyBlocksResponse(
 
     if (SUCCEEDED(msg->GetError().GetCode())) {
         ReadDuration = TDuration::MicroSeconds(msg->Record.GetReadDuration());
-        WriteDuration = TDuration::MicroSeconds(msg->Record.GetReadDuration());
+        WriteDuration = TDuration::MicroSeconds(msg->Record.GetWriteDuration());
         AllZeroes = msg->Record.GetAllZeroes();
         RecommendedBandwidth = msg->Record.GetRecommendedBandwidth();
     }
@@ -337,20 +361,30 @@ STFUNC(TDirectCopyRangeActor::StateWork)
 
         HFunc(
             TEvVolumePrivate::TEvTakeVolumeRequestIdResponse,
-            HandleVolumeRequestId);
+            HandleVolumeRequestIdResponse);
         HFunc(
             TEvPartition::TEvLockAndDrainRangeResponse,
             HandleLockAndDrainRangeResponse);
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse,
-            HandleGetDeviceForRange);
+            HandleGetDeviceForRangeResponse);
+
         HFunc(
-            TEvDiskAgent::TEvDirectCopyBlocksResponse,
-            HandleDirectCopyBlocksResponse);
+            TEvVolumePrivate::TEvTakeVolumeRequestIdRequest,
+            HandleVolumeRequestIdUndelivery);
+        HFunc(
+            NPartition::TEvPartition::TEvLockAndDrainRangeRequest,
+            HandleLockAndDrainUndelivery);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
+            HandleDiscoveryUndelivery);
         HFunc(
             TEvDiskAgent::TEvDirectCopyBlocksRequest,
             HandleDirectCopyUndelivered);
 
+        HFunc(
+            TEvDiskAgent::TEvDirectCopyBlocksResponse,
+            HandleDirectCopyBlocksResponse);
         HFunc(TEvents::TEvWakeup, HandleRangeMigrationTimeout);
 
         default:

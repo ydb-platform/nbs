@@ -202,6 +202,12 @@ void TVolumeActor::CompleteLoadState(
     ScheduleProcessUpdateVolumeConfig(ctx);
     ScheduleAllocateDiskIfNeeded(ctx);
 
+    if (State && State->IsDiskRegistryMediaKind() &&
+        Config->GetAcquireNonReplicatedDevices())
+    {
+        ForceAcquireDisk(ctx);
+    }
+
     if (State) {
         ProcessNextPendingClientRequest(ctx);
     }

@@ -71,6 +71,12 @@ type DiskParams struct {
 	IsDiskRegistryBasedDisk bool
 }
 
+type DiskState struct {
+	DiskID       string
+	State        types.DiskState
+	StateMessage string
+}
+
 type PlacementGroup struct {
 	GroupID                 string
 	PlacementStrategy       types.PlacementStrategy
@@ -119,6 +125,18 @@ type DiskContentInfo struct {
 	StorageSize uint64
 	Crc32       uint32
 	BlockCrc32s []uint32
+}
+
+type ClusterCapacityInfo struct {
+	DiskKind   types.DiskKind
+	FreeBytes  uint64
+	TotalBytes uint64
+}
+
+type AvailableStorageInfo struct {
+	AgentID    string
+	ChunkSize  uint64
+	ChunkCount uint32
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -206,6 +224,8 @@ type Client interface {
 		diskID string,
 	) (DiskParams, error)
 
+	ListDiskStates(ctx context.Context) ([]DiskState, error)
+
 	CreatePlacementGroup(
 		ctx context.Context,
 		groupID string,
@@ -281,6 +301,14 @@ type Client interface {
 
 	Stat(ctx context.Context, diskID string) (DiskStats, error)
 
+	ModifyTags(
+		ctx context.Context,
+		saveState func() error,
+		diskID string,
+		tagsToAdd []string,
+		tagsToRemove []string,
+	) error
+
 	Freeze(
 		ctx context.Context,
 		saveState func() error,
@@ -312,6 +340,15 @@ type Client interface {
 		diskID string,
 		fillGeneration uint64,
 	) error
+
+	ZoneID() string
+
+	GetClusterCapacity(ctx context.Context) ([]ClusterCapacityInfo, error)
+
+	QueryAvailableStorage(
+		ctx context.Context,
+		agentIDs []string,
+	) ([]AvailableStorageInfo, error)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -326,6 +363,7 @@ type MultiZoneClient interface {
 		dstPlacementPartitionIndex uint32,
 		fillGeneration uint64,
 		baseDiskID string,
+		tagsStr string,
 	) error
 }
 

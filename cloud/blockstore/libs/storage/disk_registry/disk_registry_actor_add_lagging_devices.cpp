@@ -25,22 +25,10 @@ void TDiskRegistryActor::HandleAddOutdatedLaggingDevices(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received AddOutdatedLaggingDevices request: DiskId=%s, "
-        "LaggingDevices=[%s]",
-        TabletID(),
-        msg->Record.GetDiskId().c_str(),
-        [&outdatedDevices = msg->Record.GetOutdatedLaggingDevices()]()
-        {
-            TStringBuilder str;
-            for (const auto& outdatedDevice: outdatedDevices) {
-                if (!str.empty()) {
-                    str << ", ";
-                }
-                str << outdatedDevice.GetDeviceUUID();
-            }
-            return str;
-        }()
-            .c_str());
+        "%s Received AddOutdatedLaggingDevices request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     TVector<NProto::TLaggingDevice> outdatedDevices(
         std::make_move_iterator(
@@ -93,8 +81,9 @@ void TDiskRegistryActor::CompleteAddOutdatedLaggingDevices(
         args.DiskId.c_str(),
         FormatError(args.Error).c_str());
 
-    auto response = std::make_unique<
-        TEvDiskRegistry::TEvAddOutdatedLaggingDevicesResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvDiskRegistry::TEvAddOutdatedLaggingDevicesResponse>(
+            std::move(args.Error));
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     ReallocateDisks(ctx);

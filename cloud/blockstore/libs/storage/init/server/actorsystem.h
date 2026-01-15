@@ -10,7 +10,7 @@
 #include <cloud/blockstore/libs/kikimr/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
 #include <cloud/blockstore/libs/logbroker/iface/public.h>
-#include <cloud/blockstore/libs/notify/public.h>
+#include <cloud/blockstore/libs/notify/iface/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
@@ -69,6 +69,8 @@ struct TServerActorSystemArgs
     IRootKmsKeyProviderPtr RootKmsKeyProvider;
 
     TVector<NCloud::NStorage::IUserMetricsSupplierPtr> UserCounterProviders;
+
+    ITaskQueuePtr BackgroundThreadPool;
 
     bool IsDiskRegistrySpareNode = false;
     bool TemporaryServer = false;

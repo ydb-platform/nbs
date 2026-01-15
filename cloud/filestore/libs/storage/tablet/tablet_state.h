@@ -148,6 +148,13 @@ struct TMiscNodeStats
     i64 OrphanNodesCount{0};
 };
 
+struct THandlesStats
+{
+    i64 UsedDirectHandlesCount{0};
+    // TODO(2566) get rid of this counter after migration
+    i64 SevenBytesHandlesCount{0};
+};
+
 struct TWriteMixedBlocksResult
 {
     ui32 GarbageBlocksCount = 0;
@@ -216,6 +223,8 @@ private:
     /*const*/ ui64 LargeDeletionMarkersThreshold = 0;
     /*const*/ ui64 LargeDeletionMarkersCleanupThreshold = 0;
     /*const*/ ui64 LargeDeletionMarkersThresholdForBackpressure = 0;
+
+    /*const*/ ui32 MaxTabletStep = Max<ui32>();
 
     bool StateLoaded = false;
 
@@ -305,7 +314,7 @@ public:
 
     ui64 GenerateCommitId()
     {
-        if (LastStep == Max<ui32>()) {
+        if (LastStep == MaxTabletStep) {
             return InvalidCommitId;
         }
 
@@ -341,6 +350,7 @@ public:
     }
 
     TMiscNodeStats GetMiscNodeStats() const;
+    THandlesStats GetHandlesStats() const;
 
     const NProto::TFileStorePerformanceProfile& GetPerformanceProfile() const;
 
@@ -354,11 +364,11 @@ public:
         return AllocatorRegistry.GetAllocator(tag);
     }
 
-    bool CalculateExpectedShardCount() const;
+    ui64 CalculateExpectedShardCount(ui32 maxShardCount) const;
 
     NProto::TError SelectShard(ui64 fileSize, TString* shardId);
 
-    void UpdateShardStats(const TVector<TShardStats>& stats);
+    void UpdateShardBalancer(const TVector<TShardStats>& stats);
 
     //
     // FileSystem Stats
@@ -490,13 +500,6 @@ public:
         ui64 maxCommitId,
         const NProto::TNode& attrs);
 
-    bool HasSpaceLeft(
-        const NProto::TNode& attrs,
-        ui64 newSize) const;
-
-    bool HasBlocksLeft(
-        ui32 blocks) const;
-
     void WriteOrphanNode(
         TIndexTabletDatabase& db,
         const TString& message,
@@ -561,6 +564,20 @@ public:
         ui64 maxCommitId,
         const IIndexTabletDatabase::TNodeAttr& attr);
 
+
+    //
+    // hasXAttrs
+    //
+
+public:
+    enum class EHasXAttrs : ui64 {
+        Unknown = 0,
+        True = 1,
+        False = 2
+    };
+
+    void WriteHasXAttrs(TIndexTabletDatabase& db, EHasXAttrs hasXAttrs);
+
     //
     // NodeRefs
     //
@@ -614,7 +631,8 @@ public:
         IIndexTabletDatabase& db,
         ui64 nodeId,
         const TString& cookie,
-        ui32 bytesToPrecharge);
+        ui64 rowsToPrecharge,
+        ui64 bytesToPrecharge);
 
     void RewriteNodeRef(
         TIndexTabletDatabase& db,
@@ -1420,6 +1438,7 @@ public:
     void UpdateInMemoryIndexState(
         TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates);
     void MarkNodeRefsLoadComplete();
+    void MarkNodeRefsExhaustive(ui64 nodeId);
     TInMemoryIndexStateStats GetInMemoryIndexStateStats() const;
 };
 

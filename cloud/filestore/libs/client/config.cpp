@@ -64,7 +64,6 @@ FILESTORE_CLIENT_CONFIG(FILESTORE_CLIENT_DECLARE_CONFIG)
     xxx(FileSystemId,           TString,        {}                            )\
     xxx(ClientId,               TString,        {}                            )\
     xxx(SessionPingTimeout,     TDuration,      Seconds(1)                    )\
-    xxx(SessionRetryTimeout,    TDuration,      Seconds(1)                    )\
 // FILESTORE_SESSION_CONFIG
 
 #define FILESTORE_SESSION_DECLARE_CONFIG(name, type, value)                    \
@@ -90,12 +89,6 @@ TDuration ConvertValue<TDuration, ui32>(const ui32& value)
 }
 
 template <typename T>
-bool IsEmpty(const T& t)
-{
-    return !t;
-}
-
-template <typename T>
 void DumpImpl(const T& t, IOutputStream& os)
 {
     os << t;
@@ -108,8 +101,10 @@ void DumpImpl(const T& t, IOutputStream& os)
 #define FILESTORE_CONFIG_GETTER(name, type, ...)                               \
 type TClientConfig::Get##name() const                                          \
 {                                                                              \
-    const auto value = ProtoConfig.Get##name();                                \
-    return !IsEmpty(value) ? ConvertValue<type>(value) : Default##name;        \
+    if (ProtoConfig.Has##name()) {                                             \
+        return ConvertValue<type>(ProtoConfig.Get##name());                    \
+    }                                                                          \
+    return Default##name;                                                      \
 }                                                                              \
 // FILESTORE_CONFIG_GETTER
 
@@ -155,8 +150,10 @@ void TClientConfig::DumpHtml(IOutputStream& out) const
 #define FILESTORE_CONFIG_GETTER(name, type, ...)                               \
 type TSessionConfig::Get##name() const                                         \
 {                                                                              \
-    const auto value = ProtoConfig.Get##name();                                \
-    return !IsEmpty(value) ? ConvertValue<type>(value) : Default##name;        \
+    if (ProtoConfig.Has##name()) {                                             \
+        return ConvertValue<type>(ProtoConfig.Get##name());                    \
+    }                                                                          \
+    return Default##name;                                                      \
 }                                                                              \
 // FILESTORE_CONFIG_GETTER
 

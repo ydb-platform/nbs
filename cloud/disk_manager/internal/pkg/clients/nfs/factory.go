@@ -135,6 +135,12 @@ func (f *factory) NewClient(
 	if err != nil {
 		return nil, err
 	}
+	grpcClientTimeout, err := time.ParseDuration(
+		f.config.GetGrpcClientTimeout(),
+	)
+	if err != nil {
+		return nil, err
+	}
 
 	endpoint, err := f.endpointPickers[zoneID].pickEndpoint(ctx)
 	if err != nil {
@@ -145,6 +151,7 @@ func (f *factory) NewClient(
 		&nfs_client.GrpcClientOpts{
 			Endpoint:    endpoint,
 			Credentials: f.clientCredentials,
+			Timeout:     &grpcClientTimeout,
 		},
 		&nfs_client.DurableClientOpts{
 			Timeout: &durableClientTimeout,

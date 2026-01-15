@@ -51,6 +51,9 @@ TDiskRegistryActor::TDiskRegistryActor(
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
+    , LogTitle(
+          GetCycleCount(),
+          TLogTitle::TDiskRegistry{.TabletId = TabletID()})
     , LogbrokerService(std::move(logbrokerService))
     , NotifyService(std::move(notifyService))
     , Logging(std::move(logging))
@@ -491,9 +494,8 @@ void TDiskRegistryActor::ProcessInitialAgentRejectionPhase(
 
     if (k > Config->GetDiskRegistryInitialAgentRejectionThreshold()) {
         ReportDiskRegistryInitialAgentRejectionThresholdExceeded(
-            TStringBuilder()
-            << "Too many agents haven't reconnected: " << agentsToReject.size()
-            << "/" << expectedToBeOnline);
+            {{"agentsToReject", agentsToReject.size()},
+             {"expectedToBeOnline", expectedToBeOnline}});
         return;
     }
 
@@ -838,6 +840,10 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
         HFunc(TEvDiskRegistryPrivate::TEvCleanupDisksResponse,
             HandleCleanupDisksResponse);
 
+        HFunc(
+            TEvDiskRegistry::TEvGetClusterCapacityRequest,
+            HandleGetClusterCapacity);
+
         IgnoreFunc(
             TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
 
@@ -888,7 +894,8 @@ bool ToLogicalBlocks(NProto::TDeviceConfig& device, ui32 logicalBlockSize)
 {
     const auto blockSize = device.GetBlockSize();
     if (logicalBlockSize % blockSize != 0) {
-        ReportDiskRegistryLogicalPhysicalBlockSizeMismatch();
+        ReportDiskRegistryLogicalPhysicalBlockSizeMismatch(
+            {{"deviceUUID", device.GetDeviceUUID()}});
 
         return false;
     }

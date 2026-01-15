@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
+#include <cloud/blockstore/libs/storage/disk_agent/storage_with_stats.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <util/generic/string.h>
@@ -205,6 +206,29 @@ struct TEvDiskAgentPrivate
     };
 
     //
+    // PathDetached
+    //
+
+    struct TPathsDetached
+    {
+        TVector<TString> PathsToDetach;
+    };
+
+    //
+    // PathsPrepared
+    //
+
+    struct TPathsPrepared
+    {
+        TVector<NProto::TDeviceConfig> Configs;
+        TVector<IStoragePtr> Devices;
+        TVector<TStorageIoStatsPtr> Stats;
+
+        TVector<TString> PathsToAttach;
+        TVector<TString> AlreadyAttachedPaths;
+    };
+
+    //
     // Events declaration
     //
 
@@ -226,6 +250,9 @@ struct TEvDiskAgentPrivate
 
         EvMultiAgentWriteDeviceBlocksRequest,
 
+        EvPathsDetached,
+        EvPathsPrepared,
+
         BLOCKSTORE_DECLARE_EVENT_IDS(UpdateSessionCache)
 
         EvEnd
@@ -243,6 +270,10 @@ struct TEvDiskAgentPrivate
     using TEvSecureEraseCompleted = TResponseEvent<
         TSecureEraseCompleted,
         EvSecureEraseCompleted>;
+
+    using TEvPathsDetached = TResponseEvent<TPathsDetached, EvPathsDetached>;
+
+    using TEvPathsPrepared = TResponseEvent<TPathsPrepared, EvPathsPrepared>;
 
     using TEvWriteOrZeroCompleted = TResponseEvent<
         TWriteOrZeroCompleted,

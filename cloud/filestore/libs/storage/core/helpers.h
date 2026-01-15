@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/filestore/public/api/protos/data.pb.h>
+
 namespace NKikimrFileStore {
     class TConfig;
 }
@@ -21,5 +23,17 @@ void Convert(
 void Convert(
     const NProto::TFileStorePerformanceProfile& performanceProfile,
     NKikimrFileStore::TConfig& config);
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TProtoRequest>
+ui64 CalculateByteCount(const TProtoRequest& request)
+{
+    return request.GetLength();
+}
+
+template <>
+ui64 CalculateByteCount<NProto::TWriteDataRequest>(
+    const NProto::TWriteDataRequest& request);
 
 }   // namespace NCloud::NFileStore::NStorage

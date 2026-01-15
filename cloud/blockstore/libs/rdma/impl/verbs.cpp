@@ -28,7 +28,7 @@ namespace NCloud::NBlockStore::NRdma::NVerbs {
 #endif
 
 #define RDMA_THROW_ERROR(method)                                               \
-    throw TServiceError(MAKE_SYSTEM_ERROR(LastSystemError()))                  \
+    STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(LastSystemError()))          \
         << method << " failed with error " << LastSystemError()                \
         << ": " << SafeLastSystemErrorText()                                   \
 // RDMA_THROW_ERROR
@@ -193,7 +193,11 @@ struct TVerbs
             hints,
             &addr);
         if (res < 0) {
-            RDMA_THROW_ERROR("rdma_getaddrinfo");
+            RDMA_THROW_ERROR(
+                TStringBuilder()
+                    << "rdma_getaddrinfo("
+                    << "host=" << host.Quote()
+                    << ')');
         }
 
         return WrapPtr(addr);
@@ -227,13 +231,28 @@ struct TVerbs
     TConnectionPtr CreateConnection(
         rdma_event_channel* channel,
         void* context,
-        rdma_port_space ps) override
+        rdma_port_space ps,
+        ui8 tos) override
     {
         rdma_cm_id* id = nullptr;
 
         int res = rdma_create_id(channel, &id, context, ps);
         if (res < 0) {
             RDMA_THROW_ERROR("rdma_create_id");
+        }
+
+        if (tos != 0) {
+            res = rdma_set_option(
+                id,
+                RDMA_OPTION_ID,
+                RDMA_OPTION_ID_TOS,
+                &tos,
+                sizeof(tos));
+
+            if (res < 0) {
+                rdma_destroy_id(id);
+                RDMA_THROW_ERROR("rdma_set_option RDMA_OPTION_ID_TOS");
+            }
         }
 
         return WrapPtr(id);
@@ -243,7 +262,11 @@ struct TVerbs
     {
         int res = rdma_bind_addr(id, addr);
         if (res < 0) {
-            RDMA_THROW_ERROR("rdma_bind_addr");
+            RDMA_THROW_ERROR(
+                TStringBuilder()
+                    << "rdma_bind_addr("
+                    << "addr=" << PrintAddressAndPort(addr)
+                    << ')');
         }
     }
 
@@ -255,7 +278,12 @@ struct TVerbs
     {
         int res = rdma_resolve_addr(id, src, dst, timeout.MilliSeconds());
         if (res < 0) {
-            RDMA_THROW_ERROR("rdma_resolve_addr");
+            RDMA_THROW_ERROR(
+                TStringBuilder()
+                    << "rdma_resolve_addr("
+                    << "src='" << PrintAddressAndPort(src)
+                    << "', dst='" << PrintAddressAndPort(dst)
+                    << ')');
         }
     }
 
@@ -467,6 +495,11 @@ TString PrintAddress(const sockaddr* addr)
     return NAddr::PrintHost(NAddr::TOpaqueAddr(addr));
 }
 
+TString PrintAddressAndPort(const sockaddr* addr)
+{
+    return NAddr::PrintHostAndPort(NAddr::TOpaqueAddr(addr));
+}
+
 TString PrintConnectionParams(const rdma_conn_param* conn)
 {
     return TStringBuilder()
@@ -488,7 +521,13 @@ TString PrintCompletion(ibv_wc* wc)
         << "[wr_id=" << TWorkRequestId(wc->wr_id)
         << " opcode=" << GetOpcodeName(wc->opcode)
         << " status=" << GetStatusString(wc->status)
+        << " vendor_err=" << wc->vendor_err
         << "]";
+}
+
+int DestroyId(rdma_cm_id* id)
+{
+    return rdma_destroy_id(id);
 }
 
 }   // namespace NCloud::NBlockStore::NRdma::NVerbs

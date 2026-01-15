@@ -1,8 +1,10 @@
 #include "multi_partition_requests.h"
 
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/volume/model/stripe.h>
+
 #include <cloud/storage/core/libs/common/verify.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -33,7 +35,6 @@ ui32 InitPartitionRequest(
     const auto& partition = partitions[stripeInfo.PartitionId];
 
     request.ActorId = partition.GetTopActorId(),
-    request.TabletId = partition.TabletId;
     request.PartitionId = stripeInfo.PartitionId;
     request.BlockRange = stripeInfo.BlockRange;
 
@@ -41,6 +42,25 @@ ui32 InitPartitionRequest(
     request.Event->Record.MutableHeaders()->CopyFrom(proto.GetHeaders());
     request.Event->Record.SetDiskId(proto.GetDiskId());
     request.Event->Record.SetStartIndex(stripeInfo.BlockRange.Start);
+    if constexpr (IsExactlyWriteMethod<TMethod>) {
+        if (i < proto.ChecksumsSize()) {
+            const ui32 blockSize = partition.PartitionConfig.GetBlockSize();
+            if (proto.GetChecksums(i).GetByteCount() ==
+                stripeInfo.BlockRange.Size() * blockSize)
+            {
+                *request.Event->Record.AddChecksums() = proto.GetChecksums(i);
+            } else {
+                ReportChecksumCalculationError(
+                    TStringBuilder() << "VolumeActor: Incorrectly calculated "
+                                        "checksum for block range",
+                    {{"range", stripeInfo.BlockRange},
+                     {"range length", stripeInfo.BlockRange.Size()},
+                     {"checksum length",
+                      proto.GetChecksums(i).GetByteCount() / blockSize},
+                     {"disk id", partition.PartitionConfig.GetDiskId()}});
+            }
+        }
+    }
 
     return stripeInfo.BlockRange.Size();
 }
@@ -68,24 +88,17 @@ ui32 InitIORequest(
     return blocksCount;
 }
 
+// Mirrors the request to all partitions.
 template <typename TMethod>
 bool ToPartitionRequestsSimple(
     const TPartitionInfoList& partitions,
-    const ui32 blockSize,
-    const ui32 blocksPerStripe,
     const typename TMethod::TRequest::TPtr& ev,
-    TVector<TPartitionRequest<TMethod>>* requests,
-    TBlockRange64* blockRange)
+    TVector<TPartitionRequest<TMethod>>* requests)
 {
-    Y_UNUSED(blockSize);
-    Y_UNUSED(blocksPerStripe);
-    Y_UNUSED(blockRange);
-
     requests->resize(partitions.size());
 
     for (ui32 i = 0; i < partitions.size(); ++i) {
         (*requests)[i].ActorId = partitions[i].GetTopActorId();
-        (*requests)[i].TabletId = partitions[i].TabletId;
         (*requests)[i].PartitionId = i;
         (*requests)[i].Event = std::make_unique<typename TMethod::TRequest>();
         (*requests)[i].Event->Record = ev->Get()->Record;
@@ -123,6 +136,10 @@ bool ToPartitionRequests<TEvService::TWriteBlocksMethod>(
         *blockRange,
         partitions.size()
     ));
+
+    if (requests->size() == 1) {
+        CombineChecksumsInPlace(*proto.MutableChecksums());
+    }
 
     for (ui32 i = 0; i < requests->size(); ++i) {
         auto& request = (*requests)[i];
@@ -284,7 +301,7 @@ bool ToPartitionRequests<TEvService::TWriteBlocksLocalMethod>(
     TVector<TPartitionRequest<TEvService::TWriteBlocksLocalMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    const auto& proto = ev->Get()->Record;
+    auto& proto = ev->Get()->Record;
 
     auto guard = proto.Sglist.Acquire();
     if (!guard) {
@@ -300,6 +317,10 @@ bool ToPartitionRequests<TEvService::TWriteBlocksLocalMethod>(
         *blockRange,
         partitions.size()
     ));
+
+    if (requests->size() == 1) {
+        CombineChecksumsInPlace(*proto.MutableChecksums());
+    }
 
     Y_ABORT_UNLESS(
         blockDatas.size() == blockRange->Size(),
@@ -460,7 +481,6 @@ bool ToPartitionRequests<TEvVolume::TGetPartitionInfoMethod>(
     const auto partitionId = ev->Get()->Record.GetPartitionId();
     const auto& partition = partitions[partitionId];
     (*requests)[0].ActorId = partition.GetTopActorId();
-    (*requests)[0].TabletId = partition.TabletId;
     (*requests)[0].PartitionId = partitionId;
     (*requests)[0].Event = std::make_unique<TEvVolume::TEvGetPartitionInfoRequest>();
     (*requests)[0].Event->Record = std::move(ev->Get()->Record);
@@ -512,13 +532,11 @@ bool ToPartitionRequests<TEvVolume::TGetCompactionStatusMethod>(
     TVector<TPartitionRequest<TEvVolume::TGetCompactionStatusMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    return ToPartitionRequestsSimple(
-        partitions,
-        blockSize,
-        blocksPerStripe,
-        ev,
-        requests,
-        blockRange);
+    Y_UNUSED(blockSize);
+    Y_UNUSED(blocksPerStripe);
+    Y_UNUSED(blockRange);
+
+    return ToPartitionRequestsSimple(partitions, ev, requests);
 }
 
 template <>
@@ -530,13 +548,11 @@ bool ToPartitionRequests<TEvVolume::TRebuildMetadataMethod>(
     TVector<TPartitionRequest<TEvVolume::TRebuildMetadataMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    return ToPartitionRequestsSimple(
-        partitions,
-        blockSize,
-        blocksPerStripe,
-        ev,
-        requests,
-        blockRange);
+    Y_UNUSED(blockSize);
+    Y_UNUSED(blocksPerStripe);
+    Y_UNUSED(blockRange);
+
+    return ToPartitionRequestsSimple(partitions, ev, requests);
 }
 
 template <>
@@ -548,13 +564,11 @@ bool ToPartitionRequests<TEvVolume::TGetRebuildMetadataStatusMethod>(
     TVector<TPartitionRequest<TEvVolume::TGetRebuildMetadataStatusMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    return ToPartitionRequestsSimple(
-        partitions,
-        blockSize,
-        blocksPerStripe,
-        ev,
-        requests,
-        blockRange);
+    Y_UNUSED(blockSize);
+    Y_UNUSED(blocksPerStripe);
+    Y_UNUSED(blockRange);
+
+    return ToPartitionRequestsSimple(partitions, ev, requests);
 }
 
 template <>
@@ -566,13 +580,11 @@ bool ToPartitionRequests<TEvVolume::TScanDiskMethod>(
     TVector<TPartitionRequest<TEvVolume::TScanDiskMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    return ToPartitionRequestsSimple(
-        partitions,
-        blockSize,
-        blocksPerStripe,
-        ev,
-        requests,
-        blockRange);
+    Y_UNUSED(blockSize);
+    Y_UNUSED(blocksPerStripe);
+    Y_UNUSED(blockRange);
+
+    return ToPartitionRequestsSimple(partitions, ev, requests);
 }
 
 template <>
@@ -584,13 +596,11 @@ bool ToPartitionRequests<TEvVolume::TGetScanDiskStatusMethod>(
     TVector<TPartitionRequest<TEvVolume::TGetScanDiskStatusMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    return ToPartitionRequestsSimple(
-        partitions,
-        blockSize,
-        blocksPerStripe,
-        ev,
-        requests,
-        blockRange);
+    Y_UNUSED(blockSize);
+    Y_UNUSED(blocksPerStripe);
+    Y_UNUSED(blockRange);
+
+    return ToPartitionRequestsSimple(partitions, ev, requests);
 }
 
 template <>
@@ -628,13 +638,11 @@ bool ToPartitionRequests<TEvVolume::TCheckRangeMethod>(
     TVector<TPartitionRequest<TEvVolume::TCheckRangeMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    return ToPartitionRequestsSimple(
-        partitions,
-        blockSize,
-        blocksPerStripe,
-        ev,
-        requests,
-        blockRange);
+    Y_UNUSED(blockSize);
+    Y_UNUSED(blocksPerStripe);
+    Y_UNUSED(blockRange);
+
+    return ToPartitionRequestsSimple(partitions, ev, requests);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

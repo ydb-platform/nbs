@@ -409,6 +409,19 @@ IFileIOServicePtr CreateRoundRobinFileIOService(
     return std::make_shared<TRoundRobinFileIOService>(std::move(fileIOs));
 }
 
+IFileIOServicePtr CreateRoundRobinFileIOService(
+    ui32 threads,
+    IFileIOServiceFactory& factory)
+{
+    TVector<IFileIOServicePtr> fileIOs;
+    fileIOs.reserve(threads);
+    for (ui32 i = 0; i != threads; ++i) {
+        fileIOs.push_back(factory.CreateFileIOService());
+    }
+
+    return CreateRoundRobinFileIOService(std::move(fileIOs));
+}
+
 IFileIOServicePtr CreateConcurrentFileIOService(
     const TString& submissionThreadName,
     IFileIOServicePtr fileIO)

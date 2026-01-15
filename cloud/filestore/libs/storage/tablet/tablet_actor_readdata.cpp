@@ -1,11 +1,15 @@
 #include "tablet_actor.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/throttler_info_serializer.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
+#include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/split_range.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
+#include <util/datetime/base.h>
+#include <util/datetime/cputimer.h>
 #include <util/generic/algorithm.h>
 #include <util/generic/cast.h>
 #include <util/generic/hash.h>
@@ -220,7 +224,7 @@ public:
     void Accept(
         const TBlock& block,
         const TPartialBlobId& blobId,
-        ui32 blobOffset) override
+        ui32 blobOffset)
     {
         TABLET_VERIFY(!ApplyingByteLayer);
         TABLET_VERIFY(blobId);
@@ -231,6 +235,25 @@ public:
         auto& prev = Args.Blocks[blockOffset];
         if (Update(prev, block, blobId, blobOffset)) {
             Args.Buffer->ClearBlock(blockOffset);
+        }
+    }
+
+    void Accept(
+        const TBlock& block,
+        const TPartialBlobId& blobId,
+        ui32 blobOffset,
+        ui32 blocksCount) override
+    {
+        Accept(block, blobId, blobOffset);
+
+        if (blocksCount > 1) {
+            auto b = block;
+            while (--blocksCount > 0) {
+                b.BlockIndex++;
+                blobOffset++;
+
+                Accept(b, blobId, blobOffset);
+            }
         }
     }
 
@@ -306,6 +329,9 @@ class TReadDataActor final
 private:
     const ITraceSerializerPtr TraceSerializer;
     const TString LogTag;
+    const TString FileSystemId;
+    const bool ShouldCalculateChecksums;
+    const ui32 BlockSize;
     const TActorId Tablet;
     const TRequestInfoPtr RequestInfo;
     const ui64 CommitId;
@@ -316,11 +342,17 @@ private:
     TVector<TBlockBytes> Bytes;
     const IBlockBufferPtr Buffer;
     /*const*/ TSet<ui32> MixedBlocksRanges;
+    IProfileLogPtr ProfileLog;
+    NProto::TBackendInfo BackendInfo;
+    NProto::TProfileLogRequestInfo ProfileLogRequest;
 
 public:
     TReadDataActor(
         ITraceSerializerPtr traceSerializer,
         TString logTag,
+        TString fileSystemId,
+        bool shouldCalculateChecksums,
+        ui32 blockSize,
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
@@ -330,7 +362,10 @@ public:
         TVector<TBlockDataRef> blocks,
         TVector<TBlockBytes> bytes,
         IBlockBufferPtr buffer,
-        TSet<ui32> mixedBlocksRanges);
+        TSet<ui32> mixedBlocksRanges,
+        IProfileLogPtr profileLog,
+        NProto::TBackendInfo backendInfo,
+        NProto::TTProfileLogRequestInfo profileLogRequest);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -356,6 +391,9 @@ private:
 TReadDataActor::TReadDataActor(
         ITraceSerializerPtr traceSerializer,
         TString logTag,
+        TString fileSystemId,
+        bool shouldCalculateChecksums,
+        ui32 blockSize,
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
@@ -365,9 +403,15 @@ TReadDataActor::TReadDataActor(
         TVector<TBlockDataRef> blocks,
         TVector<TBlockBytes> bytes,
         IBlockBufferPtr buffer,
-        TSet<ui32> mixedBlocksRanges)
+        TSet<ui32> mixedBlocksRanges,
+        IProfileLogPtr profileLog,
+        NProto::TBackendInfo backendInfo,
+        NProto::TTProfileLogRequestInfo profileLogRequest)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
+    , FileSystemId(std::move(fileSystemId))
+    , ShouldCalculateChecksums(shouldCalculateChecksums)
+    , BlockSize(blockSize)
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
     , CommitId(commitId)
@@ -378,6 +422,9 @@ TReadDataActor::TReadDataActor(
     , Bytes(std::move(bytes))
     , Buffer(std::move(buffer))
     , MixedBlocksRanges(std::move(mixedBlocksRanges))
+    , ProfileLog(std::move(profileLog))
+    , BackendInfo(std::move(backendInfo))
+    , ProfileLogRequest(std::move(profileLogRequest))
 {
     TABLET_VERIFY(ActualRange.IsAligned());
 }
@@ -460,7 +507,8 @@ void TReadDataActor::ReplyAndDie(
             CommitId,
             1,
             OriginByteRange.Length,
-            ctx.Now() - RequestInfo->StartedTs);
+            ctx.Now() - RequestInfo->StartedTs,
+            BackendInfo.GetIsOverloaded());
 
         NCloud::Send(ctx, Tablet, std::move(response));
     }
@@ -481,22 +529,40 @@ void TReadDataActor::ReplyAndDie(
                 TotalSize,
                 *Buffer,
                 response->Record.MutableBuffer());
+
+            if (ShouldCalculateChecksums) {
+                CalculateChecksums(
+                    response->Record.GetBuffer(),
+                    BlockSize,
+                    true /* ignoreBufferOverflow */,
+                    FileSystemId,
+                    ProfileLogRequest);
+            }
         }
 
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
-            "%s ReadData: #%lu completed (%s)",
-            LogTag.c_str(),
-            RequestInfo->CallContext->RequestId,
-            FormatError(response->Record.GetError()).c_str());
-
-        BuildTraceInfo(
+        const bool builtTraceInfo = BuildTraceInfo(
             TraceSerializer,
             RequestInfo->CallContext,
             response->Record);
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
+            "%s ReadData: #%lu completed (%s), trace-info: %d",
+            LogTag.c_str(),
+            RequestInfo->CallContext->RequestId,
+            FormatError(response->Record.GetError()).c_str(),
+            builtTraceInfo);
         BuildThrottlerInfo(*RequestInfo->CallContext, response->Record);
+        *response->Record.MutableHeaders()->MutableBackendInfo() =
+            std::move(BackendInfo);
 
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
+
+    FinalizeProfileLogRequestInfo(
+        std::move(ProfileLogRequest),
+        ctx.Now(),
+        FileSystemId,
+        error,
+        ProfileLog);
 
     Die(ctx);
 }
@@ -546,6 +612,15 @@ void TIndexTabletActor::HandleReadData(
     const TEvService::TEvReadDataRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    auto* msg = ev->Get();
+
+    NProto::TProfileLogRequestInfo profileLogRequest;
+    InitTabletProfileLogRequestInfo(
+        profileLogRequest,
+        EFileStoreRequest::ReadData,
+        msg->Record,
+        ctx.Now());
+
     auto validator = [&] (const NProto::TReadDataRequest& request) {
         return ValidateRequest(
             request,
@@ -554,15 +629,26 @@ void TIndexTabletActor::HandleReadData(
     };
 
     if (!AcceptRequest<TEvService::TReadDataMethod>(ev, ctx, validator)) {
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(E_REJECTED, "not accepted"),
+            ProfileLog);
         return;
     }
 
     // either rejected or put in the queue
     if (ThrottleIfNeeded<TEvService::TReadDataMethod>(ev, ctx)) {
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(E_REJECTED, "throttled"),
+            ProfileLog);
         return;
     }
 
-    auto* msg = ev->Get();
     const TByteRange byteRange(
         msg->Record.GetOffset(),
         msg->Record.GetLength(),
@@ -587,7 +673,8 @@ void TIndexTabletActor::HandleReadData(
         byteRange,
         alignedByteRange,
         std::move(blockBuffer),
-        false /* describeOnly */);
+        false /* describeOnly */,
+        std::move(profileLogRequest));
 }
 
 void TIndexTabletActor::HandleReadDataCompleted(
@@ -601,6 +688,9 @@ void TIndexTabletActor::HandleReadDataCompleted(
     WorkerActors.erase(ev->Sender);
 
     Metrics.ReadData.Update(msg->Count, msg->Size, msg->Time);
+    if (msg->IsOverloaded) {
+        Metrics.OverloadedCount.fetch_add(1, std::memory_order_relaxed);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -609,6 +699,20 @@ void TIndexTabletActor::HandleDescribeData(
     const TEvIndexTablet::TEvDescribeDataRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (Config->GetFakeDescribeDataEnabled()) {
+        HandleFakeDescribeData(ev, ctx);
+        return;
+    }
+
+    auto* msg = ev->Get();
+
+    NProto::TProfileLogRequestInfo profileLogRequest;
+    InitTabletProfileLogRequestInfo(
+        profileLogRequest,
+        EFileStoreRequest::DescribeData,
+        msg->Record,
+        ctx.Now());
+
     auto validator = [&] (const NProtoPrivate::TDescribeDataRequest& request) {
         return ValidateRequest(
             request,
@@ -617,16 +721,27 @@ void TIndexTabletActor::HandleDescribeData(
     };
 
     if (!AcceptRequest<TEvIndexTablet::TDescribeDataMethod>(ev, ctx, validator)) {
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(E_REJECTED, "not accepted"),
+            ProfileLog);
         return;
     }
 
     if (Config->GetMultipleStageRequestThrottlingEnabled() &&
         ThrottleIfNeeded<TEvIndexTablet::TDescribeDataMethod>(ev, ctx))
     {
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(E_REJECTED, "throttled"),
+            ProfileLog);
         return;
     }
 
-    auto* msg = ev->Get();
     const TByteRange byteRange(
         msg->Record.GetOffset(),
         msg->Record.GetLength(),
@@ -668,6 +783,13 @@ void TIndexTabletActor::HandleDescribeData(
             byteRange.Length,
             ctx.Now() - requestInfo->StartedTs);
 
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(S_OK),
+            ProfileLog);
+
         return;
     }
 
@@ -683,7 +805,8 @@ void TIndexTabletActor::HandleDescribeData(
         byteRange,
         alignedByteRange,
         std::move(blockBuffer),
-        true /* describeOnly */);
+        true /* describeOnly */,
+        std::move(profileLogRequest));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -805,6 +928,14 @@ bool TIndexTabletActor::PrepareTx_ReadData(
         return false;
     }
 
+    //
+    // NodeId might be missing in the original request but at this stage we
+    // have already read the Node and we can properly set NodeId in all request
+    // ranges.
+    //
+
+    UpdateRangeNodeIds(args.ProfileLogRequest, args.Node->NodeId);
+
     TReadDataVisitor visitor(LogTag, args);
 
     FindFreshBlocks(
@@ -897,6 +1028,13 @@ void TIndexTabletActor::CompleteTx_ReadData(
             args.OriginByteRange.Length,
             ctx.Now() - args.RequestInfo->StartedTs);
 
+        FinalizeProfileLogRequestInfo(
+            std::move(args.ProfileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(S_OK),
+            ProfileLog);
+
         return;
     }
 
@@ -921,6 +1059,13 @@ void TIndexTabletActor::CompleteTx_ReadData(
             NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
         }
 
+        FinalizeProfileLogRequestInfo(
+            std::move(args.ProfileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            args.Error,
+            ProfileLog);
+
         return;
     }
 
@@ -940,20 +1085,43 @@ void TIndexTabletActor::CompleteTx_ReadData(
             *args.Buffer,
             response->Record.MutableBuffer());
 
+        if (Config->GetBlockChecksumsInProfileLogEnabled()) {
+            CalculateChecksums(
+                response->Record.GetBuffer(),
+                GetBlockSize(),
+                true /* ignoreBufferOverflow */,
+                GetFileSystemId(),
+                args.ProfileLogRequest);
+        }
+
         CompleteResponse<TEvService::TReadDataMethod>(
             response->Record,
             args.RequestInfo->CallContext,
             ctx);
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+        FinalizeProfileLogRequestInfo(
+            std::move(args.ProfileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(S_OK),
+            ProfileLog);
+
         return;
     }
 
     AcquireCollectBarrier(args.CommitId);
 
+    NProto::TBackendInfo backendInfo;
+    BuildBackendInfo(*Config, *SystemCounters, &backendInfo);
+
     auto actor = std::make_unique<TReadDataActor>(
         TraceSerializer,
         LogTag,
+        GetFileSystemId(),
+        Config->GetBlockChecksumsInProfileLogEnabled(),
+        GetBlockSize(),
         ctx.SelfID,
         args.RequestInfo,
         args.CommitId,
@@ -963,10 +1131,88 @@ void TIndexTabletActor::CompleteTx_ReadData(
         std::move(args.Blocks),
         std::move(args.Bytes),
         std::move(args.Buffer),
-        std::move(args.MixedBlocksRanges));
+        std::move(args.MixedBlocksRanges),
+        ProfileLog,
+        std::move(backendInfo),
+        std::move(args.ProfileLogRequest));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleFakeDescribeData(
+    const TEvIndexTablet::TEvDescribeDataRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto startCycles = GetCycleCount();
+
+    auto* msg = ev->Get();
+
+    ReportFakeDescribeDataHappened();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
+
+    constexpr ui64 FakeFileSize = 1_GB;
+
+    NProtoPrivate::TDescribeDataResponse result;
+    result.SetFileSize(FakeFileSize);
+    result.SetFakeResponse(true);
+
+    constexpr ui64 FakeTabletId = 11111111;
+    constexpr ui64 FakeBSGroupId = 2222222;
+    constexpr ui32 FakeBlobSize = 256_KB;
+
+    ui64 offset = 1000;
+    ui64 commitId = 12345678;
+    ui64 uniqueId = 23456789;
+
+    for (int i = 0; i < 4; i++) {
+        const TPartialBlobId partialBlobId(commitId, uniqueId);
+
+        auto& piece = *result.AddBlobPieces();
+        LogoBlobIDFromLogoBlobID(
+            MakeBlobId(FakeTabletId, partialBlobId),
+            piece.MutableBlobId());
+
+        piece.SetBSGroupId(FakeBSGroupId);
+
+        NProtoPrivate::TRangeInBlob rangeInBlob;
+        rangeInBlob.SetOffset(offset);
+        rangeInBlob.SetLength(FakeBlobSize);
+
+        offset += FakeBlobSize;
+        commitId++;
+        uniqueId++;
+    }
+
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvDescribeDataResponse>();
+    response->Record = std::move(result);
+
+    CompleteResponse<TEvIndexTablet::TDescribeDataMethod>(
+        response->Record,
+        requestInfo->CallContext,
+        ctx);
+
+    constexpr ui32 MaxLatencyUs = 100;
+    const ui32 latencyUs = ClampVal(
+        Config->GetFakeDescribeDataLatencyUs(),
+        0u,
+        MaxLatencyUs);
+    const auto deadlineCycles = NDateTimeHelpers::SumWithSaturation(
+        startCycles,
+        DurationToCyclesSafe(TDuration::MicroSeconds(latencyUs)));
+
+    // Spin until deadline
+    while (GetCycleCount() < deadlineCycles) {}
+
+    NCloud::Reply(ctx, *requestInfo, std::move(response));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

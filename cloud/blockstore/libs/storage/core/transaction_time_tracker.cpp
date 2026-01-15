@@ -196,4 +196,52 @@ TTransactionTimeTracker::GetTimeBuckets() const
     return result;
 }
 
+void TTransactionTimeTracker::ResetStats()
+{
+    for (auto& [key, histogram]: Histograms) {
+        if (key.Status == EStatus::Finished) {
+            histogram.Reset();
+        }
+    }
+}
+
+const TTransactionTimeTracker::TInflightMap&
+TTransactionTimeTracker::GetInflightOperations() const
+{
+    return Inflight;
+}
+
+TString TTransactionTimeTracker::GetInflightInfo(ui64 nowCycles) const
+{
+    if (Inflight.empty()) {
+        return {};
+    }
+
+    struct TInflight
+    {
+        ui64 FirstStartTime = Max<ui64>();
+        size_t Count = 0;
+    };
+    THashMap<TString, TInflight> inflightTransactions;
+    for (const auto& [transactionId, transaction]: Inflight) {
+        TInflight& inflight = inflightTransactions[transaction.TransactionName];
+        inflight.FirstStartTime =
+            Min(inflight.FirstStartTime, transaction.StartTime);
+        ++inflight.Count;
+    }
+
+    TStringBuilder builder;
+    for (const auto& [transactionName, inflight]: inflightTransactions) {
+        if (!builder.empty()) {
+            builder << ", ";
+        }
+        const TDuration duration =
+            CyclesToDurationSafe(nowCycles - inflight.FirstStartTime);
+        builder << transactionName << "(" << inflight.Count << ", "
+                << FormatDuration(duration) << ")";
+    }
+
+    return "Inflight: " + builder;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

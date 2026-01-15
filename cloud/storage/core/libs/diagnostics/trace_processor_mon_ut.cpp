@@ -21,6 +21,8 @@
 #include <util/system/spinlock.h>
 #include <util/thread/pool.h>
 
+#include <latch>
+
 namespace NCloud {
 
 #define LWTRACE_UT_PROVIDER(PROBE, EVENT, GROUPS, TYPES, NAMES)                \
@@ -112,19 +114,22 @@ struct TEnv
         auto monitoring = CreateMonitoringServiceStub();
         auto logging = CreateLoggingService(LogBackend);
         TVector<ITraceReaderPtr> readers{
-            CreateSlowRequestsFilter(
+            SetupTraceReaderForSlowRequests(
                 "filter",
                 logging,
                 "STORAGE_TRACE",
-                requestThresholds
+                requestThresholds,
+                "SlowRequests"
         )};
+        TTraceProcessorConfig traceProcessorConfig;
+        traceProcessorConfig.ComponentName = "STORAGE_TRACE";
         return NCloud::CreateTraceProcessorMon(
             monitoring,
             NCloud::CreateTraceProcessor(
                 Timer,
                 Scheduler,
                 logging,
-                "STORAGE_TRACE",
+                std::move(traceProcessorConfig),
                 *LWManager,
                 std::move(readers))
         );
@@ -244,23 +249,34 @@ Y_UNIT_TEST_SUITE(TTraceProcessorTest)
         // lwtrace depot sizes are limited by 1000
         static_assert(runs <= 1000 / REQUEST_COUNT);
 
-        TAtomic remaining = runs;
-        TManualEvent ev;
+        auto doRuns = [&]()
+        {
+            std::latch enqueued{runs};
 
-        for (size_t j = 0; j < runs; ++j) {
-            threadPool->SafeAddFunc([&remaining, &ev] () {
-                Track();
+            for (size_t j = 0; j < runs; ++j) {
+                threadPool->SafeAddFunc(
+                    [&enqueued]()
+                    {
+                        Track();
 
-                AtomicDecrement(remaining);
-                ev.Signal();
-            });
-        }
+                        enqueued.count_down();
+                    });
+            }
 
-        while (AtomicGet(remaining)) {
-            ev.WaitI();
-        }
+
+            enqueued.wait();
+        };
+
+        doRuns();
 
         auto requestCount = Min<ui32>(runs * REQUEST_COUNT, DumpTracksLimit);
+        Check(env, requestCount);
+
+        // Check that reset drops old traces
+        env.Scheduler->RunAllScheduledTasks();
+
+        doRuns();
+
         Check(env, requestCount);
 
         threadPool->Stop();

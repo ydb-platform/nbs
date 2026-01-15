@@ -61,6 +61,8 @@ service DiskService {
     rpc SendMigrationSignal(SendMigrationSignalRequest) returns (google.protobuf.Empty);
 
     rpc Describe(DescribeDiskRequest) returns (DiskParams) {}
+
+    rpc ListStates(ListDiskStatesRequest) returns (ListDiskStatesResponse) {}
 }
 
 message CreateDiskRequest {
@@ -87,6 +89,7 @@ message CreateDiskRequest {
     repeated string agent_ids = 18;
     EncryptionDesc encryption_desc = 19;
     uint32 placement_partition_index = 20;
+    bool require_exact_cell_id_match = 21;
 }
 
 message CreateDiskMetadata {
@@ -145,6 +148,7 @@ message MigrateDiskRequest {
     string dst_zone_id = 2;
     string dst_placement_group_id = 3;
     uint32 dst_placement_partition_index = 4;
+    bool is_migration_between_cells = 5;
 }
 
 message MigrateDiskMetadata {
@@ -177,4 +181,18 @@ message SendMigrationSignalRequest {
 
 message DescribeDiskRequest {
     DiskId disk_id = 1;
+}
+
+message ListDiskStatesRequest {
+    string zone_id = 1;
+}
+
+message ListDiskStatesResponse {
+    message Item {
+        string disk_id = 1;
+        DiskState state = 2;
+        string state_message = 3;
+    }
+
+    repeated Item items = 1;
 }

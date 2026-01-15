@@ -11,7 +11,8 @@ RECURSE(
     csi_driver
     direct_device_acquire
     disk_agent_config
-    encryption_at_rest
+    disk_states
+    default_encryption
     external_endpoint
     e2e-tests
     e2e-tests-vhost
@@ -36,6 +37,7 @@ RECURSE(
     spare_node
     stats_aggregator_perf
     storage_discovery
+    tablets
     vhost-server
     vhost-server/run_and_die
 )

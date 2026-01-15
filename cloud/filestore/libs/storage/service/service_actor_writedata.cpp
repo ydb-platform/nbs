@@ -1,10 +1,14 @@
 #include "service_actor.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
+#include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
-#include <cloud/filestore/libs/storage/model/range.h>
+#include <cloud/filestore/libs/storage/core/helpers.h>
+#include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
+#include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
 #include <library/cpp/iterator/enumerate.h>
@@ -15,6 +19,8 @@
 #include <utility>
 
 namespace NCloud::NFileStore::NStorage {
+
+LWTRACE_USING(FILESTORE_STORAGE_PROVIDER);
 
 using namespace NActors;
 
@@ -35,6 +41,124 @@ bool IsThreeStageWriteEnabled(const NProto::TFileStore& fs)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <bool Owner = false>
+class TIovecContiguousChunk: public IContiguousChunk
+{
+private:
+    char* Base = 0;
+    ui64 Size = 0;
+
+public:
+    TIovecContiguousChunk(ui64 base, ui64 size)
+        : Base(reinterpret_cast<char*>(base))
+        , Size(size)
+    {
+        static_assert(sizeof(ui64) == sizeof(char*));
+    }
+
+    ~TIovecContiguousChunk() {
+        if constexpr(Owner) {
+            delete[] Base;
+        }
+    }
+
+    TContiguousSpan GetData() const override
+    {
+        return TContiguousSpan(Base, Size);
+    }
+
+    TMutableContiguousSpan UnsafeGetDataMut() override
+    {
+        return TMutableContiguousSpan(Base, Size);
+    }
+
+    IContiguousChunk::TPtr Clone() override
+    {
+        auto copy = new char[Size];
+        ::memcpy(copy, Base, Size);
+
+        return MakeIntrusive<TIovecContiguousChunk<true>>(
+            reinterpret_cast<ui64>(copy),
+            Size);
+    }
+
+    size_t GetOccupiedMemorySize() const override
+    {
+        return Size;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TRope CreateRopeFromIovecs(const NProto::TWriteDataRequest& request)
+{
+    TRope rope;
+    for (const auto& iovec: request.GetIovecs()) {
+        if (iovec.GetLength() == 0) {
+            continue;
+        }
+        rope.Insert(
+            rope.End(),
+            TRope(TRcBuf(
+                MakeIntrusive<TIovecContiguousChunk<>>(
+                    iovec.GetBase(),
+                    iovec.GetLength()))));
+    }
+    return rope;
+}
+
+/**
+ * @brief Copies a slice of data from the rope in the request into the buffer
+ *        and returns the buffer with data
+ *
+ * @param rope         The rope as the source of data
+ * @param buffer       The destination buffer to copy data into
+ * @param bytesToSkip  The starting offset (in bytes) from the beginning of the
+ *                     iovecs
+ * @param bytesToCopy  The number of bytes to copy from the offset
+ *
+ * @return The number of bytes actually copied. Fewer bytes than `byteLength`
+ *         may be copied if `byteOffset + byteLength` exceeds the total size
+ *         of the data in the rope.
+ */
+ui64 CopyBufferFromRope(
+    TRope& rope,
+    TString& buffer,
+    ui64 bytesToSkip,
+    ui64 bytesToCopy)
+{
+    buffer.ReserveAndResize(bytesToCopy);
+    auto bytesCopied = TRopeUtils::SafeMemcpy(
+        &buffer[0],
+        rope.Begin() + bytesToSkip,
+        bytesToCopy);
+    return bytesCopied;
+}
+
+/**
+ * @brief Copies a slice of data from the iovecs in the request into the buffer
+ *        in the same request and cleanup iovecs.
+ *
+ * @param request The write request containing iovecs as the source of data
+ */
+void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
+{
+    if (request.GetIovecs().empty()) {
+        return;
+    }
+
+    auto rope = CreateRopeFromIovecs(request);
+    auto* buffer = request.MutableBuffer();
+    const auto bytesToCopy = CalculateByteCount(request);
+    buffer->ReserveAndResize(bytesToCopy);
+    auto bytesCopied =
+        TRopeUtils::SafeMemcpy(&(*buffer)[0], rope.Begin(), bytesToCopy);
+    request.MutableIovecs()->Clear();
+    Y_ABORT_UNLESS(bytesCopied == bytesToCopy);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TWriteDataActor final: public TActorBootstrapped<TWriteDataActor>
 {
 private:
@@ -47,6 +171,9 @@ private:
     // Filesystem-specific params
     const TString LogTag;
 
+    // Turns off writes to blob storage for performance testing purposes
+    const bool WriteBlobDisabled;
+
     // generated blob id and associated data
     NProtoPrivate::TGenerateBlobIdsResponse GenerateBlobIdsResponse;
 
@@ -54,9 +181,11 @@ private:
     ui32 RemainingBlobsToWrite = 0;
     bool WriteDataFallbackEnabled = false;
 
-    // Stats for reporting
+    // Metrics / logging
     IRequestStatsPtr RequestStats;
     IProfileLogPtr ProfileLog;
+    ITraceSerializerPtr TraceSerializer;
+
     // Refers to GenerateBlobIds or AddData request, depending on which one is
     // in flight
     TMaybe<TInFlightRequest> InFlightRequest;
@@ -64,6 +193,7 @@ private:
     TVector<ui32> StorageStatusFlags;
     TVector<double> ApproximateFreeSpaceShares;
     const NCloud::NProto::EStorageMediaKind MediaKind;
+    TRope Rope;
 
 public:
     TWriteDataActor(
@@ -71,21 +201,32 @@ public:
             TByteRange range,
             TRequestInfoPtr requestInfo,
             TString logTag,
+            bool writeBlobDisabled,
             IRequestStatsPtr requestStats,
             IProfileLogPtr profileLog,
+            ITraceSerializerPtr traceSerializer,
             NCloud::NProto::EStorageMediaKind mediaKind)
         : WriteRequest(std::move(request))
         , Range(range)
         , BlobRange(Range.AlignedSubRange())
         , RequestInfo(std::move(requestInfo))
         , LogTag(std::move(logTag))
+        , WriteBlobDisabled(writeBlobDisabled)
         , RequestStats(std::move(requestStats))
         , ProfileLog(std::move(profileLog))
+        , TraceSerializer(std::move(traceSerializer))
         , MediaKind(mediaKind)
     {}
 
     void Bootstrap(const TActorContext& ctx)
     {
+        FILESTORE_TRACK(
+            RequestReceived_ServiceWorker,
+            RequestInfo->CallContext,
+            "GenerateBlobIds");
+
+        Rope = CreateRopeFromIovecs(WriteRequest);
+
         auto request =
             std::make_unique<TEvIndexTablet::TEvGenerateBlobIdsRequest>();
 
@@ -113,6 +254,11 @@ public:
         InitProfileLogRequestInfo(
             InFlightRequest->ProfileLogRequest,
             request->Record);
+        auto* trace =
+            request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
+        TraceSerializer->BuildTraceRequest(
+            *trace,
+            RequestInfo->CallContext->LWOrbit);
 
         LOG_DEBUG(
             ctx,
@@ -120,7 +266,7 @@ public:
             "%s WriteDataActor started, data size: %lu, offset: %lu, aligned "
             "size: %lu, aligned offset: %lu",
             LogTag.c_str(),
-            WriteRequest.GetBuffer().size(),
+            CalculateByteCount(WriteRequest),
             WriteRequest.GetOffset(),
             BlobRange.Length,
             BlobRange.Offset);
@@ -159,7 +305,7 @@ private:
         const TEvIndexTablet::TEvGenerateBlobIdsResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        const auto* msg = ev->Get();
+        auto* msg = ev->Get();
         const auto& error = msg->GetError();
 
         TABLET_VERIFY(InFlightRequest);
@@ -167,6 +313,12 @@ private:
         InFlightRequest->Complete(ctx.Now(), error);
         FinalizeProfileLogRequestInfo(
             InFlightRequest->ProfileLogRequest,
+            msg->Record);
+        HandleServiceTraceInfo(
+            "GenerateBlobIds",
+            ctx,
+            TraceSerializer,
+            RequestInfo->CallContext,
             msg->Record);
 
         if (HasError(error)) {
@@ -187,17 +339,38 @@ private:
             LogTag.c_str(),
             GenerateBlobIdsResponse.DebugString().Quote().c_str());
 
+        if (WriteBlobDisabled) {
+            // Pretend that the blobs were written and trigger a critical event
+            // to alert the on-call engineer, as fake blobs should never be
+            // written in production
+            ReportFakeBlobWasWritten();
+            // Proceed to the final part: adding fake blobs to the index
+            AddData(ctx);
+            return;
+        }
+
         WriteBlobs(ctx);
     }
 
     void WriteBlobs(const TActorContext& ctx)
     {
+        FILESTORE_TRACK(
+            RequestReceived_ServiceWorker,
+            RequestInfo->CallContext,
+            "WriteBlobs");
+
         RemainingBlobsToWrite = GenerateBlobIdsResponse.BlobsSize();
         ui64 offset = BlobRange.Offset - Range.Offset;
 
         InFlightBSRequests.reserve(RemainingBlobsToWrite);
         StorageStatusFlags.resize(GenerateBlobIdsResponse.BlobsSize());
         ApproximateFreeSpaceShares.resize(GenerateBlobIdsResponse.BlobsSize());
+
+        const auto& iovecs = WriteRequest.GetIovecs();
+        auto ropeIt = Rope.Begin();
+        if (!Rope.empty()) {
+            ropeIt += offset;
+        }
         for (const auto& blob: GenerateBlobIdsResponse.GetBlobs()) {
             NKikimr::TLogoBlobID blobId =
                 LogoBlobIDFromLogoBlobID(blob.GetBlobId());
@@ -218,36 +391,64 @@ private:
             InFlightBSRequests.back()->Start(ctx.Now());
 
             std::unique_ptr<TEvBlobStorage::TEvPut> request;
-            if (GenerateBlobIdsResponse.BlobsSize() == 1
-                    && Range == BlobRange)
-            {
-                // do not copy the buffer if there is only one blob
+
+            if (!iovecs.empty()) {
+                // TODO(myagkov): Implement TEvPut with TRope as a buffer
+                // to remove unnecessary memcpy
+                TString putData;
+                putData.ReserveAndResize(blobId.BlobSize());
+                auto bytesCopied = TRopeUtils::SafeMemcpy(
+                    &putData[0],
+                    ropeIt,
+                    blobId.BlobSize());
+                TABLET_VERIFY(bytesCopied == blobId.BlobSize());
                 request = std::make_unique<TEvBlobStorage::TEvPut>(
                     blobId,
-                    WriteRequest.GetBuffer(),
+                    std::move(putData),
                     TInstant::Max(),
                     NKikimrBlobStorage::UserData);
+                ropeIt += blobId.BlobSize();
             } else {
-                request = std::make_unique<TEvBlobStorage::TEvPut>(
-                    blobId,
-                    TString(
-                        WriteRequest.GetBuffer().data() + offset,
-                        blobId.BlobSize()),
-                    TInstant::Max(),
-                    NKikimrBlobStorage::UserData);
+                if (GenerateBlobIdsResponse.BlobsSize() == 1 &&
+                    Range == BlobRange)
+                {
+                    // do not copy the buffer if there is only one blob
+                    request = std::make_unique<TEvBlobStorage::TEvPut>(
+                        blobId,
+                        WriteRequest.GetBuffer(),
+                        TInstant::Max(),
+                        NKikimrBlobStorage::UserData);
+                } else {
+                    request = std::make_unique<TEvBlobStorage::TEvPut>(
+                        blobId,
+                        TString(
+                            WriteRequest.GetBuffer().data() + offset,
+                            blobId.BlobSize()),
+                        TInstant::Max(),
+                        NKikimrBlobStorage::UserData);
+                }
+                offset += blobId.BlobSize();
             }
+
+            if (!RequestInfo->CallContext->LWOrbit.Fork(request->Orbit)) {
+                FILESTORE_TRACK(
+                    ForkFailed,
+                    RequestInfo->CallContext,
+                    "TEvBlobStorage::TEvPut");
+            }
+
             NKikimr::TActorId proxy =
                 MakeBlobStorageProxyID(blob.GetBSGroupId());
             LOG_DEBUG(
                 ctx,
                 TFileStoreComponents::SERVICE,
                 "%s Sending TEvPut request to blob storage, blobId: %s, proxy: "
-                "%s",
+                "%s iovecs size: %ul",
                 LogTag.c_str(),
                 blobId.ToString().c_str(),
-                proxy.ToString().c_str());
+                proxy.ToString().c_str(),
+                WriteRequest.GetIovecs().size());
             SendToBSProxy(ctx, proxy, request.release(), blobId.Cookie());
-            offset += blobId.BlobSize();
         }
     }
 
@@ -258,7 +459,9 @@ private:
         if (WriteDataFallbackEnabled) {
             return;
         }
+
         const auto* msg = ev->Get();
+        RequestInfo->CallContext->LWOrbit.Join(msg->Orbit);
 
         if (msg->Status != NKikimrProto::OK) {
             const auto error =
@@ -271,6 +474,11 @@ private:
                 msg->ErrorReason.Quote().c_str());
             // We still may receive some responses, but we do not want to
             // process them
+            for (auto& inFlight: InFlightBSRequests) {
+                if (inFlight && !inFlight->IsCompleted()) {
+                    inFlight->Complete(ctx.Now(), error);
+                }
+            }
             return WriteData(ctx, error);
         }
 
@@ -302,6 +510,11 @@ private:
 
     void AddData(const TActorContext& ctx)
     {
+        FILESTORE_TRACK(
+            RequestReceived_ServiceWorker,
+            RequestInfo->CallContext,
+            "AddData");
+
         auto request = std::make_unique<TEvIndexTablet::TEvAddDataRequest>();
 
         request->Record.MutableHeaders()->CopyFrom(WriteRequest.GetHeaders());
@@ -309,7 +522,7 @@ private:
         request->Record.SetNodeId(WriteRequest.GetNodeId());
         request->Record.SetHandle(WriteRequest.GetHandle());
         request->Record.SetOffset(WriteRequest.GetOffset());
-        request->Record.SetLength(WriteRequest.GetBuffer().size());
+        request->Record.SetLength(CalculateByteCount(WriteRequest));
         for (auto& blob: *GenerateBlobIdsResponse.MutableBlobs()) {
             request->Record.AddBlobIds()->Swap(blob.MutableBlobId());
         }
@@ -328,17 +541,33 @@ private:
         if (Range.Offset < BlobRange.Offset) {
             auto& unalignedHead = *request->Record.AddUnalignedDataRanges();
             unalignedHead.SetOffset(Range.Offset);
-            unalignedHead.SetContent(WriteRequest.GetBuffer().substr(
-                0,
-                BlobRange.Offset - Range.Offset));
+            const auto length = BlobRange.Offset - Range.Offset;
+            if (WriteRequest.GetIovecs().empty()) {
+                unalignedHead.SetContent(
+                    WriteRequest.GetBuffer().substr(0, length));
+            } else {
+                TString buffer;
+                auto bytesCopied = CopyBufferFromRope(Rope, buffer, 0, length);
+                TABLET_VERIFY(bytesCopied == length);
+                unalignedHead.SetContent(std::move(buffer));
+            }
         }
 
         if (Range.End() > BlobRange.End()) {
             auto& unalignedTail = *request->Record.AddUnalignedDataRanges();
             unalignedTail.SetOffset(BlobRange.End());
-            unalignedTail.SetContent(WriteRequest.GetBuffer().substr(
-                BlobRange.End() - Range.Offset,
-                Range.End() - BlobRange.End()));
+            const auto offset = BlobRange.End() - Range.Offset;
+            const auto length = Range.End() - BlobRange.End();
+            if (WriteRequest.GetIovecs().empty()) {
+                unalignedTail.SetContent(
+                    WriteRequest.GetBuffer().substr(offset, length));
+            } else {
+                TString buffer;
+                auto bytesCopied =
+                    CopyBufferFromRope(Rope, buffer, offset, length);
+                TABLET_VERIFY(bytesCopied == length);
+                unalignedTail.SetContent(std::move(buffer));
+            }
         }
 
         auto addCallContext = MakeIntrusive<TCallContext>(
@@ -358,6 +587,11 @@ private:
         InitProfileLogRequestInfo(
             InFlightRequest->ProfileLogRequest,
             request->Record);
+        auto* trace =
+            request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
+        TraceSerializer->BuildTraceRequest(
+            *trace,
+            RequestInfo->CallContext->LWOrbit);
 
         LOG_DEBUG(
             ctx,
@@ -380,15 +614,19 @@ private:
         FinalizeProfileLogRequestInfo(
             InFlightRequest->ProfileLogRequest,
             msg->Record);
+        HandleServiceTraceInfo(
+            "AddData",
+            ctx,
+            TraceSerializer,
+            RequestInfo->CallContext,
+            msg->Record);
 
         if (HasError(msg->GetError())) {
-            return WriteData(ctx, msg->GetError());
+            WriteData(ctx, msg->GetError());
+            return;
         }
 
-        auto response = std::make_unique<TEvService::TEvWriteDataResponse>();
-        NCloud::Reply(ctx, *RequestInfo, std::move(response));
-
-        Die(ctx);
+        ReplyAndDie(ctx, {} /* record */);
     }
 
     /**
@@ -396,7 +634,13 @@ private:
      */
     void WriteData(const TActorContext& ctx, const NProto::TError& error)
     {
+        FILESTORE_TRACK(
+            RequestReceived_ServiceWorker,
+            RequestInfo->CallContext,
+            "WriteData");
+
         WriteDataFallbackEnabled = true;
+        MoveIovecsToBuffer(WriteRequest);
 
         LOG_WARN(
             ctx,
@@ -407,12 +651,17 @@ private:
             WriteRequest.GetNodeId(),
             WriteRequest.GetHandle(),
             WriteRequest.GetOffset(),
-            WriteRequest.GetBuffer().size(),
+            CalculateByteCount(WriteRequest),
             FormatError(error).Quote().c_str());
 
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
         request->Record = std::move(WriteRequest);
         request->Record.MutableHeaders()->SetThrottlingDisabled(true);
+        auto* trace =
+            request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
+        TraceSerializer->BuildTraceRequest(
+            *trace,
+            RequestInfo->CallContext->LWOrbit);
 
         // forward request through tablet proxy
         ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -423,6 +672,12 @@ private:
         const TActorContext& ctx)
     {
         auto* msg = ev->Get();
+        HandleServiceTraceInfo(
+            "WriteData",
+            ctx,
+            TraceSerializer,
+            RequestInfo->CallContext,
+            msg->Record);
 
         if (HasError(msg->GetError())) {
             HandleError(ctx, msg->GetError());
@@ -435,23 +690,31 @@ private:
             "%s WriteData succeeded",
             LogTag.c_str());
 
-        auto response = std::make_unique<TEvService::TEvWriteDataResponse>();
-        response->Record = std::move(msg->Record);
-        NCloud::Reply(ctx, *RequestInfo, std::move(response));
-
-        Die(ctx);
+        ReplyAndDie(ctx, std::move(msg->Record));
     }
 
-    void ReplyAndDie(const TActorContext& ctx)
+    void ReplyAndDie(
+        const TActorContext& ctx,
+        NProto::TWriteDataResponse record)
     {
-        auto response = std::make_unique<TEvService::TEvWriteDataResponse>();
-        NCloud::Reply(ctx, *RequestInfo, std::move(response));
+        FILESTORE_TRACK(
+            ResponseSent_ServiceWorker,
+            RequestInfo->CallContext,
+            "WriteData");
 
+        auto response = std::make_unique<TEvService::TEvWriteDataResponse>();
+        response->Record = std::move(record);
+        NCloud::Reply(ctx, *RequestInfo, std::move(response));
         Die(ctx);
     }
 
     void HandleError(const TActorContext& ctx, const NProto::TError& error)
     {
+        FILESTORE_TRACK(
+            ResponseSent_ServiceWorker,
+            RequestInfo->CallContext,
+            "WriteData");
+
         auto response =
             std::make_unique<TEvService::TEvWriteDataResponse>(error);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
@@ -475,7 +738,10 @@ void TStorageServiceActor::HandleWriteData(
     const TEvService::TEvWriteDataRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    TInstant startTime = ctx.Now();
     auto* msg = ev->Get();
+
+    FILESTORE_TRACK(RequestReceived_Service, msg->CallContext, "WriteData");
 
     const auto& clientId = GetClientId(msg->Record);
     const auto& sessionId = GetSessionId(msg->Record);
@@ -491,7 +757,8 @@ void TStorageServiceActor::HandleWriteData(
 
     // In handleless IO mode, if the handle is not set, we use the nodeId to
     // infer the shard number
-    ui32 shardNo = ExtractShardNo(
+    const ui32 shardNo = ExtractShardNoSafe(
+        filestore,
         filestore.GetFeatures().GetAllowHandlelessIO() &&
                 msg->Record.GetHandle() == InvalidHandle
             ? msg->Record.GetNodeId()
@@ -517,26 +784,41 @@ void TStorageServiceActor::HandleWriteData(
         msg->Record.SetFileSystemId(fsId);
     }
 
+    if (!msg->Record.GetIovecs().empty() && msg->Record.GetBufferOffset() != 0)
+    {
+        auto response = std::make_unique<TEvService::TEvWriteDataResponse>(
+            ErrorInvalidArgument(
+                "The BufferOffset option is not compatible with Iovecs"));
+        return NCloud::Reply(ctx, *ev, std::move(response));
+    }
+
     const auto threeStageWriteAllowed = IsThreeStageWriteEnabled(filestore);
 
     if (!threeStageWriteAllowed) {
         // If three-stage write is disabled, forward the request to the tablet
         // in the same way as all other requests.
+        MoveIovecsToBuffer(msg->Record);
         ForwardRequest<TEvService::TWriteDataMethod>(ctx, ev);
         return;
     }
 
     ui32 blockSize = filestore.GetBlockSize();
 
+    const auto bytesCount = CalculateByteCount(msg->Record);
     const TByteRange range(
         msg->Record.GetOffset(),
-        msg->Record.GetBuffer().size(),
+        bytesCount,
         blockSize);
     const bool threeStageWriteEnabled =
-        range.Length >= filestore.GetFeatures().GetThreeStageWriteThreshold()
-        && threeStageWriteAllowed
-        && (range.IsAligned()
-                || StorageConfig->GetUnalignedThreeStageWriteEnabled());
+        range.Length >= filestore.GetFeatures().GetThreeStageWriteThreshold() &&
+        threeStageWriteAllowed &&
+        (range.IsAligned() ||
+         StorageConfig->GetUnalignedThreeStageWriteEnabled()) &&
+        range.AlignedSubRange().Length > 0;
+    const bool blockChecksumsEnabled =
+        filestore.GetFeatures().GetBlockChecksumsInProfileLogEnabled()
+        || StorageConfig->GetBlockChecksumsInProfileLogEnabled();
+
     if (threeStageWriteEnabled) {
         auto logTag = filestore.GetFileSystemId();
         LOG_DEBUG(
@@ -544,15 +826,22 @@ void TStorageServiceActor::HandleWriteData(
             TFileStoreComponents::SERVICE,
             "%s Using three-stage write for request, size: %lu",
             logTag.c_str(),
-            msg->Record.GetBuffer().size());
+            bytesCount);
 
         auto [cookie, inflight] = CreateInFlightRequest(
             TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
             session->MediaKind,
             session->RequestStats,
-            ctx.Now());
+            startTime);
 
         InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+        inflight->ProfileLogRequest.SetClientId(session->ClientId);
+        if (blockChecksumsEnabled) {
+            CalculateWriteDataRequestChecksums(
+                msg->Record,
+                blockSize,
+                inflight->ProfileLogRequest);
+        }
 
         auto requestInfo =
             CreateRequestInfo(SelfId(), cookie, msg->CallContext);
@@ -562,8 +851,10 @@ void TStorageServiceActor::HandleWriteData(
             range,
             std::move(requestInfo),
             std::move(logTag),
+            filestore.GetFeatures().GetWriteBlobDisabled(),
             session->RequestStats,
             ProfileLog,
+            TraceSerializer,
             session->MediaKind);
         NCloud::Register(ctx, std::move(actor));
     } else {
@@ -571,7 +862,8 @@ void TStorageServiceActor::HandleWriteData(
             ctx,
             TFileStoreComponents::SERVICE,
             "Forwarding WriteData request to tablet");
-        return ForwardRequest<TEvService::TWriteDataMethod>(ctx, ev);
+        MoveIovecsToBuffer(msg->Record);
+        ForwardRequest<TEvService::TWriteDataMethod>(ctx, ev);
     }
 }
 

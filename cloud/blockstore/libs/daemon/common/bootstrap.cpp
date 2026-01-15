@@ -3,6 +3,8 @@
 #include "config_initializer.h"
 #include "options.h"
 
+#include <cloud/blockstore/libs/cells/iface/cell_manager.h>
+#include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
@@ -28,8 +30,6 @@
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/encryption/encryption_service.h>
-#include <cloud/blockstore/libs/endpoint_proxy/client/client.h>
-#include <cloud/blockstore/libs/endpoint_proxy/client/device_factory.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_manager.h>
@@ -42,11 +42,12 @@
 #include <cloud/blockstore/libs/endpoints_vhost/external_vhost_server.h>
 #include <cloud/blockstore/libs/endpoints_vhost/vhost_server.h>
 #include <cloud/blockstore/libs/nbd/device.h>
+#include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/nbd/netlink_device.h>
 #include <cloud/blockstore/libs/nbd/server.h>
-#include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
+#include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/server/server.h>
@@ -63,6 +64,7 @@
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/service_local/storage_rdma.h>
 #include <cloud/blockstore/libs/service_local/storage_spdk.h>
+#include <cloud/blockstore/libs/service_rdma/rdma_target.h>
 #include <cloud/blockstore/libs/service_throttling/throttler_logger.h>
 #include <cloud/blockstore/libs/service_throttling/throttler_policy.h>
 #include <cloud/blockstore/libs/service_throttling/throttler_tracker.h>
@@ -87,13 +89,13 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/daemon/mlock.h>
-#include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
-#include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
+#include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
@@ -147,7 +149,7 @@ NBD::TServerConfig CreateNbdServerConfig(const TServerAppConfig& config)
         .LimiterEnabled = config.GetNbdLimiterEnabled(),
         .MaxInFlightBytesPerThread = config.GetMaxInFlightBytesPerThread(),
         .SocketAccessMode = config.GetSocketAccessMode(),
-        .Affinity = config.GetNbdAffinity()
+        .Affinity = config.GetNbdAffinity(),
     };
 }
 
@@ -206,7 +208,10 @@ void TBootstrapBase::ParseOptions(int argc, char** argv)
 
 void TBootstrapBase::Init()
 {
-    InitLogs();
+    BootstrapLogging = CreateLoggingService("console", TLogSettings{});
+    Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
+    SetCriticalEventsLog(Log);
+    Configs->Log = Log;
     STORAGE_INFO("NBS server version: " << GetFullVersionString());
 
     Timer = CreateWallClockTimer();
@@ -235,6 +240,20 @@ void TBootstrapBase::Init()
 
     STORAGE_INFO("Service initialized");
 
+    if (Configs->RdmaConfig->GetBlockstoreServerTargetEnabled()) {
+        InitRdmaRequestServer();
+        if (RdmaRequestServer) {
+            RdmaTarget = CreateBlockstoreServerRdmaTarget(
+                std::make_shared<TBlockstoreServerRdmaTargetConfig>(
+                    Configs->RdmaConfig->GetBlockstoreServerTarget()),
+                Logging,
+                GetTraceSerializer(),
+                RdmaRequestServer,
+                Service);
+            STORAGE_INFO("RDMA Target initialized");
+        }
+    }
+
     GrpcLog = Logging->CreateLog("GRPC");
     GrpcLoggerInit(
         GrpcLog,
@@ -242,13 +261,15 @@ void TBootstrapBase::Init()
 
     auto diagnosticsConfig = Configs->DiagnosticsConfig;
     if (TraceReaders.size()) {
+        TTraceProcessorConfig traceProcessorConfig;
+        traceProcessorConfig.ComponentName = "BLOCKSTORE_TRACE";
         TraceProcessor = CreateTraceProcessorMon(
             Monitoring,
             CreateTraceProcessor(
                 Timer,
                 BackgroundScheduler,
                 Logging,
-                "BLOCKSTORE_TRACE",
+                std::move(traceProcessorConfig),
                 NLwTraceMonPage::TraceManager(diagnosticsConfig->GetUnsafeLWTrace()),
                 TraceReaders));
 
@@ -281,7 +302,8 @@ void TBootstrapBase::Init()
     RequestStats = CreateServerRequestStats(
         serverGroup,
         Timer,
-        Configs->DiagnosticsConfig->GetHistogramCounterOptions());
+        Configs->DiagnosticsConfig->GetHistogramCounterOptions(),
+        Configs->DiagnosticsConfig->GetExecutionTimeSizeClasses());
 
     if (!VolumeStats) {
         VolumeStats = CreateVolumeStats(
@@ -327,10 +349,14 @@ void TBootstrapBase::Init()
     }
 
     storageProviders.push_back(CreateDefaultStorageProvider(Service));
-    StorageProvider = CreateMultiStorageProvider(std::move(storageProviders));
+
+    StorageProvider = CreateMultiStorageProvider(
+        std::move(storageProviders));
 
     STORAGE_INFO("StorageProvider initialized");
 
+    const NProto::TChecksumFlags checksumFlags =
+        Configs->ServerConfig->GetChecksumFlags();
     TSessionManagerOptions sessionManagerOptions;
     sessionManagerOptions.StrictContractValidation
         = Configs->ServerConfig->GetStrictContractValidation();
@@ -340,6 +366,12 @@ void TBootstrapBase::Init()
     sessionManagerOptions.TemporaryServer = Configs->Options->TemporaryServer;
     sessionManagerOptions.DisableClientThrottler =
         Configs->ServerConfig->GetDisableClientThrottlers();
+    sessionManagerOptions.EnableDataIntegrityClient =
+        checksumFlags.GetEnableDataIntegrityClient();
+    for (auto mediaKind: checksumFlags.GetMediaKindsToValidateDataIntegrity()) {
+        sessionManagerOptions.MediaKindsToValidateDataIntegrity.push_back(
+            static_cast<NProto::EStorageMediaKind>(mediaKind));
+    }
 
     if (!KmsKeyProvider) {
         KmsKeyProvider = CreateKmsKeyProviderStub();
@@ -354,6 +386,8 @@ void TBootstrapBase::Init()
         CreateEncryptionKeyProvider(KmsKeyProvider, RootKmsKeyProvider),
         Configs->ServerConfig->GetEncryptZeroPolicy());
 
+    SetupCellManager();
+
     auto sessionManager = CreateSessionManager(
         Timer,
         Scheduler,
@@ -363,6 +397,7 @@ void TBootstrapBase::Init()
         VolumeStats,
         ServerStats,
         Service,
+        CellManager,
         StorageProvider,
         encryptionClientFactory,
         Executor,
@@ -397,7 +432,7 @@ void TBootstrapBase::Init()
             NbdServer,
             Logging,
             ServerStats,
-            Configs->ServerConfig->GetChecksumFlags(),
+            checksumFlags,
             Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize(),
             NbdErrorHandlerMap);
 
@@ -427,9 +462,10 @@ void TBootstrapBase::Init()
 
         auto vhostEndpointListener = CreateVhostEndpointListener(
             VhostServer,
-            Configs->ServerConfig->GetChecksumFlags(),
+            checksumFlags,
             Configs->ServerConfig->GetVhostDiscardEnabled(),
-            Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize());
+            Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize(),
+            Configs->ServerConfig->GetVhostOptimalIoSize());
 
         if (Configs->ServerConfig->GetVhostServerPath()
                 && !Configs->Options->TemporaryServer)
@@ -544,38 +580,13 @@ void TBootstrapBase::Init()
 
     NBD::IDeviceFactoryPtr nbdDeviceFactory;
 
-    if (Configs->ServerConfig->GetEndpointProxySocketPath()) {
-        EndpointProxyClient = NClient::CreateClient(
-            {
-                "", // Host
-                0,  // Port
-                0,  // SecurePort
-                "", // RootCertsFile
-                Configs->ServerConfig->GetEndpointProxySocketPath(),
-                {}, // RetryPolicy
-            },
-            Scheduler,
-            Timer,
-            Logging);
-
-        const ui32 defaultSectorSize = 4_KB;
-
-        nbdDeviceFactory = NClient::CreateProxyDeviceFactory(
-            {defaultSectorSize,
-             Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize()},
-            EndpointProxyClient);
-    }
-
-    if (!nbdDeviceFactory && Configs->ServerConfig->GetNbdNetlink()) {
+    if (Configs->ServerConfig->GetNbdNetlink()) {
         nbdDeviceFactory = NBD::CreateNetlinkDeviceFactory(
             Logging,
             Configs->ServerConfig->GetNbdRequestTimeout(),
             Configs->ServerConfig->GetNbdConnectionTimeout());
     }
 
-    // The only case we want kernel to retry requests is when the socket is dead
-    // due to nbd server restart. And since we can't configure ioctl device to
-    // use a new socket, request timeout effectively becomes connection timeout
     if (!nbdDeviceFactory) {
         nbdDeviceFactory = NBD::CreateDeviceFactory(
             Logging,
@@ -665,7 +676,14 @@ void TBootstrapBase::Init()
         Logging,
         ServerStats,
         Service,
-        std::move(udsService));
+        std::move(udsService),
+        TServerOptions {
+            // Enables cell id checking in DescribeVolume requests
+            // only if "cells" feature is on
+            .CellId = Configs->CellsConfig->GetCellsEnabled() ?
+                Configs->CellsConfig->GetCellId() :
+                ""
+        });
 
     STORAGE_INFO("Server initialized");
 
@@ -711,17 +729,6 @@ void TBootstrapBase::InitProfileLog()
     }
 }
 
-void TBootstrapBase::InitLogs()
-{
-    TLogSettings logSettings;
-    logSettings.BackendFileName = Configs->GetLogBackendFileName();
-
-    BootstrapLogging = CreateLoggingService("console", logSettings);
-    Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
-    SetCriticalEventsLog(Log);
-    Configs->Log = Log;
-}
-
 void TBootstrapBase::InitDbgConfigs()
 {
     Configs->InitServerConfig();
@@ -735,11 +742,11 @@ void TBootstrapBase::InitDbgConfigs()
     Configs->InitDiagnosticsConfig();
     Configs->InitDiscoveryConfig();
     Configs->InitSpdkEnvConfig();
+    Configs->InitCellsConfig();
 
     TLogSettings logSettings;
     logSettings.FiltrationLevel =
         static_cast<ELogPriority>(Configs->GetLogDefaultLevel());
-    logSettings.BackendFileName = Configs->GetLogBackendFileName();
 
     Logging = CreateLoggingService("console", logSettings);
 
@@ -784,7 +791,11 @@ void TBootstrapBase::InitLocalService()
         CreateLocalStorageProvider(
             FileIOServiceProvider,
             NvmeManager,
-            {.DirectIO = false, .UseSubmissionThread = false}));
+            {.DirectIO = false,
+             .UseSubmissionThread = false,
+             .DataIntegrityValidationPolicy =
+                 Configs->DiskAgentConfig
+                     ->GetDataIntegrityValidationPolicyForDrBasedDisks()}));
 }
 
 void TBootstrapBase::InitNullService()
@@ -826,33 +837,32 @@ void TBootstrapBase::InitLWTrace(const TString& serviceNameForExporter)
         diagnosticsConfig->GetTracesSyslogIdentifier()
     );
 
-    const auto regularSamplingRate = diagnosticsConfig->GetSamplingRate();
-
-    if (regularSamplingRate) {
+    if (const auto samplingRate = diagnosticsConfig->GetSamplingRate()) {
         NLWTrace::TQuery query = ProbabilisticQuery(
             desc,
-            regularSamplingRate,
+            samplingRate,
             diagnosticsConfig->GetLWTraceShuttleCount());
         lwManager.New(TraceLoggerId, query);
-        TraceReaders.push_back(CreateTraceLogger(
-            TraceLoggerId,
-            traceLog,
-            "BLOCKSTORE_TRACE"
-        ));
-    }
 
-    if (regularSamplingRate && serviceNameForExporter) {
-        NLWTrace::TQuery query = ProbabilisticQuery(
-            desc,
-            regularSamplingRate,
-            diagnosticsConfig->GetLWTraceShuttleCount());
-        lwManager.New(TraceExporterId, query);
-        TraceReaders.push_back(CreateTraceExporter(
-            TraceExporterId,
-            traceLog,
-            "BLOCKSTORE_TRACE",
-            GetTraceServiceClient(),
-            serviceNameForExporter));
+        ITraceReaderPtr reader;
+        if (serviceNameForExporter) {
+            reader = SetupTraceReaderWithOpentelemetryExport(
+                TraceLoggerId,
+                traceLog,
+                "BLOCKSTORE_TRACE",
+                "AllRequests",
+                GetTraceServiceClient(),
+                serviceNameForExporter,
+                TLOG_INFO);
+        } else {
+            reader = SetupTraceReaderWithLog(
+                TraceLoggerId,
+                traceLog,
+                "BLOCKSTORE_TRACE",
+                "AllRequests");
+        }
+
+        TraceReaders.push_back(std::move(reader));
     }
 
     if (auto samplingRate = diagnosticsConfig->GetSlowRequestSamplingRate()) {
@@ -861,11 +871,27 @@ void TBootstrapBase::InitLWTrace(const TString& serviceNameForExporter)
             samplingRate,
             diagnosticsConfig->GetLWTraceShuttleCount());
         lwManager.New(SlowRequestsFilterId, query);
-        TraceReaders.push_back(CreateSlowRequestsFilter(
-            SlowRequestsFilterId,
-            traceLog,
-            "BLOCKSTORE_TRACE",
-            diagnosticsConfig->GetRequestThresholds()));
+
+        ITraceReaderPtr reader;
+        if (serviceNameForExporter) {
+            reader = SetupTraceReaderForSlowRequestsWithOpentelemetryExport(
+                SlowRequestsFilterId,
+                traceLog,
+                "BLOCKSTORE_TRACE",
+                GetTraceServiceClient(),
+                serviceNameForExporter,
+                diagnosticsConfig->GetRequestThresholds(),
+                "SlowRequests");
+        } else {
+            reader = SetupTraceReaderForSlowRequests(
+                SlowRequestsFilterId,
+                traceLog,
+                "BLOCKSTORE_TRACE",
+                diagnosticsConfig->GetRequestThresholds(),
+                "SlowRequests");
+        }
+
+        TraceReaders.push_back(std::move(reader));
     }
 
     lwManager.RegisterCustomAction(
@@ -905,7 +931,6 @@ void TBootstrapBase::Start()
     START_KIKIMR_COMPONENT(NotifyService);
     START_COMMON_COMPONENT(Monitoring);
     START_COMMON_COMPONENT(ProfileLog);
-    START_KIKIMR_COMPONENT(StatsFetcher);
     START_COMMON_COMPONENT(DiscoveryService);
     START_COMMON_COMPONENT(TraceProcessor);
     START_KIKIMR_COMPONENT(TraceSerializer);
@@ -920,7 +945,6 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(Spdk);
     START_COMMON_COMPONENT(FileIOServiceProvider);
     START_KIKIMR_COMPONENT(ActorSystem);
-    START_COMMON_COMPONENT(EndpointProxyClient);
     START_COMMON_COMPONENT(EndpointManager);
     START_COMMON_COMPONENT(Service);
     START_COMMON_COMPONENT(VhostServer);
@@ -932,6 +956,9 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(BackgroundThreadPool);
     START_COMMON_COMPONENT(RdmaClient);
     START_COMMON_COMPONENT(GetTraceServiceClient());
+    START_COMMON_COMPONENT(RdmaRequestServer);
+    START_COMMON_COMPONENT(RdmaTarget);
+    START_COMMON_COMPONENT(CellManager);
 
     // we need to start scheduler after all other components for 2 reasons:
     // 1) any component can schedule a task that uses a dependency that hasn't
@@ -984,7 +1011,9 @@ void TBootstrapBase::Stop()
     // stopping scheduler before all other components to avoid races between
     // scheduled tasks and shutting down of component dependencies
     STOP_COMMON_COMPONENT(Scheduler);
-
+    STOP_COMMON_COMPONENT(CellManager);
+    STOP_COMMON_COMPONENT(RdmaTarget);
+    STOP_COMMON_COMPONENT(RdmaRequestServer);
     STOP_COMMON_COMPONENT(GetTraceServiceClient());
     STOP_COMMON_COMPONENT(RdmaClient);
     STOP_COMMON_COMPONENT(BackgroundThreadPool);
@@ -996,8 +1025,6 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(VhostServer);
     STOP_COMMON_COMPONENT(Service);
     STOP_COMMON_COMPONENT(EndpointManager);
-    STOP_COMMON_COMPONENT(EndpointProxyClient);
-
 
     STOP_KIKIMR_COMPONENT(ActorSystem);
 
@@ -1017,7 +1044,6 @@ void TBootstrapBase::Stop()
     STOP_KIKIMR_COMPONENT(TraceSerializer);
     STOP_COMMON_COMPONENT(TraceProcessor);
     STOP_COMMON_COMPONENT(DiscoveryService);
-    STOP_KIKIMR_COMPONENT(StatsFetcher);
     STOP_COMMON_COMPONENT(ProfileLog);
     STOP_COMMON_COMPONENT(Monitoring);
     STOP_KIKIMR_COMPONENT(LogbrokerService);

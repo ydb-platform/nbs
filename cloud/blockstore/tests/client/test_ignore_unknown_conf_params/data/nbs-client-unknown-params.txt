@@ -1,0 +1,32 @@
+ClientConfig {
+  SOME_UNKNOWN_PARAM: 1
+  Host: "localhost"
+  Port: 9767
+  RetryTimeout: 86400000
+  SecurePort: 9768
+  RootCertsFile: "certs/server.crt"
+  ThrottlingConfig {
+    SOME_UNKNOWN_PARAM: 1
+    NonreplThrottlingConfig {
+      SOME_UNKNOWN_PARAM: "abc"
+      ReadBandwidthPerCpuUnit: 1
+      ReadIopsPerCpuUnit: 100
+      WriteBandwidthPerCpuUnit: 1
+      WriteIopsPerCpuUnit: 100
+      MaxReadBandwidth: 1000
+      MaxReadIops: 100000
+      MaxWriteBandwidth: 1000
+      MaxWriteIops: 100000
+    }
+  }
+  InsecurePort: 9766
+}
+LogConfig {
+  SysLogService: "NBS_CLIENT"
+  LogLevel: 6
+  SOME_UNKNOWN_PARAM: 1
+}
+SOME_UNKNOWN_CONFIG {
+  SOME_UNKNOWN_PARAM_1: "abc"
+  SOME_UNKNOWN_PARAM_2: 1
+}

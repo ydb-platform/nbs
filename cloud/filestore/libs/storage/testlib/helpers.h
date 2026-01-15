@@ -2,6 +2,12 @@
 
 #include <cloud/filestore/libs/service/filestore.h>
 
+#include <contrib/ydb/library/actors/testlib/test_runtime.h>
+
+#include <util/generic/set.h>
+
+#include <functional>
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -32,6 +38,9 @@ enum class ENodeType
     Link,
     SymLink,
     Sock,
+    Fifo,
+    CharDev,
+    BlockDev,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -47,6 +56,8 @@ struct TCreateNodeArgs
     TString TargetPath;
 
     TString ShardId;
+
+    ui64 DevId = 0;
 
     TCreateNodeArgs(
             ENodeType nodeType,
@@ -89,9 +100,30 @@ struct TCreateNodeArgs
                 link->SetTargetPath(TargetPath);
                 break;
             }
+
             case ENodeType::Sock: {
                 auto* sock = request.MutableSocket();
                 sock->SetMode(Mode);
+                break;
+            }
+
+            case ENodeType::Fifo: {
+                auto* fifo = request.MutableFifo();
+                fifo->SetMode(Mode);
+                break;
+            }
+
+            case ENodeType::CharDev: {
+                auto* charDev = request.MutableCharDevice();
+                charDev->SetMode(Mode);
+                charDev->SetDevice(DevId);
+                break;
+            }
+
+            case ENodeType::BlockDev: {
+                auto* blockDev = request.MutableBlockDevice();
+                blockDev->SetMode(Mode);
+                blockDev->SetDevice(DevId);
                 break;
             }
         }
@@ -133,6 +165,31 @@ struct TCreateNodeArgs
     {
         TCreateNodeArgs args(ENodeType::SymLink, parent, name);
         args.TargetPath = targetPath;
+        return args;
+    }
+
+    static TCreateNodeArgs Fifo(ui64 parent, const TString& name, ui32 mode = 0)
+    {
+        TCreateNodeArgs args(ENodeType::Fifo, parent, name);
+        args.Mode = mode;
+        return args;
+    }
+
+    static TCreateNodeArgs
+    CharDev(ui64 parent, const TString& name, ui32 mode = 0, ui64 dev = 0)
+    {
+        TCreateNodeArgs args(ENodeType::CharDev, parent, name);
+        args.Mode = mode;
+        args.DevId = dev;
+        return args;
+    }
+
+    static TCreateNodeArgs
+    BlockDev(ui64 parent, const TString& name, ui32 mode = 0, ui64 dev = 0)
+    {
+        TCreateNodeArgs args(ENodeType::BlockDev, parent, name);
+        args.Mode = mode;
+        args.DevId = dev;
         return args;
     }
 };
@@ -239,6 +296,9 @@ struct TCreateHandleArgs
 
     static constexpr ui32 TRUNC
         = ProtoFlag(NProto::TCreateHandleRequest::E_TRUNCATE);
+
+    static constexpr ui32 DIRECT
+        = ProtoFlag(NProto::TCreateHandleRequest::E_DIRECT);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -263,6 +323,11 @@ inline bool CompareBuffer(TStringBuf buffer, size_t len, char fill)
     return true;
 }
 
+#define UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, sz, c) \
+    UNIT_ASSERT_C( \
+        CompareBuffer(buffer, sz, c), \
+        TString((buffer).data(), Min<size_t>(20, (buffer).size())))
+
 template <typename T>
 inline bool Succeeded(const std::unique_ptr<T>& response)
 {
@@ -280,5 +345,24 @@ inline TString GetErrorReason(const std::unique_ptr<T>& response)
     }
     return response->GetErrorReason();
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Helper class for tracking tablet reboots in tests.
+// Tracks pipe destruction events and tablet generation changes.
+class TTabletRebootTracker
+{
+private:
+    bool PipeDestroyed = false;
+    TSet<ui32> Generations;
+
+public:
+    NActors::TTestActorRuntimeBase::TEventFilter GetEventFilter();
+
+    bool IsPipeDestroyed() const;
+    void ClearPipeDestroyed();
+
+    size_t GetGenerationCount() const;
+};
 
 }   // namespace NCloud::NFileStore::NStorage

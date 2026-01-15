@@ -3,6 +3,7 @@ syntax = "proto3";
 import "cloud/blockstore/public/api/protos/encryption.proto";
 import "cloud/blockstore/public/api/protos/headers.proto";
 import "cloud/blockstore/public/api/protos/rdma.proto";
+import "cloud/blockstore/public/api/protos/volume_throttling.proto";
 import "cloud/storage/core/protos/error.proto";
 import "cloud/storage/core/protos/media.proto";
 import "cloud/storage/core/protos/trace.proto";
@@ -173,7 +174,7 @@ message TEncryptionDesc
 
 message TVolume
 {
-    reserved 25;
+    reserved 25, 36;
 
     // Label of volume.
     string DiskId = 1;
@@ -280,9 +281,17 @@ message TVolume
     // Represents whether disk filling finished or not.
     bool IsFillFinished = 35;
 
-    // Whether volume can use fast data path (external endpoint with direct
-    // rdma connection to engine)
-    bool IsFastPathEnabled = 36;
+    // When a disk is being copied or has already been copied, the
+    // PrincipalDiskId field specifies the name of the disk that the client
+    // should use instead of current.
+    string PrincipalDiskId = 37;
+
+    // Set of volume tags. Value can be empty.
+    map<string, string> Tags = 38;
+
+    // Enables discard (ZeroBlocks) requests for the volume.
+    // If this flag is set, it should never be unset anymore!
+    optional bool VhostDiscardEnabled = 39;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -395,6 +404,9 @@ message TVolumeStats
 
     uint32 UnconfirmedBlobCount = 27;
     uint32 ConfirmedBlobCount = 28;
+
+    // Current trim fresh log as commit id
+    uint64 TrimFreshLogToCommitId = 29;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -465,6 +477,8 @@ message TCreateVolumeRequest
 
     // Mount requests with incorrect FillGeneration will be rejected unless filling is finished.
     uint64 FillGeneration = 21;
+
+    string TagsStr = 22;
 }
 
 message TCreateVolumeResponse
@@ -650,6 +664,26 @@ message TStatVolumeRequest
     bool NoPartition = 5;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Volatile throttling state applied to a volume
+
+message TVolumeVolatileThrottlingInfo
+{
+    // Version of the throttling configuration that is applied
+    // - Tracks which update from the VolumeThrottlingManager is currently active
+    uint32 Version = 1;
+
+    // Throttling rule applied to this volume
+    // - Contains the selector (disk IDs/filters) and performance coefficients
+    // - Empty if no matching rule exists in the current config
+    TVolumeThrottlingRule AppliedRule = 2;
+
+    // The actual performance profile derived from:
+    // - Base volume performance profile
+    // - Coefficients from AppliedRule
+    TVolumePerformanceProfile ActualPerformanceProfile = 3;
+}
+
 message TStatVolumeResponse
 {
     // Optional error, set only if error happened.
@@ -685,6 +719,10 @@ message TStatVolumeResponse
     // Debug string with some other contents of volume state. There are no
     // guarantees about the format.
     string DebugString = 11;
+
+    // Volatile (not persisted to volume tablet state) throttling config
+    // applied to this volume via VolumeThrottlingManager
+    TVolumeVolatileThrottlingInfo VolatileThrottlingInfo = 12;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -706,6 +744,8 @@ message TDescribeVolumeResponse
 
     // Volume information.
     TVolume Volume = 2;
+
+    string CellId = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

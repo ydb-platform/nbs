@@ -1,5 +1,7 @@
 LIBRARY()
 
+GENERATE_ENUM_SERIALIZATION(request.h)
+
 SRCS(
     aligned_device_handler.cpp
     auth_provider.cpp
@@ -13,6 +15,7 @@ SRCS(
     service_auth.cpp
     service_error_transform.cpp
     service_filtered.cpp
+    service_method.cpp
     service_null.cpp
     service_test.cpp
     service.cpp

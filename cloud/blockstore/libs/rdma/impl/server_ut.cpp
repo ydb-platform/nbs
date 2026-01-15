@@ -2,6 +2,8 @@
 #include "server.h"
 #include "test_verbs.h"
 
+#include <cstring>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
@@ -75,6 +77,38 @@ Y_UNIT_TEST_SUITE(TRdmaServerTest)
         server->Stop();
     }
 
+    Y_UNIT_TEST(ShouldStartEndpointWithToS)
+    {
+        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+        auto verbs =
+            NVerbs::CreateTestVerbs(testContext);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto serverConfig = std::make_shared<TServerConfig>();
+        auto clientConfig = std::make_shared<TClientConfig>();
+        serverConfig->IpTypeOfService = 42;
+        UNIT_ASSERT_VALUES_UNEQUAL(42, testContext->ToS);
+
+        auto logging = CreateLoggingService(
+            "console",
+            TLogSettings{TLOG_RESOURCES});
+
+        auto server = CreateServer(
+            verbs,
+            logging,
+            monitoring,
+            serverConfig);
+
+        server->Start();
+
+        auto serverEndpoint = server->StartEndpoint(
+            "::",
+            10020,
+            std::make_shared<TServerHandler>());
+        UNIT_ASSERT_VALUES_EQUAL(42, testContext->ToS);
+
+        server->Stop();
+    }
+
     Y_UNIT_TEST(StartEndpointShouldNotThrow)
     {
         auto context = MakeIntrusive<NVerbs::TTestContext>();
@@ -83,7 +117,8 @@ Y_UNIT_TEST_SUITE(TRdmaServerTest)
             Y_UNUSED(id);
             Y_UNUSED(backlog);
 
-            throw TServiceError(ENODEV) << "rdma_listen error: No such device";
+            STORAGE_THROW_SERVICE_ERROR(ENODEV)
+                << "rdma_listen error: No such device";
         };
 
         auto verbs = NVerbs::CreateTestVerbs(std::move(context));
@@ -115,6 +150,74 @@ Y_UNIT_TEST_SUITE(TRdmaServerTest)
 
         server->Stop();
     }
+
+    Y_UNIT_TEST(ShouldHandleSessionError)
+    {
+        NThreading::TPromise<void> done = NThreading::NewPromise<void>();
+        auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+        context->CreateQP = [](rdma_cm_id* id, ibv_qp_init_attr* attr) {
+            Y_UNUSED(id);
+            Y_UNUSED(attr);
+            STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(EINVAL));
+        };
+
+        context->DestroyQP = [](rdma_cm_id* id) {
+            if (id->qp == nullptr) {
+                STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(EINVAL));
+            }
+        };
+
+        context->Reject = [&](rdma_cm_id* id, const void* data, ui8 size) {
+            Y_UNUSED(data);
+            Y_UNUSED(size);
+
+            // TestRdmaDestroyId doesn't free anything, just fills rdma_cm_id
+            // with FF's
+            rdma_cm_id reference;
+            memset(&reference, 0xFF, sizeof(rdma_cm_id));
+
+            // make sure rdma_destroy_id hasn't been called before Reject
+            UNIT_ASSERT(memcmp(
+                reinterpret_cast<void*>(&reference),
+                reinterpret_cast<void*>(id),
+                sizeof(rdma_cm_id)));
+
+            done.SetValue();
+        };
+
+        auto verbs = NVerbs::CreateTestVerbs(context);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto serverConfig = std::make_shared<TServerConfig>();
+
+        auto logging = CreateLoggingService(
+            "console",
+            TLogSettings{TLOG_RESOURCES});
+
+        auto server = CreateServer(
+            verbs,
+            logging,
+            monitoring,
+            serverConfig);
+
+        server->Start();
+
+        auto serverEndpoint = server->StartEndpoint(
+            "::",
+            10020,
+            std::make_shared<TServerHandler>());
+
+        NVerbs::CreateConnection(context);
+
+        done.GetFuture().Wait();
+        server->Stop();
+    }
 };
+
+int NVerbs::DestroyId(rdma_cm_id* id)
+{
+    memset(id, 0xFF, sizeof(rdma_cm_id));
+    return 0;
+}
 
 }   // namespace NCloud::NBlockStore::NRdma

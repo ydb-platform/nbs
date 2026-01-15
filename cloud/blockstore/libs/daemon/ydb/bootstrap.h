@@ -1,9 +1,11 @@
+#pragma once
+
 #include "public.h"
 
 #include <cloud/blockstore/libs/daemon/common/bootstrap.h>
 #include <cloud/blockstore/libs/kms/iface/public.h>
 #include <cloud/blockstore/libs/logbroker/iface/public.h>
-#include <cloud/blockstore/libs/notify/public.h>
+#include <cloud/blockstore/libs/notify/iface/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/root_kms/iface/public.h>
 #include <cloud/blockstore/libs/ydbstats/public.h>
@@ -34,6 +36,8 @@ struct TSpdkParts
 
 struct TServerModuleFactories
 {
+    TServerModuleFactories();
+
     std::function<NLogbroker::IServicePtr(
         NLogbroker::TLogbrokerConfigPtr config,
         ILoggingServicePtr logging)> LogbrokerServiceFactory;
@@ -72,6 +76,12 @@ struct TServerModuleFactories
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
         NRdma::TClientConfigPtr config)> RdmaClientFactory;
+
+    std::function<NNotify::IServicePtr(
+        NNotify::TNotifyConfigPtr config,
+        NIamClient::IIamTokenClientPtr iamTokenClient,
+        ILoggingServicePtr logging)>
+        NotifyServiceFactory;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -120,10 +130,9 @@ protected:
     IStartable* GetClientPercentiles() override;
     IStartable* GetStatsUploader() override;
     IStartable* GetYdbStorage() override;
-    IStartable* GetTraceSerializer() override;
+    ITraceSerializerPtr GetTraceSerializer() override;
     IStartable* GetLogbrokerService() override;
     IStartable* GetNotifyService() override;
-    IStartable* GetStatsFetcher() override;
     IStartable* GetIamTokenClient() override;
     IStartable* GetComputeClient() override;
     IStartable* GetKmsClient() override;
@@ -136,11 +145,15 @@ protected:
     void InitRdmaServer() override;
     void InitKikimrService() override;
     void InitAuthService() override;
+    void InitRdmaRequestServer() override;
 
     void WarmupBSGroupConnections() override;
 
+    void SetupCellManager() override;
+
 private:
     void InitConfigs();
+    void InitDiskAgentBackend();
 };
 
 }   // namespace NCloud::NBlockStore::NServer

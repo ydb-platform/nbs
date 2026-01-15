@@ -6,6 +6,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/storage/core/libs/diagnostics
     contrib/ydb/library/actors/core
 )
 

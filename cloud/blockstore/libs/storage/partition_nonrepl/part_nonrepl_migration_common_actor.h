@@ -14,13 +14,15 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
-#include <cloud/blockstore/libs/storage/partition_common/get_device_for_range_companion.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/get_device_for_range_companion.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/migration_timeout_calculator.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/changed_ranges_map.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/disjoint_range_set.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
+
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -30,6 +32,13 @@
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// The policy of using direct copying of blocks.
+enum class EDirectCopyPolicy
+{
+    CanUse,
+    DoNotUse
+};
 
 // The successor class must provide an implementation of this interface so that
 // it can notify the progress and completion of the migration.
@@ -97,6 +106,18 @@ class TNonreplicatedPartitionMigrationCommonActor
           TNonreplicatedPartitionMigrationCommonActor>
     , IPoisonPillHelperOwner
 {
+public:
+    struct TInitParams
+    {
+        NActors::TActorId MigrationSrcActorId;
+        NActors::TActorId SrcActorId;
+        NActors::TActorId DstActorId;
+        bool TakeOwnershipOverSrcActor = true;
+        bool TakeOwnershipOverDstActor = true;
+        bool SendWritesToSrc = true;
+        std::unique_ptr<TMigrationTimeoutCalculator> TimeoutCalculator;
+    };
+
 private:
     using TBase = NActors::TActorBootstrapped<
         TNonreplicatedPartitionMigrationCommonActor>;
@@ -113,12 +134,14 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ui32 MaxIoDepth;
     const NActors::TActorId VolumeActorId;
+    const EDirectCopyPolicy DirectCopyPolicy = EDirectCopyPolicy::CanUse;
+
     TString RWClientId;
 
     NActors::TActorId MigrationSrcActorId;
     NActors::TActorId SrcActorId;
     NActors::TActorId DstActorId;
-    bool ActorOwner = false;
+    bool SendWritesToSrc = true;
     std::unique_ptr<TMigrationTimeoutCalculator> TimeoutCalculator;
 
     TProcessingBlocks ProcessingBlocks;
@@ -138,8 +161,7 @@ private:
     // calling MigrationOwner->OnMigrationProgress().
     bool MigrationThresholdAchieved = false;
 
-    TRequestsInProgress<EAllowedRequests::WriteOnly, ui64, TBlockRange64>
-        WriteAndZeroRequestsInProgress;
+    TRequestsInProgress<EAllowedRequests::WriteOnly, ui64> WriteAndZeroRequestsInProgress;
     TDrainActorCompanion DrainActorCompanion{
         WriteAndZeroRequestsInProgress,
         DiskId};
@@ -162,6 +184,8 @@ private:
     // Whether the target of the migration is lagging. In this case writes are
     // sent only to "SrcActorId".
     bool TargetMigrationIsLagging = false;
+
+    TBackoffDelayProvider BackoffProvider;
 
 protected:
     // Derived class that wishes to handle wakeup messages should make its own
@@ -190,7 +214,8 @@ public:
         TString rwClientId,
         NActors::TActorId statActorId,
         ui32 maxIoDepth,
-        NActors::TActorId volumeActorId);
+        NActors::TActorId volumeActorId,
+        EDirectCopyPolicy directCopyPolicy);
 
     TNonreplicatedPartitionMigrationCommonActor(
         IMigrationOwner* migrationOwner,
@@ -207,18 +232,12 @@ public:
         ui32 maxIoDepth,
         NActors::TActorId volumeActorId);
 
-    ~TNonreplicatedPartitionMigrationCommonActor() override;
+    virtual ~TNonreplicatedPartitionMigrationCommonActor();
 
     virtual void Bootstrap(const NActors::TActorContext& ctx);
 
     // Called from the inheritor to initialize migration.
-    void InitWork(
-        const NActors::TActorContext& ctx,
-        NActors::TActorId migrationSrcActorId,
-        NActors::TActorId srcActorId,
-        NActors::TActorId dstActorId,
-        bool takeOwnershipOverActors,
-        std::unique_ptr<TMigrationTimeoutCalculator> timeoutCalculator);
+    void InitWork(const NActors::TActorContext& ctx, TInitParams initParams);
 
     // Called from the inheritor to start migration.
     void StartWork(const NActors::TActorContext& ctx);
@@ -340,6 +359,10 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(GetRebuildMetadataStatus, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(ScanDisk, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(GetScanDiskStatus, TEvVolume);
+
+    BLOCKSTORE_IMPLEMENT_REQUEST(CreateCheckpoint, TEvService);
+    BLOCKSTORE_IMPLEMENT_REQUEST(DeleteCheckpoint, TEvService);
+    BLOCKSTORE_IMPLEMENT_REQUEST(DeleteCheckpointData, TEvVolume);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

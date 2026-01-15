@@ -13,6 +13,9 @@ void TStorageServiceActor::HandlePing(
     const TActorContext& ctx)
 {
     auto response = std::make_unique<TEvService::TEvPingResponse>();
+
+    response->Record.SetServiceState(ServiceState);
+
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 

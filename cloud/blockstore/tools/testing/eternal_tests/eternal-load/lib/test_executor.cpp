@@ -1,17 +1,24 @@
 #include "test_executor.h"
 
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
+
+#include <cloud/storage/core/libs/common/file_io_service.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/io_uring/service.h>
+
 #include <library/cpp/aio/aio.h>
-#include <library/cpp/digest/crc32c/crc32c.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/vector.h>
 #include <util/generic/yexception.h>
-#include <util/random/random.h>
 #include <util/string/builder.h>
 #include <util/system/file.h>
-#include <util/system/info.h>
 #include <util/thread/lfstack.h>
+#include <util/thread/pool.h>
 
-namespace NCloud::NBlockStore {
+#include <atomic>
+
+namespace NCloud::NBlockStore::NTesting {
 
 namespace {
 
@@ -19,355 +26,605 @@ using namespace NThreading;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui64 DIRECT_IO_ALIGNMENT = 512; // bytes
-
-////////////////////////////////////////////////////////////////////////////////
-
-std::pair<i64, i64> ExtendedEuclideanAlgorithm(ui64 a, ui64 b)
+struct TTestScenario
 {
-    if (a == 0) {
-        return {0, 1};
-    }
-    auto [x1, y1] = ExtendedEuclideanAlgorithm(b % a, a);
-    return {y1 - (b / a) * x1, x1};
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-ui64 CalculateInverse(ui64 step, ui64 len)
-{
-    auto [x, _] = ExtendedEuclideanAlgorithm(step, len);
-    x = (x + len) % len;
-    return x;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TRange {
-    TRangeConfig Config;
-    ui64 Size;
-    std::shared_ptr<char[]> Buf;
-    ui64 StepInversion;
-
-    TRange(const TRangeConfig& config, ui64 size)
-        : Config{config}
-        , Size{size}
-        , Buf{static_cast<char*>(std::aligned_alloc(NSystemInfo::GetPageSize(), Size)), std::free}
-        , StepInversion{CalculateInverse(Config.GetStep(), Config.GetRequestCount())}
-    {
-        memset(Buf.get(), '1', Size);
-
-        Y_ABORT_UNLESS(
-            size % Config.GetWriteParts() == 0,
-            "invalid write parts number"
-        );
-        Y_ABORT_UNLESS(
-            size / Config.GetWriteParts() >= sizeof(TBlockData),
-            "blockdata doesn't fit write part"
-        );
-        Y_ABORT_UNLESS(
-            (size / Config.GetWriteParts()) % DIRECT_IO_ALIGNMENT == 0,
-            "write parts has invalid alignment"
-        );
-    }
-
-    char* Data(ui64 offset = 0)
-    {
-        return Buf.get() + offset;
-    }
-
-    ui64 DataSize()
-    {
-        return Size;
-    }
-
-    std::pair<ui64, ui64> NextWrite()
-    {
-        ui64 blockIdx = Config.GetStartOffset() + Config.GetLastBlockIdx() * Config.GetRequestBlockCount();
-        ui64 iteration = Config.GetNumberToWrite();
-
-        Config.SetLastBlockIdx((Config.GetLastBlockIdx() + Config.GetStep()) % Config.GetRequestCount());
-        Config.SetNumberToWrite(Config.GetNumberToWrite() + 1);
-        return {blockIdx, iteration};
-    }
-
-    std::pair<ui64, TMaybe<ui64>> RandomRead()
-    {
-        // Idea of this code is to find request number (x) which is written in random block (r).
-        // To do this we need to solve equation `startBlockIdx + x * step = r [mod %requestCount]` which is equal
-        // to equation `x = (r - startBlockIdx) * inverted_step [mod %requestCount]`.
-        ui64 requestCount = Config.GetRequestCount();
-
-        ui64 randomBlock = RandomNumber(requestCount);
-        ui64 tmp = (randomBlock - Config.GetStartBlockIdx() + requestCount) % requestCount;
-        ui64 x = (tmp * StepInversion) % requestCount;
-
-        TMaybe<ui64> expected = Nothing();
-        if (Config.GetNumberToWrite() > x) {
-            ui64 fullCycles = (Config.GetNumberToWrite() - x - 1) / requestCount;
-            expected = x + fullCycles * requestCount;
-        }
-
-        ui64 requestBlockIdx = Config.GetStartOffset() + randomBlock * Config.GetRequestBlockCount();
-        return {requestBlockIdx, expected};
-    }
+    ITestScenarioPtr Scenario;
+    TFileHandle File;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestExecutor final
-   : public ITestExecutor
+class TTestExecutor: public ITestExecutor
 {
 private:
+    class TWorkerService;
+
     const TInstant TestStartTimestamp;
-    IConfigHolderPtr ConfigHolder;
-    TDuration SlowRequestThreshold;
+    TVector<std::unique_ptr<TTestScenario>> TestScenarios;
+    IFileIOServicePtr FileService;
 
-    TVector<TRange> Ranges;
+    std::atomic_bool ShouldStop = false;
+    std::atomic_bool Failed = false;
+    TPromise<void> StopPromise = NewPromise();
 
-    TFileHandle File;
-    NAsyncIO::TAsyncIOService AsyncIO;
+    TVector<std::unique_ptr<TWorkerService>> WorkerServices;
+    TLockFreeStack<TWorkerService*> ReadyWorkerServices;
 
-    TLockFreeStack<ui16> RangesQueue;
+    std::atomic_uint64_t BytesRead = 0;
+    std::atomic_uint64_t BytesWritten = 0;
+    ui64 PreviousBytesRead = 0;
+    ui64 PreviousBytesWritten = 0;
+    TInstant PreviousStatsTimestamp;
 
-    TVector<NThreading::TFuture<void>> Futures;
+    const TLog Log;
+    const bool RunInCallbacks = false;
+    const bool PrintDebugStats = false;
 
-    TAtomic ShouldStop = 0;
-    TAtomic Failed = 0;
-
-    TLog Log;
-
-    TAtomic WriteRequestsCompleted = 0;
-
-private:
-    void DoWriteRequest(ui16 rangeIdx);
-    void DoReadRequest(ui16 rangeIdx);
-
-    void OnResponse(TInstant startTs, ui16 rangeIdx, TStringBuf reqType);
+    static constexpr TDuration PrintStatsInterval = TDuration::Seconds(5);
 
 public:
-    TTestExecutor(IConfigHolderPtr configHolder, const TLog& log)
-        : TestStartTimestamp(Now())
-        , ConfigHolder(configHolder)
-        , File(
-            TString(ConfigHolder->GetConfig().GetFilePath()),
-            EOpenModeFlag::DirectAligned | EOpenModeFlag::RdWr)
-        , AsyncIO(0, ConfigHolder->GetConfig().GetIoDepth())
-        , Futures(ConfigHolder->GetConfig().GetIoDepth())
-        , Log(log)
-    {
-        auto& config = ConfigHolder->GetConfig();
-        for (ui16 i = 0; i < config.GetIoDepth(); ++i) {
-            auto rangeConfig = config.GetRanges(i);
-            Ranges.emplace_back(
-                rangeConfig,
-                rangeConfig.GetRequestBlockCount() * config.GetBlockSize());
-            RangesQueue.Enqueue(i);
-        }
-
-        SlowRequestThreshold = TDuration::Parse(config.GetSlowRequestThreshold());
-    }
-
+    TTestExecutor(TTestExecutorSettings settings, IFileIOServicePtr service);
     bool Run() override;
     void Stop() override;
+    void Fail(const TString& message);
+
+private:
+    void PrintStats();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
+class TTestExecutor::TWorkerService: public ITestExecutorIOService
+{
+private:
+    TTestExecutor& Executor;
+    TTestScenario& Scenario;
+    ITestScenarioWorker& Worker;
+    TPromise<void> StopPromise = NewPromise();
+    std::atomic_int PendingRequestCount = 0;
+    int RequestCount = 0;
+
+public:
+    TWorkerService(
+        TTestExecutor& executor,
+        TTestScenario& scenario,
+        ITestScenarioWorker& worker);
+
+    void Run();
+    TFuture<void> GetFuture() const;
+
+private:
+    bool HandleRequest();
+
+    void Read(
+        void* buffer,
+        ui32 count,
+        ui64 offset,
+        TCallback callback) override;
+
+    void Write(
+        const void* buffer,
+        ui32 count,
+        ui64 offset,
+        TCallback callback) override;
+
+    void Stop() override;
+
+    void Fail(const TString& message) override;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+EOpenMode GetFileOpenMode(bool noDirect)
+{
+    constexpr auto CommonFileOpenMode =
+        EOpenModeFlag::OpenAlways | EOpenModeFlag::RdWr;
+
+    return noDirect ? CommonFileOpenMode
+                    : EOpenModeFlag::DirectAligned | CommonFileOpenMode;
+}
+
+TTestExecutor::TTestExecutor(
+        TTestExecutorSettings settings,
+        IFileIOServicePtr service)
+    : TestStartTimestamp(Now())
+    , FileService(std::move(service))
+    , PreviousStatsTimestamp(TestStartTimestamp)
+    , Log(settings.Log)
+    , RunInCallbacks(settings.RunInCallbacks)
+    , PrintDebugStats(settings.PrintDebugStats)
+{
+    for (const auto& it: settings.TestScenarios) {
+        auto scenario = std::make_unique<TTestScenario>();
+
+        scenario->Scenario = it.TestScenario;
+        scenario->File = {it.FilePath, GetFileOpenMode(settings.NoDirect)};
+        scenario->File.Resize(static_cast<i64>(it.FileSize));
+
+        for (ui32 i = 0; i < it.TestScenario->GetWorkerCount(); i++) {
+            WorkerServices.push_back(
+                std::make_unique<TWorkerService>(
+                    *this,
+                    *scenario,
+                    it.TestScenario->GetWorker(i)));
+        }
+
+        TestScenarios.push_back(std::move(scenario));
+    }
+}
 
 bool TTestExecutor::Run()
 {
-    STORAGE_INFO("Running load");
-
-    AsyncIO.Start();
-    TVector<ui16> buf;
-
-    TDuration phaseDuration = TDuration::Max();
-    if (ConfigHolder->GetConfig().HasAlternatingPhase()) {
-        phaseDuration = TDuration::Parse(ConfigHolder->GetConfig().GetAlternatingPhase());
-    }
-    TInstant phaseStartTs = Now();
-    ui16 writeRate = ConfigHolder->GetConfig().GetWriteRate();
-
-    while (!AtomicGet(ShouldStop)) {
-        buf.clear();
-        if (phaseStartTs + phaseDuration < Now()) {
-            writeRate = 100 - writeRate;
-            phaseStartTs = Now();
+    for (const auto& it: TestScenarios) {
+        if (!it->Scenario->Init(it->File)) {
+            return false;
         }
-        RangesQueue.DequeueAllSingleConsumer(&buf);
-        for (auto rangeIdx: buf) {
-            if (RandomNumber(100u) >= writeRate) {
-                DoReadRequest(rangeIdx);
-            } else {
-                DoWriteRequest(rangeIdx);
+    }
+
+    STORAGE_INFO("Started TTestExecutor");
+
+    FileService->Start();
+
+    TVector<TFuture<void>> workerFutures;
+
+    for (auto& worker: WorkerServices) {
+        worker->Run();
+        workerFutures.push_back(worker->GetFuture());
+    }
+
+    auto workersFuture = WaitAll(workerFutures);
+
+    if (RunInCallbacks) {
+        while (!workersFuture.Wait(PrintStatsInterval)) {
+            PrintStats();
+        }
+    } else {
+        TVector<TWorkerService*> workersToRun;
+        while (!workersFuture.HasValue()) {
+            workersToRun.clear();
+            ReadyWorkerServices.DequeueAllSingleConsumer(&workersToRun);
+            for (auto* worker: workersToRun) {
+                worker->Run();
+            }
+            if (Now() - PreviousStatsTimestamp > PrintStatsInterval) {
+                PrintStats();
             }
         }
     }
 
-    for (auto future: Futures) {
-        future.GetValueSync();
-    }
-    AsyncIO.Stop();
-    File.Close();
-    STORAGE_INFO("Stopped");
-    return !AtomicGet(Failed);
-}
+    FileService->Stop();
 
-void TTestExecutor::OnResponse(
-    TInstant startTs,
-    ui16 rangeIdx,
-    TStringBuf reqType)
-{
-    if (reqType == "write") {
-        const i64 maxRequestCount =
-            ConfigHolder->GetConfig().GetMaxWriteRequestCount();
-        if (maxRequestCount &&
-            AtomicIncrement(WriteRequestsCompleted) >= maxRequestCount)
-        {
-            Stop();
-        }
+    for (const auto& it: TestScenarios) {
+        it->File.Close();
     }
 
-    const auto now = Now();
-    const auto d = now - startTs;
-    if (d > SlowRequestThreshold) {
-        STORAGE_WARN("Slow " << reqType << " request: "
-            << "range=" << rangeIdx << ", duration=" << d);
-    }
-}
-
-void TTestExecutor::DoReadRequest(ui16 rangeIdx)
-{
-    auto& range = Ranges[rangeIdx];
-    // https://stackoverflow.com/questions/46114214/lambda-implicit-capture-fails-with-variable-declared-from-structured-binding
-    ui64 blockIdx;
-    TMaybe<ui64> expected;
-    std::tie(blockIdx, expected) = range.RandomRead();
-
-    ui64 blockSize = ConfigHolder->GetConfig().GetBlockSize();
-
-    const auto startTs = Now();
-    auto future = AsyncIO.Read(
-        File,
-        range.Data(),
-        range.DataSize(),
-        blockIdx * blockSize);
-
-    future.Subscribe([=, this] (const auto& f) mutable {
-        OnResponse(startTs, rangeIdx, "read");
-
-        try {
-            if (f.GetValue() && f.GetValue() < range.DataSize()) {
-                throw yexception() << "read less than expected: "
-                    << f.GetValue() << " < " << range.DataSize();
-            }
-        } catch (...) {
-            STORAGE_ERROR("Can't read from file: "
-                << CurrentExceptionMessage());
-            AtomicSet(Failed, 1);
-            Stop();
-            return;
-        }
-
-        if (!expected) {
-            RangesQueue.Enqueue(rangeIdx);
-            return;
-        }
-
-        auto& range = Ranges[rangeIdx];
-
-        ui64 partSize = range.DataSize() / range.Config.GetWriteParts();
-        for (ui64 part = 0; part < range.Config.GetWriteParts(); ++part) {
-            TBlockData blockData;
-            memcpy(&blockData, range.Data(part * partSize), sizeof(blockData));
-
-            if (blockData.RequestNumber != *expected || blockData.PartNumber != part) {
-                STORAGE_ERROR(
-                    "[" << rangeIdx << "] Wrong data in block "
-                    << blockIdx
-                    << " expected RequestNumber " << expected
-                    << " actual TBlockData " << blockData);
-                AtomicSet(Failed, 1);
-                Stop();
-                return;
-            }
-        }
-        RangesQueue.Enqueue(rangeIdx);
-    });
-
-    Futures[rangeIdx] = future.IgnoreResult();
-}
-
-void TTestExecutor::DoWriteRequest(ui16 rangeIdx)
-{
-    auto& range = Ranges[rangeIdx];
-
-    const auto startTs = Now();
-    auto [blockIdx, iteration] = range.NextWrite();
-    TBlockData blockData {
-        .RequestNumber = iteration,
-        .BlockIndex = blockIdx,
-        .RangeIdx = rangeIdx,
-        .RequestTimestamp = startTs.MicroSeconds(),
-        .TestTimestamp = TestStartTimestamp.MicroSeconds(),
-        .TestId = ConfigHolder->GetConfig().GetTestId(),
-        .Checksum = 0
-    };
-
-    TVector<TFuture<void>> futures;
-    ui64 blockSize = ConfigHolder->GetConfig().GetBlockSize();
-    ui64 partSize = range.DataSize() / range.Config.GetWriteParts();
-    for (ui32 part = 0; part < range.Config.GetWriteParts(); ++part) {
-        blockData.PartNumber = part;
-        blockData.Checksum = 0;
-        blockData.Checksum = Crc32c(&blockData, sizeof(blockData));
-        ui64 partOffset = part * partSize;
-        memcpy(range.Data(partOffset), &blockData, sizeof(blockData));
-        auto future = AsyncIO.Write(
-            File,
-            range.Data(partOffset),
-            partSize,
-            blockIdx * blockSize + partOffset);
-
-        future.Subscribe([=, this] (const auto& f) mutable {
-            OnResponse(startTs, rangeIdx, "write");
-
-            try {
-                if (f.GetValue() && f.GetValue() < range.DataSize()) {
-                    throw yexception() << "written less than expected: "
-                        << f.GetValue() << " < " << partSize;
-                }
-            } catch (...) {
-                STORAGE_ERROR("Can't write to file: "
-                    << CurrentExceptionMessage());
-                AtomicSet(Failed, 1);
-                Stop();
-                return;
-            }
-        });
-        futures.push_back(future.IgnoreResult());
-    }
-
-    Futures[rangeIdx] = WaitAll(futures);
-    Futures[rangeIdx].Subscribe([=, this] (auto) {
-        RangesQueue.Enqueue(rangeIdx);
-    });
+    STORAGE_INFO("Stopped TTestExecutor");
+    return !Failed.load();
 }
 
 void TTestExecutor::Stop()
 {
-    AtomicSet(ShouldStop, 1);
+    ShouldStop.store(true);
+    if (StopPromise.TrySetValue()) {
+        STORAGE_INFO("Stop has been requested");
+    }
+}
+
+void TTestExecutor::Fail(const TString& message)
+{
+    Stop();
+    Failed.store(true);
+    STORAGE_ERROR(message);
+}
+
+void TTestExecutor::PrintStats()
+{
+    if (!PrintDebugStats) {
+        return;
+    }
+
+    auto now = Now();
+    auto currentBytesRead = BytesRead.load();
+    auto currentBytesWritten = BytesWritten.load();
+
+    auto elapsedSeconds = (now - PreviousStatsTimestamp).SecondsFloat();
+    auto bytesRead = currentBytesRead - PreviousBytesRead;
+    auto bytesWritten = currentBytesWritten - PreviousBytesWritten;
+
+    STORAGE_DEBUG(
+        "Read: " << bytesRead / elapsedSeconds / 1_MB << " MiB/s, "
+        "Write: " << bytesWritten / elapsedSeconds / 1_MB << " MiB/s");
+
+    PreviousStatsTimestamp = now;
+    PreviousBytesRead = currentBytesRead;
+    PreviousBytesWritten = currentBytesWritten;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TTestExecutor::TWorkerService::TWorkerService(
+        TTestExecutor& executor,
+        TTestScenario& scenario,
+        ITestScenarioWorker& worker)
+    : Executor(executor)
+    , Scenario(scenario)
+    , Worker(worker)
+{}
+
+void TTestExecutor::TWorkerService::Run()
+{
+    while (true) {
+        if (Executor.ShouldStop) {
+            StopPromise.SetValue();
+            return;
+        }
+
+        Y_ABORT_UNLESS(
+            PendingRequestCount == 0,
+            "New iteration can be run only after requests from the previous "
+            "iteration are handled");
+
+        RequestCount = 0;
+        PendingRequestCount = 1;
+
+        auto testDuration = Now() - Executor.TestStartTimestamp;
+        Worker.Run(testDuration.SecondsFloat(), *this);
+
+        Y_ABORT_UNLESS(
+            RequestCount > 0,
+            "Test worker should make at least one request");
+
+        if (!HandleRequest()) {
+             // Run() will be called from somewhere else
+            break;
+        }
+    }
+}
+
+TFuture<void> TTestExecutor::TWorkerService::GetFuture() const
+{
+    return StopPromise.GetFuture();
+}
+
+// Returns true if Run() method should be called immediately
+bool TTestExecutor::TWorkerService::HandleRequest()
+{
+    auto prev = PendingRequestCount--;
+    Y_ABORT_UNLESS(prev > 0, "There are no unhandled requests");
+
+    if (prev > 1) {
+        return false;
+    }
+
+    if (Executor.RunInCallbacks) {
+        return true;
+    }
+
+    Executor.ReadyWorkerServices.Enqueue(this);
+    return false;
+}
+
+void TTestExecutor::TWorkerService::Stop()
+{
+    Executor.Stop();
+}
+
+void TTestExecutor::TWorkerService::Fail(const TString& message)
+{
+    Executor.Fail(message);
+}
+
+void TTestExecutor::TWorkerService::Read(
+    void* buffer,
+    ui32 count,
+    ui64 offset,
+    TCallback callback)
+{
+    RequestCount++;
+    PendingRequestCount++;
+
+    Executor.FileService->AsyncRead(
+        Scenario.File,
+        static_cast<i64>(offset),
+        TArrayRef(static_cast<char*>(buffer), count),
+        [this, count, callback = std::move(callback)](
+            const NProto::TError& error,
+            ui32 value)
+        {
+            if (HasError(error)) {
+                Executor.Fail(
+                    "Can't read from file: " + error.GetMessage());
+            } else if (value < count) {
+                Executor.Fail(
+                    TStringBuilder() << "Read less than expected: " << value
+                                     << " < " << count);
+            } else {
+                Executor.BytesRead += count;
+                callback();
+            }
+            if (HandleRequest()) {
+                Run();
+            }
+        });
+}
+
+void TTestExecutor::TWorkerService::Write(
+    const void* buffer,
+    ui32 count,
+    ui64 offset,
+    TCallback callback)
+{
+    RequestCount++;
+    PendingRequestCount++;
+
+    Executor.FileService->AsyncWrite(
+        Scenario.File,
+        static_cast<i64>(offset),
+        TArrayRef(static_cast<const char*>(buffer), count),
+        [this, count, callback = std::move(callback)](
+            const NProto::TError& error,
+            ui32 value)
+        {
+            if (HasError(error)) {
+                Executor.Fail(
+                    "Can't write to file: " + error.GetMessage());
+            } else if (value < count) {
+                Executor.Fail(
+                    TStringBuilder() << "Written less than expected: " << value
+                                     << " < " << count);
+            } else {
+                Executor.BytesWritten += count;
+                callback();
+            }
+            if (HandleRequest()) {
+                Run();
+            }
+        });
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TAsyncIoFileService
+    : public IFileIOService
+    , private NAsyncIO::TAsyncIOService
+{
+public:
+    using TAsyncIOService::TAsyncIOService;
+
+    void Start() override
+    {
+        TAsyncIOService::Start();
+    }
+
+    void Stop() override
+    {
+        TAsyncIOService::Stop();
+    }
+
+    void AsyncRead(
+        TFileHandle& file,
+        i64 offset,
+        TArrayRef<char> buffer,
+        TFileIOCompletion* completion) override
+    {
+        auto future = TAsyncIOService::Read(
+            file,
+            buffer.data(),
+            static_cast<ui32>(buffer.size()),
+            static_cast<ui64>(offset));
+
+        future.Subscribe([completion](const auto& f) {
+            RunCompletion(f, completion);
+        });
+    }
+
+    void AsyncWrite(
+        TFileHandle& file,
+        i64 offset,
+        TArrayRef<const char> buffer,
+        TFileIOCompletion* completion) override
+    {
+        auto future = TAsyncIOService::Write(
+            file,
+            buffer.data(),
+            static_cast<ui32>(buffer.size()),
+            static_cast<ui64>(offset));
+
+        future.Subscribe([completion](const auto& f) {
+            RunCompletion(f, completion);
+        });
+    }
+
+    void AsyncReadV(
+        TFileHandle& file,
+        i64 offset,
+        const TVector<TArrayRef<char>>& buffers,
+        TFileIOCompletion* completion) override
+    {
+        Y_UNUSED(file);
+        Y_UNUSED(offset);
+        Y_UNUSED(buffers);
+        Y_UNUSED(completion);
+        Y_ABORT("Not used");
+    }
+
+    void AsyncWriteV(
+        TFileHandle& file,
+        i64 offset,
+        const TVector<TArrayRef<const char>>& buffers,
+        TFileIOCompletion* completion) override
+    {
+        Y_UNUSED(file);
+        Y_UNUSED(offset);
+        Y_UNUSED(buffers);
+        Y_UNUSED(completion);
+        Y_ABORT("Not used");
+    }
+
+    static void RunCompletion(
+        const NThreading::TFuture<ui32>& future,
+        TFileIOCompletion* completion)
+    {
+        Y_ABORT_UNLESS(future.HasException() || future.HasValue());
+
+        auto [ret, error] = ResultOrError<ui32>(future);
+        if (HasError(error)) {
+            completion->Func(completion, error, 0);
+            return;
+        }
+
+        completion->Func(completion, {}, ret);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TThreadPoolFileService: public IFileIOService
+{
+private:
+    TThreadPool ThreadPool;
+    const ui32 ThreadCount = 0;
+
+public:
+    explicit TThreadPoolFileService(ui32 threadCount)
+        : ThreadCount(threadCount)
+    {}
+
+    void Start() override
+    {
+        ThreadPool.Start(ThreadCount);
+    }
+
+    void Stop() override
+    {
+        ThreadPool.Stop();
+    }
+
+    void AsyncRead(
+        TFileHandle& file,
+        i64 offset,
+        TArrayRef<char> buffer,
+        TFileIOCompletion* completion) override
+    {
+        auto added = ThreadPool.AddFunc(
+            [&file, buffer, offset, completion]()
+            {
+                auto value = file.Pread(
+                    buffer.data(),
+                    static_cast<ui32>(buffer.size()),
+                    offset);
+
+                RunCompletion(value, completion);
+            });
+
+        Y_ABORT_UNLESS(added, "Cannot add function to a thread pool");
+    }
+
+    void AsyncWrite(
+        TFileHandle& file,
+        i64 offset,
+        TArrayRef<const char> buffer,
+        TFileIOCompletion* completion) override
+    {
+        auto added = ThreadPool.AddFunc(
+            [&file, buffer, offset, completion]()
+            {
+                auto value = file.Pwrite(
+                    buffer.data(),
+                    static_cast<ui32>(buffer.size()),
+                    offset);
+
+                RunCompletion(value, completion);
+            });
+
+        Y_ABORT_UNLESS(added, "Cannot add function to a thread pool");
+    }
+
+    void AsyncReadV(
+        TFileHandle& file,
+        i64 offset,
+        const TVector<TArrayRef<char>>& buffers,
+        TFileIOCompletion* completion) override
+    {
+        Y_UNUSED(file);
+        Y_UNUSED(offset);
+        Y_UNUSED(buffers);
+        Y_UNUSED(completion);
+        Y_ABORT("Not supported");
+    }
+
+    void AsyncWriteV(
+        TFileHandle& file,
+        i64 offset,
+        const TVector<TArrayRef<const char>>& buffers,
+        TFileIOCompletion* completion) override
+    {
+        Y_UNUSED(file);
+        Y_UNUSED(offset);
+        Y_UNUSED(buffers);
+        Y_UNUSED(completion);
+        Y_ABORT("Not supported");
+    }
+
+    static void RunCompletion(i32 value, TFileIOCompletion* completion)
+    {
+        if (value >= 0) {
+            completion->Func(completion, {}, static_cast<ui32>(value));
+        } else {
+            completion->Func(completion, MakeError(E_FAIL), value);
+        }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+IFileIOServicePtr CreateUringFileService()
+{
+    auto factory = CreateIoUringServiceFactory({
+        .SubmissionQueueEntries = 1024,
+        .MaxKernelWorkersCount = 1,
+        .ShareKernelWorkers = true,
+        .ForceAsyncIO = true,
+    });
+
+    return factory->CreateFileIOService();
+}
+
+IFileIOServicePtr CreateFileService(
+    ETestExecutorFileService fileService,
+    ui32 threadCount)
+{
+    switch (fileService) {
+        case ETestExecutorFileService::AsyncIo:
+            return std::make_shared<TAsyncIoFileService>(0, threadCount);
+
+        case ETestExecutorFileService::Sync:
+            return std::make_unique<TThreadPoolFileService>(threadCount);
+
+        case ETestExecutorFileService::IoUring:
+            return CreateUringFileService();
+
+        default:
+            Y_ABORT("Not supported type - %d", fileService);
+    }
 }
 
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ITestExecutorPtr CreateTestExecutor(
-    IConfigHolderPtr configHolder,
-    const TLog& log)
+ITestExecutorPtr CreateTestExecutor(TTestExecutorSettings settings)
 {
-    return std::make_shared<TTestExecutor>(std::move(configHolder), log);
+    ui64 sumWorkerCount = 0;
+    for (const auto& it: settings.TestScenarios) {
+        sumWorkerCount += it.TestScenario->GetWorkerCount();
+    }
+
+    auto fileService = CreateFileService(settings.FileService, sumWorkerCount);
+
+    return std::make_shared<TTestExecutor>(
+        std::move(settings),
+        std::move(fileService));
 }
 
-}   // namespace NCloud::NBlockStore
+}   // namespace NCloud::NBlockStore::NTesting

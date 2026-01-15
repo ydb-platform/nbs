@@ -266,7 +266,6 @@ class TDiskRegistryState
         // Filled if the disk is a shadow disk for the checkpoint.
         NProto::TCheckpointReplica CheckpointReplica;
 
-        TVector<TDeviceId> DeviceReplacementIds;
         THashSet<TString> LostDeviceIds;
 
         NProto::EStorageMediaKind MediaKind =
@@ -460,6 +459,7 @@ public:
 
     NProto::TError GetDiskInfo(const TDiskId& diskId, TDiskInfo& diskInfo) const;
     NProto::EDiskState GetDiskState(const TDiskId& diskId) const;
+
     NProto::TError GetShadowDiskId(
         const TDiskId& sourceDiskId,
         const TCheckpointId& checkpointId,
@@ -572,11 +572,13 @@ public:
     ui64 AddReallocateRequest(TDiskRegistryDatabase& db, const TString& diskId);
 
     void DeleteDiskToReallocate(
+        TInstant now,
         TDiskRegistryDatabase& db,
-        const TString& diskId,
-        ui64 seqNo);
+        TDiskNotificationResult notification);
 
     const TVector<TDiskStateUpdate>& GetDiskStateUpdates() const;
+
+    TVector<NProto::TDiskState> ListDiskStates() const;
 
     void DeleteDiskStateUpdate(TDiskRegistryDatabase& db, ui64 maxSeqNo);
 
@@ -813,6 +815,10 @@ public:
         return AutomaticallyReplacedDeviceIds.contains(deviceId);
     }
 
+    void AddAutomaticallyReplacedDevice(
+        TDiskRegistryDatabase& db,
+        const TAutomaticallyReplacedDeviceInfo& deviceInfo);
+
     ui32 DeleteAutomaticallyReplacedDevices(
         TDiskRegistryDatabase& db,
         const TInstant until);
@@ -878,7 +884,8 @@ public:
         TDiskRegistryDatabase& db,
         TInstant now);
 
-    TVector<TString> GetPoolNames() const;
+    TVector<TString> GetPoolNames(
+        std::optional<NProto::EDevicePoolKind> kind = std::nullopt) const;
 
     const NProto::TDeviceConfig* FindDevice(const TDeviceId& uuid) const;
 
@@ -1101,14 +1108,16 @@ private:
         TInstant now,
         TDiskRegistryDatabase& db,
         NProto::TDeviceConfig& device,
-        ui64 newBlockCount);
+        ui64 newBlockCount,
+        const TString& diskId);
 
     void AdjustDeviceState(
         TDiskRegistryDatabase& db,
         NProto::TDeviceConfig& device,
         NProto::EDeviceState state,
         TInstant timestamp,
-        TString message);
+        TString message,
+        const TString& diskId);
 
     ui64 GetDeviceBlockCountWithOverrides(
         const TDiskId& diskId,
@@ -1368,6 +1377,15 @@ private:
     void ReallocateDisksWithLostOrReappearedDevices(
         const TAgentList::TAgentRegistrationResult& r,
         THashSet<TDiskId>& disksToReallocate);
+
+    TDeviceList::TNodeRankingFunc GetNodeRankingFunc(
+        const TString& newDiskId,
+        const TString& cloudId) const;
+
+    void UserAntiAffinityNodeRankingFunc(
+        const TString& newDiskId,
+        const TString& cloudId,
+        std::span<ui32> nodeIds) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

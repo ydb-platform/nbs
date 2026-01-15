@@ -84,9 +84,12 @@ public:
         kms::SymmetricCryptoService::Stub& service,
         grpc::CompletionQueue& cq)
     {
+        auto future = Promise.GetFuture();
         Reader = service.AsyncDecrypt(&ClientContext, Request, &cq);
         Reader->Finish(&Response, &Status, this);
-        return Promise;
+        // At this point, this object can already be freed after request
+        // completion. It is not safe to use it.
+        return future;
     }
 
     void Complete() override
@@ -139,9 +142,12 @@ public:
         kms::SymmetricCryptoService::Stub& service,
         grpc::CompletionQueue& cq)
     {
+        auto future = Promise.GetFuture();
         Reader = service.AsyncGenerateDataKey(&ClientContext, Request, &cq);
         Reader->Finish(&Response, &Status, this);
-        return Promise;
+        // At this point, this object can already be freed after request
+        // completion. It is not safe to use it.
+        return future;
     }
 
     void Complete() override

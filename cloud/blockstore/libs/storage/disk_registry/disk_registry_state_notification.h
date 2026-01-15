@@ -60,6 +60,10 @@ public:
         ui64 diskStateSeqNo,
         TVector<TDiskId> outdatedVolumes);
 
+    [[nodiscard]] static NProto::TDiskState CreateDiskState(
+        const TDiskId& diskId,
+        NProto::EDiskState state);
+
     void AllowNotifications(const TDiskId& diskId);
     void DeleteDisk(TDiskRegistryDatabase& db, const TDiskId& diskId);
 

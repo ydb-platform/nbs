@@ -1,51 +1,190 @@
 package cells
 
 import (
+	"cmp"
 	"context"
 	"slices"
+	"sync"
 
-	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"golang.org/x/sync/errgroup"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type cellSelector struct {
-	config *cells_config.CellsConfig
+	config     *cells_config.CellsConfig
+	storage    storage.Storage
+	nbsFactory nbs.Factory
 }
 
 func NewCellSelector(
 	config *cells_config.CellsConfig,
+	storage storage.Storage,
+	nbsFactory nbs.Factory,
 ) CellSelector {
 
 	return &cellSelector{
-		config: config,
+		config:     config,
+		storage:    storage,
+		nbsFactory: nbsFactory,
 	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (s *cellSelector) SelectCell(
+// If config is nil, returns copy of disk with original zone ID.
+func (s *cellSelector) ReplaceZoneIdWithCellIdInDiskMeta(
 	ctx context.Context,
-	req *disk_manager.CreateDiskRequest,
-) string {
+	storage resources.Storage,
+	disk *types.Disk,
+) (*types.Disk, error) {
 
-	if !s.isFolderAllowed(req.FolderId) {
-		return req.DiskId.ZoneId
+	if s.config == nil {
+		return &types.Disk{
+			DiskId: disk.DiskId,
+			ZoneId: disk.ZoneId,
+		}, nil
 	}
 
-	cells := s.getCells(req.DiskId.ZoneId)
-
-	if len(cells) == 0 {
-		// We end up here if a zone not divided into cells or a cell
-		// of a zone is provided as ZoneId.
-		return req.DiskId.ZoneId
+	diskMeta, err := storage.GetDiskMeta(ctx, disk.DiskId)
+	if err != nil {
+		return nil, err
+	}
+	if diskMeta == nil {
+		return nil, errors.NewNonCancellableErrorf(
+			"no such disk: %v",
+			disk.DiskId,
+		)
 	}
 
-	return cells[0]
+	// A correct zone ID must be provided; using a cell ID will cause a failure.
+	if !s.ZoneContainsCell(disk.ZoneId, diskMeta.ZoneID) {
+		return nil, errors.NewNonCancellableErrorf(
+			"disk %s is not in zone %s",
+			disk.DiskId,
+			disk.ZoneId,
+		)
+	}
+
+	return &types.Disk{
+		DiskId: disk.DiskId,
+		ZoneId: diskMeta.ZoneID,
+	}, nil
 }
 
-func (s *cellSelector) IsCellOfZone(cellID string, zoneID string) bool {
+func (s *cellSelector) SelectCell(
+	ctx context.Context,
+	zoneID string,
+	folderID string,
+	kind types.DiskKind,
+	requireExactCellIDMatch bool,
+) (nbs.Client, error) {
+
+	cellID, err := s.selectCell(
+		ctx,
+		zoneID,
+		folderID,
+		kind,
+		requireExactCellIDMatch,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.nbsFactory.GetClient(ctx, cellID)
+}
+
+func (s *cellSelector) SelectCellForLocalDisk(
+	ctx context.Context,
+	zoneID string,
+	agentIDs []string,
+) (nbs.Client, error) {
+
+	if s.config == nil {
+		return s.nbsFactory.GetClient(ctx, zoneID)
+	}
+
+	cells := s.getCells(zoneID)
+	if len(cells) == 0 {
+		if s.isCell(zoneID) {
+			return s.nbsFactory.GetClient(ctx, zoneID)
+		}
+
+		return nil, errors.NewNonCancellableErrorf(
+			"incorrect zone ID provided: %q",
+			zoneID,
+		)
+	}
+
+	if len(agentIDs) != 1 {
+		return nil, errors.NewNonCancellableErrorf(
+			"cell for local disk may be selected, only when one agentID provided, not %v",
+			len(agentIDs),
+		)
+	}
+
+	errGroup := errgroup.Group{}
+
+	selectedClient := make(chan nbs.Client, 1)
+
+	var sendClientOnce sync.Once
+
+	for _, cellID := range cells {
+		errGroup.Go(func(cellID string) func() error {
+			return func() error {
+				client, err := s.nbsFactory.GetClient(ctx, cellID)
+				if err != nil {
+					return err
+				}
+
+				availableStorageInfos, err := client.QueryAvailableStorage(
+					ctx,
+					agentIDs,
+				)
+				if err != nil {
+					return err
+				}
+
+				if !s.isAgentAvailable(availableStorageInfos) {
+					return nil
+				}
+
+				// Found a valid cell - send its client once.
+				sendClientOnce.Do(func() {
+					selectedClient <- client
+				})
+
+				return nil
+			}
+		}(cellID))
+	}
+
+	err := errGroup.Wait()
+
+	select {
+	case client := <-selectedClient:
+		return client, nil
+	default:
+		if err != nil {
+			return nil, err
+		}
+
+		return nil, errors.NewNonRetriableErrorf(
+			"no cells with such agents in zone %v available: %v",
+			zoneID,
+			agentIDs,
+		)
+	}
+}
+
+func (s *cellSelector) ZoneContainsCell(zoneID string, cellID string) bool {
 	return slices.Contains(s.getCells(zoneID), cellID)
 }
 
@@ -67,4 +206,104 @@ func (s *cellSelector) isFolderAllowed(folderID string) bool {
 
 	return len(s.config.GetFolderAllowList()) == 0 ||
 		slices.Contains(s.config.GetFolderAllowList(), folderID)
+}
+
+func (s *cellSelector) isCell(zoneID string) bool {
+	for _, cells := range s.config.Cells {
+		if slices.Contains(cells.Cells, zoneID) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (s *cellSelector) isAgentAvailable(
+	availableStorageInfos []nbs.AvailableStorageInfo,
+) bool {
+
+	if len(availableStorageInfos) == 0 {
+		return false
+	}
+
+	// If the only available storage info is empty, agent is
+	// unavailable.
+	if len(availableStorageInfos) == 1 &&
+		availableStorageInfos[0].ChunkSize == 0 &&
+		availableStorageInfos[0].ChunkCount == 0 {
+		return false
+	}
+
+	return true
+}
+
+func (s *cellSelector) selectCell(
+	ctx context.Context,
+	zoneID string,
+	folderID string,
+	kind types.DiskKind,
+	requireExactCellIDMatch bool,
+) (string, error) {
+
+	if s.config == nil {
+		return zoneID, nil
+	}
+
+	if !s.isFolderAllowed(folderID) {
+		return zoneID, nil
+	}
+
+	cells := s.getCells(zoneID)
+
+	if len(cells) == 0 {
+		if s.isCell(zoneID) {
+			return zoneID, nil
+		}
+
+		return "", errors.NewNonCancellableErrorf(
+			"incorrect zone ID provided: %q",
+			zoneID,
+		)
+	} else if requireExactCellIDMatch {
+		return zoneID, nil
+	}
+
+	switch s.config.GetCellSelectionPolicy() {
+	case cells_config.CellSelectionPolicy_FIRST_IN_CONFIG:
+		return cells[0], nil
+	case cells_config.CellSelectionPolicy_MAX_FREE_BYTES:
+		capacities, err := s.storage.GetRecentClusterCapacities(
+			ctx,
+			zoneID,
+			kind,
+		)
+		if err != nil {
+			return "", err
+		}
+
+		if len(capacities) == 0 {
+			logging.Warn(
+				ctx,
+				"no capacities found for zone %v, "+
+					"using first cell in config: %v",
+				zoneID,
+				cells[0],
+			)
+
+			return cells[0], nil
+		}
+
+		mostFree := slices.MaxFunc(
+			capacities,
+			func(a, b storage.ClusterCapacity) int {
+				return cmp.Compare(a.FreeBytes, b.FreeBytes)
+			})
+
+		return mostFree.CellID, nil
+	default:
+		return "", errors.NewNonCancellableErrorf(
+			"unknown cell selection policy: %v",
+			s.config.GetCellSelectionPolicy().String(),
+		)
+	}
 }

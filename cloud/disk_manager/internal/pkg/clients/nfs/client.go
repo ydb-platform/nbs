@@ -13,6 +13,11 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type Node nfs_client.Node
+type Session nfs_client.Session
+
+////////////////////////////////////////////////////////////////////////////////
+
 const (
 	maxConsecutiveRetries = 3
 )
@@ -226,4 +231,96 @@ func (c *client) DescribeModel(
 			MaxWriteIops:      model.PerformanceProfile.MaxWriteIops,
 		},
 	}, nil
+}
+
+func (c *client) CreateCheckpoint(
+	ctx context.Context,
+	session Session,
+	filesystemID string,
+	checkpointID string,
+	nodeID uint64,
+) error {
+
+	return c.nfs.CreateCheckpoint(
+		ctx,
+		nfs_client.Session(session),
+		filesystemID,
+		&nfs_client.CreateCheckpointOpts{
+			CheckpointID: checkpointID,
+			NodeID:       nodeID,
+		},
+	)
+}
+
+func (c *client) DestroyCheckpoint(
+	ctx context.Context,
+	filesystemID string,
+	checkpointID string,
+) error {
+
+	return c.nfs.DestroyCheckpoint(
+		ctx,
+		filesystemID,
+		checkpointID,
+	)
+}
+
+func (c *client) CreateSession(
+	ctx context.Context,
+	fileSystemID string,
+	checkpointID string,
+	readonly bool,
+) (Session, error) {
+
+	session, err := c.nfs.CreateSession(ctx, fileSystemID, checkpointID, readonly)
+	return Session(session), wrapError(err)
+}
+
+func (c *client) DestroySession(ctx context.Context, session Session) error {
+	return wrapError(c.nfs.DestroySession(ctx, nfs_client.Session(session)))
+}
+
+func (c *client) ListNodes(
+	ctx context.Context,
+	session Session,
+	parentNodeID uint64,
+	cookie string,
+) ([]Node, string, error) {
+
+	nodes, cookie, err := c.nfs.ListNodes(
+		ctx,
+		nfs_client.Session(session),
+		parentNodeID,
+		cookie,
+	)
+	resultNodes := make([]Node, len(nodes))
+	for i := range nodes {
+		resultNodes[i] = Node(nodes[i])
+	}
+
+	return resultNodes, cookie, wrapError(err)
+}
+
+func (c *client) CreateNode(
+	ctx context.Context,
+	session Session,
+	node Node,
+) (uint64, error) {
+
+	nodeID, err := c.nfs.CreateNode(
+		ctx,
+		nfs_client.Session(session),
+		nfs_client.Node(node),
+	)
+	return nodeID, wrapError(err)
+}
+
+func (c *client) ReadLink(
+	ctx context.Context,
+	session Session,
+	nodeID uint64,
+) ([]byte, error) {
+
+	data, err := c.nfs.ReadLink(ctx, nfs_client.Session(session), nodeID)
+	return data, wrapError(err)
 }

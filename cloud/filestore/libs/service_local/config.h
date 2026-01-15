@@ -2,12 +2,68 @@
 
 #include "public.h"
 
+#include <cloud/storage/core/libs/features/features_config.h>
+
 #include <cloud/filestore/config/server.pb.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 
+#include <variant>
+
 namespace NCloud::NFileStore {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TNullFileIOConfig
+{
+private:
+    NProto::TNullFileIOConfig Proto;
+
+public:
+    explicit TNullFileIOConfig(NProto::TNullFileIOConfig proto = {})
+        : Proto(std::move(proto))
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TAioConfig
+{
+private:
+    NProto::TAioConfig Proto;
+
+public:
+    explicit TAioConfig(NProto::TAioConfig proto = {})
+        : Proto(std::move(proto))
+    {}
+
+    [[nodiscard]] ui32 GetEntries() const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TIoUringConfig
+{
+private:
+    NProto::TIoUringConfig Proto;
+
+public:
+    explicit TIoUringConfig(NProto::TIoUringConfig proto = {})
+        : Proto(std::move(proto))
+    {}
+
+    [[nodiscard]] ui32 GetEntries() const;
+    [[nodiscard]] bool GetShareKernelWorkers() const;
+    [[nodiscard]] ui32 GetMaxKernelWorkersCount() const;
+    [[nodiscard]] bool GetForceAsyncIO() const;
+    [[nodiscard]] bool GetPropagateAffinityToKernelWorkers() const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TFileIOConfig =
+    std::variant<TNullFileIOConfig, TAioConfig, TIoUringConfig>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -15,11 +71,14 @@ class TLocalFileStoreConfig
 {
 private:
     NProto::TLocalServiceConfig ProtoConfig;
+    NFeatures::TFeaturesConfigPtr FeaturesConfig;
 
 public:
-    TLocalFileStoreConfig(const NProto::TLocalServiceConfig& protoConfig = {})
-        : ProtoConfig(protoConfig)
+    TLocalFileStoreConfig(NProto::TLocalServiceConfig protoConfig = {})
+        : ProtoConfig(std::move(protoConfig))
     {}
+
+    void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
 
     TString GetRootPath() const;
     TString GetPathPrefix() const;
@@ -53,6 +112,48 @@ public:
     bool GetGuestOnlyPermissionsCheckEnabled() const;
 
     ui32 GetMaxResponseEntries() const;
+
+    TFileIOConfig GetFileIOConfig() const;
+
+    ui32 GetMaxBackground() const;
+
+    ui32 GetMaxFuseLoopThreads() const;
+
+    bool GetFSyncQueueDisabled() const;
+
+    TDuration GetEntryTimeout() const;
+    TDuration GetEntryTimeout(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fsId) const;
+
+    TDuration GetNegativeEntryTimeout() const;
+    TDuration GetNegativeEntryTimeout(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fsId) const;
+
+    TDuration GetAttrTimeout() const;
+    TDuration GetAttrTimeout(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fsId) const;
+
+    TDuration GetXAttrCacheTimeout() const;
+    TDuration GetXAttrCacheTimeout(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fsId) const;
+
+    bool GetDirectoryHandlesStorageEnabled() const;
+    bool GetDirectoryHandlesStorageEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fsId) const;
+
+    ui64 GetDirectoryHandlesTableSize() const;
+
+    bool GetGuestHandleKillPrivV2Enabled() const;
 };
 
 }   // namespace NCloud::NFileStore

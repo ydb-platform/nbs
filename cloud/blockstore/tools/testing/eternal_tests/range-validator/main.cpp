@@ -125,7 +125,7 @@ int main(int argc, const char** argv)
     TFile file(options.DevicePath, EOpenModeFlag::RdOnly | EOpenModeFlag::DirectAligned);
 
     if (options.Mode == EValidationMode::Checksum) {
-        auto configHolder = CreateTestConfig(options.ConfigPath);
+        auto configHolder = LoadTestConfig(options.ConfigPath);
         for (ui32 rangeIdx : options.RangeIndices) {
             Cout << "Start validation of " << rangeIdx << " range" << Endl;
 

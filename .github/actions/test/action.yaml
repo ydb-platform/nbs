@@ -60,6 +60,14 @@ inputs:
     required: false
     default: "1"
     description: "Number of retries for ya make"
+  tmpfs_mount_point:
+    required: false
+    default: "/mnt/ya_make_tmpfs"
+    description: "Mount point path for the tmpfs filesystem"
+outputs:
+  failed_tests:
+    description: "List of failed tests"
+    value: ${{ steps.check_test_results.outputs.failed_tests }}
 
 runs:
   using: composite
@@ -68,7 +76,7 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       id: init
       run: |
-        export TMP_DIR=/home/github/tmp
+        export TMP_DIR=/home/github/tmp_test
         {
           echo "TMP_DIR=$TMP_DIR"
           echo "LOG_DIR=$TMP_DIR/logs"
@@ -78,7 +86,7 @@ runs:
           echo "REPORTS_ARTIFACTS_DIR=$TMP_DIR/artifacts/test_reports"
           echo "JUNIT_REPORT_XML=$TMP_DIR/junit.xml"
           echo "JUNIT_REPORT_PARTS=$TMP_DIR/junit-split"
-          echo "SUMMARY_LINKS=$(mktemp -p /home/github)"
+          echo "SUMMARY_LINKS=$(mktemp -p /home/github summary_links.XXXX)"
         } | tee -a $GITHUB_ENV
 
     - name: prepare
@@ -104,7 +112,7 @@ runs:
       env:
         BAZEL_REMOTE_PASSWORD: ${{ inputs.bazel_remote_password }}
       run: |
-        export BAZEL_REMOTE_PASSWORD_FILE=$(mktemp)
+        export BAZEL_REMOTE_PASSWORD_FILE=$(mktemp -p /home/github bazel.XXXX)
         echo -n "$BAZEL_REMOTE_PASSWORD" > "$BAZEL_REMOTE_PASSWORD_FILE"
         echo "BAZEL_REMOTE_PASSWORD_FILE=$BAZEL_REMOTE_PASSWORD_FILE" >> "$GITHUB_ENV"
         chmod 600 "$BAZEL_REMOTE_PASSWORD_FILE"
@@ -127,6 +135,7 @@ runs:
         TRUNCATE_ENABLED: ${{ inputs.truncate_enabled }}
         SYNC_TO_S3: ${{ inputs.sync_to_s3 || 'false' }}
         GITHUB_TOKEN: ${{ github.token }}
+        TMPFS_MOUNT_POINT: ${{ inputs.tmpfs_mount_point }}
       run: |
         extra_params=(
           --run-all-tests
@@ -140,6 +149,7 @@ runs:
           --nice 0
           --stat
           --output "$OUT_DIR"
+          -DGITHUB_CI=yes
         )
 
         case "$BUILD_PRESET" in
@@ -202,6 +212,15 @@ runs:
           fi
         fi
 
+        if [[ -n "$TMPFS_MOUNT_POINT" ]]; then
+          if mountpoint -q "$TMPFS_MOUNT_POINT"; then
+            export YA_RAM_DRIVE_PATH="$TMPFS_MOUNT_POINT"
+            echo "Tmpfs enabled ($YA_RAM_DRIVE_PATH)"
+          else
+            echo "Error: $TMPFS_MOUNT_POINT is not mounted"
+          fi
+        fi
+
         # shellcheck disable=SC2153
         readarray -d ',' -t test_size < <(printf "%s" "$TEST_SIZE")
         # shellcheck disable=SC2153
@@ -216,11 +235,15 @@ runs:
         echo "RETRIES=${RETRIES}" | tee -a "$GITHUB_ENV"
         RETRY_FLAG=""
         i=0
+        # setting variable in case that test will be interrupter by OOM killer that
+        # will kill VM with runner
+        echo "failed_tests=yes" >> $GITHUB_OUTPUT
         while [ "$RETRIES" -gt 0 ]; do
           RETRIES=$((RETRIES - 1))
           i=$((i + 1))
           RETRY_LOG_DIR="$LOG_DIR/$i"
           sudo -E -H -u github mkdir -p "$RETRY_LOG_DIR"
+          echo "LAST_STEP=${i}" | tee -a "$GITHUB_ENV"
           echo "::group::ya-make-test-${i}"
           set +e
           (
@@ -268,12 +291,14 @@ runs:
               else
                 echo "${JUNIT_REPORT_XML}.${i} doesn't exist or has zero size"
               fi
-              # disabling retries here for now until we will be able to 
+              # disabling retries here for now until we will be able to
               # process junit with retried runs
               DO_RETRY=1
               RETRY_FLAG="-X"
               ;;
           esac
+
+          touch "$LOG_DIR/${i}_build_finished"
 
           echo "::group::s3-sync-logs"
           if [ "$SYNC_TO_S3" = "true" ];
@@ -281,6 +306,8 @@ runs:
             sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$RETRY_LOG_DIR/" "$S3_BUCKET_PATH/test_logs/${i}/"
           fi
           echo "::endgroup::"
+
+          touch "$LOG_DIR/${i}_logs_synced"
 
           NEED_COPYING=0
 
@@ -292,6 +319,7 @@ runs:
             MUTED_CONFIG=".github/config/muted_ya.txt"
             echo "::endgroup::"
             echo "::group::postprocess-junit-${i}"
+            sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/orig_junit.${i}.xml.gz"
             sudo -E -H -u github .github/scripts/tests/transform-ya-junit.py -i \
               -m "${MUTED_CONFIG}" \
               --ya-out "$OUT_DIR" \
@@ -302,9 +330,25 @@ runs:
 
             sudo -E -H -u github .github/scripts/tests/split-junit.py -o "$JUNIT_REPORT_PARTS/${i}" "${JUNIT_REPORT_XML}.${i}"
             echo "::endgroup::"
+            # exports BUILD_FAILED_COUNT if it is not zero, we need to save current value to compare it to new one in retries and if it is bigger - update it
+            if [ -z "$BUILD_FAILED_COUNT" ]; then
+              BUILD_FAILED_COUNT=0
+            fi
+            BUILD_FAILED_COUNT_TMP=$BUILD_FAILED_COUNT
+            FAIL_CHECKER_TEMP_FILE=$(mktemp -p /home/github)
             set +e
             (sudo -E -H -u github .github/scripts/tests/fail-checker.py "${JUNIT_REPORT_XML}.${i}"; echo $? > fail_checker_exit_code) |& tee fail-checker-output.log
             set -e
+            if [ -f "$FAIL_CHECKER_TEMP_FILE" ]; then
+              BUILD_FAILED_COUNT=$(grep -E '^BUILD_FAILED_COUNT=' "$FAIL_CHECKER_TEMP_FILE" | cut -d '=' -f2) || true
+              rm "$FAIL_CHECKER_TEMP_FILE"
+            fi
+            if [ "$BUILD_FAILED_COUNT" -gt "$BUILD_FAILED_COUNT_TMP" ]; then
+              echo "BUILD_FAILED_COUNT=$BUILD_FAILED_COUNT" | tee -a "$GITHUB_ENV"
+            else
+              echo "BUILD_FAILED_COUNT=$BUILD_FAILED_COUNT_TMP" | tee -a "$GITHUB_ENV"
+              BUILD_FAILED_COUNT=$BUILD_FAILED_COUNT_TMP
+            fi
             FAIL_CHECKER_RC=$(< fail_checker_exit_code)
             if [ "$FAIL_CHECKER_RC" -ne 0 ]; then
               NEED_COPYING=1
@@ -320,18 +364,22 @@ runs:
             fi
           fi
           if [ "$NEED_COPYING" -ne "0" ];
-          then 
+          then
             chown -R github:github "$TESTS_DATA_DIR"
             echo "::group::remove-binaries-from-tests-data-dir"
-            find "$TESTS_DATA_DIR" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}'
-            find "$TESTS_DATA_DIR" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}' | xargs rm
+            find "$TESTS_DATA_DIR" -type f -print0 | while IFS= read -r -d '' file; do
+              if file --mime-type "$file" | grep -q 'application/x-executable'; then
+                echo "$file"
+                rm -f "$file"
+              fi
+            done
             echo "::endgroup::"
             echo "::group::remove-images-from-tests-data-dir"
-            find "$TESTS_DATA_DIR" -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -o -name NVMENBS01 -o -name generated_other_big_raw_image
-            find "$TESTS_DATA_DIR" \( -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -o -name NVMENBS01 -o -name generated_other_big_raw_image \) -delete
+            find "$TESTS_DATA_DIR" -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -o -name 'NVMENBS0*' -o -name generated_other_big_raw_image
+            find "$TESTS_DATA_DIR" \( -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -o -name 'NVMENBS0*' -o -name generated_other_big_raw_image \) -delete
             echo "::endgroup::"
             echo "::group::truncate-err-files"
-            find "$TESTS_DATA_DIR" -type f -name "*.err" -size +1G -print0 | while IFS= read -r -d '' file; do
+            find "$TESTS_DATA_DIR" -type f -name '*.err' -o -name '*.log' -o -name '*.out' -size +1G -print0 | while IFS= read -r -d '' file; do
                 orig_size=$(du -h "$file" | cut -f1)
                 echo "$file - $orig_size"
                 # shellcheck disable=SC2193
@@ -349,10 +397,11 @@ runs:
               du -h "$TESTS_DATA_DIR/"
               sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/${i}/"
             fi
+            touch "$LOG_DIR/${i}_test_data_synced"
             echo "::endgroup::"
           fi
           # shellcheck disable=SC2024
-          sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/orig_junit.${i}.xml.gz"
+          sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/transformed_junit.${i}.xml.gz"
           sudo -E -H -u github tar -C "$JUNIT_REPORT_PARTS/.." -czf "${REPORTS_ARTIFACTS_DIR}/junit_parts.${i}.xml.tar.gz" "$(basename $JUNIT_REPORT_PARTS)/${i}" "${JUNIT_REPORT_XML}.${i}"*
 
 
@@ -375,8 +424,20 @@ runs:
           cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
           echo "::endgroup::"
 
+          if [ -d "$ARTIFACTS_DIR/logs/" ]; then
+            echo "::group::cleaning-artifacts-log-dir"
+            find "$ARTIFACTS_DIR/logs/" -type f -print0 | while IFS= read -r -d '' file; do
+              if file --mime-type "$file" | grep -q 'application/x-executable'; then
+                echo "$file"
+                rm -f "$file"
+              fi
+            done
+            echo "::endgroup::"
+          fi
+
           echo "::group::s3-sync"
           sudo -E -H -u github s3cmd sync --follow-symlinks --acl-public --no-progress --stats --no-check-md5 "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
+          touch "$LOG_DIR/${i}_artifacts_synced"
           echo "::endgroup::"
 
           if [ $DO_RETRY -eq 1 ]; then
@@ -392,12 +453,14 @@ runs:
         echo "END_EXIT_CODE=${FAIL_CHECKER_RC}" |tee -a "$GITHUB_ENV"
         if [ "$BUILD_FAILED" -eq 1 ]; then
           echo "BUILD_FAILED=1" | tee -a "$GITHUB_ENV"
+          echo "failed_tests=yes" >> $GITHUB_OUTPUT
         else
           echo "BUILD_FAILED=0" | tee -a "$GITHUB_ENV"
+         echo "failed_tests=yes" >> $GITHUB_OUTPUT
         fi
 
     - name: copying system files
-      if: ${{ !cancelled() }}
+      if: ${{ always() }}
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         sudo cp /var/log/kern.log "$LOG_DIR/kern.log" || true
@@ -405,7 +468,7 @@ runs:
 
     - name: dump VM artifacts
       shell: bash --noprofile --norc -eo pipefail -x {0}
-      if: ${{ !cancelled() }}
+      if: ${{ always() }}
       run: |
         echo "::group::dump-vm-artifacts"
         sudo mkdir -p "$LOG_DIR/system_logs"
@@ -416,6 +479,40 @@ runs:
         sudo chown -R github:github "$LOG_DIR/system_logs/" || true
         sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$LOG_DIR/system_logs/" "$S3_BUCKET_PATH/test_logs/"
         echo "::endgroup::"
+
+    - name: sync logs in case of cancel and additional debug info
+      if: ${{ cancelled() }}
+      shell: bash --noprofile --norc -eo pipefail -x {0}
+      run: |
+        export CANCEL_LOG_DIR="$LOG_DIR/cancel_logs"
+        mkdir -p "$CANCEL_LOG_DIR"
+        pstree -alpu > "${CANCEL_LOG_DIR}/pstree.log" 2>&1 || true
+        ps -eo pid,ppid,stat,etimes,pcpu,pmem,comm,args --sort=-pcpu > "${CANCEL_LOG_DIR}/ps.log" 2>&1 || true
+        lsof +c 15  2>&1 | head -n 300 > "${CANCEL_LOG_DIR}/lsof.log" || true
+        ss -taop > "${CANCEL_LOG_DIR}/ss.log" 2>&1 || true
+
+        perf record -F 99 -g --call-graph=dwarf -a -o "${CANCEL_LOG_DIR}/perf.data" -- sleep 15 || true
+        perf report --stdio -i "${CANCEL_LOG_DIR}/perf.data" > "${CANCEL_LOG_DIR}/perf_report.log" 2>&1 || true
+        perf script -i "${CANCEL_LOG_DIR}/perf.data" > "${CANCEL_LOG_DIR}/perf.out" 2>&1 || true
+
+        sudo chown -R github:github "$LOG_DIR/"
+
+        sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/" || true
+
+        if [ ! -f "${LAST_STEP}_artifacts_synced" ]; then
+          echo "Syncing artifacts dir"
+          if [ -d "$ARTIFACTS_DIR/logs/" ]; then
+            echo "::group::cleaning-artifacts-log-dir"
+            find "$ARTIFACTS_DIR/logs/" -type f -print0 | while IFS= read -r -d '' file; do
+              if file --mime-type "$file" | grep -q 'application/x-executable'; then
+                echo "$file"
+                rm -f "$file"
+              fi
+            done
+            echo "::endgroup::"
+          fi
+          sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/artifacts/" || true
+        fi
 
     - name: Finish with END_EXIT_CODE
       shell: bash --noprofile --norc -eo pipefail -x {0}
@@ -533,3 +630,14 @@ runs:
       if: always()
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: df -h
+
+    - name: clean up
+      if: always()
+      shell: bash
+      run: |
+        echo "::group::clean-up"
+        sudo -E -H -u github rm -rf $TMP_DIR $SUMMARY_LINKS $BAZEL_REMOTE_PASSWORD_FILE \
+                                    $SUMMARY_OUT_ENV_PATH $SUMMARY_LINKS
+        chown -R root:root $GITHUB_WORKSPACE 
+        echo "::endgroup::"
+

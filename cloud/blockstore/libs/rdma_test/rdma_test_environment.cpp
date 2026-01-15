@@ -54,27 +54,24 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
     : MultiAgentWriteHandler(std::make_shared<TTestMultiAgentWriteHandler>())
     , Storage(std::make_shared<TMemoryTestStorage>(deviceSize))
 {
-    THashMap<TString, TStorageAdapterPtr> devices;
-    devices[Device_1] = std::make_shared<TStorageAdapter>(
-        Storage,
-        4_KB,                // storageBlockSize
-        true,                // normalize,
-        TDuration::Zero(),   // maxRequestDuration
-        TDuration::Zero()    // shutdownTimeout
-    );
-
-    TVector<TString> uuids;
-    for (const auto& [key, value]: devices) {
-        uuids.push_back(key);
-    }
+    TVector<std::pair<TString, TStorageAdapterPtr>> uuidToStorageAdapter{
+        {Device_1,
+         std::make_shared<TStorageAdapter>(
+             Storage,
+             4_KB,                // storageBlockSize
+             true,                // normalize,
+             TDuration::Zero(),   // maxRequestDuration
+             TDuration::Zero()    // shutdownTimeout
+             )}};
 
     DeviceClient = std::make_shared<TDeviceClient>(
         TDuration::MilliSeconds(100),
-        uuids,
-        Logging->CreateLog("BLOCKSTORE_DISK_AGENT"));
+        std::move(uuidToStorageAdapter),
+        Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
+        false);   // kickOutOldClientsEnabled
 
     DeviceClient->AcquireDevices(
-        uuids,
+        {Device_1},
         ClientId,
         TInstant::Now(),
         NProto::VOLUME_ACCESS_READ_WRITE,
@@ -104,7 +101,7 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
         Server,
         DeviceClient,
         MultiAgentWriteHandler,
-        std::move(devices));
+        {Device_1});
 
     RdmaTarget->Start();
 }
@@ -152,8 +149,7 @@ void TRdmaTestEnvironment::CheckResponse(
 NProto::TWriteDeviceBlocksRequest TRdmaTestEnvironment::MakeWriteRequest(
     const TBlockRange64& blockRange,
     char fill,
-    ui64 volumeRequestId,
-    bool isMultideviceRequest) const
+    ui64 volumeRequestId) const
 {
     NProto::TWriteDeviceBlocksRequest result;
     result.SetDeviceUUID(Device_1);
@@ -161,7 +157,6 @@ NProto::TWriteDeviceBlocksRequest TRdmaTestEnvironment::MakeWriteRequest(
     result.SetStartIndex(blockRange.Start);
     result.MutableHeaders()->SetClientId(ClientId);
     result.SetVolumeRequestId(volumeRequestId);
-    result.SetMultideviceRequest(isMultideviceRequest);
 
     for (ui32 i = 0; i < blockRange.Size(); ++i) {
         *result.MutableBlocks()->AddBuffers() = TString(4_KB, fill);
@@ -178,7 +173,6 @@ TRdmaTestEnvironment::MakeMultiAgentWriteRequest(
     NProto::TWriteDeviceBlocksRequest result;
     result.MutableHeaders()->SetClientId(ClientId);
     result.SetVolumeRequestId(volumeRequestId);
-    result.SetMultideviceRequest(false);
     result.SetBlockSize(4_KB);
     {
         auto* target = result.AddReplicationTargets();
@@ -227,8 +221,7 @@ NProto::TChecksumDeviceBlocksRequest TRdmaTestEnvironment::MakeChecksumRequest(
 
 NProto::TZeroDeviceBlocksRequest TRdmaTestEnvironment::MakeZeroRequest(
     const TBlockRange64& blockRange,
-    ui64 volumeRequestId,
-    bool isMultideviceRequest) const
+    ui64 volumeRequestId) const
 {
     NProto::TZeroDeviceBlocksRequest result;
     result.SetDeviceUUID(Device_1);
@@ -237,7 +230,6 @@ NProto::TZeroDeviceBlocksRequest TRdmaTestEnvironment::MakeZeroRequest(
     result.SetBlocksCount(blockRange.Size());
     result.MutableHeaders()->SetClientId(ClientId);
     result.SetVolumeRequestId(volumeRequestId);
-    result.SetMultideviceRequest(isMultideviceRequest);
     return result;
 }
 

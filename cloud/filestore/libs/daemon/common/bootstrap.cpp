@@ -86,7 +86,6 @@ void TBootstrapCommon::Start()
     FILESTORE_LOG_START_COMPONENT(BackgroundThreadPool);
     FILESTORE_LOG_START_COMPONENT(ProfileLog);
     FILESTORE_LOG_START_COMPONENT(RequestStatsUpdater);
-    FILESTORE_LOG_START_COMPONENT(StatsFetcher);
 
     StartComponents();
 
@@ -115,7 +114,6 @@ void TBootstrapCommon::Stop()
 
     StopComponents();
 
-    FILESTORE_LOG_STOP_COMPONENT(StatsFetcher);
     FILESTORE_LOG_STOP_COMPONENT(RequestStatsUpdater);
     FILESTORE_LOG_STOP_COMPONENT(ProfileLog);
     FILESTORE_LOG_STOP_COMPONENT(BackgroundThreadPool);
@@ -159,7 +157,9 @@ void TBootstrapCommon::Init()
         ProfileLog = CreateProfileLog(
             {
                 Configs->Options->ProfileFile,
-                Configs->DiagnosticsConfig->GetProfileLogTimeThreshold()
+                Configs->DiagnosticsConfig->GetProfileLogTimeThreshold(),
+                Configs->DiagnosticsConfig->GetProfileLogMaxFlushRecords(),
+                Configs->DiagnosticsConfig->GetProfileLogMaxFrameFlushRecords()
             },
             Timer,
             BackgroundScheduler);
@@ -281,8 +281,7 @@ void TBootstrapCommon::InitActorSystem()
             ? NCloud::NStorage::BuildCpuWaitStatsFilename(
                   Configs->DiagnosticsConfig->GetCpuWaitServiceName())
             : std::move(cpuWaitFilename),
-        Log,
-        logging);
+        Log);
 
     STORAGE_INFO("StatsFetcher initialized");
 
@@ -355,7 +354,11 @@ void TBootstrapCommon::InitLWTrace(
             samplingRate,
             Configs->DiagnosticsConfig->GetLWTraceShuttleCount());
         lwManager.New(TraceLoggerId, query);
-        traceReaders.push_back(CreateTraceLogger(TraceLoggerId, traceLog, "NFS_TRACE"));
+        traceReaders.push_back(SetupTraceReaderWithLog(
+            TraceLoggerId,
+            traceLog,
+            "NFS_TRACE",
+            "AllRequests"));
     }
 
     auto slowRequestSamplingRate =
@@ -367,21 +370,26 @@ void TBootstrapCommon::InitLWTrace(
             Configs->DiagnosticsConfig->GetLWTraceShuttleCount());
 
         lwManager.New(SlowRequestsFilterId, query);
-        traceReaders.push_back(CreateSlowRequestsFilter(
+        traceReaders.push_back(SetupTraceReaderForSlowRequests(
             SlowRequestsFilterId,
             traceLog,
             "NFS_TRACE",
-            Configs->DiagnosticsConfig->GetRequestThresholds()));
+            Configs->DiagnosticsConfig->GetRequestThresholds(),
+            "SlowRequests"));
     }
 
     if (traceReaders.size()) {
+        TTraceProcessorConfig traceProcessorConfig;
+        traceProcessorConfig.ComponentName = "NFS_TRACE";
+        traceProcessorConfig.DumpTracksInterval =
+            Configs->DiagnosticsConfig->GetDumpTracksInterval();
         TraceProcessor = CreateTraceProcessorMon(
             Monitoring,
             CreateTraceProcessor(
                 Timer,
                 BackgroundScheduler,
                 Logging,
-                "NFS_TRACE",
+                std::move(traceProcessorConfig),
                 NLwTraceMonPage::TraceManager(false),
                 std::move(traceReaders)));
 

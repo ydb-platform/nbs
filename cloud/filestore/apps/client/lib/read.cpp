@@ -84,7 +84,7 @@ public:
 
         CheckResponse(readResponse);
 
-        Cout << readResponse.GetBuffer();
+        Cout << readResponse.GetBuffer().substr(readResponse.GetBufferOffset());
 
         return true;
     }

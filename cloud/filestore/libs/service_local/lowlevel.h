@@ -91,9 +91,19 @@ struct TFileSystemStat
     i64 MountFlags = 0;     // Mount flags of filesystem
 };
 
+// We do need to extend TFileStat to include device ID
+// to enable correct population of TNodeAttr protobuf message DevId field.
+struct TFileStatEx : public TFileStat {
+    using TFileStat::TFileStat;
+    ui64 Dev = 0;
+    static_assert(
+        sizeof(dev_t) <= sizeof(ui64),
+        "dev_t is larger than 64 bits");
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
-using TDirEntry = std::pair<TString, TFileStat>;
+using TDirEntry = std::pair<TString, TFileStatEx>;
 
 struct TListDirResult
 {
@@ -113,6 +123,17 @@ TFileHandle OpenAt(
 
 void MkDirAt(const TFileHandle& handle, const TString& name, int mode);
 void MkSockAt(const TFileHandle& handle, const TString& name, int mode);
+void MkFifoAt(const TFileHandle& handle, const TString& name, int mode);
+void MkCharDeviceAt(
+    const TFileHandle& handle,
+    const TString& name,
+    int mode,
+    dev_t dev);
+void MkBlockDeviceAt(
+    const TFileHandle& handle,
+    const TString& name,
+    int mode,
+    dev_t dev);
 
 void RenameAt(
     const TFileHandle& handle,
@@ -133,8 +154,8 @@ void UnlinkAt(const TFileHandle& handle, const TString& name, bool directory);
 
 TString ReadLink(const TFileHandle& handle);
 
-TFileStat Stat(const TFileHandle& handle);
-TFileStat StatAt(const TFileHandle& handle, const TString& name);
+TFileStatEx Stat(const TFileHandle& handle);
+TFileStatEx StatAt(const TFileHandle& handle, const TString& name);
 TFileSystemStat StatFs(const TFileHandle& handle);
 
 TListDirResult ListDirAt(
@@ -142,6 +163,8 @@ TListDirResult ListDirAt(
     uint64_t offset,
     size_t entriesLimit,
     bool ignoreErrors);
+
+void Fsync(const TFileHandle& handle, bool datasync);
 
 //
 // Attrs

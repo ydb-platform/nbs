@@ -49,6 +49,7 @@ message TFileSystem
     uint64 ShardAllocationUnit = 16;
     string MainFileSystemId = 17;
     bool DirectoryCreationInShardsEnabled = 18;
+    bool StrictFileSystemSizeEnforcementEnabled = 19;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -60,6 +61,7 @@ message TFileSystemStats
     uint64 LastLockId = 2;
     uint64 LastCollectCommitId = 3;
     uint64 LastXAttr = 4;
+    uint64 HasXAttrs = 5;
 
     // index stats
     uint64 UsedNodesCount = 100;
@@ -103,6 +105,8 @@ message TNode
     uint32 Links = 9;
 
     string SymLink = 10;
+
+    uint64 DevId = 11;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

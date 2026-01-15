@@ -51,7 +51,8 @@ void TVolumeActor::SendReleaseDevicesToAgents(
         volumeGeneration,
         Config->GetAgentRequestTimeout(),
         std::move(devicesToRelease),
-        State->GetMeta().GetMuteIOErrors());
+        State->GetMeta().GetMuteIOErrors(),
+        LogTitle.GetChild(GetCycleCount()));
 
     Actors.insert(actor);
 }
@@ -80,8 +81,12 @@ void TVolumeActor::ReleaseReplacedDevices(
             LogTitle.GetWithTime().c_str(),
             clientId.Quote().c_str());
 
-        TAcquireReleaseDiskRequest request{clientId, nullptr, replacedDevices};
-        AcquireReleaseDiskRequests.push_back(std::move(request));
+        AddReleaseDiskRequest(
+            ctx,
+            {
+                .ClientId = clientId,
+                .DevicesToRelease = replacedDevices,
+            });
     }
 }
 

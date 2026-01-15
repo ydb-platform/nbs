@@ -58,7 +58,7 @@ public:
     void Accept(
         const TBlock& block,
         const TPartialBlobId& blobId,
-        ui32 blobOffset) override
+        ui32 blobOffset)
     {
         TABLET_VERIFY(!ApplyingByteLayer);
 
@@ -69,6 +69,25 @@ public:
             ref.BlobId = blobId;
             ref.BlobOffset = blobOffset;
             Block.Block = std::move(ref);
+        }
+    }
+
+    void Accept(
+        const TBlock& block,
+        const TPartialBlobId& blobId,
+        ui32 blobOffset,
+        ui32 blocksCount) override
+    {
+        Accept(block, blobId, blobOffset);
+
+        if (blocksCount > 1) {
+            auto b = block;
+            while (--blocksCount > 0) {
+                b.BlockIndex++;
+                blobOffset++;
+
+                Accept(b, blobId, blobOffset);
+            }
         }
     }
 
@@ -618,7 +637,7 @@ bool TIndexTabletActor::PrepareTx_FlushBytes(
 {
     TIndexTabletDatabase db(tx.DB);
 
-    InitProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
+    InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
     bool ready = true;
     for (const auto& bytes: args.Bytes) {
@@ -814,7 +833,7 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "FlushBytes");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "FlushBytes");
     }
 
     ui32 blobIndex = 0;
@@ -911,7 +930,7 @@ bool TIndexTabletActor::PrepareTx_TrimBytes(
 {
     Y_UNUSED(tx);
 
-    InitProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
+    InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
     return true;
 }

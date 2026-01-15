@@ -1,3 +1,5 @@
+#pragma once
+
 #include "cloud/filestore/libs/storage/api/ss_proxy.h"
 
 #include <cloud/filestore/libs/storage/api/tablet.h>
@@ -21,6 +23,11 @@ struct TShardedFileSystemConfig
     const TString Shard1Id = FsId + "_s1";
     const TString Shard2Id = FsId + "_s2";
     const ui64 ShardBlockCount = 1'000;
+
+    ui64 MainFsBlockCount() const
+    {
+        return ShardBlockCount * 2;
+    }
 
     bool DirectoryCreationInShardsEnabled = false;
 
@@ -106,7 +113,7 @@ static TFileSystemInfo CreateFileSystem(
             return false;
         });
 
-    service.CreateFileStore(fsConfig.FsId, fsConfig.ShardBlockCount * 2);
+    service.CreateFileStore(fsConfig.FsId, fsConfig.MainFsBlockCount());
 
     service.AccessRuntime().DispatchEvents(
         {.CustomFinalCondition = [&]() -> bool

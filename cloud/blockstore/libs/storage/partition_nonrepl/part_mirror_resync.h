@@ -25,6 +25,7 @@ NActors::IActorPtr CreateMirrorPartitionResync(
     TMigrations migrations,
     TVector<TDevices> replicaDevices,
     NRdma::IClientPtr rdmaClient,
+    NActors::TActorId volumeActorId,
     NActors::TActorId statActorId,
     ui64 initialResyncIndex,
     NProto::EResyncPolicy resyncPolicy,

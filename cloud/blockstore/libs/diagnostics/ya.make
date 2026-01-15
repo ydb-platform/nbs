@@ -32,13 +32,14 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics/data
     cloud/blockstore/libs/diagnostics/events
     cloud/blockstore/libs/service
+    cloud/blockstore/libs/storage/model
     cloud/blockstore/public/api/protos
-    
+
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/throttling
     cloud/storage/core/libs/user_stats/counter
-    
+
     library/cpp/deprecated/atomic
     library/cpp/digest/crc32c
     library/cpp/eventlog
@@ -57,5 +58,6 @@ PEERDIR(
 END()
 
 RECURSE_FOR_TESTS(
+    gtest
     ut
 )

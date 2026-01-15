@@ -21,7 +21,8 @@ TReadBlobActor::TReadBlobActor(
         bool shouldCalculateChecksums,
         const EStorageAccessMode storageAccessMode,
         std::unique_ptr<TRequest> request,
-        TDuration longRunningThreshold)
+        TDuration longRunningThreshold,
+        ui64 bsGroupOperationId)
     : TLongRunningOperationCompanion(
           partitionActorId,
           volumeActorId,
@@ -35,6 +36,7 @@ TReadBlobActor::TReadBlobActor(
     , ShouldCalculateChecksums(shouldCalculateChecksums)
     , StorageAccessMode(storageAccessMode)
     , Request(std::move(request))
+    , BSGroupOperationId(bsGroupOperationId)
 {}
 
 void TReadBlobActor::Bootstrap(const TActorContext& ctx)
@@ -104,6 +106,7 @@ void TReadBlobActor::NotifyCompleted(
     request->BytesCount = Request->BlobOffsets.size() * BlockSize;
     request->RequestTime = ResponseReceived - RequestSent;
     request->GroupId = Request->GroupId;
+    request->BSGroupOperationId = BSGroupOperationId;
 
     if (DeadlineSeen) {
         request->DeadlineSeen = true;
@@ -149,8 +152,11 @@ void TReadBlobActor::ReplyError(
         DeadlineSeen = true;
     }
 
-    auto error = MakeError(E_REJECTED, "TEvBlobStorage::TEvGet failed: " + description);
-    ReplyAndDie(ctx, std::make_unique<TResponse>(error));
+    ReplyAndDie(
+        ctx,
+        std::make_unique<TResponse>(MakeError(
+            E_REJECTED,
+            "TEvBlobStorage::TEvGet failed: " + description)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -261,10 +267,11 @@ void TReadBlobActor::HandleGetResult(
             return;
         }
     } else {
-        auto error = MakeError(
-            E_CANCELLED,
-            "failed to acquire sglist in ReadBlobActor");
-        ReplyAndDie(ctx, std::make_unique<TResponse>(error));
+        ReplyAndDie(
+            ctx,
+            std::make_unique<TResponse>(MakeError(
+                E_CANCELLED,
+                "failed to acquire sglist in ReadBlobActor")));
         return;
     }
 

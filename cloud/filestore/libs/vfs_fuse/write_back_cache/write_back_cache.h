@@ -1,16 +1,13 @@
 #pragma once
 
-#include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/vfs_fuse/public.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/threading/future/future.h>
-
-#include <util/generic/intrlist.h>
-#include <util/generic/strbuf.h>
 
 #include <memory>
 
@@ -18,10 +15,13 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct IWriteBackCacheStats;
+using IWriteBackCacheStatsPtr =
+    std::shared_ptr<IWriteBackCacheStats>;
+
 class TWriteBackCache final
 {
 private:
-    friend class TImpl;
     class TImpl;
 
     std::shared_ptr<TImpl> Impl;
@@ -33,9 +33,18 @@ public:
         IFileStorePtr session,
         ISchedulerPtr scheduler,
         ITimerPtr timer,
+        IWriteBackCacheStatsPtr stats,
+        TLog log,
+        const TString& fileSystemId,
+        const TString& clientId,
         const TString& filePath,
-        ui32 capacityBytes,
-        TDuration automaticFlushPeriod);
+        ui64 capacityBytes,
+        TDuration automaticFlushPeriod,
+        TDuration flushRetryPeriod,
+        ui32 maxWriteRequestSize,
+        ui32 maxWriteRequestsCount,
+        ui32 maxSumWriteRequestsSize,
+        bool zeroCopyWriteEnabled);
 
     ~TWriteBackCache();
 
@@ -52,78 +61,136 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
-    NThreading::TFuture<void> FlushData(ui64 handle);
+    NThreading::TFuture<void> FlushNodeData(ui64 nodeId);
 
     NThreading::TFuture<void> FlushAllData();
 
+    bool IsEmpty() const;
+
+    // Keep information about MinNodeSize for flushed nodes
+    ui64 AcquireNodeStateRef();
+    void ReleaseNodeStateRef(ui64 refId);
+
+    ui64 GetCachedNodeSize(ui64 nodeId) const;
+    void SetCachedNodeSize(ui64 nodeId, ui64 size);
+
+    enum class EWriteDataRequestStatus;
+    struct TPersistentQueueStats;
+
 private:
-    // only for testing purposes
-    friend struct TCalculateDataPartsToReadTestBootstrap;
+    // Only for testing purposes
+    friend struct TTestUtilBootstrap;
 
-    enum class EFlushStatus
-    {
-        NotStarted,
-        Started,
-        Finished
-    };
-
-    struct TWriteDataEntry
-        : public TIntrusiveListItem<TWriteDataEntry>
-    {
-        ui64 Handle;
-        ui64 Offset;
-        ui64 Length;
-        // serialized TWriteDataRequest
-        TStringBuf SerializedRequest;
-        TString FileSystemId;
-        NProto::THeaders RequestHeaders;
-
-        TWriteDataEntry(
-                ui64 handle,
-                ui64 offset,
-                ui64 length,
-                TStringBuf serializedRequest,
-                TString fileSystemId,
-                NProto::THeaders requestHeaders)
-            : Handle(handle)
-            , Offset(offset)
-            , Length(length)
-            , SerializedRequest(serializedRequest)
-            , FileSystemId(std::move(fileSystemId))
-            , RequestHeaders(std::move(requestHeaders))
-        {}
-
-        ui64 End() const
-        {
-            return Offset + Length;
-        }
-
-        EFlushStatus FlushStatus = EFlushStatus::NotStarted;
-    };
-
-    struct TWriteDataEntryPart
-    {
-        const TWriteDataEntry* Source = nullptr;
-        ui64 OffsetInSource = 0;
-        ui64 Offset = 0;
-        ui64 Length = 0;
-
-        ui64 End() const
-        {
-            return Offset + Length;
-        }
-
-        bool operator==(const TWriteDataEntryPart& p) const
-        {
-            return std::tie(Source, OffsetInSource, Offset, Length) ==
-                std::tie(p.Source, p.OffsetInSource, p.Offset, p.Length);
-        }
-    };
-
-    static TVector<TWriteDataEntryPart> CalculateDataPartsToRead(
-        const TVector<TWriteDataEntry*>& entries,
-        ui64 startingFromOffset,
-        ui64 length);
+    struct TCachedWriteDataRequest;
+    struct TGlobalListTag;
+    struct TNodeListTag;
+    class TWriteDataEntry;
+    struct TWriteDataEntryDeserializationStats;
+    struct TWriteDataEntryPart;
+    struct TNodeState;
+    struct TFlushState;
+    class TUtil;
+    struct TQueuedOperations;
+    class TContiguousWriteDataEntryPartsReader;
+    class TWriteDataEntryIntervalMap;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * WriteData request life cycle:
+ * Initial -> Pending -> Cached -> (FlushRequested) -> Flushing -> Flushed
+ *
+ * Status FlushRequested may be skipped — Flush takes as much WriteData requests
+ * as possible from |TWriteBackCache::TNodeState::CachedEntries|.
+ *
+ * For each NodeId it is guaranteed that there are no requests with out-of-order
+ * statuses: if two requests A and B have the same NodeId, and the request A was
+ * added to the queue later than B, then A.Status <= B.Status.
+ */
+
+enum class TWriteBackCache::EWriteDataRequestStatus
+{
+    // The object has just been created and does not hold a request.
+    Initial,
+
+    // Restoration from the persisent buffer was failed.
+    // The request will not be processed further.
+    Corrupted,
+
+    // Write request is waiting for the conditions:
+    // - enough space in the persistent buffer to store the request;
+    // - no overlapping read requests in progress.
+    Pending,
+
+    // Write request has been stored in the persistent buffer
+    // The caller code observes the request as completed
+    Cached,
+
+    // Write request is being flushed
+    Flushing,
+
+    // Write request has been written to the session and can be removed from
+    // the persistent buffer
+    Flushed
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TWriteBackCache::TPersistentQueueStats
+{
+    ui64 RawCapacity = 0;
+    ui64 RawUsedBytesCount = 0;
+    ui64 MaxAllocationBytesCount = 0;
+    bool IsCorrupted = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct IWriteBackCacheStats
+{
+    enum class EReadDataRequestCacheStatus
+    {
+        // A request wasn't served from the cache
+        Miss,
+
+        // A request was partially served from the cache
+        PartialHit,
+
+        // A request was fully served from the cache
+        FullHit
+    };
+
+    virtual ~IWriteBackCacheStats() = default;
+
+    virtual void ResetNonDerivativeCounters() = 0;
+
+    virtual void FlushStarted() = 0;
+    virtual void FlushCompleted() = 0;
+    virtual void FlushFailed() = 0;
+
+    virtual void IncrementNodeCount() = 0;
+    virtual void DecrementNodeCount() = 0;
+
+    virtual void WriteDataRequestEnteredStatus(
+        TWriteBackCache::EWriteDataRequestStatus status) = 0;
+
+    virtual void WriteDataRequestExitedStatus(
+        TWriteBackCache::EWriteDataRequestStatus status,
+        TDuration duration) = 0;
+
+    virtual void WriteDataRequestUpdateMinTime(
+        TWriteBackCache::EWriteDataRequestStatus status,
+        TInstant minTime) = 0;
+
+    virtual void AddReadDataStats(
+        IWriteBackCacheStats::EReadDataRequestCacheStatus status,
+        TDuration pendingDuration) = 0;
+
+    virtual void UpdatePersistentQueueStats(
+        const TWriteBackCache::TPersistentQueueStats& stats) = 0;
+};
+
+IWriteBackCacheStatsPtr CreateDummyWriteBackCacheStats();
 
 }   // namespace NCloud::NFileStore::NFuse

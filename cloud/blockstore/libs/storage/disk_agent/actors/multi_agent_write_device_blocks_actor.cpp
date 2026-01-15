@@ -29,8 +29,10 @@ std::unique_ptr<TEvDiskAgent::TEvWriteDeviceBlocksRequest> PrepareRequest(
     } else {
         *rec.MutableBlocks() = source.GetBlocks();
     }
+    if (source.HasChecksum()) {
+        rec.MutableChecksum()->CopyFrom(source.GetChecksum());
+    }
     rec.SetVolumeRequestId(source.GetVolumeRequestId());
-    rec.SetMultideviceRequest(source.GetMultideviceRequest());
 
     return result;
 }

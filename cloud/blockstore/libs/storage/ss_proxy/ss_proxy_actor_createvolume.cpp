@@ -2,7 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-#include <cloud/blockstore/libs/storage/core/volume_label.h>
+#include <cloud/blockstore/libs/storage/model/volume_label.h>
 
 #include <cloud/storage/core/libs/common/helpers.h>
 
@@ -330,6 +330,14 @@ bool TCreateVolumeActor::VerifyVolume(
             "Created volume FillGeneration mismatch: expected=%lu, actual=%lu",
             VolumeConfig.GetFillGeneration(),
             actual.GetFillGeneration());
+        return false;
+    }
+
+    if (VolumeConfig.GetTagsStr() != actual.GetTagsStr()) {
+        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
+            "Created volume TagsStr mismatch: expected=%s, actual=%s",
+            VolumeConfig.GetTagsStr().Quote().data(),
+            actual.GetTagsStr().Quote().data());
         return false;
     }
 

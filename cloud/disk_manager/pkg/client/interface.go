@@ -21,6 +21,7 @@ type Client interface {
 	MigrateDisk(ctx context.Context, req *disk_manager.MigrateDiskRequest) (*disk_manager.Operation, error)
 	SendMigrationSignal(ctx context.Context, req *disk_manager.SendMigrationSignalRequest) error
 	DescribeDisk(ctx context.Context, req *disk_manager.DescribeDiskRequest) (*disk_manager.DiskParams, error)
+	ListDiskStates(ctx context.Context, req *disk_manager.ListDiskStatesRequest) (*disk_manager.ListDiskStatesResponse, error)
 
 	// ImageService:
 	CreateImage(ctx context.Context, req *disk_manager.CreateImageRequest) (*disk_manager.Operation, error)
@@ -48,6 +49,10 @@ type Client interface {
 	DeleteFilesystem(ctx context.Context, req *disk_manager.DeleteFilesystemRequest) (*disk_manager.Operation, error)
 	ResizeFilesystem(ctx context.Context, req *disk_manager.ResizeFilesystemRequest) (*disk_manager.Operation, error)
 	DescribeFilesystemModel(ctx context.Context, req *disk_manager.DescribeFilesystemModelRequest) (*disk_manager.FilesystemModel, error)
+
+	// FilesystemSnapshotService
+	CreateFilesystemSnapshot(ctx context.Context, req *disk_manager.CreateFilesystemSnapshotRequest) (*disk_manager.Operation, error)
+	DeleteFilesystemSnapshot(ctx context.Context, req *disk_manager.DeleteFilesystemSnapshotRequest) (*disk_manager.Operation, error)
 
 	Close() error
 }

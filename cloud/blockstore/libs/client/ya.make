@@ -1,12 +1,16 @@
 LIBRARY()
 
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
+
 SRCS(
     client.cpp
     config.cpp
     durable.cpp
     metric.cpp
+    multiclient_endpoint.cpp
     session.cpp
-    session_test.cpp
+    switchable_client.cpp
+    switchable_session.cpp
     throttling.cpp
 )
 
@@ -18,6 +22,7 @@ PEERDIR(
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/service
+    cloud/blockstore/libs/storage/model
     cloud/blockstore/libs/throttling
     cloud/storage/core/libs/grpc
     cloud/storage/core/libs/throttling

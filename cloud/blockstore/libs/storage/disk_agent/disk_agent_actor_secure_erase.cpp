@@ -43,7 +43,8 @@ void TDiskAgentActor::SecureErase(
 
     const auto& recentBlocksTracker = GetRecentBlocksTracker(deviceId);
     if (recentBlocksTracker.HasInflight()) {
-        ReportDiskAgentSecureEraseDuringIo();
+        ReportDiskAgentSecureEraseDuringIo({{"device", deviceId}});
+
         reply(MakeError(E_REJECTED, TStringBuilder()
                 << "SecureErase with inflight ios present for device "
                 << deviceId));

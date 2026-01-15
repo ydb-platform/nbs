@@ -24,25 +24,6 @@ ui64 SizeDiff(const TString& v1, const TString& v2)
 ////////////////////////////////////////////////////////////////////////////////
 // Nodes
 
-bool TIndexTabletState::HasSpaceLeft(const NProto::TNode& attrs, ui64 newSize) const
-{
-    i64 delta = GetBlocksDifference(attrs.GetSize(), newSize, GetBlockSize());
-    if (delta > 0 && GetUsedBlocksCount() + delta > GetBlocksCount()) {
-        return false;
-    }
-
-    return true;
-}
-
-bool TIndexTabletState::HasBlocksLeft(ui32 blocks) const
-{
-    if (blocks && GetUsedBlocksCount() + blocks > GetBlocksCount()) {
-        return false;
-    }
-
-    return true;
-}
-
 void TIndexTabletState::UpdateUsedBlocksCount(
     TIndexTabletDatabase& db,
     ui64 currentSize,
@@ -429,6 +410,16 @@ void TIndexTabletState::RewriteNodeAttr(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// HasXAttrs
+
+void TIndexTabletState::WriteHasXAttrs(
+    TIndexTabletDatabase& db,
+    const TIndexTabletState::EHasXAttrs hasXAttrs)
+{
+    SetHasXAttrs(db, static_cast<ui64>(hasXAttrs));
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // NodeRefs
 
 void TIndexTabletState::CreateNodeRef(
@@ -548,9 +539,11 @@ bool TIndexTabletState::PrechargeNodeRefs(
     IIndexTabletDatabase& db,
     ui64 nodeId,
     const TString& cookie,
-    ui32 bytesToPrecharge)
+    ui64 rowsToPrecharge,
+    ui64 bytesToPrecharge)
 {
-    return db.PrechargeNodeRefs(nodeId, cookie, bytesToPrecharge);
+    return db
+        .PrechargeNodeRefs(nodeId, cookie, rowsToPrecharge, bytesToPrecharge);
 }
 
 void TIndexTabletState::RewriteNodeRef(
@@ -648,6 +641,11 @@ void TIndexTabletState::UpdateInMemoryIndexState(
 void TIndexTabletState::MarkNodeRefsLoadComplete()
 {
     Impl->InMemoryIndexState.MarkNodeRefsLoadComplete();
+}
+
+void TIndexTabletState::MarkNodeRefsExhaustive(ui64 nodeId)
+{
+    Impl->InMemoryIndexState.MarkNodeRefsExhaustive(nodeId);
 }
 
 TInMemoryIndexStateStats TIndexTabletState::GetInMemoryIndexStateStats() const

@@ -47,6 +47,7 @@ enum EExitCode
     EC_TIMEOUT = 5,
     EC_FAILED_TO_LOAD_TESTS_CONFIGURATION = 6,
     EC_FAILED_TO_DESTROY_ALIASED_VOLUMES = 7,
+    EC_WAIT_FRESH_DEVICES_ACTION_FAILED = 8,
 };
 
 ////////////////////////////////////////////////////////////////////////////////

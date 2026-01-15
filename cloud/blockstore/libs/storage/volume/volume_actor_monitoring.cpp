@@ -119,7 +119,7 @@ IOutputStream& operator <<(
                 break;
             }
 
-            case NProto::ENCRYPTION_AT_REST: {
+            case NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY: {
                 const auto& key = desc.GetEncryptedDataKey();
                 DIV() { out << "Kek Id: " << key.GetKekId().Quote(); }
                 DIV() {
@@ -285,12 +285,8 @@ void RenderFollowers(IOutputStream& out, const TFollowerDisks& followers)
                             out << follower.Link.FollowerDiskIdForPrint();
                             if (follower.MediaKind) {
                                 out << "<br>(";
-                                if (follower.MediaKind) {
-                                    out << NProto::EStorageMediaKind_Name(
-                                        *follower.MediaKind);
-                                } else {
-                                    out << "unknown";
-                                }
+                                out << NProto::EStorageMediaKind_Name(
+                                    follower.MediaKind);
                                 out << ")";
                             }
                         }
@@ -613,6 +609,43 @@ void RenderLatencyTable(IOutputStream& out, const TString& parentId)
                     }
                 }
             }
+            if (parentId.Contains("Total")) {
+                TABLER () {
+                    TABLED () {
+                        RenderTextWithTooltip(
+                            out,
+                            "Ops/Sec",
+                            "Operations per second");
+                    }
+                    TABLED_ATTRS ({{"id", parentId + "_OpsPerSec"}}) {
+                        out << "0";
+                    }
+                    TABLED () {
+                        out << "-";
+                    }
+                    TABLED () {
+                        out << "-";
+                    }
+                }
+
+                TABLER () {
+                    TABLED () {
+                        RenderTextWithTooltip(
+                            out,
+                            "Data/Sec",
+                            "Data throughput per second");
+                    }
+                    TABLED_ATTRS ({{"id", parentId + "_BytesPerSec"}}) {
+                        out << "0 B/s";
+                    }
+                    TABLED () {
+                        out << "-";
+                    }
+                    TABLED () {
+                        out << "-";
+                    }
+                }
+            }
         }
     }
 }
@@ -713,6 +746,198 @@ void RenderSizeTable(IOutputStream& out, ui32 blockSize)
     }
 }
 
+void RenderSpecificDiskFilter(
+    IOutputStream& out,
+    const NProto::TSpecificDiskFilter& disks)
+{
+    HTML (out) {
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            TABLER () {
+                TABLED () {
+                    out << "Selector";
+                }
+                TABLED () {
+                    out << "Specific Disks: ";
+                    if (disks.DiskIdsSize() == 0) {
+                        out << "<i>no disks</i>";
+                    } else {
+                        out << JoinSeq(", ", disks.GetDiskIds());
+                    }
+                }
+            }
+        }
+    }
+}
+
+void RenderDiskFilter(IOutputStream& out, const NProto::TDiskFilter& filter)
+{
+    HTML (out) {
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            TABLER () {
+                TABLED () {
+                    out << "Selector";
+                }
+                TABLED () {
+                    out << "Disk Filter: ";
+                    bool hasConditions = false;
+
+                    if (filter.CloudIdsSize() > 0) {
+                        out << "CloudIds=["
+                            << JoinSeq(", ", filter.GetCloudIds()) << "]";
+                        hasConditions = true;
+                    }
+                    if (filter.FolderIdsSize() > 0) {
+                        if (hasConditions) {
+                            out << ", ";
+                        }
+                        out << "FolderIds=["
+                            << JoinSeq(", ", filter.GetFolderIds()) << "]";
+                        hasConditions = true;
+                    }
+                    if (filter.MediaKindsSize() > 0) {
+                        if (hasConditions) {
+                            out << ", ";
+                        }
+                        TVector<TString> mediaNames;
+                        for (auto kind: filter.GetMediaKinds()) {
+                            mediaNames.push_back(
+                                NProto::EStorageMediaKind_Name(kind));
+                        }
+                        out << "MediaKinds=[" << JoinSeq(", ", mediaNames)
+                            << "]";
+                    }
+
+                    if (!hasConditions) {
+                        out << "<i>matches any disk</i>";
+                    }
+                }
+            }
+        }
+    }
+}
+
+void RenderVolumePerformanceProfileCoefficients(
+    IOutputStream& out,
+    const NProto::TVolumePerformanceProfileCoefficients& coefficients)
+{
+    HTML (out) {
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            // Render Coefficients as percentages (0.0-1.0 range)
+            if (coefficients.HasMaxReadBandwidth()) {
+                TABLER () {
+                    TABLED () {
+                        out << "MaxReadBandwidth";
+                    }
+                    TABLED () {
+                        out << (coefficients.GetMaxReadBandwidth() * 100.0)
+                            << " %";
+                    }
+                }
+            }
+            if (coefficients.HasMaxWriteBandwidth()) {
+                TABLER () {
+                    TABLED () {
+                        out << "MaxWriteBandwidth";
+                    }
+                    TABLED () {
+                        out << (coefficients.GetMaxWriteBandwidth() * 100.0)
+                            << " %";
+                    }
+                }
+            }
+            if (coefficients.HasMaxReadIops()) {
+                TABLER () {
+                    TABLED () {
+                        out << "MaxReadIops";
+                    }
+                    TABLED () {
+                        out << (coefficients.GetMaxReadIops() * 100.0) << " %";
+                    }
+                }
+            }
+            if (coefficients.HasMaxWriteIops()) {
+                TABLER () {
+                    TABLED () {
+                        out << "MaxWriteIops";
+                    }
+                    TABLED () {
+                        out << (coefficients.GetMaxWriteIops() * 100.0) << " %";
+                    }
+                }
+            }
+            if (coefficients.HasBoostTime()) {
+                TABLER () {
+                    TABLED () {
+                        out << "BoostTime";
+                    }
+                    TABLED () {
+                        out << (coefficients.GetBoostTime() * 100.0) << " %";
+                    }
+                }
+            }
+            if (coefficients.HasBoostRefillTime()) {
+                TABLER () {
+                    TABLED () {
+                        out << "BoostRefillTime";
+                    }
+                    TABLED () {
+                        out << (coefficients.GetBoostRefillTime() * 100.0)
+                            << " %";
+                    }
+                }
+            }
+            if (coefficients.HasBoostPercentage()) {
+                TABLER () {
+                    TABLED () {
+                        out << "BoostPercentage";
+                    }
+                    TABLED () {
+                        out << (coefficients.GetBoostPercentage() * 100.0)
+                            << " %";
+                    }
+                }
+            }
+            if (coefficients.HasBurstPercentage()) {
+                TABLER () {
+                    TABLED () {
+                        out << "BurstPercentage";
+                    }
+                    TABLED () {
+                        out << (coefficients.GetBurstPercentage() * 100.0)
+                            << " %";
+                    }
+                }
+            }
+            if (coefficients.HasMaxPostponedWeight()) {
+                TABLER () {
+                    TABLED () {
+                        out << "MaxPostponedWeight";
+                    }
+                    TABLED () {
+                        out << (coefficients.GetMaxPostponedWeight() * 100.0)
+                            << " %";
+                    }
+                }
+            }
+            if (coefficients.HasThrottlingEnabled()) {
+                TABLER () {
+                    TABLED () {
+                        out << "ThrottlingEnabled";
+                    }
+                    TABLED () {
+                        out
+                            << (coefficients.GetThrottlingEnabled() ? "true"
+                                                                    : "false");
+                    }
+                }
+            }
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 bool IsSetDefaultThrottlingPolicy(const TVolumeState* state)
@@ -758,19 +983,34 @@ void TVolumeActor::HandleHttpInfo(
     using THttpHandlers = THashMap<TString, THttpHandler>;
     using TActor = TVolumeActor;
 
-    const THttpHandlers postActions {{
-        {"removeclient",           &TActor::HandleHttpInfo_RemoveClient          },
-        {"resetmountseqnumber",    &TActor::HandleHttpInfo_ResetMountSeqNumber   },
-        {"createCheckpoint",       &TActor::HandleHttpInfo_CreateCheckpoint      },
-        {"deleteCheckpoint",       &TActor::HandleHttpInfo_DeleteCheckpoint      },
-        {"startpartitions",        &TActor::HandleHttpInfo_StartPartitions       },
-        {"changethrottlingpolicy", &TActor::HandleHttpInfo_ChangeThrottlingPolicy},
+    const THttpHandlers postActions{{
+        {"removeclient", &TActor::HandleHttpInfo_RemoveClient},
+        {"resetmountseqnumber", &TActor::HandleHttpInfo_ResetMountSeqNumber},
+        {"createCheckpoint", &TActor::HandleHttpInfo_CreateCheckpoint},
+        {"deleteCheckpoint", &TActor::HandleHttpInfo_DeleteCheckpoint},
+        {"startpartitions", &TActor::HandleHttpInfo_StartPartitions},
+        {"changethrottlingpolicy",
+         &TActor::HandleHttpInfo_ChangeThrottlingPolicy},
+        {"resetTransactionLatencyStats",
+         &TActor::HandleHttpInfo_ResetTransactionLatencyStats},
+        {"resetRequestLatencyStats",
+         &TActor::HandleHttpInfo_ResetRequestLatencyStats},
+         {"resetDeviceOperationLatencyStats",
+         &TActor::HandleHttpInfo_ResetDeviceOperationLatencyStats},
     }};
 
-    const THttpHandlers getActions {{
-        {"rendernpinfo", &TActor::HandleHttpInfo_RenderNonreplPartitionInfo },
-        {"getRequestsLatency", &TActor::HandleHttpInfo_GetRequestsLatency },
-        {"getTransactionsLatency", &TActor::HandleHttpInfo_GetTransactionsLatency },
+    const THttpHandlers getActions{{
+        {"rendernpinfo", &TActor::HandleHttpInfo_RenderNonreplPartitionInfo},
+        {"getRequestsLatency", &TActor::HandleHttpInfo_GetRequestsLatency},
+        {"getTransactionsLatency",
+         &TActor::HandleHttpInfo_GetTransactionsLatency},
+        {"getTransactionsInflight",
+         &TActor::HandleHttpInfo_GetTransactionsInflight},
+        {"getRequestsInflight",
+         &TActor::HandleHttpInfo_GetRequestsInflight},
+        {"getDeviceLatency", &TActor::HandleHttpInfo_GetDeviceLatency},
+        {"getDeviceOperationsInflight",
+         &TActor::HandleHttpInfo_GetDeviceOperationsInflight},
     }};
 
     auto* msg = ev->Get();
@@ -880,6 +1120,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* tracesTabName = "Traces";
     const char* storageConfigTabName = "StorageConfig";
     const char* rawVolumeConfigTabName = "RawVolumeConfig";
+    const char* deviceLatencyTabName = "DeviceLatency";
 
     const char* activeTab = "tab-pane active";
     const char* inactiveTab = "tab-pane";
@@ -893,6 +1134,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* tracesTab = inactiveTab;
     const char* storageConfigTab = inactiveTab;
     const char* rawVolumeConfigTab = inactiveTab;
+    const char* deviceLatencyTab = inactiveTab;
 
     if (tabName.empty() || tabName == overviewTabName) {
         overviewTab = activeTab;
@@ -912,6 +1154,8 @@ void TVolumeActor::HandleHttpInfo_Default(
         storageConfigTab = activeTab;
     } else if (tabName == rawVolumeConfigTabName) {
         rawVolumeConfigTab = activeTab;
+    } else if (tabName == deviceLatencyTabName) {
+        deviceLatencyTab = activeTab;
     }
 
     TStringStream out;
@@ -958,6 +1202,11 @@ void TVolumeActor::HandleHttpInfo_Default(
 
                 DIV_CLASS_ID(rawVolumeConfigTab, rawVolumeConfigTabName) {
                     RenderRawVolumeConfig(out);
+                }
+
+                DIV_CLASS_ID(deviceLatencyTab, deviceLatencyTabName)
+                {
+                    RenderDeviceLatency(out);
                 }
             }
         }
@@ -1239,7 +1488,19 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
     HTML (out) {
         out << style;
 
-        RenderAutoRefreshToggle(out, toggleId, "Auto update info", false);
+        RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
+
+        RenderStyledPostButton(
+            out,
+            "/tablets/app?action=resetRequestLatencyStats&TabletID=" +
+                ToString(TabletID()),
+            "Reset");
+
+        RenderStyledLink(
+            out,
+            "/tablets/app?action=getRequestsInflight&TabletID=" +
+                ToString(TabletID()),
+            "Inflight");
 
         out << "<div id=\"" << containerId << "\">";
         DIV_CLASS ("row") {
@@ -1248,14 +1509,17 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
         out << "</div>";
 
         out << R"(<script>
-            function updateRequestsData(result, container) {
-                const data = { ...result.stat, ...result.percentiles };
-                for (let key in data) {
-                    const element = container.querySelector('#' + key);
+            function applyRequestsValues(stat) {
+                for (let key in stat) {
+                    const element = document.getElementById(key);
                     if (element) {
-                        element.textContent = data[key];
+                        element.textContent = stat[key];
                     }
                 }
+            }
+            function updateRequestsData(result, container) {
+                applyRequestsValues(result.stat);
+                applyRequestsValues(result.percentiles);
             }
         </script>)";
 
@@ -1280,6 +1544,13 @@ void TVolumeActor::RenderTransactions(IOutputStream& out) const
             TransactionTimeTracker,
             8   // columnCount
         );
+    }
+}
+
+void TVolumeActor::RenderDeviceLatency(IOutputStream& out) const
+{
+    HTML (out) {
+        DumpDeviceOperationLatency(out, TabletID(), DeviceOperationTracker);
     }
 }
 
@@ -1419,6 +1690,12 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
             }
         }
 
+        DIV_CLASS ("row") {
+            DIV_CLASS ("col-md-6") {
+                RenderUptime(out);
+            }
+        }
+
         if (IsDiskRegistryMediaKind(mediaKind)) {
             DIV_CLASS("row") {
                 DIV_CLASS("col-md-6") {
@@ -1448,6 +1725,12 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
                 {
                     RenderLaggingStatus(out);
                 }
+            }
+        }
+
+        DIV_CLASS("row") {
+            DIV_CLASS("col-md-6") {
+                RenderAppliedVolumeThrottlingRule(out);
             }
         }
 
@@ -1487,8 +1770,24 @@ void TVolumeActor::RenderTabletList(IOutputStream& out) const
                     TABLEH() { out << "Partition"; }
                     TABLEH() { out << "Status"; }
                     TABLEH() { out << "Blocks Count"; }
+                    TABLEH() { out << "Uptime"; }
+                    TABLEH() { out << "Restarts"; }
                 }
             }
+
+            auto renderStartInfo = [&](const TPartitionStartInfo& startInfo)
+            {
+                TABLED () {
+                    if (auto startTime = startInfo.StartTime) {
+                        out << FormatDuration(TInstant::Now() - *startTime);
+                    } else {
+                        out << "Not running";
+                    }
+                }
+                TABLED () {
+                    out << startInfo.RestartCount;
+                }
+            };
 
             for (const auto& partition: State->GetPartitions()) {
                 TABLER() {
@@ -1505,6 +1804,7 @@ void TVolumeActor::RenderTabletList(IOutputStream& out) const
                     TABLED() {
                         out << partition.PartitionConfig.GetBlocksCount();
                     }
+                    renderStartInfo(partition.GetStartInfo());
                 }
             }
 
@@ -1523,6 +1823,8 @@ void TVolumeActor::RenderTabletList(IOutputStream& out) const
                     TABLED() {
                         out << State->GetConfig().GetBlocksCount();
                     }
+                    renderStartInfo(
+                        State->GetDiskRegistryBasedPartitionStartInfo());
                 }
             }
         }
@@ -1924,6 +2226,11 @@ void TVolumeActor::RenderStatus(IOutputStream& out) const
     }
 }
 
+void TVolumeActor::RenderUptime(IOutputStream& out) const
+{
+    out << "Uptime: " << FormatDuration(TInstant::Now() - VolumeStartTime);
+}
+
 void TVolumeActor::RenderMigrationStatus(IOutputStream& out) const
 {
     HTML(out) {
@@ -2180,13 +2487,51 @@ void TVolumeActor::RenderLaggingStatus(IOutputStream& out) const
     }
 }
 
+void TVolumeActor::RenderAppliedVolumeThrottlingRule(IOutputStream& out) const
+{
+    const auto& rule = State->GetThrottlingPolicy().GetVolatileThrottlingRule();
+
+    HTML (out) {
+        TAG (TH3) {
+            out << "Applied Throttling Rule";
+        }
+    }
+
+    if (!rule.HasCoefficients() &&
+        rule.GetSelectorCase() ==
+            NProto::TVolumeThrottlingRule::SELECTOR_NOT_SET)
+    {
+        HTML (out) {
+            DIV () {
+                out << "No throttling rule applied";
+            }
+        }
+        return;
+    }
+
+    switch (rule.GetSelectorCase()) {
+        case NProto::TVolumeThrottlingRule::kDisks: {
+            RenderSpecificDiskFilter(out, rule.GetDisks());
+            break;
+        }
+        case NProto::TVolumeThrottlingRule::kFilter: {
+            RenderDiskFilter(out, rule.GetFilter());
+            break;
+        }
+        default:
+            break;
+    }
+
+    RenderVolumePerformanceProfileCoefficients(out, rule.GetCoefficients());
+}
+
 void TVolumeActor::RenderLaggingStateForDevice(
     IOutputStream& out,
     const NProto::TDeviceConfig& d)
 {
-    const auto* stateMsg = "ok";
-    const auto* color = "green";
-    auto laggingDevices = State->GetLaggingDevices();
+    const char* stateMsg = "ok";
+    const char* color = "green";
+    auto laggingDevices = State->GetLaggingDeviceIds();
 
     if (laggingDevices.contains(d.GetDeviceUUID())) {
         stateMsg = "lagging";
@@ -2321,10 +2666,10 @@ void TVolumeActor::HandleHttpInfo_ChangeThrottlingPolicy(
     const auto maxReadBandwidth = getParam64("MaxReadBandwidth");
     const auto maxWriteBandwidth = getParam64("MaxWriteBandwidth");
 
-    pp.SetMaxReadIops(Min(pp.GetMaxReadIops(), maxReadIops));
-    pp.SetMaxWriteIops(Min(pp.GetMaxWriteIops(), maxWriteIops));
-    pp.SetMaxReadBandwidth(Min(pp.GetMaxReadBandwidth(), maxReadBandwidth));
-    pp.SetMaxWriteBandwidth(Min(pp.GetMaxWriteBandwidth(), maxWriteBandwidth));
+    pp.SetMaxReadIops(maxReadIops);
+    pp.SetMaxWriteIops(maxWriteIops);
+    pp.SetMaxReadBandwidth(maxReadBandwidth);
+    pp.SetMaxWriteBandwidth(maxWriteBandwidth);
 
     State->ResetThrottlingPolicy(pp);
 
@@ -2433,8 +2778,6 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
 
                 bool renderLaggingState = IsReliableDiskRegistryMediaKind(
                     State->GetConfig().GetStorageMediaKind());
-                auto laggingDevices = State->GetLaggingDevices();
-
                 auto outputDevices = [&] (const TDevices& devices) {
                     TABLED() {
                         TABLE_CLASS("table table-bordered") {
@@ -2585,6 +2928,99 @@ void TVolumeActor::HandleHttpInfo_GetTransactionsLatency(
             TransactionTimeTracker.GetStatJson(GetCycleCount())));
 }
 
+void TVolumeActor::HandleHttpInfo_ResetTransactionLatencyStats(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+    TransactionTimeTracker.ResetStats();
+    SendHttpResponse(ctx, *requestInfo, "");
+}
+
+void TVolumeActor::HandleHttpInfo_ResetRequestLatencyStats(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+    RequestTimeTracker.ResetStats();
+    SendHttpResponse(ctx, *requestInfo, "");
+}
+
+void TVolumeActor::HandleHttpInfo_ResetDeviceOperationLatencyStats(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+    DeviceOperationTracker.ResetStats();
+    SendHttpResponse(ctx, *requestInfo, "");
+}
+
+void TVolumeActor::HandleHttpInfo_GetTransactionsInflight(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteHttpInfoRes>(FormatTransactionsInflight(
+            TransactionTimeTracker.GetInflightOperations(),
+            GetCycleCount(),
+            TInstant::Now())));
+}
+
+void TVolumeActor::HandleHttpInfo_GetRequestsInflight(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteHttpInfoRes>(FormatRequestsInflight(
+            RequestTimeTracker.GetInflightOperations(),
+            GetCycleCount(),
+            TInstant::Now())));
+}
+
+void TVolumeActor::HandleHttpInfo_GetDeviceOperationsInflight(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteHttpInfoRes>(
+            FormatDeviceOperationsInflight(
+                DeviceOperationTracker.GetInflightOperations(),
+                GetCycleCount(),
+                TInstant::Now())));
+}
+
+void TVolumeActor::HandleHttpInfo_GetDeviceLatency(
+    const TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteJsonInfoRes>(
+            DeviceOperationTracker.GetStatJson(GetCycleCount())));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::RejectHttpRequest(
@@ -2592,7 +3028,12 @@ void TVolumeActor::RejectHttpRequest(
     TRequestInfo& requestInfo,
     TString message)
 {
-    LOG_ERROR_S(ctx, TBlockStoreComponents::VOLUME, message);
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s %s",
+        LogTitle.GetWithTime().c_str(),
+        message.c_str());
 
     SendHttpResponse(ctx, requestInfo, std::move(message), EAlertLevel::DANGER);
 }

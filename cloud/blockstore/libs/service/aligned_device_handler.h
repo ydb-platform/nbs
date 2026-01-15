@@ -28,15 +28,7 @@ private:
     std::atomic<bool> CriticalErrorReported = false;
 
 public:
-    TAlignedDeviceHandler(
-        IStoragePtr storage,
-        TString diskId,
-        TString clientId,
-        ui32 blockSize,
-        ui32 maxSubRequestSize,
-        ui32 maxZeroBlocksSubRequestSize,
-        bool checkBufferModificationDuringWriting,
-        NProto::EStorageMediaKind storageMediaKind);
+    TAlignedDeviceHandler(TDeviceHandlerParams params, ui32 maxSubRequestSize);
 
     // implements IDeviceHandler
     NThreading::TFuture<NProto::TReadBlocksLocalResponse> Read(
@@ -74,6 +66,8 @@ public:
     NThreading::TFuture<NProto::TZeroBlocksResponse> ExecuteZeroRequest(
         TCallContextPtr ctx,
         TBlocksInfo blocksInfo);
+
+    ui32 GetBlockSize() const;
 
 private:
     void ReportCriticalError(

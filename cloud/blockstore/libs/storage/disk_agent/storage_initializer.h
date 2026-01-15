@@ -30,6 +30,7 @@ struct TInitializeStorageResult
     TVector<TString> Errors;
     TVector<TString> ConfigMismatchErrors;
     TVector<TString> DevicesWithSuspendedIO;
+    TVector<TString> LostDevicesIds;
     TDeviceGuard Guard;
 };
 
@@ -39,5 +40,13 @@ NThreading::TFuture<TInitializeStorageResult> InitializeStorage(
     TDiskAgentConfigPtr agentConfig,
     IStorageProviderPtr storageProvider,
     NNvme::INvmeManagerPtr nvmeManager);
+
+NThreading::TFuture<TInitializeStorageResult> InitializePaths(
+    TLog log,
+    TStorageConfigPtr storageConfig,
+    TDiskAgentConfigPtr agentConfig,
+    IStorageProviderPtr storageProvider,
+    NNvme::INvmeManagerPtr nvmeManager,
+    TVector<TString> allowedPaths);
 
 }   // namespace NCloud::NBlockStore::NStorage

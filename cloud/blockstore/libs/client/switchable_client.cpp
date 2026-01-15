@@ -1,0 +1,358 @@
+#include "switchable_client.h"
+
+#include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/libs/service/service_method.h>
+
+#include <cloud/storage/core/libs/common/helpers.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+
+#include <util/generic/vector.h>
+#include <util/system/spinlock.h>
+
+#include <utility>
+
+namespace NCloud::NBlockStore {
+
+using namespace NThreading;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+struct TClientInfo
+{
+    IBlockStorePtr Client;
+    TString DiskId;
+    TString SessionId;
+};
+
+template <typename TMethod>
+class TDeferredRequestsHolder
+{
+public:
+    using TRequest = typename TMethod::TRequest;
+    using TResponse = typename TMethod::TResponse;
+
+private:
+    struct TRequestInfo
+    {
+        TPromise<TResponse> Promise;
+        TCallContextPtr CallContext;
+        std::shared_ptr<TRequest> Request;
+    };
+
+    TVector<TRequestInfo> Requests;
+
+public:
+    ~TDeferredRequestsHolder()
+    {
+        Y_DEBUG_ABORT_UNLESS(Requests.empty());
+    }
+
+    TFuture<TResponse> SaveRequest(
+        TCallContextPtr callContext,
+        std::shared_ptr<TRequest> request)
+    {
+        Requests.emplace_back(
+            TRequestInfo{
+                .Promise = NewPromise<TResponse>(),
+                .CallContext = std::move(callContext),
+                .Request = std::move(request)});
+        return Requests.back().Promise;
+    }
+
+    void ExecuteSavedRequests(const TClientInfo& clientInfo)
+    {
+        Y_ABORT_UNLESS(clientInfo.Client);
+
+        for (auto& requestInfo: Requests) {
+            if (clientInfo.DiskId) {
+                requestInfo.Request->SetDiskId(clientInfo.DiskId);
+            }
+            if (clientInfo.SessionId) {
+                requestInfo.Request->SetSessionId(clientInfo.SessionId);
+            }
+
+            auto future = TMethod::Execute(
+                clientInfo.Client.get(),
+                std::move(requestInfo.CallContext),
+                std::move(requestInfo.Request));
+            future.Subscribe(
+                [promise = std::move(requestInfo.Promise)](
+                    TFuture<TResponse> f) mutable
+                {
+                    promise.SetValue(f.ExtractValue());   //
+                });
+        }
+        Requests.clear();
+    }
+};
+
+using TDeferredRequestsHolders = std::tuple<
+    TDeferredRequestsHolder<TBlockStoreReadBlocksMethod>,
+    TDeferredRequestsHolder<TBlockStoreReadBlocksLocalMethod>,
+    TDeferredRequestsHolder<TBlockStoreWriteBlocksMethod>,
+    TDeferredRequestsHolder<TBlockStoreWriteBlocksLocalMethod>,
+    TDeferredRequestsHolder<TBlockStoreZeroBlocksMethod>>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TSwitchableBlockStore final
+    : public std::enable_shared_from_this<TSwitchableBlockStore>
+    , public TBlockStoreImpl<TSwitchableBlockStore, ISwitchableBlockStore>
+{
+private:
+    TLog Log;
+    const ISessionSwitcherWeakPtr SessionSwitcher;
+    const TClientInfo PrimaryClientInfo;
+    TClientInfo SecondaryClientInfo;
+
+    // BeforeSwitching() sets the WillSwitchToSecondary to true. After that,
+    // all data-plane requests are saved and not sent for execution. Calling
+    // AfterSwitching() sets WillSwitchToSecondary to false and sends all saved
+    // requests for execution.
+    std::atomic_bool WillSwitchToSecondary{false};
+
+    // Switch() sets the SwitchedToSecondary to true. After that, all data-plane
+    // requests executed with client from SecondaryClientInfo.
+    // Reverse switching is not possible.
+    std::atomic_bool SwitchedToSecondary{false};
+
+    TAdaptiveLock DifferedRequestsLock;
+    TDeferredRequestsHolders DeferredRequests;
+
+public:
+    TSwitchableBlockStore(
+        ILoggingServicePtr logging,
+        ISessionSwitcherWeakPtr sessionSwitcher,
+        TString diskId,
+        IBlockStorePtr client)
+        : Log(logging->CreateLog("BLOCKSTORE_CLIENT"))
+        , SessionSwitcher(std::move(sessionSwitcher))
+        , PrimaryClientInfo(
+              {.Client = std::move(client),
+               .DiskId = std::move(diskId),
+               .SessionId = {}})
+    {}
+
+    void BeforeSwitching() override
+    {
+        Y_ABORT_UNLESS(!WillSwitchToSecondary);
+        STORAGE_INFO("Will switch from " << PrimaryClientInfo.DiskId.Quote());
+        WillSwitchToSecondary = true;
+    }
+
+    void Switch(
+        IBlockStorePtr newClient,
+        const TString& newDiskId,
+        const TString& newSessionId) override
+    {
+        Y_ABORT_UNLESS(WillSwitchToSecondary);
+        Y_ABORT_UNLESS(!SwitchedToSecondary);
+
+        STORAGE_INFO(
+            "Switched from " << PrimaryClientInfo.DiskId.Quote() << " to "
+                             << newDiskId.Quote());
+
+        SecondaryClientInfo = {
+            .Client = std::move(newClient),
+            .DiskId = newDiskId,
+            .SessionId = newSessionId};
+        SwitchedToSecondary = true;
+    }
+
+    void AfterSwitching() override
+    {
+        Y_ABORT_UNLESS(WillSwitchToSecondary);
+
+        with_lock (DifferedRequestsLock) {
+            WillSwitchToSecondary = false;
+
+            if (SwitchedToSecondary) {
+                STORAGE_INFO(
+                    "Switching from "
+                    << PrimaryClientInfo.DiskId.Quote() << " to "
+                    << SecondaryClientInfo.DiskId.Quote() << " is completed");
+            } else {
+                STORAGE_INFO(
+                    "Switching from " << PrimaryClientInfo.DiskId.Quote()
+                                      << " is interrupted");
+            }
+
+            const TClientInfo& currentClientInfo =
+                SwitchedToSecondary ? SecondaryClientInfo : PrimaryClientInfo;
+
+            std::apply(
+                [currentClientInfo](auto&... deferredRequests)
+                {
+                    (deferredRequests.ExecuteSavedRequests(currentClientInfo),
+                     ...);
+                },
+                DeferredRequests);
+        }
+    }
+
+    void Start() override
+    {
+        PrimaryClientInfo.Client->Start();
+    }
+
+    void Stop() override
+    {
+        PrimaryClientInfo.Client->Stop();
+    }
+
+    TStorageBuffer AllocateBuffer(size_t bytesCount) override
+    {
+        return PrimaryClientInfo.Client->AllocateBuffer(bytesCount);
+    }
+
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr callContext,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        if constexpr (TMethod::IsReadWriteRequest()) {
+            return ExecuteReadWriteRequest(
+                std::move(callContext),
+                std::move(request));
+        }
+        if constexpr (TMethod::IsMountRequest()) {
+            return ExecuteMountRequest(
+                std::move(callContext),
+                std::move(request));
+        }
+        return TMethod::Execute(
+            PrimaryClientInfo.Client.get(),
+            std::move(callContext),
+            std::move(request));
+    }
+
+private:
+    template <typename TRequest>
+    TFuture<typename TBlockStoreMethods<TRequest>::TMethod::TResponse>
+    ExecuteReadWriteRequest(
+        TCallContextPtr callContext,
+        std::shared_ptr<TRequest> request)
+    {
+        using TMethod = TBlockStoreMethods<TRequest>::TMethod;
+
+        if (SwitchedToSecondary) {
+            STORAGE_TRACE(
+                "Forward " << TMethod::Name << " from "
+                           << PrimaryClientInfo.DiskId.Quote() << " to "
+                           << SecondaryClientInfo.DiskId.Quote());
+
+            request->SetDiskId(SecondaryClientInfo.DiskId);
+            request->SetSessionId(SecondaryClientInfo.SessionId);
+
+            return TMethod::Execute(
+                SecondaryClientInfo.Client.get(),
+                std::move(callContext),
+                std::move(request));
+        }
+
+        if (WillSwitchToSecondary) {
+            with_lock (DifferedRequestsLock) {
+                // A double check is necessary to avoid a race when a switch is
+                // cancelled.
+                if (WillSwitchToSecondary) {
+                    STORAGE_TRACE(
+                        "Save " << TMethod::Name << " from "
+                                << PrimaryClientInfo.DiskId.Quote());
+
+                    return std::get<TDeferredRequestsHolder<TMethod>>(
+                               DeferredRequests)
+                        .SaveRequest(
+                            std::move(callContext),
+                            std::move(request));
+                }
+            }
+            return TMethod::Execute(
+                SwitchedToSecondary ? SecondaryClientInfo.Client.get()
+                                    : PrimaryClientInfo.Client.get(),
+                std::move(callContext),
+                std::move(request));
+        }
+
+        return TMethod::Execute(
+            PrimaryClientInfo.Client.get(),
+            std::move(callContext),
+            std::move(request));
+    }
+
+    TFuture<NProto::TMountVolumeResponse> ExecuteMountRequest(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TMountVolumeRequest> request)
+    {
+        TFuture<NProto::TMountVolumeResponse> future =
+            PrimaryClientInfo.Client->MountVolume(
+                std::move(callContext),
+                std::move(request));
+
+        return future.Apply(
+            [sessionSwitcher = SessionSwitcher]   //
+            (TFuture<NProto::TMountVolumeResponse> future)
+                -> NProto::TMountVolumeResponse
+            {
+                NProto::TMountVolumeResponse response = future.ExtractValue();
+
+                if (!HasError(response) &&
+                    response.GetVolume().GetPrincipalDiskId())
+                {
+                    if (auto switcher = sessionSwitcher.lock()) {
+                        switcher->SwitchSession(
+                            response.GetVolume().GetDiskId(),
+                            response.GetVolume().GetPrincipalDiskId());
+                    }
+                }
+
+                return response;
+            });
+    }
+};
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TSessionSwitchingGuard
+{
+    ISwitchableBlockStorePtr SwitchableDataClient;
+
+public:
+    explicit TSessionSwitchingGuard(
+        ISwitchableBlockStorePtr switchableDataClient)
+        : SwitchableDataClient(std::move(switchableDataClient))
+    {
+        SwitchableDataClient->BeforeSwitching();
+    }
+
+    ~TSessionSwitchingGuard()
+    {
+        SwitchableDataClient->AfterSwitching();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+ISwitchableBlockStorePtr CreateSwitchableClient(
+    ILoggingServicePtr logging,
+    ISessionSwitcherWeakPtr sessionSwitcher,
+    TString diskId,
+    IBlockStorePtr client)
+{
+    return std::make_shared<TSwitchableBlockStore>(
+        std::move(logging),
+        std::move(sessionSwitcher),
+        std::move(diskId),
+        std::move(client));
+}
+
+TSessionSwitchingGuardPtr CreateSessionSwitchingGuard(
+    ISwitchableBlockStorePtr switchableDataClient)
+{
+    return std::make_shared<TSessionSwitchingGuard>(
+        std::move(switchableDataClient));
+}
+
+}   // namespace NCloud::NBlockStore

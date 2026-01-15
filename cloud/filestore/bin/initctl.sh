@@ -13,10 +13,13 @@ SERVER_PORT=${SERVER_PORT:-9021}
 VHOST_PORT=${VHOST_PORT:-9022}
 
 FS=${FS:-"nfs"}
+BLOCK_COUNT=${BLOCK_COUNT:-10485760} # 40GiB
 BLOCK_SIZE=${BLOCK_SIZE:-4096}
-BLOCK_COUNT=${BLOCK_COUNT:-1048576} # 4GiB
-MOUNT_POINT=${MOUNT_POINT:-"$HOME/$FS"}
+SHARD_COUNT=${SHARD_COUNT:-8}
+MOUNT_POINT=${MOUNT_POINT:-"$HOME/filestore_mounts/$FS"}
+CLIENT_ID=${CLIENT_ID:-"local-qemu"}
 VHOST_SOCKET_PATH=${VHOST_SOCKET_PATH:-/tmp/vhost.sock}
+VHOST_QUEUE_COUNT=${VHOST_QUEUE_COUNT:-9}
 
 PID_FILE=$BIN_DIR/pids.txt
 
@@ -115,29 +118,34 @@ fi
 # CREATE
 
 if [[ "$1" == "create" ]]; then
-    $BIN_DIR/filestore-client create        \
-        --server-port       $SERVER_PORT    \
-        --filesystem        "$FS"           \
-        --cloud             "cloud"         \
-        --folder            "folder"        \
-        --blocks-count      "$BLOCK_COUNT"  \
-        --block-size        "$BLOCK_SIZE"   \
-        nfs
+    $BIN_DIR/filestore-client create            \
+        --server-port           "$SERVER_PORT"  \
+        --filesystem            "$FS"           \
+        --cloud                 "cloud"         \
+        --folder                "folder"        \
+        --blocks-count          "$BLOCK_COUNT"  \
+        --block-size            "$BLOCK_SIZE"   \
+        --shard-count           "$SHARD_COUNT"  \
+        --storage-media-kind    "ssd"
     shift
+
+    $BIN_DIR/filestore-client executeaction                                    \
+        --action changestorageconfig                                           \
+        --input-json                                                           \
+        '{"FileSystemId": "'$FS'", "StorageConfig": {"MaxFuseLoopThreads": 8}}'
 fi
 
 ################################################################################
 # MOUNT
 
 if [[ "$1" == "mount" ]]; then
-    [ -d "$MOUNT_POINT" ] || mkdir "$MOUNT_POINT"
+    [ -d "$MOUNT_POINT" ] || mkdir -p "$MOUNT_POINT"
 
     $BIN_DIR/filestore-client mount         \
-        --server-port       $SERVER_PORT    \
+        --server-port       "$SERVER_PORT"  \
         --filesystem        "$FS"           \
         --mount-path        "$MOUNT_POINT"  \
-        --verbose           trace           \
-        2>&1 | grep -v PingSession          \
+        --verbose           info            \
         2>&1 &>$LOGS_DIR/nfs-mount.txt      \
         &
 
@@ -153,10 +161,12 @@ fi
 if [[ "$1" == "startendpoint" ]]; then
     echo "creating endpoint"
     $BIN_DIR/filestore-client startendpoint         \
-        --server-port       $VHOST_PORT             \
+        --server-port       "$VHOST_PORT"           \
         --filesystem        "$FS"                   \
         --socket-path       "$VHOST_SOCKET_PATH"    \
-        --client-id         "local-qemu"
+        --client-id         "$CLIENT_ID"            \
+        --vhost-queue-count "$VHOST_QUEUE_COUNT"    \
+        --persistent
     echo "started endpoint at $VHOST_SOCKET_PATH"
 
     shift
@@ -164,8 +174,8 @@ fi
 
 if [[ "$1" == "stopendpoint" ]]; then
     echo "stopping endpoint"
-    $BIN_DIR/filestore-client stopendpoint  \
-        --server-port       $VHOST_PORT     \
+    $BIN_DIR/filestore-client stopendpoint          \
+        --server-port       "$VHOST_PORT"           \
         --socket-path       "$VHOST_SOCKET_PATH"
 
     echo "stopped endpoint at $VHOST_SOCKET_PATH"

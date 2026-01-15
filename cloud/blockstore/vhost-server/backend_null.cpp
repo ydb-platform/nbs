@@ -75,20 +75,18 @@ void TNullBackend::ProcessQueue(
     Y_UNUSED(queueIndex);
     Y_UNUSED(queueStats);
 
-    vhd_request req;
-    if (!vhd_dequeue_request(queue, &req)) {
-        return;
+    vhd_request req{};
+    while (vhd_dequeue_request(queue, &req)) {
+        vhd_bdev_io* bio = vhd_get_bdev_io(req.io);
+        STORAGE_DEBUG(
+            "%s Index=%lu, BlocksCount=%lu, BlockSize=%u",
+            bio->type == VHD_BDEV_READ ? "READ" : "WRITE",
+            bio->first_sector,
+            bio->total_sectors,
+            BlockSize);
+
+        vhd_complete_bio(req.io, VHD_BDEV_SUCCESS);
     }
-
-    struct vhd_bdev_io* bio = vhd_get_bdev_io(req.io);
-    STORAGE_DEBUG(
-        "%s Index=%lu, BlocksCount=%lu, BlockSize=%u",
-        bio->type == VHD_BDEV_READ ? "READ" : "WRITE",
-        bio->first_sector,
-        bio->total_sectors,
-        BlockSize);
-
-    vhd_complete_bio(req.io, VHD_BDEV_SUCCESS);
 }
 
 std::optional<TSimpleStats> TNullBackend::GetCompletionStats(TDuration timeout)

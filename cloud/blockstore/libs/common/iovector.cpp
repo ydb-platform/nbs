@@ -248,11 +248,27 @@ bool IsAllZeroes(const char* src, size_t size)
     return !src[0] && !memcmp(src, src + sizeof(char), size - sizeof(char));
 }
 
-bool IsAllZeroes(const NProto::TIOVector& iov) {
+bool IsAllZeroes(TBlockDataRef dataRef)
+{
+    return IsAllZeroes(dataRef.Data(), dataRef.Size());
+}
+
+bool IsAllZeroes(const NProto::TIOVector& iov)
+{
     return AllOf(
         iov.GetBuffers(),
-        [](const auto& buffer)
-        { return IsAllZeroes(buffer.data(), buffer.size()); });
+        [](const TString& buffer)
+        {
+            return buffer.empty() || IsAllZeroes(buffer.data(), buffer.size());
+        });
+}
+
+bool IsAllZeroes(const TSgList& sglist)
+{
+    return AllOf(
+        sglist,
+        [](const TBlockDataRef& buffer)
+        { return buffer.Empty() || IsAllZeroes(buffer); });
 }
 
 }   // namespace NCloud::NBlockStore

@@ -27,12 +27,9 @@ class TTabletBootInfoBackup final
 private:
     int LogComponent;
     const TFsPath BackupFilePath;
+    const bool UseBinaryFormat = false;
     const bool ReadOnlyMode = false;
 
-    // Proto from BackupFilePath is loaded into this variable.
-    // Tablet boot info backups are served from this variable until
-    // the first scheduled backup happens.
-    std::optional<NHiveProxy::NProto::TTabletBootInfoBackup> InitialBackupProto;
     NHiveProxy::NProto::TTabletBootInfoBackup BackupProto;
     const TFsPath TmpBackupFilePath;
 
@@ -40,6 +37,7 @@ public:
     TTabletBootInfoBackup(
         int logComponent,
         TString backupFilePath,
+        bool useBinaryFormat,
         bool readOnlyMode);
 
     void Bootstrap(const NActors::TActorContext& ctx);
@@ -49,6 +47,9 @@ private:
 
     void ScheduleBackup(const NActors::TActorContext& ctx);
     NProto::TError Backup(const NActors::TActorContext& ctx);
+
+    bool LoadFromTextFormat(const NActors::TActorContext& ctx);
+    bool LoadFromBinaryFormat(const NActors::TActorContext& ctx);
 
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
@@ -66,6 +67,7 @@ private:
         const TEvHiveProxy::TEvBackupTabletBootInfosRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    // Used for BS group connections warmup on process start.
     void HandleListTabletBootInfoBackups(
         const TEvHiveProxy::TEvListTabletBootInfoBackupsRequest::TPtr& ev,
         const NActors::TActorContext& ctx);

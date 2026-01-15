@@ -26,10 +26,9 @@ IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&& ...args)
     if (replyLocal) {
         return std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
             std::forward<T>(args)...);
-    } else {
-        return std::make_unique<TEvService::TEvWriteBlocksResponse>(
-            std::forward<T>(args)...);
     }
+    return std::make_unique<TEvService::TEvWriteBlocksResponse>(
+        std::forward<T>(args)...);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -55,8 +54,8 @@ private:
     const ui32 Channel;
     const ui32 BlockCount;
     const TVector<TRequest> Requests;
-    const TVector<TBlockRange32> BlockRanges;
-    const TVector<IWriteBlocksHandlerPtr> WriteHandlers;
+    TVector<TBlockRange32> BlockRanges;
+    TVector<IWriteBlocksHandlerPtr> WriteHandlers;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
 
     TString BlobContent;
@@ -250,12 +249,10 @@ void TWriteFreshBlocksActor::NotifyCompleted(
     const NProto::TError& error)
 {
     using TEvent = TEvPartitionPrivate::TEvWriteBlocksCompleted;
+    using TCompleted = TEvPartitionPrivate::TWriteBlocksCompleted;
     auto ev = std::make_unique<TEvent>(
         error,
-        false,                      // collectGarbageBarrierAcquired
-        false,                      // unconfirmedBlobsAdded
-        TVector<TBlobToConfirm>{}   // blobsToConfirm
-    );
+        TCompleted::CreateFreshBlocksCompleted());
 
     ev->ExecCycles = Requests.front().RequestInfo->GetExecCycles();
     ev->TotalCycles = Requests.front().RequestInfo->GetTotalCycles();

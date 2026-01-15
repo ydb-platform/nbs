@@ -127,9 +127,22 @@ auto ReleaseDevices(TDeviceClient& client, const TReleaseParamsBuilder& builder)
         builder.VolumeGeneration);
 }
 
+TStorageAdapterPtr CreateStorageAdapterStub()
+{
+    return std::make_shared<TStorageAdapter>(
+        CreateStorageStub(),
+        4096,
+        false,
+        TDuration::Seconds(1),
+        TDuration::Seconds(1));
+}
+
 struct TDeviceClientParams
 {
-    TVector<TString> Devices;
+    TVector<std::pair<TString, TStorageAdapterPtr>> Devices = {
+        {"uuid1", CreateStorageAdapterStub()},
+        {"uuid2", CreateStorageAdapterStub()}};
+    bool KickOutOldClientsEnabled = false;
 };
 
 struct TFixture
@@ -144,7 +157,8 @@ struct TFixture
         return TDeviceClient(
             ReleaseInactiveSessionsTimeout,
             std::move(params.Devices),
-            Logging->CreateLog("BLOCKSTORE_DISK_AGENT"));
+            Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
+            params.KickOutOldClientsEnabled);
     }
 };
 
@@ -156,9 +170,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
 {
     Y_UNIT_TEST_F(TestAcquireReleaseAccess, TFixture)
     {
-        auto client = CreateClient({
-            .Devices = {"uuid1", "uuid2"}
-        });
+        auto client = CreateClient({});
 
         auto error = AcquireDevices(
             client,
@@ -179,28 +191,29 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
                 .SetClientId("client"));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
-        error = client.AccessDevice(
-            "uuid3",
-            "",
-            NProto::VOLUME_ACCESS_READ_WRITE);
+        error =
+            client.AccessDevice("uuid3", "", NProto::VOLUME_ACCESS_READ_WRITE)
+                .GetError();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
 
-        error = client.AccessDevice(
-            "uuid3",
-            "client",
-            NProto::VOLUME_ACCESS_READ_WRITE);
+        error = client
+                    .AccessDevice(
+                        "uuid3",
+                        "client",
+                        NProto::VOLUME_ACCESS_READ_WRITE)
+                    .GetError();
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, error.GetCode());
 
         error = client.AccessDevice(
             "uuid2",
             "client",
-            NProto::VOLUME_ACCESS_READ_WRITE);
+            NProto::VOLUME_ACCESS_READ_WRITE).GetError();
         UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
 
         error = client.AccessDevice(
             "uuid2",
             "client",
-            NProto::VOLUME_ACCESS_READ_ONLY);
+            NProto::VOLUME_ACCESS_READ_ONLY).GetError();
         UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
 
         error = AcquireDevices(
@@ -213,13 +226,13 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         error = client.AccessDevice(
             "uuid2",
             "client",
-            NProto::VOLUME_ACCESS_READ_WRITE);
+            NProto::VOLUME_ACCESS_READ_WRITE).GetError();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         error = client.AccessDevice(
             "uuid2",
             "client",
-            NProto::VOLUME_ACCESS_READ_ONLY);
+            NProto::VOLUME_ACCESS_READ_ONLY).GetError();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         error = AcquireDevices(
@@ -227,7 +240,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             TAcquireParamsBuilder()
                 .SetUuids({"uuid2"})
                 .SetClientId("another_client"));
-        UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_BS_MOUNT_CONFLICT, error.GetCode());
 
         error = AcquireDevices(
             client,
@@ -237,16 +250,20 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
                 .SetAccessMode(NProto::VOLUME_ACCESS_READ_ONLY));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
-        error = client.AccessDevice(
-            "uuid2",
-            "another_client",
-            NProto::VOLUME_ACCESS_READ_WRITE);
+        error = client
+                    .AccessDevice(
+                        "uuid2",
+                        "another_client",
+                        NProto::VOLUME_ACCESS_READ_WRITE)
+                    .GetError();
         UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
 
-        error = client.AccessDevice(
-            "uuid2",
-            "another_client",
-            NProto::VOLUME_ACCESS_READ_ONLY);
+        error = client
+                    .AccessDevice(
+                        "uuid2",
+                        "another_client",
+                        NProto::VOLUME_ACCESS_READ_ONLY)
+                    .GetError();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         error = AcquireDevices(
@@ -257,16 +274,20 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
                 .SetNow(TInstant::Seconds(12)));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
-        error = client.AccessDevice(
-            "uuid2",
-            "yet_another_client",
-            NProto::VOLUME_ACCESS_READ_WRITE);
+        error = client
+                    .AccessDevice(
+                        "uuid2",
+                        "yet_another_client",
+                        NProto::VOLUME_ACCESS_READ_WRITE)
+                    .GetError();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
-        error = client.AccessDevice(
-            "uuid2",
-            "another_client",
-            NProto::VOLUME_ACCESS_READ_WRITE);
+        error = client
+                    .AccessDevice(
+                        "uuid2",
+                        "another_client",
+                        NProto::VOLUME_ACCESS_READ_WRITE)
+                    .GetError();
         UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
 
         error = AcquireDevices(
@@ -281,21 +302,21 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         error = client.AccessDevice(
             "uuid2",
             "yet_yet_another_client",
-            NProto::VOLUME_ACCESS_READ_WRITE);
+            NProto::VOLUME_ACCESS_READ_WRITE).GetError();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
-        error = client.AccessDevice(
-            "uuid2",
-            "yet_another_client",
-            NProto::VOLUME_ACCESS_READ_WRITE);
+        error = client
+                    .AccessDevice(
+                        "uuid2",
+                        "yet_another_client",
+                        NProto::VOLUME_ACCESS_READ_WRITE)
+                    .GetError();
         UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
     }
 
     Y_UNIT_TEST_F(TestAcquireAtomicity, TFixture)
     {
-        auto client = CreateClient({
-            .Devices = {"uuid1", "uuid2"}
-        });
+        auto client = CreateClient({});
 
         auto error = AcquireDevices(
             client,
@@ -309,7 +330,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             TAcquireParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
                 .SetClientId("another_client"));
-        UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_BS_MOUNT_CONFLICT, error.GetCode());
 
         error = ReleaseDevices(
             client,
@@ -336,7 +357,6 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
     Y_UNIT_TEST_F(TestAcquireAccessMultithreaded, TFixture)
     {
         auto client = CreateClient({
-            .Devices = {"uuid1", "uuid2"}
         });
 
         auto threadPool = CreateThreadPool(3);
@@ -394,20 +414,22 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
     {
         // TODO: fix current migration access logic
         // NBS-3612
-        auto client = CreateClient({
-            .Devices = {"uuid1", "uuid2"}
-        });
+        auto client = CreateClient({});
 
-        auto error = client.AccessDevice(
-            "uuid1",
-            "migration",
-            NProto::VOLUME_ACCESS_READ_WRITE);
+        auto error = client
+                         .AccessDevice(
+                             "uuid1",
+                             "migration",
+                             NProto::VOLUME_ACCESS_READ_WRITE)
+                         .GetError();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
-        error = client.AccessDevice(
-            "uuid1",
-            "migration",
-            NProto::VOLUME_ACCESS_READ_ONLY);
+        error = client
+                    .AccessDevice(
+                        "uuid1",
+                        "migration",
+                        NProto::VOLUME_ACCESS_READ_ONLY)
+                    .GetError();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         error = AcquireDevices(
@@ -417,24 +439,26 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
                 .SetClientId("client"));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
-        error = client.AccessDevice(
-            "uuid1",
-            "migration",
-            NProto::VOLUME_ACCESS_READ_WRITE);
+        error = client
+                    .AccessDevice(
+                        "uuid1",
+                        "migration",
+                        NProto::VOLUME_ACCESS_READ_WRITE)
+                    .GetError();
         UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
 
-        error = client.AccessDevice(
-            "uuid1",
-            "migration",
-            NProto::VOLUME_ACCESS_READ_ONLY);
+        error = client
+                    .AccessDevice(
+                        "uuid1",
+                        "migration",
+                        NProto::VOLUME_ACCESS_READ_ONLY)
+                    .GetError();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
     }
 
     Y_UNIT_TEST_F(TestDiskIdAndVolumeGenerationChecks, TFixture)
     {
-        auto client = CreateClient({
-            .Devices = {"uuid1", "uuid2"}
-        });
+        auto client = CreateClient({});
 
         // initial acquire
         auto error = AcquireDevices(
@@ -469,7 +493,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_BS_INVALID_SESSION,
             error.GetCode(),
-            error.GetMessage());
+            FormatError(error));
 
         // it should fail even if inactivity timeout passes
         error = AcquireDevices(
@@ -483,7 +507,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_BS_INVALID_SESSION,
             error.GetCode(),
-            error.GetMessage());
+            FormatError(error));
 
         // release should fail as well
         error = ReleaseDevices(
@@ -573,9 +597,9 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
                 .SetNow(TInstant::Seconds(57))
                 .SetVolumeGeneration(1));
         UNIT_ASSERT_VALUES_EQUAL_C(
-            E_BS_INVALID_SESSION,
+            E_BS_MOUNT_CONFLICT,
             error.GetCode(),
-            error.GetMessage());
+            FormatError(error));
 
         // reacquire with a different diskId should succeed after inactivity
         // timeout passes
@@ -602,9 +626,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
 
     Y_UNIT_TEST_F(TestGetSessions, TFixture)
     {
-        auto client = CreateClient({
-            .Devices = {"uuid1", "uuid2"}
-        });
+        auto client = CreateClient({});
 
         UNIT_ASSERT_VALUES_EQUAL(0, client.GetSessions().size());
 
@@ -680,9 +702,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
 
     Y_UNIT_TEST_F(TestShouldAcquire, TFixture)
     {
-        auto client = CreateClient({
-            .Devices = {"uuid1", "uuid2"}
-        });
+        auto client = CreateClient({});
 
         UNIT_ASSERT_VALUES_EQUAL(0, client.GetSessions().size());
 
@@ -795,9 +815,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
 
     Y_UNIT_TEST_F(TestShouldDisableDevice, TFixture)
     {
-        auto client = CreateClient({
-            .Devices = {"uuid1", "uuid2"}
-        });
+        auto client = CreateClient({});
 
         UNIT_ASSERT(!client.IsDeviceDisabled("uuid1"));
         UNIT_ASSERT(!client.IsDeviceDisabled("uuid2"));
@@ -820,7 +838,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
 
     Y_UNIT_TEST_F(TestReleaseDevicesForAnyReader, TFixture)
     {
-        auto client = CreateClient({.Devices = {"uuid1", "uuid2"}});
+        auto client = CreateClient({});
 
         // acquire devices for reading
         auto error = AcquireDevices(
@@ -850,6 +868,94 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         // check that all reading sessions was realesed
         UNIT_ASSERT_EQUAL(client.GetReaderSessions("uuid1").size(), 0);
         UNIT_ASSERT_EQUAL(client.GetReaderSessions("uuid2").size(), 0);
+    }
+
+    Y_UNIT_TEST_F(TestNewGenerationReleaseDevicesFromOldGenerations, TFixture)
+    {
+        auto client = CreateClient({.KickOutOldClientsEnabled = true});
+
+        auto error = AcquireDevices(
+            client,
+            TAcquireParamsBuilder()
+                .SetUuids({"uuid2"})
+                .SetClientId("client")
+                .SetDiskId("vol0")
+                .SetVolumeGeneration(1));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+
+        error = AcquireDevices(
+            client,
+            TAcquireParamsBuilder()
+                .SetUuids({"uuid2"})
+                .SetClientId("client-2")
+                .SetDiskId("vol0")
+                .SetVolumeGeneration(1));
+        UNIT_ASSERT_VALUES_EQUAL(E_BS_MOUNT_CONFLICT, error.GetCode());
+
+        error = AcquireDevices(
+            client,
+            TAcquireParamsBuilder()
+                .SetUuids({"uuid2"})
+                .SetClientId("client-2")
+                .SetDiskId("vol0")
+                .SetVolumeGeneration(2));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+
+        error = AcquireDevices(
+            client,
+            TAcquireParamsBuilder()
+                .SetUuids({"uuid2"})
+                .SetClientId("client")
+                .SetDiskId("vol0")
+                .SetVolumeGeneration(1));
+        UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldDetachDevice, TFixture)
+    {
+        auto storageAdapter = std::make_shared<TStorageAdapter>(
+            CreateStorageStub(),
+            4096,
+            false,
+            TDuration::Seconds(1),
+            TDuration::Seconds(1));
+        auto client = CreateClient(
+            {.Devices = {{"uuid1", storageAdapter}},
+             .KickOutOldClientsEnabled = true});
+
+        {
+            auto [result, error] = client.AccessDevice("uuid1");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(result.get(), storageAdapter.get());
+        }
+
+        {
+            auto detachedStorage = client.DetachDevice("uuid1");
+            UNIT_ASSERT_VALUES_EQUAL(
+                detachedStorage.get(),
+                storageAdapter.get());
+        }
+
+        UNIT_ASSERT(storageAdapter.unique());
+
+        auto [result, error] = client.AccessDevice("uuid1");
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(result.get(), nullptr);
+    }
+
+    Y_UNIT_TEST_F(ShouldAttachDevice, TFixture)
+    {
+        auto client = CreateClient({});
+
+        auto device = client.DetachDevice("uuid1");
+        UNIT_ASSERT(device.unique());
+
+        auto newStorageAdapter = CreateStorageAdapterStub();
+        client.AttachDevice("uuid1", newStorageAdapter);
+
+        auto [result, error] = client.AccessDevice("uuid1");
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(result.get(), newStorageAdapter.get());
     }
 }
 

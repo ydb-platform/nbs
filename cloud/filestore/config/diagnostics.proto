@@ -141,4 +141,17 @@ message TDiagnosticsConfig
 
     // Type of fetching CPU stats
     optional NCloud.NProto.EStatsFetcherType StatsFetcherType = 28;
+
+    // Limit number of records flushed in a single profile log flush iteration
+    optional uint64 ProfileLogMaxFlushRecords = 29;
+
+    // Limit number of records flushed in each frame during flush iteration
+    optional uint64 ProfileLogMaxFrameFlushRecords = 30;
+
+    // Report time histograms with milliseconds buckets. Percentiles are still
+    // reported in microseconds.
+    optional bool UseMsUnitsForTimeHistogram = 31;
+
+    // Dump lwtrace tracks every DumpTracksInterval ms.
+    optional uint32 DumpTracksInterval = 32;
 }

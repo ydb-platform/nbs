@@ -100,6 +100,54 @@ func (c *NfsClientMock) DescribeFileStoreModel(
 	return args.Get(0).(*protos.TDescribeFileStoreModelResponse), args.Error(1)
 }
 
+func (c *NfsClientMock) CreateSession(
+	ctx context.Context,
+	req *protos.TCreateSessionRequest,
+) (*protos.TCreateSessionResponse, error) {
+
+	args := c.Called(ctx, req)
+	return args.Get(0).(*protos.TCreateSessionResponse), args.Error(1)
+}
+
+func (c *NfsClientMock) DestroySession(
+	ctx context.Context,
+	req *protos.TDestroySessionRequest,
+) (*protos.TDestroySessionResponse, error) {
+
+	args := c.Called(ctx, req)
+	return args.Get(0).(*protos.TDestroySessionResponse), args.Error(1)
+}
+
+func (c *NfsClientMock) ListNodes(
+	ctx context.Context,
+	req *protos.TListNodesRequest,
+) (*protos.TListNodesResponse, error) {
+
+	args := c.Called(ctx, req)
+	res, _ := args.Get(0).(*protos.TListNodesResponse)
+	return res, args.Error(1)
+}
+
+func (c *NfsClientMock) CreateNode(
+	ctx context.Context,
+	req *protos.TCreateNodeRequest,
+) (*protos.TCreateNodeResponse, error) {
+
+	args := c.Called(ctx, req)
+	res, _ := args.Get(0).(*protos.TCreateNodeResponse)
+	return res, args.Error(1)
+}
+
+func (c *NfsClientMock) ReadLink(
+	ctx context.Context,
+	req *protos.TReadLinkRequest,
+) (*protos.TReadLinkResponse, error) {
+
+	args := c.Called(ctx, req)
+	res, _ := args.Get(0).(*protos.TReadLinkResponse)
+	return res, args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewNfsClientMock() *NfsClientMock {
@@ -109,8 +157,6 @@ func NewNfsClientMock() *NfsClientMock {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Ensure that NfsClientMock implements Client.
-func assertNfsClientMockIsEndpointClient(
-	arg *NfsClientMock) nfs.ClientIface {
-
+func assertNfsClientMockIsEndpointClient(arg *NfsClientMock) nfs.ClientIface {
 	return arg
 }

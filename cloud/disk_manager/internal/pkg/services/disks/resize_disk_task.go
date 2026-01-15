@@ -6,8 +6,10 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -41,6 +43,17 @@ func (t *resizeDiskTask) Run(
 	client, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
 	if err != nil {
 		return err
+	}
+
+	params, err := client.Describe(ctx, t.request.Disk.DiskId)
+	if err != nil {
+		return err
+	}
+
+	if common.IsLocalDiskKind(params.Kind) {
+		return errors.NewNonCancellableErrorf(
+			"local disk resize is forbidden",
+		)
 	}
 
 	return client.Resize(

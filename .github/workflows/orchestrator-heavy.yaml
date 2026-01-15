@@ -1,0 +1,53 @@
+name: Orchestrator (heavy)
+run-name: ${{ format('Orchestrator (heavy)')  }}
+      
+on:
+  # schedule:
+  #   - cron: '1,16,31,46 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: orchestrator-heavy
+  cancel-in-progress: true
+
+jobs:
+  orchestrator:
+    name: Run orchestrator.yaml workflow
+    uses: ./.github/workflows/orchestrator.yaml
+    secrets: inherit
+    with:
+      provision_mode: 'regular'
+      loop: 'yes'
+      run_light: 'no'
+      run_heavy: 'yes'
+  
+  restart:
+    name: Run gh cli to run orchestrator-proxy with the same arguments, which will start orchestrator.yaml if not cancelled and looped
+    if: ${{ !cancelled() }}
+    runs-on: ["self-hosted", "runner_light"]
+    needs: orchestrator
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: '.github'
+      - name: Set up gh cli
+        uses: ./.github/actions/gh_cli
+      - name: Run gh cli to start this workflow with the same arguments
+        if: ${{ always() }}
+        shell: bash --noprofile --norc -eo pipefail -x {0} 
+        run: |
+          gh workflow run orchestrator-proxy.yaml -R "${GITHUB_REPO}" \
+            --field workflow_name="${WORKFLOW_NAME}" \
+            --field provision_mode="${PROVISION_MODE}" \
+            --field loop="${LOOP}" \
+            --field run_light="${RUN_LIGHT}" \
+            --field run_heavy="${RUN_HEAVY}" 
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          PROVISION_MODE: 'regular'
+          WORKFLOW_NAME: 'orchestrator-heavy.yaml'
+          LOOP: 'yes'
+          RUN_LIGHT: 'no'
+          RUN_HEAVY: 'yes'

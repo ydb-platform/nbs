@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_device_blocks_actor.h>
@@ -20,11 +21,20 @@ using TCreateDirectCopyActorFunc = std::function<void(
     const NActors::TActorContext& ctx,
     NActors::TActorId owner)>;
 
+using TAcquireObserveFunction = std::function<bool(
+    TEvDiskAgent::TEvAcquireDevicesRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)>;
+
 struct TDiskAgentState
 {
     TDuration ResponseDelay;
     NProto::TError Error;
+    bool EnableDataIntegrityValidation = false;
     TCreateDirectCopyActorFunc CreateDirectCopyActorFunc;
+    TAcquireObserveFunction AcquireObserveFunction = [](auto&, const auto&)
+    {
+        return false;
+    };
 };
 
 using TDiskAgentStatePtr = std::shared_ptr<TDiskAgentState>;
@@ -105,7 +115,10 @@ private:
             HFunc(TEvDiskAgent::TEvReleaseDevicesRequest, HandleReleaseDevicesRequest);
 
             default:
-                Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
+                Y_ABORT(
+                    "Unexpected event %x %s",
+                    ev->GetTypeRewrite(),
+                    ev->GetTypeName().c_str());
         }
     }
 
@@ -168,6 +181,12 @@ private:
             {
                 buf.clear();
             }
+        }
+
+        if (State->EnableDataIntegrityValidation) {
+            *response->Record.MutableChecksum() = CalculateChecksum(
+                response->Record.GetBlocks(),
+                config.GetBlockSize());
         }
 
         Reply(ctx, *ev, std::move(response));
@@ -335,8 +354,12 @@ private:
         TEvDiskAgent::TEvAcquireDevicesRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
+        NProto::TError error;
+        if (State && State->AcquireObserveFunction(ev, ctx)) {
+            error = MakeError(E_BS_INVALID_SESSION, "invalid session");
+        }
         auto response =
-            std::make_unique<TEvDiskAgent::TEvAcquireDevicesResponse>();
+            std::make_unique<TEvDiskAgent::TEvAcquireDevicesResponse>(error);
 
         Reply(ctx, *ev, std::move(response));
     }

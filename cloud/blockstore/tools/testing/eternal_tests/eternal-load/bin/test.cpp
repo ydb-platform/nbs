@@ -2,13 +2,20 @@
 
 #include "options.h"
 
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_executor.h>
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_scenarios/aligned_test_scenario.h>
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_scenarios/simple_test_scenario.h>
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_scenarios/unaligned_test_scenario.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/size_literals.h>
+#include <util/string/printf.h>
 #include <util/system/file.h>
 
 namespace NCloud::NBlockStore {
+
+using namespace NTesting;
 
 namespace {
 
@@ -40,6 +47,10 @@ public:
 private:
     void InitLogger();
 
+    ITestScenarioPtr CreateTestScenario(
+        IConfigHolderPtr config,
+        const TLog& log) const;
+    TTestExecutorSettings ConfigureTest() const;
     int RunTest();
 
     void DumpConfiguration();
@@ -49,7 +60,11 @@ private:
 
 void TTest::InitLogger()
 {
-    Logging = CreateLoggingService("console", TLogSettings{});
+    TLogSettings logSettings;
+    logSettings.FiltrationLevel =
+        Options->PrintDebugStats ? TLOG_DEBUG : TLOG_INFO;
+
+    Logging = CreateLoggingService("console", logSettings);
     Logging->Start();
     Log = Logging->CreateLog("ETERNAL_MAIN");
 }
@@ -63,26 +78,35 @@ int TTest::Run()
             Y_ENSURE(Options->FilePath.Defined(), "You need to specify the file path");
             Y_ENSURE(Options->FileSize.Defined(), "You need to specify the file size");
             Y_ENSURE(Options->WriteRate <= 100, "Write rate should be in range [0, 100]");
-            ConfigHolder = CreateTestConfig(
-                *Options->FilePath,
-                *Options->FileSize * 1_GB,
-                Options->IoDepth,
-                Options->BlockSize,
-                Options->WriteRate,
-                Options->RequestBlockCount,
-                Options->WriteParts,
-                Options->AlternatingPhase);
+
+            ConfigHolder = CreateTestConfig(TCreateTestConfigArguments
+                {.FilePath = *Options->FilePath,
+                 .FileSize = *Options->FileSize,
+                 .TestCount = Options->TestCount,
+                 .IoDepth = Options->IoDepth,
+                 .BlockSize = Options->BlockSize,
+                 .WriteRate = Options->WriteRate,
+                 .RequestBlockCount = Options->RequestBlockCount,
+                 .WriteParts = Options->WriteParts,
+                 .AlternatingPhase = Options->AlternatingPhase,
+                 .MaxWriteRequestCount = 0,
+                 .MinReadByteCount = Options->MinReadSize,
+                 .MaxReadByteCount = Options->MaxReadSize,
+                 .MinWriteByteCount = Options->MinWriteSize,
+                 .MaxWriteByteCount = Options->MaxWriteSize,
+                 .MinRegionByteCount = Options->MinRegionSize,
+                 .MaxRegionByteCount = Options->MaxRegionSize});
+
+            DumpConfiguration();
             break;
         case ECommand::ReadConfigCmd:
             Y_ENSURE(Options->RestorePath.Defined(), "You need to specify the restore path");
-            ConfigHolder = CreateTestConfig(*Options->RestorePath);
+            ConfigHolder = LoadTestConfig(*Options->RestorePath);
             break;
         case ECommand::UnknownCmd:
             STORAGE_ERROR("Unknown command, check avaliable commands in the help");
             return 2;
     }
-
-    DumpConfiguration();
 
     return RunTest();
 }
@@ -90,16 +114,120 @@ int TTest::Run()
 void TTest::DumpConfiguration()
 {
     ConfigHolder->DumpConfig(Options->DumpPath);
-    STORAGE_INFO("Load configuration has been generated. See file "
+    STORAGE_INFO("Test configuration and actual state have been stored to file "
         << Options->DumpPath.Quote());
+}
+
+ITestScenarioPtr TTest::CreateTestScenario(
+    IConfigHolderPtr config,
+    const TLog& log) const
+{
+    switch (Options->Scenario) {
+        case EScenario::Aligned:
+            return CreateAlignedTestScenario(std::move(config), log);
+
+        case EScenario::Unaligned:
+            return CreateUnalignedTestScenario(std::move(config), log);
+
+        case EScenario::Sequential:
+            return CreateSimpleTestScenario(
+                ESimpleTestScenarioMode::Sequential,
+                std::move(config),
+                log);
+
+        case EScenario::Random:
+            return CreateSimpleTestScenario(
+                ESimpleTestScenarioMode::Random,
+                std::move(config),
+                log);
+
+        default:
+            Y_ABORT("Unsupported Scenario value %d", Options->Scenario);
+    }
+}
+
+TTestExecutorSettings TTest::ConfigureTest() const
+{
+    auto log = Logging->CreateLog("ETERNAL_EXECUTOR");
+
+    TTestExecutorSettings settings;
+
+    switch (Options->Engine) {
+        case EIoEngine::AsyncIo:
+            settings.FileService = ETestExecutorFileService::AsyncIo;
+            STORAGE_INFO("Using file service: AsyncIo");
+            break;
+
+        case EIoEngine::IoUring:
+            settings.FileService = ETestExecutorFileService::IoUring;
+            STORAGE_INFO("Using file service: IoUring");
+            break;
+
+        case EIoEngine::Sync:
+            settings.FileService = ETestExecutorFileService::Sync;
+            STORAGE_INFO("Using file service: Sync");
+            break;
+
+        default:
+            Y_ABORT("Unsupported EIoEngine value %d", Options->Engine);
+    }
+
+    TVector<IConfigHolderPtr> testConfigs;
+    const auto& config = ConfigHolder->GetConfig();
+
+    if (config.GetTestCount()) {
+        const auto pos = config.GetFilePath().find("{}");
+        Y_ABORT_UNLESS(
+            pos != TString::npos,
+            "If the test count parameter is set, the file name should contain "
+            "a placeholder {}");
+
+        const auto str1 = config.GetFilePath().substr(0, pos);
+        const auto str2 = config.GetFilePath().substr(pos + 2);
+
+        STORAGE_INFO("Using test file pattern: " << config.GetFilePath());
+        STORAGE_INFO("Using test file count: " << config.GetTestCount());
+
+        for (ui32 i = 0; i < config.GetTestCount(); i++) {
+            // Tests may modify config - each test should work with own copy
+            IConfigHolderPtr testConfig = ConfigHolder->Clone();
+            testConfig->GetConfig().SetFilePath(
+                Sprintf("%s%u%s", str1.c_str(), i, str2.c_str()));
+            testConfigs.push_back(std::move(testConfig));
+        }
+    } else {
+        STORAGE_INFO("Using test file: " << config.GetFilePath());
+        testConfigs.push_back(ConfigHolder);
+    }
+
+    STORAGE_INFO("Using test file size: " << config.GetFileSize());
+
+    for (const auto& testConfig: testConfigs) {
+        settings.TestScenarios.push_back(
+            {.TestScenario = CreateTestScenario(testConfig, log),
+             .FilePath = testConfig->GetConfig().GetFilePath(),
+             .FileSize = testConfig->GetConfig().GetFileSize()});
+    }
+
+    settings.RunInCallbacks = Options->RunInCallbacks;
+    STORAGE_INFO(
+        "Using run test logic in callbacks: "
+        << settings.RunInCallbacks);
+
+    settings.NoDirect = Options->NoDirect;
+    STORAGE_INFO("Using O_DIRECT: " << !settings.NoDirect);
+
+    settings.Log = log;
+    settings.PrintDebugStats = Options->PrintDebugStats;
+
+    return settings;
 }
 
 int TTest::RunTest()
 {
-    Executor = CreateTestExecutor(
-        ConfigHolder,
-        Logging->CreateLog("ETERNAL_EXECUTOR")
-    );
+    auto settings = ConfigureTest();
+
+    Executor = CreateTestExecutor(std::move(settings));
 
     int res = 0;
     if (!Executor->Run()) {

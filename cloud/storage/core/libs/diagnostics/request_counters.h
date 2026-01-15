@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/size_interval.h>
 #include <cloud/storage/core/libs/diagnostics/histogram_counter_options.h>
 
 #include <util/datetime/base.h>
@@ -35,15 +36,23 @@ public:
         ReportControlPlaneHistogram = (1 << 2),
         AddSpecialCounters          = (1 << 3),
         LazyRequestInitialization   = (1 << 4),
+        OnlyStartEndpointRequests   = (1 << 5),
     };
 
     using TRequestType = TDiagnosticsRequestType;
 
     Y_DECLARE_FLAGS(EOptions, EOption);
 
+    struct TRequestTime
+    {
+        TDuration ExecutionTime;
+        TDuration Time;
+    };
+
 private:
     const std::function<TString(TRequestType)> RequestType2Name;
     const std::function<bool(TRequestType)> IsReadWriteRequestType;
+    const std::function<bool(TRequestType)> IsStartEndpointRequestType;
     const EOptions Options;
 
     THolder<TSpecialCounters> SpecialCounters;
@@ -56,8 +65,10 @@ public:
         ui32 requestCount,
         std::function<TString(TRequestType)> requestType2Name,
         std::function<bool(TRequestType)> isReadWriteRequestType,
+        std::function<bool(TRequestType)> isStartEndpointRequestType,
         EOptions options,
-        EHistogramCounterOptions histogramCounterOptions);
+        EHistogramCounterOptions histogramCounterOptions,
+        const TVector<TSizeInterval>& executionTimeSizeClasses);
     ~TRequestCounters();
 
     void Register(NMonitoring::TDynamicCounters& counters);
@@ -69,7 +80,7 @@ public:
         ui64 requestBytes);
 
     //TODO: rollback commit after NBS-4239 is fixed
-    TDuration RequestCompleted(
+    TRequestTime RequestCompleted(
         TRequestType requestType,
         ui64 requestStarted,
         TDuration postponedTime,

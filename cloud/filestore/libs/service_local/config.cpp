@@ -5,13 +5,13 @@
 #include <util/generic/size_literals.h>
 #include <util/stream/str.h>
 
+#include <chrono>
+
 namespace NCloud::NFileStore {
 
+using namespace std::chrono_literals;
+
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-constexpr TDuration AsyncHandleOpsPeriod = TDuration::MilliSeconds(50);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -19,7 +19,7 @@ constexpr TDuration AsyncHandleOpsPeriod = TDuration::MilliSeconds(50);
     xxx(RootPath,                    TString,       "./"                      )\
     xxx(PathPrefix,                  TString,       "nfs_"                    )\
     xxx(DefaultPermissions,          ui32,          0775                      )\
-    xxx(IdleSessionTimeout,          TDuration,     TDuration::Seconds(30)    )\
+    xxx(IdleSessionTimeout,          TDuration,     30s                       )\
     xxx(NumThreads,                  ui32,          8                         )\
     xxx(StatePath,                   TString,       "./"                      )\
     xxx(MaxNodeCount,                ui32,          1000000                   )\
@@ -28,7 +28,7 @@ constexpr TDuration AsyncHandleOpsPeriod = TDuration::MilliSeconds(50);
     xxx(DirectIoAlign,               ui32,          4_KB                      )\
     xxx(GuestWriteBackCacheEnabled,  bool,          false                     )\
     xxx(AsyncDestroyHandleEnabled,   bool,          false                     )\
-    xxx(AsyncHandleOperationPeriod,  TDuration,     AsyncHandleOpsPeriod      )\
+    xxx(AsyncHandleOperationPeriod,  TDuration,     50ms                      )\
     xxx(OpenNodeByHandleEnabled,     bool,          false                     )\
     xxx(NodeCleanupBatchSize,        ui32,          1000                      )\
     xxx(ZeroCopyEnabled,             bool,          false                     )\
@@ -38,7 +38,32 @@ constexpr TDuration AsyncHandleOpsPeriod = TDuration::MilliSeconds(50);
     xxx(DontPopulateNodeCacheWhenListingNodes, bool, false                    )\
     xxx(GuestOnlyPermissionsCheckEnabled,      bool, false                    )\
     xxx(MaxResponseEntries,          ui32,          10000                     )\
+    xxx(MaxBackground,               ui32,          0                         )\
+    xxx(MaxFuseLoopThreads,          ui32,          1                         )\
+    xxx(FSyncQueueDisabled,          bool,          false                     )\
+    xxx(EntryTimeout,                TDuration,     TDuration::Seconds(15)    )\
+    xxx(NegativeEntryTimeout,        TDuration,     TDuration::Zero()         )\
+    xxx(AttrTimeout,                 TDuration,     TDuration::Seconds(15)    )\
+    xxx(XAttrCacheTimeout,           TDuration,     TDuration::Seconds(15)    )\
+    xxx(DirectoryHandlesStorageEnabled, bool,       false                     )\
+    xxx(DirectoryHandlesTableSize,   ui64,          100'000                   )\
+    xxx(GuestHandleKillPrivV2Enabled,   bool,       false                     )\
 // FILESTORE_SERVICE_CONFIG
+
+#define FILESTORE_SERVICE_NULL_FILE_IO_CONFIG(xxx)                             \
+// FILESTORE_SERVICE_NULL_FILE_IO_CONFIG
+
+#define FILESTORE_SERVICE_AIO_CONFIG(xxx)                                      \
+    xxx(Entries,                     ui32,          1024                      )\
+// FILESTORE_SERVICE_AIO_CONFIG
+
+#define FILESTORE_SERVICE_IO_URING_CONFIG(xxx)                                 \
+    xxx(Entries,                     ui32,          1024                      )\
+    xxx(ShareKernelWorkers,          bool,          false                     )\
+    xxx(MaxKernelWorkersCount,       ui32,          0                         )\
+    xxx(ForceAsyncIO,                bool,          false                     )\
+    xxx(PropagateAffinityToKernelWorkers, bool,     false                     )\
+// FILESTORE_SERVICE_IO_URING_CONFIG
 
 #define FILESTORE_SERVICE_DECLARE_CONFIG(name, type, value)                    \
     Y_DECLARE_UNUSED static const type Default##name = value;                  \
@@ -47,6 +72,24 @@ constexpr TDuration AsyncHandleOpsPeriod = TDuration::MilliSeconds(50);
 FILESTORE_SERVICE_CONFIG(FILESTORE_SERVICE_DECLARE_CONFIG)
 
 #undef FILESTORE_SERVICE_DECLARE_CONFIG
+
+#define FILESTORE_SERVICE_DECLARE_NULL_FILE_IO_CONFIG(name, type, value)       \
+    Y_DECLARE_UNUSED static const type DefaultNullFileIO##name = value;        \
+// FILESTORE_SERVICE_DECLARE_NULL_FILE_IO_CONFIG
+
+FILESTORE_SERVICE_NULL_FILE_IO_CONFIG(FILESTORE_SERVICE_DECLARE_NULL_FILE_IO_CONFIG)
+
+#define FILESTORE_SERVICE_DECLARE_AIO_CONFIG(name, type, value)                \
+    Y_DECLARE_UNUSED static const type DefaultAio##name = value;               \
+// FILESTORE_SERVICE_DECLARE_AIO_CONFIG
+
+FILESTORE_SERVICE_AIO_CONFIG(FILESTORE_SERVICE_DECLARE_AIO_CONFIG)
+
+#define FILESTORE_SERVICE_DECLARE_IO_URING_CONFIG(name, type, value)           \
+    Y_DECLARE_UNUSED static const type DefaultIoUring##name = value;           \
+// FILESTORE_SERVICE_DECLARE_IO_URING_CONFIG
+
+FILESTORE_SERVICE_IO_URING_CONFIG(FILESTORE_SERVICE_DECLARE_IO_URING_CONFIG)
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -81,14 +124,99 @@ void DumpImpl(const T& t, IOutputStream& os)
 #define FILESTORE_CONFIG_GETTER(name, type, ...)                               \
 type TLocalFileStoreConfig::Get##name() const                                  \
 {                                                                              \
-    const auto value = ProtoConfig.Get##name();                                \
-    return !IsEmpty(value) ? ConvertValue<type>(value) : Default##name;        \
+    if (ProtoConfig.Has##name()) {                                             \
+        return ConvertValue<type>(ProtoConfig.Get##name());                    \
+    }                                                                          \
+    return Default##name;                                                      \
 }                                                                              \
 // FILESTORE_CONFIG_GETTER
 
 FILESTORE_SERVICE_CONFIG(FILESTORE_CONFIG_GETTER)
 
 #undef FILESTORE_CONFIG_GETTER
+
+#define FILESTORE_BINARY_FEATURES(xxx)                                         \
+    xxx(DirectoryHandlesStorageEnabled)                                        \
+
+// FILESTORE_BINARY_FEATURES
+
+#define FILESTORE_DURATION_FEATURES(xxx)                                       \
+    xxx(EntryTimeout)                                                          \
+    xxx(NegativeEntryTimeout)                                                  \
+    xxx(AttrTimeout)                                                           \
+    xxx(XAttrCacheTimeout)                                                     \
+
+// FILESTORE_DURATION_FEATURES
+
+#define FILESTORE_BINARY_FEATURE_GETTER(name)                                  \
+bool TLocalFileStoreConfig::Get##name(                                         \
+    const TString& cloudId,                                                    \
+    const TString& folderId,                                                   \
+    const TString& fsId) const                                                 \
+{                                                                              \
+    if (!FeaturesConfig) {                                                     \
+        return Get##name();                                                    \
+    }                                                                          \
+                                                                               \
+    return FeaturesConfig->IsFeatureEnabled(                                   \
+        cloudId,                                                               \
+        folderId,                                                              \
+        fsId,                                                                  \
+        #name);                                                                \
+}                                                                              \
+
+// FILESTORE_BINARY_FEATURE_GETTER
+
+FILESTORE_BINARY_FEATURES(FILESTORE_BINARY_FEATURE_GETTER)
+
+#undef FILESTORE_BINARY_FEATURE_GETTER
+
+#define FILESTORE_DURATION_FEATURE_GETTER(name)                                \
+TDuration TLocalFileStoreConfig::Get##name(                                    \
+    const TString& cloudId,                                                    \
+    const TString& folderId,                                                   \
+    const TString& fsId) const                                                 \
+{                                                                              \
+    if (!FeaturesConfig) {                                                     \
+        return Get##name();                                                    \
+    }                                                                          \
+                                                                               \
+    auto val = FeaturesConfig->GetFeatureValue(cloudId, folderId, fsId, #name);\
+    if (!val) {                                                                \
+        return Get##name();                                                    \
+    }                                                                          \
+                                                                               \
+    TDuration res;                                                             \
+    if (!TDuration::TryParse(val, res)) {                                      \
+        return Get##name();                                                    \
+    }                                                                          \
+                                                                               \
+    return res;                                                                \
+}                                                                              \
+
+// FILESTORE_DURATION_FEATURE_GETTER
+
+FILESTORE_DURATION_FEATURES(FILESTORE_DURATION_FEATURE_GETTER)
+
+#undef FILESTORE_DURATION_FEATURE_GETTER
+
+TFileIOConfig TLocalFileStoreConfig::GetFileIOConfig() const
+{
+    using EFileIOConfigCase = NProto::TLocalServiceConfig::FileIOConfigCase;
+
+    switch (ProtoConfig.GetFileIOConfigCase()) {
+        case EFileIOConfigCase::kAioConfig:
+            return TAioConfig{ProtoConfig.GetAioConfig()};
+        case EFileIOConfigCase::kIoUringConfig:
+            return TIoUringConfig{ProtoConfig.GetIoUringConfig()};
+        case EFileIOConfigCase::kNullFileIOConfig:
+            return TNullFileIOConfig{ProtoConfig.GetNullFileIOConfig()};
+        default:
+            return TAioConfig{};
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 void TLocalFileStoreConfig::Dump(IOutputStream& out) const
 {
@@ -138,5 +266,59 @@ void TLocalFileStoreConfig::DumpHtml(IOutputStream& out) const
 
 #undef FILESTORE_CONFIG_DUMP
 }
+
+void TLocalFileStoreConfig::SetFeaturesConfig(
+    NFeatures::TFeaturesConfigPtr featuresConfig)
+{
+    FeaturesConfig = std::move(featuresConfig);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+#define FILESTORE_CONFIG_NULL_FILE_IO_GETTER(name, type, ...)                  \
+type TNullFileIOConfig::Get##name() const                                      \
+{                                                                              \
+    if (Proto.Has##name()) {                                                   \
+        return ConvertValue<type>(Proto.Get##name());                          \
+    }                                                                          \
+    return DefaultNullFileIO##name;                                            \
+}                                                                              \
+// FILESTORE_CONFIG_AIO_GETTER
+
+FILESTORE_SERVICE_NULL_FILE_IO_CONFIG(FILESTORE_CONFIG_NULL_FILE_IO_GETTER)
+
+#undef FILESTORE_CONFIG_NULL_FILE_IO_GETTER
+
+////////////////////////////////////////////////////////////////////////////////
+
+#define FILESTORE_CONFIG_AIO_GETTER(name, type, ...)                           \
+type TAioConfig::Get##name() const                                             \
+{                                                                              \
+    if (Proto.Has##name()) {                                                   \
+        return ConvertValue<type>(Proto.Get##name());                          \
+    }                                                                          \
+    return DefaultAio##name;                                                   \
+}                                                                              \
+// FILESTORE_CONFIG_AIO_GETTER
+
+FILESTORE_SERVICE_AIO_CONFIG(FILESTORE_CONFIG_AIO_GETTER)
+
+#undef FILESTORE_CONFIG_AIO_GETTER
+
+////////////////////////////////////////////////////////////////////////////////
+
+#define FILESTORE_CONFIG_IO_URING_GETTER(name, type, ...)                      \
+type TIoUringConfig::Get##name() const                                         \
+{                                                                              \
+    if (Proto.Has##name()) {                                                   \
+        return ConvertValue<type>(Proto.Get##name());                          \
+    }                                                                          \
+    return DefaultIoUring##name;                                               \
+}                                                                              \
+// FILESTORE_CONFIG_IO_URING_GETTER
+
+FILESTORE_SERVICE_IO_URING_CONFIG(FILESTORE_CONFIG_IO_URING_GETTER)
+
+#undef FILESTORE_CONFIG_IO_URING_GETTER
 
 }   // namespace NCloud::NFileStore

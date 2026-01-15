@@ -14,6 +14,8 @@ Creates disk with requested kind and attach it to device
 -h, --help                     Display help
 -k, --kind                     Kind of disk ssd|hdd|nonreplicated|mirror2|mirror3|local (default: ssd)
 -d, --disk-id                  disk-id
+--cloud-id                     cloud-id
+--folder-id                    folder-id
 -b, --base-disk-id             the base disk if you want to create an overlay disk. Should use together with the base-disk-checkpoint-id
 -c, --base-disk-checkpoint-id  the checkpoint-id if you want to create an overlay disk. Should use together with the base-disk-id
 -e, --encrypted                Encrypt disk with default encryption key
@@ -23,7 +25,9 @@ EOF
 #defaults
 kind="ssd"
 disk_id=""
-options=$(getopt -l "help,kind:,disk-id:,encrypted,base-disk-id:,base-disk-checkpoint-id:" -o "hk:d:eb:c:" -a -- "$@")
+cloud_id="test-cloud"
+folder_id="test-folder"
+options=$(getopt -l "help,kind:,disk-id:,encrypted,base-disk-id:,base-disk-checkpoint-id:,cloud-id:,folder-id:" -o "hk:d:eb:c:" -a -- "$@")
 block_size=4096
 encryption=""
 base_disk_id=""
@@ -62,6 +66,14 @@ do
         base_disk_checkpoint_id=${2}
         shift 2
         ;;
+    --cloud-id )
+        cloud_id=${2}
+        shift 2
+        ;;
+    --folder-id )
+        folder_id=${2}
+        shift 2
+        ;;
     --)
         shift
         break;;
@@ -70,9 +82,9 @@ done
 
 case $kind in
 "ssd")
-    default_id="vol0"; blocks_count=8388608;; # 32GiB
+    default_id="vol0"; blocks_count=262144;;
 "hdd")
-    default_id="hdd0"; blocks_count=8388608;; # 32GiB
+    default_id="hdd0"; blocks_count=262144;;
 "nonreplicated")
     default_id="nbr0"; blocks_count=262144;;
 "mirror2")
@@ -105,6 +117,8 @@ blockstore-client createvolume \
     --blocks-count $blocks_count \
     --block-size $block_size \
     --disk-id $disk_id \
+    --cloud-id $cloud_id \
+    --folder-id $folder_id \
     $encryption $base_disk \
 
 if [ $? -ne 0 ]; then

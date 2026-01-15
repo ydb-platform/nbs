@@ -95,11 +95,10 @@ std::optional<TDeviceLocation> FindTargetMigrationDeviceLocation(
             FindReplicaDeviceLocation(meta, migration.GetSourceDeviceId());
         if (!sourceLocation) {
             ReportDiskAllocationFailure(
-                TStringBuilder()
-                << "Migration source device " << migration.GetSourceDeviceId()
-                << " doesn't belong to the disk "
-                << meta.GetConfig().GetDiskId() << ". Target device: "
-                << migration.GetTargetDevice().GetDeviceUUID());
+                "Migration source device not found",
+                {{"disk", meta.GetConfig().GetDiskId()},
+                 {"target_device", migration.GetTargetDevice().GetDeviceUUID()},
+                 {"source_device", migration.GetSourceDeviceId()}});
             continue;
         }
         sourceLocation->MigrationIndex = i;
@@ -193,12 +192,10 @@ TVector<NProto::TLaggingDevice> CollectLaggingDevices(
                 FindReplicaDeviceLocation(meta, migration.GetSourceDeviceId());
             if (!deviceLocation) {
                 ReportDiskAllocationFailure(
-                    TStringBuilder()
-                    << "Migration source device "
-                    << migration.GetSourceDeviceId()
-                    << " doesn't belong to the disk "
-                    << meta.GetConfig().GetDiskId()
-                    << ". Target device: " << targetDevice.GetDeviceUUID());
+                    "Migration inconsistency detected",
+                    {{"disk", meta.GetConfig().GetDiskId()},
+                     {"target_device", targetDevice.GetDeviceUUID()},
+                     {"source_device", migration.GetSourceDeviceId()}});
                 continue;
             }
             auto& laggingDevice = result.emplace_back();
@@ -324,6 +321,58 @@ TVector<NProto::TDeviceConfig> GetReplacedDevices(
             oldMigration.GetTargetDevice().GetDeviceUUID());
         if (!targetLocation) {
             result.push_back(oldMigration.GetTargetDevice());
+        }
+    }
+
+    return result;
+}
+
+TVector<const NProto::TDeviceConfig*> GetAllDevices(
+    const NProto::TVolumeMeta& meta)
+{
+    TVector<const NProto::TDeviceConfig*> result;
+
+    for (const auto& device: meta.GetDevices()) {
+        result.push_back(&device);
+    }
+
+    for (const auto& replica: meta.GetReplicas()) {
+        for (const auto& device: replica.GetDevices()) {
+            result.push_back(&device);
+        }
+    }
+
+    for (const auto& migration: meta.GetMigrations()) {
+        result.push_back(&migration.GetTargetDevice());
+    }
+
+    return result;
+}
+
+TSet<TString> GetAllAgents(const NProto::TVolumeMeta& meta)
+{
+    TSet<TString> result;
+
+    for (const auto& device: GetAllDevices(meta)) {
+        result.insert(device->GetAgentId());
+    }
+
+    return result;
+}
+
+TMap<TString, TString> ParseTags(const TString& tags)
+{
+    TMap<TString, TString> result;
+
+    TStringBuf tok;
+    TStringBuf sit(tags);
+    while (sit.NextTok(',', tok)) {
+        TStringBuf key;
+        TStringBuf value;
+        if (tok.TrySplit('=', key, value)) {
+            result.insert({TString(key), TString(value)});
+        } else {
+            result.insert({TString(tok), ""});
         }
     }
 

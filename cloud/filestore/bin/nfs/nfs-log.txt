@@ -1,18 +1,18 @@
 Entry {
   Component: "NFS_TABLET_WORKER"
-  Level: 7
+  Level: 6
 }
 Entry {
   Component: "NFS_VHOST"
-  Level: 7
+  Level: 6
 }
 Entry {
   Component: "NFS_SERVICE"
-  Level: 7
+  Level: 6
 }
 Entry {
   Component: "NFS_TABLET"
-  Level: 7
+  Level: 6
 }
 Entry {
   Component: "NFS_SERVICE_PROXY"
@@ -20,15 +20,15 @@ Entry {
 }
 Entry {
   Component: "NFS_FUSE"
-  Level: 7
+  Level: 6
 }
 Entry {
   Component: "NFS_SERVICE_WORKER"
-  Level: 7
+  Level: 6
 }
 Entry {
   Component: "NFS_TRACE"
-  Level: 7
+  Level: 6
 }
 Entry {
   Component: "NFS_SERVER"

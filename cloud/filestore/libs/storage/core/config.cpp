@@ -10,6 +10,9 @@
 
 #include <google/protobuf/text_format.h>
 
+#include <type_traits>
+#include <utility>
+
 namespace NCloud::NFileStore::NStorage {
 
 namespace {
@@ -58,6 +61,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(LoadedCompactionRangesPerTx,        ui32,   10 * 1024 * 1024          )\
     xxx(MaxBlocksPerTruncateTx,             ui32,   0 /*TODO: 32GiB/4KiB*/    )\
     xxx(MaxTruncateTxInflight,              ui32,   10                        )\
+    xxx(SystemTabletsPriority,              i32,    0                         )\
                                                                                \
     xxx(AutomaticShardCreationEnabled,                          bool,   false )\
     xxx(ShardAllocationUnit,                                    ui64,   4_TB  )\
@@ -159,13 +163,15 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(MaxResponseBytes,              ui32,      4_MB                        )\
     xxx(MaxResponseEntries,            ui32,      1000                        )\
+    xxx(MaxBytesMultiplier,            ui32,      10                          )\
                                                                                \
     xxx(DupCacheEntryCount,            ui32,      1024/*iod 128 but NBS-4016*/)\
     xxx(DisableLocalService,           bool,      false                       )\
     xxx(EnableCollectGarbageAtStart,   bool,      false                       )\
                                                                                \
-    xxx(TabletBootInfoBackupFilePath,  TString,   ""                          )\
-    xxx(HiveProxyFallbackMode,         bool,      false                       )\
+    xxx(TabletBootInfoBackupFilePath,             TString,   ""               )\
+    xxx(UseBinaryFormatForTabletBootInfoBackup,   bool,      false            )\
+    xxx(HiveProxyFallbackMode,                    bool,      false            )\
                                                                                \
     xxx(ThrottlingEnabled,             bool,      false                       )\
                                                                                \
@@ -183,6 +189,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
             NCloud::NProto::AUTHORIZATION_IGNORE                              )\
                                                                                \
     xxx(TwoStageReadEnabled,             bool,      false                     )\
+    xxx(TwoStageReadThreshold,           ui32,      0                         )\
     xxx(TwoStageReadDisabledForHDD,      bool,      false                     )\
     xxx(ThreeStageWriteEnabled,          bool,      false                     )\
     xxx(ThreeStageWriteThreshold,        ui32,      64_KB                     )\
@@ -195,6 +202,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ReadAheadCacheMaxHandlesPerNode,        ui32,      128                )\
     xxx(NodeIndexCacheMaxNodes,                 ui32,        0                )\
     xxx(EntryTimeout,                    TDuration, TDuration::Zero()         )\
+    xxx(RegularFileEntryTimeout,         TDuration, TDuration::Zero()         )\
     xxx(NegativeEntryTimeout,            TDuration, TDuration::Zero()         )\
     xxx(AttrTimeout,                     TDuration, TDuration::Zero()         )\
     xxx(MaxOutOfOrderCompactionMapLoadRequestsInQueue,  ui32,      5          )\
@@ -232,6 +240,9 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(InMemoryIndexCacheNodesToNodeAttrsCapacityRatio,ui64,       0         )\
     xxx(InMemoryIndexCacheNodeRefsCapacity,             ui64,       0         )\
     xxx(InMemoryIndexCacheNodesToNodeRefsCapacityRatio, ui64,       0         )\
+    xxx(InMemoryIndexCacheNodeRefsExhaustivenessCapacity,                      \
+        ui64,                                                                  \
+        0                                                                     )\
     xxx(InMemoryIndexCacheLoadOnTabletStart,            bool,       false     )\
     xxx(InMemoryIndexCacheLoadOnTabletStartRowsPerTx,   ui64,       1000      )\
     xxx(InMemoryIndexCacheLoadSchedulePeriod,                                  \
@@ -277,6 +288,37 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(ParentlessFilesOnly,               bool,       false                  )\
     xxx(AllowHandlelessIO,                 bool,       false                  )\
+                                                                               \
+    xxx(LazyXAttrsEnabled,                 bool,       false                  )\
+    xxx(MaxBackground,                     ui32,       0                      )\
+    xxx(MaxFuseLoopThreads,                ui32,       1                      )\
+                                                                               \
+    xxx(StrictFileSystemSizeEnforcementEnabled, bool,  false                  )\
+                                                                               \
+    xxx(ZeroCopyWriteEnabled,              bool,      false                   )\
+                                                                               \
+    xxx(FSyncQueueDisabled,                bool,      false                   )\
+                                                                               \
+    xxx(DirectoryHandlesStorageEnabled,    bool,      false                   )\
+    xxx(DirectoryHandlesTableSize,         ui64,      100'000                 )\
+    xxx(GuestHandleKillPrivV2Enabled,      bool,      false                   )\
+    xxx(AllowAdditionalSystemTablets,      bool,      false                   )\
+                                                                               \
+    xxx(ZeroCopyReadEnabled,               bool,      false                   )\
+                                                                               \
+    xxx(BlockChecksumsInProfileLogEnabled, bool,      false                   )\
+                                                                               \
+    xxx(MaxShardCount,                     ui32,      254                     )\
+                                                                               \
+    xxx(ReadBlobDisabled,                  bool,      false                   )\
+    xxx(WriteBlobDisabled,                 bool,      false                   )\
+                                                                               \
+    xxx(CpuLackOverloadThreshold,          ui32,      101                     )\
+                                                                               \
+    xxx(MaxTabletStep,                     ui32,      Max<ui32>()             )\
+                                                                               \
+    xxx(FakeDescribeDataEnabled,           bool,      false                   )\
+    xxx(FakeDescribeDataLatencyUs,         ui32,      0                       )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
@@ -294,33 +336,9 @@ FILESTORE_STORAGE_CONFIG(FILESTORE_DECLARE_CONFIG)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-bool IsEmpty(const T& t)
-{
-    return !t;
-}
-
-template <>
-bool IsEmpty(const NCloud::NProto::TCertificate& value)
-{
-    return !value.GetCertFile() && !value.GetCertPrivateKeyFile();
-}
-
-template <>
-bool IsEmpty(const TAliases& value)
-{
-    return value.GetEntries().empty();
-}
-
-template <typename T>
 bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
 {
     return value.empty();
-}
-
-template <>
-bool IsEmpty(const NCloud::NProto::TConfigDispatcherSettings& value)
-{
-    return !value.HasAllowList() && !value.HasDenyList();
 }
 
 template <typename TTarget, typename TSource>
@@ -413,16 +431,48 @@ void DumpImpl(const TVector<TString>& value, IOutputStream& os)
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+#define DECLARE_FIELD_CHECKER(name, type, ...)                               \
+    template <typename TProtoConfig, typename = void>                        \
+    struct Has##name##Method: std::false_type                                \
+    {                                                                        \
+    };                                                                       \
+                                                                             \
+    template <typename TProtoConfig>                                         \
+    struct Has##name##Method<                                                \
+        TProtoConfig,                                                        \
+        std::void_t<decltype(std::declval<TProtoConfig>().Has##name())>>     \
+        : std::true_type                                                     \
+    {                                                                        \
+    };                                                                       \
+                                                                             \
+    template <typename TProtoConfig, typename TProtoValue>                   \
+    bool IsEmpty##name(const TProtoConfig& config, const TProtoValue& value) \
+    {                                                                        \
+        if constexpr (Has##name##Method<TProtoConfig>::value) {              \
+            return !config.Has##name();                                      \
+        } else {                                                             \
+            return IsEmpty(value);                                           \
+        }                                                                    \
+    }
+
+FILESTORE_STORAGE_CONFIG(DECLARE_FIELD_CHECKER)
+FILESTORE_STORAGE_CONFIG_REF(DECLARE_FIELD_CHECKER)
+
+#undef DECLARE_FIELD_CHECKER
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_CONFIG_GETTER(name, type, ...)                               \
-type TStorageConfig::Get##name() const                                         \
-{                                                                              \
-    const auto value = ProtoConfig.Get##name();                                \
-    return !IsEmpty(value) ? ConvertValue<type>(value) : Default##name;        \
-}                                                                              \
+#define FILESTORE_CONFIG_GETTER(name, type, ...)                              \
+    type TStorageConfig::Get##name() const                                    \
+    {                                                                         \
+        const auto& value = ProtoConfig.Get##name();                          \
+        return IsEmpty##name(ProtoConfig, value) ? Default##name              \
+                                                 : ConvertValue<type>(value); \
+    }                                                                         \
 // FILESTORE_CONFIG_GETTER
 
 FILESTORE_STORAGE_CONFIG(FILESTORE_CONFIG_GETTER)
@@ -479,7 +529,7 @@ void TStorageConfig::DumpOverridesHtml(IOutputStream& out) const
 {
 #define FILESTORE_DUMP_CONFIG(name, type, ...) {                               \
     const auto value = ProtoConfig.Get##name();                                \
-    if (!IsEmpty(value)) {                                                     \
+    if (!IsEmpty##name(ProtoConfig, value)) {                                  \
         TABLER() {                                                             \
             TABLED() { out << #name; }                                         \
             TABLED() { DumpImpl(ConvertValue<type>(value), out); }             \

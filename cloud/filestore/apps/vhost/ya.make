@@ -1,5 +1,7 @@
 PROGRAM(filestore-vhost)
 
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/binaries_dependency.inc)
+
 IF (PROFILE_MEMORY_ALLOCATIONS)
     ALLOCATOR(LF_DBG)
 ELSE()
@@ -8,6 +10,10 @@ ENDIF()
 
 IF (BUILD_TYPE != "PROFILE" AND BUILD_TYPE != "DEBUG")
     SPLIT_DWARF()
+ELSE()
+    PEERDIR(
+        library/cpp/terminate_handler
+    )
 ENDIF()
 
 IF (SANITIZER_TYPE)

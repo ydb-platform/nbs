@@ -39,6 +39,7 @@ var (
 		{name: "DiskService.Migrate", permission: "disk-manager.disks.update"},
 		{name: "DiskService.SendMigrationSignal", permission: "disk-manager.disks.update"},
 		{name: "DiskService.Describe", permission: "disk-manager.disks.get"},
+		{name: "DiskService.ListStates", permission: "disk-manager.disks.list"},
 
 		{name: "ImageService.Create", permission: "disk-manager.images.create"},
 		{name: "ImageService.Update", permission: "disk-manager.images.update"},
@@ -79,6 +80,8 @@ var (
 		{name: "FilesystemService.Create", permission: "disk-manager.filesystems.create"},
 		{name: "FilesystemService.Delete", permission: "disk-manager.filesystems.delete"},
 		{name: "FilesystemService.Resize", permission: "disk-manager.filesystems.update"},
+		{name: "FilesystemSnapshotService.Create", permission: "disk-manager.filesystem_snapshots.create"},
+		{name: "FilesystemSnapshotService.Delete", permission: "disk-manager.filesystem_snapshots.delete"},
 	}
 )
 
@@ -86,7 +89,7 @@ var (
 
 func convertError(err error) error {
 	if errors.CanRetry(err) {
-		return grpc_status.Errorf(grpc_codes.Unavailable, err.Error())
+		return grpc_status.Errorf(grpc_codes.Unavailable, "%s", err.Error())
 	}
 
 	return err

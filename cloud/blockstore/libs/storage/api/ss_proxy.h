@@ -171,9 +171,15 @@ struct TEvSSProxy
     struct TDescribeVolumeRequest
     {
         const TString DiskId;
+        const bool ExactDiskIdMatch = false;
 
         explicit TDescribeVolumeRequest(TString diskId)
             : DiskId(std::move(diskId))
+        {}
+
+        TDescribeVolumeRequest(TString diskId, bool exactDiskIdMatch)
+            : DiskId(std::move(diskId))
+            , ExactDiskIdMatch(exactDiskIdMatch)
         {}
     };
 
@@ -181,6 +187,7 @@ struct TEvSSProxy
     {
         const TString Path;
         const NKikimrSchemeOp::TPathDescription PathDescription;
+        const TVector<TString> CheckedPaths;
 
         TDescribeVolumeResponse() = default;
 
@@ -191,8 +198,13 @@ struct TEvSSProxy
             , PathDescription(std::move(pathDescription))
         {}
 
+        TDescribeVolumeResponse(TString path, TVector<TString> checkedPaths)
+            : Path(std::move(path))
+            , CheckedPaths(std::move(checkedPaths))
+        {}
+
         TDescribeVolumeResponse(TString path)
-            : TDescribeVolumeResponse(std::move(path), {})
+            : Path(std::move(path))
         {}
     };
 

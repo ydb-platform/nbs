@@ -7,16 +7,20 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
+	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type deleteSnapshotDataTask struct {
-	storage storage.Storage
-	request *protos.DeleteSnapshotDataRequest
-	state   *protos.DeleteSnapshotDataTaskState
+	performanceConfig *performance_config.PerformanceConfig
+	storage           storage.Storage
+	request           *protos.DeleteSnapshotDataRequest
+	state             *protos.DeleteSnapshotDataTaskState
 }
 
 func (t *deleteSnapshotDataTask) Save() ([]byte, error) {
@@ -32,14 +36,6 @@ func (t *deleteSnapshotDataTask) Load(request, state []byte) error {
 
 	t.state = &protos.DeleteSnapshotDataTaskState{}
 	return proto.Unmarshal(state, t.state)
-}
-
-func (t *deleteSnapshotDataTask) deleteSnapshotData(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-) error {
-
-	return t.storage.DeleteSnapshotData(ctx, t.request.SnapshotId)
 }
 
 func (t *deleteSnapshotDataTask) Run(
@@ -72,4 +68,33 @@ func (t *deleteSnapshotDataTask) GetMetadata(
 
 func (t *deleteSnapshotDataTask) GetResponse() proto.Message {
 	return &empty.Empty{}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *deleteSnapshotDataTask) deleteSnapshotData(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	snapshotMeta, err := t.storage.GetSnapshotMeta(ctx, t.request.SnapshotId)
+	if err != nil {
+		return err
+	}
+
+	if snapshotMeta == nil {
+		logging.Warn(
+			ctx,
+			"attempted to delete snapshot data for unexisting snapshot %v",
+			t.request.SnapshotId,
+		)
+		return nil
+	}
+
+	execCtx.SetEstimatedInflightDuration(performance.Estimate(
+		snapshotMeta.StorageSize,
+		t.performanceConfig.GetDeleteSnapshotDataBandwidthMiBs(),
+	))
+
+	return t.storage.DeleteSnapshotData(ctx, t.request.SnapshotId)
 }

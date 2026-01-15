@@ -79,7 +79,9 @@ private:
     // Duration between reboot attempts
     TDuration RebootSleepDuration;
 
-    TLogTitle LogTitle{VolumeTabletId, DiskId, GetCycleCount()};
+    TLogTitle LogTitle{
+        GetCycleCount(),
+        TLogTitle::TVolume{.TabletId = VolumeTabletId, .DiskId = DiskId}};
 
 public:
     TStartVolumeActor(
@@ -131,6 +133,10 @@ private:
 
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleTabletMetrics(
+        const TEvLocal::TEvTabletMetrics::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleWakeup(
@@ -1000,6 +1006,23 @@ void TStartVolumeActor::HandlePoisonPill(
     StartShutdown(ctx, error);
 }
 
+void TStartVolumeActor::HandleTabletMetrics(
+    const TEvLocal::TEvTabletMetrics::TPtr& ev,
+    const TActorContext& ctx)
+{
+    if (Config->GetSendLocalTabletMetricsToHiveEnabled()) {
+        const auto* msg = ev->Get();
+        const auto& metrics = msg->ResourceValues;
+
+        ctx.Send(
+            MakeHiveProxyServiceId(),
+            new TEvLocal::TEvTabletMetrics(
+                msg->TabletId,
+                msg->FollowerId,
+                metrics));
+    }
+}
+
 void TStartVolumeActor::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
@@ -1035,7 +1058,7 @@ STFUNC(TStartVolumeActor::StateWork)
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        IgnoreFunc(TEvLocal::TEvTabletMetrics);
+        HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
 
         HFunc(
             TEvServicePrivate::TEvStartVolumeRequest,

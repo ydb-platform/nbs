@@ -1,12 +1,12 @@
 Executor {
   Type: BASIC
-  Threads: 3
+  Threads: 6
   SpinThreshold: 10
   Name: "System"
 }
 Executor {
   Type: BASIC
-  Threads: 3
+  Threads: 6
   SpinThreshold: 10
   Name: "User"
 }
@@ -23,7 +23,7 @@ Executor {
 }
 Executor {
   Type: BASIC
-  Threads: 3
+  Threads: 6
   SpinThreshold: 10
   Name: "IC"
   TimePerMailboxMicroSecs: 100

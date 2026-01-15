@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
-	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
+	cells_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
@@ -20,6 +21,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_snapshot"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
@@ -242,6 +244,8 @@ func registerControlplaneTasks(
 	poolService pools.Service,
 	filesystemService filesystem.Service,
 	resourceStorage resources.Storage,
+	cellStorage cells_storage.Storage,
+	cellSelector cells.CellSelector,
 ) error {
 
 	logging.Info(ctx, "Registering pool tasks")
@@ -275,6 +279,7 @@ func registerControlplaneTasks(
 		taskScheduler,
 		poolService,
 		nbsFactory,
+		cellSelector,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register disk tasks: %v", err)
@@ -285,12 +290,12 @@ func registerControlplaneTasks(
 	err = images.RegisterForExecution(
 		ctx,
 		config.GetImagesConfig(),
-		performanceConfig,
 		taskRegistry,
 		taskScheduler,
 		resourceStorage,
 		nbsFactory,
 		poolService,
+		cellSelector,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register image tasks: %v", err)
@@ -301,11 +306,11 @@ func registerControlplaneTasks(
 	err = snapshots.RegisterForExecution(
 		ctx,
 		config.GetSnapshotsConfig(),
-		performanceConfig,
 		taskRegistry,
 		taskScheduler,
 		resourceStorage,
 		nbsFactory,
+		cellSelector,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register snapshot tasks: %v", err)
@@ -327,6 +332,16 @@ func registerControlplaneTasks(
 			logging.Error(ctx, "Failed to register filesystem tasks: %v", err)
 			return err
 		}
+
+		err = filesystem_snapshot.RegisterForExecution(
+			ctx,
+			taskRegistry,
+			taskScheduler,
+		)
+		if err != nil {
+			logging.Error(ctx, "Failed to register filesystem snapshot tasks: %v", err)
+			return err
+		}
 	}
 
 	logging.Info(ctx, "Registering placementgroup tasks")
@@ -341,6 +356,23 @@ func registerControlplaneTasks(
 	if err != nil {
 		logging.Error(ctx, "Failed to register placementgroup tasks: %v", err)
 		return err
+	}
+
+	if config.GetCellsConfig() != nil {
+		logging.Info(ctx, "Registering cells tasks")
+
+		err = cells.RegisterForExecution(
+			ctx,
+			config.GetCellsConfig(),
+			taskRegistry,
+			taskScheduler,
+			cellStorage,
+			nbsFactory,
+		)
+		if err != nil {
+			logging.Error(ctx, "Failed to register cells tasks: %v", err)
+			return err
+		}
 	}
 
 	return nil
@@ -378,11 +410,16 @@ func initControlplane(
 	poolService := pools.NewService(taskScheduler, poolStorage)
 
 	var filesystemService filesystem.Service
+	var filesystemSnapshotService filesystem_snapshot.Service
 	if config.GetFilesystemConfig() != nil {
 		filesystemService = filesystem.NewService(
 			taskScheduler,
 			config.GetFilesystemConfig(),
 			nfsFactory,
+		)
+
+		filesystemSnapshotService = filesystem_snapshot.NewService(
+			taskScheduler,
 		)
 	}
 
@@ -404,6 +441,7 @@ func initControlplane(
 		config.GetImagesConfig().GetStorageFolder(),
 		config.GetSnapshotsConfig().GetStorageFolder(),
 		filesystemStorageFolder,
+		config.GetFilesystemSnapshotsConfig().GetStorageFolder(),
 		config.GetPlacementGroupConfig().GetStorageFolder(),
 		db,
 		endedMigrationExpirationTimeout,
@@ -412,6 +450,17 @@ func initControlplane(
 		logging.Error(ctx, "Failed to initialize resource storage: %v", err)
 		return nil, err
 	}
+
+	var cellStorage cells_storage.Storage
+	if config.GetCellsConfig() != nil {
+		cellStorage = cells_storage.NewStorage(config.GetCellsConfig(), db)
+	}
+
+	cellSelector := cells.NewCellSelector(
+		config.GetCellsConfig(),
+		cellStorage,
+		nbsFactory,
+	)
 
 	err = registerControlplaneTasks(
 		ctx,
@@ -428,6 +477,8 @@ func initControlplane(
 		poolService,
 		filesystemService,
 		resourceStorage,
+		cellStorage,
+		cellSelector,
 	)
 	if err != nil {
 		return nil, err
@@ -439,13 +490,6 @@ func initControlplane(
 		logging.Error(ctx, "Failed to initialize GRPC server: %v", err)
 		return nil, err
 	}
-
-	cellsConfig := config.GetCellsConfig()
-	if cellsConfig == nil {
-		cellsConfig = &cells_config.CellsConfig{}
-	}
-
-	cellSelector := cells.NewCellSelector(cellsConfig)
 
 	facade.RegisterDiskService(
 		server,
@@ -493,6 +537,14 @@ func initControlplane(
 			server,
 			taskScheduler,
 			filesystemService,
+		)
+	}
+
+	if filesystemSnapshotService != nil {
+		facade.RegisterFilesystemSnapshotService(
+			server,
+			taskScheduler,
+			filesystemSnapshotService,
 		)
 	}
 

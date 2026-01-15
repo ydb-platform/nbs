@@ -1,10 +1,14 @@
 #include "session_manager.h"
 
+#include <cloud/blockstore/libs/cells/iface/cell_manager.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
 #include <cloud/blockstore/libs/client/session.h>
+#include <cloud/blockstore/libs/client/switchable_client.h>
+#include <cloud/blockstore/libs/client/switchable_session.h>
 #include <cloud/blockstore/libs/client/throttling.h>
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
@@ -12,8 +16,11 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_error_transform.h>
+#include <cloud/blockstore/libs/service/service_method.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
+#include <cloud/blockstore/libs/storage/model/volume_label.h>
 #include <cloud/blockstore/libs/validation/validation.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
@@ -23,6 +30,8 @@
 #include <util/generic/hash.h>
 #include <util/string/builder.h>
 #include <util/system/mutex.h>
+
+#include <utility>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -37,26 +46,38 @@ class TEndpoint
 {
 private:
     TExecutor& Executor;
+    ISwitchableSessionPtr SwitchableSession;
     const ISessionPtr Session;
     const IBlockStorePtr DataClient;
+    const ISwitchableBlockStorePtr SwitchableDataClient;
     const IThrottlerProviderPtr ThrottlerProvider;
     const TString ClientId;
     const TString DiskId;
+    const NProto::TStartEndpointRequest StartRequest;
+
+    std::weak_ptr<TSessionSwitchingGuard> SwitchingGuard;
+    TString SessionId;
 
 public:
     TEndpoint(
             TExecutor& executor,
+            ISwitchableSessionPtr switchableSession,
             ISessionPtr session,
             IBlockStorePtr dataClient,
+            ISwitchableBlockStorePtr switchableDataClient,
             IThrottlerProviderPtr throttlerProvider,
             TString clientId,
-            TString diskId)
+            TString diskId,
+            NProto::TStartEndpointRequest startRequest)
         : Executor(executor)
+        , SwitchableSession(std::move(switchableSession))
         , Session(std::move(session))
         , DataClient(std::move(dataClient))
+        , SwitchableDataClient(std::move(switchableDataClient))
         , ThrottlerProvider(std::move(throttlerProvider))
         , ClientId(std::move(clientId))
         , DiskId(std::move(diskId))
+        , StartRequest(std::move(startRequest))
     {}
 
     NProto::TError Start(TCallContextPtr callContext, NProto::THeaders headers)
@@ -69,6 +90,8 @@ public:
 
         if (HasError(response)) {
             DataClient->Stop();
+        } else {
+            SessionId = response.GetSessionId();
         }
 
         return response.GetError();
@@ -102,19 +125,53 @@ public:
         return response.GetError();
     }
 
-    ISessionPtr GetSession()
+    ISessionPtr GetSession() const
     {
-        return Session;
+        // For consumers, we return the top-level session, which is the
+        // SwitchableSession.
+        return SwitchableSession;
     }
 
-    TString GetDiskId()
+    TString GetDiskId() const
     {
         return DiskId;
     }
 
-    NProto::TClientPerformanceProfile GetPerformanceProfile()
+    NProto::TClientPerformanceProfile GetPerformanceProfile() const
     {
         return ThrottlerProvider->GetPerformanceProfile(ClientId);
+    }
+
+    NProto::TStartEndpointRequest GetStartRequest() const
+    {
+        return StartRequest;
+    }
+
+    TFuture<void> SwitchSession(TEndpoint& oldEndpoint)
+    {
+        SwitchableSession = std::move(oldEndpoint.SwitchableSession);
+
+        return SwitchableSession->SwitchSession(
+            GetDiskId(),
+            SessionId,
+            Session,
+            SwitchableDataClient);
+    }
+
+    // The acquire of the session switching guard must be performed under
+    // EndpointLock.
+    // If nullptr is returned, then the session switch is already in progress.
+    // The caller must keep the guard at all times while the session is being
+    // switched.
+    [[nodiscard]] TSessionSwitchingGuardPtr AcquireSwitchingGuard()
+    {
+        if (SwitchingGuard.lock()) {
+            // Session switch is already in progress.
+            return {};
+        }
+        auto result = CreateSessionSwitchingGuard(SwitchableDataClient);
+        SwitchingGuard = result;
+        return result;
     }
 };
 
@@ -122,29 +179,24 @@ using TEndpointPtr = std::shared_ptr<TEndpoint>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TClientBase
-    : public IBlockStore
+class TClientBase: public TBlockStoreImpl<TClientBase, IBlockStore>
 {
 public:
     TClientBase() = default;
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        Y_UNUSED(callContext);                                                 \
-        Y_UNUSED(request);                                                     \
-        const auto& type = GetBlockStoreRequestName(EBlockStoreRequest::name); \
-        return MakeFuture<NProto::T##name##Response>(TErrorResponse(           \
-            E_NOT_IMPLEMENTED,                                                 \
-            TStringBuilder() << "Unsupported request " << type.Quote()));      \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr callContext,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
 
-    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
+        return MakeFuture<typename TMethod::TResponse>(TErrorResponse(
+            E_NOT_IMPLEMENTED,
+            TStringBuilder() << "TClientBase: unsupported request "
+                             << TMethod::GetName().Quote()));
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -159,6 +211,7 @@ private:
     const IServerStatsPtr ServerStats;
     const TString ClientId;
     const TDuration RequestTimeout;
+    const ui32 BlockSize;
 
 public:
     TStorageDataClient(
@@ -166,12 +219,14 @@ public:
             IBlockStorePtr service,
             IServerStatsPtr serverStats,
             TString clientId,
-            TDuration requestTimeout)
+            TDuration requestTimeout,
+            ui32 blockSize)
         : Storage(std::move(storage))
         , Service(std::move(service))
         , ServerStats(std::move(serverStats))
         , ClientId(std::move(clientId))
         , RequestTimeout(requestTimeout)
+        , BlockSize(blockSize)
     {}
 
     void Start() override
@@ -185,19 +240,21 @@ public:
         return Storage->AllocateBuffer(bytesCount);
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, receiver)                            \
     TFuture<NProto::T##name##Response> name(                                   \
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
+        SetBlockSize(*request);                                                \
         PrepareRequestHeaders(*request->MutableHeaders(), *callContext);       \
-        return Storage->name(std::move(callContext), std::move(request));      \
+        return receiver->name(std::move(callContext), std::move(request));     \
     }                                                                          \
 // BLOCKSTORE_IMPLEMENT_METHOD
 
-    BLOCKSTORE_IMPLEMENT_METHOD(ZeroBlocks)
-    BLOCKSTORE_IMPLEMENT_METHOD(ReadBlocksLocal)
-    BLOCKSTORE_IMPLEMENT_METHOD(WriteBlocksLocal)
+    BLOCKSTORE_IMPLEMENT_METHOD(ReadBlocksLocal, Storage)
+    BLOCKSTORE_IMPLEMENT_METHOD(WriteBlocksLocal, Storage)
+    BLOCKSTORE_IMPLEMENT_METHOD(ZeroBlocks, Storage)
+    BLOCKSTORE_IMPLEMENT_METHOD(ExecuteAction, Service)
 
 #undef BLOCKSTORE_IMPLEMENT_METHOD
 
@@ -280,12 +337,24 @@ private:
             headers.SetRequestId(callContext.RequestId);
         }
     }
+
+    template <typename TRequest>
+    void SetBlockSize(TRequest& request)
+    {
+        if constexpr (HasBlockSize<TRequest>) {
+            request.BlockSize = BlockSize;
+        }
+        if constexpr (HasProtoBlockSize<TRequest>) {
+            request.SetBlockSize(BlockSize);
+        }
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TSessionManager final
     : public ISessionManager
+    , public ISessionSwitcher
     , public std::enable_shared_from_this<TSessionManager>
 {
 private:
@@ -297,6 +366,7 @@ private:
     const IVolumeStatsPtr VolumeStats;
     const IServerStatsPtr ServerStats;
     const IBlockStorePtr Service;
+    const NCells::ICellManagerPtr CellManager;
     const IStorageProviderPtr StorageProvider;
     const IThrottlerProviderPtr ThrottlerProvider;
     const IEncryptionClientFactoryPtr EncryptionClientFactory;
@@ -318,6 +388,7 @@ public:
             IVolumeStatsPtr volumeStats,
             IServerStatsPtr serverStats,
             IBlockStorePtr service,
+            NCells::ICellManagerPtr cellManager,
             IStorageProviderPtr storageProvider,
             IThrottlerProviderPtr throttlerProvider,
             IEncryptionClientFactoryPtr encryptionClientFactory,
@@ -331,6 +402,7 @@ public:
         , VolumeStats(std::move(volumeStats))
         , ServerStats(std::move(serverStats))
         , Service(std::move(service))
+        , CellManager(std::move(cellManager))
         , StorageProvider(std::move(storageProvider))
         , ThrottlerProvider(std::move(throttlerProvider))
         , EncryptionClientFactory(std::move(encryptionClientFactory))
@@ -340,6 +412,7 @@ public:
         Log = Logging->CreateLog("BLOCKSTORE_SERVER");
     }
 
+    // implementation ISessionManager
     TFuture<TSessionOrError> CreateSession(
         TCallContextPtr callContext,
         const NProto::TStartEndpointRequest& request) override;
@@ -365,10 +438,15 @@ public:
     TResultOrError<NProto::TClientPerformanceProfile> GetProfile(
         const TString& socketPath) override;
 
+    // implementation ISessionSwitcher
+    void SwitchSession(
+        const TString& diskId,
+        const TString& newDiskId) override;
+
 private:
     TSessionOrError CreateSessionImpl(
         TCallContextPtr callContext,
-        const NProto::TStartEndpointRequest& request);
+        NProto::TStartEndpointRequest request);
 
     NProto::TError RemoveSessionImpl(
         TCallContextPtr callContext,
@@ -395,13 +473,36 @@ private:
 
     TResultOrError<TEndpointPtr> CreateEndpoint(
         const NProto::TStartEndpointRequest& request,
-        const NProto::TVolume& volume);
+        const NProto::TVolume& volume,
+        const TString& cellId);
 
     TClientAppConfigPtr CreateClientConfig(
-        const NProto::TStartEndpointRequest& request);
+        const NProto::TStartEndpointRequest& request) const;
+
+    TClientAppConfigPtr CreateClientConfig(
+        const NProto::TStartEndpointRequest& request,
+        TString host,
+        ui32 port) const;
+
+    TResultOrError<IBlockStorePtr> CreateStorageDataClient(
+        const TString& cellId,
+        const TClientAppConfigPtr& clientConfig,
+        const NProto::TVolume& volume,
+        const TString& clientId,
+        NProto::EVolumeAccessMode accessMode) const;
 
     static TSessionConfig CreateSessionConfig(
         const NProto::TStartEndpointRequest& request);
+
+    void SwitchSessionForEndpoint(
+        const TString& socketPath,
+        TEndpointPtr endpoint,
+        const TString& diskId,
+        const TString& newDiskId);
+    void StopEndpoint(TCallContextPtr callContext, TEndpointPtr oldEndpoint);
+    void StopEndpointImpl(
+        TCallContextPtr callContext,
+        TEndpointPtr oldEndpoint);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -410,14 +511,17 @@ TFuture<TSessionManager::TSessionOrError> TSessionManager::CreateSession(
     TCallContextPtr callContext,
     const NProto::TStartEndpointRequest& request)
 {
-    return Executor->Execute([=, this] () mutable {
-        return CreateSessionImpl(std::move(callContext), request);
-    });
+    return Executor->Execute(
+        [callContext = std::move(callContext), request, this] () mutable
+        {
+            return CreateSessionImpl(std::move(callContext), request);
+        }
+    );
 }
 
 TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
     TCallContextPtr callContext,
-    const NProto::TStartEndpointRequest& request)
+    NProto::TStartEndpointRequest request)
 {
     auto describeResponse = DescribeVolume(
         callContext,
@@ -427,8 +531,18 @@ TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
         return TErrorResponse(describeResponse.GetError());
     }
     const auto& volume = describeResponse.GetVolume();
+    const auto& cellId = describeResponse.GetCellId();
 
-    auto result = CreateEndpoint(request, volume);
+    if (volume.GetDiskId() != request.GetDiskId()) {
+        // The original volume no longer exists. Use principal volume instead.
+        request.SetDiskId(volume.GetDiskId());
+    } else if (volume.GetPrincipalDiskId()) {
+        // The original volume has lost leadership. Use principal volume instead.
+        request.SetDiskId(volume.GetPrincipalDiskId());
+        return CreateSessionImpl(std::move(callContext), std::move(request));
+    }
+
+    auto result = CreateEndpoint(request, volume, cellId);
     if (HasError(result)) {
         return TErrorResponse(result.GetError());
     }
@@ -460,15 +574,14 @@ NProto::TDescribeVolumeResponse TSessionManager::DescribeVolume(
     const TString& diskId,
     const NProto::THeaders& headers)
 {
-    auto describeRequest = std::make_shared<NProto::TDescribeVolumeRequest>();
-    describeRequest->MutableHeaders()->CopyFrom(headers);
-    describeRequest->SetDiskId(diskId);
-
-    auto future = Service->DescribeVolume(
+    auto cellDescribeFuture = CellManager->DescribeVolume(
         std::move(callContext),
-        std::move(describeRequest));
+        diskId,
+        headers,
+        Service,
+        Options.DefaultClientConfig);
 
-    return Executor->WaitFor(future);
+    return Executor->WaitFor(cellDescribeFuture);
 }
 
 TFuture<NProto::TError> TSessionManager::RemoveSession(
@@ -476,9 +589,12 @@ TFuture<NProto::TError> TSessionManager::RemoveSession(
     const TString& socketPath,
     const NProto::THeaders& headers)
 {
-    return Executor->Execute([=, this] () mutable {
-        return RemoveSessionImpl(std::move(callContext), socketPath, headers);
-    });
+    return Executor->Execute(
+        [this, callContext = std::move(callContext), socketPath, headers] () mutable
+        {
+            return RemoveSessionImpl(std::move(callContext), socketPath, headers);
+        }
+    );
 }
 
 NProto::TError TSessionManager::RemoveSessionImpl(
@@ -514,15 +630,24 @@ TFuture<NProto::TError> TSessionManager::AlterSession(
     ui64 mountSeqNumber,
     const NProto::THeaders& headers)
 {
-    return Executor->Execute([=, this] () mutable {
-        return AlterSessionImpl(
-            std::move(callContext),
-            socketPath,
-            accessMode,
-            mountMode,
-            mountSeqNumber,
-            headers);
-    });
+    return Executor->Execute(
+        [this,
+         callContext = std::move(callContext),
+         socketPath,
+         accessMode,
+         mountMode,
+         mountSeqNumber,
+         headers] () mutable
+        {
+            return AlterSessionImpl(
+                std::move(callContext),
+                socketPath,
+                accessMode,
+                mountMode,
+                mountSeqNumber,
+                headers);
+        }
+    );
 }
 
 NProto::TError TSessionManager::AlterSessionImpl(
@@ -560,12 +685,15 @@ TFuture<TSessionManager::TSessionOrError> TSessionManager::GetSession(
     const TString& socketPath,
     const NProto::THeaders& headers)
 {
-    return Executor->Execute([=, this] () mutable {
-        return GetSessionImpl(
-            std::move(callContext),
-            socketPath,
-            headers);
-    });
+    return Executor->Execute(
+        [this, callContext = std::move(callContext), socketPath, headers] () mutable
+        {
+            return GetSessionImpl(
+                std::move(callContext),
+                socketPath,
+                headers);
+        }
+    );
 }
 
 TSessionManager::TSessionOrError TSessionManager::GetSessionImpl(
@@ -621,36 +749,135 @@ TResultOrError<NProto::TClientPerformanceProfile> TSessionManager::GetProfile(
     return endpoint->GetPerformanceProfile();
 }
 
+void TSessionManager::SwitchSession(
+    const TString& diskId,
+    const TString& newDiskId)
+{
+    bool endpointFound = false;
+    with_lock (EndpointLock) {
+        for (const auto& [socketPath, endpoint]: Endpoints) {
+            if (endpoint->GetDiskId() != diskId) {
+                continue;
+            }
+            endpointFound = true;
+
+            auto switchingGuard = endpoint->AcquireSwitchingGuard();
+            if (!switchingGuard) {
+                STORAGE_INFO(
+                    "Session swithing in progress: " << diskId.Quote() << " -> "
+                                                     << newDiskId.Quote());
+                continue;
+            }
+
+            Executor->Execute(
+                [socketPath = socketPath,
+                 endpoint = endpoint,
+                 switchingGuard = std::move(switchingGuard),
+                 diskId = diskId,
+                 newDiskId = newDiskId,
+                 weakSelf = weak_from_this()]() mutable
+                {
+                    if (auto self = weakSelf.lock()) {
+                        self->SwitchSessionForEndpoint(
+                            socketPath,
+                            std::move(endpoint),
+                            diskId,
+                            newDiskId);
+                    }
+                    switchingGuard.reset();
+                });
+        }
+    }
+
+    if (!endpointFound) {
+        STORAGE_WARN(
+            "Session for " << diskId.Quote() << " not found. Can't switch to "
+                           << newDiskId.Quote());
+    }
+}
+
+TResultOrError<IBlockStorePtr> TSessionManager::CreateStorageDataClient(
+    const TString& cellId,
+    const TClientAppConfigPtr& clientConfig,
+    const NProto::TVolume& volume,
+    const TString& clientId,
+    NProto::EVolumeAccessMode accessMode) const
+{
+    auto service = Service;
+    IStoragePtr storage;
+
+    if (!cellId.empty()) {
+        auto result = CellManager->GetCellEndpoint(
+            cellId,
+            clientConfig);
+        if (HasError(result)) {
+            return result.GetError();
+        }
+
+        service = result.GetResult().GetService();
+        storage = result.GetResult().GetStorage();
+    } else {
+        auto future =
+            StorageProvider->CreateStorage(volume, clientId, accessMode);
+
+        storage = Executor->ResultOrError(future).GetResult();
+    }
+
+    return {
+        std::make_shared<TStorageDataClient>(
+            std::move(storage),
+            std::move(service),
+            ServerStats,
+            clientId,
+            clientConfig->GetRequestTimeout(),
+            volume.GetBlockSize())
+    };
+}
+
 TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     const NProto::TStartEndpointRequest& request,
-    const NProto::TVolume& volume)
+    const NProto::TVolume& volume,
+    const TString& cellId)
 {
-    const auto clientId = request.GetClientId();
+    const auto& clientId = request.GetClientId();
     auto accessMode = request.GetVolumeAccessMode();
-
-    auto future = StorageProvider->CreateStorage(volume, clientId, accessMode)
-        .Apply([] (const auto& f) {
-            auto storage = f.GetValue();
-            // TODO: StorageProvider should return TResultOrError<IStoragePtr>
-            return TResultOrError(std::move(storage));
-        });
-
-    const auto& storageResult = Executor->WaitFor(future);
-    auto storage = storageResult.GetResult();
 
     auto clientConfig = CreateClientConfig(request);
 
-    IBlockStorePtr client = std::make_shared<TStorageDataClient>(
-        std::move(storage),
-        Service,
-        ServerStats,
+    auto [client, error] = CreateStorageDataClient(
+        cellId,
+        clientConfig,
+        volume,
         clientId,
-        clientConfig->GetRequestTimeout());
+        accessMode);
+
+    if (HasError(error)) {
+        return error;
+    }
+
+    auto switchableClient = CreateSwitchableClient(
+        Logging,
+        weak_from_this(),
+        volume.GetDiskId(),
+        std::move(client));
+    client = switchableClient;
 
     if (Options.TemporaryServer) {
         client = CreateErrorTransformService(
             std::move(client),
             {{ EErrorKind::ErrorFatal, E_REJECTED }});
+    }
+
+    if (Options.EnableDataIntegrityClient ||
+        FindPtr(
+            Options.MediaKindsToValidateDataIntegrity,
+            volume.GetStorageMediaKind()) != nullptr)
+    {
+        client = CreateDataIntegrityClient(
+            Logging,
+            Monitoring,
+            std::move(client),
+            volume);
     }
 
     auto retryPolicy =
@@ -676,7 +903,7 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     auto encryptionFuture = EncryptionClientFactory->CreateEncryptionClient(
         std::move(client),
         request.GetEncryptionSpec(),
-        request.GetDiskId());
+        NStorage::GetLogicalDiskId(request.GetDiskId()));
 
     const auto& clientOrError = Executor->WaitFor(encryptionFuture);
     if (HasError(clientOrError)) {
@@ -697,10 +924,9 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     }
 
     if (Options.StrictContractValidation &&
-        !volume.GetIsFastPathEnabled()   // switching fast path to slow path
-                                         // during migration might lead to
-                                         // validation false positives
-    )
+        // switching fast path to slow path during migration might lead to
+        // validation false positives
+        !volume.GetTags().contains(UseFastPathTagName))
     {
         client = CreateValidationClient(
             Logging,
@@ -719,17 +945,44 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
         std::move(clientConfig),
         CreateSessionConfig(request));
 
+    auto switchableSession = CreateSwitchableSession(
+        Logging,
+        Scheduler,
+        volume.GetDiskId(),
+        session,
+        switchableClient);
+
     return std::make_shared<TEndpoint>(
         *Executor,
+        std::move(switchableSession),
         std::move(session),
         std::move(client),
+        std::move(switchableClient),
         ThrottlerProvider,
         clientId,
-        volume.GetDiskId());
+        volume.GetDiskId(),
+        request);
 }
 
 TClientAppConfigPtr TSessionManager::CreateClientConfig(
-    const NProto::TStartEndpointRequest& request)
+    const NProto::TStartEndpointRequest& request,
+    TString host,
+    ui32 port) const
+{
+    NProto::TClientAppConfig clientAppConfig;
+    auto& config = *clientAppConfig.MutableClientConfig();
+
+    config = Options.DefaultClientConfig;
+    config.SetClientId(request.GetClientId());
+    config.SetInstanceId(request.GetInstanceId());
+    config.SetHost(host);
+    config.SetPort(port);
+
+    return std::make_shared<TClientAppConfig>(std::move(clientAppConfig));
+}
+
+TClientAppConfigPtr TSessionManager::CreateClientConfig(
+    const NProto::TStartEndpointRequest& request) const
 {
     NProto::TClientAppConfig clientAppConfig;
     auto& config = *clientAppConfig.MutableClientConfig();
@@ -738,19 +991,10 @@ TClientAppConfigPtr TSessionManager::CreateClientConfig(
     config.SetClientId(request.GetClientId());
     config.SetInstanceId(request.GetInstanceId());
 
-    if (request.GetRequestTimeout()) {
-        config.SetRequestTimeout(request.GetRequestTimeout());
-    }
-    if (request.GetRetryTimeout()) {
-        config.SetRetryTimeout(request.GetRetryTimeout());
-    }
-    if (request.GetRetryTimeoutIncrement()) {
-        config.SetRetryTimeoutIncrement(request.GetRetryTimeoutIncrement());
-    }
-
     return std::make_shared<TClientAppConfig>(std::move(clientAppConfig));
 }
 
+// static
 TSessionConfig TSessionManager::CreateSessionConfig(
     const NProto::TStartEndpointRequest& request)
 {
@@ -766,6 +1010,125 @@ TSessionConfig TSessionManager::CreateSessionConfig(
     return config;
 }
 
+void TSessionManager::SwitchSessionForEndpoint(
+    const TString& socketPath,
+    TEndpointPtr endpoint,
+    const TString& diskId,
+    const TString& newDiskId)
+{
+    STORAGE_INFO(
+        "Start session switching: " << diskId.Quote() << " -> "
+                                    << newDiskId.Quote());
+
+    auto callContext = MakeIntrusive<TCallContext>(CreateRequestId());
+
+    // Prepare request for new endpoint
+    auto newStartRequest = endpoint->GetStartRequest();
+    newStartRequest.SetDiskId(newDiskId);
+
+    // Describe new disk
+    auto describeResponse =
+        DescribeVolume(callContext, newDiskId, newStartRequest.GetHeaders());
+    if (HasError(describeResponse)) {
+        STORAGE_WARN(
+            "Describe volume " << newDiskId.Quote() << " failed: "
+                               << describeResponse.GetError().GetMessage());
+        return;
+    }
+
+    // Start new endpoint
+    auto result = CreateEndpoint(
+        newStartRequest,
+        describeResponse.GetVolume(),
+        describeResponse.GetCellId());
+
+    if (HasError(result)) {
+        STORAGE_WARN(
+            "Can't create new Session for " << newDiskId.Quote() << " "
+                                            << FormatError(result.GetError()));
+        return;
+    }
+
+    auto newEndpoint = std::move(result.ExtractResult());
+    auto error = newEndpoint->Start(
+        callContext,
+        newEndpoint->GetStartRequest().GetHeaders());
+
+    if (HasError(error)) {
+        STORAGE_WARN(
+            "Can't start new endpoint for " << newEndpoint->GetDiskId().Quote()
+                                            << " " << FormatError(error));
+        return;
+    }
+
+    // Switch to new endpoint
+    with_lock (EndpointLock) {
+        if (!Endpoints.contains(socketPath)) {
+            STORAGE_WARN("Endpoint " << socketPath.Quote() << " not found");
+            return;
+        }
+
+        if (Endpoints[socketPath] != endpoint) {
+            STORAGE_WARN(
+                "Endpoint on " << socketPath.Quote()
+                               << " is not the same as before");
+            return;
+        }
+
+        Endpoints[socketPath] = newEndpoint;
+        auto future = newEndpoint->SwitchSession(*endpoint);
+        future.Subscribe(
+            [callContext = std::move(callContext),
+             oldEndpoint = std::move(endpoint),
+             weakSelf = weak_from_this()](const TFuture<void>& future) mutable
+            {
+                Y_UNUSED(future);
+                // Stop old endpoint when switch finished
+                if (auto self = weakSelf.lock()) {
+                    self->StopEndpoint(
+                        std::move(callContext),
+                        std::move(oldEndpoint));
+                }
+            });
+    }
+
+    ThrottlerProvider->Clean();
+}
+
+void TSessionManager::StopEndpoint(
+    TCallContextPtr callContext,
+    TEndpointPtr oldEndpoint)
+{
+    Executor->Execute(
+        [callContext = std::move(callContext),
+         oldEndpoint = std::move(oldEndpoint),
+         weakSelf = weak_from_this()]()
+        {
+            if (auto self = weakSelf.lock()) {
+                self->StopEndpointImpl(callContext, oldEndpoint);
+            }
+        });
+}
+
+void TSessionManager::StopEndpointImpl(
+    TCallContextPtr callContext,
+    TEndpointPtr oldEndpoint)
+{
+    auto error = oldEndpoint->Stop(
+        std::move(callContext),
+        oldEndpoint->GetStartRequest().GetHeaders());
+
+    if (HasError(error)) {
+        STORAGE_WARN(
+            "Stop old endpoint for " << oldEndpoint->GetDiskId().Quote()
+                                     << "error :" << FormatError(error));
+    } else {
+        STORAGE_INFO(
+            "Stop old endpoint for " << oldEndpoint->GetDiskId().Quote()
+                                     << " success");
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -779,6 +1142,7 @@ ISessionManagerPtr CreateSessionManager(
     IVolumeStatsPtr volumeStats,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
+    NCells::ICellManagerPtr cellManager,
     IStorageProviderPtr storageProvider,
     IEncryptionClientFactoryPtr encryptionClientFactory,
     TExecutorPtr executor,
@@ -802,6 +1166,7 @@ ISessionManagerPtr CreateSessionManager(
         std::move(volumeStats),
         std::move(serverStats),
         std::move(service),
+        std::move(cellManager),
         std::move(storageProvider),
         std::move(throttlerProvider),
         std::move(encryptionClientFactory),

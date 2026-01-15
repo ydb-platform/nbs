@@ -43,6 +43,8 @@ TClientConfig::TClientConfig(const NProto::TRdmaClient& config)
     SET(AdaptiveWaitSleepDelay, TDuration::MicroSeconds);
     SET(AdaptiveWaitSleepDuration, TDuration::MicroSeconds);
     SET(AlignedDataEnabled);
+    SET(IpTypeOfService);
+    SET(SourceInterface);
 }
 
 #undef SET
@@ -67,6 +69,8 @@ void TClientConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(AdaptiveWaitSleepDelay, AdaptiveWaitSleepDelay.ToString());
                 ENTRY(AdaptiveWaitSleepDuration, AdaptiveWaitSleepDuration.ToString());
                 ENTRY(AlignedDataEnabled, AlignedDataEnabled);
+                ENTRY(IpTypeOfService, IpTypeOfService);
+                ENTRY(SourceInterface, SourceInterface);
             }
         }
     }

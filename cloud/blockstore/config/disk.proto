@@ -2,6 +2,7 @@ syntax = "proto2";
 
 import "cloud/blockstore/config/rdma.proto";
 import "cloud/blockstore/config/spdk.proto";
+import "cloud/blockstore/public/api/protos/disk.proto";
 
 package NCloud.NBlockStore.NProto;
 
@@ -27,6 +28,17 @@ enum EDiskAgentBackendType
     DISK_AGENT_BACKEND_SPDK = 0;
     DISK_AGENT_BACKEND_AIO = 1;
     DISK_AGENT_BACKEND_NULL = 2;
+    DISK_AGENT_BACKEND_IO_URING = 3;
+    DISK_AGENT_BACKEND_IO_URING_NULL = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// The policy of critical events reporting when chaos generates an error.
+
+enum EChaosCritEventReportingPolicy
+{
+    CCERP_FIRST_ERROR = 0;
+    CCERP_ALL_ERRORS = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -162,6 +174,26 @@ message TDiskAgentThrottlingConfig
 
     // Maximum bandwidth for one device in MiB/s.
     optional uint64 MaxDeviceBandwidthMiB = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TChaosConfig
+{
+    // The policy of critical events reporting when chaos generates an error.
+    optional EChaosCritEventReportingPolicy CritEventReportingPolicy = 1;
+
+    // The probability of getting an error on the request start and finish.
+    optional double ChaosProbability = 2;
+
+    // Error codes that the chaos will generate. When empty E_REJECTED is used.
+    repeated uint32 ErrorCodes = 3;
+
+    // The probability of data corruption when responding with an error.
+    optional double DataDamageProbability = 4;
+
+    // The probability of a response immediately upon receipt of the request.
+    optional double ImmediateReplyProbability = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -305,6 +337,25 @@ message TDiskAgentConfig
 
     // Use a separate thread to submit requests to all FileIOServices.
     optional bool UseLocalStorageSubmissionThread = 41;
+
+    // When a volume with a higher generation sends an Acquire request,
+    // we kick out the old client (from older generations)
+    // and acquire a device for the new client.
+    optional bool KickOutOldClientsEnabled = 42;
+
+    // Use one submission thread per AIO service.
+    optional bool UseOneSubmissionThreadPerAIOServiceEnabled = 43;
+
+    // Enables data integrity validation for the DR-based disks.
+    // See "EnableDataIntegrityClient" in server.proto for more details.
+    // Deprecated. Use "DataIntegrityValidationPolicyForDrBasedDisks" instead.
+    optional bool EnableDataIntegrityValidationForDrBasedDisks = 44;
+
+    // DANGER! It is used to generate errors during chaos testing.
+    optional TChaosConfig ChaosConfig = 45;
+
+    // Allows to control data integrity validation for DR-based disks.
+    optional EDataIntegrityValidationPolicy DataIntegrityValidationPolicyForDrBasedDisks = 46;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

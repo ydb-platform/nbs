@@ -16,13 +16,14 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_guard.h>
+#include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <library/cpp/threading/future/future.h>
 
-#include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/vector.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -35,8 +36,6 @@ private:
     struct TDeviceState
     {
         NProto::TDeviceConfig Config;
-        std::shared_ptr<TStorageAdapter> StorageAdapter;
-
         TStorageIoStatsPtr Stats;
     };
 
@@ -66,6 +65,10 @@ private:
     TRdmaTargetConfigPtr RdmaTargetConfig;
     TOldRequestCounters OldRequestCounters;
 
+    THashSet<TString> AttachedPaths;
+
+    ITaskQueuePtr BackgroundThreadPool;
+
 public:
     TDiskAgentState(
         TStorageConfigPtr storageConfig,
@@ -80,14 +83,17 @@ public:
         NNvme::INvmeManagerPtr nvmeManager,
         TRdmaTargetConfigPtr rdmaTargetConfig,
         TOldRequestCounters oldRequestCounters,
-        IMultiAgentWriteHandlerPtr multiAgentWriteHandler);
+        IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
+        ITaskQueuePtr backgroundThreadPool);
 
     struct TInitializeResult
     {
         TVector<NProto::TDeviceConfig> Configs;
+        TVector<IStoragePtr> Devices;
         TVector<TString> Errors;
         TVector<TString> ConfigMismatchErrors;
         TVector<TString> DevicesWithSuspendedIO;
+        TVector<TString> LostDevicesIds;
 
         TDeviceGuard Guard;
     };
@@ -130,6 +136,9 @@ public:
     TVector<NProto::TDeviceConfig> GetEnabledDevices() const;
 
     TVector<TString> GetDeviceIds() const;
+    TVector<TString> GetDeviceIdsByPath(const TString& path);
+    TVector<NProto::TDeviceConfig> GetDevicesByPath(
+        std::span<const TString> paths);
 
     ui32 GetDevicesCount() const;
 
@@ -160,6 +169,8 @@ public:
     void SuspendDevice(const TString& uuid);
     void EnableDevice(const TString& uuid);
     bool IsDeviceDisabled(const TString& uuid) const;
+    bool IsDeviceAttached(const TString& uuid) const;
+    bool IsPathAttached(const TString& path) const;
     bool IsDeviceSuspended(const TString& uuid) const;
     void ReportDisabledDeviceError(const TString& uuid);
 
@@ -168,37 +179,61 @@ public:
     void SetPartiallySuspended(bool partiallySuspended);
     bool GetPartiallySuspended() const;
 
+    NThreading::TFuture<void> DetachPaths(const TVector<TString>& paths);
+
+    struct TPreparePathsResult
+    {
+        TVector<NProto::TDeviceConfig> Configs;
+        TVector<IStoragePtr> Devices;
+        TVector<TStorageIoStatsPtr> Stats;
+    };
+
+    NThreading::TFuture<TResultOrError<TPreparePathsResult>> PreparePaths(
+        TVector<TString> pathsToAttach);
+
+    void AttachPaths(
+        TVector<NProto::TDeviceConfig> configs,
+        TVector<IStoragePtr> devices,
+        TVector<TStorageIoStatsPtr> stats);
+
 private:
-    const TDeviceState& GetDeviceState(
+    TStorageAdapterPtr GetDeviceStorageAdapter(
         const TString& uuid,
         const TString& clientId,
         const NProto::EVolumeAccessMode accessMode) const;
 
-    const TDeviceState& GetDeviceStateImpl(
+    TStorageAdapterPtr GetDeviceStorageAdapterImpl(
         const TString& uuid,
         const TString& clientId,
         const NProto::EVolumeAccessMode accessMode) const;
-    const TDeviceState& GetDeviceStateImpl(const TString& uuid) const;
+    TStorageAdapterPtr GetDeviceStorageAdapterImpl(const TString& uuid) const;
 
     void EnsureAccessToDevices(
         const TVector<TString>& uuids,
         const TString& clientId,
         NProto::EVolumeAccessMode accessMode) const;
 
-    template <typename T>
     void WriteProfileLog(
         TInstant now,
         const TString& uuid,
-        const T& req,
+        const NProto::TWriteBlocksRequest& req,
         ui32 blockSize,
-        ESysRequestType requestType);
+        TStringBuf buffer);
+
+    void WriteProfileLog(
+        TInstant now,
+        const TString& uuid,
+        const NProto::TZeroBlocksRequest& req,
+        ui32 blockSize);
 
     NThreading::TFuture<TInitializeResult> InitSpdkStorage();
     NThreading::TFuture<TInitializeResult> InitAioStorage();
 
     void InitRdmaTarget();
 
-    void RestoreSessions(TDeviceClient& client) const;
+    void RestoreSessions(
+        TDeviceClient& client,
+        const THashSet<TString>& lostDevicesIds) const;
 
     void CheckIfDeviceIsDisabled(const TString& uuid, const TString& clientId);
 };

@@ -15,9 +15,11 @@ void TDiskRegistryActor::HandleWaitReady(
     if (CurrentState != STATE_WORK &&
         CurrentState != STATE_READ_ONLY)
     {
-        LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] WaitReady request delayed until DiskRegistry is ready",
-            TabletID());
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s WaitReady request delayed until DiskRegistry is ready",
+            LogTitle.GetWithTime().c_str());
 
         auto requestInfo = CreateRequestInfo<TEvDiskRegistry::TWaitReadyMethod>(
             ev->Sender,
@@ -30,9 +32,11 @@ void TDiskRegistryActor::HandleWaitReady(
 
     BLOCKSTORE_DISK_REGISTRY_COUNTER(WaitReady);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received WaitReady request",
-        TabletID());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received WaitReady request",
+        LogTitle.GetWithTime().c_str());
 
     auto response = std::make_unique<TEvDiskRegistry::TEvWaitReadyResponse>();
 

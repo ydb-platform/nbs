@@ -41,7 +41,7 @@ TString Capitalize(TString str)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServerStats
+class TServerStats final
     : public IServerStats
 {
     class TMonPage;
@@ -256,7 +256,7 @@ void TServerStats::UnmountVolume(
     const TString& diskId,
     const TString& clientId)
 {
-    return VolumeStats->UnmountVolume(diskId, clientId);
+    VolumeStats->UnmountVolume(diskId, clientId);
 }
 
 void TServerStats::AlterVolume(
@@ -264,7 +264,7 @@ void TServerStats::AlterVolume(
     const TString& cloudId,
     const TString& folderId)
 {
-    return VolumeStats->AlterVolume(diskId, cloudId, folderId);
+    VolumeStats->AlterVolume(diskId, cloudId, folderId);
 }
 
 ui32 TServerStats::GetBlockSize(const TString& diskId) const
@@ -330,7 +330,9 @@ void TServerStats::RequestStarted(
     auto started = RequestStats->RequestStarted(
         req.MediaKind,
         req.RequestType,
-        req.RequestBytes);
+        req.RequestBytes,
+        req.AccessMode,
+        req.MountMode);
     callContext.SetRequestStartedCycles(started);
 
     if (req.VolumeInfo) {
@@ -413,6 +415,13 @@ void TServerStats::RequestCompleted(
         errorKind = EDiagnosticsErrorKind::ErrorSilent;
     }
 
+    if (errorKind != EDiagnosticsErrorKind::Success && req.CellRequest) {
+        // We want to exclude from our metrics errors resulting from requests
+        // coming from other cells, since those errors will already appear
+        // in the metrics of the host that sent the request
+        errorKind = EDiagnosticsErrorKind::Success;
+    }
+
     auto calcMaxTime = callContext.GetHasUncountableRejects()
                            ? ECalcMaxTime::DISABLE
                            : ECalcMaxTime::ENABLE;
@@ -429,7 +438,9 @@ void TServerStats::RequestCompleted(
         errorFlags,
         req.Unaligned,
         calcMaxTime,
-        responseSentCycles);
+        responseSentCycles,
+        req.AccessMode,
+        req.MountMode);
 
     ui32 blockSize = DefaultBlockSize;
 
@@ -528,6 +539,10 @@ void TServerStats::RequestCompleted(
     } else {
         logPriority = controlRequest ? TLOG_INFO : TLOG_RESOURCES;
         message = "request completed";
+    }
+
+    if (req.CellRequest) {
+        logPriority = TLOG_DEBUG;
     }
 
     STORAGE_LOG(logPriority,

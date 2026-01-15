@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 import tempfile
+from typing import List
 import uuid
 
 from library.python import resource
@@ -148,6 +149,7 @@ class Ycp:
         subnet_name: str
         subnet_id: str
         compute_node: str
+        compute_nodes_list: List[str]
         placement_group_name: str
         host_group: str
         filesystem_id: str
@@ -196,6 +198,7 @@ class Ycp:
                     address_key = 'primary_v4_address'
                 self.ip = network_interface[address_key]['address']
             self.compute_node = info.get('compute_node')
+            self.compute_nodes_list = info.get('compute_nodes_list')
             self.name = info['name']
             self.created_at = dateparser.parse(info['created_at'])
             self.folder_id = info.get('folder_id', '')
@@ -393,6 +396,7 @@ class Ycp:
                 subnet_id=subnet_id,
                 folder_id=config.folder_id,
                 compute_node=config.compute_node,
+                compute_nodes_list=config.compute_nodes_list,
                 placement_group_id=placement_group_id,
                 host_group=config.host_group,
                 filesystem_id=config.filesystem_id,

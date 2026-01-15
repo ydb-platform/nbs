@@ -100,13 +100,13 @@ constexpr TDuration Seconds(int s)
     xxx(NbdNetlink,                  bool,                  false             )\
     xxx(NbdRequestTimeout,           TDuration,             Seconds(600)      )\
     xxx(NbdConnectionTimeout,        TDuration,             Seconds(86400)    )\
-    xxx(EndpointProxySocketPath,     TString,               ""                )\
     xxx(AllowAllRequestsViaUDS,      bool,                  false             )\
     xxx(NodeRegistrationToken,       TString,               "root@builtin"    )\
     xxx(EndpointStorageNotImplementedErrorIsFatal,  bool,   false             )\
     xxx(VhostServerTimeoutAfterParentExit, TDuration,       Seconds(60)       )\
     xxx(ChecksumFlags,               NProto::TChecksumFlags, {}               )\
     xxx(VhostDiscardEnabled,         bool,                   false            )\
+    xxx(VhostOptimalIoSize,          ui32,                   0                )\
     xxx(MaxZeroBlocksSubRequestSize, ui32,                   0                )\
     xxx(EncryptZeroPolicy,                                                     \
         NProto::EEncryptZeroPolicy,                                            \

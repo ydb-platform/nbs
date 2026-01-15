@@ -330,4 +330,71 @@ void TPartitionActor::HandleHttpInfo_GetTransactionsLatency(
             TransactionTimeTracker.GetStatJson(GetCycleCount())));
 }
 
+void TPartitionActor::HandleHttpInfo_GetGroupLatencies(
+    const TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteJsonInfoRes>(
+            BSGroupOperationTimeTracker.GetStatJson(GetCycleCount())));
+}
+
+void TPartitionActor::HandleHttpInfo_ResetTransactionLatencyStats(
+    const TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+    TransactionTimeTracker.ResetStats();
+    SendHttpResponse(ctx, *requestInfo, "");
+}
+
+void TPartitionActor::HandleHttpInfo_ResetBSGroupLatencyStats(
+    const TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+    BSGroupOperationTimeTracker.ResetStats();
+    SendHttpResponse(ctx, *requestInfo, "");
+}
+
+void TPartitionActor::HandleHttpInfo_GetTransactionsInflight(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteHttpInfoRes>(FormatTransactionsInflight(
+            TransactionTimeTracker.GetInflightOperations(),
+            GetCycleCount(),
+            TInstant::Now())));
+}
+
+void TPartitionActor::HandleHttpInfo_GetBSGroupOperationsInflight(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteHttpInfoRes>(
+            FormatBSGroupOperationsInflight(
+                BSGroupOperationTimeTracker.GetInflightOperations(),
+                GetCycleCount(),
+                TInstant::Now())));
+}
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

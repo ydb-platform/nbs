@@ -61,6 +61,7 @@ private:
     const TActorId Tablet;
     const TRequestInfoPtr RequestInfo;
     const TString FileSystemId;
+    const bool WriteBlobDisabled;
     const IProfileLogPtr ProfileLog;
 
     TVector<TWriteBlobRequest> Requests;
@@ -78,6 +79,7 @@ public:
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         TString fileSystemId,
+        bool writeBlobDisabled,
         IProfileLogPtr profileLog,
         TVector<TWriteBlobRequest> requests,
         NProto::TProfileLogRequestInfo profileLogRequest);
@@ -113,6 +115,7 @@ TWriteBlobActor::TWriteBlobActor(
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         TString fileSystemId,
+        bool writeBlobDisabled,
         IProfileLogPtr profileLog,
         TVector<TWriteBlobRequest> requests,
         NProto::TProfileLogRequestInfo profileLogRequest)
@@ -120,6 +123,7 @@ TWriteBlobActor::TWriteBlobActor(
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
     , FileSystemId(std::move(fileSystemId))
+    , WriteBlobDisabled(writeBlobDisabled)
     , ProfileLog(std::move(profileLog))
     , Requests(std::move(requests))
     , ProfileLogRequest(std::move(profileLogRequest))
@@ -131,6 +135,12 @@ void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
         RequestReceived_TabletWorker,
         RequestInfo->CallContext,
         "WriteBlob");
+
+    if (WriteBlobDisabled) {
+        ReportFakeBlobWasWritten();
+        ReplyAndDie(ctx);
+        return;
+    }
 
     SendRequests(ctx);
     Become(&TThis::StateWork);
@@ -265,7 +275,7 @@ void TIndexTabletActor::HandleWriteBlob(
     const TActorContext& ctx)
 {
     NProto::TProfileLogRequestInfo profileLogRequest;
-    InitProfileLogRequestInfo(
+    InitTabletProfileLogRequestInfo(
         profileLogRequest,
         EFileStoreSystemRequest::WriteBlob,
         ctx.Now());
@@ -364,6 +374,7 @@ void TIndexTabletActor::HandleWriteBlob(
         ctx.SelfID,
         std::move(requestInfo),
         GetFileSystemId(),
+        Config->GetWriteBlobDisabled(),
         ProfileLog,
         std::move(requests),
         std::move(profileLogRequest));

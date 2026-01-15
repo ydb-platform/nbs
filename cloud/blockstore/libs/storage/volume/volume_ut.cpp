@@ -1,11 +1,13 @@
 #include "volume_ut.h"
 
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
+#include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
 #include <util/system/hostname.h>
 
@@ -1018,7 +1020,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         client1.AddClient(clientInfo);
         volume.WaitReady();
 
-        // Intercepting the migration. All write anr zero requests overlapping
+        // Intercepting the migration. All write and zero requests overlapping
         // with it range will be rejected.
         runtime->DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(evRangeMigrated);
@@ -1259,7 +1261,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         state->MigrationMode = EMigrationMode::InProgress;
         TBlockRange64 migratedRange;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        auto original = runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 const auto migratedEvent =
                     TEvNonreplPartitionPrivate::EvRangeMigrated;
                 using TMigratedEvent =
@@ -1283,6 +1285,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT(migratedRange.Size() == 1024);
         UNIT_ASSERT_VALUES_EQUAL(0, state->FinishMigrationRequests);
 
+        runtime->SetObserverFunc(original);
         // rebooting volume to stop partition actors
         volume.RebootTablet();
 
@@ -1415,7 +1418,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         ui32 migrationProgressCounter = 0;
 
         bool drop = false;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        auto original = runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 const auto migratedEvent =
                     TEvNonreplPartitionPrivate::EvRangeMigrated;
                 using TMigratedEvent =
@@ -1458,6 +1461,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(1, migrationStartedCounter);
         UNIT_ASSERT_VALUES_EQUAL(60, migrationProgressCounter);
 
+        runtime->SetObserverFunc(original);
         volume.RebootTablet();
         volume.AddClient(clientInfo);
 
@@ -2128,7 +2132,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         volumeGeneration = 0;
 
-        volume.RemoveClient(writer.GetClientId());
+        volume.RemoveClient(reader.GetClientId());
         UNIT_ASSERT_VALUES_EQUAL(2, volumeGeneration);
     }
 
@@ -3528,6 +3532,344 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             Volume->WaitReady();
         }
     };
+
+    static std::unique_ptr<TTestActorRuntime> PrepareCheckRangeTestActorRuntime(
+        NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        if (mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2) {
+            state->ReplicaCount = 1;
+        } else if (mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3) {
+            state->ReplicaCount = 2;
+        }
+
+        return PrepareTestActorRuntime({}, state, {});
+    }
+
+    static void DoTestShouldCommonCheckRange(
+        NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        constexpr ui32 DiskSize = 8192;
+        auto runtime = PrepareCheckRangeTestActorRuntime(mediaKind);
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, DiskSize);
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1024),
+            clientInfo.GetClientId(),
+            1);
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(576, 3073),
+            clientInfo.GetClientId(),
+            42);
+
+        const auto checkRange = [&](ui32 startIndex, ui32 size)
+        {
+            volume.SendCheckRangeRequest("disk-id", startIndex, size);
+            auto response =
+                volume.RecvCheckRangeResponse(TDuration::Seconds(1));
+            const auto& record = response->Record;
+
+            std::string extended_msg =
+                "startIndex: " + std::to_string(startIndex) +
+                ", size: " + std::to_string(size);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                false,
+                HasError(record.error()),
+                extended_msg + ". Error:" + FormatError(record.error()));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                false,
+                HasError(record.status()),
+                extended_msg + ". Error:" + FormatError(record.status()));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                size,
+                record.GetDiskChecksums().DataSize(),
+                extended_msg);
+        };
+
+        checkRange(0, 1);
+        checkRange(0, 1024);
+        checkRange(1024, 512);
+        checkRange(1, 1);
+        checkRange(1000, 1000);
+    }
+
+    static void DoTestShouldCheckRangeWithBrokenBlocks(
+        NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        auto runtime = PrepareCheckRangeTestActorRuntime(mediaKind);
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, 8192);
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1023),
+            clientInfo.GetClientId(),
+            42);
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvReadBlocksLocalResponse: {
+                        using TEv = TEvService::TEvReadBlocksLocalResponse;
+
+                        auto response = std::make_unique<TEv>(
+                            MakeError(E_IO, "block is broken"));
+
+                        runtime->Send(
+                            new IEventHandle(
+                                event->Recipient,
+                                event->Sender,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            0);
+
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    default:
+                        break;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        const auto checkRange = [&](ui32 startIndex, ui32 size)
+        {
+            volume.SendCheckRangeRequest("disk-id", startIndex, size);
+            auto response =
+                volume.RecvCheckRangeResponse(TDuration::Seconds(1));
+            const auto& record = response->Record;
+
+            std::string extended_msg =
+                "startIndex: " + std::to_string(startIndex) +
+                ", size: " + std::to_string(size);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_IO,
+                record.GetStatus().code(),
+                extended_msg);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                extended_msg);
+        };
+
+        checkRange(0, 1024);
+        checkRange(1, 1);
+        checkRange(1024, 512);
+    }
+
+    static void DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
+        NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        auto runtime = PrepareCheckRangeTestActorRuntime(mediaKind);
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, 8192);
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        volume.SendCheckRangeRequest("disk-id", 0, 1024);
+        auto response = volume.RecvCheckRangeResponse(TDuration::Seconds(3));
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetStatus().GetCode());
+    }
+
+    static void DoTestShouldntCheckRangeWithBigBlockCount(
+        NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        auto runtime = PrepareCheckRangeTestActorRuntime(mediaKind);
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, 8192);
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1023),
+            clientInfo.GetClientId(),
+            42);
+
+        volume.SendCheckRangeRequest("disk-id", 0, 1024 + 1);
+        auto response = volume.RecvCheckRangeResponse(TDuration::Seconds(3));
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+    }
+
+    static void DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
+        NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        auto runtime = PrepareCheckRangeTestActorRuntime(mediaKind);
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, 8192);
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1023),
+            clientInfo.GetClientId(),
+            42);
+
+        volume.SendCheckRangeRequest("disk-id", 0, 99);
+        auto response1 = volume.RecvCheckRangeResponse(TDuration::Seconds(5));
+        bool resp1NotNull = response1 != nullptr;
+        UNIT_ASSERT_VALUES_EQUAL(resp1NotNull, true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            response1->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            response1->Record.GetStatus().GetCode());
+        const auto& record1 = response1->Record;
+
+        volume.SendCheckRangeRequest("disk-id", 100, 99);
+        auto response2 = volume.RecvCheckRangeResponse(TDuration::Seconds(5));
+        bool resp2NotNull = response2 != nullptr;
+        UNIT_ASSERT_VALUES_EQUAL(resp2NotNull, true);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response2->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response2->Record.GetStatus().GetCode());
+        const auto& record2 = response2->Record;
+
+        const auto& checksums1 = record1.GetDiskChecksums().GetData();
+        const auto& checksums2 = record2.GetDiskChecksums().GetData();
+
+        ASSERT_VECTORS_EQUAL(
+            TVector<ui32>(checksums1.begin(), checksums1.end()),
+            TVector<ui32>(checksums2.begin(), checksums2.end()));
+    }
+
+    static void DoTestShouldGetDifferentChecksumsWhileCheckRange(
+        NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        auto runtime = PrepareCheckRangeTestActorRuntime(mediaKind);
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, 8192);
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1023),
+            clientInfo.GetClientId(),
+            42);
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(1024, 2047),
+            clientInfo.GetClientId(),
+            77);
+
+        volume.SendCheckRangeRequest("disk-id", 0, 1024);
+        auto response1 = volume.RecvCheckRangeResponse(TDuration::Seconds(5));
+        bool resp1NotNull = response1 != nullptr;
+        UNIT_ASSERT_VALUES_EQUAL(resp1NotNull, true);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response1->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response1->Record.GetStatus().GetCode());
+        const auto& record1 = response1->Record;
+
+        volume.SendCheckRangeRequest("disk-id", 1024, 1024);
+        auto response2 = volume.RecvCheckRangeResponse(TDuration::Seconds(5));
+        bool resp2NotNull = response2 != nullptr;
+        UNIT_ASSERT_VALUES_EQUAL(resp2NotNull, true);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response2->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response2->Record.GetStatus().GetCode());
+        const auto& record2 = response2->Record;
+
+        const auto& checksums1 = record1.GetDiskChecksums().GetData();
+        const auto& checksums2 = record2.GetDiskChecksums().GetData();
+
+        UNIT_ASSERT_VALUES_EQUAL(checksums1.size(), checksums2.size());
+
+        ui32 differentChecksums = 0;
+        for (int i = 0; i < checksums1.size(); ++i) {
+            if (checksums1.at(i) != checksums2.at(i)) {
+                ++differentChecksums;
+            }
+        }
+
+        UNIT_ASSERT_VALUES_UNEQUAL(differentChecksums, 0);
+    }
+
+    static void DoTestShouldCheckRangeChecksumAlgorithm(
+        NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        auto runtime = PrepareCheckRangeTestActorRuntime(mediaKind);
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, 8192);
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        const TVector<TString> blocks{
+            GetBlockContent('A'),
+            GetBlockContent('B'),
+            GetBlockContent('C'),
+            GetBlockContent('A'),
+            GetBlockContent('B'),
+            GetBlockContent('C'),
+        };
+
+        TVector<ui32> expectedChecksum(blocks.size());
+
+        for (size_t i = 0; i != blocks.size(); ++i) {
+            expectedChecksum[i] =
+                TBlockChecksum{}.Extend(blocks[i].data(), blocks[i].size());
+
+            volume.WriteBlocks(
+                TBlockRange64::MakeOneBlock(i),
+                clientInfo.GetClientId(),
+                blocks[i]);
+        }
+
+        auto response = volume.CheckRange("disk-id", 0, blocks.size());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetStatus().GetCode());
+        const auto& record = response->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedChecksum.size(),
+            record.GetDiskChecksums().DataSize());
+
+        for (size_t i = 0; i != blocks.size(); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedChecksum[i],
+                record.GetDiskChecksums().GetData(i));
+        }
+    }
+
+    ///////
 
     void DoTestShouldThrottleSomeOps(
         NCloud::NProto::EStorageMediaKind mediaKind,
@@ -6388,6 +6730,111 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
     }
 
+    Y_UNIT_TEST(ShouldAcceptWritesFromCopyVolumeClientIfSourceDiskIdIsSet)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume(*runtime);
+
+        auto updateVolumeConfig = volume.TagUpdater(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024);
+
+        updateVolumeConfig("source-disk-id=disk-1");
+
+        {
+            auto clientInfo = CreateVolumeClientInfo(
+                TString(CopyVolumeClientId),
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                0);
+            volume.AddClient(clientInfo);
+            volume.WaitReady();
+
+            volume.SendWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId());
+            auto response = volume.RecvWriteBlocksResponse();
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+
+            volume.RemoveClient(clientInfo.GetClientId());
+        }
+
+        {
+            auto clientInfo = CreateVolumeClientInfo(
+                TString(DMCopyVolumeClientId),
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                0);
+            volume.AddClient(clientInfo);
+            volume.WaitReady();
+
+            volume.SendWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId());
+            auto response = volume.RecvWriteBlocksResponse();
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+
+            volume.RemoveClient(clientInfo.GetClientId());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectReadsIfSourceDiskIdIsSet)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume(*runtime);
+
+        auto updateVolumeConfig = volume.TagUpdater(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024);
+
+        updateVolumeConfig("source-disk-id=disk-1");
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0
+        );
+        volume.AddClient(clientInfo);
+        volume.WaitReady();
+
+        {
+            volume.SendReadBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                TString(CopyVolumeClientId));
+            auto response = volume.RecvReadBlocksResponse(TDuration::Zero());
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        // Should not reject reads if source disk id is not set.
+        updateVolumeConfig("");
+        volume.ReconnectPipe();
+        volume.AddClient(clientInfo);
+
+        {
+            volume.SendReadBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId());
+            auto response = volume.RecvReadBlocksResponse(TDuration::Zero());
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+    }
+
     void DoTestShouldTrackUsedBlocksIfTrackUsedTagIsSet(
         NProto::EStorageMediaKind mediaKind)
     {
@@ -7710,7 +8157,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
             return TTestActorRuntime::DefaultObserverFunc(event);
         };
-        runtime->SetObserverFunc(obs);
+        auto original = runtime->SetObserverFunc(obs);
 
         volume.AddClient(clientInfo);
         volume.ReconnectPipe();
@@ -7723,6 +8170,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             UNIT_ASSERT(v.GetResyncInProgress());
         }
 
+        runtime->SetObserverFunc(original);
         volume.RebootTablet();
         volume.AddClient(clientInfo);
         volume.WaitReady();
@@ -8175,7 +8623,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         updateConfig("");
         checkUseFastPath(0);
 
-        updateConfig("use-fastpath");
+        updateConfig(TString(UseFastPathTagName));
         checkUseFastPath(1);
     }
 
@@ -9481,10 +9929,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     TVector<TString> WriteToDiskWithInflightDataCorruptionAndReadResults(
         NCloud::NProto::EStorageMediaKind mediaKind,
         ui32 writeNumberToIntercept,
-        const TString& tags)
+        const TString& tags,
+        bool disableUsingIntermediateWriteBuffer = false)
     {
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
+        config.SetDisableUsingIntermediateWriteBuffer(
+            disableUsingIntermediateWriteBuffer);
         auto state = MakeIntrusive<TDiskRegistryState>();
         auto runtime = PrepareTestActorRuntime(config, state);
 
@@ -9600,6 +10051,29 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(adata, results[2]);
     }
 
+    Y_UNIT_TEST(
+        ShouldNotCopyWriteRequestDataBeforeWritingToStorageIfTagIsSetM3ButFeatureIsDisabled)
+    {
+        auto results = WriteToDiskWithInflightDataCorruptionAndReadResults(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            // 1 - to volume
+            // 1 - to mirror actor
+            // 3 - to 3 replicas
+            1 + 1 + 3,
+            "use-intermediate-write-buffer",
+            /*disableUsingIntermediateWriteBuffer=*/true);
+        const TString adata(4_KB, 'a');
+
+        const bool replica1Match = (adata == results[0]);
+        const bool replica2Match = (adata == results[1]);
+        const bool replica3Match = (adata == results[2]);
+        // One of the replicas should have inconsistent data due to disabled
+        // feature.
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            replica1Match + replica2Match + replica3Match);
+    }
+
     Y_UNIT_TEST(ShouldHaveDifferentDataInReplicasUponInflightBufferCorruptionM3)
     {
         auto results = WriteToDiskWithInflightDataCorruptionAndReadResults(
@@ -9644,377 +10118,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(bdata, results[2]);
     }
 
-    Y_UNIT_TEST(ShouldManageFollowerLink)
-    {
-        const auto volumeBlockCount = DefaultDeviceBlockSize * DefaultDeviceBlockCount
-            / DefaultBlockSize;
-
-        auto runtime = PrepareTestActorRuntime();
-        runtime->RegisterService(
-            MakeVolumeProxyServiceId(),
-            runtime->AllocateEdgeActor(),
-            0);
-
-        TVolumeClient volume1(*runtime, 0, TestVolumeTablets[0]);
-        volume1.CreateVolume(volume1.CreateUpdateVolumeConfigRequest(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NProto::STORAGE_MEDIA_SSD,
-            7 * 1024,   // block count per partition
-            "vol1"));
-        volume1.WaitReady();
-
-        TVolumeClient volume2(*runtime, 0, TestVolumeTablets[1]);
-        volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            volumeBlockCount,   // block count per partition
-            "vol2"));
-        volume2.WaitReady();
-
-        auto forwardRequest = [&](TAutoPtr<IEventHandle>& event, TString diskId)
-        {
-            if (diskId == "vol1") {
-                volume1.ForwardToPipe(event);
-            } else if (diskId == "vol2") {
-                volume2.ForwardToPipe(event);
-            } else {
-                UNIT_ASSERT_C(
-                    false,
-                    TStringBuilder() << "Unknown disk id: " << diskId);
-            }
-        };
-
-        auto volumeProxyRequestHandler =
-            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
-        {
-            if (event->Recipient == MakeVolumeProxyServiceId()) {
-                if (event->GetTypeRewrite() ==
-                    TEvVolume::EvUpdateLinkOnFollowerRequest)
-                {
-                    auto* msg =
-                        event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
-                    forwardRequest(event, msg->Record.GetDiskId());
-                }
-
-                return true;
-            }
-            return false;
-        };
-
-        runtime->SetEventFilter(volumeProxyRequestHandler);
-
-        TLeaderFollowerLink link{
-            .LinkUUID = "",
-            .LeaderDiskId = "vol1",
-            .LeaderShardId = "su1",
-            .FollowerDiskId = "vol2",
-            .FollowerShardId = "su2"};
-        {
-            // Create link
-            auto response = volume1.LinkLeaderVolumeToFollower(link);
-            link.LinkUUID = response->Record.GetLinkUUID();
-
-            // Reboot tablet
-            volume1.RebootTablet();
-            volume1.WaitReady();
-
-            // Should get S_ALREADY since link persisted in local volume
-            // database.
-            volume1.SendLinkLeaderVolumeToFollowerRequest(link);
-            response = volume1.RecvLinkLeaderVolumeToFollowerResponse();
-            UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetStatus());
-        }
-
-        {   // Update link state
-            using EState = TFollowerDiskInfo::EState;
-
-            auto follower = TFollowerDiskInfo{
-                .Link = link,
-                .CreatedAt = TInstant::Now(),
-                .State = EState::Preparing,
-                .MigratedBytes = 1_MB};
-
-            auto response = volume1.UpdateFollowerState(follower);
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(
-                EState::Preparing,
-                response->Follower.State);
-            UNIT_ASSERT_VALUES_EQUAL(1_MB, response->Follower.MigratedBytes);
-
-            follower.MigratedBytes = 2_MB;
-            response = volume1.UpdateFollowerState(follower);
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(
-                EState::Preparing,
-                response->Follower.State);
-            UNIT_ASSERT_VALUES_EQUAL(2_MB, response->Follower.MigratedBytes);
-
-            follower.State = EState::DataReady;
-            follower.MigratedBytes = 2_MB;
-            response = volume1.UpdateFollowerState(follower);
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(EState::DataReady, response->Follower.State);
-            UNIT_ASSERT_VALUES_EQUAL(2_MB, response->Follower.MigratedBytes);
-
-            follower.State = EState::Error;
-            follower.MigratedBytes = 2_MB;
-            response = volume1.UpdateFollowerState(follower);
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(EState::Error, response->Follower.State);
-            UNIT_ASSERT_VALUES_EQUAL(2_MB, response->Follower.MigratedBytes);
-        }
-
-        {
-            // Destroy link
-            volume1.UnlinkLeaderVolumeFromFollower(link);
-
-            // Reboot tablet
-            volume1.RebootTablet();
-            volume1.WaitReady();
-
-            // Should get S_ALREADY since link persisted in local volume
-            // database.
-            volume1.SendUnlinkLeaderVolumeFromFollowerRequest(link);
-            auto response =
-                volume1.RecvUnlinkLeaderVolumeFromFollowerResponse();
-            UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetStatus());
-        }
-    }
-
-    Y_UNIT_TEST(ShouldRetryPropagateFollowerLink)
-    {
-        auto runtime = PrepareTestActorRuntime();
-        runtime->RegisterService(
-            MakeVolumeProxyServiceId(),
-            runtime->AllocateEdgeActor(),
-            0);
-
-        TVolumeClient volume1(*runtime, 0, TestVolumeTablets[0]);
-        volume1.CreateVolume(volume1.CreateUpdateVolumeConfigRequest(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NProto::STORAGE_MEDIA_SSD,
-            7 * 1024,   // block count per partition
-            "vol1"));
-        volume1.WaitReady();
-
-        TVolumeClient volume2(*runtime, 0, TestVolumeTablets[1]);
-        volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NProto::STORAGE_MEDIA_SSD,
-            7 * 1024,   // block count per partition
-            "vol2"));
-        volume2.WaitReady();
-
-        auto forwardRequest = [&](TAutoPtr<IEventHandle>& event, TString diskId)
-        {
-            if (diskId == "vol1") {
-                volume1.ForwardToPipe(event);
-            } else if (diskId == "vol2") {
-                volume2.ForwardToPipe(event);
-            } else {
-                UNIT_ASSERT_C(
-                    false,
-                    TStringBuilder() << "Unknown disk id: " << diskId);
-            }
-        };
-
-        size_t updateLinkOnFollowerResponseCount = 0;
-        auto volumeProxyRequestHandler =
-            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
-        {
-            if (event->Recipient == MakeVolumeProxyServiceId()) {
-                if (event->GetTypeRewrite() ==
-                    TEvVolume::EvUpdateLinkOnFollowerRequest)
-                {
-                    auto* msg =
-                        event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
-                    forwardRequest(event, msg->Record.GetDiskId());
-                }
-                return true;
-            }
-
-            if (event->GetTypeRewrite() ==
-                TEvVolume::EvUpdateLinkOnFollowerResponse)
-            {
-                // Drop first 3 responses from follower.
-                if (updateLinkOnFollowerResponseCount++ < 2) {
-                    return true;
-                }
-            }
-            return false;
-        };
-
-        runtime->SetEventFilter(volumeProxyRequestHandler);
-
-        TLeaderFollowerLink link{
-            .LinkUUID = "",
-            .LeaderDiskId = "vol1",
-            .LeaderShardId = "su1",
-            .FollowerDiskId = "vol2",
-            .FollowerShardId = "su2"};
-
-        // Create link
-        volume1.LinkLeaderVolumeToFollower(link);
-
-        // Should get 4 responses from follower.
-        UNIT_ASSERT_VALUES_EQUAL(3, updateLinkOnFollowerResponseCount);
-    }
-
-    Y_UNIT_TEST(ShouldFailCreateLinkPropagateFollowerLink)
-    {
-        auto runtime = PrepareTestActorRuntime();
-        runtime->RegisterService(
-            MakeVolumeProxyServiceId(),
-            runtime->AllocateEdgeActor(),
-            0);
-
-        TVolumeClient volume1(*runtime, 0, TestVolumeTablets[0]);
-        volume1.CreateVolume(volume1.CreateUpdateVolumeConfigRequest(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NProto::STORAGE_MEDIA_SSD,
-            7 * 1024,   // block count per partition
-            "vol1"));
-        volume1.WaitReady();
-
-        TVolumeClient volume2(*runtime, 0, TestVolumeTablets[1]);
-        volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NProto::STORAGE_MEDIA_SSD,
-            7 * 1024,   // block count per partition
-            "vol2"));
-        volume2.WaitReady();
-
-        auto forwardRequest = [&](TAutoPtr<IEventHandle>& event, TString diskId)
-        {
-            if (diskId == "vol1") {
-                volume1.ForwardToPipe(event);
-            } else if (diskId == "vol2") {
-                volume2.ForwardToPipe(event);
-            } else {
-                UNIT_ASSERT_C(
-                    false,
-                    TStringBuilder() << "Unknown disk id: " << diskId);
-            }
-        };
-
-        auto volumeProxyRequestHandler =
-            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
-        {
-            if (event->Recipient == MakeVolumeProxyServiceId()) {
-                if (event->GetTypeRewrite() ==
-                    TEvVolume::EvUpdateLinkOnFollowerRequest)
-                {
-                    auto* msg =
-                        event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
-                    forwardRequest(event, msg->Record.GetDiskId());
-                }
-                return true;
-            }
-
-            if (event->GetTypeRewrite() ==
-                TEvVolume::EvUpdateLinkOnFollowerRequest)
-            {
-                auto response = std::make_unique<
-                    TEvVolume::TEvUpdateLinkOnFollowerResponse>(MakeError(
-                    E_ARGUMENT,
-                    "Simulated non-retriable error on follower"));
-
-                runtime->Send(
-                    new IEventHandle(
-                        event->Sender,
-                        event->Recipient,
-                        response.release(),
-                        0,   // flags
-                        event->Cookie),
-                    0);
-                return true;
-            }
-            return false;
-        };
-
-        runtime->SetEventFilter(volumeProxyRequestHandler);
-
-        TLeaderFollowerLink link{
-            .LinkUUID = "",
-            .LeaderDiskId = "vol1",
-            .LeaderShardId = "su1",
-            .FollowerDiskId = "vol2",
-            .FollowerShardId = "su2"};
-
-        // Create link
-        volume1.SendLinkLeaderVolumeToFollowerRequest(link);
-        auto response = volume1.RecvLinkLeaderVolumeToFollowerResponse();
-
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_INVALID_STATE,
-            response->GetError().GetCode(),
-            FormatError(response->GetError()));
-    }
-
-    Y_UNIT_TEST(ShouldPerformIoWithPredefinedCopyVolumeClientId)
-    {
-        NProto::TStorageServiceConfig config;
-        config.SetAcquireNonReplicatedDevices(true);
-        auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(config, state);
-
-        TVolumeClient volume(*runtime);
-
-        volume.UpdateVolumeConfig(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024);
-
-        volume.WaitReady();
-
-        // IO with predefined CopyVolumeClientId accepted.
-        volume.WriteBlocks(
-            TBlockRange64::MakeOneBlock(0),
-            TString(CopyVolumeClientId),
-            1);
-        volume.ZeroBlocks(
-            TBlockRange64::MakeOneBlock(0),
-            TString(CopyVolumeClientId));
-        volume.ReadBlocks(
-            TBlockRange64::MakeOneBlock(0),
-            TString(CopyVolumeClientId));
-    }
-
     Y_UNIT_TEST(ShouldNotPerformIoWithPredefinedWhenOtherClient)
     {
         NProto::TStorageServiceConfig config;
@@ -10032,7 +10135,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             false,
             1,
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024);
+            1024,
+            "vol0",
+            "cloud",
+            "folder",
+            1,                           // partition count
+            0,                           // blocksPerStripe
+            "source-disk-id=vol0-copy"   // tags
+        );
 
         auto clientInfo = CreateVolumeClientInfo(
             NProto::VOLUME_ACCESS_READ_WRITE,
@@ -10050,9 +10160,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 1);
             auto response = volume.RecvWriteBlocksResponse(TDuration::Zero());
             UNIT_ASSERT(response);
-            UNIT_ASSERT_VALUES_EQUAL(
+            UNIT_ASSERT_VALUES_EQUAL_C(
                 E_BS_INVALID_SESSION,
-                response->GetStatus());
+                response->GetStatus(),
+                FormatError(response->GetError()));
         }
         {
             volume.SendZeroBlocksRequest(
@@ -10060,9 +10171,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 TString(CopyVolumeClientId));
             auto response = volume.RecvZeroBlocksResponse(TDuration::Zero());
             UNIT_ASSERT(response);
-            UNIT_ASSERT_VALUES_EQUAL(
+            UNIT_ASSERT_VALUES_EQUAL_C(
                 E_BS_INVALID_SESSION,
-                response->GetStatus());
+                response->GetStatus(),
+                FormatError(response->GetError()));
         }
         {
             volume.SendReadBlocksRequest(
@@ -10070,9 +10182,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 TString(CopyVolumeClientId));
             auto response = volume.RecvReadBlocksResponse(TDuration::Zero());
             UNIT_ASSERT(response);
-            UNIT_ASSERT_VALUES_EQUAL(
-                E_BS_INVALID_SESSION,
-                response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                FormatError(response->GetError()));
         }
     }
 
@@ -10163,6 +10276,412 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 2,
                 response->Record.FailInfo.FailedRanges.size());
         }
+    }
+
+    // ====== checkrange tests
+    // --- base TestCase
+    Y_UNIT_TEST(ShouldCommonCheckRangeSSDNonreplicated)
+    {
+        DoTestShouldCommonCheckRange(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldCommonCheckRangeMirror2)
+    {
+        DoTestShouldCommonCheckRange(NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
+    }
+
+    Y_UNIT_TEST(ShouldCommonCheckRangeMirror3)
+    {
+        DoTestShouldCommonCheckRange(NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+    }
+
+    Y_UNIT_TEST(ShouldCommonCheckRangeSSD)
+    {
+        DoTestShouldCommonCheckRange(NCloud::NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(ShouldCommonCheckRangeHDD)
+    {
+        DoTestShouldCommonCheckRange(NCloud::NProto::STORAGE_MEDIA_HDD);
+    }
+
+    Y_UNIT_TEST(ShouldCommonCheckRangeHybrid)
+    {
+        DoTestShouldCommonCheckRange(NCloud::NProto::STORAGE_MEDIA_HYBRID);
+    }
+
+    //--- empty disk (with no written data)
+    Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmptySSDNonreplicated)
+    {
+        DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmptyMirror2)
+    {
+        DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
+    }
+
+    Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmptyMirror3)
+    {
+        DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+    }
+
+    Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmptySSD)
+    {
+        DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmptyHDD)
+    {
+        DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
+            NCloud::NProto::STORAGE_MEDIA_HDD);
+    }
+
+    Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmptyHybrid)
+    {
+        DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+    }
+
+    //--- too big blockCount (check argument's verifying)
+    Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCountSSDNonreplicated)
+    {
+        DoTestShouldntCheckRangeWithBigBlockCount(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCountMirror2)
+    {
+        DoTestShouldntCheckRangeWithBigBlockCount(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
+    }
+
+    Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCountMirror3)
+    {
+        DoTestShouldntCheckRangeWithBigBlockCount(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+    }
+
+    Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCountSSD)
+    {
+        DoTestShouldntCheckRangeWithBigBlockCount(
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCountHDD)
+    {
+        DoTestShouldntCheckRangeWithBigBlockCount(
+            NCloud::NProto::STORAGE_MEDIA_HDD);
+    }
+
+    Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCountHybrid)
+    {
+        DoTestShouldntCheckRangeWithBigBlockCount(
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+    }
+
+    //--- check same data return same checksums
+    Y_UNIT_TEST(
+        ShouldGetSameChecksumsWhileCheckRangeEqualBlocksSSDNonreplicated)
+    {
+        DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldGetSameChecksumsWhileCheckRangeEqualBlocksMirror2)
+    {
+        DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
+    }
+
+    Y_UNIT_TEST(ShouldGetSameChecksumsWhileCheckRangeEqualBlocksMirror3)
+    {
+        DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+    }
+
+    Y_UNIT_TEST(ShouldGetSameChecksumsWhileCheckRangeEqualBlocksSSD)
+    {
+        DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(ShouldGetSameChecksumsWhileCheckRangeEqualBlocksHDD)
+    {
+        DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
+            NCloud::NProto::STORAGE_MEDIA_HDD);
+    }
+
+    Y_UNIT_TEST(ShouldGetSameChecksumsWhileCheckRangeEqualBlocksHybrid)
+    {
+        DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+    }
+
+    //--- check different data return different checksums
+    Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeSSDNonreplicated)
+    {
+        DoTestShouldGetDifferentChecksumsWhileCheckRange(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeMirror2)
+    {
+        DoTestShouldGetDifferentChecksumsWhileCheckRange(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
+    }
+
+    Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeMirror3)
+    {
+        DoTestShouldGetDifferentChecksumsWhileCheckRange(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+    }
+
+    Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeSSD)
+    {
+        DoTestShouldGetDifferentChecksumsWhileCheckRange(
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeHDD)
+    {
+        DoTestShouldGetDifferentChecksumsWhileCheckRange(
+            NCloud::NProto::STORAGE_MEDIA_HDD);
+    }
+
+    Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeHybrid)
+    {
+        DoTestShouldGetDifferentChecksumsWhileCheckRange(
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+    }
+
+    //--- check the algorithm for checksum's creation
+
+    Y_UNIT_TEST(ShouldCheckRangeChecksumAlgorithmSSDNonreplicated)
+    {
+        DoTestShouldCheckRangeChecksumAlgorithm(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldCheckRangeChecksumAlgorithmMirror2)
+    {
+        DoTestShouldCheckRangeChecksumAlgorithm(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
+    }
+
+    Y_UNIT_TEST(ShouldCheckRangeChecksumAlgorithmMirror3)
+    {
+        DoTestShouldCheckRangeChecksumAlgorithm(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+    }
+
+    Y_UNIT_TEST(ShouldCheckRangeChecksumAlgorithmSSD)
+    {
+        DoTestShouldCheckRangeChecksumAlgorithm(
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(ShouldCheckRangeChecksumAlgorithmHDD)
+    {
+        DoTestShouldCheckRangeChecksumAlgorithm(
+            NCloud::NProto::STORAGE_MEDIA_HDD);
+    }
+
+    Y_UNIT_TEST(ShouldCheckRangeChecksumAlgorithmHybrid)
+    {
+        DoTestShouldCheckRangeChecksumAlgorithm(
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+    }
+
+    //--- check response with IO error for non-mirror disks
+    Y_UNIT_TEST(ShouldCheckRangeWithBrokenBlocksSSDNonreplicated)
+    {
+        DoTestShouldCheckRangeWithBrokenBlocks(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldCheckRangeWithBrokenBlocksSSD)
+    {
+        DoTestShouldCheckRangeWithBrokenBlocks(
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(ShouldCheckRangeWithBrokenBlocksHDD)
+    {
+        DoTestShouldCheckRangeWithBrokenBlocks(
+            NCloud::NProto::STORAGE_MEDIA_HDD);
+    }
+
+    Y_UNIT_TEST(ShouldCheckRangeWithBrokenBlocksHybrid)
+    {
+        DoTestShouldCheckRangeWithBrokenBlocks(
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+    }
+    ////////////////////////////////////////////////////////////////////////////
+
+    void DoShouldReceiveDeviceOperationStartedAndFinished(bool useRdma)
+    {
+        const ui64 expectedBlockCount =
+            DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
+        const ui64 expectedDeviceCount = 2;
+
+        std::shared_ptr<TRdmaClientTest> rdmaClient =
+            useRdma ? std::make_shared<TRdmaClientTest>() : nullptr;
+
+        NProto::TStorageServiceConfig config;
+        config.SetAcquireNonReplicatedDevices(true);
+        config.SetDeviceOperationTrackingFrequency(1);
+
+        if (rdmaClient) {
+            config.SetUseRdma(true);
+            config.SetUseNonreplicatedRdmaActor(true);
+        }
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        state->ReplicaCount = 1;
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            state,
+            {}, // featuresConfig
+            rdmaClient);
+
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
+            expectedBlockCount * expectedDeviceCount);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        if (rdmaClient) {
+            rdmaClient->InitAllEndpoints();
+        }
+
+        TSet<ui64> startedSeen;
+        TSet<ui64> finishedSeen;
+        std::optional<TDeviceOperationTracker::ERequestType> RequestType;
+
+        auto filter = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvVolumePrivate::EvDiskRegistryDeviceOperationStarted)
+            {
+                auto* msg = event->Get<
+                    TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted>();
+                RequestType = msg->RequestType;
+                auto [it, inserted] = startedSeen.insert(msg->OperationId);
+                UNIT_ASSERT_VALUES_EQUAL(true, inserted);
+            } else if (
+                event->GetTypeRewrite() ==
+                TEvVolumePrivate::EvDiskRegistryDeviceOperationFinished)
+            {
+                auto* msg = event->Get<
+                    TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished>();
+                auto [it, inserted] = finishedSeen.insert(msg->OperationId);
+                UNIT_ASSERT_VALUES_EQUAL(true, inserted);
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+
+        runtime->SetObserverFunc(filter);
+
+        auto checkRead =
+            [&](const TBlockRange64& range, size_t expectedRequestCount)
+        {
+            const size_t before = startedSeen.size();
+            UNIT_ASSERT_VALUES_EQUAL(before, finishedSeen.size());
+
+            volume.ReadBlocks(range, clientInfo.GetClientId());
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+            UNIT_ASSERT_VALUES_EQUAL(
+                startedSeen.size(),
+                before + expectedRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                finishedSeen.size(),
+                before + expectedRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TDeviceOperationTracker::ERequestType::Read,
+                *RequestType);
+        };
+
+        auto checkWrite =
+            [&](const TBlockRange64& range, size_t expectedRequestCount)
+        {
+            const size_t before = startedSeen.size();
+            UNIT_ASSERT_VALUES_EQUAL(before, finishedSeen.size());
+
+            volume.WriteBlocks(
+                range,
+                clientInfo.GetClientId(),
+                GetBlockContent('X'));
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+            UNIT_ASSERT_VALUES_EQUAL(
+                startedSeen.size(),
+                before + expectedRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                finishedSeen.size(),
+                before + expectedRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TDeviceOperationTracker::ERequestType::Write,
+                *RequestType);
+        };
+
+        auto checkZero =
+            [&](const TBlockRange64& range, size_t expectedRequestCount)
+        {
+            const size_t before = startedSeen.size();
+            UNIT_ASSERT_VALUES_EQUAL(before, finishedSeen.size());
+
+            volume.ZeroBlocks(range, clientInfo.GetClientId());
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+            UNIT_ASSERT_VALUES_EQUAL(
+                startedSeen.size(),
+                before + expectedRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                finishedSeen.size(),
+                before + expectedRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TDeviceOperationTracker::ERequestType::Zero,
+                *RequestType);
+        };
+
+        // Validate not on the device's border
+        checkRead(TBlockRange64::MakeOneBlock(1), 1);
+        checkWrite(TBlockRange64::MakeOneBlock(1), 2);
+        checkZero(TBlockRange64::MakeOneBlock(1), 2);
+
+        // Validate on the device's border.
+        checkRead(TBlockRange64::WithLength(expectedBlockCount - 1, 2), 2);
+        checkWrite(TBlockRange64::WithLength(expectedBlockCount - 1, 2), 4);
+        checkZero(TBlockRange64::WithLength(expectedBlockCount - 1, 2), 4);
+    }
+
+    Y_UNIT_TEST(ShouldReceiveDeviceOperationStartedAndFinished)
+    {
+        DoShouldReceiveDeviceOperationStartedAndFinished(false);
+    }
+
+    Y_UNIT_TEST(ShouldReceiveDeviceOperationStartedAndFinishedRdma)
+    {
+        DoShouldReceiveDeviceOperationStartedAndFinished(true);
     }
 }
 

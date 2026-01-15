@@ -144,7 +144,7 @@ class DiskAgent(Daemon):
         return False
 
 
-def start_nbs(config: NbsConfigurator, name='nbs-server'):
+def start_nbs(config: NbsConfigurator, name='nbs-server', ydb_ssl_port=None):
     exe_path = yatest_common.binary_path("cloud/blockstore/apps/server/nbsd")
 
     cwd = get_unique_path_for_current_test(
@@ -159,7 +159,7 @@ def start_nbs(config: NbsConfigurator, name='nbs-server'):
     )
     ensure_path_exists(config_path)
 
-    config.install(config_path)
+    config.install(config_path, ydb_ssl_port=ydb_ssl_port)
 
     commands = [exe_path] + config.params
 

@@ -20,16 +20,12 @@ private:
 
 public:
     TResetSessionCommand()
+        : TFileStoreCommand(true /* isClientIdRequired */)
     {
         Opts.AddLongOption("session-id")
             .RequiredArgument("SESSION_ID")
             .Required()
             .StoreResult(&SessionId);
-
-        Opts.AddLongOption("client-id")
-            .RequiredArgument("CLIENT_ID")
-            .Required()
-            .StoreResult(&ClientId);
 
         Opts.AddLongOption("seq-no")
             .RequiredArgument("SEQ_NO")

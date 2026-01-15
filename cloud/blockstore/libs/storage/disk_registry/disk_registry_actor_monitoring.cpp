@@ -116,6 +116,14 @@ void BuildChangeDeviceStateButton(
                 <option value="%s">Online</option>
                 <option value="%s">Warning</option>
             </select>
+            <br>
+            <label for="stateMessage">State message:</label>
+            <input  type="text"
+                    name="stateMessage"
+                    placeholder="Message"
+                    maxlength="255"
+                    style="width: 150px;">
+            <br>
             <input type="submit" value="Change state">
             <input type='hidden' name='action' value='changeDeviceState'/>
             <input type='hidden' name='DeviceUUID' value='%s'/>
@@ -141,6 +149,14 @@ void BuildChangeAgentStateButton(
                 <option value="%s">Online</option>
                 <option value="%s">Warning</option>
             </select>
+            <br>
+            <label for="stateMessage">State message:</label>
+            <input  type="text"
+                    name="stateMessage"
+                    placeholder="Message"
+                    maxlength="255"
+                    style="width: 150px;">
+            <br>
             <input type="submit" value="Change state">
             <input type='hidden' name='action' value='changeAgentState'/>
             <input type='hidden' name='AgentID' value='%s'/>
@@ -2323,7 +2339,7 @@ void TDiskRegistryActor::RenderAutomaticallyReplacedDeviceList(
                             auto timeToClean = (deviceInfo.ReplacementTs +
                                                 freezeDuration) -
                                                 TInstant::Now();
-                            out << timeToClean;
+                            out << FormatDuration(timeToClean);
                         } else {
                             out << "+inf. (AutomaticallyReplacedDevicesFreezePeriod not set)";
                         }
@@ -2427,6 +2443,8 @@ void TDiskRegistryActor::HandleHttpInfo(
          &TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState},
         {"changeAgentState",
          &TDiskRegistryActor::HandleHttpInfo_ChangeAgentState},
+        {"resetTransactionLatencyStats",
+         &TDiskRegistryActor::HandleHttpInfo_ResetTransactionLatencyStats},
     }};
 
     static const THttpHandlers getActions{{
@@ -2451,6 +2469,8 @@ void TDiskRegistryActor::HandleHttpInfo(
          &TDiskRegistryActor::HandleHttpInfo_RenderSuspendedDeviceList},
         {"RenderTransactionsLatency",
          &TDiskRegistryActor::HandleHttpInfo_RenderTransactionsLatency},
+        {"getTransactionsInflight",
+         &TDiskRegistryActor::HandleHttpInfo_GetTransactionsInflight},
     }};
 
     auto* msg = ev->Get();
@@ -2535,6 +2555,32 @@ void TDiskRegistryActor::HandleHttpInfo_GetTransactionsLatency(
         *requestInfo,
         std::make_unique<NMon::TEvRemoteJsonInfoRes>(
             TransactionTimeTracker.GetStatJson(GetCycleCount())));
+}
+
+void TDiskRegistryActor::HandleHttpInfo_ResetTransactionLatencyStats(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+    TransactionTimeTracker.ResetStats();
+    SendHttpResponse(ctx, *requestInfo, "");
+}
+
+void TDiskRegistryActor::HandleHttpInfo_GetTransactionsInflight(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteHttpInfoRes>(FormatTransactionsInflight(
+            TransactionTimeTracker.GetInflightOperations(),
+            GetCycleCount(),
+            TInstant::Now())));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

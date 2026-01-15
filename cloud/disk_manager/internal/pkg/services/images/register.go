@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
-	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	images_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
@@ -17,12 +17,12 @@ import (
 func RegisterForExecution(
 	ctx context.Context,
 	config *images_config.ImagesConfig,
-	performanceConfig *performance_config.PerformanceConfig,
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	storage resources.Storage,
 	nbsFactory nbs.Factory,
 	poolService pools.Service,
+	cellSelector cells.CellSelector,
 ) error {
 
 	deletedImageExpirationTimeout, err := time.ParseDuration(
@@ -41,11 +41,10 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("images.CreateImageFromURL", func() tasks.Task {
 		return &createImageFromURLTask{
-			config:            config,
-			performanceConfig: performanceConfig,
-			scheduler:         taskScheduler,
-			storage:           storage,
-			poolService:       poolService,
+			config:      config,
+			scheduler:   taskScheduler,
+			storage:     storage,
+			poolService: poolService,
 		}
 	})
 	if err != nil {
@@ -54,11 +53,10 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("images.CreateImageFromImage", func() tasks.Task {
 		return &createImageFromImageTask{
-			config:            config,
-			performanceConfig: performanceConfig,
-			scheduler:         taskScheduler,
-			storage:           storage,
-			poolService:       poolService,
+			config:      config,
+			scheduler:   taskScheduler,
+			storage:     storage,
+			poolService: poolService,
 		}
 	})
 	if err != nil {
@@ -67,11 +65,10 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("images.CreateImageFromSnapshot", func() tasks.Task {
 		return &createImageFromSnapshotTask{
-			config:            config,
-			performanceConfig: performanceConfig,
-			scheduler:         taskScheduler,
-			storage:           storage,
-			poolService:       poolService,
+			config:      config,
+			scheduler:   taskScheduler,
+			storage:     storage,
+			poolService: poolService,
 		}
 	})
 	if err != nil {
@@ -80,12 +77,12 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("images.CreateImageFromDisk", func() tasks.Task {
 		return &createImageFromDiskTask{
-			config:            config,
-			performanceConfig: performanceConfig,
-			scheduler:         taskScheduler,
-			storage:           storage,
-			nbsFactory:        nbsFactory,
-			poolService:       poolService,
+			config:       config,
+			scheduler:    taskScheduler,
+			storage:      storage,
+			nbsFactory:   nbsFactory,
+			poolService:  poolService,
+			cellSelector: cellSelector,
 		}
 	})
 	if err != nil {

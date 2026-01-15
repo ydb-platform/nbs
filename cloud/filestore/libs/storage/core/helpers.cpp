@@ -76,4 +76,21 @@ void Convert(
         performanceProfile.GetMaxPostponedCount());
 }
 
+
+template <>
+ui64 CalculateByteCount<NProto::TWriteDataRequest>(
+    const NProto::TWriteDataRequest& request)
+{
+    if (!request.GetBuffer().empty()) {
+        return request.GetBuffer().size();
+    }
+
+    ui64 byteCount = 0;
+    for (const auto& iovec: request.GetIovecs()) {
+        byteCount += iovec.GetLength();
+    }
+
+    return byteCount;
+}
+
 }   // namespace NCloud::NFileStore::NStorage

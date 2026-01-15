@@ -4,7 +4,6 @@
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/core/model.h>
-#include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttling_policy.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
@@ -12,6 +11,7 @@
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 
+#include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
@@ -82,6 +82,9 @@ NProto::TNode CreateRegularAttrs(ui32 mode, ui32 uid, ui32 gid);
 NProto::TNode CreateDirectoryAttrs(ui32 mode, ui32 uid, ui32 gid);
 NProto::TNode CreateLinkAttrs(const TString& link, ui32 uid, ui32 gid);
 NProto::TNode CreateSocketAttrs(ui32 mode, ui32 uid, ui32 gid);
+NProto::TNode CreateFifoAttrs(ui32 mode, ui32 uid, ui32 gid);
+NProto::TNode CreateCharDeviceAttrs(ui32 mode, ui32 uid, ui32 gid, ui64 dev);
+NProto::TNode CreateBlockDeviceAttrs(ui32 mode, ui32 uid, ui32 gid, ui64 dev);
 
 NProto::TNode CopyAttrs(const NProto::TNode& src, ui32 mode = E_CM_CTIME);
 

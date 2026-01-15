@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -51,6 +50,7 @@ func getNbsConfigMap() configurator.ConfigMap {
 		"nbs-compute.txt":             {Proto: &nbsProto.TGrpcClientConfig{}, FileName: "compute.txt"},
 		"nbs-rdma.txt":                {Proto: &nbsProto.TRdmaConfig{}, FileName: "rdma.txt"},
 		"nbs-root-kms.txt":            {Proto: &nbsProto.TRootKmsConfig{}, FileName: "root-kms.txt"},
+		"nbs-cells.txt":               {Proto: &nbsProto.TCellsConfig{}, FileName: "cells.txt"},
 
 		// for kikimr initializer configs used custom protobuf files
 		// from cloud/storage/core/tools/common/go/configurator/kikimr-proto
@@ -86,8 +86,9 @@ func getNfsConfigMap() configurator.ConfigMap {
 
 func getNfsLocalConfigMap() configurator.ConfigMap {
 	return configurator.ConfigMap{
-		"nfs-vhost-local.txt": {Proto: &nfsProto.TVhostAppConfig{}, FileName: "vhost.txt"},
-		"nfs-diag-local.txt":  {Proto: &nfsProto.TDiagnosticsConfig{}, FileName: "diagnostics.txt"},
+		"nfs-vhost-local.txt":    {Proto: &nfsProto.TVhostAppConfig{}, FileName: "vhost.txt"},
+		"nfs-diag-local.txt":     {Proto: &nfsProto.TDiagnosticsConfig{}, FileName: "diagnostics.txt"},
+		"nfs-features-local.txt": {Proto: &coreProto.TFeaturesConfig{}, FileName: "features.txt"},
 	}
 }
 
@@ -95,7 +96,7 @@ func getConfigMap(serviceName string) configurator.ConfigMap {
 	switch serviceName {
 	case "nbs":
 		return getNbsConfigMap()
-	case "disk_agent":
+	case "disk_agent", "nbs_disk_agent":
 		return getNbsConfigMap()
 	case "nfs":
 		return getNfsConfigMap()
@@ -107,7 +108,7 @@ func getConfigMap(serviceName string) configurator.ConfigMap {
 }
 
 func loadServiceConfig(configPath string) (*configurator.ServiceSpec, error) {
-	configTmpl, err := ioutil.ReadFile(path.Join(configPath, "spec.yaml"))
+	configTmpl, err := os.ReadFile(path.Join(configPath, "spec.yaml"))
 	if err != nil {
 		return nil, fmt.Errorf("can't read service config: %w", err)
 	}

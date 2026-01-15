@@ -361,14 +361,11 @@ void TPartitionActor::HandleWriteBlobCompleted(
     }
 
     if (FAILED(msg->GetStatus())) {
-        LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Stop tablet because of WriteBlob error (actor %s, group %u): %s",
-            TabletID(),
-            ev->Sender.ToString().c_str(),
-            group,
-            FormatError(msg->GetError()).data());
-
-        ReportTabletBSFailure();
+        ReportTabletBSFailure(
+            TStringBuilder()
+            << TabletID() << " Stop tablet because of WriteBlob error (actor "
+            << ev->Sender.ToString() << " group " << group
+            << "): " << FormatError(msg->GetError()));
         Suicide(ctx);
         return;
     }

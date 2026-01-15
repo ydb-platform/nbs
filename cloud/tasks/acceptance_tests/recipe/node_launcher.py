@@ -31,7 +31,9 @@ TasksConfig: <
     ClearEndedTasksTaskScheduleInterval: "11s"
     ClearEndedTasksLimit: 10
     MaxRetriableErrorCount: 1000
-    HangingTaskTimeout: "100s"
+    HangingTaskTimeout: "24h"
+    InflightHangingTaskTimeout: "100s"
+    StallingHangingTaskTimeout: "30m"
 >
 PersistenceConfig: <
     Endpoint: "{ydb_endpoint}"

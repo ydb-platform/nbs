@@ -54,10 +54,19 @@ void TMirrorPartitionResyncActor::ContinueResyncIfNeeded(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TMirrorPartitionResyncActor::ScheduleResyncNextRange(const TActorContext& ctx)
+void TMirrorPartitionResyncActor::ScheduleResyncNextRange(
+    const TActorContext& ctx)
 {
     ctx.Schedule(
         ResyncNextRangeInterval,
+        new TEvNonreplPartitionPrivate::TEvResyncNextRange());
+}
+
+void TMirrorPartitionResyncActor::ScheduleRetryResyncNextRange(
+    const TActorContext& ctx)
+{
+    ctx.Schedule(
+        ResyncNextRangeInterval + BackoffProvider.GetDelayAndIncrease(),
         new TEvNonreplPartitionPrivate::TEvResyncNextRange());
 }
 
@@ -73,25 +82,19 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
     const auto resyncRange =
         RangeId2BlockRange(rangeId, PartConfig->GetBlockSize());
 
-    for (const auto& [key, requestInfo] :
-         WriteAndZeroRequestsInProgress.AllRequests())
-    {
-        const auto& requestRange = requestInfo.Value;
-        if (resyncRange.Overlaps(requestRange)) {
-            LOG_DEBUG(
-                ctx,
-                TBlockStoreComponents::PARTITION,
-                "[%s] Resyncing range %s rejected due to inflight write to %s",
-                PartConfig->GetName().c_str(),
-                DescribeRange(resyncRange).c_str(),
-                DescribeRange(requestRange).c_str());
+    if (WriteAndZeroRequestsInProgress.OverlapsWithWrites(resyncRange)) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%s] Resyncing range %s rejected due to inflight write",
+            PartConfig->GetName().c_str(),
+            DescribeRange(resyncRange).c_str());
 
-            // Reschedule range
-            State.FinishResyncRange(rangeId);
-            State.AddPendingResyncRange(rangeId);
-            ScheduleResyncNextRange(ctx);
-            return;
-        }
+        // Reschedule range
+        State.FinishResyncRange(rangeId);
+        State.AddPendingResyncRange(rangeId);
+        ScheduleResyncNextRange(ctx);
+        return;
     }
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
@@ -145,7 +148,7 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
     const TEvNonreplPartitionPrivate::TEvRangeResynced::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
     const auto range = msg->Range;
     const auto rangeId = BlockRange2RangeId(range, PartConfig->GetBlockSize());
 
@@ -162,35 +165,47 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
 
     State.FinishResyncRange(rangeId.first);
 
-    ProfileLog->Write({
-        .DiskId = PartConfig->GetName(),
-        .Ts = msg->ChecksumStartTs,
-        .Request = IProfileLog::TSysReadWriteRequest{
-            .RequestType = ESysRequestType::Resync,
-            .Duration = msg->ChecksumDuration + msg->ReadDuration,
-            .Ranges = {msg->Range},
-        },
-    });
+    if (msg->ChecksumStartTs) {
+        ProfileLog->Write(
+            {.DiskId = PartConfig->GetName(),
+             .Ts = msg->ChecksumStartTs,
+             .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
+                 .RequestType = ESysRequestType::ResyncChecksum,
+                 .Duration = msg->ChecksumDuration,
+                 .RangeInfo = std::move(msg->ChecksumRangeInfo)}});
+    }
 
-    ProfileLog->Write({
-        .DiskId = PartConfig->GetName(),
-        .Ts = msg->WriteStartTs,
-        .Request = IProfileLog::TSysReadWriteRequest{
-            .RequestType = ESysRequestType::Resync,
-            .Duration = msg->WriteDuration,
-            .Ranges = {msg->Range},
-        },
-    });
+    if (msg->ReadStartTs) {
+        ProfileLog->Write(
+            {.DiskId = PartConfig->GetName(),
+             .Ts = msg->ReadStartTs,
+             .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
+                 .RequestType = ESysRequestType::ResyncRead,
+                 .Duration = msg->ReadDuration,
+                 .RangeInfo = std::move(msg->ReadRangeInfo)}});
+    }
+
+    if (msg->WriteStartTs) {
+        ProfileLog->Write(
+            {.DiskId = PartConfig->GetName(),
+             .Ts = msg->WriteStartTs,
+             .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
+                 .RequestType = ESysRequestType::ResyncWrite,
+                 .Duration = msg->WriteDuration,
+                 .RangeInfo = std::move(msg->WriteRangeInfo)}});
+    }
 
     if (msg->AffectedBlockInfos) {
+        Y_DEBUG_ABORT_UNLESS(msg->WriteStartTs);
+
         ProfileLog->Write({
             .DiskId = PartConfig->GetName(),
             .Ts = msg->WriteStartTs,
-            .Request = IProfileLog::TSysReadWriteRequestBlockInfos{
-                .RequestType = ESysRequestType::Resync,
-                .BlockInfos = std::move(msg->AffectedBlockInfos),
-                .CommitId = 0,
-            },
+            .Request =
+                IProfileLog::TSysReadWriteRequestBlockInfos{
+                    .RequestType = ESysRequestType::ResyncWrite,
+                    .BlockInfos = std::move(msg->AffectedBlockInfos),
+                    .CommitId = 0},
         });
     }
 
@@ -206,9 +221,12 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
         if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
             // Reschedule range
             State.AddPendingResyncRange(rangeId.first);
-            ScheduleResyncNextRange(ctx);
+            ScheduleRetryResyncNextRange(ctx);
         } else {
-            ReportResyncFailed();
+            ReportResyncFailed(
+                FormatError(msg->GetError()),
+                {{"disk", PartConfig->GetName()},
+                 {"range", DescribeRange(range)}});
         }
 
         TDeque<TPostponedRead> postponedReads;
@@ -227,6 +245,8 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
         return;
     }
 
+    BackoffProvider.Reset();
+
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
         "[%s] Range %s resynced",
         PartConfig->GetName().c_str(),
@@ -234,9 +254,7 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
 
     if (CritOnChecksumMismatch && msg->WriteStartTs > TInstant()) {
         ReportMirroredDiskResyncChecksumMismatch(
-            TStringBuilder()
-            << '[' << PartConfig->GetName()
-            << "] Checksum mismatch during resync in range " << msg->Range);
+            {{"disk", PartConfig->GetName()}, {"range", range}});
     }
 
     auto resyncRange = State.BuildResyncRange();

@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   check-running-allowed:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
     outputs:
       result: ${{ steps.check-ownership-membership.outputs.result }}
     steps:
@@ -157,7 +157,7 @@ jobs:
       test_target_tsan: ${{ steps.set-build-and-test-targets.outputs.test_target_tsan }}
       test_target_msan: ${{ steps.set-build-and-test-targets.outputs.test_target_msan }}
       test_target_ubsan: ${{ steps.set-build-and-test-targets.outputs.test_target_ubsan }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
     steps:
       - name: Set build and test targets
         id: set-build-and-test-targets
@@ -272,13 +272,25 @@ jobs:
           HAS_TSAN_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'tsan') && 'true' || 'false' }}
           HAS_MSAN_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'msan') && 'true' || 'false' }}
           HAS_UBSAN_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'ubsan') && 'true' || 'false' }}
+          SCHEDULING_TYPE: ${{ vars.NEBIUS_SCHEDULING_TYPE }}
+          HAS_ON_DEMAND_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'on_demand') && 'true' || 'false' }}
+          HAS_POOLED_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'pooled') && 'true' || 'false' }}
+          HAS_HYBRID_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'hybrid') && 'true' || 'false' }}
+          BUILD_AND_TEST_CONDITION_1: ${{ needs.check-running-allowed.outputs.result == 'true' }}
+          BUILD_AND_TEST_CONDITION_2: ${{ vars.NEBIUS_SCHEDULING_TYPE == 'regular' }}
+          BUILD_AND_TEST_CONDITION_3: ${{ vars.NEBIUS_SCHEDULING_TYPE == '' }}
+          BUILD_AND_TEST_CONDITION_4: ${{ !contains(github.event.pull_request.labels.*.name, 'pooled') }}
+          BUILD_AND_TEST_CONDITION_5: ${{ !contains(github.event.pull_request.labels.*.name, 'hybrid') }}
+          BUILD_AND_TEST_CONDITION_6: ${{ contains(github.event.pull_request.labels.*.name, 'on_demand') }}
+          BUILD_AND_TEST_CONDITION_7: ${{ ((vars.NEBIUS_SCHEDULING_TYPE == 'regular' || vars.NEBIUS_SCHEDULING_TYPE == '') && !contains(github.event.pull_request.labels.*.name, 'pooled') && !contains(github.event.pull_request.labels.*.name, 'hybrid')) || ((vars.NEBIUS_SCHEDULING_TYPE != 'regular' && vars.NEBIUS_SCHEDULING_TYPE != '') && contains(github.event.pull_request.labels.*.name, 'on_demand')) }}
+          BUILD_AND_TEST_CONDITION: ${{ needs.check-running-allowed.outputs.result == 'true' && (((vars.NEBIUS_SCHEDULING_TYPE == 'regular' || vars.NEBIUS_SCHEDULING_TYPE == '') && !contains(github.event.pull_request.labels.*.name, 'pooled') && !contains(github.event.pull_request.labels.*.name, 'hybrid')) || ((vars.NEBIUS_SCHEDULING_TYPE != 'regular' && vars.NEBIUS_SCHEDULING_TYPE != '') && contains(github.event.pull_request.labels.*.name, 'on_demand'))) }}
   build_and_test:
     needs:
       - check-running-allowed
       - create-build-and-test-target-var
-    if: needs.check-running-allowed.outputs.result == 'true'
+    if: needs.check-running-allowed.outputs.result == 'true' && (((vars.NEBIUS_SCHEDULING_TYPE == 'regular' || vars.NEBIUS_SCHEDULING_TYPE == '') && !contains(github.event.pull_request.labels.*.name, 'pooled') && !contains(github.event.pull_request.labels.*.name, 'hybrid')) || ((vars.NEBIUS_SCHEDULING_TYPE != 'regular' && vars.NEBIUS_SCHEDULING_TYPE != '') && contains(github.event.pull_request.labels.*.name, 'on_demand')))
     name: Build and test
-    uses: ./.github/workflows/build_and_test_on_demand.yaml
+    uses: ./.github/workflows/on_demand_build_and_test.yaml
     with:
       build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target }}
       test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target }}
@@ -294,9 +306,9 @@ jobs:
     needs:
       - check-running-allowed
       - create-build-and-test-target-var
-    if: needs.check-running-allowed.outputs.result == 'true' && contains(github.event.pull_request.labels.*.name, 'asan')
+    if: needs.check-running-allowed.outputs.result == 'true' && (((vars.NEBIUS_SCHEDULING_TYPE == 'regular' || vars.NEBIUS_SCHEDULING_TYPE == '') && !contains(github.event.pull_request.labels.*.name, 'pooled') && !contains(github.event.pull_request.labels.*.name, 'hybrid')) || ((vars.NEBIUS_SCHEDULING_TYPE != 'regular' && vars.NEBIUS_SCHEDULING_TYPE != '') && contains(github.event.pull_request.labels.*.name, 'on_demand')))
     name: Build and test (asan)
-    uses: ./.github/workflows/build_and_test_on_demand.yaml
+    uses: ./.github/workflows/on_demand_build_and_test.yaml
     with:
       build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target_asan }}
       test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target_asan }}
@@ -313,9 +325,9 @@ jobs:
     needs:
       - check-running-allowed
       - create-build-and-test-target-var
-    if: needs.check-running-allowed.outputs.result == 'true' && contains(github.event.pull_request.labels.*.name, 'tsan')
+    if: needs.check-running-allowed.outputs.result == 'true' && (((vars.NEBIUS_SCHEDULING_TYPE == 'regular' || vars.NEBIUS_SCHEDULING_TYPE == '') && !contains(github.event.pull_request.labels.*.name, 'pooled') && !contains(github.event.pull_request.labels.*.name, 'hybrid')) || ((vars.NEBIUS_SCHEDULING_TYPE != 'regular' && vars.NEBIUS_SCHEDULING_TYPE != '') && contains(github.event.pull_request.labels.*.name, 'on_demand')))
     name: Build and test (tsan)
-    uses: ./.github/workflows/build_and_test_on_demand.yaml
+    uses: ./.github/workflows/on_demand_build_and_test.yaml
     with:
       build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target_tsan }}
       test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target_tsan }}
@@ -332,9 +344,9 @@ jobs:
     needs:
       - check-running-allowed
       - create-build-and-test-target-var
-    if: needs.check-running-allowed.outputs.result == 'true' && contains(github.event.pull_request.labels.*.name, 'msan')
+    if: needs.check-running-allowed.outputs.result == 'true' && (((vars.NEBIUS_SCHEDULING_TYPE == 'regular' || vars.NEBIUS_SCHEDULING_TYPE == '') && !contains(github.event.pull_request.labels.*.name, 'pooled') && !contains(github.event.pull_request.labels.*.name, 'hybrid')) || ((vars.NEBIUS_SCHEDULING_TYPE != 'regular' && vars.NEBIUS_SCHEDULING_TYPE != '') && contains(github.event.pull_request.labels.*.name, 'on_demand')))
     name: Build and test (msan)
-    uses: ./.github/workflows/build_and_test_on_demand.yaml
+    uses: ./.github/workflows/on_demand_build_and_test.yaml
     with:
       build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target_msan }}
       test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target_msan }}
@@ -351,9 +363,203 @@ jobs:
     needs:
       - check-running-allowed
       - create-build-and-test-target-var
-    if: needs.check-running-allowed.outputs.result == 'true' && contains(github.event.pull_request.labels.*.name, 'ubsan')
+    if: needs.check-running-allowed.outputs.result == 'true' && (((vars.NEBIUS_SCHEDULING_TYPE == 'regular' || vars.NEBIUS_SCHEDULING_TYPE == '') && !contains(github.event.pull_request.labels.*.name, 'pooled') && !contains(github.event.pull_request.labels.*.name, 'hybrid')) || ((vars.NEBIUS_SCHEDULING_TYPE != 'regular' && vars.NEBIUS_SCHEDULING_TYPE != '') && contains(github.event.pull_request.labels.*.name, 'on_demand')))
     name: Build and test (ubsan)
-    uses: ./.github/workflows/build_and_test_on_demand.yaml
+    uses: ./.github/workflows/on_demand_build_and_test.yaml
+    with:
+      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target_ubsan }}
+      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target_ubsan }}
+      build_preset: release-ubsan
+      vm_name_suffix: "-ubsan"
+      test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
+      cache_update_build: false
+      cache_update_tests: false
+      number_of_retries: 1
+      sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
+    secrets: inherit
+
+
+
+  build_and_test_pooled:
+    needs:
+      - check-running-allowed
+      - create-build-and-test-target-var
+    if: needs.check-running-allowed.outputs.result == 'true' && (vars.NEBIUS_SCHEDULING_TYPE == 'pooled' || contains(github.event.pull_request.labels.*.name, 'pooled'))
+    name: Build and test (pooled)
+    uses: ./.github/workflows/on_pooled_build_and_test.yaml
+    with:
+      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target }}
+      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target }}
+      build_preset: "relwithdebinfo"
+      test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
+      cache_update_build: false
+      cache_update_tests: false
+      number_of_retries: 3
+      sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
+    secrets: inherit
+  build_and_test_asan_pooled:
+    needs:
+      - check-running-allowed
+      - create-build-and-test-target-var
+    if: needs.check-running-allowed.outputs.result == 'true' && contains(github.event.pull_request.labels.*.name, 'asan') && (vars.NEBIUS_SCHEDULING_TYPE == 'pooled' || contains(github.event.pull_request.labels.*.name, 'pooled'))
+    name: Build and test (asan) (pooled)
+    uses: ./.github/workflows/on_pooled_build_and_test.yaml
+    with:
+      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target_asan }}
+      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target_asan }}
+      build_preset: release-asan
+      vm_name_suffix: "-asan"
+      test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
+      cache_update_build: false
+      cache_update_tests: false
+      number_of_retries: 1
+      sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
+    secrets: inherit
+  build_and_test_tsan_pooled:
+    needs:
+      - check-running-allowed
+      - create-build-and-test-target-var
+    if: needs.check-running-allowed.outputs.result == 'true' && contains(github.event.pull_request.labels.*.name, 'tsan') && (vars.NEBIUS_SCHEDULING_TYPE == 'pooled' || contains(github.event.pull_request.labels.*.name, 'pooled'))
+    name: Build and test (tsan) (pooled)
+    uses: ./.github/workflows/on_pooled_build_and_test.yaml
+    with:
+      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target_tsan }}
+      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target_tsan }}
+      build_preset: release-tsan
+      vm_name_suffix: "-tsan"
+      test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
+      cache_update_build: false
+      cache_update_tests: false
+      number_of_retries: 1
+      sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
+    secrets: inherit
+  build_and_test_msan_pooled:
+    needs:
+      - check-running-allowed
+      - create-build-and-test-target-var
+    if: needs.check-running-allowed.outputs.result == 'true' && contains(github.event.pull_request.labels.*.name, 'msan') && (vars.NEBIUS_SCHEDULING_TYPE == 'pooled' || contains(github.event.pull_request.labels.*.name, 'pooled'))
+    name: Build and test (msan) (pooled)
+    uses: ./.github/workflows/on_pooled_build_and_test.yaml
+    with:
+      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target_msan }}
+      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target_msan }}
+      build_preset: release-msan
+      vm_name_suffix: "-msan"
+      test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
+      cache_update_build: false
+      cache_update_tests: false
+      number_of_retries: 1
+      sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
+    secrets: inherit
+  build_and_test_ubsan_pooled:
+    needs:
+      - check-running-allowed
+      - create-build-and-test-target-var
+    if: needs.check-running-allowed.outputs.result == 'true' && contains(github.event.pull_request.labels.*.name, 'ubsan') && (vars.NEBIUS_SCHEDULING_TYPE == 'pooled' || contains(github.event.pull_request.labels.*.name, 'pooled'))
+    name: Build and test (ubsan) (pooled)
+    uses: ./.github/workflows/on_pooled_build_and_test.yaml
+    with:
+      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target_ubsan }}
+      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target_ubsan }}
+      build_preset: release-ubsan
+      vm_name_suffix: "-ubsan"
+      test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
+      cache_update_build: false
+      cache_update_tests: false
+      number_of_retries: 1
+      sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
+    secrets: inherit
+
+
+
+  build_and_test_hybrid:
+    needs:
+      - check-running-allowed
+      - create-build-and-test-target-var
+    if: needs.check-running-allowed.outputs.result == 'true' && (vars.NEBIUS_SCHEDULING_TYPE == 'hybrid' || contains(github.event.pull_request.labels.*.name, 'hybrid'))
+    name: Build and test (hybrid)
+    uses: ./.github/workflows/on_hybrid_build_and_test.yaml
+    with:
+      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target }}
+      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target }}
+      build_preset: "relwithdebinfo"
+      test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
+      cache_update_build: false
+      cache_update_tests: false
+      number_of_retries: 3
+      sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
+    secrets: inherit
+  build_and_test_asan_hybrid:
+    needs:
+      - check-running-allowed
+      - create-build-and-test-target-var
+    if: needs.check-running-allowed.outputs.result == 'true' && contains(github.event.pull_request.labels.*.name, 'asan') && (vars.NEBIUS_SCHEDULING_TYPE == 'hybrid' || contains(github.event.pull_request.labels.*.name, 'hybrid'))
+    name: Build and test (asan) (hybrid)
+    uses: ./.github/workflows/on_hybrid_build_and_test.yaml
+    with:
+      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target_asan }}
+      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target_asan }}
+      build_preset: release-asan
+      vm_name_suffix: "-asan"
+      test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
+      cache_update_build: false
+      cache_update_tests: false
+      number_of_retries: 1
+      sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
+    secrets: inherit
+  build_and_test_tsan_hybrid:
+    needs:
+      - check-running-allowed
+      - create-build-and-test-target-var
+    if: needs.check-running-allowed.outputs.result == 'true' && contains(github.event.pull_request.labels.*.name, 'tsan') && (vars.NEBIUS_SCHEDULING_TYPE == 'hybrid' || contains(github.event.pull_request.labels.*.name, 'hybrid'))
+    name: Build and test (tsan) (hybrid)
+    uses: ./.github/workflows/on_hybrid_build_and_test.yaml
+    with:
+      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target_tsan }}
+      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target_tsan }}
+      build_preset: release-tsan
+      vm_name_suffix: "-tsan"
+      test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
+      cache_update_build: false
+      cache_update_tests: false
+      number_of_retries: 1
+      sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
+    secrets: inherit
+  build_and_test_msan_hybrid:
+    needs:
+      - check-running-allowed
+      - create-build-and-test-target-var
+    if: needs.check-running-allowed.outputs.result == 'true' && contains(github.event.pull_request.labels.*.name, 'msan') && (vars.NEBIUS_SCHEDULING_TYPE == 'hybrid' || contains(github.event.pull_request.labels.*.name, 'hybrid'))
+    name: Build and test (msan) (hybrid)
+    uses: ./.github/workflows/on_hybrid_build_and_test.yaml
+    with:
+      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target_msan }}
+      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target_msan }}
+      build_preset: release-msan
+      vm_name_suffix: "-msan"
+      test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
+      cache_update_build: false
+      cache_update_tests: false
+      number_of_retries: 1
+      sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
+    secrets: inherit
+  build_and_test_ubsan_hybrid:
+    needs:
+      - check-running-allowed
+      - create-build-and-test-target-var
+    if: needs.check-running-allowed.outputs.result == 'true' && contains(github.event.pull_request.labels.*.name, 'ubsan') && (vars.NEBIUS_SCHEDULING_TYPE == 'hybrid' || contains(github.event.pull_request.labels.*.name, 'hybrid'))
+    name: Build and test (ubsan) (hybrid)
+    uses: ./.github/workflows/on_hybrid_build_and_test.yaml
     with:
       build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target_ubsan }}
       test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target_ubsan }}

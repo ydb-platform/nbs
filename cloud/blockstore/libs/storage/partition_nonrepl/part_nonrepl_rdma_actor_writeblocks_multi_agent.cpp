@@ -3,6 +3,7 @@
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -53,6 +54,7 @@ public:
             TRequestInfoPtr requestInfo,
             ui32 requestBlockCount,
             size_t replicationTargetCount,
+            NActors::TActorId volumeActorId,
             NActors::TActorId parentActorId,
             ui64 requestId)
         : TBase(
@@ -60,6 +62,7 @@ public:
               std::move(partConfig),
               std::move(requestInfo),
               requestId,
+              volumeActorId,
               parentActorId,
               requestBlockCount,
               1)
@@ -124,6 +127,7 @@ public:
 
 NProto::TWriteDeviceBlocksRequest MakeWriteDeviceBlocksRequest(
     const NProto::TMultiAgentWriteRequest& request,
+    const TNonreplicatedPartitionConfigPtr& partConfig,
     bool assignVolumeRequestId)
 {
     NProto::TWriteDeviceBlocksRequest result;
@@ -132,15 +136,32 @@ NProto::TWriteDeviceBlocksRequest MakeWriteDeviceBlocksRequest(
 
     for (const auto& deviceInfo: request.DevicesAndRanges) {
         auto* replicationTarget = result.AddReplicationTargets();
-        replicationTarget->SetNodeId(deviceInfo.Device.GetNodeId());
-        replicationTarget->SetDeviceUUID(deviceInfo.Device.GetDeviceUUID());
+        replicationTarget->SetNodeId(deviceInfo.NodeId);
+        replicationTarget->SetDeviceUUID(deviceInfo.DeviceUUID);
         replicationTarget->SetStartIndex(deviceInfo.DeviceBlockRange.Start);
         replicationTarget->SetTimeout(deviceInfo.RequestTimeout.MilliSeconds());
     }
 
     if (assignVolumeRequestId) {
         result.SetVolumeRequestId(request.GetHeaders().GetVolumeRequestId());
-        result.SetMultideviceRequest(false);
+    }
+
+    if (auto checksum = CombineChecksums(request.GetChecksums());
+        checksum.GetByteCount() > 0)
+    {
+        if (checksum.GetByteCount() == request.Range.Size() * request.BlockSize)
+        {
+            *result.MutableChecksum() = std::move(checksum);
+        } else {
+            ReportChecksumCalculationError(
+                "NonreplicatedPartitionRdmaActor: Incorrectly calculated "
+                "checksum for block range",
+                {{"range", request.Range.Print()},
+                 {"request range length", request.Range.Size()},
+                 {"checksum length",
+                  checksum.GetByteCount() / request.BlockSize},
+                 {"disk id", partConfig->GetName().Quote()}});
+        }
     }
     return result;
 }
@@ -167,6 +188,8 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         requestInfo->CallContext->LWOrbit,
         "MultiAgentWriteBlocks",
         requestInfo->CallContext->RequestId);
+
+    auto blockRange = msg->Record.Range;
 
     auto replyError = [&](ui32 errorCode, TString errorReason)
     {
@@ -203,7 +226,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         *msg,
         ctx,
         *requestInfo,
-        msg->Record.Range,
+        blockRange,
         &deviceRequests);
 
     if (!ok) {
@@ -215,8 +238,8 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         // TEvGetDeviceForRangeRequests to replicas have returned success. These
         // requests are response with an error if the request hits two disk-agents.
         ReportMultiAgentRequestAffectsTwoDevices(
-            TStringBuilder() << "disk id: " << PartConfig->GetName().Quote()
-                             << " range: " << msg->Record.Range.Print());
+            "rdmaActor",
+            {{"disk", PartConfig->GetName()}, {"range", blockRange}});
         replyError(
             E_ARGUMENT,
             "Can't execute MultiAgentWriteBlocks request cross device borders");
@@ -228,6 +251,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
     NProto::TWriteDeviceBlocksRequest writeDeviceBlocksRequest =
         MakeWriteDeviceBlocksRequest(
             msg->Record,
+            PartConfig,
             AssignIdToWriteAndZeroRequestsEnabled);
 
     const auto requestId = RequestsInProgress.GenerateRequestId();
@@ -236,8 +260,9 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
             ctx.ActorSystem(),
             PartConfig,
             requestInfo,
-            msg->Record.Range.Size(),
+            blockRange.Size(),
             msg->Record.DevicesAndRanges.size(),
+            VolumeActorId,
             SelfId(),
             requestId);
 
@@ -249,7 +274,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         std::make_unique<TDeviceRequestRdmaContext>(deviceRequest.DeviceIdx),
         NRdma::TProtoMessageSerializer::MessageByteSize(
             writeDeviceBlocksRequest,
-            msg->Record.Range.Size() * msg->Record.BlockSize),
+            blockRange.Size() * msg->Record.BlockSize),
         4_KB);
 
     if (HasError(err)) {
@@ -279,14 +304,16 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         writeDeviceBlocksRequest,
         GetSgList(msg->Record.GetBlocks()));
 
-    const auto sentRequestId =
-        ep->SendRequest(std::move(req), requestInfo->CallContext);
+    requestResponseHandler->OnRequestStarted(
+        deviceRequest.DeviceIdx,
+        TDeviceOperationTracker::ERequestType::Write);
 
-    RequestsInProgress.AddWriteRequest(
-        requestId,
-        TRequestContext{TDeviceRequestContext{
-            .DeviceIndex = deviceRequest.DeviceIdx,
-            .SentRequestId = sentRequestId}});
+    TRequestContext sentRequestCtx{
+        {.DeviceIdx = deviceRequest.DeviceIdx,
+         .ClientRequestId =
+             ep->SendRequest(std::move(req), requestInfo->CallContext)}};
+
+    RequestsInProgress.AddWriteRequest(requestId, blockRange, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -60,7 +60,7 @@ bool TIndexTabletActor::PrepareTx_ZeroRange(
 {
     Y_UNUSED(tx);
 
-    InitProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
+    InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
     return true;
 }
@@ -74,7 +74,7 @@ void TIndexTabletActor::ExecuteTx_ZeroRange(
 
     ui64 commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "ZeroRange");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "ZeroRange");
     }
 
     AddRange(

@@ -23,6 +23,17 @@ struct IProfileLog
         ui32 Checksum = 0;
     };
 
+    struct TReplicaChecksums {
+        ui32 ReplicaId = 0;
+        TVector<ui32> Checksums;
+    };
+
+    struct TRangeInfo
+    {
+        TBlockRange64 Range;
+        TVector<TReplicaChecksums> ReplicaChecksums;
+    };
+
     struct TBlockCommitId
     {
         ui64 BlockIndex = 0;
@@ -43,6 +54,13 @@ struct IProfileLog
         ESysRequestType RequestType = ESysRequestType::MAX;
         TDuration Duration;
         TVector<TBlockRange64> Ranges;
+    };
+
+    struct TSysReadWriteRequestWithChecksums
+    {
+        ESysRequestType RequestType = ESysRequestType::MAX;
+        TDuration Duration;
+        TRangeInfo RangeInfo;
     };
 
     struct TSysReadWriteRequestBlockInfos
@@ -100,6 +118,7 @@ struct IProfileLog
         std::variant<
             TReadWriteRequest,
             TSysReadWriteRequest,
+            TSysReadWriteRequestWithChecksums,
             TReadWriteRequestBlockInfos,
             TSysReadWriteRequestBlockInfos,
             TSysReadWriteRequestBlockCommitIds,

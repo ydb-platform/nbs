@@ -6,15 +6,16 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	internal_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
-	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
@@ -23,14 +24,14 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createImageFromDiskTask struct {
-	config            *config.ImagesConfig
-	performanceConfig *performance_config.PerformanceConfig
-	scheduler         tasks.Scheduler
-	storage           resources.Storage
-	nbsFactory        nbs.Factory
-	poolService       pools.Service
-	request           *protos.CreateImageFromDiskRequest
-	state             *protos.CreateImageFromDiskTaskState
+	config       *config.ImagesConfig
+	scheduler    tasks.Scheduler
+	storage      resources.Storage
+	nbsFactory   nbs.Factory
+	poolService  pools.Service
+	request      *protos.CreateImageFromDiskRequest
+	state        *protos.CreateImageFromDiskTaskState
+	cellSelector cells.CellSelector
 }
 
 func (t *createImageFromDiskTask) Save() ([]byte, error) {
@@ -52,9 +53,8 @@ func (t *createImageFromDiskTask) run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	nbsClient nbs.Client,
+	disk *types.Disk,
 ) (string, error) {
-
-	disk := t.request.SrcDisk
 
 	selfTaskID := execCtx.GetTaskID()
 
@@ -63,10 +63,16 @@ func (t *createImageFromDiskTask) run(
 		return "", err
 	}
 
+	if internal_common.IsLocalDiskKind(diskParams.Kind) {
+		return "", errors.NewNonCancellableErrorf(
+			"image creation from local disk is forbidden",
+		)
+	}
+
 	imageMeta, err := t.storage.CreateImage(ctx, resources.ImageMeta{
 		ID:                t.request.DstImageId,
 		FolderID:          t.request.FolderId,
-		SrcDiskID:         t.request.SrcDisk.DiskId,
+		SrcDiskID:         disk.DiskId,
 		CreateRequest:     t.request,
 		CreateTaskID:      selfTaskID,
 		CreatingAt:        time.Now(),
@@ -97,7 +103,7 @@ func (t *createImageFromDiskTask) run(
 		execCtx,
 		t.scheduler,
 		nbsClient,
-		t.request.SrcDisk,
+		disk,
 		t.request.DstImageId,
 		selfTaskID,
 		diskParams.IsDiskRegistryBasedDisk,
@@ -138,12 +144,6 @@ func (t *createImageFromDiskTask) run(
 		)
 	}
 
-	// TODO: estimate should be applied before resource creation, not after.
-	execCtx.SetEstimate(performance.Estimate(
-		typedResponse.SnapshotStorageSize,
-		t.performanceConfig.GetCreateImageFromDiskBandwidthMiBs(),
-	))
-
 	t.state.ImageSize = int64(typedResponse.SnapshotSize)
 	t.state.ImageStorageSize = int64(typedResponse.SnapshotStorageSize)
 
@@ -172,14 +172,22 @@ func (t *createImageFromDiskTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	disk := t.request.SrcDisk
+	// Disk cell may differ from the zone presented in the request.
+	disk, err := t.cellSelector.ReplaceZoneIdWithCellIdInDiskMeta(
+		ctx,
+		t.storage,
+		t.request.SrcDisk,
+	)
+	if err != nil {
+		return err
+	}
 
 	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
 	if err != nil {
 		return err
 	}
 
-	checkpointID, err := t.run(ctx, execCtx, nbsClient)
+	checkpointID, err := t.run(ctx, execCtx, nbsClient, disk)
 	if err != nil {
 		return err
 	}
@@ -196,7 +204,7 @@ func (t *createImageFromDiskTask) Run(
 		return err
 	}
 
-	diskParams, err := nbsClient.Describe(ctx, t.request.SrcDisk.DiskId)
+	diskParams, err := nbsClient.Describe(ctx, disk.DiskId)
 	if err != nil {
 		return err
 	}
@@ -213,8 +221,17 @@ func (t *createImageFromDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	disk := t.request.SrcDisk
-	nbsClient, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+	// Disk cell may differ from the zone presented in the request.
+	disk, err := t.cellSelector.ReplaceZoneIdWithCellIdInDiskMeta(
+		ctx,
+		t.storage,
+		t.request.SrcDisk,
+	)
+	if err != nil {
+		return err
+	}
+
+	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
 	if err != nil {
 		return err
 	}

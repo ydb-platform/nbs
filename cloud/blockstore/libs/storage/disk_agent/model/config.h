@@ -137,6 +137,16 @@ public:
     ui32 GetMaxParallelSecureErasesAllowed() const;
 
     bool GetUseLocalStorageSubmissionThread() const;
+    bool GetUseOneSubmissionThreadPerAIOServiceEnabled() const;
+
+    [[nodiscard]] bool GetKickOutOldClientsEnabled() const;
+
+    bool GetEnableDataIntegrityValidationForDrBasedDisks() const;
+    NProto::EDataIntegrityValidationPolicy
+    GetDataIntegrityValidationPolicyForDrBasedDisks() const;
+
+    [[nodiscard]] bool HasChaosConfig() const;
+    [[nodiscard]] const NProto::TChaosConfig& GetChaosConfig() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

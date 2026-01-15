@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cloud/storage/core/libs/diagnostics/histogram_counter_options.h>
+
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/monlib/metrics/metric_registry.h>
 
 namespace NCloud::NStorage::NUserStats {
@@ -38,7 +41,7 @@ class IUserCounterSupplier
     : public NMonitoring::IMetricSupplier
 {
 public:
-    virtual ~IUserCounterSupplier() = default;
+    ~IUserCounterSupplier() override = default;
 
     virtual void AddUserMetric(
         NMonitoring::TLabels labels,
@@ -48,8 +51,45 @@ public:
         NMonitoring::TLabels labels,
         TStringBuf name) = 0;
 };
+using IUserCounterSupplierPtr = std::shared_ptr<IUserCounterSupplier>;
 
-std::shared_ptr<IUserCounterSupplier> CreateUserCounterSupplier();
-std::shared_ptr<IUserCounterSupplier> CreateUserCounterSupplierStub();
+IUserCounterSupplierPtr CreateUserCounterSupplier();
+IUserCounterSupplierPtr CreateUserCounterSupplierStub();
 
-}   // NCloud::NStorage::NUserStats
+////////////////////////////////////////////////////////////////////////////////
+
+struct TBucket
+{
+    NMonitoring::TBucketBound Bound;
+    TString Name;
+};
+
+static constexpr size_t BUCKETS_COUNT = 25;
+
+using TBuckets = std::array<TBucket, BUCKETS_COUNT>;
+using TBucketsWithUnits = std::pair<TBuckets, TString>;
+
+TBucketsWithUnits GetMsBuckets();
+TBucketsWithUnits GetUsBuckets();
+TBucketsWithUnits GetTimeBuckets(EHistogramCounterOptions options);
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TBaseDynamicCounters =
+    std::pair<NMonitoring::TDynamicCounterPtr, TString>;
+
+void AddUserMetric(
+    IUserCounterSupplier& dsc,
+    const NMonitoring::TLabels& commonLabels,
+    const TVector<TBaseDynamicCounters>& baseCounters,
+    TStringBuf newName);
+
+void AddHistogramUserMetric(
+    const TBucketsWithUnits& buckets,
+    IUserCounterSupplier& dsc,
+    const NMonitoring::TLabels& commonLabels,
+    const TVector<TBaseDynamicCounters>& baseCounters,
+    TStringBuf newName,
+    EHistogramCounterOptions histogramCounterOptions);
+
+}   // namespace NCloud::NStorage::NUserStats

@@ -4,6 +4,8 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/libs/service/service_method.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -155,7 +157,7 @@ struct TRequestCounters
 ////////////////////////////////////////////////////////////////////////////////
 
 class TValidationClient final
-    : public IBlockStoreValidationClient
+    : public TBlockStoreImpl<TValidationClient, IBlockStoreValidationClient>
 {
     class TMonPage;
 
@@ -205,23 +207,20 @@ public:
         const TVector<std::pair<ui64, ui64>>& checksums) override;
     void EnsureZeroBlockDigestInitialized(TVolume& volume);
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        TFuture<NProto::T##name##Response> response;                           \
-        if (!HandleRequest(callContext, request, response)) {                  \
-            response = Client->name(                                           \
-                std::move(callContext), std::move(request));                   \
-        }                                                                      \
-        return response;                                                       \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
-
-BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr callContext,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        TFuture<typename TMethod::TResponse> response;
+        if (!HandleRequest(callContext, request, response)) {
+            response = TMethod::Execute(
+                Client.get(),
+                std::move(callContext),
+                std::move(request));
+        }
+        return response;
+    }
 
 private:
     void OutputHtml(IOutputStream& out, const IMonHttpRequest& request);
@@ -245,10 +244,10 @@ private:
         const TOperationRange& newRange,
         const TOperationRange& oldRange) const;
 
-    TVolumePtr MountVolume(
+    TVolumePtr DoMountVolume(
         const NProto::TVolume& info,
         const TString& sessionId);
-    void UnmountVolume(const TString& diskId);
+    void DoUnmountVolume(const TString& diskId);
     TVolumePtr GetVolume(const TString& diskId) const;
     TMaybe<NProto::TVolume> GetVolumeInfo(const TString& diskId) const;
     TString GetSessionId(const TString& diskId) const;
@@ -515,7 +514,7 @@ void TValidationClient::ReportRace(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVolumePtr TValidationClient::MountVolume(
+TVolumePtr TValidationClient::DoMountVolume(
     const NProto::TVolume& info,
     const TString& sessionId)
 {
@@ -535,7 +534,7 @@ TVolumePtr TValidationClient::MountVolume(
     }
 }
 
-void TValidationClient::UnmountVolume(const TString& diskId)
+void TValidationClient::DoUnmountVolume(const TString& diskId)
 {
     with_lock (Lock) {
         auto it = Volumes.find(diskId);
@@ -776,7 +775,7 @@ bool TValidationClient::HandleRequest(
     ).Subscribe([this] (const auto& future) {
         if (!IsRequestFailed(future)) {
             const auto& response = future.GetValue();
-            MountVolume(
+            DoMountVolume(
                 response.GetVolume(),
                 response.GetSessionId());
         }
@@ -796,7 +795,7 @@ bool TValidationClient::HandleRequest(
         std::move(callContext), std::move(request)
     ).Subscribe([=, this] (const auto& future) {
         if (!IsRequestFailed(future)) {
-            UnmountVolume(diskId);
+            DoUnmountVolume(diskId);
         }
     });
     return true;

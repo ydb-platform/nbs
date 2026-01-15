@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -53,6 +52,7 @@ type ClusterSpec struct {
 	AdditionalFilesPathTargetPrefix string                     `yaml:"additionalFilesPathTargetPrefix"`
 	TargetForSeed                   string                     `yaml:"targetForSeed"`
 	GenerateSeed                    bool                       `yaml:"generateSeed"`
+	AdditionalFilesTargetForSeed    string                     `yaml:"additionalFilesTargetForSeed"`
 	Configs                         ConfigsSpec                `yaml:"configs"`
 	Values                          ValuesSpec                 `yaml:"values"`
 }
@@ -111,7 +111,7 @@ func (g *ConfigGenerator) updateConfigMapFromDir(
 		configProtoPath := path.Join(overridesPath, configDesc.FileName)
 		g.LogDbg(ctx, "Reading file %v", configProtoPath)
 
-		configData, err := ioutil.ReadFile(configProtoPath)
+		configData, err := os.ReadFile(configProtoPath)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf(
 				"failed to read protobuf from config proto file %v: %w",
@@ -284,7 +284,7 @@ func (g *ConfigGenerator) dumpConfigs(
 		if _, err := os.Stat(path.Join(g.spec.OverridesPath, cluster, cfgFile)); err == nil {
 			cfgFilePath = path.Join(g.spec.OverridesPath, cluster, cfgFile)
 		}
-		cfgFileData, err := ioutil.ReadFile(cfgFilePath)
+		cfgFileData, err := os.ReadFile(cfgFilePath)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to read cfg file %v: %w",
@@ -308,20 +308,30 @@ func (g *ConfigGenerator) dumpConfigs(
 		resultConfigs = append(resultConfigs, resultConfig)
 	}
 
-	for _, fileName := range g.spec.ServiceSpec.Clusters[cluster].AdditionalFiles {
+	clusterConfig := g.spec.ServiceSpec.Clusters[cluster]
+
+	for _, fileName := range clusterConfig.AdditionalFiles {
 		var filePath string
 		if strings.HasPrefix(fileName, "/") {
 			filePath = path.Join(g.spec.ArcadiaPath, fileName)
+		} else if !seed || len(clusterConfig.AdditionalFilesTargetForSeed) == 0 {
+			filePath = path.Join(
+				g.spec.ArcadiaPath,
+				clusterConfig.AdditionalFilesPath,
+				zone,
+				target,
+				clusterConfig.AdditionalFilesPathTargetPrefix,
+				fileName)
 		} else {
 			filePath = path.Join(
 				g.spec.ArcadiaPath,
-				g.spec.ServiceSpec.Clusters[cluster].AdditionalFilesPath,
+				clusterConfig.AdditionalFilesPath,
 				zone,
-				target,
-				g.spec.ServiceSpec.Clusters[cluster].AdditionalFilesPathTargetPrefix,
+				clusterConfig.AdditionalFilesTargetForSeed,
+				clusterConfig.AdditionalFilesPathTargetPrefix,
 				fileName)
 		}
-		fileData, err := ioutil.ReadFile(filePath)
+		fileData, err := os.ReadFile(filePath)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to read file %v: %w",
@@ -726,7 +736,7 @@ func (g *ConfigGenerator) Generate(ctx context.Context, whiteListCluster []strin
 			if g.spec.ServiceSpec.Clusters[cluster].GenerateSeed {
 				err := g.generateConfigForCluster(
 					ctx,
-					g.spec.ServiceSpec.Clusters[cluster].TargetForSeed,
+					clusterConfig.TargetForSeed,
 					cluster,
 					zone,
 					true)

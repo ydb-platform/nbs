@@ -1,5 +1,7 @@
 package mounter
 
+import "context"
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type Interface interface {
@@ -9,9 +11,9 @@ type Interface interface {
 	IsMountPoint(file string) (bool, error)
 	CleanupMountPoint(target string) error
 
-	HasBlockDevice(device string) (bool, error)
+	HasBlockDevice(context context.Context, device string) (bool, error)
 
-	IsFilesystemExisted(device string) (bool, error)
+	IsFilesystemExisted(ctx context.Context, device string) (bool, error)
 	IsFilesystemRemountedAsReadonly(mountPoint string) (bool, error)
 	MakeFilesystem(device string, fsType string) ([]byte, error)
 

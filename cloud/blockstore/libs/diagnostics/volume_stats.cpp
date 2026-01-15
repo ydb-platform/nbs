@@ -6,6 +6,7 @@
 #include "volume_perf.h"
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
+#include <cloud/blockstore/libs/storage/model/volume_label.h>
 
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -14,6 +15,7 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/postpone_time_predictor.h>
 
+#include <library/cpp/containers/sorted_vector/sorted_vector.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <util/datetime/cputimer.h>
@@ -272,13 +274,15 @@ public:
             std::shared_ptr<TVolumeInfoBase> volumeBase,
             ITimerPtr timer,
             TRealInstanceId realInstanceId,
-            EHistogramCounterOptions histogramCounterOptions)
+            EHistogramCounterOptions histogramCounterOptions,
+            const TVector<TSizeInterval>& executionTimeSizeClasses)
         : VolumeBase(std::move(volumeBase))
         , RealInstanceId(std::move(realInstanceId))
         , RequestCounters(MakeRequestCounters(
-            std::move(timer),
-            GetRequestCountersOptions(*VolumeBase),
-            histogramCounterOptions))
+              std::move(timer),
+              GetRequestCountersOptions(*VolumeBase),
+              histogramCounterOptions,
+              executionTimeSizeClasses))
     {}
 
     const NProto::TVolume& GetInfo() const override
@@ -343,7 +347,7 @@ public:
             errorFlags,
             unaligned,
             ECalcMaxTime::ENABLE,
-            responseSent);
+            responseSent).Time;
     }
 
     void AddIncompleteStats(
@@ -462,6 +466,9 @@ private:
     const ITimerPtr Timer;
     const THashSet<TString> CloudIdsWithStrictSLA;
 
+    TVector<TSizeInterval> ExecutionTimeSizeClasses =
+        DiagnosticsConfig->GetExecutionTimeSizeClasses();
+
     TDynamicCountersPtr Counters;
     std::shared_ptr<NUserCounter::IUserCounterSupplier> UserCounters;
     std::unique_ptr<TSufferCounters> SufferCounters;
@@ -496,14 +503,15 @@ public:
             return THashSet<TString>(v.begin(), v.end());
         }(DiagnosticsConfig->GetCloudIdsWithStrictSLA()))
         , UserCounters(CreateUserCounterSupplier())
-    {
-    }
+    {}
 
     bool MountVolumeImpl(
-        const NProto::TVolume& volume,
+        NProto::TVolume volume,
         const TRealInstanceId& realInstanceId)
     {
         bool inserted = false;
+
+        volume.SetDiskId(NStorage::GetLogicalDiskId(volume.GetDiskId()));
 
         auto volumeIt = Volumes.find(volume.GetDiskId());
         if (volumeIt == Volumes.end()) {
@@ -601,7 +609,7 @@ public:
         const TString& folderId) override
     {
         TWriteGuard guard(Lock);
-        return AlterVolumeImpl(diskId, cloudId, folderId);
+        AlterVolumeImpl(NStorage::GetLogicalDiskId(diskId), cloudId, folderId);
     }
 
     IVolumeInfoPtr GetVolumeInfo(
@@ -610,7 +618,7 @@ public:
     {
         TReadGuard guard(Lock);
 
-        const auto volumeIt = Volumes.find(diskId);
+        const auto volumeIt = Volumes.find(NStorage::GetLogicalDiskId(diskId));
         if (volumeIt == Volumes.end()) {
             return nullptr;
         }
@@ -632,7 +640,7 @@ public:
     {
         TReadGuard guard(Lock);
 
-        const auto volumeIt = Volumes.find(diskId);
+        const auto volumeIt = Volumes.find(NStorage::GetLogicalDiskId(diskId));
         return volumeIt != Volumes.end()
                    ? volumeIt->second.VolumeBase->Volume.GetStorageMediaKind()
                    : NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT;
@@ -640,9 +648,9 @@ public:
 
     ui32 GetBlockSize(const TString& diskId) const override
     {
-        TWriteGuard guard(Lock);
+        TReadGuard guard(Lock);
 
-        const auto volumeIt = Volumes.find(diskId);
+        const auto volumeIt = Volumes.find(NStorage::GetLogicalDiskId(diskId));
         return volumeIt != Volumes.end()
             ? volumeIt->second.VolumeBase->Volume.GetBlockSize()
             : DefaultBlockSize;
@@ -693,8 +701,7 @@ public:
         ui32 totalDownDisks = 0;
         std::array<ui32, NProto::EStorageMediaKind_ARRAYSIZE> downDisksCounters{};
 
-        for (auto& item: Volumes) {
-            TVolumeInfoHolder& holder = item.second;
+        for (auto& [logicalDiskId, holder]: Volumes) {
             TVolumeInfoBase& volumeBase = *holder.VolumeBase;
 
             volumeBase.PostponeTimePredictorStats.OnUpdateStats();
@@ -785,8 +792,8 @@ public:
         TReadGuard guard(Lock);
         TVolumePerfStatuses ans(Reserve(Volumes.size()));
 
-        for (const auto& item: Volumes) {
-            const TVolumeInfoBase& volumeBase = *item.second.VolumeBase;
+        for (const auto& [logicalDiskId, holder]: Volumes) {
+            const TVolumeInfoBase& volumeBase = *holder.VolumeBase;
             ans.emplace_back(
                 volumeBase.Volume.GetDiskId(),
                 volumeBase.PerfCalc.GetSufferCount());
@@ -803,7 +810,7 @@ public:
     {
         TReadGuard guard(Lock);
 
-        const auto volumeIt = Volumes.find(diskId);
+        const auto volumeIt = Volumes.find(NStorage::GetLogicalDiskId(diskId));
         if (volumeIt == Volumes.end()) {
             return {};
         }
@@ -816,7 +823,7 @@ public:
     {
         TReadGuard guard(Lock);
 
-        const auto volumeIt = Volumes.find(diskId);
+        const auto volumeIt = Volumes.find(NStorage::GetLogicalDiskId(diskId));
         if (volumeIt == Volumes.end()) {
             return {};
         }
@@ -825,17 +832,6 @@ public:
     }
 
 private:
-    const TString& SelectInstanceId(
-        const TString& clientId,
-        const TString& instanceId)
-    {
-        // in case of multi mount for empty instance, centers override itself
-        // to avoid it use client ID for subgroup
-        return instanceId.empty()
-            ? clientId
-            : instanceId;
-    }
-
     TVolumeInfoHolder RegisterVolume(NProto::TVolume volume)
     {
         if (!Counters) {
@@ -868,7 +864,8 @@ private:
             volumeBase,
             Timer,
             realInstanceId,
-            DiagnosticsConfig->GetHistogramCounterOptions());
+            DiagnosticsConfig->GetHistogramCounterOptions(),
+            ExecutionTimeSizeClasses);
 
         if (!Counters) {
             InitCounters();
@@ -898,6 +895,7 @@ private:
             volumeConfig.GetDiskId(),
             realInstanceId.GetInstanceId(),
             reportZeroBlocksMetrics,
+            DiagnosticsConfig->GetHistogramCounterOptions(),
             countersGroup);
 
         return info;

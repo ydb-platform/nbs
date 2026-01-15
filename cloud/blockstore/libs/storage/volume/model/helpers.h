@@ -3,6 +3,8 @@
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 
+#include <util/generic/map.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -38,5 +40,12 @@ void UpdateLaggingDevicesAfterMetaUpdate(
 [[nodiscard]] TVector<NProto::TDeviceConfig> GetReplacedDevices(
     const NProto::TVolumeMeta& oldMeta,
     const NProto::TVolumeMeta& newMeta);
+
+[[nodiscard]] TVector<const NProto::TDeviceConfig*> GetAllDevices(
+    const NProto::TVolumeMeta& meta);
+
+[[nodiscard]] TSet<TString> GetAllAgents(const NProto::TVolumeMeta& meta);
+
+[[nodiscard]] TMap<TString, TString> ParseTags(const TString& tags);
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -26,6 +27,7 @@ private:
     const ui32 VolumeGeneration;
     const TDuration RequestTimeout;
     const bool MuteIOErrors;
+    TChildLogTitle LogTitle;
 
     TVector<NProto::TDeviceConfig> Devices;
     THashMap<TNodeId, TAgentId> PendingAgents;
@@ -38,7 +40,8 @@ public:
         ui32 volumeGeneration,
         TDuration requestTimeout,
         TVector<NProto::TDeviceConfig> devices,
-        bool muteIOErrors);
+        bool muteIOErrors,
+        TChildLogTitle logTitle);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

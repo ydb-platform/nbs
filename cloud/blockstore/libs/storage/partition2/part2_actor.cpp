@@ -36,17 +36,17 @@ const TPartitionActor::TStateInfo TPartitionActor::States[STATE_MAX] = {
 };
 
 TPartitionActor::TPartitionActor(
-        const TActorId& owner,
-        TTabletStorageInfoPtr storage,
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
-        IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        NProto::TPartitionConfig partitionConfig,
-        EStorageAccessMode storageAccessMode,
-        ui32 siblingCount,
-        const TActorId& volumeActorId,
-        ui64 volumeTabletId)
+    const TActorId& owner,
+    TTabletStorageInfoPtr storage,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    NProto::TPartitionConfig partitionConfig,
+    EStorageAccessMode storageAccessMode,
+    ui32 siblingCount,
+    const TActorId& volumeActorId,
+    ui64 volumeTabletId)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), nullptr)
     , Config(std::move(config))
@@ -60,11 +60,12 @@ TPartitionActor::TPartitionActor(
     , ChannelHistorySize(CalcChannelHistorySize())
     , VolumeTabletId(volumeTabletId)
     , LogTitle(
-          TabletID(),
-          PartitionConfig.GetDiskId(),
           StartTime,
-          0,
-          siblingCount)
+          TLogTitle::TPartition{
+              .TabletId = TabletID(),
+              .DiskId = PartitionConfig.GetDiskId(),
+              .PartitionIndex = 0,
+              .PartitionCount = siblingCount})
 {}
 
 TPartitionActor::~TPartitionActor()
@@ -176,7 +177,10 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
         ui64 value = stats.Get##category##Counters().Get##name();              \
         Y_DEBUG_ABORT_UNLESS(value >= counter.Get());                                \
         if (value < counter.Get()) {                                           \
-            ReportCounterUpdateRace();                                         \
+            ReportCounterUpdateRace(                                           \
+                TStringBuilder()                                               \
+                    << "category=" << #category                                \
+                    << ", counter=" << #name);                                 \
         }                                                                      \
         counter.Increment(value - counter.Get());                              \
     }                                                                          \
@@ -186,7 +190,10 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
 
 #undef BLOCKSTORE_PARTITION2_UPDATE_COUNTER
 
-    SendStatsToService(ctx);
+    // Send counters to service only when we use push scheme
+    if (!Config->GetUsePullSchemeForVolumeStatistics()) {
+        SendStatsToService(ctx);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -227,9 +234,9 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
             TabletID(),
             timeout.MilliSeconds());
     }
-
+    TStringBuilder sb;
     {
-        TStringBuilder sb;
+
         for (const auto channel: channels) {
             if (sb.size()) {
                 sb << ", ";
@@ -251,7 +258,9 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
         TabletID(),
         std::move(channels));
 
-    ReportReassignTablet();
+    ReportReassignTablet(
+        TStringBuilder() << TabletID()
+                         << " Reassign request sent for channels: " << sb);
     ReassignRequestSentTs = ctx.Now();
 }
 
@@ -839,6 +848,9 @@ STFUNC(TPartitionActor::StateBoot)
 
         HFunc(TEvPartitionPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
+            HandleGetPartCountersRequest);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
 
@@ -867,6 +879,9 @@ STFUNC(TPartitionActor::StateInit)
         HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
         HFunc(TEvPartitionCommonPrivate::TEvLoadFreshBlobsCompleted, HandleLoadFreshBlobsCompleted);
         HFunc(TEvPartitionPrivate::TEvInitFreshZonesCompleted, HandleInitFreshZonesCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
+            HandleGetPartCountersRequest);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
         BLOCKSTORE_HANDLE_REQUEST(InitIndex, TEvPartitionPrivate)
@@ -916,6 +931,9 @@ STFUNC(TPartitionActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvForcedCompactionCompleted, HandleForcedCompactionCompleted);
         HFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted, HandleTrimFreshLogCompleted);
         HFunc(TEvPartitionPrivate::TEvGetChangedBlocksCompleted, HandleGetChangedBlocksCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
+            HandleGetPartCountersRequest);
 
         HFunc(TEvHiveProxy::TEvReassignTabletResponse, HandleReassignTabletResponse);
 
@@ -957,6 +975,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvUpdateYellowState);
         IgnoreFunc(TEvPartitionPrivate::TEvSendBackpressureReport);
         IgnoreFunc(TEvPartitionPrivate::TEvProcessWriteQueue);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvGetPartCountersRequest);
 
         IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvReadBlobCompleted);
@@ -975,6 +994,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvCompactionResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvUpdateIndexStructuresResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvFlushResponse);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogResponse);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 

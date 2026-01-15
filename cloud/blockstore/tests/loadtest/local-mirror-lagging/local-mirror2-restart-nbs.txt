@@ -5,6 +5,9 @@ Vertices {
             BlockSize: 4096
             StorageMediaKind: STORAGE_MEDIA_SSD_MIRROR2
         }
+        StartEndpointRequest {
+            IpcType: IPC_GRPC
+        }
         ArtificialLoadSpec {
             Ranges {
                 Start: 250000

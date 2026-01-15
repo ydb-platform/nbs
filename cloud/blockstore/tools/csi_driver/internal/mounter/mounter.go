@@ -1,12 +1,15 @@
 package mounter
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"k8s.io/mount-utils"
 	executils "k8s.io/utils/exec"
 )
@@ -34,10 +37,14 @@ func (m *mounter) IsMountPoint(file string) (bool, error) {
 }
 
 func (m *mounter) CleanupMountPoint(target string) error {
-	return mount.CleanupMountPoint(target, m.mnt, true)
+	err := mount.CleanupMountPoint(target, m.mnt, true)
+	if err != nil && strings.Contains(err.Error(), "target is busy") {
+		return status.Error(codes.Unavailable, err.Error())
+	}
+	return err
 }
 
-func (m *mounter) HasBlockDevice(device string) (bool, error) {
+func (m *mounter) HasBlockDevice(ctx context.Context, device string) (bool, error) {
 	if _, err := exec.LookPath("blockdev"); err != nil {
 		return false, fmt.Errorf("failed to find 'blockdev' tool: %w", err)
 	}
@@ -46,7 +53,7 @@ func (m *mounter) HasBlockDevice(device string) (bool, error) {
 		return false, fmt.Errorf("failed to find device %q: %w", device, err)
 	}
 
-	out, err := exec.Command("blockdev", "--getsize64", device).CombinedOutput()
+	out, err := exec.CommandContext(ctx, "blockdev", "--getsize64", device).CombinedOutput()
 	if err != nil {
 		return false, fmt.Errorf("failed to get size of device %q: %w", device, err)
 	}
@@ -64,8 +71,8 @@ func (m *mounter) HasBlockDevice(device string) (bool, error) {
 	return true, nil
 }
 
-func (m *mounter) IsFilesystemExisted(device string) (bool, error) {
-	hasBlockDevice, err := m.HasBlockDevice(device)
+func (m *mounter) IsFilesystemExisted(ctx context.Context, device string) (bool, error) {
+	hasBlockDevice, err := m.HasBlockDevice(ctx, device)
 	if !hasBlockDevice {
 		return false, fmt.Errorf("failed to check filesystem: %w", err)
 	}
@@ -74,7 +81,7 @@ func (m *mounter) IsFilesystemExisted(device string) (bool, error) {
 		return false, fmt.Errorf("failed to find 'blkid' tool: %w", err)
 	}
 
-	out, err := exec.Command("blkid", device).CombinedOutput()
+	out, err := exec.CommandContext(ctx, "blkid", device).CombinedOutput()
 	return err == nil && string(out) != "", nil
 }
 

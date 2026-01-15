@@ -2,6 +2,8 @@
 
 #include "service_actor.h"
 
+#include <cloud/filestore/libs/storage/core/system_counters.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -13,6 +15,7 @@ IActorPtr CreateStorageService(
     IRequestStatsRegistryPtr statsRegistry,
     IProfileLogPtr profileLog,
     ITraceSerializerPtr traceSerialzer,
+    TSystemCountersPtr systemCounters,
     NCloud::NStorage::IStatsFetcherPtr statsFetcher)
 {
     return std::make_unique<TStorageServiceActor>(
@@ -20,6 +23,7 @@ IActorPtr CreateStorageService(
         std::move(statsRegistry),
         std::move(profileLog),
         std::move(traceSerialzer),
+        std::move(systemCounters),
         std::move(statsFetcher));
 }
 

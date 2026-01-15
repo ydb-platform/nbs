@@ -21,7 +21,7 @@ ServerConfig {
   VhostEnabled: true
   VhostServerPath: "../cloud/blockstore/vhost-server/blockstore-vhost-server"
   ChecksumFlags {
-    CheckBufferModificationForMirrorDisk: true
+    EnableDataIntegrityClient: true
   }
   # UseFakeRdmaClient: true
 }

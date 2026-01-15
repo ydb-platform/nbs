@@ -1,6 +1,6 @@
 #include "block_digest.h"
 
-#include <cloud/blockstore/libs/common/public.h>
+#include <cloud/blockstore/libs/common/constants.h>
 
 #include <library/cpp/digest/crc32c/crc32c.h>
 
@@ -34,7 +34,7 @@ struct TExt4BlockDigestGenerator final
 
     TExt4BlockDigestGenerator(ui32 digestedBlocksPercentage)
         : DigestedBlocksPercentage(digestedBlocksPercentage)
-        , ZeroBlockDigests(1 + log2(128_KB / DefaultBlockSize))
+        , ZeroBlockDigests(1 + log2(MaxBlockSize / DefaultBlockSize))
     {
         for (ui32 i = 0; i < ZeroBlockDigests.size(); ++i) {
             TVector<char> buf(DefaultBlockSize * pow(2, i));
@@ -50,6 +50,12 @@ struct TExt4BlockDigestGenerator final
             return Nothing();
         }
 
+        return ComputeDigestForce(blockContent);
+    }
+
+    TMaybe<ui32> ComputeDigestForce(
+        TBlockDataRef blockContent) const override
+    {
         if (blockContent.Data() != nullptr) {
             return ComputeDefaultDigest(blockContent);
         }
@@ -109,6 +115,12 @@ struct TTestBlockDigestGenerator final
     {
         Y_UNUSED(blockIndex);
 
+        return ComputeDigestForce(blockContent);
+    }
+
+    TMaybe<ui32> ComputeDigestForce(
+        TBlockDataRef blockContent) const override
+    {
         if (blockContent.Data() == nullptr) {
             return 0;
         }
@@ -139,8 +151,20 @@ struct TTestBlockDigestGenerator final
 struct TBlockDigestGeneratorStub final
     : IBlockDigestGenerator
 {
-    TMaybe<ui32> ComputeDigest(ui64, TBlockDataRef) const override
+    TMaybe<ui32> ComputeDigest(
+        ui64 blockIndex,
+        TBlockDataRef blockContent) const override
     {
+        Y_UNUSED(blockIndex);
+
+        return ComputeDigestForce(blockContent);
+    }
+
+    TMaybe<ui32> ComputeDigestForce(
+        TBlockDataRef blockContent) const override
+    {
+        Y_UNUSED(blockContent);
+
         return Nothing();
     }
 

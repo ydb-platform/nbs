@@ -1,5 +1,6 @@
 LIBRARY()
 
+GENERATE_ENUM_SERIALIZATION(device_operation_tracker.h)
 GENERATE_ENUM_SERIALIZATION(mount_token.h)
 
 SRCS(
@@ -12,6 +13,8 @@ SRCS(
     disk_counters.cpp
     disk_validation.cpp
     forward_helpers.cpp
+    bs_group_operation_tracker.cpp
+    device_operation_tracker.cpp
     manually_preempted_volumes.cpp
     metrics.cpp
     monitoring_utils.cpp
@@ -28,7 +31,6 @@ SRCS(
     tenant.cpp
     ts_ring_buffer.cpp
     unimplemented.cpp
-    volume_label.cpp
     volume_model.cpp
     write_buffer_request.cpp
     transaction_time_tracker.cpp
@@ -41,8 +43,10 @@ PEERDIR(
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/service
     cloud/blockstore/libs/storage/api
+    cloud/blockstore/libs/storage/core/resources
     cloud/blockstore/libs/storage/model
     cloud/blockstore/libs/storage/protos
+    cloud/blockstore/libs/storage/volume/model
     cloud/blockstore/public/api/protos
 
     cloud/storage/core/config

@@ -76,4 +76,32 @@ message TFileSystemConfig
     // number from the nodeId in case of an invalid handle, rather than from the
     // handle itself.
     optional bool AllowHandlelessIO = 22;
+
+    // Limits max requests allowed at a time.
+    optional uint32 MaxBackground = 23;
+
+    // Limits max threads used in fuse loop per mount (vhost frontend queues)
+    optional uint32 MaxFuseLoopThreads = 24;
+
+    // Enable zero-copy for write operations in the VFS FUSE layer
+    optional bool ZeroCopyWriteEnabled = 25;
+
+    // Disable fsync queue which is used to synchronize data/metadata ops during fsync
+    optional bool FSyncQueueDisabled = 26;
+
+    // Enable directory handles storage functionality
+    optional bool DirectoryHandlesStorageEnabled = 27;
+
+    // Capacity for DirectoryHandles persistent table.
+    optional uint64 DirectoryHandlesTableSize = 28;
+
+    // Enable FUSE_HANDLE_KILLPRIV_V2 on guest (FUSE client)
+    optional bool GuestHandleKillPrivV2Enabled = 29;
+
+    // Enable zero-copy for read operations in the VFS FUSE layer
+    optional bool ZeroCopyReadEnabled = 30;
+
+    // Inode entry timeout for regular entries (e.g. files)
+    // Only applies if set. Not set by default
+    optional uint32 RegularFileEntryTimeout = 31;
 }

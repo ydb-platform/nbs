@@ -1,5 +1,7 @@
 PROGRAM(blockstore-vhost-server)
 
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/binaries_dependency.inc)
+
 SRCS(
     main.cpp
 

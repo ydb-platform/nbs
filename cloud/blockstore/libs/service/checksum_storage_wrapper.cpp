@@ -216,8 +216,7 @@ void TChecksumStorageWrapper::ReportChecksumMismatch(TBlockRange64 range)
     }
 
     ReportMirroredDiskChecksumMismatchUponWrite(
-        TStringBuilder() << " disk: " << DiskId.Quote()
-                         << ", range: " << range);
+        {{"disk", DiskId}, {"range", range}});
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -319,7 +319,7 @@ bool TClientHandler::ProcessOption_StructuredReply(
 
             default: {
                 auto errorCode = OptionReplyTypeToProtoErrorCode(reply.Type);
-                ythrow TServiceError(errorCode)
+                STORAGE_THROW_SERVICE_ERROR(errorCode)
                     << "request failed with error: " << AsStringBuf(replyData);
             }
         }
@@ -347,7 +347,7 @@ bool TClientHandler::ProcessOption_UseNbsErrors(
 
             default: {
                 auto errorCode = OptionReplyTypeToProtoErrorCode(reply.Type);
-                ythrow TServiceError(errorCode)
+                STORAGE_THROW_SERVICE_ERROR(errorCode)
                     << "request failed with error: " << AsStringBuf(replyData);
             }
         }
@@ -401,7 +401,7 @@ bool TClientHandler::ProcessOption_Go(
 
             default: {
                 auto errorCode = OptionReplyTypeToProtoErrorCode(reply.Type);
-                ythrow TServiceError(errorCode)
+                STORAGE_THROW_SERVICE_ERROR(errorCode)
                     << "request failed with error: " << AsStringBuf(replyData);
             }
         }

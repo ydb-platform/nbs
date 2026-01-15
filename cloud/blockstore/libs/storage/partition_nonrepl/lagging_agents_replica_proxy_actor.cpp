@@ -172,7 +172,8 @@ void TSplitRequestSenderActor<TMethod>::Done(const NActors::TActorContext& ctx)
 template <typename TMethod>
 void CopyCommonRequestData(
     const typename TMethod::TRequest::TPtr& ev,
-    typename TMethod::TRequest& dst)
+    typename TMethod::TRequest& dst,
+    ui32 relativeDeviceIndex)
 {
     const auto* msg = ev->Get();
 
@@ -188,6 +189,12 @@ void CopyCommonRequestData(
     dst.Record.SetDiskId(msg->Record.GetDiskId());
     dst.Record.SetFlags(msg->Record.GetFlags());
     dst.Record.SetSessionId(msg->Record.GetSessionId());
+    if constexpr (IsExactlyWriteMethod<TMethod>) {
+        if (relativeDeviceIndex < msg->Record.ChecksumsSize()) {
+            *dst.Record.MutableChecksums()->Add() =
+                msg->Record.GetChecksums(relativeDeviceIndex);
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -337,7 +344,9 @@ void TLaggingAgentsReplicaProxyActor::ReadBlocks(
                               << ", in range " << blockRange
                               << ", lagging agent: " << agentId
                               << ", disk id: " << PartConfig->GetName();
-            ReportLaggingAgentsProxyWrongRecipientActor(message);
+
+            ReportLaggingAgentsProxyWrongRecipientActor(
+                {{"disk", PartConfig->GetName()}});
             NCloud::Reply(
                 ctx,
                 *ev,
@@ -378,7 +387,15 @@ void TLaggingAgentsReplicaProxyActor::WriteBlocks(
         }
     }
 
-    auto requests = SplitRequest<TMethod>(ev, deviceRequests);
+    auto&& [requests, error] = SplitRequest<TMethod>(ev, deviceRequests);
+    if (HasError(error)) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<typename TMethod::TResponse>(std::move(error)));
+        return;
+    }
+
     Y_DEBUG_ABORT_UNLESS(!requests.empty());
     Y_DEBUG_ABORT_UNLESS(requests.size() <= deviceRequests.size());
 
@@ -408,7 +425,7 @@ void TLaggingAgentsReplicaProxyActor::WriteBlocks(
 }
 
 template <typename TMethod>
-TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::SplitRequest(
+TResultOrError<TVector<TSplitRequest>> TLaggingAgentsReplicaProxyActor::SplitRequest(
     const TMethod::TRequest::TPtr& ev,
     const TVector<TDeviceRequest>& deviceRequests)
 {
@@ -444,7 +461,7 @@ bool TLaggingAgentsReplicaProxyActor::ShouldSplitWriteRequest(
     return recipientActors.size() > 1;
 }
 
-TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
+TResultOrError<TVector<TSplitRequest>> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
     const TEvService::TEvWriteBlocksRequest::TPtr& ev,
     const TVector<TDeviceRequest>& deviceRequests)
 {
@@ -458,7 +475,10 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
 
     for (const auto& deviceRequest: deviceRequests) {
         auto request = std::make_unique<TEvService::TEvWriteBlocksRequest>();
-        CopyCommonRequestData<TEvService::TWriteBlocksMethod>(ev, *request);
+        CopyCommonRequestData<TEvService::TWriteBlocksMethod>(
+            ev,
+            *request,
+            deviceRequest.RelativeDeviceIdx);
 
         request->Record.SetStartIndex(deviceRequest.BlockRange.Start);
         builder.BuildNextRequest(request->Record);
@@ -474,7 +494,7 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
     return result;
 }
 
-TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
+TResultOrError<TVector<TSplitRequest>> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
     const TEvService::TEvWriteBlocksLocalRequest::TPtr& ev,
     const TVector<TDeviceRequest>& deviceRequests)
 {
@@ -482,6 +502,12 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
     auto* msg = ev->Get();
 
     auto guard = msg->Record.Sglist.Acquire();
+    if (!guard) {
+        return MakeError(
+            E_CANCELLED,
+            "Failed to acquire sglist in LaggingAgentsReplicaProxyActor");
+    }
+
     TSgListBlockRange src(guard.Get(), msg->Record.BlockSize);
 
     for (const auto& deviceRequest: deviceRequests) {
@@ -489,7 +515,8 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
             std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
         CopyCommonRequestData<TEvService::TWriteBlocksLocalMethod>(
             ev,
-            *request);
+            *request,
+            deviceRequest.RelativeDeviceIdx);
 
         request->Record.SetStartIndex(deviceRequest.BlockRange.Start);
         request->Record.BlocksCount = deviceRequest.BlockRange.Size();
@@ -512,14 +539,17 @@ TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
     return result;
 }
 
-TVector<TSplitRequest> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
+TResultOrError<TVector<TSplitRequest>> TLaggingAgentsReplicaProxyActor::DoSplitRequest(
     const TEvService::TEvZeroBlocksRequest::TPtr& ev,
     const TVector<TDeviceRequest>& deviceRequests)
 {
     TVector<TSplitRequest> result;
     for (const auto& deviceRequest: deviceRequests) {
         auto request = std::make_unique<TEvService::TEvZeroBlocksRequest>();
-        CopyCommonRequestData<TEvService::TZeroBlocksMethod>(ev, *request);
+        CopyCommonRequestData<TEvService::TZeroBlocksMethod>(
+            ev,
+            *request,
+            deviceRequest.RelativeDeviceIdx);
 
         request->Record.SetStartIndex(deviceRequest.BlockRange.Start);
         request->Record.SetBlocksCount(deviceRequest.BlockRange.Size());

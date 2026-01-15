@@ -12,7 +12,9 @@
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/public.h>
+#include <cloud/blockstore/libs/storage/volume_throttling_manager/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 #include <cloud/blockstore/libs/storage/volume/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/volume/model/checkpoint_light.h>
@@ -21,6 +23,7 @@
 #include <cloud/blockstore/libs/storage/volume/model/meta.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_params.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttling_policy.h>
+
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -81,6 +84,15 @@ struct THistoryLogItem
         , Operation(std::move(operation))
     {}
 };
+
+struct TCreateFollowerRequestInfo
+{
+    TLeaderFollowerLink Link;
+    NActors::TActorId CreateVolumeLinkActor;
+    TVector<TRequestInfoPtr> Requests;
+};
+
+using TCreateFollowerRequests = TVector<TCreateFollowerRequestInfo>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -255,8 +267,11 @@ private:
     std::optional<ui64> BlockCountToMigrate;
 
     TCreateFollowerRequests CreateFollowerRequests;
+    TString SourceDiskId;
     TFollowerDisks FollowerDisks;
     TLeaderDisks LeaderDisks;
+    TString PrincipalDiskId;   // Set when in ELeadershipStatus::Outdated
+    ELeadershipStatus LeadershipStatus = ELeadershipStatus::Principal;
 
     struct TLaggingAgentMigrationInfo
     {
@@ -265,6 +280,8 @@ private:
     };
     THashMap<TString, TLaggingAgentMigrationInfo>
         CurrentlyMigratingLaggingAgents;
+    // Devices that were lagging and can't be restored.
+    TVector<NProto::TLaggingDevice> OutdatedDevices;
 
     TScrubbingInfo ScrubbingInfo;
 
@@ -346,7 +363,15 @@ public:
         const TString& agentId);
     [[nodiscard]] bool HasLaggingAgents() const;
     [[nodiscard]] bool HasLaggingInReplica(ui32 replicaIndex) const;
-    [[nodiscard]] THashSet<TString> GetLaggingDevices() const;
+    [[nodiscard]] THashSet<TString> GetLaggingDeviceIds() const;
+
+    // Once the partition is restarted, the lagging devices can not be restored.
+    // So they must become outdated.
+    void FillOutdatedDevices();
+    [[nodiscard]] THashSet<TString> GetOutdatedDeviceIds() const;
+    [[nodiscard]] const TVector<NProto::TLaggingDevice>&
+    GetOutdatedDevices() const;
+
     void UpdateLaggingAgentMigrationState(
         const TString& agentId,
         ui64 cleanBlocks,
@@ -363,6 +388,9 @@ public:
     void ResetMeta(NProto::TVolumeMeta meta);
     void AddMetaHistory(TVolumeMetaHistoryItem meta);
     void ResetThrottlingPolicy(const NProto::TVolumePerformanceProfile& pp);
+    void ResetThrottlingPolicy(
+        const NProto::TVolumeThrottlingRule& throttlingRule,
+        ui32 throttlingRuleVersion);
     void Reset();
 
     //
@@ -413,7 +441,12 @@ public:
     // Partitions
     //
 
-    TPartitionInfoList& GetPartitions()
+    TPartitionInfoList& AccessPartitions()
+    {
+        return Partitions;
+    }
+
+    const TPartitionInfoList& GetPartitions() const
     {
         return Partitions;
     }
@@ -465,6 +498,11 @@ public:
     const TNonreplicatedPartitionConfigPtr& GetNonreplicatedPartitionConfig() const
     {
         return NonreplicatedPartitionConfig;
+    }
+
+    TPartitionStartInfo GetDiskRegistryBasedPartitionStartInfo() const
+    {
+        return DiskRegistryBasedPartitionActor.GetStartInfo();
     }
 
     //
@@ -544,6 +582,7 @@ public:
         NProto::TError Error;
         TVector<TString> RemovedClientIds;
         bool ForceTabletRestart = false;
+        bool VolumeClientMigrationInProgress = false;
 
         TAddClientResult() = default;
 
@@ -797,9 +836,12 @@ public:
 
     std::optional<TLeaderDiskInfo> FindLeader(
         const TLeaderFollowerLink& link) const;
+    std::optional<TLeaderDiskInfo> FindLeaderByHash(ui64 hash) const;
     void AddOrUpdateLeader(TLeaderDiskInfo leader);
     void RemoveLeader(const TLeaderFollowerLink& link);
     const TLeaderDisks& GetAllLeaders() const;
+    TString GetPrincipalDiskId() const;
+    ELeadershipStatus GetLeadershipStatus() const;
 
     //
     // Scrubbing
@@ -816,17 +858,21 @@ private:
     bool CanPreemptClient(
         const TString& oldClientId,
         TInstant referenceTimestamp,
-        ui64 clientMountSeqNumber);
+        ui64 clientMountSeqNumber) const;
 
     bool CanAcceptClient(
         ui64 newFillSeqNumber,
-        ui64 proposedFillGeneration);
+        ui64 proposedFillGeneration) const;
 
     bool ShouldForceTabletRestart(const NProto::TVolumeClientInfo& info) const;
 
     THashSet<TString> MakeFilteredDeviceIds() const;
 
     [[nodiscard]] bool ShouldTrackUsedBlocks() const;
+
+    void UpdateLeadershipStatus();
+
+    [[nodiscard]] bool IsVolumeClientMigrationInProgress() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

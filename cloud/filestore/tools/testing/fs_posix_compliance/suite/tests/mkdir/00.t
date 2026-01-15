@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # $FreeBSD: src/tools/regression/fstest/tests/mkdir/00.t,v 1.2 2007/01/25 20:50:02 pjd Exp $
 
 desc="mkdir creates directories"
@@ -55,7 +55,7 @@ expect 0 rmdir ${n0}
 # for update.
 expect 0 chown . 0 0
 time=`${fstest} stat . ctime`
-sleep 1
+sleep 2
 expect 0 mkdir ${n0} 0755
 atime=`${fstest} stat ${n0} atime`
 test_check $time -lt $atime

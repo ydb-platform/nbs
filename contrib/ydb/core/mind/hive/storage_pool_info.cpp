@@ -103,6 +103,9 @@ size_t TStoragePoolInfo::SelectGroup<NKikimrConfig::THiveConfig::HIVE_STORAGE_SE
 const TEvControllerSelectGroupsResult::TGroupParameters* TStoragePoolInfo::FindFreeAllocationUnit(std::function<bool(const TStorageGroupInfo&)> filter,
                                                                                                   std::function<double(const TStorageGroupInfo*)> calculateUsage) {
     if (Groups.empty()) {
+        BLOG_I(
+            "TStoragePoolInfo::FindFreeAllocationUnit, Storage pool "
+            << Name << " has empty Groups");
         return nullptr;
     }
     TVector<const TStorageGroupInfo*> groupCandidates;
@@ -113,6 +116,9 @@ const TEvControllerSelectGroupsResult::TGroupParameters* TStoragePoolInfo::FindF
         }
     }
     if (groupCandidates.empty()) {
+        BLOG_I(
+            "TStoragePoolInfo::FindFreeAllocationUnit, Storage pool "
+            << Name << ". There are no groups that satisfy the filter.");
         return nullptr;
     }
     TVector<double> groupCandidateUsages;

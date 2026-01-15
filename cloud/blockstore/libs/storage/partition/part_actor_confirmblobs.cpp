@@ -230,7 +230,9 @@ void TPartitionActor::HandleConfirmBlobsCompleted(
             LogTitle.GetWithTime().c_str(),
             msg->GetStatus(),
             FormatError(msg->GetError()).c_str());
-        ReportConfirmBlobsError();
+        ReportConfirmBlobsError(
+            FormatError(msg->GetError()),
+            {{"disk", PartitionConfig.GetDiskId()}});
         Suicide(ctx);
         return;
     }
@@ -278,6 +280,22 @@ void TPartitionActor::ExecuteConfirmBlobs(
         "%s ConfirmBlobs: execute tx",
         LogTitle.GetWithTime().c_str());
 
+    if (!args.UnrecoverableBlobs.empty()) {
+        TStringStream ss;
+        ss << "Unrecoverable blobs: ";
+        for (const auto& blobId: args.UnrecoverableBlobs) {
+            ss << "[CommitId=" << blobId.CommitId() << ", BlobId="
+               << MakePartialBlobId(blobId.CommitId(), blobId.UniqueId())
+               << "] ";
+        }
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s %s",
+            LogTitle.GetWithTime().c_str(),
+            ss.Str().c_str());
+    }
+
     TPartitionDatabase db(tx.DB);
     State->ConfirmBlobs(db, args.UnrecoverableBlobs);
 }
@@ -313,7 +331,7 @@ void TPartitionActor::CompleteConfirmBlobs(
     IProfileLog::TRecord record;
     record.DiskId = State->GetConfig().GetDiskId();
     record.Ts = ctx.Now() - duration;
-    record.Request = request;
+    record.Request = std::move(request);
     ProfileLog->Write(std::move(record));
 }
 

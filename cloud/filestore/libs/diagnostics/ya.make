@@ -16,6 +16,7 @@ PEERDIR(
     cloud/filestore/config
     cloud/filestore/libs/diagnostics/events
     cloud/filestore/libs/service
+    cloud/filestore/libs/storage/core
     # FIXME use public api protos
     cloud/filestore/libs/storage/tablet/protos
     cloud/filestore/private/api/protos
@@ -25,6 +26,7 @@ PEERDIR(
     cloud/storage/core/libs/user_stats
     cloud/storage/core/libs/version
 
+    library/cpp/digest/crc32c
     library/cpp/eventlog
     library/cpp/monlib/dynamic_counters
     library/cpp/monlib/service/pages

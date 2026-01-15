@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+import "cloud/filestore/public/api/protos/headers.proto";
+import "cloud/storage/core/protos/error.proto";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// ListMmapRegions request/response
+
+message TListMmapRegionsRequest
+{
+    // Standard request headers
+    optional THeaders Headers = 1;
+}
+
+message TMmapRegionInfo
+{
+    // Mmap region ID
+    optional uint64 Id = 1;
+
+    // File path
+    optional string FilePath = 2;
+
+    // Size of the mmap region
+    optional uint64 Size = 3;
+
+    // Timestamp of the latest ping activity (in microseconds since epoch)
+    optional int64 LatestActivityTimestamp = 4;
+}
+
+message TListMmapRegionsResponse
+{
+    // Optional error, set only if error happened
+    optional NCloud.NProto.TError Error = 1;
+
+    // List of mmap regions
+    repeated TMmapRegionInfo Regions = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Mmap request/response
+
+message TMmapRequest
+{
+    // Standard request headers
+    optional THeaders Headers = 1;
+
+    // File path to mmap
+    optional string FilePath = 2;
+
+    // Size of the mmap region in bytes
+    optional uint64 Size = 3;
+}
+
+message TMmapResponse
+{
+    // Optional error, set only if error happened
+    optional NCloud.NProto.TError Error = 1;
+
+    // Mmap region ID
+    optional uint64 Id = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Munmap request/response
+
+message TMunmapRequest
+{
+    // Standard request headers
+    optional THeaders Headers = 1;
+
+    // Mmap region ID to unmap
+    optional uint64 Id = 2;
+}
+
+message TMunmapResponse
+{
+    // Optional error, set only if error happened
+    optional NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PingMmapRegion request/response
+
+message TPingMmapRegionRequest
+{
+    // Standard request headers
+    optional THeaders Headers = 1;
+
+    // Mmap region ID to ping
+    optional uint64 Id = 2;
+}
+
+message TPingMmapRegionResponse
+{
+    // Optional error, set only if error happened
+    optional NCloud.NProto.TError Error = 1;
+}

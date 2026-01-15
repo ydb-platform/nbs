@@ -24,6 +24,37 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+std::unique_ptr<TEvVolume::TEvAddClientResponse> CreateAddClientResponse(
+    NProto::TError error,
+    ui64 tabletId,
+    TString clientId,
+    bool forceTabletRestart,
+    TString instanceId,
+    const TVolumeState& state,
+    bool volumeClientMigrationInProgress)
+{
+    auto response = std::make_unique<TEvVolume::TEvAddClientResponse>();
+    *response->Record.MutableError() = std::move(error);
+    response->Record.SetTabletId(tabletId);
+    response->Record.SetClientId(std::move(clientId));
+    response->Record.SetForceTabletRestart(forceTabletRestart);
+    response->Record.SetVolumeClientMigrationInProgress(volumeClientMigrationInProgress);
+
+    const auto& volumeConfig = state.GetMeta().GetVolumeConfig();
+    auto* volumeInfo = response->Record.MutableVolume();
+    VolumeConfigToVolume(volumeConfig, state.GetPrincipalDiskId(), *volumeInfo);
+    volumeInfo->SetInstanceId(std::move(instanceId));
+    state.FillDeviceInfo(*volumeInfo);
+
+    return response;
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::AcquireDisk(
@@ -63,6 +94,39 @@ void TVolumeActor::AcquireDisk(
         std::move(request));
 }
 
+void TVolumeActor::AddAcquireReleaseDiskRequest(
+    const NActors::TActorContext& ctx,
+    TAcquireReleaseDiskRequest request)
+{
+    AcquireReleaseDiskRequests.emplace_back(std::move(request));
+
+    if (AcquireReleaseDiskRequests.size() == 1) {
+        ProcessNextAcquireReleaseDiskRequest(ctx);
+    } else {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Postponing AcquireReleaseRequest[%s]: another request in "
+            "flight",
+            LogTitle.GetWithTime().c_str(),
+            AcquireReleaseDiskRequests.back().ClientId.Quote().c_str());
+    }
+}
+
+void TVolumeActor::AddAcquireDiskRequest(
+    const NActors::TActorContext& ctx,
+    TAcquireDiskRequest request)
+{
+    AddAcquireReleaseDiskRequest(ctx, std::move(request));
+}
+
+void TVolumeActor::AddReleaseDiskRequest(
+    const NActors::TActorContext& ctx,
+    TReleaseDiskRequest request)
+{
+    AddAcquireReleaseDiskRequest(ctx, std::move(request));
+}
+
 void TVolumeActor::ProcessNextAcquireReleaseDiskRequest(const TActorContext& ctx)
 {
     if (AcquireReleaseDiskRequests) {
@@ -83,7 +147,25 @@ void TVolumeActor::ProcessNextAcquireReleaseDiskRequest(const TActorContext& ctx
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TVolumeActor::ForceAcquireDisk(const TActorContext& ctx)
+{
+    AcquireDiskImpl(
+        ctx,
+        true   // retriable
+    );
+}
+
 void TVolumeActor::AcquireDiskIfNeeded(const TActorContext& ctx)
+{
+    AcquireDiskImpl(
+        ctx,
+        false   // retriable
+    );
+}
+
+void TVolumeActor::AcquireDiskImpl(
+    const TActorContext& ctx,
+    bool retriable)
 {
     if (!State->GetClients()) {
         return;
@@ -102,16 +184,17 @@ void TVolumeActor::AcquireDiskIfNeeded(const TActorContext& ctx)
             }
         }
 
-        if (skip) {
+        if (skip && !retriable) {
             continue;
         }
 
-        TAcquireReleaseDiskRequest request(
-            x.first,
-            x.second.GetVolumeClientInfo().GetVolumeAccessMode(),
-            x.second.GetVolumeClientInfo().GetMountSeqNumber(),
-            nullptr
-        );
+        auto request = TAcquireDiskRequest{
+            .ClientId = x.first,
+            .AccessMode = x.second.GetVolumeClientInfo().GetVolumeAccessMode(),
+            .MountSeqNumber =
+                x.second.GetVolumeClientInfo().GetMountSeqNumber(),
+            .Retriable = retriable,
+        };
 
         LOG_DEBUG(
             ctx,
@@ -162,19 +245,39 @@ void TVolumeActor::HandleReacquireDisk(
 {
     Y_UNUSED(ev);
 
-    if (!State->GetReadWriteAccessClientId()
-            && ctx.Now() > StateLoadTimestamp + TDuration::Seconds(5))
+    if (!State->GetReadWriteAccessClientId() &&
+        ctx.Now() > StateLoadTimestamp + TDuration::Seconds(5))
     {
-        AcquireReleaseDiskRequests.emplace_back(
-            TString(AnyWriterClientId),
-            nullptr,
-            TVector<NProto::TDeviceConfig>{});
-        if (AcquireReleaseDiskRequests.size() == 1) {
-            ProcessNextAcquireReleaseDiskRequest(ctx);
-        }
+        AddReleaseDiskRequest(
+            ctx,
+            {
+                .ClientId = TString(AnyWriterClientId),
+            });
     }
 
     AcquireDiskIfNeeded(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TVolumeActor::HandleRetryAcquireReleaseDisk(
+    const TEvVolume::TEvRetryAcquireReleaseDisk::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    if (AcquireReleaseDiskRequests.empty() ||
+        !AcquireReleaseDiskRequests.front().Retriable)
+    {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Unexpected force TEvRetryAcquireReleaseDisk",
+            LogTitle.GetWithTime().c_str());
+
+        return;
+    }
+
+    ProcessNextAcquireReleaseDiskRequest(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -195,9 +298,9 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
     const NProto::TError& error,
     const NActors::TActorContext& ctx)
 {
-    ScheduleAcquireDiskIfNeeded(ctx);
-
     if (AcquireReleaseDiskRequests.empty()) {
+        ScheduleAcquireDiskIfNeeded(ctx);
+
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
@@ -208,7 +311,7 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
     }
 
     auto& request = AcquireReleaseDiskRequests.front();
-    auto& cr = request.ClientRequest;
+    auto clientRequest = request.ClientRequest;
 
     if (HasError(error)) {
         LOG_ERROR(
@@ -218,30 +321,63 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
             LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str());
 
-        if (cr) {
-            auto response =
-                std::make_unique<TEvVolume::TEvAddClientResponse>(error);
-            response->Record.MutableVolume()->SetDiskId(cr->DiskId);
-            response->Record.SetClientId(cr->GetClientId());
-            response->Record.SetTabletId(TabletID());
+        if (request.Retriable &&
+            GetErrorKind(error) == EErrorKind::ErrorRetriable)
+        {
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "Retrying acquire disk");
 
-            NCloud::Reply(ctx, *cr->RequestInfo, std::move(response));
-
-            PendingClientRequests.pop_front();
-            ProcessNextPendingClientRequest(ctx);
+            auto delay = BackoffDelayProviderForAcquireReleaseDiskRequests
+                             .GetDelayAndIncrease();
+            ctx.Schedule(
+                delay,
+                std::make_unique<TEvVolume::TEvRetryAcquireReleaseDisk>()
+                    .release());
+            return;
         }
-    } else if (cr) {
-        ExecuteTx<TAddClient>(
-            ctx,
-            cr->RequestInfo,
-            cr->DiskId,
-            cr->PipeServerActorId,
-            cr->AddedClientInfo
-        );
+    } else {
+        BackoffDelayProviderForAcquireReleaseDiskRequests.Reset();
     }
 
-    AcquireReleaseDiskRequests.pop_front();
-    ProcessNextAcquireReleaseDiskRequest(ctx);
+    ScheduleAcquireDiskIfNeeded(ctx);
+
+    Y_DEFER
+    {
+        AcquireReleaseDiskRequests.pop_front();
+        ProcessNextAcquireReleaseDiskRequest(ctx);
+    };
+
+    if (!clientRequest) {
+        return;
+    }
+
+    if (Config->GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() ||
+        HasError(error))
+    {
+        auto response = CreateAddClientResponse(
+            error,
+            TabletID(),
+            clientRequest->GetClientId(),
+            request.ForceTabletRestart,
+            request.ClientRequest->AddedClientInfo.GetInstanceId(),
+            *State,
+            /* volumeClientMigrationInProgress = */ false);
+
+        NCloud::Reply(ctx, *clientRequest->RequestInfo, std::move(response));
+
+        PendingClientRequests.pop_front();
+        ProcessNextPendingClientRequest(ctx);
+        return;
+    }
+
+    ExecuteTx<TAddClient>(
+        ctx,
+        clientRequest->RequestInfo,
+        clientRequest->DiskId,
+        clientRequest->PipeServerActorId,
+        clientRequest->AddedClientInfo);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -264,10 +400,8 @@ void TVolumeActor::HandleAddClient(
     const auto fillGeneration = msg->Record.GetFillGeneration();
     const auto& host = msg->Record.GetHost();
 
-    // If event was forwarded through pipe, its recipient and recipient rewrite
-    // would be different
     TActorId pipeServerActorId;
-    if (ev->Recipient != ev->GetRecipientRewrite()) {
+    if (IsForwardedEvent(*ev)) {
         pipeServerActorId = ev->Recipient;
     }
 
@@ -317,33 +451,27 @@ void TVolumeActor::ProcessNextPendingClientRequest(const TActorContext& ctx)
         const auto mediaKind =
             State->GetMeta().GetConfig().GetStorageMediaKind();
 
-        if (IsDiskRegistryMediaKind(mediaKind)
-            && Config->GetAcquireNonReplicatedDevices())
-        {
+        const bool acquireDevices =
+            IsDiskRegistryMediaKind(mediaKind) &&
+            Config->GetAcquireNonReplicatedDevices() &&
+            !Config->GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled();
+        if (acquireDevices) {
             if (request->RemovedClientId) {
-                AcquireReleaseDiskRequests.emplace_back(
-                    request->RemovedClientId,
-                    request,
-                    TVector<NProto::TDeviceConfig>{});
-            } else {
-                AcquireReleaseDiskRequests.emplace_back(
-                    request->AddedClientInfo.GetClientId(),
-                    request->AddedClientInfo.GetVolumeAccessMode(),
-                    request->AddedClientInfo.GetMountSeqNumber(),
-                    request
-                );
-            }
-
-            if (AcquireReleaseDiskRequests.size() == 1) {
-                ProcessNextAcquireReleaseDiskRequest(ctx);
-            } else {
-                LOG_DEBUG(
+                AddReleaseDiskRequest(
                     ctx,
-                    TBlockStoreComponents::VOLUME,
-                    "%s Postponing AcquireReleaseRequest[%s]: "
-                    "another request in flight",
-                    LogTitle.GetWithTime().c_str(),
-                    AcquireReleaseDiskRequests.back().ClientId.Quote().c_str());
+                    {.ClientId = request->RemovedClientId,
+                     .ClientRequest = request});
+            } else {
+                AddAcquireDiskRequest(
+                    ctx,
+                    {
+                        .ClientId = request->AddedClientInfo.GetClientId(),
+                        .AccessMode =
+                            request->AddedClientInfo.GetVolumeAccessMode(),
+                        .MountSeqNumber =
+                            request->AddedClientInfo.GetMountSeqNumber(),
+                        .ClientRequest = request,
+                    });
             }
 
             return;
@@ -365,6 +493,24 @@ void TVolumeActor::ProcessNextPendingClientRequest(const TActorContext& ctx)
                 request->PipeServerActorId,
                 request->AddedClientInfo);
         }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TVolumeActor::ReleaseDiskFromOldClients(
+    const NActors::TActorContext& ctx,
+    const TVector<TString>& removedClients)
+{
+    for (const auto& clientId: removedClients) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Releasing devices from old client: %s",
+            LogTitle.GetWithTime().c_str(),
+            clientId.Quote().c_str());
+
+        AddReleaseDiskRequest(ctx, {.ClientId = clientId, .Retriable = true});
     }
 }
 
@@ -410,6 +556,7 @@ void TVolumeActor::ExecuteAddClient(
         now);
     args.Error = std::move(res.Error);
     args.ForceTabletRestart = res.ForceTabletRestart;
+    args.VolumeClientMigrationInProgress = res.VolumeClientMigrationInProgress;
 
     TVolumeDatabase db(tx.DB);
     db.WriteHistory(
@@ -449,6 +596,7 @@ void TVolumeActor::ExecuteAddClient(
         for (const auto& clientId: res.RemovedClientIds) {
             db.RemoveClient(clientId);
             State->RemoveClient(clientId, TActorId());
+            args.RemovedClientIds.emplace_back(clientId);
 
             auto builder = TStringBuilder() << "Preempted by " << args.Info.GetClientId();
             db.WriteHistory(
@@ -467,6 +615,7 @@ void TVolumeActor::ExecuteAddClient(
         for (const auto& clientId: staleClientIds) {
             db.RemoveClient(clientId);
             State->RemoveClient(clientId, TActorId());
+            args.RemovedClientIds.emplace_back(clientId);
             db.WriteHistory(
                 State->LogRemoveClient(ctx.Now(), clientId, "Stale", {}));
         }
@@ -487,9 +636,18 @@ void TVolumeActor::CompleteAddClient(
     const TActorContext& ctx,
     TTxVolume::TAddClient& args)
 {
-    Y_DEFER {
-        PendingClientRequests.pop_front();
-        ProcessNextPendingClientRequest(ctx);
+    const bool needToAcquireOrReleaseDevices =
+        State->IsDiskRegistryMediaKind() &&
+        Config->GetAcquireNonReplicatedDevices() &&
+        Config->GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() &&
+        !HasError(args.Error);
+
+    Y_DEFER
+    {
+        if (!needToAcquireOrReleaseDevices) {
+            PendingClientRequests.pop_front();
+            ProcessNextPendingClientRequest(ctx);
+        }
     };
 
     const auto& clientId = args.Info.GetClientId();
@@ -513,24 +671,37 @@ void TVolumeActor::CompleteAddClient(
         LogTitle.GetWithTime().c_str(),
         clientId.Quote().c_str());
 
-    auto response = std::make_unique<TEvVolume::TEvAddClientResponse>();
-    *response->Record.MutableError() = std::move(args.Error);
-    response->Record.SetTabletId(TabletID());
-    response->Record.SetClientId(clientId);
-    response->Record.SetForceTabletRestart(args.ForceTabletRestart);
+    if (needToAcquireOrReleaseDevices) {
+        ReleaseDiskFromOldClients(ctx, args.RemovedClientIds);
 
-    auto& volumeConfig = State->GetMeta().GetVolumeConfig();
-    auto* volumeInfo = response->Record.MutableVolume();
-    VolumeConfigToVolume(volumeConfig, *volumeInfo);
-    volumeInfo->SetInstanceId(args.Info.GetInstanceId());
-    State->FillDeviceInfo(*volumeInfo);
+        // Acquire disk for new client.
+        AddAcquireDiskRequest(
+            ctx,
+            {.ClientId = args.Info.GetClientId(),
+             .AccessMode = args.Info.GetVolumeAccessMode(),
+             .MountSeqNumber = args.Info.GetMountSeqNumber(),
+             .ClientRequest = std::make_shared<TClientRequest>(
+                 args.RequestInfo,
+                 args.DiskId,
+                 args.PipeServerActorId,
+                 args.Info),
+             .ForceTabletRestart = args.ForceTabletRestart});
+    } else {
+        auto response = CreateAddClientResponse(
+            args.Error,
+            TabletID(),
+            clientId,
+            args.ForceTabletRestart,
+            args.Info.GetInstanceId(),
+            *State,
+            args.VolumeClientMigrationInProgress);
 
-    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    }
 
     OnClientListUpdate(ctx);
 
-    const auto mediaKind =
-        State->GetMeta().GetConfig().GetStorageMediaKind();
+    const auto mediaKind = State->GetMeta().GetConfig().GetStorageMediaKind();
 
     if (IsReliableDiskRegistryMediaKind(mediaKind)) {
         const bool shouldResyncDueToInactivity = args.WriterLastActivityTimestamp

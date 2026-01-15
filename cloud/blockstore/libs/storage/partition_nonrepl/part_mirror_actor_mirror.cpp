@@ -23,20 +23,16 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
     const TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto* msg = ev->Get();
-    const auto requestIdentityKey = msg->RequestId;
+    const auto* msg = ev->Get();
+    const ui64 requestIdentityKey = msg->RequestId;
     auto completeRequest =
-        RequestsInProgress.ExtractRequest(requestIdentityKey);
+        RequestsInProgress.ExtractWriteRequest(requestIdentityKey);
     if (!completeRequest) {
         return;
     }
+
     DrainActorCompanion.ProcessDrainRequests(ctx);
-    auto [volumeRequestId, _, range] = completeRequest.value();
-    for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
-        if (range.Overlaps(request.BlockRange)) {
-            DirtyReadRequestIds.insert(id);
-        }
-    }
+    const ui64 volumeRequestId = completeRequest.value().Value;
 
     if (ResyncActorId) {
         auto completion = std::make_unique<
@@ -65,14 +61,13 @@ void TMirrorPartitionActor::HandleMirroredReadCompleted(
     Y_UNUSED(ctx);
 
     const auto requestIdentityKey = ev->Get()->RequestCounter;
-    auto requestCtx = RequestsInProgress.ExtractRequest(requestIdentityKey);
+    auto requestCtx = RequestsInProgress.ExtractReadRequest(requestIdentityKey);
     auto it = DirtyReadRequestIds.find(requestIdentityKey);
     if (it == DirtyReadRequestIds.end()) {
         if (ev->Get()->ChecksumMismatchObserved) {
             ReportMirroredDiskChecksumMismatchUponRead(
-                TStringBuilder()
-                << " disk: " << DiskId.Quote() << ", range: "
-                << (requestCtx ? requestCtx->BlockRange.Print() : ""));
+                {{"disk", DiskId},
+                 {"range", (requestCtx ? requestCtx->Range.Print() : "")}});
         }
     } else {
         DirtyReadRequestIds.erase(it);
@@ -93,18 +88,14 @@ void TMirrorPartitionActor::MirrorRequest(
         ev->Cookie,
         msg->CallContext);
 
+    const auto range = BuildRequestBlockRange(*msg, State.GetBlockSize());
 
-    const auto range = BuildRequestBlockRange(
-        *ev->Get(),
-        State.GetBlockSize());
-
-    if (BlockRangeRequests.OverlapsWithRequest(range)) {
+    if (LockedRanges.OverlapsWithRequest(range)) {
         Reply(
             ctx,
             *requestInfo,
-            std::make_unique<typename TMethod::TResponse>(MakeError(
-                E_REJECTED,
-                "range is blocked for writing")));
+            std::make_unique<typename TMethod::TResponse>(
+                MakeError(E_REJECTED, "range is locked for writing")));
         return;
     }
 
@@ -114,7 +105,6 @@ void TMirrorPartitionActor::MirrorRequest(
             *requestInfo,
             std::make_unique<typename TMethod::TResponse>(Status)
         );
-
         return;
     }
 
@@ -132,19 +122,34 @@ void TMirrorPartitionActor::MirrorRequest(
         }
         WriteIntersectsWithScrubbing = true;
     }
-    for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
-        if (range.Overlaps(request.BlockRange)) {
-            DirtyReadRequestIds.insert(id);
-        }
-    }
+
+    RequestsInProgress.EnumerateReadOverlapping(
+        range,
+        [&](ui64 requestId, bool isWrite, TBlockRange64 range, ui64 volumeRequestId)
+        {
+            Y_UNUSED(range);
+            Y_UNUSED(volumeRequestId);
+
+            if (isWrite) {
+                ReportInflightRequestInvariantViolation(
+                    "Received a write request while enumerating read requests",
+                    {{"requestId", requestId},
+                     {"range", range},
+                     {"volumeRequestId", volumeRequestId}});
+            }
+
+            DirtyReadRequestIds.insert(requestId);
+        });
 
     RequestsInProgress.AddWriteRequest(
         requestIdentityKey,
         range,
-        ev->Get()->Record.GetHeaders().GetVolumeRequestId());
+        msg->Record.GetHeaders().GetVolumeRequestId());
 
     if constexpr (IsExactlyWriteMethod<TMethod>) {
-        if (CanMakeMultiAgentWrite(range)) {
+        if (SuggestWriteRequestType(ctx, range) ==
+            EWriteRequestType::MultiAgentWrite)
+        {
             NCloud::Register<TMultiAgentWriteActor<TMethod>>(
                 ctx,
                 std::move(requestInfo),

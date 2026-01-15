@@ -2,6 +2,8 @@ PROGRAM(nbsd)
 
 ALLOCATOR(TCMALLOC_TC)
 
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/binaries_dependency.inc)
+
 SRCS(
     main.cpp
 )
@@ -11,6 +13,7 @@ PEERDIR(
     cloud/blockstore/libs/kms/iface
     cloud/blockstore/libs/kms/impl
     cloud/blockstore/libs/logbroker/iface
+    cloud/blockstore/libs/notify/impl
     cloud/blockstore/libs/rdma/impl
     cloud/blockstore/libs/root_kms/impl
     cloud/blockstore/libs/service
@@ -28,6 +31,10 @@ PEERDIR(
 
 IF (BUILD_TYPE != "PROFILE" AND BUILD_TYPE != "DEBUG" AND BUILD_TYPE != "RELWITHDEBINFO")
     SPLIT_DWARF()
+ELSE()
+    PEERDIR(
+        library/cpp/terminate_handler
+    )
 ENDIF()
 
 IF (SANITIZER_TYPE)

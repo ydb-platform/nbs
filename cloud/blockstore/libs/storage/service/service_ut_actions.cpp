@@ -249,6 +249,56 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             UNIT_ASSERT_VALUES_EQUAL("", config.GetTagsStr());
         }
 
+        {
+            NPrivateProto::TModifyTagsRequest request;
+            request.SetDiskId(DefaultDiskId);
+            *request.AddTagsToAdd() = "source-disk-id=disk-id";
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("ModifyTags", buf);
+        }
+
+        {
+            NPrivateProto::TDescribeVolumeRequest request;
+            request.SetDiskId(DefaultDiskId);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto response = service.ExecuteAction("DescribeVolume", buf);
+            NKikimrSchemeOp::TBlockStoreVolumeDescription pathDescr;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &pathDescr
+            ).ok());
+            const auto& config = pathDescr.GetVolumeConfig();
+            UNIT_ASSERT_VALUES_EQUAL("source-disk-id=disk-id", config.GetTagsStr());
+        }
+
+        {
+            NPrivateProto::TModifyTagsRequest request;
+            request.SetDiskId(DefaultDiskId);
+            *request.AddTagsToRemove() = "source-disk-id=disk-id";
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("ModifyTags", buf);
+        }
+
+        {
+            NPrivateProto::TDescribeVolumeRequest request;
+            request.SetDiskId(DefaultDiskId);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto response = service.ExecuteAction("DescribeVolume", buf);
+            NKikimrSchemeOp::TBlockStoreVolumeDescription pathDescr;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &pathDescr
+            ).ok());
+            const auto& config = pathDescr.GetVolumeConfig();
+            UNIT_ASSERT_VALUES_EQUAL("", config.GetTagsStr());
+        }
+
         // Test AddTagsRequest
         {
             service.SendAddTagsRequest(
@@ -1802,43 +1852,6 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
     Y_UNIT_TEST(ShouldCheckRange)
     {
-        TTestEnv env;
-        NProto::TStorageServiceConfig config;
-        const ui32 nodeIdx = SetupTestEnv(env, std::move(config));
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateVolume("vol0");
-
-        const auto sessionId =
-            service.MountVolume("vol0")->Record.GetSessionId();
-
-        service.WriteBlocks(
-            "vol0",
-            TBlockRange64::WithLength(0, 1024),
-            sessionId,
-            char(1));
-
-        {
-            NProto::TCheckRangeRequest request;
-            request.SetDiskId("vol0");
-            request.SetStartIndex(0);
-            request.SetBlocksCount(1000);
-
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-
-            const auto response = service.ExecuteAction("CheckRange", buf);
-            NProto::TCheckRangeResponse checkRangeResponse;
-
-            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                            response->Record.GetOutput(),
-                            &checkRangeResponse)
-                            .ok());
-        }
-    }
-
-    Y_UNIT_TEST(ShouldCalculateCheckSumsWhileCheckRange)
-    {
         constexpr ui32 blockCount = 1000;
 
         TTestEnv env;
@@ -1848,7 +1861,8 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
         service.CreateVolume(DefaultDiskId);
-        auto sessionId = service.MountVolume(DefaultDiskId)->Record.GetSessionId();
+        auto sessionId =
+            service.MountVolume(DefaultDiskId)->Record.GetSessionId();
         service.WriteBlocks(
             DefaultDiskId,
             TBlockRange64::WithLength(0, 1024),
@@ -1856,24 +1870,26 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             char(1));
 
         {
-            NPrivateProto::TCheckRangeRequest request;
+            NProto::TCheckRangeRequest request;
             request.SetDiskId(DefaultDiskId);
             request.SetStartIndex(0);
             request.SetBlocksCount(blockCount);
-            request.SetCalculateChecksums(true);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
 
             const auto response = service.ExecuteAction("CheckRange", buf);
-            NPrivateProto::TCheckRangeResponse checkRangeResponse;
+            NProto::TCheckRangeResponse checkRangeResponse;
 
-            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                            response->Record.GetOutput(),
-                            &checkRangeResponse)
-                            .ok());
+            UNIT_ASSERT(
+                google::protobuf::util::JsonStringToMessage(
+                    response->Record.GetOutput(),
+                    &checkRangeResponse)
+                    .ok());
 
-            UNIT_ASSERT_VALUES_EQUAL(blockCount, checkRangeResponse.ChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                blockCount,
+                checkRangeResponse.GetDiskChecksums().DataSize());
         }
     }
 }

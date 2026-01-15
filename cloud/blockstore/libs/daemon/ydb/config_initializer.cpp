@@ -6,7 +6,7 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/discovery/config.h>
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
-#include <cloud/blockstore/libs/notify/config.h>
+#include <cloud/blockstore/libs/notify/iface/config.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -21,6 +21,8 @@
 #include <cloud/storage/core/libs/iam/iface/config.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/version/version.h>
+
+#include <contrib/ydb/core/protos/nbs/blockstore.pb.h>
 
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/protobuf/util/pb_io.h>
@@ -170,17 +172,6 @@ void TConfigInitializerYdb::InitComputeClientConfig()
     }
 
     ComputeClientConfig = std::move(config);
-}
-
-void TConfigInitializerYdb::InitTraceServiceClientConfig()
-{
-    NProto::TOpentelemetryTraceConfig config;
-
-    if (Options->TraceServiceConfig) {
-        ParseProtoTextFromFile(Options->TraceServiceConfig, config);
-    }
-
-    TraceServiceClientConfig = std::move(config);
 }
 
 bool TConfigInitializerYdb::GetUseNonreplicatedRdmaActor() const
@@ -383,15 +374,10 @@ void TConfigInitializerYdb::ApplyComputeClientConfig(const TString& text)
     ComputeClientConfig = std::move(config);
 }
 
-void TConfigInitializerYdb::ApplyTraceServiceClientConfig(const TString& text)
-{
-    NProto::TOpentelemetryTraceConfig config;
-    ParseProtoTextFromString(text, config);
+////////////////////////////////////////////////////////////////////////////////
 
-    TraceServiceClientConfig = std::move(config);
-}
-
-void TConfigInitializerYdb::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config)
+void TConfigInitializerYdb::ApplyNamedConfigs(
+    const NKikimrConfig::TAppConfig& config)
 {
     THashMap<TString, ui32> configs;
 
@@ -429,7 +415,6 @@ void TConfigInitializerYdb::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfi
         { "KmsClientConfig",         &TSelf::ApplyKmsClientConfig         },
         { "RootKmsConfig",           &TSelf::ApplyRootKmsConfig           },
         { "ComputeClientConfig",     &TSelf::ApplyComputeClientConfig     },
-        { "TraceServiceClientConfig", &TSelf::ApplyTraceServiceClientConfig },
     };
 
     for (const auto& handler: configHandlers) {
@@ -443,6 +428,29 @@ void TConfigInitializerYdb::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfi
             this,
             config.GetNamedConfigs(it->second).GetConfig());
     }
+}
+
+void TConfigInitializerYdb::ApplyBlockstoreConfig(
+    const NKikimrConfig::TAppConfig& config)
+{
+    if (!config.HasBlockstoreConfig()) {
+        return;
+    }
+
+    const auto& blockstoreConfig = config.GetBlockstoreConfig();
+
+    auto volumePreemptionType = static_cast<NProto::EVolumePreemptionType>(
+        blockstoreConfig.GetVolumePreemptionType());
+    StorageConfig->SetVolumePreemptionType(volumePreemptionType);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TConfigInitializerYdb::ApplyCustomCMSConfigs(
+    const NKikimrConfig::TAppConfig& config)
+{
+    ApplyNamedConfigs(config);
+    ApplyBlockstoreConfig(config);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

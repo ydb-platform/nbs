@@ -72,12 +72,12 @@ ui64 ChangeDomain(ui64 tabletId, ui32 domainUid)
 ////////////////////////////////////////////////////////////////////////////////
 
 TTestEnv::TTestEnv(
-        const TTestEnvConfig& config,
+        TTestEnvConfig config,
         NProto::TStorageConfig storageConfig,
         NKikimr::NFake::TCaches cachesConfig,
         IProfileLogPtr profileLog,
         NProto::TDiagnosticsConfig diagConfig)
-    : Config(config)
+    : Config(std::move(config))
     , Logging(CreateLoggingService("console", { TLOG_DEBUG }))
     , ProfileLog(std::move(profileLog))
     , TraceSerializer(
@@ -85,13 +85,14 @@ TTestEnv::TTestEnv(
             Logging,
             "NFS_TRACE",
             NLwTraceMonPage::TraceManager(false)))
+    , SystemCounters(MakeIntrusive<TSystemCounters>())
     , Runtime(Config.StaticNodes + Config.DynamicNodes, false)
     , NextDynamicNode(Config.StaticNodes)
     , Counters(MakeIntrusive<NMonitoring::TDynamicCounters>())
 {
     storageConfig.SetSchemeShardDir(Config.DomainName);
 
-    StorageConfig = CreateTestStorageConfig(std::move(storageConfig));
+    UpdateStorageConfig(std::move(storageConfig));
 
     DiagConfig = std::make_shared<TDiagnosticsConfig>(std::move(diagConfig));
 
@@ -119,6 +120,11 @@ TTestEnv::TTestEnv(
     Registry = NMetrics::CreateMetricsRegistry(
         {NMetrics::CreateLabel("counters", "filestore")},
         Runtime.GetAppData().Counters);
+}
+
+void TTestEnv::UpdateStorageConfig(NProto::TStorageConfig storageConfig)
+{
+    StorageConfig = CreateTestStorageConfig(std::move(storageConfig));
 }
 
 ui64 TTestEnv::GetHive()
@@ -190,6 +196,30 @@ void TTestEnv::CreateSubDomain(const TString& name)
     }
 }
 
+void TTestEnv::CreateAndRegisterStorageService(ui32 nodeIdx)
+{
+    auto& appData = Runtime.GetAppData(nodeIdx);
+
+    auto indexService = CreateStorageService(
+        StorageConfig,
+        StatsRegistry,
+        ProfileLog,
+        TraceSerializer,
+        SystemCounters,
+        CreateStatsFetcherStub());
+    auto indexServiceId = Runtime.Register(
+        indexService.release(),
+        nodeIdx,
+        appData.UserPoolId,
+        TMailboxType::Simple,
+        0);
+    Runtime.EnableScheduleForActor(indexServiceId);
+    Runtime.RegisterService(
+        MakeStorageServiceId(),
+        indexServiceId,
+        nodeIdx);
+}
+
 ui32 TTestEnv::CreateNode(const TString& name)
 {
     ui32 nodeIdx = NextDynamicNode++;
@@ -221,23 +251,7 @@ ui32 TTestEnv::CreateNode(const TString& name)
         tenantPoolId,
         nodeIdx);
 
-    auto indexService = CreateStorageService(
-        StorageConfig,
-        StatsRegistry,
-        ProfileLog,
-        TraceSerializer,
-        CreateStatsFetcherStub());
-    auto indexServiceId = Runtime.Register(
-        indexService.release(),
-        nodeIdx,
-        appData.UserPoolId,
-        TMailboxType::Simple,
-        0);
-    Runtime.EnableScheduleForActor(indexServiceId);
-    Runtime.RegisterService(
-        MakeStorageServiceId(),
-        indexServiceId,
-        nodeIdx);
+    CreateAndRegisterStorageService(nodeIdx);
 
     auto tabletProxy = CreateIndexTabletProxy(StorageConfig);
     auto tabletProxyId = Runtime.Register(
@@ -270,8 +284,9 @@ ui32 TTestEnv::CreateNode(const TString& name)
         StorageConfig->GetPipeClientMinRetryTime(),
         TDuration::Seconds(1),  // HiveLockExpireTimeout - does not matter
         TFileStoreComponents::HIVE_PROXY,
-        "",     // TabletBootInfoBackupFilePath
-        false,  // FallbackMode
+        /*TabletBootInfoBackupFilePath=*/"",
+        /*UseBinaryFormatForTabletBootInfoBackup=*/false,
+        /*FallbackMode=*/false,
     });
     auto hiveProxyId = Runtime.Register(
         hiveProxy.release(),
@@ -318,8 +333,9 @@ ui32 TTestEnv::CreateNode(const TString& name)
         StorageConfig->GetPipeClientMinRetryTime(),
         TDuration::Seconds(1),  // HiveLockExpireTimeout - does not matter
         TFileStoreComponents::HIVE_PROXY,
-        "",     // TabletBootInfoBackupFilePath
-        false,  // FallbackMode
+        /*TabletBootInfoBackupFilePath=*/"",
+        /*UseBinaryFormatForTabletBootInfoBackup=*/false,
+        /*FallbackMode=*/false,
     });
     auto localHiveProxyId = Runtime.Register(
         localHiveProxy.release(),
@@ -464,6 +480,7 @@ ui64 TTestEnv::BootIndexTablet(ui32 nodeIdx)
             DiagConfig,
             ProfileLog,
             TraceSerializer,
+            SystemCounters,
             Registry,
             true);
         return actor.release();
@@ -626,6 +643,7 @@ void TTestEnv::SetupLocalServiceConfig(
             DiagConfig,
             ProfileLog,
             TraceSerializer,
+            SystemCounters,
             Registry,
             true);
         return actor.release();

@@ -1,4 +1,5 @@
 RECURSE(
+    cells
     client
     client/bench
     client_rdma
@@ -9,7 +10,6 @@ RECURSE(
     discovery
     disk_agent
     encryption
-    endpoint_proxy
     endpoints
     endpoints_grpc
     endpoints_nbd
@@ -30,6 +30,7 @@ RECURSE(
     service
     service_kikimr
     service_local
+    service_rdma
     service_throttling
     spdk
     storage

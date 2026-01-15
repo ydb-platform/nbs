@@ -132,7 +132,10 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
             << " LoadFreshBlobs failed: " << msg->GetStatus()
             << " reason: " << msg->GetError().GetMessage().Quote());
 
-        ReportInitFreshBlocksError();
+        ReportInitFreshBlocksError(
+            TStringBuilder()
+            << "[" << TabletID()
+            << "] LoadFreshBlobs failed: " << msg->GetStatus());
         Suicide(ctx);
         return;
     }
@@ -154,14 +157,17 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
             blocks,
             updates);
 
-        if (FAILED(error.GetCode())) {
+        if (HasError(error)) {
             LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION,
                 "[" << TabletID() << "]"
                 << " Failed to parse fresh blob "
                 << "(blob commitId: " << blob.CommitId << "): "
-                << error.GetMessage());
+                << FormatError(error));
 
-            ReportInitFreshBlocksError();
+            ReportInitFreshBlocksError(
+                TStringBuilder()
+                << "[" << TabletID() << "] Failed to parse fresh blob "
+                << "(blob commitId: " << blob.CommitId << ")");
             Suicide(ctx);
             return;
         }

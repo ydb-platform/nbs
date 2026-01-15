@@ -76,19 +76,18 @@ struct TResponseEvent
     template <
         typename T1,
         typename = std::enable_if_t<
-            !std::is_convertible<T1, NProto::TError>::value
-            && !std::is_same<std::decay_t<T1>, TResponseEvent<TArgs, EventId>>::value
-        >,
-        typename ...Args
-    >
-    TResponseEvent(T1&& a1, Args&& ...args)
+            !std::is_convertible<T1, NProto::TError>::value &&
+            !std::is_same<std::decay_t<T1>, TResponseEvent<TArgs, EventId>>::
+                value>,
+        typename... Args>
+    explicit TResponseEvent(T1&& a1, Args&&... args)
         : TArgs(std::forward<T1>(a1), std::forward<Args>(args)...)
     {}
 
-    template <typename ...Args>
-    TResponseEvent(const NProto::TError& error, Args&& ...args)
+    template <typename... Args>
+    explicit TResponseEvent(NProto::TError error, Args&&... args)
         : TArgs(std::forward<Args>(args)...)
-        , Error(error)
+        , Error(std::move(error))
     {}
 
     const NProto::TError& GetError() const

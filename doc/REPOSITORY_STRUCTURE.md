@@ -56,7 +56,6 @@
 ### Blockstore apps
 * [apps/client](/cloud/blockstore/apps/client) - cmdline client which uses mostly gRPC API - can perform almost any operation which is present in the API of nbsd
 * [apps/disk_agent](/cloud/blockstore/apps/disk_agent) - storage node server
-* [apps/endpoint_proxy](/cloud/blockstore/apps/endpoint_proxy) - a proxy which can maintain an NBD connection with the kernel and proxy the requests to nbsd (to allow nbsd updates without NBD device reconfiguration)
 * [apps/server](/cloud/blockstore/apps/server) - the main NBS server (nbsd) - provides NBD/vhost-blk/gRPC APIs both for dataplane and controlplane ops, can host volume tablets
 * [apps/server_lightweight](/cloud/blockstore/apps/server_lightweight) - nbsd version without YDB BlobStorage dependencies - uses local fs for storage, suitable for local debugging and as an nbsd mock to test your app's integration with nbsd
 * [apps/tools](/cloud/blockstore/apps/tools) - misc tools for testing, debugging, log analysis and visualization
@@ -71,7 +70,6 @@
 * [libs/discovery](/cloud/blockstore/libs/discovery) - NBS instance discovery and simple balancing
 * [libs/disk_agent](/cloud/blockstore/libs/disk_agent) - bootstrap code for diskagentd
 * [libs/encryption](/cloud/blockstore/libs/encryption) - data-encrypting wrappers for NBS client and server code
-* [libs/endpoint_proxy](/cloud/blockstore/libs/endpoint_proxy) - blockstore-endpoint-proxy implementation and a client lib for it
 * [libs/endpoints](/cloud/blockstore/libs/endpoints) - endpoint management (StartEndpoint/StopEndpoint/KickEndpoint/etc request processing, concrete IPC listeners implemented in endpoints_$IPC libs)
 * [libs/endpoints_grpc](/cloud/blockstore/libs/endpoints_grpc) - gRPC endpoint listener
 * [libs/endpoints_nbd](/cloud/blockstore/libs/endpoints_nbd) - NBD endpoint listener

@@ -25,11 +25,11 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type replicateDiskTask struct {
-	nbsFactory        nbs_client.Factory
 	config            *config.DataplaneConfig
+	performanceConfig *performance_config.PerformanceConfig
+	nbsFactory        nbs_client.Factory
 	request           *protos.ReplicateDiskTaskRequest
 	state             *protos.ReplicateDiskTaskState
-	performanceConfig *performance_config.PerformanceConfig
 }
 
 func (t *replicateDiskTask) Save() ([]byte, error) {
@@ -59,10 +59,30 @@ func (t *replicateDiskTask) Run(
 
 	for {
 		if t.state.FinalIteration == 0 {
-			if execCtx.HasEvent(
+			shouldFinishReplication := t.shouldFinishReplicationBetweenCells() || execCtx.HasEvent(
 				ctx,
 				int64(protos.ReplicateDiskTaskEvents_FINISH_REPLICATION),
-			) {
+			)
+
+			if shouldFinishReplication {
+				if t.request.IsReplicationBetweenCells {
+					client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+					if err != nil {
+						return err
+					}
+
+					err = client.Freeze(
+						ctx,
+						func() error {
+							return execCtx.SaveState(ctx)
+						},
+						t.request.SrcDisk.DiskId,
+					)
+					if err != nil {
+						return err
+					}
+				}
+
 				t.state.FinalIteration = t.state.Iteration + 1
 
 				err := execCtx.SaveState(ctx)
@@ -96,6 +116,24 @@ func (t *replicateDiskTask) Cancel(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
+	if t.request.IsReplicationBetweenCells {
+		client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+		if err != nil {
+			return err
+		}
+
+		err = client.Unfreeze(
+			ctx,
+			func() error {
+				return execCtx.SaveState(ctx)
+			},
+			t.request.SrcDisk.DiskId,
+		)
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -135,7 +173,7 @@ func (t *replicateDiskTask) saveProgress(
 	}
 
 	bytesPerSecond := performance.ConvertMiBsToBytes(
-		t.performanceConfig.GetReplicateDiskBandwidthMiBs(),
+		t.performanceConfig.GetTransferFromDiskToDiskBandwidthMiBs(),
 	)
 
 	if t.state.ChunkCount != 0 && t.state.Progress != 1 {
@@ -149,6 +187,12 @@ func (t *replicateDiskTask) saveProgress(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func (t *replicateDiskTask) shouldFinishReplicationBetweenCells() bool {
+	return t.request.IsReplicationBetweenCells && t.state.Iteration > 0 &&
+		t.state.SecondsRemaining <=
+			t.config.GetReplicationBetweenCellsSecondsRemainingThreshold()
+}
 
 func (t *replicateDiskTask) checkReplicationProgress(
 	ctx context.Context,
@@ -257,6 +301,11 @@ func (t *replicateDiskTask) replicate(
 	}
 
 	t.state.ChunkCount = chunkCount
+
+	err = t.setEstimate(ctx, execCtx, source)
+	if err != nil {
+		return err
+	}
 
 	target, err := nbs.NewDiskTarget(
 		ctx,
@@ -402,6 +451,32 @@ func (t *replicateDiskTask) getBytesToReplicate(
 	)
 
 	return bytesToReplicate, nil
+}
+
+func (t *replicateDiskTask) setEstimate(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	diskSource common.Source,
+) error {
+
+	bytesToReplicate, err := diskSource.EstimatedBytesToRead(ctx)
+	if err != nil {
+		return err
+	}
+
+	t.logInfo(
+		ctx,
+		execCtx,
+		"bytes to replicate is %v",
+		bytesToReplicate,
+	)
+
+	execCtx.SetEstimatedInflightDuration(performance.Estimate(
+		bytesToReplicate,
+		t.performanceConfig.GetTransferFromDiskToDiskBandwidthMiBs(),
+	))
+
+	return nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////

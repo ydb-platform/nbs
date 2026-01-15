@@ -179,6 +179,7 @@ using TFlushedCommitIds = TVector<TFlushedCommitId>;
     xxx(PatchBlob,                 __VA_ARGS__)                                \
     xxx(AddConfirmedBlobs,         __VA_ARGS__)                                \
     xxx(AddUnconfirmedBlobs,       __VA_ARGS__)                                \
+    xxx(DeleteUnconfirmedBlobs,    __VA_ARGS__)                                \
 // BLOCKSTORE_PARTITION_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -268,6 +269,7 @@ struct TEvPartitionPrivate
         NKikimr::TStorageStatusFlags StorageStatusFlags;
         double ApproximateFreeSpaceShare = 0;
         TDuration RequestTime;
+        ui64 BSGroupOperationId = 0;
 
         TWriteBlobCompleted() = default;
 
@@ -329,6 +331,7 @@ struct TEvPartitionPrivate
         NKikimr::TStorageStatusFlags StorageStatusFlags;
         double ApproximateFreeSpaceShare = 0;
         TDuration RequestTime;
+        ui64 BSGroupOperationId = 0;
 
         TPatchBlobCompleted() = default;
 
@@ -697,6 +700,26 @@ struct TEvPartitionPrivate
     };
 
     //
+    // DeleteUnconfirmedBlobs
+    //
+
+    struct TDeleteUnconfirmedBlobsRequest
+    {
+        ui64 CommitId = 0;
+
+        TDeleteUnconfirmedBlobsRequest() = default;
+
+        explicit TDeleteUnconfirmedBlobsRequest(ui64 commitId)
+            : CommitId(commitId)
+        {}
+    };
+
+    struct TDeleteUnconfirmedBlobsResponse
+    {
+        ui64 ExecCycles = 0;
+    };
+
+    //
     // OperationCompleted
     //
 
@@ -747,19 +770,43 @@ struct TEvPartitionPrivate
     struct TWriteBlocksCompleted
         : TOperationCompleted
     {
-        bool CollectGarbageBarrierAcquired = false;
-        bool UnconfirmedBlobsAdded = false;
+        const bool CollectGarbageBarrierAcquired = false;
+        const bool AddingUnconfirmedBlobsRequested = false;
+        const bool TrimFreshLogBarrierAcquired = false;
         // needed to pass block checksums to PartState
         TVector<TBlobToConfirm> BlobsToConfirm;
 
         TWriteBlocksCompleted(
                 bool collectGarbageBarrierAcquired,
-                bool unconfirmedBlobsAdded,
+                bool addingUnconfirmedBlobsRequested,
+                bool trimFreshLogBarrierAcquired,
                 TVector<TBlobToConfirm> blobsToConfirm)
             : CollectGarbageBarrierAcquired(collectGarbageBarrierAcquired)
-            , UnconfirmedBlobsAdded(unconfirmedBlobsAdded)
+            , AddingUnconfirmedBlobsRequested(addingUnconfirmedBlobsRequested)
+            , TrimFreshLogBarrierAcquired(trimFreshLogBarrierAcquired)
             , BlobsToConfirm(std::move(blobsToConfirm))
         {
+        }
+
+        static TWriteBlocksCompleted CreateFreshBlocksCompleted()
+        {
+            return TWriteBlocksCompleted(false, false, true, {});
+        }
+
+        static TWriteBlocksCompleted CreateMixedBlocksCompleted()
+        {
+            return TWriteBlocksCompleted(true, false, false, {});
+        }
+
+        static TWriteBlocksCompleted CreateMergedBlocksCompleted(
+            bool addingUnconfirmedBlobsRequested,
+            TVector<TBlobToConfirm>&& blobsToConfirm)
+        {
+            return TWriteBlocksCompleted(
+                true,
+                addingUnconfirmedBlobsRequested,
+                false,
+                std::move(blobsToConfirm));
         }
     };
 

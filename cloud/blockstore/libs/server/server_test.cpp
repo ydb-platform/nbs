@@ -101,6 +101,12 @@ TTestServerBuilder& TTestServerBuilder::SetVolumeStats(IVolumeStatsPtr volumeSta
     return *this;
 }
 
+TTestServerBuilder& TTestServerBuilder::SetCellId(TString cellId)
+{
+    TestContext.CellId = std::move(cellId);
+    return *this;
+}
+
 IServerPtr TTestServerBuilder::BuildServer(
     IBlockStorePtr service,
     IBlockStorePtr udsService)
@@ -120,7 +126,10 @@ IServerPtr TTestServerBuilder::BuildServer(
         TestContext.Logging,
         std::move(serverStats),
         std::move(service),
-        std::move(udsService));
+        std::move(udsService),
+        TServerOptions {
+            .CellId = TestContext.CellId
+        });
     return server;
 }
 

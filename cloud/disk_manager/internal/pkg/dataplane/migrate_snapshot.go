@@ -16,9 +16,9 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type migrateSnapshotTask struct {
+	config     *config.DataplaneConfig
 	srcStorage storage.Storage
 	dstStorage storage.Storage
-	config     *config.DataplaneConfig
 	useS3      bool
 	request    *protos.MigrateSnapshotRequest
 	state      *protos.MigrateSnapshotTaskState

@@ -160,6 +160,9 @@ TPartitionState::TPartitionState(
         TIndexCachingConfig indexCachingConfig,
         ui32 maxIORequestsInFlight,
         ui32 reassignChannelsPercentageThreshold,
+        ui32 reassignFreshChannelsPercentageThreshold,
+        ui32 reassignMixedChannelsPercentageThreshold,
+        bool reassignSystemChannelsImmediately,
         ui32 lastStep)
     : Meta(std::move(meta))
     , TabletId(tabletId)
@@ -174,6 +177,9 @@ TPartitionState::TPartitionState(
     , LastStep(lastStep)
     , MaxIORequestsInFlight(maxIORequestsInFlight)
     , ReassignChannelsPercentageThreshold(reassignChannelsPercentageThreshold)
+    , ReassignFreshChannelsPercentageThreshold(reassignFreshChannelsPercentageThreshold)
+    , ReassignMixedChannelsPercentageThreshold(reassignMixedChannelsPercentageThreshold)
+    , ReassignSystemChannelsImmediately(reassignSystemChannelsImmediately)
     , ChannelCount(channelCount)
     , FreshBlocks(GetAllocatorByTag(EAllocatorTag::FreshBlockMap))
     , Blobs(
@@ -382,7 +388,7 @@ bool TPartitionState::IsWriteAllowed(EChannelPermissions permissions) const
 {
     bool allSystemChannelsWritable = true;
     bool anyDataChannelWritable = false;
-    bool anyFreshChannelWritable = false;
+    bool anyFreshChannelWritable = FreshChannelCount == 0;
 
     for (ui32 ch = 0; ch < ChannelCount; ++ch) {
         switch (GetChannelDataKind(ch)) {
@@ -416,13 +422,8 @@ bool TPartitionState::IsWriteAllowed(EChannelPermissions permissions) const
         }
     }
 
-    if (FreshChannelCount) {
-        return allSystemChannelsWritable
-            && anyDataChannelWritable
-            && anyFreshChannelWritable;
-    }
-
-    return allSystemChannelsWritable && anyDataChannelWritable;
+    return allSystemChannelsWritable && anyDataChannelWritable &&
+           anyFreshChannelWritable;
 }
 
 void TPartitionState::RegisterReassignRequestFromBlobStorage(ui32 channel)
@@ -432,24 +433,86 @@ void TPartitionState::RegisterReassignRequestFromBlobStorage(ui32 channel)
 
 TVector<ui32> TPartitionState::GetChannelsToReassign() const
 {
-    const auto permissions = EChannelPermission::UserWritesAllowed
-        | EChannelPermission::SystemWritesAllowed;
+    const auto permissions = EChannelPermission::UserWritesAllowed |
+                             EChannelPermission::SystemWritesAllowed;
 
     TVector<ui32> channels;
+    TVector<ui32> freshChannels;
+    TVector<ui32> mixedChannels;
+    TVector<ui32> systemChannels;
 
     for (ui32 ch = 0; ch < ChannelCount; ++ch) {
         const auto* channelState = GetChannel(ch);
-        if (channelState && channelState->ReassignRequestedByBlobStorage
-                || !CheckPermissions(ch, permissions))
+        if (channelState && channelState->ReassignRequestedByBlobStorage ||
+            !CheckPermissions(ch, permissions))
         {
             channels.push_back(ch);
+            switch (GetChannelDataKind(ch)) {
+                case EChannelDataKind::Log:
+                case EChannelDataKind::Index:
+                case EChannelDataKind::System: {
+                    systemChannels.push_back(ch);
+                    break;
+                }
+
+                case EChannelDataKind::Mixed: {
+                    mixedChannels.push_back(ch);
+                    break;
+                }
+
+                case EChannelDataKind::Fresh: {
+                    freshChannels.push_back(ch);
+                    break;
+                }
+
+                case EChannelDataKind::Merged: {
+                    break;
+                }
+
+                default: {
+                    Y_DEBUG_ABORT_UNLESS(0);
+                }
+            }
         }
     }
 
-    const auto threshold =
-        (ReassignChannelsPercentageThreshold / 100.) * ChannelCount;
-    if (IsWriteAllowed(permissions) && channels.size() < threshold) {
-        return {};
+    const auto threshold = ReassignChannelsPercentageThreshold * ChannelCount;
+    if (!IsWriteAllowed(permissions) || channels.size() * 100 >= threshold) {
+        return channels;
+    }
+
+    channels.clear();
+    if (ReassignMixedChannelsPercentageThreshold < 100 &&
+        !mixedChannels.empty())
+    {
+        const auto threshold =
+            ReassignMixedChannelsPercentageThreshold * MixedChannels.size();
+        if (mixedChannels.size() * 100 >= threshold) {
+            channels.insert(
+                channels.end(),
+                mixedChannels.begin(),
+                mixedChannels.end());
+        }
+    }
+
+    if (ReassignSystemChannelsImmediately && !systemChannels.empty()) {
+        channels.insert(
+            channels.end(),
+            systemChannels.begin(),
+            systemChannels.end());
+    }
+
+    if (ReassignFreshChannelsPercentageThreshold < 100 &&
+        !freshChannels.empty())
+    {
+        const auto threshold =
+            ReassignFreshChannelsPercentageThreshold * FreshChannels.size();
+        if (freshChannels.size() * 100 >= threshold) {
+            channels.insert(
+                channels.end(),
+                freshChannels.begin(),
+                freshChannels.end());
+        }
     }
 
     return channels;

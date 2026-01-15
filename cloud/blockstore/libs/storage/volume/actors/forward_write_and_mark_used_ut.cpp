@@ -56,7 +56,11 @@ Y_UNIT_TEST_SUITE(TForwardWriteAndMarkUsedTests)
                     0,
                     EdgeActor,
                     0,
-                    EdgeActor});
+                    EdgeActor,
+                    TLogTitle(
+                        GetCycleCount(),
+                        TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
+                        .GetChild(GetCycleCount())});
         }
     };
 
@@ -80,7 +84,11 @@ Y_UNIT_TEST_SUITE(TForwardWriteAndMarkUsedTests)
                     0,
                     EdgeActor,
                     0,
-                    EdgeActor});
+                    EdgeActor,
+                    TLogTitle(
+                        GetCycleCount(),
+                        TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
+                        .GetChild(GetCycleCount())});
         }
     };
 

@@ -26,6 +26,8 @@ private:
     const ui32 RecordGeneration;
     const ui32 PerGenerationCounter;
     const TVector<ui32> FreshChannels;
+    const TString DiskId;
+    const TDuration Timeout;
 
     ui32 RequestsInFlight = 0;
     NProto::TError Error;
@@ -38,7 +40,9 @@ public:
         ui64 trimFreshLogToCommitId,
         ui32 recordGeneration,
         ui32 perGenerationCounter,
-        TVector<ui32> freshChannels);
+        TVector<ui32> freshChannels,
+        TString diskId,
+        TDuration timeout);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -57,6 +61,10 @@ private:
 
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleWakeup(
+        const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

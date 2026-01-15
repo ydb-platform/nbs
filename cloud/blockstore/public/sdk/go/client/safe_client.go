@@ -28,6 +28,7 @@ type CreateVolumeOpts struct {
 	StoragePoolName         string
 	AgentIds                []string
 	FillGeneration          uint64
+	TagsStr                 string
 }
 
 type MountVolumeOpts struct {
@@ -91,6 +92,7 @@ func (client *safeClient) CreateVolume(
 		req.StoragePoolName = opts.StoragePoolName
 		req.AgentIds = opts.AgentIds
 		req.FillGeneration = opts.FillGeneration
+		req.TagsStr = opts.TagsStr
 	}
 
 	_, err := client.Impl.CreateVolume(ctx, req)
@@ -392,6 +394,20 @@ func (client *safeClient) ListVolumes(ctx context.Context) ([]string, error) {
 	}
 
 	return resp.GetVolumes(), nil
+}
+
+func (client *safeClient) ListDiskStates(
+	ctx context.Context,
+) ([]*protos.TDiskState, error) {
+
+	request := &protos.TListDiskStatesRequest{}
+
+	resp, err := client.Impl.ListDiskStates(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.GetDiskStates(), nil
 }
 
 func (client *safeClient) DiscoverInstances(

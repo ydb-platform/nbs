@@ -477,7 +477,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                     zRequest->GetSessionId(),
                     wRequest->GetSessionId());
                 UNIT_ASSERT_VALUES_EQUAL(6, GetFieldCount<NProto::TZeroBlocksRequest>());
-                UNIT_ASSERT_VALUES_EQUAL(6, GetFieldCount<NProto::TWriteBlocksRequest>());
+                UNIT_ASSERT_VALUES_EQUAL(8, GetFieldCount<NProto::TWriteBlocksRequest>());
 
                 return MakeFuture(wResponse);
             };
@@ -1392,7 +1392,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 volume.SetBlockSize(BlockSize);
 
                 NProto::TEncryptionDesc& desc = *volume.MutableEncryptionDesc();
-                desc.SetMode(NProto::ENCRYPTION_AT_REST);
+                desc.SetMode(NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY);
                 desc.MutableEncryptionKey()->SetKekId(KekId);
                 desc.MutableEncryptionKey()->SetEncryptedDEK(
                     Base64Encode(EncryptionKey));

@@ -1,3 +1,4 @@
+#include "ydbauth.h"
 #include "ydbrow.h"
 #include "ydbstats.h"
 
@@ -6,6 +7,8 @@
 #include "ydbscheme.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+
+#include <cloud/storage/core/libs/common/scheduler_test.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -17,6 +20,7 @@ using namespace NThreading;
 using namespace NYdb;
 using namespace NYdb::NTable;
 using namespace NYdb::NScheme;
+using namespace NCloud::NIamClient;
 
 namespace {
 
@@ -518,6 +522,34 @@ TYdbTestStoragePtr YdbCreateTestStorage(
     return std::make_shared<TYdbTestStorage>(std::move(config));
 }
 
+struct TTestIamTokenClient: public IIamTokenClient
+{
+    TVector<TResponse> Responses;
+    ui64 GetTokenCalledCount = 0;
+
+    explicit TTestIamTokenClient(TVector<TResponse> responses)
+        : Responses(std::move(responses))
+    {}
+
+    void Start() override
+    {}
+    void Stop() override
+    {}
+
+    TResponse GetToken() override
+    {
+        UNIT_FAIL("Don't use sync method");
+        return GetTokenAsync().GetValueSync();
+    }
+
+    TFuture<TResponse> GetTokenAsync() override
+    {
+        auto idx = Min(GetTokenCalledCount, Responses.size() - 1);
+        ++GetTokenCalledCount;
+        return MakeFuture(Responses[idx]);
+    }
+};
+
 }    // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -867,6 +899,87 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
                 statsTtl,
                 response.TableScheme.Ttl->GetValueSinceUnixEpoch().GetExpireAfter());
         }
+    }
+}
+
+Y_UNIT_TEST_SUITE(TYdbStatsAuth)
+{
+    Y_UNIT_TEST(ShouldGetIamTokenAsynchronously)
+    {
+        auto now = Now();
+        TVector<IIamTokenClient::TResponse> tokens{
+            TTokenInfo{"token1", now + TDuration::MilliSeconds(200)},
+            TTokenInfo{"token2", now + TDuration::MilliSeconds(300)},
+            TTokenInfo{"token3", now + TDuration::MilliSeconds(400)}};
+
+        auto client = std::make_shared<TTestIamTokenClient>(tokens);
+
+        auto scheduler = std::make_shared<TTestScheduler>(now);
+
+        auto providerFactory = CreateIamCredentialsProviderFactory(
+            TDuration::MilliSeconds(50),
+            {"token0", now + TDuration::MilliSeconds(100)},
+            scheduler,
+            client);
+
+        auto provider = providerFactory->CreateProvider();
+
+        for (auto i = 0; i < 4; ++i) {
+            auto token = provider->GetAuthInfo();
+            UNIT_ASSERT_VALUES_EQUAL("token" + ToString(i), token);
+            UNIT_ASSERT_VALUES_EQUAL(i, client->GetTokenCalledCount);
+
+            scheduler->AdvanceTime(TDuration::MilliSeconds(100));
+            scheduler->RunAllScheduledTasksUntilNow();
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRetryError)
+    {
+        auto now = Now();
+        TVector<IIamTokenClient::TResponse> tokens{
+            MakeError(E_REJECTED),
+            MakeError(E_REJECTED),
+            TTokenInfo{"token1", now + TDuration::MilliSeconds(200)}};
+
+        auto client = std::make_shared<TTestIamTokenClient>(tokens);
+
+        auto scheduler = std::make_shared<TTestScheduler>(now);
+
+        auto providerFactory = CreateIamCredentialsProviderFactory(
+            TDuration::MilliSeconds(50),
+            {"token0", now + TDuration::MilliSeconds(100)},
+            scheduler,
+            client);
+
+        auto provider = providerFactory->CreateProvider();
+
+        Sleep(TDuration::MilliSeconds(50));
+        scheduler->AdvanceTime(TDuration::MilliSeconds(50));
+
+        auto token = provider->GetAuthInfo();
+        UNIT_ASSERT_VALUES_EQUAL("token0", token);
+
+        scheduler->RunAllScheduledTasks();   // trying renew token, getting
+                                             // first error
+
+        token = provider->GetAuthInfo();
+        UNIT_ASSERT_VALUES_EQUAL("token0", token);
+        UNIT_ASSERT_VALUES_EQUAL(1, client->GetTokenCalledCount);
+
+        scheduler->RunAllScheduledTasks();   // trying renew token,
+                                             // getting second error
+
+        token = provider->GetAuthInfo();
+        UNIT_ASSERT_VALUES_EQUAL("token0", token);
+        UNIT_ASSERT_VALUES_EQUAL(2, client->GetTokenCalledCount);
+
+        scheduler->RunAllScheduledTasks();   // trying renew token,
+                                             // getting new token
+
+        token = provider->GetAuthInfo();
+        UNIT_ASSERT_VALUES_EQUAL("token1", token);
+        UNIT_ASSERT_VALUES_EQUAL(3, client->GetTokenCalledCount);
     }
 }
 

@@ -2,6 +2,8 @@ PROGRAM(diskagentd)
 
 ALLOCATOR(TCMALLOC_TC)
 
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/binaries_dependency.inc)
+
 SRCS(
     main.cpp
 )
@@ -21,6 +23,10 @@ PEERDIR(
 
 IF (BUILD_TYPE != "PROFILE" AND BUILD_TYPE != "DEBUG" AND BUILD_TYPE != "RELWITHDEBINFO")
     SPLIT_DWARF()
+ELSE()
+    PEERDIR(
+        library/cpp/terminate_handler
+    )
 ENDIF()
 
 IF (SANITIZER_TYPE)

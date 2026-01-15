@@ -114,6 +114,7 @@ public:
     TString GetTracesSyslogIdentifier() const;
 
     TDuration GetProfileLogTimeThreshold() const;
+    TDuration GetDumpTracksInterval() const;
     ui32 GetLWTraceShuttleCount() const;
 
     TString GetCpuWaitServiceName() const;
@@ -133,11 +134,15 @@ public:
     bool GetReportHistogramAsMultipleCounters() const;
     bool GetReportHistogramAsSingleCounter() const;
     EHistogramCounterOptions GetHistogramCounterOptions() const;
+    bool GetUseMsUnitsForTimeHistogram() const;
 
     TFileSystemPerformanceProfile GetHDDFileSystemPerformanceProfile() const;
     TFileSystemPerformanceProfile GetSSDFileSystemPerformanceProfile() const;
 
     NCloud::NProto::EStatsFetcherType GetStatsFetcherType() const;
+
+    ui64 GetProfileLogMaxFlushRecords() const;
+    ui64 GetProfileLogMaxFrameFlushRecords() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

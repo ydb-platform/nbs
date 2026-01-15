@@ -210,11 +210,17 @@ void TCreateFileStoreActor::ConfigureShards(const TActorContext& ctx)
             FileStoreConfig.ShardConfigs[i].GetFileSystemId());
         request->Record.SetShardNo(i + 1);
         request->Record.SetMainFileSystemId(Request.GetFileSystemId());
-        if (StorageConfig->GetDirectoryCreationInShardsEnabled()) {
+        request->Record.SetDirectoryCreationInShardsEnabled(
+            StorageConfig->GetDirectoryCreationInShardsEnabled());
+        request->Record.SetStrictFileSystemSizeEnforcementEnabled(
+            StorageConfig->GetStrictFileSystemSizeEnforcementEnabled());
+
+        if (StorageConfig->GetDirectoryCreationInShardsEnabled() ||
+            StorageConfig->GetStrictFileSystemSizeEnforcementEnabled())
+        {
             for (const auto& shard: FileStoreConfig.ShardConfigs) {
                 request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
             }
-            request->Record.SetDirectoryCreationInShardsEnabled(true);
         }
 
         LOG_INFO(
@@ -239,11 +245,14 @@ void TCreateFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
         std::make_unique<TEvIndexTablet::TEvConfigureShardsRequest>();
     request->Record.SetFileSystemId(
         FileStoreConfig.MainFileSystemConfig.GetFileSystemId());
+    request->Record.SetDirectoryCreationInShardsEnabled(
+        StorageConfig->GetDirectoryCreationInShardsEnabled());
+    request->Record.SetStrictFileSystemSizeEnforcementEnabled(
+        StorageConfig->GetStrictFileSystemSizeEnforcementEnabled());
+
     for (const auto& shard: FileStoreConfig.ShardConfigs) {
         request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
     }
-    request->Record.SetDirectoryCreationInShardsEnabled(
-        StorageConfig->GetDirectoryCreationInShardsEnabled());
 
     LOG_INFO(
         ctx,
@@ -307,10 +316,12 @@ void TCreateFileStoreActor::HandleCreateFileStoreResponse(
         CreateShards(ctx);
         return;
     }
-    if (StorageConfig->GetDirectoryCreationInShardsEnabled()) {
-        // If no shards are to be created, but directory sharding is enabled, we
-        // need to configure the main filestore in order to set the
-        // DirectoryCreationInShardsEnabled flag in the main filestore
+    if (StorageConfig->GetDirectoryCreationInShardsEnabled() ||
+        StorageConfig->GetStrictFileSystemSizeEnforcementEnabled())
+    {
+        // If no shards are to be created, but directory sharding or allocation
+        // of shards of filesystem size is enabled, we need to configure the
+        // main filestore in order to set the flags in the main filestore
         ConfigureMainFileStore(ctx);
         return;
     }
@@ -448,6 +459,7 @@ void TStorageServiceActor::HandleCreateFileStore(
     if (HasError(error)) {
         auto response = std::make_unique<TEvService::TEvCreateFileStoreResponse>(error);
         inflight->Complete(ctx.Now(), error);
+        InFlightRequests->Erase(cookie);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }

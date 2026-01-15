@@ -118,6 +118,8 @@ void TIndexTabletState::LoadState(
     LargeDeletionMarkersThresholdForBackpressure =
         config.GetLargeDeletionMarkersThresholdForBackpressure();
 
+    MaxTabletStep = Max(config.GetMaxTabletStep(), LastStep);
+
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);
     TabletStorageInfo.CopyFrom(tabletStorageInfo);
@@ -159,7 +161,8 @@ void TIndexTabletState::LoadState(
         CalculateInMemoryIndexCacheCapacity(
             config.GetInMemoryIndexCacheNodeRefsCapacity(),
             GetNodesCount(),
-            config.GetInMemoryIndexCacheNodesToNodeRefsCapacityRatio()));
+            config.GetInMemoryIndexCacheNodesToNodeRefsCapacityRatio()),
+        config.GetInMemoryIndexCacheNodeRefsExhaustivenessCapacity());
     Impl->MixedBlocks.Reset(config.GetMixedBlocksOffloadedRangesCapacity());
 
     for (const auto& deletionMarker: largeDeletionMarkers) {
@@ -172,6 +175,7 @@ void TIndexTabletState::LoadState(
     Impl->ShardBalancer = CreateShardBalancer(
         config.GetShardBalancerPolicy(),
         GetBlockSize(),
+        config.GetMaxFileBlocks(),
         config.GetShardBalancerDesiredFreeSpaceReserve(),
         config.GetShardBalancerMinFreeSpaceReserve(),
         TVector<TString>(shardIds.begin(), shardIds.end()));
@@ -195,6 +199,7 @@ void TIndexTabletState::UpdateConfig(
     Impl->ShardBalancer = CreateShardBalancer(
         config.GetShardBalancerPolicy(),
         GetBlockSize(),
+        config.GetMaxFileBlocks(),
         config.GetShardBalancerDesiredFreeSpaceReserve(),
         config.GetShardBalancerMinFreeSpaceReserve(),
         TVector<TString>(shardIds.begin(), shardIds.end()));
@@ -231,14 +236,20 @@ TMiscNodeStats TIndexTabletState::GetMiscNodeStats() const
     };
 }
 
-bool TIndexTabletState::CalculateExpectedShardCount() const
+THandlesStats TIndexTabletState::GetHandlesStats() const
+{
+    return Impl->HandlesStats;
+}
+
+ui64 TIndexTabletState::CalculateExpectedShardCount(
+    const ui32 maxShardCount) const
 {
     if (FileSystem.GetShardNo()) {
         // sharding is flat
         return 0;
     }
 
-    const auto currentShardCount = FileSystem.ShardFileSystemIdsSize();
+    const ui64 currentShardCount = FileSystem.ShardFileSystemIdsSize();
     ui64 autoShardCount = 0;
     if (FileSystem.GetAutomaticShardCreationEnabled()
             && FileSystem.GetShardAllocationUnit())
@@ -246,7 +257,8 @@ bool TIndexTabletState::CalculateExpectedShardCount() const
         autoShardCount = ComputeShardCount(
             FileSystem.GetBlocksCount(),
             FileSystem.GetBlockSize(),
-            FileSystem.GetShardAllocationUnit());
+            FileSystem.GetShardAllocationUnit(),
+            maxShardCount);
     }
 
     return Max(currentShardCount, autoShardCount);

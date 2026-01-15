@@ -2,6 +2,7 @@
 
 #include "config.h"
 #include "probes.h"
+#include "server_memory_state.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
@@ -13,6 +14,7 @@
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/public/api/grpc/service.grpc.pb.h>
+#include <cloud/filestore/public/api/protos/server.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/thread.h>
@@ -28,10 +30,6 @@
 #include <cloud/storage/core/libs/uds/client_storage.h>
 #include <cloud/storage/core/libs/uds/endpoint_poller.h>
 
-#include <contrib/ydb/library/actors/prof/tag.h>
-#include <library/cpp/deprecated/atomic/atomic.h>
-#include <library/cpp/threading/atomic/bool.h>
-
 #include <contrib/libs/grpc/include/grpcpp/completion_queue.h>
 #include <contrib/libs/grpc/include/grpcpp/resource_quota.h>
 #include <contrib/libs/grpc/include/grpcpp/security/auth_metadata_processor.h>
@@ -41,11 +39,15 @@
 #include <contrib/libs/grpc/include/grpcpp/server_context.h>
 #include <contrib/libs/grpc/include/grpcpp/server_posix.h>
 #include <contrib/libs/grpc/include/grpcpp/support/status.h>
+#include <contrib/ydb/library/actors/prof/tag.h>
+
+#include <library/cpp/deprecated/atomic/atomic.h>
+#include <library/cpp/threading/atomic/bool.h>
 
 #include <util/generic/deque.h>
 #include <util/generic/hash_set.h>
-#include <util/string/builder.h>
 #include <util/stream/file.h>
+#include <util/string/builder.h>
 #include <util/string/join.h>
 #include <util/system/file.h>
 #include <util/system/thread.h>
@@ -237,6 +239,8 @@ struct TFileStoreContext: TAppContext
 {
     NProto::TFileStoreService::AsyncService Service;
     IFileStoreServicePtr ServiceImpl;
+
+    TServerStatePtr State;
 };
 
 struct TEndpointManagerContext : TAppContext
@@ -422,7 +426,7 @@ void TAppContext::ValidateRequest(
         bool result = TryParseSourceFd(peer, &fd);
 
         if (!result) {
-            ythrow TServiceError(E_FAIL)
+            STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                 << "failed to parse request source fd: " << peer;
         }
 
@@ -430,7 +434,7 @@ void TAppContext::ValidateRequest(
         // so pretend they are coming from data channel.
         auto src = SessionStorage->FindSourceByFd(fd);
         if (!src) {
-            ythrow TServiceError(E_GRPC_UNAVAILABLE)
+            STORAGE_THROW_SERVICE_ERROR(E_GRPC_UNAVAILABLE)
                 << "endpoint has been stopped (fd = " << fd << ").";
         }
 
@@ -438,7 +442,7 @@ void TAppContext::ValidateRequest(
     }
 
     if (headers.HasInternal()) {
-        ythrow TServiceError(E_ARGUMENT)
+        STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
             << "internal field should not be set by client";
     }
 
@@ -463,6 +467,46 @@ using TExecutorContext = NStorage::NGrpc::
 
 using TExecutor = NStorage::NGrpc::
     TExecutor<grpc::ServerCompletionQueue, TRequestsInFlight>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError TryAdjustIovecOffsets(
+    const TLog& Log,
+    TServerState* state,
+    google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs,
+    ui64 regionId)
+{
+    TResultOrError<TMmapRegionMetadata> region = state->GetMmapRegion(regionId);
+    if (NCloud::HasError(region.GetError())) {
+        STORAGE_DEBUG(
+            "Failed to get mmap region " << regionId << ": "
+                                         << region.GetError().GetMessage());
+        return region.GetError();
+    }
+
+    const auto& metadata = region.GetResult();
+    STORAGE_DEBUG(
+        "Adjusting iovecs for region " << regionId
+                                       << ": address=" << metadata.Address
+                                       << " size=" << metadata.Size);
+
+    for (auto& iovec: iovecs) {
+        ui64 offset = iovec.GetBase();
+        ui64 length = iovec.GetLength();
+
+        if (offset + length > metadata.Size) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "Iovec out of bounds: offset=" << offset
+                                 << " length=" << length
+                                 << " region_size=" << metadata.Size);
+        }
+
+        iovec.SetBase(offset + reinterpret_cast<ui64>(metadata.Address));
+    }
+
+    return {};
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -665,31 +709,53 @@ private:
         AppCtx.Stats->RequestStarted(Log, *CallContext);
         Started = true;
 
-        try {
-            AppCtx.ValidateRequest(
-                *Context,
-                *Request->MutableHeaders());
+        if constexpr (
+            (std::is_same_v<TRequest, NProto::TWriteDataRequest> ||
+             std::is_same_v<TRequest, NProto::TReadDataRequest>) &&
+            std::is_same_v<TAppContext, TFileStoreContext>)
+        {
+            if (AppCtx.State && Request->IovecsSize() > 0) {
+                auto error = TryAdjustIovecOffsets(
+                    Log,
+                    this->AppCtx.State.get(),
+                    *Request->MutableIovecs(),
+                    Request->GetRegionId());
+                if (HasError(error)) {
+                    TResponse response;
+                    response.MutableError()->Swap(&error);
+                    Response = MakeFuture(std::move(response));
+                }
+            }
+        }
 
-            Response = TMethod::Execute(
-                *AppCtx.ServiceImpl,
-                CallContext,
-                std::move(Request));
-        } catch (const TServiceError& e) {
-            STORAGE_WARN(
-                TMethod::RequestName
-                << " #" << RequestId
-                << " request error: " << e);
+        if (!Response.HasValue()) {
+            try {
+                AppCtx.ValidateRequest(*Context, *Request->MutableHeaders());
 
-            Response = MakeFuture(
-                ErrorResponse<TResponse>(e.GetCode(), TString(e.GetMessage())));
-        } catch (...) {
-            STORAGE_ERROR(
-                TMethod::RequestName
-                << " #" << RequestId
-                << " unexpected error: " << CurrentExceptionMessage());
+                Response = TMethod::Execute(
+                    *AppCtx.ServiceImpl,
+                    CallContext,
+                    std::move(Request));
+            } catch (const TServiceError& e) {
+                STORAGE_WARN(
+                    TMethod::RequestName << " #" << RequestId
+                                         << " request error: " << e);
 
-            Response = MakeFuture(
-                ErrorResponse<TResponse>(E_FAIL, CurrentExceptionMessage()));
+                Response = MakeFuture(
+                    ErrorResponse<TResponse>(
+                        e.GetCode(),
+                        TString(e.GetMessage())));
+            } catch (...) {
+                STORAGE_ERROR(
+                    TMethod::RequestName
+                    << " #" << RequestId
+                    << " unexpected error: " << CurrentExceptionMessage());
+
+                Response = MakeFuture(
+                    ErrorResponse<TResponse>(
+                        E_FAIL,
+                        CurrentExceptionMessage()));
+            }
         }
 
         auto* tag = AcquireCompletionTag();
@@ -1076,6 +1142,347 @@ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+// Template base class for custom sync handlers
+
+template <typename TRequestType, typename TResponseType, typename TDerived>
+class TCustomHandlerBase: public TServerRequestHandlerBase
+{
+protected:
+    TFileStoreContext& AppCtx;
+    TExecutorContext& ExecCtx;
+
+    std::unique_ptr<grpc::ServerContext> Context =
+        std::make_unique<grpc::ServerContext>();
+    grpc::ServerAsyncResponseWriter<TResponseType> Writer;
+
+    std::shared_ptr<TRequestType> Request = std::make_shared<TRequestType>();
+    ui64 RequestId = 0;
+
+    enum
+    {
+        WaitingForRequest,
+        SendingResponse,
+        RequestCompleted,
+    };
+    TAtomic RequestState = WaitingForRequest;
+
+public:
+    TCustomHandlerBase(TExecutorContext& execCtx, TFileStoreContext& appCtx)
+        : AppCtx(appCtx)
+        , ExecCtx(execCtx)
+        , Writer(Context.get())
+    {}
+
+    static void Start(TExecutorContext& execCtx, TFileStoreContext& appCtx)
+    {
+        execCtx.StartRequestHandler<TDerived>(appCtx);
+    }
+
+    void Process(bool ok) override
+    {
+        if (AtomicGet(AppCtx.ShouldStop) == 0 &&
+            AtomicGet(RequestState) == WaitingForRequest)
+        {
+            // There always should be handler waiting for request.
+            // Spawn new request only when handling request from server queue.
+            Start(ExecCtx, AppCtx);
+        }
+
+        if (!ok) {
+            auto prevState = AtomicSwap(&RequestState, RequestCompleted);
+            if (prevState != WaitingForRequest) {
+                static_cast<TDerived*>(this)->CompleteRequest();
+            }
+        }
+
+        for (;;) {
+            switch (AtomicGet(RequestState)) {
+                case WaitingForRequest:
+                    if (AtomicCas(
+                            &RequestState,
+                            SendingResponse,
+                            WaitingForRequest))
+                    {
+                        PrepareRequestContext();
+                        static_cast<TDerived*>(this)->ProcessAndSendResponse();
+                        return;
+                    }
+                    break;
+
+                case SendingResponse:
+                    if (AtomicCas(
+                            &RequestState,
+                            RequestCompleted,
+                            SendingResponse))
+                    {
+                        static_cast<TDerived*>(this)->CompleteRequest();
+                    }
+                    break;
+
+                case RequestCompleted:
+                    ExecCtx.RequestsInFlight.Unregister(this);
+                    Context.reset();
+                    return;
+            }
+        }
+    }
+
+    void Cancel() override
+    {
+        if (Context->c_call()) {
+            Context->TryCancel();
+        }
+    }
+
+    void PrepareRequest()
+    {
+        static_cast<TDerived*>(this)->PrepareRequestImpl();
+    }
+
+protected:
+    void PrepareRequestContext()
+    {
+        auto& headers = *Request->MutableHeaders();
+        RequestId = headers.GetRequestId();
+        if (!RequestId) {
+            RequestId = CreateRequestId();
+            headers.SetRequestId(RequestId);
+        }
+        CallContext->RequestId = RequestId;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Custom sync handlers for the shared memory transport
+
+class TListMmapRegionsCustomHandler final
+    : public TCustomHandlerBase<
+          NProto::TListMmapRegionsRequest,
+          NProto::TListMmapRegionsResponse,
+          TListMmapRegionsCustomHandler>
+{
+    using TBase = TCustomHandlerBase<
+        NProto::TListMmapRegionsRequest,
+        NProto::TListMmapRegionsResponse,
+        TListMmapRegionsCustomHandler>;
+
+public:
+    using TBase::TBase;
+
+    void PrepareRequestImpl()
+    {
+        this->AppCtx.Service.RequestListMmapRegions(
+            this->Context.get(),
+            this->Request.get(),
+            &this->Writer,
+            this->ExecCtx.CompletionQueue.get(),
+            this->ExecCtx.CompletionQueue.get(),
+            this);
+    }
+
+    void ProcessAndSendResponse()
+    {
+        Regions = this->AppCtx.State->ListMmapRegions();
+
+        NProto::TListMmapRegionsResponse response;
+        for (const auto& region: Regions) {
+            auto* regionInfo = response.AddRegions();
+            regionInfo->SetId(region.Id);
+            regionInfo->SetFilePath(region.FilePath);
+            regionInfo->SetSize(region.Size);
+            regionInfo->SetLatestActivityTimestamp(
+                region.LatestActivityTimestamp.MicroSeconds());
+        }
+        this->Writer.Finish(response, grpc::Status::OK, AcquireCompletionTag());
+    }
+
+    void CompleteRequest()
+    {
+        auto& Log = this->AppCtx.Log;
+        STORAGE_INFO(
+            "ListMmapRegions #" << this->RequestId
+                                << " completed, regions: " << Regions.size());
+    }
+
+private:
+    std::vector<TMmapRegionMetadata> Regions;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TMmapCustomHandler final
+    : public TCustomHandlerBase<
+          NProto::TMmapRequest,
+          NProto::TMmapResponse,
+          TMmapCustomHandler>
+{
+    using TBase = TCustomHandlerBase<
+        NProto::TMmapRequest,
+        NProto::TMmapResponse,
+        TMmapCustomHandler>;
+
+public:
+    TMmapCustomHandler(TExecutorContext& execCtx, TFileStoreContext& appCtx)
+        : TBase(execCtx, appCtx)
+        , Result(TMmapRegionMetadata())
+    {}
+
+    void PrepareRequestImpl()
+    {
+        this->AppCtx.Service.RequestMmap(
+            this->Context.get(),
+            this->Request.get(),
+            &this->Writer,
+            this->ExecCtx.CompletionQueue.get(),
+            this->ExecCtx.CompletionQueue.get(),
+            this);
+    }
+
+    void ProcessAndSendResponse()
+    {
+        Result = this->AppCtx.State->CreateMmapRegion(
+            this->Request->GetFilePath(),
+            this->Request->GetSize());
+        NProto::TMmapResponse response;
+
+        if (NCloud::HasError(Result)) {
+            *response.MutableError() = Result.GetError();
+        } else {
+            response.SetId(Result.GetResult().Id);
+        }
+
+        this->Writer.Finish(response, grpc::Status::OK, AcquireCompletionTag());
+    }
+
+    void CompleteRequest()
+    {
+        auto& Log = this->AppCtx.Log;
+        if (!NCloud::HasError(Result)) {
+            STORAGE_INFO(
+                "Mmap #" << this->RequestId
+                         << " completed, region id: " << Result.GetResult().Id);
+        } else {
+            STORAGE_INFO(
+                "Mmap #" << this->RequestId
+                         << " failed: " << FormatError(Result.GetError()));
+        }
+    }
+
+private:
+    NCloud::TResultOrError<TMmapRegionMetadata> Result;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TMunmapCustomHandler final
+    : public TCustomHandlerBase<
+          NProto::TMunmapRequest,
+          NProto::TMunmapResponse,
+          TMunmapCustomHandler>
+{
+    using TBase = TCustomHandlerBase<
+        NProto::TMunmapRequest,
+        NProto::TMunmapResponse,
+        TMunmapCustomHandler>;
+
+public:
+    using TBase::TBase;
+
+    void PrepareRequestImpl()
+    {
+        this->AppCtx.Service.RequestMunmap(
+            this->Context.get(),
+            this->Request.get(),
+            &this->Writer,
+            this->ExecCtx.CompletionQueue.get(),
+            this->ExecCtx.CompletionQueue.get(),
+            this);
+    }
+
+    void ProcessAndSendResponse()
+    {
+        Error = this->AppCtx.State->DestroyMmapRegion(this->Request->GetId());
+
+        NProto::TMunmapResponse response;
+        if (NCloud::HasError(Error)) {
+            *response.MutableError() = Error;
+        }
+
+        this->Writer.Finish(response, grpc::Status::OK, AcquireCompletionTag());
+    }
+
+    void CompleteRequest()
+    {
+        auto& Log = this->AppCtx.Log;
+        if (!NCloud::HasError(Error)) {
+            STORAGE_INFO("Munmap #" << this->RequestId << " completed");
+        } else {
+            STORAGE_INFO(
+                "Munmap #" << this->RequestId
+                           << " failed: " << FormatError(Error));
+        }
+    }
+
+private:
+    NCloud::NProto::TError Error;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TPingMmapRegionCustomHandler final
+    : public TCustomHandlerBase<
+          NProto::TPingMmapRegionRequest,
+          NProto::TPingMmapRegionResponse,
+          TPingMmapRegionCustomHandler>
+{
+    using TBase = TCustomHandlerBase<
+        NProto::TPingMmapRegionRequest,
+        NProto::TPingMmapRegionResponse,
+        TPingMmapRegionCustomHandler>;
+
+public:
+    using TBase::TBase;
+
+    void PrepareRequestImpl()
+    {
+        this->AppCtx.Service.RequestPingMmapRegion(
+            this->Context.get(),
+            this->Request.get(),
+            &this->Writer,
+            this->ExecCtx.CompletionQueue.get(),
+            this->ExecCtx.CompletionQueue.get(),
+            this);
+    }
+
+    void ProcessAndSendResponse()
+    {
+        Error = this->AppCtx.State->PingMmapRegion(this->Request->GetId());
+
+        NProto::TPingMmapRegionResponse response;
+        if (NCloud::HasError(Error)) {
+            *response.MutableError() = Error;
+        }
+
+        this->Writer.Finish(response, grpc::Status::OK, AcquireCompletionTag());
+    }
+
+    void CompleteRequest()
+    {
+        auto& Log = this->AppCtx.Log;
+        if (!NCloud::HasError(Error)) {
+            STORAGE_INFO("PingMmapRegion #" << this->RequestId << " completed");
+        } else {
+            STORAGE_INFO(
+                "PingMmapRegion #" << this->RequestId
+                              << " failed: " << FormatError(Error));
+        }
+    }
+
+private:
+    NCloud::NProto::TError Error;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
 using TFileStoreHandler = TRequestHandler<TFileStoreContext, T>;
@@ -1094,6 +1501,14 @@ void StartRequests(TExecutorContext& execCtx, TFileStoreContext& appCtx)
 #undef FILESTORE_START_REQUEST
 
     TFileStoreStreamHandler<TGetSessionEventsStreamMethod>::Start(execCtx, appCtx);
+
+    // Custom handlers for the shared memory transport
+    if (appCtx.State) {
+        TListMmapRegionsCustomHandler::Start(execCtx, appCtx);
+        TMmapCustomHandler::Start(execCtx, appCtx);
+        TMunmapCustomHandler::Start(execCtx, appCtx);
+        TPingMmapRegionCustomHandler::Start(execCtx, appCtx);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1142,11 +1557,24 @@ public:
         : Config(std::move(config))
         , Logging(std::move(logging))
     {
+        InitializeAppContext(AppCtx, service);
         AppCtx.ServiceImpl = std::move(service);
         AppCtx.Stats = std::move(requestStats);
         AppCtx.ProfileLog = std::move(profileLog);
     }
 
+private:
+    void InitializeAppContext(auto& ctx, auto& /*service*/)
+    {
+        if constexpr (requires { ctx.State; }) { // Implemented only for TFileStoreContext
+            if (Config->GetSharedMemoryTransportEnabled()) {
+                ctx.State = std::make_shared<TServerState>(
+                    Config->GetSharedMemoryBasePath());
+            }
+        }
+    }
+
+public:
     ~TServer() override
     {
         Stop();
@@ -1228,14 +1656,17 @@ public:
 
         AppCtx.Server = builder.BuildAndStart();
         if (!AppCtx.Server) {
-            ythrow TServiceError(E_FAIL)
+            STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                 << "could not start gRPC server";
         }
 
         auto unixSocketPath = Config->GetUnixSocketPath();
         if (unixSocketPath) {
             ui32 backlog = Config->GetUnixSocketBacklog();
-            StartListenUnixSocket(unixSocketPath, backlog);
+            StartListenUnixSocket(
+                unixSocketPath,
+                backlog,
+                Config->GetUnixSocketAccessMode());
         }
 
         with_lock (ExecutorsLock) {
@@ -1337,7 +1768,10 @@ private:
         return sslOptions;
     }
 
-    void StartListenUnixSocket(const TString& unixSocketPath, ui32 backlog)
+    void StartListenUnixSocket(
+        const TString& unixSocketPath,
+        ui32 backlog,
+        ui32 accessMode)
     {
         auto& Log = AppCtx.Log;
 
@@ -1349,7 +1783,7 @@ private:
         auto error = EndpointPoller->StartListenEndpoint(
             unixSocketPath,
             backlog,
-            S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR, // accessMode
+            accessMode,
             true,   // multiClient
             NProto::SOURCE_FD_CONTROL_CHANNEL,
             AppCtx.SessionStorage->CreateClientStorage());

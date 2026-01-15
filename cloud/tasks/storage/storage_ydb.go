@@ -22,6 +22,8 @@ type storageYDB struct {
 
 	exceptHangingTaskTypes            []string
 	hangingTaskTimeout                time.Duration
+	inflightHangingTaskTimeout        time.Duration
+	stallingHangingTaskTimeout        time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
 }
 

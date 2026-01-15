@@ -4,9 +4,11 @@ INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/small.inc)
 
 PEERDIR(
     cloud/storage/core/libs/aio
+    cloud/storage/core/libs/features
 )
 
 SRCS(
+    config_ut.cpp
     index_ut.cpp
     service_ut.cpp
 )

@@ -3,7 +3,7 @@ set -x
 set -e
 set -o pipefail
 
-# shellcheck disable=SC2317
+# shellcheck disable=SC2317,SC2329
 function on_exit() {
     local exit_code=$?
     echo "Caught signal $exit_code, exiting..."
@@ -37,6 +37,7 @@ sudo curl -o runner.tar.gz -L "https://github.com/actions/runner/releases/downlo
 sudo tar xzf ./runner.tar.gz
 # we do not have v6 connectivity on vms
 echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
+echo 'Dpkg::Lock::Timeout "600";' | sudo tee /etc/apt/apt.conf.d/99dpkg-lock-timeout
 sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 sudo chmod a+r /etc/apt/keyrings/docker.asc

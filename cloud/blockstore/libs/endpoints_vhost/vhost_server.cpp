@@ -21,17 +21,20 @@ private:
     const NProto::TChecksumFlags ChecksumFlags;
     const bool VhostDiscardEnabled;
     const ui32 MaxZeroBlocksSubRequestSize;
+    const ui32 OptimalIoSize;
 
 public:
     TVhostEndpointListener(
             NVhost::IServerPtr server,
             NProto::TChecksumFlags checksumFlags,
             bool vhostDiscardEnabled,
-            ui32 maxZeroBlocksSubRequestSize)
+            ui32 maxZeroBlocksSubRequestSize,
+            ui32 optimalIoSize)
         : Server(std::move(server))
         , ChecksumFlags(std::move(checksumFlags))
         , VhostDiscardEnabled(vhostDiscardEnabled)
         , MaxZeroBlocksSubRequestSize(maxZeroBlocksSubRequestSize)
+        , OptimalIoSize(optimalIoSize)
     {}
 
     TFuture<NProto::TError> StartEndpoint(
@@ -52,9 +55,9 @@ public:
             IsReliableDiskRegistryMediaKind(volume.GetStorageMediaKind());
         options.StorageMediaKind = volume.GetStorageMediaKind();
         options.DiscardEnabled =
-            VhostDiscardEnabled &&
-            !IsDiskRegistryMediaKind(volume.GetStorageMediaKind());
+            ShouldEnableVhostDiscardForVolume(VhostDiscardEnabled, volume);
         options.MaxZeroBlocksSubRequestSize = MaxZeroBlocksSubRequestSize;
+        options.OptimalIoSize = OptimalIoSize;
 
         return Server->StartEndpoint(
             request.GetUnixSocketPath(),
@@ -101,17 +104,27 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool ShouldEnableVhostDiscardForVolume(
+    bool vhostDiscardEnabled,
+    const NProto::TVolume& volume)
+{
+    return (vhostDiscardEnabled || volume.GetVhostDiscardEnabled()) &&
+           !IsDiskRegistryMediaKind(volume.GetStorageMediaKind());
+}
+
 IEndpointListenerPtr CreateVhostEndpointListener(
     NVhost::IServerPtr server,
     const NProto::TChecksumFlags& checksumFlags,
     bool vhostDiscardEnabled,
-    ui32 maxZeroBlocksSubRequestSize)
+    ui32 maxZeroBlocksSubRequestSize,
+    ui32 optimalIoSize)
 {
     return std::make_shared<TVhostEndpointListener>(
         std::move(server),
         checksumFlags,
         vhostDiscardEnabled,
-        maxZeroBlocksSubRequestSize);
+        maxZeroBlocksSubRequestSize,
+        optimalIoSize);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

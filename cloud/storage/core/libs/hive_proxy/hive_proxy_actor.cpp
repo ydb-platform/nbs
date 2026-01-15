@@ -41,6 +41,7 @@ THiveProxyActor::THiveProxyActor(
     , LockExpireTimeout(config.HiveLockExpireTimeout)
     , LogComponent(config.LogComponent)
     , TabletBootInfoBackupFilePath(config.TabletBootInfoBackupFilePath)
+    , UseBinaryFormatForTabletBootInfoBackup(config.UseBinaryFormatForTabletBootInfoBackup)
     , TenantHiveTabletId(config.TenantHiveTabletId)
     , Counters(std::move(counters))
 {}
@@ -57,6 +58,7 @@ void THiveProxyActor::Bootstrap(const TActorContext& ctx)
         auto cache = std::make_unique<TTabletBootInfoBackup>(
             LogComponent,
             TabletBootInfoBackupFilePath,
+            UseBinaryFormatForTabletBootInfoBackup,
             false /* readOnlyMode */
         );
         TabletBootInfoBackup = ctx.Register(
@@ -207,7 +209,8 @@ void THiveProxyActor::ScheduleSendTabletMetrics(const TActorContext& ctx, ui64 h
 
 void THiveProxyActor::SendTabletMetrics(
     const TActorContext& ctx,
-    ui64 hive)
+    ui64 hive,
+    bool resend)
 {
     auto* state = HiveStates.FindPtr(hive);
     STORAGE_VERIFY(state, "Hive", hive);
@@ -216,7 +219,7 @@ void THiveProxyActor::SendTabletMetrics(
     NKikimrHive::TEvTabletMetrics& record = event->Record;
     for (auto& prTabletId: state->UpdatedTabletMetrics) {
         AddTabletMetrics(prTabletId.first, prTabletId.second, record);
-        prTabletId.second.OnStatsSend();
+        prTabletId.second.OnSendStats(resend);
     }
     if (record.TabletMetricsSize() > 0) {
         SendRequest(ctx, hive, event.Release());
@@ -333,7 +336,11 @@ void THiveProxyActor::HandleConnectionError(
         }
 
         if (!states->ScheduledSendTabletMetrics) {
-            SendTabletMetrics(ctx, hive);
+            SendTabletMetrics(
+                ctx,
+                hive,
+                true   // resend
+            );
         }
 
         for (const auto& actorId: states->Actors) {
@@ -472,7 +479,7 @@ void THiveProxyActor::HandleTabletMetrics(
         return;
     }
 
-    tabletData.OnStatsUpdate();
+    tabletData.OnUpdateStats();
 
     if (!state->ScheduledSendTabletMetrics) {
         ScheduleSendTabletMetrics(ctx, hive);
@@ -484,7 +491,11 @@ void THiveProxyActor::HandleSendTabletMetrics(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    SendTabletMetrics(ctx, msg->Hive);
+    SendTabletMetrics(
+        ctx,
+        msg->Hive,
+        false      // resend
+    );
 }
 
 void THiveProxyActor::HandleMetricsResponse(

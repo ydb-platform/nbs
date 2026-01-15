@@ -43,7 +43,9 @@ public:
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
-        const TActorId& part);
+        TActorId volumeActorId,
+        const TActorId& part,
+        TChildLogTitle logTitle);
 
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
@@ -69,7 +71,9 @@ TDiskAgentChecksumActor::TDiskAgentChecksumActor(
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
-        const TActorId& part)
+        TActorId volumeActorId,
+        const TActorId& part,
+        TChildLogTitle logTitle)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -77,7 +81,9 @@ TDiskAgentChecksumActor::TDiskAgentChecksumActor(
           std::move(timeoutPolicy),
           std::move(deviceRequests),
           std::move(partConfig),
-          part)
+          volumeActorId,
+          part,
+          std::move(logTitle))
     , Request(std::move(request))
 {}
 
@@ -94,6 +100,12 @@ void TDiskAgentChecksumActor::SendRequest(const TActorContext& ctx)
         request->Record.SetStartIndex(deviceRequest.DeviceBlockRange.Start);
         request->Record.SetBlockSize(blockSize);
         request->Record.SetBlocksCount(deviceRequest.DeviceBlockRange.Size());
+
+        OnRequestStarted(
+            ctx,
+            deviceRequest.Device.GetAgentId(),
+            TDeviceOperationTracker::ERequestType::Checksum,
+            cookie);
 
         auto event = std::make_unique<IEventHandle>(
             MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
@@ -131,13 +143,16 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksUndelivery(
     const TEvDiskAgent::TEvChecksumDeviceBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    OnRequestFinished(ctx, ev->Cookie);
+
     const auto& device = DeviceRequests[ev->Cookie].Device;
-    LOG_WARN_S(
+    LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "ChecksumBlocks request #"
-            << GetRequestId(Request) << " undelivered. Disk id: "
-            << PartConfig->GetName() << " Device: " << LogDevice(device));
+        "%s ChecksumBlocks request #%lu undelivered. Device: %s",
+        LogTitle.GetWithTime().c_str(),
+        GetRequestId(Request),
+        LogDevice(device).c_str());
 
     // Ignore undelivered event. Wait for TEvWakeup.
 }
@@ -147,6 +162,8 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+
+    OnRequestFinished(ctx, ev->Cookie);
 
     if (HasError(msg->GetError())) {
         HandleError(ctx, msg->GetError(), EStatus::Fail);
@@ -238,9 +255,11 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
         std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
-        SelfId());
+        VolumeActorId,
+        SelfId(),
+        LogTitle.GetChild(GetCycleCount()));
 
-    RequestsInProgress.AddReadRequest(actorId, std::move(request));
+    RequestsInProgress.AddReadRequest(actorId, blockRange, std::move(request));
 }
 
 void TNonreplicatedPartitionActor::HandleChecksumBlocksCompleted(
@@ -249,8 +268,11 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocksCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Complete checksum blocks", SelfId().ToString().c_str());
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete checksum blocks",
+        LogTitle.GetWithTime().c_str());
 
     const auto requestBytes = msg->Stats.GetSysChecksumCounters().GetBlocksCount()
         * PartConfig->GetBlockSize();
@@ -259,7 +281,7 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocksCompleted(
     NetworkBytes += sizeof(ui64);   //  Checksum is sent as a 64-bit integer.
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
-    RequestsInProgress.RemoveRequest(ev->Sender);
+    RequestsInProgress.RemoveReadRequest(ev->Sender);
     OnRequestCompleted(*msg, ctx.Now());
     if (RequestsInProgress.Empty() && Poisoner) {
         ReplyAndDie(ctx);

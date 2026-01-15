@@ -20,9 +20,20 @@ public:
     void Accept(
         const TBlock& block,
         const TPartialBlobId& blobId,
-        ui32 blobOffset) override
+        ui32 blobOffset,
+        ui32 blocksCount) override
     {
-        Blocks.push_back({ block, blobId, blobOffset });
+        Blocks.emplace_back(block, blobId, blobOffset);
+
+        if (blocksCount > 1) {
+            auto b = block;
+            while (--blocksCount > 0) {
+                b.BlockIndex++;
+                blobOffset++;
+
+                Blocks.emplace_back(b, blobId, blobOffset);
+            }
+        }
     }
 
     TVector<TBlockDataRef> Finish()
@@ -97,10 +108,16 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
         mixedBlocks.RefRange(rangeId);
         mixedBlocks.AddBlocks(rangeId, TPartialBlobId(), std::move(list));
 
+        constexpr ui32 deletionOffset = 60;
+        constexpr ui32 deletedBlocksCount = 20;
+
         mixedBlocks.AddDeletionMarker(
             rangeId,
-            {nodeId, minCommitId + 2, blockIndex,blocksCount}
-        );
+            TDeletionMarker(
+                nodeId,
+                minCommitId + 2,
+                blockIndex + deletionOffset,
+                deletedBlocksCount));
 
         {
             TMixedBlockVisitor visitor;
@@ -115,11 +132,60 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
             auto blocks = visitor.Finish();
             UNIT_ASSERT_VALUES_EQUAL(blocks.size(), blocksCount);
 
-            for (size_t i = 0; i < blocksCount; ++i) {
+            for (size_t i = 0; i < deletionOffset; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].NodeId, nodeId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MinCommitId, minCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MaxCommitId, InvalidCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].BlockIndex, blockIndex + i);
+            }
+
+            for (size_t i = deletionOffset; i < deletionOffset + deletedBlocksCount; ++i) {
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].NodeId, nodeId);
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].MinCommitId, minCommitId);
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].MaxCommitId, minCommitId + 2);
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].BlockIndex, blockIndex + i);
+            }
+
+            Y_ABORT_UNLESS(deletionOffset + deletedBlocksCount < blocksCount);
+            for (size_t i = deletionOffset + deletedBlocksCount; i < blocksCount; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].NodeId, nodeId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MinCommitId, minCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MaxCommitId, InvalidCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].BlockIndex, blockIndex + i);
+            }
+        }
+
+        {
+            TMixedBlockVisitor visitor;
+            mixedBlocks.FindBlocks(
+                visitor,
+                rangeId,
+                nodeId,
+                minCommitId + 2, // commit id of the deletion
+                blockIndex,
+                blocksCount);
+
+            auto blocks = visitor.Finish();
+            const auto aliveBlocksCount = blocksCount - deletedBlocksCount;
+            // Deletion should not be seen
+            UNIT_ASSERT_VALUES_EQUAL(blocks.size(), aliveBlocksCount);
+
+            for (size_t i = 0; i < deletionOffset; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].NodeId, nodeId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MinCommitId, minCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MaxCommitId, InvalidCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].BlockIndex, blockIndex + i);
+            }
+
+            for (size_t i = deletionOffset; i < aliveBlocksCount; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].NodeId, nodeId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MinCommitId, minCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    blocks[i].MaxCommitId,
+                    InvalidCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    blocks[i].BlockIndex,
+                    blockIndex + i + deletedBlocksCount);
             }
         }
     }

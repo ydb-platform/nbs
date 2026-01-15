@@ -406,12 +406,9 @@ void TStatsServiceActor::PushYdbStats(const NActors::TActorContext& ctx)
         const auto now = ctx.Now();
 
         if (deadline < now) {
-            LOG_WARN(ctx, TBlockStoreComponents::STATS_SERVICE,
-                "YdbStatsRequest hanging, sent at %s, now %s",
-                YdbStatsRequestSentTs.ToString().c_str(),
-                now.ToString().c_str());
-
-            ReportHangingYdbStatsRequest();
+            ReportHangingYdbStatsRequest(
+                {{"YdbStatsRequestSentTs", YdbStatsRequestSentTs.ToString()},
+                 {"now", now.ToString()}});
         }
     }
 }
@@ -470,8 +467,8 @@ void TStatsServiceActor::HandleUploadDisksStats(
     StatsUploadScheduled = false;
 
     if (!VolumeIdQueueForYdbStatsUpload) {
-        for (auto& p: State.GetVolumes()) {
-            VolumeIdQueueForYdbStatsUpload.push_back(p.first);
+        for (const auto& [logicalDiskId, _]: State.GetVolumes()) {
+            VolumeIdQueueForYdbStatsUpload.push_back(logicalDiskId);
         }
     }
 

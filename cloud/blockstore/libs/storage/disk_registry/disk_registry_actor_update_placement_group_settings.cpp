@@ -18,13 +18,13 @@ void TDiskRegistryActor::HandleUpdatePlacementGroupSettings(
     auto* msg = ev->Get();
     auto& record = msg->Record;
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received UpdatePlacementGroupSettings request."
-        " GroupId=%s, ConfigVersion=%u, Settings=%s",
-        TabletID(),
-        record.GetGroupId().c_str(),
-        record.GetConfigVersion(),
-        record.GetSettings().DebugString().Quote().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received UpdatePlacementGroupSettings request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,

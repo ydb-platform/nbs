@@ -935,16 +935,13 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldCreateVolumeWithFreshChannelIfFeatureIsEnabledForCloud)
+    Y_UNIT_TEST(ShouldCreateVolumeWithFreshChannel)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
-        NProto::TFeaturesConfig featuresConfig;
-        auto* feature = featuresConfig.AddFeatures();
-        feature->SetName("AllocateFreshChannel");
-        auto* whitelist = feature->MutableWhitelist();
-        *whitelist->AddCloudIds() = "cloud_id";
-        ui32 nodeIdx = SetupTestEnv(env, config, featuresConfig);
+        config.SetFreshChannelCountHDD(1);
+        config.SetFreshChannelCountSSD(1);
+        ui32 nodeIdx = SetupTestEnv(env, config, {});
 
         auto& runtime = env.GetRuntime();
 
@@ -964,6 +961,33 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 1,
                 response->Record.GetVolume().GetFreshChannelsCount()
             );
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCreateVolumeWithFewFreshChannel)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetFreshChannelCountHDD(4);
+        ui32 nodeIdx = SetupTestEnv(env, config, {});
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume(
+            DefaultDiskId,
+            1024,
+            DefaultBlockSize,
+            TString(),  // folderId
+            "cloud_id"
+        );
+
+        {
+            auto response = service.DescribeVolume();
+            UNIT_ASSERT_VALUES_EQUAL(
+                4,
+                response->Record.GetVolume().GetFreshChannelsCount());
         }
     }
 
@@ -1716,6 +1740,30 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         UNIT_ASSERT(detectedCreateVolumeRequest);
     }
 
+    Y_UNIT_TEST(ShoudCreateVolumeWithSourceDiskIdTag)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        auto request = service.CreateCreateVolumeRequest();
+        (*request->Record.MutableTagsStr()) = "source-disk-id=disk-id";
+        service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+        auto response = service.RecvCreateVolumeResponse();
+        UNIT_ASSERT_C(response->GetStatus() == S_OK, response->GetErrorReason());
+
+        service.SendDescribeVolumeRequest();
+        {
+            auto response = service.RecvDescribeVolumeResponse();
+            UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                response->Record.GetVolume().GetTags().at("source-disk-id"),
+                "disk-id");
+        }
+    }
+
     Y_UNIT_TEST(ShoudSaveFillGeneration)
     {
         TTestEnv env;
@@ -1834,7 +1882,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         NProto::TStorageServiceConfig config;
         NProto::TFeaturesConfig featuresConfig;
         auto* feature = featuresConfig.AddFeatures();
-        feature->SetName("EncryptionAtRestForDiskRegistryBasedDisks");
+        feature->SetName("RootKmsEncryptionForDiskRegistryBasedDisks");
         feature->MutableWhitelist()->AddFolderIds("encrypted-folder");
 
         ui32 nodeIdx = SetupTestEnv(env, config, featuresConfig);
@@ -1858,7 +1906,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             auto response = service.DescribeVolume("vol0");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
             auto desc = response->Record.GetVolume().GetEncryptionDesc();
-            UNIT_ASSERT_EQUAL(NProto::ENCRYPTION_AT_REST, desc.GetMode());
+            UNIT_ASSERT_EQUAL(
+                NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY,
+                desc.GetMode());
             UNIT_ASSERT_VALUES_EQUAL("", desc.GetKeyHash());
             UNIT_ASSERT_VALUES_UNEQUAL("", desc.GetEncryptionKey().GetKekId());
             UNIT_ASSERT_VALUES_UNEQUAL(
@@ -1907,6 +1957,88 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 response->GetErrorReason().Contains(
                     "Encrypted overlay disks are not supported"),
                 response->GetErrorReason());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSetVhostDiscardEnabledFlagCorrectlyWhenCreateVolume)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        NProto::TFeaturesConfig featuresConfig;
+        auto* feature = featuresConfig.AddFeatures();
+        feature->SetName("EnableVhostDiscardForNewVolumes");
+        auto* whitelist = feature->MutableWhitelist();
+        *whitelist->AddCloudIds() = "cloud_with_discards";
+        ui32 nodeIdx = SetupTestEnv(env, config, featuresConfig);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        service.CreateVolume(
+            "ssd_in_cloud_with_discards",
+            1024,
+            DefaultBlockSize,
+            TString(),  // folderId
+            "cloud_with_discards",
+            NCloud::NProto::STORAGE_MEDIA_SSD
+        );
+
+        {
+            auto response = service.DescribeVolume("ssd_in_cloud_with_discards");
+            const auto& volume = response->Record.GetVolume();
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                static_cast<int>(volume.GetVhostDiscardEnabled()));
+        }
+
+        service.CreateVolume(
+            "ssd_in_cloud_without_discards",
+            1024,
+            DefaultBlockSize,
+            TString(),  // folderId
+            "cloud_without_discards",
+            NCloud::NProto::STORAGE_MEDIA_SSD
+        );
+
+        {
+            auto response = service.DescribeVolume("ssd_in_cloud_without_discards");
+            const auto& volume = response->Record.GetVolume();
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                static_cast<int>(volume.GetVhostDiscardEnabled()));
+        }
+
+        service.CreateVolume(
+            "ssd_nonrepl_in_cloud_with_discards",
+            93_GB / DefaultBlockSize,
+            DefaultBlockSize,
+            TString(),  // folderId
+            "cloud_with_discards",
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
+        );
+
+        {
+            auto response = service.DescribeVolume("ssd_nonrepl_in_cloud_with_discards");
+            const auto& volume = response->Record.GetVolume();
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                static_cast<int>(volume.GetVhostDiscardEnabled()));
+        }
+
+        service.CreateVolume(
+            "ssd_nonrepl_in_cloud_without_discards",
+            93_GB / DefaultBlockSize,
+            DefaultBlockSize,
+            TString(),  // folderId
+            "cloud_without_discards",
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
+        );
+
+        {
+            auto response = service.DescribeVolume("ssd_nonrepl_in_cloud_without_discards");
+            const auto& volume = response->Record.GetVolume();
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                static_cast<int>(volume.GetVhostDiscardEnabled()));
         }
     }
 }

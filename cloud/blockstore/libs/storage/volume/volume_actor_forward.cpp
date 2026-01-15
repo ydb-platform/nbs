@@ -180,10 +180,10 @@ bool TVolumeActor::HandleMultipartitionVolumeRequest(
         LOG_TRACE(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s Forward %s request to partition: %lu %s",
+            "%s Forward %s request to partition: %u (%s)",
             LogTitle.GetWithTime().c_str(),
             TMethod::Name,
-            partitionRequest.TabletId,
+            partitionRequest.PartitionId,
             ToString(partitionRequest.ActorId).data());
     }
 
@@ -328,6 +328,10 @@ void TVolumeActor::SendRequestToPartition(
             TMethod::Name,
             State->GetPartitions()[partitionId].TabletId,
             ToString(partActorId).data());
+
+        if constexpr (IsExactlyWriteMethod<TMethod>) {
+            CombineChecksumsInPlace(*ev->Get()->Record.MutableChecksums());
+        }
     }
 
     auto wrappedRequest = WrapRequest<TMethod>(
@@ -637,10 +641,25 @@ void TVolumeActor::ForwardRequest(
     auto* msg = ev->Get();
     auto now = GetCycleCount();
 
+    // Fill block range.
+    TBlockRange64 blockRange;
+    if constexpr (
+        IsReadOrWriteMethod<TMethod> || IsDescribeBlocksMethod<TMethod>)
+    {
+        blockRange = BuildRequestBlockRange(*msg, State->GetBlockSize());
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s ForwardRequest %s %s",
+        LogTitle.GetWithTime().c_str(),
+        TMethod::Name,
+        blockRange.Print().c_str());
+
     bool isTraced = false;
 
-    if (ev->Recipient != ev->GetRecipientRewrite())
-    {
+    if (IsForwardedEvent(*ev)) {
         if (TraceSerializer->IsTraced(msg->CallContext->LWOrbit)) {
             isTraced = true;
             now = msg->Record.GetHeaders().GetInternal().GetTraceTs();
@@ -732,15 +751,118 @@ void TVolumeActor::ForwardRequest(
 
     const auto& clientId = GetClientId(*msg);
     auto& clients = State->AccessClients();
-    auto clientsIt = clients.end();
 
+    /*
+     *  Validation for reads and writes for the leader and follower
+     */
+    if constexpr (IsReadOrWriteMethod<TMethod>) {
+        const bool isCopyingClient =
+            clientId == CopyVolumeClientId || clientId == DMCopyVolumeClientId;
+
+        auto makeMessage = [&](NLog::EPriority priority) -> TString
+        {
+            auto message = TStringBuilder()
+                           << "The client " << clientId.Quote()
+                           << " is not allowed to " << TMethod::Name
+                           << blockRange.Print() << " to disk with state "
+                           << ToString(State->GetLeadershipStatus()).Quote()
+                           << (State->GetPrincipalDiskId()
+                                   ? ". Reconnect to " +
+                                         State->GetPrincipalDiskId().Quote()
+                                   : "");
+            LOG_LOG(
+                ctx,
+                priority,
+                TBlockStoreComponents::VOLUME,
+                "%s %s",
+                LogTitle.GetWithTime().c_str(),
+                message.c_str());
+            return message;
+        };
+
+        if (isCopyingClient && !IsWriteMethod<TMethod>) {
+            // The CopyVolumeClientId is allowed to perform only write
+            // operations.
+            replyError(MakeError(E_ARGUMENT, makeMessage(NLog::PRI_ERROR)));
+            return;
+        }
+
+        switch (State->GetLeadershipStatus()) {
+            case ELeadershipStatus::Principal: {
+                if (isCopyingClient) {
+                    // The CopyVolumeClientId is allowed to perform operations
+                    // only on the disk with follower state.
+                    replyError(
+                        MakeError(E_REJECTED, makeMessage(NLog::PRI_INFO)));
+                    return;
+                }
+                break;
+            }
+            case ELeadershipStatus::Follower: {
+                if (!isCopyingClient) {
+                    // Any operations on the follower disk are prohibited for
+                    // an ordinary client.
+                    replyError(MakeError(
+                        E_PRECONDITION_FAILED,
+                        makeMessage(NLog::PRI_ERROR)));
+                    return;
+                }
+                break;
+            }
+            case ELeadershipStatus::LeadershipTransferring: {
+                if (isCopyingClient) {
+                    // The CopyVolumeClientId is allowed to perform operations
+                    // only on the disk with follower state.
+                    replyError(MakeError(
+                        E_PRECONDITION_FAILED,
+                        makeMessage(NLog::PRI_ERROR)));
+                    return;
+                }
+
+                // All operations are prohibited when leadership is being
+                // transferred.
+                replyError(MakeError(E_REJECTED, makeMessage(NLog::PRI_DEBUG)));
+                return;
+            }
+            case ELeadershipStatus::LeadershipTransferred: {
+                if (isCopyingClient) {
+                    // The CopyVolumeClientId is allowed to perform operations
+                    // only on the disk with follower state.
+                    replyError(MakeError(
+                        E_PRECONDITION_FAILED,
+                        makeMessage(NLog::PRI_ERROR)));
+                    return;
+                }
+
+                // It's time to switch the client to a new leader.
+                ui32 flags = 0;
+                SetProtoFlag(flags, NProto::EF_OUTDATED_VOLUME);
+                replyError(MakeError(
+                    E_BS_INVALID_SESSION,
+                    makeMessage(NLog::PRI_INFO),
+                    flags));
+                return;
+            }
+        }
+    }
+
+    auto clientsIt = clients.end();
     bool throttlingDisabled = false;
     bool forceWrite = false;
     bool predefinedClient = false;
     if constexpr (RequiresMount<TMethod>) {
         clientsIt = clients.find(clientId);
         if (clientsIt == clients.end()) {
-            if (clientId == CopyVolumeClientId && clients.empty()) {
+            if (clientId == CopyVolumeClientId) {
+                if (!clients.empty()) {
+                    replyError(MakeError(
+                        E_BS_INVALID_SESSION,
+                        TStringBuilder()
+                            << "Invalid session. Can't use " << clientId.Quote()
+                            << " when other clients exists for "
+                            << TMethod::Name << blockRange.Print()));
+                    return;
+                }
                 predefinedClient = true;
                 throttlingDisabled = true;
                 VolumeSelfCounters->Cumulative.ThrottlerSkippedRequests
@@ -799,7 +921,7 @@ void TVolumeActor::ForwardRequest(
             auto& clientInfo = clientsIt->second;
             NProto::TError error;
 
-            if (ev->Recipient != ev->GetRecipientRewrite()) {
+            if (IsForwardedEvent(*ev)) {
                 error = clientInfo.CheckPipeRequest(
                     ev->Recipient,
                     RequiresReadWriteAccess<TMethod>,
@@ -843,14 +965,6 @@ void TVolumeActor::ForwardRequest(
         }
     }
 
-    // Fill block range.
-    TBlockRange64 blockRange;
-    if constexpr (
-        IsReadOrWriteMethod<TMethod> || IsDescribeBlocksMethod<TMethod>)
-    {
-        blockRange = BuildRequestBlockRange(*msg, State->GetBlockSize());
-    }
-
     /*
      *  Validation of the request blocks range
      */
@@ -874,7 +988,7 @@ void TVolumeActor::ForwardRequest(
      *
      *  See https://github.com/ydb-platform/nbs/issues/2421
      */
-    if constexpr (IsWriteMethod<TMethod>) {
+    if constexpr (IsExactlyWriteMethod<TMethod>) {
         if (State->GetUseIntermediateWriteBuffer()) {
             CopySgListIntoRequestBuffers(*msg);
         }

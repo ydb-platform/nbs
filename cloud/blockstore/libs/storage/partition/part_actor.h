@@ -14,8 +14,10 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
+#include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
+#include <cloud/blockstore/libs/storage/core/partition_statistics_counters.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
@@ -137,7 +139,9 @@ private:
     // Requests in-progress
     TRunningActors Actors;
     TIntrusiveList<TRequestInfo> ActiveTransactions;
-    TDrainActorCompanion DrainActorCompanion{*this, TabletID()};
+    TDrainActorCompanion DrainActorCompanion{
+        *this,
+        PartitionConfig.GetDiskId()};
     ui32 WriteAndZeroRequestsInProgress = 0;
 
     TPartitionDiskCountersPtr PartCounters;
@@ -155,6 +159,8 @@ private:
     bool FirstGarbageCollectionCompleted = false;
 
     TTransactionTimeTracker TransactionTimeTracker;
+    TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
+    ui64 BSGroupOperationId = 0;
 
 public:
     TPartitionActor(
@@ -233,12 +239,21 @@ private:
         }
     }
 
+    TPartitionStatisticsCounters ExtractPartCounters(
+        const NActors::TActorContext& ctx);
+
     void SendStatsToService(const NActors::TActorContext& ctx);
 
     // IRequestsInProgress implementation:
     bool WriteRequestInProgress() const override
     {
         return WriteAndZeroRequestsInProgress != 0;
+    }
+
+    bool OverlapsWithWrites(TBlockRange64 range) const override
+    {
+        Y_UNUSED(range);
+        Y_ABORT("Unimplemented");
     }
 
     void WaitForInFlightWrites() override
@@ -540,6 +555,31 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
+    void HandleHttpInfo_GetTransactionsInflight(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_GetBSGroupOperationsInflight(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_GetGroupLatencies(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_ResetTransactionLatencyStats(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_ResetBSGroupLatencyStats(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
     void SendHttpResponse(
         const NActors::TActorContext& ctx,
         TRequestInfo& requestInfo,
@@ -692,6 +732,10 @@ private:
         const TVector<TAddMixedBlob>& mixedBlobs,
         const TVector<TAddMergedBlob>& mergedBlobs) const;
 
+    void HandleGetPartCountersRequest(
+        const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)
     BLOCKSTORE_PARTITION_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartitionPrivate)
     BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartitionCommonPrivate)
@@ -716,6 +760,7 @@ NProto::TError VerifyBlockChecksum(
     const NKikimr::TLogoBlobID& blobID,
     const ui64 blockIndex,
     const ui16 blobOffset,
-    const ui32 expectedChecksum);
+    const ui32 expectedChecksum,
+    const TString& diskId);
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

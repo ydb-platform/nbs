@@ -65,7 +65,7 @@ private:
         Y_UNUSED(orbit);
         Y_UNUSED(params);
 
-        throw TServiceError(Code) << Message;
+        STORAGE_THROW_SERVICE_ERROR(Code) << Message;
     }
 };
 

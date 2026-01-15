@@ -72,7 +72,6 @@ type taskMetrics struct {
 
 type runnerMetricsImpl struct {
 	registry               metrics.Registry
-	hangingTaskTimeout     time.Duration
 	exceptHangingTaskTypes []string
 	taskMetrics            *taskMetrics
 	taskMetricsMutex       sync.Mutex
@@ -220,13 +219,11 @@ func (m *runnerMetricsImpl) setTaskHanging(ctx context.Context, value bool) {
 func newRunnerMetrics(
 	ctx context.Context,
 	registry metrics.Registry,
-	hangingTaskTimeout time.Duration,
 	exceptHangingTaskTypes []string,
 ) *runnerMetricsImpl {
 
 	return &runnerMetricsImpl{
 		registry:               registry,
-		hangingTaskTimeout:     hangingTaskTimeout,
 		exceptHangingTaskTypes: exceptHangingTaskTypes,
 		onExecutionStopped:     func() {},
 		logger:                 logging.GetLogger(ctx),

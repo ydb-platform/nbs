@@ -83,9 +83,9 @@ expect()
 	r=`${fstest} $* 2>/dev/null | tail -1`
 	echo "${r}" | egrep '^'${e}'$' >/dev/null 2>&1
 	if [ $? -eq 0 ]; then
-		echo "ok ${ntest}"
+		echo "ok ${ntest} (line: ${BASH_LINENO[0]})"
 	else
-		echo "not ok ${ntest}"
+		echo "not ok ${ntest} (line: ${BASH_LINENO[0]})"
         echo "$(log_tag) not ok -- $@: $r expected $e" 1>&2
 	fi
 
@@ -98,12 +98,12 @@ jexpect()
 	d="${2}"
 	e="${3}"
 	shift 3
-	r=`jail -s ${s} / fstest 127.0.0.1 /bin/sh -c "cd ${d} && ${fstest} $* 2>/dev/null" | tail -1`
+	r=`jail -s ${s} / fstest 127.0.0.1 /bin/bash -c "cd ${d} && ${fstest} $* 2>/dev/null" | tail -1`
 	echo "${r}" | egrep '^'${e}'$' >/dev/null 2>&1
 	if [ $? -eq 0 ]; then
-		echo "ok ${ntest}"
+		echo "ok ${ntest} (line: ${BASH_LINENO[0]})"
     else
-        echo "not ok ${ntest}"
+        echo "not ok ${ntest} (line: ${BASH_LINENO[0]})"
 	fi
 	ntest=`expr $ntest + 1`
 }
@@ -111,9 +111,20 @@ jexpect()
 test_check()
 {
 	if [ $* ]; then
-		echo "ok ${ntest}"
+		echo "ok ${ntest} (line: ${BASH_LINENO[0]})"
 	else
-		echo "not ok ${ntest}"
+		echo "not ok ${ntest} (line: ${BASH_LINENO[0]})"
+        echo "$(log_tag) check failed -- $@" 1>&2
+	fi
+	ntest=`expr $ntest + 1`
+}
+
+test_check_quoted()
+{
+	if [ "$@" ]; then
+		echo "ok ${ntest} (line: ${BASH_LINENO[0]})"
+	else
+		echo "not ok ${ntest} (line: ${BASH_LINENO[0]})"
         echo "$(log_tag) check failed -- $@" 1>&2
 	fi
 	ntest=`expr $ntest + 1`
@@ -154,4 +165,140 @@ require()
 		return
 	fi
 	quick_exit
+}
+
+create_nested_dirs() {
+    local path=""
+    for token in "$@"; do
+        if [ -z "$path" ]; then
+            path="$token"
+        else
+            path="$path/$token"
+        fi
+        mkdir "$path"
+    done
+}
+
+rm_nested_dirs() {
+    local path=""
+
+    for token in "$@"; do
+        if [ -z "$path" ]; then
+            path="$token"
+        else
+            path="$path/$token"
+        fi
+    done
+
+    while [ -n "$path" ]; do
+        rmdir "$path"
+        case "$path" in
+            */*)
+                path="${path%/*}"
+                ;;
+            *)
+                path=""
+                ;;
+        esac
+    done
+}
+
+# POSIX:
+# {PATH_MAX}
+#     Maximum number of bytes in a pathname, including the terminating null character.
+dirgen_max()
+{
+	name_max=`${fstest} pathconf . _PC_NAME_MAX`
+	complen=$((name_max/2))
+	path_max=`${fstest} pathconf . _PC_PATH_MAX`
+	# "...including the terminating null character."
+	path_max=$((path_max-1))
+
+	name=""
+	while :; do
+		name="${name}`namegen_len ${complen}`/"
+		curlen=`printf "%s" "${name}" | wc -c`
+		[ ${curlen} -lt ${path_max} ] || break
+	done
+	name=`echo "${name}" | cut -b -${path_max}`
+	name=`echo "${name}" | sed -E 's@/$@x@'`
+	printf "%s" "${name}"
+}
+
+
+# usage:
+#	create_file <type> <name>
+#	create_file <type> <name> <mode>
+#	create_file <type> <name> <uid> <gid>
+#	create_file <type> <name> <mode> <uid> <gid>
+create_file() {
+	type="${1}"
+	name="${2}"
+
+	case "${type}" in
+	none)
+		return
+		;;
+	regular)
+		expect 0 create ${name} 0644
+		;;
+	dir)
+		expect 0 mkdir ${name} 0755
+		;;
+	fifo)
+		expect 0 mkfifo ${name} 0644
+		;;
+	block)
+		expect 0 mknod ${name} b 0644 1 2
+		;;
+	char)
+		expect 0 mknod ${name} c 0644 1 2
+		;;
+	socket)
+		expect 0 bind ${name}
+		;;
+	symlink)
+		expect 0 symlink test ${name}
+		;;
+	esac
+	if [ -n "${3}" -a -n "${4}" -a -n "${5}" ]; then
+		if [ "${type}" = symlink ]; then
+			expect 0 lchmod ${name} ${3}
+		else
+			expect 0 chmod ${name} ${3}
+		fi
+		expect 0 lchown ${name} ${4} ${5}
+	elif [ -n "${3}" -a -n "${4}" ]; then
+		expect 0 lchown ${name} ${3} ${4}
+	elif [ -n "${3}" ]; then
+		if [ "${type}" = symlink ]; then
+			expect 0 lchmod ${name} ${3}
+		else
+			expect 0 chmod ${name} ${3}
+		fi
+	fi
+}
+
+# POSIX:
+# {NAME_MAX}
+#     Maximum number of bytes in a filename (not including terminating null).
+namegen_max()
+{
+	name_max=`${fstest} pathconf . _PC_NAME_MAX`
+	namegen_len ${name_max}
+}
+
+namegen_len()
+{
+	len="${1}"
+
+	name=""
+	while :; do
+		namepart="`dd if=/dev/urandom bs=64 count=1 2>/dev/null | openssl md5 | awk '{print $NF}'`"
+		name="${name}${namepart}"
+		curlen=`printf "%s" "${name}" | wc -c`
+		[ ${curlen} -lt ${len} ] || break
+	done
+	name=`echo "${name}" | cut -b -${len}`
+	printf "%s" "${name}"
 }

@@ -52,6 +52,11 @@ TOptionsCommon::TOptionsCommon()
         .DefaultValue("")
         .StoreResult(&RdmaConfig);
 
+    Opts.AddLongOption("cells-file")
+        .RequiredArgument("FILE")
+        .DefaultValue("")
+        .StoreResult(&CellsConfig);
+
     Opts.AddLongOption("temporary-server", "run temporary server for blue-green deployment")
         .NoArgument()
         .StoreTrue(&TemporaryServer);

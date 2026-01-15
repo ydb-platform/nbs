@@ -11,8 +11,10 @@ RECURSE_FOR_TESTS(
     client_sharded
     client_sharded_dir
     client_sharded_dir_resize
+    client_two_stage_read
     close_to_open_consistency
     config_dispatcher
+    directory_handles
     endpoints
     fio
     fio_index

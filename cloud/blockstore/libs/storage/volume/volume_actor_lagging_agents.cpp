@@ -57,19 +57,21 @@ void TVolumeActor::HandleReportLaggingDevicesToDR(
 void TVolumeActor::ReportOutdatedLaggingDevicesToDR(
     const NActors::TActorContext& ctx)
 {
-    if (!State || State->GetMeta().GetLaggingAgentsInfo().GetAgents().empty()) {
+    if (!State) {
+        return;
+    }
+
+    State->FillOutdatedDevices();
+    const auto& outdatedDevices = State->GetOutdatedDevices();
+    if (outdatedDevices.empty()) {
         return;
     }
 
     auto request = std::make_unique<
         TEvDiskRegistry::TEvAddOutdatedLaggingDevicesRequest>();
     *request->Record.MutableDiskId() = State->GetDiskId();
-    for (const auto& laggingAgent:
-         State->GetMeta().GetLaggingAgentsInfo().GetAgents())
-    {
-        for (const auto& laggingDevice: laggingAgent.GetDevices()) {
-            *request->Record.AddOutdatedLaggingDevices() = laggingDevice;
-        }
+    for (const auto& outdatedDevice: outdatedDevices) {
+        *request->Record.AddOutdatedLaggingDevices() = outdatedDevice;
     }
     NCloud::Send(
         ctx,
@@ -108,7 +110,7 @@ void TVolumeActor::HandleDeviceTimedOut(
     const TEvVolumePrivate::TEvDeviceTimedOutRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
 
     LOG_DEBUG(
         ctx,
@@ -128,72 +130,13 @@ void TVolumeActor::HandleDeviceTimedOut(
         return;
     }
 
-    if (UpdateVolumeConfigInProgress) {
-        NCloud::Reply(
-            ctx,
-            *ev,
-            std::make_unique<TEvVolumePrivate::TEvDeviceTimedOutResponse>(
-                MakeError(E_REJECTED, "Volume config update in progress")));
-        return;
-    }
-
-    const auto& meta = State->GetMeta();
-    if (State->IsMirrorResyncNeeded() || meta.GetResyncIndex() > 0) {
-        NCloud::Reply(
-            ctx,
-            *ev,
-            std::make_unique<TEvVolumePrivate::TEvDeviceTimedOutResponse>(
-                MakeError(
-                    E_INVALID_STATE,
-                    "Resync is in progress, can't have lagging devices")));
-        return;
-    }
-
-    const NProto::TDeviceConfig* timedOutDeviceConfig =
-        FindDeviceConfig(meta, msg->DeviceUUID);
-    if (!timedOutDeviceConfig) {
-        LOG_WARN(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "%s Could not find config with device %s",
-            LogTitle.GetWithTime().c_str(),
-            msg->DeviceUUID.c_str());
-
-        auto response =
-            std::make_unique<TEvVolumePrivate::TEvDeviceTimedOutResponse>(
-                MakeError(
-                    E_NOT_FOUND,
-                    TStringBuilder() << "Could not find config with device "
-                                     << msg->DeviceUUID));
-        NCloud::Reply(ctx, *ev, std::move(response));
-        return;
-    }
-
-    const auto timedOutDeviceReplicaIndex =
-        FindReplicaIndexByAgentId(meta, timedOutDeviceConfig->GetAgentId());
-    Y_DEBUG_ABORT_UNLESS(timedOutDeviceReplicaIndex);
-
-    TVector<NProto::TLaggingDevice> timedOutAgentDevices =
-        CollectLaggingDevices(
-            meta,
-            *timedOutDeviceReplicaIndex,
-            timedOutDeviceConfig->GetAgentId());
-    Y_DEBUG_ABORT_UNLESS(!timedOutAgentDevices.empty());
-
-    NProto::TLaggingAgent unavailableAgent;
-    unavailableAgent.SetAgentId(timedOutDeviceConfig->GetAgentId());
-    unavailableAgent.SetReplicaIndex(*timedOutDeviceReplicaIndex);
-    unavailableAgent.MutableDevices()->Assign(
-        std::make_move_iterator(timedOutAgentDevices.begin()),
-        std::make_move_iterator(timedOutAgentDevices.end()));
-
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     AddTransaction(*requestInfo);
     ExecuteTx<TAddLaggingAgent>(
         ctx,
         std::move(requestInfo),
-        std::move(unavailableAgent));
+        std::move(msg->DeviceUUID));
 }
 
 void TVolumeActor::HandleUpdateLaggingAgentMigrationState(
@@ -271,8 +214,60 @@ void TVolumeActor::ExecuteAddLaggingAgent(
     ITransactionBase::TTransactionContext& tx,
     TTxVolume::TAddLaggingAgent& args)
 {
-    Y_DEBUG_ABORT_UNLESS(!args.Agent.GetDevices().empty());
+    if (UpdateVolumeConfigInProgress) {
+        args.Error = MakeError(E_REJECTED, "Volume config update in progress");
+        return;
+    }
+
     const auto& meta = State->GetMeta();
+    if (State->IsMirrorResyncNeeded() || meta.GetResyncIndex() > 0) {
+        args.Error = MakeError(
+            E_INVALID_STATE,
+            "Resync is in progress, can't have lagging devices");
+        return;
+    }
+
+    const NProto::TDeviceConfig* timedOutDeviceConfig =
+        FindDeviceConfig(meta, args.TimedOudDeviceUUID);
+    if (!timedOutDeviceConfig) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Could not find config with device %s",
+            LogTitle.GetWithTime().c_str(),
+            args.TimedOudDeviceUUID.c_str());
+
+        args.Error = MakeError(
+            E_NOT_FOUND,
+            TStringBuilder() << "Could not find config with device "
+                             << args.TimedOudDeviceUUID);
+        return;
+    }
+
+    const auto timedOutDeviceReplicaIndex =
+        FindReplicaIndexByAgentId(meta, timedOutDeviceConfig->GetAgentId());
+    Y_DEBUG_ABORT_UNLESS(timedOutDeviceReplicaIndex);
+
+    TVector<NProto::TLaggingDevice> timedOutAgentDevices =
+        CollectLaggingDevices(
+            meta,
+            *timedOutDeviceReplicaIndex,
+            timedOutDeviceConfig->GetAgentId());
+    Y_DEBUG_ABORT_UNLESS(!timedOutAgentDevices.empty());
+
+    args.Agent.SetAgentId(timedOutDeviceConfig->GetAgentId());
+    args.Agent.SetReplicaIndex(*timedOutDeviceReplicaIndex);
+    args.Agent.MutableDevices()->Assign(
+        std::make_move_iterator(timedOutAgentDevices.begin()),
+        std::make_move_iterator(timedOutAgentDevices.end()));
+
+    if (!State->GetOutdatedDevices().empty()) {
+        args.Error = MakeError(
+            E_REJECTED,
+            "Disk is soon to be reallocated to remove outdated devices");
+        return;
+    }
+
     for (const auto& laggingAgent: meta.GetLaggingAgentsInfo().GetAgents()) {
         // Whether the agent is lagging already.
         if (laggingAgent.GetAgentId() == args.Agent.GetAgentId()) {

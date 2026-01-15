@@ -72,7 +72,10 @@ private:
                 HandleRegisterTrafficSource);
 
             default:
-                Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
+                Y_ABORT(
+                    "Unexpected event %x %s",
+                    ev->GetTypeRewrite(),
+                    ev->GetTypeName().c_str());
         }
     }
 
@@ -125,6 +128,7 @@ class TDummyActor final
 {
 private:
     TMigrationStatePtr MigrationState;
+    ui64 VolumeRequestIdGenerator = 0;
 
 public:
     TDummyActor(TMigrationStatePtr migrationState = nullptr)
@@ -154,6 +158,9 @@ private:
 
             HFunc(TEvVolume::TEvPreparePartitionMigrationRequest, HandlePreparePartitionMigration);
             HFunc(TEvVolume::TEvUpdateMigrationState, HandleUpdateMigrationState);
+            HFunc(
+                TEvVolumePrivate::TEvTakeVolumeRequestIdRequest,
+                HandleTakeVolumeRequestId);
 
             IgnoreFunc(TEvVolume::TEvReacquireDisk);
 
@@ -161,7 +168,10 @@ private:
             IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest);
 
             default:
-                Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
+                Y_ABORT(
+                    "Unexpected event %x %s",
+                    ev->GetTypeRewrite(),
+                    ev->GetTypeName().c_str());
         }
     }
 
@@ -255,6 +265,17 @@ private:
             *ev,
             std::make_unique<TEvVolume::TEvMigrationStateUpdated>());
     }
+
+    void HandleTakeVolumeRequestId(
+        const TEvVolumePrivate::TEvTakeVolumeRequestIdRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdResponse>(
+                ++VolumeRequestIdGenerator));
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -276,7 +297,10 @@ private:
             HFunc(TEvService::TEvAddTagsRequest, HandleAddTagsRequest);
 
             default:
-                Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
+                Y_ABORT(
+                    "Unexpected event %x %s",
+                    ev->GetTypeRewrite(),
+                    ev->GetTypeName().c_str());
         }
     }
 
@@ -400,6 +424,30 @@ public:
         return request;
     }
 
+    auto CreateMultiAgentWriteRequest(
+        const TBlockRange64& blockRange,
+        TVector<TEvNonreplPartitionPrivate::TGetDeviceForRangeResponse>
+            devicesAndRanges,
+        char fill,
+        ui32 blocksInBuffer = 1)
+    {
+        auto request = std::make_unique<
+            TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest>();
+
+        request->Record.SetStartIndex(blockRange.Start);
+        for (ui32 i = 0; i < blockRange.Size(); i += blocksInBuffer) {
+            auto& b = *request->Record.MutableBlocks()->AddBuffers();
+            b.resize(
+                Min<ui32>(blocksInBuffer, (blockRange.Size() - i)) * BlockSize,
+                fill);
+        }
+        request->Record.BlockSize = BlockSize;
+        request->Record.Range = blockRange;
+        request->Record.DevicesAndRanges = std::move(devicesAndRanges);
+
+        return request;
+    }
+
     auto CreateZeroBlocksRequest(const TBlockRange64& blockRange)
     {
         auto request = std::make_unique<TEvService::TEvZeroBlocksRequest>();
@@ -445,25 +493,12 @@ public:
     }
 
     std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
-    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, bool calculateChecksums = false)
+    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size)
     {
         auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
         request->Record.SetDiskId(id);
         request->Record.SetStartIndex(startIndex);
         request->Record.SetBlocksCount(size);
-        request->Record.SetCalculateChecksums(calculateChecksums);
-        return request;
-    }
-
-    std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
-    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, ui32 replicaCount, bool calculateChecksums = false)
-    {
-        auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
-        request->Record.SetDiskId(id);
-        request->Record.SetStartIndex(startIndex);
-        request->Record.SetBlocksCount(size);
-        request->Record.SetCalculateChecksums(calculateChecksums);
-        request->Record.mutable_headers()->SetReplicaCount(replicaCount);
         return request;
     }
 
@@ -531,6 +566,7 @@ public:
     BLOCKSTORE_DECLARE_METHOD(CheckRange, TEvVolume);
     BLOCKSTORE_DECLARE_METHOD(ChecksumBlocks, TEvNonreplPartitionPrivate);
     BLOCKSTORE_DECLARE_METHOD(LockAndDrainRange, NPartition::TEvPartition);
+    BLOCKSTORE_DECLARE_METHOD(MultiAgentWrite, TEvNonreplPartitionPrivate);
 
 #undef BLOCKSTORE_DECLARE_METHOD
 };

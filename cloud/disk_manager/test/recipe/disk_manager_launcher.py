@@ -55,7 +55,9 @@ TasksConfig: <
     ClearEndedTasksLimit: 10
     MaxRetriableErrorCount: 1000
     MaxPanicCount: 1
-    HangingTaskTimeout: "100s"
+    HangingTaskTimeout: "24h"
+    InflightHangingTaskTimeout: "100s"
+    StallingHangingTaskTimeout: "30m"
 >
 NfsConfig: <
     Zones: <
@@ -123,8 +125,8 @@ NbsConfig: <
         key: "zone-d"
         value: <
             Endpoints: [
-                "localhost:{nbs2_port}",
-                "localhost:{nbs2_port}"
+                "localhost:{nbs4_port}",
+                "localhost:{nbs4_port}"
             ]
         >
     >
@@ -132,8 +134,8 @@ NbsConfig: <
         key: "zone-d-shard1"
         value: <
             Endpoints: [
-                "localhost:{nbs3_port}",
-                "localhost:{nbs3_port}"
+                "localhost:{nbs5_port}",
+                "localhost:{nbs5_port}"
             ]
         >
     >
@@ -142,6 +144,39 @@ NbsConfig: <
     UseGZIPCompression: true
 >
 CellsConfig: <
+    CellSelectionPolicy: {cell_selection_policy}
+    Cells: <
+        key: "zone-a"
+        value: <
+            Cells: [
+                "zone-a"
+            ]
+        >
+    >
+    Cells: <
+        key: "zone-b"
+        value: <
+            Cells: [
+                "zone-b"
+            ]
+        >
+    >
+    Cells: <
+        key: "zone-c"
+        value: <
+            Cells: [
+                "zone-c"
+            ]
+        >
+    >
+    Cells: <
+        key: "no_dataplane"
+        value: <
+            Cells: [
+                "no_dataplane"
+            ]
+        >
+    >
     Cells: <
         key: "zone-d"
         value: <
@@ -151,6 +186,7 @@ CellsConfig: <
             ]
         >
     >
+    ScheduleCollectClusterCapacityTask: false
 >
 DisksConfig: <
     DeletedDiskExpirationTimeout: "1s"
@@ -274,7 +310,9 @@ TasksConfig: <
     ClearEndedTasksLimit: 10
     MaxRetriableErrorCount: 1000
     MaxPanicCount: 1
-    HangingTaskTimeout: "100s"
+    HangingTaskTimeout: "24h"
+    InflightHangingTaskTimeout: "100s"
+    StallingHangingTaskTimeout: "30m"
 >
 NbsConfig: <
     Zones: <
@@ -308,8 +346,8 @@ NbsConfig: <
         key: "zone-d"
         value: <
             Endpoints: [
-                "localhost:{nbs2_port}",
-                "localhost:{nbs2_port}"
+                "localhost:{nbs4_port}",
+                "localhost:{nbs4_port}"
             ]
         >
     >
@@ -317,8 +355,8 @@ NbsConfig: <
         key: "zone-d-shard1"
         value: <
             Endpoints: [
-                "localhost:{nbs3_port}",
-                "localhost:{nbs3_port}"
+                "localhost:{nbs5_port}",
+                "localhost:{nbs5_port}"
             ]
         >
     >
@@ -448,6 +486,8 @@ class DiskManagerLauncher:
         nbs_port,
         nbs2_port,
         nbs3_port,
+        nbs4_port,
+        nbs5_port,
         metadata_url,
         root_certs_file,
         idx,
@@ -472,6 +512,7 @@ class DiskManagerLauncher:
         migration_dst_s3_credentials_file=None,
         migrating_snapshots_inflight_limit=None,
         retry_broken_disk_registry_based_disk_checkpoint=False,
+        cell_selection_policy="FIRST_IN_CONFIG",
     ):
         self.__idx = idx
 
@@ -511,6 +552,8 @@ class DiskManagerLauncher:
                     nbs_port=nbs_port,
                     nbs2_port=nbs2_port,
                     nbs3_port=nbs3_port,
+                    nbs4_port=nbs4_port,
+                    nbs5_port=nbs5_port,
                     monitoring_port=self.__monitoring_port,
                     restarts_count_file=self.__restarts_count_file,
                     metadata_url=metadata_url,
@@ -550,6 +593,8 @@ class DiskManagerLauncher:
                     nbs_port=nbs_port,
                     nbs2_port=nbs2_port,
                     nbs3_port=nbs3_port,
+                    nbs4_port=nbs4_port,
+                    nbs5_port=nbs5_port,
                     monitoring_port=self.__monitoring_port,
                     restarts_count_file=self.__restarts_count_file,
                     metadata_url=metadata_url,
@@ -560,6 +605,7 @@ class DiskManagerLauncher:
                     disable_disk_registry_based_disks="true" if disable_disk_registry_based_disks else "false",
                     use_s3_percentage="0" if s3_port is None else "100",
                     retry_broken_disk_registry_based_disk_checkpoint=retry_broken_disk_registry_based_disk_checkpoint,
+                    cell_selection_policy=cell_selection_policy,
                 )
                 f.write(self.__server_config)
 

@@ -10,6 +10,7 @@ from cloud.blockstore.config.disk_pb2 import TDiskRegistryProxyConfig
 from cloud.blockstore.config.root_kms_pb2 import TRootKmsConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TKikimrServiceConfig, TServerConfig, TLocation
+from cloud.blockstore.config.cells_pb2 import TCellsConfig
 from cloud.storage.core.config.features_pb2 import TFeaturesConfig
 from cloud.storage.core.tools.common.python.core_pattern import core_pattern
 from cloud.storage.core.tools.common.python.daemon import Daemon
@@ -38,11 +39,13 @@ class LocalNbs(Daemon):
             contract_validation=False,
             config_sub_folder=None,
             storage_config_patches=None,
+            cells_config=None,
             tracking_enabled=False,
             enable_access_service=False,
             enable_tls=False,
             discovery_config=None,
             restart_interval=None,
+            suspend_restarts=False,
             dynamic_storage_pools=None,
             load_configs_from_cms=False,
             nbs_secure_port=None,
@@ -113,6 +116,7 @@ class LocalNbs(Daemon):
         self.__server_app_config = server_app_config
         self.contract_validation = contract_validation
         self.storage_config_patches = storage_config_patches
+        self.cells_config = cells_config
         self.features_config_patch = features_config_patch
         self.client_config_patch = client_config_patch
         self.tracking_enabled = tracking_enabled
@@ -128,6 +132,7 @@ class LocalNbs(Daemon):
             "server-sys.txt": self.__generate_server_sys_txt(),
             "server.txt": self.__generate_server_txt(),
             "storage.txt": self.__generate_storage_txt(),
+            "cells.txt": self.__generate_cells_txt(),
             "features.txt": self.__generate_features_txt(),
             "dyn_ns.txt": self.__generate_dyn_ns_txt(),
             "dr_proxy.txt": self.__generate_dr_proxy_txt(),
@@ -175,6 +180,7 @@ class LocalNbs(Daemon):
         self.__load_configs_from_cms = load_configs_from_cms
         self.__use_ic_version_check = use_ic_version_check
         self.__restart_interval = restart_interval
+        self.__restart_allowed = restart_interval and not suspend_restarts
         self.__ping_path = ping_path
         self.__use_secure_registration = use_secure_registration
 
@@ -189,17 +195,16 @@ class LocalNbs(Daemon):
         if self.__binary_path:
             cp = core_pattern(self.__binary_path, self.__cwd)
 
-        restart_allowed = False
-        if self.__restart_interval is not None:
-            restart_allowed = True
-
         commands = self.__make_start_commands()
         logger.info("commands is {}".format(commands))
         super(LocalNbs, self).__init__(
-            commands=commands, cwd=self.__cwd,
-            restart_allowed=restart_allowed,
-            restart_interval=self.__restart_interval, ping_port=self.__mon_port,
-            ping_path=self.__ping_path, ping_success_codes=[200],
+            commands=commands,
+            cwd=self.__cwd,
+            restart_interval=self.__restart_interval,
+            restart_allowed=self.__restart_allowed,
+            ping_port=self.__mon_port,
+            ping_path=self.__ping_path,
+            ping_success_codes=[200],
             core_pattern=cp)
 
     @staticmethod
@@ -372,6 +377,12 @@ ModifyScheme {
         else:
             server = self.__server_app_config
         return server
+
+    def __generate_cells_txt(self):
+        cells = TCellsConfig()
+        if self.cells_config is not None:
+            cells.CopyFrom(self.cells_config)
+        return cells
 
     def __generate_server_sys_txt(self):
         sys_config = TActorSystemConfig()

@@ -5,6 +5,7 @@ SRCS(
     compound_storage.cpp
     file_io_service_provider.cpp
     rdma_protocol.cpp
+    safe_deallocator.cpp
     service_local.cpp
     storage_local.cpp
     storage_null.cpp

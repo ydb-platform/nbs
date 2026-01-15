@@ -851,13 +851,12 @@ public:
     }
 
     std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
-    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, bool calculateChecksums = false)
+    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size)
     {
         auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
         request->Record.SetDiskId(id);
         request->Record.SetStartIndex(startIndex);
         request->Record.SetBlocksCount(size);
-        request->Record.SetCalculateChecksums(calculateChecksums);
         return request;
     }
 
@@ -7483,15 +7482,15 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         writeData(partition1);
         writeData(partition2);
 
-        const auto response1 = partition1.CheckRange("id", 0, 1024, true);
-        const auto response2 = partition2.CheckRange("id", 0, 1024, true);
+        const auto response1 = partition1.CheckRange("id", 0, 1024);
+        const auto response2 = partition2.CheckRange("id", 0, 1024);
 
         TDispatchOptions options;
         options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
         runtime->DispatchEvents(options, TDuration::Seconds(3));
 
-        const auto& checksums1 = response1->Record.GetChecksums();
-        const auto& checksums2 = response2->Record.GetChecksums();
+        const auto& checksums1 = response1->Record.GetDiskChecksums().GetData();
+        const auto& checksums2 = response2->Record.GetDiskChecksums().GetData();
 
         ASSERT_VECTORS_EQUAL(
             TVector<ui32>(checksums1.begin(), checksums1.end()),
@@ -7518,15 +7517,15 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             TBlockRange32::MakeClosedInterval(0, 1024 * 10),
             99);
 
-        const auto response1 = partition1.CheckRange("id", 0, 1024, true);
-        const auto response2 = partition2.CheckRange("id", 0, 1024, true);
+        const auto response1 = partition1.CheckRange("id", 0, 1024);
+        const auto response2 = partition2.CheckRange("id", 0, 1024);
 
         TDispatchOptions options;
         options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
         runtime->DispatchEvents(options, TDuration::Seconds(3));
 
-        const auto& checksums1 = response1->Record.GetChecksums();
-        const auto& checksums2 = response2->Record.GetChecksums();
+        const auto& checksums1 = response1->Record.GetDiskChecksums().GetData();
+        const auto& checksums2 = response2->Record.GetDiskChecksums().GetData();
 
         UNIT_ASSERT_VALUES_EQUAL(
             checksums1.size(),
@@ -7610,6 +7609,106 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         UNIT_ASSERT_VALUES_EQUAL(
             blobCount,
             response->Record.FailInfo.FailedRanges.size());
+    }
+
+    Y_UNIT_TEST(ShouldSendPartitionStatistics)
+    {
+        auto config = DefaultConfig();
+        config.SetUsePullSchemeForVolumeStatistics(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        bool partitionStatisticsSent = false;
+
+        auto _ = runtime->AddObserver<
+            TEvPartitionCommonPrivate::TEvGetPartCountersResponse>(
+            [&](TEvPartitionCommonPrivate::TEvGetPartCountersResponse::TPtr& ev)
+            {
+                Y_UNUSED(ev);
+                partitionStatisticsSent = true;
+            });
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.SendToPipe(
+            std::make_unique<
+                TEvPartitionCommonPrivate::TEvGetPartCountersRequest>());
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime->DispatchEvents();
+
+        // Check that partition sent statistics
+        UNIT_ASSERT(partitionStatisticsSent);
+    }
+
+    Y_UNIT_TEST(ShouldRaiseCriticalEventIfTrimFreshLogTimesOut)
+    {
+        constexpr ui32 FreshChannelId = 4;
+
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFlushThreshold(4_MB);
+        config.SetTrimFreshLogTimeout(TDuration::Seconds(1).MilliSeconds());
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        NMonitoring::TDynamicCountersPtr counters
+            = new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto trimCounter =
+            counters->GetCounter("AppCriticalEvents/TrimFreshLogTimeout", true);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetFreshBlocksCount());
+        }
+
+        bool trimSeen = false;
+        bool trimCompletedSeen = false;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvCollectGarbageResult: {
+                        auto* msg =
+                            event->Get<TEvBlobStorage::TEvCollectGarbageResult>();
+                        if (msg->Channel == FreshChannelId) {
+                            trimSeen = true;
+                            msg->Status = NKikimrProto::EReplyStatus::DEADLINE;
+                        }
+                        break;
+                    }
+                    case TEvPartitionCommonPrivate::EvTrimFreshLogCompleted: {
+                        auto* msg = event->Get<TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted>();
+                        UNIT_ASSERT(FAILED(msg->GetStatus()));
+                        trimCompletedSeen = true;
+                        break;
+                    }
+                }
+                return false;
+            }
+        );
+
+        partition.Flush();
+
+        // wait for trimfreshlog to complete
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&] {
+            return trimCompletedSeen;
+        };
+        runtime->DispatchEvents(options);
+
+        UNIT_ASSERT_VALUES_EQUAL(true, trimSeen);
+        UNIT_ASSERT_VALUES_UNEQUAL(0, trimCounter->Val());
     }
 }
 

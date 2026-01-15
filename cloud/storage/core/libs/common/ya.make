@@ -1,5 +1,7 @@
 LIBRARY()
 
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
+
 GENERATE_ENUM_SERIALIZATION(error.h)
 
 SRCS(
@@ -9,10 +11,12 @@ SRCS(
     backoff_delay_provider.cpp
     block_buffer.cpp
     block_data_ref.cpp
+    byte_range.cpp
     byte_vector.cpp
     compressed_bitmap.cpp
     concurrent_queue.cpp
     context.cpp
+    disjoint_interval_map.cpp
     error.cpp
     file_io_service.cpp
     file_ring_buffer.cpp
@@ -23,6 +27,7 @@ SRCS(
     lru_cache.cpp
     media.cpp
     page_size.cpp
+    dynamic_persistent_table.cpp
     persistent_table.cpp
     proto_helpers.cpp
     random.cpp
@@ -34,6 +39,7 @@ SRCS(
     sglist.cpp
     sglist_iter.cpp
     sglist_test.cpp
+    size_interval.cpp
     startable.cpp
     task_queue.cpp
     thread.cpp

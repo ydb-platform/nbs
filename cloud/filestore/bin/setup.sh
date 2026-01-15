@@ -62,3 +62,6 @@ done
 
 # Generate certs
 generate_cert "server" "$BIN_DIR/certs"
+
+# Allow filestore to access /run/qemu
+sudo chmod 777 /run/qemu

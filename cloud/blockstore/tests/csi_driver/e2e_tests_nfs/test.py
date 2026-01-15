@@ -70,9 +70,11 @@ def test_volume_lifecycle_local_fs():
 
     env, run = csi.init(vm_mode=True, external_fs_configs=[fs_config])
     try:
-        env.csi.stage_volume(fs_name, "mount", is_nfs=True)
+        env.csi.stage_volume(fs_name, "mount", is_nfs=True, vhost_request_queues_count=4)
         # repeated stage should be ok
-        env.csi.stage_volume(fs_name, "mount", is_nfs=True)
+        env.csi.stage_volume(fs_name, "mount", is_nfs=True, vhost_request_queues_count=4)
+        # different parameter stage should be ok
+        env.csi.stage_volume(fs_name, "mount", is_nfs=True, vhost_request_queues_count=8)
         for pod_name, pod_id in zip(pod_names, pod_ids):
             env.csi.publish_volume(
                 pod_id=pod_id,

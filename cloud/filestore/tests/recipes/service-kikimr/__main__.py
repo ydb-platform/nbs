@@ -26,6 +26,7 @@ from cloud.storage.core.tests.common import (
 )
 
 PID_FILE_NAME = "local_kikimr_nfs_server_recipe.pid"
+KIKIMR_PID_FILE_NAME = "local_kikimr_nfs_server_recipe.kikimr_pid"
 ERR_LOG_FILE_NAMES_FILE = "local_kikimr_nfs_server_recipe.err_log_files"
 PDISK_SIZE = 32 * 1024 * 1024 * 1024
 
@@ -41,8 +42,10 @@ def start(argv):
     parser.add_argument("--in-memory-pdisks", action="store_true", default=False)
     parser.add_argument("--restart-interval", action="store", default=None)
     parser.add_argument("--storage-config-patch", action="store", default=None)
+    parser.add_argument("--server-config-patch", action="store", default=None)
     parser.add_argument("--bs-cache-file-path", action="store", default=None)
     parser.add_argument("--use-unix-socket", action="store_true", default=False)
+    parser.add_argument("--trace-sampling-rate", action="store", default=None, type=int)
     args = parser.parse_args(argv)
 
     kikimr_binary_path = common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
@@ -56,6 +59,10 @@ def start(argv):
         static_pdisk_size=PDISK_SIZE,
         use_log_files=args.use_log_files,
         bs_cache_file_path=args.bs_cache_file_path,
+        dynamic_storage_pools=[
+            dict(name="dynamic_storage_pool:1", kind="rot", pdisk_user_kind=0),
+            dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0),
+        ],
     )
 
     kikimr_cluster = kikimr_cluster_factory(configurator=kikimr_configurator)
@@ -87,6 +94,17 @@ def start(argv):
             pathlib.Path(tempfile.mkdtemp(dir="/tmp")) / "filestore.sock")
         set_env("NFS_SERVER_UNIX_SOCKET_PATH", server_unix_socket_path)
         server_config.ServerConfig.UnixSocketPath = server_unix_socket_path
+    if args.server_config_patch:
+        with open(common.source_path(args.server_config_patch)) as p:
+            server_config_patch = text_format.Parse(
+                p.read(),
+                TServerAppConfig())
+            server_config.MergeFrom(server_config_patch)
+
+    if server_config.ServerConfig.SharedMemoryBasePath != "":
+        shared_memory_base_path = os.path.join(common.output_path(), "shm")
+        os.makedirs(shared_memory_base_path, exist_ok=True)
+        server_config.ServerConfig.SharedMemoryBasePath = shared_memory_base_path
 
     secure = False
     if access_service_port:
@@ -122,16 +140,24 @@ def start(argv):
         storage_config=storage_config,
         secure=secure,
         access_service_type=access_service_type,
+        trace_sampling_rate=args.trace_sampling_rate,
     )
     filestore_configurator.generate_configs(kikimr_configurator.domains_txt, kikimr_configurator.names_txt)
 
-    filestore_server = FilestoreServer(configurator=filestore_configurator)
+    filestore_server = FilestoreServer(
+        configurator=filestore_configurator,
+        kikimr_binary_path=kikimr_binary_path,
+        dynamic_storage_pools=kikimr_configurator.dynamic_storage_pools,
+    )
     filestore_server.start()
 
     append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, filestore_server.stderr_file_name)
 
     with open(PID_FILE_NAME, "w") as f:
         f.write(str(filestore_server.pid))
+
+    with open(KIKIMR_PID_FILE_NAME, "w") as f:
+        f.write(str(list(kikimr_cluster.nodes.values())[0].pid))
 
     wait_for_filestore_server(filestore_server, filestore_configurator.port)
 
@@ -152,6 +178,10 @@ def stop(argv):
         return
 
     with open(PID_FILE_NAME) as f:
+        pid = int(f.read())
+        shutdown(pid)
+
+    with open(KIKIMR_PID_FILE_NAME) as f:
         pid = int(f.read())
         shutdown(pid)
 

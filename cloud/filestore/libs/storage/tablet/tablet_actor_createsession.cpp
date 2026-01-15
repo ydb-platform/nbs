@@ -18,17 +18,21 @@ namespace {
 
 void FillFeatures(
     const NProto::TFileSystem& fileSystem,
+    const NProto::TFileSystemStats& fileSystemStats,
     const TStorageConfig& config,
     NProto::TFileStore& fileStore)
 {
     auto* features = fileStore.MutableFeatures();
     features->SetTwoStageReadEnabled(config.GetTwoStageReadEnabled());
+    features->SetTwoStageReadThreshold(config.GetTwoStageReadThreshold());
     features->SetThreeStageWriteEnabled(config.GetThreeStageWriteEnabled());
     features->SetTwoStageReadDisabledForHDD(
         config.GetTwoStageReadDisabledForHDD());
     features->SetThreeStageWriteDisabledForHDD(
         config.GetThreeStageWriteDisabledForHDD());
     features->SetEntryTimeout(config.GetEntryTimeout().MilliSeconds());
+    features->SetRegularFileEntryTimeout(
+        config.GetRegularFileEntryTimeout().MilliSeconds());
     features->SetNegativeEntryTimeout(
         config.GetNegativeEntryTimeout().MilliSeconds());
     features->SetAttrTimeout(config.GetAttrTimeout().MilliSeconds());
@@ -60,12 +64,42 @@ void FillFeatures(
     features->SetParentlessFilesOnly(config.GetParentlessFilesOnly());
     features->SetAllowHandlelessIO(config.GetAllowHandlelessIO());
 
+    features->SetDirectoryHandlesStorageEnabled(
+        config.GetDirectoryHandlesStorageEnabled());
+
+    if (config.GetDirectoryHandlesStorageEnabled()) {
+        features->SetDirectoryHandlesTableSize(
+            config.GetDirectoryHandlesTableSize());
+    }
+
     features->SetDirectoryCreationInShardsEnabled(
         fileSystem.GetDirectoryCreationInShardsEnabled());
 
-    // as for now it's alway true
-    // later it will be set 'true' when the first XAttr appears in the file system
-    features->SetHasXAttrs(true);
+    // HasXAttrs is false only if LazyXAttrsEnabled == true and we know for sure that
+    // there are no XAttrs in the filesystem
+    const bool hasXAttrs =
+        !config.GetLazyXAttrsEnabled() ||
+        fileSystemStats.GetHasXAttrs() !=
+            static_cast<ui64>(TIndexTabletActor::EHasXAttrs::False);
+    features->SetHasXAttrs(hasXAttrs);
+
+    features->SetMaxBackground(config.GetMaxBackground());
+    features->SetMaxFuseLoopThreads(config.GetMaxFuseLoopThreads());
+
+    features->SetZeroCopyWriteEnabled(config.GetZeroCopyWriteEnabled());
+
+    features->SetFSyncQueueDisabled(config.GetFSyncQueueDisabled());
+
+    features->SetGuestHandleKillPrivV2Enabled(
+        config.GetGuestHandleKillPrivV2Enabled());
+
+    features->SetZeroCopyReadEnabled(config.GetZeroCopyReadEnabled());
+
+    features->SetBlockChecksumsInProfileLogEnabled(
+        config.GetBlockChecksumsInProfileLogEnabled());
+
+    features->SetReadBlobDisabled(config.GetReadBlobDisabled());
+    features->SetWriteBlobDisabled(config.GetWriteBlobDisabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -134,6 +168,7 @@ void Convert(
     fileStore.SetStorageMediaKind(fileSystem.GetStorageMediaKind());
     fileStore.MutableShardFileSystemIds()->CopyFrom(
         fileSystem.GetShardFileSystemIds());
+    fileStore.SetShardNo(fileSystem.GetShardNo());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -163,7 +198,8 @@ void TIndexTabletActor::HandleCreateSession(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    const auto expectedShardCount = CalculateExpectedShardCount();
+    const auto expectedShardCount =
+        CalculateExpectedShardCount(Config->GetMaxShardCount());
     const auto actualShardCount = GetFileSystem().ShardFileSystemIdsSize();
     if (actualShardCount < expectedShardCount) {
         auto message = TStringBuilder() << "Shard count smaller than expected: "
@@ -365,7 +401,14 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     response->Record.SetSessionState(session->GetSessionState());
     auto& fileStore = *response->Record.MutableFileStore();
     Convert(GetFileSystem(), fileStore);
-    FillFeatures(GetFileSystem(), *Config, fileStore);
+    FillFeatures(GetFileSystem(), GetFileSystemStats(), *Config, fileStore);
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s New session TFileStoreFeatures '%s'",
+        LogTag.c_str(),
+        fileStore.GetFeatures().ShortDebugString().c_str());
 
     TVector<TString> shardIds;
     // there's no point in returning shard list unless it's main filesystem

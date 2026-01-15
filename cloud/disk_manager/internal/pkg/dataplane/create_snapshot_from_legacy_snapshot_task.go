@@ -9,6 +9,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
+	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -16,11 +17,12 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createSnapshotFromLegacySnapshotTask struct {
-	storage       storage.Storage
-	legacyStorage storage.Storage
-	config        *config.DataplaneConfig
-	request       *protos.CreateSnapshotFromLegacySnapshotRequest
-	state         *protos.CreateSnapshotFromLegacySnapshotTaskState
+	config            *config.DataplaneConfig
+	performanceConfig *performance_config.PerformanceConfig
+	storage           storage.Storage
+	legacyStorage     storage.Storage
+	request           *protos.CreateSnapshotFromLegacySnapshotRequest
+	state             *protos.CreateSnapshotFromLegacySnapshotTaskState
 }
 
 func (t *createSnapshotFromLegacySnapshotTask) Save() ([]byte, error) {

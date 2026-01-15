@@ -25,6 +25,22 @@ constexpr ui32 MaxRequestSize = 32_MB;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TResponse>
+void NormalizeIOErrors(TResponse& response)
+{
+    NProto::TError& error = *response.MutableError();
+    switch (error.GetCode()) {
+        case MAKE_SYSTEM_ERROR(EIO):
+        case MAKE_SYSTEM_ERROR(EREMOTEIO):
+            error.SetCode(E_IO);
+            break;
+        default:
+            break;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TStorageStub final
     : public IStorage
 {
@@ -281,6 +297,7 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
     localRequest->SetFlags(request->GetFlags());
     localRequest->SetCheckpointId(request->GetCheckpointId());
     localRequest->SetSessionId(request->GetSessionId());
+    localRequest->SetBlockSize(StorageBlockSize);
     localRequest->BlockSize = StorageBlockSize;
 
     auto response = std::make_shared<NProto::TReadBlocksResponse>();
@@ -389,6 +406,8 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
             }
 
             response->MergeFrom(localResponse);
+            NormalizeIOErrors(*response);
+
             promise.TrySetValue(std::move(*response));
         });
 
@@ -422,8 +441,12 @@ TFuture<NProto::TWriteBlocksResponse> TStorageAdapter::TImpl::WriteBlocks(
     localRequest->SetStartIndex(localStartIndex);
     localRequest->SetFlags(request->GetFlags());
     localRequest->SetSessionId(request->GetSessionId());
+    localRequest->SetBlockSize(StorageBlockSize);
     localRequest->BlocksCount = localBlocksCount;
     localRequest->BlockSize = StorageBlockSize;
+    if (request->ChecksumsSize() > 0) {
+        localRequest->MutableChecksums()->CopyFrom(request->GetChecksums());
+    }
 
     TStorageBuffer buffer;
     TSgList sgList;
@@ -487,6 +510,7 @@ TFuture<NProto::TWriteBlocksResponse> TStorageAdapter::TImpl::WriteBlocks(
 
             NProto::TWriteBlocksResponse response;
             response.MergeFrom(localResponse);
+            NormalizeIOErrors(response);
 
             promise.TrySetValue(std::move(response));
         });
@@ -511,7 +535,11 @@ TFuture<NProto::TZeroBlocksResponse> TStorageAdapter::TImpl::ZeroBlocks(
             [inflightZeros = InflightZeros, id, promise](const auto& f) mutable
             {
                 inflightZeros->UnregisterRequest(id);
-                promise.TrySetValue(std::move(f.GetValue()));
+
+                NProto::TZeroBlocksResponse response = f.GetValue();
+                NormalizeIOErrors(response);
+
+                promise.TrySetValue(std::move(response));
             });
 
         return promise;
@@ -545,7 +573,11 @@ TFuture<NProto::TZeroBlocksResponse> TStorageAdapter::TImpl::ZeroBlocks(
         [inflightZeros = InflightZeros, id, promise](const auto& f) mutable
         {
             inflightZeros->UnregisterRequest(id);
-            promise.TrySetValue(std::move(f.GetValue()));
+
+            NProto::TZeroBlocksResponse response = f.GetValue();
+            NormalizeIOErrors(response);
+
+            promise.TrySetValue(std::move(response));
         });
 
     return promise;
@@ -604,7 +636,7 @@ size_t TStorageAdapter::TImpl::Shutdown(ITimerPtr timer, TDuration duration)
 void TStorageAdapter::TImpl::VerifyBlockSize(ui32 blockSize) const
 {
     if (blockSize < StorageBlockSize || blockSize % StorageBlockSize != 0) {
-        ythrow TServiceError(E_ARGUMENT)
+        STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
             << "invalid block size: " << blockSize
             << " (storage block size = " << StorageBlockSize << ")";
     }
@@ -614,7 +646,7 @@ ui32 TStorageAdapter::TImpl::VerifyRequestSize(ui32 blocksCount, ui32 blockSize)
 {
     ui64 bytesCount = static_cast<ui64>(blocksCount) * blockSize;
     if (MaxRequestSize > 0 && bytesCount > MaxRequestSize) {
-        ythrow TServiceError(E_ARGUMENT)
+        STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
             << "invalid request size: " << bytesCount
             << " (max request size = " << MaxRequestSize << ")";
     }
@@ -624,13 +656,13 @@ ui32 TStorageAdapter::TImpl::VerifyRequestSize(ui32 blocksCount, ui32 blockSize)
 ui32 TStorageAdapter::TImpl::VerifyRequestSize(ui32 bytesCount) const
 {
     if (bytesCount == 0 || bytesCount % StorageBlockSize != 0) {
-        ythrow TServiceError(E_ARGUMENT)
+        STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
             << "buffer size (" << bytesCount << ") is not a multiple of storage block size"
             << " (storage block size = " << StorageBlockSize << ")";
     }
 
     if (MaxRequestSize > 0 && bytesCount > MaxRequestSize) {
-        ythrow TServiceError(E_ARGUMENT)
+        STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
             << "invalid request size: " << bytesCount
             << " (max request size = " << MaxRequestSize << ")";
     }
@@ -643,7 +675,7 @@ ui32 TStorageAdapter::TImpl::VerifyRequestSize(const NProto::TIOVector& iov) con
     ui64 bytesCount = 0;
     for (const auto& buffer: iov.GetBuffers()) {
         if (buffer.empty() || buffer.size() % StorageBlockSize != 0) {
-            ythrow TServiceError(E_ARGUMENT)
+            STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
                 << "buffer size (" << buffer.size() << ") is not a multiple of storage block size"
                 << " (storage block size = " << StorageBlockSize << ")";
         }
@@ -652,7 +684,7 @@ ui32 TStorageAdapter::TImpl::VerifyRequestSize(const NProto::TIOVector& iov) con
     }
 
     if (MaxRequestSize > 0 && bytesCount > MaxRequestSize) {
-        ythrow TServiceError(E_ARGUMENT)
+        STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
             << "invalid request size: " << bytesCount
             << " (max request size = " << MaxRequestSize << ")";
     }

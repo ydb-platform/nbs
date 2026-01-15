@@ -65,17 +65,17 @@ func (l *logger) Log(ctx context.Context, msg string, fields ...ydb_log.Field) {
 
 	switch ydb_log.LevelFromContext(ctx) {
 	case ydb_log.TRACE:
-		logging.Trace(ctx, msg)
+		logging.Trace(ctx, "%s", msg)
 	case ydb_log.DEBUG:
-		logging.Debug(ctx, msg)
+		logging.Debug(ctx, "%s", msg)
 	case ydb_log.INFO:
-		logging.Info(ctx, msg)
+		logging.Info(ctx, "%s", msg)
 	case ydb_log.WARN:
-		logging.Warn(ctx, msg)
+		logging.Warn(ctx, "%s", msg)
 	case ydb_log.ERROR:
-		logging.Error(ctx, msg)
+		logging.Error(ctx, "%s", msg)
 	case ydb_log.FATAL:
-		logging.Fatal(ctx, msg)
+		logging.Fatal(ctx, "%s", msg)
 	default:
 	}
 }

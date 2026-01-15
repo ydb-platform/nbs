@@ -73,11 +73,16 @@ void TIndexTabletActor::HandleCleanup(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
+    ui64 collectBarrier = GenerateCommitId();
+    if (collectBarrier == InvalidCommitId) {
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "Cleanup");
+    }
+
     ExecuteTx<TCleanup>(
         ctx,
         std::move(requestInfo),
         msg->RangeId,
-        GetCurrentCommitId());
+        collectBarrier);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -87,7 +92,7 @@ bool TIndexTabletActor::PrepareTx_Cleanup(
     TTransactionContext& tx,
     TTxIndexTablet::TCleanup& args)
 {
-    InitProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
+    InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
     TIndexTabletDatabase db(tx.DB);
 

@@ -10,6 +10,13 @@ constexpr auto DefaultInitialDelay = TDuration::Seconds(1);
 
 ///////////////////////////////////////////////////////////////////////////////
 
+TDuration CreateFirstStepDelay(TDuration initialDelay, TDuration maxDelay)
+{
+    return initialDelay ? initialDelay : Min(maxDelay, DefaultInitialDelay);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 }   // namespace
 
 TBackoffDelayProvider::TBackoffDelayProvider(
@@ -17,6 +24,17 @@ TBackoffDelayProvider::TBackoffDelayProvider(
         TDuration maxDelay)
     : InitialDelay(initialDelay)
     , MaxDelay(Max(maxDelay, initialDelay))
+    , FirstStepDelay(CreateFirstStepDelay(initialDelay, maxDelay))
+    , CurrentDelay(initialDelay)
+{}
+
+TBackoffDelayProvider::TBackoffDelayProvider(
+        TDuration initialDelay,
+        TDuration firstStepDelay,
+        TDuration maxDelay)
+    : InitialDelay(initialDelay)
+    , MaxDelay(Max(maxDelay, initialDelay, firstStepDelay))
+    , FirstStepDelay(firstStepDelay)
     , CurrentDelay(initialDelay)
 {}
 
@@ -34,8 +52,11 @@ TDuration TBackoffDelayProvider::GetDelayAndIncrease()
 
 void TBackoffDelayProvider::IncreaseDelay()
 {
-    CurrentDelay =
-        CurrentDelay ? Min(CurrentDelay * 2, MaxDelay) : DefaultInitialDelay;
+    if (!CurrentDelay) {
+        CurrentDelay = FirstStepDelay;
+    } else {
+        CurrentDelay = Min(CurrentDelay * 2, MaxDelay);
+    }
 }
 
 void TBackoffDelayProvider::Reset()

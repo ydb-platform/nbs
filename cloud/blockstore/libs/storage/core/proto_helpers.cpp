@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
+#include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 
 #include <cloud/storage/core/libs/common/media.h>
 
@@ -190,6 +191,7 @@ ui64 GetVolumeRequestIdFromHeaders(const TEv& request)
 
 void VolumeConfigToVolume(
     const NKikimrBlockStore::TVolumeConfig& volumeConfig,
+    const TString& principalDiskId,
     NProto::TVolume& volume)
 {
     VolumeConfigToVolumeModelFields(volumeConfig, volume);
@@ -210,15 +212,12 @@ void VolumeConfigToVolume(
     volume.SetBaseDiskCheckpointId(volumeConfig.GetBaseDiskCheckpointId());
     volume.SetIsSystem(volumeConfig.GetIsSystem());
     volume.SetIsFillFinished(volumeConfig.GetIsFillFinished());
-
-    TStringBuf sit(volumeConfig.GetTagsStr());
-    TStringBuf tag;
-    while (sit.NextTok(',', tag)) {
-        if (tag == "use-fastpath") {
-            volume.SetIsFastPathEnabled(true);
-        }
+    volume.SetPrincipalDiskId(principalDiskId);
+    volume.SetVhostDiscardEnabled(volumeConfig.GetVhostDiscardEnabled());
+    const auto tags = ParseTags(volumeConfig.GetTagsStr());
+    for (const auto& [key, value]: tags) {
+        volume.MutableTags()->insert({key, value});
     }
-
 }
 
 void VolumeConfigToVolumeModel(
@@ -540,6 +539,30 @@ NProto::TVolumePerformanceProfile VolumeConfigToVolumePerformanceProfile(
         volumeConfig,
         performanceProfile);
     return performanceProfile;
+}
+
+TString PoolKindToString(const NProto::EDevicePoolKind poolKind)
+{
+    switch (poolKind) {
+        case NProto::DEVICE_POOL_KIND_DEFAULT:
+            return "default";
+        case NProto::DEVICE_POOL_KIND_LOCAL:
+            return "local";
+        case NProto::DEVICE_POOL_KIND_GLOBAL:
+            return "global";
+        case NProto::EDevicePoolKind_INT_MIN_SENTINEL_DO_NOT_USE_:
+        case NProto::EDevicePoolKind_INT_MAX_SENTINEL_DO_NOT_USE_:
+            break;
+    }
+    Y_ABORT("unknown pool kind: %d", static_cast<int>(poolKind));
+    return "unknown";
+}
+
+bool IsNotFoundSchemeShardError(const NProto::TError& error)
+{
+    return FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD &&
+           static_cast<NKikimrScheme::EStatus>(STATUS_FROM_CODE(
+               error.GetCode())) == NKikimrScheme::StatusPathDoesNotExist;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

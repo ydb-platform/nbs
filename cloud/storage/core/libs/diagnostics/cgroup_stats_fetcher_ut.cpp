@@ -3,7 +3,6 @@
 #include "critical_events.h"
 
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
-#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -54,9 +53,8 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
 
         auto fetcher = CreateCgroupStatsFetcher(
             ComponentName,
-            CreateLoggingService("console"),
             statsFile.Name());
-        fetcher->Start();
+        fetcher->GetCpuWait();
 
         auto cpuWait = fetcher->GetCpuWait();
         UNIT_ASSERT_C(!HasError(cpuWait), cpuWait.GetError());
@@ -70,8 +68,6 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::MicroSeconds(10),
             cpuWait.GetResult());
-
-        fetcher->Stop();
     }
 
     Y_UNIT_TEST(ShouldReportErrorIfFileIsMissing)
@@ -81,16 +77,14 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
 
         auto fetcher = CreateCgroupStatsFetcher(
             ComponentName,
-            CreateLoggingService("console"),
             "noname");
-        fetcher->Start();
+        fetcher->GetCpuWait();
 
         auto cpuWait = fetcher->GetCpuWait();
         UNIT_ASSERT_C(HasError(cpuWait), cpuWait.GetError());
         cpuWait = fetcher->GetCpuWait();
         UNIT_ASSERT_C(HasError(cpuWait), cpuWait.GetError());
 
-        fetcher->Stop();
     }
 
     Y_UNIT_TEST(ShouldReportErrorIfNewValueIsLowerThanPrevious)
@@ -101,9 +95,8 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
 
         auto fetcher = CreateCgroupStatsFetcher(
             ComponentName,
-            CreateLoggingService("console"),
             "test");
-        fetcher->Start();
+        fetcher->GetCpuWait();
 
         UpdateCGroupWaitDuration(statsFile, TDuration::MicroSeconds(80));
         auto cpuWait = fetcher->GetCpuWait();
@@ -115,8 +108,6 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::MicroSeconds(20),
             cpuWait.GetResult());
-
-        fetcher->Stop();
     }
 }
 

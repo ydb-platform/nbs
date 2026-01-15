@@ -268,7 +268,9 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "PrepareRenameNodeInSource");
+        return ScheduleRebootTabletOnCommitIdOverflow(
+            ctx,
+            "PrepareRenameNodeInSource");
     }
 
     // OpLogEntryId doesn't have to be a CommitId - it's just convenient
@@ -461,7 +463,7 @@ void TIndexTabletActor::ExecuteTx_CommitRenameNodeInSource(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "CommitRenameNodeInSource");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "CommitRenameNodeInSource");
     }
 
     UnlockNodeRef({args.Request.GetNodeId(), args.Request.GetName()});

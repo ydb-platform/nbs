@@ -71,7 +71,12 @@ void TCreateVolumeLinkActor::LinkVolumes(const TActorContext& ctx)
                             << " is larger than the size of follower disk "
                             << Follower.Link.FollowerDiskIdForPrint().Quote() << " "
                             << sourceSize << " > " << targetSize;
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME, errorMessage.c_str());
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s %s",
+            LogPrefix.c_str(),
+            errorMessage.c_str());
 
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, errorMessage));
         return;
@@ -140,7 +145,7 @@ void TCreateVolumeLinkActor::HandleDescribeVolumeResponse(
         pathDescription.GetBlockStoreVolumeDescription();
     const auto& volumeConfig = volumeDescription.GetVolumeConfig();
 
-    VolumeConfigToVolume(volumeConfig, volume);
+    VolumeConfigToVolume(volumeConfig, "", volume);
     volume.SetTokenVersion(volumeDescription.GetTokenVersion());
 
     LinkVolumes(ctx);
@@ -160,6 +165,7 @@ void TCreateVolumeLinkActor::HandlePersistedOnLeader(
 
     switch (message->Follower.State) {
         case TFollowerDiskInfo::EState::DataReady:
+        case TFollowerDiskInfo::EState::LeadershipTransferred:
         case TFollowerDiskInfo::EState::Error: {
             ReplyAndDie(
                 ctx,

@@ -113,6 +113,15 @@ func (s *ServiceMock) DescribeDisk(
 	return args.Get(0).(*disk_manager.DiskParams), args.Error(1)
 }
 
+func (s *ServiceMock) ListDiskStates(
+	ctx context.Context,
+	req *disk_manager.ListDiskStatesRequest,
+) (*disk_manager.ListDiskStatesResponse, error) {
+
+	args := s.Called(ctx, req)
+	return args.Get(0).(*disk_manager.ListDiskStatesResponse), args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewServiceMock() *ServiceMock {

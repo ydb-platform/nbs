@@ -40,6 +40,7 @@ TIndexTabletActor::TIndexTabletActor(
         TDiagnosticsConfigPtr diagConfig,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
+        TSystemCountersPtr systemCounters,
         NMetrics::IMetricsRegistryPtr metricsRegistry,
         bool useNoneCompactionPolicy)
     : TActor(&TThis::StateBoot)
@@ -47,6 +48,7 @@ TIndexTabletActor::TIndexTabletActor(
     , Metrics{std::move(metricsRegistry)}
     , ProfileLog(std::move(profileLog))
     , TraceSerializer(std::move(traceSerializer))
+    , SystemCounters(std::move(systemCounters))
     , ThrottlerLogger(
         [this](ui32 opType, TDuration time) {
             UpdateDelayCounter(
@@ -782,6 +784,9 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
     response->Record.SetShardNo(GetFileSystem().GetShardNo());
     response->Record.SetDirectoryCreationInShardsEnabled(
         GetFileSystem().GetDirectoryCreationInShardsEnabled());
+    response->Record.SetStrictFileSystemSizeEnforcementEnabled(
+        GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled());
+    response->Record.SetMaxShardCount(Config->GetMaxShardCount());
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,
@@ -1051,8 +1056,8 @@ STFUNC(TIndexTabletActor::StateInit)
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
         HFunc(
-            TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
-            HandleGetShardStatsCompleted);
+            TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
+            HandleAggregateStatsCompleted);
         HFunc(
             TEvIndexTabletPrivate::TEvShardRequestCompleted,
             HandleShardRequestCompleted);
@@ -1113,8 +1118,8 @@ STFUNC(TIndexTabletActor::StateWork)
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
         HFunc(
-            TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
-            HandleGetShardStatsCompleted);
+            TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
+            HandleAggregateStatsCompleted);
         HFunc(
             TEvIndexTabletPrivate::TEvShardRequestCompleted,
             HandleShardRequestCompleted);
@@ -1178,6 +1183,7 @@ STFUNC(TIndexTabletActor::StateZombie)
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
 
@@ -1204,8 +1210,8 @@ STFUNC(TIndexTabletActor::StateZombie)
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
         HFunc(
-            TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
-            HandleGetShardStatsCompleted);
+            TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
+            HandleAggregateStatsCompleted);
         HFunc(
             TEvIndexTabletPrivate::TEvShardRequestCompleted,
             HandleShardRequestCompleted);
@@ -1261,8 +1267,8 @@ STFUNC(TIndexTabletActor::StateBroken)
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
         HFunc(
-            TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
-            HandleGetShardStatsCompleted);
+            TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
+            HandleAggregateStatsCompleted);
         HFunc(
             TEvIndexTabletPrivate::TEvShardRequestCompleted,
             HandleShardRequestCompleted);
@@ -1278,7 +1284,7 @@ STFUNC(TIndexTabletActor::StateBroken)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::RebootTabletOnCommitOverflow(
+void TIndexTabletActor::ScheduleRebootTabletOnCommitIdOverflow(
     const TActorContext& ctx,
     const TString& request)
 {
@@ -1332,6 +1338,43 @@ void TIndexTabletActor::UpdateLogTag()
             Sprintf("[t:%lu]",
                 TabletID()));
     }
+}
+
+bool TIndexTabletActor::HasBlocksLeft(ui64 blocksRequired) const
+{
+    if (!GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled()) {
+        if (GetUsedBlocksCount() + blocksRequired > GetBlocksCount()) {
+            return false;
+        }
+    } else {
+        // A new way to count available space that always takes into account the
+        // byte count aggregated by all shards.
+        TABLET_VERIFY(Metrics.AggregateUsedBytesCount >= 0);
+        TABLET_VERIFY(Metrics.TotalBytesCount >= 0);
+        const ui64 aggregateBytes =
+            static_cast<ui64>(Max<i64>(0, Metrics.AggregateUsedBytesCount));
+        const ui64 totalBytes =
+            static_cast<ui64>(Max<i64>(0, Metrics.TotalBytesCount));
+        // It makes sense for shardless filesystems, as it eliminates 15s delay
+        // in AggregateUsedBytesCount calculation.
+        const ui64 usedBytes =
+            Max<ui64>(aggregateBytes, GetUsedBlocksCount() * GetBlockSize());
+        const ui64 requiredBytes = blocksRequired * GetBlockSize();
+
+        if (usedBytes + requiredBytes > totalBytes) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool TIndexTabletActor::HasSpaceLeft(ui64 prevSize, ui64 newSize) const
+{
+    return HasBlocksLeft(
+        static_cast<ui64>(Max<i64>(
+            0,
+            GetBlocksDifference(prevSize, newSize, GetBlockSize()))));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

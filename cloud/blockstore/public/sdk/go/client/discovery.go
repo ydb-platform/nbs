@@ -863,6 +863,24 @@ func (client *discoveryClient) ListVolumes(
 	return resp.(*protos.TListVolumesResponse), err
 }
 
+func (client *discoveryClient) ListDiskStates(
+	ctx context.Context,
+	req *protos.TListDiskStatesRequest,
+) (*protos.TListDiskStatesResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		func(ctx context.Context, impl ClientIface) (response, error) {
+			return impl.ListDiskStates(ctx, req)
+		})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.(*protos.TListDiskStatesResponse), err
+}
+
 func (client *discoveryClient) ExecuteAction(
 	ctx context.Context,
 	req *protos.TExecuteActionRequest,

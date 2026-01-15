@@ -8,15 +8,6 @@
     "test_with_client.test_enabled_configs_dispatcher": {
         "uri": "file://test_with_client.test_enabled_configs_dispatcher/results.txt"
     },
-    "test_with_client.test_endpoint_proxy": {
-        "uri": "file://test_with_client.test_endpoint_proxy/results.txt"
-    },
-    "test_with_client.test_endpoint_proxy_uds": {
-        "uri": "file://test_with_client.test_endpoint_proxy_uds/results.txt.processed"
-    },
-    "test_with_client.test_nbs_with_endpoint_proxy_uds": {
-        "uri": "file://test_with_client.test_nbs_with_endpoint_proxy_uds/results.txt"
-    },
     "test_with_client.test_successive_remounts_and_writes": {
         "uri": "file://test_with_client.test_successive_remounts_and_writes/results.txt"
     }

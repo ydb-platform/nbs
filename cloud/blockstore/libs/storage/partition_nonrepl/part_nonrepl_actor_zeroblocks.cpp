@@ -34,9 +34,11 @@ public:
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
+        TActorId volumeActorId,
         const TActorId& part,
         ui32 blockSize,
-        bool assignVolumeRequestId);
+        bool assignVolumeRequestId,
+        TChildLogTitle logTitle);
 
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
@@ -62,9 +64,11 @@ TDiskAgentZeroActor::TDiskAgentZeroActor(
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
+        TActorId volumeActorId,
         const TActorId& part,
         ui32 blockSize,
-        bool assignVolumeRequestId)
+        bool assignVolumeRequestId,
+        TChildLogTitle logTitle)
     :TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -72,7 +76,9 @@ TDiskAgentZeroActor::TDiskAgentZeroActor(
           std::move(timeoutPolicy),
           std::move(deviceRequests),
           std::move(partConfig),
-          part)
+          volumeActorId,
+          part,
+          std::move(logTitle))
     , Request(std::move(request))
     , BlockSize(blockSize)
     , AssignVolumeRequestId(assignVolumeRequestId)
@@ -92,8 +98,13 @@ void TDiskAgentZeroActor::SendRequest(const TActorContext& ctx)
         if (AssignVolumeRequestId) {
             request->Record.SetVolumeRequestId(
                 Request.GetHeaders().GetVolumeRequestId());
-            request->Record.SetMultideviceRequest(DeviceRequests.size() > 1);
         }
+
+        OnRequestStarted(
+            ctx,
+            deviceRequest.Device.GetAgentId(),
+            TDeviceOperationTracker::ERequestType::Zero,
+            cookie);
 
         auto event = std::make_unique<IEventHandle>(
             MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
@@ -130,13 +141,16 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksUndelivery(
     const TEvDiskAgent::TEvZeroDeviceBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    OnRequestFinished(ctx, ev->Cookie);
+
     const auto& device = DeviceRequests[ev->Cookie].Device;
-    LOG_WARN_S(
+    LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "ZeroBlocks request #"
-            << GetRequestId(Request) << " undelivered. Disk id: "
-            << PartConfig->GetName() << " Device: " << LogDevice(device));
+        "%s ZeroBlocks request #%lu undelivered. Device: %s",
+        LogTitle.GetWithTime().c_str(),
+        GetRequestId(Request),
+        LogDevice(device).c_str());
 
     // Ignore undelivered event. Wait for TEvWakeup.
 }
@@ -146,6 +160,8 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+
+    OnRequestFinished(ctx, ev->Cookie);
 
     if (HasError(msg->GetError())) {
         HandleError(ctx, msg->GetError(), EStatus::Fail);
@@ -225,11 +241,13 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
         std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
+        VolumeActorId,
         SelfId(),
         PartConfig->GetBlockSize(),
-        Config->GetAssignIdToWriteAndZeroRequestsEnabled());
+        Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
+        LogTitle.GetChild(GetCycleCount()));
 
-    RequestsInProgress.AddWriteRequest(actorId, std::move(request));
+    RequestsInProgress.AddWriteRequest(actorId, blockRange, std::move(request));
 }
 
 void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(
@@ -238,8 +256,11 @@ void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Complete zero blocks", SelfId().ToString().c_str());
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete zero blocks",
+        LogTitle.GetWithTime().c_str());
 
     UpdateStats(msg->Stats);
 
@@ -249,7 +270,7 @@ void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
-    RequestsInProgress.RemoveRequest(ev->Sender);
+    RequestsInProgress.RemoveWriteRequest(ev->Sender);
     OnRequestCompleted(*msg, ctx.Now());
     DrainActorCompanion.ProcessDrainRequests(ctx);
 

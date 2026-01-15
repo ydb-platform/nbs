@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # $FreeBSD: src/tools/regression/fstest/tests/truncate/00.t,v 1.1 2007/01/17 01:42:12 pjd Exp $
 
 desc="truncate descrease/increase file size"
@@ -32,7 +32,7 @@ expect 0 unlink ${n0}
 # successful truncate(2) updates ctime.
 expect 0 create ${n0} 0644
 ctime1=`${fstest} stat ${n0} ctime`
-sleep 1
+sleep 2
 expect 0 truncate ${n0} 123
 ctime2=`${fstest} stat ${n0} ctime`
 test_check $ctime1 -lt $ctime2
@@ -41,7 +41,7 @@ expect 0 unlink ${n0}
 # unsuccessful truncate(2) does not update ctime.
 expect 0 create ${n0} 0644
 ctime1=`${fstest} stat ${n0} ctime`
-sleep 1
+sleep 2
 expect EACCES -u 65534 truncate ${n0} 123
 ctime2=`${fstest} stat ${n0} ctime`
 test_check $ctime1 -eq $ctime2

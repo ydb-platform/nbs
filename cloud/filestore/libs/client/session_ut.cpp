@@ -30,7 +30,6 @@ static const TString FileSystemId = "fs1";
 static const TString ClientId = "client1";
 static const TString SessionId = "session1";
 
-constexpr TDuration RetryTimeout = TDuration::MilliSeconds(100);
 constexpr TDuration PingTimeout = TDuration::Seconds(5);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -115,7 +114,6 @@ struct TBootstrap
         NProto::TSessionConfig proto;
         proto.SetFileSystemId(FileSystemId);
         proto.SetClientId(ClientId);
-        proto.SetSessionRetryTimeout(RetryTimeout.MilliSeconds());
         proto.SetSessionPingTimeout(PingTimeout.MilliSeconds());
 
         return std::make_shared<TSessionConfig>(proto);

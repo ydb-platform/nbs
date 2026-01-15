@@ -92,24 +92,21 @@ NProto::TError TryToNormalize(
 ////////////////////////////////////////////////////////////////////////////////
 
 TAlignedDeviceHandler::TAlignedDeviceHandler(
-        IStoragePtr storage,
-        TString diskId,
-        TString clientId,
-        ui32 blockSize,
-        ui32 maxSubRequestSize,
-        ui32 maxZeroBlocksSubRequestSize,
-        bool checkBufferModificationDuringWriting,
-        NProto::EStorageMediaKind storageMediaKind)
+        TDeviceHandlerParams params,
+        ui32 maxSubRequestSize)
     : Storage(
-          checkBufferModificationDuringWriting
-              ? CreateChecksumStorageWrapper(std::move(storage), diskId)
-              : std::move(storage))
-    , DiskId(std::move(diskId))
-    , ClientId(std::move(clientId))
-    , BlockSize(blockSize)
+          params.CheckBufferModificationDuringWriting
+              ? CreateChecksumStorageWrapper(
+                    std::move(params.Storage),
+                    params.DiskId)
+              : std::move(params.Storage))
+    , DiskId(std::move(params.DiskId))
+    , ClientId(std::move(params.ClientId))
+    , BlockSize(params.BlockSize)
     , MaxBlockCount(maxSubRequestSize / BlockSize)
-    , MaxBlockCountForZeroBlocksRequest(maxZeroBlocksSubRequestSize / BlockSize)
-    , StorageMediaKind(storageMediaKind)
+    , MaxBlockCountForZeroBlocksRequest(
+          params.MaxZeroBlocksSubRequestSize / BlockSize)
+    , StorageMediaKind(params.StorageMediaKind)
 {
     Y_ABORT_UNLESS(MaxBlockCount > 0);
     Y_ABORT_UNLESS(MaxBlockCountForZeroBlocksRequest > 0);
@@ -210,6 +207,7 @@ TAlignedDeviceHandler::ExecuteReadRequest(
     request->SetCheckpointId(checkpointId);
     request->SetStartIndex(blocksInfo.Range.Start);
     request->SetBlocksCount(requestBlockCount);
+    request->SetBlockSize(BlockSize);
     request->BlockSize = BlockSize;
 
     if (requestBlockCount == blocksInfo.Range.Size()) {
@@ -297,6 +295,7 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
     request->MutableHeaders()->SetTimestamp(TInstant::Now().MicroSeconds());
     request->MutableHeaders()->SetClientId(ClientId);
     request->SetStartIndex(blocksInfo.Range.Start);
+    request->SetBlockSize(BlockSize);
     request->BlocksCount = requestBlockCount;
     request->BlockSize = BlockSize;
 
@@ -483,6 +482,11 @@ void TAlignedDeviceHandler::ReportCriticalError(
     } else {
         ReportErrorWasSentToTheGuestForNonReliableDisk(message);
     }
+}
+
+ui32 TAlignedDeviceHandler::GetBlockSize() const
+{
+    return BlockSize;
 }
 
 }   // namespace NCloud::NBlockStore

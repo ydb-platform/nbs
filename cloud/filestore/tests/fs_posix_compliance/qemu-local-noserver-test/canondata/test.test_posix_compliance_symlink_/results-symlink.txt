@@ -1,94 +1,94 @@
 TEST SUITE[symlink, 00.t] 1..14
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
-ok 7
-ok 8
-ok 9
-ok 10
-ok 11
-ok 12
-ok 13
-ok 14
+ok 1 (line: 14)
+ok 2 (line: 15)
+ok 3 (line: 16)
+ok 4 (line: 17)
+ok 5 (line: 18)
+ok 6 (line: 19)
+ok 7 (line: 20)
+ok 8 (line: 21)
+ok 9 (line: 23)
+ok 10 (line: 26)
+ok 11 (line: 28)
+ok 12 (line: 30)
+ok 13 (line: 31)
+ok 14 (line: 32)
 TEST SUITE[symlink, 01.t] 1..5
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
+ok 1 (line: 14)
+ok 2 (line: 15)
+ok 3 (line: 16)
+ok 4 (line: 17)
+ok 5 (line: 18)
 TEST SUITE[symlink, 02.t] 1..7
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
-ok 7
+ok 1 (line: 13)
+ok 2 (line: 14)
+ok 3 (line: 15)
+ok 4 (line: 16)
+ok 5 (line: 18)
+ok 6 (line: 19)
+ok 7 (line: 20)
 TEST SUITE[symlink, 03.t] 1..14
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
-ok 7
-ok 8
-ok 9
-ok 10
-ok 11
-ok 12
-ok 13
-ok 14
+ok 1 (line: 13)
+ok 2 (line: 14)
+ok 3 (line: 15)
+ok 4 (line: 16)
+ok 5 (line: 17)
+ok 6 (line: 18)
+ok 7 (line: 19)
+ok 8 (line: 20)
+ok 9 (line: 22)
+ok 10 (line: 23)
+ok 11 (line: 25)
+ok 12 (line: 26)
+ok 13 (line: 27)
+ok 14 (line: 28)
 TEST SUITE[symlink, 04.t] 1..3
-ok 1
-ok 2
-ok 3
+ok 1 (line: 14)
+ok 2 (line: 15)
+ok 3 (line: 16)
 TEST SUITE[symlink, 05.t] 1..12
-ok 1
-ok 2
-not ok 3
-not ok 4
-not ok 5
-ok 6
-ok 7
-ok 8
-not ok 9
-not ok 10
-ok 11
-ok 12
+ok 1 (line: 15)
+ok 2 (line: 19)
+not ok 3 (line: 20)
+not ok 4 (line: 22)
+not ok 5 (line: 23)
+ok 6 (line: 25)
+ok 7 (line: 26)
+ok 8 (line: 27)
+not ok 9 (line: 28)
+not ok 10 (line: 29)
+ok 11 (line: 31)
+ok 12 (line: 34)
 TEST SUITE[symlink, 06.t] 1..12
-ok 1
-ok 2
-not ok 3
-not ok 4
-not ok 5
-ok 6
-ok 7
-ok 8
-not ok 9
-not ok 10
-ok 11
-ok 12
+ok 1 (line: 15)
+ok 2 (line: 19)
+not ok 3 (line: 20)
+not ok 4 (line: 22)
+not ok 5 (line: 23)
+ok 6 (line: 25)
+ok 7 (line: 26)
+ok 8 (line: 27)
+not ok 9 (line: 28)
+not ok 10 (line: 29)
+ok 11 (line: 31)
+ok 12 (line: 34)
 TEST SUITE[symlink, 07.t] 1..6
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
+ok 1 (line: 14)
+ok 2 (line: 15)
+ok 3 (line: 16)
+ok 4 (line: 17)
+ok 5 (line: 18)
+ok 6 (line: 19)
 TEST SUITE[symlink, 08.t] 1..9
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
-ok 7
-ok 8
-ok 9
+ok 1 (line: 13)
+ok 2 (line: 14)
+ok 3 (line: 15)
+ok 4 (line: 17)
+ok 5 (line: 18)
+ok 6 (line: 19)
+ok 7 (line: 21)
+ok 8 (line: 22)
+ok 9 (line: 23)
 TEST SUITE[symlink, 09.t] 1..1
 ok 1
 TEST SUITE[symlink, 10.t] 1..1
@@ -96,9 +96,9 @@ ok 1
 TEST SUITE[symlink, 11.t] 1..1
 ok 1
 TEST SUITE[symlink, 12.t] 1..6
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
+ok 1 (line: 13)
+ok 2 (line: 14)
+ok 3 (line: 15)
+ok 4 (line: 16)
+ok 5 (line: 17)
+ok 6 (line: 18)

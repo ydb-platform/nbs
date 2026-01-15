@@ -63,4 +63,9 @@ type Service interface {
 		ctx context.Context,
 		req *disk_manager.DescribeDiskRequest,
 	) (*disk_manager.DiskParams, error)
+
+	ListDiskStates(
+		ctx context.Context,
+		req *disk_manager.ListDiskStatesRequest,
+	) (*disk_manager.ListDiskStatesResponse, error)
 }

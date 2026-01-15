@@ -28,8 +28,6 @@ struct TMessage
 struct IService
     : public IStartable
 {
-    virtual ~IService() = default;
-
     virtual NThreading::TFuture<NProto::TError> Write(
         TVector<TMessage> messages,
         TInstant now) = 0;

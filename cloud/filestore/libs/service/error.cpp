@@ -161,6 +161,11 @@ NProto::TError ErrorNoSpaceLeft()
             << "no space left");
 }
 
+NProto::TError ErrorCommitIdOverflow()
+{
+    return MakeError(E_REJECTED, "CommitId overflow");
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TError ErrorInvalidArgument()
@@ -169,6 +174,15 @@ NProto::TError ErrorInvalidArgument()
         MAKE_FILESTORE_ERROR(NProto::E_FS_INVAL),
         TStringBuilder()
             << "invalid arguments specified");
+}
+
+NProto::TError ErrorInvalidArgument(const TString& reason)
+{
+    return MakeError(
+        MAKE_FILESTORE_ERROR(NProto::E_FS_INVAL),
+        TStringBuilder()
+            << "invalid arguments specified, reason: "
+            << reason);
 }
 
 NProto::TError ErrorInvalidHandle()

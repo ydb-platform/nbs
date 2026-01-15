@@ -25,6 +25,7 @@ NActors::IActorPtr CreateDiskAgent(
     IBlockDigestGeneratorPtr blockDigestGenerator,
     ILoggingServicePtr logging,
     NRdma::IServerPtr rdmaServer,
-    NNvme::INvmeManagerPtr nvmeManager);
+    NNvme::INvmeManagerPtr nvmeManager,
+    ITaskQueuePtr backgroundThreadPool);
 
 }   // namespace NCloud::NBlockStore::NStorage

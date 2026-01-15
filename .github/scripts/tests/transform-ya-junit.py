@@ -271,7 +271,11 @@ def transform(
 
             if is_fail:
                 if "." in test_name:
+                    # we need this hack because the test name format is not consistent
+                    test_name = test_name.replace("kubernetes.io", "kubernetes::io")
                     test_cls, test_method = test_name.rsplit(".", maxsplit=1)
+                    test_method = test_method.replace("kubernetes::io", "kubernetes.io")
+                    print(f"test class: {test_cls}, test method: {test_method}")
                     logs = filter_empty_logs(traces.get_logs(test_cls, test_method))
                     logs_directory = traces.get_log_dir(test_cls, test_method)
                 elif "chunk" in test_name:

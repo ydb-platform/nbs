@@ -3,6 +3,7 @@
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
@@ -35,6 +36,7 @@ private:
     const bool CheckVoidBlocks;
     TGuardedSgList SgList;
 
+    TVector<NProto::TChecksum> Checksums;
     ui32 VoidBlockCount = 0;
 
 public:
@@ -48,6 +50,7 @@ public:
             size_t requestCount,
             TGuardedSgList sglist,
             TBlockRange64 blockRange,
+            NActors::TActorId volumeActorId,
             NActors::TActorId parentActorId,
             ui64 requestId,
             bool checkVoidBlocks,
@@ -57,6 +60,7 @@ public:
               std::move(partConfig),
               std::move(requestInfo),
               requestId,
+              volumeActorId,
               parentActorId,
               blockRange.Size(),
               requestCount)
@@ -64,19 +68,22 @@ public:
         , ShouldReportBlockRangeOnFailure(shouldReportBlockRangeOnFailure)
         , CheckVoidBlocks(checkVoidBlocks)
         , SgList(std::move(sglist))
-    {}
+    {
+        Checksums.resize(requestCount);
+    }
 
     NProto::TError ProcessSubResponseProto(
         const TRequestContext& ctx,
         TResponseProto& proto,
         TStringBuf responseData)
     {
-        Y_UNUSED(proto);
-
         auto guard = SgList.Acquire();
         if (!guard) {
             return MakeError(E_CANCELLED, "can't acquire sglist");
         }
+
+        Y_ABORT_UNLESS(ctx.RequestIndex < Checksums.size());
+        Checksums[ctx.RequestIndex] = std::move(*proto.MutableChecksum());
 
         const TSgList& data = guard.Get();
 
@@ -139,6 +146,11 @@ public:
             response->Record.FailInfo.FailedRanges.push_back(
                 DescribeRange(BlockRange));
         }
+        if (auto checksum = CombineChecksums(Checksums);
+            checksum.GetByteCount() > 0)
+        {
+            *response->Record.MutableChecksum() = std::move(checksum);
+        }
 
         return response;
     }
@@ -192,6 +204,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
         deviceRequests.size(),
         std::move(msg->Record.Sglist),
         blockRange,
+        VolumeActorId,
         SelfId(),
         requestId,
         Config->GetOptimizeVoidBuffersTransferForReadsEnabled(),
@@ -214,7 +227,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
         return;
     }
 
-    RequestsInProgress.AddReadRequest(requestId, sentRequestCtx);
+    RequestsInProgress.AddReadRequest(requestId, blockRange, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

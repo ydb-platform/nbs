@@ -11,7 +11,6 @@ TEST_SRCS(
 DEPENDS(
     cloud/blockstore/apps/client
     cloud/blockstore/apps/disk_agent
-    cloud/blockstore/apps/endpoint_proxy
     cloud/blockstore/apps/server
 
     contrib/ydb/apps/ydbd
@@ -30,3 +29,7 @@ PEERDIR(
 )
 
 END()
+
+RECURSE(
+    test_ignore_unknown_conf_params
+)

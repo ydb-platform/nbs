@@ -1,5 +1,6 @@
 #include "file_ring_buffer.h"
 
+#include <library/cpp/string_utils/base64/base64.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/deque.h>
@@ -26,6 +27,20 @@ TString Dump(const TVector<TFileRingBuffer::TBrokenFileEntry>& entries)
         sb << "data=" << entries[i].Data
             << " ecsum=" << entries[i].ExpectedChecksum
             << " csum=" << entries[i].ActualChecksum;
+    }
+
+    return sb;
+}
+
+TString Dump(const TVector<TString>& entries)
+{
+    TStringBuilder sb;
+
+    for (ui32 i = 0; i < entries.size(); ++i) {
+        if (i) {
+            sb << ", ";
+        }
+        sb << entries[i];
     }
 
     return sb;
@@ -77,7 +92,7 @@ struct TReferenceImplementation
         if (!Empty()) {
             if (ReadPos < WritePos) {
                 const auto avail = MaxWeight - WritePos;
-                if (avail <= sz) {
+                if (avail < sz) {
                     if (ReadPos <= sz) {
                         // out of space
                         return false;
@@ -285,7 +300,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
         m.Map(0, len);
         char* data = static_cast<char*>(m.Ptr());
-        data[44] = 'A';
+        data[260] = 'A';
 
         UNIT_ASSERT_VALUES_EQUAL(
             "data=vasya ecsum=3387363649 csum=3387363646",
@@ -322,7 +337,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     void DoRandomizedPushPopRestore(
         ui32 len,
         ui32 testBytes,
-        ui32 testUpToEntrySize)
+        ui32 testUpToEntrySize,
+        ui32 metadataSize)
     {
         const auto f = TTempFileHandle();
         const double restoreProbability = 0.05;
@@ -332,7 +348,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         auto restore = [&] () {
             rb = std::make_unique<TFileRingBuffer>(
                 f.GetName(),
-                len);
+                len,
+                metadataSize);
         };
 
         restore();
@@ -344,12 +361,29 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
                 const ui32 entrySize =
                     RandomNumber(Min(remainingBytes + 1, testUpToEntrySize));
                 const auto data = GenerateData(entrySize);
+                const auto maxAllocationSize = rb->GetMaxAllocationBytesCount();
                 const bool pushed = ri.PushBack(data);
                 UNIT_ASSERT_VALUES_EQUAL(pushed, rb->PushBack(data));
                 if (pushed) {
+                    UNIT_ASSERT_LE_C(
+                        data.size(),
+                        maxAllocationSize,
+                        "Data size " << data.size()
+                                     << " should be less or equal than "
+                                        "GetMaxAllocationBytesCount "
+                                     << maxAllocationSize
+                                     << " for a successful PushBack");
                     UNIT_ASSERT_VALUES_EQUAL(ri.Back(), rb->Back());
                     remainingBytes -= entrySize;
                     // Cerr << "PUSH\t" << data << Endl;
+                } else {
+                    UNIT_ASSERT_C(
+                        data.size() == 0 || data.size() > maxAllocationSize,
+                        "Data size " << data.size()
+                                     << " should be zero or greater than "
+                                        "GetMaxAllocationBytesCount "
+                                     << maxAllocationSize
+                                     << " for a unsuccessful PushBack");
                 }
             } else {
                 UNIT_ASSERT_VALUES_EQUAL(ri.Back(), rb->Back());
@@ -368,17 +402,28 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL(ri.Size(), rb->Size());
             UNIT_ASSERT_VALUES_EQUAL(ri.Empty(), rb->Empty());
             UNIT_ASSERT_VALUES_EQUAL("", Dump(rb->Validate()));
+            UNIT_ASSERT(!rb->IsCorrupted());
         }
     }
 
     Y_UNIT_TEST(RandomizedPushPopRestore)
     {
-        DoRandomizedPushPopRestore(1_MB, 16_MB, 5_KB);
+        DoRandomizedPushPopRestore(1_MB, 16_MB, 5_KB, 0);
     }
 
     Y_UNIT_TEST(RandomizedPushPopRestoreSmall)
     {
-        DoRandomizedPushPopRestore(4_KB, 1_MB, 16);
+        DoRandomizedPushPopRestore(4_KB, 1_MB, 16, 0);
+    }
+
+    Y_UNIT_TEST(RandomizedPushPopRestoreWithMetadata)
+    {
+        DoRandomizedPushPopRestore(1_MB, 16_MB, 5_KB, 1_KB);
+    }
+
+    Y_UNIT_TEST(RandomizedPushPopRestoreSmallWithMetadata)
+    {
+        DoRandomizedPushPopRestore(4_KB, 1_MB, 16, 4);
     }
 
     Y_UNIT_TEST(ShouldFullyUtilizeCapacity)
@@ -422,6 +467,367 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb.PushBack("01"));
         rb.PopFront();
         UNIT_ASSERT_VALUES_EQUAL("01", rb.Front());
+    }
+
+    struct TStateWithCorruptedEntryLength
+    {
+        const TTempFileHandle FileHandle;
+        const ui32 Len = 32;
+        TFileRingBuffer RingBuffer;
+
+        explicit TStateWithCorruptedEntryLength(int newLength)
+            : RingBuffer(FileHandle.GetName(), Len)
+        {
+            UNIT_ASSERT(RingBuffer.PushBack("aaa"));
+            UNIT_ASSERT(RingBuffer.PushBack("bb"));
+
+            TFileMap m(FileHandle.GetName(), TMemoryMapCommon::oRdWr);
+            m.Map(0, 256 + Len);
+            char* data = static_cast<char*>(m.Ptr());
+            UNIT_ASSERT_VALUES_EQUAL(2, data[267]);
+            data[267] = newLength;
+        }
+    };
+
+    Y_UNIT_TEST(ShouldSetIsCorruptedFlagWhenEntryLengthIsAltered)
+    {
+        for (int i = 0; i <= 32; i++) {
+            TStateWithCorruptedEntryLength s(i);
+            TFileRingBuffer rb(s.FileHandle.GetName(), s.Len);
+            UNIT_ASSERT_VALUES_EQUAL(i != 2, rb.IsCorrupted());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSetIsCorruptedFlagInVisitWhenEntryLengthIsAltered)
+    {
+        for (int i = 0; i <= 32; i++) {
+            TStateWithCorruptedEntryLength s(i);
+            UNIT_ASSERT(!s.RingBuffer.IsCorrupted());
+            s.RingBuffer.Visit([] (ui32, TStringBuf) {});
+            UNIT_ASSERT_VALUES_EQUAL(i != 2, s.RingBuffer.IsCorrupted());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSetIsCorruptedFlagInValidateWhenEntryLengthIsAltered)
+    {
+        for (int i = 0; i <= 32; i++) {
+            TStateWithCorruptedEntryLength s(i);
+            UNIT_ASSERT(!s.RingBuffer.IsCorrupted());
+            s.RingBuffer.Validate();
+            UNIT_ASSERT_VALUES_EQUAL(i != 2, s.RingBuffer.IsCorrupted());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldProhibitPushBackInCorruptedState)
+    {
+        TStateWithCorruptedEntryLength good(2);
+        TFileRingBuffer rb(good.FileHandle.GetName(), good.Len);
+        UNIT_ASSERT(rb.PushBack("c"));
+
+        TStateWithCorruptedEntryLength bad(1);
+        TFileRingBuffer rb2(bad.FileHandle.GetName(), bad.Len);
+        UNIT_ASSERT(!rb2.PushBack("c"));
+    }
+
+    Y_UNIT_TEST(ShouldNotFailOnCapacityChange)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 16;
+        TFileRingBuffer rb(f.GetName(), len);
+        TFileRingBuffer rb1(f.GetName(), len + 1);
+        TFileRingBuffer rb2(f.GetName(), len - 1);
+
+        UNIT_ASSERT_EQUAL(f.GetLength(), len + 256);
+        UNIT_ASSERT(rb.PushBack("12345678"));
+    }
+
+    Y_UNIT_TEST(VisitAndPopBackShouldProduceSameResults)
+    {
+        for (int i = 0; i <= 32; i++) {
+            TStateWithCorruptedEntryLength s(i);
+            TFileRingBuffer rb(s.FileHandle.GetName(), s.Len);
+
+            TVector<TString> afterVisit;
+            rb.Visit([&] (ui32 checksum, TStringBuf entry)
+            {
+                Y_UNUSED(checksum);
+                afterVisit.push_back(TString(entry));
+            });
+
+            TVector<TString> afterPopBack;
+            while (!rb.Empty())
+            {
+                afterPopBack.push_back(TString(rb.Front()));
+                rb.PopFront();
+            }
+
+            UNIT_ASSERT_EQUAL(Dump(afterVisit), Dump(afterPopBack));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldGetRawCapacity)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 42;
+        TFileRingBuffer rb(f.GetName(), len);
+        UNIT_ASSERT_EQUAL(len, rb.GetRawCapacity());
+    }
+
+    Y_UNIT_TEST(ShouldGetRawUsedBytesCount)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 36;
+        TFileRingBuffer rb(f.GetName(), len);
+
+        UNIT_ASSERT_EQUAL(0, rb.GetRawUsedBytesCount());
+        UNIT_ASSERT(rb.PushBack("abcd"));   // 12 bytes
+        UNIT_ASSERT_EQUAL(12, rb.GetRawUsedBytesCount());
+        UNIT_ASSERT(rb.PushBack("efgh"));   // 12 bytes
+        UNIT_ASSERT_EQUAL(24, rb.GetRawUsedBytesCount());
+        UNIT_ASSERT(rb.PushBack("ijkl"));   // 12 bytes
+        UNIT_ASSERT_EQUAL(36, rb.GetRawUsedBytesCount());
+        rb.PopFront();
+        UNIT_ASSERT_EQUAL(24, rb.GetRawUsedBytesCount());
+        rb.PopFront();
+        UNIT_ASSERT_EQUAL(12, rb.GetRawUsedBytesCount());
+        rb.PopFront();
+        UNIT_ASSERT_EQUAL(0, rb.GetRawUsedBytesCount());
+    }
+
+    Y_UNIT_TEST(ShouldGetMaxAllocationBytesCount)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 36;
+        TFileRingBuffer rb(f.GetName(), len);
+
+        // 36 - header size (8)
+        UNIT_ASSERT_EQUAL(28, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT(rb.PushBack("abcd"));
+        UNIT_ASSERT_EQUAL(16, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT(rb.PushBack("efgh"));
+        UNIT_ASSERT_EQUAL(4, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT(rb.PushBack("ijkl"));
+        UNIT_ASSERT_EQUAL(0, rb.GetMaxAllocationBytesCount());
+        rb.PopFront();
+        UNIT_ASSERT_EQUAL(3, rb.GetMaxAllocationBytesCount());
+        rb.PopFront();
+        UNIT_ASSERT_EQUAL(15, rb.GetMaxAllocationBytesCount());
+        rb.PopFront();
+        UNIT_ASSERT_EQUAL(28, rb.GetMaxAllocationBytesCount());
+    }
+
+    Y_UNIT_TEST(ShouldGetAndSetMetadata_ZeroMetadataCapacity)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 36;
+
+        auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
+        UNIT_ASSERT(rb->PushBack("AAA"));
+        UNIT_ASSERT_VALUES_EQUAL("", rb->GetMetadata());
+        UNIT_ASSERT(!rb->SetMetadata("1"));
+        UNIT_ASSERT(rb->SetMetadata(""));
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
+        UNIT_ASSERT(!rb->SetMetadata("1"));
+        UNIT_ASSERT_VALUES_EQUAL("", rb->GetMetadata());
+        UNIT_ASSERT_VALUES_EQUAL("AAA", rb->Front());
+    }
+
+    Y_UNIT_TEST(ShouldGetAndSetMetadata_NonZeroMetadataCapacity)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 36;
+
+        auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 8);
+        UNIT_ASSERT(rb->PushBack("AAA"));
+        UNIT_ASSERT_VALUES_EQUAL("", rb->GetMetadata());
+        UNIT_ASSERT(rb->SetMetadata("1234"));
+        UNIT_ASSERT_VALUES_EQUAL("1234", rb->GetMetadata());
+        UNIT_ASSERT(!rb->SetMetadata("abcdefghij"));
+        UNIT_ASSERT_VALUES_EQUAL("1234", rb->GetMetadata());
+        UNIT_ASSERT(rb->SetMetadata("abc"));
+        UNIT_ASSERT_VALUES_EQUAL("abc", rb->GetMetadata());
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 8);
+        UNIT_ASSERT_VALUES_EQUAL("abc", rb->GetMetadata());
+        UNIT_ASSERT(rb->SetMetadata(""));
+        UNIT_ASSERT_VALUES_EQUAL("", rb->GetMetadata());
+        UNIT_ASSERT_VALUES_EQUAL("AAA", rb->Front());
+    }
+
+    Y_UNIT_TEST(ShouldValidateMetadata)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 36;
+
+        auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 8);
+        UNIT_ASSERT(rb->SetMetadata("1234"));
+        UNIT_ASSERT(rb->ValidateMetadata());
+
+        {
+            // Corrupt metadata Crc32
+            TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
+            m.Map(0, 256);
+            char* data = static_cast<char*>(m.Ptr());
+            data[68] ^= 1;
+        }
+
+        UNIT_ASSERT(!rb->ValidateMetadata());
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 8);
+        UNIT_ASSERT(!rb->ValidateMetadata());
+        UNIT_ASSERT(rb->SetMetadata("1234"));
+        UNIT_ASSERT(rb->ValidateMetadata());
+
+        {
+            // Corrupt metadata Length
+            TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
+            m.Map(0, 256);
+            char* data = static_cast<char*>(m.Ptr());
+            data[64] = 100;
+        }
+
+        UNIT_ASSERT(!rb->ValidateMetadata());
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 8);
+        UNIT_ASSERT(!rb->ValidateMetadata());
+        UNIT_ASSERT(rb->SetMetadata("1234"));
+        UNIT_ASSERT(rb->ValidateMetadata());
+    }
+
+    Y_UNIT_TEST(ShouldBackwardSupportFileFormat)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 36;
+
+        const TString fileDumpVer2 =
+            "AgAAAAAAAAAkAAAAAAAAAAAAAAAAAAAACwAAAAAAAAALAAAAAAAAAAMAAAARceVdQU"
+            "FBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==";
+
+        {
+            TString decoded;
+            Base64Decode(fileDumpVer2, decoded);
+
+            TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
+            m.ResizeAndRemap(0, decoded.size());
+            decoded.copy(reinterpret_cast<char*>(m.Ptr()), decoded.size());
+        }
+
+        TFileRingBuffer rb(f.GetName(), len);
+        UNIT_ASSERT_VALUES_EQUAL("AAA", rb.Front());
+    }
+
+    Y_UNIT_TEST(ShouldResizeMetadata)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 12;    // entry header (8) + max entry data (4)
+
+        auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 1);
+        UNIT_ASSERT(rb->PushBack("ABCD"));
+        UNIT_ASSERT(rb->SetMetadata("1"));
+        UNIT_ASSERT(!rb->SetMetadata("12"));
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 4);
+        UNIT_ASSERT_STRINGS_EQUAL("ABCD", rb->Front());
+        UNIT_ASSERT_STRINGS_EQUAL("1", rb->GetMetadata());
+        UNIT_ASSERT(rb->SetMetadata("123"));
+        UNIT_ASSERT(!rb->SetMetadata("12345"));
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 16);
+        UNIT_ASSERT_STRINGS_EQUAL("ABCD", rb->Front());
+        UNIT_ASSERT_STRINGS_EQUAL("123", rb->GetMetadata());
+        UNIT_ASSERT(rb->SetMetadata("123456789"));
+        UNIT_ASSERT(!rb->SetMetadata("1234567890abcdef!"));
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 100);
+        UNIT_ASSERT_STRINGS_EQUAL("ABCD", rb->Front());
+        UNIT_ASSERT_STRINGS_EQUAL("123456789", rb->GetMetadata());
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 10);
+        UNIT_ASSERT_STRINGS_EQUAL("ABCD", rb->Front());
+        UNIT_ASSERT_STRINGS_EQUAL("123456789", rb->GetMetadata());
+        UNIT_ASSERT(!rb->SetMetadata("1234567890!"));
+
+        // Cannot shrink metadata below current size
+        // New metadata capacity = 9
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 8);
+        UNIT_ASSERT_STRINGS_EQUAL("ABCD", rb->Front());
+        UNIT_ASSERT_STRINGS_EQUAL("123456789", rb->GetMetadata());
+        UNIT_ASSERT(rb->SetMetadata("abcdefghi"));
+    }
+
+    Y_UNIT_TEST(ShouldResumeAbortedMetadataResize)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 12;    // entry header (8) + max entry data (4)
+
+        TString initial;
+        TString resized;
+
+        // Collect expected file contents
+        {
+            TFileRingBuffer rb(f.GetName(), len, 1);
+            UNIT_ASSERT(rb.PushBack("ABCD"));
+            UNIT_ASSERT(rb.SetMetadata("1"));
+        }
+        {
+            TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
+            m.Map(0, m.Length());
+            initial = TString(static_cast<char*>(m.Ptr()), m.Length());
+        }
+        {
+            TFileRingBuffer rb(f.GetName(), len, 100);
+        }
+        {
+            TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
+            m.Map(0, m.Length());
+            resized = TString(static_cast<char*>(m.Ptr()), m.Length());
+        }
+
+        // Simulate interruption during metadata resize
+        // 1. Abort during copy to the temporary location
+        const auto f1 = TTempFileHandle();
+        {
+            TFileMap m(f1.GetName(), TMemoryMapCommon::oRdWr);
+            m.ResizeAndRemap(0, resized.length() + len);
+            auto* data = static_cast<char*>(m.Ptr());
+            MemCopy(data, initial.data(), initial.length());
+            const auto* entryData = initial.data() + initial.length() - len;
+            MemCopy(data + resized.length(), entryData, 3);
+        }
+        {
+            TFileRingBuffer rb(f1.GetName(), len, 100);
+        }
+        {
+            TFileMap m(f1.GetName(), TMemoryMapCommon::oRdWr);
+            m.Map(0, m.Length());
+            UNIT_ASSERT_STRINGS_EQUAL(
+                resized,
+                TString(static_cast<char*>(m.Ptr()), m.Length()));
+        }
+
+        // 2. Abort during copy back to the final location
+        const auto f2 = TTempFileHandle();
+        {
+            TFileMap m(f2.GetName(), TMemoryMapCommon::oRdWr);
+            m.ResizeAndRemap(0, resized.length() + len);
+            auto* data = static_cast<char*>(m.Ptr());
+            MemCopy(data, initial.data(), initial.length());
+            const auto* entryData = initial.data() + initial.length() - len;
+            MemCopy(data + resized.length(), entryData, len);
+            MemCopy(data + resized.length() - len, entryData, 3);
+            *reinterpret_cast<ui64*>(data + 40) = resized.length();
+        }
+        {
+            TFileRingBuffer rb(f2.GetName(), len, 100);
+        }
+        {
+            TFileMap m(f1.GetName(), TMemoryMapCommon::oRdWr);
+            m.Map(0, m.Length());
+            UNIT_ASSERT_STRINGS_EQUAL(
+                resized,
+                TString(static_cast<char*>(m.Ptr()), m.Length()));
+        }
     }
 }
 

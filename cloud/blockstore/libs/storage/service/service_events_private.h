@@ -245,6 +245,24 @@ struct TEvServicePrivate
     };
 
     //
+    // List mounted volumes
+    //
+
+    struct TListMountedVolumesRequest
+    {
+    };
+
+    struct TListMountedVolumesResponse
+    {
+        struct TMountedVolumeInfo
+        {
+            TString DiskId;
+            NActors::TActorId VolumeActor;
+        };
+        TVector<TMountedVolumeInfo> MountedVolumes;
+    };
+
+    //
     // UpdateManuallyPreemptedVolume notification
     //
 
@@ -308,6 +326,8 @@ struct TEvServicePrivate
         EvSyncManuallyPreemptedVolumesComplete,
         EvSelfPing,
         EvCreateEncryptionKeyResponse,
+        EvListMountedVolumesRequest,
+        EvListMountedVolumesResponse,
 
         EvEnd
     };
@@ -401,6 +421,14 @@ struct TEvServicePrivate
     using TEvCreateEncryptionKeyResponse = TResponseEvent<
         TCreateEncryptionKeyResponse,
         EvCreateEncryptionKeyResponse>;
+
+    using TEvListMountedVolumesRequest = TResponseEvent<
+        TListMountedVolumesRequest,
+        EvListMountedVolumesRequest>;
+
+    using TEvListMountedVolumesResponse = TResponseEvent<
+        TListMountedVolumesResponse,
+        EvListMountedVolumesResponse>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -1,11 +1,12 @@
 #include "resync_range_block_by_block.h"
 
-#include "cloud/blockstore/libs/storage/disk_agent/model/public.h"
-
+#include <cloud/blockstore/libs/common/block_checksum.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 
 #include <util/string/join.h>
 
@@ -122,6 +123,23 @@ TEvNonreplPartitionPrivate::TEvRangeResynced::EStatus GetResyncStatus(
         return EStatus::HealedNone;
     }
     return EStatus::HealedPartial;
+}
+
+IProfileLog::TReplicaChecksums MakeChecksums(
+    ui32 replicaId,
+    const NProto::TIOVector& blocks)
+{
+    IProfileLog::TReplicaChecksums result{
+        .ReplicaId = replicaId,
+        .Checksums = {}};
+
+    for (const auto& block: blocks.GetBuffers()) {
+        TBlockChecksum checksum;
+        checksum.Extend(block.data(), block.size());
+        result.Checksums.push_back(checksum.GetValue());
+    }
+
+    return result;
 }
 
 }   // namespace
@@ -364,15 +382,23 @@ void TResyncRangeBlockByBlockActor::ReadReplicaBlocks(
     ReadStartTs = ctx.Now();
 }
 
-void TResyncRangeBlockByBlockActor::WriteBlocks(const TActorContext& ctx)
+void TResyncRangeBlockByBlockActor::WriteBlocks(
+    const TActorContext& ctx,
+    bool calculateChecksum)
 {
     if (!ActorsToResync) {
         Done(ctx);
         return;
     }
 
-    for (auto replica: ActorsToResync) {
-        WriteReplicaBlocks(ctx, replica, std::move(ReadBuffers[replica]));
+    for (size_t replicaIdx: ActorsToResync) {
+        WriteRangeInfo.ReplicaChecksums.push_back(
+            MakeChecksums(replicaIdx, ReadBuffers[replicaIdx]));
+        WriteReplicaBlocks(
+            ctx,
+            replicaIdx,
+            std::move(ReadBuffers[replicaIdx]),
+            calculateChecksum);
     }
 
     WriteStartTs = ctx.Now();
@@ -381,7 +407,8 @@ void TResyncRangeBlockByBlockActor::WriteBlocks(const TActorContext& ctx)
 void TResyncRangeBlockByBlockActor::WriteReplicaBlocks(
     const TActorContext& ctx,
     size_t replicaIndex,
-    NProto::TIOVector data)
+    NProto::TIOVector data,
+    bool calculateChecksum)
 {
     auto request = std::make_unique<TEvService::TEvWriteBlocksRequest>();
     request->Record.SetStartIndex(Range.Start);
@@ -405,6 +432,11 @@ void TResyncRangeBlockByBlockActor::WriteReplicaBlocks(
         if (digest.Defined()) {
             AffectedBlockInfos.push_back({blockIndex, *digest});
         }
+    }
+    if (calculateChecksum) {
+        auto checksum =
+            CalculateChecksum(request->Record.GetBlocks(), BlockSize);
+        request->Record.MutableChecksums()->Add(std::move(checksum));
     }
 
     auto event = std::make_unique<NActors::IEventHandle>(
@@ -433,12 +465,15 @@ void TResyncRangeBlockByBlockActor::Done(const TActorContext& ctx)
         std::make_unique<TEvNonreplPartitionPrivate::TEvRangeResynced>(
             std::move(Error),
             Range,
-            TInstant(),    // checksumStartTs
-            TDuration(),   // checksumDuration
+            ChecksumRangeActorCompanion.GetChecksumStartTs(),
+            ChecksumRangeActorCompanion.GetChecksumDuration(),
+            ChecksumRangeActorCompanion.GetRangeInfo(),
             ReadStartTs,
             ReadDuration,
+            std::move(ReadRangeInfo),
             WriteStartTs,
             WriteDuration,
+            std::move(WriteRangeInfo),
             RequestInfo->ExecCycles,
             std::move(AffectedBlockInfos),
             GetResyncStatus(FixedBlockCount, FoundErrorCount));
@@ -529,6 +564,8 @@ void TResyncRangeBlockByBlockActor::HandleReadResponse(
         return;
     }
 
+    ReadRangeInfo.ReplicaChecksums.push_back(
+        MakeChecksums(replicaIdx, msg->Record.GetBlocks()));
     msg->Record.MutableBlocks()->Swap(&ReadBuffers[replicaIdx]);
 
     bool allReadsDone = AllOf(
@@ -539,7 +576,7 @@ void TResyncRangeBlockByBlockActor::HandleReadResponse(
     }
 
     PrepareWriteBuffers(ctx);
-    WriteBlocks(ctx);
+    WriteBlocks(ctx, msg->Record.HasChecksum());
 }
 
 void TResyncRangeBlockByBlockActor::HandleWriteUndelivery(

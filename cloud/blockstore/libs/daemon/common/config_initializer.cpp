@@ -1,6 +1,7 @@
 #include "config_initializer.h"
 #include "options.h"
 
+#include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -111,6 +112,18 @@ void TConfigInitializerCommon::InitRdmaConfig()
 
     RdmaConfig =
         std::make_shared<NRdma::TRdmaConfig>(rdmaConfig);
+}
+
+void TConfigInitializerCommon::InitCellsConfig()
+{
+    NProto::TCellsConfig cellsConfig;
+
+    if (Options->CellsConfig) {
+        ParseProtoTextFromFileRobust(Options->CellsConfig, cellsConfig);
+    }
+
+    CellsConfig =
+        std::make_shared<NCells::TCellsConfig>(std::move(cellsConfig));
 }
 
 void TConfigInitializerCommon::InitDiskRegistryProxyConfig()

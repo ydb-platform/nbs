@@ -3,10 +3,10 @@
 #include "adaptive_wait.h"
 #include "buffer.h"
 #include "event.h"
+#include "list.h"
+#include "log.h"
 #include "poll.h"
 #include "rcu.h"
-#include "log.h"
-#include "list.h"
 #include "utils.h"
 #include "verbs.h"
 #include "work_queue.h"
@@ -14,8 +14,6 @@
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
-
-#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
@@ -31,7 +29,9 @@
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
+#include <util/generic/map.h>
 #include <util/generic/vector.h>
+#include <util/network/interface.h>
 #include <util/random/random.h>
 #include <util/stream/format.h>
 #include <util/system/datetime.h>
@@ -53,11 +53,8 @@ constexpr TDuration POLL_TIMEOUT = TDuration::Seconds(1);
 constexpr TDuration RESOLVE_TIMEOUT = TDuration::Seconds(10);
 constexpr TDuration MIN_CONNECT_TIMEOUT = TDuration::Seconds(1);
 constexpr TDuration FLUSH_TIMEOUT = TDuration::Seconds(10);
-constexpr TDuration LOG_THROTTLER_PERIOD = TDuration::Seconds(60);
 constexpr TDuration MIN_RECONNECT_DELAY = TDuration::MilliSeconds(10);
 constexpr TDuration INSTANT_RECONNECT_DELAY = TDuration::MicroSeconds(1);
-
-constexpr size_t REQUEST_HISTORY_SIZE = 1024;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -87,7 +84,7 @@ struct TRequest
     std::weak_ptr<TClientEndpoint> Endpoint;
 
     TCallContextPtr CallContext;
-    ui32 ReqId = 0;
+    ui32 ReqId = 0;   // 16-bit RDMA request id
     ui64 ClientReqId = 0;
 
     TPooledBuffer InBuffer{};
@@ -110,21 +107,30 @@ struct TRequest
 class TActiveRequests
 {
 private:
-    THashMap<ui32, TRequestPtr> Requests;
-    THistory<ui32> CompletedRequests{REQUEST_HISTORY_SIZE};
-    THistory<ui32> TimedOutRequests{REQUEST_HISTORY_SIZE};
-    THistory<ui32> CancelledRequests{REQUEST_HISTORY_SIZE};
+    ui32 RequestIdGenerator = 0;
+    TMap<ui32, TRequestPtr> Requests;
 
 public:
-    ui32 CreateId()
+    [[nodiscard]] ui32 CreateId()
     {
         for (;;) {
+            Y_DEBUG_ABORT_UNLESS(Requests.size() < RDMA_MAX_REQID - 1);
+
+            if (RequestIdGenerator >= RDMA_MAX_REQID) {
+                RequestIdGenerator = 0;
+            }
+            const ui32 reqId = ++RequestIdGenerator;
             // must be unique through all in-flight requests
-            ui32 reqId = RandomNumber<ui32>(RDMA_MAX_REQID);
-            if (reqId && Requests.find(reqId) == Requests.end()) {
+            if (Requests.find(reqId) == Requests.end()) {
+                Y_DEBUG_ABORT_UNLESS(reqId > 0 && reqId <= RDMA_MAX_REQID);
                 return reqId;
             }
         }
+    }
+
+    [[nodiscard]] ui32 GetCurrentId() const
+    {
+        return RequestIdGenerator;
     }
 
     void Push(TRequestPtr req)
@@ -137,7 +143,6 @@ public:
         auto it = Requests.find(reqId);
         if (it != Requests.end()) {
             TRequestPtr req = std::move(it->second);
-            CompletedRequests.Put(it->first);
             Requests.erase(it);
             return req;
         }
@@ -151,7 +156,6 @@ public:
         }
         auto it = std::begin(Requests);
         TRequestPtr req = std::move(it->second);
-        CompletedRequests.Put(it->first);
         Requests.erase(it);
         return req;
     }
@@ -165,28 +169,12 @@ public:
         return nullptr;
     }
 
-    bool TimedOut(ui32 reqId) const
-    {
-        return TimedOutRequests.Contains(reqId);
-    }
-
-    bool Completed(ui32 reqId) const
-    {
-        return CompletedRequests.Contains(reqId);
-    }
-
-    [[nodiscard]] bool Cancelled(ui32 reqId) const
-    {
-        return CancelledRequests.Contains(reqId);
-    }
-
     TSimpleList<TRequest> PopCancelledRequests(
-        const THashSet<ui64>& idsToCancel)
+        const THashSet<ui64>& clientRequestIdToCancel)
     {
         TSimpleList<TRequest> cancelledReqs;
         for (auto& [rdmaReqId, req]: Requests) {
-            if (idsToCancel.contains(req->ClientReqId)) {
-                CancelledRequests.Put(rdmaReqId);
+            if (clientRequestIdToCancel.contains(req->ClientReqId)) {
                 cancelledReqs.Enqueue(std::move(req));
             }
         }
@@ -201,19 +189,29 @@ public:
     TVector<TRequestPtr> PopTimedOutRequests(ui64 timeoutCycles)
     {
         TVector<TRequestPtr> requests;
-        for (auto& x: Requests) {
-            auto started = x.second->StartedCycles;
-            auto now = GetCycleCount();
+        const ui64 now = GetCycleCount();
 
-            if (started && started + timeoutCycles < now) {
-                requests.push_back(std::move(x.second));
+        auto popTimedOut = [&](decltype(Requests.begin()) it)
+        {
+            for (; it != Requests.end();) {
+                TRequestPtr& request = it->second;
+                if (request->StartedCycles &&
+                    request->StartedCycles + timeoutCycles < now)
+                {
+                    requests.push_back(std::move(request));
+                    it = Requests.erase(it);
+                } else {
+                    break;
+                }
             }
-        }
+        };
 
-        for (const auto& x: requests) {
-            TimedOutRequests.Put(x->ReqId);
-            Requests.erase(x->ReqId);
-        }
+        // Since identifiers are reused in a circle, the oldest identifiers need
+        // to be searched in two places - at the very beginning and after the
+        // last one used.
+        // [ old ... GetCurrentId() ... older]
+        popTimedOut(Requests.begin());
+        popTimedOut(Requests.upper_bound(GetCurrentId()));
 
         return requests;
     }
@@ -258,31 +256,23 @@ struct TEndpointCounters
     TDynamicCounters::TCounterPtr ActiveRequests;
     TDynamicCounters::TCounterPtr AbortedRequests;
     TDynamicCounters::TCounterPtr CompletedRequests;
-    TDynamicCounters::TCounterPtr UnknownRequests;
 
     TDynamicCounters::TCounterPtr ActiveSend;
     TDynamicCounters::TCounterPtr ActiveRecv;
 
-    TDynamicCounters::TCounterPtr SendErrors;
-    TDynamicCounters::TCounterPtr RecvErrors;
-
-    TDynamicCounters::TCounterPtr UnexpectedCompletions;
+    TDynamicCounters::TCounterPtr Errors;
 
     void Register(TDynamicCounters& counters)
     {
         QueuedRequests = counters.GetCounter("QueuedRequests");
         ActiveRequests = counters.GetCounter("ActiveRequests");
         CompletedRequests = counters.GetCounter("CompletedRequests", true);
-        AbortedRequests = counters.GetCounter("AbortedRequests");
-        UnknownRequests = counters.GetCounter("UnknownRequests");
+        AbortedRequests = counters.GetCounter("AbortedRequests", true);
 
         ActiveSend = counters.GetCounter("ActiveSend");
         ActiveRecv = counters.GetCounter("ActiveRecv");
 
-        SendErrors = counters.GetCounter("SendErrors");
-        RecvErrors = counters.GetCounter("RecvErrors");
-
-        UnexpectedCompletions = counters.GetCounter("UnexpectedCompletions");
+        Errors = counters.GetCounter("Errors", true);
     }
 
     void RequestEnqueued()
@@ -311,24 +301,15 @@ struct TEndpointCounters
         ActiveSend->Dec();
     }
 
-    void SendRequestError()
-    {
-        ActiveRequests->Dec();
-        SendErrors->Inc();
-    }
-
     void RecvResponseCompleted()
     {
         ActiveRecv->Dec();
-        ActiveRequests->Dec();
-        CompletedRequests->Inc();
     }
 
-    void RecvResponseError()
+    void RequestCompleted()
     {
-        ActiveRecv->Dec();
         ActiveRequests->Dec();
-        RecvErrors->Inc();
+        CompletedRequests->Inc();
     }
 
     void RequestAborted()
@@ -337,14 +318,9 @@ struct TEndpointCounters
         AbortedRequests->Inc();
     }
 
-    void UnknownRequest()
+    void Error()
     {
-        UnknownRequests->Inc();
-    }
-
-    void UnexpectedCompletion()
-    {
-        UnexpectedCompletions->Inc();
+        Errors->Inc();
     }
 };
 
@@ -426,7 +402,7 @@ private:
 
 struct TClientRequestId: TListNode<TClientRequestId>
 {
-    ui64 ReqId = 0;
+    ui64 ClientRequestId = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -451,10 +427,6 @@ private:
     TEndpointCountersPtr Counters;
     TLog Log;
     TReconnect Reconnect;
-
-    struct {
-        TLogThrottler Unexpected = TLogThrottler(LOG_THROTTLER_PERIOD);
-    } LogThrottler;
 
     // config might be adjusted during initial handshake
     TClientConfigPtr OriginalConfig;
@@ -566,14 +538,13 @@ public:
 private:
     // called from CQ thread
     void HandleQueuedRequests();
-    bool IsWorkRequestValid(const TWorkRequestId& id) const;
-    void HandleFlush(const TWorkRequestId& id) noexcept;
     void SendRequest(TRequestPtr req, TSendWr* send);
-    void SendRequestCompleted(TSendWr* send, ibv_wc_status status) noexcept;
+    void SendRequestCompleted(TSendWr* send) noexcept;
     void RecvResponse(TRecvWr* recv);
-    void RecvResponseCompleted(TRecvWr* recv, ibv_wc_status status);
+    void RecvResponseCompleted(TRecvWr* recv);
     void AbortRequest(TRequestPtr req, ui32 err, const TString& msg) noexcept;
     void FreeRequest(TRequest* creq) noexcept;
+    int ValidateCompletion(ibv_wc* wc) noexcept;
     ui64 GetNewReqId() noexcept;
 };
 
@@ -893,14 +864,14 @@ void TClientEndpoint::HandleQueuedRequests()
     }
 }
 
-void TClientEndpoint::CancelRequest(ui64 reqId) noexcept
+void TClientEndpoint::CancelRequest(ui64 clientRequestId) noexcept
 {
     if (!CheckState(EEndpointState::Connected)) {
         return;
     }
 
     auto reqIdForQueue = std::make_unique<TClientRequestId>();
-    reqIdForQueue->ReqId = reqId;
+    reqIdForQueue->ClientRequestId = clientRequestId;
     Counters->RequestEnqueued();
     CancelRequests.Enqueue(std::move(reqIdForQueue));
 
@@ -922,7 +893,7 @@ void TClientEndpoint::TryForceReconnect() noexcept
             break;
     }
 
-    RDMA_DEBUG("Scheduling force reconnect");
+    RDMA_DEBUG("scheduling force reconnect");
     Reconnect.InstantReschedule(MIN_CONNECT_TIMEOUT / 2);
 }
 
@@ -936,10 +907,10 @@ bool TClientEndpoint::HandleCancelRequests()
     if (!requests) {
         return false;
     }
-    THashSet<ui64> reqsToCancel;
+    THashSet<ui64> clientRequestIdToCancel;
 
-    for (const auto& reqId: requests) {
-        reqsToCancel.emplace(reqId.ReqId);
+    for (const auto& request: requests) {
+        clientRequestIdToCancel.emplace(request.ClientRequestId);
     }
 
     // We should filter input and queued requests from cancelled ones to not
@@ -948,9 +919,10 @@ bool TClientEndpoint::HandleCancelRequests()
 
     auto cancelledReqs = QueuedRequests.DequeueIf(
         [&](const TRequest& req)
-        { return reqsToCancel.contains(req.ClientReqId); });
+        { return clientRequestIdToCancel.contains(req.ClientReqId); });
 
-    cancelledReqs.Append(ActiveRequests.PopCancelledRequests(reqsToCancel));
+    cancelledReqs.Append(
+        ActiveRequests.PopCancelledRequests(clientRequestIdToCancel));
 
     const bool ret = !!cancelledReqs;
 
@@ -1027,28 +999,69 @@ bool TClientEndpoint::HandleCompletionEvents()
     return false;
 }
 
-bool TClientEndpoint::IsWorkRequestValid(const TWorkRequestId& id) const
+int TClientEndpoint::ValidateCompletion(ibv_wc* wc) noexcept
 {
-    if (id.Magic == SendMagic && id.Index < SendWrs.size()) {
-        return true;
-    }
-    if (id.Magic == RecvMagic && id.Index < RecvWrs.size()) {
-        return true;
-    }
-    return false;
-}
+    auto id = TWorkRequestId(wc->wr_id);
 
-void TClientEndpoint::HandleFlush(const TWorkRequestId& id) noexcept
-{
-    // flush WRs have opcode=0
     if (id.Magic == SendMagic && id.Index < SendWrs.size()) {
-        SendQueue.Push(&SendWrs[id.Index]);
-        return;
+        if (wc->status == IBV_WC_WR_FLUSH_ERR) {
+            Counters->SendRequestCompleted();
+            SendQueue.Push(&SendWrs[id.Index]);
+            return -1;
+        }
+        if (wc->status != IBV_WC_SUCCESS) {
+            RDMA_ERROR(
+                "SEND " << id << " " << NVerbs::PrintCompletion(wc)
+                        << " failed with "
+                        << NVerbs::GetStatusString(wc->status));
+            Counters->Error();
+            Counters->SendRequestCompleted();
+            SendQueue.Push(&SendWrs[id.Index]);
+            return -1;
+        }
+        if (wc->opcode != IBV_WC_SEND) {
+            RDMA_ERROR(
+                "SEND " << id << " " << NVerbs::PrintCompletion(wc)
+                        << " unexpected opcode");
+            Counters->Error();
+            Counters->SendRequestCompleted();
+            SendQueue.Push(&SendWrs[id.Index]);
+            return -1;
+        }
+        return 0;
     }
+
     if (id.Magic == RecvMagic && id.Index < RecvWrs.size()) {
-        RecvQueue.Push(&RecvWrs[id.Index]);
-        return;
+        if (wc->status == IBV_WC_WR_FLUSH_ERR) {
+            Counters->RecvResponseCompleted();
+            RecvQueue.Push(&RecvWrs[id.Index]);
+            return -1;
+        }
+        if (wc->status != IBV_WC_SUCCESS) {
+            RDMA_ERROR(
+                "RECV " << id << " " << NVerbs::PrintCompletion(wc)
+                        << " failed with "
+                        << NVerbs::GetStatusString(wc->status));
+            Counters->Error();
+            Counters->RecvResponseCompleted();
+            RecvQueue.Push(&RecvWrs[id.Index]);
+            return -1;
+        }
+        if (wc->opcode != IBV_WC_RECV) {
+            RDMA_ERROR(
+                "RECV " << id << " " << NVerbs::PrintCompletion(wc)
+                        << " unexpected opcode");
+            Counters->Error();
+            Counters->RecvResponseCompleted();
+            RecvQueue.Push(&RecvWrs[id.Index]);
+            return -1;
+        }
+        return 0;
     }
+
+    RDMA_ERROR("unexpected wr_id " << NVerbs::PrintCompletion(wc));
+    Counters->Error();
+    return -1;
 }
 
 // implements NVerbs::ICompletionHandler
@@ -1056,36 +1069,27 @@ void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc)
 {
     auto id = TWorkRequestId(wc->wr_id);
 
-    RDMA_TRACE(NVerbs::GetOpcodeName(wc->opcode) << " " << id
-        << " completed with " << NVerbs::GetStatusString(wc->status));
+    RDMA_TRACE(
+        NVerbs::GetOpcodeName(wc->opcode)
+        << " " << id << " completed with "
+        << NVerbs::GetStatusString(wc->status));
 
-    if (!IsWorkRequestValid(id)) {
-        RDMA_ERROR(LogThrottler.Unexpected, Log,
-            "unexpected completion " << NVerbs::PrintCompletion(wc));
-
-        Counters->UnexpectedCompletion();
-        return;
-    }
-
-    if (wc->status == IBV_WC_WR_FLUSH_ERR) {
-        HandleFlush(id);
+    if (ValidateCompletion(wc)) {
+        Disconnect();
         return;
     }
 
     switch (wc->opcode) {
         case IBV_WC_SEND:
-            SendRequestCompleted(&SendWrs[id.Index], wc->status);
+            SendRequestCompleted(&SendWrs[id.Index]);
             break;
 
         case IBV_WC_RECV:
-            RecvResponseCompleted(&RecvWrs[id.Index], wc->status);
+            RecvResponseCompleted(&RecvWrs[id.Index]);
             break;
 
         default:
-            RDMA_ERROR(LogThrottler.Unexpected, Log,
-                "unexpected completion " << NVerbs::PrintCompletion(wc));
-
-            Counters->UnexpectedCompletion();
+            break;
     }
 }
 
@@ -1102,20 +1106,21 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
     requestMsg->In = req->InBuffer;
     requestMsg->Out = req->OutBuffer;
 
-    RDMA_TRACE("SEND " << TWorkRequestId(send->wr.wr_id));
+    RDMA_TRACE(
+        "SEND " << TWorkRequestId(send->wr.wr_id) << " posted " << req->ReqId);
 
     try {
         Verbs->PostSend(Connection->qp, &send->wr);
+
     } catch (const TServiceError& e) {
         RDMA_ERROR(
-            "SEND " << TWorkRequestId(send->wr.wr_id) << ": " << e.what());
-        SendQueue.Push(send);
-        ReportRdmaError();
-        Disconnect();
+            "SEND " << TWorkRequestId(send->wr.wr_id) << " " << e.what());
 
+        SendQueue.Push(send);
+        Counters->Error();
         Counters->RequestEnqueued();
         QueuedRequests.Enqueue(std::move(req));
-
+        Disconnect();
         return;
     }
 
@@ -1130,67 +1135,42 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
     ActiveRequests.Push(std::move(req));
 }
 
-void TClientEndpoint::SendRequestCompleted(
-    TSendWr* send,
-    ibv_wc_status status) noexcept
+void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
 {
-    Y_DEFER {
-        Counters->SendRequestCompleted();
-        SendQueue.Push(send);
-    };
-
-    if (status != IBV_WC_SUCCESS) {
-        RDMA_ERROR("SEND " << TWorkRequestId(send->wr.wr_id)
-            << ": " << NVerbs::GetStatusString(status));
-
-        Counters->SendRequestError();
-        ReportRdmaError();
-        Disconnect();
-        return;
-    }
-
+    auto wrId = TWorkRequestId(send->wr.wr_id);
     auto reqId = SafeCast<ui32>(reinterpret_cast<uintptr_t>(send->context));
+
+    Counters->SendRequestCompleted();
+    SendQueue.Push(send);
 
     if (auto* req = ActiveRequests.Get(reqId)) {
         LWTRACK(
             SendRequestCompleted,
             req->CallContext->LWOrbit,
             req->CallContext->RequestId);
-
-    } else if (ActiveRequests.TimedOut(reqId)) {
-        RDMA_INFO("SEND " << TWorkRequestId(send->wr.wr_id)
-            << ": request has timed out before receiving send wc");
-
-    } else if (ActiveRequests.Completed(reqId)) {
-        RDMA_INFO("SEND " << TWorkRequestId(send->wr.wr_id)
-            << ": request has been completed before receiving send wc");
-
-    } else if (ActiveRequests.Cancelled(reqId)) {
-        RDMA_INFO(
-            "SEND " << TWorkRequestId(send->wr.wr_id)
-                    << ": request was cancelled before receiving send wc");
-
     } else {
-        RDMA_ERROR("SEND " << TWorkRequestId(send->wr.wr_id)
-            << ": request not found")
-        Counters->UnknownRequest();
+        RDMA_ERROR(
+            "SEND " << wrId << " request not found. Current wrId "
+                    << ActiveRequests.GetCurrentId());
+        Counters->Error();
     }
 }
 
 void TClientEndpoint::RecvResponse(TRecvWr* recv)
 {
+    auto id = TWorkRequestId(recv->wr.wr_id);
     auto* responseMsg = recv->Message<TResponseMessage>();
     Zero(*responseMsg);
 
-    RDMA_TRACE("RECV " << TWorkRequestId(recv->wr.wr_id));
+    RDMA_TRACE("RECV " << id << " posted");
 
     try {
         Verbs->PostRecv(Connection->qp, &recv->wr);
+
     } catch (const TServiceError& e) {
-        RDMA_ERROR(
-            "RECV " << TWorkRequestId(recv->wr.wr_id) << ": " << e.what());
+        RDMA_ERROR("RECV " << id << " " << e.what());
+        Counters->Error();
         RecvQueue.Push(recv);
-        ReportRdmaError();
         Disconnect();
         return;
     }
@@ -1198,32 +1178,23 @@ void TClientEndpoint::RecvResponse(TRecvWr* recv)
     Counters->RecvResponseStarted();
 }
 
-void TClientEndpoint::RecvResponseCompleted(
-    TRecvWr* recv,
-    ibv_wc_status wc_status)
+void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv)
 {
-    if (wc_status != IBV_WC_SUCCESS) {
-        RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
-            << ": " << NVerbs::GetStatusString(wc_status));
+    const auto wrId = TWorkRequestId(recv->wr.wr_id);
+    auto* msg = recv->Message<TResponseMessage>();
 
-        Counters->RecvResponseError();
-        RecvQueue.Push(recv);
-        ReportRdmaError();
+    int version = ParseMessageHeader(msg);
+    if (version != RDMA_PROTO_VERSION) {
+        RDMA_ERROR(
+            "RECV " << wrId << " incompatible protocol version " << version
+                    << ", expected " << int(RDMA_PROTO_VERSION));
+
+        Counters->RecvResponseCompleted();
+        Counters->Error();
         Disconnect();
         return;
     }
 
-    auto* msg = recv->Message<TResponseMessage>();
-    int version = ParseMessageHeader(msg);
-    if (version != RDMA_PROTO_VERSION) {
-        RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
-            << ": incompatible protocol version "
-            << version << ", expected " << int(RDMA_PROTO_VERSION));
-
-        Counters->RecvResponseError();
-        RecvResponse(recv);
-        return;
-    }
     const ui32 reqId = msg->ReqId;
     const ui32 status = msg->Status;
     const ui32 responseBytes = msg->ResponseBytes;
@@ -1233,12 +1204,11 @@ void TClientEndpoint::RecvResponseCompleted(
 
     auto req = ActiveRequests.Pop(reqId);
     if (!req) {
-        RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
-            << ": request not found");
-
-        Counters->UnknownRequest();
+        RDMA_ERROR("RECV " << wrId << " request " << reqId << " not found");
+        Counters->Error();
         return;
     }
+    Counters->RequestCompleted();
 
     LWTRACK(
         RecvResponseCompleted,
@@ -1416,12 +1386,13 @@ public:
         Join();
     }
 
-    NVerbs::TConnectionPtr CreateConnection()
+    NVerbs::TConnectionPtr CreateConnection(ui8 tos)
     {
         return Verbs->CreateConnection(
             EventChannel.get(),
             nullptr,    // context
-            RDMA_PS_TCP);
+            RDMA_PS_TCP,
+            tos);
     }
 
     void Attach(TClientEndpoint* endpoint)
@@ -1912,7 +1883,7 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
     try {
         auto endpoint = std::make_shared<TClientEndpoint>(
             Verbs,
-            ConnectionPoller->CreateConnection(),
+            ConnectionPoller->CreateConnection(Config->IpTypeOfService),
             std::move(host),
             port,
             Config,
@@ -2054,7 +2025,8 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
         case EEndpointState::Disconnected:
             endpoint->Poller->Detach(endpoint);
             endpoint->DestroyQP();
-            endpoint->SetConnection(ConnectionPoller->CreateConnection());
+            endpoint->SetConnection(
+                ConnectionPoller->CreateConnection(Config->IpTypeOfService));
             break;
 
         // reconnect timer hit at the same time connection was established
@@ -2073,14 +2045,30 @@ void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
             .ai_port_space = RDMA_PS_TCP,
         };
 
-        auto addrinfo = Verbs->GetAddressInfo(
-            endpoint->Host, endpoint->Port, &hints);
+        // find the first non local address of the specified interface
+        for (auto& interface: NAddr::GetNetworkInterfaces()) {
+            if (interface.Name == Config->SourceInterface &&
+                GetScopeId(interface.Address->Addr()) == 0)
+            {
+                auto& addr = static_cast<NAddr::TOpaqueAddr&>(*interface.Address);
 
-        RDMA_DEBUG(endpoint->Log, "resolve rdma address");
+                RDMA_INFO(endpoint->Log, "bind to " << interface.Name
+                    << " address " << NAddr::PrintHost(addr));
+
+                hints.ai_src_addr = addr.MutableAddr();
+                hints.ai_src_len = addr.Len();
+                break;
+            }
+        }
 
         endpoint->ChangeState(
             EEndpointState::Disconnected,
             EEndpointState::ResolvingAddress);
+
+        auto addrinfo = Verbs->GetAddressInfo(
+            endpoint->Host, endpoint->Port, &hints);
+
+        RDMA_DEBUG(endpoint->Log, "resolve server address");
 
         Verbs->ResolveAddress(endpoint->Connection.get(), addrinfo->ai_src_addr,
             addrinfo->ai_dst_addr, RESOLVE_TIMEOUT);
@@ -2252,24 +2240,18 @@ void TClient::DumpHtml(IOutputStream& out) const
                     TABLEH() { out << "ActiveRequests"; }
                     TABLEH() { out << "AbortedRequests"; }
                     TABLEH() { out << "CompletedRequests"; }
-                    TABLEH() { out << "UnknownRequests"; }
                     TABLEH() { out << "ActiveSend"; }
                     TABLEH() { out << "ActiveRecv"; }
-                    TABLEH() { out << "SendErrors"; }
-                    TABLEH() { out << "RecvErrors"; }
-                    TABLEH() { out << "UnexpectedCompletions"; }
+                    TABLEH() { out << "Errors"; }
                 }
                 TABLER() {
                     TABLED() { out << Counters->QueuedRequests->Val(); }
                     TABLED() { out << Counters->ActiveRequests->Val(); }
                     TABLED() { out << Counters->AbortedRequests->Val(); }
                     TABLED() { out << Counters->CompletedRequests->Val(); }
-                    TABLED() { out << Counters->UnknownRequests->Val(); }
                     TABLED() { out << Counters->ActiveSend->Val(); }
                     TABLED() { out << Counters->ActiveRecv->Val(); }
-                    TABLED() { out << Counters->SendErrors->Val(); }
-                    TABLED() { out << Counters->RecvErrors->Val(); }
-                    TABLED() { out << Counters->UnexpectedCompletions->Val(); }
+                    TABLED() { out << Counters->Errors->Val(); }
                 }
             }
         }

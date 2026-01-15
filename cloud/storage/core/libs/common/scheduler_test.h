@@ -15,12 +15,23 @@ namespace NCloud {
 class TTestScheduler final
     : public IScheduler
 {
+    struct TScheduledCallback
+    {
+        TCallback Callback;
+        TInstant Deadline;
+    };
+
 private:
     TMutex CallbacksLock;
-    TVector<TCallback> Callbacks;
+    TVector<TScheduledCallback> Callbacks;
     std::optional<NThreading::TPromise<void>> GotNewCallback;
+    TInstant Now;
 
 public:
+    explicit TTestScheduler(TInstant now = TInstant::Max())
+        : Now(now)
+    {}
+
     void Start() override {}
     void Stop() override {}
 
@@ -31,7 +42,14 @@ public:
 
     void RunAllScheduledTasks();
 
+    void RunAllScheduledTasksUntilNow();
+
     NThreading::TFuture<void> WaitForTaskSchedule();
+
+    void AdvanceTime(TDuration duration);
+
+private:
+    void RunAllScheduledTasksUntilDeadline(TInstant deadline);
 };
 
 }   // namespace NCloud

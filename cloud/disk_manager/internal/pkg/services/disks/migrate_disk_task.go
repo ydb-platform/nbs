@@ -10,9 +10,8 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
-	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
@@ -33,15 +32,14 @@ const checkStatusPeriod = 200 * time.Millisecond
 ////////////////////////////////////////////////////////////////////////////////
 
 type migrateDiskTask struct {
-	disksConfig       *disks_config.DisksConfig
-	performanceConfig *performance_config.PerformanceConfig
-	scheduler         tasks.Scheduler
-	poolService       pools.Service
-	resourceStorage   resources.Storage
-	poolStorage       storage.Storage
-	nbsFactory        nbs.Factory
-	request           *protos.MigrateDiskRequest
-	state             *protos.MigrateDiskTaskState
+	disksConfig     *disks_config.DisksConfig
+	scheduler       tasks.Scheduler
+	poolService     pools.Service
+	resourceStorage resources.Storage
+	poolStorage     storage.Storage
+	nbsFactory      nbs.Factory
+	request         *protos.MigrateDiskRequest
+	state           *protos.MigrateDiskTaskState
 }
 
 func (t *migrateDiskTask) Save() ([]byte, error) {
@@ -86,6 +84,21 @@ func (t *migrateDiskTask) Run(
 				return err
 			}
 
+			if !t.request.IsMigrationBetweenCells {
+				// In the case of migration between cells, the source disk ID tag should be
+				// deleted only after the source disk itself is deleted, since both disks
+				// are in the same zone.
+				// However, in the case of migration between zones, we need to delete
+				// the source disk ID tag from the destination disk at this step,
+				// because the compute service should be able to kick endpoint after replication
+				// is finished. To do this, the tag must not be present.
+				// This is safe, since the disks are in different zones in this case.
+				err := t.deleteSourceDiskIdTag(ctx, execCtx)
+				if err != nil {
+					return err
+				}
+			}
+
 			t.state.Status = protos.MigrationStatus_ReplicationFinished
 			err = execCtx.SaveState(ctx)
 			if err != nil {
@@ -102,7 +115,7 @@ func (t *migrateDiskTask) Run(
 				if execCtx.HasEvent(
 					ctx,
 					int64(protos.MigrateDiskTaskEvents_FINISH_MIGRATION),
-				) {
+				) || t.request.IsMigrationBetweenCells {
 					t.state.Status = protos.MigrationStatus_Finishing
 					err := execCtx.SaveState(ctx)
 					if err != nil {
@@ -133,20 +146,23 @@ func (t *migrateDiskTask) Cancel(
 
 	t.logInfo(ctx, execCtx, "cancelling task")
 
+	// We do not expect task cancelling after ReplicationFinished status for
+	// migration between cells, but we still avoid dst disk deletion.
+	if t.request.IsMigrationBetweenCells &&
+		t.state.Status >= protos.MigrationStatus_ReplicationFinished {
+		return nil
+	}
+
 	// We do not expect task cancelling after FINISH_MIGRATION signal, but we still
 	// avoid dst disk deletion.
-	if !execCtx.HasEvent(
+	if execCtx.HasEvent(
 		ctx,
 		int64(protos.MigrateDiskTaskEvents_FINISH_MIGRATION),
 	) {
-		err := t.deleteDstDisk(ctx, execCtx)
-		if err != nil {
-			return err
-		}
-		t.logInfo(ctx, execCtx, "deleted dst disk")
+		return nil
 	}
 
-	return nil
+	return t.deleteDstDisk(ctx, execCtx)
 }
 
 func (t *migrateDiskTask) GetMetadata(
@@ -192,6 +208,11 @@ func (t *migrateDiskTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (t *migrateDiskTask) getSourceDiskIdTagStr() string {
+	return "source-disk-id=" +
+		t.request.Disk.ZoneId + "_" + t.request.Disk.DiskId
+}
+
 func (t *migrateDiskTask) start(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
@@ -199,7 +220,7 @@ func (t *migrateDiskTask) start(
 
 	t.logInfo(ctx, execCtx, "starting")
 
-	err := t.setEstimate(ctx, execCtx)
+	err := t.ensureNonLocalDisk(ctx)
 	if err != nil {
 		return err
 	}
@@ -274,6 +295,7 @@ func (t *migrateDiskTask) start(
 			t.request.DstPlacementPartitionIndex,
 			t.state.FillGeneration,
 			t.state.RelocateInfo.TargetBaseDiskID,
+			t.getSourceDiskIdTagStr(),
 		)
 		if err != nil {
 			return err
@@ -297,28 +319,22 @@ func (t *migrateDiskTask) start(
 	return nil
 }
 
-func (t *migrateDiskTask) setEstimate(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-) error {
-
+func (t *migrateDiskTask) ensureNonLocalDisk(ctx context.Context) error {
 	client, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
 	if err != nil {
 		return err
 	}
 
-	stats, err := client.Stat(
-		ctx,
-		t.request.Disk.DiskId,
-	)
+	params, err := client.Describe(ctx, t.request.Disk.DiskId)
 	if err != nil {
 		return err
 	}
 
-	execCtx.SetEstimate(performance.Estimate(
-		stats.StorageSize,
-		t.performanceConfig.GetReplicateDiskBandwidthMiBs(),
-	))
+	if common.IsLocalDiskKind(params.Kind) {
+		return errors.NewNonCancellableErrorf(
+			"local disk migration is forbidden",
+		)
+	}
 
 	return nil
 }
@@ -344,7 +360,8 @@ func (t *migrateDiskTask) scheduleReplicateTask(
 			},
 			FillGeneration: t.state.FillGeneration,
 			// Performs full copy of base disk if |IgnoreBaseDisk == false|.
-			IgnoreBaseDisk: len(t.state.RelocateInfo.TargetBaseDiskID) != 0,
+			IgnoreBaseDisk:            len(t.state.RelocateInfo.TargetBaseDiskID) != 0,
+			IsReplicationBetweenCells: t.request.IsMigrationBetweenCells,
 		},
 	)
 	if err != nil {
@@ -407,6 +424,40 @@ func (t *migrateDiskTask) incrementFillGeneration(
 	)
 
 	return fillGeneration, nil
+}
+
+func (t *migrateDiskTask) deleteSourceDiskIdTag(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	dstZoneClient, err := t.nbsFactory.GetClient(ctx, t.request.DstZoneId)
+	if err != nil {
+		return err
+	}
+
+	err = dstZoneClient.ModifyTags(
+		ctx,
+		func() error {
+			return execCtx.SaveState(ctx)
+		},
+		t.request.Disk.DiskId,
+		[]string{},
+		[]string{
+			t.getSourceDiskIdTagStr(),
+		},
+	)
+	if err != nil {
+		return err
+	}
+	t.logInfo(
+		ctx,
+		execCtx,
+		"source-disk-id tag %v removed from dst disk",
+		t.getSourceDiskIdTagStr(),
+	)
+
+	return nil
 }
 
 func (t *migrateDiskTask) finishFillDisk(
@@ -480,16 +531,21 @@ func (t *migrateDiskTask) finishMigration(
 		logging.Info(ctx, "Overlay disk rebased for RebaseInfo %+v", rebaseInfo)
 	}
 
-	client, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
+	srcZoneClient, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
 	if err != nil {
 		return err
 	}
 
-	err = client.Delete(ctx, t.request.Disk.DiskId)
+	err = srcZoneClient.Delete(ctx, t.request.Disk.DiskId)
 	if err != nil {
 		return err
 	}
 	t.logInfo(ctx, execCtx, "deleted src disk")
+
+	err = t.deleteSourceDiskIdTag(ctx, execCtx)
+	if err != nil {
+		return err
+	}
 
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(

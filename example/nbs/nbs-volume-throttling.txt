@@ -1,0 +1,22 @@
+Version: 1
+Rules {
+    Filter {
+        CloudIds: "test-cloud"
+        CloudIds: "test-cloud2"
+    }
+    Coefficients {
+        MaxReadBandwidth: 0.5
+        MaxReadIops: 0.3
+        BurstPercentage: 0.8
+    }
+}
+Rules {
+    Disks {
+        DiskIds: "vol0"
+        DiskIds: "nrd0"
+    }
+    Coefficients {
+        MaxWriteBandwidth: 0.7
+        MaxWriteIops: 0.75
+    }
+}

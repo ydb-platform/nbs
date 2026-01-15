@@ -10,14 +10,32 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString DescribeDeviceOwner(
+    const auto& clientId,
+    const auto& diskId,
+    auto volumeGeneration)
+{
+    return TStringBuilder()
+           << "[clientId=" << clientId.Quote() << ", diskId=" << diskId.Quote()
+           << ", volumeGeneration=" << volumeGeneration << "]";
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TDeviceClient::TDeviceClient(
         TDuration releaseInactiveSessionsTimeout,
-        TVector<TString> uuids,
-        TLog log)
+        TVector<std::pair<TString, TStorageAdapterPtr>> uuidToDevice,
+        TLog log,
+        bool kickOutOldClientsEnabled)
     : ReleaseInactiveSessionsTimeout(releaseInactiveSessionsTimeout)
-    , Devices(MakeDevices(std::move(uuids)))
+    , Devices(MakeDevices(std::move(uuidToDevice)))
+    , KickOutOldClientsEnabled(kickOutOldClientsEnabled)
     , Log(std::move(log))
 {}
 
@@ -109,19 +127,30 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
                 << ", LastGeneration: " << deviceState->VolumeGeneration);
         }
 
+        const bool canKickOutClient =
+            deviceState->DiskId == diskId &&
+            deviceState->VolumeGeneration < volumeGeneration &&
+            KickOutOldClientsEnabled;
+
         if (IsReadWriteMode(accessMode)
                 && deviceState->WriterSession.Id
                 && deviceState->WriterSession.Id != clientId
                 && deviceState->WriterSession.MountSeqNumber >= mountSeqNumber
                 && deviceState->WriterSession.LastActivityTs
                     + ReleaseInactiveSessionsTimeout
-                    > now)
+                    > now
+                && !canKickOutClient)
         {
-            return MakeError(E_BS_INVALID_SESSION, TStringBuilder()
-                << "Error acquiring device " << uuid.Quote()
-                << " with client " << clientId.Quote()
-                << " already acquired by another client: "
-                << deviceState->WriterSession.Id.Quote());
+            return MakeError(
+                E_BS_MOUNT_CONFLICT,
+                TStringBuilder()
+                    << "Error acquiring device " << uuid.Quote() << " by "
+                    << DescribeDeviceOwner(clientId, diskId, volumeGeneration)
+                    << " already acquired by another client: "
+                    << DescribeDeviceOwner(
+                           deviceState->WriterSession.Id,
+                           deviceState->DiskId,
+                           deviceState->VolumeGeneration));
         }
     }
 
@@ -269,7 +298,7 @@ NCloud::NProto::TError TDeviceClient::ReleaseDevices(
     return {};
 }
 
-NCloud::NProto::TError TDeviceClient::AccessDevice(
+TResultOrError<TStorageAdapterPtr> TDeviceClient::AccessDevice(
     const TString& uuid,
     const TString& clientId,
     NProto::EVolumeAccessMode accessMode) const
@@ -328,7 +357,57 @@ NCloud::NProto::TError TDeviceClient::AccessDevice(
                 << ", current readers: [" << allReaders << "]");
     }
 
-    return {};
+    if (!deviceState->StorageAdapter) {
+        return MakeError(E_REJECTED, "device detached");
+    }
+
+    return deviceState->StorageAdapter;
+}
+
+TResultOrError<TStorageAdapterPtr> TDeviceClient::AccessDevice(
+    const TString& uuid) const
+{
+    auto* deviceState = GetDeviceState(uuid);
+    if (!deviceState) {
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder() << "Device " << uuid.Quote() << " not found");
+    }
+
+    TReadGuard g(deviceState->Lock);
+
+    if (!deviceState->StorageAdapter) {
+        return MakeError(E_REJECTED, "device detached");
+    }
+
+    return deviceState->StorageAdapter;
+}
+
+TStorageAdapterPtr TDeviceClient::DetachDevice(const TString& uuid) const
+{
+    auto* deviceState = GetDeviceState(uuid);
+    if (!deviceState) {
+        return nullptr;
+    }
+
+    TWriteGuard g(deviceState->Lock);
+
+    return std::exchange(deviceState->StorageAdapter, nullptr);
+}
+
+void TDeviceClient::AttachDevice(
+    const TString& uuid,
+    TStorageAdapterPtr adapter) const
+{
+    auto* deviceState = GetDeviceState(uuid);
+    Y_DEBUG_ABORT_UNLESS(deviceState);
+    if (!deviceState) {
+        return;
+    }
+
+    TWriteGuard g(deviceState->Lock);
+
+    deviceState->StorageAdapter = std::move(adapter);
 }
 
 TDeviceClient::TSessionInfo TDeviceClient::GetWriterSession(
@@ -401,15 +480,19 @@ bool TDeviceClient::IsDeviceSuspended(const TString& uuid) const
 
 bool TDeviceClient::IsDeviceEnabled(const TString& uuid) const
 {
-    return !GetDeviceIOErrorCode(uuid).has_value();
+    return !GetDeviceIOErrorCode(uuid).has_value() &&
+           !HasError(AccessDevice(uuid).GetError());
 }
 
 // static
-TDeviceClient::TDevicesState TDeviceClient::MakeDevices(TVector<TString> uuids)
+TDeviceClient::TDevicesState TDeviceClient::MakeDevices(
+    TVector<std::pair<TString, TStorageAdapterPtr>> uuidToDevice)
 {
     TDevicesState result;
-    for (auto& uuid: uuids) {
-        result.emplace(std::move(uuid), std::make_unique<TDeviceState>());
+    for (auto& [uuid, device]: uuidToDevice) {
+        auto state = std::make_unique<TDeviceState>();
+        state->StorageAdapter = std::move(device);
+        result.emplace(std::move(uuid), std::move(state));
     }
     return result;
 }

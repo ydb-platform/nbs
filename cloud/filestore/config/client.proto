@@ -75,5 +75,4 @@ message TSessionConfig
     optional string ClientId = 2;
 
     optional uint32 SessionPingTimeout = 3;
-    optional uint32 SessionRetryTimeout = 4;
 }

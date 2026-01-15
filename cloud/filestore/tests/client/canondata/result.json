@@ -20,6 +20,9 @@
     "test.test_forced_compaction": {
         "uri": "file://test.test_forced_compaction/results.txt"
     },
+    "test.test_io_telemetry": {
+        "uri": "file://test.test_io_telemetry/results.txt"
+    },
     "test.test_large_file": {
         "uri": "file://test.test_large_file/results.txt"
     },
@@ -28,6 +31,9 @@
     },
     "test.test_ls": {
         "uri": "file://test.test_ls/results.txt"
+    },
+    "test.test_ls_max_bytes": {
+        "uri": "file://test.test_ls_max_bytes/results.txt"
     },
     "test.test_multitablet_findgarbage": {
         "uri": "file://test.test_multitablet_findgarbage/results.txt"

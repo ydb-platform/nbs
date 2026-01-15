@@ -35,6 +35,7 @@ private:
     const ui64 TabletId;
     const TString CheckpointName;
     const EAction Action;
+    TChildLogTitle LogTitle;
 
 public:
     THttpCheckpointActor(
@@ -42,7 +43,8 @@ public:
         const TActorId& volumeActordId,
         ui64 tabletId,
         TString checkpointName,
-        EAction action);
+        EAction action,
+        TChildLogTitle logTitle);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -83,12 +85,14 @@ THttpCheckpointActor::THttpCheckpointActor(
         const TActorId& volumeActorId,
         ui64 tabletId,
         TString checkpointName,
-        EAction action)
+        EAction action,
+        TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , VolumeActorId(volumeActorId)
     , TabletId(tabletId)
     , CheckpointName(std::move(checkpointName))
     , Action(action)
+    , LogTitle(std::move(logTitle))
 {}
 
 void THttpCheckpointActor::Bootstrap(const TActorContext& ctx)
@@ -127,7 +131,13 @@ void THttpCheckpointActor::ReplyAndDie(
         msg << "[" << TabletId << "] ";
         msg << "Cannot " << action << " checkpoint " << CheckpointName.Quote() << Endl;
         msg << "Operation completed with error : " << FormatError(error);
-        LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION, msg.Str());
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Cannot %s. Operation completed with error : %s",
+            LogTitle.GetWithTime().c_str(),
+            action.c_str(),
+            FormatError(error).c_str());
     } else {
         msg << "Operation successfully completed";
     }
@@ -223,7 +233,7 @@ void TVolumeActor::HandleHttpInfo_CreateCheckpoint(
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
-    const auto checkpointId = params.Get("checkpointid");
+    const auto& checkpointId = params.Get("checkpointid");
 
     if (!checkpointId) {
         RejectHttpRequest(
@@ -238,8 +248,9 @@ void TVolumeActor::HandleHttpInfo_CreateCheckpoint(
         std::move(requestInfo),
         SelfId(),
         TabletID(),
-        std::move(checkpointId),
-        THttpCheckpointActor::CreateCheckpoint);
+        checkpointId,
+        THttpCheckpointActor::CreateCheckpoint,
+        LogTitle.GetChildWithTags(GetCycleCount(), {{"cp", checkpointId}}));
 }
 
 void TVolumeActor::HandleHttpInfo_DeleteCheckpoint(
@@ -247,7 +258,7 @@ void TVolumeActor::HandleHttpInfo_DeleteCheckpoint(
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
-    const auto checkpointId = params.Get("checkpointid");
+    const auto& checkpointId = params.Get("checkpointid");
 
     if (!checkpointId) {
         RejectHttpRequest(
@@ -262,8 +273,9 @@ void TVolumeActor::HandleHttpInfo_DeleteCheckpoint(
         std::move(requestInfo),
         SelfId(),
         TabletID(),
-        std::move(checkpointId),
-        THttpCheckpointActor::DeleteCheckpoint);
+        checkpointId,
+        THttpCheckpointActor::DeleteCheckpoint,
+        LogTitle.GetChildWithTags(GetCycleCount(), {{"cp", checkpointId}}));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

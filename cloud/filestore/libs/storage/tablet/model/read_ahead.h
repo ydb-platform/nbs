@@ -2,9 +2,9 @@
 
 #include "public.h"
 
-#include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
+#include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/common/ring_buffer.h>
 
 #include <util/generic/deque.h>

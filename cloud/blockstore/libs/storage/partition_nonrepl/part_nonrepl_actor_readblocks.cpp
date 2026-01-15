@@ -3,11 +3,13 @@
 #include "part_nonrepl_actor_base_request.h"
 #include "part_nonrepl_common.h"
 
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <util/string/builder.h>
@@ -37,6 +39,7 @@ private:
     ui32 NonVoidBlockCount = 0;
 
     NProto::TReadBlocksResponse Response;
+    TVector<NProto::TChecksum> Checksums;
 
 public:
     TDiskAgentReadActor(
@@ -45,7 +48,9 @@ public:
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
-        const TActorId& part);
+        TActorId volumeActorId,
+        const TActorId& part,
+        TChildLogTitle logTitle);
 
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
@@ -71,7 +76,9 @@ TDiskAgentReadActor::TDiskAgentReadActor(
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
-        const TActorId& part)
+        TActorId volumeActorId,
+        const TActorId& part,
+        TChildLogTitle logTitle)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -79,12 +86,16 @@ TDiskAgentReadActor::TDiskAgentReadActor(
           std::move(timeoutPolicy),
           std::move(deviceRequests),
           std::move(partConfig),
-          part)
+          volumeActorId,
+          part,
+          std::move(logTitle))
     , Request(std::move(request))
     , SkipVoidBlocksToOptimizeNetworkTransfer(
           Request.GetHeaders().GetOptimizeNetworkTransfer() ==
           NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS)
-{}
+{
+    Checksums.resize(DeviceRequests.size());
+}
 
 void TDiskAgentReadActor::SendRequest(const TActorContext& ctx)
 {
@@ -110,6 +121,12 @@ void TDiskAgentReadActor::SendRequest(const TActorContext& ctx)
         request->Record.SetStartIndex(deviceRequest.DeviceBlockRange.Start);
         request->Record.SetBlockSize(blockSize);
         request->Record.SetBlocksCount(deviceRequest.DeviceBlockRange.Size());
+
+        OnRequestStarted(
+            ctx,
+            deviceRequest.Device.GetAgentId(),
+            TDeviceOperationTracker::ERequestType::Read,
+            cookie);
 
         auto event = std::make_unique<IEventHandle>(
             MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
@@ -148,13 +165,16 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksUndelivery(
     const TEvDiskAgent::TEvReadDeviceBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    OnRequestFinished(ctx, ev->Cookie);
+
     const auto& device = DeviceRequests[ev->Cookie].Device;
-    LOG_WARN_S(
+    LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "ReadBlocks request #"
-            << GetRequestId(Request) << " undelivered. Disk id: "
-            << PartConfig->GetName() << " Device: " << LogDevice(device));
+        "%s ReadBlocks request #%lu undelivered. Device: %s",
+        LogTitle.GetWithTime().c_str(),
+        GetRequestId(Request),
+        LogDevice(device).c_str());
 
     // Ignore undelivered event. Wait for TEvWakeup.
 }
@@ -165,11 +185,14 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
+    OnRequestFinished(ctx, ev->Cookie);
+
     if (HasError(msg->GetError())) {
         HandleError(ctx, msg->GetError(), EStatus::Fail);
         return;
     }
 
+    Checksums[ev->Cookie].CopyFrom(msg->Record.GetChecksum());
     auto& srcBuffers = *msg->Record.MutableBlocks()->MutableBuffers();
     auto& destBuffers = *Response.MutableBlocks()->MutableBuffers();
     const auto blockSize = PartConfig->GetBlockSize();
@@ -197,6 +220,11 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
     auto response = std::make_unique<TEvService::TEvReadBlocksResponse>();
     response->Record = std::move(Response);
     response->Record.SetAllZeroes(VoidBlockCount == Request.GetBlocksCount());
+    if (auto checksum = CombineChecksums(Checksums);
+        checksum.GetByteCount() > 0)
+    {
+        *response->Record.MutableChecksum() = std::move(checksum);
+    }
     Done(ctx, std::move(response), EStatus::Success);
 }
 
@@ -270,9 +298,11 @@ void TNonreplicatedPartitionActor::HandleReadBlocks(
         std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
-        SelfId());
+        VolumeActorId,
+        SelfId(),
+        LogTitle.GetChild(GetCycleCount()));
 
-    RequestsInProgress.AddReadRequest(actorId, std::move(request));
+    RequestsInProgress.AddReadRequest(actorId, blockRange, std::move(request));
 }
 
 void TNonreplicatedPartitionActor::HandleReadBlocksCompleted(
@@ -281,8 +311,11 @@ void TNonreplicatedPartitionActor::HandleReadBlocksCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Complete read blocks", SelfId().ToString().c_str());
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete read blocks",
+        LogTitle.GetWithTime().c_str());
 
     UpdateStats(msg->Stats);
 
@@ -305,7 +338,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocksCompleted(
     NetworkBytes += nonVoidBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
-    RequestsInProgress.RemoveRequest(ev->Sender);
+    RequestsInProgress.RemoveReadRequest(ev->Sender);
     OnRequestCompleted(*msg, ctx.Now());
 
     if (RequestsInProgress.Empty() && Poisoner) {

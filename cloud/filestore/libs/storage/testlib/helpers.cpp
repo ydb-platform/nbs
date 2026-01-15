@@ -1,1 +1,46 @@
 #include "helpers.h"
+
+#include <contrib/ydb/core/base/tablet.h>
+#include <contrib/ydb/core/base/tablet_pipe.h>
+
+namespace NCloud::NFileStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+NActors::TTestActorRuntimeBase::TEventFilter
+TTabletRebootTracker::GetEventFilter()
+{
+    return [this](auto& runtime, auto& event)
+    {
+        Y_UNUSED(runtime);
+        switch (event->GetTypeRewrite()) {
+            case NKikimr::TEvTablet::EvBoot: {
+                auto* msg = event->template Get<NKikimr::TEvTablet::TEvBoot>();
+                Generations.insert(msg->Generation);
+                break;
+            }
+            case NKikimr::TEvTabletPipe::EvClientDestroyed: {
+                PipeDestroyed = true;
+                break;
+            }
+        }
+        return false;
+    };
+}
+
+bool TTabletRebootTracker::IsPipeDestroyed() const
+{
+    return PipeDestroyed;
+}
+
+void TTabletRebootTracker::ClearPipeDestroyed()
+{
+    PipeDestroyed = false;
+}
+
+size_t TTabletRebootTracker::GetGenerationCount() const
+{
+    return Generations.size();
+}
+
+}   // namespace NCloud::NFileStore::NStorage

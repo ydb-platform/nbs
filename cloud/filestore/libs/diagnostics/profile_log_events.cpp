@@ -1,9 +1,11 @@
 #include "profile_log_events.h"
 
+#include "critical_events.h"
 #include "profile_log.h"
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/service/request.h>
+#include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/action.pb.h>
 #include <cloud/filestore/public/api/protos/checkpoint.pb.h>
@@ -15,6 +17,10 @@
 #include <cloud/filestore/public/api/protos/node.pb.h>
 #include <cloud/filestore/public/api/protos/ping.pb.h>
 #include <cloud/filestore/public/api/protos/session.pb.h>
+
+#include <cloud/storage/core/libs/common/byte_range.h>
+
+#include <library/cpp/digest/crc32c/crc32c.h>
 
 namespace NCloud::NFileStore {
 
@@ -44,6 +50,87 @@ void InitProfileLogLockRequestInfo(
         lockInfo->SetType(request.GetLockType());
     }
     lockInfo->SetPid(request.GetPid());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+ui32 CalculateChecksum(TStringBuf buf)
+{
+    //
+    // We calculate the checksum only up to the last non-zero byte, i.e. we
+    // discard zero suffixes. This is needed to simplify checksum comparisons
+    // between unaligned appends coming from the client and full block writes
+    // for the same block coming from the tablet's internal logic.
+    //
+
+    ui64 len = buf.size();
+    while (len > 0) {
+        constexpr auto WordSize = sizeof(ui64);
+        if (len % WordSize == 0 && len >= WordSize) {
+            ui64 word = 0;
+            memcpy(&word, buf.data() + len - WordSize, WordSize);
+            if (word != 0) {
+                while (buf[len - 1] == 0) {
+                    --len;
+                }
+
+                break;
+            }
+
+            len -= WordSize;
+        } else {
+            if (buf[len - 1] != 0) {
+                break;
+            }
+
+            --len;
+        }
+    }
+
+    if (len) {
+        return Crc32c(buf.data(), len);
+    }
+
+    return 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool CalculateIovecsChecksums(
+    const google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs,
+    ui32 blockSize,
+    bool ignoreBufferOverflow,
+    TStringBuf fsId,
+    NProto::TProfileLogRequestInfo& profileLogRequest)
+{
+
+    //
+    // Making a copy for simplicity. Checksum calculation is more expensive
+    // than memcpy anyway.
+    //
+
+    TString buffer;
+    ui64 bytesToCopy = 0;
+    for (const auto& iovec: iovecs) {
+        bytesToCopy += iovec.GetLength();
+    }
+
+    buffer.ReserveAndResize(bytesToCopy);
+    char* ptr = buffer.begin();
+    for (const auto& iovec: iovecs) {
+        memcpy(
+            ptr,
+            reinterpret_cast<char*>(iovec.GetBase()),
+            iovec.GetLength());
+        ptr += iovec.GetLength();
+    }
+
+    return CalculateChecksums(
+        buffer,
+        blockSize,
+        ignoreBufferOverflow,
+        fsId,
+        profileLogRequest);
 }
 
 } // namespace
@@ -237,7 +324,7 @@ void InitProfileLogRequestInfo(
     rangeInfo->SetNodeId(request.GetNodeId());
     rangeInfo->SetHandle(request.GetHandle());
     rangeInfo->SetOffset(request.GetOffset());
-    rangeInfo->SetBytes(request.GetBuffer().size());
+    rangeInfo->SetBytes(NStorage::CalculateByteCount(request));
 }
 
 template <>
@@ -318,6 +405,12 @@ void InitProfileLogRequestInfo(
         nodeInfo->SetType(NProto::E_SOCK_NODE);
     } else if (request.HasSymLink()) {
         nodeInfo->SetType(NProto::E_SYMLINK_NODE);
+    } else if (request.HasFifo()) {
+        nodeInfo->SetType(NProto::E_FIFO_NODE);
+    } else if (request.HasCharDevice()) {
+        nodeInfo->SetType(NProto::E_CHARDEV_NODE);
+    } else if (request.HasBlockDevice()) {
+        nodeInfo->SetType(NProto::E_BLOCKDEV_NODE);
     } else {
         nodeInfo->SetType(NProto::E_INVALID_NODE);
     }
@@ -476,6 +569,17 @@ void InitProfileLogRequestInfo(
     auto* nodeInfo = profileLogRequest.MutableNodeInfo();
     nodeInfo->SetNodeId(request.GetNodeId());
     nodeInfo->SetFlags(request.GetDataSync());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void UpdateRangeNodeIds(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    ui64 nodeId)
+{
+    for (auto& range: *profileLogRequest.MutableRanges()) {
+        range.SetNodeId(nodeId);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -648,6 +752,7 @@ void FinalizeProfileLogRequestInfo(
     }
     auto* rangeInfo = profileLogRequest.MutableRanges(0);
     rangeInfo->SetActualBytes(response.GetBuffer().size());
+    rangeInfo->SetBufferOffset(response.GetBufferOffset());
 }
 
 template <>
@@ -660,6 +765,158 @@ void FinalizeProfileLogRequestInfo(
     }
     auto* rangeInfo = profileLogRequest.MutableRanges(0);
     rangeInfo->SetActualBytes(response.BytesRead);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool CalculateChecksums(
+    const TStringBuf buffer,
+    ui32 blockSize,
+    bool ignoreBufferOverflow,
+    TStringBuf fsId,
+    NProto::TProfileLogRequestInfo& profileLogRequest)
+{
+    auto& profileLogRanges = *profileLogRequest.MutableRanges();
+    if (profileLogRanges.empty()) {
+        return true;
+    }
+
+    ui64 minRangeOffset = Max<ui64>();
+    for (const auto& profileLogRange: profileLogRanges) {
+        if (profileLogRange.GetOffset() < minRangeOffset) {
+            minRangeOffset = profileLogRange.GetOffset();
+        }
+    }
+
+    for (auto& profileLogRange: profileLogRanges) {
+        const ui64 len =
+            Max(profileLogRange.GetBytes(), profileLogRange.GetActualBytes());
+        TByteRange range(profileLogRange.GetOffset(), len, blockSize);
+
+        //
+        // Buffer overflow checks.
+        //
+
+        const auto complain = [&] () {
+            ReportCalculateChecksumsBufferOverflow(TStringBuilder()
+                << "FileSystemId: " << fsId
+                << ", Node: " << profileLogRange.GetNodeId()
+                << ", Range: " << range.Describe()
+                << ", MinRangeOffset: " << minRangeOffset
+                << ", BufferSize: " << buffer.size());
+        };
+
+        const ui64 relativeRangeOffset = range.Offset - minRangeOffset;
+        if (relativeRangeOffset >= buffer.size()) {
+            if (!ignoreBufferOverflow) {
+                complain();
+                return false;
+            }
+
+            //
+            // There's no data corresponding to this range. Can happen for read
+            // requests with offsets beyond the end of the file.
+            //
+
+            profileLogRange.ClearBlockChecksums();
+            continue;
+        }
+
+        const ui64 dataSize = buffer.size() - relativeRangeOffset;
+        if (dataSize < range.Length) {
+            if (!ignoreBufferOverflow) {
+                complain();
+                return false;
+            }
+
+            //
+            // There's no data corresponding to the tail of this range. Can
+            // happen for read requests with ends beyond the end of the file.
+            // Will calculate checksums only for the subrange for which we have
+            // data.
+            //
+
+            range.Length = dataSize;
+        }
+
+        //
+        // Calculating checksums for the adjusted range.
+        //
+
+        profileLogRange.ClearBlockChecksums();
+
+        ui64 bufferOffset = relativeRangeOffset;
+        if (range.UnalignedHeadLength()) {
+            profileLogRange.AddBlockChecksums(CalculateChecksum(TStringBuf(
+                buffer.data() + bufferOffset,
+                range.UnalignedHeadLength())));
+            bufferOffset += range.UnalignedHeadLength();
+        }
+
+        for (ui64 i = 0; i < range.AlignedBlockCount(); ++i) {
+            profileLogRange.AddBlockChecksums(CalculateChecksum(TStringBuf(
+                buffer.data() + bufferOffset, blockSize)));
+            bufferOffset += blockSize;
+        }
+
+        if (range.UnalignedTailLength()) {
+            profileLogRange.AddBlockChecksums(CalculateChecksum(buffer.substr(
+                bufferOffset,
+                range.UnalignedTailLength())));
+        }
+    }
+
+    return true;
+}
+
+bool CalculateWriteDataRequestChecksums(
+    const NProto::TWriteDataRequest& request,
+    ui32 blockSize,
+    NProto::TProfileLogRequestInfo& profileLogRequest)
+{
+    if (request.GetIovecs().empty()) {
+        TStringBuf buffer(request.GetBuffer());
+        buffer.Skip(request.GetBufferOffset());
+        return CalculateChecksums(
+            buffer,
+            blockSize,
+            false /* ignoreBufferOverflow */,
+            request.GetFileSystemId(),
+            profileLogRequest);
+    }
+
+    return CalculateIovecsChecksums(
+        request.GetIovecs(),
+        blockSize,
+        false /* ignoreBufferOverflow */,
+        request.GetFileSystemId(),
+        profileLogRequest);
+}
+
+void CalculateReadDataResponseChecksums(
+    const google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs,
+    const NProto::TReadDataResponse& response,
+    ui32 blockSize,
+    NProto::TProfileLogRequestInfo& profileLogRequest)
+{
+    if (iovecs.empty()) {
+        TStringBuf buffer(response.GetBuffer());
+        buffer.Skip(response.GetBufferOffset());
+        CalculateChecksums(
+            buffer,
+            blockSize,
+            true /* ignoreBufferOverflow */,
+            {} /* fsId */,
+            profileLogRequest);
+        return;
+    }
+
+    CalculateIovecsChecksums(
+        iovecs,
+        blockSize,
+        true /* ignoreBufferOverflow */,
+        {} /* fsId */,
+        profileLogRequest);
 }
 
 }   // namespace NCloud::NFileStore

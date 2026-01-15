@@ -13,6 +13,7 @@ class TNonreplicatedPartitionMigrationActor final
     , public IMigrationOwner
 {
 private:
+    const NActors::TActorId VolumeActorId;
     TNonreplicatedPartitionConfigPtr SrcConfig;
     google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> Migrations;
     NRdma::IClientPtr RdmaClient;
@@ -32,6 +33,7 @@ public:
         TNonreplicatedPartitionConfigPtr srcConfig,
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
         NRdma::IClientPtr rdmaClient,
+        NActors::TActorId volumeActorId,
         NActors::TActorId statActorId,
         NActors::TActorId migrationSrcActorId);
 

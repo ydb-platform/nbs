@@ -4,6 +4,7 @@ SRCS(
     multi_partition_requests.cpp
     partition_info.cpp
     tracing.cpp
+    volume_throttler_logger.cpp
 
     volume.cpp
     volume_actor_acquire.cpp
@@ -34,6 +35,7 @@ SRCS(
     volume_actor_stats.cpp
     volume_actor_statvolume.cpp
     volume_actor_throttling.cpp
+    volume_actor_update_volume_throttling_config.cpp
     volume_actor_updateconfig.cpp
     volume_actor_updatestartpartitionsneeded.cpp
     volume_actor_updateusedblocks.cpp
@@ -59,6 +61,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/partition_nonrepl
     cloud/blockstore/libs/storage/protos
     cloud/blockstore/libs/storage/protos_ydb
+    cloud/blockstore/libs/storage/volume_throttling_manager/model
     cloud/blockstore/libs/storage/volume/model
     cloud/blockstore/libs/storage/volume/actors
 
@@ -87,4 +90,5 @@ RECURSE(
 
 RECURSE_FOR_TESTS(
     ut
+    ut_linked
 )

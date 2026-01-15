@@ -25,12 +25,25 @@ void TFileSystem::Lookup(
     auto request = StartRequest<NProto::TGetNodeAttrRequest>(parent);
     request->SetName(std::move(name));
 
+    // We don't know ino yet so we have to adjust the node size after
+    // receiving GetNodeAttr response.
+    //
+    // During GetNodeAttr call, a node may be flushed and the information
+    // about the node may be removed from WriteBackCache, and GetNodeAttr
+    // may return size without considering cached WriteData requests.
+    //
+    // Acquiring a node state reference prevents metadata from removal
+    // for flushed nodes.
+    const ui64 nodeStateRefId =
+        WriteBackCache ? WriteBackCache.AcquireNodeStateRef() : 0;
+
     Session->GetNodeAttr(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
+        .Subscribe([=, ptr = weak_from_this()] (auto future) {
             if (auto self = ptr.lock()) {
-                const auto& response = future.GetValue();
+                NProto::TGetNodeAttrResponse response = future.ExtractValue();
                 const auto& error = response.GetError();
                 if (!HasError(response)) {
+                    self->AdjustNodeSize(*response.MutableNode());
                     self->ReplyEntry(
                         *callContext,
                         error,
@@ -47,6 +60,9 @@ void TFileSystem::Lookup(
                         error,
                         req,
                         &entry);
+                }
+                if (nodeStateRefId) {
+                    self->WriteBackCache.ReleaseNodeStateRef(nodeStateRefId);
                 }
             }
         });
@@ -101,7 +117,7 @@ void TFileSystem::MkDir(
     dir->SetMode(mode & ~(S_IFMT));
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId {parent});
 
     Session->CreateNode(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -112,7 +128,7 @@ void TFileSystem::MkDir(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {parent});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 self->ReplyEntry(*callContext, error, req, response.GetNode());
@@ -137,7 +153,7 @@ void TFileSystem::RmDir(
     request->SetUnlinkDirectory(true);
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId {parent});
 
     Session->UnlinkNode(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -148,7 +164,7 @@ void TFileSystem::RmDir(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {parent});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 self->ReplyError(*callContext, error, req, 0);
@@ -164,11 +180,8 @@ void TFileSystem::MkNode(
     mode_t mode,
     dev_t rdev)
 {
-    // TODO
-    Y_UNUSED(rdev);
-
     STORAGE_DEBUG("MkNode #" << parent << " " << name.Quote()
-        << " mode: " << mode);
+        << " mode: " << mode << " rdev: " << rdev);
 
     if (!ValidateNodeId(*callContext, req, parent)) {
         return;
@@ -186,13 +199,24 @@ void TFileSystem::MkNode(
         // null file type for unix sockets
         auto* socket = request->MutableSocket();
         socket->SetMode(mode & ~(S_IFMT));
+    } else if (S_ISFIFO(mode)) {
+        auto* fifo = request->MutableFifo();
+        fifo->SetMode(mode & ~(S_IFMT));
+    } else if (S_ISCHR(mode)) {
+        auto* charDevice = request->MutableCharDevice();
+        charDevice->SetMode(mode & ~(S_IFMT));
+        charDevice->SetDevice(rdev);
+    } else if (S_ISBLK(mode)) {
+        auto* blockDevice = request->MutableBlockDevice();
+        blockDevice->SetMode(mode & ~(S_IFMT));
+        blockDevice->SetDevice(rdev);
     } else {
         ReplyError(*callContext, ErrorNotSupported(""), req, ENOTSUP);
         return;
     }
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId {parent});
 
     Session->CreateNode(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -203,7 +227,7 @@ void TFileSystem::MkNode(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {parent});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 self->ReplyEntry(*callContext, error, req, response.GetNode());
@@ -228,7 +252,7 @@ void TFileSystem::Unlink(
     request->SetUnlinkDirectory(false);
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId {parent});
 
     Session->UnlinkNode(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -239,7 +263,7 @@ void TFileSystem::Unlink(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {parent});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 self->ReplyError(*callContext, error, req, 0);
@@ -272,7 +296,7 @@ void TFileSystem::Rename(
     request->SetFlags(protoFlags);
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId {parent});
 
     Session->RenameNode(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -283,7 +307,7 @@ void TFileSystem::Rename(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {parent});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 // TODO: update tree
@@ -313,7 +337,7 @@ void TFileSystem::SymLink(
     link->SetTargetPath(std::move(target));
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId {parent});
 
     Session->CreateNode(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -324,7 +348,7 @@ void TFileSystem::SymLink(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {parent});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 self->ReplyEntry(*callContext, error, req, response.GetNode());
@@ -352,7 +376,7 @@ void TFileSystem::Link(
     link->SetTargetNode(ino);
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {ino});
+    FSyncQueue->Enqueue(reqId, TNodeId {ino});
 
     Session->CreateNode(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -363,7 +387,7 @@ void TFileSystem::Link(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {ino});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
 
             if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
                 self->ReplyEntry(*callContext, error, req, response.GetNode());

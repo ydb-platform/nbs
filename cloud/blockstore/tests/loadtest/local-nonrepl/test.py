@@ -3,12 +3,15 @@ import os
 import pytest
 
 from cloud.blockstore.config.client_pb2 import TClientConfig
+from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig
 from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, \
     TKikimrServiceConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 
 from cloud.blockstore.config.diagnostics_pb2 import TDiagnosticsConfig
-from cloud.blockstore.config.disk_pb2 import DEVICE_ERASE_METHOD_NONE
+from cloud.blockstore.config.disk_pb2 import DEVICE_ERASE_METHOD_NONE,  \
+    DISK_AGENT_BACKEND_AIO, \
+    DISK_AGENT_BACKEND_IO_URING
 
 from cloud.blockstore.tests.python.lib.disk_agent_runner import LocalDiskAgent
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
@@ -54,9 +57,10 @@ class _TestCase(object):
             allocation_unit_size=1,
             agent_count=1,
             storage_pool_name=None,
+            storage_pool_kind=None,
             dump_block_digests=False,
             reject_late_requests_at_disk_agent=False,
-            encryption_at_rest=False):
+            root_kms_encryption=False):
         self.name = name
         self.config_path = config_path
         self.restart_interval = restart_interval
@@ -68,9 +72,10 @@ class _TestCase(object):
         self.allocation_unit_size = allocation_unit_size
         self.agent_count = agent_count
         self.storage_pool_name = storage_pool_name
+        self.storage_pool_kind = storage_pool_kind
         self.dump_block_digests = dump_block_digests
         self.reject_late_requests_at_disk_agent = reject_late_requests_at_disk_agent
-        self.encryption_at_rest = encryption_at_rest
+        self.root_kms_encryption = root_kms_encryption
 
 
 TESTS = [
@@ -134,11 +139,12 @@ TESTS = [
         "load-hdd",
         "cloud/blockstore/tests/loadtest/local-nonrepl/local-hdd.txt",
         storage_pool_name="rot",
+        storage_pool_kind="global",
     ),
     _TestCase(
-        "load-encryption-at-rest",
+        "load-root-kms-encryption",
         "cloud/blockstore/tests/loadtest/local-nonrepl/local-smallreqs.txt",
-        encryption_at_rest=True,
+        root_kms_encryption=True,
     )
 ]
 
@@ -174,7 +180,7 @@ def __prepare_test_config(test_case):
     return prepared_config_path
 
 
-def __run_test(test_case, use_rdma):
+def __run_test(test_case, backend, use_rdma):
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
@@ -211,9 +217,11 @@ def __run_test(test_case, use_rdma):
         setup_nonreplicated(
             kikimr_cluster.client,
             [devices],
-            device_erase_method=test_case.device_erase_method,
-            dedicated_disk_agent=dedicated_disk_agent,
-        )
+            disk_agent_config_patch=TDiskAgentConfig(
+                DeviceEraseMethod=test_case.device_erase_method,
+                DedicatedDiskAgent=dedicated_disk_agent,
+                Backend=backend,
+            ))
 
         if test_case.lwtrace_query_path:
             enable_lwtrace(kikimr_cluster.client, test_case.lwtrace_query_path)
@@ -243,7 +251,7 @@ def __run_test(test_case, use_rdma):
         storage.AcquireNonReplicatedDevices = True
         storage.ClientRemountPeriod = 1000
         storage.NonReplicatedMigrationStartAllowed = True
-        storage.NonReplicatedSecureEraseTimeout = 2000  # 2 sec
+        storage.NonReplicatedSecureEraseTimeout = 30000  # 30 sec
         storage.DisableLocalService = False
         storage.InactiveClientsTimeout = 60000  # 1 min
         storage.AgentRequestTimeout = 5000      # 5 sec
@@ -252,7 +260,7 @@ def __run_test(test_case, use_rdma):
         storage.NodeType = 'main'
         storage.UseNonreplicatedRdmaActor = use_rdma
         storage.UseRdma = use_rdma
-        storage.EncryptionAtRestForDiskRegistryBasedDisksEnabled = test_case.encryption_at_rest
+        storage.RootKmsEncryptionForDiskRegistryBasedDisksEnabled = test_case.root_kms_encryption
 
         if test_case.dump_block_digests:
             storage.BlockDigestsEnabled = True
@@ -286,7 +294,6 @@ def __run_test(test_case, use_rdma):
         disk_agents = []
         for i in range(test_case.agent_count):
             disk_agent = None
-
             if dedicated_disk_agent:
                 disk_agent = LocalDiskAgent(
                     kikimr_port,
@@ -298,7 +305,8 @@ def __run_test(test_case, use_rdma):
                     enable_tls=True,
                     kikimr_binary_path=kikimr_binary_path,
                     disk_agent_binary_path=yatest_common.binary_path(disk_agent_binary_path),
-                    restart_interval=test_case.restart_interval)
+                    restart_interval=test_case.restart_interval,
+                    suspend_restarts=True)
 
                 disk_agent.start()
                 wait_for_disk_agent(disk_agent.mon_port)
@@ -313,6 +321,7 @@ def __run_test(test_case, use_rdma):
                     kikimr_binary_path=kikimr_binary_path,
                     nbs_binary_path=yatest_common.binary_path(nbs_binary_path),
                     restart_interval=test_case.restart_interval,
+                    suspend_restarts=True,
                     ping_path="/blockstore/disk_agent")
 
                 disk_agent.start()
@@ -322,7 +331,12 @@ def __run_test(test_case, use_rdma):
 
         wait_for_secure_erase(
             nbs.mon_port,
-            test_case.storage_pool_name or "default")
+            test_case.storage_pool_name or "default",
+            test_case.storage_pool_kind or "default")
+
+        if test_case.restart_interval:
+            for agent in disk_agents:
+                agent.allow_restart()
 
         config_path = __prepare_test_config(test_case)
 
@@ -351,10 +365,26 @@ def __run_test(test_case, use_rdma):
     return ret
 
 
+BACKENDS = {
+    'aio': DISK_AGENT_BACKEND_AIO,
+    'io_uring': DISK_AGENT_BACKEND_IO_URING,
+}
+
+
 @pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
-@pytest.mark.parametrize("use_rdma", [True, False], ids=['rdma', 'no-rdma'])
-def test_load(test_case, use_rdma):
+@pytest.mark.parametrize("backend", BACKENDS.values(), ids=BACKENDS.keys())
+def test_load(test_case, backend):
     test_case.config_path = yatest_common.source_path(test_case.config_path)
     if test_case.lwtrace_query_path:
         test_case.lwtrace_query_path = yatest_common.source_path(test_case.lwtrace_query_path)
-    return __run_test(test_case, use_rdma)
+
+    return __run_test(test_case, backend, use_rdma=False)
+
+
+@pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
+def test_load_rdma(test_case):
+    test_case.config_path = yatest_common.source_path(test_case.config_path)
+    if test_case.lwtrace_query_path:
+        test_case.lwtrace_query_path = yatest_common.source_path(test_case.lwtrace_query_path)
+
+    return __run_test(test_case, backend=DISK_AGENT_BACKEND_AIO, use_rdma=True)

@@ -5,6 +5,8 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
+
 #include <util/string/join.h>
 
 using namespace NActors;
@@ -24,11 +26,17 @@ TDiskAgentBaseRequestActor::TDiskAgentBaseRequestActor(
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
-        const TActorId& part)
+        TActorId volumeActorId,
+        const TActorId& part,
+        TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , DeviceRequests(std::move(deviceRequests))
     , PartConfig(std::move(partConfig))
+    , VolumeActorId(volumeActorId)
     , Part(part)
+    , DeviceOperationId(
+          TDeviceOperationTracker::GenerateId(DeviceRequests.size()))
+    , LogTitle(std::move(logTitle))
     , RequestName(std::move(requestName))
     , RequestId(requestId)
     , TimeoutPolicy(std::move(timeoutPolicy))
@@ -102,7 +110,7 @@ void TDiskAgentBaseRequestActor::Done(
 
     for (const auto& dr: DeviceRequests) {
         completion.Body->RequestResults.push_back(
-            {.DeviceIndex = dr.DeviceIdx, .Error = {}});
+            {.DeviceIdx = dr.DeviceIdx, .Error = {}});
     }
 
     NCloud::Send(ctx, Part, std::move(completion.Event));
@@ -110,11 +118,53 @@ void TDiskAgentBaseRequestActor::Done(
     Die(ctx);
 }
 
+void TDiskAgentBaseRequestActor::OnRequestStarted(
+    const NActors::TActorContext& ctx,
+    const TString& agentId,
+    TDeviceOperationTracker::ERequestType requestType,
+    size_t requestIndex)
+{
+    if (!DeviceOperationId) {
+        // Tracking of this request is disabled.
+        return;
+    }
+
+    auto startEvent = std::make_unique<
+        TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted>(
+        agentId,
+        requestType,
+        DeviceOperationId + requestIndex);
+
+    ctx.Send(VolumeActorId, std::move(startEvent));
+}
+
+void TDiskAgentBaseRequestActor::OnRequestFinished(
+    const NActors::TActorContext& ctx,
+    size_t requestIndex)
+{
+    if (!DeviceOperationId) {
+        // Tracking of this request is disabled.
+        return;
+    }
+
+    auto finishEvent = std::make_unique<
+        TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished>(
+        DeviceOperationId + requestIndex);
+
+    ctx.Send(VolumeActorId, std::move(finishEvent));
+}
+
 void TDiskAgentBaseRequestActor::HandleCancelRequest(
     const TEvNonreplPartitionPrivate::TEvCancelRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
+    for (size_t requestIndex = 0; requestIndex < DeviceRequests.size();
+         ++requestIndex)
+    {
+        OnRequestFinished(ctx, requestIndex);
+    }
 
     TVector<TString> devices;
     for (const auto& request: DeviceRequests) {
@@ -126,8 +176,8 @@ void TDiskAgentBaseRequestActor::HandleCancelRequest(
             LOG_WARN(
                 ctx,
                 TBlockStoreComponents::PARTITION_WORKER,
-                "[%s] %s request #%lu timed out. Devices: [%s]",
-                PartConfig->GetName().c_str(),
+                "%s %s request #%lu timed out. Devices: [%s]",
+                LogTitle.GetWithTime().c_str(),
                 RequestName.c_str(),
                 RequestId,
                 JoinSeq(", ", devices).c_str());
@@ -145,8 +195,8 @@ void TDiskAgentBaseRequestActor::HandleCancelRequest(
             LOG_WARN(
                 ctx,
                 TBlockStoreComponents::PARTITION_WORKER,
-                "[%s] %s request #%lu is canceled from outside. Devices: [%s]",
-                PartConfig->GetName().c_str(),
+                "%s %s request #%lu is canceled from outside. Devices: [%s]",
+                LogTitle.GetWithTime().c_str(),
                 RequestName.c_str(),
                 RequestId,
                 JoinSeq(", ", devices).c_str());

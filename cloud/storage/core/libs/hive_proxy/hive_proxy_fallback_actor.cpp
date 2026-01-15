@@ -128,6 +128,7 @@ void THiveProxyFallbackActor::Bootstrap(const TActorContext& ctx)
         auto cache = std::make_unique<TTabletBootInfoBackup>(
             Config.LogComponent,
             Config.TabletBootInfoBackupFilePath,
+            Config.UseBinaryFormatForTabletBootInfoBackup,
             true /* readOnlyMode */
         );
         TabletBootInfoBackup = ctx.Register(

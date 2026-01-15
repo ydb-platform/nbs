@@ -303,12 +303,10 @@ void TWriteMixedBlocksActor::NotifyCompleted(
     const NProto::TError& error)
 {
     using TEvent = TEvPartitionPrivate::TEvWriteBlocksCompleted;
+    using TCompleted = TEvPartitionPrivate::TWriteBlocksCompleted;
     auto ev = std::make_unique<TEvent>(
         error,
-        true,                       // collectGarbageBarrierAcquired
-        false,                      // unconfirmedBlobsAdded
-        TVector<TBlobToConfirm>{}   // blobsToConfirm
-    );
+        TCompleted::CreateMixedBlocksCompleted());
 
     ui32 blocksCount = 0;
     ui64 waitCycles = 0;

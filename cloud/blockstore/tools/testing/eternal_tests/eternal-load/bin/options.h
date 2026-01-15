@@ -18,13 +18,38 @@ enum class ECommand
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class EIoEngine
+{
+    AsyncIo,
+    IoUring,
+    Sync
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum class EScenario
+{
+    Aligned,
+    Unaligned,
+    Sequential,
+    Random
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TOptions
 {
-    ECommand Command;
-    TString CommandName;
+    ECommand Command = ECommand::UnknownCmd;
+
+    EScenario Scenario = EScenario::Aligned;
+
+    EIoEngine Engine = EIoEngine::AsyncIo;
+    bool RunInCallbacks = false;
+    bool NoDirect = false;
 
     TMaybe<TString> FilePath;
     TMaybe<ui64> FileSize;
+    ui32 TestCount = 0;
 
     TMaybe<TString> RestorePath;
 
@@ -36,6 +61,15 @@ struct TOptions
     TString AlternatingPhase;
 
     TString DumpPath;
+
+    ui64 MinReadSize = 0;
+    ui64 MaxReadSize = 0;
+    ui64 MinWriteSize = 0;
+    ui64 MaxWriteSize = 0;
+    ui64 MinRegionSize = 0;
+    ui64 MaxRegionSize = 0;
+
+    bool PrintDebugStats = false;
 
     void Parse(int argc, char** argv);
 };

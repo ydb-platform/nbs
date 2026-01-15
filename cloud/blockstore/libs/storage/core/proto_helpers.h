@@ -99,6 +99,7 @@ TString GetSessionId(const TProtoRequestEvent<TArgs, EventId>& request)
 
 void VolumeConfigToVolume(
     const NKikimrBlockStore::TVolumeConfig& volumeConfig,
+    const TString& principalDiskId,
     NProto::TVolume& volume);
 
 void VolumeConfigToVolumeModel(
@@ -245,4 +246,9 @@ TString LogDevices(const TVector<NProto::TDeviceConfig>& devices);
 
 NProto::TVolumePerformanceProfile VolumeConfigToVolumePerformanceProfile(
     const NKikimrBlockStore::TVolumeConfig& volumeConfig);
+
+TString PoolKindToString(const NProto::EDevicePoolKind poolKind);
+
+bool IsNotFoundSchemeShardError(const NProto::TError& error);
+
 }   // namespace NCloud::NBlockStore::NStorage

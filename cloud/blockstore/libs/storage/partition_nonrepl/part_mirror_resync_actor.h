@@ -18,7 +18,9 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
-#include <cloud/blockstore/libs/storage/partition_common/get_device_for_range_companion.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/get_device_for_range_companion.h>
+
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -43,6 +45,7 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const NProto::EResyncPolicy ResyncPolicy;
     const bool CritOnChecksumMismatch;
+    const NActors::TActorId VolumeActorId;
     TString RWClientId;
     TNonreplicatedPartitionConfigPtr PartConfig;
     TMigrations Migrations;
@@ -62,7 +65,7 @@ private:
 
     bool ResyncFinished = false;
 
-    TRequestsInProgress<EAllowedRequests::WriteOnly, ui64, TBlockRange64>
+    TRequestsInProgress<EAllowedRequests::WriteOnly, ui64>
         WriteAndZeroRequestsInProgress;
     TDrainActorCompanion DrainActorCompanion{
         WriteAndZeroRequestsInProgress,
@@ -88,6 +91,7 @@ private:
     ui64 FastPathReadCount = 0;
     THashMap<ui64, TFastPathRecord> FastPathRecords;
 
+    TBackoffDelayProvider BackoffProvider;
 
 public:
     TMirrorPartitionResyncActor(
@@ -100,6 +104,7 @@ public:
         TMigrations migrations,
         TVector<TDevices> replicaDevices,
         NRdma::IClientPtr rdmaClient,
+        NActors::TActorId volumeActorId,
         NActors::TActorId statActorId,
         ui64 initialResyncIndex,
         NProto::EResyncPolicy resyncPolicy,
@@ -124,6 +129,7 @@ private:
 
     void ContinueResyncIfNeeded(const NActors::TActorContext& ctx);
     void ScheduleResyncNextRange(const NActors::TActorContext& ctx);
+    void ScheduleRetryResyncNextRange(const NActors::TActorContext& ctx);
     void ResyncNextRange(const NActors::TActorContext& ctx);
 
     bool IsAnybodyAlive() const;

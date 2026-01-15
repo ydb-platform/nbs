@@ -44,10 +44,6 @@ TOptionsYdb::TOptionsYdb()
     Opts.AddLongOption("compute-file")
         .RequiredArgument("PATH")
         .StoreResult(&ComputeConfig);
-
-    Opts.AddLongOption("trace-file")
-        .RequiredArgument("PATH")
-        .StoreResult(&TraceServiceConfig);
 }
 
 void TOptionsYdb::Parse(int argc, char** argv)

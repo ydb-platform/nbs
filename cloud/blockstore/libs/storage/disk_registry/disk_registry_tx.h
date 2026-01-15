@@ -473,13 +473,13 @@ struct TTxDiskRegistry
     struct TDeleteNotifiedDisks
     {
         const TRequestInfoPtr RequestInfo;
-        const TVector<TDiskNotification> DiskIds;
+        TVector<TDiskNotificationResult> DiskNotifications;
 
         TDeleteNotifiedDisks(
                 TRequestInfoPtr requestInfo,
-                TVector<TDiskNotification> diskIds)
+                TVector<TDiskNotificationResult> diskNotifications)
             : RequestInfo(std::move(requestInfo))
-            , DiskIds(std::move(diskIds))
+            , DiskNotifications(std::move(diskNotifications))
         {}
 
         void Clear()
@@ -784,6 +784,7 @@ struct TTxDiskRegistry
     struct TStartMigration
     {
         const TRequestInfoPtr RequestInfo;
+        ui32 StartedDeviceMigrationsCount = 0;
 
         explicit TStartMigration(
                 TRequestInfoPtr requestInfo)
@@ -792,7 +793,7 @@ struct TTxDiskRegistry
 
         void Clear()
         {
-            // nothing to do
+            StartedDeviceMigrationsCount = 0;
         }
     };
 

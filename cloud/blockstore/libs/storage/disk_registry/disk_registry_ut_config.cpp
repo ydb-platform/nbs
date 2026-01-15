@@ -959,6 +959,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         auto freeBytes = diskRegistryGroup
             ->GetSubgroup("pool", "default")
+            ->GetSubgroup("kind", "default")
             ->GetCounter("FreeBytes");
 
         auto agentsInOnlineState = diskRegistryGroup

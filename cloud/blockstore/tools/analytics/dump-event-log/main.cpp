@@ -1,122 +1,361 @@
 #include <cloud/blockstore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
+#include <cloud/blockstore/tools/analytics/dump-event-log/io_deps_stat_accumulator.h>
+#include <cloud/blockstore/tools/analytics/dump-event-log/io_distribution.h>
+#include <cloud/blockstore/tools/analytics/dump-event-log/read_write_requests_with_inflight.h>
+#include <cloud/blockstore/tools/analytics/dump-event-log/sqlite_output.h>
+#include <cloud/blockstore/tools/analytics/dump-event-log/zero_ranges_stat.h>
 #include <cloud/blockstore/tools/analytics/libs/event-log/dump.h>
 
 #include <library/cpp/eventlog/dumper/evlogdump.h>
 #include <library/cpp/getopt/small/last_getopt.h>
 
+#include <util/stream/file.h>
+
 using namespace NCloud::NBlockStore;
+
+namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-int IterateEventLogInner(
-    IEventFactory* fac,
-    IEventProcessor* proc,
-    TString* outputFilename,
-    int argc,
-    const char** argv)
+TSet<TString> LoadDiskIds(const TString& filename)
 {
-    class TProxy: public ITunableEventProcessor
+    TSet<TString> diskIds;
+    TFileInput input(filename);
+    TString line;
+    while (input.ReadLine(line)) {
+        diskIds.insert(line);
+    }
+    return diskIds;
+}
+
+TSet<ui32> LoadRequestTypes(const TString& filename)
+{
+    TSet<ui32> requestIds;
+    TFileInput input(filename);
+    TString line;
+    while (input.ReadLine(line)) {
+        requestIds.insert(FromString<ui32>(line));
+    }
+
+    return requestIds;
+}
+
+struct TEventProcessor: TProtobufEventProcessor
+{
+    TEventLogPtr EventLog;
+    TString OutputFilename;
+    TString OutputDatabaseFilename;
+    TString OutputZeroRangesStatFilename;
+    TString KnownDisksFilename;
+    TString OutputInflightStatFilename;
+    TString IODistributionStatFilename;
+    TString FilterByDiskId;
+    TString FilterByDiskIdFile;
+    TString FilterByRequestTypeFile;
+
+    bool Initialized = false;
+    TSet<TString> FilterByDiskIdSet;
+    TSet<ui32> RequestTypeSet;
+    std::optional<TBlockRange64> FilterRange;
+    std::unique_ptr<TIoDepsStatAccumulator> IoDepsStatAccumulator;
+
+    void InitIfNeeded()
     {
-    public:
-        TProxy(IEventProcessor* proc, TString* outputFilename)
-            : Processor(proc), OutputFilename(outputFilename)
-        {
+        if (Initialized) {
+            return;
+        }
+        Initialized = true;
+
+        if (FilterByDiskIdFile) {
+            FilterByDiskIdSet = LoadDiskIds(FilterByDiskIdFile);
         }
 
-        void AddOptions(NLastGetopt::TOpts& opts) override
+        if (FilterByRequestTypeFile) {
+            RequestTypeSet = LoadRequestTypes(FilterByRequestTypeFile);
+        }
+
+        if (OutputFilename) {
+            EventLog = MakeIntrusive<TEventLog>(
+                OutputFilename,
+                NEvClass::Factory()->CurrentFormat());
+        }
+
+        IoDepsStatAccumulator =
+            std::make_unique<TIoDepsStatAccumulator>(KnownDisksFilename);
+
+        if (OutputDatabaseFilename) {
+            IoDepsStatAccumulator->AddEventHandler(
+                std::make_unique<TSqliteOutput>(OutputDatabaseFilename));
+        }
+
+        if (OutputZeroRangesStatFilename) {
+            IoDepsStatAccumulator->AddEventHandler(
+                std::make_unique<TZeroRangesStat>(
+                    OutputZeroRangesStatFilename));
+        }
+
+        if (OutputInflightStatFilename) {
+            IoDepsStatAccumulator->AddEventHandler(
+                std::make_unique<TReadWriteRequestsWithInflight>(
+                    OutputInflightStatFilename));
+        }
+
+        if (IODistributionStatFilename) {
+            IoDepsStatAccumulator->AddEventHandler(
+                std::make_unique<TIODistributionStat>(
+                    IODistributionStatFilename));
+        }
+    }
+
+    void DoProcessEvent(const TEvent* ev, IOutputStream* out) override
+    {
+        const auto* message =
+            dynamic_cast<const NProto::TProfileLogRecord*>(ev->GetProto());
+        if (!message) {
+            return;
+        }
+
+        InitIfNeeded();
+
+        if (EventLog) {
+            EventLog->LogEvent(*message);
+            return;
+        }
+
+        const TVector<TItemDescriptor> order = GetItemOrder(*message);
+        for (const auto& [type, index]: order) {
+            if (!ShouldDump(*message, type, index)) {
+                continue;
+            }
+
+            if (IoDepsStatAccumulator->HasEventHandlers()) {
+                switch (type) {
+                    case EItemType::Request: {
+                        const NProto::TProfileLogRequestInfo& r =
+                            message->GetRequests(index);
+                        for (const auto& range: r.GetRanges()) {
+                            IoDepsStatAccumulator->ProcessRequest(
+                                message->GetDiskId(),
+                                TInstant::FromValue(r.GetTimestampMcs()),
+                                r.GetRequestType(),
+                                TBlockRange64::WithLength(
+                                    range.GetBlockIndex(),
+                                    range.GetBlockCount()),
+                                TDuration::MicroSeconds(r.GetDurationMcs()),
+                                TDuration::MicroSeconds(
+                                    r.GetPostponedTimeMcs()),
+                                range.GetReplicaChecksums());
+                        }
+                        break;
+                    }
+                    case EItemType::BlockInfo:
+                    case EItemType::BlockCommitId:
+                    case EItemType::BlobUpdate:
+                        break;
+                }
+                continue;
+            }
+
+            switch (type) {
+                case EItemType::Request: {
+                    DumpRequest(*message, index, out);
+                    break;
+                }
+                case EItemType::BlockInfo: {
+                    DumpBlockInfoList(*message, index, out);
+                    break;
+                }
+                case EItemType::BlockCommitId: {
+                    DumpBlockCommitIdList(*message, index, out);
+                    break;
+                }
+                case EItemType::BlobUpdate: {
+                    DumpBlobUpdateList(*message, index, out);
+                    break;
+                }
+                default: {
+                    Y_ABORT("unknown item");
+                }
+            }
+        }
+    }
+
+    bool ShouldDump(
+        const NProto::TProfileLogRecord& message,
+        EItemType type,
+        int index) const
+    {
+        if (FilterByDiskId && FilterByDiskId != message.GetDiskId()) {
+            return false;
+        }
+
+        if (FilterByDiskIdSet &&
+            !FilterByDiskIdSet.contains(message.GetDiskId()))
         {
-            opts.AddLongOption("output-binary-log-file",
+            return false;
+        }
+
+        if (RequestTypeSet && type == EItemType::Request &&
+            !RequestTypeSet.contains(
+                message.GetRequests(index).GetRequestType()))
+        {
+            return false;
+        }
+
+        if (!FilterRange) {
+            return true;
+        }
+
+        switch (type) {
+            case EItemType::BlockInfo: {
+                return AnyOf(
+                    message.GetBlockInfoLists(index).GetBlockInfos(),
+                    [&](const auto& block)
+                    { return FilterRange->Contains(block.GetBlockIndex()); });
+            }
+            case EItemType::Request: {
+                const auto& req = message.GetRequests(index);
+
+                if (!req.RangesSize()) {
+                    return req.GetBlockCount() != 0 &&
+                           FilterRange->Overlaps(
+                               TBlockRange64::WithLength(
+                                   req.GetBlockIndex(),
+                                   req.GetBlockCount()));
+                }
+
+                return AnyOf(
+                    req.GetRanges(),
+                    [&](const auto& r)
+                    {
+                        return FilterRange->Overlaps(
+                            TBlockRange64::WithLength(
+                                r.GetBlockIndex(),
+                                r.GetBlockCount()));
+                    });
+            }
+            default:
+                return false;
+        }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TEventProcessorProxy: public ITunableEventProcessor
+{
+private:
+    TEventProcessor* Processor;
+
+public:
+    explicit TEventProcessorProxy(TEventProcessor* proc)
+        : Processor(proc)
+    {}
+
+    void AddOptions(NLastGetopt::TOpts& opts) override
+    {
+        opts.AddLongOption(
+                "output-binary-log-file",
                 "Enables output to the specified file, original binary "
                 "format is preserved")
-                .Optional()
-                .StoreResult(OutputFilename);
-        }
+            .Optional()
+            .StoreResult(&Processor->OutputFilename);
 
-        void SetOptions(const TEvent::TOutputOptions& options) override
-        {
-            Processor->SetOptions(options);
-        }
+        opts.AddLongOption(
+                "filter-by-disk-id",
+                "Filter by diskId. Example: --filter-by-disk-id xxx")
+            .Optional()
+            .StoreResult(&Processor->FilterByDiskId);
 
-        void ProcessEvent(const TEvent* ev) override
-        {
-            Processor->ProcessEvent(ev);
-        }
+        opts.AddLongOption(
+                "filter-by-disk-id-file",
+                "Filter by disk names. The disk names are located in the file, "
+                "each in a separate line.")
+            .Optional()
+            .StoreResult(&Processor->FilterByDiskIdFile);
 
-        bool CheckedProcessEvent(const TEvent* ev) override
-        {
-            return Processor->CheckedProcessEvent(ev);
-        }
+        opts.AddLongOption(
+                "filter-by-request-type-file",
+                "Filter by request type. The numerical request types are "
+                "located in the file, each in a separate line")
+            .Optional()
+            .StoreResult(&Processor->FilterByRequestTypeFile);
 
-    private:
-        IEventProcessor* Processor;
-        TString* OutputFilename;
-    };
+        opts.AddLongOption(
+                "filter-by-range",
+                "Show only requests that overlap with the range. Example: --filter-by-range 5000,5100")
+            .Optional()
+            .Handler1T<TString>([&] (TStringBuf s) {
+                TStringBuf lhs;
+                TStringBuf rhs;
+                s.Split(',', lhs, rhs);
+                Processor->FilterRange = TBlockRange64::MakeClosedInterval(
+                    FromString<ui64>(lhs),
+                    FromString<ui64>(rhs));
+            });
 
-    TProxy proxy(proc, outputFilename);
-    return IterateEventLog(
-        fac, static_cast<ITunableEventProcessor*>(&proxy), argc, argv);
-}
+        opts.AddLongOption(
+                "output-sqlite-file",
+                "Enables output to the sqlite database file")
+            .Optional()
+            .StoreResult(&Processor->OutputDatabaseFilename);
+
+        opts.AddLongOption(
+                "output-zero-ranges-stat-file",
+                "Enables output statistics of zero-block ranges to the file")
+            .Optional()
+            .StoreResult(&Processor->OutputZeroRangesStatFilename);
+
+        opts.AddLongOption(
+                "known-disks-file",
+                "File with known volumes. Contains diskId, block size and media kind")
+            .Optional()
+            .StoreResult(&Processor->KnownDisksFilename);
+
+        opts.AddLongOption(
+                "output-inflight-stat-file",
+                "Enables output read and write requests with inflight stats to "
+                "the file")
+            .Optional()
+            .StoreResult(&Processor->OutputInflightStatFilename);
+
+        opts.AddLongOption(
+                "io-distribution-stat-file",
+                "Enables IO distribution calculation to the file")
+            .Optional()
+            .StoreResult(&Processor->IODistributionStatFilename);
+
+    }
+
+    void SetOptions(const TEvent::TOutputOptions& options) override
+    {
+        Processor->SetOptions(options);
+    }
+
+    void ProcessEvent(const TEvent* ev) override
+    {
+        Processor->ProcessEvent(ev);
+    }
+
+    bool CheckedProcessEvent(const TEvent* ev) override
+    {
+        return Processor->CheckedProcessEvent(ev);
+    }
+};
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, const char** argv)
 {
-    struct TEventProcessor
-        : TProtobufEventProcessor
-    {
-        TEventLogPtr EventLog;
-        TString OutputFilename;
+    TEventProcessor processor;
+    TEventProcessorProxy proxy(&processor);
 
-        void DoProcessEvent(const TEvent* ev, IOutputStream* out) override
-        {
-            auto* message =
-                dynamic_cast<const NProto::TProfileLogRecord*>(ev->GetProto());
-            if (!message) {
-                return;
-            }
-
-            if (OutputFilename) {
-                if (!EventLog) {
-                    EventLog = new TEventLog(
-                        OutputFilename,
-                        NEvClass::Factory()->CurrentFormat()
-                    );
-                }
-                EventLog->LogEvent(*message);
-                return;
-            }
-
-            auto order = GetItemOrder(*message);
-            for (const auto& i: order) {
-                switch (i.Type) {
-                    case EItemType::Request: {
-                        DumpRequest(*message, i.Index, out);
-                        break;
-                    }
-                    case EItemType::BlockInfo: {
-                        DumpBlockInfoList(*message, i.Index, out);
-                        break;
-                    }
-                    case EItemType::BlockCommitId: {
-                        DumpBlockCommitIdList(*message, i.Index, out);
-                        break;
-                    }
-                    case EItemType::BlobUpdate: {
-                        DumpBlobUpdateList(*message, i.Index, out);
-                        break;
-                    }
-                    default: {
-                        Y_ABORT("unknown item");
-                    }
-                }
-            }
-        }
-    } processor;
-
-    return IterateEventLogInner(
+    return IterateEventLog(
         NEvClass::Factory(),
-        &processor,
-        &processor.OutputFilename,
+        static_cast<ITunableEventProcessor*>(&proxy),
         argc,
-        argv
-    );
+        argv);
 }

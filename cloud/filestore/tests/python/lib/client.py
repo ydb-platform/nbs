@@ -113,7 +113,15 @@ class FilestoreCliClient:
 
         return pid
 
-    def resize(self, fs, blk_count, force=False, shard_count=None):
+    def resize(
+        self,
+        fs,
+        blk_count,
+        force=False,
+        shard_count=None,
+        enable_strict=False,
+        enable_directory_creation_in_shards=False,
+    ):
         cmd = [
             self.__binary_path, "resize",
             "--filesystem", fs,
@@ -125,6 +133,12 @@ class FilestoreCliClient:
 
         if shard_count is not None:
             cmd += ["--shard-count", str(shard_count)]
+
+        if enable_strict:
+            cmd.append("--enable-strict")
+
+        if enable_directory_creation_in_shards:
+            cmd.append("--enable-directory-creation-in-shards")
 
         logger.info("resizing filestore: " + " ".join(cmd))
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
@@ -144,7 +158,8 @@ class FilestoreCliClient:
             mount_seqno,
             readonly,
             persistent=False,
-            client_id=""):
+            client_id="",
+            vhost_queue_count=0):
 
         cmd = [
             self.__binary_path, "startendpoint",
@@ -152,7 +167,12 @@ class FilestoreCliClient:
             "--socket-path", socket,
             "--mount-seqno", str(mount_seqno),
             "--client-id", client_id,
-        ] + self.__cmd_opts(vhost=True)
+        ]
+
+        if vhost_queue_count:
+            cmd += ["--vhost-queue-count", str(vhost_queue_count)]
+
+        cmd += self.__cmd_opts(vhost=True)
 
         if readonly:
             cmd.append("--mount-readonly")
@@ -266,12 +286,16 @@ class FilestoreCliClient:
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
-    def find(self, fs, depth, glob=None):
+    def find(self, fs, depth, glob=None, root_node_id=None):
         cmd = [
             self.__binary_path, "find",
             "--filesystem", fs,
             "--depth", str(depth),
-        ] + (["--glob", glob] if glob is not None else []) + self.__cmd_opts()
+        ] + (
+            ["--glob", glob] if glob is not None else []
+        ) + (
+            ["--root", str(root_node_id)] if root_node_id is not None else []
+        ) + self.__cmd_opts()
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
@@ -384,7 +408,8 @@ def create_endpoint(
         endpoint_storage_dir,
         mount_seqno=0,
         readonly=False,
-        client_id=""):
+        client_id="",
+        vhost_queue_count=0):
 
     _uid = str(uuid.uuid4())
 
@@ -400,7 +425,8 @@ def create_endpoint(
         mount_seqno,
         readonly,
         persistent=persistent,
-        client_id=client_id)
+        client_id=client_id,
+        vhost_queue_count=vhost_queue_count)
 
     return socket
 

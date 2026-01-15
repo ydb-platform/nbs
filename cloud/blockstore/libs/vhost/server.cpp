@@ -204,10 +204,16 @@ public:
         }
 
         if (deleteSocket) {
-            future = future.Apply([socketPath = SocketPath] (const auto& f) {
-                TFsPath(socketPath).DeleteIfExists();
-                return f.GetValue();
-            });
+            TLog& Log = AppCtx.Log;
+            future = future.Apply(
+                [socketPath = SocketPath, Log](const auto& f)
+                {
+                    STORAGE_INFO(
+                        "Deletion socket while stopping endpoint "
+                        << socketPath.Quote());
+                    TFsPath(socketPath).DeleteIfExists();
+                    return f.GetValue();
+                });
         }
 
         return future;
@@ -439,15 +445,19 @@ public:
         const TStorageOptions& options,
         IStoragePtr storage)
     {
-        auto deviceHandler = AppCtx.DeviceHandlerFactory->CreateDeviceHandler(
-            std::move(storage),
-            options.DiskId,
-            options.ClientId,
-            options.BlockSize,
-            options.UnalignedRequestsDisabled,
-            options.CheckBufferModificationDuringWriting,
-            options.StorageMediaKind,
-            options.MaxZeroBlocksSubRequestSize);
+        TDeviceHandlerParams params{
+            .Storage = std::move(storage),
+            .DiskId = options.DiskId,
+            .ClientId = options.ClientId,
+            .BlockSize = options.BlockSize,
+            .MaxZeroBlocksSubRequestSize = options.MaxZeroBlocksSubRequestSize,
+            .CheckBufferModificationDuringWriting =
+                options.CheckBufferModificationDuringWriting,
+            .UnalignedRequestsDisabled = options.UnalignedRequestsDisabled,
+            .StorageMediaKind = options.StorageMediaKind};
+
+        auto deviceHandler =
+            AppCtx.DeviceHandlerFactory->CreateDeviceHandler(std::move(params));
 
         auto endpoint = std::make_shared<TEndpoint>(
             AppCtx,
@@ -463,6 +473,7 @@ public:
             options.BlocksCount,
             options.VhostQueuesCount,
             options.DiscardEnabled,
+            options.OptimalIoSize,
             endpoint.get(),
             AppCtx.Callbacks);
         endpoint->SetVhostDevice(std::move(vhostDevice));
@@ -515,15 +526,11 @@ private:
 
         ::NCloud::SetCurrentThreadName(Name);
 
-        TLog& Log = AppCtx.Log;
-
         while (true) {
             int res = RunRequestQueue();
             if (res != -EAGAIN) {
                 if (res < 0) {
-                    ReportVhostQueueRunningError();
-                    STORAGE_ERROR(
-                        "Failed to run vhost request queue. Return code: " << -res);
+                    ReportVhostQueueRunningError({{"return_code", -res}});
                 }
                 break;
             }

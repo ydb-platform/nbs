@@ -94,7 +94,8 @@ def start_instance(args, inst_index):
                 enable_kvm=_get_vm_enable_kvm(args),
                 inst_index=inst_index,
                 shared_nic_port=args.shared_nic_port,
-                use_virtiofs_server=use_virtiofs_server)
+                use_virtiofs_server=use_virtiofs_server,
+                num_request_queues=_get_num_request_queues(args))
 
     qemu.set_mount_paths(mount_paths)
     qemu.start()
@@ -189,6 +190,10 @@ def _parse_args(argv):
         "--instance-count", help="Number of qemu instances to start")
     parser.add_argument("--invoke-test", default="Invoke test from qemu after starting")
     parser.add_argument("--use-virtiofs-server", default="False")
+    parser.add_argument(
+        "--num-request-queues",
+        default=1,
+        help="Number of request queues for virtiofs")
 
     args = parser.parse_args(argv)
     if args.instance_count == "$QEMU_INSTANCE_COUNT":
@@ -366,6 +371,12 @@ def _get_vm_use_virtiofs_server(args):
     if args.use_virtiofs_server == "$QEMU_USE_VIRTIOFS_SERVER":
         return False
     return _str_to_bool(args.use_virtiofs_server)
+
+
+def _get_num_request_queues(args):
+    if args.num_request_queues == "$QEMU_NUM_REQUEST_QUEUES":
+        return 1
+    return int(args.num_request_queues)
 
 
 def _prepare_test_environment(ssh, virtio):

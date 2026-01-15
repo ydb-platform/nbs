@@ -54,8 +54,12 @@ public:
 
     TString GetUnixSocketPath() const;
     ui32 GetUnixSocketBacklog() const;
+    ui32 GetUnixSocketAccessMode() const;
 
     TVector<TString> GetActionsNoAuth() const;
+
+    bool GetSharedMemoryTransportEnabled() const;
+    TString GetSharedMemoryBasePath() const;
 
     const NProto::TServerConfig& GetProto() const
     {

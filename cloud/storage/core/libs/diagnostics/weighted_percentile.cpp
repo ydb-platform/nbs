@@ -70,8 +70,8 @@ TVector<double> CalculateWeightedPercentiles(
             current = (double)(prevSum + bit->second) / totalSum;
         }
         if (current >= pit->first) {
-            const auto delta = pit->first * totalSum - prevSum;
-            const auto part = (bit->first - prevLimit)
+            const double delta = pit->first * totalSum - prevSum;
+            const double part = (bit->first - prevLimit)
                 * (delta / (bit->second ? bit->second : 1));
             result.push_back(std::min(prevLimit + part, greatestFiniteLimit));
             ++pit;

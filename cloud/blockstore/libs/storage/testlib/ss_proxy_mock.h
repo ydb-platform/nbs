@@ -24,18 +24,30 @@ public:
         TString Kind;
     };
 
+    struct TVolumeTabletDescr
+    {
+        TString DiskId;
+        ui64 TabletId = 0;
+    };
+
 private:
     THashMap<TString, NKikimrBlockStore::TVolumeConfig> Volumes;
     TVector<TPoolDescr> Pools;
+    TVector<TVolumeTabletDescr> VolumeTablets;
 
 public:
     TSSProxyMock()
         : TActor(&TThis::StateWork)
     {}
 
-    TSSProxyMock(TVector<TPoolDescr> pools)
+    explicit TSSProxyMock(TVector<TPoolDescr> pools)
         : TActor(&TThis::StateWork)
         , Pools(std::move(pools))
+    {}
+
+    explicit TSSProxyMock(TVector<TVolumeTabletDescr> volumeTablets)
+        : TActor(&TThis::StateWork)
+        , VolumeTablets(std::move(volumeTablets))
     {}
 
 private:
@@ -104,6 +116,12 @@ private:
         auto* descr = p.MutableBlockStoreVolumeDescription();
         descr->SetName(msg->DiskId);
         descr->MutableVolumeConfig()->CopyFrom(it->second);
+
+        for (const auto& volumeTablet: VolumeTablets) {
+            if (volumeTablet.DiskId == msg->DiskId) {
+                descr->SetVolumeTabletId(volumeTablet.TabletId);
+            }
+        }
 
         auto response = std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
             msg->DiskId,

@@ -58,9 +58,11 @@ private:
 
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
+    ITaskQueuePtr BackgroundThreadPool;
     IActorSystemPtr ActorSystem;
-    ILoggingServicePtr Logging;
     IAsyncLoggerPtr AsyncLogger;
+    ILoggingServicePtr Logging;
+    NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
     IMonitoringServicePtr Monitoring;
     TVector<ITraceReaderPtr> TraceReaders;
     ITraceProcessorPtr TraceProcessor;
@@ -73,7 +75,6 @@ private:
     IStorageProviderPtr LocalStorageProvider;
     NNvme::INvmeManagerPtr NvmeManager;
     NRdma::IServerPtr RdmaServer;
-    NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
 
     TProgramShouldContinue ShouldContinue;
     TVector<TString> PostponedCriticalEvents;
@@ -103,6 +104,8 @@ private:
     void InitHTTPServer();
 
     void InitRdmaServer(NRdma::TRdmaConfig& config);
+
+    bool InitBackend();
 };
 
 }   // namespace NCloud::NBlockStore::NServer

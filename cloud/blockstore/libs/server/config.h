@@ -132,13 +132,13 @@ public:
     bool GetNbdNetlink() const;
     TDuration GetNbdRequestTimeout() const;
     TDuration GetNbdConnectionTimeout() const;
-    TString GetEndpointProxySocketPath() const;
     bool GetAllowAllRequestsViaUDS() const;
     bool GetEndpointStorageNotImplementedErrorIsFatal() const;
     TDuration GetVhostServerTimeoutAfterParentExit() const;
     TString GetNodeRegistrationToken() const;
     NProto::TChecksumFlags GetChecksumFlags() const;
     bool GetVhostDiscardEnabled() const;
+    ui32 GetVhostOptimalIoSize() const;
     ui32 GetMaxZeroBlocksSubRequestSize() const;
     NProto::EEncryptZeroPolicy GetEncryptZeroPolicy() const;
     ui64 GetVhostPteFlushByteThreshold() const;

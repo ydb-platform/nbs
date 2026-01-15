@@ -30,7 +30,8 @@ ui64 GetHiveTabletId(const TActorContext& ctx)
 void ConfigureTenantSystemTablets(
     const TAppData& appData,
     TLocalConfig& localConfig,
-    bool allowAdditionalSystemTablets)
+    bool allowAdditionalSystemTablets,
+    i32 systemTabletsPriority)
 {
     localConfig.TabletClassInfo.emplace(
         TTabletTypes::SchemeShard,
@@ -40,7 +41,8 @@ void ConfigureTenantSystemTablets(
                 TMailboxType::ReadAsFilled,
                 appData.SystemPoolId,
                 TMailboxType::ReadAsFilled,
-                appData.SystemPoolId)));
+                appData.SystemPoolId),
+            systemTabletsPriority));
 
     localConfig.TabletClassInfo.emplace(
         TTabletTypes::Hive,
@@ -50,7 +52,8 @@ void ConfigureTenantSystemTablets(
                 TMailboxType::ReadAsFilled,
                 appData.SystemPoolId,
                 TMailboxType::ReadAsFilled,
-                appData.SystemPoolId)));
+                appData.SystemPoolId),
+            systemTabletsPriority));
 
     localConfig.TabletClassInfo.emplace(
         TTabletTypes::Mediator,
@@ -60,7 +63,8 @@ void ConfigureTenantSystemTablets(
                 TMailboxType::Revolving,
                 appData.SystemPoolId,
                 TMailboxType::Revolving,
-                appData.SystemPoolId)));
+                appData.SystemPoolId),
+            systemTabletsPriority));
 
     localConfig.TabletClassInfo.emplace(
         TTabletTypes::Coordinator,
@@ -70,7 +74,8 @@ void ConfigureTenantSystemTablets(
                 TMailboxType::Revolving,
                 appData.SystemPoolId,
                 TMailboxType::Revolving,
-                appData.SystemPoolId)));
+                appData.SystemPoolId),
+            systemTabletsPriority));
 
     if (allowAdditionalSystemTablets) {
         localConfig.TabletClassInfo.emplace(
@@ -81,7 +86,8 @@ void ConfigureTenantSystemTablets(
                     TMailboxType::Revolving,
                     appData.UserPoolId,
                     TMailboxType::Revolving,
-                    appData.UserPoolId)));
+                    appData.UserPoolId),
+                systemTabletsPriority));
 
         localConfig.TabletClassInfo.emplace(
             TTabletTypes::StatisticsAggregator,
@@ -91,7 +97,8 @@ void ConfigureTenantSystemTablets(
                     TMailboxType::Revolving,
                     appData.UserPoolId,
                     TMailboxType::Revolving,
-                    appData.UserPoolId)));
+                    appData.UserPoolId),
+                systemTabletsPriority));
     }
 }
 

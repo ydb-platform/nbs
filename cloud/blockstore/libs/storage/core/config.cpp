@@ -121,11 +121,13 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CommonOverlayPrefixPoolKind,   TString,      "overlay"                )\
     xxx(NonReplicatedHDDPoolName,      TString,      "rot"                    )\
                                                                                \
-    xxx(TabletBootInfoBackupFilePath,   TString,     ""                       )\
-    xxx(PathDescriptionBackupFilePath,  TString,     ""                       )\
-    xxx(DiskRegistrySplitTransactionCounter, ui32,   10000                    )\
-    xxx(DiskRegistryBackupPeriod,      TDuration,    Days(1)                  )\
-    xxx(DiskRegistryBackupDirPath,     TString,      ""                       )\
+    xxx(TabletBootInfoBackupFilePath,                TString,      ""         )\
+    xxx(PathDescriptionBackupFilePath,               TString,      ""         )\
+    xxx(UseBinaryFormatForPathDescriptionBackup,     bool,         false      )\
+    xxx(UseBinaryFormatForTabletBootInfoBackup,      bool,         false      )\
+    xxx(DiskRegistrySplitTransactionCounter,         ui32,         10000      )\
+    xxx(DiskRegistryBackupPeriod,                    TDuration,    Days(1)    )\
+    xxx(DiskRegistryBackupDirPath,                   TString,      ""         )\
                                                                                \
     xxx(DiskRegistryMetricsCachePeriod, TDuration,   Days(14)                 )\
     xxx(DiskRegistryCountersHost,       TString,     ""                       )\
@@ -136,6 +138,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(KnownSpareNodes,                TVector<TString>,   {}                )\
     xxx(SpareNodeProbability,           ui32,               0                 )\
+    xxx(SystemTabletsPriority,          i32,                0                 )\
+    xxx(DeviceOperationTrackingFrequency, ui32,             0                 )\
                                                                                \
     xxx(TenantHiveTabletId,             ui64,               0                 )\
                                                                                \
@@ -161,6 +165,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(LinkedDiskFillBandwidth,                                               \
         TVector<NProto::TLinkedDiskFillBandwidth>,                             \
         {}                                                                    )\
+    xxx(ComputeDigestForEveryBlockOnCompaction,     bool,            false    )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
@@ -366,7 +371,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(ChannelFreeSpaceThreshold,                      ui32,   25            )\
     xxx(ChannelMinFreeSpace,                            ui32,   10            )\
     xxx(MinChannelCount,                                ui32,   4             )\
-    xxx(FreshChannelCount,                              ui32,   0             )\
+    xxx(FreshChannelCountSSD,                           ui32,   1             )\
+    xxx(FreshChannelCountHDD,                           ui32,   1             )\
                                                                                \
     xxx(ZoneBlockCount,                            ui32,   32 * MaxBlocksCount)\
     xxx(HotZoneRequestCountFactor,                 ui32,   10                 )\
@@ -416,7 +422,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxBrokenHddPlacementGroupPartitionsAfterDeviceRemoval, ui32, 1       )\
                                                                                \
     xxx(BrokenDiskDestructionDelay,                     TDuration, Seconds(5) )\
-    xxx(AutomaticallyReplacedDevicesFreezePeriod,       TDuration, {}         )\
+    xxx(AutomaticallyReplacedDevicesFreezePeriod,       TDuration, Seconds(0) )\
     xxx(MaxAutomaticDeviceReplacementsPerHour,          ui32,      0          )\
                                                                                \
     xxx(VolumeHistoryDuration,                     TDuration, Days(7)         )\
@@ -444,6 +450,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     /* 75 devices = 5 agents */                                                \
     xxx(MaxNonReplicatedDeviceMigrationsInProgress,             ui32,      75 )\
     xxx(MaxNonReplicatedDeviceMigrationPercentageInProgress,    ui32,      5  )\
+    xxx(MaxNonReplicatedDeviceMigrationBatchSize,               ui32,    1000 )\
     xxx(MirroredMigrationStartAllowed,             bool,      false           )\
     xxx(PlacementGroupAlertPeriod,                 TDuration, Hours(8)        )\
     xxx(EnableLoadActor,                           bool,      false           )\
@@ -475,6 +482,9 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(ReassignRequestRetryTimeout,               TDuration, Seconds(5)      )\
     xxx(ReassignChannelsPercentageThreshold,       ui32,      10              )\
+    xxx(ReassignMixedChannelsPercentageThreshold,  ui32,      100             )\
+    xxx(ReassignSystemChannelsImmediately,         bool,      false           )\
+    xxx(ReassignFreshChannelsPercentageThreshold,  ui32,      100             )\
                                                                                \
     xxx(MixedIndexCacheV1Enabled,                  bool,      false           )\
     xxx(MixedIndexCacheV1SizeSSD,                  ui32,      32 * 1024       )\
@@ -490,6 +500,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(HiveProxyFallbackMode,                     bool,      false           )\
     xxx(SSProxyFallbackMode,                       bool,      false           )\
+    xxx(UseSchemeCache,                            bool,      false           )\
     xxx(DontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode, bool, false )\
                                                                                \
     xxx(RdmaTargetPort,                            ui32,      10020           )\
@@ -536,8 +547,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(UnconfirmedBlobCountHardLimit,             ui32,      1000            )\
                                                                                \
-    xxx(VolumeProxyCacheRetryDuration,             TDuration, Seconds(15)     )\
-                                                                               \
     xxx(UseDirectCopyRange,                             bool,      false         )\
     xxx(NonReplicatedVolumeDirectAcquireEnabled,        bool,      false         )\
     xxx(MaxShadowDiskFillBandwidth,                     ui32,      512           )\
@@ -559,6 +568,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxScrubbingBandwidth,                          ui64,      50            )\
     xxx(MinScrubbingBandwidth,                          ui64,      5             )\
     xxx(AutomaticallyEnableBufferCopyingAfterChecksumMismatch, bool, false       )\
+    xxx(DisableUsingIntermediateWriteBuffer,                   bool, false       )\
     xxx(ScrubbingResyncPolicy,                                                    \
         NProto::EResyncPolicy,                                                    \
         NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB                           )\
@@ -583,6 +593,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(BlobStorageAsyncRequestTimeoutSSD,              TDuration, Seconds(0)    )\
                                                                                \
     xxx(EncryptionAtRestForDiskRegistryBasedDisksEnabled, bool,    false      )\
+    xxx(RootKmsEncryptionForDiskRegistryBasedDisksEnabled,bool,    false      )\
     xxx(DisableFullPlacementGroupCountCalculation,        bool,    false      )\
     xxx(DiskRegistryInitialAgentRejectionThreshold,       double,    50       )\
     xxx(EnableToChangeStatesFromDiskRegistryMonpage,      bool,    false      )\
@@ -611,6 +622,37 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxOutOfOrderCompactionMapChunksInflight,          ui32,   5          )\
                                                                                \
     xxx(PartitionBootTimeout,                 TDuration,   Seconds(0)         )\
+    xxx(DirectWriteBandwidthQuota,            ui64,        0                  )\
+    xxx(UsePullSchemeForVolumeStatistics,                  bool,   false      )\
+    xxx(InitialRetryDelayForServiceRequests,  TDuration,   MSeconds(500)      )\
+    xxx(MaxRetryDelayForServiceRequests,      TDuration,   Seconds(30)        )\
+    xxx(VolumeThrottlingManagerEnabled,             bool,        false        )\
+    xxx(VolumeThrottlingManagerNotificationPeriodSeconds,                      \
+        TDuration,                                                             \
+        Seconds(5)                                                            )\
+    xxx(RetryAcquireReleaseDiskInitialDelay,  TDuration,   MSeconds(100)      )\
+    xxx(RetryAcquireReleaseDiskMaxDelay,      TDuration,   Seconds(5)         )\
+                                                                               \
+    xxx(NonReplicatedVolumeAcquireDiskAfterAddClientEnabled, bool,   false    )\
+    xxx(EnableDataIntegrityValidationForYdbBasedDisks,       bool,   false    )\
+                                                                               \
+    xxx(TrimFreshLogTimeout,                  TDuration,   Seconds(0)         )\
+    xxx(CollectGarbageTimeoutSSD,             TDuration,   Seconds(0)         )\
+    xxx(CollectGarbageTimeoutHDD,             TDuration,   Seconds(0)         )\
+                                                                               \
+    xxx(HiveLocalServiceCpuResourceLimit,     ui64,        0                  )\
+    xxx(HiveLocalServiceMemoryResourceLimit,  ui64,        0                  )\
+    xxx(HiveLocalServiceNetworkResourceLimit, ui64,        0                  )\
+    xxx(DynamicNodeRegistrationTimeout,       TDuration,   Seconds(5)         )\
+    xxx(AttachDetachPathsEnabled,             bool,        false              )\
+                                                                               \
+    xxx(NonreplAllocationPolicy,                                               \
+        NProto::ENonreplAllocationPolicy,                                      \
+        NProto::NONREPL_ALLOC_POLICY_NOT_SPECIFIED                            )\
+                                                                               \
+    xxx(SendLocalTabletMetricsToHiveEnabled,  bool,        false              )\
+                                                                               \
+    xxx(EnableVhostDiscardForNewVolumes,      bool,        false              )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
@@ -631,7 +673,6 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(Balancer)                                                              \
     xxx(IncrementalCompaction)                                                 \
     xxx(MultipartitionVolumes)                                                 \
-    xxx(AllocateFreshChannel)                                                  \
     xxx(FreshChannelWriteRequests)                                             \
     xxx(MixedIndexCacheV1)                                                     \
     xxx(BatchCompaction)                                                       \
@@ -642,8 +683,10 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(UseNonReplicatedHDDInsteadOfReplicated)                                \
     xxx(AddingUnconfirmedBlobs)                                                \
     xxx(EncryptionAtRestForDiskRegistryBasedDisks)                             \
+    xxx(RootKmsEncryptionForDiskRegistryBasedDisks)                            \
     xxx(LaggingDevicesForMirror2Disks)                                         \
     xxx(LaggingDevicesForMirror3Disks)                                         \
+    xxx(EnableVhostDiscardForNewVolumes)                                       \
 
 // BLOCKSTORE_BINARY_FEATURES
 
@@ -659,8 +702,6 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(SSDFreshChannelPoolKind                                               )\
 
 // BLOCKSTORE_STRING_FEATURES
-
-////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -707,30 +748,6 @@ TVector<NProto::TLinkedDiskFillBandwidth> ConvertValue(
     return v;
 }
 
-template <typename T>
-bool IsEmpty(const T& value)
-{
-    return !value;
-}
-
-template <>
-bool IsEmpty(const NCloud::NProto::TConfigDispatcherSettings& value)
-{
-    return !value.HasAllowList() && !value.HasDenyList();
-}
-
-template <typename T>
-bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
-{
-    return value.empty();
-}
-
-template <>
-bool IsEmpty(const NCloud::NProto::TCertificate& value)
-{
-    return !value.GetCertFile() && !value.GetCertPrivateKeyFile();
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 IOutputStream& operator <<(
@@ -757,6 +774,13 @@ IOutputStream& operator <<(
 IOutputStream& operator<<(IOutputStream& out, NProto::EResyncPolicy pt)
 {
     return out << NProto::EResyncPolicy_Name(pt);
+}
+
+IOutputStream& operator<<(
+    IOutputStream& out,
+    NProto::ENonreplAllocationPolicy pt)
+{
+    return out << NProto::ENonreplAllocationPolicy_Name(pt);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -800,18 +824,42 @@ void DumpImpl(
     }
 }
 
-}   // namespace
+////////////////////////////////////////////////////////////////////////////////
+
+#define CONFIG_ITEM_IS_SET_CHECKER(name, ...)                                  \
+    template <typename TProto>                                                 \
+    [[nodiscard]] bool Is##name##Set(const TProto& proto)                      \
+    {                                                                          \
+        if constexpr (requires() { proto.name##Size(); }) {                    \
+            return proto.name##Size() > 0;                                     \
+        } else {                                                               \
+            return proto.Has##name();                                          \
+        }                                                                      \
+    }
+
+BLOCKSTORE_STORAGE_CONFIG(CONFIG_ITEM_IS_SET_CHECKER);
+
+#undef CONFIG_ITEM_IS_SET_CHECKER
+
+#define BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(config, name, type, value) \
+    (Is##name##Set(config) ? ConvertValue<type>(config.Get##name()) : value)
 
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TValue>
-constexpr TAtomicBase ConvertToAtomicBase(const TValue& value, const TValue& defVal)
+constexpr TAtomicBase ConvertToAtomicBase(const TValue& value)
 {
-    if constexpr (std::is_nothrow_convertible<TValue, TAtomicBase>::value) {
-        return (value != TValue{} ? value : defVal);
-    }
-    return 0;
+    static_assert(std::is_nothrow_convertible<TValue, TAtomicBase>::value);
+    return value;
 }
+
+template <>
+constexpr TAtomicBase ConvertToAtomicBase(const TDuration& value)
+{
+    return value.MilliSeconds();
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -821,14 +869,15 @@ struct TStorageConfig::TImpl
     NFeatures::TFeaturesConfigPtr FeaturesConfig;
 
 #define BLOCKSTORE_CONFIG_CONTROL(name, type, value)                           \
-    TControlWrapper Control##name {                                            \
-        ConvertToAtomicBase<type>(                                             \
-            ConvertValue<type>(StorageServiceConfig.Get##name()),              \
-            value),                                                            \
+    TControlWrapper Control##name{                                             \
+        ConvertToAtomicBase<type>(BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(          \
+            StorageServiceConfig,                                              \
+            name,                                                              \
+            type,                                                              \
+            value)),                                                           \
         0,                                                                     \
-        Max()                                                                  \
-    };                                                                         \
-// BLOCKSTORE_CONFIG_CONTROL
+        Max()};                                                                \
+    // BLOCKSTORE_CONFIG_CONTROL
 
     BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_CONTROL)
 
@@ -846,17 +895,25 @@ struct TStorageConfig::TImpl
         FeaturesConfig = std::move(featuresConfig);
     }
 
+    void SetVolumePreemptionType(
+        NProto::EVolumePreemptionType volumePreemptionType)
+    {
+        StorageServiceConfig.SetVolumePreemptionType(volumePreemptionType);
+    }
+
     NProto::TStorageServiceConfig GetStorageConfigProto() const
     {
         NProto::TStorageServiceConfig proto = StorageServiceConfig;
 
-        // Overriding fields with values from ICB
+    // Overriding fields with values from ICB
 #define BLOCKSTORE_CONFIG_COPY(name, type, ...)                                \
-        if (const ui64 value = Control##name) {                                \
-            using T = decltype(StorageServiceConfig.Get##name());              \
-            proto.Set##name(static_cast<T>(value));                            \
-        }                                                                      \
-// BLOCKSTORE_CONFIG_COPY
+    if (const ui64 value = Control##name;                                      \
+        ConvertValue<type>(value) != ConvertValue<type>(proto.Get##name()))    \
+    {                                                                          \
+        using T = decltype(StorageServiceConfig.Get##name());                  \
+        proto.Set##name(static_cast<T>(value));                                \
+    }                                                                          \
+    // BLOCKSTORE_CONFIG_COPY
 
         BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_COPY)
 
@@ -882,6 +939,12 @@ void TStorageConfig::SetFeaturesConfig(
     Impl->SetFeaturesConfig(std::move(featuresConfig));
 }
 
+void TStorageConfig::SetVolumePreemptionType(
+    NProto::EVolumePreemptionType volumePreemptionType)
+{
+    Impl->SetVolumePreemptionType(volumePreemptionType);
+}
+
 void TStorageConfig::Register(TControlBoard& controlBoard){
 #define BLOCKSTORE_CONFIG_CONTROL(name, type, value)                           \
     controlBoard.RegisterSharedControl(                                        \
@@ -897,25 +960,33 @@ void TStorageConfig::Register(TControlBoard& controlBoard){
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
     type TStorageConfig::Get##name() const                                     \
     {                                                                          \
-        bool hasValue = NCloud::HasField(Impl->StorageServiceConfig, #name) && \
-                        !IsEmpty(Impl->StorageServiceConfig.Get##name());      \
-        return hasValue ? ConvertValue<type>(                                  \
-                              Impl->StorageServiceConfig.Get##name())          \
-                        : Default##name;                                       \
-    }   // namespace NCloud::NBlockStore::NStorage
+        return BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(                             \
+            Impl->StorageServiceConfig,                                        \
+            name,                                                              \
+            type,                                                              \
+            Default##name);                                                    \
+    }
 
 BLOCKSTORE_STORAGE_CONFIG_RO(BLOCKSTORE_CONFIG_GETTER)
 
 #undef BLOCKSTORE_CONFIG_GETTER
 
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
-type TStorageConfig::Get##name() const                                         \
-{                                                                              \
-    ui64 value = Impl->Control##name;                                          \
-    if (!value) value = Impl->StorageServiceConfig.Get##name();                \
-    return value ? ConvertValue<type>(value) : Default##name;                  \
-}                                                                              \
-// BLOCKSTORE_CONFIG_GETTER
+    type TStorageConfig::Get##name() const                                     \
+    {                                                                          \
+        const type configValue = BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(           \
+            Impl->StorageServiceConfig,                                        \
+            name,                                                              \
+            type,                                                              \
+            Default##name);                                                    \
+        const ui64 rawControlValue = Impl->Control##name;                      \
+        const type controlValue = ConvertValue<type>(rawControlValue);         \
+        if (controlValue != configValue) {                                     \
+            return controlValue;                                               \
+        }                                                                      \
+        return configValue;                                                    \
+    }                                                                          \
+    // BLOCKSTORE_CONFIG_GETTER
 
 BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_GETTER)
 
@@ -1115,31 +1186,46 @@ void AdaptNodeRegistrationParams(
     const NProto::TServerConfig& serverConfig,
     NProto::TStorageServiceConfig& storageConfig)
 {
-    if (!storageConfig.GetNodeRegistrationMaxAttempts()) {
+    if (!storageConfig.HasNodeRegistrationMaxAttempts() &&
+        serverConfig.HasNodeRegistrationMaxAttempts())
+    {
         storageConfig.SetNodeRegistrationMaxAttempts(
             serverConfig.GetNodeRegistrationMaxAttempts());
     }
 
-    if (!storageConfig.GetNodeRegistrationTimeout()) {
+    if (!storageConfig.HasNodeRegistrationTimeout() &&
+        serverConfig.HasNodeRegistrationTimeout())
+    {
         storageConfig.SetNodeRegistrationTimeout(
             serverConfig.GetNodeRegistrationTimeout());
     }
 
-    if (!storageConfig.GetNodeRegistrationErrorTimeout()) {
+    if (!storageConfig.HasNodeRegistrationErrorTimeout() &&
+        serverConfig.HasNodeRegistrationErrorTimeout())
+    {
         storageConfig.SetNodeRegistrationErrorTimeout(
             serverConfig.GetNodeRegistrationErrorTimeout());
     }
 
-    if (!storageConfig.GetNodeRegistrationToken()) {
+    if (!storageConfig.HasNodeRegistrationToken() &&
+        serverConfig.HasNodeRegistrationToken())
+    {
         storageConfig.SetNodeRegistrationToken(
             serverConfig.GetNodeRegistrationToken());
+    }
+
+    if (!storageConfig.HasEnableVhostDiscardForNewVolumes() &&
+        serverConfig.HasVhostDiscardEnabled())
+    {
+        storageConfig.SetEnableVhostDiscardForNewVolumes(
+            serverConfig.GetVhostDiscardEnabled());
     }
 
     if (overriddenNodeType) {
         storageConfig.SetNodeType(overriddenNodeType);
     }
 
-    if (!storageConfig.GetNodeType()) {
+    if (!storageConfig.HasNodeType() && serverConfig.HasNodeType()) {
         storageConfig.SetNodeType(serverConfig.GetNodeType());
     }
 }

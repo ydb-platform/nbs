@@ -26,6 +26,8 @@
 #include <util/generic/hash.h>
 #include <util/generic/list.h>
 
+#include <utility>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NThreading;
@@ -43,7 +45,6 @@ enum class ECheckRange
 {
     NotOverlapped,
     DelayRequest,
-    ResponseAlready,
     ResponseRejected,
 };
 
@@ -101,24 +102,22 @@ struct TThreadSafeData: public TSynchronized<TSynchronizedData, TAdaptiveLock>
 
 struct TDeviceData
 {
-    const TStorageAdapterPtr Device;
     mutable TThreadSafeData ThreadSafeData;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 THashMap<TString, TDeviceData> MakeDevices(
-    THashMap<TString, TStorageAdapterPtr> devices,
+    TVector<TString> devices,
     TOldRequestCounters oldRequestCounters)
 {
     THashMap<TString, TDeviceData> result;
-    for (auto& [deviceUUID, storageAdapter]: devices) {
+    for (auto& deviceUUID: devices) {
         TSynchronizedData synchronizedData{
             .RecentBlocksTracker = TRecentBlocksTracker{deviceUUID},
             .OldRequestCounters = oldRequestCounters};
 
         TDeviceData device{
-            .Device = std::move(storageAdapter),
             .ThreadSafeData = TThreadSafeData{std::move(synchronizedData)}};
 
         result.try_emplace(deviceUUID, std::move(device));
@@ -139,7 +138,8 @@ private:
     using TMultiAgentWriteDeviceBlocksResponse =
         TEvDiskAgentPrivate::TMultiAgentWriteDeviceBlocksResponse;
 
-    const THashMap<TString, TDeviceData> Devices;
+    THashMap<TString, TDeviceData> Devices;
+
     const ITaskQueuePtr TaskQueue;
 
     mutable TLogThrottler LogThrottler{LOG_THROTTLER_PERIOD};
@@ -156,7 +156,7 @@ private:
 
 public:
     TRequestHandler(
-            THashMap<TString, TStorageAdapterPtr> devices,
+            TVector<TString> devices,
             ITaskQueuePtr taskQueue,
             TDeviceClientPtr deviceClient,
             IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
@@ -218,7 +218,7 @@ public:
             token->PostponedMultiAgentWrites.size() ||
             token->PostponedZeroRequests.size())
         {
-            ReportDiskAgentSecureEraseDuringIo();
+            ReportDiskAgentSecureEraseDuringIo({{"deviceUUID", deviceUUID}});
             return MakeError(
                 E_REJECTED,
                 TStringBuilder()
@@ -319,8 +319,9 @@ private:
                 "[" << uuid << "/" << clientId
                     << "] Device disabled. Drop request.");
 
-            if (const auto* deviceData = Devices.FindPtr(uuid)) {
-                deviceData->Device->ReportIOError();
+            auto [storageAdapter, error] = DeviceClient->AccessDevice(uuid);
+            if (!HasError(error)) {
+                storageAdapter->ReportIOError();
             }
         } else {
             STORAGE_TRACE_T(
@@ -329,7 +330,7 @@ private:
                     << "] Device suspended. Reject request.");
         }
 
-        ythrow TServiceError(*ec) << "Device disabled";
+        STORAGE_THROW_SERVICE_ERROR(*ec) << "Device disabled";
     }
 
     TStorageAdapterPtr GetDevice(
@@ -339,19 +340,14 @@ private:
     {
         CheckIfDeviceIsDisabled(uuid, clientId);
 
-        NProto::TError error =
+        auto [device, error] =
             DeviceClient->AccessDevice(uuid, clientId, accessMode);
 
         if (HasError(error)) {
-            ythrow TServiceError(error.GetCode()) << error.GetMessage();
+            STORAGE_THROW_SERVICE_ERROR(error.GetCode()) << error.GetMessage();
         }
 
-        auto it = Devices.find(uuid);
-        if (it == Devices.cend()) {
-            ythrow TServiceError(E_NOT_FOUND);
-        }
-
-        return it->second.Device;
+        return device;
     }
 
     TThreadSafeData::TAccess GetAccessToken(const TString& uuid) const
@@ -359,7 +355,7 @@ private:
         if (const auto* deviceData = Devices.FindPtr(uuid)) {
             return deviceData->ThreadSafeData.Access();
         }
-        ythrow TServiceError(E_NOT_FOUND);
+        STORAGE_THROW_SERVICE_ERROR(E_NOT_FOUND);
     }
 
     template <typename TFuture, typename THandleResponseMethod>
@@ -406,13 +402,12 @@ private:
     {
         if (synchronizedData.SecureEraseInProgress) {
             ReportDiskAgentIoDuringSecureErase(
-                TStringBuilder()
-                << " Device=" << requestDetails.DeviceUUID
-                << ", ClientId=" << requestDetails.ClientId
-                << ", StartIndex=" << requestDetails.Range.Start
-                << ", BlocksCount=" << requestDetails.Range.Size()
-                << ", IsWrite=1"
-                << ", IsRdma=1");
+                {{"device", requestDetails.DeviceUUID},
+                 {"client", requestDetails.ClientId},
+                 {"start", requestDetails.Range.Start},
+                 {"blocks", requestDetails.Range.Size()},
+                 {"isWrite", 1},
+                 {"isRdma", 1}});
             *overlapDetails = "Secure erase in progress";
             return ECheckRange::ResponseRejected;
         }
@@ -430,27 +425,20 @@ private:
             return ECheckRange::DelayRequest;
         }
 
-        auto result = OverlapStatusToResult(
+        const bool overlapped = IsOverlapped(
             synchronizedData.RecentBlocksTracker.CheckRecorded(
                 requestDetails.VolumeRequestId,
                 requestDetails.Range,
                 overlapDetails));
-        if (result != S_OK) {
-            if (result == E_REJECTED) {
-                synchronizedData.OldRequestCounters.Rejected->Inc();
-            } else {
-                Y_DEBUG_ABORT_UNLESS(false);
-            }
+        if (overlapped) {
+            synchronizedData.OldRequestCounters.Rejected->Inc();
 
             if (!RejectLateRequests) {
                 // Monitoring mode. Don't change the behavior.
                 return ECheckRange::NotOverlapped;
             }
 
-            if (result == E_REJECTED) {
-                return ECheckRange::ResponseRejected;
-            }
-            return ECheckRange::ResponseAlready;
+            return ECheckRange::ResponseRejected;
         }
 
         // Here we add request to inflight list. Caller should execute request
@@ -477,12 +465,6 @@ private:
             switch (checkResult) {
                 case ECheckRange::NotOverlapped:
                     readyToExecute.push_back(std::move(postponedRequest));
-                    return true;
-                case ECheckRange::ResponseAlready:
-                    FinishHandleRequest(
-                        postponedRequest,
-                        S_ALREADY,
-                        overlapDetails);
                     return true;
                 case ECheckRange::ResponseRejected:
                     FinishHandleRequest(
@@ -563,13 +545,12 @@ private:
             const auto& clientId = request.GetHeaders().GetClientId();
             if (clientId != CheckHealthClientId) {
                 ReportDiskAgentIoDuringSecureErase(
-                    TStringBuilder()
-                    << " Device=" << request.GetDeviceUUID()
-                    << ", ClientId=" << clientId
-                    << ", StartIndex=" << request.GetStartIndex()
-                    << ", BlocksCount=" << request.GetBlocksCount()
-                    << ", IsWrite=0"
-                    << ", IsRdma=1");
+                    {{"device", request.GetDeviceUUID()},
+                     {"client", clientId},
+                     {"start", request.GetStartIndex()},
+                     {"blocks", request.GetBlocksCount()},
+                     {"isWrite", 0},
+                     {"isRdma", 1}});
             }
             return MakeError(E_REJECTED, "Secure erase in progress");
         }
@@ -623,6 +604,9 @@ private:
                 "[" << requestDetails.DeviceUUID << "/"
                     << requestDetails.ClientId << "] read error: "
                     << error.GetMessage() << " (" << error.GetCode() << ")");
+        }
+        if (response.HasChecksum()) {
+            proto.MutableChecksum()->CopyFrom(response.GetChecksum());
         }
 
         size_t bytes;
@@ -695,6 +679,9 @@ private:
                 requestData.data(),
                 requestData.length());
         }
+        if (request.HasChecksum()) {
+            req->MutableChecksums()->Add()->CopyFrom(request.GetChecksum());
+        }
 
         const ui32 blockCount = requestData.length() / request.GetBlockSize();
 
@@ -727,8 +714,6 @@ private:
             switch (checkResult) {
                 case ECheckRange::NotOverlapped:
                     break;
-                case ECheckRange::ResponseAlready:
-                    return TErrorResponse(S_ALREADY, overlapDetails);
                 case ECheckRange::ResponseRejected:
                     return TErrorResponse(E_REJECTED, overlapDetails);
                 case ECheckRange::DelayRequest: {
@@ -855,7 +840,6 @@ private:
             switch (checkResult) {
                 case ECheckRange::NotOverlapped:
                     break;
-                case ECheckRange::ResponseAlready:
                 case ECheckRange::ResponseRejected:
                     return TErrorResponse(E_REJECTED, overlapDetails);
                 case ECheckRange::DelayRequest: {
@@ -976,8 +960,6 @@ private:
             switch (checkResult) {
                 case ECheckRange::NotOverlapped:
                     break;
-                case ECheckRange::ResponseAlready:
-                    return TErrorResponse(S_ALREADY, overlapDetails);
                 case ECheckRange::ResponseRejected:
                     return TErrorResponse(E_REJECTED, overlapDetails);
                 case ECheckRange::DelayRequest: {
@@ -1151,7 +1133,7 @@ public:
             NRdma::IServerPtr server,
             TDeviceClientPtr deviceClient,
             IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
-            THashMap<TString, TStorageAdapterPtr> devices,
+            TVector<TString> devices,
             ITaskQueuePtr taskQueue)
         : Config(std::move(config))
         , Logging(std::move(logging))
@@ -1212,7 +1194,7 @@ IRdmaTargetPtr CreateRdmaTarget(
     NRdma::IServerPtr server,
     TDeviceClientPtr deviceClient,
     IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
-    THashMap<TString, TStorageAdapterPtr> devices)
+    TVector<TString> devices)
 {
     auto threadPool = CreateThreadPool("RDMA", config->WorkerThreads);
     threadPool->Start();

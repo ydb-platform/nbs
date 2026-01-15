@@ -59,7 +59,11 @@ void TSSProxyActor::Bootstrap(const TActorContext& ctx)
     const auto& filepath = Config->GetPathDescriptionBackupFilePath();
     if (filepath) {
         auto cache = std::make_unique<TPathDescriptionBackup>(
-            filepath, false /* readOnlyMode */);
+            TBlockStoreComponents::SS_PROXY,
+            filepath,
+            Config->GetUseBinaryFormatForPathDescriptionBackup(),
+            /*readOnlyMode=*/false);
+
         PathDescriptionBackup = ctx.Register(
             cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
     }

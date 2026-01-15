@@ -8,6 +8,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 )
 
@@ -15,12 +16,13 @@ import (
 
 func RegisterForExecution(
 	ctx context.Context,
+	config *config.DataplaneConfig,
+	performanceConfig *performance_config.PerformanceConfig,
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	nbsFactory nbs.Factory,
 	storage storage.Storage,
 	legacyStorage storage.Storage,
-	config *config.DataplaneConfig,
 	metricsRegistry metrics.Registry,
 	migrationDstStorage storage.Storage,
 	useS3InMigration bool,
@@ -28,9 +30,10 @@ func RegisterForExecution(
 
 	err := taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromDisk", func() tasks.Task {
 		return &createSnapshotFromDiskTask{
-			nbsFactory: nbsFactory,
-			storage:    storage,
-			config:     config,
+			config:            config,
+			performanceConfig: performanceConfig,
+			nbsFactory:        nbsFactory,
+			storage:           storage,
 		}
 	})
 	if err != nil {
@@ -39,8 +42,9 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromSnapshot", func() tasks.Task {
 		return &createSnapshotFromSnapshotTask{
-			storage: storage,
-			config:  config,
+			config:            config,
+			performanceConfig: performanceConfig,
+			storage:           storage,
 		}
 	})
 	if err != nil {
@@ -68,8 +72,9 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromURL", func() tasks.Task {
 		return &createSnapshotFromURLTask{
-			storage:                   storage,
 			config:                    config,
+			performanceConfig:         performanceConfig,
+			storage:                   storage,
 			httpClientTimeout:         httpClientTimeout,
 			httpClientMinRetryTimeout: httpClientMinRetryTimeout,
 			httpClientMaxRetryTimeout: httpClientMaxRetryTimeout,
@@ -81,9 +86,10 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromLegacySnapshot", func() tasks.Task {
 		return &createSnapshotFromLegacySnapshotTask{
-			storage:       storage,
-			legacyStorage: legacyStorage,
-			config:        config,
+			config:            config,
+			performanceConfig: performanceConfig,
+			storage:           storage,
+			legacyStorage:     legacyStorage,
 		}
 	})
 	if err != nil {
@@ -93,9 +99,9 @@ func RegisterForExecution(
 	if migrationDstStorage != nil {
 		err = taskRegistry.RegisterForExecution("dataplane.MigrateSnapshotTask", func() tasks.Task {
 			return &migrateSnapshotTask{
+				config:     config,
 				srcStorage: storage,
 				dstStorage: migrationDstStorage,
-				config:     config,
 				useS3:      useS3InMigration,
 			}
 		})
@@ -105,10 +111,10 @@ func RegisterForExecution(
 
 		err = taskRegistry.RegisterForExecution("dataplane.MigrateSnapshotDatabaseTask", func() tasks.Task {
 			return &migrateSnapshotDatabaseTask{
+				config:     config,
 				registry:   metricsRegistry,
 				srcStorage: storage,
 				dstStorage: migrationDstStorage,
-				config:     config,
 				scheduler:  taskScheduler,
 			}
 		})
@@ -119,9 +125,10 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("dataplane.TransferFromSnapshotToDisk", func() tasks.Task {
 		return &transferFromSnapshotToDiskTask{
-			nbsFactory: nbsFactory,
-			storage:    storage,
-			config:     config,
+			config:            config,
+			performanceConfig: performanceConfig,
+			nbsFactory:        nbsFactory,
+			storage:           storage,
 		}
 	})
 	if err != nil {
@@ -130,9 +137,10 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("dataplane.TransferFromLegacySnapshotToDisk", func() tasks.Task {
 		return &transferFromSnapshotToDiskTask{
-			nbsFactory: nbsFactory,
-			storage:    legacyStorage,
-			config:     config,
+			config:            config,
+			performanceConfig: performanceConfig,
+			nbsFactory:        nbsFactory,
+			storage:           legacyStorage,
 		}
 	})
 	if err != nil {
@@ -141,8 +149,9 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("dataplane.TransferFromDiskToDisk", func() tasks.Task {
 		return &transferFromDiskToDiskTask{
-			nbsFactory: nbsFactory,
-			config:     config,
+			config:            config,
+			performanceConfig: performanceConfig,
+			nbsFactory:        nbsFactory,
 		}
 	})
 	if err != nil {
@@ -151,8 +160,9 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("dataplane.ReplicateDisk", func() tasks.Task {
 		return &replicateDiskTask{
-			nbsFactory: nbsFactory,
-			config:     config,
+			config:            config,
+			performanceConfig: performanceConfig,
+			nbsFactory:        nbsFactory,
 		}
 	})
 	if err != nil {
@@ -171,7 +181,8 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("dataplane.DeleteSnapshotData", func() tasks.Task {
 		return &deleteSnapshotDataTask{
-			storage: storage,
+			performanceConfig: performanceConfig,
+			storage:           storage,
 		}
 	})
 	if err != nil {
@@ -257,8 +268,8 @@ func RegisterForExecution(
 		"dataplane.DeleteDiskFromIncremental",
 		func() tasks.Task {
 			return &deleteDiskFromIncrementalTask{
-				storage: storage,
 				config:  config,
+				storage: storage,
 			}
 		},
 	)
@@ -270,7 +281,8 @@ func RegisterForExecution(
 		"dataplane.CreateDRBasedDiskCheckpoint",
 		func() tasks.Task {
 			return &createDRBasedDiskCheckpointTask{
-				nbsFactory: nbsFactory,
+				performanceConfig: performanceConfig,
+				nbsFactory:        nbsFactory,
 			}
 		},
 	)

@@ -1,5 +1,7 @@
 #include "listener.h"
 
+#include "helpers.h"
+
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/endpoint/listener.h>
@@ -67,6 +69,7 @@ private:
     const IFileSystemLoopFactoryPtr LoopFactory;
     const THandleOpsQueueConfig HandleOpsQueueConfig;
     const TWriteBackCacheConfig WriteBackCacheConfig;
+    const TDirectoryHandlesStorageConfig DirectoryHandlesStorageConfig;
 
     TLog Log;
 
@@ -78,7 +81,8 @@ public:
             IFileStoreEndpointsPtr filestoreEndpoints,
             IFileSystemLoopFactoryPtr loopFactory,
             THandleOpsQueueConfig handleOpsQueueConfig,
-            TWriteBackCacheConfig writeBackCacheConfig)
+            TWriteBackCacheConfig writeBackCacheConfig,
+            TDirectoryHandlesStorageConfig directoryHandlesStorageConfig)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
@@ -86,6 +90,7 @@ public:
         , LoopFactory(std::move(loopFactory))
         , HandleOpsQueueConfig(std::move(handleOpsQueueConfig))
         , WriteBackCacheConfig(std::move(writeBackCacheConfig))
+        , DirectoryHandlesStorageConfig(std::move(directoryHandlesStorageConfig))
     {
         Log = Logging->CreateLog("NFS_VHOST");
     }
@@ -96,15 +101,12 @@ public:
 
         auto filestore = FileStoreEndpoints->GetEndpoint(serviceEndpoint);
         if (!filestore) {
-            ythrow TServiceError(E_ARGUMENT)
+            STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
                 << "invalid service endpoint " << serviceEndpoint.Quote();
         }
 
         NProto::TSessionConfig sessionConfig;
-        sessionConfig.SetFileSystemId(config.GetFileSystemId());
-        sessionConfig.SetClientId(config.GetClientId());
-        sessionConfig.SetSessionPingTimeout(config.GetSessionPingTimeout());
-        sessionConfig.SetSessionRetryTimeout(config.GetSessionRetryTimeout());
+        EndpointConfigToSessionConfig(config, &sessionConfig);
 
         auto session = CreateSession(
             Logging,
@@ -129,6 +131,16 @@ public:
         protoConfig.SetWriteBackCacheCapacity(WriteBackCacheConfig.Capacity);
         protoConfig.SetWriteBackCacheAutomaticFlushPeriod(
             WriteBackCacheConfig.AutomaticFlushPeriod.MilliSeconds());
+        protoConfig.SetWriteBackCacheFlushRetryPeriod(
+            WriteBackCacheConfig.FlushRetryPeriod.MilliSeconds());
+        protoConfig.SetWriteBackCacheFlushMaxWriteRequestSize(
+            WriteBackCacheConfig.FlushMaxWriteRequestSize);
+        protoConfig.SetWriteBackCacheFlushMaxWriteRequestsCount(
+            WriteBackCacheConfig.FlushMaxWriteRequestsCount);
+        protoConfig.SetWriteBackCacheFlushMaxSumWriteRequestsSize(
+            WriteBackCacheConfig.FlushMaxSumWriteRequestsSize);
+        protoConfig.SetDirectoryHandlesStoragePath(DirectoryHandlesStorageConfig.PathPrefix);
+        protoConfig.SetDirectoryHandlesInitialDataSize(DirectoryHandlesStorageConfig.InitialDataSize);
 
         auto vFSConfig = std::make_shared<TVFSConfig>(std::move(protoConfig));
         auto Loop = LoopFactory->Create(
@@ -150,7 +162,8 @@ IEndpointListenerPtr CreateEndpointListener(
     IFileStoreEndpointsPtr filestoreEndpoints,
     IFileSystemLoopFactoryPtr loopFactory,
     THandleOpsQueueConfig handleOpsQueueConfig,
-    TWriteBackCacheConfig writeBackCacheConfig)
+    TWriteBackCacheConfig writeBackCacheConfig,
+    TDirectoryHandlesStorageConfig directoryHandlesStorageConfig)
 {
     return std::make_shared<TEndpointListener>(
         std::move(logging),
@@ -159,7 +172,8 @@ IEndpointListenerPtr CreateEndpointListener(
         std::move(filestoreEndpoints),
         std::move(loopFactory),
         std::move(handleOpsQueueConfig),
-        std::move(writeBackCacheConfig));
+        std::move(writeBackCacheConfig),
+        std::move(directoryHandlesStorageConfig));
 }
 
 }   // namespace NCloud::NFileStore::NVhost

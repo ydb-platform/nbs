@@ -1,18 +1,22 @@
 GO_LIBRARY()
 
 SRCS(
-    interface.go
     cells.go
+    collect_cluster_capacity_task.go
+    interface.go
+    register.go
 )
 
 GO_TEST_SRCS(
     cells_test.go
+    collect_cluster_capacity_task_test.go
 )
 
 END()
 
 RECURSE(
     config
+    protos
     storage
 )
 

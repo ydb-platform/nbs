@@ -6,9 +6,6 @@
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 
-// TODO: invalid reference
-#include <cloud/blockstore/libs/storage/service/service_events_private.h>
-
 #include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -272,7 +269,10 @@ void TVolumeActor::HandleStatVolume(
     auto* volume = record.MutableVolume();
     record.SetMountSeqNumber(
         State->GetMountSeqNumber());
-    VolumeConfigToVolume(State->GetMeta().GetVolumeConfig(), *volume);
+    VolumeConfigToVolume(
+        State->GetMeta().GetVolumeConfig(),
+        State->GetPrincipalDiskId(),
+        *volume);
 
     auto* stats = record.MutableStats();
     stats->SetWriteAndZeroRequestsInFlight(WriteAndZeroRequestsInFlight.Size());
@@ -300,6 +300,11 @@ void TVolumeActor::HandleStatVolume(
         stats->SetMaxTimedOutDeviceStateDuration(
             partConfig->GetMaxTimedOutDeviceStateDuration().MilliSeconds());
     }
+
+    auto* throttlingInfo = record.MutableVolatileThrottlingInfo();
+    throttlingInfo->SetVersion(State->GetThrottlingPolicy().GetVolatileThrottlingVersion());
+    *throttlingInfo->MutableActualPerformanceProfile() = State->GetThrottlingPolicy().GetCurrentPerformanceProfile();
+    *throttlingInfo->MutableAppliedRule() = State->GetThrottlingPolicy().GetVolatileThrottlingRule();
 
     TActiveCheckpointsMap activeCheckpoints = State->GetCheckpointStore().GetActiveCheckpoints();
     TVector<TString> checkpoints(Reserve(activeCheckpoints.size()));
@@ -356,7 +361,10 @@ void TVolumeActor::HandleGetVolumeInfo(
 
     auto* volume = response->Record.MutableVolume();
     State->FillDeviceInfo(*volume);
-    VolumeConfigToVolume(State->GetMeta().GetVolumeConfig(), *volume);
+    VolumeConfigToVolume(
+        State->GetMeta().GetVolumeConfig(),
+        State->GetPrincipalDiskId(),
+        *volume);
     volume->SetResyncInProgress(State->IsMirrorResyncNeeded());
 
     auto requestInfo = CreateRequestInfo(

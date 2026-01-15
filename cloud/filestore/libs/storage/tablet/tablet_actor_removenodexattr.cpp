@@ -101,7 +101,7 @@ void TIndexTabletActor::ExecuteTx_RemoveNodeXAttr(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "RemoveXAttr");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "RemoveXAttr");
     }
 
     RemoveNodeAttr(

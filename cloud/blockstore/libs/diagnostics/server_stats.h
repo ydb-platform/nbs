@@ -32,6 +32,11 @@ struct TMetricRequest
     ui64 RequestBytes = 0;
     TInstant RequestTimestamp;
     bool Unaligned = false;
+    bool CellRequest = false;
+    NProto::EVolumeAccessMode AccessMode =
+        NProto::EVolumeAccessMode::VOLUME_ACCESS_READ_WRITE;
+    NProto::EVolumeMountMode MountMode =
+        NProto::EVolumeMountMode::VOLUME_MOUNT_LOCAL;
 
     TMetricRequest(EBlockStoreRequest requestType)
         : RequestType(requestType)

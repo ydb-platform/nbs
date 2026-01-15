@@ -1097,6 +1097,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		1,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
@@ -1118,6 +1119,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		1,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.NoError(t, err)
 
@@ -1133,6 +1135,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		1,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.NoError(t, err)
 
@@ -1143,6 +1146,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		2,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.Error(t, err)
 	require.True(t, errors.CanRetry(err))
@@ -1156,6 +1160,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		2,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.NoError(t, err)
 
@@ -1166,6 +1171,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		1,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "config mismatch")
@@ -1197,6 +1203,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		3,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
@@ -1218,6 +1225,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		2,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.Error(t, err)
 	require.True(t, !errors.CanRetry(err))
@@ -1247,6 +1255,7 @@ func TestCloneDiskFromOneZoneToAnotherConcurrently(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		1,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.NoError(t, err)
 
@@ -1263,6 +1272,7 @@ func TestCloneDiskFromOneZoneToAnotherConcurrently(t *testing.T) {
 			0,  // dstPlacementPartitionIndex
 			2,  // fillGeneration
 			"", // baseDiskID
+			"", // tagsStr
 		)
 	}()
 
@@ -1308,6 +1318,7 @@ func TestFinishFillDisk(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		1,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.NoError(t, err)
 
@@ -1964,4 +1975,39 @@ func TestAlterPlacementGroupMembershipFailureBecauseOfTooManyDisksInGroup(t *tes
 
 	err = client.DeletePlacementGroup(ctx, groupID)
 	require.NoError(t, err)
+}
+
+// TODO: enable this test after syncing ydb stable-24-3.
+func TestGetClusterCapacity(t *testing.T) {
+	/*
+		ctx := newContext()
+		client := newTestingClient(t, ctx)
+
+		capacity, err := client.GetClusterCapacity(ctx)
+		require.NoError(t, err)
+		require.NotEmpty(t, capacity)
+	*/
+}
+
+func TestQueryAvailableStorage(t *testing.T) {
+	ctx := newContext()
+	client := newTestingClient(t, ctx)
+
+	// Searching for an agent without any local disks.
+	availableStorageInfos, err := client.QueryAvailableStorage(
+		ctx,
+		[]string{"localhost"},
+	)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(availableStorageInfos))
+	require.Equal(t, "localhost", availableStorageInfos[0].AgentID)
+	require.EqualValues(t, 0, availableStorageInfos[0].ChunkCount)
+	require.EqualValues(t, 0, availableStorageInfos[0].ChunkSize)
+
+	availableStorageInfos, err = client.QueryAvailableStorage(
+		ctx,
+		[]string{"unknown-agent"},
+	)
+	require.NoError(t, err)
+	require.Empty(t, availableStorageInfos)
 }

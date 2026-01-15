@@ -1,4 +1,10 @@
 {
+    "test.test_enable_directory_creation_in_shards": {
+        "uri": "file://test.test_enable_directory_creation_in_shards/results.txt"
+    },
+    "test.test_enable_strict": {
+        "uri": "file://test.test_enable_strict/results.txt"
+    },
     "test.test_explicit_shard_count_addition": {
         "uri": "file://test.test_explicit_shard_count_addition/results.txt"
     },

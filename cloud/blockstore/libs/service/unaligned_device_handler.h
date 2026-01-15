@@ -42,15 +42,8 @@ private:
 
 public:
     TUnalignedDeviceHandler(
-        IStoragePtr storage,
-        TString diskId,
-        TString clientId,
-        ui32 blockSize,
-        ui32 maxSubRequestSize,
-        ui32 maxZeroBlocksSubRequestSize,
-        ui32 maxUnalignedRequestSize,
-        bool checkBufferModificationDuringWriting,
-        NProto::EStorageMediaKind storageMediaKind);
+        TDeviceHandlerParams params,
+        ui32 maxSubRequestSize);
 
     ~TUnalignedDeviceHandler() override;
 

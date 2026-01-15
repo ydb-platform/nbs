@@ -24,19 +24,21 @@ struct TConnectionEvent
     TConnectionEvent(
             rdma_cm_event_type eventType,
             rdma_cm_id* cmId,
-            rdma_conn_param* conn_param)
+            rdma_cm_id* listenId,
+            rdma_conn_param* connParam)
         : rdma_cm_event{}
     {
         id = cmId;
+        listen_id = listenId;
         event = eventType;
 
-        if (conn_param) {
-            param.conn = *conn_param;
+        if (connParam) {
+            param.conn = *connParam;
             void* data = malloc(param.conn.private_data_len);
             memcpy(
                 data,
-                conn_param->private_data,
-                conn_param->private_data_len);
+                connParam->private_data,
+                connParam->private_data_len);
             param.conn.private_data = data;
             HaveConnParam = true;
         }
@@ -57,9 +59,10 @@ void EnqueueConnectionEvent(
     TTestContextPtr context,
     rdma_cm_event_type type,
     rdma_cm_id* id,
+    rdma_cm_id* listenId = nullptr,
     rdma_conn_param* param = nullptr)
 {
-    auto* event = new TConnectionEvent(type, id, param);
+    auto* event = new TConnectionEvent(type, id, listenId, param);
 
     auto g = Guard(context->ConnectionLock);
     context->ConnectionEvents.push_back({
@@ -309,8 +312,9 @@ struct TTestVerbs
         ui32 port,
         rdma_addrinfo* hints) override
     {
-        Y_UNUSED(hints);
-
+        if (TestContext->GetAddressInfo) {
+            return TestContext->GetAddressInfo(host, port, hints);
+        }
         return {
             static_cast<rdma_addrinfo*>(new TAddressInfo(host, port)),
             TAddressInfo::Destroy,
@@ -383,11 +387,12 @@ struct TTestVerbs
     TConnectionPtr CreateConnection(
         rdma_event_channel* channel,
         void* context,
-        rdma_port_space ps) override
+        rdma_port_space ps,
+        ui8 tos) override
     {
-
         auto* connection = new TConnection(channel, context, ps);
         TestContext->Connection = static_cast<rdma_cm_id*>(connection);
+        TestContext->ToS = tos;
 
         return {
             static_cast<rdma_cm_id*>(connection),
@@ -460,7 +465,12 @@ struct TTestVerbs
         param2.private_data = &reject;
         param2.private_data_len = sizeof(reject);
 
-        EnqueueConnectionEvent(TestContext, RDMA_CM_EVENT_REJECTED, id, param);
+        EnqueueConnectionEvent(
+            TestContext,
+            RDMA_CM_EVENT_REJECTED,
+            id,
+            nullptr,    // listenId
+            param);
     }
 
     void Connect(rdma_cm_id* id, rdma_conn_param* param) override
@@ -473,6 +483,7 @@ struct TTestVerbs
             TestContext,
             RDMA_CM_EVENT_ESTABLISHED,
             id,
+            nullptr,    // listenId
             param);
     }
 
@@ -492,15 +503,16 @@ struct TTestVerbs
         const void* private_data,
         ui8 private_data_len) override
     {
-        Y_UNUSED(id);
-        Y_UNUSED(private_data);
-        Y_UNUSED(private_data_len);
+        if (TestContext->Reject) {
+            TestContext->Reject(id, private_data, private_data_len);
+        }
     }
 
     void CreateQP(rdma_cm_id* id, ibv_qp_init_attr* qp_attrs) override
     {
-        Y_UNUSED(id);
-        Y_UNUSED(qp_attrs);
+        if (TestContext->CreateQP) {
+            TestContext->CreateQP(id, qp_attrs);
+        }
 
         auto g = Guard(TestContext->CompletionLock);
         TestContext->HandleCompletionEvent = nullptr;
@@ -508,14 +520,16 @@ struct TTestVerbs
 
     void DestroyQP(rdma_cm_id* id) override
     {
-        Y_UNUSED(id);
+        if (TestContext->DestroyQP) {
+            TestContext->DestroyQP(id);
+        }
     }
 
     void ModifyQP(ibv_qp* qp, ibv_qp_attr* attr, int mask) override
     {
-        Y_UNUSED(qp);
-        Y_UNUSED(attr);
-        Y_UNUSED(mask);
+        if (TestContext->ModifyQP) {
+            TestContext->ModifyQP(qp, attr, mask);
+        }
     }
 };
 
@@ -524,6 +538,29 @@ struct TTestVerbs
 IVerbsPtr CreateTestVerbs(TTestContextPtr context)
 {
     return std::make_shared<TTestVerbs>(std::move(context));
+}
+
+void CreateConnection(TTestContextPtr context)
+{
+    TConnectMessage message;
+    InitMessageHeader(&message, RDMA_PROTO_VERSION);
+
+    rdma_conn_param param = {
+        .private_data = &message,
+        .private_data_len = sizeof(TConnectMessage),
+    };
+
+    auto id = std::make_unique<rdma_cm_id>();
+    memset(id.get(), 0, sizeof(rdma_cm_id));
+
+    EnqueueConnectionEvent(
+        context,
+        RDMA_CM_EVENT_CONNECT_REQUEST,
+        id.get(),
+        context->Connection,    // listenId
+        &param);
+
+    context->ClientConnections.push_back(std::move(id));
 }
 
 void Disconnect(TTestContextPtr context)

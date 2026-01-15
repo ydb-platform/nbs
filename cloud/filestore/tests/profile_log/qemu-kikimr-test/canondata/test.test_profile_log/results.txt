@@ -1,5 +1,7 @@
 NFS profile:
 CreateFileStore
+ReadData
+WriteData
 VHOST profile:
 AcquireLock
 CreateHandle
@@ -9,6 +11,7 @@ Flush
 GetNodeAttr
 GetNodeXAttr
 ListNodes
+ReadData
 ReadLink
 RenameNode
 SetNodeAttr

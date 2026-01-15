@@ -1,5 +1,7 @@
 #include "request.h"
 
+#include <util/string/cast.h>
+
 namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -24,21 +26,24 @@ const TString& GetBlockStoreRequestName(EBlockStoreRequest request)
     return Unknown;
 }
 
-TStringBuf GetSysRequestName(ESysRequestType requestType)
-{
-    switch (requestType) {
-        case ESysRequestType::Compaction: return "Compaction";
-        case ESysRequestType::Flush: return "Flush";
-        case ESysRequestType::ConvertToMixedIndex: return "ConvertToMixedIndex";
-        case ESysRequestType::ConvertToRangeMap: return "ConvertToRangeMap";
-        case ESysRequestType::Cleanup: return "Cleanup";
-        case ESysRequestType::Migration: return "Migration";
-        case ESysRequestType::WriteDeviceBlocks: return "WriteDeviceBlocks";
-        case ESysRequestType::ZeroDeviceBlocks: return "ZeroDeviceBlocks";
-        case ESysRequestType::Resync: return "Resync";
-        case ESysRequestType::ConfirmBlobs: return "ConfirmBlobs";
-        default: return "unknown";
+////////////////////////////////////////////////////////////////////////////////
+
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                     \
+    template <>                                                  \
+    TString GetBlockStoreRequestName<NProto::T##name##Request>() \
+    {                                                            \
+        return #name;                                            \
     }
+
+BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
+
+#undef BLOCKSTORE_DECLARE_METHOD
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString GetSysRequestName(ESysRequestType requestType)
+{
+    return ToString(requestType);
 }
 
 TStringBuf GetPrivateRequestName(EPrivateRequestType requestType)

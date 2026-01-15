@@ -12,5 +12,6 @@ GO_TEST_SRCS(
 END()
 
 RECURSE_FOR_TESTS(
+    mocks
     tests
 )

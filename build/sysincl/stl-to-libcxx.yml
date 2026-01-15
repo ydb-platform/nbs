@@ -71,7 +71,6 @@
   - complex:                   contrib/libs/cxxsupp/libcxx/include/complex
   - concepts:                  contrib/libs/cxxsupp/libcxx/include/concepts
   - condition_variable:        contrib/libs/cxxsupp/libcxx/include/condition_variable
-  - coroutine:                 contrib/libs/cxxsupp/libcxx/include/coroutine
   - csetjmp:                   contrib/libs/cxxsupp/libcxx/include/csetjmp
   - csignal:                   contrib/libs/cxxsupp/libcxx/include/csignal
   - cstdarg:                   contrib/libs/cxxsupp/libcxx/include/cstdarg

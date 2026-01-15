@@ -200,8 +200,9 @@ void TMixedBlocks::UnRefRange(ui32 rangeId)
     // offload the range if the capacity is 0
     if (it->second.RefCount == 0) {
         if (Impl->OffloadedRanges.GetMaxSize() != 0) {
-            auto [_, inserted] =
+            auto [_, inserted, evicted] =
                 Impl->OffloadedRanges.emplace(rangeId, Impl->Alloc);
+            Y_UNUSED(evicted);
             Y_DEBUG_ABORT_UNLESS(inserted);
             Impl->OffloadedRanges.at(rangeId).Swap(it->second);
         }
@@ -284,16 +285,36 @@ void TMixedBlocks::FindBlocks(
             blockIndex,
             blocksCount);
 
-        while (iter->Next()) {
-            auto& block = iter->Block;
+        while (iter.Next()) {
+            auto& block = iter.Block;
 
             Y_ABORT_UNLESS(block.NodeId == nodeId);
             Y_ABORT_UNLESS(block.MinCommitId <= commitId);
 
-            range->DeletionMarkers.Apply(block);
+            Y_ABORT_UNLESS(iter.BlocksInCurrentIteration > 0);
 
-            if (commitId < block.MaxCommitId) {
-                visitor.Accept(block, blob.BlobId, iter->BlobOffset);
+            if (range->DeletionMarkers.Empty()) {
+                if (commitId < block.MaxCommitId) {
+                    visitor.Accept(
+                        block,
+                        blob.BlobId,
+                        iter.BlobOffset,
+                        iter.BlocksInCurrentIteration);
+                }
+            } else {
+                for (ui32 i = 0; i < iter.BlocksInCurrentIteration; ++i) {
+                    auto b = block;
+                    b.BlockIndex = block.BlockIndex + i;
+                    range->DeletionMarkers.Apply(b);
+
+                    if (commitId < b.MaxCommitId) {
+                        visitor.Accept(
+                            b,
+                            blob.BlobId,
+                            iter.BlobOffset + i,
+                            1);
+                    }
+                }
             }
         }
     }

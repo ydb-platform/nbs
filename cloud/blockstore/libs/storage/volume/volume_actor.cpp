@@ -8,8 +8,7 @@
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
-#include <cloud/blockstore/libs/storage/service/service_events_private.h>   // TODO: invalid reference
-#include <cloud/blockstore/libs/storage/volume/model/volume_throttler_logger.h>
+#include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler_logger.h>
@@ -60,17 +59,17 @@ const TString VolumeTransactions[] = {
 };
 
 TVolumeActor::TVolumeActor(
-        const TActorId& owner,
-        TTabletStorageInfoPtr storage,
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
-        IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        ITraceSerializerPtr traceSerializer,
-        NRdma::IClientPtr rdmaClient,
-        NServer::IEndpointEventHandlerPtr endpointEventHandler,
-        EVolumeStartMode startMode,
-        TString diskId)
+    const TActorId& owner,
+    TTabletStorageInfoPtr storage,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    ITraceSerializerPtr traceSerializer,
+    NRdma::IClientPtr rdmaClient,
+    NServer::IEndpointEventHandlerPtr endpointEventHandler,
+    EVolumeStartMode startMode,
+    TString diskId)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , GlobalStorageConfig(config)
@@ -82,7 +81,11 @@ TVolumeActor::TVolumeActor(
     , RdmaClient(std::move(rdmaClient))
     , EndpointEventHandler(std::move(endpointEventHandler))
     , StartMode(startMode)
-    , LogTitle(TabletID(), std::move(diskId), StartTime)
+    , LogTitle(
+          StartTime,
+          TLogTitle::TVolume{
+              .TabletId = TabletID(),
+              .DiskId = std::move(diskId)})
     , ThrottlerLogger(
           TabletID(),
           [this](ui32 opType, TDuration time)
@@ -113,11 +116,11 @@ TString TVolumeActor::GetStateName(ui32 state)
 
 void TVolumeActor::Enqueue(STFUNC_SIG)
 {
-    ALOG_ERROR(TBlockStoreComponents::VOLUME,
-        "[" << TabletID() << "]"
-        << " IGNORING message type# " << ev->GetTypeRewrite()
-        << " from Sender# " << ToString(ev->Sender)
-        << " in StateBoot");
+    ALOG_ERROR(
+        TBlockStoreComponents::VOLUME,
+        LogTitle.GetWithTime().c_str()
+            << " IGNORING message type# " << ev->GetTypeRewrite()
+            << " from Sender# " << ToString(ev->Sender) << " in StateBoot");
 }
 
 void TVolumeActor::DefaultSignalTabletActive(const TActorContext& ctx)
@@ -423,6 +426,11 @@ ui64 TVolumeActor::GetBlocksCount() const
     return State ? State->GetBlocksCount() : 0;
 }
 
+const TString& TVolumeActor::GetDiskId() const
+{
+    return State->GetConfig().GetDiskId();
+}
+
 void TVolumeActor::OnServicePipeDisconnect(
     const TActorContext& ctx,
     const TActorId& serverId,
@@ -446,7 +454,10 @@ void TVolumeActor::DoRegisterVolume(
     Y_DEBUG_ABORT_UNLESS(diskId);
 
     NProto::TVolume volume;
-    VolumeConfigToVolume(State->GetMeta().GetVolumeConfig(), volume);
+    VolumeConfigToVolume(
+        State->GetMeta().GetVolumeConfig(),
+        State->GetPrincipalDiskId(),
+        volume);
 
     if (State->GetDiskId() != diskId) {
         // Handle shadow disk.
@@ -508,7 +519,10 @@ void TVolumeActor::DoUnregisterVolume(
 void TVolumeActor::SendVolumeConfigUpdated(const TActorContext& ctx)
 {
     NProto::TVolume volume;
-    VolumeConfigToVolume(State->GetMeta().GetVolumeConfig(), volume);
+    VolumeConfigToVolume(
+        State->GetMeta().GetVolumeConfig(),
+        State->GetPrincipalDiskId(),
+        volume);
     {
         auto request = std::make_unique<TEvService::TEvVolumeConfigUpdated>(
             State->GetDiskId(),
@@ -528,6 +542,7 @@ void TVolumeActor::SendVolumeSelfCounters(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvStatsService::TEvVolumeSelfCounters>(
         State->GetConfig().GetDiskId(),
+        /*IsLocalMount=*/!State->GetLocalMountClientId().empty(),
         State->HasActiveClients(ctx.Now()),
         State->IsPreempted(SelfId()),
         std::move(VolumeSelfCounters),
@@ -661,28 +676,22 @@ void TVolumeActor::HandleUpdateCounters(
     const TEvVolumePrivate::TEvUpdateCounters::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-
     UpdateCountersScheduled = false;
+
+    // if we use pull scheme we must send request to the partitions
+    // to collect statistics
+    if (Config->GetUsePullSchemeForVolumeStatistics() &&
+        State && !State->IsDiskRegistryMediaKind() &&
+        GetVolumeStatus() != EStatus::STATUS_INACTIVE)
+    {
+        ScheduleRegularUpdates(ctx);
+        SendStatisticRequests(ctx);
+        return;
+    }
 
     UpdateCounters(ctx);
     ScheduleRegularUpdates(ctx);
-
-    if (State) {
-        State->AccessMountHistory().CleanupHistoryIfNeeded(
-            ctx.Now() - Config->GetVolumeHistoryDuration());
-
-        auto requestInfo = CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            ev->Get()->CallContext);
-
-        ExecuteTx<TCleanupHistory>(
-            ctx,
-            std::move(requestInfo),
-            ctx.Now() - Config->GetVolumeHistoryDuration(),
-            Config->GetVolumeHistoryCleanupItemCount());
-    }
+    CleanupHistory(ctx, ev->Sender, ev->Cookie, ev->Get()->CallContext);
 }
 
 void TVolumeActor::HandleServerConnected(
@@ -691,7 +700,7 @@ void TVolumeActor::HandleServerConnected(
 {
     const auto* msg = ev->Get();
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s Pipe client %s server %s connected to volume",
@@ -707,7 +716,7 @@ void TVolumeActor::HandleServerDisconnected(
     const auto* msg = ev->Get();
     const auto now = ctx.Now();
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s Pipe client %s server %s disconnected from volume",
@@ -803,6 +812,43 @@ void TVolumeActor::HandleTakeVolumeRequestId(
         std::make_unique<TEvVolumePrivate::TEvTakeVolumeRequestIdResponse>(
             VolumeRequestIdGenerator->Advance());
     NCloud::Reply(ctx, *ev, std::move(resp));
+}
+
+void TVolumeActor::InitializeDeviceOperationTracker()
+{
+    if (!State) {
+        return;
+    }
+
+    DeviceOperationTracker.UpdateAgents(GetAllAgents(State->GetMeta()));
+    TDeviceOperationTracker::UpdateTrackingFrequency(
+        Config->GetDeviceOperationTrackingFrequency());
+}
+
+void TVolumeActor::HandleDiskRegistryDeviceOperationStarted(
+    const TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    auto* msg = ev->Get();
+
+    DeviceOperationTracker.OnStarted(
+        msg->OperationId,
+        msg->AgentId,
+        msg->RequestType,
+        GetCycleCount());
+}
+
+void TVolumeActor::HandleDiskRegistryDeviceOperationFinished(
+    const TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    auto* msg = ev->Get();
+
+    DeviceOperationTracker.OnFinished(msg->OperationId, GetCycleCount());
 }
 
 bool TVolumeActor::HandleRequests(STFUNC_SIG)
@@ -996,6 +1042,9 @@ STFUNC(TVolumeActor::StateWork)
             TEvVolumePrivate::TEvAcquireDiskIfNeeded,
             HandleAcquireDiskIfNeeded);
         HFunc(TEvVolume::TEvReacquireDisk, HandleReacquireDisk);
+        HFunc(
+            TEvVolume::TEvRetryAcquireReleaseDisk,
+            HandleRetryAcquireReleaseDisk);
         HFunc(TEvVolume::TEvRdmaUnavailable, HandleRdmaUnavailable);
         HFunc(
             TEvDiskRegistry::TEvReleaseDiskResponse,
@@ -1060,6 +1109,26 @@ STFUNC(TVolumeActor::StateWork)
             TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,
             HandleGetDrTabletInfoResponse);
 
+        HFunc(
+            TEvPartitionCommonPrivate::TEvPartCountersCombined,
+            HandlePartCountersCombined);
+
+        HFunc(
+            TEvVolumeThrottlingManager::TEvVolumeThrottlingConfigNotification,
+            HandleUpdateVolatileThrottlingConfig);
+
+        HFunc(
+            TEvService::TEvDestroyVolumeResponse,
+            HandleDestroyOutdatedLeaderVolumeResponse);
+
+        HFunc(
+            TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted,
+            HandleDiskRegistryDeviceOperationStarted);
+
+        HFunc(
+            TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished,
+            HandleDiskRegistryDeviceOperationFinished);
+
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
         default:
@@ -1093,13 +1162,17 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState);
         IgnoreFunc(TEvVolumePrivate::TEvLaggingAgentMigrationFinished);
 
+        IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
         IgnoreFunc(TEvStatsService::TEvVolumePartCounters);
+        IgnoreFunc(TEvVolumePrivate::TEvPartStatsSaved);
+        IgnoreFunc(TEvVolumePrivate::TEvWriteOrZeroCompleted);
 
         IgnoreFunc(TEvPartition::TEvWaitReadyResponse);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
         HFunc(TEvTablet::TEvTabletStop, HandleTabletStop);
+        HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
@@ -1119,6 +1192,14 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvLinkLeaderVolumeToFollowerRequest);
         IgnoreFunc(TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest);
         IgnoreFunc(TEvVolume::TEvUpdateLinkOnFollowerResponse);
+        IgnoreFunc(TEvVolume::TEvRetryAcquireReleaseDisk);
+
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvPartCountersCombined);
+
+        IgnoreFunc(TEvService::TEvDestroyVolumeResponse);
+
+        IgnoreFunc(TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted);
+        IgnoreFunc(TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished);
 
         default:
             if (!RejectRequests(ev)) {

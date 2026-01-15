@@ -22,6 +22,7 @@ class TAcquireDiskActor final
     : public TActorBootstrapped<TAcquireDiskActor>
 {
 private:
+    const TChildLogTitle LogTitle;
     const TActorId Owner;
     TRequestInfoPtr RequestInfo;
     TVector<NProto::TDeviceConfig> Devices;
@@ -39,6 +40,7 @@ private:
 
 public:
     TAcquireDiskActor(
+        TChildLogTitle logTitle,
         const TActorId& owner,
         TRequestInfoPtr requestInfo,
         TVector<NProto::TDeviceConfig> devices,
@@ -106,6 +108,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TAcquireDiskActor::TAcquireDiskActor(
+        TChildLogTitle logTitle,
         const TActorId& owner,
         TRequestInfoPtr requestInfo,
         TVector<NProto::TDeviceConfig> devices,
@@ -116,7 +119,8 @@ TAcquireDiskActor::TAcquireDiskActor(
         ui64 mountSeqNumber,
         ui32 volumeGeneration,
         TDuration requestTimeout)
-    : Owner(owner)
+    : LogTitle(std::move(logTitle))
+    , Owner(owner)
     , RequestInfo(std::move(requestInfo))
     , Devices(std::move(devices))
     , LogicalBlockSize(logicalBlockSize)
@@ -143,10 +147,11 @@ void TAcquireDiskActor::Bootstrap(const TActorContext& ctx)
 
     ctx.Schedule(RequestTimeout, new TEvents::TEvWakeup());
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-        "[%s] Sending acquire devices requests for disk %s, targets %s",
-        ClientId.c_str(),
-        DiskId.c_str(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_WORKER,
+        "%s Sending acquire devices requests, targets %s",
+        LogTitle.GetWithTime().c_str(),
         LogTargets().c_str());
 
     auto sentRequests = CreateRequests<TEvDiskAgent::TEvAcquireDevicesRequest>();
@@ -229,8 +234,8 @@ void TAcquireDiskActor::SendRequests(
             r.Record);
 
         LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "[%s] Send an acquire request to node #%d. Devices: %s",
-            ClientId.c_str(),
+            "%s Send an acquire request to node #%d. Devices: %s",
+            LogTitle.GetWithTime().c_str(),
             r.NodeId,
             JoinSeq(", ", request->Record.GetDeviceUUIDs()).c_str());
 
@@ -257,10 +262,11 @@ void TAcquireDiskActor::ReplyAndDie(
         std::move(error));
 
     if (HasError(response->GetError())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "[%s] AcquireDisk %s targets %s error: %s",
-            ClientId.c_str(),
-            DiskId.c_str(),
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "%s AcquireDisk targets %s error: %s",
+            LogTitle.GetWithTime().c_str(),
             LogTargets().c_str(),
             FormatError(response->GetError()).c_str());
     } else {
@@ -299,18 +305,21 @@ void TAcquireDiskActor::OnAcquireResponse(
     Y_ABORT_UNLESS(PendingRequests > 0);
 
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "[%s] AcquireDevices on the node #%d %s error: %s",
-            ClientId.c_str(),
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "%s AcquireDevices on the node #%d %s error: %s",
+            LogTitle.GetWithTime().c_str(),
             nodeId,
             LogTargets().c_str(),
             FormatError(error).c_str());
 
         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
-            LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-                "[%s] Canceling acquire operation for disk %s, targets %s",
-                ClientId.c_str(),
-                DiskId.c_str(),
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::DISK_REGISTRY_WORKER,
+                "%s Canceling acquire operation, targets %s",
+                LogTitle.GetWithTime().c_str(),
                 LogTargets().c_str());
 
             SendRequests(
@@ -404,25 +413,23 @@ void TDiskRegistryActor::HandleAcquireDisk(
     auto clientId = msg->Record.GetHeaders().GetClientId();
     auto diskId = msg->Record.GetDiskId();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received AcquireDisk request: "
-        "DiskId=%s, ClientId=%s, AccessMode=%u, MountSeqNumber=%lu"
-        ", VolumeGeneration=%u",
-        TabletID(),
-        diskId.c_str(),
-        clientId.c_str(),
-        static_cast<ui32>(msg->Record.GetAccessMode()),
-        msg->Record.GetMountSeqNumber(),
-        msg->Record.GetVolumeGeneration());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received AcquireDisk request: %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str());
 
     TDiskInfo diskInfo;
     auto error = State->StartAcquireDisk(diskId, diskInfo);
 
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "[%s] AcquireDisk %s error: %s",
-            clientId.c_str(),
-            diskId.c_str(),
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "%s AcquireDisk %s error: %s",
+            LogTitle.GetWithTime().c_str(),
+            msg->Record.ShortDebugString().c_str(),
             FormatError(error).c_str());
 
         NCloud::Reply(
@@ -447,11 +454,11 @@ void TDiskRegistryActor::HandleAcquireDisk(
 
     auto actor = NCloud::Register<TAcquireDiskActor>(
         ctx,
+        LogTitle.GetChildWithTags(
+            GetCycleCount(),
+            {{"DiskId", diskId}, {"ClientId", clientId}}),
         ctx.SelfID,
-        CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            msg->CallContext),
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         std::move(devices),
         diskInfo.LogicalBlockSize,
         std::move(diskId),

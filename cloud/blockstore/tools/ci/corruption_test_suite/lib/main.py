@@ -52,6 +52,13 @@ def parse_args():
         default=None,
         help='run test at the specified compute node')
     test_arguments_group.add_argument(
+        '--compute-nodes-list-path',
+        type=str,
+        default=None,
+        help='Path to the file containing the list of compute nodes. '
+             'One of these node will be chosen to run the test on. '
+             'File format: newline separated list of compute nodes FQDNs.')
+    test_arguments_group.add_argument(
         '--zone-id',
         type=str,
         default=_DEFAULT_ZONE_ID,
@@ -151,6 +158,18 @@ def _mount_fs(
             raise Error(f'failed to mount fs with exit code {exit_code}')
 
 
+def _read_compute_nodes_list(args, logger):
+    if args.compute_nodes_list_path is None:
+        return None
+
+    if args.compute_node is not None:
+        raise Error('--compute-node and --compute-nodes-list-path parameters '
+                    'should not be specified simultaneously')
+
+    with open(args.compute_nodes_list_path, 'r') as f:
+        return [line.rstrip('\n') for line in f]
+
+
 def run_corruption_test(module_factories: common.ModuleFactories, args, logger):
     cluster = get_cluster_test_config(args.cluster, args.zone_id, args.cluster_config_path)
     logger.info(f'Running corruption test suite at cluster <{cluster.name}>')
@@ -159,6 +178,8 @@ def run_corruption_test(module_factories: common.ModuleFactories, args, logger):
     logger.info(f'Generated {len(test_cases)} test cases for test suite <{args.test_suite}>')
 
     folder = cluster.ipc_type_to_folder_desc(args.ipc_type)
+
+    compute_nodes_list = _read_compute_nodes_list(args, logger)
 
     helpers = module_factories.make_helpers(args.dry_run)
     ycp_config_generator = None
@@ -189,6 +210,7 @@ def run_corruption_test(module_factories: common.ModuleFactories, args, logger):
             cores=_TEST_INSTANCE_CORES,
             memory=_TEST_INSTANCE_MEMORY,
             compute_node=args.compute_node,
+            compute_nodes_list=compute_nodes_list,
             image_name=folder.image_name,
             image_folder_id=folder.image_folder_id,
             description="Corruption test") as instance:

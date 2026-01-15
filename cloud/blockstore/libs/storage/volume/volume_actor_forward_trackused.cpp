@@ -36,33 +36,23 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
         {
             auto requestInfo =
                 CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
-            // TODO(drbasic)
-            // For encrypted disk-registry based disks, we will continue to
-            // write a map of encrypted blocks for a while.
-            const bool encryptedDiskRegistryBasedDisk =
-                State->IsDiskRegistryMediaKind() &&
-                State->GetMeta()
-                        .GetVolumeConfig()
-                        .GetEncryptionDesc()
-                        .GetMode() != NProto::NO_ENCRYPTION;
 
             // For overlay disks we need to ensure that the only bits that are
             // set in the used block map are the bits that correspond to the
             // blocks that have been successfully written. Therefore we must
             // update the map only after the block has been successfully
             // written.
-            const bool needReliableUsedBlockTracking =
-                encryptedDiskRegistryBasedDisk || overlayDiskRegistryBasedDisk;
             NCloud::Register<TWriteAndMarkUsedActor<TMethod>>(
                 ctx,
                 std::move(requestInfo),
                 std::move(msg->Record),
                 State->GetBlockSize(),
-                needReliableUsedBlockTracking,
+                overlayDiskRegistryBasedDisk,
                 volumeRequestId,
                 partActorId,
                 TabletID(),
-                SelfId());
+                SelfId(),
+                LogTitle.GetChild(GetCycleCount()));
 
             return true;
         }
@@ -108,7 +98,9 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                     State->GetStorageAccessMode(),
                     GetDowntimeThreshold(
                         *DiagnosticsConfig,
-                        NProto::STORAGE_MEDIA_SSD));
+                        NProto::STORAGE_MEDIA_SSD),
+                    LogTitle.GetChild(GetCycleCount()),
+                    Config->GetEnableDataIntegrityValidationForYdbBasedDisks());
             } else {
                 NCloud::Register<TReadAndClearEmptyBlocksActor<TMethod>>(
                     ctx,
@@ -117,7 +109,8 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                     State->GetUsedBlocks(),
                     partActorId,
                     TabletID(),
-                    SelfId());
+                    SelfId(),
+                    LogTitle.GetChild(GetCycleCount()));
             }
 
             return true;

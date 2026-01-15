@@ -23,6 +23,7 @@ private:
 
     ILoggingServicePtr Logging;
     TLog Log;
+    TLog GrpcLog;
 
     IMonitoringServicePtr Monitoring;
     ITimerPtr Timer;

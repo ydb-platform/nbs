@@ -1,0 +1,98 @@
+name: Orchestrator
+run-name: ${{ format('Orchestrator ({0} {1} {2})', github.event_name, inputs.run_light, inputs.run_heavy)  }}
+      
+on:
+  workflow_call:
+    inputs:
+      provision_mode:
+        description: 'Provision mode (if set to initial it will use ubuntu-latest image)'
+        type: string
+        default: 'regular'
+      loop:
+        description: 'Loop the action'
+        type: string
+        default: "no"
+      run_light:
+        description: 'Run light VMs'
+        type: string
+        default: "no"
+      run_heavy:
+        description: 'Run heavy VMs'
+        type: string
+        default: "no"
+      workflow_name:
+        description: 'Name of the workflow to run'
+        type: string
+        default: 'orchestrator.yaml'
+  workflow_dispatch:
+    inputs:
+      provision_mode:
+        description: 'Provision mode (if set to initial it will use ubuntu-latest image)'
+        type: choice
+        options:
+          - initial
+          - regular
+        required: true
+        default: 'regular'
+      loop:
+        description: 'Loop the action'
+        type: choice
+        options:
+          - "yes"
+          - "no"
+        required: false
+        default: "no"
+      run_light:
+        description: 'Run light VMs'
+        type: choice
+        options:
+          - "yes"
+          - "no"
+        required: false
+        default: "yes"
+      run_heavy:
+        description: 'Run heavy VMs'
+        type: choice
+        options:
+          - "yes"
+          - "no"
+        required: false
+        default: "yes"
+      workflow_name:
+        description: 'Name of the workflow to run'
+        type: choice
+        options:
+          - orchestrator-light.yaml
+          # - orchestrator-heavy.yaml
+        required: true
+        default: 'orchestrator-light.yaml'
+
+jobs:
+  light:
+    name: Populate light VMs
+    if: ${{ inputs.run_light == 'yes' }}
+    uses: ./.github/workflows/scheduler.yaml
+    secrets: inherit
+    with:
+      max_vms_to_create: ${{ vars.POOLED_LIGHT_CREATE_VMS || '10' }}
+      vms_ttl: ${{ vars.POOLED_LIGHT_VMS_TTL || '86400' }}
+      maximum_amount_of_vms_to_have: ${{ vars.POOLED_LIGHT_MAXIMUM_AMOUNT_OF_VMS || '10' }}
+      extra_vms_if_needed: ${{ vars.POOLED_LIGHT_EXTRA_VMS_IF_NEEDED || '2' }}
+      flavor: light
+      provision_mode: ${{ inputs.provision_mode || 'regular' }}
+      loop: ${{ inputs.provision_mode == 'initial' && 'no' || (inputs.loop || 'no') }}
+
+  heavy:
+    name: Populate heavy VMs
+    if: ${{ inputs.run_heavy == 'yes' }}
+    uses: ./.github/workflows/scheduler.yaml
+    secrets: inherit
+    with:
+      max_vms_to_create: ${{ vars.POOLED_HEAVY_CREATE_VMS || '5' }}
+      vms_ttl: ${{ vars.POOLED_HEAVY_VMS_TTL || '86400' }}
+      maximum_amount_of_vms_to_have: ${{ vars.POOLED_HEAVY_MAXIMUM_AMOUNT_OF_VMS || '10' }}
+      extra_vms_if_needed: ${{ vars.POOLED_HEAVY_EXTRA_VMS_IF_NEEDED || '1' }}
+      flavor: heavy
+      provision_mode: ${{ inputs.provision_mode || 'regular' }}
+      loop: ${{ inputs.provision_mode == 'initial' && 'no' || (inputs.loop == 'yes' && 'yes' || 'no') }}
+

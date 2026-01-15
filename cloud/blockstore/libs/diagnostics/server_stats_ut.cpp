@@ -147,9 +147,9 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             CreateServerRequestStats(
                 serverGroup,
                 timer,
-                EHistogramCounterOption::ReportMultipleCounters),
-            std::move(volumeStats)
-        );
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}),
+            std::move(volumeStats));
 
         NProto::TVolume volume;
         volume.SetDiskId("volume");
@@ -221,9 +221,9 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             CreateServerRequestStats(
                 serverGroup,
                 timer,
-                EHistogramCounterOption::ReportMultipleCounters),
-            std::move(volumeStats)
-        );
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}),
+            std::move(volumeStats));
 
         NProto::TVolume volume;
         volume.SetBlockSize(4096);
@@ -259,9 +259,9 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             CreateServerRequestStats(
                 serverGroup,
                 timer,
-                EHistogramCounterOption::ReportMultipleCounters),
-            std::move(volumeStats)
-        );
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}),
+            std::move(volumeStats));
 
         NProto::TVolume volume;
         volume.SetDiskId("volume");
@@ -347,9 +347,9 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             CreateServerRequestStats(
                 serverGroup,
                 timer,
-                EHistogramCounterOption::ReportMultipleCounters),
-            std::move(volumeStats)
-        );
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}),
+            std::move(volumeStats));
 
         NProto::TVolume volume;
         volume.SetBlockSize(4096);
@@ -375,6 +375,74 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
     {
         DoTestShouldCountHwProblems(
             NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldNotReportErrorsForCellRequests)
+    {
+        TLog log;
+
+        auto timer = std::make_shared<TTestTimer>();
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto serverStats = CreateServerStats(
+            std::make_shared<TTestDumpable>(),
+            std::make_shared<TDiagnosticsConfig>(),
+            monitoring,
+            CreateProfileLogStub(),
+            CreateServerRequestStats(
+                monitoring->GetCounters(),
+                timer,
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}),
+            CreateVolumeStatsStub());
+
+        TMetricRequest request {EBlockStoreRequest::DescribeVolume};
+        request.CellRequest = true;
+        serverStats->PrepareMetricRequest(
+            request,
+            "",
+            "",
+            0,
+            0,
+            false);
+
+        auto callContext = MakeIntrusive<TCallContext>();
+
+        serverStats->RequestStarted(
+            log,
+            request,
+            *callContext,
+            "");
+
+        serverStats->RequestCompleted(
+            log,
+            request,
+            *callContext,
+            MakeError(S_OK, "not found")
+        );
+
+        serverStats->UpdateStats(false);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            monitoring
+            ->GetCounters()
+            ->GetSubgroup("request", "DescribeVolume")
+            ->GetCounter("Count", true)->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            monitoring
+            ->GetCounters()
+            ->GetSubgroup("request", "DescribeVolume")
+            ->GetCounter("Errors/Fatal")->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            monitoring
+            ->GetCounters()
+            ->GetSubgroup("request", "DescribeVolume")
+            ->GetCounter("Errors")->Val());
     }
 }
 

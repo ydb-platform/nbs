@@ -24,7 +24,6 @@ SRCS(
     destroy_volume.cpp
     destroy_volume_link.cpp
     discover_instances.cpp
-    endpoint_proxy.cpp
     execute_action.cpp
     factory.cpp
     get_changed_blocks.cpp
@@ -45,6 +44,7 @@ SRCS(
     stat_volume.cpp
     stop_endpoint.cpp
     update_disk_registry_config.cpp
+    update_volume_throttling_config.cpp
     volume_manipulation_params.cpp
     write_blocks.cpp
     zero_blocks.cpp
@@ -59,7 +59,6 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/encryption
     cloud/blockstore/libs/encryption/model
-    cloud/blockstore/libs/endpoint_proxy/client
     cloud/blockstore/libs/service
 
     cloud/storage/core/libs/common

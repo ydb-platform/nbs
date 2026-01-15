@@ -34,6 +34,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 static const TString DefaultDiskId = "path_to_test_volume";
+static const TString DefaultCopiedDiskId = "path_to_test_volume-copy";
 static const TString DefaultCloudId = "test_cloud";
 static const TString DefaultFolderId = "test_folder";
 
@@ -191,6 +192,7 @@ void PartitionBootExternalCompleted(
 void SendDiskStats(
     TTestActorRuntime& runtime,
     const TString& diskId,
+    const bool isLocalMount,
     TPartitionDiskCountersPtr diskCounters,
     TVolumeSelfCountersPtr volumeCounters,
     EVolumeTestOptions volumeOptions,
@@ -208,6 +210,7 @@ void SendDiskStats(
 
     auto volumeMsg = std::make_unique<TEvStatsService::TEvVolumeSelfCounters>(
         diskId,
+        isLocalMount,
         volumeOptions & EVolumeTestOptions::VOLUME_HASCLIENTS,
         false,
         std::move(volumeCounters));
@@ -251,6 +254,7 @@ TVector<ui64> BroadcastVolumeCounters(
         SendDiskStats(
             runtime,
             DefaultDiskId,
+            false, // isLocalMount
             std::move(counters),
             std::move(volume),
             volumeOptions,
@@ -301,6 +305,7 @@ void ForceYdbStatsUpdate(
         SendDiskStats(
             runtime,
             volumes[i],
+            false, // isLocalMount
             std::move(counters),
             std::move(volume),
             {},
@@ -490,36 +495,89 @@ public:
 
 Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 {
-    Y_UNIT_TEST(ShouldNotReportSolomonMetricsIfNotMounted)
+    void DoShouldNotReportSolomonMetricsExceptIsLocalMountIfNotMounted(
+        bool copiedDisk)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
-        RegisterVolume(runtime, DefaultDiskId);
+        RegisterVolume(
+            runtime,
+            copiedDisk ? DefaultCopiedDiskId : DefaultDiskId);
         auto counters = BroadcastVolumeCounters(runtime, {0}, {});
-        UNIT_ASSERT(counters[0]== 0);
+        UNIT_ASSERT(counters[0] == 0);
+
+        auto isLocalMountCounter =
+            runtime.GetAppData(0)
+                .Counters->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service_volume")
+                ->GetSubgroup("volume", DefaultDiskId)
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->FindCounter("IsLocalMount");
+        UNIT_ASSERT(isLocalMountCounter);
+        UNIT_ASSERT_VALUES_EQUAL(0, isLocalMountCounter->Val());
     }
 
-    Y_UNIT_TEST(ShouldReportSolomonMetricsIfVolumeRunsLocallyAndMounted)
+    Y_UNIT_TEST(ShouldNotReportSolomonMetricsExceptIsLocalMountIfNotMounted)
+    {
+        DoShouldNotReportSolomonMetricsExceptIsLocalMountIfNotMounted(false);
+    }
+
+    Y_UNIT_TEST(
+        ShouldNotReportSolomonMetricsExceptIsLocalMountIfNotMountedForCopiedVolume)
+    {
+        DoShouldNotReportSolomonMetricsExceptIsLocalMountIfNotMounted(true);
+    }
+
+    void DoShouldReportSolomonMetricsIfVolumeRunsLocallyAndMounted(bool copiedDisk)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
-        RegisterVolume(runtime, DefaultDiskId);
+        RegisterVolume(runtime, copiedDisk ? DefaultCopiedDiskId : DefaultDiskId);
         auto counters = BroadcastVolumeCounters(runtime, {0}, EVolumeTestOptions::VOLUME_HASCLIENTS);
         UNIT_ASSERT(counters[0]== 1);
     }
 
-    Y_UNIT_TEST(ShouldStopReportSolomonMetricsIfIsMoved)
+    Y_UNIT_TEST(ShouldReportSolomonMetricsIfVolumeRunsLocallyAndMounted)
+    {
+        DoShouldReportSolomonMetricsIfVolumeRunsLocallyAndMounted(false);
+    }
+
+    Y_UNIT_TEST(
+        ShouldReportSolomonMetricsIfVolumeRunsLocallyAndMountedForCopiedVolume)
+    {
+        DoShouldReportSolomonMetricsIfVolumeRunsLocallyAndMounted(false);
+    }
+
+    Y_UNIT_TEST(ShouldReportSolomonMetricsIfVolumeRunsLocallyAndHasCheckpoint)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
         RegisterVolume(runtime, DefaultDiskId);
-        auto c1 = BroadcastVolumeCounters(runtime, {0}, EVolumeTestOptions::VOLUME_HASCLIENTS);
-        UNIT_ASSERT(c1[0]== 1);
+        auto counters = BroadcastVolumeCounters(runtime, {0}, EVolumeTestOptions::VOLUME_HASCHECKPOINT);
+        UNIT_ASSERT(counters[0] == 1);
+    }
 
-        UnregisterVolume(runtime, DefaultDiskId);
+    void DoShouldUnregisterVolumeGroup(bool copiedDisk)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        RegisterVolume(
+            runtime,
+            copiedDisk ? DefaultCopiedDiskId : DefaultDiskId);
+        auto c1 = BroadcastVolumeCounters(
+            runtime,
+            {0},
+            EVolumeTestOptions::VOLUME_HASCLIENTS);
+        UNIT_ASSERT(c1[0] == 1);
+
+        UnregisterVolume(
+            runtime,
+            copiedDisk ? DefaultCopiedDiskId : DefaultDiskId);
 
         auto counters = CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
@@ -531,7 +589,8 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
         SendDiskStats(
             runtime,
-            DefaultDiskId,
+            copiedDisk ? DefaultCopiedDiskId : DefaultDiskId,
+            false,   // isLocalMount
             std::move(counters),
             std::move(volume),
             EVolumeTestOptions::VOLUME_HASCLIENTS,
@@ -543,7 +602,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 MakeStorageStatsServiceId(),
                 MakeStorageStatsServiceId(),
                 updateMsg.release(),
-                0, // flags
+                0,   // flags
                 0),
             0);
 
@@ -551,17 +610,211 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         options.FinalEvents.emplace_back(NActors::TEvents::TSystem::Wakeup);
         runtime.DispatchEvents(options);
 
-        UNIT_ASSERT_VALUES_EQUAL(false, VolumeMetricsExists(*runtime.GetAppData(0).Counters));
+        UNIT_ASSERT_VALUES_EQUAL(
+            false,
+            VolumeMetricsExists(*runtime.GetAppData(0).Counters));
+        auto subGroupForDefaultDiskId =
+            runtime.GetAppData(0)
+                .Counters->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service_volume")
+                ->FindSubgroup("volume", DefaultDiskId);
+        UNIT_ASSERT_EQUAL(nullptr, subGroupForDefaultDiskId);
     }
 
-    Y_UNIT_TEST(ShouldReportSolomonMetricsIfVolumeRunsLocallyAndHasCheckpoint)
+    Y_UNIT_TEST(ShouldUnregisterVolumeGroup)
+    {
+        DoShouldUnregisterVolumeGroup(false);
+    }
+
+    Y_UNIT_TEST(ShouldUnregisterVolumeGroupForCopiedDisk)
+    {
+        DoShouldUnregisterVolumeGroup(true);
+    }
+
+    Y_UNIT_TEST(ShouldUnregisterVolumeGroupAfterSourceAndCopiedUnregistered)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
+        // Register both source and copied disks.
         RegisterVolume(runtime, DefaultDiskId);
-        auto counters = BroadcastVolumeCounters(runtime, {0}, EVolumeTestOptions::VOLUME_HASCHECKPOINT);
-        UNIT_ASSERT(counters[0] == 1);
+        RegisterVolume(runtime, DefaultCopiedDiskId);
+        auto c1 = BroadcastVolumeCounters(
+            runtime,
+            {0},
+            EVolumeTestOptions::VOLUME_HASCLIENTS);
+        UNIT_ASSERT(c1[0] == 1);
+
+        // Unregister source disk.
+        UnregisterVolume(runtime, DefaultDiskId);
+
+        // The copied disk remains registered under logical name of source disk.
+        auto counters = CreatePartitionDiskCounters(
+            EPublishingPolicy::Repl,
+            EHistogramCounterOption::ReportMultipleCounters);
+        auto volume = CreateVolumeSelfCounters(
+            EPublishingPolicy::Repl,
+            EHistogramCounterOption::ReportMultipleCounters);
+        counters->Simple.MixedBytesCount.Set(1);
+        {
+            SendDiskStats(
+                runtime,
+                DefaultDiskId,
+                false,   // isLocalMount
+                std::move(counters),
+                std::move(volume),
+                EVolumeTestOptions::VOLUME_HASCLIENTS,
+                0);
+
+            auto updateMsg = std::make_unique<TEvents::TEvWakeup>();
+            runtime.Send(
+                new IEventHandle(
+                    MakeStorageStatsServiceId(),
+                    MakeStorageStatsServiceId(),
+                    updateMsg.release(),
+                    0,   // flags
+                    0),
+                0);
+
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(NActors::TEvents::TSystem::Wakeup);
+            runtime.DispatchEvents(options);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                VolumeMetricsExists(*runtime.GetAppData(0).Counters));
+            auto subGroupForDefaultDiskId =
+                runtime.GetAppData(0)
+                    .Counters->GetSubgroup("counters", "blockstore")
+                    ->GetSubgroup("component", "service_volume")
+                    ->FindSubgroup("volume", DefaultDiskId);
+            UNIT_ASSERT_UNEQUAL(nullptr, subGroupForDefaultDiskId);
+        }
+
+        // Unregister copied disk.
+        UnregisterVolume(runtime, DefaultCopiedDiskId);
+
+        // Statistics for logical disk id should be unregistered.
+        {
+            auto updateMsg = std::make_unique<TEvents::TEvWakeup>();
+            runtime.Send(
+                new IEventHandle(
+                    MakeStorageStatsServiceId(),
+                    MakeStorageStatsServiceId(),
+                    updateMsg.release(),
+                    0,   // flags
+                    0),
+                0);
+
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(NActors::TEvents::TSystem::Wakeup);
+            runtime.DispatchEvents(options);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                VolumeMetricsExists(*runtime.GetAppData(0).Counters));
+            auto subGroupForDefaultDiskId =
+                runtime.GetAppData(0)
+                    .Counters->GetSubgroup("counters", "blockstore")
+                    ->GetSubgroup("component", "service_volume")
+                    ->FindSubgroup("volume", DefaultDiskId);
+            UNIT_ASSERT_EQUAL(nullptr, subGroupForDefaultDiskId);
+        }
+    }
+
+    void DoShouldReportIsLocalMountCounter(bool copiedDisk)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        RegisterVolume(
+            runtime,
+            copiedDisk ? DefaultCopiedDiskId : DefaultDiskId);
+
+        SendDiskStats(
+            runtime,
+            copiedDisk ? DefaultCopiedDiskId : DefaultDiskId,
+            false, // isLocalMount
+            CreatePartitionDiskCounters(
+                EPublishingPolicy::Repl,
+                EHistogramCounterOption::ReportMultipleCounters),
+            CreateVolumeSelfCounters(
+                EPublishingPolicy::Repl,
+                EHistogramCounterOption::ReportMultipleCounters),
+            EVolumeTestOptions::VOLUME_HASCLIENTS,
+            0);
+
+        {
+            auto updateMsg = std::make_unique<TEvents::TEvWakeup>();
+            runtime.Send(
+                new IEventHandle(
+                    MakeStorageStatsServiceId(),
+                    MakeStorageStatsServiceId(),
+                    updateMsg.release(),
+                    0, // flags
+                    0),
+                0);
+
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(NActors::TEvents::TSystem::Wakeup);
+            runtime.DispatchEvents(options);
+
+            ui64 actual = *runtime.GetAppData(0).Counters
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service_volume")
+                ->GetSubgroup("volume", DefaultDiskId)
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->GetCounter("IsLocalMount");
+            UNIT_ASSERT_VALUES_EQUAL(0, actual);
+        }
+
+        SendDiskStats(
+            runtime,
+            copiedDisk ? DefaultCopiedDiskId : DefaultDiskId,
+            true, // isLocalMount
+            CreatePartitionDiskCounters(
+                EPublishingPolicy::Repl,
+                EHistogramCounterOption::ReportMultipleCounters),
+            CreateVolumeSelfCounters(
+                EPublishingPolicy::Repl,
+                EHistogramCounterOption::ReportMultipleCounters),
+            EVolumeTestOptions::VOLUME_HASCLIENTS,
+            0);
+
+        {
+            auto updateMsg = std::make_unique<TEvents::TEvWakeup>();
+            runtime.Send(
+                new IEventHandle(
+                    MakeStorageStatsServiceId(),
+                    MakeStorageStatsServiceId(),
+                    updateMsg.release(),
+                    0, // flags
+                    0),
+                0);
+
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(NActors::TEvents::TSystem::Wakeup);
+            runtime.DispatchEvents(options);
+
+            ui64 actual = *runtime.GetAppData(0).Counters
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service_volume")
+                ->GetSubgroup("volume", DefaultDiskId)
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->GetCounter("IsLocalMount");
+            UNIT_ASSERT_VALUES_EQUAL(1, actual);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReportIsLocalMountCounter) {
+        DoShouldReportIsLocalMountCounter(false);
+    }
+
+    Y_UNIT_TEST(ShouldReportIsLocalMountCounterForCopied)
+    {
+        DoShouldReportIsLocalMountCounter(true);
     }
 
     Y_UNIT_TEST(ShouldReportMaximumsForCompactionScore)
@@ -581,6 +834,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         SendDiskStats(
             runtime,
             "vol0",
+            false, // isLocalMount
             std::move(counters1),
             CreateVolumeSelfCounters(
                 EPublishingPolicy::Repl,
@@ -595,6 +849,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         SendDiskStats(
             runtime,
             "vol1",
+            false, // isLocalMount
             std::move(counters2),
             CreateVolumeSelfCounters(
                 EPublishingPolicy::Repl,
@@ -628,12 +883,17 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         EPublishingPolicy policy,
         NProto::EStorageMediaKind mediaKind,
         TString type,
-        bool isSystem)
+        bool isSystem,
+        bool copiedDisk = false)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
-        RegisterVolume(runtime, DefaultDiskId, mediaKind, isSystem);
+        RegisterVolume(
+            runtime,
+            copiedDisk ? DefaultCopiedDiskId : DefaultDiskId,
+            mediaKind,
+            isSystem);
 
         auto counters = CreatePartitionDiskCounters(
             policy,
@@ -641,7 +901,8 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         counters->Simple.BytesCount.Set(100500);
         SendDiskStats(
             runtime,
-            DefaultDiskId,
+            copiedDisk ? DefaultCopiedDiskId : DefaultDiskId,
+            false, // isLocalMount
             std::move(counters),
             CreateVolumeSelfCounters(
                 policy,
@@ -677,7 +938,14 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             EPublishingPolicy::Repl,
             NProto::STORAGE_MEDIA_HDD,
             "hdd",
+            false,
             false);
+        DoTestShouldReportBytesCount(
+            EPublishingPolicy::Repl,
+            NProto::STORAGE_MEDIA_HDD,
+            "hdd",
+            false,
+            true);
     }
 
     Y_UNIT_TEST(ShouldReportBytesCountForSSDVolumes)
@@ -686,6 +954,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             EPublishingPolicy::Repl,
             NProto::STORAGE_MEDIA_SSD,
             "ssd",
+            false,
             false);
     }
 
@@ -743,7 +1012,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             false);
     }
 
-    Y_UNIT_TEST(ShouldReportDiskCountAndPartitionCount)
+    void DoShouldReportDiskCountAndPartitionCount(bool copiedDisk)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
@@ -853,10 +1122,11 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             ui64 StartTime = 0;
         };
 
+        TString suffix = copiedDisk ? "-copy" : "";
         TVector<TDiskInfo> disks = {
-            {"disk-1", 500'000, 6'000'000},
-            {"disk-2", 1'500'000, 2'000'000},
-            {"disk-3", 5'500'000, 3'000'000},
+            {"disk-1" + suffix, 500'000, 6'000'000},
+            {"disk-2" + suffix, 1'500'000, 2'000'000},
+            {"disk-3" + suffix, 5'500'000, 3'000'000},
         };
 
         auto sendDiskStats = [&](const TDiskInfo& diskInfo)
@@ -864,6 +1134,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             SendDiskStats(
                 runtime,
                 diskInfo.DiskId,
+                false, // isLocalMount
                 CreatePartitionDiskCounters(
                     EPublishingPolicy::Repl,
                     EHistogramCounterOption::ReportMultipleCounters),
@@ -880,9 +1151,9 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         crank();
         CHECK_STATS(3, 3, 3, 3, 1, 1, 1, 0, 2, 1);
 
-        for (const auto& diskId: {"disk-1", "disk-2"}) {
-            UnregisterVolume(runtime, diskId);
-        }
+        UnregisterVolume(runtime, disks[0].DiskId);
+        UnregisterVolume(runtime, disks[1].DiskId);
+
         sendDiskStats(disks[2]);
 
         crank();
@@ -896,9 +1167,8 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         crank();
         CHECK_STATS(1, 1, 3, 1, 0, 0, 0, 0, 0, 0);
 
-        for (const auto& diskId: {"disk-1"}) {
-            RegisterVolume(runtime, diskId);
-        }
+        RegisterVolume(runtime, disks[0].DiskId);
+
         sendDiskStats(disks[0]);
         sendDiskStats(disks[2]);
 
@@ -911,9 +1181,9 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         crank();
         CHECK_STATS(2, 2, 2, 2, 0, 0, 0, 0, 0, 0);
 
-        for (const auto& diskId: {"disk-1", "disk-3"}) {
-            UnregisterVolume(runtime, diskId);
-        }
+        UnregisterVolume(runtime, disks[0].DiskId);
+        UnregisterVolume(runtime, disks[2].DiskId);
+
         sendDiskStats(disks[1]);
 
         crank();
@@ -922,6 +1192,16 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         runtime.AdvanceCurrentTime(TDuration::Minutes(61));
         crank();
         CHECK_STATS(0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    }
+
+    Y_UNIT_TEST(ShouldReportDiskCountAndPartitionCount)
+    {
+        DoShouldReportDiskCountAndPartitionCount(false);
+    }
+
+    Y_UNIT_TEST(ShouldReportDiskCountAndPartitionCountForCopiedDisk)
+    {
+        DoShouldReportDiskCountAndPartitionCount(true);
     }
 
     Y_UNIT_TEST(ShouldReportYdbStatsInBatches)
@@ -943,8 +1223,8 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         TTestEnv env(runtime, std::move(storageServiceConfig), std::move(ydbStats));
 
         RegisterVolume(runtime, "disk1");
-        RegisterVolume(runtime, "disk2");
-        ForceYdbStatsUpdate(runtime, {"disk1", "disk2"}, 2, 2);
+        RegisterVolume(runtime, "disk2-copy");
+        ForceYdbStatsUpdate(runtime, {"disk1", "disk2-copy"}, 2, 2);
     }
 
     Y_UNIT_TEST(ShouldRetryStatsUploadInCaseOfFailure)
@@ -971,8 +1251,8 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         TTestEnv env(runtime, std::move(storageServiceConfig), std::move(ydbStats));
 
         RegisterVolume(runtime, "disk1");
-        RegisterVolume(runtime, "disk2");
-        ForceYdbStatsUpdate(runtime, {"disk1", "disk2"}, 3, 1);
+        RegisterVolume(runtime, "disk2-copy");
+        ForceYdbStatsUpdate(runtime, {"disk1", "disk2-copy"}, 3, 1);
 
         UNIT_ASSERT_VALUES_EQUAL(3, attemptCount);
     }
@@ -1005,8 +1285,8 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         TTestEnv env(runtime, std::move(storageServiceConfig), std::move(ydbStats));
 
         RegisterVolume(runtime, "disk1");
-        RegisterVolume(runtime, "disk2");
-        ForceYdbStatsUpdate(runtime, {"disk1", "disk2"}, 2, 0);
+        RegisterVolume(runtime, "disk2-copy");
+        ForceYdbStatsUpdate(runtime, {"disk1", "disk2-copy"}, 2, 0);
 
         {
             TDispatchOptions options;
@@ -1323,6 +1603,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         SendDiskStats(
             runtime,
             "vol0",
+            false, // isLocalMount
             std::move(counters),
             CreateVolumeSelfCounters(
                 publishingPolicy,
@@ -1434,6 +1715,26 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         // Now the first source gets all the bandwidth.
         response = client.RegisterTrafficSource("src1", 200);
         UNIT_ASSERT_VALUES_EQUAL(100, response->LimitedBandwidthMiBs);
+    }
+
+    Y_UNIT_TEST(ShouldRegisterVolumeForSecondTime)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        RegisterVolume(runtime, DefaultDiskId);
+        auto counters = BroadcastVolumeCounters(
+            runtime,
+            {0},
+            EVolumeTestOptions::VOLUME_HASCLIENTS);
+        UNIT_ASSERT(counters[0] == 1);
+
+        RegisterVolume(runtime, DefaultDiskId);
+        counters = BroadcastVolumeCounters(
+            runtime,
+            {0},
+            EVolumeTestOptions::VOLUME_HASCLIENTS);
+        UNIT_ASSERT(counters[0] == 1);
     }
 }
 

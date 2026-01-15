@@ -57,8 +57,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         request.SetBlocksCount(10);
 
         const ui32 blockSize = 512;
-        auto readActor = ActorSystem.Register(
-            new TReadDiskRegistryBasedOverlayActor<TEvService::TReadBlocksMethod>{
+        auto readActor =
+            ActorSystem.Register(new TReadDiskRegistryBasedOverlayActor<
+                                 TEvService::TReadBlocksMethod>{
                 MakeIntrusive<TRequestInfo>(
                     EdgeActor,
                     0ull,
@@ -72,7 +73,12 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                TDuration()});
+                TDuration(),
+                TLogTitle(
+                    GetCycleCount(),
+                    TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
+                    .GetChild(GetCycleCount()),
+                /*enableDataIntegrityValidation=*/false});
 
         auto requestToPartition = ActorSystem.GrabEdgeEvent<
             TEvService::TReadBlocksLocalMethod::TRequest>();
@@ -123,8 +129,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         request.SetBlocksCount(10);
 
         const ui32 blockSize = 512;
-        auto readActor = ActorSystem.Register(
-            new TReadDiskRegistryBasedOverlayActor<TEvService::TReadBlocksMethod>{
+        auto readActor =
+            ActorSystem.Register(new TReadDiskRegistryBasedOverlayActor<
+                                 TEvService::TReadBlocksMethod>{
                 MakeIntrusive<TRequestInfo>(
                     EdgeActor,
                     0ull,
@@ -138,7 +145,12 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                TDuration()});
+                TDuration(),
+                TLogTitle(
+                    GetCycleCount(),
+                    TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
+                    .GetChild(GetCycleCount()),
+                /*enableDataIntegrityValidation=*/false});
 
         ActorSystem.GrabEdgeEvent<
             TEvService::TReadBlocksLocalMethod::TRequest>();
@@ -176,22 +188,27 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         request.BlockSize = blockSize;
         request.Sglist = TGuardedSgList(std::move(sglist));
 
-        ActorSystem.Register(
-            new TReadDiskRegistryBasedOverlayActor<TEvService::TReadBlocksLocalMethod>{
-                MakeIntrusive<TRequestInfo>(
-                    EdgeActor,
-                    0ull,
-                    MakeIntrusive<TCallContext>()),
-                request,
-                usedBlocks,
-                NActors::TActorId(),
+        ActorSystem.Register(new TReadDiskRegistryBasedOverlayActor<
+                             TEvService::TReadBlocksLocalMethod>{
+            MakeIntrusive<TRequestInfo>(
                 EdgeActor,
-                0,
-                "BaseDiskId",
-                "BaseDiskCheckpointId",
-                blockSize,
-                EStorageAccessMode::Default,
-                TDuration()});
+                0ull,
+                MakeIntrusive<TCallContext>()),
+            request,
+            usedBlocks,
+            NActors::TActorId(),
+            EdgeActor,
+            0,
+            "BaseDiskId",
+            "BaseDiskCheckpointId",
+            blockSize,
+            EStorageAccessMode::Default,
+            TDuration(),
+            TLogTitle(
+                GetCycleCount(),
+                TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
+                .GetChild(GetCycleCount()),
+            /*enableDataIntegrityValidation=*/false});
 
         TAutoPtr<NActors::IEventHandle> handle;
         auto describeRequest = ActorSystem.GrabEdgeEventIf<
@@ -361,22 +378,27 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         request.BlockSize = blockSize;
         request.Sglist = TGuardedSgList(std::move(sglist));
 
-        ActorSystem.Register(
-            new TReadDiskRegistryBasedOverlayActor<TEvService::TReadBlocksLocalMethod>{
-                MakeIntrusive<TRequestInfo>(
-                    EdgeActor,
-                    0ull,
-                    MakeIntrusive<TCallContext>()),
-                request,
-                usedBlocks,
-                NActors::TActorId(),
+        ActorSystem.Register(new TReadDiskRegistryBasedOverlayActor<
+                             TEvService::TReadBlocksLocalMethod>{
+            MakeIntrusive<TRequestInfo>(
                 EdgeActor,
-                0,
-                "BaseDiskId",
-                "BaseDiskCheckpointId",
-                blockSize,
-                EStorageAccessMode::Default,
-                TDuration()});
+                0ull,
+                MakeIntrusive<TCallContext>()),
+            request,
+            usedBlocks,
+            NActors::TActorId(),
+            EdgeActor,
+            0,
+            "BaseDiskId",
+            "BaseDiskCheckpointId",
+            blockSize,
+            EStorageAccessMode::Default,
+            TDuration(),
+            TLogTitle(
+                GetCycleCount(),
+                TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
+                .GetChild(GetCycleCount()),
+            /*enableDataIntegrityValidation=*/false});
 
         TAutoPtr<NActors::IEventHandle> handle;
         ActorSystem.GrabEdgeEventIf<
@@ -415,22 +437,27 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         request.BlockSize = blockSize;
         request.Sglist = TGuardedSgList(std::move(sglist));
 
-        ActorSystem.Register(
-            new TReadDiskRegistryBasedOverlayActor<TEvService::TReadBlocksLocalMethod>{
-                MakeIntrusive<TRequestInfo>(
-                    EdgeActor,
-                    0ull,
-                    MakeIntrusive<TCallContext>()),
-                request,
-                usedBlocks,
-                NActors::TActorId(),
+        ActorSystem.Register(new TReadDiskRegistryBasedOverlayActor<
+                             TEvService::TReadBlocksLocalMethod>{
+            MakeIntrusive<TRequestInfo>(
                 EdgeActor,
-                0,
-                "BaseDiskId",
-                "BaseDiskCheckpointId",
-                blockSize,
-                EStorageAccessMode::Default,
-                TDuration()});
+                0ull,
+                MakeIntrusive<TCallContext>()),
+            request,
+            usedBlocks,
+            NActors::TActorId(),
+            EdgeActor,
+            0,
+            "BaseDiskId",
+            "BaseDiskCheckpointId",
+            blockSize,
+            EStorageAccessMode::Default,
+            TDuration(),
+            TLogTitle(
+                GetCycleCount(),
+                TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
+                .GetChild(GetCycleCount()),
+            /*enableDataIntegrityValidation=*/false});
 
         TAutoPtr<NActors::IEventHandle> handle;
         auto describeRequest = ActorSystem.GrabEdgeEventIf<
@@ -506,8 +533,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         request.SetStartIndex(0);
         request.SetBlocksCount(4);
 
-        auto readActor = ActorSystem.Register(
-            new TReadDiskRegistryBasedOverlayActor<TEvService::TReadBlocksMethod>{
+        auto readActor =
+            ActorSystem.Register(new TReadDiskRegistryBasedOverlayActor<
+                                 TEvService::TReadBlocksMethod>{
                 MakeIntrusive<TRequestInfo>(
                     EdgeActor,
                     0ull,
@@ -521,7 +549,12 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                TDuration()});
+                TDuration(),
+                TLogTitle(
+                    GetCycleCount(),
+                    TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
+                    .GetChild(GetCycleCount()),
+                /*enableDataIntegrityValidation=*/false});
 
         // read from overlay disk
         auto requestToPartition = ActorSystem.GrabEdgeEvent<

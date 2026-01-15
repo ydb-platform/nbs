@@ -44,6 +44,7 @@ struct TCliArgs
 
     size_t RowsNumberLimit = 25;
     bool FetchAll = false;
+    ui32 MaxBytes = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -96,6 +97,12 @@ TString NodeTypeToString(NProto::ENodeType nodeType)
             return "s";
         case NProto::E_SYMLINK_NODE:
             return "L";
+        case NProto::E_FIFO_NODE:
+            return "p";
+        case NProto::E_CHARDEV_NODE:
+            return "c";
+        case NProto::E_BLOCKDEV_NODE:
+            return "b";
         default:
             ythrow yexception() << "must be unreachable";
     }
@@ -212,6 +219,11 @@ public:
                 CliArgs.Cookie = Base64Decode(cursorBase64);
             });
 
+        Opts.AddLongOption("max-bytes")
+            .RequiredArgument("BYTES")
+            .StoreResult(&CliArgs.MaxBytes)
+            .Help("Maximum size of each ListNodes response in bytes");
+
         const TString LimitOptionName = "limit";
         Opts.AddLongOption(LimitOptionName)
             .RequiredArgument("ROWS_NUM")
@@ -248,6 +260,9 @@ public:
 
             request->SetNodeId(nodeId);
             request->SetCookie(page.Cookie);
+            if (CliArgs.MaxBytes > 0) {
+                request->SetMaxBytes(CliArgs.MaxBytes);
+            }
 
             auto response = WaitFor(session.ListNodes(
                 PrepareCallContext(),

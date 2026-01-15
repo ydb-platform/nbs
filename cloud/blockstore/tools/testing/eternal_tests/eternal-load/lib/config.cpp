@@ -40,20 +40,13 @@ private:
     TTestConfig Config;
 
 public:
-    TConfigHolder(IInputStream* input);
-    TConfigHolder(
-        const TString& filePath,
-        ui64 fileSize,
-        ui16 ioDepth,
-        ui64 blockSize,
-        ui16 writeRate,
-        ui64 requestBlockCount,
-        ui64 writeParts,
-        TString alternatingPhase,
-        ui64 maxWriteRequestCount);
+    explicit TConfigHolder(IInputStream* input);
+    explicit TConfigHolder(const TCreateTestConfigArguments& args);
+    explicit TConfigHolder(const TTestConfig& config);
 
     TTestConfig& GetConfig() override;
     void DumpConfig(const TString& filePath) override;
+    IConfigHolderPtr Clone() override;
 
 private:
     void GenerateMissingFields();
@@ -67,41 +60,45 @@ TConfigHolder::TConfigHolder(IInputStream* input)
     GenerateMissingFields();
 }
 
-TConfigHolder::TConfigHolder(
-        const TString& filePath,
-        ui64 fileSize,
-        ui16 ioDepth,
-        ui64 blockSize,
-        ui16 writeRate,
-        ui64 requestBlockCount,
-        ui64 writeParts,
-        TString alternatingPhase,
-        ui64 maxWriteRequestCount)
+TConfigHolder::TConfigHolder(const TCreateTestConfigArguments& args)
 {
-    Config.SetFilePath(filePath);
-    Config.SetFileSize(fileSize);
-    Config.SetBlockSize(blockSize);
-    Config.SetWriteRate(writeRate);
-    Config.SetIoDepth(ioDepth);
+    Config.SetFilePath(args.FilePath);
+    Config.SetFileSize(args.FileSize);
+    Config.SetTestCount(args.TestCount);
+    Config.SetBlockSize(args.BlockSize);
+    Config.SetWriteRate(args.WriteRate);
+    Config.SetIoDepth(args.IoDepth);
 
     auto& ranges = *Config.MutableRanges();
 
-    for (ui16 i = 0; i < ioDepth; ++i) {
+    for (ui16 i = 0; i < args.IoDepth; ++i) {
         auto& range = *ranges.Add();
-        range.SetRequestBlockCount(requestBlockCount);
-        range.SetWriteParts(writeParts);
+        range.SetRequestBlockCount(args.RequestBlockCount);
+        range.SetWriteParts(args.WriteParts);
     }
 
-    if (!alternatingPhase.empty()) {
-        Config.SetAlternatingPhase(alternatingPhase);
+    if (!args.AlternatingPhase.empty()) {
+        Config.SetAlternatingPhase(args.AlternatingPhase);
     }
 
-    if (maxWriteRequestCount) {
-        Config.SetMaxWriteRequestCount(maxWriteRequestCount);
+    if (args.MaxWriteRequestCount) {
+        Config.SetMaxWriteRequestCount(args.MaxWriteRequestCount);
     }
 
     GenerateMissingFields();
+
+    auto& fileTestConfig = *Config.MutableUnalignedTest();
+    fileTestConfig.SetMinReadByteCount(args.MinReadByteCount);
+    fileTestConfig.SetMaxReadByteCount(args.MaxReadByteCount);
+    fileTestConfig.SetMinWriteByteCount(args.MinWriteByteCount);
+    fileTestConfig.SetMaxWriteByteCount(args.MaxWriteByteCount);
+    fileTestConfig.SetMinRegionByteCount(args.MinRegionByteCount);
+    fileTestConfig.SetMaxRegionByteCount(args.MaxRegionByteCount);
 }
+
+TConfigHolder::TConfigHolder(const TTestConfig& config)
+    : Config(config)
+{}
 
 void TConfigHolder::GenerateMissingFields()
 {
@@ -154,38 +151,24 @@ void TConfigHolder::DumpConfig(const TString& filePath)
     file.Write(config.data(), config.length());
 }
 
+IConfigHolderPtr TConfigHolder::Clone()
+{
+    return std::make_unique<TConfigHolder>(Config);
+}
+
 }    //  namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IConfigHolderPtr CreateTestConfig(
-    const TString& filePath,
-    ui64 fileSize,
-    ui16 ioDepth,
-    ui64 blockSize,
-    ui16 writeRate,
-    ui64 requestBlockCount,
-    ui64 writeParts,
-    TString alternatingPhase,
-    ui64 maxWriteRequestCount)
+IConfigHolderPtr CreateTestConfig(const TCreateTestConfigArguments& args)
 {
-    return std::make_shared<TConfigHolder>(
-        filePath,
-        fileSize,
-        ioDepth,
-        blockSize,
-        writeRate,
-        requestBlockCount,
-        writeParts,
-        alternatingPhase,
-        maxWriteRequestCount);
+    return std::make_shared<TConfigHolder>(args);
 }
 
-IConfigHolderPtr CreateTestConfig(const TString& filePath)
+IConfigHolderPtr LoadTestConfig(const TString& filePath)
 {
     TFileInput input(filePath);
     return std::make_shared<TConfigHolder>(&input);
 }
 
 }   // namespace NCloud::NBlockStore
-

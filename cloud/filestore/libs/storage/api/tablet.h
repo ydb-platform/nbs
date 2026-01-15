@@ -41,6 +41,9 @@ namespace NCloud::NFileStore::NStorage {
     xxx(RenameNodeInDestination,    __VA_ARGS__)                               \
                                                                                \
     xxx(ReadNodeRefs,              __VA_ARGS__)                                \
+                                                                               \
+    xxx(SetHasXAttrs,               __VA_ARGS__)                               \
+    xxx(MarkNodeRefsExhaustive,     __VA_ARGS__)                               \
 // FILESTORE_TABLET_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -129,6 +132,12 @@ struct TEvIndexTablet
 
         EvReadNodeRefsRequest = EvBegin + 49,
         EvReadNodeRefsResponse,
+
+        EvSetHasXAttrsRequest = EvBegin + 51,
+        EvSetHasXAttrsResponse,
+
+        EvMarkNodeRefsExhaustiveRequest = EvBegin + 53,
+        EvMarkNodeRefsExhaustiveResponse,
 
         EvEnd
     };

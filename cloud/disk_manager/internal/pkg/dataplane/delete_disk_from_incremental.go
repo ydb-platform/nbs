@@ -14,8 +14,8 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type deleteDiskFromIncrementalTask struct {
-	storage storage.Storage
 	config  *config.DataplaneConfig
+	storage storage.Storage
 	request *protos.DeleteDiskFromIncrementalRequest
 	state   *protos.DeleteDiskFromIncrementalState
 }

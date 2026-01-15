@@ -777,9 +777,8 @@ void TCheckpointActor<TMethod>::HandleReleaseDiskResponse(
         }
 
         ReportReleaseShadowDiskError(
-            TStringBuilder()
-            << "Could not release shadow disk " << ShadowDiskId.Quote()
-            << " Error: " << FormatError(record.GetError()));
+            FormatError(record.GetError()),
+            {{"ShadowDiskId", ShadowDiskId}});
     }
 
     switch (releaseSessionKind) {

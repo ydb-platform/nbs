@@ -49,6 +49,15 @@ void ConvertAttr(ui32 blockSize, const NProto::TNodeAttr& attr, struct stat& st)
         case NProto::E_SOCK_NODE:
             st.st_mode |= S_IFSOCK;
             break;
+        case NProto::E_FIFO_NODE:
+            st.st_mode |= S_IFIFO;
+            break;
+        case NProto::E_CHARDEV_NODE:
+            st.st_mode |= S_IFCHR;
+            break;
+        case NProto::E_BLOCKDEV_NODE:
+            st.st_mode |= S_IFBLK;
+            break;
     }
 
     st.st_blksize = blockSize;
@@ -61,6 +70,7 @@ void ConvertAttr(ui32 blockSize, const NProto::TNodeAttr& attr, struct stat& st)
     st.st_atim = ConvertTimeSpec(TInstant::MicroSeconds(attr.GetATime()));
     st.st_mtim = ConvertTimeSpec(TInstant::MicroSeconds(attr.GetMTime()));
     st.st_ctim = ConvertTimeSpec(TInstant::MicroSeconds(attr.GetCTime()));
+    st.st_rdev = attr.GetDevId();
 }
 
 void ConvertStat(

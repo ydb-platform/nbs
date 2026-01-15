@@ -14,6 +14,7 @@ IActorPtr CreateNonreplicatedPartition(
     TStorageConfigPtr config,
     TDiagnosticsConfigPtr diagnosticsConfig,
     TNonreplicatedPartitionConfigPtr partConfig,
+    TActorId volumeActorId,
     TActorId statActorId,
     NRdma::IClientPtr rdmaClient)
 {
@@ -23,6 +24,7 @@ IActorPtr CreateNonreplicatedPartition(
             std::move(diagnosticsConfig),
             std::move(partConfig),
             std::move(rdmaClient),
+            volumeActorId,
             statActorId);
     }
 
@@ -30,6 +32,7 @@ IActorPtr CreateNonreplicatedPartition(
         std::move(config),
         std::move(diagnosticsConfig),
         std::move(partConfig),
+        volumeActorId,
         statActorId);
 }
 

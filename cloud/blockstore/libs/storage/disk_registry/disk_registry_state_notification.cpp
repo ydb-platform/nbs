@@ -270,6 +270,21 @@ auto TNotificationSystem::GetDiskStateUpdates() const
     return DiskStateUpdates;
 }
 
+NProto::TDiskState TNotificationSystem::CreateDiskState(
+    const TDiskId& diskId,
+    NProto::EDiskState state)
+{
+    NProto::TDiskState diskState;
+    diskState.SetDiskId(diskId);
+    diskState.SetState(state);
+
+    if (state == NProto::DISK_STATE_WARNING) {
+        diskState.SetStateMessage(DISK_STATE_MIGRATION_MESSAGE);
+    }
+
+    return diskState;
+}
+
 void TNotificationSystem::OnDiskStateChanged(
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
@@ -277,13 +292,11 @@ void TNotificationSystem::OnDiskStateChanged(
     NProto::EDiskState newState,
     TInstant timestamp)
 {
-    NProto::TDiskState diskState;
-    diskState.SetDiskId(diskId);
-    diskState.SetState(newState);
-
-    if (newState == NProto::DISK_STATE_WARNING) {
-        diskState.SetStateMessage(DISK_STATE_MIGRATION_MESSAGE);
+    if (!SupportsNotifications.contains(diskId)) {
+        return;
     }
+
+    NProto::TDiskState diskState = CreateDiskState(diskId, newState);
 
     const auto seqNo = DiskStateSeqNo++;
 
@@ -295,7 +308,7 @@ void TNotificationSystem::OnDiskStateChanged(
             auto notif = MakeBlankNotification(seqNo, timestamp);
             notif.MutableDiskError()->SetDiskId(diskId);
             AddUserNotification(db, std::move(notif));
-         }
+        }
     } else {
         if (oldState >= NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE) {
             auto notif = MakeBlankNotification(seqNo, timestamp);
@@ -304,9 +317,7 @@ void TNotificationSystem::OnDiskStateChanged(
         }
     }
 
-    if (SupportsNotifications.contains(diskId)) {
-        DiskStateUpdates.emplace_back(std::move(diskState), seqNo);
-    }
+    DiskStateUpdates.emplace_back(std::move(diskState), seqNo);
 }
 
 void TNotificationSystem::DeleteDiskStateUpdate(

@@ -45,6 +45,8 @@ TServerConfig::TServerConfig(const NProto::TRdmaServer& config)
     SET(MaxInflightBytes);
     SET(AdaptiveWaitSleepDelay, TDuration::MicroSeconds);
     SET(AdaptiveWaitSleepDuration, TDuration::MicroSeconds);
+    SET(IpTypeOfService);
+    SET(SourceInterface);
 }
 
 #undef SET
@@ -69,6 +71,8 @@ void TServerConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(AdaptiveWaitSleepDelay, AdaptiveWaitSleepDelay.ToString());
                 ENTRY(AdaptiveWaitSleepDuration, AdaptiveWaitSleepDuration.ToString());
                 ENTRY(AlignedDataEnabled, true);
+                ENTRY(IpTypeOfService, IpTypeOfService);
+                ENTRY(SourceInterface, SourceInterface);
             }
         }
     }

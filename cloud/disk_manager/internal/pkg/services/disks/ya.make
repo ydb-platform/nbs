@@ -4,6 +4,7 @@ SRCS(
     alter_disk_task.go
     assign_disk_task.go
     clear_deleted_disks_task.go
+    create_disk_common.go
     create_disk_from_image_task.go
     create_disk_from_snapshot_task.go
     create_empty_disk_task.go

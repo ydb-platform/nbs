@@ -371,14 +371,21 @@ void TFileStoreServiceCommand::Stop()
     TCommand::Stop();
 }
 
-TFileStoreCommand::TFileStoreCommand()
+TFileStoreCommand::TFileStoreCommand(bool isClientIdRequired)
 {
-    ClientId = CreateGuidAsString();
-
     Opts.AddLongOption("filesystem")
         .Required()
         .RequiredArgument("STR")
         .StoreResult(&FileSystemId);
+
+    auto& opt = Opts.AddLongOption("client-id")
+        .RequiredArgument("CLIENT_ID")
+        .StoreResult(&ClientId);
+    if (isClientIdRequired) {
+        opt.Required();
+    } else {
+        opt.DefaultValue(CreateGuidAsString());
+    }
 
     Opts.AddLongOption("disable-multitablet-forwarding")
         .NoArgument()

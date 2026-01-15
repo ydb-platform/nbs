@@ -1,6 +1,7 @@
 #include "service.h"
 #include "service_private.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
@@ -9,6 +10,9 @@
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 #include <cloud/filestore/private/api/protos/actions.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+
+#include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -19,6 +23,7 @@ namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
+using namespace NMonitoring;
 
 namespace {
 
@@ -75,6 +80,40 @@ NProtoPrivate::TChangeStorageConfigResponse ExecuteChangeStorageConfig(
     NProtoPrivate::TChangeStorageConfigResponse response;
     UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
         jsonResponse->Record.GetOutput(), &response).ok());
+    return response;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void WaitForTabletStart(TServiceClient& service)
+{
+    TDispatchOptions options;
+    options.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+        TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest)};
+    service.AccessRuntime().DispatchEvents(options);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProtoPrivate::TSetHasXAttrsResponse ExecuteSetHasXAttrs(
+    TServiceClient& service,
+    bool value = true)
+{
+    NProtoPrivate::TSetHasXAttrsRequest request;
+    request.SetFileSystemId("test");
+
+    request.SetValue(value);
+
+    TString buf;
+    google::protobuf::util::MessageToJsonString(request, &buf);
+
+    auto jsonResponse = service.ExecuteAction("sethasxattrs", buf);
+    NProtoPrivate::TSetHasXAttrsResponse response;
+    UNIT_ASSERT(
+        google::protobuf::util::JsonStringToMessage(
+            jsonResponse->Record.GetOutput(),
+            &response)
+            .ok());
     return response;
 }
 
@@ -1499,6 +1538,88 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             service);
     }
 
+    Y_UNIT_TEST(ShouldChangeLazyXAttrsEnabledFlag)
+    {
+        // This test creates a filesystem with a default config and then changes
+        // LazyXAttrsEnabled to true. In spite the change and the fact that
+        // there are no XAttrs in the file system, TFileStoreFeatures::HasXAttrs
+        // should be true.
+
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const char* fsId = "test";
+        const char* clientId = "client";
+        service.CreateFileStore(fsId, 1'000);
+        THeaders headers;
+        auto session = service.InitSession(headers, fsId, clientId);
+
+        CheckStorageConfigValues(
+            {"LazyXAttrsEnabled"},
+            {{"LazyXAttrsEnabled", "Default"}},
+            service);
+
+        UNIT_ASSERT(
+            session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
+
+        NProto::TStorageConfig newConfig;
+        newConfig.SetLazyXAttrsEnabled(true);
+        const auto response =
+            ExecuteChangeStorageConfig(std::move(newConfig), service);
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            response.GetStorageConfig().GetLazyXAttrsEnabled());
+
+        WaitForTabletStart(service);
+        session = service.InitSession(headers, fsId, clientId);
+
+        CheckStorageConfigValues(
+            {"LazyXAttrsEnabled"},
+            {{"LazyXAttrsEnabled", "true"}},
+            service);
+
+        // If a filestore is created with LazyXAttrsEnabled == false
+        // TFileStoreFeatures::HasXAttrs should always be true
+        UNIT_ASSERT(
+            session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
+    }
+
+    Y_UNIT_TEST(ShouldSetHasXAttrs)
+    {
+        // This test create a filestore with LazyXAttraEnabled == true,
+        // then fires "sethasxattrs" action and checks that HasXAttrs == true
+
+        NProto::TStorageConfig config;
+        config.SetLazyXAttrsEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+        const TString fsId = "test";
+        const TString clientId = "client";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+
+        THeaders headers;
+        auto session = service.InitSession(headers, fsId, clientId);
+
+        UNIT_ASSERT(
+            !session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
+
+        ExecuteSetHasXAttrs(service, true);
+
+        WaitForTabletStart(service);
+
+        session = service.InitSession(headers, fsId, clientId);
+
+        UNIT_ASSERT(
+            session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
+    }
+
     Y_UNIT_TEST(ShouldDescribeSessions)
     {
         NProto::TStorageConfig config;
@@ -2113,6 +2234,225 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         CheckTwoStageReads(NProto::STORAGE_MEDIA_SSD, false);
     }
 
+    void DoTestShouldUseTwoStageReadThreshold(bool setUpForTablet)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1); // disabling fresh blocks
+        if (!setUpForTablet) {
+            storageConfig.SetTwoStageReadEnabled(true);
+            storageConfig.SetTwoStageReadThreshold(8_KB);
+        }
+
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::STORAGE_MEDIA_SSD);
+
+        if (setUpForTablet) {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetTwoStageReadEnabled(true);
+            newConfig.SetTwoStageReadThreshold(8_KB);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                response.GetStorageConfig().GetTwoStageReadEnabled());
+            UNIT_ASSERT_VALUES_EQUAL(
+                8_KB,
+                response.GetStorageConfig().GetTwoStageReadThreshold());
+
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        auto headers = service.InitSession(fs, "client");
+
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        // small write
+        auto data = TString(4_KB, 'a');
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+        auto readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
+
+        // larger write
+        data = TString(8_KB, 'b');
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+        readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
+
+        auto counters = env.GetCounters()
+            ->FindSubgroup("component", "service_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", fs)
+            ->FindSubgroup("client", "client")
+            ->FindSubgroup("cloud", "test_cloud")
+            ->FindSubgroup("folder", "test_folder");
+        {
+            auto subgroup = counters->FindSubgroup("request", "DescribeData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadBlob");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUseGlobalTwoStageReadThreshold)
+    {
+        DoTestShouldUseTwoStageReadThreshold(false /* setUpForTablet */);
+    }
+
+    Y_UNIT_TEST(ShouldUseTabletLevelTwoStageReadThreshold)
+    {
+        DoTestShouldUseTwoStageReadThreshold(true /* setUpForTablet */);
+    }
+
+    Y_UNIT_TEST(ShouldUseTwoStageReadForSmallRequestsIfTabletIsOverloaded)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1); // disabling fresh blocks
+        storageConfig.SetTwoStageReadEnabled(true);
+        storageConfig.SetTwoStageReadThreshold(8_KB);
+        storageConfig.SetCpuLackOverloadThreshold(50);
+
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        auto systemCounters = env.GetSystemCounters();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::STORAGE_MEDIA_SSD);
+
+        auto headers = service.InitSession(fs, "client");
+
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        auto data = TString(4_KB, 'a');
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+
+        //
+        // Small read => no two-stage-read.
+        //
+
+        auto readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
+
+        auto counters = env.GetCounters()
+            ->FindSubgroup("component", "service_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", fs)
+            ->FindSubgroup("client", "client")
+            ->FindSubgroup("cloud", "test_cloud")
+            ->FindSubgroup("folder", "test_folder");
+        {
+            auto subgroup = counters->FindSubgroup("request", "DescribeData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadBlob");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+
+        //
+        // Small read but tablet is overloaded => the first request will still
+        // use direct read, but the next ones will use two-stage-read.
+        //
+
+        systemCounters->CpuLack.store(60);
+
+        const ui32 requestCount = 5;
+        for (ui32 i = 0; i < requestCount - 1; ++i) {
+            readDataResult =
+                service.ReadData(headers, fs, nodeId, handle, 0, data.size());
+            UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
+        }
+
+        {
+            auto subgroup = counters->FindSubgroup("request", "DescribeData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                requestCount - 2,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                requestCount,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadBlob");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                requestCount - 2,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+    }
+
     Y_UNIT_TEST(ShouldFallbackToReadDataIfDescribeDataFails)
     {
         TTestEnv env;
@@ -2181,7 +2521,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             service.ReadData(headers, fs, nodeId, handle, 0, data.size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
         UNIT_ASSERT_VALUES_EQUAL(2, describeDataResponses);
-        UNIT_ASSERT_VALUES_EQUAL(4, readDataResponses);
+
+        // 3 responses:
+        // 1. TIndexTabletActor -> TIndexTabletProxyActor
+        // 2. TIndexTabletProxyActor -> TReadDataActor
+        // 3. TReadDataActor -> TServiceClient
+        UNIT_ASSERT_VALUES_EQUAL(3, readDataResponses);
     }
 
     Y_UNIT_TEST(ShouldFallbackToReadDataIfEvGetFails)
@@ -2266,7 +2611,23 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
         UNIT_ASSERT_VALUES_EQUAL(2, describeDataResponses);
         UNIT_ASSERT_VALUES_EQUAL(8, evGets);
-        UNIT_ASSERT_VALUES_EQUAL(4, readDataResponses);
+
+        // 3 responses:
+        // 1. TIndexTabletActor -> TIndexTabletProxyActor
+        // 2. TIndexTabletProxyActor -> TReadDataActor
+        // 3. TReadDataActor -> TServiceClient
+        UNIT_ASSERT_VALUES_EQUAL(3, readDataResponses);
+
+        auto counters = env.GetCounters()
+                            ->FindSubgroup("component", "service_fs")
+                            ->FindSubgroup("host", "cluster")
+                            ->FindSubgroup("filesystem", fs)
+                            ->FindSubgroup("client", "client")
+                            ->FindSubgroup("cloud", "test_cloud")
+                            ->FindSubgroup("folder", "test_folder")
+                            ->FindSubgroup("request", "ReadBlob");
+        UNIT_ASSERT(counters);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("InProgress")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldReassignTablet)
@@ -2641,6 +3002,72 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(data.size() + offset, stat.GetSize());
     }
 
+    Y_UNIT_TEST(ShouldFallbackToWriteIfNoAlignedForAtLeastOneBlock)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetThreeStageWriteThreshold(64_KB);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        const auto profileLog = std::make_shared<TTestProfileLog>();
+        TTestEnv env({}, config, {}, profileLog);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+
+        const ui32 blockSize = 128_KB;
+        const ui64 blocksCount = 12;
+        service.CreateFileStore(fs, blocksCount, blockSize);
+
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        auto& runtime = env.GetRuntime();
+
+        const ui64 offset = 64_KB;
+
+        auto data = GenerateValidateData(blockSize);
+
+        service.WriteData(headers, fs, nodeId, handle, offset, data);
+        auto readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, offset, data.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2, // 1 from service, 1 from tablet
+            profileLog
+                ->Requests[static_cast<ui32>(EFileStoreRequest::WriteData)]
+                .size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            profileLog
+                ->Requests[static_cast<ui32>(
+                    EFileStoreRequest::GenerateBlobIds)]
+                .size());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            runtime.GetCounter(TEvIndexTablet::EvGenerateBlobIdsRequest));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            runtime.GetCounter(TEvIndexTablet::EvAddDataRequest));
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            runtime.GetCounter(TEvService::EvWriteDataRequest));
+        runtime.ClearCounters();
+    }
+
     Y_UNIT_TEST(ShouldFallbackThreeStageWriteToSimpleWrite)
     {
         TTestEnv env;
@@ -2777,9 +3204,93 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(3, runtime.GetCounter(TEvService::EvWriteDataResponse));
         UNIT_ASSERT_VALUES_EQUAL(1, evPuts);
         // clang-format on
+
+        auto counters = env.GetCounters()
+                            ->FindSubgroup("component", "service_fs")
+                            ->FindSubgroup("host", "cluster")
+                            ->FindSubgroup("filesystem", fs)
+                            ->FindSubgroup("client", "client")
+                            ->FindSubgroup("cloud", "test_cloud")
+                            ->FindSubgroup("folder", "test_folder")
+                            ->FindSubgroup("request", "WriteBlob");
+        UNIT_ASSERT(counters);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("InProgress")->GetAtomic());
     }
 
-    Y_UNIT_TEST(ShouldThrottleMulipleStageReadsAndWrites)
+    Y_UNIT_TEST(ShouldWriteDataWhenWriteBlobDisabled)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        const auto kind = NProto::STORAGE_MEDIA_SSD;
+        service.CreateFileStore(fs, 1000, DefaultBlockSize, kind);
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetThreeStageWriteEnabled(true);
+            newConfig.SetThreeStageWriteThreshold(1);
+            newConfig.SetWriteBlobDisabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            UNIT_ASSERT(
+                response.GetStorageConfig().GetThreeStageWriteEnabled());
+            UNIT_ASSERT(
+                response.GetStorageConfig().GetWriteBlobDisabled());
+
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId = service
+            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+            ->Record.GetNode()
+            .GetId();
+        ui64 handle = service
+            .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+            ->Record.GetHandle();
+
+        TString data = GenerateValidateData(256_KB);
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+
+        auto counters = env.GetCounters()
+            ->FindSubgroup("component", "service_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", fs)
+            ->FindSubgroup("client", "client")
+            ->FindSubgroup("cloud", "test_cloud")
+            ->FindSubgroup("folder", "test_folder");
+        {
+            auto subgroup = counters->FindSubgroup("request", "AddData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                subgroup->GetCounter("Count")->GetAtomic());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                subgroup->GetCounter("Errors")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "WriteData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "WriteBlob");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldThrottleMultipleStageReadsAndWrites)
     {
         const auto maxBandwidth = 10000;
         NProto::TStorageConfig config;
@@ -3407,6 +3918,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             ->FindSubgroup("component", "service")
             ->GetCounter("TabletCount", false);
 
+        auto inFlightRequestCounter = counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service")
+            ->GetCounter("InFlightRequestCount", false);
+
         auto hddTabletCounter = counters
             ->FindSubgroup("counters", "filestore")
             ->FindSubgroup("component", "service")
@@ -3426,6 +3942,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, ssdFsCounter->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdTabletCounter->GetAtomic());
 
+        // smoke
+        UNIT_ASSERT_VALUES_EQUAL(0, inFlightRequestCounter->GetAtomic());
+
         service.UnregisterLocalFileStore("test", 1);
 
         env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
@@ -3437,6 +3956,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, hddTabletCounter->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdFsCounter->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(0, ssdTabletCounter->GetAtomic());
+
+        // smoke
+        UNIT_ASSERT_VALUES_EQUAL(0, inFlightRequestCounter->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldUseThreeStageWriteAndTwoStageReadForHandlelessIO)
@@ -3504,20 +4026,28 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 InvalidHandle,
                 256_KB - 1,
                 data.size());
-            UNIT_ASSERT_VALUES_EQUAL(data, response->Record.GetBuffer());
+
+            const auto& buffer = response->Record.GetBuffer();
+            UNIT_ASSERT_VALUES_EQUAL(data.size(), buffer.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetBufferOffset());
+            UNIT_ASSERT_VALUES_EQUAL(data, buffer);
         }
         {
             // Small unaligned data
             auto data = GenerateValidateData(123, 2);
-            service.WriteData(headers, fs, nodeId, InvalidHandle, 77, data);
+            auto dataOffset = 77;
+            service.WriteData(headers, fs, nodeId, InvalidHandle, dataOffset, data);
             auto response = service.ReadData(
                 headers,
                 fs,
                 nodeId,
                 InvalidHandle,
-                77,
+                dataOffset,
                 data.size());
-            UNIT_ASSERT_VALUES_EQUAL(data, response->Record.GetBuffer());
+            const auto& buffer = response->Record.GetBuffer();
+            UNIT_ASSERT_VALUES_EQUAL(data.size(), buffer.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetBufferOffset());
+            UNIT_ASSERT_EQUAL(data, buffer);
         }
         {
             // Multiple blobs
@@ -3562,6 +4092,472 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     readResponse->GetErrorReason());
             }
         }
+    }
+
+    Y_UNIT_TEST(TestReadWithZeroIntervals)
+    {
+        NProto::TStorageConfig config;
+        config.SetTwoStageReadEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        const auto& data1 = TString(1_KB, 'a');
+        service.WriteData(headers, fs, nodeId, handle, 1_KB, data1);
+        const auto& data2 = TString(1_KB, 'b');
+        service.WriteData(headers, fs, nodeId, handle, 3_KB, data2);
+        auto readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, 0, 4_KB);
+        const auto& buffer = readDataResult->Record.GetBuffer();
+        const auto& zeroBuffer = TString(1_KB, '\0');
+        UNIT_ASSERT_VALUES_EQUAL(zeroBuffer, buffer.substr(0, 1_KB));
+        UNIT_ASSERT_VALUES_EQUAL(data1, buffer.substr(1_KB, 1_KB));
+        UNIT_ASSERT_VALUES_EQUAL(zeroBuffer, buffer.substr(2_KB, 1_KB));
+        UNIT_ASSERT_VALUES_EQUAL(data2, buffer.substr(3_KB, 1_KB));
+    }
+
+    void TestZeroCopyWrite(
+        const NProto::TStorageConfig& config,
+        ui64 offset,
+        const std::vector<ui64>& iovecSizes)
+    {
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        std::vector<TString> data;
+
+        ui64 dataSize = 0;
+        for (auto iovecSize: iovecSizes) {
+            dataSize += iovecSize;
+        }
+        data.reserve(dataSize);
+        for (size_t i = 0; i < iovecSizes.size(); ++i) {
+            data.push_back(GenerateValidateData(iovecSizes[i], i));
+        }
+        service.WriteData(headers, fs, nodeId, handle, offset, data);
+        for (size_t i = 0; i < iovecSizes.size(); ++i) {
+            if (data[i].size() == 0) {
+                continue;
+            }
+            auto readDataResult = service.ReadData(
+                headers,
+                fs,
+                nodeId,
+                handle,
+                offset,
+                data[i].size());
+            const auto& buffer = readDataResult->Record.GetBuffer();
+            UNIT_ASSERT_VALUES_EQUAL_C(data[i], buffer, i);
+            offset += data[i].size();
+        }
+    }
+
+    Y_UNIT_TEST(TestAlignedZeroCopyWrite)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        config.SetZeroCopyWriteEnabled(true);
+        TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 4_KB));
+        TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 8_KB));
+    }
+
+    Y_UNIT_TEST(TestAlignedZeroCopyWriteFallback)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(false);
+        config.SetUnalignedThreeStageWriteEnabled(false);
+        config.SetZeroCopyWriteEnabled(true);
+        TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 4_KB));
+    }
+
+    Y_UNIT_TEST(TestUnalignedZeroCopyWrite)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        config.SetZeroCopyWriteEnabled(true);
+        TestZeroCopyWrite(config, 111, std::vector<ui64>(64, 4_KB));
+        TestZeroCopyWrite(config, 0, std::vector<ui64>(64, 5000));
+    }
+
+    Y_UNIT_TEST(TestUnalignedZeroCopyWriteFallback)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(false);
+        config.SetZeroCopyWriteEnabled(true);
+        TestZeroCopyWrite(config, 111, std::vector<ui64>(64, 4_KB));
+    }
+
+    Y_UNIT_TEST(TestZeroCopyWriteRandomIovecSize)
+    {
+        ILoggingServicePtr Logging(
+            CreateLoggingService("console", {TLOG_DEBUG}));
+        TLog Log(Logging->CreateLog("NFS_TEST"));
+
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        config.SetZeroCopyWriteEnabled(true);
+
+        const auto seed = time(0);
+        STORAGE_INFO("Seed: %lu", seed);
+        srand(seed);
+        size_t numIovecs = 64;
+        std::vector<ui64> iovecSizes;
+        iovecSizes.reserve(numIovecs);
+        for (size_t i = 0; i < numIovecs; ++i) {
+            const auto iovecSize = rand() % 16_KB;
+            STORAGE_INFO("iovec size with index: %lu: %lu", i, iovecSize);
+            iovecSizes.push_back(iovecSize);
+        }
+
+        TestZeroCopyWrite(config, 0, iovecSizes);
+    }
+
+    Y_UNIT_TEST(TestZeroCopyWriteFallbackRandomIovecSize)
+    {
+        ILoggingServicePtr Logging(
+            CreateLoggingService("console", {TLOG_DEBUG}));
+        TLog Log(Logging->CreateLog("NFS_TEST"));
+
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(false);
+        config.SetUnalignedThreeStageWriteEnabled(false);
+        config.SetZeroCopyWriteEnabled(true);
+
+        const auto seed = time(0);
+        STORAGE_INFO("Seed: %lu", seed);
+        srand(seed);
+        size_t numIovecs = 64;
+        std::vector<ui64> iovecSizes;
+        iovecSizes.reserve(numIovecs);
+        for (size_t i = 0; i < numIovecs; ++i) {
+            const auto iovecSize = rand() % 16_KB;
+            STORAGE_INFO("iovec size with index: %lu: %lu", i, iovecSize);
+            iovecSizes.push_back(iovecSize);
+        }
+
+        TestZeroCopyWrite(config, 0, iovecSizes);
+    }
+
+    Y_UNIT_TEST(TestZeroCopyWriteWithPartiallyEmptyIovecs)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        config.SetZeroCopyWriteEnabled(true);
+
+        auto iovecSizes = std::vector<ui64>(32, 4_KB);
+        iovecSizes[10] = 0;
+        iovecSizes[20] = 0;
+        iovecSizes[30] = 0;
+        TestZeroCopyWrite(config, 0, iovecSizes);
+    }
+
+    Y_UNIT_TEST(TestZeroCopyWriteWithEmptyIovecs)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        config.SetZeroCopyWriteEnabled(true);
+
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        std::vector<TString> data(64);
+        service.AssertWriteDataFailed(headers, fs, nodeId, handle, 0, data);
+    }
+
+    Y_UNIT_TEST(ShouldUseIovecsForReadDataRequest)
+    {
+        // TODO(#4664): add more comprehensive tests for zero-copy read
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        const auto& data = GenerateValidateData(256_KB);
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+
+        TVector<std::array<char, 4_KB>> buffers(64);
+        TVector<std::span<char>> spans;
+        for (size_t i = 0; i < buffers.size(); ++i) {
+            spans.push_back(std::span<char>(buffers[i].data(), buffers[i].size()));
+        }
+
+        auto readDataResult = service.ReadData(
+            headers,
+            fs,
+            nodeId,
+            handle,
+            0,
+            data.size(),
+            spans);
+
+        TString result;
+        for (const auto& buf: spans) {
+            result.append(buf.data(), buf.size());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetLength(), data.size());
+        UNIT_ASSERT_VALUES_EQUAL(result, data);
+
+        // Passing less target data than requested size should fail
+        spans.pop_back();
+        service.AssertReadDataFailed(
+            headers,
+            fs,
+            nodeId,
+            handle,
+            0,
+            data.size(),
+            spans);
+    }
+
+    Y_UNIT_TEST(ShouldHandleToggleServiceState)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(fs, 1000);
+
+        auto headers = service.InitSession(fs, "client");
+
+        auto pingResponse = service.Ping();
+        UNIT_ASSERT_EQUAL_C(
+            NProto::EServiceState::SERVICE_STATE_RUNNING,
+            pingResponse->Record.GetServiceState(),
+            pingResponse->Record.ShortDebugString());
+
+        NProtoPrivate::TToggleServiceStateRequest toggleRequest;
+        toggleRequest.SetDesiredServiceState(
+            NProto::EServiceState::SERVICE_STATE_STOPPING);
+        TString buf;
+        google::protobuf::util::MessageToJsonString(toggleRequest, &buf);
+        service.ExecuteAction("toggleservicestate", buf);
+
+        pingResponse = service.Ping();
+        UNIT_ASSERT_EQUAL_C(
+            NProto::EServiceState::SERVICE_STATE_STOPPING,
+            pingResponse->Record.GetServiceState(),
+            pingResponse->Record.ShortDebugString());
+    }
+
+    Y_UNIT_TEST(ShouldReadFakeDataWhenReadBlobDisabled)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::STORAGE_MEDIA_SSD);
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetTwoStageReadEnabled(true);
+            newConfig.SetReadBlobDisabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                response.GetStorageConfig().GetTwoStageReadEnabled());
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        auto headers = service.InitSession(fs, "client");
+
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto fakeBlobWasRead = counters->GetCounter(
+            "AppCriticalEvents/FakeBlobWasRead",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, fakeBlobWasRead->Val());
+
+        TString data(1_MB, 'b');
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+        service.ReadData(headers, fs, nodeId, handle, 0, data.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, fakeBlobWasRead->Val());
+    }
+
+    Y_UNIT_TEST(ShouldReadFakeDataWhenFakeDescribeDataEnabled)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::STORAGE_MEDIA_SSD);
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetTwoStageReadEnabled(true);
+            // Enabled fake DescribeData but forgot to set ReadBlobDisabled
+            newConfig.SetFakeDescribeDataEnabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        auto headers = service.InitSession(fs, "client");
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto fakeBlobWasRead = counters->GetCounter(
+            "AppCriticalEvents/FakeBlobWasRead",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, fakeBlobWasRead->Val());
+        auto unexpectedFakeDescribeDataResponse = counters->GetCounter(
+            "AppCriticalEvents/UnexpectedFakeDescribeDataResponse",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            unexpectedFakeDescribeDataResponse->Val());
+
+        service.SendReadDataRequest(headers, fs, 0, 0, 0, 1_MB);
+        auto response = service.RecvReadDataResponse();
+        // Misconfiguration: requests should hang until ReadBlobDisabled is
+        // set
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, fakeBlobWasRead->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, unexpectedFakeDescribeDataResponse->Val());
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetTwoStageReadEnabled(true);
+            newConfig.SetFakeDescribeDataEnabled(true);
+            // Fix misconfiguration by setting ReadBlobDisabled
+            newConfig.SetReadBlobDisabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        headers = service.InitSession(fs, "client");
+
+        // Should succeed because FakeDescribeDataEnabled and ReadBlobDisabled
+        // are set
+        service.ReadData(headers, fs, 0, 0, 0, 1_MB);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, fakeBlobWasRead->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, unexpectedFakeDescribeDataResponse->Val());
     }
 }
 

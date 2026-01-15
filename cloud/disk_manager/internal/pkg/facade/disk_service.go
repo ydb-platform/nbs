@@ -145,6 +145,14 @@ func (s *diskService) Describe(
 	return s.service.DescribeDisk(ctx, req)
 }
 
+func (s *diskService) ListStates(
+	ctx context.Context,
+	req *disk_manager.ListDiskStatesRequest,
+) (*disk_manager.ListDiskStatesResponse, error) {
+
+	return s.service.ListDiskStates(ctx, req)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func RegisterDiskService(

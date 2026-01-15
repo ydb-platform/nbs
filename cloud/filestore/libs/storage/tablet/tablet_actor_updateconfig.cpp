@@ -164,6 +164,8 @@ void TIndexTabletActor::HandleUpdateConfig(
     newConfig.SetShardAllocationUnit(oldConfig.GetShardAllocationUnit());
     newConfig.SetDirectoryCreationInShardsEnabled(
         oldConfig.GetDirectoryCreationInShardsEnabled());
+    newConfig.SetStrictFileSystemSizeEnforcementEnabled(
+        oldConfig.GetStrictFileSystemSizeEnforcementEnabled());
 
     // Config update occured due to alter/resize.
     if (auto error = ValidateUpdateConfigRequest(oldConfig, newConfig)) {
@@ -287,11 +289,13 @@ void TIndexTabletActor::HandleConfigureShards(
                 " is smaller than prev shard list: "
                 << msg->Record.GetShardFileSystemIds().size() << " < "
                 << shardIds.size());
-        } else if (msg->Record.ShardFileSystemIdsSize() > MaxShardCount) {
+        } else if (
+            msg->Record.ShardFileSystemIdsSize() > Config->GetMaxShardCount())
+        {
             error = MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
                 " is bigger than limit: "
                 << msg->Record.GetShardFileSystemIds().size() << " > "
-                << MaxShardCount);
+                << Config->GetMaxShardCount());
         } else {
             for (int i = 0; i < shardIds.size(); ++i) {
                 if (shardIds[i] != msg->Record.GetShardFileSystemIds(i)) {
@@ -348,6 +352,8 @@ void TIndexTabletActor::ExecuteTx_ConfigureShards(
         std::move(*args.Request.MutableShardFileSystemIds());
     config.SetDirectoryCreationInShardsEnabled(
         args.Request.GetDirectoryCreationInShardsEnabled());
+    config.SetStrictFileSystemSizeEnforcementEnabled(
+        args.Request.GetStrictFileSystemSizeEnforcementEnabled());
 
     LOG_INFO(
         ctx,
@@ -447,6 +453,8 @@ void TIndexTabletActor::ExecuteTx_ConfigureAsShard(
         std::move(*args.Request.MutableShardFileSystemIds());
     config.SetDirectoryCreationInShardsEnabled(
         args.Request.GetDirectoryCreationInShardsEnabled());
+    config.SetStrictFileSystemSizeEnforcementEnabled(
+        args.Request.GetStrictFileSystemSizeEnforcementEnabled());
 
     UpdateConfig(db, *Config, config, GetThrottlingConfig());
 }

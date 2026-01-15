@@ -38,7 +38,7 @@ func TestGenerator(t *testing.T) {
 	err = filepath.Walk(tmpDir, func(path string, info os.FileInfo, err error) error {
 		require.NoError(t, err)
 		if !info.IsDir() {
-			b, err := ioutil.ReadFile(path)
+			b, err := os.ReadFile(path)
 			require.NoError(t, err)
 			buf.WriteString(strings.ReplaceAll(path, tmpDir, "") + ":\n")
 			buf.Write(b)

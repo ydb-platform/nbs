@@ -121,7 +121,10 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
     {
         auto blockRange = TBlockRange64::MakeClosedInterval(1, 3);
 
-        auto handler = CreateReadBlocksHandler(blockRange, DefaultBlockSize);
+        auto handler = CreateReadBlocksHandler(
+            blockRange,
+            DefaultBlockSize,
+            /*enableDataIntegrityValidation=*/false);
         for (ui64 blockIndex = blockRange.Start;
              blockIndex <= blockRange.End;
              ++blockIndex)
@@ -156,7 +159,8 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         auto handler = CreateReadBlocksHandler(
             TBlockRange64::MakeOneBlock(0),
             sglist,
-            DefaultBlockSize);
+            DefaultBlockSize,
+            /*enableDataIntegrityValidation=*/false);
         UNIT_ASSERT(handler->SetBlock(0, {}, false));
     }
 
@@ -167,7 +171,8 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         auto handler = CreateReadBlocksHandler(
             TBlockRange64::MakeOneBlock(0),
             sglist,
-            DefaultBlockSize);
+            DefaultBlockSize,
+            /*enableDataIntegrityValidation=*/false);
         sglist.Close();
         UNIT_ASSERT(!handler->SetBlock(0, {}, false));
     }
@@ -176,7 +181,8 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
     {
         auto handler = CreateReadBlocksHandler(
             TBlockRange64::WithLength(0, 8),
-            DefaultBlockSize);
+            DefaultBlockSize,
+            /*enableDataIntegrityValidation=*/false);
 
         TString blockContent1(DefaultBlockSize, 'b');
         handler->SetBlock(
@@ -223,6 +229,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         UNIT_ASSERT(Blocks.GetBuffers(5) == TString());
         UNIT_ASSERT(Blocks.GetBuffers(6) == TString(DefaultBlockSize, 'e'));
         UNIT_ASSERT(Blocks.GetBuffers(7) == TString(DefaultBlockSize, 'e'));
+        UNIT_ASSERT(!response.GetAllZeroes());
     }
 
     Y_UNIT_TEST(ShouldZeroMissedBlocksInLocalReadBlocksHandler)
@@ -233,7 +240,8 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         auto handler = CreateReadBlocksHandler(
             TBlockRange64::WithLength(0, blocks.size()),
             TGuardedSgList(std::move(sgList)),
-            DefaultBlockSize);
+            DefaultBlockSize,
+            /*enableDataIntegrityValidation=*/false);
 
         TString blockContent1(DefaultBlockSize, 'b');
         handler->SetBlock(
@@ -285,6 +293,56 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
             UNIT_ASSERT(resBlocks[5].AsStringBuf() == TString(DefaultBlockSize, char(0)));
             UNIT_ASSERT(resBlocks[6].AsStringBuf() == TString(DefaultBlockSize, 'e'));
             UNIT_ASSERT(resBlocks[7].AsStringBuf() == TString(DefaultBlockSize, 'e'));
+        }
+        UNIT_ASSERT(!response.GetAllZeroes());
+    }
+
+    Y_UNIT_TEST(ShouldSetAllZeroesFlagInReadBlocksResponse)
+    {
+        auto handler = CreateReadBlocksHandler(
+            TBlockRange64::WithLength(0, 8),
+            DefaultBlockSize,
+            /*enableDataIntegrityValidation=*/false);
+
+        auto zeroBlock = TBlockDataRef::CreateZeroBlock(DefaultBlockSize);
+        handler->SetBlock(0, zeroBlock, false);
+        handler->SetBlock(1, zeroBlock, true);
+
+        NProto::TReadBlocksResponse response;
+        handler->GetResponse(response);
+        UNIT_ASSERT(response.GetAllZeroes());
+        for (const auto& buffer: response.GetBlocks().GetBuffers()) {
+            UNIT_ASSERT(buffer == TString());
+        }
+
+        auto bitmap = BitMapFromString(response.GetUnencryptedBlockMask());
+        UNIT_ASSERT(!EncryptedBlock(bitmap, 0));
+        UNIT_ASSERT(!EncryptedBlock(bitmap, 1));
+    }
+
+    Y_UNIT_TEST(ShouldSetAllZeroesFlagInReadBlocksLocalResponse)
+    {
+        TVector<TString> blocks;
+        auto sgList = ResizeBlocks(blocks, 8, TString(DefaultBlockSize, 'a'));
+
+        auto handler = CreateReadBlocksHandler(
+            TBlockRange64::WithLength(0, blocks.size()),
+            TGuardedSgList(std::move(sgList)),
+            DefaultBlockSize,
+            /*enableDataIntegrityValidation=*/false);
+
+        auto zeroBlock = TBlockDataRef::CreateZeroBlock(DefaultBlockSize);
+        handler->SetBlock(0, zeroBlock, false);
+        handler->SetBlock(1, zeroBlock, true);
+
+        NProto::TReadBlocksLocalResponse response;
+        auto responseSgList = handler->GetLocalResponse(response);
+        UNIT_ASSERT(response.GetAllZeroes());
+        auto guard = responseSgList.Acquire();
+        UNIT_ASSERT(guard);
+        for (const auto& buffer: guard.Get()) {
+            UNIT_ASSERT(
+                buffer.AsStringBuf() == TString(DefaultBlockSize, char(0)));
         }
     }
 
@@ -354,7 +412,8 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
     {
         auto handler = CreateReadBlocksHandler(
             TBlockRange64::WithLength(0, 8),
-            DefaultBlockSize);
+            DefaultBlockSize,
+            /*enableDataIntegrityValidation=*/false);
         auto guardedSgList = handler->GetGuardedSgList({4, 5}, false);
 
         {
@@ -369,13 +428,14 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
 
     Y_UNIT_TEST(ShouldFillUnencryptedBlockMaskInReadBlocksHandler)
     {
-        auto blockContent = GetBlockContent();
+        auto blockContent = GetBlockContent('a');
         TBlockDataRef blockContentRef(blockContent.data(), blockContent.size());
 
         ui64 startIndex = 10;
         auto handler = CreateReadBlocksHandler(
             TBlockRange64::WithLength(startIndex, 7),
-            DefaultBlockSize);
+            DefaultBlockSize,
+            /*enableDataIntegrityValidation=*/false);
 
         auto zeroBlock = TBlockDataRef::CreateZeroBlock(DefaultBlockSize);
         handler->SetBlock(startIndex + 0, zeroBlock, false);
@@ -416,7 +476,8 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         auto handler = CreateReadBlocksHandler(
             TBlockRange64::WithLength(startIndex, blocks.size()),
             TGuardedSgList(std::move(sgList)),
-            DefaultBlockSize);
+            DefaultBlockSize,
+            /*enableDataIntegrityValidation=*/false);
 
         auto zeroBlock = TBlockDataRef::CreateZeroBlock(DefaultBlockSize);
         handler->SetBlock(startIndex + 0, zeroBlock, false);

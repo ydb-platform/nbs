@@ -1,6 +1,7 @@
 #include "profile_log.h"
 
 #include <cloud/blockstore/libs/diagnostics/events/profile_events.ev.pb.h>
+
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 
@@ -21,6 +22,24 @@ void AddRange(const TBlockRange64& r, NProto::TProfileLogRequestInfo& ri)
     auto* range = ri.AddRanges();
     range->SetBlockIndex(r.Start);
     range->SetBlockCount(r.Size());
+}
+
+void AddRangeWithChecksums(
+    const TBlockRange64& r,
+    const TVector<IProfileLog::TReplicaChecksums>& replicaChecksums,
+    NProto::TProfileLogRequestInfo& ri)
+{
+    auto* range = ri.AddRanges();
+    range->SetBlockIndex(r.Start);
+    range->SetBlockCount(r.Size());
+
+    for (const auto& replicaChecksums: replicaChecksums) {
+        auto* c = range->AddReplicaChecksums();
+        c->SetReplicaId(replicaChecksums.ReplicaId);
+        c->MutableChecksums()->Assign(
+            replicaChecksums.Checksums.begin(),
+            replicaChecksums.Checksums.end());
+    }
 }
 
 template <typename TRequest>
@@ -206,6 +225,13 @@ void TProfileLog::DoFlush()
                     for (const auto& r: srw->Ranges) {
                         AddRange(r, *ri);
                     }
+                    ri->SetRequestType(static_cast<ui32>(srw->RequestType));
+                } else if (auto* srw = std::get_if<TSysReadWriteRequestWithChecksums>(&record.Request)) {
+                    auto* ri = AddRequest(record, srw->Duration, pb);
+                    AddRangeWithChecksums(
+                        srw->RangeInfo.Range,
+                        srw->RangeInfo.ReplicaChecksums,
+                        *ri);
                     ri->SetRequestType(static_cast<ui32>(srw->RequestType));
                 } else if (auto* misc = std::get_if<TMiscRequest>(&record.Request)) {
                     auto* ri = AddRequest(record, misc->Duration, pb);

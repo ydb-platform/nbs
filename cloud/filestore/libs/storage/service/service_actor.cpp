@@ -1,5 +1,7 @@
 #include "service_actor.h"
 
+#include <cloud/filestore/libs/storage/core/system_counters.h>
+
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/mon/mon.h>
 
@@ -10,8 +12,7 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define MAKE_PROXY_COOKIE(cookie)        ((cookie) | (1llu << 63))
-#define VALIDATE_PROXY_COOKIE(cookie)    ((cookie) & (1llu << 63))
+constexpr ui32 RequestCookieBit = 63;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -20,13 +21,16 @@ TStorageServiceActor::TStorageServiceActor(
         IRequestStatsRegistryPtr statsRegistry,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
+        TSystemCountersPtr systemCounters,
         NCloud::NStorage::IStatsFetcherPtr statsFetcher)
     : StorageConfig{std::move(storageConfig)}
     , ProfileLog{std::move(profileLog)}
     , TraceSerializer{std::move(traceSerializer)}
+    , SystemCounters(std::move(systemCounters))
     , StatsFetcher(std::move(statsFetcher))
     , State{std::make_unique<TStorageServiceState>()}
     , StatsRegistry{std::move(statsRegistry)}
+    , InFlightRequests(MakeIntrusive<TInFlightRequestStorage>(ProfileLog))
 {}
 
 TStorageServiceActor::~TStorageServiceActor()
@@ -36,6 +40,9 @@ TStorageServiceActor::~TStorageServiceActor()
 void TStorageServiceActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
+
+    LastCpuWaitTs = ctx.Monotonic();
+    ServiceState = NProto::SERVICE_STATE_RUNNING;
 
     RegisterPages(ctx);
     RegisterCounters(ctx);
@@ -66,6 +73,8 @@ void TStorageServiceActor::RegisterCounters(const NActors::TActorContext& ctx)
     auto serviceCounters = rootGroup->GetSubgroup("component", "service");
     TotalFileSystemCount = serviceCounters->GetCounter("FileSystemCount", false);
     TotalTabletCount = serviceCounters->GetCounter("TabletCount", false);
+    InFlightRequestCount =
+        serviceCounters->GetCounter("InFlightRequestCount", false);
 
     auto hddCounters = serviceCounters->GetSubgroup("type", "hdd");
     HddFileSystemCount = hddCounters->GetCounter("FileSystemCount", false);
@@ -89,29 +98,52 @@ std::pair<ui64, TInFlightRequest*> TStorageServiceActor::CreateInFlightRequest(
     IRequestStatsPtr requestStats,
     TInstant start)
 {
-    const ui64 cookie = MAKE_PROXY_COOKIE(++ProxyCounter);
-    auto [it, inserted] = InFlightRequests.emplace(
-        std::piecewise_construct,
-        std::forward_as_tuple(cookie),
-        std::forward_as_tuple(
-            info,
-            ProfileLog,
-            media,
-            requestStats));
-
-    Y_ABORT_UNLESS(inserted);
-    it->second.Start(start);
-
-    return std::make_pair(cookie, &it->second);
+    return CreateInFlightRequest(
+        info,
+        media,
+        {} /* checksumCalcInfo */,
+        std::move(requestStats),
+        start);
 }
 
-TInFlightRequest* TStorageServiceActor::FindInFlightRequest(ui64 cookie)
+ui64 TStorageServiceActor::GenerateRequestCookie()
 {
-    if (!VALIDATE_PROXY_COOKIE(cookie)) {
+    return (++InFlightRequestCounter) | (1LLU << RequestCookieBit);
+}
+
+bool TStorageServiceActor::ValidateRequestCookie(ui64 cookie)
+{
+    return (cookie & (1LLU << RequestCookieBit)) != 0;
+}
+
+std::pair<ui64, TInFlightRequest*> TStorageServiceActor::CreateInFlightRequest(
+    const TRequestInfo& info,
+    NProto::EStorageMediaKind mediaKind,
+    TChecksumCalcInfo checksumCalcInfo,
+    IRequestStatsPtr requestStats,
+    TInstant currentTs)
+{
+    const ui64 requestCookie = GenerateRequestCookie();
+    auto* request = InFlightRequests->Register(
+        info.Sender,
+        info.Cookie,
+        info.CallContext,
+        mediaKind,
+        std::move(checksumCalcInfo),
+        std::move(requestStats),
+        currentTs,
+        requestCookie);
+
+    return std::make_pair(requestCookie, request);
+}
+
+TInFlightRequest* TStorageServiceActor::FindInFlightRequest(ui64 requestCookie)
+{
+    if (!ValidateRequestCookie(requestCookie)) {
         return nullptr;
     }
 
-    return InFlightRequests.FindPtr(cookie);
+    return InFlightRequests->Find(requestCookie);
 }
 
 TString TStorageServiceActor::LogTag(

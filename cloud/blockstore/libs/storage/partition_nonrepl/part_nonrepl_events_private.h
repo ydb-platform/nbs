@@ -90,6 +90,11 @@ struct TEvNonreplPartitionPrivate
 
     struct TMigrateNextRange
     {
+        bool IsRetry;
+
+        explicit TMigrateNextRange(bool isRetry)
+            : IsRetry(isRetry)
+        {}
     };
 
     //
@@ -156,10 +161,13 @@ struct TEvNonreplPartitionPrivate
         TBlockRange64 Range;
         TInstant ChecksumStartTs;
         TDuration ChecksumDuration;
+        IProfileLog::TRangeInfo ChecksumRangeInfo;
         TInstant ReadStartTs;
         TDuration ReadDuration;
+        IProfileLog::TRangeInfo ReadRangeInfo;
         TInstant WriteStartTs;
         TDuration WriteDuration;
+        IProfileLog::TRangeInfo WriteRangeInfo;
         ui64 ExecCycles;
         TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
         EStatus Status;
@@ -168,20 +176,26 @@ struct TEvNonreplPartitionPrivate
                 TBlockRange64 range,
                 TInstant checksumStartTs,
                 TDuration checksumDuration,
+                IProfileLog::TRangeInfo checksumRangeInfo,
                 TInstant readStartTs,
                 TDuration readDuration,
+                IProfileLog::TRangeInfo readRangeInfo,
                 TInstant writeStartTs,
                 TDuration writeDuration,
+                IProfileLog::TRangeInfo writeRangeInfo,
                 ui64 execCycles,
                 TVector<IProfileLog::TBlockInfo> affectedBlockInfos,
                 EStatus status)
             : Range(range)
             , ChecksumStartTs(checksumStartTs)
             , ChecksumDuration(checksumDuration)
+            , ChecksumRangeInfo(std::move(checksumRangeInfo))
             , ReadStartTs(readStartTs)
             , ReadDuration(readDuration)
+            , ReadRangeInfo(std::move(readRangeInfo))
             , WriteStartTs(writeStartTs)
             , WriteDuration(writeDuration)
+            , WriteRangeInfo(std::move(writeRangeInfo))
             , ExecCycles(execCycles)
             , AffectedBlockInfos(std::move(affectedBlockInfos))
             , Status(status)
@@ -224,9 +238,10 @@ struct TEvNonreplPartitionPrivate
 
         struct TDeviceRequestResult
         {
-            // Index of device that participated in the request and the
-            // result of the request for that device.
-            ui32 DeviceIndex = 0;
+            // Index of the device in the partition config.
+            ui32 DeviceIdx = 0;
+
+            // Result of the request for that device.
             NProto::TError Error;
         };
 
@@ -259,7 +274,8 @@ struct TEvNonreplPartitionPrivate
 
     struct TGetDeviceForRangeResponse
     {
-        NProto::TDeviceConfig Device;
+        ui32 NodeId = 0;
+        TString DeviceUUID;
         TBlockRange64 DeviceBlockRange;
         TDuration RequestTimeout;
         TNonreplicatedPartitionConfigPtr PartConfig;

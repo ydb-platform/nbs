@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # $FreeBSD: src/tools/regression/fstest/tests/rename/00.t,v 1.1 2007/01/17 01:42:10 pjd Exp $
 
 desc="rename changes file name"
@@ -42,18 +42,18 @@ expect dir,${inode},0755 lstat ${n1} type,inode,mode
 expect 0 rmdir ${n1}
 
 expect 0 mkfifo ${n0} 0644
-expect regular,0644,1 lstat ${n0} type,mode,nlink
+expect fifo,0644,1 lstat ${n0} type,mode,nlink
 inode=`${fstest} lstat ${n0} inode`
 expect 0 rename ${n0} ${n1}
 expect ENOENT lstat ${n0} type,mode,nlink
-expect regular,${inode},0644,1 lstat ${n1} type,inode,mode,nlink
+expect fifo,${inode},0644,1 lstat ${n1} type,inode,mode,nlink
 expect 0 link ${n1} ${n0}
-expect regular,${inode},0644,2 lstat ${n0} type,inode,mode,nlink
-expect regular,${inode},0644,2 lstat ${n1} type,inode,mode,nlink
+expect fifo,${inode},0644,2 lstat ${n0} type,inode,mode,nlink
+expect fifo,${inode},0644,2 lstat ${n1} type,inode,mode,nlink
 expect 0 rename ${n1} ${n2}
-expect regular,${inode},0644,2 lstat ${n0} type,inode,mode,nlink
+expect fifo,${inode},0644,2 lstat ${n0} type,inode,mode,nlink
 expect ENOENT lstat ${n1} type,mode,nlink
-expect regular,${inode},0644,2 lstat ${n2} type,inode,mode,nlink
+expect fifo,${inode},0644,2 lstat ${n2} type,inode,mode,nlink
 expect 0 unlink ${n0}
 expect 0 unlink ${n2}
 
@@ -74,7 +74,7 @@ expect 0 unlink ${n2}
 # successful rename(2) updates ctime.
 expect 0 create ${n0} 0644
 ctime1=`${fstest} stat ${n0} ctime`
-sleep 1
+sleep 2
 expect 0 rename ${n0} ${n1}
 ctime2=`${fstest} stat ${n1} ctime`
 test_check $ctime1 -lt $ctime2
@@ -82,7 +82,7 @@ expect 0 unlink ${n1}
 
 expect 0 mkdir ${n0} 0755
 ctime1=`${fstest} stat ${n0} ctime`
-sleep 1
+sleep 2
 expect 0 rename ${n0} ${n1}
 ctime2=`${fstest} stat ${n1} ctime`
 test_check $ctime1 -lt $ctime2
@@ -90,7 +90,7 @@ expect 0 rmdir ${n1}
 
 expect 0 mkfifo ${n0} 0644
 ctime1=`${fstest} stat ${n0} ctime`
-sleep 1
+sleep 2
 expect 0 rename ${n0} ${n1}
 ctime2=`${fstest} stat ${n1} ctime`
 test_check $ctime1 -lt $ctime2
@@ -98,7 +98,7 @@ expect 0 unlink ${n1}
 
 expect 0 symlink ${n2} ${n0}
 ctime1=`${fstest} lstat ${n0} ctime`
-sleep 1
+sleep 2
 expect 0 rename ${n0} ${n1}
 ctime2=`${fstest} lstat ${n1} ctime`
 test_check $ctime1 -lt $ctime2
@@ -107,7 +107,7 @@ expect 0 unlink ${n1}
 # unsuccessful link(2) does not update ctime.
 expect 0 create ${n0} 0644
 ctime1=`${fstest} stat ${n0} ctime`
-sleep 1
+sleep 2
 expect EACCES -u 65534 rename ${n0} ${n1}
 ctime2=`${fstest} stat ${n0} ctime`
 test_check $ctime1 -eq $ctime2
@@ -115,7 +115,7 @@ expect 0 unlink ${n0}
 
 expect 0 mkdir ${n0} 0755
 ctime1=`${fstest} stat ${n0} ctime`
-sleep 1
+sleep 2
 expect EACCES -u 65534 rename ${n0} ${n1}
 ctime2=`${fstest} stat ${n0} ctime`
 test_check $ctime1 -eq $ctime2
@@ -123,7 +123,7 @@ expect 0 rmdir ${n0}
 
 expect 0 mkfifo ${n0} 0644
 ctime1=`${fstest} stat ${n0} ctime`
-sleep 1
+sleep 2
 expect EACCES -u 65534 rename ${n0} ${n1}
 ctime2=`${fstest} stat ${n0} ctime`
 test_check $ctime1 -eq $ctime2
@@ -131,7 +131,7 @@ expect 0 unlink ${n0}
 
 expect 0 symlink ${n2} ${n0}
 ctime1=`${fstest} lstat ${n0} ctime`
-sleep 1
+sleep 2
 expect EACCES -u 65534 rename ${n0} ${n1}
 ctime2=`${fstest} lstat ${n0} ctime`
 test_check $ctime1 -eq $ctime2

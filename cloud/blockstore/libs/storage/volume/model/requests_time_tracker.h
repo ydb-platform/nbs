@@ -50,6 +50,15 @@ public:
         size_t FailCount = 0;
     };
 
+    struct TRequestInflight
+    {
+        ui64 StartTime = 0;
+        TBlockRange64 BlockRange;
+        ERequestType RequestType = ERequestType::Read;
+    };
+
+    using TInflightMap = THashMap<ui64, TRequestInflight>;
+
 private:
     constexpr static size_t RequestTypeCount =
         static_cast<size_t>(ERequestType::Last) + 1;
@@ -83,13 +92,6 @@ private:
         bool operator()(const TKey& lhs, const TKey& rhs) const;
     };
 
-    struct TRequestInflight
-    {
-        ui64 StartTime = 0;
-        TBlockRange64 BlockRange;
-        ERequestType RequestType = ERequestType::Read;
-    };
-
     struct TFirstRequest
     {
         ui64 StartTime = 0;
@@ -100,7 +102,7 @@ private:
     const ui64 ConstructionTime;
 
     std::array<TFirstRequest, RequestTypeCount> FirstRequests;
-    THashMap<ui64, TRequestInflight> InflightRequests;
+    TInflightMap InflightRequests;
     THashMap<TKey, TTimeHistogram, THash, TEqual> Histograms;
 
     [[nodiscard]] NJson::TJsonValue BuildPercentilesJson() const;
@@ -110,6 +112,20 @@ private:
         const TRequestInflight& request,
         bool success,
         ui64 finishTime);
+
+    struct TThroughputTracker
+    {
+        ui64 LastResetTime = 0;
+        ui64 TotalBlockCount = 0;
+        ui64 TotalOps = 0;
+
+        void AddOperation(ui64 blockCount);
+        std::pair<ui64, ui64> GetRatesAndReset(
+            ui64 currentTime,
+            ui32 blockSize);
+    };
+
+    std::array<TThroughputTracker, RequestTypeCount> ThroughputCounters;
 
 public:
     explicit TRequestsTimeTracker(const ui64 constructionTime);
@@ -129,7 +145,11 @@ public:
     [[nodiscard]] std::optional<TFirstSuccessStat>
     OnRequestFinished(ui64 requestId, bool success, ui64 finishTime);
 
-    [[nodiscard]] TString GetStatJson(ui64 nowCycles, ui32 blockSize) const;
+    [[nodiscard]] TString GetStatJson(ui64 nowCycles, ui32 blockSize);
+
+    void ResetStats();
+
+    [[nodiscard]] const TInflightMap& GetInflightOperations() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

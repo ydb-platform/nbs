@@ -190,6 +190,14 @@ func (c *ClientMock) Describe(
 	return args.Get(0).(nbs.DiskParams), args.Error(1)
 }
 
+func (c *ClientMock) ListDiskStates(
+	ctx context.Context,
+) ([]nbs.DiskState, error) {
+
+	args := c.Called(ctx)
+	return args.Get(0).([]nbs.DiskState), args.Error(1)
+}
+
 func (c *ClientMock) CreatePlacementGroup(
 	ctx context.Context,
 	groupID string,
@@ -342,6 +350,18 @@ func (c *ClientMock) Stat(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (c *ClientMock) ModifyTags(
+	ctx context.Context,
+	saveState func() error,
+	diskID string,
+	tagsToAdd []string,
+	tagsToRemove []string,
+) error {
+
+	args := c.Called(ctx, saveState, diskID, tagsToAdd, tagsToRemove)
+	return args.Error(0)
+}
+
 func (c *ClientMock) Freeze(
 	ctx context.Context,
 	saveState func() error,
@@ -390,6 +410,28 @@ func (c *ClientMock) FinishFillDisk(
 
 	args := c.Called(ctx, saveState, diskID, fillGeneration)
 	return args.Error(0)
+}
+
+func (c *ClientMock) ZoneID() string {
+	args := c.Called()
+	return args.String(0)
+}
+
+func (c *ClientMock) GetClusterCapacity(
+	ctx context.Context,
+) ([]nbs.ClusterCapacityInfo, error) {
+
+	args := c.Called(ctx)
+	return args.Get(0).([]nbs.ClusterCapacityInfo), args.Error(1)
+}
+
+func (c *ClientMock) QueryAvailableStorage(
+	ctx context.Context,
+	agentIDs []string,
+) ([]nbs.AvailableStorageInfo, error) {
+
+	args := c.Called(ctx, agentIDs)
+	return args.Get(0).([]nbs.AvailableStorageInfo), args.Error(1)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -34,6 +34,7 @@ TFileSystem::TFileSystem(
         IRequestStatsPtr stats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
+        TDirectoryHandlesStoragePtr directoryHandlesStorage,
         TWriteBackCache writeBackCache)
     : Logging(std::move(logging))
     , ProfileLog(std::move(profileLog))
@@ -43,20 +44,30 @@ TFileSystem::TFileSystem(
     , Config(std::move(config))
     , RequestStats(std::move(stats))
     , CompletionQueue(std::move(queue))
-    , FSyncQueue(Config->GetFileSystemId(), Logging)
     , XAttrCache(
         Timer,
         Config->GetXAttrCacheLimit(),
         Config->GetXAttrCacheTimeout())
     , HandleOpsQueue(std::move(handleOpsQueue))
+    , DirectoryHandlesStorage(std::move(directoryHandlesStorage))
     , WriteBackCache(std::move(writeBackCache))
 {
     Log = Logging->CreateLog("NFS_FUSE");
+    if (Config->GetFSyncQueueDisabled()) {
+        FSyncQueue = std::make_unique<TFSyncQueueStub>();
+    } else {
+        FSyncQueue =
+            std::make_unique<TFSyncQueue>(Config->GetFileSystemId(), Logging);
+    }
+
+    if (DirectoryHandlesStorage) {
+        DirectoryHandlesStorage->LoadHandles(DirectoryHandles);
+    }
 }
 
 TFileSystem::~TFileSystem()
 {
-    Reset();
+    ClearDirectoryCache();
 }
 
 void TFileSystem::Init()
@@ -68,7 +79,15 @@ void TFileSystem::Init()
 void TFileSystem::Reset()
 {
     STORAGE_INFO("resetting filesystem cache");
-    ClearDirectoryCache();
+    with_lock (DirectoryHandlesLock) {
+        STORAGE_DEBUG("clear directory cache of size %lu",
+            DirectoryHandles.size());
+        DirectoryHandles.clear();
+
+        if (DirectoryHandlesStorage) {
+            DirectoryHandlesStorage->Clear();
+        }
+    }
 }
 
 void TFileSystem::ScheduleProcessHandleOpsQueue()
@@ -113,6 +132,27 @@ bool TFileSystem::ValidateNodeId(
     return true;
 }
 
+TDuration TFileSystem::GetEntryCacheTimeout(
+    const NProto::TNodeAttr& attrs) const
+{
+    if (attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE &&
+        Config->GetRegularFileEntryTimeout() != TDuration::Zero())
+    {
+        return Config->GetRegularFileEntryTimeout();
+    }
+
+    return Config->GetEntryTimeout();
+}
+
+void TFileSystem::AdjustNodeSize(NProto::TNodeAttr& attrs)
+{
+    if (WriteBackCache) {
+        const auto cachedNodeSize =
+            WriteBackCache.GetCachedNodeSize(attrs.GetId());
+        attrs.SetSize(Max(attrs.GetSize(), cachedNodeSize));
+    }
+}
+
 bool TFileSystem::UpdateNodeCache(
     const NProto::TNodeAttr& attrs,
     fuse_entry_param& entry)
@@ -128,7 +168,7 @@ bool TFileSystem::UpdateNodeCache(
         entry.ino = attrs.GetId();
         entry.generation = NodeCache.Generation();
         entry.attr_timeout = Config->GetAttrTimeout().SecondsFloat();
-        entry.entry_timeout = Config->GetEntryTimeout().SecondsFloat();
+        entry.entry_timeout = GetEntryCacheTimeout(attrs).SecondsFloat();
 
         ConvertAttr(Config->GetPreferredBlockSize(), node->Attrs, entry.attr);
     }

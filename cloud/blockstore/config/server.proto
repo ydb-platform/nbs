@@ -3,6 +3,7 @@ syntax = "proto3";
 import "cloud/blockstore/config/rdma.proto";
 import "cloud/storage/core/protos/certificate.proto";
 import "cloud/storage/core/protos/endpoints.proto";
+import "cloud/storage/core/protos/media.proto";
 
 package NCloud.NBlockStore.NProto;
 
@@ -32,6 +33,15 @@ message TChecksumFlags
     // writing. This is done to ensure that the same data is written to all
     // mirror disk replicas.
     optional bool CheckBufferModificationForMirrorDisk = 1;
+
+    // Enables data integrity validation client that calculates checksums for
+    // write requests and validates checksums for read requests. Calculation for
+    // reads and validation for writes needs to be done in the storage layer.
+    optional bool EnableDataIntegrityClient = 2;
+
+    // Same as "EnableDataIntegrityClient", but enables the client only for the
+    // specified media kinds.
+    repeated NCloud.NProto.EStorageMediaKind MediaKindsToValidateDataIntegrity = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -207,7 +217,7 @@ message TServerConfig
     // Endpoint Proxy unix socket path. Triggers proxy device factory usage
     // instead of ioctl-based nbd device factory usage (but NbdNetlink flag has
     // higher priority).
-    optional string EndpointProxySocketPath = 114;
+    optional string EndpointProxySocketPath = 114 [deprecated = true];
 
     // Allow all control requests via unix socket (e.g., for CSI-driver)
     optional bool AllowAllRequestsViaUDS = 115;
@@ -229,7 +239,11 @@ message TServerConfig
     // Use fake RDMA client (over Interconnect). For use in tests.
     optional bool UseFakeRdmaClient = 120;
 
-    // Enable Discard/ZeroBlocks features for vhost devices
+    // Enable Discard/ZeroBlocks features for vhost devices. Applies to
+    // network-ssd and network-hdd disks. If this flag is enabled, discards are
+    // enabled for all network-ssd and network-hdd disks. Otherwise, discards
+    // are enabled only for disks that have the VhostDiscardEnabled flag set in
+    // the VolumeConfig in SchemeShard.
     optional bool VhostDiscardEnabled = 121;
 
     // Maximum request size in bytes for ZeroBlocks.
@@ -253,6 +267,10 @@ message TServerConfig
 
     // Policy for encryption of zeroed blocks.
     optional EEncryptZeroPolicy EncryptZeroPolicy = 126;
+
+    // Optimal IO size for vhost devices. Zero value is the default one.
+    // For linux, sets the value of /sys/block/<device>/queue/optimal_io_size.
+    optional uint32 VhostOptimalIoSize = 127;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

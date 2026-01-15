@@ -21,7 +21,7 @@ void TIndexTabletActor::HandleGenerateCommitId(
     auto response = std::make_unique<TEvIndexTabletPrivate::TEvGenerateCommitIdResponse>();
     response->CommitId = GenerateCommitId();
     if (response->CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "GenerateCommitId");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "GenerateCommitId");
     }
 
     NCloud::Reply(ctx, *ev, std::move(response));

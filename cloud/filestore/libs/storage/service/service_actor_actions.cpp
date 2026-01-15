@@ -108,16 +108,45 @@ void TStorageServiceActor::HandleExecuteAction(
             "readnoderefs",
             &TStorageServiceActor::CreateReadNodeRefsActionActor
         },
+        {
+            "sethasxattrs",
+            &TStorageServiceActor::CreateSetHasXAttrsActionActor
+        },
+        {
+            "marknoderefsexhaustive",
+            &TStorageServiceActor::CreateMarkNodeRefsExhaustiveActionActor
+        }
+    };
+
+    using TInstantAction = void (TStorageServiceActor::*)(
+        const NActors::TActorContext&,
+        TRequestInfoPtr,
+        TString);
+
+    static const THashMap<TString, TInstantAction> instantActions = {
+        {
+            "toggleservicestate",
+            &TStorageServiceActor::PerformToggleServiceStateAction
+        }
     };
 
     auto it = actions.find(action);
-    if (it == actions.end()) {
-        NCloud::Reply(ctx, *requestInfo, ActionNotFoundResponse());
+    if (it != actions.end()) {
+        auto actorBuilder = it->second;
+        auto actor =
+            std::invoke(actorBuilder, this, requestInfo, std::move(input));
+        NCloud::Register(ctx, std::move(actor));
         return;
     }
-    auto actorBuilder = it->second;
-    auto actor = std::invoke(actorBuilder, this, requestInfo, std::move(input));
-    NCloud::Register(ctx, std::move(actor));
+
+    auto instantIt = instantActions.find(action);
+    if (instantIt != instantActions.end()) {
+        auto instantAction = instantIt->second;
+        std::invoke(instantAction, this, ctx, requestInfo, std::move(input));
+        return;
+    }
+
+    NCloud::Reply(ctx, *requestInfo, ActionNotFoundResponse());
 }
 
 }   // namespace NCloud::NFileStore::NStorage

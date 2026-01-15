@@ -41,8 +41,10 @@ private:
 
     TInstant ReadStartTs;
     TDuration ReadDuration;
+    IProfileLog::TRangeInfo ReadRangeInfo{.Range = Range};
     TInstant WriteStartTs;
     TDuration WriteDuration;
+    IProfileLog::TRangeInfo WriteRangeInfo{.Range = Range};
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
     ui64 VolumeRequestId = 0;
 
@@ -75,11 +77,12 @@ private:
     void ReadReplicaBlocks(
         const NActors::TActorContext& ctx,
         size_t replicaIndex);
-    void WriteBlocks(const NActors::TActorContext& ctx);
+    void WriteBlocks(const NActors::TActorContext& ctx, bool calculateChecksum);
     void WriteReplicaBlocks(
         const NActors::TActorContext& ctx,
         size_t replicaIndex,
-        NProto::TIOVector data);
+        NProto::TIOVector data,
+        bool calculateChecksum);
     void Done(const NActors::TActorContext& ctx);
 
 private:

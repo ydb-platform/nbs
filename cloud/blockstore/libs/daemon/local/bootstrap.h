@@ -29,14 +29,13 @@ protected:
     IStartable* GetClientPercentiles() override  { return nullptr; }
     IStartable* GetStatsUploader() override      { return nullptr; }
     IStartable* GetYdbStorage() override         { return nullptr; }
-    IStartable* GetTraceSerializer() override    { return nullptr; }
     IStartable* GetLogbrokerService() override   { return nullptr; }
     IStartable* GetNotifyService() override      { return nullptr; }
-    IStartable* GetStatsFetcher() override       { return nullptr; }
     IStartable* GetIamTokenClient() override     { return nullptr; }
     IStartable* GetComputeClient() override      { return nullptr; }
     IStartable* GetKmsClient() override          { return nullptr; }
     IStartable* GetRootKmsClient() override      { return nullptr; }
+    ITraceSerializerPtr GetTraceSerializer() override;
 
     ITraceServiceClientPtr GetTraceServiceClient() override
     {
@@ -50,6 +49,10 @@ protected:
     void InitAuthService() override;
 
     void WarmupBSGroupConnections() override;
+
+    void InitRdmaRequestServer() override;
+
+    void SetupCellManager() override;
 };
 
 }   // namespace NCloud::NBlockStore::NServer

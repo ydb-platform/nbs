@@ -136,6 +136,7 @@ struct TTestPartitionInfo
     ui64 BaseTabletId = 0;
     NCloud::NProto::EStorageMediaKind MediaKind =
         NCloud::NProto::STORAGE_MEDIA_DEFAULT;
+    TMaybe<ui32> MaxBlocksInBlob;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -154,6 +155,79 @@ private:
     {
         Y_UNUSED(ev);
     }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TEventExecutionOrderFilter
+{
+public:
+    TEventExecutionOrderFilter(
+        TTestActorRuntimeBase& runtime,
+        const TVector<std::pair<ui32, ui32>>& eventOrders)
+        : Runtime(runtime)
+    {
+        for (const auto& [prerequisiteEvent, dependentEvent]: eventOrders) {
+            EventDependencies[dependentEvent] = prerequisiteEvent;
+            PrerequisiteEvents.insert(prerequisiteEvent);
+        }
+    }
+
+    TTestActorRuntimeBase::TEventFilter operator()(
+        TTestActorRuntimeBase::TEventFilter baseFilter = nullptr)
+    {
+        return [this, baseFilter](
+                   TTestActorRuntimeBase& rt,
+                   TAutoPtr<IEventHandle>& ev) -> bool
+        {
+            Y_ABORT_UNLESS(ev);
+
+            TActorId recipient = ev->GetRecipientRewrite();
+            ui32 eventType = ev->GetTypeRewrite();
+
+            bool baseFilterResult = baseFilter ? baseFilter(rt, ev) : false;
+
+            auto prerequisiteEventIt = EventDependencies.find(eventType);
+            if (prerequisiteEventIt != EventDependencies.end()) {
+                ui32 prerequisiteEvent = prerequisiteEventIt->second;
+                auto& processedEventsByRecipient = ProcessedEvents[recipient];
+                if (!processedEventsByRecipient.contains(prerequisiteEvent)) {
+                    DelayedEvents[recipient][prerequisiteEvent] = std::move(ev);
+                    return true;
+                }
+            }
+
+            auto& delayedEventsByRecipient = DelayedEvents[recipient];
+            auto delayedEventIt = delayedEventsByRecipient.find(eventType);
+            if (delayedEventIt != delayedEventsByRecipient.end()) {
+                TAutoPtr<IEventHandle> delayedEvent =
+                    std::move(delayedEventIt->second);
+                delayedEventsByRecipient.erase(delayedEventIt);
+
+                // Remove the recipient from the map if there are no more
+                // delayed events
+                if (delayedEventsByRecipient.empty()) {
+                    DelayedEvents.erase(recipient);
+                }
+
+                Runtime.Schedule(delayedEvent, TDuration::MilliSeconds(100));
+            }
+
+            if (PrerequisiteEvents.contains(eventType)) {
+                ProcessedEvents[recipient].insert(eventType);
+            }
+
+            return baseFilterResult;
+        };
+    }
+
+private:
+    TTestActorRuntimeBase& Runtime;
+    THashMap<ui32, ui32> EventDependencies;
+    THashSet<ui32> PrerequisiteEvents;
+    THashMap<TActorId, THashSet<ui32>> ProcessedEvents;
+    // Map of delayed events by recipient and event type
+    THashMap<TActorId, THashMap<ui32, TAutoPtr<IEventHandle>>> DelayedEvents;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -183,6 +257,10 @@ void InitTestActorRuntime(
 
     partConfig.SetBlockSize(DefaultBlockSize);
     partConfig.SetBlocksCount(blockCount);
+
+    if (partitionInfo.MaxBlocksInBlob) {
+        partConfig.SetMaxBlocksInBlob(*partitionInfo.MaxBlocksInBlob);
+    }
 
     auto* cps = partConfig.MutableExplicitChannelProfiles();
     cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::System));
@@ -943,13 +1021,12 @@ public:
     }
 
     std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
-    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, bool calculateChecksums = false)
+    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size)
     {
         auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
         request->Record.SetDiskId(id);
         request->Record.SetStartIndex(startIndex);
         request->Record.SetBlocksCount(size);
-        request->Record.SetCalculateChecksums(calculateChecksums);
         return request;
     }
 
@@ -1394,7 +1471,8 @@ TPartitionWithRuntime SetupOverlayPartition(
     TMaybe<ui32> channelsCount = {},
     ui32 blockSize = DefaultBlockSize,
     ui32 blockCount = 1024,
-    const NProto::TStorageServiceConfig& config = DefaultConfig())
+    const NProto::TStorageServiceConfig& config = DefaultConfig(),
+    TMaybe<ui32> MaxBlocksInBlob = {})
 {
     TPartitionWithRuntime result;
 
@@ -1408,7 +1486,8 @@ TPartitionWithRuntime SetupOverlayPartition(
             "checkpoint",
             overlayTabletId,
             baseTabletId,
-            NCloud::NProto::STORAGE_MEDIA_DEFAULT
+            NCloud::NProto::STORAGE_MEDIA_DEFAULT,
+            MaxBlocksInBlob
         },
         std::make_unique<TTestVolumeProxyActor>(
             baseTabletId,
@@ -1620,7 +1699,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldStoreBlocksInFreshChannel)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -1924,7 +2002,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldRecoverBlocksOnRebootFromFreshChannel)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -1973,7 +2050,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         InitLogSettings(runtime);
 
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         {
@@ -2228,7 +2304,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldFlushBlocksFromFreshChannelAsNewBlob)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -2315,7 +2390,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(4_MB);
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -2356,7 +2430,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetWriteBlobThreshold(4_MB);
         config.SetFreshBlobCountFlushThreshold(4);
         config.SetFreshBlobByteCountFlushThreshold(999999999);
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -2406,7 +2479,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetWriteBlobThreshold(4_MB);
         config.SetFreshBlobCountFlushThreshold(999999);
         config.SetFreshBlobByteCountFlushThreshold(15_MB);
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -2454,7 +2526,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldAutomaticallyTrimFreshLogOnFlush)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -2507,7 +2578,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldAutomaticallyTrimFreshBlobsFromPreviousGeneration)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -2567,7 +2637,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldTrimUpToTheFirstUnflushedBlockCommitId)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -2684,7 +2753,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig(4_MB);
         config.SetWriteBlobThreshold(4_MB);
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
@@ -3569,7 +3637,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldZeroBlocksWrittenToFreshChannelAfterReboot)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -7596,7 +7663,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldNotTrimInFlightBlocks)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -7662,7 +7728,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldNotTrimUnflushedBlocksWhileThereIsFlushedBlockWithLargerCommitId)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -7729,7 +7794,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldReleaseTrimBarrierOnBlockDeletion)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -7761,7 +7825,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldNotReleaseTrimBarriersOnFlushError)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
         config.SetMaxWriteBlobErrorsBeforeSuicide(10);
 
@@ -7811,7 +7874,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldHandleFlushCorrectlyWhileBlockFromFreshChannelIsBeingDeleted)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -7851,7 +7913,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldHandleFlushCorrectlyWhileBlockFromDbIsBeingDeleted)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(0);
+        config.SetFreshChannelCountSSD(0);
         config.SetFreshChannelWriteRequestsEnabled(false);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -7941,7 +8003,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldHandleBSErrorsOnInitFreshBlocksFromChannel)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -8187,7 +8248,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldHandleCorruptedFreshBlobOnInitFreshBlocks)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -8273,7 +8333,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldUpdateUsedBlocksMapWhenFlushingBlocksFromFreshChannel)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -9182,7 +9241,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         NProto::TStorageServiceConfig config;
         config.SetFreshByteCountHardLimit(8_KB);
         config.SetFlushThreshold(4_MB);
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -10059,7 +10117,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetBlobCompressionRate(1);
         config.SetWriteBlobThreshold(writeBlobThreshold);
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -11039,7 +11096,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetFlushThreshold(1_GB);
         // enabling fresh channel writes to make stats check a bit more
         // convenient
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
         auto runtime = PrepareTestActorRuntime(config, blockCount);
 
@@ -12198,294 +12254,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldCheckRange)
-    {
-        constexpr ui32 blockCount = 1024 * 1024;
-        auto runtime = PrepareTestActorRuntime(DefaultConfig(), blockCount);
-
-        TPartitionClient partition(*runtime);
-        partition.WaitReady();
-
-        partition.WriteBlocks(
-            TBlockRange32::MakeClosedInterval(0, 1024 * 10),
-            1);
-        partition.WriteBlocks(
-            TBlockRange32::MakeClosedInterval(1024 * 5, 1024 * 11),
-            1);
-
-        const auto step = 16;
-        for (ui32 i = 1024 * 10; i < 1024 * 12; i += step) {
-            partition.WriteBlocks(TBlockRange32::WithLength(i, step), 1);
-        }
-
-        for (ui32 i = 1024 * 20; i < 1024 * 21; i += step) {
-            partition.WriteBlocks(TBlockRange32::WithLength(i, step + 1), 1);
-        }
-
-        partition.WriteBlocks(
-            TBlockRange32::MakeClosedInterval(1001111, 1001210),
-            1);
-
-        partition.ZeroBlocks(TBlockRange32::MakeClosedInterval(1024, 3023));
-        partition.ZeroBlocks(TBlockRange32::MakeClosedInterval(5024, 5033));
-
-        ui32 status = -1;
-        ui32 error = -1;
-
-        runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
-            {
-                switch (event->GetTypeRewrite()) {
-                    case TEvVolume::EvCheckRangeResponse: {
-                        using TEv = TEvVolume::TEvCheckRangeResponse;
-                        const auto* msg = event->Get<TEv>();
-                        error = msg->GetStatus();
-                        status = msg->Record.GetStatus().GetCode();
-                        break;
-                    }
-                }
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
-
-        const auto checkRange = [&](ui32 idx, ui32 size)
-        {
-            status = -1;
-
-            const auto response = partition.CheckRange("id", idx, size);
-
-            TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
-            runtime->DispatchEvents(options, TDuration::Seconds(3));
-
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, status);
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
-        };
-
-        checkRange(0, 1024);
-        checkRange(1024, 512);
-        checkRange(1, 1);
-        checkRange(1000, 1000);
-    }
-
-    Y_UNIT_TEST(ShouldCheckRangeWithBrokenBlocks)
-    {
-        constexpr ui32 blockCount = 1024 * 1024;
-        auto runtime = PrepareTestActorRuntime(DefaultConfig(), blockCount);
-
-        TPartitionClient partition(*runtime);
-        partition.WaitReady();
-
-        partition.WriteBlocks(
-            TBlockRange32::MakeClosedInterval(0, 1024 * 10),
-            1);
-        partition.WriteBlocks(
-            TBlockRange32::MakeClosedInterval(1024 * 5, 1024 * 11),
-            1);
-
-        const auto step = 16;
-        for (ui32 i = 1024 * 10; i < 1024 * 12; i += step) {
-            partition.WriteBlocks(TBlockRange32::WithLength(i, step), 1);
-        }
-
-        for (ui32 i = 1024 * 20; i < 1024 * 21; i += step) {
-            partition.WriteBlocks(TBlockRange32::WithLength(i, step + 1), 1);
-        }
-
-        partition.WriteBlocks(
-            TBlockRange32::MakeClosedInterval(1001111, 1001210),
-            1);
-
-        ui32 status = -1;
-        ui32 error = -1;
-
-        runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
-            {
-                switch (event->GetTypeRewrite()) {
-                    case TEvVolume::EvCheckRangeResponse: {
-                        using TEv = TEvVolume::TEvCheckRangeResponse;
-                        const auto* msg = event->Get<TEv>();
-                        status = msg->Record.GetStatus().GetCode();
-                        error = msg->Record.GetError().GetCode();
-
-                        break;
-                    }
-                    case TEvService::EvReadBlocksLocalResponse: {
-                        using TEv = TEvService::TEvReadBlocksLocalResponse;
-
-                        auto response = std::make_unique<TEv>(
-                            MakeError(E_IO, "block is broken"));
-
-                        runtime->Send(
-                            new IEventHandle(
-                                event->Recipient,
-                                event->Sender,
-                                response.release(),
-                                0,   // flags
-                                event->Cookie),
-                            0);
-
-                        return TTestActorRuntime::EEventAction::DROP;
-                    }
-                }
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
-
-        const auto checkRange = [&](ui32 idx, ui32 size)
-        {
-            status = -1;
-
-            partition.SendCheckRangeRequest("id", idx, size);
-            const auto response =
-                partition.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
-
-            TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
-
-            UNIT_ASSERT_VALUES_EQUAL(E_IO, status);
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
-        };
-        checkRange(0, 1024);
-        checkRange(1024, 512);
-        checkRange(1, 1);
-        checkRange(1000, 1000);
-    }
-
-    Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmpty)
-    {
-        constexpr ui32 blockCount = 1024 * 1024;
-        auto runtime = PrepareTestActorRuntime(DefaultConfig(), blockCount);
-
-        TPartitionClient partition(*runtime);
-        partition.WaitReady();
-
-        const ui32 idx = 0;
-        const ui32 size = 1;
-        const auto response = partition.CheckRange("id", idx, size);
-
-        TDispatchOptions options;
-        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
-
-        runtime->DispatchEvents(options, TDuration::Seconds(1));
-
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetStatus().GetCode());
-    }
-
-    Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCount)
-    {
-        constexpr ui32 blockCount = 1024 * 1024;
-        constexpr ui32 bytesPerStripe = 1024;
-        NProto::TStorageServiceConfig config;
-        config.SetBytesPerStripe(bytesPerStripe);
-        auto runtime = PrepareTestActorRuntime(config, blockCount);
-
-        TPartitionClient partition(*runtime);
-        partition.WaitReady();
-
-        const ui32 idx = 0;
-
-        partition.SendCheckRangeRequest(
-            "id",
-            idx,
-            bytesPerStripe / DefaultBlockSize + 1);
-        const auto response =
-            partition.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
-
-        TDispatchOptions options;
-        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
-
-        runtime->DispatchEvents(options, TDuration::Seconds(1));
-
-        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
-    }
-
-    Y_UNIT_TEST(ShouldGetSameChecksumsWhileCheckRangeSimmilarDisks)
-    {
-        constexpr ui32 blockCount = 1024 * 1024;
-
-        auto runtime = PrepareTestActorRuntime(DefaultConfig(), blockCount);
-
-        TPartitionClient partition1(*runtime);
-        TPartitionClient partition2(*runtime);
-
-        partition1.WaitReady();
-        partition2.WaitReady();
-
-        const auto writeData = [&](TPartitionClient& partition)
-        {
-            partition.WriteBlocks(
-                TBlockRange32::MakeClosedInterval(0, 1024 * 10),
-                42);
-            partition.WriteBlocks(
-                TBlockRange32::MakeClosedInterval(1024 * 5, 1024 * 15),
-                99);
-        };
-
-        writeData(partition1);
-        writeData(partition2);
-
-        const auto response1 = partition1.CheckRange("id", 0, 1024, true);
-        const auto response2 = partition2.CheckRange("id", 0, 1024, true);
-
-        TDispatchOptions options;
-        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
-        runtime->DispatchEvents(options, TDuration::Seconds(3));
-
-        const auto& checksums1 = response1->Record.GetChecksums();
-        const auto& checksums2 = response2->Record.GetChecksums();
-
-        ASSERT_VECTORS_EQUAL(
-            TVector<ui32>(checksums1.begin(), checksums1.end()),
-            TVector<ui32>(checksums2.begin(), checksums2.end()));
-    }
-
-    Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeDifferentDisks)
-    {
-        constexpr ui32 blockCount = 1024 * 1024;
-
-        auto runtime = PrepareTestActorRuntime(DefaultConfig(), blockCount);
-
-        TPartitionClient partition1(*runtime);
-        TPartitionClient partition2(*runtime);
-
-        partition1.WaitReady();
-        partition2.WaitReady();
-
-        partition1.WriteBlocks(
-            TBlockRange32::MakeClosedInterval(0, 1024 * 10),
-            42);
-
-        partition2.WriteBlocks(
-            TBlockRange32::MakeClosedInterval(0, 1024 * 10),
-            99);
-
-        const auto response1 = partition1.CheckRange("id", 0, 1024, true);
-        const auto response2 = partition2.CheckRange("id", 0, 1024, true);
-
-        TDispatchOptions options;
-        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
-        runtime->DispatchEvents(options, TDuration::Seconds(3));
-
-        const auto& checksums1 = response1->Record.GetChecksums();
-        const auto& checksums2 = response2->Record.GetChecksums();
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            checksums1.size(),
-            checksums2.size());
-
-        ui32 totalChecksums = 0;
-        ui32 differentChecksums = 0;
-        for (int i = 0; i < checksums1.size(); ++i) {
-            if (checksums1.at(i) != checksums2.at(i)) {
-                ++differentChecksums;
-            }
-            ++totalChecksums;
-        }
-
-        UNIT_ASSERT(differentChecksums*2 < totalChecksums);
-    }
-
     void TestForcedCompaction(ui32 rangesPerRun)
     {
         auto config = DefaultConfig();
@@ -13010,6 +12778,56 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldCorrectlyHandleWriteBlocksErrorsWithUnconfirmedBlobs)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        config.SetAddingUnconfirmedBlobsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            4096,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID});
+
+        TTestActorRuntimeBase::TEventFilter rejectWriteBlobFilter =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+        {
+            switch (ev->GetTypeRewrite()) {
+                case TEvPartitionPrivate::EvWriteBlobResponse: {
+                    auto* msg =
+                        ev->Get<TEvPartitionPrivate::TEvWriteBlobResponse>();
+                    auto& e = const_cast<NProto::TError&>(msg->Error);
+                    e.SetCode(E_REJECTED);
+                    return false;
+                }
+            };
+            return false;
+        };
+
+        // Set up event order controller to ensure that
+        // AddUnconfirmedBlobsResponse is processed before WriteBlobResponse
+        TEventExecutionOrderFilter orderFilter(
+            *runtime,
+            TVector<std::pair<ui32, ui32>>{
+                {TEvPartitionPrivate::EvAddUnconfirmedBlobsResponse,
+                 TEvPartitionPrivate::EvWriteBlobResponse}});
+        runtime->SetEventFilter(orderFilter(rejectWriteBlobFilter));
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(10, 1), 1);
+
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            // In case of errors we just delete obsolete unconfirmed blobs
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+        }
+    }
+
     Y_UNIT_TEST(ShouldSendCorrectBarriersInfoAfterReboot)
     {
         auto config = DefaultConfig();
@@ -13079,7 +12897,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
         }
 
         rejectWrite = false;
@@ -13096,6 +12914,484 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
 
         UNIT_ASSERT(!barriers.empty());
+    }
+
+    Y_UNIT_TEST(ShouldCleanupUnconfirmedBlobsAfterErrorOnWriteBlob)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        config.SetAddingUnconfirmedBlobsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            4096,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID});
+
+        bool shouldRejectDeleteUnconfirmedBlobsRequest = true;
+        // Create event filter for WriteBlobResponse rejection
+        TTestActorRuntimeBase::TEventFilter rejectionFilter =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+        {
+            switch (ev->GetTypeRewrite()) {
+                case TEvPartitionPrivate::EvWriteBlobResponse: {
+                    auto* msg =
+                        ev->Get<TEvPartitionPrivate::TEvWriteBlobResponse>();
+                    auto& e = const_cast<NProto::TError&>(msg->Error);
+                    e.SetCode(E_REJECTED);
+                    return false;
+                }
+                case TEvPartitionPrivate::
+                    EvDeleteUnconfirmedBlobsRequest: {
+                    return shouldRejectDeleteUnconfirmedBlobsRequest;
+                }
+            };
+            return false;
+        };
+
+        // Set up event order filter to ensure that
+        // AddUnconfirmedBlobsResponse is processed before WriteBlobResponse
+        TEventExecutionOrderFilter addWriteBlobOrderFilter(
+            *runtime,
+            TVector<std::pair<ui32, ui32>>{
+                {TEvPartitionPrivate::EvAddUnconfirmedBlobsResponse,
+                 TEvPartitionPrivate::EvWriteBlobResponse}});
+        runtime->SetEventFilter(addWriteBlobOrderFilter(rejectionFilter));
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(10, 1), 1);
+
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetUnconfirmedBlobCount());
+        }
+
+        // Set up event order filter to ensure that
+        // WriteBlobResponse is processed before AddUnconfirmedBlobsResponse
+        TEventExecutionOrderFilter writeAddBlobOrderFilter(
+            *runtime,
+            TVector<std::pair<ui32, ui32>>{
+                {TEvPartitionPrivate::EvWriteBlobResponse,
+                 TEvPartitionPrivate::EvAddUnconfirmedBlobsResponse}});
+        runtime->SetEventFilter(writeAddBlobOrderFilter(rejectionFilter));
+
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(11, 1), 1);
+
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetUnconfirmedBlobCount());
+        }
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+        }
+
+        shouldRejectDeleteUnconfirmedBlobsRequest = false;
+
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(12, 1), 1);
+
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldDropAllCommitBlobsWhenUnrecoverableBlobExists)
+    {
+        auto config = DefaultConfig();
+
+        config.SetWriteBlobThreshold(1);
+        config.SetAddingUnconfirmedBlobsEnabled(true);
+
+        // Set MaxBlocksInBlob to 1 so writing 2 blocks will create 2 blobs
+        TTestPartitionInfo partitionInfo;
+        partitionInfo.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID;
+        partitionInfo.MaxBlocksInBlob = 1;
+
+        auto runtime = PrepareTestActorRuntime(config, 4096, {}, partitionInfo);
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvAddConfirmedBlobsRequest: {
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(2, 2), 2);
+        partition.WriteBlocks(TBlockRange32::WithLength(4, 2), 2);
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetConfirmedBlobCount());
+        }
+
+        bool tabletActivated = false;
+        ui32 filterCallCount = 0;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case NKikimr::TEvLocal::EvTabletMetrics: {
+                        tabletActivated = true;
+                        return false;
+                    }
+                    case TEvBlobStorage::EvGetResult: {
+                        auto* msg = ev->Get<TEvBlobStorage::TEvGetResult>();
+                        auto* mutableMsg =
+                            const_cast<TEvBlobStorage::TEvGetResult*>(msg);
+
+                        if (tabletActivated) {
+                            if (filterCallCount == 0) {
+                                mutableMsg->Responses[0].Status =
+                                    NKikimrProto::NODATA;
+                            } else if (filterCallCount == 2) {
+                                mutableMsg->Responses[0].Status =
+                                    NKikimrProto::ERROR;
+                            }
+                            ++filterCallCount;
+                        }
+                        return false;
+                    }
+                }
+                return false;
+            });
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetConfirmedBlobCount());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSendPartitionStatistics)
+    {
+        auto config = DefaultConfig();
+        config.SetUsePullSchemeForVolumeStatistics(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        bool partitionStatisticsSent = false;
+
+        auto _ = runtime->AddObserver<
+            TEvPartitionCommonPrivate::TEvGetPartCountersResponse>(
+            [&](TEvPartitionCommonPrivate::TEvGetPartCountersResponse::TPtr& ev)
+            {
+                Y_UNUSED(ev);
+                partitionStatisticsSent = true;
+            });
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.SendToPipe(
+            std::make_unique<
+                TEvPartitionCommonPrivate::TEvGetPartCountersRequest>());
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime->DispatchEvents();
+
+        // Check that partition sent statistics
+        UNIT_ASSERT(partitionStatisticsSent);
+    }
+
+    Y_UNIT_TEST(ShouldRaiseCriticalEventIfTrimFreshLogTimesOut)
+    {
+        constexpr ui32 FreshChannelId = 4;
+
+        auto config = DefaultConfig();
+        config.SetFlushThreshold(4_MB);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetTrimFreshLogTimeout(TDuration::Seconds(1).MilliSeconds());
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        NMonitoring::TDynamicCountersPtr counters
+            = new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto trimCounter =
+            counters->GetCounter("AppCriticalEvents/TrimFreshLogTimeout", true);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetFreshBlocksCount());
+        }
+
+        bool trimSeen = false;
+        bool trimCompletedSeen = false;
+
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvCollectGarbageResult: {
+                        auto* msg =
+                            event->Get<TEvBlobStorage::TEvCollectGarbageResult>();
+                        if (msg->Channel == FreshChannelId) {
+                            trimSeen = true;
+                            msg->Status = NKikimrProto::EReplyStatus::DEADLINE;
+                        }
+                        break;
+                    }
+                    case TEvPartitionCommonPrivate::EvTrimFreshLogCompleted: {
+                        auto* msg = event->Get<TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted>();
+                        UNIT_ASSERT(FAILED(msg->GetStatus()));
+                        trimCompletedSeen = true;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            }
+        );
+
+        partition.Flush();
+
+        // wait for trimfreshlog to complete
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&] {
+            return trimCompletedSeen;
+        };
+        runtime->DispatchEvents(options);
+
+        UNIT_ASSERT_VALUES_EQUAL(true, trimSeen);
+        UNIT_ASSERT_VALUES_UNEQUAL(0, trimCounter->Val());
+    }
+
+    Y_UNIT_TEST(ShouldLoadFreshBlobsFromLastTrimFreshLogToCommitIdInMeta)
+    {
+        constexpr ui32 FreshChannelId = 4;
+
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetFreshBlocksCount());
+        }
+
+        bool saveBlobs = false;
+        TSet<ui64> expectedBlobs;
+
+        auto eventFilter =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvCollectGarbage: {
+                        auto* msg = ev->Get<TEvBlobStorage::TEvCollectGarbage>();
+                        if (msg->Channel == FreshChannelId) {
+                            return true;
+                        }
+                        break;
+                    }
+                    case TEvBlobStorage::EvRangeResult: {
+                        using TEvent = TEvBlobStorage::TEvRangeResult;
+                        auto* msg = ev->Get<TEvent>();
+                        bool isRangeResponseFromFresh = false;
+                        for (const auto& r: msg->Responses) {
+                            if (r.Id.Channel() == FreshChannelId) {
+                                isRangeResponseFromFresh = true;
+                                auto commitId = MakeCommitId(
+                                        r.Id.Generation(),
+                                        r.Id.Step());
+                                UNIT_ASSERT_VALUES_EQUAL(
+                                    1,
+                                    expectedBlobs.count(commitId));
+                            }
+                        }
+                        if (isRangeResponseFromFresh) {
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                expectedBlobs.size(),
+                                msg->Responses.size());
+                        }
+                        break;
+                    }
+                    case TEvPartitionPrivate::EvWriteBlobCompleted: {
+                        using TEvent = TEvPartitionPrivate::TEvWriteBlobCompleted;
+                        auto* msg = ev->Get<TEvent>();
+                        if (msg->BlobId.Channel() == 4 && saveBlobs)
+                        {
+                            expectedBlobs.emplace(msg->BlobId.CommitId());
+                        }
+                        break;
+                    }
+                }
+                return false;
+            };
+
+
+        runtime->SetEventFilter(eventFilter);
+
+        // update TrimFreshLogToCommitId in meta to gen:step = 0:0
+        partition.Flush();
+
+        runtime->DispatchEvents(TDispatchOptions{}, TDuration::Seconds(1));
+
+        saveBlobs = true;
+
+        partition.WriteBlocks(4, 4);
+        partition.WriteBlocks(5, 5);
+        partition.WriteBlocks(6, 6);
+
+        // update TrimFreshLogToCommitId in meta to gen:step = 2:4
+        partition.Flush();
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        // expect to read last 3 blobs ([2:5], [2:6], [2:7])
+
+        UNIT_ASSERT_VALUES_EQUAL(3, expectedBlobs.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, expectedBlobs.count(MakeCommitId(2, 5)));
+        UNIT_ASSERT_VALUES_EQUAL(1, expectedBlobs.count(MakeCommitId(2, 6)));
+        UNIT_ASSERT_VALUES_EQUAL(1, expectedBlobs.count(MakeCommitId(2, 7)));
+    }
+
+    Y_UNIT_TEST(ShouldReleaseTrimFreshLogBarrierInCaseOfWriteBlobError)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        ui64 trimFreshLogToCommitId = 0llu;
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            trimFreshLogToCommitId = stats.GetTrimFreshLogToCommitId();
+        }
+
+        bool shouldRejectWriteBlob = false;
+        auto eventFilter =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+        {
+            switch (ev->GetTypeRewrite()) {
+                case TEvPartitionPrivate::EvWriteBlobResponse: {
+                    if (shouldRejectWriteBlob) {
+                        auto* msg = ev->Get<
+                            TEvPartitionPrivate::TEvWriteBlobResponse>();
+                        auto& e = const_cast<NProto::TError&>(msg->Error);
+                        e.SetCode(E_REJECTED);
+                    }
+                    break;
+                }
+                case TEvPartitionPrivate::EvWriteBlocksCompleted: {
+                    auto* msg =
+                        ev->Get<TEvPartitionPrivate::TEvWriteBlocksCompleted>();
+                    UNIT_ASSERT_EQUAL(shouldRejectWriteBlob, HasError(msg->GetError()));
+                    break;
+                }
+            }
+            return false;
+        };
+
+        runtime->SetEventFilter(eventFilter);
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(trimFreshLogToCommitId, stats.GetTrimFreshLogToCommitId());
+        }
+
+        partition.Flush();
+        trimFreshLogToCommitId += 4llu;
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(trimFreshLogToCommitId, stats.GetTrimFreshLogToCommitId());
+        }
+
+        shouldRejectWriteBlob = true;
+
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(4, 1), 4);
+        {
+            auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(5, 1), 5);
+        {
+            auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+
+        trimFreshLogToCommitId += 2llu;
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(trimFreshLogToCommitId, stats.GetTrimFreshLogToCommitId());
+        }
+
+        shouldRejectWriteBlob = false;
+
+        partition.Flush();
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(trimFreshLogToCommitId, stats.GetTrimFreshLogToCommitId());
+        }
+
+        partition.WriteBlocks(6, 6);
+        partition.Flush();
+        trimFreshLogToCommitId += 2llu;
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(trimFreshLogToCommitId, stats.GetTrimFreshLogToCommitId());
+        }
     }
 }
 

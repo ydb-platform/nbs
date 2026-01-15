@@ -1,6 +1,9 @@
 LIBRARY()
 
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
+
 SRCS(
+    context.cpp
     service.cpp
 )
 

@@ -12,6 +12,8 @@
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/unimplemented.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
+
 #include <contrib/ydb/core/base/appdata.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -44,20 +46,20 @@ TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         NRdma::IClientPtr rdmaClient,
+        TActorId volumeActorId,
         TActorId statActorId)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PartConfig(std::move(partConfig))
     , RdmaClient(std::move(rdmaClient))
+    , VolumeActorId(volumeActorId)
     , StatActorId(statActorId)
     , PartCounters(CreatePartitionDiskCounters(
           EPublishingPolicy::DiskRegistryBased,
           DiagnosticsConfig->GetHistogramCounterOptions()))
 {}
 
-TNonreplicatedPartitionRdmaActor::~TNonreplicatedPartitionRdmaActor()
-{
-}
+TNonreplicatedPartitionRdmaActor::~TNonreplicatedPartitionRdmaActor() = default;
 
 void TNonreplicatedPartitionRdmaActor::Bootstrap(const TActorContext& ctx)
 {
@@ -187,6 +189,20 @@ bool TNonreplicatedPartitionRdmaActor::InitRequests(
     }
 
     for (auto& r: *deviceRequests) {
+        if (PartConfig->GetOutdatedDeviceIds().contains(
+                r.Device.GetDeviceUUID()))
+        {
+            reply(
+                ctx,
+                requestInfo,
+                PartConfig->MakeError(
+                    E_REJECTED,
+                    TStringBuilder() << "Device " << r.Device.GetDeviceUUID()
+                                     << " is lagging behind on data. All IO "
+                                        "operations are prohibited."));
+            return false;
+        }
+
         auto& ep = AgentId2Endpoint[r.Device.GetAgentId()];
         if (!ep) {
             auto* f = AgentId2EndpointFuture.FindPtr(r.Device.GetAgentId());
@@ -291,7 +307,7 @@ TNonreplicatedPartitionRdmaActor::SendReadRequests(
     const NActors::TActorContext& ctx,
     TCallContextPtr callContext,
     const NProto::THeaders& headers,
-    NRdma::IClientHandlerPtr handler,
+    IClientHandlerWithTrackingPtr handler,
     const TVector<TDeviceRequest>& deviceRequests)
 {
     struct TDeviceRequestInfo
@@ -305,15 +321,17 @@ TNonreplicatedPartitionRdmaActor::SendReadRequests(
     TRequestContext sentRequestCtx;
 
     ui64 startBlockIndexOffset = 0;
-    for (auto& r: deviceRequests) {
+    for (size_t i = 0; i < deviceRequests.size(); ++i) {
+        const auto& r = deviceRequests[i];
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
         Y_ABORT_UNLESS(ep);
-        auto dr = std::make_unique<TDeviceReadRequestContext>();
+        auto dr = std::make_unique<TDeviceReadRequestContext>(
+            r.DeviceIdx,
+            startBlockIndexOffset,
+            r.DeviceBlockRange.Size(),
+            i);
 
         ui64 sz = r.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
-        dr->StartIndexOffset = startBlockIndexOffset;
-        dr->BlockCount = r.DeviceBlockRange.Size();
-        dr->DeviceIdx = r.DeviceIdx;
         startBlockIndexOffset += r.DeviceBlockRange.Size();
 
         sentRequestCtx.emplace_back(r.DeviceIdx);
@@ -352,12 +370,18 @@ TNonreplicatedPartitionRdmaActor::SendReadRequests(
             flags,
             deviceRequest);
 
-        requests.push_back({std::move(ep), std::move(req)});
+        requests.push_back(
+            {.Endpoint = std::move(ep), .ClientRequest = std::move(req)});
     }
 
     for (size_t i = 0; i < requests.size(); ++i) {
         auto& request = requests[i];
-        sentRequestCtx[i].SentRequestId = request.Endpoint->SendRequest(
+
+        handler->OnRequestStarted(
+            sentRequestCtx[i].DeviceIdx,
+            TDeviceOperationTracker::ERequestType::Read);
+
+        sentRequestCtx[i].ClientRequestId = request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             callContext);
     }
@@ -473,7 +497,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksCompleted(
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;
-    RequestsInProgress.RemoveRequest(requestId);
+    RequestsInProgress.RemoveReadRequest(requestId);
 
     if (RequestsInProgress.Empty() && Poisoner) {
         ReplyAndDie(ctx);
@@ -503,7 +527,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksCompleted(
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;
-    RequestsInProgress.RemoveRequest(requestId);
+    RequestsInProgress.RemoveWriteRequest(requestId);
     DrainActorCompanion.ProcessDrainRequests(ctx);
 
     if (RequestsInProgress.Empty() && Poisoner) {
@@ -541,7 +565,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWriteBlocksCompleted(
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;
-    RequestsInProgress.RemoveRequest(requestId);
+    RequestsInProgress.RemoveWriteRequest(requestId);
     DrainActorCompanion.ProcessDrainRequests(ctx);
 
     if (RequestsInProgress.Empty() && Poisoner) {
@@ -569,7 +593,7 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocksCompleted(
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;
-    RequestsInProgress.RemoveRequest(requestId);
+    RequestsInProgress.RemoveWriteRequest(requestId);
     DrainActorCompanion.ProcessDrainRequests(ctx);
 
     if (RequestsInProgress.Empty() && Poisoner) {
@@ -599,7 +623,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocksCompleted(
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;
-    RequestsInProgress.RemoveRequest(requestId);
+    RequestsInProgress.RemoveReadRequest(requestId);
 
     if (RequestsInProgress.Empty() && Poisoner) {
         ReplyAndDie(ctx);
@@ -706,30 +730,37 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsUnavailable(
 
     // Cancel all write/zero requests that intersects with the rows of the lagging
     // agent. And read requests to the lagging replica.
-    for (const auto& [_, requestInfo]: RequestsInProgress.AllRequests()) {
-        const auto& requestCtx = requestInfo.Value;
-        bool needToCancel = AnyOf(
-            requestCtx,
-            [&](const auto& ctx)
-            {
-                return laggingRows.contains(ctx.DeviceIndex) &&
-                       (requestInfo.IsWrite ||
-                        devices[ctx.DeviceIndex].GetAgentId() ==
-                            laggingAgentId);
-            });
+    RequestsInProgress.EnumerateRequests(
+        [&](ui64 key,
+            bool isWrite,
+            TBlockRange64 range,
+            const TRequestContext& requestCtx)
+        {
+            Y_UNUSED(key);
+            Y_UNUSED(range);
 
-        if (!needToCancel) {
-            continue;
-        }
+            bool needToCancel = AnyOf(
+                requestCtx,
+                [&](const TRunningRdmaRequestInfo& item)
+                {
+                    return laggingRows.contains(item.DeviceIdx) &&
+                           (isWrite || devices[item.DeviceIdx].GetAgentId() ==
+                                           laggingAgentId);
+                });
 
-        for (auto [deviceIdx, rdmaRequestId]: requestCtx) {
-            Y_ABORT_UNLESS(deviceIdx < static_cast<ui64>(devices.size()));
-            auto agentId = devices[deviceIdx].GetAgentId();
+            if (!needToCancel) {
+                return;
+            }
 
-            auto& endpoint = AgentId2Endpoint[agentId];
-            endpoint->CancelRequest(rdmaRequestId);
-        }
-    }
+            for (const TRunningRdmaRequestInfo& item: requestCtx) {
+                Y_ABORT_UNLESS(
+                    item.DeviceIdx < static_cast<ui64>(devices.size()));
+                const auto& agentId = devices[item.DeviceIdx].GetAgentId();
+
+                auto& endpoint = AgentId2Endpoint[agentId];
+                endpoint->CancelRequest(item.ClientRequestId);
+            }
+        });
 }
 
 void TNonreplicatedPartitionRdmaActor::HandleAgentIsBackOnline(

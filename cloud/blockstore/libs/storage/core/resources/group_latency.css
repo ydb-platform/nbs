@@ -1,0 +1,53 @@
+#latency-table-Read th,
+#latency-table-Write th,
+#latency-table-Patch th {
+    position: relative;
+    width: 30px;
+    height: 70px;
+    padding: 0 5px;
+    vertical-align: bottom;
+    border: 1px solid #ccc;
+    white-space: nowrap;
+    overflow: visible;
+    text-align: center;
+}
+
+#latency-table-Read th>div,
+#latency-table-Write th>div,
+#latency-table-Patch th>div {
+    position: absolute;
+    bottom: 35px;
+    left: 60%;
+    transform: translateX(-50%) rotate(-90deg);
+    transform-origin: bottom center;
+    white-space: nowrap;
+    padding: 0 5px;
+    font-size: 12px;
+    max-width: 160px;
+    word-wrap: break-word;
+}
+
+#latency-table-Read,
+#latency-table-Write,
+#latency-table-Patch {
+    border-collapse: collapse;
+    margin-bottom: 20px;
+    width: max-content;
+}
+
+#latency-table-Read td,
+#latency-table-Write td,
+#latency-table-Patch td {
+    border: 1px solid #ccc;
+    padding: 5px;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+#latency-table-Read td:first-child,
+#latency-table-Write td:first-child,
+#latency-table-Patch td:first-child {
+    text-align: left;
+    font-weight: bold;
+}

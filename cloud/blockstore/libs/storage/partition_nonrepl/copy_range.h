@@ -62,18 +62,27 @@ private:
     void ReadBlocks(const NActors::TActorContext& ctx);
     void WriteBlocks(
         const NActors::TActorContext& ctx,
-        NProto::TIOVector blocks);
+        NProto::TReadBlocksResponse readResponse);
     void ZeroBlocks(const NActors::TActorContext& ctx);
     void Done(const NActors::TActorContext& ctx, NProto::TError error);
 
 private:
     STFUNC(StateWork);
 
-    void HandleVolumeRequestId(
+    void HandleVolumeRequestIdResponse(
         const TEvVolumePrivate::TEvTakeVolumeRequestIdResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandleVolumeRequestIdUndelivery(
+        const TEvVolumePrivate::TEvTakeVolumeRequestIdRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleLockAndDrainRangeResponse(
         const NPartition::TEvPartition::TEvLockAndDrainRangeResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleLockAndDrainRangeUndelivery(
+        const NPartition::TEvPartition::TEvLockAndDrainRangeRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleReadResponse(

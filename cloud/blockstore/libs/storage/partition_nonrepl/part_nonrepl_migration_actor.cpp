@@ -25,6 +25,7 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
         TNonreplicatedPartitionConfigPtr srcConfig,
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
         NRdma::IClientPtr rdmaClient,
+        NActors::TActorId volumeActorId,
         NActors::TActorId statActorId,
         NActors::TActorId migrationSrcActorId)
     : TNonreplicatedPartitionMigrationCommonActor(
@@ -40,7 +41,9 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
           std::move(rwClientId),
           statActorId,
           config->GetMaxMigrationIoDepth(),
-          srcConfig->GetParentActorId())
+          srcConfig->GetParentActorId(),
+          EDirectCopyPolicy::CanUse)
+    , VolumeActorId(volumeActorId)
     , SrcConfig(std::move(srcConfig))
     , Migrations(std::move(migrations))
     , RdmaClient(std::move(rdmaClient))
@@ -53,14 +56,18 @@ void TNonreplicatedPartitionMigrationActor::OnBootstrap(
     auto srcActorId = CreateSrcActor(ctx);
     InitWork(
         ctx,
-        MigrationSrcActorId ? MigrationSrcActorId : srcActorId,
-        srcActorId,
-        CreateDstActor(ctx),
-        true,   // takeOwnershipOverActors
-        std::make_unique<TMigrationTimeoutCalculator>(
-            GetConfig()->GetMaxMigrationBandwidth(),
-            GetConfig()->GetExpectedDiskAgentSize(),
-            SrcConfig));
+        TInitParams{
+            .MigrationSrcActorId =
+                MigrationSrcActorId ? MigrationSrcActorId : srcActorId,
+            .SrcActorId = srcActorId,
+            .DstActorId = CreateDstActor(ctx),
+            .TakeOwnershipOverSrcActor = true,
+            .TakeOwnershipOverDstActor = true,
+            .SendWritesToSrc = true,
+            .TimeoutCalculator = std::make_unique<TMigrationTimeoutCalculator>(
+                GetConfig()->GetMaxMigrationBandwidth(),
+                GetConfig()->GetExpectedDiskAgentSize(),
+                SrcConfig)});
 
     PrepareForMigration(ctx);
 }
@@ -191,6 +198,7 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateSrcActor(
             GetConfig(),
             GetDiagnosticsConfig(),
             SrcConfig->Fork(std::move(devices)),
+            VolumeActorId,
             SelfId(),
             RdmaClient));
 }
@@ -224,18 +232,13 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
             const auto& target = migration->GetTargetDevice();
 
             if (device.GetBlocksCount() != target.GetBlocksCount()) {
-                LOG_ERROR(
-                    ctx,
-                    TBlockStoreComponents::PARTITION,
-                    "[%s] source (%s) block count (%lu)"
-                    " != target (%s) block count (%lu)",
-                    SrcConfig->GetName().c_str(),
-                    device.GetDeviceUUID().c_str(),
-                    device.GetBlocksCount(),
-                    target.GetDeviceUUID().c_str(),
-                    target.GetBlocksCount());
-
-                ReportBadMigrationConfig();
+                ReportBadMigrationConfig(
+                    "source != target blocks count",
+                    {{"disk", SrcConfig->GetName()},
+                     {"source", device.GetDeviceUUID()},
+                     {"source_blocks_count", device.GetBlocksCount()},
+                     {"target", target.GetDeviceUUID()},
+                     {"target_blocks_count", target.GetBlocksCount()}});
                 return {};
             }
 
@@ -256,6 +259,7 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
             GetConfig(),
             GetDiagnosticsConfig(),
             SrcConfig->Fork(std::move(devices)),
+            VolumeActorId,
             SelfId(),
             RdmaClient));
 }
@@ -288,7 +292,9 @@ void TNonreplicatedPartitionMigrationActor::HandleFinishMigrationResponse(
             FormatError(error).c_str());
 
         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
-            ReportMigrationFailed();
+            ReportMigrationFailed(
+                "Finish migration failed",
+                {{"disk", SrcConfig->GetName()}});
             return;
         }
     }

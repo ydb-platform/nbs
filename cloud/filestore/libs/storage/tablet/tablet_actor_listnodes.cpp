@@ -76,7 +76,8 @@ void TIndexTabletActor::HandleListNodes(
         ctx,
         std::move(requestInfo),
         msg->Record,
-        maxBytes);
+        maxBytes,
+        Config->GetMaxBytesMultiplier());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -132,10 +133,11 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
     TABLET_VERIFY(args.Node);
 
     if (!PrechargeNodeRefs(
-        db,
-        args.NodeId,
-        args.Cookie,
-        args.BytesToPrecharge))
+            db,
+            args.NodeId,
+            args.Cookie,
+            Max<ui64>(),
+            args.BytesToPrecharge))
     {
         return false; // not ready
     }
@@ -223,6 +225,9 @@ void TIndexTabletActor::CompleteTx_ListNodes(
             1,
             requestBytes,
             ctx.Now() - args.RequestInfo->StartedTs);
+        Metrics.ListNodes.RequestedBytesPrecharge.fetch_add(
+            args.BytesToPrecharge,
+            std::memory_order_relaxed);
     }
 
     CompleteResponse<TEvService::TListNodesMethod>(

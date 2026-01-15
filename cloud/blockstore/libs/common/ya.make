@@ -4,10 +4,13 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
 
 SRCS(
     block_checksum.cpp
+    block_range_list.cpp
+    block_range_map.cpp
     block_range.cpp
     caching_allocator.cpp
     device_path.cpp
     iovector.cpp
+    request_checksum_helpers.cpp
     typeinfo.cpp
 )
 

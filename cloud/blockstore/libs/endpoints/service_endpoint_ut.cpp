@@ -317,6 +317,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
     Y_UNIT_TEST(ShouldTimeoutFrozenRequest)
     {
+        const auto requestTimeout = TDuration::Seconds(3);
+        const auto futureTimeout = TDuration::Seconds(4);
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
         TTempDir endpointsDir(dirPath);
@@ -328,14 +330,17 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             scheduler->Stop();
         };
 
-        auto startEndpointPromise = NewPromise<ISessionManager::TSessionOrError>();
+        auto startEndpointPromise =
+            NewPromise<ISessionManager::TSessionOrError>();
         auto stopEndpointPromise = NewPromise<NProto::TError>();
 
         auto sessionManager = std::make_shared<TTestSessionManager>();
-        sessionManager->CreateSessionHandler = [&] () {
+        sessionManager->CreateSessionHandler = [&]()
+        {
             return startEndpointPromise;
         };
-        sessionManager->RemoveSessionHandler = [&] () {
+        sessionManager->RemoveSessionHandler = [&]()
+        {
             return stopEndpointPromise;
         };
 
@@ -373,7 +378,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         {
             auto request = std::make_shared<NProto::TStartEndpointRequest>();
-            request->MutableHeaders()->SetRequestTimeout(100);
+            request->MutableHeaders()->SetRequestTimeout(
+                requestTimeout.MilliSeconds());
             request->SetDiskId(diskId);
             request->SetUnixSocketPath(socketPath);
             request->SetClientId("testClientId");
@@ -382,7 +388,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
                 MakeIntrusive<TCallContext>(),
                 request);
 
-            auto response = future.GetValue(TDuration::Seconds(3));
+            auto response = future.GetValue(futureTimeout);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_TIMEOUT,
                 response.GetError().GetCode(),
@@ -391,14 +397,15 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         {
             auto request = std::make_shared<NProto::TStopEndpointRequest>();
-            request->MutableHeaders()->SetRequestTimeout(100);
+            request->MutableHeaders()->SetRequestTimeout(
+                requestTimeout.MilliSeconds());
             request->SetUnixSocketPath(socketPath);
 
             auto future = endpointService->StopEndpoint(
                 MakeIntrusive<TCallContext>(),
                 request);
 
-            auto response = future.GetValue(TDuration::Seconds(3));
+            auto response = future.GetValue(futureTimeout);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_REJECTED,
                 response.GetError().GetCode(),
@@ -410,7 +417,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
                 MakeIntrusive<TCallContext>(),
                 request);
 
-            auto response2 = future2.GetValue(TDuration::Seconds(3));
+            auto response2 = future2.GetValue(futureTimeout);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_TIMEOUT,
                 response2.GetError().GetCode(),
@@ -418,7 +425,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         }
 
         {
-            startEndpointPromise = NewPromise<ISessionManager::TSessionOrError>();
+            startEndpointPromise =
+                NewPromise<ISessionManager::TSessionOrError>();
 
             NProto::TStartEndpointRequest startRequest;
             startRequest.SetDiskId(diskId);
@@ -435,14 +443,15 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             UNIT_ASSERT_C(!HasError(error), error);
 
             auto request = std::make_shared<NProto::TKickEndpointRequest>();
-            request->MutableHeaders()->SetRequestTimeout(100);
+            request->MutableHeaders()->SetRequestTimeout(
+                requestTimeout.MilliSeconds());
             request->SetKeyringId(keyringId);
 
             auto future = endpointService->KickEndpoint(
                 MakeIntrusive<TCallContext>(),
                 request);
 
-            auto response = future.GetValue(TDuration::Seconds(3));
+            auto response = future.GetValue(futureTimeout);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_REJECTED,
                 response.GetError().GetCode(),
@@ -454,7 +463,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
                 MakeIntrusive<TCallContext>(),
                 request);
 
-            auto response2 = future2.GetValue(TDuration::Seconds(3));
+            auto response2 = future2.GetValue(futureTimeout);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_TIMEOUT,
                 response2.GetError().GetCode(),
@@ -462,12 +471,13 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
             startEndpointPromise.SetValue(NProto::TError{});
 
-            request->MutableHeaders()->SetRequestTimeout(3000);
+            request->MutableHeaders()->SetRequestTimeout(
+                requestTimeout.MilliSeconds());
             auto future3 = endpointService->KickEndpoint(
                 MakeIntrusive<TCallContext>(),
                 request);
 
-            auto response3 = future3.GetValue(TDuration::Seconds(3));
+            auto response3 = future3.GetValue(futureTimeout);
             UNIT_ASSERT_C(!HasError(response3), response3);
         }
 

@@ -220,6 +220,7 @@ private:
             options.BlocksCount = BlocksCount;
             options.VhostQueuesCount = VhostQueuesCount;
             options.UnalignedRequestsDisabled = false;
+            options.OptimalIoSize = 4_MB;
 
             auto future = VhostServer->StartEndpoint(
                 SocketPath.GetPath(),
@@ -230,6 +231,7 @@ private:
         }
         UNIT_ASSERT(firstQueue->GetDevices().size() == 1);
         VhostDevice = firstQueue->GetDevices().at(0);
+        UNIT_ASSERT_VALUES_EQUAL(4_MB, VhostDevice->GetOptimalIoSize());
     }
 
     void UninitVhostDeviceEnvironment()

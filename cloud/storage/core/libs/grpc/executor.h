@@ -128,7 +128,7 @@ private:
     {
         ::NCloud::SetCurrentThreadName(Name);
 
-        auto tagName = TStringBuilder() << "NFS_THREAD_" << Name;
+        auto tagName = TStringBuilder() << "STORAGE_THREAD_" << Name;
         NProfiling::TMemoryTagScope tagScope(tagName.c_str());
 
         void* tag = nullptr;

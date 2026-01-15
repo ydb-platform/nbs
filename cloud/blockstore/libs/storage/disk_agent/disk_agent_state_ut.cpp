@@ -176,7 +176,8 @@ auto CreateDiskAgentStateSpdk(TDiskAgentConfigPtr config)
         nullptr,   // nvmeManager
         nullptr,   // rdmaTargetConfig
         TOldRequestCounters(),
-        nullptr   // multiAgentWriteHandler
+        nullptr,   // multiAgentWriteHandler
+        nullptr    // backgroundThreadPool
     );
 }
 
@@ -185,6 +186,7 @@ auto CreateDiskAgentStateSpdk(TDiskAgentConfigPtr config)
 struct TTestStorageState: TAtomicRefCount<TTestStorageState>
 {
     bool DropRequests = false;
+    NProto::TError Error;
 };
 
 using TTestStorageStatePtr = TIntrusivePtr<TTestStorageState>;
@@ -209,7 +211,10 @@ struct TTestStorage: IStorage
             return NewPromise<NProto::TReadBlocksLocalResponse>();
         }
 
-        return MakeFuture<NProto::TReadBlocksLocalResponse>();
+        NProto::TReadBlocksLocalResponse response;
+        *response.MutableError() = StorageState->Error;
+
+        return MakeFuture(std::move(response));
     }
 
     TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
@@ -223,7 +228,10 @@ struct TTestStorage: IStorage
             return NewPromise<NProto::TWriteBlocksLocalResponse>();
         }
 
-        return MakeFuture<NProto::TWriteBlocksLocalResponse>();
+        NProto::TWriteBlocksLocalResponse response;
+        *response.MutableError() = StorageState->Error;
+
+        return MakeFuture(std::move(response));
     }
 
     TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
@@ -237,7 +245,10 @@ struct TTestStorage: IStorage
             return NewPromise<NProto::TZeroBlocksResponse>();
         }
 
-        return MakeFuture<NProto::TZeroBlocksResponse>();
+        NProto::TZeroBlocksResponse response;
+        *response.MutableError() = StorageState->Error;
+
+        return MakeFuture(std::move(response));
     }
 
     TFuture<NProto::TError> EraseDevice(
@@ -369,7 +380,8 @@ struct TFiles
             NvmeManager,
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
-            nullptr   // multiAgentWriteHandler
+            nullptr,   // multiAgentWriteHandler
+            nullptr    // backgroundThreadPool
         );
     }
 };
@@ -545,7 +557,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             NvmeManager,
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
-            nullptr   // multiAgentWriteHandler
+            nullptr,   // multiAgentWriteHandler
+            nullptr    // backgroundThreadPool
         );
 
         auto future = state.Initialize();
@@ -760,7 +773,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                     NvmeManager,
                     nullptr,   // rdmaTargetConfig
                     TOldRequestCounters(),
-                    nullptr   // multiAgentWriteHandler
+                    nullptr,   // multiAgentWriteHandler
+                    nullptr    // backgroundThreadPool
                 );
 
                 auto future = state.Initialize();
@@ -830,7 +844,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             std::make_shared<TTestNvmeManager>(),
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
-            nullptr   // multiAgentWriteHandler
+            nullptr,   // multiAgentWriteHandler
+            nullptr    // backgroundThreadPool
         );
 
         auto future = state.Initialize();
@@ -1031,7 +1046,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             UNIT_ASSERT(false);                                                \
         } catch (const TServiceError& e) {                                     \
             UNIT_ASSERT_VALUES_EQUAL_C(                                        \
-                E_BS_INVALID_SESSION,                                          \
+                E_BS_MOUNT_CONFLICT,                                           \
                 e.GetCode(),                                                   \
                 e.GetMessage()                                                 \
             );                                                                 \
@@ -1253,7 +1268,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             NvmeManager,
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
-            nullptr   // multiAgentWriteHandler
+            nullptr,   // multiAgentWriteHandler
+            nullptr    // backgroundThreadPool
         );
 
         auto future = state.Initialize();
@@ -1414,7 +1430,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             NvmeManager,
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
-            nullptr   // multiAgentWriteHandler
+            nullptr,   // multiAgentWriteHandler
+            nullptr    // backgroundThreadPool
         );
 
         auto future = state->Initialize();
@@ -1497,7 +1514,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             NvmeManager,
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
-            nullptr   // multiAgentWriteHandler
+            nullptr,   // multiAgentWriteHandler
+            nullptr    // backgroundThreadPool
         );
 
         auto future = state->Initialize();
@@ -1580,7 +1598,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 NvmeManager,
                 nullptr,   // rdmaTargetConfig
                 TOldRequestCounters(),
-                nullptr   // multiAgentWriteHandler
+                nullptr,   // multiAgentWriteHandler
+                nullptr    // backgroundThreadPool
             );
         };
 
@@ -1663,7 +1682,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 CreateNullConfig({
                     .AcquireRequired = true,
                     .DiscoveryConfig = discovery,
-                    .CachedSessionsPath = CachedSessionsPath
+                    .CachedConfigPath = CachedConfigPath,
+                    .CachedSessionsPath = CachedSessionsPath,
                 })
             );
 
@@ -1725,12 +1745,17 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             "vol1",
             2000);  // VolumeGeneration
 
+        UNIT_ASSERT_VALUES_EQUAL(3, state->GetSessions().size());
+
         dumpSessionsToFile();
 
         // restart
         state = createState();
 
         UNIT_ASSERT_EQUAL(0, *restoreError);
+
+        // [writer-1, reader-1, reader-2]
+        UNIT_ASSERT_VALUES_EQUAL(3, state->GetSessions().size());
 
         auto write = [&] (auto clientId, auto uuid) {
             NProto::TWriteDeviceBlocksRequest request;
@@ -1827,6 +1852,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             "vol0",
             1001);  // VolumeGeneration
 
+        // [reader-1, reader-2]
+        UNIT_ASSERT_VALUES_EQUAL(2, state->GetSessions().size());
+
         dumpSessionsToFile();
 
         // remove reader-2's file
@@ -1835,8 +1863,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         // restart
         state = createState();
 
-        // reader-2 is broken
-        UNIT_ASSERT_EQUAL(1, *restoreError);
+        // [reader-1, reader-2]
+        UNIT_ASSERT_VALUES_EQUAL(2, state->GetSessions().size());
+
+        // reader-2 is still works
+        UNIT_ASSERT_EQUAL(0, *restoreError);
 
         {
             UNIT_ASSERT_EXCEPTION_SATISFIES(
@@ -1850,15 +1881,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         {
             UNIT_ASSERT_EXCEPTION_SATISFIES(
                 write("writer-1", devices[1]),
-                TServiceError,
-                [] (auto& e) {
-                    return e.GetCode() == E_BS_INVALID_SESSION;
-                });
-        }
-
-        {
-            UNIT_ASSERT_EXCEPTION_SATISFIES(
-                read("reader-2", devices[2]),
                 TServiceError,
                 [] (auto& e) {
                     return e.GetCode() == E_BS_INVALID_SESSION;
@@ -1883,6 +1905,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
         {
             auto error = read("reader-1", devices[1]).GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
+        }
+
+        {
+            auto error = read("reader-2", devices[2]).GetError();
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
         }
     }
@@ -2115,6 +2142,88 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             UNIT_ASSERT_VALUES_EQUAL("uuid-1", devices[0].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL("uuid-2", devices[1].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL("uuid-3", devices[2].GetDeviceUUID());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldConvertSystemIoErrorsToE_IO, TFiles)
+    {
+        auto config = CreateNullConfig({ .Files = Nvme3s });
+
+        TTestStorageStatePtr storageState = MakeIntrusive<TTestStorageState>();
+
+        TDiskAgentState state(
+            CreateStorageConfig(),
+            config,
+            nullptr,   // spdk
+            CreateTestAllocator(),
+            std::make_shared<TTestStorageProvider>(storageState),
+            CreateProfileLogStub(),
+            CreateBlockDigestGeneratorStub(),
+            CreateLoggingService("console"),
+            nullptr,   // rdmaServer
+            NvmeManager,
+            nullptr,   // rdmaTargetConfig
+            TOldRequestCounters(),
+            nullptr,   // multiAgentWriteHandler
+            nullptr    // backgroundThreadPool
+        );
+
+        auto future = state.Initialize();
+        const auto& r = future.GetValue(WaitTimeout);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, r.Errors.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, r.Configs.size());
+
+        auto stats = state.CollectStats().GetValue(WaitTimeout);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetInitErrorsCount());
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.GetDeviceStats().size());
+
+        NProto::TReadDeviceBlocksRequest readRequest;
+        readRequest.SetDeviceUUID("uuid-1");
+        readRequest.SetStartIndex(1);
+        readRequest.SetBlockSize(4_KB);
+        readRequest.SetBlocksCount(10);
+
+        NProto::TWriteDeviceBlocksRequest writeRequest;
+        writeRequest.SetDeviceUUID("uuid-1");
+        writeRequest.SetStartIndex(1);
+        writeRequest.SetBlockSize(4_KB);
+        ResizeIOVector(*writeRequest.MutableBlocks(), 10, 4_KB);
+
+        NProto::TZeroDeviceBlocksRequest zeroRequest;
+        zeroRequest.SetDeviceUUID("uuid-1");
+        zeroRequest.SetStartIndex(1);
+        zeroRequest.SetBlockSize(4_KB);
+        zeroRequest.SetBlocksCount(10);
+
+        for (int ec: {EIO, EREMOTEIO}) {
+            storageState->Error = MakeError(MAKE_SYSTEM_ERROR(ec), "Error");
+
+            {
+                auto future = state.Read(Now(), readRequest);
+                const auto& response = future.GetValueSync();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_IO,
+                    response.GetError().GetCode(),
+                    FormatError(response.GetError()));
+            }
+            {
+                auto future = state.Write(Now(), writeRequest);
+                const auto& response = future.GetValueSync();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_IO,
+                    response.GetError().GetCode(),
+                    FormatError(response.GetError()));
+            }
+            {
+                auto future = state.WriteZeroes(Now(), zeroRequest);
+                const auto& response = future.GetValueSync();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_IO,
+                    response.GetError().GetCode(),
+                    FormatError(response.GetError()));
+            }
         }
     }
 }

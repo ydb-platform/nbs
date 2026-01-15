@@ -1,6 +1,7 @@
 #include "external_vhost_server.h"
 
 #include <cloud/blockstore/libs/client/session_test.h>
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/libs/server/config.h>
@@ -228,7 +229,7 @@ struct TFixture
         volume.SetBlocksCount(10'000);
         volume.SetBlockSize(4_KB);
         volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
-        volume.SetIsFastPathEnabled(true);
+        volume.MutableTags()->insert({TString(UseFastPathTagName), TString()});
 
         {
             auto* device = volume.AddDevices();

@@ -37,7 +37,8 @@ public:
         const TString& seed,
         ui16 maxExtensionLength);
     bool Advance();
-    TString Transform(const TString& str, const ui64 nodeId);
+    TString Transform(const TString& str, const ui64 nodeId) const;
+    void MaskRequest(NProto::TProfileLogRequestInfo& request) const;
     void MaskSensitiveData(const TString& in, const TString& out);
 };
 

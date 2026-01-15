@@ -216,6 +216,7 @@ struct TTestEnv
             Replicas,
             nullptr,   // rdmaClient
             VolumeActorId,
+            VolumeActorId,
             TActorId()   // resyncActorId
         );
 
@@ -527,6 +528,19 @@ struct TTestEnv
         return TTestActorRuntime::DefaultObserverFunc(event);
     }
 
+    std::unique_ptr<TEvService::TEvWriteBlocksLocalResponse>
+    WriteBlocksLocalWithInvalidSglist(TActorId actorId, TBlockRange64 range)
+    {
+        TPartitionClient client(Runtime, MirrorPartActorId);
+        const TString data(DefaultBlockSize, '0');
+        auto request = client.CreateWriteBlocksLocalRequest(range, data);
+        request->Record.Sglist.Close();
+        client.SendRequest(actorId, std::move(request));
+        auto response =
+            client.RecvResponse<TEvService::TEvWriteBlocksLocalResponse>();
+        return response;
+    }
+
 private:
     std::unique_ptr<TEvService::TEvWriteBlocksResponse>
     WriteBlocks(TActorId actorId, TBlockRange64 range, char content)
@@ -783,6 +797,28 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
         ShouldNotWriteToLaggingDevices(true);
     }
 
+    Y_UNIT_TEST(ShouldCancelLocalRequestsWithInvalidSglist)
+    {
+        TTestBasicRuntime runtime(AgentCount);
+        TTestEnv env(runtime, /*localRequests=*/true);
+        TPartitionClient client(runtime, env.MirrorPartActorId);
+
+        const auto fullDiskRange = TBlockRange64::WithLength(
+            0,
+            DeviceBlockCount * DeviceCountPerReplica);
+        env.WriteBlocksToPartition(fullDiskRange, 'A');
+
+        // Second row in the third column is lagging.
+        env.AddLaggingAgent(runtime.GetNodeId(7), 2);
+
+        const auto firstAndSecondDevices =
+            TBlockRange64::WithLength(DeviceBlockCount - 1, 2);
+        auto response = env.WriteBlocksLocalWithInvalidSglist(
+            env.GetControllerActorId(2),
+            firstAndSecondDevices);
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, response->GetError().GetCode());
+    }
+
     Y_UNIT_TEST(ShouldHandleChecksumBlocks)
     {
         TTestBasicRuntime runtime(AgentCount);
@@ -1026,7 +1062,6 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
 
         bool seenWaitForInFlightWritesRequest = false;
         bool seenMigrationReads = false;
-        // bool seenMigrationWrites = false;
         TVector<TRequestInfoPtr> writeDeviceBlocksRequestInfos;
 
         bool interceptWrites = true;
@@ -1056,7 +1091,9 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
                         return true;
                     }
                     case TEvService::EvReadBlocksRequest: {
-                        if (event->Recipient != env.ReplicaActors[0]) {
+                        if (event->Recipient != env.ReplicaActors[1] &&
+                            event->Recipient != env.ReplicaActors[2])
+                        {
                             break;
                         }
                         auto* msg =
@@ -1086,13 +1123,12 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
              {
                  return seenWaitForInFlightWritesRequest;
              }});
-        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
         UNIT_ASSERT(!seenMigrationReads);
 
         for (const auto& requestInfo: writeDeviceBlocksRequestInfos) {
             auto response =
                 std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksResponse>();
-            runtime.Send(
+            runtime.SendAsync(
                 new NActors::IEventHandle(
                     requestInfo->Sender,
                     TActorId(),
@@ -1103,6 +1139,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
         }
         writeDeviceBlocksRequestInfos.clear();
         env.WaitForMigrationFinishEvent();
+        UNIT_ASSERT(seenMigrationReads);
     }
 
     Y_UNIT_TEST(ShouldDrainBeforeMigration)

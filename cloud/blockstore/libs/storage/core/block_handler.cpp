@@ -1,6 +1,7 @@
 #include "block_handler.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 
 #include <util/generic/bitmap.h>
 #include <util/generic/vector.h>
@@ -80,6 +81,7 @@ class TReadBlocksHandler final
 private:
     const TBlockRange64 ReadRange;
     const ui32 BlockSize;
+    const bool EnableDataIntegrityValidation;
 
     NProto::TIOVector Blocks;
     TGuardedSgList SgList;
@@ -87,9 +89,13 @@ private:
     TDynBitMap UnencryptedBlockMask;
 
 public:
-    TReadBlocksHandler(const TBlockRange64& readRange, ui32 blockSize)
+    TReadBlocksHandler(
+        const TBlockRange64& readRange,
+        ui32 blockSize,
+        bool enableDataIntegrityValidation)
         : ReadRange(readRange)
         , BlockSize(blockSize)
+        , EnableDataIntegrityValidation(enableDataIntegrityValidation)
         , BlockMarks(ReadRange.Size(), false)
     {
         UnencryptedBlockMask.Reserve(ReadRange.Size());
@@ -153,12 +159,20 @@ public:
 
     void GetResponse(NProto::TReadBlocksResponse& response) override
     {
+        bool allZeroes = true;
         for (size_t i = 0; i < BlockMarks.size(); ++i) {
+            auto& block = *Blocks.MutableBuffers(i);
             if (!BlockMarks[i]) {
-                auto& block = *Blocks.MutableBuffers(i);
                 block.clear();
                 SetBitMapValue(UnencryptedBlockMask, i, true);
+            } else {
+                allZeroes =
+                    allZeroes && IsAllZeroes(block.data(), block.size());
             }
+        }
+
+        if (EnableDataIntegrityValidation) {
+            *response.MutableChecksum() = CalculateChecksum(Blocks, BlockSize);
         }
 
         // Wait for all TSgList users are done.
@@ -168,6 +182,8 @@ public:
         auto stringBuf = ConvertBitMapToStringBuf(UnencryptedBlockMask);
         auto& blockMask = *response.MutableUnencryptedBlockMask();
         blockMask.assign(stringBuf);
+
+        response.SetAllZeroes(allZeroes);
     }
 
     TGuardedSgList GetLocalResponse(
@@ -242,6 +258,7 @@ class TReadBlocksLocalHandler final
 private:
     const TBlockRange64 ReadRange;
     const ui32 BlockSize;
+    const bool EnableDataIntegrityValidation;
 
     TGuardedSgList GuardedSgList;
     TVector<bool> BlockMarks;
@@ -251,9 +268,11 @@ public:
     TReadBlocksLocalHandler(
             const TBlockRange64& readRange,
             TGuardedSgList guardedSgList,
-            ui32 blockSize)
+            ui32 blockSize,
+            bool enableDataIntegrityValidation)
         : ReadRange(readRange)
         , BlockSize(blockSize)
+        , EnableDataIntegrityValidation(enableDataIntegrityValidation)
         , GuardedSgList(std::move(guardedSgList))
         , BlockMarks(ReadRange.Size(), false)
     {
@@ -336,12 +355,21 @@ public:
             const auto& sglist = guard.Get();
             Y_ABORT_UNLESS(sglist.size() == BlockMarks.size());
 
+            bool allZeroes = true;
             for (size_t i = 0; i < BlockMarks.size(); ++i) {
                 if (!BlockMarks[i]) {
                     auto* data = const_cast<char*>(sglist[i].Data());
                     memset(data, 0, BlockSize);
                     SetBitMapValue(UnencryptedBlockMask, i, true);
+                } else {
+                    allZeroes = allZeroes && IsAllZeroes(sglist[i]);
                 }
+            }
+
+            response.SetAllZeroes(allZeroes);
+
+            if (EnableDataIntegrityValidation) {
+                *response.MutableChecksum() = CalculateChecksum(sglist);
             }
         }
 
@@ -429,20 +457,26 @@ IWriteBlocksHandlerPtr CreateWriteBlocksHandler(
 
 IReadBlocksHandlerPtr CreateReadBlocksHandler(
     const TBlockRange64& readRange,
-    ui32 blockSize)
+    ui32 blockSize,
+    bool enableDataIntegrityValidation)
 {
-    return std::make_shared<TReadBlocksHandler>(readRange, blockSize);
+    return std::make_shared<TReadBlocksHandler>(
+        readRange,
+        blockSize,
+        enableDataIntegrityValidation);
 }
 
 IReadBlocksHandlerPtr CreateReadBlocksHandler(
     const TBlockRange64& readRange,
     const TGuardedSgList& sglist,
-    ui32 blockSize)
+    ui32 blockSize,
+    bool enableDataIntegrityValidation)
 {
     return std::make_shared<TReadBlocksLocalHandler>(
         readRange,
         sglist,
-        blockSize);
+        blockSize,
+        enableDataIntegrityValidation);
 }
 
 IWriteBlocksHandlerPtr CreateMixedWriteBlocksHandler(

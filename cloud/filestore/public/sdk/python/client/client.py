@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 import cloud.filestore.public.sdk.python.protos as protos
 
@@ -631,6 +631,8 @@ class Client(object):
         offset: int,
         length: int,
         node_id: Optional[int] = None,
+        io_vecs: Optional[List[Tuple[int, int]]] = None,
+        region_id: Optional[int] = None,
         idempotence_id: Optional[str] = None,
         timestamp: Optional[int] = None,
         trace_id: Optional[str] = None,
@@ -645,6 +647,13 @@ class Client(object):
         )
         if node_id is not None:
             request.NodeId = node_id
+        if io_vecs is not None:
+            request.Iovecs.extend([
+                protos.TIovec(Base=base, Length=len)
+                for base, len in io_vecs
+            ])
+        if region_id is not None:
+            request.RegionId = region_id
 
         return self.__impl.read_data(
             request, idempotence_id, timestamp, trace_id, request_timeout)
@@ -657,6 +666,8 @@ class Client(object):
         offset: int,
         buffer: bytes,
         node_id: Optional[int] = None,
+        io_vecs: Optional[List[Tuple[int, int]]] = None,
+        region_id: Optional[int] = None,
         buffer_offset: int = 0,
         idempotence_id: Optional[str] = None,
         timestamp: Optional[int] = None,
@@ -672,8 +683,70 @@ class Client(object):
         )
         if node_id is not None:
             request.NodeId = node_id
+        if io_vecs is not None:
+            request.Iovecs.extend([
+                protos.TIovec(Base=base, Length=len)
+                for base, len in io_vecs
+            ])
+        if region_id is not None:
+            request.RegionId = region_id
 
         return self.__impl.write_data(
+            request, idempotence_id, timestamp, trace_id, request_timeout)
+
+    def mmap(
+        self,
+        file_path: str,
+        size: int,
+        idempotence_id: Optional[str] = None,
+        timestamp: Optional[int] = None,
+        trace_id: Optional[str] = None,
+        request_timeout: Optional[float] = None
+    ) -> protos.TMmapResponse:
+        request = protos.TMmapRequest(
+            FilePath=file_path,
+            Size=size
+        )
+        return self.__impl.mmap(
+            request, idempotence_id, timestamp, trace_id, request_timeout)
+
+    def munmap(
+        self,
+        mmap_id: int,
+        idempotence_id: Optional[str] = None,
+        timestamp: Optional[int] = None,
+        trace_id: Optional[str] = None,
+        request_timeout: Optional[float] = None
+    ) -> protos.TMunmapResponse:
+        request = protos.TMunmapRequest(
+            Id=mmap_id
+        )
+        return self.__impl.munmap(
+            request, idempotence_id, timestamp, trace_id, request_timeout)
+
+    def list_mmap_regions(
+        self,
+        idempotence_id: Optional[str] = None,
+        timestamp: Optional[int] = None,
+        trace_id: Optional[str] = None,
+        request_timeout: Optional[float] = None
+    ) -> protos.TListMmapRegionsResponse:
+        request = protos.TListMmapRegionsRequest()
+        return self.__impl.list_mmap_regions(
+            request, idempotence_id, timestamp, trace_id, request_timeout)
+
+    def ping_mmap_region(
+        self,
+        mmap_id: int,
+        idempotence_id: Optional[str] = None,
+        timestamp: Optional[int] = None,
+        trace_id: Optional[str] = None,
+        request_timeout: Optional[float] = None
+    ) -> protos.TPingMmapRegionResponse:
+        request = protos.TPingMmapRegionRequest(
+            Id=mmap_id
+        )
+        return self.__impl.ping_mmap_region(
             request, idempotence_id, timestamp, trace_id, request_timeout)
 
 

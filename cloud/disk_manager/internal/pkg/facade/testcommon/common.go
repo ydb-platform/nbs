@@ -17,6 +17,8 @@ import (
 	"github.com/prometheus/common/expfmt"
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
+	cells_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
@@ -308,7 +310,7 @@ func newNbsClientClientConfig() *nbs_config.ClientConfig {
 				Endpoints: []string{
 					fmt.Sprintf(
 						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NBS2_PORT"),
+						os.Getenv("DISK_MANAGER_RECIPE_NBS4_PORT"),
 					),
 				},
 			},
@@ -316,7 +318,7 @@ func newNbsClientClientConfig() *nbs_config.ClientConfig {
 				Endpoints: []string{
 					fmt.Sprintf(
 						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NBS3_PORT"),
+						os.Getenv("DISK_MANAGER_RECIPE_NBS5_PORT"),
 					),
 				},
 			},
@@ -573,6 +575,7 @@ func newResourceStorage(ctx context.Context) (resources.Storage, error) {
 		"images",
 		"snapshot",
 		"filesystems",
+		"filesystem_snapshots",
 		"placement_groups",
 		db,
 		endedMigrationExpirationTimeout,
@@ -595,6 +598,15 @@ func newPoolStorage(ctx context.Context) (pools_storage.Storage, error) {
 		CloudId:  &cloudID,
 		FolderId: &folderID,
 	}, db, metrics.NewEmptyRegistry())
+}
+
+func newCellStorage(ctx context.Context) (cells_storage.Storage, error) {
+	db, err := newYDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return cells_storage.NewStorage(&cells_config.CellsConfig{}, db), nil
 }
 
 func newSnapshotStorage(ctx context.Context) (snapshot_storage.Storage, error) {
@@ -799,6 +811,20 @@ func GetSnapshotMeta(
 	}
 
 	return storage.GetSnapshotMeta(ctx, snapshotID)
+}
+
+func UpdateClusterCapacities(
+	ctx context.Context,
+	capacities []cells_storage.ClusterCapacity,
+	deleteOlderThan time.Time,
+) error {
+
+	cellStorage, err := newCellStorage(ctx)
+	if err != nil {
+		return err
+	}
+
+	return cellStorage.UpdateClusterCapacities(ctx, capacities, deleteOlderThan)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

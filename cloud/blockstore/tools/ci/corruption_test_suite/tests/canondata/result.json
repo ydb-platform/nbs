@@ -16,5 +16,17 @@
     },
     "test.test_corruption_test_suite[nfs-cluster1-ranges-intersection]": {
         "uri": "file://test.test_corruption_test_suite_nfs-cluster1-ranges-intersection_/ranges-intersection_results.txt"
+    },
+    "test.test_corruption_test_suite_with_specified_compute_nodes[None-None]": {
+        "uri": "file://test.test_corruption_test_suite_with_specified_compute_nodes_None-None_/testing_out_stuff_results.txt"
+    },
+    "test.test_corruption_test_suite_with_specified_compute_nodes[None-node.net]": {
+        "uri": "file://test.test_corruption_test_suite_with_specified_compute_nodes_None-node.net_/testing_out_stuff_results.txt"
+    },
+    "test.test_corruption_test_suite_with_specified_compute_nodes[nodes.txt-None]": {
+        "uri": "file://test.test_corruption_test_suite_with_specified_compute_nodes_nodes.txt-None_/testing_out_stuff_results.txt"
+    },
+    "test.test_corruption_test_suite_with_specified_compute_nodes[nodes.txt-node.net]": {
+        "uri": "file://test.test_corruption_test_suite_with_specified_compute_nodes_nodes.txt-node.net_/testing_out_stuff_results.txt"
     }
 }

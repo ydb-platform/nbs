@@ -1,6 +1,7 @@
 #include "actor_checkrange.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/protos/error.pb.h>
@@ -16,21 +17,50 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+namespace {
+
+NProto::TError CreateCheckRangeError(
+    const NProto::TReadBlocksLocalResponse& resp)
+{
+    NProto::TError error = resp.GetError();
+
+    if (resp.FailInfo.FailedRanges) {
+        error.MutableMessage()->append(
+            TStringBuilder()
+            << ", Fail in ranges:\n ["
+            << JoinSeq(", ", resp.FailInfo.FailedRanges) << "]");
+    }
+
+    return error;
+}
+
+}  // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
 TCheckRangeActor::TCheckRangeActor(
     const TActorId& partition,
-    NProto::TCheckRangeRequest&& request,
+    NProto::TCheckRangeRequest request,
     TRequestInfoPtr requestInfo,
-    ui64 blockSize)
+    ui64 blockSize,
+    TChildLogTitle logTitle)
     : Partition(partition)
     , Request(std::move(request))
     , RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
+    , LogTitle(std::move(logTitle))
 {}
 
 void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
 {
-    SendReadBlocksRequest(ctx);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "%s CheckRangeActor has started",
+        LogTitle.GetWithTime().c_str());
+
     Become(&TThis::StateWork);
+    SendReadBlocksRequest(ctx);
 }
 
 void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
@@ -44,6 +74,11 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     auto sgList = Buffer.GetGuardedSgList();
     auto sgListOrError = SgListNormalize(sgList.Acquire().Get(), BlockSize);
     if (HasError(sgListOrError)) {
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::PARTITION_WORKER,
+            LogTitle.GetWithTime() << " sgList error occured: "
+                                   << FormatError(sgListOrError.GetError()));
         ReplyAndDie(ctx, sgListOrError.GetError());
         return;
     }
@@ -57,8 +92,9 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     request->Record.ShouldReportFailedRangesOnFailure = true;
 
     auto* headers = request->Record.MutableHeaders();
-
+    headers->SetClientId(TString(CheckRangeClientId));
     headers->SetIsBackgroundRequest(true);
+
     NCloud::Send(ctx, Partition, std::move(request));
 }
 
@@ -67,28 +103,44 @@ void TCheckRangeActor::ReplyAndDie(
     const NProto::TError& error)
 {
     auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
-
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
-
-    Die(ctx);
+    ReplyAndDie(ctx, std::move(response));
 }
 
 void TCheckRangeActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TEvVolume::TEvCheckRangeResponse> response)
 {
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "%s CheckRangeActor has finished with status %d",
+        LogTitle.GetWithTime().c_str(),
+        response->GetStatus());
 
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TCheckRangeActor::OnMessage(TAutoPtr<NActors::IEventHandle>& ev)
+{
+    Y_UNUSED(ev);
+
+    return false;
+}
+
 STFUNC(TCheckRangeActor::StateWork)
 {
+    TRequestScope timer(*RequestInfo);
+
+    if (OnMessage(ev)) {
+        return;
+    }
+
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvService::TEvReadBlocksLocalResponse, HandleReadBlocksResponse);
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         default:
             HandleUnexpectedEvent(
                 ev,
@@ -105,7 +157,6 @@ void TCheckRangeActor::HandlePoisonPill(
     Y_UNUSED(ev);
 
     auto error = MakeError(E_REJECTED, "tablet is shutting down");
-
     ReplyAndDie(ctx, error);
 }
 
@@ -114,40 +165,23 @@ void TCheckRangeActor::HandleReadBlocksResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    auto response =
-        std::make_unique<TEvVolume::TEvCheckRangeResponse>(MakeError(S_OK));
+    auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>();
 
-    const auto& error = msg->Record.GetError();
-    if (HasError(error)) {
+    if (HasError(msg->Record)) {
         LOG_ERROR_S(
             ctx,
-            TBlockStoreComponents::PARTITION,
-            "reading error has occurred: " << FormatError(error));
+            TBlockStoreComponents::PARTITION_WORKER,
+            LogTitle.GetWithTime() << " reading error has occurred: "
+                                   << FormatError(msg->Record.GetError()));
 
-        auto* status = response->Record.MutableStatus();
-        status->CopyFrom(error);
-
-        if (!msg->Record.FailInfo.FailedRanges.empty()) {
-            TStringBuilder builder;
-            builder << ", Broken blobs:\n ["
-                    << JoinRange(
-                           ", ",
-                           msg->Record.FailInfo.FailedRanges.begin(),
-                           msg->Record.FailInfo.FailedRanges.end())
-                    << "]";
-
-            status->MutableMessage()->append(builder);
-        }
+        *response->Record.MutableStatus() = CreateCheckRangeError(msg->Record);
     } else {
-        if (Request.GetCalculateChecksums()) {
-            TBlockChecksum blockChecksum;
-            for (ui64 offset = 0, i = 0; i < Request.GetBlocksCount();
-                 offset += BlockSize, ++i)
-            {
-                auto* data = Buffer.Get().data() + offset;
-                const auto checksum = blockChecksum.Extend(data, BlockSize);
-                response->Record.MutableChecksums()->Add(checksum);
-            }
+        for (ui64 offset = 0, i = 0; i < Request.GetBlocksCount();
+             offset += BlockSize, ++i)
+        {
+            const char* data = Buffer.Get().data() + offset;
+            response->Record.MutableDiskChecksums()->MutableData()->Add(
+                TBlockChecksum().Extend(data, BlockSize));
         }
     }
 

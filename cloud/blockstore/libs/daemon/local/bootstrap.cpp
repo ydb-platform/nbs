@@ -3,6 +3,10 @@
 #include "config_initializer.h"
 #include "options.h"
 
+#include <cloud/blockstore/libs/cells/iface/cell_manager.h>
+
+#include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
+
 namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -50,6 +54,21 @@ void TBootstrapLocal::InitAuthService()
 void TBootstrapLocal::WarmupBSGroupConnections()
 {
     // do nothing
+}
+
+void TBootstrapLocal::InitRdmaRequestServer()
+{
+    // do nothing
+}
+
+ITraceSerializerPtr TBootstrapLocal::GetTraceSerializer()
+{
+    return CreateTraceSerializerStub();
+}
+
+void TBootstrapLocal::SetupCellManager()
+{
+    CellManager = NCells::CreateCellManagerStub();
 }
 
 TProgramShouldContinue& TBootstrapLocal::GetShouldContinue()

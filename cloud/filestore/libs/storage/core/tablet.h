@@ -147,6 +147,7 @@ protected:
                 TX_TRACK(TxPrepareRestarted);
 
                 Args.Clear();
+                Args.OnRestart();
                 return false;
             }
 

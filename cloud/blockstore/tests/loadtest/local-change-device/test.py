@@ -1,5 +1,4 @@
-from cloud.blockstore.config.disk_pb2 import DEVICE_ERASE_METHOD_NONE
-
+from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig, DEVICE_ERASE_METHOD_NONE
 from cloud.blockstore.config.server_pb2 import \
     TServerAppConfig, TServerConfig, TKikimrServiceConfig
 from cloud.blockstore.config.storage_pb2 import \
@@ -71,7 +70,7 @@ def nbs_server_start(kikimr_cluster, configurator):
     storage.AcquireNonReplicatedDevices = True
     storage.ClientRemountPeriod = 1000
     storage.NonReplicatedMigrationStartAllowed = True
-    storage.NonReplicatedSecureEraseTimeout = 2000  # 2 sec
+    storage.NonReplicatedSecureEraseTimeout = 30000  # 30 sec
     storage.DisableLocalService = False
     storage.InactiveClientsTimeout = 60000  # 1 min
     storage.AgentRequestTimeout = 5000      # 5 sec
@@ -118,8 +117,9 @@ def test_change_device():
     setup_nonreplicated(
         kikimr_cluster.client,
         [devices],
-        DEVICE_ERASE_METHOD_NONE,
-        True)
+        disk_agent_config_patch=TDiskAgentConfig(
+            DedicatedDiskAgent=True,
+            DeviceEraseMethod=DEVICE_ERASE_METHOD_NONE))
 
     enable_writable_state(nbs.nbs_port, nbs_client_binary_path)
 

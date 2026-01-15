@@ -685,6 +685,24 @@ func (client *grpcClient) ListVolumes(
 	return resp.(*protos.TListVolumesResponse), err
 }
 
+func (client *grpcClient) ListDiskStates(
+	ctx context.Context,
+	req *protos.TListDiskStatesRequest,
+) (*protos.TListDiskStatesResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.ListDiskStates(ctx, req)
+		})
+
+	return resp.(*protos.TListDiskStatesResponse), err
+}
+
 func (client *grpcClient) DiscoverInstances(
 	ctx context.Context,
 	req *protos.TDiscoverInstancesRequest,

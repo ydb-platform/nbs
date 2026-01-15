@@ -65,6 +65,7 @@ enum class ENodeType
     Link,
     SymLink,
     Sock,
+    Fifo
 };
 
 struct TCreateNodeArgs
@@ -105,6 +106,12 @@ struct TCreateNodeArgs
             case ENodeType::Sock: {
                 auto* socket = request.MutableSocket();
                 socket->SetMode(Mode);
+                break;
+            }
+
+            case ENodeType::Fifo: {
+                auto* fifo = request.MutableFifo();
+                fifo->SetMode(Mode);
                 break;
             }
 
@@ -153,6 +160,13 @@ struct TCreateNodeArgs
     static TCreateNodeArgs Sock(ui64 parent, const TString& name, ui32 mode = 0)
     {
         TCreateNodeArgs args(ENodeType::Sock, parent, name);
+        args.Mode = mode;
+        return args;
+    }
+
+    static TCreateNodeArgs Fifo(ui64 parent, const TString& name, ui32 mode = 0)
+    {
+        TCreateNodeArgs args(ENodeType::Fifo, parent, name);
         args.Mode = mode;
         return args;
     }
@@ -295,6 +309,7 @@ struct TTestBootstrap
     IFileIOServicePtr AIOService = CreateAIOService();
 
     TTempDirectoryPtr Cwd;
+    TLocalFileStoreConfigPtr Config;
     IFileStoreServicePtr Store;
 
     THeaders Headers;
@@ -310,12 +325,13 @@ struct TTestBootstrap
         : Cwd(cwd)
     {
         AIOService->Start();
+        Config = CreateConfig(
+            maxNodeCount,
+            maxHandlePerSessionCount,
+            directIoEnabled,
+            directIoAlign);
         Store = CreateLocalFileStore(
-            CreateConfig(
-                maxNodeCount,
-                maxHandlePerSessionCount,
-                directIoEnabled,
-                directIoAlign),
+            Config,
             Timer,
             Scheduler,
             Logging,
@@ -337,12 +353,13 @@ struct TTestBootstrap
         : Cwd(std::make_shared<TTempDirectory>())
     {
         AIOService->Start();
+        Config = CreateConfig(
+            maxNodeCount,
+            maxHandlePerSessionCount,
+            directIoEnabled,
+            directIoAlign);
         Store = CreateLocalFileStore(
-            CreateConfig(
-                maxNodeCount,
-                maxHandlePerSessionCount,
-                directIoEnabled,
-                directIoAlign),
+            Config,
             Timer,
             Scheduler,
             Logging,
@@ -400,6 +417,13 @@ struct TTestBootstrap
         }
 
         return {};
+    }
+
+    void SetFeaturesConfig(const NProto::TFeaturesConfig& featuresConfig)
+    {
+        auto config =
+            std::make_shared<NFeatures::TFeaturesConfig>(featuresConfig);
+        Config->SetFeaturesConfig(config);
     }
 
     TLocalFileStoreConfigPtr CreateConfig(
@@ -926,6 +950,11 @@ ui64 CreateSock(TTestBootstrap& bootstrap, ui64 parent, const TString& name, int
     return bootstrap.CreateNode(TCreateNodeArgs::Sock(parent, name, mode)).GetNode().GetId();
 }
 
+ui64 CreateFifo(TTestBootstrap& bootstrap, ui64 parent, const TString& name, int mode = 0)
+{
+    return bootstrap.CreateNode(TCreateNodeArgs::Fifo(parent, name, mode)).GetNode().GetId();
+}
+
 TVector<TString> ListNames(TTestBootstrap& bootstrap, ui64 node)
 {
     auto all = bootstrap.ListNodes(node).GetNames();
@@ -1399,6 +1428,20 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT_VALUES_EQUAL(nodes.GetNodes(0).GetType(), (ui32)NProto::E_SOCK_NODE);
     }
 
+    Y_UNIT_TEST(ShouldCreateFifoNode)
+    {
+        TTestBootstrap bootstrap("fs");
+        auto ctx = MakeIntrusive<TCallContext>();
+
+        CreateFifo(bootstrap, RootNodeId, "file1", 0755);
+
+        auto nodes = bootstrap.ListNodes(RootNodeId);
+
+        UNIT_ASSERT_VALUES_EQUAL(nodes.GetNames().size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(nodes.GetNames(0), "file1");
+        UNIT_ASSERT_VALUES_EQUAL(nodes.GetNodes(0).GetType(), (ui32)NProto::E_FIFO_NODE);
+    }
+
     Y_UNIT_TEST(ShouldCreateDirNode)
     {
         TTestBootstrap bootstrap("fs");
@@ -1675,8 +1718,11 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         auto attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 0);
 
+        ui64 attrVersion = 0;
         // 1 attribute
-        bootstrap.SetNodeXAttr(id, "user.xattr1", "");
+        auto rsp = bootstrap.SetNodeXAttr(id, "user.xattr1", "");
+        attrVersion = rsp.GetVersion();
+
 
         attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
@@ -1685,7 +1731,9 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         auto val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
         UNIT_ASSERT_VALUES_EQUAL(val, "");
 
-        bootstrap.SetNodeXAttr(id, "user.xattr1", "valueeee1");
+        rsp = bootstrap.SetNodeXAttr(id, "user.xattr1", "valueeee1");
+        UNIT_ASSERT_GT(rsp.GetVersion(), attrVersion);
+        attrVersion = rsp.GetVersion();
 
         attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
@@ -1695,7 +1743,8 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
 
         // 2 attributes
-        bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee2");
+        rsp = bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee2");
+        attrVersion = rsp.GetVersion();
 
         attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 2);
@@ -1708,7 +1757,9 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         val = bootstrap.GetNodeXAttr(id, "user.xattr2").GetValue();
         UNIT_ASSERT_VALUES_EQUAL(val, "valueeee2");
 
-        bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee");
+        rsp = bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee");
+        UNIT_ASSERT_GT(rsp.GetVersion(), attrVersion);
+
         attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 2);
         UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
@@ -1747,8 +1798,10 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         auto attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 0);
 
+        ui64 attrVersion = 0;
         // 1 attribute
-        bootstrap.SetNodeXAttr(id, "user.xattr1", "");
+        auto rsp = bootstrap.SetNodeXAttr(id, "user.xattr1", "");
+        attrVersion = rsp.GetVersion();
 
         attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
@@ -1757,7 +1810,8 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         auto val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
         UNIT_ASSERT_VALUES_EQUAL(val, "");
 
-        bootstrap.SetNodeXAttr(id, "user.xattr1", "valueeee1");
+        rsp = bootstrap.SetNodeXAttr(id, "user.xattr1", "valueeee1");
+        UNIT_ASSERT_GT(rsp.GetVersion(), attrVersion);
 
         attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
@@ -1767,7 +1821,8 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
 
         // 2 attributes
-        bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee2");
+        rsp = bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee2");
+        attrVersion = rsp.GetVersion();
 
         attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 2);
@@ -1780,7 +1835,8 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         val = bootstrap.GetNodeXAttr(id, "user.xattr2").GetValue();
         UNIT_ASSERT_VALUES_EQUAL(val, "valueeee2");
 
-        bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee");
+        rsp = bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee");
+        UNIT_ASSERT_GT(rsp.GetVersion(), attrVersion);
         attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 2);
         UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
@@ -2254,14 +2310,89 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT_VALUES_EQUAL(
             response.GetFileStore().GetNodesCount(),
             stfs.f_files);
-        UNIT_ASSERT_VALUES_EQUAL(
-            response.GetFileStore().GetBlocksCount() -
-                response.GetStats().GetUsedBlocksCount(),
-            stfs.f_bfree);
-        UNIT_ASSERT_VALUES_EQUAL(
-            response.GetFileStore().GetNodesCount() -
-                response.GetStats().GetUsedNodesCount(),
-            stfs.f_ffree);
+        // skip checking free blocks/nodes since they constantly change on current fs and it could be tricky
+        // to measure during quiescent state
+    }
+
+    Y_UNIT_TEST(ShouldUseFeaturesConfig)
+    {
+        TTestBootstrap bootstrap("fs");
+        bootstrap.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
+
+        auto defaultTimeout = bootstrap.Config->GetEntryTimeout().MilliSeconds();
+        auto featureTimeout = 3000;
+
+        UNIT_ASSERT_VALUES_UNEQUAL(defaultTimeout, featureTimeout);
+
+        // no feature set return default value
+        {
+            auto response = bootstrap.CreateSession("fs", "client", "");
+            UNIT_ASSERT_VALUES_EQUAL(
+                bootstrap.Config->GetEntryTimeout().MilliSeconds(),
+                defaultTimeout);
+        }
+
+        // whitelist fs id set
+        {
+            NProto::TFeaturesConfig fc;
+            auto* f = fc.AddFeatures();
+            f->SetName("EntryTimeout");
+            f->SetValue(ToString(featureTimeout) + "ms");
+            *f->MutableWhitelist()->AddEntityIds() = "fs";
+            bootstrap.SetFeaturesConfig(fc);
+
+            auto response = bootstrap.CreateSession("fs", "client", "");
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetFileStore().GetFeatures().GetEntryTimeout(),
+                featureTimeout);
+        }
+
+        // whitelist cloud id
+        {
+            NProto::TFeaturesConfig fc;
+            auto* f = fc.AddFeatures();
+            f->SetName("EntryTimeout");
+            f->SetValue(ToString(featureTimeout) + "ms");
+            *f->MutableWhitelist()->AddCloudIds() = "cloud";
+            bootstrap.SetFeaturesConfig(fc);
+
+            auto response = bootstrap.CreateSession("fs", "client", "");
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetFileStore().GetFeatures().GetEntryTimeout(),
+                featureTimeout);
+        }
+
+        // whitelist folder id
+        {
+            NProto::TFeaturesConfig fc;
+            auto* f = fc.AddFeatures();
+            f->SetName("EntryTimeout");
+            f->SetValue(ToString(featureTimeout) + "ms");
+            *f->MutableWhitelist()->AddFolderIds() = "folder";
+            bootstrap.SetFeaturesConfig(fc);
+
+            auto response = bootstrap.CreateSession("fs", "client", "");
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetFileStore().GetFeatures().GetEntryTimeout(),
+                featureTimeout);
+        }
+
+        // blacklist fs id
+        {
+            NProto::TFeaturesConfig fc;
+            auto* f = fc.AddFeatures();
+            f->SetName("EntryTimeout");
+            f->SetValue(ToString(featureTimeout) + "ms");
+            *f->MutableBlacklist()->AddEntityIds() = "fs";
+            *f->MutableWhitelist()->AddCloudIds() = "cloud";
+            *f->MutableWhitelist()->AddFolderIds() = "folder";
+            bootstrap.SetFeaturesConfig(fc);
+
+            auto response = bootstrap.CreateSession("fs", "client", "");
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetFileStore().GetFeatures().GetEntryTimeout(),
+                defaultTimeout);
+        }
     }
 };
 

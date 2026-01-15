@@ -22,7 +22,7 @@
 
 #include <util/folder/tempdir.h>
 
-#include <chrono>
+#include <filesystem>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -62,16 +62,45 @@ TFsPath TryGetRamDrivePath()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestNvmeManager
-    : NNvme::INvmeManager
+TVector<ui64> FindProcessesWithOpenFile(const TString& targetPath)
+{
+    TVector<ui64> result;
+
+    namespace NFs = std::filesystem;
+
+    for (const auto& pid: NFs::directory_iterator{"/proc"}) {
+        try {
+            for (const auto& fd: NFs::directory_iterator{pid.path() / "fd"}) {
+                if (!fd.is_symlink()) {
+                    continue;
+                }
+
+                if (targetPath == NFs::read_symlink(fd).string()) {
+                    result.emplace_back(
+                        FromString<i64>(pid.path().filename().string()));
+                    break;
+                }
+            }
+        } catch (...) {
+            continue;
+        }
+    }
+
+    SortUnique(result);
+
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestNvmeManager: NNvme::INvmeManager
 {
     THashMap<TString, TString> PathToSerial;
 
     explicit TTestNvmeManager(
             const TVector<std::pair<TString, TString>>& pathToSerial)
         : PathToSerial{pathToSerial.cbegin(), pathToSerial.cend()}
-    {
-    }
+    {}
 
     TFuture<NProto::TError> Format(
         const TString& path,
@@ -97,10 +126,16 @@ struct TTestNvmeManager
 
     TResultOrError<TString> GetSerialNumber(const TString& path) override
     {
-        const auto filename = TFsPath{path}.Basename();
-        auto it = PathToSerial.find(filename);
+        TString device;
+        try {
+            device = NFs::ReadLink(path);
+        } catch (...) {
+            return MakeError(E_FAIL, CurrentExceptionMessage());
+        }
+
+        auto it = PathToSerial.find(device);
         if (it == PathToSerial.end()) {
-            return MakeError(MAKE_SYSTEM_ERROR(42), filename);
+            return MakeError(MAKE_SYSTEM_ERROR(42), path);
         }
 
         return it->second;
@@ -168,6 +203,9 @@ struct TFixture
     : public NUnitTest::TBaseFixture
 {
     const TTempDir TempDir;
+    const TFsPath DevPath = TempDir.Path() / "dev";
+    const TFsPath PartLabelsPath = TempDir.Path() / "by-partlabel";
+
     const TString CachedSessionsPath =
         TempDir.Path() / "nbs-disk-agent-sessions.txt";
     const TString CachedConfigPath = TempDir.Path() / "nbs-disk-agent.txt";
@@ -177,16 +215,27 @@ struct TFixture
     NMonitoring::TDynamicCountersPtr Counters =
         MakeIntrusive<NMonitoring::TDynamicCounters>();
 
-    TVector<TFsPath> Files;
+    TVector<TFsPath> Devices;
+    TVector<TFsPath> PartLabels;
+    const TVector<TString> IDs = {
+        "79955ae90189fe8a89ab832a8b0cb57d",   // NVMENBS01
+        "657dabaf3d224c9177b00c437716dfb1",   // NVMENBS02
+        "e85cd1d217c3239507fc0cd180a075fd",   // NVMENBS03
+        "5ea2fcdce0a180a63db2b5f6a5b34221"    // NVMENBS04
+    };
 
     const ui64 DefaultFileSize = DefaultDeviceBlockSize * DefaultBlocksCount;
 
-    void PrepareFile(const TString& name, size_t size)
+    void PrepareFile(const TString& label, const TString& dev, size_t size)
     {
-        TFile fileData(TempDir.Path() / name, EOpenModeFlag::CreateNew);
-        fileData.Resize(size);
+        TFile file(DevPath / dev, EOpenModeFlag::CreateNew);
+        file.Resize(size);
 
-        Files.push_back(fileData.GetName());
+        Devices.push_back(file.GetName());
+        PartLabels.push_back(PartLabelsPath / label);
+
+        const bool ok = NFs::SymLink(Devices.back(), PartLabels.back());
+        UNIT_ASSERT(ok);
     }
 
     auto CreateDiskAgentConfig()
@@ -195,7 +244,7 @@ struct TFixture
 
         auto& discovery = *config.MutableStorageDiscoveryConfig();
         auto& path = *discovery.AddPathConfigs();
-        path.SetPathRegExp(TempDir.Path() / "NVMENBS([0-9]{2})");
+        path.SetPathRegExp(PartLabelsPath / "NVMENBS([0-9]{2})");
         auto& pool = *path.AddPoolConfigs();
         pool.SetMaxSize(DefaultFileSize);
 
@@ -272,16 +321,86 @@ struct TFixture
 
         InitCriticalEventsCounter(Counters);
 
-        PrepareFile("NVMENBS01", DefaultFileSize);
-        PrepareFile("NVMENBS02", DefaultFileSize);
-        PrepareFile("NVMENBS03", DefaultFileSize);
-        PrepareFile("NVMENBS04", DefaultFileSize);
+        PartLabelsPath.MkDirs();
+        DevPath.MkDirs();
+
+        PrepareFile("NVMENBS01", "nvme0n1p1", DefaultFileSize);
+        PrepareFile("NVMENBS02", "nvme1n1p1", DefaultFileSize);
+        PrepareFile("NVMENBS03", "nvme2n1p1", DefaultFileSize);
+        PrepareFile("NVMENBS04", "nvme3n1p1", DefaultFileSize);
     }
 
     void TearDown(NUnitTest::TTestContext& /*context*/) override
     {
-        for (const auto& path: Files) {
+        for (const auto& path: PartLabels) {
             path.DeleteIfExists();
+        }
+
+        for (const auto& path: Devices) {
+            path.DeleteIfExists();
+        }
+    }
+
+public:
+    void ShouldIgnoreRemovedDeviceImpl(const TString& labelToRemove)
+    {
+        // build the config cache
+        {
+            NProto::TDiskAgentConfig config;
+
+            for (ui32 i = 0; i != PartLabels.size(); ++i) {
+                auto& device = *config.AddFileDevices();
+                device.SetPath(PartLabels[i]);
+                device.SetDeviceId(IDs[i]);
+                device.SetBlockSize(4_KB);
+            }
+
+            auto error = SaveDiskAgentConfig(CachedConfigPath, config);
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        }
+
+        NFs::Remove(labelToRemove);
+
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+
+        auto mismatch = counters->GetCounter(
+            "DiskAgentCriticalEvents/DiskAgentConfigMismatch",
+            true);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
+
+        auto env =
+            TTestEnvBuilder(*Runtime).With(CreateDiskAgentConfig()).Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        // ignore the absence of NVMENBS0X
+        UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            PartLabels.size() - 1,
+            env.DiskRegistryState->Devices.size());
+
+        // check the config cache
+        {
+            TVector<TString> expected(PartLabels.begin(), PartLabels.end());
+            Erase(expected, labelToRemove);
+            Sort(expected);
+
+            auto [config, error] = LoadDiskAgentConfig(CachedConfigPath);
+            UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), config.FileDevicesSize());
+            TVector<TString> paths;
+            for (const auto& device: config.GetFileDevices()) {
+                paths.push_back(device.GetPath());
+            }
+            Sort(paths);
+
+            for (ui32 i = 0; i != expected.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(expected[i], paths[i]);
+            }
         }
     }
 };
@@ -826,7 +945,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 NProto::VOLUME_ACCESS_READ_WRITE
             );
             auto response = diskAgent.RecvAcquireDevicesResponse();
-            UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_BS_INVALID_SESSION);
+            UNIT_ASSERT_VALUES_EQUAL(E_BS_MOUNT_CONFLICT, response->GetStatus());
             UNIT_ASSERT(response->GetErrorReason().Contains("already acquired"));
         }
 
@@ -897,7 +1016,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 2
             );
             auto response = diskAgent.RecvAcquireDevicesResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(E_BS_MOUNT_CONFLICT, response->GetStatus());
         }
     }
 
@@ -943,7 +1062,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 NProto::VOLUME_ACCESS_READ_WRITE
             );
             auto response = diskAgent.RecvAcquireDevicesResponse();
-            UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_BS_INVALID_SESSION);
+            UNIT_ASSERT_VALUES_EQUAL(E_BS_MOUNT_CONFLICT, response->GetStatus());
             UNIT_ASSERT(response->GetErrorReason().Contains("already acquired"));
             UNIT_ASSERT(response->GetErrorReason().Contains(
                 "MemoryDevice1"
@@ -1570,7 +1689,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(counter->Val(), 1);
     }
 
-    Y_UNIT_TEST(ShouldRejectMultideviceOverlappedRequests)
+    Y_UNIT_TEST(ShouldRejectOverlappedRequests)
     {
         TTestBasicRuntime runtime;
 
@@ -1628,8 +1747,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             request->Record.SetBlockSize(DefaultBlockSize);
             request->Record.SetBlocksCount(blockCount);
             request->Record.SetVolumeRequestId(volumeRequestId);
-            request->Record.SetMultideviceRequest(
-                true); // This will lead to E_REJECT
 
             diskAgent.SendRequest(std::move(request));
         };
@@ -1668,7 +1785,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             runtime.Send(request.release());
         }
         {
-            // Get reponse for delayed zero request. It will rejected
+            // Get response for delayed zero request. It will rejected
             auto response =
                 diskAgent.RecvZeroDeviceBlocksResponse(TDuration::Seconds(1));
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
@@ -2006,7 +2123,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             );
 
             auto response = diskAgent.RecvWriteDeviceBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_BS_INVALID_SESSION);
+            UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, response->GetStatus());
         }
 
         for (auto sid: {readerClientId1, readerClientId2}) {
@@ -2018,7 +2135,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             );
 
             auto response = diskAgent.RecvZeroDeviceBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_BS_INVALID_SESSION);
+            UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, response->GetStatus());
         }
 
         for (auto sid: {writerClientId, readerClientId1, readerClientId2}) {
@@ -2454,10 +2571,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldPerformIoWithoutSpdk)
+    void ShouldPerformFileIo(NProto::EDiskAgentBackendType backend)
     {
         auto agentConfig = CreateDefaultAgentConfig();
-        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+        agentConfig.SetBackend(backend);
         agentConfig.SetAcquireRequired(true);
         agentConfig.SetEnabled(true);
 
@@ -2633,6 +2750,16 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 stats.GetBytesWritten());
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetNumWriteOps());
         }
+    }
+
+    Y_UNIT_TEST(ShouldPerformFileIoAio)
+    {
+        ShouldPerformFileIo(NProto::DISK_AGENT_BACKEND_AIO);
+    }
+
+    Y_UNIT_TEST(ShouldPerformFileIoIoUring)
+    {
+        ShouldPerformFileIo(NProto::DISK_AGENT_BACKEND_IO_URING);
     }
 
     Y_UNIT_TEST(ShouldSupportOffsetAndFileSizeInFileDevices)
@@ -3089,10 +3216,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         diskAgent.SecureEraseDevice("FileDevice-1");
     }
 
-    Y_UNIT_TEST(ShouldZeroFillDevice)
+    void ShouldZeroFillDeviceImpl(NProto::EDiskAgentBackendType backend)
     {
         auto agentConfig = CreateDefaultAgentConfig();
-        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+        agentConfig.SetBackend(backend);
         agentConfig.SetDeviceEraseMethod(NProto::DEVICE_ERASE_METHOD_ZERO_FILL);
         agentConfig.SetAgentId("agent-id");
         agentConfig.SetEnabled(true);
@@ -3187,6 +3314,16 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
 
         diskAgent.ReleaseDevices(uuids, clientId);
+    }
+
+    Y_UNIT_TEST(ShouldZeroFillDeviceAio)
+    {
+        ShouldZeroFillDeviceImpl(NProto::DISK_AGENT_BACKEND_AIO);
+    }
+
+    Y_UNIT_TEST(ShouldZeroFillDeviceIoUring)
+    {
+        ShouldZeroFillDeviceImpl(NProto::DISK_AGENT_BACKEND_IO_URING);
     }
 
     Y_UNIT_TEST(ShouldInjectExceptions)
@@ -4605,6 +4742,157 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(1, mismatch->Val());
     }
 
+    Y_UNIT_TEST_F(ShouldIgnoreRemovedDevice, TFixture)
+    {
+        TVector<ui32> indices(IDs.size());
+        std::iota(indices.begin(), indices.end(), 0);
+
+        auto it = MinElementBy(indices, [&] (ui32 i) {
+            return IDs[i];
+        });
+
+        ShouldIgnoreRemovedDeviceImpl(PartLabels[*it]);
+    }
+
+    Y_UNIT_TEST_F(ShouldIgnoreRemovedDeviceLast, TFixture)
+    {
+        TVector<ui32> indices(IDs.size());
+        std::iota(indices.begin(), indices.end(), 0);
+
+        auto it = MaxElementBy(indices, [&] (ui32 i) {
+            return IDs[i];
+        });
+
+        ShouldIgnoreRemovedDeviceImpl(PartLabels[*it]);
+    }
+
+    Y_UNIT_TEST_F(ShouldReportLostDevices, TFixture)
+    {
+        // build the config cache
+        {
+            NProto::TDiskAgentConfig config;
+
+            for (ui32 i = 0; i != PartLabels.size(); ++i) {
+                auto& device = *config.AddFileDevices();
+                device.SetPath(PartLabels[i]);
+                device.SetDeviceId(IDs[i]);
+                device.SetBlockSize(4_KB);
+            }
+
+            // NVMENBS02 has became too big to be discovered
+            TFile file{PartLabels[1], EOpenModeFlag::CreateAlways};
+            file.Resize(DefaultFileSize * 2);
+
+            auto error = SaveDiskAgentConfig(CachedConfigPath, config);
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        }
+
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+
+        auto mismatch = counters->GetCounter(
+            "DiskAgentCriticalEvents/DiskAgentConfigMismatch",
+            true);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
+
+        auto env =
+            TTestEnvBuilder(*Runtime).With(CreateDiskAgentConfig()).Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        // "unable to find the appropriate pool for NVMENBS02" + "Current config
+        // doesn't match the cached one"
+        UNIT_ASSERT_VALUES_EQUAL(2, mismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            PartLabels.size(),
+            env.DiskRegistryState->Devices.size());
+
+        // check the config cache
+        {
+            TVector<TString> expected(PartLabels.begin(), PartLabels.end());
+            Sort(expected);
+
+            auto [config, error] = LoadDiskAgentConfig(CachedConfigPath);
+            UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), config.FileDevicesSize());
+
+            TVector<TString> paths;
+            for (const auto& device: config.GetFileDevices()) {
+                paths.push_back(device.GetPath());
+            }
+            Sort(paths);
+
+            for (ui32 i = 0; i != expected.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(expected[i], paths[i]);
+            }
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldReportBrokenSymLink, TFixture)
+    {
+        // build the config cache
+        {
+            NProto::TDiskAgentConfig config;
+
+            for (ui32 i = 0; i != PartLabels.size(); ++i) {
+                auto& device = *config.AddFileDevices();
+                device.SetPath(PartLabels[i]);
+                device.SetDeviceId(IDs[i]);
+                device.SetBlockSize(4_KB);
+            }
+
+            // Breaking NVMENBS02
+            NFs::Remove(Devices[1]);
+
+            auto error = SaveDiskAgentConfig(CachedConfigPath, config);
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        }
+
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+
+        auto mismatch = counters->GetCounter(
+            "DiskAgentCriticalEvents/DiskAgentConfigMismatch",
+            true);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
+
+        auto env =
+            TTestEnvBuilder(*Runtime).With(CreateDiskAgentConfig()).Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        // "NVMENBS02 is not a file or a block device" + "Current config doesn't
+        // match the cached one"
+        UNIT_ASSERT_VALUES_EQUAL(2, mismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            PartLabels.size(),
+            env.DiskRegistryState->Devices.size());
+
+        // check the config cache
+        {
+            TVector<TString> expected(PartLabels.begin(), PartLabels.end());
+            Sort(expected);
+
+            auto [config, error] = LoadDiskAgentConfig(CachedConfigPath);
+            UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), config.FileDevicesSize());
+
+            TVector<TString> paths;
+            for (const auto& device: config.GetFileDevices()) {
+                paths.push_back(device.GetPath());
+            }
+            Sort(paths);
+
+            for (ui32 i = 0; i != expected.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(expected[i], paths[i]);
+            }
+        }
+    }
+
     Y_UNIT_TEST_F(ShouldCacheSessions, TFixture)
     {
         auto cacheRestoreError = Counters->GetCounter(
@@ -4784,21 +5072,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
     Y_UNIT_TEST_F(ShouldRestoreCacheSessions, TFixture)
     {
-        const TString devices[] {
-            "5ea2fcdce0a180a63db2b5f6a5b34221",
-            "657dabaf3d224c9177b00c437716dfb1",
-            "79955ae90189fe8a89ab832a8b0cb57d",
-            "e85cd1d217c3239507fc0cd180a075fd"
-        };
-
         const auto initialTs = Now();
 
         {
             NProto::TDiskAgentDeviceSessionCache cache;
             auto& writeSession = *cache.AddSessions();
             writeSession.SetClientId("writer-1");
-            *writeSession.MutableDeviceIds()->Add() = devices[0];
-            *writeSession.MutableDeviceIds()->Add() = devices[1];
+            *writeSession.MutableDeviceIds()->Add() = IDs[0];
+            *writeSession.MutableDeviceIds()->Add() = IDs[1];
             writeSession.SetReadOnly(false);
             writeSession.SetMountSeqNumber(42);
             writeSession.SetDiskId("vol0");
@@ -4807,8 +5088,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
             auto& reader1 = *cache.AddSessions();
             reader1.SetClientId("reader-1");
-            *reader1.MutableDeviceIds()->Add() = devices[0];
-            *reader1.MutableDeviceIds()->Add() = devices[1];
+            *reader1.MutableDeviceIds()->Add() = IDs[0];
+            *reader1.MutableDeviceIds()->Add() = IDs[1];
             reader1.SetReadOnly(true);
             reader1.SetDiskId("vol0");
             reader1.SetVolumeGeneration(1000);
@@ -4816,8 +5097,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
             auto& reader2 = *cache.AddSessions();
             reader2.SetClientId("reader-2");
-            *reader2.MutableDeviceIds()->Add() = devices[2];
-            *reader2.MutableDeviceIds()->Add() = devices[3];
+            *reader2.MutableDeviceIds()->Add() = IDs[2];
+            *reader2.MutableDeviceIds()->Add() = IDs[3];
             reader2.SetReadOnly(true);
             reader2.SetDiskId("vol1");
             reader2.SetVolumeGeneration(2000);
@@ -4845,56 +5126,56 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         // should reject a request with a wrong client id
         {
-            auto error = Write(diskAgent, "unknown", devices[1]);
+            auto error = Write(diskAgent, "unknown", IDs[1]);
             UNIT_ASSERT_EQUAL_C(E_BS_INVALID_SESSION, error.GetCode(), error);
         }
 
         // should reject a request with a wrong client id
         {
-            auto error = Write(diskAgent, "reader-2", devices[0]);
+            auto error = Write(diskAgent, "reader-2", IDs[0]);
             UNIT_ASSERT_EQUAL_C(E_BS_INVALID_SESSION, error.GetCode(), error);
         }
 
         {
-            auto error = Write(diskAgent, "reader-2", devices[1]);
+            auto error = Write(diskAgent, "reader-2", IDs[1]);
             UNIT_ASSERT_EQUAL_C(E_BS_INVALID_SESSION, error.GetCode(), error);
         }
 
         // should reject a write request for the read only session
         {
-            auto error = Write(diskAgent, "reader-1", devices[1]);
+            auto error = Write(diskAgent, "reader-1", IDs[1]);
             UNIT_ASSERT_EQUAL_C(E_BS_INVALID_SESSION, error.GetCode(), error);
         }
 
         // should be ok
 
         {
-            auto error = Write(diskAgent, "writer-1", devices[0]);
+            auto error = Write(diskAgent, "writer-1", IDs[0]);
             UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
         }
 
         {
-            auto error = Write(diskAgent, "writer-1", devices[1]);
+            auto error = Write(diskAgent, "writer-1", IDs[1]);
             UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
         }
 
         {
-            auto error = Read(diskAgent, "reader-1", devices[0]);
+            auto error = Read(diskAgent, "reader-1", IDs[0]);
             UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
         }
 
         {
-            auto error = Read(diskAgent, "reader-1", devices[1]);
+            auto error = Read(diskAgent, "reader-1", IDs[1]);
             UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
         }
 
         {
-            auto error = Read(diskAgent, "reader-2", devices[2]);
+            auto error = Read(diskAgent, "reader-2", IDs[2]);
             UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
         }
 
         {
-            auto error = Read(diskAgent, "reader-2", devices[3]);
+            auto error = Read(diskAgent, "reader-2", IDs[3]);
             UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
         }
 
@@ -4904,7 +5185,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         const auto acquireTs = Runtime->GetCurrentTime();
 
         diskAgent.AcquireDevices(
-            TVector{devices[0], devices[1]},
+            TVector{IDs[0], IDs[1]},
             "writer-1",
             NProto::VOLUME_ACCESS_READ_WRITE,
             42,   // MountSeqNumber
@@ -4921,9 +5202,12 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
             UNIT_ASSERT_VALUES_EQUAL("writer-1", session.GetClientId());
             UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
-            ASSERT_VECTORS_EQUAL(
-                TVector({devices[0], devices[1]}),
-                session.GetDeviceIds());
+
+            TVector expected({IDs[0], IDs[1]});
+            Sort(expected);
+            Sort(*session.MutableDeviceIds());
+
+            ASSERT_VECTORS_EQUAL(expected, session.GetDeviceIds());
 
             UNIT_ASSERT_VALUES_EQUAL(42, session.GetMountSeqNumber());
             UNIT_ASSERT_VALUES_EQUAL("vol0", session.GetDiskId());
@@ -5181,33 +5465,23 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
     Y_UNIT_TEST_F(ShouldDisableDevicesAfterRegistration, TFixture)
     {
-        const TString uuids[] {
-            "79955ae90189fe8a89ab832a8b0cb57d", // NVMENBS01
-            "657dabaf3d224c9177b00c437716dfb1", // NVMENBS02
-            "e85cd1d217c3239507fc0cd180a075fd", // NVMENBS03
-            "5ea2fcdce0a180a63db2b5f6a5b34221"  // NVMENBS04
-        };
-
         TVector<std::pair<TString, TString>> pathToSerial{
-            {"NVMENBS01", "W"},
-            {"NVMENBS02", "X"},
-            {"NVMENBS03", "Y"},
-            {"NVMENBS04", "Z"},
+            {Devices[0], "W"},   // nvme0n1
+            {Devices[1], "X"},   // nvme1n1
+            {Devices[2], "Y"},   // nvme2n1
+            {Devices[3], "Z"},   // nvme3n1
         };
 
         // build the config cache
         {
             NProto::TDiskAgentConfig config;
 
-            size_t i = 0;
-            for (const auto& [filename, sn]: pathToSerial) {
+            for (ui32 i = 0; i != PartLabels.size(); ++i) {
                 auto& file = *config.AddFileDevices();
-                file.SetPath(TempDir.Path() / filename);
-                file.SetSerialNumber(sn);
-                file.SetDeviceId(uuids[i]);
+                file.SetPath(PartLabels[i]);
+                file.SetSerialNumber(pathToSerial[i].second);
+                file.SetDeviceId(IDs[i]);
                 file.SetBlockSize(4_KB);
-
-                ++i;
             }
 
             auto error = SaveDiskAgentConfig(CachedConfigPath, config);
@@ -5221,7 +5495,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         auto diskregistryState = MakeIntrusive<TDiskRegistryState>();
 
         // Disable only NVMENBS02
-        diskregistryState->DisabledDevices = {uuids[1]};
+        diskregistryState->DisabledDevices = {IDs[1]};
 
         // Postpone the registration in DR
         auto oldEventFilterFn = Runtime->SetEventFilter(
@@ -5258,9 +5532,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         diskAgent.AcquireDevices(
             TVector{
-                uuids[0],   // NVMENBS01
-                uuids[1],   // NVMENBS02
-                uuids[3],   // NVMENBS04
+                IDs[0],   // NVMENBS01
+                IDs[1],   // NVMENBS02
+                IDs[3],   // NVMENBS04
             },
             "reader-1",
             NProto::VOLUME_ACCESS_READ_ONLY,
@@ -5270,14 +5544,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         // NVMENBS01 is OK
         {
-            auto error = Read(diskAgent, "reader-1", uuids[0]);
+            auto error = Read(diskAgent, "reader-1", IDs[0]);
             UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
         }
 
         // Before the registration in DR NVMENBS02 & NVMENBS04 should be
         // suspended
         {
-            auto error = Read(diskAgent, "reader-1", uuids[1]);
+            auto error = Read(diskAgent, "reader-1", IDs[1]);
             UNIT_ASSERT_EQUAL_C(E_REJECTED, error.GetCode(), error);
             UNIT_ASSERT_C(
                 error.GetMessage().Contains("Device disabled"),
@@ -5285,7 +5559,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
 
         {
-            auto error = Read(diskAgent, "reader-1", uuids[3]);
+            auto error = Read(diskAgent, "reader-1", IDs[3]);
             UNIT_ASSERT_EQUAL_C(E_REJECTED, error.GetCode(), error);
             UNIT_ASSERT_C(
                 error.GetMessage().Contains("Device disabled"),
@@ -5302,11 +5576,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             Sort(*config.MutableDevicesWithSuspendedIO());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                uuids[3],   // NVMENBS04
+                IDs[3],   // NVMENBS04
                 config.GetDevicesWithSuspendedIO(0));
 
             UNIT_ASSERT_VALUES_EQUAL(
-                uuids[1],   // NVMENBS02
+                IDs[1],   // NVMENBS02
                 config.GetDevicesWithSuspendedIO(1));
         }
 
@@ -5318,13 +5592,13 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         // NVMENBS01 is OK
         {
-            auto error = Read(diskAgent, "reader-1", uuids[0]);
+            auto error = Read(diskAgent, "reader-1", IDs[0]);
             UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
         }
 
         // After the registration in DR NVMENBS02 should be disabled
         {
-            auto error = Read(diskAgent, "reader-1", uuids[1]);
+            auto error = Read(diskAgent, "reader-1", IDs[1]);
             UNIT_ASSERT_EQUAL_C(E_IO, error.GetCode(), error);
             UNIT_ASSERT_C(
                 error.GetMessage().Contains("Device disabled"),
@@ -5333,7 +5607,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         // NVMENBS04 should be OK
         {
-            auto error = Read(diskAgent, "reader-1", uuids[3]);
+            auto error = Read(diskAgent, "reader-1", IDs[3]);
             UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
         }
 
@@ -5344,7 +5618,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             UNIT_ASSERT_VALUES_EQUAL(4, config.FileDevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(1, config.DevicesWithSuspendedIOSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                uuids[1],   // NVMENBS02
+                IDs[1],   // NVMENBS02
                 config.GetDevicesWithSuspendedIO(0));
         }
     }
@@ -6542,6 +6816,154 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             S_OK,
             response.ReplicationResponses[1].GetCode(),
             FormatError(response.ReplicationResponses[1]));
+    }
+
+    Y_UNIT_TEST_F(ShouldDetachPaths, TFixture)
+    {
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
+                       .With(storageConfig)
+                       .Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
+    }
+
+    Y_UNIT_TEST_F(ShouldAttachPaths, TFixture)
+    {
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
+                       .With(storageConfig)
+                       .Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.AttachPaths(TVector<TString>{{PartLabels[0]}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[0]).size());
+    }
+
+    Y_UNIT_TEST_F(ShouldDetectPathChanged, TFixture)
+    {
+        TVector<std::pair<TString, TString>> pathToSerial{
+            {Devices[0], "W"},   // nvme0n1
+            {Devices[1], "X"},   // nvme1n1
+            {Devices[2], "Y"},   // nvme2n1
+            {Devices[3], "Z"},   // nvme3n1
+        };
+
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        auto nvmeManager = std::make_shared<TTestNvmeManager>(pathToSerial);
+
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
+                       .With(nvmeManager)
+                       .With(std::move(storageConfig))
+                       .Build();
+
+        Runtime->UpdateCurrentTime(Now());
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        {
+            nvmeManager->PathToSerial[Devices[0].GetPath()] = "another serial";
+        }
+
+        diskAgent.SendAttachPathsRequest(TVector<TString>{{PartLabels[0]}});
+
+        auto resp = diskAgent.RecvAttachPathsResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
+    }
+
+    Y_UNIT_TEST_F(ShouldDetectPathDeleted, TFixture)
+    {
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
+                       .With(storageConfig)
+                       .Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        unlink(PartLabels[0].c_str());
+
+        diskAgent.SendAttachPathsRequest(TVector<TString>{{PartLabels[0]}});
+
+        auto resp = diskAgent.RecvAttachPathsResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
     }
 }
 

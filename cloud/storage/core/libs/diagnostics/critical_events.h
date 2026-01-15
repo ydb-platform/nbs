@@ -15,7 +15,12 @@ namespace NCloud {
     xxx(LoadPathDescriptionBackupFailure)                                      \
     xxx(MlockFailed)                                                           \
     xxx(ConfigDispatcherItemParseError)                                        \
+    xxx(GetConfigsFromCmsYamlParseError)                                       \
 // STORAGE_CRITICAL_EVENTS
+
+#define STORAGE_IMPOSSIBLE_EVENTS(xxx)                                         \
+    xxx(UnexpectedEvent)                                                       \
+// STORAGE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -23,11 +28,14 @@ void SetCriticalEventsLog(TLog log);
 void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
 TString GetCriticalEventFullName(const TString& name);
+TString GetImpossibleEventFullName(const TString& name);
 
 TString ReportCriticalEvent(
     const TString& sensorName,
     const TString& message,
     bool verifyDebug);
+
+void ReportCriticalEventWithoutLogging(const TString& sensorName);
 
 #define STORAGE_DECLARE_CRITICAL_EVENT_ROUTINE(name)                           \
     TString Report##name(const TString& message = "");                         \
@@ -36,6 +44,14 @@ TString ReportCriticalEvent(
 
     STORAGE_CRITICAL_EVENTS(STORAGE_DECLARE_CRITICAL_EVENT_ROUTINE)
 #undef STORAGE_DECLARE_CRITICAL_EVENT_ROUTINE
+
+#define STORAGE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE(name)                         \
+    TString Report##name(const TString& message = "");                         \
+    const TString GetImpossibleEventFor##name();                               \
+// STORAGE_DECLARE_CRITICAL_EVENT_ROUTINE
+
+    STORAGE_IMPOSSIBLE_EVENTS(STORAGE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE)
+#undef STORAGE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE
 
 void ReportPreconditionFailed(
     TStringBuf file,

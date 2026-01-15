@@ -6,6 +6,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/libs/storage/p
 
 import "cloud/blockstore/config/storage.proto";
 
+import "cloud/blockstore/libs/storage/protos/disk.proto";
 import "cloud/blockstore/public/api/protos/headers.proto";
 import "cloud/blockstore/public/api/protos/volume.proto";
 
@@ -20,6 +21,7 @@ enum ELinkAction
 {
     LINK_ACTION_CREATE = 0;
     LINK_ACTION_DESTROY = 1;
+    LINK_ACTION_COMPLETED = 2;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -128,6 +130,10 @@ message TAddClientResponse
 
     // Signal that volume tablet should be restarted.
     bool ForceTabletRestart = 7;
+
+    // Destination client will be mounted as local and with read-only access
+    // at the VM migration begin.
+    bool VolumeClientMigrationInProgress = 8;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -331,6 +337,9 @@ message TReallocateDiskResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 2;
+
+    // Outdated lagging devices of the volume.
+    repeated TLaggingDevice OutdatedLaggingDevices = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -684,10 +693,12 @@ message TGracefulShutdownResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// CheckRange request/response.
+// CheckRange.
 
 message TCheckRangeRequest
 {
+    reserved 5,6;
+
     // Optional request headers.
     THeaders Headers = 1;
 
@@ -699,24 +710,41 @@ message TCheckRangeRequest
 
     // Number of blobs per batch.
     uint64 BlocksCount = 4;
+}
 
-    // Is it necessary to calculate and include checksums in the response
-    bool CalculateChecksums = 5;
+// Checksums for requested range for a disk of any type.
+message TChecksums
+{
+    repeated uint32 Data = 1;
+}
 
-    // Number of replicas to read from m3 disks.
-    uint64 ReplicaCount = 6;
+// Checksums for each replica of mirror disk.
+// It's using in case of differ replica checksums.
+message TMirrorInconsistentChecksums
+{
+    repeated TChecksums Replicas = 1;
 }
 
 message TCheckRangeResponse
 {
+    reserved 3;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
     // Status of ReadBlocks operation.
     NCloud.NProto.TError Status = 2;
 
-    // Checksums of blocks
-    repeated uint32 Checksums = 3;
+    oneof ChecksumData {
+        // DiskChecksums field is set for the next cases:
+        //   - non-mirror disks;
+        //   - mirror disks if replica checksums are equal.
+        // InconsistentChecksums field is set for each replica of mirror disk
+        //   if replica checksums are different at least for 2 replicas.
+
+        TChecksums DiskChecksums = 5;
+        TMirrorInconsistentChecksums InconsistentChecksums = 6;
+    };
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 4;

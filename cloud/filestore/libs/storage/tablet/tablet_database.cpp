@@ -584,7 +584,8 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     const TString& cookie,
     TVector<TNodeRef>& refs,
     ui32 maxBytes,
-    TString* next)
+    TString* next,
+    ui32* skippedRefs)
 {
     using TTable = TIndexTabletSchema::NodeRefs;
 
@@ -598,6 +599,7 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     }
 
     ui32 bytes = 0;
+    ui32 skipped = 0;
     while (it.IsValid()) {
         ui64 minCommitId = it.GetValue<TTable::CommitId>();
         ui64 maxCommitId = InvalidCommitId;
@@ -615,6 +617,8 @@ bool TIndexTabletDatabase::ReadNodeRefs(
 
             // FIXME
             bytes += refs.back().Name.size();
+        } else {
+            ++skipped;
         }
 
         if (!it.Next()) {
@@ -628,6 +632,10 @@ bool TIndexTabletDatabase::ReadNodeRefs(
 
     if (next && it.IsValid()) {
         *next = it.GetValue<TTable::Name>();
+    }
+
+    if (skippedRefs) {
+        *skippedRefs = skipped;
     }
 
     return true;
@@ -680,15 +688,16 @@ bool TIndexTabletDatabase::ReadNodeRefs(
 bool TIndexTabletDatabase::PrechargeNodeRefs(
     ui64 nodeId,
     const TString& cookie,
-    ui32 bytesToPrecharge)
+    ui64 rowsToPrecharge,
+    ui64 bytesToPrecharge)
 {
     using TTable = TIndexTabletSchema::NodeRefs;
 
     return Table<TTable>()
         .GreaterOrEqual(nodeId, cookie)
         .LessOrEqual(nodeId)
-         // NOTE: rows count, bytes count
-        .Precharge(Max<ui64>(), bytesToPrecharge);
+        // NOTE: rows count, bytes count
+        .Precharge(rowsToPrecharge, bytesToPrecharge);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2150,15 +2159,41 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
     const TString& cookie,
     TVector<TNodeRef>& refs,
     ui32 maxBytes,
-    TString* next)
+    TString* next,
+    ui32* skippedRefs)
 {
+    ui32 skipped = 0;
+    if (!skippedRefs) {
+        skippedRefs = &skipped;
+    }
     auto result = TIndexTabletDatabase::ReadNodeRefs(
-        nodeId, commitId, cookie, refs, maxBytes, next);
+        nodeId,
+        commitId,
+        cookie,
+        refs,
+        maxBytes,
+        next,
+        skippedRefs);
     if (result) {
         // If ReadNodeRefs was successful, it is reasonable to update the cache
         // with the values that have just been read.
         for (const auto& ref: refs) {
             NodeUpdates.emplace_back(ExtractWriteNodeRefsFromNodeRef(ref));
+        }
+
+        // If the next cookie is empty and cookie is also empty, that means that
+        // we have read all the nodes associated with the given nodeId. This
+        // means that we can mark this nodeId's refs as fully cached after the
+        // WriteNodeRef operations are applied and if and only if following two
+        // conditions are met:
+        //
+        // 1. No nodeRefs were skipped due to commitId filtering
+        // 2. All refs.size() fit into the underlying cache
+        if (next && next->empty() && cookie.empty() && *skippedRefs == 0) {
+            NodeUpdates.emplace_back(
+                TInMemoryIndexState::TMarkNodeRefsAsCachedRequest{
+                    .NodeId = nodeId,
+                    .RefsSize = refs.size()});
         }
     }
     return result;

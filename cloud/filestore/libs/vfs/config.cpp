@@ -32,6 +32,15 @@ namespace {
     xxx(WriteBackCacheCapacity,             ui64,      1_GB                   )\
     xxx(WriteBackCacheAutomaticFlushPeriod, TDuration,                         \
                                             TDuration::MilliSeconds(100)      )\
+    xxx(WriteBackCacheFlushRetryPeriod,     TDuration,                         \
+                                            TDuration::MilliSeconds(100)      )\
+                                                                               \
+    xxx(WriteBackCacheFlushMaxWriteRequestSize,     ui32,       1_MB          )\
+    xxx(WriteBackCacheFlushMaxWriteRequestsCount,   ui32,       64            )\
+    xxx(WriteBackCacheFlushMaxSumWriteRequestsSize, ui32,       32_MB         )\
+                                                                               \
+    xxx(DirectoryHandlesStoragePath,        TString,   ""                     )\
+    xxx(DirectoryHandlesInitialDataSize,    ui64,      1_GB                   )\
 // FILESTORE_VFS_CONFIG
 
 #define FILESTORE_VFS_DECLARE_CONFIG(name, type, value)                        \
@@ -57,12 +66,6 @@ TDuration ConvertValue<TDuration, ui32>(const ui32& value)
 }
 
 template <typename T>
-bool IsEmpty(const T& t)
-{
-    return !t;
-}
-
-template <typename T>
 void DumpImpl(const T& t, IOutputStream& os)
 {
     os << t;
@@ -75,8 +78,10 @@ void DumpImpl(const T& t, IOutputStream& os)
 #define FILESTORE_CONFIG_GETTER(class, name, type, ...)                        \
 type class::Get##name() const                                                  \
 {                                                                              \
-    const auto value = ProtoConfig.Get##name();                                \
-    return !IsEmpty(value) ? ConvertValue<type>(value) : class##Default##name; \
+    if (ProtoConfig.Has##name()) {                                             \
+        return ConvertValue<type>(ProtoConfig.Get##name());                    \
+    }                                                                          \
+    return class##Default##name;                                               \
 }                                                                              \
 // FILESTORE_CONFIG_GETTER
 

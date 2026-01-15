@@ -20,6 +20,15 @@ struct TBlockStoreProtocol
 
         ZeroBlocksRequest = 5,
         ZeroBlocksResponse = 6,
+
+        PingRequest = 7,
+        PingResponse = 8,
+
+        MountVolumeRequest = 9,
+        MountVolumeResponse = 10,
+
+        UnmountVolumeRequest = 11,
+        UnmountVolumeResponse = 12,
     };
 
     static NRdma::TProtoMessageSerializer* Serializer();

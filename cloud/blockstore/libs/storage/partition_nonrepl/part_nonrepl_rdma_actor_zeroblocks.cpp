@@ -99,6 +99,7 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
         PartConfig,
         requestInfo,
         requestId,
+        VolumeActorId,
         SelfId(),
         msg->Record.GetBlocksCount(),
         deviceRequests.size());
@@ -127,11 +128,9 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
         if (AssignIdToWriteAndZeroRequestsEnabled) {
             deviceRequest.SetVolumeRequestId(
                 msg->Record.GetHeaders().GetVolumeRequestId());
-            deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);
         }
 
-        auto context = std::make_unique<TDeviceRequestRdmaContext>();
-        context->DeviceIdx = r.DeviceIdx;
+        auto context = std::make_unique<TDeviceRequestRdmaContext>(r.DeviceIdx);
 
         auto [req, err] = ep->AllocateRequest(
             requestContext,
@@ -161,17 +160,23 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
             0,   // flags
             deviceRequest);
 
-        requests.push_back({std::move(ep), std::move(req)});
+        requests.push_back(
+            {.Endpoint = std::move(ep), .ClientRequest = std::move(req)});
     }
 
     for (size_t i = 0; i < requests.size(); ++i) {
         auto& request = requests[i];
-        sentRequestCtx[i].SentRequestId = request.Endpoint->SendRequest(
+
+        requestContext->OnRequestStarted(
+            sentRequestCtx[i].DeviceIdx,
+            TDeviceOperationTracker::ERequestType::Zero);
+
+        sentRequestCtx[i].ClientRequestId = request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             requestInfo->CallContext);
     }
 
-    RequestsInProgress.AddWriteRequest(requestId, sentRequestCtx);
+    RequestsInProgress.AddWriteRequest(requestId, blockRange, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

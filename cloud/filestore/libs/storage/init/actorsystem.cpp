@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/core/config.h>
+#include <cloud/filestore/libs/storage/core/system_counters.h>
 #include <cloud/filestore/libs/storage/service/service.h>
 #include <cloud/filestore/libs/storage/ss_proxy/ss_proxy.h>
 #include <cloud/filestore/libs/storage/tablet/tablet.h>
@@ -62,13 +63,16 @@ class TStorageServicesInitializer final
 {
 private:
     const TActorSystemArgs Args;
-    IRequestStatsRegistryPtr StatsRegistry;
+    const TSystemCountersPtr SystemCounters;
+    const IRequestStatsRegistryPtr StatsRegistry;
 
 public:
     TStorageServicesInitializer(
             const TActorSystemArgs& args,
+            TSystemCountersPtr systemCounters,
             IRequestStatsRegistryPtr statsRegistry)
         : Args{args}
+        , SystemCounters(std::move(systemCounters))
         , StatsRegistry{std::move(statsRegistry)}
     {}
 
@@ -85,6 +89,7 @@ public:
             StatsRegistry,
             Args.ProfileLog,
             Args.TraceSerializer,
+            SystemCounters,
             Args.StatsFetcher);
 
         setup->LocalServices.emplace_back(
@@ -126,18 +131,23 @@ public:
 
         auto hiveProxy = CreateHiveProxy(
             {
-                .PipeClientRetryCount = Args.StorageConfig->GetPipeClientRetryCount(),
-                .PipeClientMinRetryTime = Args.StorageConfig->GetPipeClientMinRetryTime(),
+                .PipeClientRetryCount =
+                    Args.StorageConfig->GetPipeClientRetryCount(),
+                .PipeClientMinRetryTime =
+                    Args.StorageConfig->GetPipeClientMinRetryTime(),
                 // HiveLockExpireTimeout, used by NBS, doesn't matter
                 .HiveLockExpireTimeout = TDuration::Seconds(1),
                 .LogComponent = TFileStoreComponents::HIVE_PROXY,
-                .TabletBootInfoBackupFilePath = Args.StorageConfig->GetTabletBootInfoBackupFilePath(),
+                .TabletBootInfoBackupFilePath =
+                    Args.StorageConfig->GetTabletBootInfoBackupFilePath(),
+                .UseBinaryFormatForTabletBootInfoBackup =
+                    Args.StorageConfig
+                        ->GetUseBinaryFormatForTabletBootInfoBackup(),
                 .FallbackMode = Args.StorageConfig->GetHiveProxyFallbackMode(),
-                .TenantHiveTabletId = Args.StorageConfig->GetTenantHiveTabletId(),
+                .TenantHiveTabletId =
+                    Args.StorageConfig->GetTenantHiveTabletId(),
             },
-            appData
-                ->Counters
-                ->GetSubgroup("counters", "filestore")
+            appData->Counters->GetSubgroup("counters", "filestore")
                 ->GetSubgroup("component", "service"));
 
         setup->LocalServices.emplace_back(
@@ -191,13 +201,16 @@ class TCustomLocalServiceInitializer final
 {
 private:
     const TActorSystemArgs Args;
+    const TSystemCountersPtr SystemCounters;
     const NMetrics::IMetricsRegistryPtr MetricsRegistry;
 
 public:
     TCustomLocalServiceInitializer(
             const TActorSystemArgs& args,
+            TSystemCountersPtr systemCounters,
             NMetrics::IMetricsRegistryPtr metricsRegistry)
         : Args(args)
+        , SystemCounters(std::move(systemCounters))
         , MetricsRegistry(std::move(metricsRegistry))
     {}
 
@@ -213,6 +226,7 @@ public:
              diagConfig,
              profileLog = Args.ProfileLog,
              traceSerializer = Args.TraceSerializer,
+             systemCounters = SystemCounters,
              metricsRegistry = MetricsRegistry] (
                 const TActorId& owner,
                 TTabletStorageInfo* storage)
@@ -227,9 +241,10 @@ public:
                     storage,
                     config,
                     diagConfig,
-                    std::move(profileLog),
-                    std::move(traceSerializer),
-                    std::move(metricsRegistry),
+                    profileLog,
+                    traceSerializer,
+                    systemCounters,
+                    metricsRegistry,
                     useNoneCompactionPolicy);
                 return actor.release();
             };
@@ -239,11 +254,16 @@ public:
         TTabletTypes::EType tabletType = TTabletTypes::FileStore;
         if (config->GetDisableLocalService()) {
             // prevent tablet start via tablet types filter inside local service
-            // empty filter == all, so configure invalid tablet type to prevent any
-            // it allows to properly register in system and not to break things e.g. Viewer
+            // empty filter == all, so configure invalid tablet type to prevent
+            // any it allows to properly register in system and not to break
+            // things e.g. Viewer
             tabletType = TTabletTypes::TypeInvalid;
         } else {
-            ConfigureTenantSystemTablets(*appData, *localConfig, false);
+            ConfigureTenantSystemTablets(
+                *appData,
+                *localConfig,
+                config->GetAllowAdditionalSystemTablets(),
+                config->GetSystemTabletsPriority());
         }
 
         localConfig->TabletClassInfo[tabletType] =
@@ -376,6 +396,7 @@ void TActorSystem::Init()
 
     Args.Metrics->SetupCounters(AppData->Counters);
 
+    auto systemCounters = MakeIntrusive<TSystemCounters>();
     auto statsRegistry = CreateRequestStatsRegistry(
         "service",
         Args.DiagnosticsConfig,
@@ -386,9 +407,15 @@ void TActorSystem::Init()
     services->AddServiceInitializer(
         new NStorage::TKikimrServicesInitializer(Args.AppConfig));
     services->AddServiceInitializer(
-        new TStorageServicesInitializer(Args, std::move(statsRegistry)));
+        new TStorageServicesInitializer(
+            Args,
+            systemCounters,
+            std::move(statsRegistry)));
     services->AddServiceInitializer(
-        new TCustomLocalServiceInitializer(Args, Args.Metrics->GetRegistry()));
+        new TCustomLocalServiceInitializer(
+            Args,
+            systemCounters,
+            Args.Metrics->GetRegistry()));
 
     InitializeActorSystem(runConfig, services, servicesMask);
 }

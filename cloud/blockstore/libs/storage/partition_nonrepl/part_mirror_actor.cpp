@@ -7,6 +7,7 @@
 #include "part_nonrepl_migration.h"
 #include "resync_range.h"
 
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
@@ -56,6 +57,7 @@ TMirrorPartitionActor::TMirrorPartitionActor(
         TMigrations migrations,
         TVector<TDevices> replicas,
         NRdma::IClientPtr rdmaClient,
+        TActorId volumeActorId,
         TActorId statActorId,
         TActorId resyncActorId)
     : Config(std::move(config))
@@ -64,8 +66,10 @@ TMirrorPartitionActor::TMirrorPartitionActor(
     , BlockDigestGenerator(std::move(digestGenerator))
     , RdmaClient(std::move(rdmaClient))
     , DiskId(partConfig->GetName())
+    , VolumeActorId(volumeActorId)
     , StatActorId(statActorId)
     , ResyncActorId(resyncActorId)
+    , LogTitle{GetCycleCount(), TLogTitle::TPartitionMirror{.DiskId = DiskId}}
     , State(
           Config,
           rwClientId,
@@ -129,6 +133,7 @@ void TMirrorPartitionActor::SetupPartitions(const TActorContext& ctx)
                 replicaInfo.Config,
                 replicaInfo.Migrations,
                 RdmaClient,
+                VolumeActorId,
                 SelfId(),
                 migrationSrcActorId);
         } else {
@@ -136,6 +141,7 @@ void TMirrorPartitionActor::SetupPartitions(const TActorContext& ctx)
                 Config,
                 DiagnosticsConfig,
                 replicaInfo.Config,
+                VolumeActorId,
                 SelfId(),
                 RdmaClient);
         }
@@ -155,7 +161,7 @@ void TMirrorPartitionActor::StartScrubbingRange(
     const NActors::TActorContext& ctx,
     ui64 scrubbingRangeId)
 {
-    if (ScrubbingRangeId != scrubbingRangeId) {
+    if (ScrubbingRangeId != scrubbingRangeId || !ScrubbingRangeStarted) {
         ScrubbingRangeId = scrubbingRangeId;
         if (GetScrubbingRange().Start >= State.GetBlockCount()) {
             ScrubbingRangeId = 0;
@@ -183,7 +189,7 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
     const bool equal = (majorCount == checksums.size());
     if (!equal && WriteIntersectsWithScrubbing) {
         if (!ScrubbingRangeRescheduled) {
-            LOG_WARN(
+            LOG_INFO(
                 ctx,
                 TBlockStoreComponents::PARTITION,
                 "[%s] Reschedule scrubbing for range %s due to inflight write",
@@ -193,6 +199,14 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
         StartScrubbingRange(ctx, ScrubbingRangeId);
         return;
     }
+
+    ProfileLog->Write(
+        {.DiskId = DiskId,
+         .Ts = ChecksumRangeActorCompanion.GetChecksumStartTs(),
+         .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
+             .RequestType = ESysRequestType::Scrubbing,
+             .Duration = ChecksumRangeActorCompanion.GetChecksumDuration(),
+             .RangeInfo = ChecksumRangeActorCompanion.GetRangeInfo()}});
 
     if (!equal) {
         if (ctx.Now() - ScrubbingRangeStarted <
@@ -241,12 +255,10 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
         const bool hasQuorum = majorCount > checksums.size() / 2;
         if (hasQuorum) {
             ReportMirroredDiskMinorityChecksumMismatch(
-                TStringBuilder() << " disk: " << DiskId.Quote()
-                                 << ", range: " << GetScrubbingRange());
+                {{"disk", DiskId}, {"range", GetScrubbingRange()}});
         } else {
             ReportMirroredDiskMajorityChecksumMismatch(
-                TStringBuilder() << " disk: " << DiskId.Quote()
-                                 << ", range: " << GetScrubbingRange());
+                {{"disk", DiskId}, {"range", GetScrubbingRange()}});
         }
         if (Config->GetResyncRangeAfterScrubbing() &&
             CanFixMismatch(hasQuorum, Config->GetScrubbingResyncPolicy()))
@@ -339,10 +351,29 @@ auto TMirrorPartitionActor::TakeNextRequestIdentifier() -> ui64
     return RequestIdentifierCounter++;
 }
 
-bool TMirrorPartitionActor::CanMakeMultiAgentWrite(TBlockRange64 range) const
+TMirrorPartitionActor::EWriteRequestType
+TMirrorPartitionActor::SuggestWriteRequestType(
+    const TActorContext& ctx,
+    TBlockRange64 range)
 {
-    return MultiAgentWriteEnabled && range.Size() * State.GetBlockSize() >=
-                                         MultiAgentWriteRequestSizeThreshold;
+    if (!MultiAgentWriteEnabled || range.Size() * State.GetBlockSize() <
+                                       MultiAgentWriteRequestSizeThreshold)
+    {
+        return EWriteRequestType::DirectWrite;
+    }
+
+    if (!Config->GetDirectWriteBandwidthQuota()) {
+        return EWriteRequestType::MultiAgentWrite;
+    }
+
+    const bool hasEnoughBudget =
+        DirectWriteBandwidthQuota.Register(
+            ctx.Now(),
+            static_cast<double>(range.Size() * State.GetBlockSize()) /
+                Config->GetDirectWriteBandwidthQuota()) == 0;
+
+    return hasEnoughBudget ? EWriteRequestType::DirectWrite
+                           : EWriteRequestType::MultiAgentWrite;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -440,23 +471,16 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
     WriteIntersectsWithScrubbing = false;
     auto scrubbingRange = GetScrubbingRange();
 
-    for (const auto& [key, requestInfo]: RequestsInProgress.AllRequests()) {
-        if (!requestInfo.IsWrite) {
-            continue;
-        }
-        const auto& requestRange = requestInfo.BlockRange;
-        if (scrubbingRange.Overlaps(requestRange)) {
-            LOG_DEBUG(
-                ctx,
-                TBlockStoreComponents::PARTITION,
-                "[%s] Reschedule scrubbing for range %s due to inflight write to %s",
-                DiskId.c_str(),
-                DescribeRange(scrubbingRange).c_str(),
-                DescribeRange(requestRange).c_str());
+    if (RequestsInProgress.OverlapsWithWrites(scrubbingRange)) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%s] Reschedule scrubbing for range %s due to inflight write",
+            DiskId.c_str(),
+            DescribeRange(scrubbingRange).c_str());
 
-            StartScrubbingRange(ctx, ScrubbingRangeId);
-            return;
-        }
+        StartScrubbingRange(ctx, ScrubbingRangeId);
+        return;
     }
 
     TVector<TReplicaDescriptor> replicas;
@@ -544,7 +568,7 @@ void TMirrorPartitionActor::HandleRangeResynced(
 {
     using EStatus = TEvNonreplPartitionPrivate::TEvRangeResynced::EStatus;
 
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
 
     if (!HasError(msg->Error)) {
         if (msg->Status == EStatus::HealedAll) {
@@ -562,6 +586,25 @@ void TMirrorPartitionActor::HandleRangeResynced(
         ToString(msg->Status).c_str());
 
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
+
+    if (msg->ReadStartTs) {
+        ProfileLog->Write(
+            {.DiskId = DiskId,
+             .Ts = msg->ReadStartTs,
+             .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
+                 .RequestType = ESysRequestType::ResyncRead,
+                 .Duration = msg->ReadDuration,
+                 .RangeInfo = std::move(msg->ReadRangeInfo)}});
+    }
+    if (msg->WriteStartTs) {
+        ProfileLog->Write(
+            {.DiskId = DiskId,
+             .Ts = msg->WriteStartTs,
+             .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
+                 .RequestType = ESysRequestType::ResyncWrite,
+                 .Duration = msg->WriteDuration,
+                 .RangeInfo = std::move(msg->WriteRangeInfo)}});
+    }
 
     ResyncRangeStarted = false;
     StartScrubbingRange(ctx, ScrubbingRangeId + 1);
@@ -650,8 +693,7 @@ void TMirrorPartitionActor::HandleInconsistentDiskAgent(
         msg->AgentId.Quote().c_str());
 
     ReportDiskAgentInconsistentMultiWriteResponse(
-        TStringBuilder() << "DiskId: " << DiskId.Quote()
-                         << ", DiskAgent: " << msg->AgentId.Quote());
+        {{"disk", DiskId}, {"DiskAgent", msg->AgentId}});
     MultiAgentWriteEnabled = false;
 }
 
@@ -684,10 +726,8 @@ void TMirrorPartitionActor::HandleAddTagsResponse(
 
     if (HasError(error)) {
         ReportMirroredDiskAddTagFailed(
-            TStringBuilder()
-            << "Failed to add " << IntermediateWriteBufferTagName
-            << " tag for disk [" << DiskId << "] with "
-            << FormatError(error));
+            FormatError(error),
+            {{"disk", DiskId}, {"tag", IntermediateWriteBufferTagName}});
         return;
     }
     LOG_WARN(
@@ -704,18 +744,18 @@ void TMirrorPartitionActor::HandleLockAndDrainRange(
     const TEvPartition::TEvLockAndDrainRangeRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    auto* msg = ev->Get();
+    const auto* msg = ev->Get();
 
-    if (BlockRangeRequests.OverlapsWithRequest(msg->Range)) {
+    if (LockedRanges.OverlapsWithRequest(msg->Range)) {
         auto response =
             std::make_unique<TEvPartition::TEvLockAndDrainRangeResponse>(
                 MakeError(
                     E_REJECTED,
-                    "request overlaps with other block range request"));
+                    "request overlaps with other lock range request"));
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
-    BlockRangeRequests.AddRequest(msg->Range);
+    LockedRanges.AddRequest(msg->Range);
 
     auto reqInfo = CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
@@ -727,7 +767,7 @@ void TMirrorPartitionActor::HandleLockAndDrainRange(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Range %s is blocked for writing requests",
+        "[%s] Range %s is locked for writing requests",
         DiskId.c_str(),
         DescribeRange(msg->Range).c_str());
 }
@@ -736,16 +776,14 @@ void TMirrorPartitionActor::HandleReleaseRange(
     const TEvPartition::TEvReleaseRange::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    Y_UNUSED(ctx);
-    auto* msg = ev->Get();
+    const auto* msg = ev->Get();
 
-    BlockRangeRequests.RemoveRequest(msg->Range);
-
+    LockedRanges.RemoveRequest(msg->Range);
     DrainActorCompanion.RemoveDrainRangeRequest(ctx, msg->Range);
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Releasing range %s for writing requests",
+        "[%s] Range %s unlocked for writing requests",
         DiskId.c_str(),
         DescribeRange(msg->Range).c_str());
 }
@@ -823,6 +861,7 @@ STFUNC(TMirrorPartitionActor::StateWork)
         HFunc(TEvVolume::TEvScanDiskRequest, HandleScanDisk);
         HFunc(TEvVolume::TEvGetScanDiskStatusRequest, HandleGetScanDiskStatus);
         HFunc(TEvVolume::TEvCheckRangeRequest, HandleCheckRange);
+        HFunc(TEvVolume::TEvCheckRangeResponse, HandleCheckRangeResponse);
 
         HFunc(
             TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted,
@@ -869,6 +908,7 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvScrubbingNextRange);
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest);
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse);
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvRangeResynced);
 
         HFunc(TEvService::TEvReadBlocksRequest, RejectReadBlocks);
         HFunc(TEvService::TEvWriteBlocksRequest, RejectWriteBlocks);

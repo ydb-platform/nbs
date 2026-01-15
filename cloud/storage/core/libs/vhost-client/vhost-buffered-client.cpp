@@ -8,6 +8,7 @@ namespace NVHost {
 
 TBufferedClient::TBufferedClient(TString sockPath, TBufferedClientParams params)
     : QueueBufferSize {params.QueueBufferSize}
+    , WriteTimeout(params.WriteTimeout)
     , Impl {std::move(sockPath), TClientParams {
         .QueueCount = params.QueueCount,
         .QueueSize = params.QueueSize,
@@ -94,8 +95,17 @@ bool TBufferedClient::Write(
         totalLen += out.size();
     }
 
-    const size_t n = Impl.WriteAsync(0, stagingInBuffers, stagingOutBuffers)
-        .GetValueSync();
+    const auto future = Impl.WriteAsync(
+        0,
+        stagingInBuffers,
+        stagingOutBuffers);
+
+    size_t n = 0;
+    if (WriteTimeout) {
+        n = future.GetValue(WriteTimeout);
+    } else {
+        n = future.GetValueSync();
+    }
 
     for (size_t i = 0; i != stagingOutBuffers.size(); ++i) {
         std::memcpy(

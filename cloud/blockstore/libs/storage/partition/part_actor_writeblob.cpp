@@ -41,6 +41,8 @@ private:
     const ui32 GroupId;
     TChildLogTitle LogTitle;
 
+    const ui64 BSGroupOperationId;
+
     TInstant RequestSent;
     TInstant ResponseReceived;
     TStorageStatusFlags StorageStatusFlags;
@@ -57,7 +59,8 @@ public:
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
         ui32 groupId,
-        TChildLogTitle logTitle);
+        TChildLogTitle logTitle,
+        ui64 bsGroupOperationId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -98,7 +101,8 @@ TWriteBlobActor::TWriteBlobActor(
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
         ui32 groupId,
-        TChildLogTitle logTitle)
+        TChildLogTitle logTitle,
+        ui64 bsGroupOperationId)
     : TLongRunningOperationCompanion(
           tabletActorId,
           volumeActorId,
@@ -112,6 +116,7 @@ TWriteBlobActor::TWriteBlobActor(
     , Request(std::move(request))
     , GroupId(groupId)
     , LogTitle(std::move(logTitle))
+    , BSGroupOperationId(bsGroupOperationId)
 {}
 
 void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
@@ -144,7 +149,7 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
             auto error = MakeError(
                 E_CANCELLED,
                 "failed to acquire sglist in WriteBlobActor");
-            ReplyAndDie(ctx, std::make_unique<TResponse>(error));
+            ReplyAndDie(ctx, std::make_unique<TResponse>(std::move(error)));
             return;
         }
     } else {
@@ -200,6 +205,7 @@ void TWriteBlobActor::NotifyCompleted(
     request->StorageStatusFlags = StorageStatusFlags;
     request->ApproximateFreeSpaceShare = ApproximateFreeSpaceShare;
     request->RequestTime = ResponseReceived - RequestSent;
+    request->BSGroupOperationId = BSGroupOperationId;
 
     NCloud::Send(ctx, TabletActorId, std::move(request));
 }
@@ -237,8 +243,11 @@ void TWriteBlobActor::ReplyError(
         description.c_str(),
         response.Print(false).c_str());
 
-    auto error = MakeError(E_REJECTED, "TEvBlobStorage::TEvPut failed: " + description);
-    ReplyAndDie(ctx, std::make_unique<TResponse>(error));
+    ReplyAndDie(
+        ctx,
+        std::make_unique<TResponse>(MakeError(
+            E_REJECTED,
+            "TEvBlobStorage::TEvPut failed: " + description)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -389,6 +398,7 @@ void TPartitionActor::HandleWriteBlob(
     ui32 channel = msg->BlobId.Channel();
     msg->Proxy = Info()->BSProxyIDForChannel(channel, msg->BlobId.Generation());
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
+    ui64 bsGroupOperationId = BSGroupOperationId++;
 
     State->EnqueueIORequest(
         channel,
@@ -404,7 +414,12 @@ void TPartitionActor::HandleWriteBlob(
                 *DiagnosticsConfig,
                 PartitionConfig.GetStorageMediaKind()),
             groupId,
-            LogTitle.GetChild(GetCycleCount())));
+            LogTitle.GetChild(GetCycleCount()),
+            bsGroupOperationId),
+        bsGroupOperationId,
+        groupId,
+        TBSGroupOperationTimeTracker::EOperationType::Write,
+        State->GetBlockSize());
 
     ProcessIOQueue(ctx, channel);
 }
@@ -414,6 +429,10 @@ void TPartitionActor::HandleWriteBlobCompleted(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
+    BSGroupOperationTimeTracker.OnFinished(
+        msg->BSGroupOperationId,
+        GetCycleCount());
 
     Actors.Erase(ev->Sender);
 
@@ -490,17 +509,13 @@ void TPartitionActor::HandleWriteBlobCompleted(
         if (State->IncrementWriteBlobErrorCount()
                 >= Config->GetMaxWriteBlobErrorsBeforeSuicide())
         {
-            LOG_WARN(
-                ctx,
-                TBlockStoreComponents::PARTITION,
-                "%s Stop tablet because of too many WritedBlob errors (actor "
-                "%s, group %u): %s",
-                LogTitle.GetWithTime().c_str(),
-                ev->Sender.ToString().c_str(),
-                groupId,
-                FormatError(msg->GetError()).c_str());
-
-            ReportTabletBSFailure();
+            ReportTabletBSFailure(
+                TStringBuilder()
+                    << "Stop tablet because of too many WriteBlob errors"
+                    << FormatError(msg->GetError()),
+                {{"disk", PartitionConfig.GetDiskId()},
+                 {"actor", ev->Sender.ToString()},
+                 {"group", groupId}});
             Suicide(ctx);
             return;
         }

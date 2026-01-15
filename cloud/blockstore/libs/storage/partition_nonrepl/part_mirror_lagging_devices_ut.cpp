@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
@@ -242,6 +243,7 @@ struct TTestEnv
             Migrations,
             Replicas,
             RdmaClient,
+            VolumeActorId,
             VolumeActorId,
             TActorId()   // resyncActorId
         );

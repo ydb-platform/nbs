@@ -91,24 +91,28 @@ ui64 GetCommitId(const NProto::TReadBlocksLocalRequest& request)
 IReadBlocksHandlerPtr CreateReadHandler(
     const TBlockRange64& readRange,
     const NProto::TReadBlocksRequest& request,
-    ui32 blockSize)
+    ui32 blockSize,
+    bool enableDataIntegrityValidation)
 {
     Y_UNUSED(request);
     return NStorage::CreateReadBlocksHandler(
         readRange,
-        blockSize
+        blockSize,
+        enableDataIntegrityValidation
     );
 }
 
 IReadBlocksHandlerPtr CreateReadHandler(
     const TBlockRange64& readRange,
     const NProto::TReadBlocksLocalRequest& request,
-    ui32 blockSize)
+    ui32 blockSize,
+    bool enableDataIntegrityValidation)
 {
     return NStorage::CreateReadBlocksHandler(
         readRange,
         request.Sglist,
-        blockSize
+        blockSize,
+        enableDataIntegrityValidation
     );
 }
 
@@ -260,6 +264,8 @@ public:
     };
 
 private:
+    const TString DiskId;
+
     const TRequestInfoPtr RequestInfo;
 
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -291,6 +297,7 @@ private:
 
 public:
     TReadBlocksActor(
+        TString diskId,
         TRequestInfoPtr requestInfo,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ui32 blockSize,
@@ -354,6 +361,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReadBlocksActor::TReadBlocksActor(
+        TString diskId,
         TRequestInfoPtr requestInfo,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ui32 blockSize,
@@ -368,7 +376,8 @@ TReadBlocksActor::TReadBlocksActor(
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
         bool waitBaseDiskRequests)
-    : RequestInfo(std::move(requestInfo))
+    : DiskId(std::move(diskId))
+    , RequestInfo(std::move(requestInfo))
     , BlockDigestGenerator(blockDigestGenerator)
     , BlockSize(blockSize)
     , CompactionRangeSize(compactionRangeSize)
@@ -567,7 +576,8 @@ bool TReadBlocksActor::VerifyChecksums(
             batch.BlobId,
             batch.Requests[i],
             batch.BlobOffsets[i],
-            batch.Checksums[i]);
+            batch.Checksums[i],
+            DiskId);
 
         if (HasError(error)) {
             HandleError(ctx, error);
@@ -935,7 +945,8 @@ void TPartitionActor::HandleReadBlocksRequest(
     auto readHandler = CreateReadHandler(
         readRange,
         msg->Record,
-        State->GetBlockSize());
+        State->GetBlockSize(),
+        Config->GetEnableDataIntegrityValidationForYdbBasedDisks());
 
     ReadBlocks(
         ctx,
@@ -1194,6 +1205,7 @@ void TPartitionActor::CompleteReadBlocks(
     if (describeBlocksRange.Defined() || requests) {
         const auto readBlocksActorId = NCloud::Register<TReadBlocksActor>(
             ctx,
+            PartitionConfig.diskid(),
             args.RequestInfo,
             BlockDigestGenerator,
             State->GetBlockSize(),

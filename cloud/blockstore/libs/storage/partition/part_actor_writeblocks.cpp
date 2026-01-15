@@ -1,5 +1,6 @@
 #include "part_actor.h"
 
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -12,8 +13,11 @@
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/alloc.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
@@ -26,6 +30,8 @@ using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
 using namespace NCloud::NStorage;
+
+using MessageDifferencer = google::protobuf::util::MessageDifferencer;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
@@ -112,6 +118,19 @@ void TPartitionActor::HandleWriteBlocksRequest(
 
     TRequestScope timer(*requestInfo);
 
+    auto replyError = [&](NProto::TError error)
+    {
+        LWTRACK(
+            RequestReceived_Partition,
+            requestInfo->CallContext->LWOrbit,
+            "WriteBlocks",
+            requestInfo->CallContext->RequestId);
+
+        auto response =
+            std::make_unique<typename TMethod::TResponse>(std::move(error));
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+    };
+
     LWTRACK(
         RequestReceived_Partition,
         requestInfo->CallContext->LWOrbit,
@@ -125,33 +144,51 @@ void TPartitionActor::HandleWriteBlocksRequest(
     if (auto guard = sglist.Acquire()) {
         for (const auto& buffer: guard.Get()) {
             if (!buffer.Size() || buffer.Size() % State->GetBlockSize() != 0) {
-                auto response = std::make_unique<typename TMethod::TResponse>(
-                    MakeError(E_ARGUMENT, TStringBuilder()
+                replyError(MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
                         << "invalid buffer length: " << buffer.Size()));
-
-                LWTRACK(
-                    ResponseSent_Partition,
-                    requestInfo->CallContext->LWOrbit,
-                    "WriteBlocks",
-                    requestInfo->CallContext->RequestId);
-
-                NCloud::Reply(ctx, *requestInfo, std::move(response));
                 return;
             }
 
             blocksCount += buffer.Size() / State->GetBlockSize();
         }
+
+        if (Config->GetEnableDataIntegrityValidationForYdbBasedDisks() &&
+            msg->Record.ChecksumsSize() > 0)
+        {
+            if (msg->Record.ChecksumsSize() != 1) {
+                ReportChecksumCalculationError(
+                    TStringBuilder()
+                        << "WriteBlocks: incorrect number of checksums: "
+                        << msg->Record.ChecksumsSize() << " (expected 1)",
+                    {{"diskId", State->GetConfig().GetDiskId()},
+                     {"range",
+                      TBlockRange64::WithLength(
+                          msg->Record.GetStartIndex(),
+                          blocksCount)}});
+            } else {
+                auto checksum = CalculateChecksum(guard.Get());
+                if (!MessageDifferencer::Equals(
+                        msg->Record.GetChecksums(0),
+                        checksum))
+                {
+                    ui32 flags = 0;
+                    SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
+                    replyError(MakeError(
+                        E_REJECTED,
+                        TStringBuilder()
+                            << "Data integrity violation. Current checksum: "
+                            << checksum.ShortUtf8DebugString().Quote()
+                            << "; Incoming checksum: "
+                            << msg->Record.GetChecksums(0)
+                                   .ShortUtf8DebugString().Quote(),
+                        flags));
+                }
+            }
+        }
     } else {
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            MakeError(E_REJECTED, "failed to acquire input buffer"));
-
-        LWTRACK(
-            ResponseSent_Partition,
-            requestInfo->CallContext->LWOrbit,
-            "WriteBlocks",
-            requestInfo->CallContext->RequestId);
-
-        NCloud::Reply(ctx, *requestInfo, std::move(response));
+        replyError(MakeError(E_REJECTED, "failed to acquire input buffer"));
         return;
     }
 
@@ -160,24 +197,16 @@ void TPartitionActor::HandleWriteBlocksRequest(
     auto ok = InitReadWriteBlockRange(
         msg->Record.GetStartIndex(),
         blocksCount,
-        &writeRange
-    );
+        &writeRange);
 
     if (!ok) {
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            MakeError(E_ARGUMENT, TStringBuilder()
-                << "invalid block range ["
-                << "index: " << msg->Record.GetStartIndex()
-                << ", count: " << blocksCount
-                << "]"));
-
-        LWTRACK(
-            ResponseSent_Partition,
-            requestInfo->CallContext->LWOrbit,
-            "WriteBlocks",
-            requestInfo->CallContext->RequestId);
-
-        NCloud::Reply(ctx, *requestInfo, std::move(response));
+        replyError(MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "invalid block range: "
+                             << TBlockRange64::WithLength(
+                                    msg->Record.GetStartIndex(),
+                                    blocksCount)
+                                    .Print()));
         return;
     }
 
@@ -319,13 +348,29 @@ void TPartitionActor::HandleWriteBlocksCompleted(
         ProfileLog->Write(std::move(record));
     }
 
-    if (msg->UnconfirmedBlobsAdded) {
-        // blobs are confirmed, but AddBlobs request will be executed
-        // (for this commit) later
-        State->BlobsConfirmed(commitId, std::move(msg->BlobsToConfirm));
-        Y_DEBUG_ABORT_UNLESS(msg->CollectGarbageBarrierAcquired);
+    if (msg->AddingUnconfirmedBlobsRequested) {
+        if (HasError(msg->GetError())) {
+            // blobs are obsolete, delete them directly
+            auto request = std::make_unique<
+                TEvPartitionPrivate::TEvDeleteUnconfirmedBlobsRequest>(
+                MakeIntrusive<TCallContext>(CreateRequestId()),
+                commitId);
+            NCloud::Send(ctx, SelfId(), std::move(request));
+        } else {
+            // blobs are confirmed, but AddBlobs request will be executed
+            // (for this commit) later
+            State->BlobsConfirmed(commitId, std::move(msg->BlobsToConfirm));
+        }
+        STORAGE_VERIFY(
+            msg->CollectGarbageBarrierAcquired,
+            TWellKnownEntityTypes::TABLET,
+            TabletID());
+        STORAGE_VERIFY(
+            !msg->TrimFreshLogBarrierAcquired,
+            TWellKnownEntityTypes::TABLET,
+            TabletID());
         // commit & garbage queue barriers will be released when confirmed
-        // blobs are added
+        // blobs are added or when obsolete blobs are deleted
     } else {
         LOG_TRACE(
             ctx,
@@ -337,6 +382,12 @@ void TPartitionActor::HandleWriteBlocksCompleted(
         State->GetCommitQueue().ReleaseBarrier(commitId);
         if (msg->CollectGarbageBarrierAcquired) {
             State->GetGarbageQueue().ReleaseBarrier(commitId);
+        }
+
+        if (msg->TrimFreshLogBarrierAcquired && HasError(msg->GetError())) {
+            State->GetTrimFreshLogBarriers().ReleaseBarrierN(
+                commitId,
+                blocksCount);
         }
     }
 

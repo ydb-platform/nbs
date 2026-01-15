@@ -148,7 +148,6 @@ def test_add_host_with_legacy_local_ssd(
     # do not resume local devices on ADD_HOST action
     nbs_config.files["storage"].NonReplicatedDontSuspendDevices = False
     nbs_config.files["storage"].DiskRegistryAlwaysAllocatesLocalDisks = True
-    nbs_config.files["storage"].NonReplicatedInfraTimeout = 0
 
     nbs = start_nbs(nbs_config)
 
@@ -248,7 +247,7 @@ def test_add_host_with_legacy_local_ssd(
     # let's try to remove agent
     action_results = _remove_host(client, agent_id)
     assert len(action_results) == 1
-    assert action_results[0].Result.Code == EResult.E_TRY_AGAIN.value
+    assert action_results[0].Result.Code == EResult.E_TRY_AGAIN.value, "{}; {}".format(action_results[0].Result.Message, action_results[0].DependentDisks)
     assert sorted(action_results[0].DependentDisks) == ["vol0", "vol1"]
 
     bkp = client.backup_disk_registry_state()
@@ -366,7 +365,6 @@ def test_add_host(
     # resume local devices on ADD_HOST action
     nbs_config.files["storage"].NonReplicatedDontSuspendDevices = True
     nbs_config.files["storage"].DiskRegistryAlwaysAllocatesLocalDisks = True
-    nbs_config.files["storage"].NonReplicatedInfraTimeout = 0
 
     nbs = start_nbs(nbs_config)
 

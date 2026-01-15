@@ -3,6 +3,7 @@
 #include "config.h"
 #include "probes.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/hostname.h>
 
 #include <cloud/storage/core/libs/common/format.h>
@@ -12,6 +13,7 @@
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/openssl/crypto/sha.h>
 #include <library/cpp/protobuf/util/pb_io.h>
+#include <library/cpp/resource/resource.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/string.h>
@@ -36,6 +38,28 @@ namespace {
 using namespace NMonitoringUtils;
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void AddScript(IOutputStream& out, const TStringBuf resourceName)
+{
+    if (!NResource::Has(resourceName)) {
+        ReportMonitoringResourceNotFound({{"resource", resourceName}});
+        return;
+    }
+    out << "<script type='text/javascript'>\n";
+    out << NResource::Find(resourceName);
+    out << "</script>\n";
+}
+
+void AddStyle(IOutputStream& out, const TStringBuf resourceName)
+{
+    if (!NResource::Has(resourceName)) {
+        ReportMonitoringResourceNotFound({{"resource", resourceName}});
+        return;
+    }
+    out << "<style>\n";
+    out << NResource::Find(resourceName);
+    out << "</style>\n";
+}
 
 TStringBuf AlertClassFromLevel(EAlertLevel alertLevel)
 {
@@ -197,62 +221,12 @@ void BuildTabletNotifyPageWithRedirect(
 
 void GenerateBlobviewJS(IOutputStream& out)
 {
-    out << R"___(
-        <script type='text/javascript'>
-        $(function () {
-            $('.view').each(function () {
-               $('#actions', this).hide();
-               $(this).on('mouseleave', function () { $('#actions', this).hide()});
-               $(this).on('mouseenter', function () { $('#actions', this).show()});
-            })
-        })
-        </script>
-    )___";
+    AddScript(out, "monitoring_utils/blobview.js");
 }
 
 void GenerateActionsJS(IOutputStream& out)
 {
-    out << R"___(
-        <script type='text/javascript'>
-        function addGarbage() {
-            document.forms['AddGarbage'].submit();
-        }
-        function collectGarbage() {
-            document.forms['CollectGarbage'].submit();
-        }
-        function setBarriers() {
-            document.forms['SetHardBarriers'].submit();
-        }
-        function reassignChannels(hiveId, tabletId) {
-            var url = 'app?TabletID=' + hiveId;
-            url += '&page=ReassignTablet';
-            url += '&tablet=' + tabletId;
-            $.ajax({url: url});
-        }
-        function reassignChannel(hiveId, tabletId, channel) {
-            var url = 'app?TabletID=' + hiveId;
-            url += '&page=ReassignTablet';
-            url += '&tablet=' + tabletId;
-            url += '&channel=' + channel;
-            $.ajax({url: url});
-        }
-        function forceCompactionAll() {
-            document.forms['ForceCompaction'].submit();
-        }
-        function forceCompaction(blockIndex) {
-            document.forms['ForceCompaction_' + blockIndex].submit();
-        }
-        function forceCleanupAll() {
-            document.forms['ForceCleanup'].submit();
-        }
-        function rebuildMetadata(rangesPerBatch) {
-            document.forms['RebuildMetadata_' + rangesPerBatch].submit();
-        }
-        function scanDisk(blobsPerBatch) {
-            document.forms['ScanDisk_' + blobsPerBatch].submit();
-        }
-        </script>
-    )___";
+    AddScript(out, "monitoring_utils/actions.js");
 }
 
 void BuildCreateCheckpointButton(IOutputStream& out, ui64 tabletId)
@@ -321,34 +295,27 @@ void BuildVolumeTabs(IOutputStream& out)
         << "<li><a href='#Latency' data-toggle='tab'>Latency</a></li>"
         << "<li><a href='#Transactions' data-toggle='tab'>Transactions</a></li>"
         << "<li><a href='#Traces' data-toggle='tab'>Traces</a></li>"
-        << "<li><a href='#StorageConfig' data-toggle='tab'>StorageConfig</a></li></ul>";
+        << "<li><a href='#StorageConfig' data-toggle='tab'>StorageConfig</a></li>"
+        << "<li><a href='#DeviceLatency' data-toggle='tab'>DeviceLatency</a></li></ul>";
 }
 
 void BuildPartitionTabs(IOutputStream& out)
 {
     out << "<ul class='nav nav-tabs' id='Tabs'>"
-        << "<li class='active'>" << "<a  href='#Overview' data-toggle='tab'>Overview</a>"
+        << "<li class='active'>"
+        << "<a  href='#Overview' data-toggle='tab'>Overview</a>"
         << "</li>"
         << "<li><a href='#Tables' data-toggle='tab'>Tables</a>" << "</li>"
         << "<li><a href='#Channels' data-toggle='tab'>Channels</a>" << "</li>"
         << "<li><a href='#Latency' data-toggle='tab'>Latency</a>" << "</li>"
-        << "<li><a href='#Index' data-toggle='tab'>Index</a>" << "</li>" << "</ul>";
+        << "<li><a href='#Index' data-toggle='tab'>Index</a>" << "</li>"
+        << "<li><a href='#BSGroupLatency' data-toggle='tab'>BSGroupLatency</a>"
+        << "</li>" << "</ul>";
 }
 
 void GeneratePartitionTabsJs(IOutputStream& out)
 {
-    out << "<script>"
-        << "$('#Tabs a').click(function(e) {"
-        << "  e.preventDefault();"
-        << "  $(this).tab('show');"
-        << "});"
-        << "$('ul.nav-tabs > li > a').on('shown.bs.tab', function(e) {"
-        << "  var id = $(e.target).attr('href').substr(1);"
-        << "  window.location.hash = id;"
-        << "});"
-        << "var hash = window.location.hash;"
-        << "$('#Tabs a[href=\"' + hash + '\"]').tab('show');"
-        << "</script>";
+    AddScript(out, "monitoring_utils/partition_tabs.js");
 }
 
 void BuildAddGarbageButton(IOutputStream& out, ui64 tabletId)
@@ -1150,63 +1117,7 @@ void DumpTabletNotReady(IOutputStream& out)
 
 void AddLatencyCSS(IOutputStream& out)
 {
-    const TString style = R"(
-        <style>
-            .table-latency {
-                width: 100%;
-                border-collapse: collapse;
-                padding: 0;
-            }
-            .table-latency th,
-            .table-latency td {
-                padding: 0 8px 0 8px;
-                border: 1px solid black;
-            }
-            .table-latency th {
-                font-weight: bold;
-                text-align: center;
-            }
-            .table-latency td {
-                padding: 0 8px 0 8px;
-                border-top: none;
-                border-bottom: none;
-            }
-            .table-latency tr:last-child {
-                border-bottom: 1px solid black;
-            }
-
-            .tooltip-latency {
-                position: relative;
-                display: inline-block;
-            }
-            .tooltip-latency .tooltiptext-latency {
-                visibility: hidden;
-                width: 120px;
-                background-color: black;
-                color: #fff;
-                text-align: center;
-                border-radius: 6px;
-                padding: 5px 0;
-                position: absolute;
-                z-index: 1;
-            }
-            .tooltip-latency:hover .tooltiptext-latency {
-                visibility: visible;
-            }
-
-            .latency-item {
-                display: flex;
-                width: 100%;
-            }
-            .latency-item > div {
-                flex: 1 1 0;
-                text-align: right;
-            }
-        </style>
-        )";
-    HTML (out) {
-        out << style;
-    }
+    AddStyle(out, "monitoring_utils/transactions_latency.css");
 }
 
 void DumpLatency(
@@ -1219,27 +1130,26 @@ void DumpLatency(
     const TString toggleId = "transactions-auto-refresh-toggle";
 
     HTML (out) {
-        RenderAutoRefreshToggle(out, toggleId, "Auto update info", false);
+        AddScript(out, "monitoring_utils/transactions_latency.js");
+        RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
+
+        RenderStyledPostButton(
+            out,
+            "/tablets/app?action=resetTransactionLatencyStats&TabletID=" +
+                ToString(tabletId),
+            "Reset");
+
+        RenderStyledLink(
+            out,
+            "/tablets/app?action=getTransactionsInflight&TabletID=" +
+                ToString(tabletId),
+            "Inflight");
 
         DIV_CLASS_ID(" ", containerId) {
             TAG (TH3) { out << "Transactions"; }
             DumpLatencyForTransactions(out, columnCount, transactionTimeTracker);
             TAG (TH3) { out << "Groups"; }
         }
-
-        out << R"(<script>
-            function updateTransactionsData(result, container) {
-                if (!result.stat) {
-                    return;
-                }
-                for (let key in result.stat) {
-                    const element = container.querySelector('#' + key);
-                    if (element) {
-                        element.textContent = result.stat[key];
-                    }
-                }
-            }
-        </script>)";
 
         RenderAutoRefreshScript(
             out,
@@ -1430,6 +1340,518 @@ void RenderAutoRefreshScript(
     });
 })();
 </script>)";
+}
+
+void DumpLatencyForOperations(
+    IOutputStream& out,
+    const TBSGroupOperationTimeTracker& tracker)
+{
+    const auto timeBuckets = tracker.GetTimeBuckets();
+
+    for (const TString& op: {"Read", "Write", "Patch"}) {
+        HTML (out) {
+            TAG (TH3) {
+                out << op << " Latency by Group";
+            }
+            TAG_CLASS_ID(TTable, " ", "latency-table-" + op)
+            {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "Group ID";
+                        }
+                        for (const auto& bucket: timeBuckets) {
+                            TAG_ATTRS(
+                                TTableH,
+                                {{"title", bucket.Tooltip},
+                                 {"data-bucket-key", bucket.Key}})
+                            {
+                                DIV_CLASS ("tooltip-latency") {
+                                    out << bucket.Description;
+                                }
+                            }
+                        }
+                    }
+                }
+                TABLEBODY()
+                {}
+            }
+        }
+    }
+}
+
+void DumpGroupLatencyTab(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TBSGroupOperationTimeTracker& tracker)
+{
+    const TString containerId = "group-latency-container";
+    const TString toggleId = "group-latency-auto-refresh-toggle";
+
+    HTML (out) {
+        AddStyle(out, "monitoring_utils/group_latency.css");
+        AddScript(out, "monitoring_utils/group_latency.js");
+
+        RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
+
+        RenderStyledPostButton(
+            out,
+            "/tablets/app?action=resetBSGroupLatencyStats&TabletID=" +
+                ToString(tabletId),
+            "Reset");
+
+        RenderStyledLink(
+            out,
+            "/tablets/app?action=getBSGroupOperationsInflight&TabletID=" +
+                ToString(tabletId),
+            "Inflight");
+
+        out << "<div id='" << containerId << "'></div>";
+
+        DumpLatencyForOperations(out, tracker);
+
+
+        RenderAutoRefreshScript(
+            out,
+            containerId,
+            toggleId,
+            "getGroupLatencies",
+            tabletId,
+            1000,
+            "updateGroupLatencyTable");
+    }
+}
+
+TString FormatTransactionsInflight(
+    const TTransactionTimeTracker::TInflightMap& operations,
+    ui64 nowCycles,
+    TInstant now)
+{
+    TStringStream out;
+
+    HTML (out) {
+        DIV_CLASS ("container") {
+            TABLE_SORTABLE()
+            {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "ID";
+                        }
+                        TABLEH () {
+                            out << "Type";
+                        }
+                        TABLEH () {
+                            out << "Start Time";
+                        }
+                        TABLEH () {
+                            out << "Duration";
+                        }
+                    }
+                }
+                TABLEBODY()
+                {
+                    for (const auto& [id, op]: operations) {
+                        auto duration =
+                            CyclesToDurationSafe(nowCycles - op.StartTime);
+                        TABLER () {
+                            TABLED () {
+                                out << id;
+                            }
+                            TABLED () {
+                                out << op.TransactionName;
+                            }
+                            TABLED () {
+                                out << (now - duration).ToStringUpToSeconds();
+                            }
+                            TABLED () {
+                                out << FormatDuration(duration);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return out.Str();
+}
+
+TString FormatRequestsInflight(
+    const THashMap<ui64, TRequestsTimeTracker::TRequestInflight>& operations,
+    ui64 nowCycles,
+    TInstant now)
+{
+    TStringStream out;
+
+    HTML (out) {
+        DIV_CLASS ("container") {
+            TABLE_SORTABLE()
+            {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "ID";
+                        }
+                        TABLEH () {
+                            out << "Type";
+                        }
+                        TABLEH () {
+                            out << "Block Range";
+                        }
+                        TABLEH () {
+                            out << "Start Time";
+                        }
+                        TABLEH () {
+                            out << "Duration";
+                        }
+                    }
+                }
+                TABLEBODY()
+                {
+                    for (const auto& [id, op]: operations) {
+                        auto duration =
+                            CyclesToDurationSafe(nowCycles - op.StartTime);
+                        TABLER () {
+                            TABLED () {
+                                out << id;
+                            }
+                            TABLED () {
+                                switch (op.RequestType) {
+                                    case TRequestsTimeTracker::ERequestType::
+                                        Read:
+                                        out << "Read";
+                                        break;
+                                    case TRequestsTimeTracker::ERequestType::
+                                        Write:
+                                        out << "Write";
+                                        break;
+                                    case TRequestsTimeTracker::ERequestType::
+                                        Zero:
+                                        out << "Zero";
+                                        break;
+                                    case TRequestsTimeTracker::ERequestType::
+                                        Describe:
+                                        out << "Describe";
+                                        break;
+                                    default:
+                                        out << "Unknown";
+                                }
+                            }
+                            TABLED () {
+                                out << DescribeRange(op.BlockRange);
+                            }
+                            TABLED () {
+                                out << (now - duration).ToStringUpToSeconds();
+                            }
+                            TABLED () {
+                                out << FormatDuration(duration);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return out.Str();
+}
+
+TString FormatBSGroupOperationsInflight(
+    const TBSGroupOperationTimeTracker::TInflightMap& operations,
+    ui64 nowCycles,
+    TInstant now)
+{
+    TStringStream out;
+
+    HTML (out) {
+        DIV_CLASS ("container") {
+            TABLE_SORTABLE()
+            {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "ID";
+                        }
+                        TABLEH () {
+                            out << "Group ID";
+                        }
+                        TABLEH () {
+                            out << "Type";
+                        }
+                        TABLEH () {
+                            out << "Block Size";
+                        }
+                        TABLEH () {
+                            out << "Start Time";
+                        }
+                        TABLEH () {
+                            out << "Duration";
+                        }
+                    }
+                }
+                TABLEBODY()
+                {
+                    for (const auto& [id, op]: operations) {
+                        auto duration =
+                            CyclesToDurationSafe(nowCycles - op.StartTime);
+                        TABLER () {
+                            TABLED () {
+                                out << id;
+                            }
+                            TABLED () {
+                                out << op.GroupId;
+                            }
+                            TABLED () {
+                                out << op.OperationName;
+                            }
+                            TABLED () {
+                                out << op.BlockSize;
+                            }
+                            TABLED () {
+                                out << (now - duration).ToStringUpToSeconds();
+                            }
+                            TABLED () {
+                                out << FormatDuration(duration);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return out.Str();
+}
+
+TString FormatDeviceOperationsInflight(
+    const TDeviceOperationTracker::TInflightMap& operations,
+    ui64 nowCycles,
+    TInstant now)
+{
+    TStringStream out;
+
+    HTML (out) {
+        DIV_CLASS ("container") {
+            TABLE_SORTABLE()
+            {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "ID";
+                        }
+                        TABLEH () {
+                            out << "Type";
+                        }
+                        TABLEH () {
+                            out << "Agent ID";
+                        }
+                        TABLEH () {
+                            out << "Start Time";
+                        }
+                        TABLEH () {
+                            out << "Duration";
+                        }
+                    }
+                }
+                TABLEBODY()
+                {
+                    for (const auto& [id, op]: operations) {
+                        auto duration =
+                            CyclesToDurationSafe(nowCycles - op.StartTime);
+                        TABLER () {
+                            TABLED () {
+                                out << id;
+                            }
+                            TABLED () {
+                                out << op.RequestType;
+                            }
+                            TABLED () {
+                                out << op.AgentId;
+                            }
+                            TABLED () {
+                                out << (now - duration).ToStringUpToSeconds();
+                            }
+                            TABLED () {
+                                out << FormatDuration(duration);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return out.Str();
+}
+
+const TStringBuf DefaultButtonStyle =
+    "display:inline-block;"
+    "padding:2px 8px;"
+    "background:#f5f5f5;"
+    "color:#222;"
+    "border:1px solid #ccc;"
+    "border-radius:3px;"
+    "text-decoration:none;"
+    "font-size:0.9em;"
+    "font-weight:600;";
+
+void RenderStyledLink(
+    IOutputStream& out,
+    const TString& url,
+    const TString& text,
+    TStringBuf style)
+{
+    out << "<a href='" << url << "' style='" << style << "'>" << text << "</a>";
+}
+
+void RenderStyledPostButton(
+    IOutputStream& out,
+    const TString& url,
+    const TString& text,
+    TStringBuf style)
+{
+    out << "<button style='" << style << "' "
+        << "onclick=\"fetch('" << url << "', {method:'POST'})"
+        << ".catch(e => alert('Error: ' + e.message))\">" << text
+        << "</button>";
+}
+
+
+
+void RenderDeviceOperationLatencyCell(
+    IOutputStream& out,
+    const TString& requestType,
+    const TString& agentId,
+    const TString& timeKey)
+{
+    HTML (out) {
+        TABLED () {
+            DIV_CLASS_ID(
+                "latency-item",
+                requestType + "_" + agentId + "_" + timeKey)
+            {}
+        }
+    }
+}
+
+void DumpLatencyTableForRequestType(
+    IOutputStream& out,
+    const TDeviceOperationTracker& deviceTracker,
+    TDeviceOperationTracker::ERequestType requestType)
+{
+    const auto timeBuckets = deviceTracker.GetTimeBuckets();
+    const auto& agents = deviceTracker.GetAgents();
+    const TString requestTypeStr = ToString(requestType);
+
+    HTML (out) {
+        TAG (TH3) {
+            out << "Operation Type: " << requestTypeStr;
+        }
+
+        TABLE_CLASS ("table-latency") {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Agent ID";
+                    }
+                    for (const auto& timeBucket: timeBuckets) {
+                        TABLEH () {
+                            DIV_CLASS ("tooltip-latency") {
+                                DIV_CLASS ("rotated-header") {
+                                    out << timeBucket.Description;
+                                }
+                                if (!timeBucket.Tooltip.empty()) {
+                                    SPAN_CLASS ("tooltiptext-latency") {
+                                        out << timeBucket.Tooltip;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            TABLEBODY () {
+                for (const auto& agentInfo: agents) {
+                    TABLER () {
+                        TABLED () {
+                            out << agentInfo.Description;
+                        }
+
+                        for (const auto& timeBucket: timeBuckets) {
+                            RenderDeviceOperationLatencyCell(
+                                out,
+                                requestTypeStr,
+                                agentInfo.Key,
+                                timeBucket.Key);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+void DumpDeviceOperationLatency(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TDeviceOperationTracker& deviceTracker)
+{
+    const TString containerId = "device-operations-latency-container";
+    const TString toggleId = "device-operations-auto-refresh-toggle";
+
+    HTML (out) {
+        AddStyle(out, "monitoring_utils/device_operation_latency.css");
+        AddScript(out, "monitoring_utils/device_operation_latency.js");
+
+        RenderAutoRefreshToggle(
+            out,
+            toggleId,
+            "Auto update device operations",
+            true);
+
+        RenderStyledPostButton(
+            out,
+            "/tablets/app?action=resetDeviceOperationLatencyStats&TabletID=" +
+                ToString(tabletId),
+            "Reset");
+
+        RenderStyledLink(
+            out,
+            "/tablets/app?action=getDeviceOperationsInflight&TabletID=" +
+                ToString(tabletId),
+            "Inflight");
+
+        DIV_CLASS_ID(" ", containerId)
+        {
+            DumpLatencyTableForRequestType(
+                out,
+                deviceTracker,
+                TDeviceOperationTracker::ERequestType::Read);
+            DumpLatencyTableForRequestType(
+                out,
+                deviceTracker,
+                TDeviceOperationTracker::ERequestType::Write);
+            DumpLatencyTableForRequestType(
+                out,
+                deviceTracker,
+                TDeviceOperationTracker::ERequestType::Zero);
+            DumpLatencyTableForRequestType(
+                out,
+                deviceTracker,
+                TDeviceOperationTracker::ERequestType::Checksum);
+        }
+
+        RenderAutoRefreshScript(
+            out,
+            containerId,
+            toggleId,
+            "getDeviceLatency",
+            tabletId,
+            1000,
+            "updateDeviceOperationsData");
+    }
 }
 
 }   // namespace NMonitoringUtils

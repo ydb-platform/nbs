@@ -14,6 +14,7 @@
 #include <cloud/blockstore/public/api/protos/mount.pb.h>
 #include <cloud/blockstore/public/api/protos/ping.pb.h>
 #include <cloud/blockstore/public/api/protos/placement.pb.h>
+#include <cloud/blockstore/public/api/protos/volume_throttling.pb.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/libs/common/guarded_sglist.h>
@@ -33,6 +34,7 @@ struct TReadBlocksLocalRequest
 {
     TGuardedSgList Sglist;
     ui64 CommitId = 0;
+    // TODO: remove BlockSize as it is now in NProto::TReadBlocksRequest
     ui32 BlockSize = 0;
     bool ShouldReportFailedRangesOnFailure = false;
 };
@@ -60,6 +62,7 @@ struct TWriteBlocksLocalRequest
 {
     TGuardedSgList Sglist;
     ui32 BlocksCount = 0;
+    // TODO: remove BlockSize as it is now in NProto::TWriteBlocksRequest
     ui32 BlockSize = 0;
 };
 
@@ -104,9 +107,11 @@ using TWriteBlocksLocalResponse = TWriteBlocksResponse;
     xxx(CreateVolumeFromDevice,             __VA_ARGS__)                       \
     xxx(ResumeDevice,                       __VA_ARGS__)                       \
     xxx(QueryAgentsInfo,                    __VA_ARGS__)                       \
+    xxx(ListDiskStates,                     __VA_ARGS__)                       \
     xxx(CreateVolumeLink,                   __VA_ARGS__)                       \
     xxx(DestroyVolumeLink,                  __VA_ARGS__)                       \
     xxx(RemoveVolumeClient,                 __VA_ARGS__)                       \
+    xxx(UpdateVolumeThrottlingConfig,       __VA_ARGS__)                       \
 // BLOCKSTORE_GRPC_STORAGE_SERVICE
 
 #define BLOCKSTORE_ENDPOINT_SERVICE(xxx, ...)                                  \
@@ -169,6 +174,9 @@ constexpr size_t BlockStoreRequestsCount = (size_t)EBlockStoreRequest::MAX;
 
 const TString& GetBlockStoreRequestName(EBlockStoreRequest requestType);
 
+template<typename TRequest>
+TString GetBlockStoreRequestName();
+
 enum class ESysRequestType
 {
     Compaction = 10000,
@@ -176,15 +184,20 @@ enum class ESysRequestType
     ConvertToMixedIndex = 10002,
     ConvertToRangeMap = 10003,
     Cleanup = 10004,
-    Migration = 10005,
+    MigrationRead = 10005,
     WriteDeviceBlocks = 10006,
     ZeroDeviceBlocks = 10007,
-    Resync = 10008,
+    ResyncChecksum = 10008,
     ConfirmBlobs = 10009,
+    ReadDeviceBlocks = 10010,
+    ResyncRead = 10011,
+    ResyncWrite = 10012,
+    Scrubbing = 10013,
+    MigrationWrite = 10014,
     MAX
 };
 
-TStringBuf GetSysRequestName(ESysRequestType requestType);
+TString GetSysRequestName(ESysRequestType requestType);
 
 enum class EPrivateRequestType
 {

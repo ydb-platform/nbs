@@ -7,6 +7,7 @@ SRCS(
     checksum_range.cpp
     config.cpp
     copy_range.cpp
+    get_device_for_range_companion.cpp
     direct_copy_range.cpp
     lagging_agent_migration_actor.cpp
     lagging_agents_replica_proxy_actor.cpp

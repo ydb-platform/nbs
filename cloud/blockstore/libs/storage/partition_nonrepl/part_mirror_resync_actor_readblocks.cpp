@@ -212,13 +212,12 @@ void TMirrorPartitionResyncActor::ProcessReadResponseFastPath(
     const auto& sglist = guard.Get();
 
     if (blockCount != sglist.size()) {
-        ReportReadBlockCountMismatch(Sprintf(
-            "TMirrorPartitionResyncActor: "
-            "Number of read blocks doesn't match requested: %lu != %lu. "
-            "Range %s",
-            blockCount,
-            sglist.size(),
-            DescribeRange(record.BlockRange).c_str()));
+        ReportReadBlockCountMismatch(
+            {{"disk", PartConfig->GetName()},
+             {"blockCount", blockCount},
+             {"sglistSize", sglist.size()},
+             {"range", record.BlockRange}});
+
         SendReadBlocksResponse(
             MakeError(E_FAIL, "Number of read blocks doesn't match request"),
             record,

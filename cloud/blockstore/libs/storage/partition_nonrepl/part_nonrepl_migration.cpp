@@ -18,6 +18,7 @@ IActorPtr CreateNonreplicatedPartitionMigration(
     TNonreplicatedPartitionConfigPtr partConfig,
     google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
     NRdma::IClientPtr rdmaClient,
+    NActors::TActorId volumeActorId,
     NActors::TActorId statActorId,
     NActors::TActorId migrationSrcActorId)
 {
@@ -31,6 +32,7 @@ IActorPtr CreateNonreplicatedPartitionMigration(
         std::move(partConfig),
         std::move(migrations),
         std::move(rdmaClient),
+        volumeActorId,
         statActorId,
         migrationSrcActorId);
 }

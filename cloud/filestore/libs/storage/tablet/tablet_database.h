@@ -30,6 +30,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(LastLockId,             __VA_ARGS__)                                   \
     xxx(LastCollectCommitId,    __VA_ARGS__)                                   \
     xxx(LastXAttr,              __VA_ARGS__)                                   \
+    xxx(HasXAttrs,              __VA_ARGS__)                                   \
                                                                                \
     xxx(UsedNodesCount,         __VA_ARGS__)                                   \
     xxx(UsedSessionsCount,      __VA_ARGS__)                                   \
@@ -210,7 +211,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         const TString& cookie,
         TVector<TNodeRef>& refs,
         ui32 maxBytes,
-        TString* next = nullptr) override;
+        TString* next,
+        ui32* skippedRefs) override;
 
     virtual bool ReadNodeRefs(
         ui64 startNodeId,
@@ -223,7 +225,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     virtual bool PrechargeNodeRefs(
         ui64 nodeId,
         const TString& cookie,
-        ui32 bytesToPrecharge) override;
+        ui64 rowsToPrecharge,
+        ui64 bytesToPrecharge) override;
 
     //
     // NodeRefs_Ver
@@ -628,7 +631,8 @@ public:
         const TString& cookie,
         TVector<TNodeRef>& refs,
         ui32 maxBytes,
-        TString* next = nullptr) override;
+        TString* next = nullptr,
+        ui32* skippedRefs = nullptr) override;
 
     bool ReadNodeRefs(
         ui64 startNodeId,

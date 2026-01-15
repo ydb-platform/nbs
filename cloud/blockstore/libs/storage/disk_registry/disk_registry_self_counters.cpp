@@ -1,13 +1,13 @@
 #include "disk_registry_self_counters.h"
 
-#include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistrySelfCounters::Init(
-    const TVector<TString>& poolNames,
+    const TVector<std::pair<TString, NProto::EDevicePoolKind>>& pools,
     NMonitoring::TDynamicCountersPtr counters)
 {
     FreeBytes = counters->GetCounter("FreeBytes");
@@ -20,6 +20,7 @@ void TDiskRegistrySelfCounters::Init(
     AllocatedDisks = counters->GetCounter("AllocatedDisks");
     AllocatedDevices = counters->GetCounter("AllocatedDevices");
     DirtyDevices = counters->GetCounter("DirtyDevices");
+    FreshDevices = counters->GetCounter("FreshDevices");
     UnknownDevices = counters->GetCounter("UnknownDevices");
     DevicesInOnlineState = counters->GetCounter("DevicesInOnlineState");
     DevicesInWarningState = counters->GetCounter("DevicesInWarningState");
@@ -31,7 +32,6 @@ void TDiskRegistrySelfCounters::Init(
 
     DisksInWarningState = counters->GetCounter("DisksInWarningState");
     MaxWarningTime = counters->GetCounter("MaxWarningTime");
-    DisksInMigrationState = counters->GetCounter("DisksInMigrationState");
     MaxMigrationTime = counters->GetCounter("MaxMigrationTime");
 
     DevicesInMigrationState = counters->GetCounter("DevicesInMigrationState");
@@ -47,14 +47,6 @@ void TDiskRegistrySelfCounters::Init(
     Mirror3DisksMinus1 = counters->GetCounter("Mirror3DisksMinus1");
     Mirror3DisksMinus2 = counters->GetCounter("Mirror3DisksMinus2");
     Mirror3DisksMinus3 = counters->GetCounter("Mirror3DisksMinus3");
-    PlacementGroupsWithRecentlyBrokenSingleDisk =
-        counters->GetCounter("PlacementGroupsWithRecentlyBrokenSingleDisk");
-    PlacementGroupsWithRecentlyBrokenTwoOrMoreDisks =
-        counters->GetCounter("PlacementGroupsWithRecentlyBrokenTwoOrMoreDisks");
-    PlacementGroupsWithBrokenSingleDisk =
-        counters->GetCounter("PlacementGroupsWithBrokenSingleDisk");
-    PlacementGroupsWithBrokenTwoOrMoreDisks =
-        counters->GetCounter("PlacementGroupsWithBrokenTwoOrMoreDisks");
     PlacementGroupsWithRecentlyBrokenSinglePartition =
         counters->GetCounter("PlacementGroupsWithRecentlyBrokenSinglePartition");
     PlacementGroupsWithRecentlyBrokenTwoOrMorePartitions =
@@ -71,16 +63,18 @@ void TDiskRegistrySelfCounters::Init(
 
     QueryAvailableStorageErrors.Register(counters, "QueryAvailableStorageErrors");
 
-    for (const auto& poolName: poolNames) {
-        RegisterPool(poolName, counters);
+    for (const auto& [poolName, poolKind]: pools) {
+        RegisterPool(poolName, PoolKindToString(poolKind), counters);
     }
 }
 
 void TDiskRegistrySelfCounters::RegisterPool(
     const TString& poolName,
+    const TString& poolKind,
     NMonitoring::TDynamicCountersPtr counters)
 {
-    PoolName2Counters[poolName].Init(counters->GetSubgroup("pool", poolName));
+    PoolName2Counters[poolName].Init(
+        counters->GetSubgroup("pool", poolName)->GetSubgroup("kind", poolKind));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

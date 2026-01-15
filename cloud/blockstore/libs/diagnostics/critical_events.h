@@ -2,7 +2,23 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/common/block_range.h>
+
+#include <variant>
+
 namespace NCloud::NBlockStore {
+
+using TValue = std::variant<
+    TString,
+    int,
+    ui16,
+    ui32,
+    ui64,
+    TBlockRange64,
+    TStringBuf,
+    const char* const>;
+
+using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -66,6 +82,8 @@ namespace NCloud::NBlockStore {
     xxx(MirroredDiskResyncChecksumMismatch)                                    \
     xxx(DiskAgentInconsistentMultiWriteResponse)                               \
     xxx(ReleaseShadowDiskError)                                                \
+    xxx(WrongCellIdInDescribeVolume)                                           \
+    xxx(TrimFreshLogTimeout)                                                   \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \
@@ -76,6 +94,7 @@ namespace NCloud::NBlockStore {
     xxx(DiskAgentSessionCacheRestoreError)                                     \
     xxx(DiskAgentSessionCacheUpdateError)                                      \
     xxx(UnexpectedIdentifierRepetition)                                        \
+    xxx(ChaosGeneratedError)                                                   \
 // BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS
 
 #define BLOCKSTORE_IMPOSSIBLE_EVENTS(xxx)                                      \
@@ -98,8 +117,9 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryNoScheduledNotification)                                   \
     xxx(DiskRegistryDeviceDoesNotBelongToDisk)                                 \
     xxx(DiskRegistryCouldNotAddOutdatedLaggingDevice)                          \
+    xxx(DiskRegistryReplicaTableReplaceError)                                  \
     xxx(ResyncUnexpectedWriteOrZeroCounter)                                    \
-    xxx(MonitoringSvgTemplatesNotFound)                                        \
+    xxx(MonitoringResourceNotFound)                                            \
     xxx(DiskRegistryUnexpectedAffectedDisks)                                   \
     xxx(ReadBlockCountMismatch)                                                \
     xxx(CancelRoutineIsNotSet)                                                 \
@@ -111,6 +131,11 @@ namespace NCloud::NBlockStore {
     xxx(LaggingAgentsProxyWrongRecipientActor)                                 \
     xxx(UnexpectedCookie)                                                      \
     xxx(MultiAgentRequestAffectsTwoDevices)                                    \
+    xxx(ChecksumCalculationError)                                              \
+    xxx(LogicalDiskIdMismatch)                                                 \
+    xxx(DeviceReplacementContractBroken)                                       \
+    xxx(InflightRequestInvariantViolation)                                     \
+    xxx(SetupChannelsOnWrongMediaKindVolume)                                   \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -119,6 +144,11 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
 #define BLOCKSTORE_DECLARE_CRITICAL_EVENT_ROUTINE(name)                        \
     TString Report##name(const TString& message = "");                         \
+    TString Report##name(                                                      \
+        const TString& message,                                                \
+        const TCritEventParams& keyValues);                                    \
+    TString Report##name(                                                      \
+        const TCritEventParams& keyValues);                                    \
     const TString GetCriticalEventFor##name();                                 \
 // BLOCKSTORE_DECLARE_CRITICAL_EVENT_ROUTINE
 
@@ -127,6 +157,11 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
 #define BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE(name)             \
     TString Report##name(const TString& message = "");                         \
+    TString Report##name(                                                      \
+        const TString& message,                                                \
+        const TCritEventParams& keyValues);                                    \
+    TString Report##name(                                                      \
+        const TCritEventParams& keyValues);                                    \
     const TString GetCriticalEventFor##name();                                 \
 // BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE
 
@@ -136,6 +171,11 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
 #define BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE(name)                      \
     TString Report##name(const TString& message = "");                         \
+    TString Report##name(                                                      \
+        const TString& message,                                                \
+        const TCritEventParams& keyValues);                                    \
+    TString Report##name(                                                      \
+        const TCritEventParams& keyValues);                                    \
     const TString GetCriticalEventFor##name();                                 \
 // BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE
     BLOCKSTORE_IMPOSSIBLE_EVENTS(BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE)

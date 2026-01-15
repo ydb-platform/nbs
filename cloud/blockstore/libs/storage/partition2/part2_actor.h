@@ -18,6 +18,7 @@
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
+#include <cloud/blockstore/libs/storage/core/partition_statistics_counters.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
@@ -128,7 +129,9 @@ private:
     // Requests in-progress
     THashSet<NActors::TActorId> Actors;
     TIntrusiveList<TRequestInfo> ActiveTransactions;
-    TDrainActorCompanion DrainActorCompanion{*this, TabletID()};
+    TDrainActorCompanion DrainActorCompanion{
+        *this,
+        PartitionConfig.GetDiskId()};
     ui32 WriteAndZeroRequestsInProgress = 0;
 
     TPartitionDiskCountersPtr PartCounters;
@@ -247,12 +250,21 @@ private:
         }
     }
 
+    TPartitionStatisticsCounters ExtractPartCounters(
+        const NActors::TActorContext& ctx);
+
     void SendStatsToService(const NActors::TActorContext& ctx);
 
     // IRequestsInProgress implementation:
     bool WriteRequestInProgress() const override
     {
         return WriteAndZeroRequestsInProgress != 0;
+    }
+
+    bool OverlapsWithWrites(TBlockRange64 range) const override
+    {
+        Y_UNUSED(range);
+        Y_ABORT("Unimplemented");
     }
 
     void WaitForInFlightWrites() override
@@ -584,6 +596,10 @@ private:
 
     bool HandleRequests(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);
+
+    void HandleGetPartCountersRequest(
+        const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)
     BLOCKSTORE_PARTITION2_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartitionPrivate)

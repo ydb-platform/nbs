@@ -6,7 +6,7 @@
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
-
+#include <cloud/blockstore/libs/storage/core/device_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 
@@ -237,7 +237,16 @@ struct TEvVolumePrivate
     };
 
     struct TUpdateDevicesResponse
-    {};
+    {
+        TVector<NProto::TLaggingDevice> LaggingDevices;
+
+        TUpdateDevicesResponse() = default;
+
+        explicit TUpdateDevicesResponse(
+            TVector<NProto::TLaggingDevice> laggingDevices)
+            : LaggingDevices(std::move(laggingDevices))
+        {}
+    };
 
     //
     // PartStatsSaved
@@ -426,6 +435,15 @@ struct TEvVolumePrivate
         {}
     };
 
+    struct TLinkOnFollowerDataTransferred
+    {
+        TLeaderFollowerLink Link;
+
+        explicit TLinkOnFollowerDataTransferred(TLeaderFollowerLink link)
+            : Link(std::move(link))
+        {}
+    };
+
     //
     //  CreateLinkFinished
     //
@@ -464,6 +482,39 @@ struct TEvVolumePrivate
     };
 
     //
+    //  DiskRegistryDeviceOperationStarted
+    //
+
+    struct TDiskRegistryDeviceOperationStarted
+    {
+        TString AgentId;
+        TDeviceOperationTracker::ERequestType RequestType;
+        ui64 OperationId;
+
+        TDiskRegistryDeviceOperationStarted(
+            const TString& agentId,
+            TDeviceOperationTracker::ERequestType requestType,
+            ui64 operationId)
+            : AgentId(agentId)
+            , RequestType(requestType)
+            , OperationId(operationId)
+        {}
+    };
+
+    //
+    //  DiskRegistryDeviceOperationFinished
+    //
+
+    struct TDiskRegistryDeviceOperationFinished
+    {
+        ui64 OperationId;
+
+        explicit TDiskRegistryDeviceOperationFinished(ui64 operationId)
+            : OperationId(operationId)
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -492,7 +543,10 @@ struct TEvVolumePrivate
         EvLaggingAgentMigrationFinished,
         EvLinkOnFollowerCreated,
         EvLinkOnFollowerDestroyed,
+        EvLinkOnFollowerDataTransferred,
         EvCreateLinkFinished,
+        EvDiskRegistryDeviceOperationStarted,
+        EvDiskRegistryDeviceOperationFinished,
 
         EvEnd
     };
@@ -583,8 +637,20 @@ struct TEvVolumePrivate
     using TEvLinkOnFollowerDestroyed =
         TResponseEvent<TLinkOnFollowerDestroyed, EvLinkOnFollowerDestroyed>;
 
+    using TEvLinkOnFollowerDataTransferred = TResponseEvent<
+        TLinkOnFollowerDataTransferred,
+        EvLinkOnFollowerDataTransferred>;
+
     using TEvCreateLinkFinished =
         TResponseEvent<TCreateLinkFinished, EvCreateLinkFinished>;
+
+    using TEvDiskRegistryDeviceOperationStarted = TRequestEvent<
+        TDiskRegistryDeviceOperationStarted,
+        EvDiskRegistryDeviceOperationStarted>;
+
+    using TEvDiskRegistryDeviceOperationFinished = TRequestEvent<
+        TDiskRegistryDeviceOperationFinished,
+        EvDiskRegistryDeviceOperationFinished>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -28,8 +28,6 @@
 #include <cloud/storage/core/libs/uds/client_storage.h>
 #include <cloud/storage/core/libs/uds/endpoint_poller.h>
 
-#include <contrib/ydb/library/actors/prof/tag.h>
-
 #include <contrib/libs/grpc/include/grpcpp/completion_queue.h>
 #include <contrib/libs/grpc/include/grpcpp/resource_quota.h>
 #include <contrib/libs/grpc/include/grpcpp/security/auth_metadata_processor.h>
@@ -39,6 +37,8 @@
 #include <contrib/libs/grpc/include/grpcpp/server_context.h>
 #include <contrib/libs/grpc/include/grpcpp/server_posix.h>
 #include <contrib/libs/grpc/include/grpcpp/support/status.h>
+
+#include <contrib/ydb/library/actors/prof/tag.h>
 
 #include <util/datetime/cputimer.h>
 #include <util/folder/path.h>
@@ -136,6 +136,8 @@ struct TAppContext
     IServerStatsPtr ServerStats;
 
     TAtomic ShouldStop = 0;
+
+    TString CellId;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -634,6 +636,13 @@ private:
                 AppCtx.ServerStats->GetBlockSize(diskId));
         }
 
+        if constexpr (std::is_same<TMethod, TDescribeVolumeMethod>()) {
+            const auto& cellId = Request->GetHeaders().GetCellId();
+            if (cellId) {
+                MetricRequest.CellRequest = true;
+            }
+        }
+
         AppCtx.ServerStats->PrepareMetricRequest(
             MetricRequest,
             std::move(clientId),
@@ -659,14 +668,14 @@ private:
             bool result = TryParseSourceFd(peer, &fd);
 
             if (!result) {
-                ythrow TServiceError(E_FAIL)
+                STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                     << "failed to parse request source fd: " << peer;
             }
 
             auto src = NProto::SOURCE_FD_DATA_CHANNEL;
             SessionService = AppCtx.SessionStorage->GetSessionService(fd, src);
             if (SessionService == nullptr) {
-                ythrow TServiceError(E_GRPC_UNAVAILABLE)
+                STORAGE_THROW_SERVICE_ERROR(E_GRPC_UNAVAILABLE)
                     << "endpoint has been stopped (fd = " << fd << ").";
             }
 
@@ -678,19 +687,19 @@ private:
         const bool isDataService = IsDataService<TService>();
 
         if (isDataChannel != isDataService) {
-            ythrow TServiceError(E_GRPC_UNIMPLEMENTED)
+            STORAGE_THROW_SERVICE_ERROR(E_GRPC_UNIMPLEMENTED)
                 << "mismatched request channel";
         }
 
         if (Request->GetHeaders().HasInternal()) {
-            ythrow TServiceError(E_ARGUMENT)
+            STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
                 << "internal field should not be set by client";
         }
 
         if (*source == NProto::SOURCE_TCP_DATA_CHANNEL &&
             TMethod::Request != EBlockStoreRequest::UploadClientMetrics)
         {
-            ythrow TServiceError(E_ARGUMENT)
+            STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
                 << "unsupported request in tcp data channel: "
                 << GetBlockStoreRequestName(TMethod::Request).Quote();
         }
@@ -702,6 +711,18 @@ private:
         // we will only get token from secure control channel
         if (source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
             internal.SetAuthToken(GetAuthToken(Context->client_metadata()));
+        }
+
+        if constexpr (std::is_same<TMethod, TDescribeVolumeMethod>()) {
+            const auto& cellId = Request->GetHeaders().GetCellId();
+            if (AppCtx.CellId && cellId && cellId != AppCtx.CellId) {
+                const auto* msg = "DescribeVolume response cell id mismatch";
+                ReportWrongCellIdInDescribeVolume(
+                    msg,
+                    {{"expected", AppCtx.CellId}, {"actual", cellId}});
+
+                STORAGE_THROW_SERVICE_ERROR(E_REJECTED) << msg;
+            }
         }
     }
 
@@ -800,13 +821,17 @@ private:
         return {};
     }
 
-    static TResponse GetErrorResponse(const TServiceError& e)
+    TResponse GetErrorResponse(const TServiceError& e)
     {
         TResponse response;
 
         auto& error = *response.MutableError();
         error.SetCode(e.GetCode());
         error.SetMessage(e.what());
+
+        if constexpr (std::is_same<TMethod, TDescribeVolumeMethod>()) {
+            response.SetCellId(AppCtx.CellId);
+        }
 
         return response;
     }
@@ -925,7 +950,8 @@ public:
         ILoggingServicePtr logging,
         IServerStatsPtr serverStats,
         IBlockStorePtr service,
-        IBlockStorePtr udsService);
+        IBlockStorePtr udsService,
+        TServerOptions options);
 
     ~TServer() override;
 
@@ -955,7 +981,8 @@ TServer::TServer(
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
-    IBlockStorePtr udsService)
+    IBlockStorePtr udsService,
+    TServerOptions options)
 {
     Config = std::move(config);
     Log = logging->CreateLog("BLOCKSTORE_SERVER");
@@ -964,6 +991,7 @@ TServer::TServer(
     Service = std::move(service);
     UdsService = std::move(udsService);
     SessionStorage = std::make_shared<TSessionStorage>(*this);
+    CellId = std::move(options.CellId);
 }
 
 TServer::~TServer()
@@ -1078,7 +1106,7 @@ void TServer::Start()
 
     Server = builder.BuildAndStart();
     if (!Server) {
-        ythrow TServiceError(E_FAIL)
+        STORAGE_THROW_SERVICE_ERROR(E_FAIL)
             << "could not start gRPC server";
     }
 
@@ -1146,8 +1174,9 @@ void TServer::StartListenUnixSocket(
         SessionStorage->CreateClientStorage(UdsService));
 
     if (HasError(error)) {
-        ReportEndpointStartingError();
-        STORAGE_ERROR("Failed to start (control) endpoint: " << FormatError(error));
+        ReportEndpointStartingError(
+            FormatError(error),
+            {{"unix_socket_path", unixSocketPath}});
         StopListenUnixSocket();
     }
 }
@@ -1259,14 +1288,16 @@ IServerPtr CreateServer(
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
-    IBlockStorePtr udsService)
+    IBlockStorePtr udsService,
+    TServerOptions options)
 {
     return std::make_shared<TServer>(
         std::move(config),
         std::move(logging),
         std::move(serverStats),
         std::move(service),
-        std::move(udsService));
+        std::move(udsService),
+        std::move(options));
 }
 
 }   // namespace NCloud::NBlockStore::NServer

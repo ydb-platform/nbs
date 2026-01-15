@@ -1,0 +1,82 @@
+syntax = "proto2";
+
+import "cloud/blockstore/config/client.proto";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum ECellDataTransport
+{
+    CELL_DATA_TRANSPORT_UNSET = 0;
+    CELL_DATA_TRANSPORT_GRPC = 1;
+    CELL_DATA_TRANSPORT_NBD = 2;
+    CELL_DATA_TRANSPORT_RDMA = 3;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TCellHostConfig
+{
+    optional string Fqdn = 1;
+
+    // overrides Transport in TCellConfig.
+    optional ECellDataTransport Transport = 2;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TCellConfig
+{
+    optional string CellId = 1;
+
+    optional uint32 GrpcPort = 2;
+
+    optional uint32 RdmaPort = 4;
+
+    optional uint32 NbdPort = 5;
+
+    optional uint32 SecureGrpcPort = 6;
+
+    optional ECellDataTransport Transport = 7;
+
+    repeated TCellHostConfig Hosts = 8;
+
+    // Number of host in a cell to send DescribeVolume requests during volume
+    // lookup.
+    optional uint32 DescribeVolumeHostCount = 9;
+
+    // Minimum number of hosts in a cell to have connections to.
+    optional uint32 MinCellConnections = 10;
+
+    // Turn on cell id checking in DescribeVolume request/response.
+    // If cell ids in request and response do not match, an error is
+    // returned.
+    optional bool StrictCellIdCheckInDescribeVolume = 11;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TCellsConfig
+{
+    // Mapping from CellId to fqdn hosts.
+    repeated TCellConfig Cells = 1;
+
+    // Cell id, blockstore server belongs to.
+    optional string CellId = 2;
+
+    // DescribeVolume timeout. If timeout is exceeded then we reply with error
+    // indicating this and client may retry request.
+    optional uint32 DescribeVolumeTimeout = 3;
+
+    // Settings for Grpc client.
+    optional TClientConfig GrpcClientConfig = 4;
+
+    // Number of worker threads for RDMA Transport
+    optional uint32 RdmaTransportWorkers = 5;
+
+    // Enable/Disable feature
+    optional bool CellsEnabled = 6;
+}

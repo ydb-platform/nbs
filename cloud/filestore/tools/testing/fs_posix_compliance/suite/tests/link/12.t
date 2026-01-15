@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # $FreeBSD: src/tools/regression/fstest/tests/link/12.t,v 1.1 2007/01/17 01:42:09 pjd Exp $
 
 desc="link returns EPERM if the source file has its immutable or append-only flag set"

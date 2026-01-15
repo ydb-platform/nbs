@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
+#include <cloud/blockstore/libs/storage/api/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/api/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
@@ -22,6 +23,7 @@
 #include <cloud/blockstore/libs/storage/partition2/part2_actor.h>
 #include <cloud/blockstore/libs/storage/service/service.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service.h>
+#include <cloud/blockstore/libs/storage/volume_throttling_manager/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/ss_proxy/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/undelivered/undelivered.h>
 #include <cloud/blockstore/libs/storage/volume/volume.h>
@@ -151,6 +153,8 @@ public:
                     Args.TemporaryServer
                         ? ""
                         : Args.StorageConfig->GetTabletBootInfoBackupFilePath(),
+                .UseBinaryFormatForTabletBootInfoBackup =
+                    Args.StorageConfig->GetUseBinaryFormatForTabletBootInfoBackup(),
                 .FallbackMode = Args.StorageConfig->GetHiveProxyFallbackMode(),
                 .TenantHiveTabletId =
                     Args.StorageConfig->GetTenantHiveTabletId(),
@@ -303,7 +307,8 @@ public:
                 Args.BlockDigestGenerator,
                 Args.Logging,
                 Args.RdmaServer,
-                Args.NvmeManager);
+                Args.NvmeManager,
+                Args.BackgroundThreadPool);
 
             setup->LocalServices.emplace_back(
                 MakeDiskAgentServiceId(Args.NodeId),
@@ -330,6 +335,23 @@ public:
                 volumeBalancerService.release(),
                 TMailboxType::Revolving,
                 appData->UserPoolId));
+
+        //
+        // Volume Throttling Manager
+        //
+
+        if (Args.StorageConfig->GetVolumeThrottlingManagerEnabled()) {
+            auto volumeThrottlingManagerService = CreateVolumeThrottlingManager(
+                Args.StorageConfig
+                    ->GetVolumeThrottlingManagerNotificationPeriodSeconds());
+
+            setup->LocalServices.emplace_back(
+                MakeVolumeThrottlingManagerServiceId(),
+                TActorSetupCmd(
+                    volumeThrottlingManagerService.release(),
+                    TMailboxType::Simple,
+                    appData->BatchPoolId));
+        }
 
         //
         // BlobStorage LoadActorService
@@ -459,7 +481,8 @@ public:
                             appData->SystemPoolId));
             }
 
-            const i32 priority { IsDiskRegistrySpareNode ? -1 : 0 };
+            const i32 drPriority = StorageConfig->GetSystemTabletsPriority() -
+                                   (IsDiskRegistrySpareNode ? 1 : 0);
 
             localConfig->TabletClassInfo[TTabletTypes::BlockStoreDiskRegistry] =
                 TLocalConfig::TTabletClassInfo(
@@ -469,16 +492,34 @@ public:
                         appData->UserPoolId,
                         TMailboxType::ReadAsFilled,
                         appData->SystemPoolId),
-                    priority);
+                    drPriority);
 
             ConfigureTenantSystemTablets(
                 *appData,
                 *localConfig,
-                StorageConfig->GetAllowAdditionalSystemTablets()
-            );
+                StorageConfig->GetAllowAdditionalSystemTablets(),
+                StorageConfig->GetSystemTabletsPriority());
 
-            auto tenantPoolConfig = MakeIntrusive<TTenantPoolConfig>(localConfig);
-            tenantPoolConfig->AddStaticSlot(StorageConfig->GetSchemeShardDir());
+            auto tenantPoolConfig =
+                MakeIntrusive<TTenantPoolConfig>(localConfig);
+
+            NKikimrTabletBase::TMetrics resourceLimit;
+            if (StorageConfig->GetHiveLocalServiceCpuResourceLimit()) {
+                resourceLimit.SetCPU(
+                    StorageConfig->GetHiveLocalServiceCpuResourceLimit());
+            }
+            if (StorageConfig->GetHiveLocalServiceMemoryResourceLimit()) {
+                resourceLimit.SetMemory(
+                    StorageConfig->GetHiveLocalServiceMemoryResourceLimit());
+            }
+            if (StorageConfig->GetHiveLocalServiceNetworkResourceLimit()) {
+                resourceLimit.SetNetwork(
+                    StorageConfig->GetHiveLocalServiceNetworkResourceLimit());
+            }
+
+            tenantPoolConfig->AddStaticSlot(
+                StorageConfig->GetSchemeShardDir(),
+                resourceLimit);
 
             setup->LocalServices.emplace_back(
                 MakeTenantPoolRootID(),

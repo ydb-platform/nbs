@@ -19,7 +19,6 @@ outputs:
     description: "Number of threads used for linking"
     value: ${{ steps.calculate-threads.outputs.link_threads }}
 
-
 runs:
   using: composite
   steps:
@@ -165,7 +164,7 @@ runs:
           echo "test_threads=$test_threads"
           echo "link_threads=$link_threads"
         } | tee -a $GITHUB_OUTPUT
-        
+
       env:
         VM_PRESET: ${{ inputs.vm_preset || '80vcpu-320gb' }}
         TESTS_SIZE: ${{ inputs.tests_size || 'small,medium,large' }}

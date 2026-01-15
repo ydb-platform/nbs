@@ -66,6 +66,26 @@ void InitAttrs(NProto::TNode& attrs, const NProto::TCreateNodeRequest& request)
             sock.GetMode(),
             request.GetUid(),
             request.GetGid());
+    } else if (request.HasFifo()) {
+        const auto& fifo = request.GetFifo();
+        attrs = CreateFifoAttrs(
+            fifo.GetMode(),
+            request.GetUid(),
+            request.GetGid());
+    } else if (request.HasCharDevice()) {
+        const auto& cdev = request.GetCharDevice();
+        attrs = CreateCharDeviceAttrs(
+            cdev.GetMode(),
+            request.GetUid(),
+            request.GetGid(),
+            cdev.GetDevice());
+    } else if (request.HasBlockDevice()) {
+        const auto& bdev = request.GetBlockDevice();
+        attrs = CreateBlockDeviceAttrs(
+            bdev.GetMode(),
+            request.GetUid(),
+            request.GetGid(),
+            bdev.GetDevice());
     }
 }
 
@@ -82,6 +102,10 @@ private:
     const ui64 RequestId;
     const ui64 OpLogEntryId;
     TCreateNodeInShardResult Result;
+
+    static constexpr ui32 MaxSyncSessionsAttempts = 10;
+
+    ui32 SyncSessionsAttempts = 0;
 
 public:
     TCreateNodeInShardActor(
@@ -107,6 +131,10 @@ private:
 
     void HandleGetNodeAttrResponse(
         const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleSyncSessionsResponse(
+        const TEvIndexTabletPrivate::TEvSyncSessionsResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePoisonPill(
@@ -311,12 +339,42 @@ void TCreateNodeInShardActor::HandleGetNodeAttrResponse(
             return;
         }
 
+        if (msg->GetError().GetCode() == E_FS_INVALID_SESSION &&
+            SyncSessionsAttempts < MaxSyncSessionsAttempts)
+        {
+            // E_FS_INVALID_SESSION can happen if the shard tablet restarted and
+            // no longer recognizes the session. Force session recreation using
+            // the same mechanism ScheduleSyncSessions uses to propagate
+            // sessions to shards.
+            //
+            // MaxSyncSessionsAttempts should be enough for the session to
+            // become valid. If we still get E_FS_INVALID_SESSION after that,
+            // propagate the error to the client and report a critical event.
+
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::TABLET_WORKER,
+                "%s Shard GetNodeAttr failed for %s, %s with error %s"
+                ", recreating session and retrying",
+                LogTag.c_str(),
+                Request.GetFileSystemId().c_str(),
+                Request.GetName().c_str(),
+                FormatError(msg->GetError()).Quote().c_str());
+            ctx.Send(
+                ParentId,
+                new TEvIndexTabletPrivate::TEvSyncSessionsRequest());
+
+            ++SyncSessionsAttempts;
+            return;
+        }
+
         const auto message = Sprintf(
-            "Shard GetNodeAttr failed for %s, %s with error %s"
-            ", will not retry",
+            "Shard GetNodeAttr failed for %s, %s with error %s, will not "
+            "retry. Original CreateNodeRequest: %s",
             Request.GetFileSystemId().c_str(),
             Request.GetName().c_str(),
-            FormatError(msg->GetError()).Quote().c_str());
+            FormatError(msg->GetError()).Quote().c_str(),
+            Request.ShortUtf8DebugString().Quote().c_str());
 
         LOG_ERROR(
             ctx,
@@ -341,6 +399,20 @@ void TCreateNodeInShardActor::HandleGetNodeAttrResponse(
 
     ProcessNodeAttr(*msg->Record.MutableNode());
     ReplyAndDie(ctx, {});
+}
+
+void TCreateNodeInShardActor::HandleSyncSessionsResponse(
+    const TEvIndexTabletPrivate::TEvSyncSessionsResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s Received SyncSessionsResponse from parent. Retrying GetNodeAttr",
+        LogTag.c_str());
+
+    GetNodeAttr(ctx);
 }
 
 void TCreateNodeInShardActor::HandlePoisonPill(
@@ -388,6 +460,9 @@ STFUNC(TCreateNodeInShardActor::StateWork)
 
         HFunc(TEvService::TEvCreateNodeResponse, HandleCreateNodeResponse);
         HFunc(TEvService::TEvGetNodeAttrResponse, HandleGetNodeAttrResponse);
+        HFunc(
+            TEvIndexTabletPrivate::TEvSyncSessionsResponse,
+            HandleSyncSessionsResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -477,12 +552,17 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
 
     const bool isMainWithLocalNodes =
         IsMainTablet() && GetLastNodeId() > RootNodeId;
+    const bool isParentNodeLinkRequest =
+        args.Request.HasLink() && args.Request.GetLink().GetShardNodeName();
 
     if (!BehaveAsShard(args.Request.GetHeaders())
             && Config->GetShardIdSelectionInLeaderEnabled()
             && !GetFileSystem().GetShardFileSystemIds().empty()
             && (args.Attrs.GetType() == NProto::E_REGULAR_NODE
                 || GetFileSystem().GetDirectoryCreationInShardsEnabled()
+                // hard link shard ids are selected by the tablet client (i.e.
+                // service actor)
+                && !isParentNodeLinkRequest
                 // otherwise there might be some local nodes which breaks
                 // current cross-shard RenameNode implementation
                 && !isMainWithLocalNodes))
@@ -494,10 +574,18 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
     }
 
     // For multishard filestore, selection of the shard node name for
-    // hard links is done by the client, not the leader. Thus, the
-    // client is able to provide the shard node name explicitly:
-    if (args.Request.HasLink() && args.Request.GetLink().GetShardNodeName()) {
+    // hard links is done by the tablet client (i.e. service actor), not the
+    // leader. Thus, the client is able to provide the shard node name
+    // explicitly.
+    if (isParentNodeLinkRequest) {
         args.ShardNodeName = args.Request.GetLink().GetShardNodeName();
+        if (args.ShardId.empty()) {
+            auto message = ReportCreateLinkRequestWithShardNodeNameAndNoShardId(
+                TStringBuilder() << "CreateNode: "
+                << args.Request.ShortDebugString());
+            args.Error = MakeError(E_ARGUMENT, std::move(message));
+            return true;
+        }
     } else if (args.ShardId) {
         args.ShardNodeName = CreateGuidAsString();
     }
@@ -631,7 +719,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "CreateNode");
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "CreateNode");
     }
 
     if (args.TargetNodeId == InvalidNodeId) {

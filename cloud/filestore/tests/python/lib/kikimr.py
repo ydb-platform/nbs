@@ -20,7 +20,7 @@ class KikimrClient:
             'schema',
             'user-attribute',
             'get',
-            '/Root',
+            '/Root/nfs',
         ]
 
         logger.info("getting user-attrs: " + " ".join(cmd))
@@ -39,7 +39,7 @@ class KikimrClient:
             'schema',
             'user-attribute',
             'set',
-            '/Root',
+            '/Root/nfs',
             f'__filestore_space_limit_{media_kind}={value}',
         ]
 

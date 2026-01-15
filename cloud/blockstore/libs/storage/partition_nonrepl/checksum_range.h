@@ -3,6 +3,8 @@
 #include "part_mirror_resync_util.h"
 #include "part_nonrepl_events_private.h"
 
+#include <cloud/blockstore/libs/diagnostics/profile_log.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <contrib/ydb/library/actors/core/events.h>
@@ -16,6 +18,7 @@ class TChecksumRangeActorCompanion
 private:
     TVector<TReplicaDescriptor> Replicas;
 
+    TBlockRange64 Range;
     TInstant ChecksumStartTs;
     TDuration ChecksumDuration;
     ui32 CalculatedChecksumsCount = 0;
@@ -23,7 +26,7 @@ private:
     NProto::TError Error;
 
 public:
-    TChecksumRangeActorCompanion(TVector<TReplicaDescriptor> replicas);
+    explicit TChecksumRangeActorCompanion(TVector<TReplicaDescriptor> replicas);
 
     TChecksumRangeActorCompanion() = default;
 
@@ -41,6 +44,7 @@ public:
     NProto::TError GetError() const;
     TInstant GetChecksumStartTs() const;
     TDuration GetChecksumDuration() const;
+    IProfileLog::TRangeInfo GetRangeInfo() const;
 
 private:
     void CalculateReplicaChecksum(

@@ -27,6 +27,10 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
 
         *response.MutableFileStore() = Store;
 
+        const auto& cloudId = Store.GetCloudId();
+        const auto& folderId = Store.GetFolderId();
+        const auto& fsId = Store.GetFileSystemId();
+
         auto* features = response.MutableFileStore()->MutableFeatures();
         features->SetDirectIoEnabled(Config->GetDirectIoEnabled());
         features->SetDirectIoAlign(Config->GetDirectIoAlign());
@@ -37,10 +41,35 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         features->SetAsyncHandleOperationPeriod(
             Config->GetAsyncHandleOperationPeriod().MilliSeconds());
         features->SetZeroCopyEnabled(Config->GetZeroCopyEnabled());
-        features->SetGuestPageCacheDisabled(Config->GetGuestPageCacheDisabled());
-        features->SetExtendedAttributesDisabled(Config->GetExtendedAttributesDisabled());
+        features->SetGuestPageCacheDisabled(
+            Config->GetGuestPageCacheDisabled());
+        features->SetExtendedAttributesDisabled(
+            Config->GetExtendedAttributesDisabled());
         features->SetServerWriteBackCacheEnabled(
             Config->GetServerWriteBackCacheEnabled());
+        features->SetMaxBackground(Config->GetMaxBackground());
+        features->SetMaxFuseLoopThreads(Config->GetMaxFuseLoopThreads());
+        features->SetFSyncQueueDisabled(Config->GetFSyncQueueDisabled());
+        features->SetEntryTimeout(
+            Config->GetEntryTimeout(cloudId, folderId, fsId).MilliSeconds());
+        features->SetNegativeEntryTimeout(
+            Config->GetNegativeEntryTimeout(cloudId, folderId, fsId)
+                .MilliSeconds());
+        features->SetAttrTimeout(
+            Config->GetAttrTimeout(cloudId, folderId, fsId).MilliSeconds());
+        features->SetXAttrCacheTimeout(
+            Config->GetXAttrCacheTimeout(cloudId, folderId, fsId)
+                .MilliSeconds());
+        const bool directoryHandlesStorageEnabled =
+            Config->GetDirectoryHandlesStorageEnabled(cloudId, folderId, fsId);
+        features->SetDirectoryHandlesStorageEnabled(
+            directoryHandlesStorageEnabled);
+        if (directoryHandlesStorageEnabled) {
+            features->SetDirectoryHandlesTableSize(
+                Config->GetDirectoryHandlesTableSize());
+        }
+        features->SetGuestHandleKillPrivV2Enabled(
+            Config->GetGuestHandleKillPrivV2Enabled());
         return response;
     };
 

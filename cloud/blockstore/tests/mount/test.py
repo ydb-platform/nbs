@@ -226,7 +226,7 @@ def setup_kikimr(paths):
     return kikimr_cluster, configurator
 
 
-def setup_nbs_control(paths, kikimr_cluster, configurator):
+def setup_nbs_control(paths, kikimr_cluster, configurator, use_scheme_cache):
     server_app_config = TServerAppConfig()
     server_app_config.ServerConfig.CopyFrom(TServerConfig())
     server_app_config.ServerConfig.ThreadsCount = thread_count()
@@ -245,6 +245,7 @@ def setup_nbs_control(paths, kikimr_cluster, configurator):
     storage.DisableLocalService = False
     storage.SchemeShardDir = "/Root/nbs"
     storage.NodeType = 'nbs_control'
+    storage.UseSchemeCache = use_scheme_cache
 
     nbs = Nbs(
         kikimr_port,
@@ -261,7 +262,7 @@ def setup_nbs_control(paths, kikimr_cluster, configurator):
     return nbs
 
 
-def setup_nbs_hw(paths, kikimr_cluster, configurator):
+def setup_nbs_hw(paths, kikimr_cluster, configurator, use_scheme_cache):
     server_app_config = TServerAppConfig()
     server_app_config.ServerConfig.CopyFrom(TServerConfig())
     server_app_config.ServerConfig.ThreadsCount = thread_count()
@@ -281,6 +282,7 @@ def setup_nbs_hw(paths, kikimr_cluster, configurator):
     storage.SchemeShardDir = "/Root/nbs"
     storage.MaxLocalVolumes = 1
     storage.NodeType = 'nbs'
+    storage.UseSchemeCache = use_scheme_cache
 
     nbs = Nbs(
         kikimr_port,
@@ -297,12 +299,12 @@ def setup_nbs_hw(paths, kikimr_cluster, configurator):
     return nbs
 
 
-def __run_test(test_case):
+def __run_test(test_case, use_scheme_cache):
     common_paths = CommonPaths()
 
     kikimr_cluster, configurator = setup_kikimr(common_paths)
-    nbs_control = setup_nbs_control(common_paths, kikimr_cluster, configurator)
-    nbs_hw = setup_nbs_hw(common_paths, kikimr_cluster, configurator)
+    nbs_control = setup_nbs_control(common_paths, kikimr_cluster, configurator, use_scheme_cache)
+    nbs_hw = setup_nbs_hw(common_paths, kikimr_cluster, configurator, use_scheme_cache)
 
     try:
         ret = test_case.run(nbs_hw, nbs_hw.mon_port, nbs_control.mon_port)
@@ -314,5 +316,6 @@ def __run_test(test_case):
 
 
 @pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
-def test_monitoring(test_case):
-    assert __run_test(test_case) is True
+@pytest.mark.parametrize("use_scheme_cache", [True, False], ids=['schemeCache', 'noSchemeCache'])
+def test_monitoring(test_case, use_scheme_cache):
+    assert __run_test(test_case, use_scheme_cache) is True

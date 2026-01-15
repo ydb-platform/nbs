@@ -10,7 +10,7 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
-#include <cloud/blockstore/libs/storage/partition_common/get_device_for_range_companion.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/get_device_for_range_companion.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
@@ -126,20 +126,20 @@ private:
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>
-    TVector<TSplitRequest> SplitRequest(
+    TResultOrError<TVector<TSplitRequest>> SplitRequest(
         const TMethod::TRequest::TPtr& ev,
         const TVector<TDeviceRequest>& deviceRequests);
 
     [[nodiscard]] bool ShouldSplitWriteRequest(
         const TVector<TDeviceRequest>& deviceRequests) const;
 
-    [[nodiscard]] TVector<TSplitRequest> DoSplitRequest(
+    [[nodiscard]] TResultOrError<TVector<TSplitRequest>> DoSplitRequest(
         const TEvService::TEvWriteBlocksRequest::TPtr& ev,
         const TVector<TDeviceRequest>& deviceRequests);
-    [[nodiscard]] TVector<TSplitRequest> DoSplitRequest(
+    [[nodiscard]] TResultOrError<TVector<TSplitRequest>> DoSplitRequest(
         const TEvService::TEvWriteBlocksLocalRequest::TPtr& ev,
         const TVector<TDeviceRequest>& deviceRequests);
-    [[nodiscard]] TVector<TSplitRequest> DoSplitRequest(
+    [[nodiscard]] TResultOrError<TVector<TSplitRequest>> DoSplitRequest(
         const TEvService::TEvZeroBlocksRequest::TPtr& ev,
         const TVector<TDeviceRequest>& deviceRequests);
 

@@ -12,9 +12,10 @@ enum EEncryptionMode
     NO_ENCRYPTION = 0;
     ENCRYPTION_AES_XTS = 1;
 
-    // Encryption at rest. Encrypted DEK is stored in VolumeConfig.
-    // AES XTS is used.
-    ENCRYPTION_AT_REST = 2;
+    // Client-side encryption using DEK (Data Encryption Key) provided by Root KMS.
+    // Data is encrypted with AES XTS algorithm before transmission.
+    // Encrypted DEK is stored in VolumeConfig.
+    ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

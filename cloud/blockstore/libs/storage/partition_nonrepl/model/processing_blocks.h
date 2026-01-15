@@ -38,6 +38,7 @@ public:
 public:
     void AbortProcessing();
     bool IsProcessing() const;
+    bool IsProcessingDone() const;
     bool IsProcessed(TBlockRange64 range) const;
     void MarkProcessed(TBlockRange64 range);
     bool SkipProcessedRanges();

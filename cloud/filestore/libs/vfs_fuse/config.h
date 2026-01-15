@@ -27,6 +27,7 @@ public:
 
     TDuration GetLockRetryTimeout() const;
     TDuration GetEntryTimeout() const;
+    TDuration GetRegularFileEntryTimeout() const;
     TDuration GetNegativeEntryTimeout() const;
     TDuration GetAttrTimeout() const;
 
@@ -51,7 +52,22 @@ public:
 
     bool GetServerWriteBackCacheEnabled() const;
 
+    bool GetDirectoryHandlesStorageEnabled() const;
+
+    ui64 GetDirectoryHandlesTableSize() const;
+
     bool GetGuestKeepCacheAllowed() const;
+
+    ui32 GetMaxBackground() const;
+
+    ui32 GetMaxFuseLoopThreads() const;
+
+    bool GetZeroCopyWriteEnabled() const;
+    bool GetZeroCopyReadEnabled() const;
+
+    bool GetFSyncQueueDisabled() const;
+
+    bool GetGuestHandleKillPrivV2Enabled() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

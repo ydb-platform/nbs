@@ -4,6 +4,7 @@ GENERATE_ENUM_SERIALIZATION(recent_blocks_tracker.h)
 
 SRCS(
     disk_agent_actor_acquire.cpp
+    disk_agent_actor_attach_detach_path.cpp
     disk_agent_actor_direct_copy.cpp
     disk_agent_actor_disable.cpp
     disk_agent_actor_init.cpp

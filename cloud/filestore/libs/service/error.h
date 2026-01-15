@@ -39,12 +39,14 @@ NProto::TError ErrorNameTooLong(const TString& name);
 NProto::TError ErrorMaxLink(ui64 nodeId);
 NProto::TError ErrorFileTooBig();
 NProto::TError ErrorNoSpaceLeft();
+NProto::TError ErrorCommitIdOverflow();
 
 //
 // Arguments.
 //
 
 NProto::TError ErrorInvalidArgument();
+NProto::TError ErrorInvalidArgument(const TString& reason);
 NProto::TError ErrorInvalidHandle();
 NProto::TError ErrorInvalidHandle(ui64 handle);
 

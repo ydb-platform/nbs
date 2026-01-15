@@ -26,6 +26,7 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/endpoints/fs
     cloud/storage/core/libs/endpoints/keyring
+    cloud/storage/core/libs/io_uring
     cloud/storage/core/libs/kikimr
 
     contrib/ydb/core/blobstorage/lwtrace_probes

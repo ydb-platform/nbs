@@ -57,8 +57,14 @@ TRequestCountersPtr MakeRequestCounters(
         [] (TRequestCounters::TRequestType t) {
             return IsReadWriteRequest(static_cast<EFileStoreRequest>(t));
         },
+        [] (TRequestCounters::TRequestType t) {
+            Y_DEBUG_ABORT_UNLESS(t < FileStoreRequestCount);
+            const auto bt = static_cast<EFileStoreRequest>(t);
+            return bt == EFileStoreRequest::StartEndpoint;
+        },
         options,
-        histogramCounterOptions
+        histogramCounterOptions,
+        TVector<TSizeInterval>{}
     );
     requestCounters->Register(counters);
     return requestCounters;
@@ -264,9 +270,8 @@ public:
 
     void Reset() override
     {
-        for (auto& p: IncompleteRequestProviders) {
-            p.reset();
-        }
+        TGuard g(ProvidersLock);
+        IncompleteRequestProviders.clear();
     }
 
     void Collect(const TIncompleteRequest& req) override
@@ -354,7 +359,7 @@ private:
             NCloud::NProto::EF_NONE,
             callContext.Unaligned,
             ECalcMaxTime::ENABLE,
-            0);
+            0).Time;
     }
 
     TString LogHeader(const TCallContext& callContext) const override
@@ -578,7 +583,7 @@ private:
             NCloud::NProto::EF_NONE,
             callContext.Unaligned,
             ECalcMaxTime::ENABLE,
-            0);
+            0).Time;
     }
 
     void PredictionStarted(TCallContext& callContext)
@@ -819,6 +824,7 @@ public:
                 folderId,
                 fileSystemId,
                 clientId,
+                DiagnosticsConfig->GetHistogramCounterOptions(),
                 counters);
         }
     }

@@ -1,7 +1,10 @@
 #include "disk_registry_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+
 #include <cloud/storage/core/libs/common/media.h>
+
+#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -59,19 +62,13 @@ void TDiskRegistryActor::HandleAllocateDisk(
         ev->Cookie,
         msg->CallContext);
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received AllocateDisk request: DiskId=%s, BlockSize=%u"
-        ", BlocksCount=%lu, ReplicaCount=%u, CloudId=%s, FolderId=%s"
-        ", PlacementGroupId=%s, PlacementPartitionIndex=%u",
-        TabletID(),
-        msg->Record.GetDiskId().c_str(),
-        msg->Record.GetBlockSize(),
-        msg->Record.GetBlocksCount(),
-        msg->Record.GetReplicaCount(),
-        msg->Record.GetCloudId().c_str(),
-        msg->Record.GetFolderId().c_str(),
-        msg->Record.GetPlacementGroupId().c_str(),
-        msg->Record.GetPlacementPartitionIndex());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received AllocateDisk request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     Y_DEBUG_ABORT_UNLESS(
         msg->Record.GetStorageMediaKind() != NProto::STORAGE_MEDIA_DEFAULT);
@@ -143,8 +140,9 @@ void TDiskRegistryActor::ExecuteAddDisk(
             args.PoolName,
             args.BlocksCount * args.BlockSize))
     {
-        // Note: DM uses this specific error message to identify this case.
-        // Update createEmptyDiskTask simultaneously if you change it.
+        // Note: DM and NBS uses this specific error message to identify this
+        // case. Update "createEmptyDiskTask()" and "GetDiagnosticsErrorKind()"
+        // simultaneously if you change it.
         args.Error = MakeError(
             E_TRY_AGAIN,
             "Unable to allocate local disk: secure erase has not finished yet");
@@ -167,9 +165,11 @@ void TDiskRegistryActor::CompleteAddDisk(
     auto response = std::make_unique<TEvDiskRegistry::TEvAllocateDiskResponse>();
 
     if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] AddDisk error: %s. DiskId=%s",
-            TabletID(),
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s AddDisk error: %s. DiskId=%s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(args.Error).c_str(),
             args.DiskId.Quote().c_str());
 
@@ -200,15 +200,17 @@ void TDiskRegistryActor::CompleteAddDisk(
         }
         migrations << "]";
 
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] AddDisk success. DiskId=%s Devices=%s Replicas=%s"
-            " Migrations=%s",
-            TabletID(),
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s AddDisk success. DiskId=%s Devices=%s Replicas=%s"
+            " Migrations=%s DeviceReplacementUUIDs=[%s]",
+            LogTitle.GetWithTime().c_str(),
             args.DiskId.Quote().c_str(),
             devices.c_str(),
             replicas.c_str(),
-            migrations.c_str()
-        );
+            migrations.c_str(),
+            JoinSeq(", ", args.DeviceReplacementUUIDs).c_str());
 
         auto onDevice = [&] (NProto::TDeviceConfig& d, ui32 blockSize) {
             if (ToLogicalBlocks(d, blockSize)) {
@@ -218,7 +220,12 @@ void TDiskRegistryActor::CompleteAddDisk(
             TStringBuilder error;
             error << "CompleteAddDisk: ToLogicalBlocks failed, device: "
                 << d.GetDeviceUUID().Quote().c_str();
-            LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY, error);
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::DISK_REGISTRY,
+                "%s %s",
+                LogTitle.GetWithTime().c_str(),
+                error.c_str());
 
             *response->Record.MutableError() = MakeError(E_FAIL, error);
             NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
@@ -305,18 +312,23 @@ void TDiskRegistryActor::HandleDeallocateDisk(
         ev->Cookie,
         msg->CallContext);
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received DeallocateDisk request: DiskId=%s Sync=%d",
-        TabletID(),
-        msg->Record.GetDiskId().c_str(),
-        msg->Record.GetSync());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received DeallocateDisk request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     const auto& diskId = msg->Record.GetDiskId();
 
     if (msg->Record.GetSync() && State->HasPendingCleanup(diskId)) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Postpone DeallocateDisk response. DiskId=%s",
-            TabletID(), diskId.c_str());
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Postpone DeallocateDisk response: %s",
+            LogTitle.GetWithTime().c_str(),
+            msg->Record.ShortDebugString().c_str());
 
         AddPendingDeallocation(ctx, diskId, std::move(requestInfo));
 
@@ -358,8 +370,11 @@ void TDiskRegistryActor::CompleteRemoveDisk(
     TTxDiskRegistry::TRemoveDisk& args)
 {
     if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "RemoveDisk error: %s. DiskId=%s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s RemoveDisk error: %s. DiskId=%s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(args.Error).c_str(),
             args.DiskId.Quote().c_str());
     } else {
@@ -387,9 +402,12 @@ void TDiskRegistryActor::AddPendingDeallocation(
     auto& requestInfos = PendingDiskDeallocationRequests[diskId];
 
     if (requestInfos.size() > Config->GetMaxNonReplicatedDiskDeallocationRequests()) {
-        LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "Too many pending deallocation requests (%lu) for disk %s. "
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Too many pending deallocation requests (%lu) for disk %s. "
             "Reject all requests.",
+            LogTitle.GetWithTime().c_str(),
             requestInfos.size(),
             diskId.Quote().c_str());
 
@@ -408,7 +426,8 @@ void TDiskRegistryActor::ReplyToPendingDeallocations(
         NCloud::Reply(
             ctx,
             *requestInfo,
-            std::make_unique<TEvDiskRegistry::TEvDeallocateDiskResponse>(error));
+            std::make_unique<TEvDiskRegistry::TEvDeallocateDiskResponse>(
+                error));
     }
     requestInfos.clear();
 }
@@ -422,8 +441,12 @@ void TDiskRegistryActor::ReplyToPendingDeallocations(
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "Reply to pending deallocation requests. DiskId=%s PendingRquests=%d",
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Reply to pending deallocation requests. DiskId=%s "
+        "PendingRequests=%d",
+        LogTitle.GetWithTime().c_str(),
         diskId.Quote().c_str(),
         static_cast<int>(it->second.size()));
 

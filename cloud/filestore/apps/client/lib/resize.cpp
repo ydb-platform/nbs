@@ -17,6 +17,8 @@ private:
     ui64 BlocksCount = 0;
     bool Force = false;
     ui32 ShardCount = 0;
+    bool EnableStrictFileSystemSizeEnforcement = false;
+    bool EnableDirectoryCreationInShards = false;
 
 public:
     TResizeCommand()
@@ -35,6 +37,14 @@ public:
             .RequiredArgument("NUM")
             .Help("explicitly specifies the required shard count")
             .StoreResult(&ShardCount);
+
+        Opts.AddLongOption("enable-strict")
+            .StoreTrue(&EnableStrictFileSystemSizeEnforcement)
+            .Help("enable strict file system size enforcement");
+
+        Opts.AddLongOption("enable-directory-creation-in-shards")
+            .StoreTrue(&EnableDirectoryCreationInShards)
+            .Help("enable directory creation in shards");
     }
 
     bool Execute() override
@@ -46,6 +56,9 @@ public:
         request->SetBlocksCount(BlocksCount);
         request->SetForce(Force);
         request->SetShardCount(ShardCount);
+        request->SetEnableStrictFileSystemSizeEnforcement(
+            EnableStrictFileSystemSizeEnforcement);
+        request->SetEnableDirectoryCreationInShards(EnableDirectoryCreationInShards);
 
         PerformanceProfileParams.FillRequest(*request);
 
@@ -55,7 +68,7 @@ public:
                 std::move(request)));
 
         if (HasError(response)) {
-            ythrow TServiceError(response.GetError());
+            STORAGE_THROW_SERVICE_ERROR(response.GetError());
         }
 
         return true;

@@ -15,7 +15,7 @@
 #include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
 #include <cloud/blockstore/libs/logbroker/iface/public.h>
-#include <cloud/blockstore/libs/notify/public.h>
+#include <cloud/blockstore/libs/notify/iface/public.h>
 #include <cloud/blockstore/libs/root_kms/iface/public.h>
 #include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/service/public.h>
@@ -63,7 +63,6 @@ struct TConfigInitializerYdb final
     NProto::TGrpcClientConfig KmsClientConfig;
     NProto::TGrpcClientConfig ComputeClientConfig;
     NProto::TRootKmsConfig RootKmsConfig;
-    NProto::TOpentelemetryTraceConfig TraceServiceClientConfig;
 
     TConfigInitializerYdb(TOptionsYdbPtr options);
 
@@ -101,7 +100,9 @@ private:
     void ApplyKmsClientConfig(const TString& text);
     void ApplyRootKmsConfig(const TString& text);
     void ApplyComputeClientConfig(const TString& text);
-    void ApplyTraceServiceClientConfig(const TString& text);
+
+    void ApplyNamedConfigs(const NKikimrConfig::TAppConfig& config);
+    void ApplyBlockstoreConfig(const NKikimrConfig::TAppConfig& config);
 };
 
 }   // namespace NCloud::NBlockStore::NServer

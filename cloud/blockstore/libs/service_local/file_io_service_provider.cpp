@@ -17,7 +17,7 @@ class TFileIOServiceProvider final
 {
 private:
     const ui32 PathsPerServices;
-    IFileIOServiceFactoryPtr Factory;
+    const IFileIOServiceFactoryPtr Factory;
 
     TVector<std::pair<TString, size_t>> PathToFileIOIndex;
     TVector<IFileIOServicePtr> FileIOs;

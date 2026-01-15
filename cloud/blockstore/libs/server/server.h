@@ -21,11 +21,19 @@ struct IServer
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TServerOptions
+{
+    TString CellId;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 IServerPtr CreateServer(
     TServerAppConfigPtr config,
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
-    IBlockStorePtr udsService);
+    IBlockStorePtr udsService,
+    TServerOptions options);
 
 }   // namespace NCloud::NBlockStore::NServer

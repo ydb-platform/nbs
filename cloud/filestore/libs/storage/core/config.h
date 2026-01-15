@@ -165,6 +165,7 @@ public:
 
     ui32 GetMaxResponseBytes() const;
     ui32 GetMaxResponseEntries() const;
+    ui32 GetMaxBytesMultiplier() const;
 
     ui32 GetDefaultNodesLimit() const;
     ui32 GetSizeToNodesRatio() const;
@@ -178,10 +179,13 @@ public:
     bool GetThrottlingEnabled() const;
 
     TString GetTabletBootInfoBackupFilePath() const;
+    bool GetUseBinaryFormatForTabletBootInfoBackup() const;
     bool GetHiveProxyFallbackMode() const;
 
     ui32 GetMaxBlocksPerTruncateTx() const;
     ui32 GetMaxTruncateTxInflight() const;
+
+    [[nodiscard]] i32 GetSystemTabletsPriority() const;
 
     TDuration GetCompactionRetryTimeout() const;
 
@@ -197,10 +201,12 @@ public:
     NCloud::NProto::EAuthorizationMode GetAuthorizationMode() const;
 
     bool GetTwoStageReadEnabled() const;
+    ui32 GetTwoStageReadThreshold() const;
     bool GetThreeStageWriteEnabled() const;
     ui32 GetThreeStageWriteThreshold() const;
     bool GetUnalignedThreeStageWriteEnabled() const;
     TDuration GetEntryTimeout() const;
+    TDuration GetRegularFileEntryTimeout() const;
     TDuration GetNegativeEntryTimeout() const;
     TDuration GetAttrTimeout() const;
     ui32 GetPreferredBlockSizeMultiplier() const;
@@ -244,6 +250,7 @@ public:
     ui64 GetInMemoryIndexCacheNodesToNodeAttrsCapacityRatio() const;
     ui64 GetInMemoryIndexCacheNodeRefsCapacity() const;
     ui64 GetInMemoryIndexCacheNodesToNodeRefsCapacityRatio() const;
+    ui64 GetInMemoryIndexCacheNodeRefsExhaustivenessCapacity() const;
     bool GetInMemoryIndexCacheLoadOnTabletStart() const;
     ui64 GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx() const;
     TDuration GetInMemoryIndexCacheLoadSchedulePeriod() const;
@@ -330,6 +337,40 @@ public:
 
     bool GetParentlessFilesOnly() const;
     bool GetAllowHandlelessIO() const;
+
+    bool GetLazyXAttrsEnabled() const;
+
+    ui32 GetMaxBackground() const;
+    ui32 GetMaxFuseLoopThreads() const;
+
+    bool GetStrictFileSystemSizeEnforcementEnabled() const;
+
+    bool GetZeroCopyWriteEnabled() const;
+
+    bool GetFSyncQueueDisabled() const;
+
+    bool GetDirectoryHandlesStorageEnabled() const;
+    ui64 GetDirectoryHandlesTableSize() const;
+
+    bool GetGuestHandleKillPrivV2Enabled() const;
+
+    [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
+
+    bool GetZeroCopyReadEnabled() const;
+
+    [[nodiscard]] bool GetBlockChecksumsInProfileLogEnabled() const;
+
+    ui32 GetMaxShardCount() const;
+
+    bool GetReadBlobDisabled() const;
+    bool GetWriteBlobDisabled() const;
+
+    ui32 GetCpuLackOverloadThreshold() const;
+
+    ui32 GetMaxTabletStep() const;
+
+    bool GetFakeDescribeDataEnabled() const;
+    ui32 GetFakeDescribeDataLatencyUs() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

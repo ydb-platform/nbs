@@ -4,10 +4,13 @@
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <contrib/ydb/core/base/event_filter.h>
 #include <contrib/ydb/core/base/location.h>
+#include <contrib/ydb/core/config/init/init.h>
 #include <contrib/ydb/core/protos/config.pb.h>
+#include <contrib/ydb/core/protos/nbs/blockstore.pb.h>
 #include <contrib/ydb/core/protos/node_broker.pb.h>
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_discovery/discovery.h>
@@ -15,6 +18,7 @@
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/event.h>
+#include <contrib/ydb/library/yaml_config/yaml_config.h>
 
 #include <util/generic/vector.h>
 #include <util/network/address.h>
@@ -70,7 +74,7 @@ TString GetNetworkAddress(const TString& host)
         }
     }
 
-    ythrow TServiceError(E_FAIL)
+    STORAGE_THROW_SERVICE_ERROR(E_FAIL)
         << "could not resolve address for host: " << host;
 }
 
@@ -82,7 +86,7 @@ NGRpcProxy::TGRpcClientConfig CreateKikimrConfig(
 {
     NGRpcProxy::TGRpcClientConfig config(
         nodeBrokerAddress,
-        options.Settings.RegistrationTimeout);
+        options.Settings.LegacyRegistrationTimeout);
 
     if (options.UseNodeBrokerSsl) {
         config.EnableSsl = true;
@@ -106,6 +110,25 @@ NGRpcProxy::TGRpcClientConfig CreateKikimrConfig(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO: this function is modified copy-paste of function from ydb 24-3
+// Replace it with the one from ydb repo when sync occurs
+NKikimrConfig::TAppConfig GetYamlConfigFromResult(
+    const NKikimr::NClient::TConfigurationResult& result,
+    const TMap<TString, TString>& labels)
+{
+    NKikimrConfig::TAppConfig appConfig;
+    if (result.HasYamlConfig() && !result.GetYamlConfig().empty()) {
+        NYamlConfig::ResolveAndParseYamlConfig(
+            result.GetYamlConfig(),
+            result.GetVolatileYamlConfigs(),
+            labels,
+            appConfig,
+            nullptr,
+            nullptr);
+    }
+    return appConfig;
+}
+
 TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
     ui32 nodeId,
     const TString& hostName,
@@ -115,12 +138,17 @@ TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
     NKikimrConfig::TStaticNameserviceConfig& nsConfig)
 {
     auto configurator = kikimr.GetNodeConfigurator();
+    // Token is a rudimentary parameter
+    // Version is YamlApiVersion. Only version 1 can serve YAML
     auto configResult = configurator.SyncGetNodeConfig(
-        nodeId,
-        hostName,
-        options.SchemeShardDir,
-        options.Settings.NodeType,
-        options.Domain);
+        /*nodeId=*/nodeId,
+        /*host=*/hostName,
+        /*tenant=*/options.SchemeShardDir,
+        /*nodeType=*/options.Settings.NodeType,
+        /*domain=*/options.Domain,
+        /*token=*/"",
+        /*serveYaml=*/true,
+        /*version=*/1);
 
     if (!configResult.IsSuccess()) {
         return MakeError(
@@ -134,6 +162,19 @@ TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
     if (cmsConfig.HasNameserviceConfig()) {
         cmsConfig.MutableNameserviceConfig()->SetSuppressVersionCheck(
             nsConfig.GetSuppressVersionCheck());
+    }
+    try {
+        auto yamlConfig = GetYamlConfigFromResult(configResult, options.Labels);
+
+        // TODO: this is an adapted version of GetActualDynConfig function from ydb24-3
+        // Here we ignore YAML config except for our section and don't provide
+        // metric for updates. We should start using yaml config: ISSUE
+        cmsConfig.MutableBlockstoreConfig()->CopyFrom(
+            yamlConfig.GetBlockstoreConfig());
+    } catch (const std::exception& e) {
+        ReportGetConfigsFromCmsYamlParseError(
+            TStringBuilder() << "Failed to parse YAML config from CMS: "
+            << e.what());
     }
 
     return cmsConfig;
@@ -300,6 +341,20 @@ struct TDiscoveryNodeRegistrant
         location.Rack = Options.Rack;
         location.Unit = ToString(Options.Body);
 
+        // Fill legacy fields for compatibility with nodes that
+        // were previously registered with TLegacyNodeRegistrant
+        NActorsInterconnect::TNodeLocation proto;
+        proto.SetDataCenter(Options.DataCenter);
+        proto.SetRack(Options.Rack);
+        proto.SetUnit(ToString(Options.Body));
+
+        auto legacyValue = TNodeLocation(proto).GetLegacyValue();
+
+        location.DataCenterNum = legacyValue.DataCenter;
+        location.RoomNum = legacyValue.Room;
+        location.RackNum = legacyValue.Rack;
+        location.BodyNum = legacyValue.Body;
+
         Settings.Location(location);
         Settings.Address(HostAddress);
         Settings.ResolveHost(HostName);
@@ -307,6 +362,7 @@ struct TDiscoveryNodeRegistrant
         Settings.DomainPath(Options.Domain);
         Settings.Port(Options.InterconnectPort);
         Settings.Path(Options.SchemeShardDir);
+        Settings.ClientTimeout(Options.Settings.DynamicNodeRegistrationTimeout);
     }
 
     TResultOrError<TRegistrationResult> RegisterNode(
@@ -454,7 +510,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
     }
 
     if (!addrs) {
-        ythrow TServiceError(E_FAIL)
+        STORAGE_THROW_SERVICE_ERROR(E_FAIL)
             << "cannot register dynamic node: "
             << "neither NodeBrokerAddress nor NodeBrokerPort specified";
     }
@@ -472,7 +528,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
         if (HasError(error)) {
             const auto& msg = error.GetMessage();
             if (attempts == options.Settings.MaxAttempts) {
-                ythrow TServiceError(E_FAIL)
+                STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                     << "Cannot register dynamic node: " << msg;
             }
 
@@ -513,7 +569,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
         if (HasError(error)) {
             const auto& msg = error.GetMessage();
             if (deadline < timer->Now()) {
-                ythrow TServiceError(E_FAIL)
+                STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                     << "Cannot configure dynamic node: " << msg;
             }
 

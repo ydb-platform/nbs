@@ -3,6 +3,8 @@
 #include "context.h"
 #include "service.h"
 
+#include <cloud/blockstore/libs/service/service_method.h>
+
 namespace NCloud::NBlockStore {
 
 using namespace NThreading;
@@ -12,7 +14,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TFilteredService final
-    : public IBlockStore
+    : public TBlockStoreImpl<TFilteredService, IBlockStore>
 {
 private:
     const IBlockStorePtr Service;
@@ -43,21 +45,19 @@ public:
         return Service->AllocateBuffer(bytesCount);
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr ctx,                                                   \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        if (!IsRequestAllowed(EBlockStoreRequest::name)) {                     \
-            return MakeFuture<NProto::T##name##Response>(ErrorResponse);       \
-        }                                                                      \
-        return Service->name(std::move(ctx), std::move(request));              \
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr ctx,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        if (!IsRequestAllowed(TMethod::BlockStoreRequest)) {
+            return MakeFuture<typename TMethod::TResponse>(ErrorResponse);
+        }
+        return TMethod::Execute(
+            Service.get(),
+            std::move(ctx),
+            std::move(request));
     }
-// BLOCKSTORE_IMPLEMENT_METHOD
-
-    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
 
 private:
     bool IsRequestAllowed(EBlockStoreRequest request) const

@@ -35,7 +35,6 @@ bool CompareRequests(
     return left.GetFileSystemId() == right.GetFileSystemId()
         && left.GetClientId() == right.GetClientId()
         && left.GetSocketPath() == right.GetSocketPath()
-        && left.GetSessionRetryTimeout() == right.GetSessionRetryTimeout()
         && left.GetSessionPingTimeout() == right.GetSessionPingTimeout()
         && left.GetServiceEndpoint() == right.GetServiceEndpoint()
         && left.GetMountSeqNumber() == right.GetMountSeqNumber()
@@ -417,7 +416,7 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
 NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
     const NProto::TStopEndpointRequest& request)
 {
-    STORAGE_TRACE("StopEndpoint " << DumpMessage(request));
+    STORAGE_INFO("StopEndpoint " << DumpMessage(request));
 
     auto g = Guard(EndpointsLock);
     if (DrainingStarted) {

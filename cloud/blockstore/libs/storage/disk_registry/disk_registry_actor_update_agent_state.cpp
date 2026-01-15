@@ -26,11 +26,13 @@ void TDiskRegistryActor::HandleChangeAgentState(
         ev->Cookie,
         msg->CallContext);
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received ChangeAgentState request: AgentId=%s, State=%u",
-        TabletID(),
-        msg->Record.GetAgentId().c_str(),
-        static_cast<ui32>(msg->Record.GetAgentState()));
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received ChangeAgentState request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TUpdateAgentState>(
         ctx,
@@ -57,22 +59,15 @@ void TDiskRegistryActor::HandleDisableAgent(
         ev->Cookie,
         msg->CallContext);
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received DisableAgent request: AgentId=%s, DeviceUUIDs=%s",
-        TabletID(),
-        msg->Record.GetAgentId().c_str(),
-        [&] {
-            TStringStream out;
-            for (auto& d: msg->Record.GetDeviceUUIDs()) {
-                if (out.Str()) {
-                    out << " ";
-                }
-                out << d;
-            }
-            return out.Str();
-        }().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received DisableAgent request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
-    auto* agent = State->FindAgent(msg->Record.GetAgentId());
+    const auto* agent = State->FindAgent(msg->Record.GetAgentId());
     if (!agent) {
         auto response = std::make_unique<TEvDiskRegistry::TEvDisableAgentResponse>(
             MakeError(E_NOT_FOUND, TStringBuilder() << "no such agent: "
@@ -175,8 +170,11 @@ void TDiskRegistryActor::CompleteUpdateAgentState(
     TTxDiskRegistry::TUpdateAgentState& args)
 {
     if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "UpdateAgentState error: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s UpdateAgentState error: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(args.Error).c_str());
     }
 

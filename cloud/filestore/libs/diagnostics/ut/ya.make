@@ -14,7 +14,8 @@ PEERDIR(
 )
 
 RESOURCE(
-    data/counters.json counters.json
+    data/user_counters_empty.json user_counters_empty.json
+    data/user_counters.json user_counters.json
 )
 
 END()

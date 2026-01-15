@@ -1,0 +1,2 @@
+DirectoryHandlesStorageEnabled: true
+DirectoryHandlesTableSize: 1200

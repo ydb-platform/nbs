@@ -1,11 +1,14 @@
 import logging
 import os
 import pytest
+import uuid
 
 from cloud.blockstore.config.client_pb2 import TClientAppConfig, TClientConfig
+from cloud.blockstore.config.disk_pb2 import DEVICE_ERASE_METHOD_NONE, TDiskAgentConfig
 from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, \
-    TKikimrServiceConfig
+    TKikimrServiceConfig, TChecksumFlags
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
+from cloud.blockstore.public.sdk.python.protos import DIVP_ENABLED_FORCED
 
 from cloud.blockstore.tests.python.lib.disk_agent_runner import LocalDiskAgent
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
@@ -14,6 +17,7 @@ from cloud.blockstore.tests.python.lib.test_base import thread_count, \
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import setup_nonreplicated, \
     create_devices, setup_disk_registry_config, \
     enable_writable_state, make_agent_node_type, make_agent_id, AgentInfo, DeviceInfo
+from cloud.storage.core.protos.endpoints_pb2 import EEndpointStorageType
 
 from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
 from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
@@ -24,6 +28,10 @@ import yatest.common as yatest_common
 DEFAULT_BLOCK_SIZE = 4096
 DEFAULT_DEVICE_COUNT = 1
 DEFAULT_BLOCK_COUNT_PER_DEVICE = 262144
+
+DISK_AGENT_RESTART_INTERVAL = 20
+DISK_AGENT_SMALL_RESTART_INTERVAL = 5
+DISK_AGENT_BIG_RESTART_INTERVAL = 30
 
 
 class TestCase(object):
@@ -63,7 +71,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-basic.txt",
         agent_count=2,
         device_count=3,
-        restart_interval=20,
+        restart_interval=DISK_AGENT_RESTART_INTERVAL,
         disk_agent_downtime=5,
         dump_block_digests=True,
     ),
@@ -72,7 +80,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-basic.txt",
         agent_count=6,
         device_count=1,
-        restart_interval=20,
+        restart_interval=DISK_AGENT_RESTART_INTERVAL,
         agent_indexes_to_restart=[1],
         disk_agent_downtime=5,
         dump_block_digests=True,
@@ -82,7 +90,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-basic.txt",
         agent_count=6,
         device_count=1,
-        restart_interval=20,
+        restart_interval=DISK_AGENT_RESTART_INTERVAL,
         agent_indexes_to_restart=[1, 3],
         disk_agent_downtime=5,
         dump_block_digests=True,
@@ -92,7 +100,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-migration.txt",
         agent_count=3,
         device_count=3,
-        restart_interval=20,
+        restart_interval=DISK_AGENT_RESTART_INTERVAL,
         disk_agent_downtime=5,
         dump_block_digests=True,
     ),
@@ -101,7 +109,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-migration.txt",
         agent_count=3,
         device_count=3,
-        restart_interval=20,
+        restart_interval=DISK_AGENT_RESTART_INTERVAL,
         agent_indexes_to_restart=[2],
         disk_agent_downtime=5,
         dump_block_digests=True,
@@ -111,7 +119,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-fresh-device-migration.txt",
         agent_count=3,
         device_count=3,
-        restart_interval=20,
+        restart_interval=DISK_AGENT_RESTART_INTERVAL,
         agent_indexes_to_restart=[2],
         disk_agent_downtime=5,
         dump_block_digests=True,
@@ -121,7 +129,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-small-restart-interval.txt",
         agent_count=2,
         device_count=3,
-        restart_interval=5,
+        restart_interval=DISK_AGENT_SMALL_RESTART_INTERVAL,
         disk_agent_downtime=5,
         lagging_device_max_migration_bandwidth=50,
         dump_block_digests=True,
@@ -131,7 +139,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror3-basic.txt",
         agent_count=3,
         device_count=3,
-        restart_interval=20,
+        restart_interval=DISK_AGENT_RESTART_INTERVAL,
         disk_agent_downtime=5,
         dump_block_digests=True,
     ),
@@ -140,7 +148,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-restart-nbs.txt",
         agent_count=2,
         device_count=3,
-        restart_interval=30,
+        restart_interval=DISK_AGENT_BIG_RESTART_INTERVAL,
         disk_agent_downtime=6,
         nbs_restart_interval=40,
         lagging_device_max_migration_bandwidth=10,
@@ -197,6 +205,7 @@ def __process_config(config_path, devices_per_agent):
 
 def __run_test(test_case, use_rdma):
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    endpoint_storage_dir = yatest_common.output_path() + '/endpoints-' + str(uuid.uuid4())
 
     configurator = KikimrConfigGenerator(
         erasure=None,
@@ -238,7 +247,12 @@ def __run_test(test_case, use_rdma):
         setup_nonreplicated(
             kikimr_cluster.client,
             devices_per_agent,
-            dedicated_disk_agent=True,
+            disk_agent_config_patch=TDiskAgentConfig(
+                DedicatedDiskAgent=True,
+                DataIntegrityValidationPolicyForDrBasedDisks=DIVP_ENABLED_FORCED,
+                # in tests, only one disk is created and it lives until the end,
+                # so we can set DEVICE_ERASE_METHOD_NONE to speed up testing
+                DeviceEraseMethod=DEVICE_ERASE_METHOD_NONE),
             agent_count=test_case.agent_count,
         )
 
@@ -252,6 +266,10 @@ def __run_test(test_case, use_rdma):
         server_app_config.ServerConfig.NbdSocketSuffix = nbd_socket_suffix
         server_app_config.ServerConfig.UseFakeRdmaClient = use_rdma
         server_app_config.ServerConfig.RdmaClientEnabled = use_rdma
+        server_app_config.ServerConfig.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
+        server_app_config.ServerConfig.EndpointStorageDir = endpoint_storage_dir
+        server_app_config.ServerConfig.ChecksumFlags.CopyFrom(TChecksumFlags())
+        server_app_config.ServerConfig.ChecksumFlags.EnableDataIntegrityClient = True
         server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
         storage = TStorageServiceConfig()
@@ -278,9 +296,11 @@ def __run_test(test_case, use_rdma):
         storage.MaxTimedOutDeviceStateDuration = 60000    # 1 min
         storage.NonReplicatedAgentMinTimeout = 60000      # 1 min
         storage.NonReplicatedAgentMaxTimeout = 60000      # 1 min
-        storage.NonReplicatedSecureEraseTimeout = 1000    # 1 sec
+        storage.NonReplicatedSecureEraseTimeout = 30000   # 30 sec
         storage.EnableToChangeStatesFromDiskRegistryMonpage = True
         storage.EnableToChangeErrorStatesFromDiskRegistryMonpage = True
+        storage.MultiAgentWriteEnabled = True
+        storage.DirectWriteBandwidthQuota = 200 * 1024  # 200 KiB
         storage.UseNonreplicatedRdmaActor = use_rdma
         storage.UseRdma = use_rdma
 
@@ -291,6 +311,7 @@ def __run_test(test_case, use_rdma):
         client_config = TClientConfig()
         client_config.RetryTimeout = 20000  # 20 sec
         client_config.RetryTimeoutIncrement = 100  # 100 msec
+        client_config.ConnectionErrorMaxRetryTimeout = 500  # 500 msec
         client_app_config = TClientAppConfig()
         client_app_config.ClientConfig.CopyFrom(client_config)
 
@@ -319,9 +340,10 @@ def __run_test(test_case, use_rdma):
 
         disk_agents = []
         for i in range(test_case.agent_count):
-            disk_agent = None
+            restart_interval = None
+            if i in test_case.agent_indexes_to_restart:
+                restart_interval = test_case.restart_interval
 
-            restart_interval = test_case.restart_interval if i in test_case.agent_indexes_to_restart else None
             disk_agent = LocalDiskAgent(
                 kikimr_port,
                 configurator.domains_txt,
@@ -333,6 +355,7 @@ def __run_test(test_case, use_rdma):
                 disk_agent_binary_path=yatest_common.binary_path(disk_agent_binary_path),
                 restart_interval=restart_interval,
                 restart_downtime=test_case.disk_agent_downtime,
+                suspend_restarts=True,
                 rack="rack-%s" % i,
                 node_type=make_agent_node_type(i))
 
@@ -342,18 +365,22 @@ def __run_test(test_case, use_rdma):
             disk_agents.append(disk_agent)
 
         wait_for_secure_erase(nbs.mon_port, expectedAgents=test_case.agent_count)
+        for i, agent in enumerate(disk_agents):
+            if i in test_case.agent_indexes_to_restart:
+                agent.allow_restart()
 
         client_config.NbdSocketSuffix = nbd_socket_suffix
 
         config_path = __process_config(test_case.config_path, devices_per_agent)
 
         ret = run_test(
-            test_case.name,
+            "{}-{}".format(test_case.name, "rdma" if use_rdma else "interconnect"),
             config_path,
             nbs.nbs_port,
             nbs.mon_port,
             nbs_log_path=nbs.stderr_file_name,
             client_config=client_config,
+            endpoint_storage_dir=endpoint_storage_dir,
             env_processes=disk_agents + [nbs],
         )
     finally:

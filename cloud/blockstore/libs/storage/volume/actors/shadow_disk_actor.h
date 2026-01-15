@@ -5,8 +5,10 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_common_actor.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -65,6 +67,7 @@ private:
 
         // Waiting for the acquire of the shadow disk devices. The disk is
         // already completely filled and we will only read checkpoint data from it.
+        // We do not block writes to the source disk.
         WaitAcquireForRead,
 
         // The devices of the shadow disk have been successfully acquired and we
@@ -73,14 +76,17 @@ private:
 
         // The devices of the shadow disk have been successfully acquired and we
         // are ready to read the checkpoint data.
+        // We do not block writes to the source disk.
         CheckpointReady,
 
         // Something went wrong and we stopped filling the shadow disk.
         // At the same time, we do not interfere with the operation of the
         // source disk.
+        // We do not block writes to the source disk.
         Error,
     };
 
+    const TChildLogTitle LogTitle;
     const NRdma::IClientPtr RdmaClient;
     const TNonreplicatedPartitionConfigPtr SrcConfig;
     const TString CheckpointId;
@@ -108,6 +114,7 @@ private:
 
 public:
     TShadowDiskActor(
+        TChildLogTitle logTitle,
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticConfig,
         NRdma::IClientPtr rdmaClient,

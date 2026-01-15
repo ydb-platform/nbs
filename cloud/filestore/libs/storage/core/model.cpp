@@ -503,7 +503,8 @@ void SetupFileStorePerformanceAndChannels(
 ui32 ComputeShardCount(
     const ui64 blocksCount,
     const ui32 blockSize,
-    const ui64 shardAllocationUnit)
+    const ui64 shardAllocationUnit,
+    const ui32 maxShardCount)
 {
     const double fileStoreSize = blocksCount * blockSize;
 
@@ -513,14 +514,14 @@ ui32 ComputeShardCount(
     }
 
     const ui32 shardCount = std::ceil(fileStoreSize / shardAllocationUnit);
-    return Min(shardCount, MaxShardCount);
+    return Min(shardCount, maxShardCount);
 }
 
 TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore,
     const NProto::TFileStorePerformanceProfile& clientProfile,
-    ui32 explicitShardCount)
+    const ui32 explicitShardCount)
 {
     TMultiShardFileStoreConfig result;
     result.MainFileSystemConfig = fileStore;
@@ -535,14 +536,18 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
         : ComputeShardCount(
             fileStore.GetBlocksCount(),
             fileStore.GetBlockSize(),
-            config.GetShardAllocationUnit());
+            config.GetShardAllocationUnit(),
+            config.GetMaxShardCount());
     result.ShardConfigs.resize(shardCount);
     for (ui32 i = 0; i < shardCount; ++i) {
         result.ShardConfigs[i] = fileStore;
         result.ShardConfigs[i].ClearVersion();
-        result.ShardConfigs[i].SetBlocksCount(
-            config.GetAutomaticallyCreatedShardSize()
-            / fileStore.GetBlockSize());
+        const ui64 shardBlockCount =
+            config.GetStrictFileSystemSizeEnforcementEnabled()
+                ? fileStore.GetBlocksCount()
+                : config.GetAutomaticallyCreatedShardSize() /
+                      fileStore.GetBlockSize();
+        result.ShardConfigs[i].SetBlocksCount(shardBlockCount);
         result.ShardConfigs[i].SetFileSystemId(
             Sprintf("%s_s%u", fileStore.GetFileSystemId().c_str(), i + 1));
         SetupFileStorePerformanceAndChannels(

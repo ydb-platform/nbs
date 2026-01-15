@@ -41,11 +41,14 @@ bool LoadPathDescriptionBackup(
     }
 
     TFile file(backupPath, OpenExisting | RdOnly | Seq);
-    TUnbufferedFileInput input(file);
+    TString fileContent = TUnbufferedFileInput(file).ReadAll();
+    auto input = TStringInput(fileContent);
+
     return TryMergeFromTextFormat(
-        input,
-        *backupProto,
-        EParseFromTextFormatOption::AllowUnknownField);
+               input,
+               *backupProto,
+               EParseFromTextFormatOption::AllowUnknownField) ||
+           backupProto->MergeFromString(fileContent);
 }
 
 void ProcessDir(
@@ -110,16 +113,16 @@ void Dump(
 
 void Run(const TOptions& options)
 {
-    TFsPath srcRoot{options.SrcRoot};
+    TFsPath srcBackupsFilePath{options.SrcBackupsFilePath};
 
     TVector<TString> children;
-    srcRoot.ListNames(children);
+    srcBackupsFilePath.ListNames(children);
     TSchemeShardData allData;
     size_t dirIndex = 0;
     for (const auto& child: children) {
         ProcessDir(
             options,
-            srcRoot / child,
+            srcBackupsFilePath / child,
             &allData,
             ++dirIndex,
             children.size());

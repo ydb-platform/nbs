@@ -2,18 +2,19 @@
 
 #include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
-#include <cloud/blockstore/libs/notify/public.h>
+#include <cloud/blockstore/libs/notify/iface/public.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
-#include <cloud/blockstore/libs/storage/core/volume_label.h>
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry.h>
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_actor.h>
+#include <cloud/blockstore/libs/storage/model/volume_label.h>
 #include <cloud/blockstore/libs/storage/testlib/common_properties.h>
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_mock.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <contrib/ydb/core/protos/bind_channel_storage_pool.pb.h>
@@ -171,7 +172,10 @@ private:
 
             default:
                 //HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY);
-                Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
+                Y_ABORT(
+                    "Unexpected event %x %s",
+                    ev->GetTypeRewrite(),
+                    ev->GetTypeName().c_str());
         }
     }
 
@@ -1101,6 +1105,18 @@ public:
         request->Record.SetAgentId(agentId);
 
         return request;
+    }
+
+    auto CreateGetClusterCapacityRequest()
+    {
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvGetClusterCapacityRequest>();
+        return request;
+    }
+
+    auto CreateListDiskStatesRequest()
+    {
+        return std::make_unique<TEvService::TEvListDiskStatesRequest>();
     }
 
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \

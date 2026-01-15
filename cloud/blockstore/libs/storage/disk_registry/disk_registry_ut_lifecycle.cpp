@@ -322,6 +322,136 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldReplaceLaggingDevicesAfterDiskReallocation)
+    {
+        const auto agent1 = CreateAgentConfig(
+            "agent-1",
+            {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            });
+
+        const auto agent2 = CreateAgentConfig(
+            "agent-2",
+            {
+                Device("dev-1", "uuid-3", "rack-2", 10_GB),
+                Device("dev-2", "uuid-4", "rack-2", 10_GB),
+            });
+
+        NProto::TStorageServiceConfig config = CreateDefaultStorageConfig();
+        config.SetDiskRegistryDisksNotificationTimeout(1);
+        auto runtime = TTestRuntimeBuilder()
+                           .With(config)
+                           .WithAgents({agent1, agent2})
+                           .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent1, agent2}));
+
+        RegisterAgents(*runtime, 2);
+        WaitForAgents(*runtime, 2);
+        WaitForSecureErase(*runtime, {agent1, agent2});
+
+        TSSProxyClient ss(*runtime);
+        ss.CreateVolume("mirrored-vol");
+        diskRegistry.AllocateDisk(
+            "mirrored-vol",
+            10_GB,
+            DefaultLogicalBlockSize,
+            "",   // placementGroupId
+            0,    // placementPartitionIndex
+            "",   // cloudId
+            "",   // folderId
+            1,    // replicaCount
+            NProto::STORAGE_MEDIA_SSD_MIRROR2);
+
+        // Send volume reallocations.
+        runtime->DispatchEvents({}, 10ms);
+
+        {
+            auto response = diskRegistry.DescribeDisk("mirrored-vol");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            auto& r = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, r.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1", r.GetDevices(0).GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.ReplicasSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetReplicas(0).DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "uuid-3",
+                r.GetReplicas(0).GetDevices(0).GetDeviceUUID());
+        }
+
+        ui32 reallocateCount = 0;
+        runtime->SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolume::EvReallocateDiskRequest: {
+                        auto* msg =
+                            event->Get<TEvVolume::TEvReallocateDiskRequest>();
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            "mirrored-vol",
+                            msg->Record.GetDiskId());
+                        ++reallocateCount;
+                        break;
+                    }
+
+                    case TEvVolume::EvReallocateDiskResponse: {
+                        auto* msg =
+                            event->Get<TEvVolume::TEvReallocateDiskResponse>();
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            0,
+                            msg->Record.OutdatedLaggingDevicesSize());
+
+                        static bool onceGuard = false;
+                        if (onceGuard) {
+                            break;
+                        }
+                        onceGuard = true;
+
+                        auto* laggingDevice =
+                            msg->Record.AddOutdatedLaggingDevices();
+                        laggingDevice->SetDeviceUUID("uuid-1");
+                        laggingDevice->SetRowIndex(0);
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        // Trigger the reallocation. It should add "uuid-1" to outdated lagging
+        // devices.
+        diskRegistry.ChangeDeviceState(
+            "uuid-1",
+            NProto::EDeviceState::DEVICE_STATE_WARNING);
+
+        // We should do 2 reallocations: one for changing deivce state and one
+        // for the outdated lagging devices. Wait for both here.
+        runtime->DispatchEvents({}, 100ms);
+        UNIT_ASSERT_VALUES_EQUAL(2, reallocateCount);
+
+        // "uuid-1" should be replaced with "uuid-2".
+        {
+            auto response = diskRegistry.DescribeDisk("mirrored-vol");
+            auto& r = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, r.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-2", r.GetDevices(0).GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.ReplicasSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetReplicas(0).DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "uuid-3",
+                r.GetReplicas(0).GetDevices(0).GetDeviceUUID());
+
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetDeviceReplacementUUIDs().size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "uuid-2",
+                r.GetDeviceReplacementUUIDs()[0]);
+        }
+    }
+
     Y_UNIT_TEST(ShouldRepairVolume)
     {
         const auto agent = CreateAgentConfig("agent-1", {
@@ -2796,6 +2926,173 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(2, crits->Val());
+    }
+
+    Y_UNIT_TEST(ShouldListDiskStates)
+    {
+        TVector agents {
+            CreateAgentConfig("agent-1", {
+                Device("dev-1", "uuid-1.1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-1.2", "rack-1", 10_GB),
+                Device("dev-3", "uuid-1.3", "rack-1", 10_GB)
+            }),
+            CreateAgentConfig("agent-2", {
+                Device("dev-1", "uuid-2.1", "rack-2", 10_GB),
+                Device("dev-2", "uuid-2.2", "rack-2", 10_GB),
+                Device("dev-3", "uuid-2.3", "rack-2", 10_GB)
+            }),
+            CreateAgentConfig("agent-3", {
+                Device("dev-1", "uuid-3.1", "rack-3", 10_GB),
+                Device("dev-2", "uuid-3.2", "rack-3", 10_GB),
+                Device("dev-3", "uuid-3.3", "rack-3", 10_GB)
+            })
+        };
+
+        NProto::TStorageServiceConfig config;
+        // disable recycling
+        config.SetNonReplicatedDiskRecyclingPeriod(Max<ui32>());
+        config.SetAllocationUnitNonReplicatedSSD(10);
+
+        auto runtime = TTestRuntimeBuilder()
+            .With(config)
+            .WithAgents(agents)
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        // allocate disks
+        // agent1: mirror0, nrd0, nrd1
+        // agent2: mirror0, nrd2, nrd3
+        // agent3: mirror0, nrd4, nrd5
+
+        {
+            auto request =
+                diskRegistry.CreateAllocateDiskRequest("mirror0", 10_GB);
+            request->Record.SetReplicaCount(2);
+            request->Record.SetStorageMediaKind(
+                NProto::STORAGE_MEDIA_SSD_MIRROR3);
+
+            diskRegistry.SendRequest(std::move(request));
+        }
+
+        {
+            int index = 0;
+            for (auto& agent: agents) {
+                for (int i = 0; i != 2; ++i) {
+                    auto request = diskRegistry.CreateAllocateDiskRequest(
+                        "nrd" + ToString(index++),
+                        10_GB);
+
+                    *request->Record.AddAgentIds() = agent.GetAgentId();
+
+                    diskRegistry.SendRequest(std::move(request));
+                    auto response = diskRegistry.RecvAllocateDiskResponse();
+                    auto& msg = response->Record;
+                    UNIT_ASSERT_VALUES_EQUAL(1, msg.DevicesSize());
+                }
+            }
+        }
+
+        auto listDiskStates = [&] {
+            auto response = diskRegistry.ListDiskStates();
+            auto& states = *response->Record.MutableDiskStates();
+            UNIT_ASSERT_VALUES_EQUAL(7, states.size());
+            SortBy(states, [](const auto& s) { return s.GetDiskId(); });
+            return states;
+        };
+
+        {
+            auto states = listDiskStates();
+
+            UNIT_ASSERT_VALUES_EQUAL("mirror0", states[0].GetDiskId());
+            UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, states[0].GetState());
+            UNIT_ASSERT_VALUES_EQUAL("", states[0].GetStateMessage());
+
+            for (int i = 0; i != 6; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "nrd" + ToString(i),
+                    states[i + 1].GetDiskId());
+                UNIT_ASSERT_EQUAL(
+                    NProto::DISK_STATE_ONLINE,
+                    states[i + 1].GetState());
+                UNIT_ASSERT_VALUES_EQUAL("", states[i + 1].GetStateMessage());
+            }
+        }
+
+        // mirror0, nrd2, nrd3 -> online + message
+        {
+            NProto::TAction action;
+            action.SetHost(agents[1].GetAgentId());
+            action.SetType(NProto::TAction::REMOVE_HOST);
+
+            diskRegistry.CmsAction(TVector<NProto::TAction>{action});
+        }
+
+        {
+            auto states = listDiskStates();
+
+            UNIT_ASSERT_VALUES_EQUAL("mirror0", states[0].GetDiskId());
+            UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, states[0].GetState());
+            UNIT_ASSERT_VALUES_UNEQUAL("", states[0].GetStateMessage());
+
+            for (int i = 0; i != 6; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "nrd" + ToString(i),
+                    states[i + 1].GetDiskId());
+                UNIT_ASSERT_EQUAL(
+                    NProto::DISK_STATE_ONLINE,
+                    states[i + 1].GetState());
+
+                if (i == 2 || i == 3) {
+                    UNIT_ASSERT_VALUES_UNEQUAL(
+                        "",
+                        states[i + 1].GetStateMessage());
+                } else {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        "",
+                        states[i + 1].GetStateMessage());
+                }
+            }
+        }
+
+        // nrd3, nrd4 -> error
+
+        runtime->AdvanceCurrentTime(24h);
+        diskRegistry.ChangeAgentState(
+            agents[1].GetAgentId(),
+            NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
+
+        {
+            auto states = listDiskStates();
+
+            UNIT_ASSERT_VALUES_EQUAL("mirror0", states[0].GetDiskId());
+            // Mirror disk can only be in online state
+            UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, states[0].GetState());
+            UNIT_ASSERT_VALUES_EQUAL("", states[0].GetStateMessage());
+
+            for (int i = 0; i != 6; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "nrd" + ToString(i),
+                    states[i + 1].GetDiskId());
+                UNIT_ASSERT_VALUES_EQUAL("", states[i + 1].GetStateMessage());
+
+                if (i == 2 || i == 3) {
+                    UNIT_ASSERT_EQUAL(
+                        NProto::DISK_STATE_ERROR,
+                        states[i + 1].GetState());
+                } else {
+                    UNIT_ASSERT_EQUAL(
+                        NProto::DISK_STATE_ONLINE,
+                        states[i + 1].GetState());
+                }
+            }
+        }
     }
 }
 

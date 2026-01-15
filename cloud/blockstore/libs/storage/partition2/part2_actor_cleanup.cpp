@@ -309,7 +309,7 @@ void TPartitionActor::CompleteCleanup(
         IProfileLog::TSysReadWriteRequest request;
         request.RequestType = ESysRequestType::Cleanup;
         request.Duration = d;
-        TBlockRange64Builder rangeBuilder(request.Ranges);
+
         TVector<ui32> blockIndices;
         ui32 blockCount = 0;
         for (const auto& l: args.BlockLists) {
@@ -323,6 +323,8 @@ void TPartitionActor::CompleteCleanup(
             }
         }
         SortUnique(blockIndices);
+
+        TBlockRange64Builder rangeBuilder(request.Ranges);
         for (const auto b: blockIndices) {
             rangeBuilder.OnBlock(b);
         }

@@ -25,6 +25,7 @@
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <cloud/storage/core/libs/common/alloc.h>
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
@@ -200,6 +201,9 @@ public:
         TIndexCachingConfig indexCachingConfig,
         ui32 maxIORequestsInFlight = Max(),
         ui32 reassignChannelsPercentageThreshold = 0,
+        ui32 reassignFreshChannelsPercentageThreshold = 100,
+        ui32 reassignMixedChannelsPercentageThreshold = 100,
+        bool reassignSystemChannelsImmediately = false,
         ui32 lastStep = 0);
 
 private:
@@ -290,6 +294,9 @@ public:
 private:
     const ui32 MaxIORequestsInFlight;
     const ui32 ReassignChannelsPercentageThreshold;
+    const ui32 ReassignFreshChannelsPercentageThreshold;
+    const ui32 ReassignMixedChannelsPercentageThreshold;
+    const bool ReassignSystemChannelsImmediately;
 
     TVector<TChannelState> Channels;
     TVector<ui32> FreshChannels;
@@ -527,7 +534,10 @@ private:
     // TxComplete and blocks got trimmed.
     ui64 TrimFreshLogToCommitId = 0;
     ui64 LastTrimFreshLogToCommitId = 0;
-    TDuration TrimFreshLogTimeout;
+    TBackoffDelayProvider TrimFreshLogBackoffDelayProvider{
+        TDuration::Zero(),
+        TDuration::MilliSeconds(100),
+        TDuration::Seconds(5)};
 
 public:
     EOperationStatus GetTrimFreshLogStatus() const
@@ -540,22 +550,19 @@ public:
         return TrimFreshLogState;
     }
 
-    TDuration GetTrimFreshLogTimeout()
+    TDuration GetTrimFreshLogBackoffDelay()
     {
-        return TrimFreshLogTimeout;
+        return TrimFreshLogBackoffDelayProvider.GetDelay();
     }
 
     void RegisterTrimFreshLogError()
     {
-        TrimFreshLogTimeout = Min(
-            TDuration::Seconds(5),
-            Max(TDuration::MilliSeconds(100), TrimFreshLogTimeout * 2)
-        );
+        TrimFreshLogBackoffDelayProvider.IncreaseDelay();
     }
 
     void RegisterTrimFreshLogSuccess()
     {
-        TrimFreshLogTimeout = {};
+        TrimFreshLogBackoffDelayProvider.Reset();
     }
 
     ui64 GetTrimFreshLogToCommitId() const
