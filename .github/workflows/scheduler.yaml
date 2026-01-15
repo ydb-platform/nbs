@@ -94,6 +94,7 @@ concurrency:
 env:
   disk_size: ${{ inputs.flavor == 'heavy' && 2046 || 93 }}
   preset: ${{ inputs.flavor == 'heavy' && vars.NEBIUS_VM_PRESET || '4vcpu-16gb' }}
+  parent_id: ${{ inputs.flavor == 'heavy' && vars.POOLED_HEAVY_PARENT_ID || vars.POOLED_LIGHT_PARENT_ID }}
 
 
 jobs:
@@ -116,7 +117,7 @@ jobs:
         uses: ./.github/actions/nebius_runner_populate
         with:
           region: ${{ vars.NEBIUS_REGION }}
-          parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+          parent_id: ${{ env.parent_id }}
           max_vms_to_create: ${{ inputs.max_vms_to_create }}
           vms_ttl: ${{ inputs.vms_ttl }}
           flavor: ${{ inputs.flavor }}
@@ -152,7 +153,7 @@ jobs:
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           repo_owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
-          vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+          vm_parent_id: ${{ env.parent_id }}
           vm_id: ${{ matrix.vms_to_remove }}
   remove_broken:
     needs: calculate_missing_vms
@@ -178,7 +179,7 @@ jobs:
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           repo_owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
-          vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+          vm_parent_id: ${{ env.parent_id }}
           vm_id: ${{ matrix.broken_vms_to_remove }}
   create_vms:
     needs: calculate_missing_vms
@@ -206,7 +207,7 @@ jobs:
           repo: ${{ github.event.repository.name }}
           service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+          vm_parent_id: ${{ env.parent_id }}
           vm_name: ${{ matrix.vms_to_create }}
           vm_platform_id: ${{ vars.NEBIUS_PLATFORM_ID }}
           vm_preset: ${{ env.preset }}
