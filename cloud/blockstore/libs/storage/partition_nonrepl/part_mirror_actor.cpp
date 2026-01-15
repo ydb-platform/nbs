@@ -299,10 +299,7 @@ void TMirrorPartitionActor::StartResyncRange(
     const auto& replicaInfos = State.GetReplicaInfos();
     for (ui32 i = 0; i < replicaInfos.size(); i++) {
         if (State.DevicesReadyForReading(i, GetScrubbingRange())) {
-            replicas.emplace_back(
-                replicaInfos[i].Config->GetName(),
-                i,
-                State.GetReplicaActor(i));
+            replicas.emplace_back(i, State.GetReplicaActor(i));
         }
     }
 
@@ -311,6 +308,7 @@ void TMirrorPartitionActor::StartResyncRange(
                                 : Config->GetScrubbingResyncPolicy();
     auto resyncActor = MakeResyncRangeActor(
         std::move(requestInfo),
+        DiskId,
         State.GetBlockSize(),
         GetScrubbingRange(),
         std::move(replicas),
@@ -487,10 +485,7 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
     const auto& replicaInfos = State.GetReplicaInfos();
     for (ui32 i = 0; i < replicaInfos.size(); i++) {
         if (State.DevicesReadyForReading(i, scrubbingRange)) {
-            replicas.emplace_back(
-                replicaInfos[i].Config->GetName(),
-                i,
-                State.GetReplicaActor(i));
+            replicas.emplace_back(i, State.GetReplicaActor(i));
         }
     }
 
@@ -514,7 +509,8 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
         DescribeRange(scrubbingRange).c_str());
 
     ScrubbingThroughput += scrubbingRange.Size() * State.GetBlockSize();
-    ChecksumRangeActorCompanion = TChecksumRangeActorCompanion(replicas);
+    ChecksumRangeActorCompanion =
+        TChecksumRangeActorCompanion(DiskId, std::move(replicas));
     ChecksumRangeActorCompanion.CalculateChecksums(ctx, scrubbingRange);
 }
 

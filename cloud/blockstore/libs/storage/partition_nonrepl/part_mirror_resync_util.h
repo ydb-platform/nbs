@@ -25,7 +25,6 @@ enum class EBlockRangeChecksumStatus
 
 struct TReplicaDescriptor
 {
-    TString ReplicaId;
     ui32 ReplicaIndex = 0;
     NActors::TActorId ActorId;
 };
@@ -46,6 +45,7 @@ bool CanFixMismatch(bool isMinor, NProto::EResyncPolicy resyncPolicy);
 
 std::unique_ptr<NActors::IActor> MakeResyncRangeActor(
     TRequestInfoPtr requestInfo,
+    TString diskId,
     ui32 blockSize,
     TBlockRange64 range,
     TVector<TReplicaDescriptor> replicas,

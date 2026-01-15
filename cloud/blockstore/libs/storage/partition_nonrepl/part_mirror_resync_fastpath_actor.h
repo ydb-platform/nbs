@@ -24,6 +24,7 @@ class TMirrorPartitionResyncFastPathActor final
 {
 private:
     const TRequestInfoPtr RequestInfo;
+    const TString DiskId;
     const ui32 BlockSize;
     const TBlockRange64 Range;
     const TVector<TReplicaDescriptor> Replicas;
@@ -36,6 +37,7 @@ private:
 public:
     TMirrorPartitionResyncFastPathActor(
         TRequestInfoPtr requestInfo,
+        TString diskId,
         ui32 blockSize,
         TBlockRange64 range,
         TGuardedSgList sgList,

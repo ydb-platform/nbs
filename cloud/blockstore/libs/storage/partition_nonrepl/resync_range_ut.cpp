@@ -153,7 +153,7 @@ struct TTestEnv
                 actorId,
                 TActorSetupCmd(part.release(), TMailboxType::Simple, 0)
             );
-            Replicas.push_back({name, static_cast<ui32>(i), actorId});
+            Replicas.push_back({static_cast<ui32>(i), actorId});
         }
 
         auto dummy = std::make_unique<TDummyActor>();
@@ -225,6 +225,7 @@ struct TTestEnv
 
         std::unique_ptr<IActor> actor = MakeResyncRangeActor(
             std::move(requestInfo),
+            "diskId",
             DefaultBlockSize,
             TBlockRange64::MakeClosedInterval(start, end),
             std::move(replicas),

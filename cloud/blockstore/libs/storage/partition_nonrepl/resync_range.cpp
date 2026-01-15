@@ -56,6 +56,7 @@ IProfileLog::TReplicaChecksums MakeChecksums(
 
 TResyncRangeActor::TResyncRangeActor(
         TRequestInfoPtr requestInfo,
+        TString diskId,
         ui32 blockSize,
         TBlockRange64 range,
         TVector<TReplicaDescriptor> replicas,
@@ -65,6 +66,7 @@ TResyncRangeActor::TResyncRangeActor(
         NActors::TActorId volumeActorId,
         bool assignVolumeRequestId)
     : RequestInfo(std::move(requestInfo))
+    , DiskId(std::move(diskId))
     , BlockSize(blockSize)
     , Range(range)
     , Replicas(std::move(replicas))
@@ -136,7 +138,7 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
             TBlockStoreComponents::PARTITION,
             "[%s] Can't resync range %s with major error due to policy "
             "restrictions",
-            Replicas[0].ReplicaId.c_str(),
+            DiskId.c_str(),
             DescribeRange(Range).c_str());
         Done(ctx);
         return;
@@ -144,7 +146,7 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
 
     LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
         "[%s] Resync range %s: majority replica %lu, checksum %lu, count %u of %u",
-        Replicas[0].ReplicaId.c_str(),
+        DiskId.c_str(),
         DescribeRange(Range).c_str(),
         majorIdx,
         majorChecksum,
@@ -156,7 +158,7 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
         if (checksum != majorChecksum) {
             LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
                 "[%s] Replica %lu block range %s checksum %lu differs from majority checksum %lu",
-                Replicas[0].ReplicaId.c_str(),
+                DiskId.c_str(),
                 Replicas[i].ReplicaIndex,
                 DescribeRange(Range).c_str(),
                 checksum,
@@ -265,7 +267,7 @@ void TResyncRangeActor::WriteReplicaBlocks(
 
     LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
         "[%s] Replica %lu Overwrite block range %s during resync",
-        Replicas[idx].ReplicaId.c_str(),
+        DiskId.c_str(),
         Replicas[idx].ReplicaIndex,
         DescribeRange(Range).c_str());
 
