@@ -13,6 +13,9 @@ message DeleteDiskRequest {
 
     types.Disk Disk = 1;
     bool Sync = 3;
+    // Delete the disk from Blockstore even if it is missing from the Disk
+    // Manager database (needed for legacy-created local disks).
+    bool DeleteIfNonExistent = 4;
 }
 
 message DeleteDiskTaskState {}
