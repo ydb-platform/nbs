@@ -2226,6 +2226,67 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetNextNodeId());
         UNIT_ASSERT_VALUES_EQUAL("", response->Record.GetNextCookie());
     }
+
+    Y_UNIT_TEST(ShouldPropagateGidWithGidPropagationEnabled)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetGidPropagationEnabled(true);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        tablet.SetNodeAttr(
+            TSetNodeAttrArgs(RootNodeId).SetGid(2000).SetMode(02755));
+        {
+            tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "file1"));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                2000,
+                tablet
+                    .GetNodeAttr(
+                        tablet.GetNodeAttr(RootNodeId)
+                            ->Record.GetNode()
+                            .GetId(),
+                        "file1")
+                    ->Record.GetNode()
+                    .GetGid());
+        }
+
+        ui64 dirId;
+        {
+            dirId =
+                tablet
+                    .CreateNode(TCreateNodeArgs::Directory(RootNodeId, "dir1"))
+                    ->Record.GetNode()
+                    .GetId();
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                2000,
+                tablet.GetNodeAttr(dirId)->Record.GetNode().GetGid());
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_ISGID,
+                tablet.GetNodeAttr(dirId)->Record.GetNode().GetMode() & S_ISGID);
+        }
+
+        {
+            // setgid flag should have been propagated to the dir1
+            tablet.CreateNode(TCreateNodeArgs::File(dirId, "file2"));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                2000,
+                tablet
+                    .GetNodeAttr(
+                        tablet.GetNodeAttr(dirId)->Record.GetNode().GetId(),
+                        "file2")
+                    ->Record.GetNode()
+                    .GetGid());
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
