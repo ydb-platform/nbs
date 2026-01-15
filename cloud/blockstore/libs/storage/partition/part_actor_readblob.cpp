@@ -60,7 +60,8 @@ void TPartitionActor::HandleReadBlob(
         GetDowntimeThreshold(
             *DiagnosticsConfig,
             PartitionConfig.GetStorageMediaKind()),
-        bsGroupOperationId);
+        bsGroupOperationId,
+        DiagnosticsConfig->GetPassTraceIdToBlobstorage());
 
     if (blob.TabletID() != TabletID()) {
         // Treat this situation as we were reading from base disk.

@@ -172,6 +172,8 @@ public:
 
     [[nodiscard]] TVector<TSizeInterval> GetExecutionTimeSizeClasses() const;
 
+    [[nodiscard]] bool GetPassTraceIdToBlobstorage() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

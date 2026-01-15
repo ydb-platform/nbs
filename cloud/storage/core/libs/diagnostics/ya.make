@@ -23,6 +23,7 @@ SRCS(
     trace_reader.cpp
     trace_serializer.cpp
     weighted_percentile.cpp
+    wilson_trace_compatibility.cpp
 )
 
 PEERDIR(

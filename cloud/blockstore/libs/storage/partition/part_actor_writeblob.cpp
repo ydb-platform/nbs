@@ -6,6 +6,8 @@
 #include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 
+#include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
+
 #include <contrib/ydb/core/base/blobstorage.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -43,6 +45,8 @@ private:
 
     const ui64 BSGroupOperationId;
 
+    const bool PassTraceIdToBlobstorage = false;
+
     TInstant RequestSent;
     TInstant ResponseReceived;
     TStorageStatusFlags StorageStatusFlags;
@@ -60,7 +64,8 @@ public:
         TDuration longRunningThreshold,
         ui32 groupId,
         TChildLogTitle logTitle,
-        ui64 bsGroupOperationId);
+        ui64 bsGroupOperationId,
+        bool shouldSendTraceIdToBlobstorage);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -102,7 +107,8 @@ TWriteBlobActor::TWriteBlobActor(
         TDuration longRunningThreshold,
         ui32 groupId,
         TChildLogTitle logTitle,
-        ui64 bsGroupOperationId)
+        ui64 bsGroupOperationId,
+        bool shouldSendTraceIdToBlobstorage)
     : TLongRunningOperationCompanion(
           tabletActorId,
           volumeActorId,
@@ -117,6 +123,7 @@ TWriteBlobActor::TWriteBlobActor(
     , GroupId(groupId)
     , LogTitle(std::move(logTitle))
     , BSGroupOperationId(bsGroupOperationId)
+    , PassTraceIdToBlobstorage(shouldSendTraceIdToBlobstorage)
 {}
 
 void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
@@ -185,6 +192,13 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
             ? NKikimrBlobStorage::AsyncBlob
             : NKikimrBlobStorage::UserData);
 
+    NWilson::TTraceId traceId;
+    if (PassTraceIdToBlobstorage) {
+        traceId = GetTraceIdForRequestId(
+            RequestInfo->CallContext->LWOrbit,
+            RequestInfo->CallContext->RequestId);
+    }
+
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
     RequestSent = ctx.Now();
@@ -192,7 +206,9 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
     SendToBSProxy(
         ctx,
         Request->Proxy,
-        request.release());
+        request.release(),
+        RequestInfo->Cookie,
+        std::move(traceId));
 }
 
 void TWriteBlobActor::NotifyCompleted(
@@ -415,7 +431,8 @@ void TPartitionActor::HandleWriteBlob(
                 PartitionConfig.GetStorageMediaKind()),
             groupId,
             LogTitle.GetChild(GetCycleCount()),
-            bsGroupOperationId),
+            bsGroupOperationId,
+            DiagnosticsConfig->GetPassTraceIdToBlobstorage()),
         bsGroupOperationId,
         groupId,
         TBSGroupOperationTimeTracker::EOperationType::Write,
