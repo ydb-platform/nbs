@@ -134,7 +134,7 @@ void TMirrorPartitionResyncActor::HandleDiskRegistryBasedPartCountersCombined(
             ctx,
             TBlockStoreComponents::PARTITION_NONREPL,
             "[%s] Failed to send mirror resync actor statistics due to error: %s",
-            PartConfig->GetName().Quote().c_str());,
+            PartConfig->GetName().Quote().c_str(),
             FormatError(msg->Error).c_str());
     }
 
