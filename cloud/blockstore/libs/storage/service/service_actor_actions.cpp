@@ -37,6 +37,7 @@ void TServiceActor::HandleExecuteAction(
 
     using TFunc =
         TResultOrError<NActors::IActorPtr>(TServiceActor::*)(TRequestInfoPtr, TString);
+    // TODO:_ alphabet order?
     const THashMap<TString, TFunc> actions = {
         {"diskregistrysetwritablestate",      &TServiceActor::CreateWritableStateActionActor               },
         {"backupdiskregistrystate",           &TServiceActor::CreateBackupDiskRegistryStateActor           },
@@ -91,6 +92,7 @@ void TServiceActor::HandleExecuteAction(
         {"backuppathdescriptions",            &TServiceActor::CreateBackupPathDescriptionsActor            },
         {"backuptabletbootinfos",             &TServiceActor::CreateBackupTabletBootInfosActor             },
         {"getclustercapacity",                &TServiceActor::CreateGetClusterCapacityActor                },
+        {"switchvhostdiscardoption",          &TServiceActor::CreateSwitchVhostDiscardOptionActionActor    },
     };
 
     NProto::TError error;
