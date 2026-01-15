@@ -29,6 +29,10 @@ inputs:
   service_account_key:
     required: true
     description: "service account key"
+  region:
+    required: true
+    description: "nebius region"
+    default: "eu-north1"
 outputs:
   VMS_TO_CREATE:
     value: ${{ steps.populate.outputs.VMS_TO_CREATE }}
@@ -64,6 +68,7 @@ runs:
       run: |
         export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
         python3 -m scripts.nebius_populate_vms \
+          --api-endpoint api.${REGION}.nebius.cloud \
           --service-account-key "${SERVICE_ACCOUNT_KEY}" \
           ${LOOP_ARG} \
           --github-repo-owner "${OWNER}" \
@@ -75,6 +80,7 @@ runs:
           --maximum-amount-of-vms-to-have "${MAXIMUM_AMOUNT_OF_VMS_TO_HAVE}" \
           --extra-vms-if-needed "${EXTRA_VMS_IF_NEEDED}"
       env:
+        REGION: ${{ inputs.region }} 
         OWNER: ${{ github.event.repository.owner.login }}
         REPO: ${{ github.event.repository.name }}
         PARENT_ID: ${{ inputs.parent_id }}

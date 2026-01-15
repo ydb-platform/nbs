@@ -19,6 +19,10 @@ inputs:
   vm_id:
     required: true
     description: "vm id"
+  region:
+    required: false
+    description: "nebius region"
+    default: "eu-north1"
 
 runs:
   using: composite
@@ -41,6 +45,7 @@ runs:
       run: |
         export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
         python3 -m scripts.nebius_manage_vm remove \
+          --api-endpoint api.${REGION}.nebius.cloud \
           --github-repo-owner "${REPO_OWNER}" \
           --github-repo "${REPO}" \
           --service-account-key "${SERVICE_ACCOUNT_KEY}" \
@@ -53,6 +58,7 @@ runs:
         REPO: ${{ inputs.repo }}
         VM_ID: ${{ inputs.vm_id }}
         PARENT_ID: ${{ inputs.vm_parent_id }}
+        REGION: ${{ inputs.region }}
     - name: cleanup
       if: always()
       shell: bash
