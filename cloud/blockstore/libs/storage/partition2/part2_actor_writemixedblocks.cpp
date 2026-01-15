@@ -253,6 +253,8 @@ void TWriteMixedBlocksActor::WriteBlobs(const TActorContext& ctx)
             req.BlobId,
             std::move(guardedSglist));
 
+        ui64 requestId = 0;
+
         for (const auto& sr: req.SubRequests) {
             if (!sr.RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
                 LWTRACK(
@@ -261,7 +263,11 @@ void TWriteMixedBlocksActor::WriteBlobs(const TActorContext& ctx)
                     "TEvPartitionPrivate::TEvWriteBlobRequest",
                     sr.RequestInfo->CallContext->RequestId);
             }
+            if (sr.RequestInfo->CallContext->LWOrbit.HasShuttles()) {
+                requestId = sr.RequestInfo->CallContext->RequestId;
+            }
         }
+        request->CallContext->RequestId = requestId;
 
         ForkedCallContexts.emplace_back(request->CallContext);
 

@@ -3,6 +3,8 @@
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/storage/api/public.h>
 
+#include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -22,7 +24,8 @@ TReadBlobActor::TReadBlobActor(
         const EStorageAccessMode storageAccessMode,
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
-        ui64 bsGroupOperationId)
+        ui64 bsGroupOperationId,
+        bool passTraceIdToBlobstorage)
     : TLongRunningOperationCompanion(
           partitionActorId,
           volumeActorId,
@@ -37,6 +40,7 @@ TReadBlobActor::TReadBlobActor(
     , StorageAccessMode(storageAccessMode)
     , Request(std::move(request))
     , BSGroupOperationId(bsGroupOperationId)
+    , PassTraceIdToBlobstorage(passTraceIdToBlobstorage)
 {}
 
 void TReadBlobActor::Bootstrap(const TActorContext& ctx)
@@ -85,6 +89,12 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
             ? NKikimrBlobStorage::AsyncRead
             : NKikimrBlobStorage::FastRead);
 
+    NWilson::TTraceId traceId;
+    if (PassTraceIdToBlobstorage) {
+        traceId = GetTraceIdForRequestId(
+            RequestInfo->CallContext->LWOrbit,
+            RequestInfo->CallContext->RequestId);
+    }
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
     RequestSent = ctx.Now();
@@ -92,7 +102,9 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
     SendToBSProxy(
         ctx,
         Request->Proxy,
-        request.release());
+        request.release(),
+        RequestInfo->Cookie,
+        std::move(traceId));
 }
 
 void TReadBlobActor::NotifyCompleted(

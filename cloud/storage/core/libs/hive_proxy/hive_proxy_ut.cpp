@@ -372,6 +372,8 @@ private:
         const TEvHive::TEvDrainNode::TPtr& ev,
         const TActorContext& ctx)
     {
+        ctx.Send(ev->Sender, new TEvHive::TEvDrainNodeAck());
+
         const auto& msg = ev->Get();
 
         NKikimrProto::EReplyStatus replyStatus = NKikimrProto::OK;

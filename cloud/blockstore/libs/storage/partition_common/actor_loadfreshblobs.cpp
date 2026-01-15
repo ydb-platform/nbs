@@ -124,7 +124,7 @@ void TLoadFreshBlobsActor::DiscoverBlobs(const TActorContext& ctx)
                 ctx,
                 req.GroupId,
                 request.release(),
-                RangeRequestsInFlight++);  // cookie
+                RangeRequestsInFlight++);   // cookie
         }
     }
 }

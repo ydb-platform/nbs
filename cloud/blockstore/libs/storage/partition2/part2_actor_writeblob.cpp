@@ -3,8 +3,9 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
+#include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
 
+#include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
@@ -36,6 +37,8 @@ private:
     const std::unique_ptr<TRequest> Request;
     const ui32 GroupId;
 
+    const bool PassTraceIdToBlobstorage;
+
     TInstant RequestSent;
     TInstant ResponseReceived;
     TStorageStatusFlags StorageStatusFlags;
@@ -47,7 +50,8 @@ public:
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
         std::unique_ptr<TRequest> request,
-        ui32 groupId);
+        ui32 groupId,
+        bool passTraceIdToBlobstorage);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -84,12 +88,14 @@ TWriteBlobActor::TWriteBlobActor(
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
         std::unique_ptr<TRequest> request,
-        ui32 groupId)
+        ui32 groupId,
+        bool passTraceIdToBlobstorage)
     : TabletActorId(tabletActorId)
     , RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
     , Request(std::move(request))
     , GroupId(groupId)
+    , PassTraceIdToBlobstorage(passTraceIdToBlobstorage)
 {}
 
 void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
@@ -138,6 +144,13 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
             ? NKikimrBlobStorage::AsyncBlob
             : NKikimrBlobStorage::UserData);
 
+    NWilson::TTraceId traceId;
+    if (PassTraceIdToBlobstorage) {
+        traceId = GetTraceIdForRequestId(
+            RequestInfo->CallContext->LWOrbit,
+            RequestInfo->CallContext->RequestId);
+    }
+
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
     RequestSent = ctx.Now();
@@ -145,7 +158,9 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
     SendToBSProxy(
         ctx,
         Request->Proxy,
-        request.release());
+        request.release(),
+        RequestInfo->Cookie,
+        std::move(traceId));
 }
 
 void TWriteBlobActor::NotifyCompleted(
@@ -303,13 +318,16 @@ void TPartitionActor::HandleWriteBlob(
     msg->Proxy = Info()->BSProxyIDForChannel(channel, msg->BlobId.Generation());
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
 
-    State->EnqueueIORequest(channel, std::make_unique<TWriteBlobActor>(
-        SelfId(),
-        requestInfo,
-        TabletID(),
-        std::unique_ptr<TEvPartitionPrivate::TEvWriteBlobRequest>(
-            msg.Release()),
-        groupId));
+    State->EnqueueIORequest(
+        channel,
+        std::make_unique<TWriteBlobActor>(
+            SelfId(),
+            requestInfo,
+            TabletID(),
+            std::unique_ptr<TEvPartitionPrivate::TEvWriteBlobRequest>(
+                msg.Release()),
+            groupId,
+            DiagnosticsConfig->GetPassTraceIdToBlobstorage()));
 
     ProcessIOQueue(ctx, channel);
 }

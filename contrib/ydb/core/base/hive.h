@@ -88,6 +88,9 @@ namespace NKikimr {
             EvResponseTabletDistribution,
             EvResponseScaleRecommendation,
             EvConfigureScaleRecommenderReply,
+            EvDrainNodeAck,
+            EvResponseDrainInfo,
+            EvSetDownReply,
 
             EvEnd
         };
@@ -900,15 +903,19 @@ namespace NKikimr {
                 Record.MutableDomainKey()->CopyFrom(domainKey);
             }
         };
-        
+
         struct TEvResponseScaleRecommendation : TEventPB<TEvResponseScaleRecommendation,
             NKikimrHive::TEvResponseScaleRecommendation, EvResponseScaleRecommendation> {};
-        
+
         struct TEvConfigureScaleRecommender : TEventPB<TEvConfigureScaleRecommender,
             NKikimrHive::TEvConfigureScaleRecommender, EvConfigureScaleRecommender> {};
-        
+
         struct TEvConfigureScaleRecommenderReply : TEventPB<TEvConfigureScaleRecommenderReply,
             NKikimrHive::TEvConfigureScaleRecommenderReply, EvConfigureScaleRecommenderReply> {};
+        struct TEvDrainNodeAck: TEventLocal<TEvDrainNodeAck, EvDrainNodeAck>
+        {
+            TEvDrainNodeAck() = default;
+        };
     };
 
     IActor* CreateDefaultHive(const TActorId &tablet, TTabletStorageInfo *info);

@@ -551,6 +551,7 @@ void TReadBlocksActor::ReadBlocks(
                 "TEvPartitionPrivate::TEvReadBlobRequest",
                 RequestInfo->CallContext->RequestId);
         }
+        request->CallContext->RequestId = RequestInfo->CallContext->RequestId;
 
         ForkedCallContexts.emplace_back(request->CallContext);
 

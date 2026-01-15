@@ -2,8 +2,6 @@
 
 #include "part_events_private.h"
 
-#include <cloud/blockstore/public/api/protos/volume.pb.h>
-
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -18,14 +16,15 @@
 #include <cloud/blockstore/libs/storage/core/compaction_options.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
-#include <cloud/blockstore/libs/storage/partition/model/fresh_blob_test.h>
 #include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
+#include <cloud/blockstore/libs/storage/partition/model/fresh_blob_test.h>
 #include <cloud/blockstore/libs/storage/partition/part.h>
 #include <cloud/blockstore/libs/storage/partition/part_events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
+#include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 // TODO: invalid reference
 #include <cloud/blockstore/libs/storage/service/service_events_private.h>
@@ -53,6 +52,8 @@ using namespace NActors;
 using namespace NKikimr;
 
 using namespace NCloud::NStorage;
+
+using namespace NLWTrace;
 
 namespace {
 
@@ -122,7 +123,9 @@ NProto::TStorageServiceConfig DefaultConfig(ui32 flushBlobSizeThreshold = 4_KB)
 
 TDiagnosticsConfigPtr CreateTestDiagnosticsConfig()
 {
-    return std::make_shared<TDiagnosticsConfig>(NProto::TDiagnosticsConfig());
+    NProto::TDiagnosticsConfig config;
+    config.SetPassTraceIdToBlobstorage(true);
+    return std::make_shared<TDiagnosticsConfig>(std::move(config));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1601,6 +1604,43 @@ void SendUndeliverableRequest(
             &undeliveryActor),
         0);
 }
+
+class TMockShuttle: public IShuttle
+{
+public:
+    TMockShuttle(ui64 traceIdx, ui64 spanId)
+        : IShuttle(traceIdx, spanId)
+    {}
+
+protected:
+    bool DoAddProbe(TProbe*, const TParams&, ui64) override
+    {
+        return true;
+    }
+
+    void DoEndOfTrack() override
+    {}
+
+    void DoDrop() override
+    {}
+
+    void DoSerialize(TShuttleTrace&) override
+    {}
+
+    bool DoFork(TShuttlePtr& child) override
+    {
+        auto shuttle = MakeIntrusive<TMockShuttle>(GetTraceIdx(), GetSpanId());
+        shuttle->SetNext(child);
+        child = shuttle;
+        child->SetParentSpanId(GetSpanId());
+        return true;
+    }
+
+    bool DoJoin(const TShuttlePtr&) override
+    {
+        return true;
+    }
+};
 
 }   // namespace
 
@@ -13392,6 +13432,68 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(trimFreshLogToCommitId, stats.GetTrimFreshLogToCommitId());
         }
+    }
+
+    Y_UNIT_TEST(ShouldPassTraceIdToBlobstorage)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        auto writeReq = partition.CreateWriteBlocksRequest(0, 1);
+        writeReq->CallContext->RequestId = 12345;
+
+        auto shuttle = MakeIntrusive<TMockShuttle>(ui64{10}, ui64{10});
+        writeReq->CallContext->LWOrbit.AddShuttle(shuttle);
+
+        ui64 spanId = 0;
+        writeReq->CallContext->LWOrbit.ForEachShuttle(
+            [&](const NLWTrace::IShuttle* s) { spanId = s->GetSpanId(); });
+
+        std::optional<NWilson::TTraceId> traceId;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvPut) {
+                    traceId = NWilson::TTraceId(event->TraceId);
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.SendToPipe(std::move(writeReq));
+
+        auto response =
+            partition.RecvResponse<TEvService::TEvWriteBlocksResponse>();
+        UNIT_ASSERT_C(
+            SUCCEEDED(response->GetStatus()),
+            response->GetErrorReason());
+
+        const auto& stats = partition.StatPartition()->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 1);
+
+        UNIT_ASSERT(traceId.has_value());
+
+        NWilson::TTraceId expectedTraceId(
+            {12345, 0},
+            spanId,
+            NWilson::TTraceId::MAX_VERBOSITY,
+            NWilson::TTraceId::MAX_TIME_TO_LIVE);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedTraceId.GetHexTraceId(),
+            traceId->GetHexTraceId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedTraceId.GetVerbosity(),
+            traceId->GetVerbosity());
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedTraceId.GetTimeToLive(),
+            traceId->GetTimeToLive());
     }
 }
 
