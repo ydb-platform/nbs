@@ -65,3 +65,7 @@ generate_cert "server" "$BIN_DIR/certs"
 
 # Allow filestore to access /run/qemu
 sudo chmod 777 /run/qemu
+
+# Create /run/qemu/filestore-vhost directory
+sudo mkdir -p /run/qemu/filestore-vhost
+sudo chown "$(whoami)" /run/qemu/filestore-vhost
