@@ -2227,6 +2227,82 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         UNIT_ASSERT_VALUES_EQUAL("", response->Record.GetNextCookie());
     }
 
+    TABLET_TEST_4K_ONLY(ShouldHandleCommitIdOverflowUponRenameNode)
+    {
+        const auto maxTabletStep = 5;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxTabletStep(maxTabletStep);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto dir =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+        TString name = "file";
+        const ui64 fileId = CreateNode(tablet, TCreateNodeArgs::File(dir, name));
+
+        auto reconnectIfNeeded = [&]()
+        {
+            if (rebootTracker.IsPipeDestroyed()) {
+                tablet.ReconnectPipe();
+                tablet.WaitReady();
+                tablet.RecoverSession();
+                rebootTracker.ClearPipeDestroyed();
+            }
+        };
+
+        ui32 failures = 0;
+        for (ui32 i = 0; i < 10; ++i) {
+            TString newName = name + "1";
+            tablet.SendRenameNodeRequest(dir, name, dir, newName);
+            auto response = tablet.RecvRenameNodeResponse();
+            reconnectIfNeeded();
+
+            if (HasError(response->GetError())) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_REJECTED,
+                    response->GetStatus(),
+                    FormatError(response->GetError()));
+                ++failures;
+
+                continue;
+            }
+
+            name = newName;
+        }
+
+        auto response = tablet.ListNodes(dir);
+        const auto& names = response->Record.GetNames();
+        UNIT_ASSERT_VALUES_EQUAL(names.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(names[0], name);
+        const auto& nodes = response->Record.GetNodes();
+        UNIT_ASSERT_VALUES_EQUAL(nodes.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(nodes[0].GetId(), fileId);
+
+        UNIT_ASSERT_C(
+            rebootTracker.GetGenerationCount() >= 2,
+            "Expected at least 2 different generations due to tablet reboot, "
+            "got "
+                << rebootTracker.GetGenerationCount());
+
+        UNIT_ASSERT_GT(failures, 0);
+    }
+      
     Y_UNIT_TEST(ShouldPropagateGidWithGidPropagationEnabled)
     {
         NProto::TStorageConfig storageConfig;
