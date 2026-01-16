@@ -112,6 +112,8 @@ jobs:
         vm_image: ${{ steps.get-image-id.outputs.IMAGE_ID_2204 }}
         vm_labels: ${{ format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
         vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
+        vm_public_ip: ${{ vars.POOLED_HEAVY_PUBLIC_IP_ENABLE == 'yes' && 'yes' || 'no' }}
+
 
     - name: Stop runner
       uses: ./.github/actions/nebius_runner_remove

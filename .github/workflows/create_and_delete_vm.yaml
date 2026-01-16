@@ -126,6 +126,7 @@ jobs:
           vm_flavor: "none"
           vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
           vm_allow_downgrade: 'no'
+          vm_public_ip: ${{ vars.POOLED_HEAVY_PUBLIC_IP_ENABLE == 'yes' && 'yes' || 'no' }}
       - name: Calculate threads
         id: calculate-threads
         if: always()

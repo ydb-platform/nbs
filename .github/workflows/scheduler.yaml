@@ -97,6 +97,7 @@ env:
   sa_json: ${{ inputs.flavor == 'heavy' && secrets.POOLED_HEAVY_SA_JSON || secrets.POOLED_LIGHT_SA_JSON }}
   preset: ${{ inputs.flavor == 'heavy' && vars.POOLED_HEAVY_VM_PRESET || vars.POOLED_LIGHT_VM_PRESET }}
   subnet_id: ${{ inputs.flavor == 'heavy' && vars.POOLED_HEAVY_SUBNET_ID || vars.POOLED_LIGHT_SUBNET_ID }}
+  public_ip: ${{ inputs.flavor == 'heavy' && vars.POOLED_HEAVY_PUBLIC_IP_ENABLE || vars.POOLED_LIGHT_PUBLIC_IP_ENABLE }}
 
 
 jobs:
@@ -217,5 +218,6 @@ jobs:
           vm_flavor: ${{ inputs.flavor }}
           vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
           vm_allow_downgrade: 'no'
+          vm_public_ip: ${{ env.public_ip }}
     
     

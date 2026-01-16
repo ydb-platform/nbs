@@ -458,7 +458,7 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
                     name="eth0",
                     subnet_id=args.subnet_id,
                     ip_address=IPAddress(),
-                    public_ip_address=PublicIPAddress(),
+                    public_ip_address=None if args.no_public_ip else PublicIPAddress(),
                 ),
             ],
         ),
@@ -503,7 +503,7 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
     logger.info("Created VM %s", instance)
 
     network_interface = instance.status.network_interfaces[0]
-    external_ipv4 = network_interface.public_ip_address.address.replace("/32", "")
+    external_ipv4 = network_interface.public_ip_address.address.replace("/32", "") if args.no_public_ip is False else None
     local_ipv4 = network_interface.ip_address.address.replace("/32", "")
     if instance_id:
         logger.info(
@@ -518,6 +518,8 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         github_output(logger, "vm-preset", args.preset)
         if external_ipv4:
             github_output(logger, "external-ipv4", external_ipv4)
+        else:
+            github_output(logger, "external-ipv4", "N/A")
 
         logger.info("Waiting for VM to be registered as Github Runner")
         runner_id = wait_for_runner_registration(
@@ -683,11 +685,6 @@ async def remove_vm(sdk: SDK, args: argparse.Namespace):
 async def main() -> None:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="action", help="Action to perform")
-    parser.add_argument(
-        "--api-endpoint",
-        default="api.ai.nebius.cloud",
-        help="Cloud API Endpoint",
-    )
 
     create = subparsers.add_parser("create", help="Create a new VM")
     create.add_argument(
@@ -736,6 +733,7 @@ async def main() -> None:
     )
     create.add_argument("--name", default="", help="VM name")
     create.add_argument("--platform-id", default="cpu-e2", help="Platform ID")
+    create.add_argument("--no-public-ip", action="store_true", help="Do not assign public IP")
     choices = []
     for key in PRESETS.keys():
         for preset in PRESETS[key]:

@@ -56,6 +56,10 @@ inputs:
   vm_allow_downgrade:
     required: false
     description: "allow downgrade"
+  vm_public_ip:
+    required: false
+    description: "assign public ip to vm"
+    default: "yes"
 
 outputs:
   LABEL:
@@ -105,7 +109,7 @@ runs:
       shell: bash
       run: |
         export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
-        python3 -m scripts.nebius_manage_vm create ${ORG} ${TEAM} ${VM_ALLOW_DOWNGRADE} \
+        python3 -m scripts.nebius_manage_vm create ${ORG} ${TEAM} ${VM_ALLOW_DOWNGRADE} ${VM_PUBLIC_IP} \
           --github-repo-owner "${REPO_OWNER}" \
           --github-repo "${REPO}" \
           --service-account-key "${SERVICE_ACCOUNT_KEY}" \
@@ -137,6 +141,7 @@ runs:
         VM_FLAVOR: ${{ inputs.vm_flavor }}
         VM_USER_PASSWD: ${{ inputs.vm_user_passwd }}
         VM_ALLOW_DOWNGRADE: ${{ inputs.vm_allow_downgrade == 'yes' && '--allow-downgrade' || '' }}
+        VM_PUBLIC_IP: ${{ inputs.vm_public_ip == 'no' && '--no-public-ip' || '' }}
 
     - name: cleanup
       if: always()
