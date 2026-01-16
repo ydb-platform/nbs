@@ -1,6 +1,7 @@
 #include "service_actor.h"
 
 #include "cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor.h"
+
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
@@ -261,7 +262,8 @@ void TSetVhostDiscardEnabledFlagActionActor::HandleWaitReadyResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "SetVhostDiscardEnabledFlag->WaitReady request failed for volume %s, "
+            "SetVhostDiscardEnabledFlag->WaitReady request failed for volume "
+            "%s, "
             "error: %s",
             Request.GetDiskId().Quote().c_str(),
             msg->GetErrorReason().Quote().c_str());
