@@ -704,8 +704,11 @@ void TStorageServiceActor::HandleCreateSession(
         session->GetInfo(
             *response->Record.MutableSession(),
             GetSessionSeqNo(msg->Record));
-        inflight->Complete(ctx.Now(), std::move(error));
-        InFlightRequests->Erase(cookie);
+        InFlightRequests->CompleteAndErase(
+            ctx.Now(),
+            error,
+            *inflight,
+            cookie);
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
@@ -959,8 +962,12 @@ void TStorageServiceActor::HandleSessionCreated(
         }
 
         NCloud::Reply(ctx, *inflight, std::move(response));
-        inflight->Complete(ctx.Now(), msg->GetError());
-        InFlightRequests->Erase(msg->RequestInfo->Cookie);
+
+        InFlightRequests->CompleteAndErase(
+            ctx.Now(),
+            msg->GetError(),
+            *inflight,
+            msg->RequestInfo->Cookie);
     }
 }
 

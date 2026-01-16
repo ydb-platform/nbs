@@ -72,7 +72,9 @@ void CompleteRequestImpl(
     const NActors::TActorContext& ctx,
     const ITraceSerializerPtr& traceSerializer,
     typename TMethod::TResponse::ProtoRecordType& record,
-    TInFlightRequest *request);
+    TInFlightRequest *request,
+    TInFlightRequestStorage& requestStorage,
+    ui64 requestCookie);
 
 ////////////////////////////////////////////////////////////////////////////////
 
