@@ -155,6 +155,10 @@ func TestDeleteFilesystemSnapshot(t *testing.T) {
 	snapshotMeta := FilesystemSnapshotMeta{
 		ID:           "snapshot",
 		CreateTaskID: "create",
+		Filesystem: &types.Filesystem{
+			ZoneId:       "zone",
+			FilesystemId: "fs",
+		},
 	}
 
 	created, err := f.storage.CreateFilesystemSnapshot(f.ctx, snapshotMeta)
@@ -212,6 +216,10 @@ func TestGetFilesystemSnapshotsToDelete(t *testing.T) {
 		FilesystemSnapshotMeta{
 			ID:           "snapshot1",
 			CreateTaskID: "create1",
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: "filesystem",
+			},
 		},
 	)
 	require.NoError(t, err)
@@ -221,6 +229,10 @@ func TestGetFilesystemSnapshotsToDelete(t *testing.T) {
 		FilesystemSnapshotMeta{
 			ID:           "snapshot2",
 			CreateTaskID: "create2",
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: "filesystem2",
+			},
 		},
 	)
 	require.NoError(t, err)
@@ -269,6 +281,10 @@ func TestCheckFilesystemSnapshotAlive(t *testing.T) {
 		FilesystemSnapshotMeta{
 			ID:           "snapshot",
 			CreateTaskID: "create",
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: "fs",
+			},
 		},
 	)
 	require.NoError(t, err)
@@ -297,6 +313,10 @@ func TestLockUnlockFilesystemSnapshot(t *testing.T) {
 		FilesystemSnapshotMeta{
 			ID:           "snapshot",
 			CreateTaskID: "create",
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: "fs",
+			},
 		},
 	)
 	require.NoError(t, err)
@@ -371,6 +391,10 @@ func TestListFilesystemSnapshots(t *testing.T) {
 		FilesystemSnapshotMeta{
 			ID:           "snapshot1",
 			CreateTaskID: "create1",
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: "filesystem1",
+			},
 		},
 	)
 	require.NoError(t, err)
@@ -380,6 +404,10 @@ func TestListFilesystemSnapshots(t *testing.T) {
 		FilesystemSnapshotMeta{
 			ID:           "snapshot2",
 			CreateTaskID: "create2",
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: "filesystem2",
+			},
 		},
 	)
 	require.NoError(t, err)
@@ -429,6 +457,10 @@ func TestGetFilesystemSnapshotCount(t *testing.T) {
 		FilesystemSnapshotMeta{
 			ID:           "snapshot1",
 			CreateTaskID: "create1",
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: "filesystem1",
+			},
 		},
 	)
 	require.NoError(t, err)
@@ -446,6 +478,10 @@ func TestGetFilesystemSnapshotCount(t *testing.T) {
 		FilesystemSnapshotMeta{
 			ID:           "snapshot2",
 			CreateTaskID: "create2",
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: "filesystem2",
+			},
 		},
 	)
 	require.NoError(t, err)
@@ -477,6 +513,10 @@ func TestGetTotalFilesystemSnapshotSizes(t *testing.T) {
 		FilesystemSnapshotMeta{
 			ID:           "snapshot1",
 			CreateTaskID: "create1",
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: "filesystem1",
+			},
 		},
 	)
 	require.NoError(t, err)
@@ -498,6 +538,10 @@ func TestGetTotalFilesystemSnapshotSizes(t *testing.T) {
 		FilesystemSnapshotMeta{
 			ID:           "snapshot2",
 			CreateTaskID: "create2",
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: "filesystem2",
+			},
 		},
 	)
 	require.NoError(t, err)
