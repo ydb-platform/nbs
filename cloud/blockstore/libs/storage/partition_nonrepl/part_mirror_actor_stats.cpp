@@ -130,7 +130,7 @@ void TMirrorPartitionActor::HandleGetDiskRegistryBasedPartCounters(
             *StatisticRequestInfo,
             std::make_unique<TEvNonreplPartitionPrivate::
                                  TEvGetDiskRegistryBasedPartCountersResponse>(
-                MakeError(E_REJECTED, "Another request is in progress"),
+                MakeError(E_REJECTED, "Mirror actor got new request"),
                 SelfId(),
                 DiskId,
                 TPartNonreplCountersData{}));
