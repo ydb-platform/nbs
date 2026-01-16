@@ -2218,6 +2218,7 @@ struct TTxIndexTablet
         const TByteRange Range;
 
         NProto::TError Error;
+        ui64 CommitId = InvalidCommitId;
 
         TZeroRange(
                 TRequestInfoPtr requestInfo,
