@@ -85,6 +85,7 @@ public:
         , NvmeManager(std::move(nvmeManager))
         , Response(NewPromise<NProto::TError>())
         , ValidateRemainingBlockCount(BlocksCount / ValidatedBlocksRatio)
+        , ValidatedBlockIndex(StartIndex)
         , DeallocateNextBlockIndex(StartIndex)
         , Buffer(Allocate(BlockSize))
         , ZeroBuffer(Allocate(BlockSize))
@@ -137,9 +138,13 @@ private:
             return;
         }
 
-        ValidateRemainingBlockCount--;
+        // It's important to validate the last block (and the first block)
+        // because of the partition table.
+        if (ValidateRemainingBlockCount == 1) {
+            ValidatedBlockIndex = StartIndex + BlocksCount - 1;
+        }
 
-        ValidatedBlockIndex = StartIndex + Rand.Uniform(BlocksCount);
+        ValidateRemainingBlockCount--;
 
         // Fill the buffer with an unexpected value (any except 0x00 or 0xFF)
         // before reading to make sure that IFileIOService actually reads the
@@ -179,6 +184,7 @@ private:
             return;
         }
 
+        ValidatedBlockIndex = StartIndex + Rand.Uniform(BlocksCount);
         ValidateNextBlock();
     }
 
