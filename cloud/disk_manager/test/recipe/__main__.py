@@ -190,8 +190,8 @@ def start(argv):
     set_env("DISK_MANAGER_RECIPE_NBS2_PORT", str(nbs2.port))
     set_env("DISK_MANAGER_RECIPE_NBS3_PORT", str(nbs3.port))
 
-    port_manager = yatest_common.PortManager()
     if args.with_cells:
+        port_manager = yatest_common.PortManager()
         nbs4_secure_port = port_manager.get_port()
         nbs5_secure_port = port_manager.get_port()
 
@@ -344,8 +344,8 @@ def start(argv):
             disk_manager_binary_path=disk_manager_binary_path,
             with_nemesis=args.nemesis,
             nfs_port=nfs.port,
-            nfs1_port=nfs2.port,
-            nfs2_port=nfs3.port,
+            nfs2_port=nfs2.port,
+            nfs3_port=nfs3.port,
             access_service_port=os.getenv('DISK_MANAGER_RECIPE_ACCESS_SERVICE_PORT'),
             cert_file=cert_file,
             cert_key_file=cert_key_file,

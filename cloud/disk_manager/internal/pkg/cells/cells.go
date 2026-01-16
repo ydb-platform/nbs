@@ -91,7 +91,7 @@ func (s *cellSelector) SelectCellForDisk(
 	requireExactCellIDMatch bool,
 ) (nbs.Client, error) {
 
-	cellID, err := s.selectCell(
+	cellID, err := s.selectCellForDisk(
 		ctx,
 		zoneID,
 		folderID,
@@ -255,7 +255,7 @@ func (s *cellSelector) isAgentAvailable(
 	return true
 }
 
-func (s *cellSelector) selectCell(
+func (s *cellSelector) selectCellForDisk(
 	ctx context.Context,
 	zoneID string,
 	folderID string,

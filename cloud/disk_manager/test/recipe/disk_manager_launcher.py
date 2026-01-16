@@ -82,8 +82,8 @@ NfsConfig: <
         key: "zone-c"
         value: <
             Endpoints: [
-                "localhost:{nfs1_port}",
-                "localhost:{nfs1_port}"
+                "localhost:{nfs2_port}",
+                "localhost:{nfs2_port}"
             ]
         >
     >
@@ -91,8 +91,8 @@ NfsConfig: <
         key: "zone-c-shard1"
         value: <
             Endpoints: [
-                "localhost:{nfs2_port}",
-                "localhost:{nfs2_port}"
+                "localhost:{nfs3_port}",
+                "localhost:{nfs3_port}"
             ]
         >
     >
@@ -100,6 +100,9 @@ NfsConfig: <
 >
 FilestoreCellsConfig: <
     CellSelectionPolicy: FIRST_IN_CONFIG
+    FolderAllowList: [
+        "folder-with-cells",
+    ]
     Cells: <
         key: "zone-a"
         value: <Cells: ["zone-a"]>
@@ -110,11 +113,7 @@ FilestoreCellsConfig: <
     >
     Cells: <
         key: "zone-c"
-        value: <Cells: ["zone-c"]>
-    >
-    Cells: <
-        key: "zone-c-shard1"
-        value: <Cells: ["zone-c-shard1"]>
+        value: <Cells: ["zone-c-shard1", "zone-c"]>
     >
 >
 FilesystemConfig: <
@@ -532,8 +531,8 @@ class DiskManagerLauncher:
         disk_manager_binary_path,
         with_nemesis,
         nfs_port=None,
-        nfs1_port=None,
         nfs2_port=None,
+        nfs3_port=None,
         access_service_port=None,
         cert_file=None,
         cert_key_file=None,
@@ -629,8 +628,8 @@ class DiskManagerLauncher:
                     private_key_file=cert_key_file,
                     root_certs_file=root_certs_file,
                     nfs_port=nfs_port,
-                    nfs1_port=nfs1_port,
                     nfs2_port=nfs2_port,
+                    nfs3_port=nfs3_port,
                     nbs_port=nbs_port,
                     nbs2_port=nbs2_port,
                     nbs3_port=nbs3_port,

@@ -72,14 +72,14 @@ func TestCreateFilesystemInCells(t *testing.T) {
 		testcommon.GetRequestContext(t, ctx),
 		&disk_manager.CreateFilesystemRequest{
 			FilesystemId: &disk_manager.FilesystemId{
-				ZoneId:       "zone-c-shard1",
+				ZoneId:       "zone-c",
 				FilesystemId: filesystemID,
 			},
 			BlockSize: 4096,
 			Size:      4096000,
 			Kind:      disk_manager.FilesystemKind_FILESYSTEM_KIND_SSD,
 			CloudId:   "cloud",
-			FolderId:  "folder",
+			FolderId:  "folder-with-cells",
 		},
 	)
 	require.NoError(t, err)
