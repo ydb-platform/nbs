@@ -128,10 +128,9 @@ void TVolumeActor::OnStarted(const TActorContext& ctx)
 
 void TVolumeActor::OnPartitionStateChanged(
     const TActorContext& ctx,
-    TPartitionInfo::EState oldState,
-    TPartitionInfo::EState newState)
+    TPartitionInfo::EState oldState)
 {
-    if (oldState == newState) {
+    if (oldState == State->GetPartitionsState()) {
         return;
     }
 
@@ -141,7 +140,7 @@ void TVolumeActor::OnPartitionStateChanged(
 
     // A multi-partitioned wrapper is only needed for multi-partitioned
     // YDB-based disks
-    if (newState == TPartitionInfo::EState::READY) {
+    if (State->GetPartitionsState() == TPartitionInfo::EState::READY) {
         if (!State->GetMultiPartitionWrapperActor()) {
             TVector<NActors::TActorId> partitionActors;
             for (const auto& partition: State->GetPartitions()) {
@@ -477,7 +476,7 @@ void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
     auto oldState = State->GetPartitionsState();
     Y_DEFER
     {
-        OnPartitionStateChanged(ctx, oldState, State->GetPartitionsState());
+        OnPartitionStateChanged(ctx, oldState);
     };
 
     StartInitializationTimestamp = ctx.Now();
@@ -889,7 +888,7 @@ void TVolumeActor::HandleTabletStatus(
     auto oldState = State->GetPartitionsState();
     Y_DEFER
     {
-        OnPartitionStateChanged(ctx, oldState, State->GetPartitionsState());
+        OnPartitionStateChanged(ctx, oldState);
     };
 
     const auto* msg = ev->Get();
@@ -988,7 +987,7 @@ void TVolumeActor::HandleWaitReadyResponse(
     auto oldState = State->GetPartitionsState();
     Y_DEFER
     {
-        OnPartitionStateChanged(ctx, oldState, State->GetPartitionsState());
+        OnPartitionStateChanged(ctx, oldState);
     };
 
     const ui64 tabletId = ev->Cookie;

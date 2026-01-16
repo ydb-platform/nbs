@@ -28,7 +28,7 @@ private:
     const TBriefPartitionInfoList Partitions;
 
 public:
-    explicit TMultiPartitionWrapperActor(
+    TMultiPartitionWrapperActor(
         TChildLogTitle logTitle,
         ITraceSerializerPtr traceSerializer,
         const TString& diskId,

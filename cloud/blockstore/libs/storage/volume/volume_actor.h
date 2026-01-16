@@ -634,8 +634,7 @@ private:
 
     void OnPartitionStateChanged(
         const NActors::TActorContext& ctx,
-        TPartitionInfo::EState oldState,
-        TPartitionInfo::EState newState);
+        TPartitionInfo::EState oldState);
 
     void ProcessReadHistory(
         const NActors::TActorContext& ctx,

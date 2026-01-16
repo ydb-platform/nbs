@@ -229,14 +229,12 @@ void TVolumeActor::SendRequestToPartition(
         TabletID(),
         "Empty partition list");
 
-    const bool isSinglePartition = State->GetPartitions().size() <= 1;
-
     NActors::TActorId partActorId;
     bool forkTraces = true;
     bool isMultipartitionWriteOrZero = false;
     if (State->IsDiskRegistryMediaKind()) {
         partActorId = State->GetDiskRegistryBasedPartitionActor();
-    } else if (isSinglePartition) {
+    } else if (State->GetPartitions().size() == 1) {
         partActorId = State->GetPartitions()[0].GetTopActorId();
     } else {
         forkTraces = false;
