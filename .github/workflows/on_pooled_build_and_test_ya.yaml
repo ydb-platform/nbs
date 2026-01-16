@@ -141,6 +141,7 @@ jobs:
       uses: ./.github/actions/nebius_cli
       with:
         sa_json: ${{ secrets.POOLED_HEAVY_SA_JSON }}
+        region: ${{ vars.POOLED_HEAVY_REGION }}
     - name: set up gh cli
       id: gh
       uses: ./.github/actions/gh_cli
@@ -177,8 +178,8 @@ jobs:
       uses: ./.github/actions/s3cmd
       with:
         s3_bucket: ${{ vars.AWS_BUCKET }}
-        s3_endpoint: ${{ vars.NEBIUS_AWS_ENDPOINT }}
-        s3_website_suffix: ${{ vars.NEBIUS_AWS_WEBSITE_SUFFIX }}
+        s3_endpoint: ${{ vars.POOLED_HEAVY_AWS_ENDPOINT }}
+        s3_website_suffix: ${{ vars.POOLED_HEAVY_AWS_WEBSITE_SUFFIX }}
         s3_key_id: ${{ secrets.POOLED_HEAVY_AWS_KEY_ID }}
         s3_key_secret: ${{ secrets.POOLED_HEAVY_AWS_SECRET_KEY }}
         folder_prefix: nebius-
@@ -317,6 +318,7 @@ jobs:
         uses: ./.github/actions/nebius_cli
         with:
           sa_json: ${{ secrets.POOLED_HEAVY_SA_JSON }}
+          region: ${{ vars.POOLED_HEAVY_REGION }}
       - name: set up gh cli
         id: gh
         uses: ./.github/actions/gh_cli

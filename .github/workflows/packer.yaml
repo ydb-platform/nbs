@@ -71,6 +71,7 @@ jobs:
       uses: ./.github/actions/nebius_cli
       with:
         sa_json: ${{ secrets.POOLED_LIGHT_SA_JSON }}
+        region: ${{ vars.POOLED_LIGHT_REGION }}
 
     - name: Get latest image ID from Nebius
       id: get-image-id
