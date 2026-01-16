@@ -119,6 +119,7 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
 
     auto resyncActor = MakeResyncRangeActor(
         std::move(requestInfo),
+        PartConfig->GetName(),
         PartConfig->GetBlockSize(),
         resyncRange,
         std::move(replicas),

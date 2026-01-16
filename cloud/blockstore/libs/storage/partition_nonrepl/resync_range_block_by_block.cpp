@@ -148,6 +148,7 @@ IProfileLog::TReplicaChecksums MakeChecksums(
 
 TResyncRangeBlockByBlockActor::TResyncRangeBlockByBlockActor(
         TRequestInfoPtr requestInfo,
+        TString diskId,
         ui32 blockSize,
         TBlockRange64 range,
         TVector<TReplicaDescriptor> replicas,
@@ -158,6 +159,7 @@ TResyncRangeBlockByBlockActor::TResyncRangeBlockByBlockActor(
         NActors::TActorId volumeActorId,
         bool assignVolumeRequestId)
     : RequestInfo(std::move(requestInfo))
+    , DiskId(std::move(diskId))
     , BlockSize(blockSize)
     , Range(range)
     , Replicas(std::move(replicas))
@@ -306,7 +308,7 @@ void TResyncRangeBlockByBlockActor::PrepareWriteBuffers(
         TBlockStoreComponents::PARTITION,
         "[%s] Replica %lu elected as best healer. In range %s %lu blocks were "
         "healed and %lu/%lu blocks were overwritten during resync. %s%s%s",
-        Replicas[bestHealer].ReplicaId.c_str(),
+        DiskId.c_str(),
         bestHealer,
         Range.Print().c_str(),
         fixedMinorErrorCount,
@@ -451,8 +453,8 @@ void TResyncRangeBlockByBlockActor::WriteReplicaBlocks(
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Replica %lu Overwrite block range %s during resync",
-        Replicas[replicaIndex].ReplicaId.c_str(),
+        "[%s/%u] Overwrite block range %s during resync",
+        DiskId.c_str(),
         Replicas[replicaIndex].ReplicaIndex,
         DescribeRange(Range).c_str());
 

@@ -20,12 +20,14 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 TMirrorPartitionResyncFastPathActor::TMirrorPartitionResyncFastPathActor(
         TRequestInfoPtr requestInfo,
+        TString diskId,
         ui32 blockSize,
         TBlockRange64 range,
         TGuardedSgList sgList,
         TVector<TReplicaDescriptor> replicas,
         TString clientId)
     : RequestInfo(std::move(requestInfo))
+    , DiskId(std::move(diskId))
     , BlockSize(blockSize)
     , Range(range)
     , Replicas(std::move(replicas))
@@ -85,15 +87,15 @@ void TMirrorPartitionResyncFastPathActor::ChecksumReplicaBlocks(
 void TMirrorPartitionResyncFastPathActor::CompareChecksums(
     const TActorContext& ctx)
 {
-    ui64 firstChecksum = Checksums[0];
+    const ui64 firstChecksum = Checksums[0];
     for (const auto& [idx, checksum]: Checksums) {
         if (firstChecksum != checksum) {
             LOG_INFO(
                 ctx,
                 TBlockStoreComponents::PARTITION,
-                "[%s] Resync range %s: checksum mismatch, %lu (0) != %lu (%d)"
+                "[%s] Resync range %s: checksum mismatch, %lu (0) != %lu (%u)"
                 ", fast path reading is not available",
-                Replicas[0].ReplicaId.c_str(),
+                DiskId.c_str(),
                 DescribeRange(Range).c_str(),
                 firstChecksum,
                 checksum,

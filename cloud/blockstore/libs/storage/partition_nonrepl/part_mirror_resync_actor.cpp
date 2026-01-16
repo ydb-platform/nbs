@@ -140,7 +140,7 @@ void TMirrorPartitionResyncActor::SetupPartitions(const TActorContext& ctx)
             RdmaClient);
 
         TActorId actorId = NCloud::Register(ctx, std::move(actor));
-        Replicas.push_back({replicaInfos[i].Config->GetName(), i, actorId});
+        Replicas.push_back({.ReplicaIndex = i, .ActorId = actorId});
     }
 }
 
