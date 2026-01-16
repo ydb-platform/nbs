@@ -2302,7 +2302,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
 
         UNIT_ASSERT_GT(failures, 0);
     }
-      
+
     Y_UNIT_TEST(ShouldPropagateGidWithGidPropagationEnabled)
     {
         NProto::TStorageConfig storageConfig;
