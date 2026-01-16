@@ -352,7 +352,13 @@ func (s *cellSelector) selectCellForFilesystem(
 		)
 	}
 
-	// For filesystems, we always use the first cell in config.
-	// MAX_FREE_BYTES policy is not implemented for filesystems yet.
-	return cells[0], nil
+	switch s.config.GetCellSelectionPolicy() {
+	case cells_config.CellSelectionPolicy_FIRST_IN_CONFIG:
+		return cells[0], nil
+	default:
+		return "", errors.NewNonCancellableErrorf(
+			"unknown cell selection policy: %v",
+			s.config.GetCellSelectionPolicy().String(),
+		)
+	}
 }

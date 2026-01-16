@@ -27,7 +27,7 @@ func SelectCellForFilesystem(
 
 	var client nfs.Client
 	// Idempotently retrieve cell, where filesystem should be created.
-	if len(state.GetSelectedCellId()) > 0{
+	if len(state.GetSelectedCellId()) > 0 {
 		return nfsFactory.NewClient(ctx, state.GetSelectedCellId())
 	}
 
@@ -47,7 +47,8 @@ func SelectCellForFilesystem(
 	switch s := state.(type) {
 	case *protos.CreateFilesystemTaskState:
 		s.SelectedCellId = client.ZoneID()
-	// We will implement filesystem-from-snapshot creation later.
+	// TODO: Implement filesyste creation from snapshot.
+	// See: https://github.com/ydb-platform/nbs/issues/1559
 	default:
 		return nil, errors.NewNonRetriableErrorf(
 			"unsupported proto type: %T",
