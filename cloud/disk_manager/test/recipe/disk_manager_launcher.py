@@ -79,7 +79,7 @@ NfsConfig: <
         >
     >
     Zones: <
-        key: "zone-d"
+        key: "zone-c"
         value: <
             Endpoints: [
                 "localhost:{nfs1_port}",
@@ -88,7 +88,7 @@ NfsConfig: <
         >
     >
     Zones: <
-        key: "zone-d-shard1"
+        key: "zone-c-shard1"
         value: <
             Endpoints: [
                 "localhost:{nfs2_port}",
@@ -97,6 +97,25 @@ NfsConfig: <
         >
     >
     RootCertsFile: "{root_certs_file}"
+>
+FilestoreCellsConfig: <
+    CellSelectionPolicy: FIRST_IN_CONFIG
+    Cells: <
+        key: "zone-a"
+        value: <Cells: ["zone-a"]>
+    >
+    Cells: <
+        key: "zone-b"
+        value: <Cells: ["zone-b"]>
+    >
+    Cells: <
+        key: "zone-c"
+        value: <Cells: ["zone-c"]>
+    >
+    Cells: <
+        key: "zone-c-shard1"
+        value: <Cells: ["zone-c-shard1"]>
+    >
 >
 FilesystemConfig: <
     DeletedFilesystemExpirationTimeout: "1s"
