@@ -33,6 +33,31 @@ func NewStorage(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (s *storageYDB) fetchFilesystemSnapshotByID(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	snapshotID string,
+) ([]filesystemSnapshotState, error) {
+
+	res, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+
+		select *
+		from filesystem_snapshots
+		where id = $id
+	`, s.tablesPath),
+		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	return scanFilesystemSnapshotStates(ctx, res)
+}
+
 func (s *storageYDB) createFilesystemSnapshot(
 	ctx context.Context,
 	session *persistence.Session,
@@ -45,23 +70,7 @@ func (s *storageYDB) createFilesystemSnapshot(
 	}
 	defer tx.Rollback(ctx)
 
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $id as Utf8;
-
-		select *
-		from filesystem_snapshots
-		where id = $id
-	`, s.tablesPath),
-		persistence.ValueParam("$id", persistence.UTF8Value(snapshotMeta.ID)),
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Close()
-
-	states, err := scanFilesystemSnapshotStates(ctx, res)
+	states, err := s.fetchFilesystemSnapshotByID(ctx, tx, snapshotMeta.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -90,12 +99,9 @@ func (s *storageYDB) createFilesystemSnapshot(
 		createTaskID: snapshotMeta.CreateTaskID,
 		creatingAt:   time.Now(),
 		status:       filesystemSnapshotStatusCreating,
+		zoneID: snapshotMeta.Filesystem.ZoneId,
+		filesystemID: snapshotMeta.Filesystem.FilesystemId,
 	}
-	if snapshotMeta.Filesystem != nil {
-		state.zoneID = snapshotMeta.Filesystem.ZoneId
-		state.filesystemID = snapshotMeta.Filesystem.FilesystemId
-	}
-
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
@@ -134,23 +140,7 @@ func (s *storageYDB) filesystemSnapshotCreated(
 	}
 	defer tx.Rollback(ctx)
 
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $id as Utf8;
-
-		select *
-		from filesystem_snapshots
-		where id = $id
-	`, s.tablesPath),
-		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
-	)
-	if err != nil {
-		return err
-	}
-	defer res.Close()
-
-	states, err := scanFilesystemSnapshotStates(ctx, res)
+	states, err := s.fetchFilesystemSnapshotByID(ctx, tx, snapshotID)
 	if err != nil {
 		return err
 	}
@@ -221,23 +211,7 @@ func (s *storageYDB) deletingFilesystemSnapshot(
 	}
 	defer tx.Rollback(ctx)
 
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $id as Utf8;
-
-		select *
-		from filesystem_snapshots
-		where id = $id
-	`, s.tablesPath),
-		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Close()
-
-	states, err := scanFilesystemSnapshotStates(ctx, res)
+	states, err := s.fetchFilesystemSnapshotByID(ctx, tx, snapshotID)
 	if err != nil {
 		return nil, err
 	}
@@ -327,23 +301,7 @@ func (s *storageYDB) lockFilesystemSnapshot(
 	}
 	defer tx.Rollback(ctx)
 
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $id as Utf8;
-
-		select *
-		from filesystem_snapshots
-		where id = $id
-	`, s.tablesPath),
-		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
-	)
-	if err != nil {
-		return false, err
-	}
-	defer res.Close()
-
-	states, err := scanFilesystemSnapshotStates(ctx, res)
+	states, err := s.fetchFilesystemSnapshotByID(ctx, tx, snapshotID)
 	if err != nil {
 		return false, err
 	}
@@ -411,23 +369,7 @@ func (s *storageYDB) unlockFilesystemSnapshot(
 	}
 	defer tx.Rollback(ctx)
 
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $id as Utf8;
-
-		select *
-		from filesystem_snapshots
-		where id = $id
-	`, s.tablesPath),
-		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
-	)
-	if err != nil {
-		return err
-	}
-	defer res.Close()
-
-	states, err := scanFilesystemSnapshotStates(ctx, res)
+	states, err := s.fetchFilesystemSnapshotByID(ctx, tx, snapshotID)
 	if err != nil {
 		return err
 	}
