@@ -270,8 +270,6 @@ def start(argv):
 
     append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nfs.nfs_server.stderr_file_name)
     if args.with_filestore_cells:
-        nfs2_secure_port = port_manager.get_port()
-        nfs3_secure_port = port_manager.get_port()
         ydb6 = YDBLauncher(ydb_binary_path=ydb_binary_path)
         ydb6.start()
 
@@ -283,7 +281,6 @@ def start(argv):
             names_txt=ydb6.names_txt,
             nfs_binary_path=nfs_binary_path,
             ydb_binary_path=ydb_binary_path,
-            nfs_secure_port=nfs2_secure_port,
         )
         nfs2.start()
         append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nfs2.nfs_server.stderr_file_name)
@@ -299,7 +296,6 @@ def start(argv):
             names_txt=ydb7.names_txt,
             nfs_binary_path=nfs_binary_path,
             ydb_binary_path=ydb_binary_path,
-            nfs_secure_port=nfs3_secure_port,
         )
         nfs3.start()
         append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nfs3.nfs_server.stderr_file_name)
