@@ -330,6 +330,60 @@ Y_UNIT_TEST_SUITE(TSafeDeallocateDeviceTest)
         UNIT_ASSERT_VALUES_EQUAL(readIndex, FileIO->ReadRequests.size());
     }
 
+    Y_UNIT_TEST_F(ShouldDetectDirtyBufferInFirstBlock, TFixture)
+    {
+        FileIO->ReadImpl = [&](i64 offset, auto buffer) -> TResultOrError<ui32>
+        {
+            std::memset(buffer.data(), 0, buffer.size());
+
+            if (offset == 0) {
+                buffer[buffer.size() / 2] = 0x42;
+            }
+
+            return buffer.size();
+        };
+
+        auto future = SafeDeallocateDevice(
+            Filename,
+            TFileHandle{},
+            FileIO,
+            StartIndex,
+            BlocksCount,
+            BlockSize,
+            NvmeManager);
+
+        const auto& error = future.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(1, FileIO->ReadRequests.size());
+    }
+
+    Y_UNIT_TEST_F(ShouldDetectDirtyBufferInLastBlock, TFixture)
+    {
+        FileIO->ReadImpl = [&](i64 offset, auto buffer) -> TResultOrError<ui32>
+        {
+            std::memset(buffer.data(), 0, buffer.size());
+
+            if (offset == StorageSize - BlockSize) {
+                buffer[buffer.size() / 2] = 0x42;
+            }
+
+            return buffer.size();
+        };
+
+        auto future = SafeDeallocateDevice(
+            Filename,
+            TFileHandle{},
+            FileIO,
+            StartIndex,
+            BlocksCount,
+            BlockSize,
+            NvmeManager);
+
+        const auto& error = future.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(ExpectedReads, FileIO->ReadRequests.size());
+    }
+
     Y_UNIT_TEST_F(ShouldHandleShortRead, TFixture)
     {
         const ui64 brokenReadIndex = RandomNumber<ui64>(ExpectedReads);
