@@ -141,7 +141,6 @@ jobs:
       uses: ./.github/actions/nebius_cli
       with:
         sa_json: ${{ secrets.POOLED_HEAVY_SA_JSON }}
-        region: ${{ vars.POOLED_HEAVY_REGION }}
     - name: set up gh cli
       id: gh
       uses: ./.github/actions/gh_cli
@@ -318,7 +317,6 @@ jobs:
         uses: ./.github/actions/nebius_cli
         with:
           sa_json: ${{ secrets.POOLED_HEAVY_SA_JSON }}
-          region: ${{ vars.POOLED_HEAVY_REGION }}
       - name: set up gh cli
         id: gh
         uses: ./.github/actions/gh_cli

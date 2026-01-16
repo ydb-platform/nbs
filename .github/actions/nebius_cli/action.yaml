@@ -4,11 +4,6 @@ inputs:
   sa_json:
     required: true
     description: ""
-  region:
-    required: false
-    description: "nebius region"
-    default: "eu-north1"
-
 runs:
   using: composite
   steps:
@@ -24,7 +19,6 @@ runs:
       shell: bash
       env:
         SA_JSON: ${{ inputs.sa_json }}
-        REGION: ${{ inputs.region }}
       run: |
         set -x
         if [ ! -f "$HOME/.nebius/bin/nebius" ];
