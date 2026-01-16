@@ -138,6 +138,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
         NEW_IMAGE_ID: ${{ steps.get-image-id.outputs.IMAGE_ID_2204 }}
         UPDATE_IMAGE_ID: ${{ inputs.update_image_id && '--update-image-id' || '' }}
+        PARENT_ID: $${{ vars.PARENT_ID }}
 
     - name: Set new pooled image id
       if: inputs.update_pooled_image_ids == true
@@ -145,14 +146,18 @@ jobs:
         export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
         python3 -m scripts.nebius_manage_images \
           --service-account-key sa.json \
+          --parent-id ${LIGHT_PARENT_ID} \
           --new-image-id ${NEW_IMAGE_ID} \
           --image-variable-name POOLED_LIGHT_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
 
         python3 -m scripts.nebius_manage_images \
           --service-account-key sa.json \
+          --parent-id ${HEAVY_PARENT_ID} \
           --new-image-id ${NEW_IMAGE_ID} \
           --image-variable-name POOLED_HEAVY_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
       env:
         GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
         NEW_IMAGE_ID: ${{ steps.get-image-id.outputs.IMAGE_ID_2204 }}
         UPDATE_IMAGE_ID: ${{ inputs.update_image_id && '--update-image-id' || '' }}
+        HEAVY_PARENT_ID: $${{ vars.POOLED_HEAVY_PARENT_ID }}
+        LIGHT_PARENT_ID: $${{ vars.POOLED_LIGHT_PARENT_ID }}
