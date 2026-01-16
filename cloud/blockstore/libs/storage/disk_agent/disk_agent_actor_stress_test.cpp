@@ -273,27 +273,15 @@ public:
         const TVector<TString>& paths,
         bool attach)
     {
-        TVector<TString> pathsToPerformAttachDetach;
-
-        for (const auto& path: paths) {
-            if (PathAttached[path] == attach) {
-                continue;
-            }
-
-            pathsToPerformAttachDetach.push_back(path);
-        }
-
         if (!CheckGenerationAndUpdateItIfNeeded(
                 diskRegistryGeneration,
-                requestNumber) &&
-            pathsToPerformAttachDetach)
+                requestNumber))
         {
             return false;
         }
 
-        for (const auto& path: pathsToPerformAttachDetach) {
-            auto& isAttached = PathAttached[path];
-            isAttached = attach;
+        for (const auto& path: paths) {
+            PathAttached[path] = attach;
         }
 
         return true;

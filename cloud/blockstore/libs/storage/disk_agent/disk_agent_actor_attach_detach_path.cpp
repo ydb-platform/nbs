@@ -38,7 +38,6 @@ TString DescribeResponse(
 }
 
 TString DescribeResponse(const TEvDiskAgentPrivate::TEvPathsPrepared& msg)
-
 {
     return DescribeResponse(
         "AttachPaths",
@@ -56,43 +55,6 @@ TString DescribeResponse(const TEvDiskAgentPrivate::TEvPathsDetached& msg)
         msg.AlreadyDetachedPaths,
         msg.ControlPlaneRequestNumber,
         msg.Error);
-}
-
-std::unique_ptr<TEvDiskAgentPrivate::TEvPathsDetached>
-MakePathsDetachedResponse(
-    NProto::TError error,
-    TVector<TString> pathsToDetach,
-    TVector<TString> alreadyDetachedPaths,
-    TEvDiskAgentPrivate::TControlPlaneRequestNumber controlPlaneRequestNumber)
-{
-    auto response = std::make_unique<TEvDiskAgentPrivate::TEvPathsDetached>(
-        std::move(error));
-    response->PathsToDetach = std::move(pathsToDetach);
-    response->AlreadyDetachedPaths = std::move(alreadyDetachedPaths);
-    response->ControlPlaneRequestNumber = controlPlaneRequestNumber;
-
-    return response;
-}
-
-std::unique_ptr<TEvDiskAgentPrivate::TEvPathsPrepared>
-MakePathsPreparedResponse(
-    NProto::TError error,
-    TVector<TString> pathsToAttach,
-    TVector<TString> alreadyAttachedPaths,
-    TEvDiskAgentPrivate::TControlPlaneRequestNumber controlPlaneRequestNumber,
-    TDiskAgentState::TPreparePathsResult preparePathsResult)
-{
-    auto response = std::make_unique<TEvDiskAgentPrivate::TEvPathsPrepared>(
-        std::move(error));
-    response->PathsToAttach = std::move(pathsToAttach);
-    response->AlreadyAttachedPaths = std::move(alreadyAttachedPaths);
-    response->ControlPlaneRequestNumber = controlPlaneRequestNumber;
-
-    response->Devices = std::move(preparePathsResult.Devices);
-    response->Stats = std::move(preparePathsResult.Stats);
-    response->Configs = std::move(preparePathsResult.Configs);
-
-    return response;
 }
 
 }   // namespace
@@ -191,13 +153,14 @@ void TDiskAgentActor::HandleDetachPaths(
 
     // We should ignore error if all paths already detached.
     if (auto error = UpdateControlPlaneRequestNumber(controlPlaneRequestNumber);
-        HasError(error) && attachedPaths || !attachedPaths)
+        HasError(error) || !attachedPaths)
     {
-        auto response = MakePathsDetachedResponse(
-            attachedPaths ? std::move(error) : NProto::TError{},
-            std::move(attachedPaths),
-            std::move(detachedPaths),
-            controlPlaneRequestNumber);
+        auto response = std::make_unique<TEvDiskAgentPrivate::TEvPathsDetached>(
+            std::move(error),
+            TEvDiskAgentPrivate::TPathsDetached{
+                .PathsToDetach = std::move(attachedPaths),
+                .AlreadyDetachedPaths = std::move(detachedPaths),
+                .ControlPlaneRequestNumber = controlPlaneRequestNumber});
 
         NCloud::Send(ctx, SelfId(), std::move(response));
         return;
@@ -214,11 +177,13 @@ void TDiskAgentActor::HandleDetachPaths(
         {
             Y_UNUSED(future);
 
-            auto response = MakePathsDetachedResponse(
-                {},   // error
-                std::move(pathsToDetach),
-                std::move(alreadyDetachedPaths),
-                controlPlaneRequestNumber);
+            auto response =
+                std::make_unique<TEvDiskAgentPrivate::TEvPathsDetached>(
+                    TEvDiskAgentPrivate::TPathsDetached{
+                        .PathsToDetach = std::move(pathsToDetach),
+                        .AlreadyDetachedPaths = std::move(alreadyDetachedPaths),
+                        .ControlPlaneRequestNumber =
+                            controlPlaneRequestNumber});
 
             actorSystem->Send(
                 new IEventHandle{selfId, selfId, response.release()});
@@ -289,14 +254,14 @@ void TDiskAgentActor::HandleAttachPaths(
 
     // We should ignore error if all paths already attached.
     if (auto error = UpdateControlPlaneRequestNumber(controlPlaneRequestNumber);
-        HasError(error) && detachedPaths || !detachedPaths)
+        HasError(error) || !detachedPaths)
     {
-        auto response = MakePathsPreparedResponse(
-            detachedPaths ? std::move(error) : NProto::TError{},
-            std::move(detachedPaths),
-            std::move(attachedPaths),
-            controlPlaneRequestNumber,
-            {});
+        auto response = std::make_unique<TEvDiskAgentPrivate::TEvPathsPrepared>(
+            std::move(error),
+            TEvDiskAgentPrivate::TPathsPrepared{
+                .PathsToAttach = std::move(detachedPaths),
+                .AlreadyAttachedPaths = std::move(attachedPaths),
+                .ControlPlaneRequestNumber = controlPlaneRequestNumber});
 
         NCloud::Send(ctx, SelfId(), std::move(response));
         return;
@@ -315,12 +280,18 @@ void TDiskAgentActor::HandleAttachPaths(
         {
             auto [result, error] = future.ExtractValue();
 
-            auto response = MakePathsPreparedResponse(
-                std::move(error),
-                std::move(pathsToAttach),
-                std::move(alreadyAttachedPaths),
-                controlPlaneRequestNumber,
-                std::move(result));
+            auto response =
+                std::make_unique<TEvDiskAgentPrivate::TEvPathsPrepared>(
+                    std::move(error),
+                    TEvDiskAgentPrivate::TPathsPrepared{
+                        .Configs = std::move(result.Configs),
+                        .Devices = std::move(result.Devices),
+                        .Stats = std::move(result.Stats),
+
+                        .PathsToAttach = std::move(pathsToAttach),
+                        .AlreadyAttachedPaths = std::move(alreadyAttachedPaths),
+                        .ControlPlaneRequestNumber = controlPlaneRequestNumber,
+                    });
 
             actorSystem->Send(
                 new IEventHandle{selfId, selfId, response.release()});

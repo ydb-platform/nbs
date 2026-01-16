@@ -54,13 +54,6 @@ class TDiskAgentActor final
         Registered,
     };
 
-public:
-    enum class EAction
-    {
-        Attach,
-        Detach,
-    };
-
 private:
     const TStorageConfigPtr Config;
     const TDiskAgentConfigPtr AgentConfig;
