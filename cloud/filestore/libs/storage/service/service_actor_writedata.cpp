@@ -252,7 +252,7 @@ public:
             RequestStats);
         InFlightRequest->Start(ctx.Now());
         InitProfileLogRequestInfo(
-            InFlightRequest->ProfileLogRequest,
+            InFlightRequest->AccessProfileLogRequest(),
             request->Record);
         auto* trace =
             request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
@@ -310,10 +310,10 @@ private:
 
         TABLET_VERIFY(InFlightRequest);
 
-        InFlightRequest->Complete(ctx.Now(), error);
         FinalizeProfileLogRequestInfo(
-            InFlightRequest->ProfileLogRequest,
+            InFlightRequest->AccessProfileLogRequest(),
             msg->Record);
+        InFlightRequest->Complete(ctx.Now(), error);
         HandleServiceTraceInfo(
             "GenerateBlobIds",
             ctx,
@@ -585,7 +585,7 @@ private:
             RequestStats);
         InFlightRequest->Start(ctx.Now());
         InitProfileLogRequestInfo(
-            InFlightRequest->ProfileLogRequest,
+            InFlightRequest->AccessProfileLogRequest(),
             request->Record);
         auto* trace =
             request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
@@ -610,10 +610,10 @@ private:
         auto* msg = ev->Get();
 
         TABLET_VERIFY(InFlightRequest);
-        InFlightRequest->Complete(ctx.Now(), msg->GetError());
         FinalizeProfileLogRequestInfo(
-            InFlightRequest->ProfileLogRequest,
+            InFlightRequest->AccessProfileLogRequest(),
             msg->Record);
+        InFlightRequest->Complete(ctx.Now(), msg->GetError());
         HandleServiceTraceInfo(
             "AddData",
             ctx,
@@ -834,13 +834,15 @@ void TStorageServiceActor::HandleWriteData(
             session->RequestStats,
             startTime);
 
-        InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
-        inflight->ProfileLogRequest.SetClientId(session->ClientId);
+        InitProfileLogRequestInfo(
+            inflight->AccessProfileLogRequest(),
+            msg->Record);
+        inflight->AccessProfileLogRequest().SetClientId(session->ClientId);
         if (blockChecksumsEnabled) {
             CalculateWriteDataRequestChecksums(
                 msg->Record,
                 blockSize,
-                inflight->ProfileLogRequest);
+                inflight->AccessProfileLogRequest());
         }
 
         auto requestInfo =

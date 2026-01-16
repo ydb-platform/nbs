@@ -32,11 +32,11 @@ void TInFlightRequest::Complete(
         currentTs.MicroSeconds() - ProfileLogRequest.GetTimestampMcs());
     ProfileLogRequest.SetErrorCode(error.GetCode());
 
-    if (ProfileLogRequest.HasLockInfo() ||
-        ProfileLogRequest.HasNodeInfo() ||
-        !ProfileLogRequest.GetRanges().empty())
-    {
-        ProfileLog->Write({CallContext->FileSystemId, std::move(ProfileLogRequest)});
+    if (HasLogData()) {
+        ProfileLog->Write({
+            CallContext->FileSystemId,
+            std::move(ProfileLogRequest)});
+        ProfileLogRequest.Clear();
     }
 
     //
@@ -46,6 +46,13 @@ void TInFlightRequest::Complete(
     //
 
     Completed.store(true, std::memory_order_release);
+}
+
+bool TInFlightRequest::HasLogData() const
+{
+    return ProfileLogRequest.HasLockInfo() ||
+        ProfileLogRequest.HasNodeInfo() ||
+        !ProfileLogRequest.GetRanges().empty();
 }
 
 bool TInFlightRequest::IsCompleted() const
@@ -98,7 +105,7 @@ TInFlightRequest* TInFlightRequestStorage::Register(
     Y_ABORT_UNLESS(inserted);
     it->second.Start(start);
 
-    it->second.ProfileLogRequest.SetLoopThreadId(
+    it->second.AccessProfileLogRequest().SetLoopThreadId(
         it->second.CallContext->LoopThreadId);
 
     return &it->second;
@@ -132,6 +139,14 @@ void TInFlightRequestStorage::CompleteAndErase(
     TInFlightRequest& request,
     ui64 key)
 {
+    if (request.HasLogData()) {
+        CompletedRequestCountWithLogData.fetch_add(1, StatsMemOrder);
+    } else if (HasError(error)) {
+        CompletedRequestCountWithError.fetch_add(1, StatsMemOrder);
+    } else {
+        CompletedRequestCountWithoutErrorOrLogData.fetch_add(1, StatsMemOrder);
+    }
+
     request.Complete(currentTs, error);
 
     auto g = Guard(Lock);

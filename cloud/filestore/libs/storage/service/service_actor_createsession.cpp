@@ -692,8 +692,8 @@ void TStorageServiceActor::HandleCreateSession(
         StatsRegistry->GetRequestStats(),
         ctx.Now());
 
-    InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
-    inflight->ProfileLogRequest.SetClientId(clientId);
+    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
+    inflight->AccessProfileLogRequest().SetClientId(clientId);
 
     auto sessionId = GetSessionId(msg->Record);
     auto seqNo = GetSessionSeqNo(msg->Record);

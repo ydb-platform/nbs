@@ -72,10 +72,10 @@ void CompleteRequestImpl(
             checksumCalcInfo.Iovecs,
             record,
             checksumCalcInfo.BlockSize,
-            request->ProfileLogRequest);
+            request->AccessProfileLogRequest());
     }
 
-    FinalizeProfileLogRequestInfo(request->ProfileLogRequest, record);
+    FinalizeProfileLogRequestInfo(request->AccessProfileLogRequest(), record);
     HandleServiceTraceInfo(
         TMethod::Name,
         ctx,
