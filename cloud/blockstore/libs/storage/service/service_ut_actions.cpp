@@ -1893,7 +1893,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldSwitchVhostDiscardOption)
+    Y_UNIT_TEST(ShouldSetVhostDiscardEnabledFlag)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
@@ -1902,15 +1902,15 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateVolume(DefaultDiskId);
 
-        auto switchVhostDiscardOptionAndCheckResult = [&](bool discardEnabled)
+        auto setVhostDiscardEnabledFlagAndCheckResult = [&](bool discardEnabled)
         {
-            NPrivateProto::TSwitchVhostDiscardOptionRequest request;
+            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
             request.SetDiskId(DefaultDiskId);
             request.SetVhostDiscardEnabled(discardEnabled);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("switchvhostdiscardoption", buf);
+            service.ExecuteAction("setvhostdiscardenabledflag", buf);
 
             auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
             UNIT_ASSERT_VALUES_EQUAL(
@@ -1918,14 +1918,14 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                 volumeConfig.GetVhostDiscardEnabled());
         };
 
-        switchVhostDiscardOptionAndCheckResult(false);
-        switchVhostDiscardOptionAndCheckResult(false);
-        switchVhostDiscardOptionAndCheckResult(true);
-        switchVhostDiscardOptionAndCheckResult(true);
-        switchVhostDiscardOptionAndCheckResult(false);
+        setVhostDiscardEnabledFlagAndCheckResult(false);
+        setVhostDiscardEnabledFlagAndCheckResult(false);
+        setVhostDiscardEnabledFlagAndCheckResult(true);
+        setVhostDiscardEnabledFlagAndCheckResult(true);
+        setVhostDiscardEnabledFlagAndCheckResult(false);
     }
 
-    Y_UNIT_TEST(ShouldValidateSwitchVhostDiscardOption)
+    Y_UNIT_TEST(ShouldValidateSetVhostDiscardEnabledFlag)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
@@ -1936,14 +1936,14 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         {
             // Correct ConfigVersion.
-            NPrivateProto::TSwitchVhostDiscardOptionRequest request;
+            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
             request.SetDiskId(DefaultDiskId);
             request.SetConfigVersion(1);
             request.SetVhostDiscardEnabled(false);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("switchvhostdiscardoption", buf);
+            service.ExecuteAction("setvhostdiscardenabledflag", buf);
 
             auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
             UNIT_ASSERT_VALUES_EQUAL(
@@ -1953,14 +1953,14 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         {
             // Incorrect ConfigVersion.
-            NPrivateProto::TSwitchVhostDiscardOptionRequest request;
+            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
             request.SetDiskId(DefaultDiskId);
             request.SetConfigVersion(3);
             request.SetVhostDiscardEnabled(true);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
-            service.SendExecuteActionRequest("SwitchVhostDiscardOption", buf);
+            service.SendExecuteActionRequest("SetVhostDiscardEnabledFlag", buf);
             auto response = service.RecvExecuteActionResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->GetStatus());
 
@@ -1972,12 +1972,12 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         {
             // DiskId should be supplied.
-            NPrivateProto::TSwitchVhostDiscardOptionRequest request;
+            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
             request.SetVhostDiscardEnabled(true);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
-            service.SendExecuteActionRequest("SwitchVhostDiscardOption", buf);
+            service.SendExecuteActionRequest("SetVhostDiscardEnabledFlag", buf);
             auto response = service.RecvExecuteActionResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
 

@@ -25,18 +25,18 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSwitchVhostDiscardOptionActionActor final
-    : public TActorBootstrapped<TSwitchVhostDiscardOptionActionActor>
+class TSetVhostDiscardEnabledFlagActionActor final
+    : public TActorBootstrapped<TSetVhostDiscardEnabledFlagActionActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
     const TString Input;
 
-    NPrivateProto::TSwitchVhostDiscardOptionRequest Request;
+    NPrivateProto::TSetVhostDiscardEnabledFlagRequest Request;
     NKikimrBlockStore::TVolumeConfig VolumeConfig;
 
 public:
-    TSwitchVhostDiscardOptionActionActor(
+    TSetVhostDiscardEnabledFlagActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 
@@ -72,14 +72,14 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TSwitchVhostDiscardOptionActionActor::TSwitchVhostDiscardOptionActionActor(
+TSetVhostDiscardEnabledFlagActionActor::TSetVhostDiscardEnabledFlagActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
 
-void TSwitchVhostDiscardOptionActionActor::Bootstrap(const TActorContext& ctx)
+void TSetVhostDiscardEnabledFlagActionActor::Bootstrap(const TActorContext& ctx)
 {
     if (!google::protobuf::util::JsonStringToMessage(Input, &Request).ok()) {
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, "Failed to parse input"));
@@ -99,7 +99,7 @@ void TSwitchVhostDiscardOptionActionActor::Bootstrap(const TActorContext& ctx)
     DescribeVolume(ctx);
 }
 
-void TSwitchVhostDiscardOptionActionActor::DescribeVolume(
+void TSetVhostDiscardEnabledFlagActionActor::DescribeVolume(
     const TActorContext& ctx)
 {
     Become(&TThis::StateDescribeVolume);
@@ -117,7 +117,7 @@ void TSwitchVhostDiscardOptionActionActor::DescribeVolume(
             Request.GetDiskId()));
 }
 
-void TSwitchVhostDiscardOptionActionActor::AlterVolume(
+void TSetVhostDiscardEnabledFlagActionActor::AlterVolume(
     const TActorContext& ctx,
     const TString& path,
     ui64 pathId,
@@ -128,7 +128,7 @@ void TSwitchVhostDiscardOptionActionActor::AlterVolume(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::SERVICE,
-        "Sending SwitchVhostDiscardOption->Alter request for %s",
+        "Sending SetVhostDiscardEnabledFlag->Alter request for %s",
         path.Quote().c_str());
 
     auto request = CreateModifySchemeRequestForAlterVolume(
@@ -139,7 +139,7 @@ void TSwitchVhostDiscardOptionActionActor::AlterVolume(
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
 }
 
-void TSwitchVhostDiscardOptionActionActor::WaitReady(const TActorContext& ctx)
+void TSetVhostDiscardEnabledFlagActionActor::WaitReady(const TActorContext& ctx)
 {
     Become(&TThis::StateWaitReady);
 
@@ -155,20 +155,20 @@ void TSwitchVhostDiscardOptionActionActor::WaitReady(const TActorContext& ctx)
     NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
 }
 
-void TSwitchVhostDiscardOptionActionActor::ReplyAndDie(
+void TSetVhostDiscardEnabledFlagActionActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
     auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
         std::move(error));
     google::protobuf::util::MessageToJsonString(
-        NPrivateProto::TSwitchVhostDiscardOptionResponse(),
+        NPrivateProto::TSetVhostDiscardEnabledFlagResponse(),
         response->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,
         RequestInfo->CallContext->LWOrbit,
-        "ExecuteAction_switchvhostdiscardoption",
+        "ExecuteAction_setvhostdiscardenabledflag",
         RequestInfo->CallContext->RequestId);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
@@ -177,7 +177,7 @@ void TSwitchVhostDiscardOptionActionActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TSwitchVhostDiscardOptionActionActor::HandleDescribeVolumeResponse(
+void TSetVhostDiscardEnabledFlagActionActor::HandleDescribeVolumeResponse(
     const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -226,7 +226,7 @@ void TSwitchVhostDiscardOptionActionActor::HandleDescribeVolumeResponse(
         msg->PathDescription.GetSelf().GetPathVersion());
 }
 
-void TSwitchVhostDiscardOptionActionActor::HandleAlterVolumeResponse(
+void TSetVhostDiscardEnabledFlagActionActor::HandleAlterVolumeResponse(
     const TEvSSProxy::TEvModifySchemeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -238,7 +238,7 @@ void TSwitchVhostDiscardOptionActionActor::HandleAlterVolumeResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "SwitchVhostDiscardOption->Alter of volume %s failed: %s",
+            "SetVhostDiscardEnabledFlag->Alter of volume %s failed: %s",
             Request.GetDiskId().Quote().c_str(),
             msg->GetErrorReason().c_str());
 
@@ -249,7 +249,7 @@ void TSwitchVhostDiscardOptionActionActor::HandleAlterVolumeResponse(
     WaitReady(ctx);
 }
 
-void TSwitchVhostDiscardOptionActionActor::HandleWaitReadyResponse(
+void TSetVhostDiscardEnabledFlagActionActor::HandleWaitReadyResponse(
     const TEvVolume::TEvWaitReadyResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -261,7 +261,7 @@ void TSwitchVhostDiscardOptionActionActor::HandleWaitReadyResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "SwitchVhostDiscardOption->WaitReady request failed for volume %s, "
+            "SetVhostDiscardEnabledFlag->WaitReady request failed for volume %s, "
             "error: %s",
             Request.GetDiskId().Quote().c_str(),
             msg->GetErrorReason().Quote().c_str());
@@ -269,7 +269,7 @@ void TSwitchVhostDiscardOptionActionActor::HandleWaitReadyResponse(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Successfully done SwitchVhostDiscardOption for volume %s",
+            "Successfully done SetVhostDiscardEnabledFlag for volume %s",
             Request.GetDiskId().Quote().c_str());
     }
 
@@ -278,7 +278,7 @@ void TSwitchVhostDiscardOptionActionActor::HandleWaitReadyResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TSwitchVhostDiscardOptionActionActor::StateDescribeVolume)
+STFUNC(TSetVhostDiscardEnabledFlagActionActor::StateDescribeVolume)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
@@ -294,7 +294,7 @@ STFUNC(TSwitchVhostDiscardOptionActionActor::StateDescribeVolume)
     }
 }
 
-STFUNC(TSwitchVhostDiscardOptionActionActor::StateAlterVolume)
+STFUNC(TSetVhostDiscardEnabledFlagActionActor::StateAlterVolume)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvSSProxy::TEvModifySchemeResponse, HandleAlterVolumeResponse);
@@ -308,7 +308,7 @@ STFUNC(TSwitchVhostDiscardOptionActionActor::StateAlterVolume)
     }
 }
 
-STFUNC(TSwitchVhostDiscardOptionActionActor::StateWaitReady)
+STFUNC(TSetVhostDiscardEnabledFlagActionActor::StateWaitReady)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvVolume::TEvWaitReadyResponse, HandleWaitReadyResponse);
@@ -327,11 +327,11 @@ STFUNC(TSwitchVhostDiscardOptionActionActor::StateWaitReady)
 ////////////////////////////////////////////////////////////////////////////////
 
 TResultOrError<IActorPtr>
-TServiceActor::CreateSwitchVhostDiscardOptionActionActor(
+TServiceActor::CreateSetVhostDiscardEnabledFlagActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
-    return {std::make_unique<TSwitchVhostDiscardOptionActionActor>(
+    return {std::make_unique<TSetVhostDiscardEnabledFlagActionActor>(
         std::move(requestInfo),
         std::move(input))};
 }

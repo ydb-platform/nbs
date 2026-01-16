@@ -433,7 +433,7 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
-    TResultOrError<NActors::IActorPtr> CreateSwitchVhostDiscardOptionActionActor(
+    TResultOrError<NActors::IActorPtr> CreateSetVhostDiscardEnabledFlagActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 };
