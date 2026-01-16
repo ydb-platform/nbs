@@ -158,5 +158,5 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
         NEW_IMAGE_ID: ${{ steps.get-image-id.outputs.IMAGE_ID_2204 }}
         UPDATE_IMAGE_ID: ${{ inputs.update_image_id && '--update-image-id' || '' }}
-        HEAVY_PARENT_ID: $${{ vars.POOLED_HEAVY_PARENT_ID }}
-        LIGHT_PARENT_ID: $${{ vars.POOLED_LIGHT_PARENT_ID }}
+        HEAVY_PARENT_ID: ${{ vars.POOLED_HEAVY_PARENT_ID }}
+        LIGHT_PARENT_ID: ${{ vars.POOLED_LIGHT_PARENT_ID }}
