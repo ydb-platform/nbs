@@ -101,7 +101,7 @@ NfsConfig: <
 FilestoreCellsConfig: <
     CellSelectionPolicy: FIRST_IN_CONFIG
     FolderAllowList: [
-        "folder-with-cells",
+        "folder-with-cells"
     ]
     Cells: <
         key: "zone-a"
