@@ -56,7 +56,9 @@ void CompleteRequestImpl(
     const TActorContext& ctx,
     const ITraceSerializerPtr& traceSerializer,
     typename TMethod::TResponse::ProtoRecordType& record,
-    TInFlightRequest *request)
+    TInFlightRequest *request,
+    TInFlightRequestStorage& requestStorage,
+    ui64 requestCookie)
 {
     LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
         "#%lu completed %s (%s)",
@@ -88,7 +90,11 @@ void CompleteRequestImpl(
         TMethod::Name);
 
     const auto& error = record.GetError();
-    request->Complete(ctx.Now(), error);
+    requestStorage.CompleteAndErase(
+        ctx.Now(),
+        error,
+        *request,
+        requestCookie);
 }
 
 template<typename TMethod>
@@ -118,8 +124,13 @@ void TStorageServiceActor::CompleteRequest(
     const auto requestSender = request->Sender;
     const ui64 initialCookie = request->Cookie;
 
-    CompleteRequestImpl<TMethod>(ctx, TraceSerializer, msg->Record, request);
-    InFlightRequests->Erase(ev->Cookie);
+    CompleteRequestImpl<TMethod>(
+        ctx,
+        TraceSerializer,
+        msg->Record,
+        request,
+        *InFlightRequests,
+        ev->Cookie);
 
     STORAGE_VERIFY_C(
         ev->HasEvent(),

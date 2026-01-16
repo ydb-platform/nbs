@@ -1,5 +1,7 @@
 #include "wilson_trace_compatibility.h"
 
+#include <util/random/random.h>
+
 namespace NCloud {
 
 namespace {

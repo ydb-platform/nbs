@@ -215,11 +215,14 @@ void TStorageServiceActor::HandleDestroySession(
     InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
     inflight->ProfileLogRequest.SetClientId(clientId);
 
-    auto reply = [&, inflight = std::move(inflight)] (auto error) {
+    auto reply = [&] (const auto& error) {
         auto response =
             std::make_unique<TEvService::TEvDestroySessionResponse>(error);
-        inflight->Complete(ctx.Now(), std::move(error));
-        InFlightRequests->Erase(cookie);
+        InFlightRequests->CompleteAndErase(
+            ctx.Now(),
+            error,
+            *inflight,
+            cookie);
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
@@ -340,8 +343,11 @@ void TStorageServiceActor::HandleSessionDestroyed(
         msg->GetError());
     NCloud::Reply(ctx, *inflight, std::move(response));
 
-    inflight->Complete(ctx.Now(), msg->GetError());
-    InFlightRequests->Erase(ev->Cookie);
+    InFlightRequests->CompleteAndErase(
+        ctx.Now(),
+        msg->GetError(),
+        *inflight,
+        ev->Cookie);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
