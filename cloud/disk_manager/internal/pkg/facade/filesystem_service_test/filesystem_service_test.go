@@ -111,7 +111,7 @@ func TestCreateFilesystemInCells(t *testing.T) {
 		true,
 	)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "filesystem not found")
+	require.Contains(t, err.Error(), "Path not found")
 
 	testcommon.CheckConsistency(t, ctx)
 }
