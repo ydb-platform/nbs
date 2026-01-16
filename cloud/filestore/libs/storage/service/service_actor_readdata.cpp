@@ -806,7 +806,7 @@ void TReadDataActor::ReplyTwoStageAndDie(const TActorContext& ctx)
     if (end <= OriginByteRange.Offset) {
         BlockBuffer->clear();
     } else {
-        auto length = end - OriginByteRange.Offset;
+        const ui64 length = end - OriginByteRange.Offset;
         if (ReadRequest.GetIovecs().empty()) {
             BlockBuffer->ReserveAndResize(length);
             response->Record.set_allocated_buffer(BlockBuffer.release());
