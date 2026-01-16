@@ -19,6 +19,11 @@ on:
         required: false
         default: false
         type: boolean
+      update_pooled_image_ids:
+        description: "Update pooled image ids"
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       image_id:
@@ -33,6 +38,11 @@ on:
         type: boolean
       check_vm_creation:
         description: "Check VM creation"
+        required: false
+        default: false
+        type: boolean
+      update_pooled_image_ids:
+        description: "Update pooled image ids"
         required: false
         default: false
         type: boolean
@@ -60,29 +70,29 @@ jobs:
       id: cli
       uses: ./.github/actions/nebius_cli
       with:
-        sa_json: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+        sa_json: ${{ secrets.POOLED_LIGHT_SA_JSON }}
 
     - name: Get latest image ID from Nebius
       id: get-image-id
       env: 
-        image_id: ${{ inputs.image_id }}
+        IMAGE_ID: ${{ inputs.image_id }}
       run: |
-        if [ -n "${image_id}" ]; then
-          if [[ "${image_id}" != computeimage-* ]]; then
-            echo "Provided image id is not valid: ${image_id}"
+        if [ -n "${IMAGE_ID}" ]; then
+          if [[ "${IMAGE_ID}" != computeimage-* ]]; then
+            echo "Provided image id is not valid: ${IMAGE_ID}"
             exit 1
           fi
-          echo "IMAGE_ID_2204=${image_id}" >> $GITHUB_OUTPUT
-          echo "Using image id provided by inputs: ${image_id}"
+          echo "IMAGE_ID_2204=${IMAGE_ID}" >> $GITHUB_OUTPUT
+          echo "Using image id provided by inputs: ${IMAGE_ID}"
           exit 0
         fi
-        image_id=$(nebius compute image get-latest-by-family --image-family ubuntu22.04-nbs-github-ci --parent-id ${{ vars.POOLED_HEAVY_PARENT_ID }} --format json | jq -r .metadata.id)
-        echo "IMAGE_ID_2204=$image_id" >> $GITHUB_OUTPUT
+        IMAGE_ID=$(nebius compute image get-latest-by-family --image-family ubuntu22.04-nbs-github-ci --parent-id ${{ vars.POOLED_HEAVY_PARENT_ID }} --format json | jq -r .metadata.id)
+        echo "IMAGE_ID_2204=$IMAGE_ID" >> $GITHUB_OUTPUT
     
 
     - name: Start runner
       id: start-runner
-      if: steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204
+      if: (steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_LIGHT_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_HEAVY_IMAGE_ID_2204)
       uses: ./.github/actions/nebius_runner_create
       timeout-minutes: 60
       with:
@@ -90,25 +100,25 @@ jobs:
         team: nbs
         repo_owner: ${{ github.repository_owner }}
         repo: ${{ github.event.repository.name }}
-        service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+        service_account_key: ${{ secrets.POOLED_HEAVY_SA_JSON }}
         token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
         vm_parent_id: ${{ vars.POOLED_HEAVY_PARENT_ID }}
         vm_name: ${{ format('packer-run-{0}-{1}', github.run_id, github.run_attempt) }}
-        vm_platform_id: ${{ vars.NEBIUS_PLATFORM_ID }}
+        vm_platform_id: ${{ vars.POOLED_HEAVY_PLATFORM_ID }}
         vm_preset: "4vcpu-16gb"
         vm_disk_type: 'network-ssd-nonreplicated'
         vm_disk_size: 93
-        vm_subnet: ${{ vars.NEBIUS_SUBNET_ID }}
+        vm_subnet: ${{ vars.POOLED_HEAVY_NETWORK_ID }}
         vm_image: ${{ steps.get-image-id.outputs.IMAGE_ID_2204 }}
         vm_labels: ${{ format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
         vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
 
     - name: Stop runner
       uses: ./.github/actions/nebius_runner_remove
-      if: always() && steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204
+      if: always() && (steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_LIGHT_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_HEAVY_IMAGE_ID_2204)
       timeout-minutes: 60
       with:
-        service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+        service_account_key: ${{ secrets.POOLED_HEAVY_SA_JSON }}
         token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
         repo_owner: ${{ github.repository_owner }}
         repo: ${{ github.event.repository.name }}
@@ -116,14 +126,32 @@ jobs:
         vm_id: ${{ steps.start-runner.outputs.INSTANCE_ID }}
 
     - name: Set new image id
+      if: inputs.update_pooled_image_ids == false
       run: |
         export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
         python3 -m scripts.nebius_manage_images \
           --service-account-key sa.json \
           --new-image-id ${NEW_IMAGE_ID} \
-          --image-variable-name ${IMAGE_VARIABLE_NAME} ${UPDATE_IMAGE_ID}
+          --image-variable-name NEBIUS_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
       env:
         GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-        IMAGE_VARIABLE_NAME: NEBIUS_IMAGE_ID_2204
+        NEW_IMAGE_ID: ${{ steps.get-image-id.outputs.IMAGE_ID_2204 }}
+        UPDATE_IMAGE_ID: ${{ inputs.update_image_id && '--update-image-id' || '' }}
+
+    - name: Set new pooled image id
+      if: inputs.update_pooled_image_ids == true
+      run: |
+        export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
+        python3 -m scripts.nebius_manage_images \
+          --service-account-key sa.json \
+          --new-image-id ${NEW_IMAGE_ID} \
+          --image-variable-name POOLED_LIGHT_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
+
+        python3 -m scripts.nebius_manage_images \
+          --service-account-key sa.json \
+          --new-image-id ${NEW_IMAGE_ID} \
+          --image-variable-name POOLED_HEAVY_IMAGE_ID_2204 ${UPDATE_IMAGE_ID}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
         NEW_IMAGE_ID: ${{ steps.get-image-id.outputs.IMAGE_ID_2204 }}
         UPDATE_IMAGE_ID: ${{ inputs.update_image_id && '--update-image-id' || '' }}
