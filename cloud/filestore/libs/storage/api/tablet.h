@@ -35,6 +35,10 @@ namespace NCloud::NFileStore::NStorage {
     xxx(UnsafeDeleteNode,           __VA_ARGS__)                               \
     xxx(UnsafeUpdateNode,           __VA_ARGS__)                               \
     xxx(UnsafeGetNode,              __VA_ARGS__)                               \
+    xxx(UnsafeCreateNodeRef,        __VA_ARGS__)                               \
+    xxx(UnsafeDeleteNodeRef,        __VA_ARGS__)                               \
+    xxx(UnsafeUpdateNodeRef,        __VA_ARGS__)                               \
+    xxx(UnsafeGetNodeRef,           __VA_ARGS__)                               \
     xxx(ForcedOperationStatus,      __VA_ARGS__)                               \
     xxx(GetFileSystemTopology,      __VA_ARGS__)                               \
     xxx(RestartTablet,              __VA_ARGS__)                               \
@@ -138,6 +142,18 @@ struct TEvIndexTablet
 
         EvMarkNodeRefsExhaustiveRequest = EvBegin + 53,
         EvMarkNodeRefsExhaustiveResponse,
+
+        EvUnsafeCreateNodeRefRequest = EvBegin + 55,
+        EvUnsafeCreateNodeRefResponse,
+
+        EvUnsafeDeleteNodeRefRequest = EvBegin + 57,
+        EvUnsafeDeleteNodeRefResponse,
+
+        EvUnsafeUpdateNodeRefRequest = EvBegin + 59,
+        EvUnsafeUpdateNodeRefResponse,
+
+        EvUnsafeGetNodeRefRequest = EvBegin + 61,
+        EvUnsafeGetNodeRefResponse,
 
         EvEnd
     };
