@@ -1,5 +1,5 @@
 name: Build VM Image
-run-name: Build VM Image ${{ github.event.workflow_run.event }} update_image_id:${{ inputs.update_image_id }}
+run-name: Build VM Image ${{ github.event.workflow_run.event }} update_image_id:${{ inputs.update_image_id }} pooled:${{ inputs.update_pooled_image_ids }} image_id:${{ inputs.image_id }}
 on:
   # schedule:
   #   - cron: "0 5 * * *"
@@ -116,7 +116,7 @@ jobs:
 
     - name: Stop runner
       uses: ./.github/actions/nebius_runner_remove
-      if: always() && (steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_LIGHT_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_HEAVY_IMAGE_ID_2204)
+      if: always() && (steps.get-image-id.outputs.IMAGE_ID_2204 != vars.NEBIUS_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_LIGHT_IMAGE_ID_2204 || steps.get-image-id.outputs.IMAGE_ID_2204 != vars.POOLED_HEAVY_IMAGE_ID_2204) && steps.start-runner.outputs.INSTANCE_ID != ''
       timeout-minutes: 60
       with:
         service_account_key: ${{ secrets.POOLED_HEAVY_SA_JSON }}

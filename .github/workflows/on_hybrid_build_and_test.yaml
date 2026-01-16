@@ -239,7 +239,7 @@ jobs:
       - build-and-test  # required to wait when the main job is done
       - sleep-if-needed # required to wait until all debug is done
     runs-on: [ self-hosted, "self-hosted", "runner_light" ]
-    if: always()
+    if: always() && needs.provide-runner.outputs.instance-id != ''
     steps:
       - name: checkout PR
         uses: actions/checkout@v4
