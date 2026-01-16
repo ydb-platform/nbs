@@ -73,6 +73,7 @@ private:
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     NRdma::IClientPtr RdmaClient;
+    const TPartitionBudgetManagerPtr PartitionBudgetManager;
     const TString DiskId;
     const NActors::TActorId VolumeActorId;
     const NActors::TActorId StatActorId;
@@ -123,8 +124,6 @@ private:
     // The ranges are locked for migrations and filling of fresh replicas.
     TRequestBoundsTracker LockedRanges{State.GetBlockSize()};
 
-    bool MultiAgentWriteEnabled = true;
-    const size_t MultiAgentWriteRequestSizeThreshold = 0;
     size_t MultiAgentWriteRoundRobinSeed = 0;
 
 public:
@@ -138,6 +137,7 @@ public:
         TMigrations migrations,
         TVector<TDevices> replicas,
         NRdma::IClientPtr rdmaClient,
+        TPartitionBudgetManagerPtr partitionBudgetManager,
         NActors::TActorId volumeActorId,
         NActors::TActorId statActorId,
         NActors::TActorId resyncActorId);

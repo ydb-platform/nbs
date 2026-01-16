@@ -25,6 +25,7 @@ TServiceActor::TServiceActor(
         ITraceSerializerPtr traceSerializer,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         NRdma::IClientPtr rdmaClient,
+        TPartitionBudgetManagerPtr partitionBudgetManager,
         IVolumeStatsPtr volumeStats,
         TManuallyPreemptedVolumesPtr preemptedVolumes,
         IRootKmsKeyProviderPtr rootKmsKeyProvider,
@@ -37,6 +38,7 @@ TServiceActor::TServiceActor(
     , TraceSerializer(std::move(traceSerializer))
     , EndpointEventHandler(std::move(endpointEventHandler))
     , RdmaClient(std::move(rdmaClient))
+    , PartitionBudgetManager(std::move(partitionBudgetManager))
     , VolumeStats(std::move(volumeStats))
     , RootKmsKeyProvider(std::move(rootKmsKeyProvider))
     , TemporaryServer(temporaryServer)
