@@ -29,7 +29,7 @@ runs:
         set -x
         if [ ! -f "$HOME/.nebius/bin/nebius" ];
         then 
-          curl -sSL https://storage.${REGION}.nebius.cloud/cli/install.sh | bash
+          curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
           cat <<EOF > sa.json
         ${SA_JSON}
         EOF

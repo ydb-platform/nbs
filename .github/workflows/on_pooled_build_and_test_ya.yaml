@@ -177,7 +177,7 @@ jobs:
     - name: Prepare s3cmd
       uses: ./.github/actions/s3cmd
       with:
-        s3_bucket: ${{ vars.AWS_BUCKET }}
+        s3_bucket: ${{ vars.POOLED_HEAVY_AWS_BUCKET }}
         s3_endpoint: ${{ vars.POOLED_HEAVY_AWS_ENDPOINT }}
         s3_website_suffix: ${{ vars.POOLED_HEAVY_AWS_WEBSITE_SUFFIX }}
         s3_key_id: ${{ secrets.POOLED_HEAVY_AWS_KEY_ID }}
@@ -354,7 +354,7 @@ jobs:
       - name: Prepare s3cmd
         uses: ./.github/actions/s3cmd
         with:
-          s3_bucket: ${{ vars.AWS_BUCKET }}
+          s3_bucket: ${{ vars.POOLED_HEAVY_AWS_BUCKET }}
           s3_endpoint: ${{ vars.POOLED_HEAVY_AWS_ENDPOINT }}
           s3_website_suffix: ${{ vars.POOLED_HEAVY_AWS_WEBSITE_SUFFIX }}
           s3_key_id: ${{ secrets.POOLED_HEAVY_AWS_KEY_ID }}
