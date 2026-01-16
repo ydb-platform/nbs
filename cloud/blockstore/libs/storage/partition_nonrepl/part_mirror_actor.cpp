@@ -299,7 +299,8 @@ void TMirrorPartitionActor::StartResyncRange(
     const auto& replicaInfos = State.GetReplicaInfos();
     for (ui32 i = 0; i < replicaInfos.size(); i++) {
         if (State.DevicesReadyForReading(i, GetScrubbingRange())) {
-            replicas.emplace_back(i, State.GetReplicaActor(i));
+            replicas.push_back(
+                {.ReplicaIndex = i, .ActorId = State.GetReplicaActor(i)});
         }
     }
 
@@ -485,7 +486,8 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
     const auto& replicaInfos = State.GetReplicaInfos();
     for (ui32 i = 0; i < replicaInfos.size(); i++) {
         if (State.DevicesReadyForReading(i, scrubbingRange)) {
-            replicas.emplace_back(i, State.GetReplicaActor(i));
+            replicas.push_back(
+                {.ReplicaIndex = i, .ActorId = State.GetReplicaActor(i)});
         }
     }
 
