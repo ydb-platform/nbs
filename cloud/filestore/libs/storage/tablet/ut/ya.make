@@ -18,6 +18,7 @@ SRCS(
     tablet_ut_handles.cpp
     tablet_ut_monitoring.cpp
     tablet_ut_nodes.cpp
+    tablet_ut_nodes_internal.cpp
     tablet_ut_nodes_filteralivenodes.cpp
     tablet_ut_sessions.cpp
     tablet_ut_subsessions.cpp
