@@ -1,8 +1,5 @@
 #include "tablet.h"
 
-#include <sys/stat.h>
-#include <sys/sysmacros.h>
-
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
