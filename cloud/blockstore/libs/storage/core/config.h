@@ -738,6 +738,8 @@ public:
     [[nodiscard]] TDuration GetCollectGarbageTimeoutSSD() const;
     [[nodiscard]] TDuration GetCollectGarbageTimeoutHDD() const;
 
+    [[nodiscard]] bool GetLimitMirrorDisksDeviceReplacementsPerRow() const;
+
     [[nodiscard]] bool GetEnableDataIntegrityValidationForYdbBasedDisks() const;
 
     [[nodiscard]] ui64 GetHiveLocalServiceCpuResourceLimit() const;

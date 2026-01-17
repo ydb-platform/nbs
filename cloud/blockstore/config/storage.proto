@@ -1412,4 +1412,8 @@ message TStorageServiceConfig
 
     // Enables fresh channel zero requests.
     optional bool FreshChannelZeroRequestsEnabled = 478;
+
+    // If true, disk registry doesn't replace devices of mirrored disks in one
+    // row per reallocation.
+    optional bool LimitMirrorDisksDeviceReplacementsPerRow = 479;
 }
