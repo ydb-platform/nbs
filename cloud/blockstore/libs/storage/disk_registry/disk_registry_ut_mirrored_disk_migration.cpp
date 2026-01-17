@@ -442,7 +442,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             });
 
         NProto::TStorageServiceConfig config = CreateDefaultStorageConfig();
-        config.SetLimitMirrorDisksDeviceReplacementsPerRow(true);
+        config.SetLimitMirrorDisksDeviceReplacementsPerRowEnabled(true);
         auto runtime = TTestRuntimeBuilder()
                            .With(config)
                            .WithAgents({agent1, agent2, agent3})

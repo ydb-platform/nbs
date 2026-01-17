@@ -1661,7 +1661,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         });
     }
 
-    // With enable LimitMirrorDisksDeviceReplacementsPerRow
+    // With enable LimitMirrorDisksDeviceReplacementsPerRowEnabled
     Y_UNIT_TEST(
         ShouldRemoveReplacementDeviceIdsUponReplacementDeviceReplacement2)
     {
@@ -1709,7 +1709,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             });
 
         auto storageConfig = CreateDefaultStorageConfigProto();
-        storageConfig.SetLimitMirrorDisksDeviceReplacementsPerRow(true);
+        storageConfig.SetLimitMirrorDisksDeviceReplacementsPerRowEnabled(true);
         auto statePtr = TDiskRegistryStateBuilder()
                             .WithKnownAgents({
                                 agentConfig1,
@@ -2618,7 +2618,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         });
     }
 
-    // With enable LimitMirrorDisksDeviceReplacementsPerRow
+    // With enable LimitMirrorDisksDeviceReplacementsPerRowEnabled
     Y_UNIT_TEST(ShouldProperlyCleanupAutomaticallyReplacedDevices2)
     {
         TTestExecutor executor;
@@ -2663,7 +2663,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                 ->GetSubgroup("component", "disk_registry");
 
         auto storageConfig = CreateDefaultStorageConfigProto();
-        storageConfig.SetLimitMirrorDisksDeviceReplacementsPerRow(true);
+        storageConfig.SetLimitMirrorDisksDeviceReplacementsPerRowEnabled(true);
         auto statePtr = TDiskRegistryStateBuilder()
                             .With(diskRegistryGroup)
                             .WithKnownAgents({
@@ -3630,7 +3630,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         ASSERT_VECTORS_EQUAL(expectedReplacedDeviceIds, replacedDeviceIds);
     }
 
-    // With enable LimitMirrorDisksDeviceReplacementsPerRow
+    // With enable LimitMirrorDisksDeviceReplacementsPerRowEnabled
     Y_UNIT_TEST(ShouldStopAutomaticReplacementIfReplacementRateIsTooHigh2)
     {
         TTestExecutor executor;
@@ -3654,7 +3654,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         NProto::TStorageServiceConfig proto;
         proto.SetMaxAutomaticDeviceReplacementsPerHour(10);
         proto.SetAllocationUnitNonReplicatedSSD(10);
-        proto.SetLimitMirrorDisksDeviceReplacementsPerRow(true);
+        proto.SetLimitMirrorDisksDeviceReplacementsPerRowEnabled(true);
         auto storageConfig = CreateStorageConfig(proto);
 
         auto statePtr = TDiskRegistryStateBuilder()
@@ -4167,7 +4167,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         disks.back().SetReplicaCount(2);
 
         auto storageConfig = CreateDefaultStorageConfigProto();
-        storageConfig.SetLimitMirrorDisksDeviceReplacementsPerRow(true);
+        storageConfig.SetLimitMirrorDisksDeviceReplacementsPerRowEnabled(true);
         auto statePtr = TDiskRegistryStateBuilder()
                             .WithKnownAgents({
                                 agentConfig1,
@@ -4309,7 +4309,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         disks.back().SetReplicaCount(2);
 
         auto storageConfig = CreateDefaultStorageConfigProto();
-        storageConfig.SetLimitMirrorDisksDeviceReplacementsPerRow(true);
+        storageConfig.SetLimitMirrorDisksDeviceReplacementsPerRowEnabled(true);
         auto statePtr = TDiskRegistryStateBuilder()
                             .WithKnownAgents({
                                 agentConfig1,

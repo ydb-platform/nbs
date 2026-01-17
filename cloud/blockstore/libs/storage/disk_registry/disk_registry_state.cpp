@@ -599,7 +599,8 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
             ReplicaTable.MarkReplacementDevice(diskId, deviceId, true);
         }
 
-        if (StorageConfig->GetLimitMirrorDisksDeviceReplacementsPerRow() &&
+        if (StorageConfig
+                ->GetLimitMirrorDisksDeviceReplacementsPerRowEnabled() &&
             NotificationSystem.GetDiskSeqNo(diskId))
         {
             ReplicaTable.BlockReplacements(diskId);
@@ -5124,7 +5125,7 @@ void TDiskRegistryState::DeleteDiskToReallocate(
         }
     }
 
-    if (StorageConfig->GetLimitMirrorDisksDeviceReplacementsPerRow() &&
+    if (StorageConfig->GetLimitMirrorDisksDeviceReplacementsPerRowEnabled() &&
         IsMasterDisk(diskId))
     {
         ReplicaTable.ResetRecentlyReplacedDevices(diskId, seqNo);
@@ -7798,7 +7799,7 @@ bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
         return false;
     }
 
-    if (StorageConfig->GetLimitMirrorDisksDeviceReplacementsPerRow() &&
+    if (StorageConfig->GetLimitMirrorDisksDeviceReplacementsPerRowEnabled() &&
         ReplicaTable.IsRecentlyReplacedDevice(masterDiskId, deviceId))
     {
         STORAGE_WARN(

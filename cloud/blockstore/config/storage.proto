@@ -1415,5 +1415,5 @@ message TStorageServiceConfig
 
     // If true, disk registry doesn't replace devices of mirrored disks in one
     // row per reallocation.
-    optional bool LimitMirrorDisksDeviceReplacementsPerRow = 479;
+    optional bool LimitMirrorDisksDeviceReplacementsPerRowEnabled = 479;
 }
