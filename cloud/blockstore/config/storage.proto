@@ -1405,4 +1405,8 @@ message TStorageServiceConfig
     // When disabled, fast path waits for data and 2 checksums before replying
     // to the client.
     optional bool OptimizeFastPathReadsOnResync = 476;
+
+    // VolumeProxy to Volume inactive (with no requests from client) connection
+    // reset timeout (in milliseconds).
+    optional uint32 VolumeProxyPipeInactivityTimeout = 477;
 }
