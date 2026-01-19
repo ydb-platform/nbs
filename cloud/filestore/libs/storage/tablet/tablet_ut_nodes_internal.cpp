@@ -14,13 +14,42 @@ using namespace NKikimr;
 
 Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 {
-    // TODO:
-    // 1. check error when dest == local node
-    // 2. check CommitIdOverflow for otherwise correct request
-    // 3. check error when src == dir and dst == file
+    // TODO(#2674):
+    // * check error when src == dir and dst == file
     //      OR src == file and dst == dir
     //      OR src == dir and dst == non-empty dir
-    // 4. check dupcache - retry an already completed op
+    // * check dupcache - retry an already completed op
+
+    TABLET_TEST_4K_ONLY(
+        ShouldReturnErrorUponRenameNodeInDestinationForLocalNode)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "file"));
+
+        tablet.SendRenameNodeInDestinationRequest(
+            RootNodeId,
+            "file",
+            "shard",
+            CreateGuidAsString());
+        auto response = tablet.RecvRenameNodeInDestinationResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+    }
 
     TABLET_TEST_4K_ONLY(ShouldHandleCommitIdOverflowUponRenameNodeInDestination)
     {
