@@ -118,7 +118,8 @@ struct INodeLoader
 
 INodeLoaderPtr CreateNodeLoader(
     const TIndexNodePtr& rootNode,
-    const TDuration& snapshotsDirRefreshInterval);
+    const TDuration& snapshotsDirRefreshInterval,
+    std::function<void()> onSnapshotsChanged);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -325,10 +326,8 @@ public:
         return ForgetNodeWriteLocked(nodeId);
     }
 
-    void Clear()
+    void ClearLocked()
     {
-        TWriteGuard guard(NodesLock);
-
         if (NodeTable) {
             NodeTable->Clear();
         }
@@ -341,10 +340,18 @@ public:
         Nodes.insert(root);
     }
 
+    void Clear()
+    {
+        TWriteGuard guard(NodesLock);
+        ClearLocked();
+    }
+
 private:
     void Init()
     {
         auto root = TIndexNode::CreateRoot(RootPath);
+        Nodes.insert(root);
+
         STORAGE_INFO(
             "Init index, Root=" << RootPath <<
             ", StatePath=" << StatePath <<
@@ -353,8 +360,15 @@ private:
         if (OpenNodeByHandleEnabled) {
             try {
                 if (!NodeLoader) {
-                    NodeLoader =
-                        CreateNodeLoader(root, SnapshotsDirRefreshInterval);
+                    auto clearCache = [this]()
+                    {
+                        ClearLocked();
+                    };
+
+                    NodeLoader = CreateNodeLoader(
+                        root,
+                        SnapshotsDirRefreshInterval,
+                        std::move(clearCache));
                 }
 
                 STORAGE_INFO(
@@ -383,8 +397,6 @@ private:
                     ", Exception=" << CurrentExceptionMessage());
             }
         }
-
-        Nodes.insert(root);
 
         if (!NodeLoader) {
             NodeTable = std::make_unique<TNodeTable>(

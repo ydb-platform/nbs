@@ -296,14 +296,17 @@ private:
     const TDuration SnapshotsDirRefreshInterval;
     ui64 LastSnapshotsDirRefreshCycles = 0;
     TMap<ui16, ui32> AntiCollisionToSnapViewMap;
+    std::function<void()> OnSnapshotsChanged;
 
 public:
     TWekaNodeLoader(
         TFileHandle&& rootHandle,
         TFileId&& rootFileId,
-        const TDuration& snapshotsDirRefreshInterval)
+        const TDuration& snapshotsDirRefreshInterval,
+        std::function<void()> onSnapshotsChanged)
         : TNodeLoader(std::move(rootHandle), std::move(rootFileId))
         , SnapshotsDirRefreshInterval(snapshotsDirRefreshInterval)
+        , OnSnapshotsChanged(std::move(onSnapshotsChanged))
     {}
 
     TIndexNodePtr LoadNode(ui64 nodeId) const override
@@ -434,14 +437,19 @@ private:
             }
         }
 
-        AntiCollisionToSnapViewMap = std::move(newMap);
+        if (newMap != AntiCollisionToSnapViewMap) {
+            AntiCollisionToSnapViewMap = std::move(newMap);
+            OnSnapshotsChanged();
+        }
+
         LastSnapshotsDirRefreshCycles = GetCycleCount();
     }
 };
 
 INodeLoaderPtr CreateNodeLoader(
     const TIndexNodePtr& rootNode,
-    const TDuration& snapshotsDirRefreshInterval)
+    const TDuration& snapshotsDirRefreshInterval,
+    std::function<void()> onSnapshotsChanged)
 {
     using TFileId = NLowLevel::TFileId;
     using EFileIdType = NLowLevel::TFileId::EFileIdType;
@@ -459,7 +467,8 @@ INodeLoaderPtr CreateNodeLoader(
             return std::make_shared<TWekaNodeLoader>(
                 std::move(rootHandle),
                 std::move(rootFileId),
-                snapshotsDirRefreshInterval);
+                snapshotsDirRefreshInterval,
+                std::move(onSnapshotsChanged));
         case EFileIdType::VastNfs:
             return std::make_shared<TVastNfsNodeLoader>(
                 std::move(rootHandle),
