@@ -19,6 +19,7 @@ namespace NKikimr {
         std::shared_ptr<TDefragCtx> DCtx;
         const TVDiskID SelfVDiskId;
         std::optional<TChunksToDefrag> ChunksToDefrag;
+        bool NeedCompaction;
 
         enum {
             EvResume = EventSpaceBegin(TEvents::ES_PRIVATE)
@@ -28,11 +29,12 @@ namespace NKikimr {
 
     public:
         TDefragQuantum(const std::shared_ptr<TDefragCtx>& dctx, const TVDiskID& selfVDiskId,
-                std::optional<TChunksToDefrag> chunksToDefrag)
+                std::optional<TChunksToDefrag> chunksToDefrag, bool needCompaction)
             : TActorCoroImpl(64_KB, true)
             , DCtx(dctx)
             , SelfVDiskId(selfVDiskId)
             , ChunksToDefrag(std::move(chunksToDefrag))
+            , NeedCompaction(needCompaction)
         {}
 
         void ProcessUnexpectedEvent(TAutoPtr<IEventHandle> ev) {
@@ -54,6 +56,7 @@ namespace NKikimr {
 
         void RunImpl() {
             TEvDefragQuantumResult::TStat stat{.Eof = true};
+            ui32 maxChunksToDefrag = DCtx->VCfg->MaxChunksToDefragInflight;
 
             if (ChunksToDefrag) {
                 Y_ABORT_UNLESS(*ChunksToDefrag);
@@ -66,12 +69,12 @@ namespace NKikimr {
                     }
                     Yield();
                 }
-                ChunksToDefrag.emplace(findChunks.GetChunksToDefrag(DCtx->MaxChunksToDefrag));
+                ChunksToDefrag.emplace(findChunks.GetChunksToDefrag(maxChunksToDefrag));
             }
             if (*ChunksToDefrag) {
                 stat.FoundChunksToDefrag = ChunksToDefrag->FoundChunksToDefrag;
                 stat.FreedChunks = ChunksToDefrag->Chunks;
-                stat.Eof = stat.FoundChunksToDefrag < DCtx->MaxChunksToDefrag;
+                stat.Eof = stat.FoundChunksToDefrag < maxChunksToDefrag;
 
                 auto lockedChunks = LockChunks(*ChunksToDefrag);
 
@@ -92,10 +95,11 @@ namespace NKikimr {
                 stat.RewrittenRecs = ev->Get()->RewrittenRecs;
                 stat.RewrittenBytes = ev->Get()->RewrittenBytes;
 
-                Compact();
-
-                auto hugeStat = GetHugeStat();
-                Y_ABORT_UNLESS(hugeStat.LockedChunks.size() < 100);
+                if (NeedCompaction) {
+                    Compact();
+                    auto hugeStat = GetHugeStat();
+                    Y_DEBUG_ABORT_UNLESS(hugeStat.LockedChunks.size() < 100);
+                }
             }
 
             Send(ParentActorId, new TEvDefragQuantumResult(std::move(stat)));
@@ -118,7 +122,7 @@ namespace NKikimr {
         }
 
         void Compact() {
-            Send(DCtx->SkeletonId, TEvCompactVDisk::Create(EHullDbType::LogoBlobs));
+            Send(DCtx->SkeletonId, TEvCompactVDisk::Create(EHullDbType::LogoBlobs, TEvCompactVDisk::EMode::FULL, false));
             WaitForSpecificEvent<TEvCompactVDiskResult>(&TDefragQuantum::ProcessUnexpectedEvent);
         }
 
@@ -129,8 +133,8 @@ namespace NKikimr {
     };
 
     IActor *CreateDefragQuantumActor(const std::shared_ptr<TDefragCtx>& dctx, const TVDiskID& selfVDiskId,
-            std::optional<TChunksToDefrag> chunksToDefrag) {
-        return new TActorCoro(MakeHolder<TDefragQuantum>(dctx, selfVDiskId, std::move(chunksToDefrag)),
+            std::optional<TChunksToDefrag> chunksToDefrag, bool needCompaction) {
+        return new TActorCoro(MakeHolder<TDefragQuantum>(dctx, selfVDiskId, std::move(chunksToDefrag), needCompaction),
             NKikimrServices::TActivity::BS_DEFRAG_QUANTUM);
     }
 

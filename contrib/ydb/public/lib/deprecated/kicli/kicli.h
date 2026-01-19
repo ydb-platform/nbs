@@ -3,6 +3,10 @@
 #include <contrib/ydb/core/protos/kqp.pb.h>
 #include <contrib/ydb/core/protos/msgbus.pb.h>
 #include <contrib/ydb/core/protos/ydb_result_set_old.pb.h>
+#include <contrib/ydb/public/api/protos/ydb_table.pb.h>
+#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <contrib/ydb/core/protos/config.pb.h>
+#include <contrib/ydb/core/protos/tx_proxy.pb.h>
 #include <contrib/ydb/public/lib/deprecated/client/grpc_client.h>
 #include <contrib/ydb/public/lib/deprecated/client/msgbus_client_config.h>
 #include <contrib/ydb/public/lib/base/msgbus_status.h>
@@ -582,7 +586,8 @@ public:
         BlobDepot,
         ExternalTable,
         ExternalDataSource,
-        View
+        View,
+        ResourcePool
     };
 
     TSchemaObject(TSchemaObject&&) = default;
@@ -829,54 +834,16 @@ protected:
     }
 
     template <typename T>
-    void PrepareRequest(T&) const {}
-
-    void PrepareRequest(NKikimrClient::TRequest& request) const {
+    void PrepareRequest(T& request) const {
         if (!SecurityToken.empty()) {
             request.SetSecurityToken(SecurityToken);
         }
     }
 
-    void PrepareRequest(NKikimrClient::TCmsRequest& request) const {
-        if (!SecurityToken.empty()) {
-            request.SetSecurityToken(SecurityToken);
-        }
+    void PrepareRequest(NKikimrClient::TLoginRequest&) const {
     }
 
-    void PrepareRequest(NKikimrClient::TConsoleRequest& request) const {
-        if (!SecurityToken.empty()) {
-            request.SetSecurityToken(SecurityToken);
-        }
-    }
-
-    void PrepareRequest(NKikimrClient::TSchemeDescribe& request) const {
-        if (!SecurityToken.empty()) {
-            request.SetSecurityToken(SecurityToken);
-        }
-    }
-
-    void PrepareRequest(NKikimrClient::TSchemeOperation& request) const {
-        if (!SecurityToken.empty()) {
-            request.SetSecurityToken(SecurityToken);
-        }
-    }
-
-    void PrepareRequest(NKikimrClient::TWhoAmI& request) const {
-        if (!SecurityToken.empty()) {
-            request.SetSecurityToken(SecurityToken);
-        }
-    }
-
-    void PrepareRequest(NKikimrClient::TLocalMKQL& request) const {
-        if (!SecurityToken.empty()) {
-            request.SetSecurityToken(SecurityToken);
-        }
-    }
-
-    void PrepareRequest(NKikimrClient::TLocalSchemeTx& request) const {
-        if (!SecurityToken.empty()) {
-            request.SetSecurityToken(SecurityToken);
-        }
+    void PrepareRequest(NKikimrClient::TKeyValueRequest&) const { // not used in real life, not implemented in server
     }
 
     TString SecurityToken;

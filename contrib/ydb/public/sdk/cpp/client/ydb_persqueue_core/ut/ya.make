@@ -1,4 +1,4 @@
-UNITTEST_FOR(contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core)
+UNITTEST()
 
 IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
     TIMEOUT(1200)
@@ -17,13 +17,19 @@ PEERDIR(
     contrib/ydb/public/lib/json_value
     contrib/ydb/public/lib/yson_value
     contrib/ydb/public/sdk/cpp/client/ydb_driver
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/impl
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/ut/ut_utils
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public/codecs
+    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public
+    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public/impl
+    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public/ut/ut_utils
+    contrib/ydb/public/sdk/cpp/client/ydb_topic/codecs
+    contrib/ydb/public/sdk/cpp/client/ydb_topic/impl
 )
 
 YQL_LAST_ABI_VERSION()
+
+SRCDIR(
+    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public/ut
+    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public
+)
 
 SRCS(
     common_ut.cpp
@@ -35,7 +41,3 @@ SRCS(
 )
 
 END()
-
-RECURSE_FOR_TESTS(
-    with_offset_ranges_mode_ut
-)

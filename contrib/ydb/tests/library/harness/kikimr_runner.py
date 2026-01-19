@@ -5,7 +5,7 @@ import shutil
 import tempfile
 import time
 import itertools
-from pkg_resources import resource_string
+from importlib_resources import read_binary
 from google.protobuf import text_format
 
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
@@ -270,16 +270,28 @@ class KiKiMR(kikimr_cluster_interface.KiKiMRClusterInterface):
     def server(self):
         return self.__server
 
-    def __call_kikimr_new_cli(self, cmd, connect_to_server=True):
+    def __call_kikimr_new_cli(self, cmd, connect_to_server=True, token=None):
         server = 'grpc://{server}:{port}'.format(server=self.server, port=self.nodes[1].port)
         full_command = [self.__configurator.binary_path]
         if connect_to_server:
             full_command += ["--server={server}".format(server=server)]
         full_command += cmd
 
+        env = None
+        token = token or self.__configurator.default_clusteradmin
+        if token is not None:
+            env = os.environ.copy()
+            env['YDB_TOKEN'] = token
+        # elif self.__configurator.enable_static_auth:
+        #     # If no token is provided, use the default user from the configuration
+        #     default_user = next(iter(self.__configurator.yaml_config["domains_config"]["security_config"]["default_users"]))
+        #     env = os.environ.copy()
+        #     env['YDB_USER'] = default_user["name"]
+        #     env['YDB_PASSWORD'] = default_user["password"]
+
         logger.debug("Executing command = {}".format(full_command))
         try:
-            return yatest_common.execute(full_command)
+            return yatest_common.execute(full_command, env=env)
         except yatest_common.ExecutionError as e:
             logger.exception("KiKiMR command '{cmd}' failed with error: {e}\n\tstdout: {out}\n\tstderr: {err}".format(
                 cmd=" ".join(str(x) for x in full_command),
@@ -337,8 +349,10 @@ class KiKiMR(kikimr_cluster_interface.KiKiMRClusterInterface):
             )
             pools[p['name']] = p['kind']
 
+        root_token = self.__configurator.default_clusteradmin
+
         if len(pools) > 0:
-            self.client.bind_storage_pools(self.domain_name, pools)
+            self.client.bind_storage_pools(self.domain_name, pools, token=root_token)
             default_pool_name = list(pools.keys())[0]
         else:
             default_pool_name = ""
@@ -347,12 +361,7 @@ class KiKiMR(kikimr_cluster_interface.KiKiMRClusterInterface):
         logger.info("Cluster started and initialized")
 
         if bs_needed:
-            self.client.add_config_item(
-                resource_string(
-                    __name__,
-                    "resources/default_profile.txt"
-                )
-            )
+            self.client.add_config_item(read_binary(__name__, "resources/default_profile.txt"), token=root_token)
 
     def __run_node(self, node_id):
         """
@@ -422,10 +431,13 @@ class KiKiMR(kikimr_cluster_interface.KiKiMRClusterInterface):
         for i in slots:
             i.stop()
 
-    def __stop_node(self, node):
+    def __stop_node(self, node, kill=False):
         ret = None
         try:
-            node.stop()
+            if kill:
+                node.kill()
+            else:
+                node.stop()
         except daemon.DaemonError as exceptions:
             ret = exceptions
         else:
@@ -435,16 +447,16 @@ class KiKiMR(kikimr_cluster_interface.KiKiMRClusterInterface):
                 shutil.rmtree(self.__common_udfs_dir, ignore_errors=True)
         return ret
 
-    def stop(self):
+    def stop(self, kill=False):
         saved_exceptions = []
 
         for slot in self.slots.values():
-            exception = self.__stop_node(slot)
+            exception = self.__stop_node(slot, kill)
             if exception is not None:
                 saved_exceptions.append(exception)
 
         for node in self.nodes.values():
-            exception = self.__stop_node(node)
+            exception = self.__stop_node(node, kill)
             if exception is not None:
                 saved_exceptions.append(exception)
 
@@ -616,33 +628,36 @@ class KikimrExternalNode(daemon.ExternalNodeDaemon, kikimr_node_interface.NodeIn
 
     def start(self):
         if self.__slot_id is None:
-            return self.ssh_command("sudo start kikimr")
-        return self.ssh_command(
-            [
-                "sudo", "start",
-                "kikimr-multi",
-                "slot={}".format(self.__slot_id),
-                "tenant=/Root/db1",
-                "mbus={}".format(self.__mbus_port),
-                "grpc={}".format(self.__grpc_port),
-                "mon={}".format(self.__mon_port),
-                "ic={}".format(self.__ic_port),
-            ]
+            return self.ssh_command("sudo service kikimr start")
+
+        slot_dir = "/Berkanavt/kikimr_{slot}".format(slot=self.__slot_id)
+        slot_cfg = slot_dir + "/slot_cfg"
+        env_txt = slot_dir + "/env.txt"
+
+        cfg = """\
+tenant=/Root/db1
+grpc={grpc}
+mbus={mbus}
+ic={ic}
+mon={mon}""".format(
+            mbus=self.__mbus_port,
+            grpc=self.__grpc_port,
+            mon=self.__mon_port,
+            ic=self.__ic_port,
         )
+
+        self.ssh_command(["sudo", "mkdir", slot_dir])
+        self.ssh_command(["sudo", "touch", env_txt])
+        self.ssh_command(["/bin/echo", "-e", "\"{}\"".format(cfg),  "|", "sudo", "tee", slot_cfg])
+
+        return self.ssh_command(["sudo", "systemctl", "start", "kikimr-multi@{}".format(self.__slot_id)])
 
     def stop(self):
         if self.__slot_id is None:
-            return self.ssh_command("sudo stop kikimr")
+            return self.ssh_command("sudo service kikimr stop")
         return self.ssh_command(
             [
-                "sudo", "stop",
-                "kikimr-multi",
-                "slot={}".format(self.__slot_id),
-                "tenant=/Root/db1",
-                "mbus={}".format(self.__mbus_port),
-                "grpc={}".format(self.__grpc_port),
-                "mon={}".format(self.__mon_port),
-                "ic={}".format(self.__ic_port),
+                "sudo", "systemctl", "start", "kikimr-multi@{}".format(self.__slot_id),
             ]
         )
 

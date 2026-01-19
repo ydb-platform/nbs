@@ -362,6 +362,7 @@ class TExecutor
     TAutoPtr<NUtil::ILogger> Logger;
 
     ui32 FollowerId = 0;
+    THashSet<ui32> PreloadTablesData;
 
     // This becomes true when executor enables the use of leases, e.g. starts persisting them
     // This may become false again when leases are not actively used for some time
@@ -527,7 +528,7 @@ class TExecutor
     void DropSingleCache(const TLogoBlobID&) noexcept;
 
     void TranslateCacheTouchesToSharedCache();
-    void RequestInMemPagesForDatabase();
+    void RequestInMemPagesForDatabase(bool pendingOnly = false);
     void RequestInMemPagesForPartStore(ui32 tableId, const NTable::TPartView &partView, const THashSet<NTable::TTag> &stickyColumns);
     THashSet<NTable::TTag> GetStickyColumns(ui32 tableId);
     void RequestFromSharedCache(TAutoPtr<NPageCollection::TFetch> fetch,
@@ -589,7 +590,7 @@ class TExecutor
 
     ui64 OwnerTabletId() const override;
     const NTable::TScheme& DatabaseScheme() override;
-    TIntrusiveConstPtr<NTable::TRowScheme> RowScheme(ui32 table) override;
+    TIntrusiveConstPtr<NTable::TRowScheme> RowScheme(ui32 table) const override;
     const NTable::TScheme::TTableInfo* TableScheme(ui32 table) override;
     ui64 TableMemSize(ui32 table, NTable::TEpoch epoch) override;
     NTable::TPartView TablePart(ui32 table, const TLogoBlobID& label) override;
@@ -650,6 +651,8 @@ public:
     bool CancelScan(ui32 tableId, ui64 taskId) override;
 
     TFinishedCompactionInfo GetFinishedCompactionInfo(ui32 tableId) const override;
+    bool HasSchemaChanges(ui32 table) const override;
+    bool HasSchemaChanges(const NTable::TPartView& partView, const NTable::TScheme::TTableInfo& tableInfo, const NTable::TRowScheme& rowScheme) const;
     ui64 CompactBorrowed(ui32 tableId) override;
     ui64 CompactMemTable(ui32 tableId) override;
     ui64 CompactTable(ui32 tableId) override;
@@ -686,6 +689,8 @@ public:
     NMetrics::TResourceMetrics* GetResourceMetrics() const override;
 
     void RegisterExternalTabletCounters(TAutoPtr<TTabletCountersBase> appCounters) override;
+
+    virtual void SetPreloadTablesData(THashSet<ui32> tables) override;
 
     static constexpr NKikimrServices::TActivity::EType ActorActivityType() {
         return NKikimrServices::TActivity::FLAT_EXECUTOR;

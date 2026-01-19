@@ -5,6 +5,7 @@
 #include <contrib/ydb/core/persqueue/actor_persqueue_client_iface.h>
 #include <contrib/ydb/core/protos/auth.pb.h>
 #include <contrib/ydb/core/base/grpc_service_factory.h>
+#include <contrib/ydb/core/security/ticket_parser_settings.h>
 
 #include <contrib/ydb/core/ymq/actor/auth_factory.h>
 #include <contrib/ydb/core/http_proxy/auth_factory.h>
@@ -40,7 +41,7 @@ struct TModuleFactories {
     // Factory for Simple queue services implementation details
     std::shared_ptr<NSQS::IEventsWriterFactory> SqsEventsWriterFactory;
 
-    IActor*(*CreateTicketParser)(const NKikimrProto::TAuthConfig&);
+    IActor*(*CreateTicketParser)(const TTicketParserSettings&);
     IActor*(*FolderServiceFactory)(const NKikimrProto::NFolderService::TFolderServiceConfig&);
 
     // Factory for grpc services
@@ -56,7 +57,7 @@ struct TModuleFactories {
     std::shared_ptr<NHttpProxy::IAuthFactory> DataStreamsAuthFactory;
     std::vector<NKikimr::NMiniKQL::TComputationNodeFactory> AdditionalComputationNodeFactories;
 
-    std::unique_ptr<NWilson::IGrpcSigner>(*WilsonGrpcSignerFactory)(const NKikimrConfig::TTracingConfig::TAuthConfig&);
+    std::unique_ptr<NWilson::IGrpcSigner>(*WilsonGrpcSignerFactory)(const NKikimrConfig::TTracingConfig::TBackendConfig::TAuthConfig&);
 
     ~TModuleFactories();
 };

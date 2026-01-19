@@ -16,8 +16,10 @@
 #include <contrib/ydb/core/protos/blob_depot.pb.h>
 #include <contrib/ydb/core/protos/counters_blob_depot.pb.h>
 #include <contrib/ydb/core/util/format.h>
+#include <contrib/ydb/core/util/gen_step.h>
 #include <contrib/ydb/core/util/stlog.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
+#include <library/cpp/json/json_writer.h>
 
 #include <util/generic/va_args.h>

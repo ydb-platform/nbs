@@ -525,6 +525,14 @@ TAsyncDescribeTableResult TTableClient::TImpl::DescribeTable(const TString& sess
         request.set_include_partition_stats(true);
     }
 
+    if (settings.WithSetVal_) {
+        request.set_include_set_val(true);
+    }
+
+    if (settings.WithShardNodesInfo_) {
+        request.set_include_shard_nodes_info(true);
+    }
+
     auto promise = NewPromise<TDescribeTableResult>();
 
     auto extractor = [promise, settings]
@@ -786,6 +794,13 @@ NThreading::TFuture<std::pair<TPlainStatus, TTableClient::TImpl::TReadTableStrea
         request.set_batch_limit_rows(*settings.BatchLimitRows_);
     }
 
+    if (settings.ReturnNotNullAsOptional_) {
+        request.set_return_not_null_data_as_optional(
+            settings.ReturnNotNullAsOptional_.GetRef()
+            ? Ydb::FeatureFlag::ENABLED
+            : Ydb::FeatureFlag::DISABLED);
+    }
+
     auto promise = NewPromise<std::pair<TPlainStatus, TReadTableStreamProcessorPtr>>();
 
     Connections_->StartReadStream<Ydb::Table::V1::TableService, Ydb::Table::ReadTableRequest, Ydb::Table::ReadTableResponse>(
@@ -923,7 +938,7 @@ TAsyncBulkUpsertResult TTableClient::TImpl::BulkUpsert(const TString& table, TVa
     auto request = MakeOperationRequest<Ydb::Table::BulkUpsertRequest>(settings);
     request.set_table(table);
     *request.mutable_rows()->mutable_type() = TProtoAccessor::GetProto(rows.GetType());
-    *request.mutable_rows()->mutable_value() = std::move(rows.GetProto());
+    *request.mutable_rows()->mutable_value() = rows.GetProto();
 
     auto promise = NewPromise<TBulkUpsertResult>();
 

@@ -1,4 +1,5 @@
 #include "datashard_impl.h"
+#include "datashard_locks_db.h"
 #include "datashard_pipeline.h"
 #include "execution_unit_ctors.h"
 
@@ -55,7 +56,7 @@ public:
                 const TSnapshotKey key(pathId, snapshot.GetStep(), snapshot.GetTxId());
                 DataShard.GetSnapshotManager().RemoveSnapshot(txc.DB, key);
             } else {
-                Y_DEBUG_ABORT_UNLESS(false, "Absent snapshot");
+                Y_DEBUG_ABORT("Absent snapshot");
             }
 
             if (const auto heartbeatInterval = TDuration::MilliSeconds(streamDesc.GetResolvedTimestampsIntervalMs())) {
@@ -69,7 +70,8 @@ public:
         }
 
         Y_ABORT_UNLESS(tableInfo);
-        DataShard.AddUserTable(pathId, tableInfo);
+        TDataShardLocksDb locksDb(DataShard, txc);
+        DataShard.AddUserTable(pathId, tableInfo, &locksDb);
 
         if (tableInfo->NeedSchemaSnapshots()) {
             DataShard.AddSchemaSnapshot(pathId, version, op->GetStep(), op->GetTxId(), txc, ctx);

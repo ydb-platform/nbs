@@ -7,16 +7,19 @@ LIBRARY()
 PEERDIR(
     contrib/libs/apache/arrow
     contrib/ydb/core/scheme
+    contrib/ydb/core/formats/arrow/accessor
     contrib/ydb/core/formats/arrow/serializer
-    contrib/ydb/core/formats/arrow/simple_builder
     contrib/ydb/core/formats/arrow/dictionary
     contrib/ydb/core/formats/arrow/transformer
     contrib/ydb/core/formats/arrow/reader
+    contrib/ydb/core/formats/arrow/save_load
+    contrib/ydb/core/formats/arrow/splitter
     contrib/ydb/core/formats/arrow/hash
     contrib/ydb/library/actors/core
     contrib/ydb/library/arrow_kernels
     contrib/ydb/library/binary_json
     contrib/ydb/library/dynumber
+    contrib/ydb/library/formats/arrow
     contrib/ydb/library/services
     contrib/ydb/library/yql/core/arrow_kernels/request
 )
@@ -44,18 +47,12 @@ SRCS(
     converter.cpp
     converter.h
     custom_registry.cpp
-    input_stream.h
-    merging_sorted_input_stream.cpp
-    merging_sorted_input_stream.h
-    one_batch_input_stream.h
     permutations.cpp
     program.cpp
-    replace_key.cpp
     size_calcer.cpp
-    sort_cursor.h
     ssa_program_optimizer.cpp
     special_keys.cpp
-    simple_arrays_cache.cpp
+    process_columns.cpp
 )
 
 END()

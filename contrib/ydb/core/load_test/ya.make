@@ -11,11 +11,14 @@ PEERDIR(
     contrib/ydb/core/blobstorage/pdisk
     contrib/ydb/core/control
     contrib/ydb/core/keyvalue
+    contrib/ydb/core/jaeger_tracing
     contrib/ydb/core/kqp/common
     contrib/ydb/core/kqp/rm_service
     contrib/ydb/core/tx/columnshard
     contrib/ydb/core/tx/datashard
-    contrib/ydb/library/workload
+    contrib/ydb/library/workload/abstract
+    contrib/ydb/library/workload/kv
+    contrib/ydb/library/workload/stock
     contrib/ydb/public/lib/base
     contrib/ydb/public/lib/operation_id
     contrib/ydb/public/sdk/cpp/client/ydb_proto

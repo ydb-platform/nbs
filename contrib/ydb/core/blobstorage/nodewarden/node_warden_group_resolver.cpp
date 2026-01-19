@@ -258,7 +258,7 @@ namespace NKikimr::NStorage {
             if (auto *result = GetResultingGroupInfo()) {
                 STLOG(PRI_INFO, BS_NODE, NW86, "TGroupResolverActor::ProcessResultAndFinish", (GroupId, GroupId),
                     (Result, *result));
-                Send(MakeBlobStorageNodeWardenID(SelfId().NodeId()), new TEvBlobStorage::TEvUpdateGroupInfo(GroupId,
+                Send(MakeBlobStorageNodeWardenID(SelfId().NodeId()), new TEvBlobStorage::TEvUpdateGroupInfo(TGroupId::FromValue(GroupId),
                     result->GetGroupGeneration(), *result));
                 PassAway();
             } else { // restart from the beginning
@@ -336,11 +336,11 @@ namespace NKikimr::NStorage {
         if (const auto it = Groups.find(r.GetGroupId()); it != Groups.end() && it->second.Group) {
             record.MutableGroup()->CopyFrom(*it->second.Group);
         }
-        THashSet<ui32> groupsAdded;
+        THashSet<TGroupId> groupsAdded;
         for (const auto& [key, value] : LocalVDisks) {
             if (const auto& r = value.RuntimeData; r && !r->DonorMode) {
                 if (const auto& groupId = r->GroupInfo->GroupID; groupsAdded.insert(groupId).second) {
-                    record.AddStartedGroupIds(groupId);
+                    record.AddStartedGroupIds(groupId.GetRawId());
                 }
             }
         }

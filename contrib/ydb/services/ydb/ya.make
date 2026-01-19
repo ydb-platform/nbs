@@ -11,6 +11,7 @@ SRCS(
     ydb_scheme.cpp
     ydb_scripting.cpp
     ydb_table.cpp
+    ydb_object_storage.cpp
 )
 
 PEERDIR(
@@ -21,7 +22,7 @@ PEERDIR(
     contrib/ydb/core/formats
     contrib/ydb/core/grpc_services
     contrib/ydb/core/grpc_services/base
-    contrib/ydb/core/grpc_services/auth_processor
+    contrib/ydb/core/security
     contrib/ydb/core/grpc_streaming
     contrib/ydb/core/protos
     contrib/ydb/core/scheme
@@ -36,7 +37,7 @@ PEERDIR(
 END()
 
 RECURSE_FOR_TESTS(
-    sdk_credprovider_ut
+    backup_ut
     sdk_sessions_ut
     sdk_sessions_pool_ut
     table_split_ut

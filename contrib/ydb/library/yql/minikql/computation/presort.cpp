@@ -71,9 +71,17 @@ Y_FORCE_INLINE
     WriteUnaligned<ui16>(output.end() - sizeof(ui16), SwapBytes(tzId));
 }
 
+template <typename TSigned, bool Desc>
+Y_FORCE_INLINE
+void EncodeTzSigned(TVector<ui8>& output, TSigned value, ui16 tzId) {
+    using TUnsigned = std::make_unsigned_t<TSigned>;
+    auto unsignedValue = static_cast<TUnsigned>(value) ^ (TUnsigned(1) << (8 * sizeof(TUnsigned) - 1));
+    EncodeTzUnsigned<TUnsigned, Desc>(output, unsignedValue, tzId);
+}
+
 template <typename TUnsigned, bool Desc>
 Y_FORCE_INLINE
-    void DecodeTzUnsigned(TStringBuf& input, TUnsigned& value, ui16& tzId) {
+void DecodeTzUnsigned(TStringBuf& input, TUnsigned& value, ui16& tzId) {
     constexpr size_t size = sizeof(TUnsigned);
 
     EnsureInputSize(input, size + sizeof(ui16));
@@ -89,6 +97,15 @@ Y_FORCE_INLINE
         value = SwapBytes(v);
         tzId = SwapBytes(t);
     }
+}
+
+template <typename TSigned, bool Desc>
+Y_FORCE_INLINE
+void DecodeTzSigned(TStringBuf& input, TSigned& value, ui16& tzId) {
+    using TUnsigned = std::make_unsigned_t<TSigned>;
+    TUnsigned unsignedValue;
+    DecodeTzUnsigned<TUnsigned, Desc>(input, unsignedValue, tzId);
+    value = TSigned(unsignedValue ^ (TUnsigned(1) << (8 * sizeof(TUnsigned) - 1)));
 }
 
 constexpr size_t DecimalSize = sizeof(NYql::NDecimal::TInt128);
@@ -132,6 +149,7 @@ void Encode(TVector<ui8>& output, NUdf::EDataSlot slot, const NUdf::TUnboxedValu
         EncodeUnsigned<ui16, Desc>(output, value.Get<ui16>());
         break;
     case NUdf::EDataSlot::Int32:
+    case NUdf::EDataSlot::Date32:
         EncodeSigned<i32, Desc>(output, value.Get<i32>());
         break;
     case NUdf::EDataSlot::Uint32:
@@ -140,6 +158,9 @@ void Encode(TVector<ui8>& output, NUdf::EDataSlot slot, const NUdf::TUnboxedValu
         break;
     case NUdf::EDataSlot::Int64:
     case NUdf::EDataSlot::Interval:
+    case NUdf::EDataSlot::Interval64:
+    case NUdf::EDataSlot::Datetime64:
+    case NUdf::EDataSlot::Timestamp64:
         EncodeSigned<i64, Desc>(output, value.Get<i64>());
         break;
     case NUdf::EDataSlot::Uint64:
@@ -174,6 +195,15 @@ void Encode(TVector<ui8>& output, NUdf::EDataSlot slot, const NUdf::TUnboxedValu
     case NUdf::EDataSlot::Decimal:
         EncodeDecimal<Desc>(output, value.GetInt128());
         break;
+    case NUdf::EDataSlot::TzDate32:
+        EncodeTzSigned<i32, Desc>(output, value.Get<i32>(), value.GetTimezoneId());
+        break;
+    case NUdf::EDataSlot::TzDatetime64:
+        EncodeTzSigned<i64, Desc>(output, value.Get<i64>(), value.GetTimezoneId());
+        break;
+    case NUdf::EDataSlot::TzTimestamp64:
+        EncodeTzSigned<i64, Desc>(output, value.Get<i64>(), value.GetTimezoneId());
+        break;
 
     default:
         MKQL_ENSURE(false, TStringBuilder() << "unknown data slot for presort encoding: " << slot);
@@ -203,6 +233,7 @@ NUdf::TUnboxedValue Decode(TStringBuf& input, NUdf::EDataSlot slot, TVector<ui8>
         return NUdf::TUnboxedValuePod(DecodeUnsigned<ui16, Desc>(input));
 
     case NUdf::EDataSlot::Int32:
+    case NUdf::EDataSlot::Date32:
         return NUdf::TUnboxedValuePod(DecodeSigned<i32, Desc>(input));
 
     case NUdf::EDataSlot::Uint32:
@@ -211,6 +242,9 @@ NUdf::TUnboxedValue Decode(TStringBuf& input, NUdf::EDataSlot slot, TVector<ui8>
 
     case NUdf::EDataSlot::Int64:
     case NUdf::EDataSlot::Interval:
+    case NUdf::EDataSlot::Interval64:
+    case NUdf::EDataSlot::Datetime64:
+    case NUdf::EDataSlot::Timestamp64:
         return NUdf::TUnboxedValuePod(DecodeSigned<i64, Desc>(input));
 
     case NUdf::EDataSlot::Uint64:
@@ -259,7 +293,30 @@ NUdf::TUnboxedValue Decode(TStringBuf& input, NUdf::EDataSlot slot, TVector<ui8>
     }
     case NUdf::EDataSlot::Decimal:
         return NUdf::TUnboxedValuePod(DecodeDecimal<Desc>(input));
-
+    case NUdf::EDataSlot::TzDate32: {
+        i32 date;
+        ui16 tzId;
+        DecodeTzSigned<i32, Desc>(input, date, tzId);
+        NUdf::TUnboxedValuePod value(date);
+        value.SetTimezoneId(tzId);
+        return value;
+    }
+    case NUdf::EDataSlot::TzDatetime64: {
+        i64 datetime;
+        ui16 tzId;
+        DecodeTzSigned<i64, Desc>(input, datetime, tzId);
+        NUdf::TUnboxedValuePod value(datetime);
+        value.SetTimezoneId(tzId);
+        return value;
+    }
+    case NUdf::EDataSlot::TzTimestamp64: {
+        i64 timestamp;
+        ui16 tzId;
+        DecodeTzSigned<i64, Desc>(input, timestamp, tzId);
+        NUdf::TUnboxedValuePod value(timestamp);
+        value.SetTimezoneId(tzId);
+        return value;
+    }
     default:
         MKQL_ENSURE(false, TStringBuilder() << "unknown data slot for presort decoding: " << slot);
     }

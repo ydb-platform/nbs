@@ -1,5 +1,7 @@
 UNITTEST_FOR(contrib/ydb/library/yql/minikql)
 
+TAG(ya:manual)
+
 FORK_SUBTESTS()
 
 IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
@@ -24,6 +26,7 @@ SRCS(
     mkql_string_util_ut.cpp
     mkql_type_builder_ut.cpp
     mkql_type_ops_ut.cpp
+    mkql_unboxed_value_stream_ut.cpp
     pack_num_ut.cpp
     watermark_tracker_ut.cpp
 )

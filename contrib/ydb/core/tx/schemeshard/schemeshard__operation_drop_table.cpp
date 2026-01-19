@@ -38,7 +38,7 @@ void DropPath(NIceDb::TNiceDb& db,
     const auto isBackupTable = context.SS->IsBackupTable(path->PathId);
 
     auto domainInfo = context.SS->ResolveDomainInfo(path->PathId);
-    domainInfo->DecPathsInside(1, isBackupTable);
+    domainInfo->DecPathsInside(context.SS, 1, isBackupTable);
 
     auto parentDir = path.Parent();
     parentDir->DecAliveChildren(1, isBackupTable);
@@ -595,15 +595,6 @@ public:
 
         for (auto splitTx: table->GetSplitOpsInFlight()) {
             context.OnComplete.Dependence(splitTx.GetTxId(), OperationId.GetTxId());
-        }
-
-        if (table->IsTemporary) {
-            const auto& ownerActorId = table->OwnerActorId;
-            LOG_DEBUG_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
-                    "Processing drop temp table with Name: " << name
-                    << ", WorkingDir: " << parentPathStr
-                    << ", OwnerActorId: " << ownerActorId);
-            context.OnComplete.UpdateTempTablesToDropState(ownerActorId, path.Base()->PathId);
         }
 
         context.OnComplete.ActivateTx(OperationId);

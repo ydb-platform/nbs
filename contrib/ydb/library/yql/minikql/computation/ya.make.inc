@@ -10,6 +10,7 @@ SET(ORIG_SRC_DIR contrib/ydb/library/yql/minikql/computation)
 
 SET(ORIG_SOURCES
     mkql_computation_node_codegen.cpp
+    mkql_simple_codegen.cpp
     mkql_computation_node_graph.cpp
     mkql_computation_node_graph_saveload.cpp
     mkql_computation_node_holders_codegen.cpp
@@ -18,7 +19,6 @@ SET(ORIG_SOURCES
 
 PEERDIR(
     contrib/libs/apache/arrow
-    contrib/ydb/library/actors/util
     library/cpp/enumbitset
     library/cpp/packedtypes
     library/cpp/random_provider
@@ -43,7 +43,9 @@ COPY(
     AUTO
     FROM ${ORIG_SRC_DIR}
     ${ORIG_SOURCES}
-    OUTPUT_INCLUDES ${BINDIR}/contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h
+    OUTPUT_INCLUDES 
+        ${BINDIR}/contrib/ydb/library/yql/minikql/computation/mkql_llvm_base.h
+        ${BINDIR}/contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h
 )
 
 PROVIDES(MINIKQL_COMPUTATION)

@@ -9,6 +9,7 @@
 #include <contrib/ydb/core/base/cputime.h>
 #include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/tx/balance_coverage/balance_coverage_builder.h>
+#include <contrib/ydb/core/protos/kqp.pb.h>
 
 namespace NKikimr {
 namespace NDataShard {
@@ -42,6 +43,34 @@ TPipeline::~TPipeline()
     }
 }
 
+void TPipeline::Reset() {
+    ImmediateOps.clear();
+    ActiveOps.clear();
+    ActivePlannedOps.clear();
+    DataTxCache.clear();
+    DelayedAcks.clear();
+    LastPlannedTx = {0, 0};
+    LastCompleteTx = {0, 0};
+    UtmostCompleteTx = {0, 0};
+    KeepSchemaStep = 0;
+    LastCleanupTime = 0;
+    SchemaTx = nullptr;
+    ExecuteBlockers.clear();
+    CandidateOps.clear();
+    CandidateUnits.clear();
+    NextActiveOp = {};
+    SlowOpProfiles.clear();
+    ActiveStreamingTxs.clear();
+    PredictedPlan.clear();
+    WaitingSchemeOpsOrder.clear();
+    WaitingSchemeOps.clear();
+    WaitingDataTxOps.clear();
+    CommittingOps.Reset();
+    CompletingOps.clear();
+    WaitingDataReadIterators.clear();
+    WaitingReadIteratorsById.clear();
+}
+
 bool TPipeline::Load(NIceDb::TNiceDb& db) {
     using Schema = TDataShard::Schema;
 
@@ -60,7 +89,6 @@ bool TPipeline::Load(NIceDb::TNiceDb& db) {
         return false;
     }
 
-    Config.Validate();
     UtmostCompleteTx = LastCompleteTx;
 
     return true;
@@ -557,8 +585,12 @@ bool TPipeline::LoadTxDetails(TTransactionContext &txc,
 {
     auto it = DataTxCache.find(tx->GetTxId());
     if (it != DataTxCache.end()) {
-        it->second->SetStep(tx->GetStep());
-        tx->FillTxData(it->second);
+        auto baseTx = it->second;
+        Y_ABORT_UNLESS(baseTx->GetType() == TValidatedTx::EType::DataTx, "Wrong tx type in cache");
+        TValidatedDataTx::TPtr dataTx = std::static_pointer_cast<TValidatedDataTx>(baseTx);
+
+        dataTx->SetStep(tx->GetStep());
+        tx->FillTxData(dataTx);
         // Remove tx from cache.
         ForgetTx(tx->GetTxId());
 
@@ -604,6 +636,55 @@ bool TPipeline::LoadTxDetails(TTransactionContext &txc,
                     "LoadTxDetails at " << Self->TabletID() << " loaded tx from db "
                     << tx->GetStep() << ":" << tx->GetTxId() << " keys extracted: "
                     << keysCount);
+    }
+
+    return true;
+}
+
+bool TPipeline::LoadWriteDetails(TTransactionContext& txc, const TActorContext& ctx, TWriteOperation::TPtr writeOp)
+{
+    auto it = DataTxCache.find(writeOp->GetTxId());
+    if (it != DataTxCache.end()) {
+        auto baseTx = it->second;
+        Y_ABORT_UNLESS(baseTx->GetType() == TValidatedTx::EType::WriteTx, "Wrong writeOp type in cache");
+        TValidatedWriteTx::TPtr writeTx = std::static_pointer_cast<TValidatedWriteTx>(baseTx);
+
+        writeOp->FillTxData(writeTx);
+        // Remove writeOp from cache.
+        ForgetTx(writeOp->GetTxId());
+
+        LOG_DEBUG_S(ctx, NKikimrServices::TX_DATASHARD, "LoadWriteDetails at " << Self->TabletID() << " got data writeOp from cache " << writeOp->GetStep() << ":" << writeOp->GetTxId());
+    } else if (writeOp->HasVolatilePrepareFlag()) {
+        // Since transaction is volatile it was never stored on disk, and it
+        // shouldn't have any artifacts yet.
+        writeOp->FillVolatileTxData(Self);
+
+        ui32 keysCount = 0;
+        keysCount = writeOp->ExtractKeys(txc.DB.GetScheme());
+
+        LOG_DEBUG_S(ctx, NKikimrServices::TX_DATASHARD, "LoadWriteDetails at " << Self->TabletID() << " loaded writeOp from memory " << writeOp->GetStep() << ":" << writeOp->GetTxId() << " keys extracted: " << keysCount);
+    } else {
+        NIceDb::TNiceDb db(txc.DB);
+        TActorId target;
+        TString txBody;
+        TVector<TSysTables::TLocksTable::TLock> locks;
+        ui64 artifactFlags = 0;
+        bool ok = Self->TransQueue.LoadTxDetails(db, writeOp->GetTxId(), target, txBody, locks, artifactFlags);
+        if (!ok)
+            return false;
+
+        // Check we have enough memory to parse writeOp.
+        ui64 requiredMem = txBody.size() * 10;
+        if (MaybeRequestMoreTxMemory(requiredMem, txc))
+            return false;
+
+        writeOp->FillTxData(Self, target, txBody, std::move(locks), artifactFlags);
+
+        ui32 keysCount = 0;
+        //if (Config.LimitActiveTx > 1)
+        keysCount = writeOp->ExtractKeys(txc.DB.GetScheme());
+
+        LOG_DEBUG_S(ctx, NKikimrServices::TX_DATASHARD, "LoadWriteDetails at " << Self->TabletID() << " loaded writeOp from db " << writeOp->GetStep() << ":" << writeOp->GetTxId() << " keys extracted: " << keysCount);
     }
 
     return true;
@@ -1140,11 +1221,10 @@ void TPipeline::ProposeTx(TOperation::TPtr op, const TStringBuf &txBody, TTransa
         PreserveSchema(db, op->GetMaxStep());
     }
     Self->TransQueue.ProposeTx(db, op, op->GetTarget(), txBody);
+
     if (Self->IsStopping() && op->GetTarget()) {
         // Send notification if we prepared a tx while shard was stopping
-        auto notify = MakeHolder<TEvDataShard::TEvProposeTransactionRestart>(
-            Self->TabletID(), op->GetTxId());
-        ctx.Send(op->GetTarget(), notify.Release(), 0, op->GetCookie());
+        op->OnStopping(*Self, ctx);
     }
 }
 
@@ -1204,7 +1284,7 @@ ECleanupStatus TPipeline::CleanupOutdated(NIceDb::TNiceDb& db, const TActorConte
 {
     const ui32 OUTDATED_BATCH_SIZE = 100;
     TVector<ui64> outdatedTxs;
-    auto status = Self->TransQueue.CleanupOutdated(db, outdatedStep, OUTDATED_BATCH_SIZE, outdatedTxs, replies);
+    auto status = Self->TransQueue.CleanupOutdated(db, outdatedStep, OUTDATED_BATCH_SIZE, outdatedTxs);
     switch (status) {
         case ECleanupStatus::None:
         case ECleanupStatus::Restart:
@@ -1220,8 +1300,10 @@ ECleanupStatus TPipeline::CleanupOutdated(NIceDb::TNiceDb& db, const TActorConte
     for (ui64 txId : outdatedTxs) {
         auto op = Self->TransQueue.FindTxInFly(txId);
         if (op && !op->IsExecutionPlanFinished()) {
+            op->OnCleanup(*Self, replies);
             GetExecutionUnit(op->GetCurrentUnit()).RemoveOperation(op);
         }
+        Self->TransQueue.RemoveTxInFly(txId, &replies);
 
         ForgetTx(txId);
         LOG_INFO(ctx, NKikimrServices::TX_DATASHARD,
@@ -1237,12 +1319,14 @@ ECleanupStatus TPipeline::CleanupOutdated(NIceDb::TNiceDb& db, const TActorConte
 bool TPipeline::CleanupVolatile(ui64 txId, const TActorContext& ctx,
         std::vector<std::unique_ptr<IEventHandle>>& replies)
 {
-    if (Self->TransQueue.CleanupVolatile(txId, replies)) {
+    if (Self->TransQueue.CleanupVolatile(txId)) {
         auto op = Self->TransQueue.FindTxInFly(txId);
         if (op && !op->IsExecutionPlanFinished()) {
+            op->OnCleanup(*Self, replies);
             GetExecutionUnit(op->GetCurrentUnit()).RemoveOperation(op);
         }
-        
+        Self->TransQueue.RemoveTxInFly(txId, &replies);
+
         ForgetTx(txId);
 
         Self->CheckDelayedProposeQueue(ctx);
@@ -1260,6 +1344,25 @@ bool TPipeline::CleanupVolatile(ui64 txId, const TActorContext& ctx,
     }
 
     return false;
+}
+
+size_t TPipeline::CleanupWaitingVolatile(const TActorContext& ctx, std::vector<std::unique_ptr<IEventHandle>>& replies)
+{
+    std::vector<ui64> cleanupTxs;
+    for (const auto& pr : Self->TransQueue.GetTxsInFly()) {
+        if (pr.second->HasVolatilePrepareFlag() && !pr.second->GetStep()) {
+            cleanupTxs.push_back(pr.first);
+        }
+    }
+
+    size_t cleaned = 0;
+    for (ui64 txId : cleanupTxs) {
+        if (CleanupVolatile(txId, ctx, replies)) {
+            ++cleaned;
+        }
+    }
+
+    return cleaned;
 }
 
 ui64 TPipeline::PlannedTxInFly() const
@@ -1298,16 +1401,19 @@ ui64 TPipeline::GetInactiveTxSize() const {
     return res;
 }
 
-bool TPipeline::SaveForPropose(TValidatedDataTx::TPtr tx) {
-    Y_ABORT_UNLESS(tx && tx->TxId());
-    if (DataTxCache.size() <= Config.LimitDataTxCache) {
-        ui64 quota = tx->GetTxSize() + tx->GetMemoryAllocated();
-        if (Self->TryCaptureTxCache(quota)) {
-            tx->SetTxCacheUsage(quota);
-            DataTxCache[tx->TxId()] = tx;
-            return true;
-        }
+bool TPipeline::SaveForPropose(TValidatedTx::TPtr tx) {
+    Y_ABORT_UNLESS(tx && tx->GetTxId());
+
+    if (DataTxCache.size() >= Config.LimitDataTxCache)
+        return false;
+
+    ui64 quota = tx->GetMemoryConsumption();
+    if (Self->TryCaptureTxCache(quota)) {
+        tx->SetTxCacheUsage(quota);
+        DataTxCache[tx->GetTxId()] = tx;
+        return true;
     }
+
     return false;
 }
 
@@ -1348,7 +1454,8 @@ TOperation::TPtr TPipeline::BuildOperation(TEvDataShard::TEvProposeTransaction::
                       receivedAt,
                       tieBreakerIndex);
     if (rec.HasMvccSnapshot()) {
-        info.SetMvccSnapshot(TRowVersion(rec.GetMvccSnapshot().GetStep(), rec.GetMvccSnapshot().GetTxId()));
+        info.SetMvccSnapshot(TRowVersion(rec.GetMvccSnapshot().GetStep(), rec.GetMvccSnapshot().GetTxId()),
+            rec.GetMvccSnapshot().GetRepeatableRead());
     }
     TActiveTransaction::TPtr tx = MakeIntrusive<TActiveTransaction>(info);
     tx->SetTarget(ev->Sender);
@@ -1589,14 +1696,18 @@ TOperation::TPtr TPipeline::BuildOperation(TEvDataShard::TEvProposeTransaction::
     return tx;
 }
 
-TOperation::TPtr TPipeline::BuildOperation(NEvents::TDataEvents::TEvWrite::TPtr& ev,
+TOperation::TPtr TPipeline::BuildOperation(NEvents::TDataEvents::TEvWrite::TPtr&& ev,
                                            TInstant receivedAt, ui64 tieBreakerIndex,
                                            NTabletFlatExecutor::TTransactionContext& txc,
-                                           const TActorContext& ctx, NWilson::TSpan &&operationSpan)
+                                           NWilson::TSpan &&operationSpan)
 {
     const auto& rec = ev->Get()->Record;
-    TBasicOpInfo info(rec.GetTxId(), EOperationKind::WriteTx, EvWrite::Convertor::GetProposeFlags(rec.GetTxMode()), 0, receivedAt, tieBreakerIndex);
-    auto writeOp = MakeIntrusive<TWriteOperation>(info, ev, Self, txc, ctx);
+    TBasicOpInfo info(rec.GetTxId(), EOperationKind::WriteTx, NEvWrite::TConvertor::GetProposeFlags(rec.GetTxMode()), 0, receivedAt, tieBreakerIndex);
+    if (rec.HasMvccSnapshot()) {
+        info.SetMvccSnapshot(TRowVersion(rec.GetMvccSnapshot().GetStep(), rec.GetMvccSnapshot().GetTxId()),
+            rec.GetMvccSnapshot().GetRepeatableRead());
+    }
+    auto writeOp = MakeIntrusive<TWriteOperation>(info, std::move(ev), Self);
     writeOp->OperationSpan = std::move(operationSpan);
     auto writeTx = writeOp->GetWriteTx();
     Y_ABORT_UNLESS(writeTx);
@@ -1606,12 +1717,23 @@ TOperation::TPtr TPipeline::BuildOperation(NEvents::TDataEvents::TEvWrite::TPtr&
         LOG_ERROR_S(TActivationContext::AsActorContext(), NKikimrServices::TX_DATASHARD, error);
     };
 
-    if (!writeTx->Ready()) {
-        badRequest(EvWrite::Convertor::ConvertErrCode(writeOp->GetWriteTx()->GetErrCode()), TStringBuilder() << "Cannot parse tx " << writeOp->GetTxId() << ". " << writeOp->GetWriteTx()->GetErrCode() << ": " << writeOp->GetWriteTx()->GetErrStr());
+    if (rec.HasMvccSnapshot() && !rec.GetLockTxId()) {
+        badRequest(NKikimrDataEvents::TEvWriteResult::STATUS_BAD_REQUEST,
+            "MvccSnapshot without LockTxId is not implemented");
         return writeOp;
     }
 
-    writeTx->ExtractKeys(true);
+    if (!writeTx->Ready()) {
+        badRequest(NEvWrite::TConvertor::ConvertErrCode(writeOp->GetWriteTx()->GetErrCode()), TStringBuilder() << "Cannot parse tx " << writeOp->GetTxId() << ". " << writeOp->GetWriteTx()->GetErrCode() << ": " << writeOp->GetWriteTx()->GetErrStr());
+        return writeOp;
+    }
+
+    writeTx->ExtractKeys(txc.DB.GetScheme(), true);
+
+    if (!writeTx->Ready()) {
+        badRequest(NEvWrite::TConvertor::ConvertErrCode(writeOp->GetWriteTx()->GetErrCode()), TStringBuilder() << "Cannot parse tx keys " << writeOp->GetTxId() << ". " << writeOp->GetWriteTx()->GetErrCode() << ": " << writeOp->GetWriteTx()->GetErrStr());
+        return writeOp;
+    }
 
     switch (rec.txmode()) {
         case NKikimrDataEvents::TEvWrite::MODE_PREPARE:
@@ -1741,7 +1863,7 @@ EExecutionStatus TPipeline::RunExecutionPlan(TOperation::TPtr op,
             return EExecutionStatus::Reschedule;
         }
 
-        NWilson::TSpan unitSpan(TWilsonTablet::Tablet, txc.TransactionExecutionSpan.GetTraceId(), "Datashard.Unit");
+        NWilson::TSpan unitSpan(TWilsonTablet::TabletDetailed, txc.TransactionExecutionSpan.GetTraceId(), "Datashard.Unit");
         
         NCpuTime::TCpuTimer timer;
         auto status = unit.Execute(op, txc, ctx);
@@ -1922,13 +2044,28 @@ void TPipeline::MaybeActivateWaitingSchemeOps(const TActorContext& ctx) const {
 
 bool TPipeline::CheckInflightLimit() const {
     // check in-flight limit
-    size_t totalInFly =
-        Self->ReadIteratorsInFly() + Self->TxInFly() + Self->ImmediateInFly()
-            + Self->ProposeQueue.Size() + WaitingDataTxOps.size();
-    if (totalInFly > Self->GetMaxTxInFly())
+    size_t totalInFly = (
+        Self->TxInFly() +
+        Self->ImmediateInFly() +
+        Self->ReadIteratorsInFly() +
+        Self->MediatorStateWaitingMsgs.size() +
+        Self->ProposeQueue.Size() +
+        Self->TxWaiting());
+
+    if (totalInFly > Self->GetMaxTxInFly()) {
         return false; // let tx to be rejected
+    }
 
     return true;
+}
+
+TPipeline::TWaitingDataTxOp::TWaitingDataTxOp(TAutoPtr<IEventHandle>&& ev)
+    : Event(std::move(ev))
+{
+    if (Event->TraceId) {
+        Span = NWilson::TSpan(15 /*max verbosity*/, std::move(Event->TraceId), "DataShard.WaitSnapshot");
+        Event->TraceId = Span.GetTraceId();
+    }
 }
 
 bool TPipeline::AddWaitingTxOp(TEvDataShard::TEvProposeTransaction::TPtr& ev, const TActorContext& ctx) {
@@ -1951,11 +2088,22 @@ bool TPipeline::AddWaitingTxOp(TEvDataShard::TEvProposeTransaction::TPtr& ev, co
     return true;
 }
 
-bool TPipeline::AddWaitingTxOp(NEvents::TDataEvents::TEvWrite::TPtr& ev) {
+bool TPipeline::AddWaitingTxOp(NEvents::TDataEvents::TEvWrite::TPtr& ev, const TActorContext& ctx) {
     if (!CheckInflightLimit())
         return false;
 
-    WaitingDataTxOps.emplace(TRowVersion::Min(), IEventHandle::Upcast<NEvents::TDataEvents::TEvWrite>(std::move(ev)));  // postpone tx processing till mvcc state switch is finished
+    if (Self->MvccSwitchState == TSwitchState::SWITCHING) {
+        WaitingDataTxOps.emplace(TRowVersion::Min(), IEventHandle::Upcast<NEvents::TDataEvents::TEvWrite>(std::move(ev)));  // postpone tx processing till mvcc state switch is finished
+    } else {
+        Y_DEBUG_ABORT_UNLESS(ev->Get()->Record.HasMvccSnapshot());
+        TRowVersion snapshot(ev->Get()->Record.GetMvccSnapshot().GetStep(), ev->Get()->Record.GetMvccSnapshot().GetTxId());
+        WaitingDataTxOps.emplace(snapshot, IEventHandle::Upcast<NEvents::TDataEvents::TEvWrite>(std::move(ev)));
+        const ui64 waitStep = snapshot.Step;
+        TRowVersion unreadableEdge;
+        if (!Self->WaitPlanStep(waitStep) && snapshot < (unreadableEdge = GetUnreadableEdge())) {
+            ActivateWaitingTxOps(unreadableEdge, ctx);  // Async MediatorTimeCastEntry update, need to reschedule the op
+        }
+    }
 
     return true;
 }
@@ -1979,7 +2127,8 @@ void TPipeline::ActivateWaitingTxOps(TRowVersion edge, const TActorContext& ctx)
                 minWait = it->first;
                 break;
             }
-            ctx.Send(it->second.Release());
+            it->second.Span.EndOk();
+            ctx.Send(it->second.Event.Release());
             it = WaitingDataTxOps.erase(it);
             activated = true;
         }
@@ -1989,7 +2138,8 @@ void TPipeline::ActivateWaitingTxOps(TRowVersion edge, const TActorContext& ctx)
                 minWait = Min(minWait, it->first);
                 break;
             }
-            ctx.Send(it->second.Release());
+            it->second.Span.EndOk();
+            ctx.Send(it->second.Event.Release());
             it = WaitingDataReadIterators.erase(it);
             activated = true;
         }
@@ -2017,6 +2167,15 @@ void TPipeline::ActivateWaitingTxOps(const TActorContext& ctx) {
     ActivateWaitingTxOps(GetUnreadableEdge(), ctx);
 }
 
+TPipeline::TWaitingReadIterator::TWaitingReadIterator(TEvDataShard::TEvRead::TPtr&& ev)
+    : Event(std::move(ev))
+{
+    if (Event->TraceId) {
+        Span = NWilson::TSpan(15 /*max verbosity*/, std::move(Event->TraceId), "DataShard.Read.WaitSnapshot");
+        Event->TraceId = Span.GetTraceId();
+    }
+}
+
 void TPipeline::AddWaitingReadIterator(
     const TRowVersion& version,
     TEvDataShard::TEvRead::TPtr ev,
@@ -2027,7 +2186,7 @@ void TPipeline::AddWaitingReadIterator(
 
     if (Y_UNLIKELY(Self->MvccSwitchState == TSwitchState::SWITCHING)) {
         // postpone tx processing till mvcc state switch is finished
-        WaitingDataReadIterators.emplace(TRowVersion::Min(), ev);
+        WaitingDataReadIterators.emplace(TRowVersion::Min(), std::move(ev));
         return;
     }
 
@@ -2116,11 +2275,7 @@ TRowVersion TPipeline::GetUnreadableEdge() const {
     // generations). Note that we also update CompleteEdge when the distributed
     // queue is empty, but we have been performing immediate writes and thus
     // observing an updated mediator timecast step.
-    const ui64 mediatorStep = Max(
-        Self->MediatorTimeCastEntry ? Self->MediatorTimeCastEntry->Get(Self->TabletID()) : 0,
-        Self->SnapshotManager.GetIncompleteEdge().Step,
-        Self->SnapshotManager.GetCompleteEdge().Step,
-        LastPlannedTx.Step);
+    const ui64 mediatorStep = Self->GetMaxObservedStep();
 
     // Using an observed mediator step we conclude that we have observed all
     // distributed transactions up to the end of that step.
@@ -2158,11 +2313,15 @@ void TPipeline::AddCommittingOp(const TOperation::TPtr& op) {
     if (!Self->IsMvccEnabled() || op->IsReadOnly())
         return;
 
+    Y_VERIFY_S(!op->GetCommittingOpsVersion(),
+        "Trying to AddCommittingOp " << *op << " more than once");
+
     TRowVersion version = Self->GetReadWriteVersions(op.Get()).WriteVersion;
     if (op->IsImmediate())
         CommittingOps.Add(op->GetTxId(), version);
     else
         CommittingOps.Add(version);
+    op->SetCommittingOpsVersion(version);
 }
 
 void TPipeline::RemoveCommittingOp(const TRowVersion& version) {
@@ -2172,13 +2331,13 @@ void TPipeline::RemoveCommittingOp(const TRowVersion& version) {
 }
 
 void TPipeline::RemoveCommittingOp(const TOperation::TPtr& op) {
-    if (!Self->IsMvccEnabled() || op->IsReadOnly())
-        return;
-
-    if (op->IsImmediate())
-        CommittingOps.Remove(op->GetTxId());
-    else
-        CommittingOps.Remove(TRowVersion(op->GetStep(), op->GetTxId()));
+    if (const auto& version = op->GetCommittingOpsVersion()) {
+        if (op->IsImmediate())
+            CommittingOps.Remove(op->GetTxId(), *version);
+        else
+            CommittingOps.Remove(*version);
+        op->ResetCommittingOpsVersion();
+    }
 }
 
 bool TPipeline::WaitCompletion(const TOperation::TPtr& op) const {

@@ -1,5 +1,6 @@
 #include "schema.h"
 #include <contrib/ydb/library/accessor/validator.h>
+#include <contrib/ydb/core/tx/columnshard/blobs_action/common/const.h>
 
 namespace NKikimr::NSchemeShard {
 

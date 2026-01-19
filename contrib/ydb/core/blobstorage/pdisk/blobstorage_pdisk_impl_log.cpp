@@ -19,23 +19,32 @@ public:
         : EndChunkIdx(endChunkIdx)
         , EndSectorIdx(endSectorIdx)
         , CommonLogger(commonLogger)
-        , CompletionLogWrite(completionLogWrite) { }
+        , CompletionLogWrite(completionLogWrite)
+    {
+        TCompletionAction::ShouldBeExecutedInCompletionThread = false;
+        Orbit = std::move(completionLogWrite->Orbit);
+    }
+
+    void SetUpCompletionLogWrite() {
+        CompletionLogWrite->SubmitTime = SubmitTime;
+        CompletionLogWrite->GetTime = GetTime;
+        CompletionLogWrite->SetResult(Result);
+        CompletionLogWrite->SetErrorReason(ErrorReason);
+        CompletionLogWrite->Orbit = std::move(Orbit);
+    }
 
     void Exec(TActorSystem *actorSystem) override {
         CommonLogger->FirstUncommitted = TFirstUncommitted(EndChunkIdx, EndSectorIdx);
-        
-        CompletionLogWrite->SetResult(Result);
-        CompletionLogWrite->SetErrorReason(ErrorReason);
+
+        SetUpCompletionLogWrite();
         CompletionLogWrite->Exec(actorSystem);
 
         delete this;
     }
 
     void Release(TActorSystem *actorSystem) override {
-        CompletionLogWrite->SetResult(Result);
-        CompletionLogWrite->SetErrorReason(ErrorReason);
+        SetUpCompletionLogWrite();
         CompletionLogWrite->Release(actorSystem);
-
         delete this;
     }
 };
@@ -57,8 +66,8 @@ bool TPDisk::InitCommonLogger() {
     ui64 sectorIdx = (InitialLogPosition.OffsetInChunk + Format.SectorSize - 1) / Format.SectorSize;
 
     TLogChunkInfo *info = &*std::find_if(LogChunks.begin(), LogChunks.end(), [=](const TLogChunkInfo& i) {
-            return i.ChunkIdx == chunkIdx;
-        });
+        return i.ChunkIdx == chunkIdx;
+    });
 
     if (sectorIdx >= UsableSectorsPerLogChunk() && InitialTailBuffer) {
         InitialTailBuffer->Release(ActorSystem);
@@ -75,7 +84,7 @@ bool TPDisk::InitCommonLogger() {
         }
         CommonLogger->SwitchToNewChunk(TReqId(TReqId::InitCommonLoggerSwitchToNewChunk, 0), nullptr);
 
-        // Log chunk can be collected as soon as noone needs it
+        // Log chunk can be collected as soon as no one needs it
         ChunkState[chunkIdx].CommitState = TChunkState::DATA_COMMITTED;
     }
     bool isOk = LogNonceJump(InitialPreviousNonce);
@@ -147,7 +156,7 @@ void TPDisk::PrintLogChunksInfo(const TString& msg) {
         return str.Str();
     };
 
-    LOG_NOTICE_S(*ActorSystem, NKikimrServices::BS_PDISK_TEST, debugPrint());
+    LOG_DEBUG_S(*ActorSystem, NKikimrServices::BS_PDISK_TEST, debugPrint());
 }
 
 bool TPDisk::LogNonceJump(ui64 previousNonce) {
@@ -466,6 +475,28 @@ bool TPDisk::ProcessChunk0(const NPDisk::TEvReadLogResult &readLogResult, TStrin
     return true;
 }
 
+static void PrintCondensedChunksList(TStringStream& str, const std::vector<ui32>& chunks) {
+    str << " [";
+    bool first = true;
+    std::optional<TChunkIdx> begin;
+    for (size_t i = 0; i < chunks.size(); ++i) {
+        if (!begin) {
+            begin = chunks[i];
+        }
+        if (i + 1 < chunks.size() && chunks[i] + 1 == chunks[i + 1]) {
+            continue;
+        }
+        str << (std::exchange(first, false) ? "" : " ");
+        if (*begin == chunks[i]) {
+            str << chunks[i];
+        } else {
+            str << *begin << "-" << chunks[i];
+        }
+        begin.reset();
+    }
+    str << "];";
+}
+
 void TPDisk::PrintChunksDebugInfo() {
     auto print = [&] () {
         std::map<TOwner, std::vector<ui32>> ownerToChunks;
@@ -479,17 +510,13 @@ void TPDisk::PrintChunksDebugInfo() {
         str << "PDiskId# " << PDiskId << " PrintChunksDebugInfo; ";
         for (auto& [owner, chunks] : ownerToChunks) {
             std::sort(chunks.begin(), chunks.end());
-            str << " Owner# " << owner << " [";
-            bool first = true;
-            for (auto idx : chunks) {
-                str << (std::exchange(first, false) ? "" : " ") << idx;
-            }
-            str << "];";
+            str << " Owner# " << owner;
+            PrintCondensedChunksList(str, chunks);
         }
         return str.Str();
     };
 
-    LOG_INFO_S(*ActorSystem, NKikimrServices::BS_PDISK, print());
+    LOG_DEBUG_S(*ActorSystem, NKikimrServices::BS_PDISK, print());
 }
 
 TRcBuf TPDisk::ProcessReadSysLogResult(ui64 &outWritePosition, ui64 &outLsn,
@@ -535,7 +562,7 @@ void TPDisk::ReadAndParseMainLog(const TActorId &pDiskActor) {
 void TPDisk::ProcessLogReadQueue() {
     for (auto& req : JointLogReads) {
         req->SpanStack.PopOk();
-        req->SpanStack.Push(TWilson::PDisk, "PDisk.InBlockDevice", NWilson::EFlags::AUTO_END);
+        req->SpanStack.Push(TWilson::PDiskDetailed, "PDisk.InBlockDevice", NWilson::EFlags::AUTO_END);
         switch (req->GetType()) {
         case ERequestType::RequestLogRead:
         {
@@ -570,14 +597,19 @@ void TPDisk::ProcessLogReadQueue() {
             ui32 endLogChunkIdx;
             ui64 endLogSectorIdx;
 
-            TOwnerData::TLogEndPosition &logEndPos = ownerData.LogEndPosition;
-            if (logEndPos.ChunkIdx == 0 && logEndPos.SectorIdx == 0) {
-                TFirstUncommitted firstUncommitted = CommonLogger->FirstUncommitted.load();
-                endLogChunkIdx = firstUncommitted.ChunkIdx;
-                endLogSectorIdx = firstUncommitted.SectorIdx;
+            if (Cfg->ReadOnly) {
+                endLogChunkIdx = LastInitialChunkIdx;
+                endLogSectorIdx = LastInitialSectorIdx;
             } else {
-                endLogChunkIdx = logEndPos.ChunkIdx;
-                endLogSectorIdx = logEndPos.SectorIdx;
+                TOwnerData::TLogEndPosition &logEndPos = ownerData.LogEndPosition;
+                if (logEndPos.ChunkIdx == 0 && logEndPos.SectorIdx == 0) {
+                    TFirstUncommitted firstUncommitted = CommonLogger->FirstUncommitted.load();
+                    endLogChunkIdx = firstUncommitted.ChunkIdx;
+                    endLogSectorIdx = firstUncommitted.SectorIdx;
+                } else {
+                    endLogChunkIdx = logEndPos.ChunkIdx;
+                    endLogSectorIdx = logEndPos.SectorIdx;
+                }
             }
 
             ownerData.LogReader = new TLogReader(false,
@@ -593,11 +625,11 @@ void TPDisk::ProcessLogReadQueue() {
         case ERequestType::RequestLogReadContinue:
         {
             TLogReadContinue *read = static_cast<TLogReadContinue*>(req);
-            read->CompletionAction->CostNs = DriveModel.TimeForSizeNs(read->Size, read->Offset / Format.ChunkSize,
-                    TDriveModel::OP_TYPE_READ);
-            auto traceId = read->SpanStack.GetTraceId();
-            BlockDevice->PreadAsync(read->Data, read->Size, read->Offset, read->CompletionAction,
-                    read->ReqId, &traceId); // ??? TraceId
+            if (auto ptr = read->CompletionAction.lock()) {
+                ptr->CostNs = DriveModel.TimeForSizeNs(read->Size, read->Offset / Format.ChunkSize, TDriveModel::OP_TYPE_READ);
+                auto traceId = read->SpanStack.GetTraceId();
+                BlockDevice->PreadAsync(read->Data, read->Size, read->Offset, ptr.get(), read->ReqId, &traceId); // ??? TraceId
+            }
             break;
         }
         case ERequestType::RequestLogSectorRestore:
@@ -736,7 +768,7 @@ void TPDisk::ProcessLogWriteQueueAndCommits() {
         TStringStream errorReason;
         NKikimrProto::EReplyStatus status = ValidateRequest(logWrite, errorReason);
         if (status == NKikimrProto::OK) {
-            logWrite->SpanStack.Push(TWilson::PDisk, "PDisk.InBlockDevice", NWilson::EFlags::AUTO_END);
+            logWrite->SpanStack.Push(TWilson::PDiskDetailed, "PDisk.InBlockDevice", NWilson::EFlags::AUTO_END);
             LogWrite(*logWrite, logChunksToCommit);
             logWrite->ScheduleTime = HPNow();
             if (auto logWriteTraceId = logWrite->SpanStack.GetTraceId()) {
@@ -882,8 +914,8 @@ void TPDisk::LogWrite(TLogWrite &evLog, TVector<ui32> &logChunksToCommit) {
         LOG_ERROR(*ActorSystem, NKikimrServices::BS_PDISK, "%s", str.Str().c_str());
         evLog.Result.Reset(new NPDisk::TEvLogResult(NKikimrProto::OUT_OF_SPACE,
                     NotEnoughDiskSpaceStatusFlags(evLog.Owner, evLog.OwnerGroupType), str.Str()));
-        evLog.Result->Results.push_back(NPDisk::TEvLogResult::TRecord(evLog.Lsn, evLog.Cookie));
         Y_ABORT_UNLESS(evLog.Result.Get());
+        evLog.Result->Results.push_back(NPDisk::TEvLogResult::TRecord(evLog.Lsn, evLog.Cookie));
         return;
     }
     if (!CommonLogger->NextChunks.empty()) {
@@ -946,8 +978,7 @@ void TPDisk::LogWrite(TLogWrite &evLog, TVector<ui32> &logChunksToCommit) {
     }
     Y_ABORT_UNLESS(CommonLogger->NextChunks.empty());
 
-    evLog.Result.Reset(new NPDisk::TEvLogResult(NKikimrProto::OK,
-                GetStatusFlags(evLog.Owner, evLog.OwnerGroupType), nullptr));
+    evLog.Result.Reset(new NPDisk::TEvLogResult(NKikimrProto::OK, GetStatusFlags(OwnerSystem, evLog.OwnerGroupType), nullptr));
     Y_ABORT_UNLESS(evLog.Result.Get());
     evLog.Result->Results.push_back(NPDisk::TEvLogResult::TRecord(evLog.Lsn, evLog.Cookie));
 }
@@ -1282,7 +1313,7 @@ void TPDisk::MarkChunksAsReleased(TReleaseChunks& req) {
     }
 
     if (req.IsChunksFromLogSplice) {
-        auto *releaseReq = ReqCreator.CreateFromArgs<TReleaseChunks>(std::move(req.ChunksToRelease), req.SpanStack.CreateChild(TWilson::PDisk, "PDisk.ReleaseChunks"));
+        auto *releaseReq = ReqCreator.CreateFromArgs<TReleaseChunks>(std::move(req.ChunksToRelease), req.SpanStack.CreateChild(TWilson::PDiskTopLevel, "PDisk.ReleaseChunks"));
 
         auto flushAction = MakeHolder<TCompletionEventSender>(this, THolder<TReleaseChunks>(releaseReq));
 
@@ -1390,6 +1421,10 @@ void TPDisk::ProcessReadLogResult(const NPDisk::TEvReadLogResult &evReadLogResul
                             "Error while parsing common log at booting state"));
                 return;
             }
+
+            LastInitialChunkIdx = evReadLogResult.LastGoodChunkIdx;
+            LastInitialSectorIdx = evReadLogResult.LastGoodSectorIdx;
+
             // Prepare the FreeChunks list
             InitFreeChunks();
             // Actualize LogChunks counters according to OwnerData
@@ -1450,6 +1485,7 @@ void TPDisk::ProcessReadLogResult(const NPDisk::TEvReadLogResult &evReadLogResul
                 }
                 params.CommonLogSize = LogChunks.size();
                 params.SpaceColorBorder = Cfg->SpaceColorBorder;
+                params.ChunkBaseLimit = Cfg->ChunkBaseLimit;
                 for (ui32 ownerId = OwnerBeginUser; ownerId < OwnerEndUser; ++ownerId) {
                     if (OwnerData[ownerId].VDiskId != TVDiskID::InvalidId) {
                         params.OwnersInfo[ownerId] = {usedForOwner[ownerId], OwnerData[ownerId].VDiskId};
@@ -1482,13 +1518,17 @@ void TPDisk::ProcessReadLogResult(const NPDisk::TEvReadLogResult &evReadLogResul
             InitSysLogger();
 
             InitPhase = EInitPhase::Initialized;
-            if (!InitCommonLogger()) {
-                // TODO: report red zone
-                *Mon.PDiskState = NKikimrBlobStorage::TPDiskState::CommonLoggerInitError;
-                *Mon.PDiskBriefState = TPDiskMon::TPDisk::Error;
-                *Mon.PDiskDetailedState = TPDiskMon::TPDisk::ErrorCommonLoggerInit;
-                ActorSystem->Send(pDiskActor, new TEvLogInitResult(false, "Error in common logger init"));
-                return;
+
+            if (!Cfg->ReadOnly) {
+                // We don't need logger in ReadOnly mode.
+                if (!InitCommonLogger()) {
+                    // TODO: report red zone
+                    *Mon.PDiskState = NKikimrBlobStorage::TPDiskState::CommonLoggerInitError;
+                    *Mon.PDiskBriefState = TPDiskMon::TPDisk::Error;
+                    *Mon.PDiskDetailedState = TPDiskMon::TPDisk::ErrorCommonLoggerInit;
+                    ActorSystem->Send(pDiskActor, new TEvLogInitResult(false, "Error in common logger init"));
+                    return;
+                }
             }
 
             // Now it's ok to write both logs and data.
@@ -1496,9 +1536,13 @@ void TPDisk::ProcessReadLogResult(const NPDisk::TEvReadLogResult &evReadLogResul
             *Mon.PDiskBriefState = TPDiskMon::TPDisk::OK;
             *Mon.PDiskDetailedState = TPDiskMon::TPDisk::EverythingIsOk;
 
-            auto completion = MakeHolder<TCompletionEventSender>(this, pDiskActor, new TEvLogInitResult(true, "OK"));
-            ReleaseUnusedLogChunks(completion.Get());
-            WriteSysLogRestorePoint(completion.Release(), TReqId(TReqId::AfterInitCommonLoggerSysLog, 0), {});
+            if (Cfg->ReadOnly) {
+                ActorSystem->Send(pDiskActor, new TEvLogInitResult(true, "OK"));
+            } else {
+                auto completion = MakeHolder<TCompletionEventSender>(this, pDiskActor, new TEvLogInitResult(true, "OK"));
+                ReleaseUnusedLogChunks(completion.Get());
+                WriteSysLogRestorePoint(completion.Release(), TReqId(TReqId::AfterInitCommonLoggerSysLog, 0), {});
+            }
 
             // Output the fully initialized state for each owner and each chunk.
             LOG_NOTICE_S(*ActorSystem, NKikimrServices::BS_PDISK, "PDiskId# " << PDiskId

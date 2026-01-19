@@ -2,8 +2,10 @@ LIBRARY()
 
 SRCS(
     kqp_proxy_service.cpp
+    kqp_proxy_databases_cache.cpp
     kqp_proxy_peer_stats_calculator.cpp
     kqp_script_executions.cpp
+    kqp_session_info.cpp
 )
 
 PEERDIR(
@@ -16,8 +18,10 @@ PEERDIR(
     contrib/ydb/core/kqp/common
     contrib/ydb/core/kqp/common/events
     contrib/ydb/core/kqp/counters
+    contrib/ydb/core/kqp/gateway/behaviour/resource_pool_classifier
     contrib/ydb/core/kqp/proxy_service/proto
     contrib/ydb/core/kqp/run_script_actor
+    contrib/ydb/core/kqp/workload_service
     contrib/ydb/core/mind
     contrib/ydb/core/protos
     contrib/ydb/core/tx/tx_proxy
@@ -28,6 +32,7 @@ PEERDIR(
     contrib/ydb/library/table_creator
     contrib/ydb/library/yql/providers/common/http_gateway
     contrib/ydb/library/yql/providers/common/proto
+    contrib/ydb/library/yql/providers/s3/actors_factory
     contrib/ydb/library/yql/public/issue
     contrib/ydb/library/yql/dq/actors/spilling
     contrib/ydb/public/api/protos
@@ -39,10 +44,6 @@ PEERDIR(
 YQL_LAST_ABI_VERSION()
 
 END()
-
-RECURSE(
-    proto
-)
 
 RECURSE_FOR_TESTS(
     ut
