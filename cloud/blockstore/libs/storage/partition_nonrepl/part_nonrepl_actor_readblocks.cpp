@@ -122,6 +122,7 @@ void TDiskAgentReadActor::SendRequest(const TActorContext& ctx)
         request->Record.SetBlockSize(blockSize);
         request->Record.SetBlocksCount(deviceRequest.DeviceBlockRange.Size());
 
+        AddNetworkBytes(request->Record.ByteSizeLong());
         OnRequestStarted(
             ctx,
             deviceRequest.Device.GetAgentId(),
@@ -157,6 +158,7 @@ TDiskAgentReadActor::MakeCompletionResponse(ui32 blocks)
     completion->Stats.MutableUserReadCounters()->SetBlocksCount(blocks);
     completion->NonVoidBlockCount = NonVoidBlockCount;
     completion->VoidBlockCount = VoidBlockCount;
+    completion->NetworkBytes = GetNetworkBytes();
 
     return TCompletionEventAndBody(std::move(completion));
 }
@@ -185,6 +187,7 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
+    AddNetworkBytes(msg->Record.ByteSizeLong());
     OnRequestFinished(ctx, ev->Cookie);
 
     if (HasError(msg->GetError())) {
@@ -335,7 +338,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocksCompleted(
         nonVoidBytes;
     PartCounters->RequestCounters.ReadBlocks.RequestVoidBytes += voidBytes;
 
-    NetworkBytes += nonVoidBytes;
+    NetworkBytes += msg->NetworkBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveReadRequest(ev->Sender);

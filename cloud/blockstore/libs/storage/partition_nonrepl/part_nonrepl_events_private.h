@@ -233,6 +233,7 @@ struct TEvNonreplPartitionPrivate
 
         ui64 TotalCycles = 0;
         ui64 ExecCycles = 0;
+        ui64 NetworkBytes = 0;
         // Request execution total time.
         TDuration ExecutionTime;
 

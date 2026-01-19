@@ -119,6 +119,7 @@ void TDiskAgentReadLocalActor::SendRequest(const TActorContext& ctx)
         request->Record.SetBlockSize(blockSize);
         request->Record.SetBlocksCount(deviceRequest.DeviceBlockRange.Size());
 
+        AddNetworkBytes(request->Record.ByteSizeLong());
         OnRequestStarted(
             ctx,
             deviceRequest.Device.GetAgentId(),
@@ -159,6 +160,7 @@ TDiskAgentReadLocalActor::MakeCompletionResponse(ui32 blocks)
     completion->Stats.MutableUserReadCounters()->SetBlocksCount(blocks);
     completion->NonVoidBlockCount = NonVoidBlockCount;
     completion->VoidBlockCount = VoidBlockCount;
+    completion->NetworkBytes = GetNetworkBytes();
 
     return TCompletionEventAndBody(std::move(completion));
 }
@@ -187,6 +189,7 @@ void TDiskAgentReadLocalActor::HandleReadDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
+    AddNetworkBytes(msg->Record.ByteSizeLong());
     OnRequestFinished(ctx, ev->Cookie);
 
     if (HasError(msg->GetError())) {
