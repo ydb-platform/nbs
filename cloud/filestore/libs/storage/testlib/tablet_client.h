@@ -477,6 +477,23 @@ public:
         return request;
     }
 
+    auto CreateRenameNodeInDestinationRequest(
+        ui64 newParent,
+        const TString& newName,
+        const TString& sourceNodeShardId,
+        const TString& sourceNodeShardNodeName,
+        ui32 flags = 0)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvRenameNodeInDestinationRequest;
+        auto request = CreateSessionRequest<TRequestEvent>();
+        request->Record.SetNewParentId(newParent);
+        request->Record.SetNewName(newName);
+        request->Record.SetSourceNodeShardId(sourceNodeShardId);
+        request->Record.SetSourceNodeShardNodeName(sourceNodeShardNodeName);
+        request->Record.SetFlags(flags);
+        return request;
+    }
+
     auto CreateAccessNodeRequest(ui64 node)
     {
         auto request = CreateSessionRequest<TEvService::TEvAccessNodeRequest>();
