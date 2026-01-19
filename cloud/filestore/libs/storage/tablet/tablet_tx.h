@@ -549,7 +549,8 @@ struct TTxIndexTablet
         /* const */ NProtoPrivate::TDestroySessionRequest Request;
 
         TNodeSet Nodes;
-        ui64 CommitId = 0;
+        ui64 CommitId = InvalidCommitId;
+        bool CommitIdOverflow = false;
         NProto::TError Error;
 
         TDestroySession(
