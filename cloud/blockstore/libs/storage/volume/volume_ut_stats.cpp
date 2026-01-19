@@ -589,9 +589,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             {
                 auto* msg = event->Get<
                     TEvVolume::TEvDiskRegistryBasedPartitionCounters>();
-                if (msg->NetworkBytes || msg->CpuUsage) {
-                    network = std::max(network, msg->NetworkBytes);
-                    cpu = std::max(cpu, msg->CpuUsage);
+                auto& [_, networkBytes, cpuUsage] = msg->CountersData;
+                if (networkBytes || cpuUsage) {
+                    network = std::max(network, networkBytes);
+                    cpu = std::max(cpu, cpuUsage);
                     ++nonEmptyReports;
                 }
             }
@@ -708,9 +709,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             {
                 auto* msg = event->Get<
                     TEvVolume::TEvDiskRegistryBasedPartitionCounters>();
-                if (msg->NetworkBytes || msg->CpuUsage) {
-                    network = std::max(network, msg->NetworkBytes);
-                    cpu = std::max(cpu, msg->CpuUsage);
+                auto& [_, networkBytes, cpuUsage] = msg->CountersData;
+                if (networkBytes || cpuUsage) {
+                    network = std::max(network, networkBytes);
+                    cpu = std::max(cpu, cpuUsage);
                 }
             }
 
@@ -843,18 +845,19 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                     case TEvVolume::EvDiskRegistryBasedPartitionCounters: {
                         auto* msg = event->Get<
                             TEvVolume::TEvDiskRegistryBasedPartitionCounters>();
-                        totalNetworkBytes += msg->NetworkBytes;
+                        auto& [_, networkBytes, cpuUsage] = msg->CountersData;
+                        totalNetworkBytes += networkBytes;
 
                         // Resync is done by 4MiB ranges. Checksum is an 8-byte
                         // request.
                         UNIT_ASSERT_VALUES_EQUAL(
                             0,
-                            msg->NetworkBytes % 4_MB % 8);
-                        if (msg->NetworkBytes) {
+                            networkBytes % 4_MB % 8);
+                        if (networkBytes) {
                             nonEmptyStatsUpdates++;
                             UNIT_ASSERT_VALUES_UNEQUAL(
                                 TDuration(),
-                                msg->CpuUsage);
+                                cpuUsage);
                         }
                         break;
                     }
@@ -1507,6 +1510,301 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             0,
             1,
             0);
+    }
+
+    Y_UNIT_TEST(ShouldPullStatisticsFromDiskRegistryBasedPartitionWithResync)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUsePullSchemeForVolumeStatistics(true);
+        config.SetAcquireNonReplicatedDevices(true);
+        config.SetUseMirrorResync(true);
+        config.SetForceMirrorResync(true);
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        state->ReplicaCount = 2;
+
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        bool statUpdated = false;
+        struct TReadAndWriteByteCount
+        {
+            ui64 ReadByteCount = 0;
+            ui64 WriteByteCount = 0;
+        };
+        TMap<TString, TReadAndWriteByteCount> statsForDisks;
+        auto statEventInterceptor = runtime->AddObserver<TEvStatsService::TEvVolumePartCounters>(
+            [&](TEvStatsService::TEvVolumePartCounters::TPtr& event) {
+                auto* msg = event->Get();
+                statsForDisks[msg->DiskId].ReadByteCount +=
+                    msg->DiskCounters->RequestCounters.ReadBlocks.RequestBytes;
+                statsForDisks[msg->DiskId].WriteByteCount +=
+                    msg->DiskCounters->RequestCounters.WriteBlocks.RequestBytes;
+            });
+
+        auto _ = runtime->AddObserver<TEvVolumePrivate::TEvPartStatsSaved>(
+            [&](TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev)
+            {
+                Y_UNUSED(ev);
+                statUpdated = true;
+            });
+
+        TVolumeClient volume(*runtime);
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            1024,
+            "vol0",
+            "cloud",
+            "folder",
+            1   // partitionCount
+        );
+
+        volume.WaitReady();
+
+        volume.AddClient(clientInfo);
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+
+        volume.WriteBlocks(
+            TBlockRange64::WithLength(0, 1024),
+            clientInfo.GetClientId(),
+            1);
+
+        volume.ReadBlocks(
+            TBlockRange64::WithLength(0, 1024),
+            clientInfo.GetClientId());
+
+        runtime->AdvanceCurrentTime(UpdateCountersInterval);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        // Check that statistics was updated
+        UNIT_ASSERT(statUpdated);
+        UNIT_ASSERT_VALUES_EQUAL(statsForDisks["vol0"].WriteByteCount, 12582912);
+        UNIT_ASSERT_VALUES_EQUAL(statsForDisks["vol0"].ReadByteCount, 4194304);
+    }
+
+    Y_UNIT_TEST(
+        ShouldPullStatisticsFromDiskRegistryBasedPartitionWithMigration)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUsePullSchemeForVolumeStatistics(true);
+        config.SetMaxMigrationBandwidth(999'999'999);
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        state->MigrationMode = EMigrationMode::InProgress;
+        state->ReplicaCount = 2;
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        bool statUpdated = false;
+        auto _ = runtime->AddObserver<TEvVolumePrivate::TEvPartStatsSaved>(
+            [&](TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev)
+            {
+                Y_UNUSED(ev);
+                statUpdated = true;
+            });
+
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            1024,
+            "vol0",
+            "cloud",
+            "folder",
+            1   // partitionCount
+        );
+
+        volume.WaitReady();
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        // Check that statistics was updated
+        UNIT_ASSERT(statUpdated);
+    }
+
+    Y_UNIT_TEST(
+        ShouldPullStatisticsFromDiskRegistryBasedPartitionWithFreshDevices)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUsePullSchemeForVolumeStatistics(true);
+        config.SetMaxMigrationBandwidth(999'999'999);
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        state->MigrationMode = EMigrationMode::InProgress;
+        state->DeviceReplacementUUIDs = {"uuid1"};
+        state->ReplicaCount = 2;
+
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        bool statUpdated = false;
+        auto _ = runtime->AddObserver<TEvVolumePrivate::TEvPartStatsSaved>(
+            [&](TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev)
+            {
+                Y_UNUSED(ev);
+                statUpdated = true;
+            });
+
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            1024,
+            "vol0",
+            "cloud",
+            "folder",
+            1   // partitionCount
+        );
+
+        volume.WaitReady();
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        // Check that statistics was updated
+        UNIT_ASSERT(statUpdated);
+    }
+
+    Y_UNIT_TEST(ShouldPullStatisticsFromDiskRegistryBasedPartitionWithTimeout)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUsePullSchemeForVolumeStatistics(true);
+        config.SetAcquireNonReplicatedDevices(true);
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        state->ReplicaCount = 2;
+
+        auto runtime = PrepareTestActorRuntime(config, state);
+        TVolumeClient volume(*runtime);
+
+        TActorId volumeId;
+        bool answerSeen = false;
+        bool statUpdated = false;
+        bool firstRequest = false;
+        bool isGrabResponse = false;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+            {
+                Y_UNUSED(runtime);
+
+                if (ev->GetTypeRewrite() ==
+                        TEvNonreplPartitionPrivate::
+                            EvGetDiskRegistryBasedPartCountersRequest &&
+                    !firstRequest)
+                {
+                    firstRequest = true;
+                    volumeId = ev->Sender;
+                    return false;
+                }
+
+                if (ev->GetTypeRewrite() ==
+                        TEvNonreplPartitionPrivate::
+                            EvGetDiskRegistryBasedPartCountersResponse &&
+                    !isGrabResponse)
+                {
+                    isGrabResponse = true;
+                    return true;
+                }
+
+                if (ev->GetTypeRewrite() ==
+                        TEvNonreplPartitionPrivate::
+                            EvGetDiskRegistryBasedPartCountersResponse &&
+                    ev->Recipient == volumeId)
+                {
+                    answerSeen = true;
+                    auto* msg = ev->Get<
+                        TEvNonreplPartitionPrivate::
+                            TEvGetDiskRegistryBasedPartCountersResponse>();
+                    UNIT_ASSERT(HasError(msg->Error));
+
+                    return false;
+                }
+
+                if (ev->GetTypeRewrite() == TEvVolumePrivate::EvPartStatsSaved)
+                {
+                    statUpdated = true;
+                }
+
+                return false;
+            });
+
+        runtime->SetScheduledEventFilter(
+            [&](TTestActorRuntimeBase& runtime,
+                TAutoPtr<IEventHandle>& ev,
+                TDuration delay,
+                TInstant& deadline)
+            {
+                Y_UNUSED(runtime);
+                Y_UNUSED(delay);
+                Y_UNUSED(deadline);
+                if (ev->GetTypeRewrite() == TEvVolumePrivate::EvUpdateCounters)
+                {
+                    return true;
+                }
+                return false;
+            });
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            1024,
+            "vol0",
+            "cloud",
+            "folder",
+            1   // partitionCount
+        );
+
+        volume.WaitReady();
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+
+        runtime->AdvanceCurrentTime(UpdateCountersInterval);
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvVolumePrivate::EvPartStatsSaved);
+        runtime->DispatchEvents(options);
+
+        // Check that we grab response to do error timeout
+        UNIT_ASSERT(isGrabResponse);
+
+        // Check that we see answer with error
+        UNIT_ASSERT(answerSeen);
+
+        // Check that statistics was updated
+        UNIT_ASSERT(statUpdated);
     }
 }
 
