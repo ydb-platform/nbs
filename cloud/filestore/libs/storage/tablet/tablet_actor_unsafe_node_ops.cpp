@@ -256,22 +256,425 @@ void TIndexTabletActor::CompleteTx_UnsafeGetNode(
 {
     RemoveTransaction(*args.RequestInfo);
 
-    TString node;
-    if (args.Node) {
-        node = args.Node->Attrs.Utf8DebugString();
-    }
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
-        "%s UnsafeGetNode: %s, node: %s",
-        LogTag.c_str(),
-        args.Request.DebugString().Quote().c_str(),
-        node.Quote().c_str());
-
     auto response =
         std::make_unique<TEvIndexTablet::TEvUnsafeGetNodeResponse>();
+
     if (args.Node) {
         auto& attrs = *response->Record.MutableNode();
         ConvertNodeFromAttrs(attrs, args.Node->NodeId, args.Node->Attrs);
+    } else {
+        *response->Record.MutableError() =
+            ErrorInvalidTarget(args.Request.GetId());
     }
+
+    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+        "%s UnsafeGetNode: %s, result: %s",
+        LogTag.c_str(),
+        args.Request.DebugString().Quote().c_str(),
+        response->Record.ShortUtf8DebugString().Quote().c_str());
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleUnsafeCreateNodeRef(
+    const TEvIndexTablet::TEvUnsafeCreateNodeRefRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
+
+    AddTransaction<TEvIndexTablet::TUnsafeCreateNodeRefMethod>(*requestInfo);
+
+    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+        "%s UnsafeCreateNodeRef: %s",
+        LogTag.c_str(),
+        msg->Record.DebugString().Quote().c_str());
+
+    ExecuteTx<TUnsafeCreateNodeRef>(
+        ctx,
+        std::move(requestInfo),
+        std::move(msg->Record));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::PrepareTx_UnsafeCreateNodeRef(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TUnsafeCreateNodeRef& args)
+{
+    Y_UNUSED(ctx);
+
+    auto commitId = GetCurrentCommitId();
+
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    return ReadNodeRef(
+        db,
+        args.Request.GetParentId(),
+        commitId,
+        args.Request.GetName(),
+        args.NodeRef);
+}
+
+void TIndexTabletActor::ExecuteTx_UnsafeCreateNodeRef(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TUnsafeCreateNodeRef& args)
+{
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+
+    auto commitId = GenerateCommitId();
+    if (commitId == InvalidCommitId) {
+        args.Error = ErrorCommitIdOverflow();
+        args.CommitIdOverflowDetected = true;
+        return;
+    }
+
+    if (args.NodeRef) {
+        LOG_WARN(ctx, TFileStoreComponents::TABLET,
+            "%s UnsafeCreateNodeRef: %s - node ref exists",
+            LogTag.c_str(),
+            args.Request.DebugString().Quote().c_str());
+        args.Error = ErrorAlreadyExists(args.Request.GetName());
+        return;
+    }
+
+    CreateNodeRef(
+        db,
+        args.Request.GetParentId(),
+        commitId,
+        args.Request.GetName(),
+        args.Request.GetChildId(),
+        args.Request.GetShardId(),
+        args.Request.GetShardNodeName());
+}
+
+void TIndexTabletActor::CompleteTx_UnsafeCreateNodeRef(
+    const TActorContext& ctx,
+    TTxIndexTablet::TUnsafeCreateNodeRef& args)
+{
+    RemoveTransaction(*args.RequestInfo);
+
+    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+        "%s UnsafeCreateNodeRef: %s, status: %s",
+        LogTag.c_str(),
+        args.Request.DebugString().Quote().c_str(),
+        FormatError(args.Error).c_str());
+
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvUnsafeCreateNodeRefResponse>(
+            std::move(args.Error));
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    if (args.CommitIdOverflowDetected) {
+        ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnsafeCreateNodeRef");
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleUnsafeDeleteNodeRef(
+    const TEvIndexTablet::TEvUnsafeDeleteNodeRefRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
+
+    AddTransaction<TEvIndexTablet::TUnsafeDeleteNodeRefMethod>(*requestInfo);
+
+    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+        "%s UnsafeDeleteNodeRef: %s",
+        LogTag.c_str(),
+        msg->Record.DebugString().Quote().c_str());
+
+    ExecuteTx<TUnsafeDeleteNodeRef>(
+        ctx,
+        std::move(requestInfo),
+        std::move(msg->Record));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::PrepareTx_UnsafeDeleteNodeRef(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TUnsafeDeleteNodeRef& args)
+{
+    Y_UNUSED(ctx);
+
+    auto commitId = GetCurrentCommitId();
+
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    return ReadNodeRef(
+        db,
+        args.Request.GetParentId(),
+        commitId,
+        args.Request.GetName(),
+        args.NodeRef);
+}
+
+void TIndexTabletActor::ExecuteTx_UnsafeDeleteNodeRef(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TUnsafeDeleteNodeRef& args)
+{
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+
+    auto commitId = GenerateCommitId();
+    if (commitId == InvalidCommitId) {
+        args.Error = ErrorCommitIdOverflow();
+        return;
+    }
+
+    if (!args.NodeRef) {
+        LOG_WARN(ctx, TFileStoreComponents::TABLET,
+            "%s UnsafeDeleteNodeRef: %s - node ref not found",
+            LogTag.c_str(),
+            args.Request.DebugString().Quote().c_str());
+        args.Error = ErrorInvalidTarget(
+            args.Request.GetParentId(),
+            args.Request.GetName());
+        return;
+    }
+
+    RemoveNodeRef(
+        db,
+        args.Request.GetParentId(),
+        args.NodeRef->MinCommitId,
+        commitId,
+        args.Request.GetName(),
+        args.NodeRef->ChildNodeId,
+        args.NodeRef->ShardId,
+        args.NodeRef->ShardNodeName);
+}
+
+void TIndexTabletActor::CompleteTx_UnsafeDeleteNodeRef(
+    const TActorContext& ctx,
+    TTxIndexTablet::TUnsafeDeleteNodeRef& args)
+{
+    RemoveTransaction(*args.RequestInfo);
+
+    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+        "%s UnsafeDeleteNodeRef: %s, status: %s",
+        LogTag.c_str(),
+        args.Request.DebugString().Quote().c_str(),
+        FormatError(args.Error).c_str());
+
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvUnsafeDeleteNodeRefResponse>(
+            std::move(args.Error));
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    if (args.CommitIdOverflowDetected) {
+        ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnsafeDeleteNodeRef");
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleUnsafeUpdateNodeRef(
+    const TEvIndexTablet::TEvUnsafeUpdateNodeRefRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
+
+    AddTransaction<TEvIndexTablet::TUnsafeUpdateNodeRefMethod>(*requestInfo);
+
+    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+        "%s UnsafeUpdateNodeRef: %s",
+        LogTag.c_str(),
+        msg->Record.DebugString().Quote().c_str());
+
+    ExecuteTx<TUnsafeUpdateNodeRef>(
+        ctx,
+        std::move(requestInfo),
+        std::move(msg->Record));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::PrepareTx_UnsafeUpdateNodeRef(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TUnsafeUpdateNodeRef& args)
+{
+    Y_UNUSED(ctx);
+
+    auto commitId = GetCurrentCommitId();
+
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    return ReadNodeRef(
+        db,
+        args.Request.GetParentId(),
+        commitId,
+        args.Request.GetName(),
+        args.NodeRef);
+}
+
+void TIndexTabletActor::ExecuteTx_UnsafeUpdateNodeRef(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TUnsafeUpdateNodeRef& args)
+{
+    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+
+    auto commitId = GenerateCommitId();
+    if (commitId == InvalidCommitId) {
+        args.Error = ErrorCommitIdOverflow();
+        args.CommitIdOverflowDetected = true;
+        return;
+    }
+
+    if (!args.NodeRef) {
+        LOG_WARN(ctx, TFileStoreComponents::TABLET,
+            "%s UnsafeUpdateNodeRef: %s - node ref not found",
+            LogTag.c_str(),
+            args.Request.DebugString().Quote().c_str());
+        args.Error = ErrorInvalidTarget(
+            args.Request.GetParentId(),
+            args.Request.GetName());
+        return;
+    }
+
+    RemoveNodeRef(
+        db,
+        args.Request.GetParentId(),
+        args.NodeRef->MinCommitId,
+        commitId,
+        args.Request.GetName(),
+        args.NodeRef->ChildNodeId,
+        args.NodeRef->ShardId,
+        args.NodeRef->ShardNodeName);
+
+    CreateNodeRef(
+        db,
+        args.Request.GetParentId(),
+        commitId,
+        args.Request.GetName(),
+        args.Request.GetChildId(),
+        args.Request.GetShardId(),
+        args.Request.GetShardNodeName());
+}
+
+void TIndexTabletActor::CompleteTx_UnsafeUpdateNodeRef(
+    const TActorContext& ctx,
+    TTxIndexTablet::TUnsafeUpdateNodeRef& args)
+{
+    RemoveTransaction(*args.RequestInfo);
+
+    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+        "%s UnsafeUpdateNodeRef: %s",
+        LogTag.c_str(),
+        args.Request.DebugString().Quote().c_str());
+
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvUnsafeUpdateNodeRefResponse>();
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    if (args.CommitIdOverflowDetected) {
+        ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnsafeUpdateNodeRef");
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleUnsafeGetNodeRef(
+    const TEvIndexTablet::TEvUnsafeGetNodeRefRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
+
+    AddTransaction<TEvIndexTablet::TUnsafeGetNodeRefMethod>(*requestInfo);
+
+    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+        "%s UnsafeGetNodeRef: %s",
+        LogTag.c_str(),
+        msg->Record.DebugString().Quote().c_str());
+
+    ExecuteTx<TUnsafeGetNodeRef>(
+        ctx,
+        std::move(requestInfo),
+        std::move(msg->Record));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::ValidateTx_UnsafeGetNodeRef(
+    const TActorContext& ctx,
+    TTxIndexTablet::TUnsafeGetNodeRef& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(args);
+
+    return true;
+}
+
+bool TIndexTabletActor::PrepareTx_UnsafeGetNodeRef(
+    const NActors::TActorContext& ctx,
+    IIndexTabletDatabase& db,
+    TTxIndexTablet::TUnsafeGetNodeRef& args)
+{
+    Y_UNUSED(ctx);
+
+    return ReadNodeRef(
+        db,
+        args.Request.GetParentId(),
+        GetCurrentCommitId(),
+        args.Request.GetName(),
+        args.NodeRef);
+}
+
+void TIndexTabletActor::CompleteTx_UnsafeGetNodeRef(
+    const TActorContext& ctx,
+    TTxIndexTablet::TUnsafeGetNodeRef& args)
+{
+    RemoveTransaction(*args.RequestInfo);
+
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvUnsafeGetNodeRefResponse>();
+
+    if (args.NodeRef) {
+        response->Record.SetChildId(args.NodeRef->NodeId);
+        response->Record.SetShardId(args.NodeRef->ShardId);
+        response->Record.SetShardNodeName(args.NodeRef->ShardNodeName);
+    } else {
+        *response->Record.MutableError() = ErrorInvalidTarget(
+            args.Request.GetParentId(),
+            args.Request.GetName());
+    }
+
+    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+        "%s UnsafeGetNodeRef: %s, result: %s",
+        LogTag.c_str(),
+        args.Request.DebugString().Quote().c_str(),
+        response->Record.ShortUtf8DebugString().Quote().c_str());
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

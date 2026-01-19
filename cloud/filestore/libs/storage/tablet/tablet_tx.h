@@ -77,6 +77,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
                                                                                \
     xxx(UnsafeGetNode,                      __VA_ARGS__)                       \
+    xxx(UnsafeGetNodeRef,                   __VA_ARGS__)                       \
                                                                                \
     xxx(LoadNodeRefs,                       __VA_ARGS__)                       \
     xxx(LoadNodes,                          __VA_ARGS__)                       \
@@ -147,6 +148,9 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(UnsafeDeleteNode,                   __VA_ARGS__)                       \
     xxx(UnsafeUpdateNode,                   __VA_ARGS__)                       \
+    xxx(UnsafeCreateNodeRef,                __VA_ARGS__)                       \
+    xxx(UnsafeDeleteNodeRef,                __VA_ARGS__)                       \
+    xxx(UnsafeUpdateNodeRef,                __VA_ARGS__)                       \
 // FILESTORE_TABLET_RW_TRANSACTIONS
 
 #define FILESTORE_TABLET_TRANSACTIONS(xxx, ...)                                \
@@ -2368,7 +2372,7 @@ struct TTxIndexTablet
     };
 
     //
-    // UnsafeNodeOps
+    // UnsafeNodeOps / UnsafeNodeRefOps
     //
 
     struct TUnsafeDeleteNode
@@ -2439,6 +2443,110 @@ struct TTxIndexTablet
         {
             TIndexStateNodeUpdates::Clear();
             Node.Clear();
+        }
+    };
+
+    struct TUnsafeCreateNodeRef
+        : TTxIndexTabletBase
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TUnsafeCreateNodeRefRequest Request;
+
+        TMaybe<IIndexTabletDatabase::TNodeRef> NodeRef;
+        NProto::TError Error;
+        bool CommitIdOverflowDetected = false;
+
+        TUnsafeCreateNodeRef(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TUnsafeCreateNodeRefRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear() override
+        {
+            TIndexStateNodeUpdates::Clear();
+            NodeRef.Clear();
+            Error.Clear();
+            CommitIdOverflowDetected = false;
+        }
+    };
+
+    struct TUnsafeDeleteNodeRef
+        : TTxIndexTabletBase
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TUnsafeDeleteNodeRefRequest Request;
+
+        TMaybe<IIndexTabletDatabase::TNodeRef> NodeRef;
+        NProto::TError Error;
+        bool CommitIdOverflowDetected = false;
+
+        TUnsafeDeleteNodeRef(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TUnsafeDeleteNodeRefRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear() override
+        {
+            TIndexStateNodeUpdates::Clear();
+            NodeRef.Clear();
+            Error.Clear();
+            CommitIdOverflowDetected = false;
+        }
+    };
+
+    struct TUnsafeUpdateNodeRef
+        : TTxIndexTabletBase
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TUnsafeUpdateNodeRefRequest Request;
+
+        TMaybe<IIndexTabletDatabase::TNodeRef> NodeRef;
+        NProto::TError Error;
+        bool CommitIdOverflowDetected = false;
+
+        TUnsafeUpdateNodeRef(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TUnsafeUpdateNodeRefRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear() override
+        {
+            TIndexStateNodeUpdates::Clear();
+            NodeRef.Clear();
+            Error.Clear();
+            CommitIdOverflowDetected = false;
+        }
+    };
+
+    struct TUnsafeGetNodeRef
+        : TTxIndexTabletBase
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TUnsafeGetNodeRefRequest Request;
+
+        TMaybe<IIndexTabletDatabase::TNodeRef> NodeRef;
+
+        TUnsafeGetNodeRef(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TUnsafeGetNodeRefRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear() override
+        {
+            TIndexStateNodeUpdates::Clear();
+            NodeRef.Clear();
         }
     };
 

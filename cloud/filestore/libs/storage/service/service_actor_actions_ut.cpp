@@ -355,14 +355,168 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             request.SetId(id3);
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
-            auto r = service.ExecuteAction("UnsafeGetNode", buf)->Record;
+            service.SendExecuteActionRequest("UnsafeGetNode", buf);
+            auto response = service.RecvExecuteActionResponse();
 
-            NProtoPrivate::TUnsafeGetNodeResponse response;
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOENT,
+                response->Record.GetError().GetCode(),
+                FormatError(response->Record.GetError()));
+        }
+
+        service.DestroySession(headers);
+    }
+
+
+    Y_UNIT_TEST(ShouldPerformUnsafeNodeRefManipulations)
+    {
+        NProto::TStorageConfig config;
+        // being explicit
+        config.SetMultiTabletForwardingEnabled(false);
+        TTestEnv env{{}, config};
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const TString fsId = "test";
+        service.CreateFileStore(fsId, 1'000);
+
+        auto headers = service.InitSession("test", "client");
+
+        const ui64 parentId = RootNodeId;
+        const TString name1 = "file1";
+        const TString name2 = "file2";
+
+        service.CreateNode(headers, TCreateNodeArgs::File(parentId, name1));
+
+        const TString shardId1 = "shard1";
+        const TString shardNodeName1 = CreateGuidAsString();
+        const TString shardId2 = "shard2";
+        const TString shardNodeName2 = CreateGuidAsString();
+
+        {
+            NProtoPrivate::TUnsafeUpdateNodeRefRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetParentId(parentId);
+            request.SetName(name1);
+            request.SetShardId(shardId1);
+            request.SetShardNodeName(shardNodeName1);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("UnsafeUpdateNodeRef", buf);
+        }
+
+        {
+            NProtoPrivate::TUnsafeGetNodeRefRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetParentId(parentId);
+            request.SetName(name1);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto r = service.ExecuteAction("UnsafeGetNodeRef", buf)->Record;
+
+            NProtoPrivate::TUnsafeGetNodeRefResponse response;
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
                 r.GetOutput(),
                 &response).ok());
 
-            UNIT_ASSERT(!response.HasNode());
+            UNIT_ASSERT_VALUES_EQUAL(shardId1, response.GetShardId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardNodeName1,
+                response.GetShardNodeName());
+        }
+
+        {
+            NProtoPrivate::TUnsafeCreateNodeRefRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetParentId(parentId);
+            request.SetName(name2);
+            request.SetShardId(shardId2);
+            request.SetShardNodeName(shardNodeName2);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("UnsafeCreateNodeRef", buf);
+        }
+
+        {
+            NProtoPrivate::TUnsafeGetNodeRefRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetParentId(parentId);
+            request.SetName(name2);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto r = service.ExecuteAction("UnsafeGetNodeRef", buf)->Record;
+
+            NProtoPrivate::TUnsafeGetNodeRefResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                r.GetOutput(),
+                &response).ok());
+
+            UNIT_ASSERT_VALUES_EQUAL(shardId2, response.GetShardId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardNodeName2,
+                response.GetShardNodeName());
+        }
+
+        {
+            auto r = service.ListNodes(headers, fsId, parentId)->Record;
+            UNIT_ASSERT_VALUES_EQUAL(2, r.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL(2, r.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(name1, r.GetNames(0));
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardId1,
+                r.GetNodes(0).GetShardFileSystemId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardNodeName1,
+                r.GetNodes(0).GetShardNodeName());
+            UNIT_ASSERT_VALUES_EQUAL(name2, r.GetNames(1));
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardId2,
+                r.GetNodes(1).GetShardFileSystemId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardNodeName2,
+                r.GetNodes(1).GetShardNodeName());
+        }
+
+        {
+            NProtoPrivate::TUnsafeDeleteNodeRefRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetParentId(parentId);
+            request.SetName(name1);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("UnsafeDeleteNodeRef", buf);
+        }
+
+        {
+            NProtoPrivate::TUnsafeGetNodeRefRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetParentId(parentId);
+            request.SetName(name1);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("UnsafeGetNodeRef", buf);
+            auto response = service.RecvExecuteActionResponse();
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOENT,
+                response->Record.GetError().GetCode(),
+                FormatError(response->Record.GetError()));
+        }
+
+        {
+            auto r = service.ListNodes(headers, fsId, parentId)->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, r.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(name2, r.GetNames(0));
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardId2,
+                r.GetNodes(0).GetShardFileSystemId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardNodeName2,
+                r.GetNodes(0).GetShardNodeName());
         }
 
         service.DestroySession(headers);
