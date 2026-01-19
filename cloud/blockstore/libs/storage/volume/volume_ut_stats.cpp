@@ -1554,7 +1554,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
             0);
-        
+
 
         volume.UpdateVolumeConfig(
             0,
