@@ -19,6 +19,7 @@ IActorPtr CreateVolumeTablet(
     IBlockDigestGeneratorPtr blockDigestGenerator,
     ITraceSerializerPtr traceSerializer,
     NRdma::IClientPtr rdmaClient,
+    TPartitionBudgetManagerPtr partitionBudgetManager,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
     EVolumeStartMode startMode,
     TString diskId)
@@ -32,6 +33,7 @@ IActorPtr CreateVolumeTablet(
         std::move(blockDigestGenerator),
         std::move(traceSerializer),
         std::move(rdmaClient),
+        std::move(partitionBudgetManager),
         std::move(endpointEventHandler),
         startMode,
         std::move(diskId));

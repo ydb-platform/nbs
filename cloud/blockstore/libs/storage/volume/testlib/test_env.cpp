@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/core/partition_budget_manager.h>
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_mock.h>
 #include <cloud/blockstore/libs/storage/volume_proxy/volume_proxy.h>
 
@@ -961,6 +962,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
         std::move(storageServiceConfig),
         std::move(featuresConfig));
     auto diagConfig = CreateTestDiagnosticsConfig();
+    auto partitionBudgetManager =
+        std::make_shared<TPartitionBudgetManager>(config);
 
     auto createFunc = [=](const TActorId& owner, TTabletStorageInfo* info)
     {
@@ -976,6 +979,7 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
                 "BLOCKSTORE_TRACE",
                 NLwTraceMonPage::TraceManager(false)),
             rdmaClient,
+            partitionBudgetManager,
             NServer::CreateEndpointEventProxy(),
             EVolumeStartMode::ONLINE,
             {}   // diskId

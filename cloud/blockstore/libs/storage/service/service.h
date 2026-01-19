@@ -23,6 +23,7 @@ NActors::IActorPtr CreateStorageService(
     ITraceSerializerPtr traceSerializer,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
     NRdma::IClientPtr rdmaClient,
+    TPartitionBudgetManagerPtr partitionBudgetManager,
     IVolumeStatsPtr volumeStats,
     TManuallyPreemptedVolumesPtr preemptedVolumes,
     IRootKmsKeyProviderPtr rootKmsKeyProvider,

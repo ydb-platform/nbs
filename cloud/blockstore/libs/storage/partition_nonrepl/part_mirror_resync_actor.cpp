@@ -33,6 +33,7 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
         TMigrations migrations,
         TVector<TDevices> replicaDevices,
         NRdma::IClientPtr rdmaClient,
+        TPartitionBudgetManagerPtr partitionBudgetManager,
         NActors::TActorId volumeActorId,
         NActors::TActorId statActorId,
         ui64 initialResyncIndex,
@@ -42,6 +43,8 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(digestGenerator))
+    , RdmaClient(std::move(rdmaClient))
+    , PartitionBudgetManager(std::move(partitionBudgetManager))
     , ResyncPolicy(resyncPolicy)
     , CritOnChecksumMismatch(critOnChecksumMismatch)
     , VolumeActorId(volumeActorId)
@@ -49,7 +52,6 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
     , PartConfig(std::move(partConfig))
     , Migrations(std::move(migrations))
     , ReplicaDevices(std::move(replicaDevices))
-    , RdmaClient(std::move(rdmaClient))
     , StatActorId(statActorId)
     , State(Config, RWClientId, PartConfig, ReplicaDevices, initialResyncIndex)
     , BackoffProvider(
@@ -62,7 +64,9 @@ TMirrorPartitionResyncActor::~TMirrorPartitionResyncActor() = default;
 void TMirrorPartitionResyncActor::Bootstrap(const TActorContext& ctx)
 {
     SetupPartitions(ctx);
-    ScheduleCountersUpdate(ctx);
+    if (!Config->GetUsePullSchemeForVolumeStatistics()) {
+        ScheduleCountersUpdate(ctx);
+    }
     ContinueResyncIfNeeded(ctx);
 
     Become(&TThis::StateWork);
@@ -123,6 +127,7 @@ void TMirrorPartitionResyncActor::SetupPartitions(const TActorContext& ctx)
             Migrations,
             ReplicaDevices,
             RdmaClient,
+            PartitionBudgetManager,
             VolumeActorId,
             SelfId(),
             SelfId()));
@@ -140,7 +145,7 @@ void TMirrorPartitionResyncActor::SetupPartitions(const TActorContext& ctx)
             RdmaClient);
 
         TActorId actorId = NCloud::Register(ctx, std::move(actor));
-        Replicas.push_back({replicaInfos[i].Config->GetName(), i, actorId});
+        Replicas.push_back({.ReplicaIndex = i, .ActorId = actorId});
     }
 }
 
@@ -310,6 +315,14 @@ STFUNC(TMirrorPartitionResyncActor::StateWork)
             TEvVolume::TEvDiskRegistryBasedPartitionCounters,
             HandlePartCounters);
         HFunc(TEvVolume::TEvScrubberCounters, HandleScrubberCounters);
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest,
+            HandleGetDiskRegistryBasedPartCounters);
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvDiskRegistryBasedPartCountersCombined,
+            HandleDiskRegistryBasedPartCountersCombined);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
@@ -357,6 +370,10 @@ STFUNC(TMirrorPartitionResyncActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
         IgnoreFunc(TEvVolume::TEvScrubberCounters);
+        IgnoreFunc(TEvNonreplPartitionPrivate::
+                       TEvGetDiskRegistryBasedPartCountersRequest);
+        IgnoreFunc(TEvNonreplPartitionPrivate::
+                       TEvDiskRegistryBasedPartCountersCombined);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);

@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/partition_budget_manager.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
@@ -238,6 +239,7 @@ struct TTestEnv
             std::move(migrations),
             replicas,
             RdmaClient,
+            std::make_shared<TPartitionBudgetManager>(Config),
             VolumeActorId,
             VolumeActorId,
             TActorId() // resyncActorId
@@ -4172,20 +4174,14 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 "AppCriticalEvents/DiskAgentInconsistentMultiWriteResponse",
                 true);
 
-        // Send the first request and simulate an inconsistent response from the disk-agent.
+        // Send the request and simulate an inconsistent response from the
+        // disk-agent.
         client.SendWriteBlocksRequest(TBlockRange64::WithLength(10, 5), 1);
         auto response = client.RecvWriteBlocksResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
         UNIT_ASSERT(inconsistentDiskAgentSeen);
         UNIT_ASSERT_VALUES_EQUAL(1, multiAgentRequestCount);
         UNIT_ASSERT_VALUES_EQUAL(1, inconsistentCritEvent->Val());
-
-        // Send the second request and expect mirror-partition turn multi-agent feature off.
-        multiAgentRequestCount = 0;
-        client.SendWriteBlocksRequest(TBlockRange64::WithLength(10, 5), 1);
-        response = client.RecvWriteBlocksResponse();
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(0, multiAgentRequestCount);
     }
 
     Y_UNIT_TEST(ShouldSendMultiAgentRequestsIfNoQuotaForDirectRequests)

@@ -3923,6 +3923,21 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             ->FindSubgroup("component", "service")
             ->GetCounter("InFlightRequestCount", false);
 
+        auto requestCountWithLogDataCounter = counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service")
+            ->GetCounter("CompletedRequestCountWithLogData", true);
+
+        auto requestCountWithErrorCounter = counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service")
+            ->GetCounter("CompletedRequestCountWithError", true);
+
+        auto requestCountWithoutLogDataOrErrorCounter = counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service")
+            ->GetCounter("CompletedRequestCountWithoutLogDataOrError", true);
+
         auto hddTabletCounter = counters
             ->FindSubgroup("counters", "filestore")
             ->FindSubgroup("component", "service")
@@ -3944,6 +3959,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         // smoke
         UNIT_ASSERT_VALUES_EQUAL(0, inFlightRequestCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            requestCountWithLogDataCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, requestCountWithErrorCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            requestCountWithoutLogDataOrErrorCounter->GetAtomic());
 
         service.UnregisterLocalFileStore("test", 1);
 
@@ -3959,6 +3981,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         // smoke
         UNIT_ASSERT_VALUES_EQUAL(0, inFlightRequestCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            requestCountWithLogDataCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, requestCountWithErrorCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            requestCountWithoutLogDataOrErrorCounter->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldUseThreeStageWriteAndTwoStageReadForHandlelessIO)

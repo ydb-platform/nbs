@@ -212,9 +212,10 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
         RequestCookie);
 
     InitProfileLogRequestInfo(
-        MainInFlightRequest->ProfileLogRequest,
+        MainInFlightRequest->AccessProfileLogRequest(),
         ReadRequest);
-    MainInFlightRequest->ProfileLogRequest.SetClientId(std::move(ClientId));
+    MainInFlightRequest->AccessProfileLogRequest().SetClientId(
+        std::move(ClientId));
 
     if (UseTwoStageRead) {
         DescribeData(ctx);
@@ -266,7 +267,7 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
 
     InFlightRequest->Start(ctx.Now());
     InitProfileLogRequestInfo(
-        InFlightRequest->ProfileLogRequest,
+        InFlightRequest->AccessProfileLogRequest(),
         request->Record);
     TraceSerializer->BuildTraceRequest(
         *request->Record.MutableHeaders()->MutableInternal()->MutableTrace(),
@@ -354,10 +355,10 @@ void TReadDataActor::HandleDescribeDataResponse(
 
     TABLET_VERIFY(InFlightRequest);
 
-    InFlightRequest->Complete(ctx.Now(), error);
     FinalizeProfileLogRequestInfo(
-        InFlightRequest->ProfileLogRequest,
+        InFlightRequest->AccessProfileLogRequest(),
         msg->Record);
+    InFlightRequest->Complete(ctx.Now(), error);
     HandleServiceTraceInfo(
         "DescribeData",
         ctx,

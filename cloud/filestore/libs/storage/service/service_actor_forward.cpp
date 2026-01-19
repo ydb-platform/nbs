@@ -170,8 +170,8 @@ void TStorageServiceActor::ForwardRequest(
         session->RequestStats,
         ctx.Now());
 
-    InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
-    inflight->ProfileLogRequest.SetClientId(session->ClientId);
+    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
+    inflight->AccessProfileLogRequest().SetClientId(session->ClientId);
     const bool blockChecksumsEnabled =
         filestore.GetFeatures().GetBlockChecksumsInProfileLogEnabled()
         || StorageConfig->GetBlockChecksumsInProfileLogEnabled();
@@ -179,7 +179,7 @@ void TStorageServiceActor::ForwardRequest(
         CalculateRequestChecksums(
             msg->Record,
             filestore.GetBlockSize(),
-            inflight->ProfileLogRequest);
+            inflight->AccessProfileLogRequest());
     }
     TraceSerializer->BuildTraceRequest(
         *msg->Record.MutableHeaders()->MutableInternal()->MutableTrace(),
@@ -253,8 +253,8 @@ void TStorageServiceActor::ForwardRequestToShard(
         session->RequestStats,
         ctx.Now());
 
-    InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
-    inflight->ProfileLogRequest.SetClientId(session->ClientId);
+    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
+    inflight->AccessProfileLogRequest().SetClientId(session->ClientId);
     TraceSerializer->BuildTraceRequest(
         *msg->Record.MutableHeaders()->MutableInternal()->MutableTrace(),
         msg->CallContext->LWOrbit);

@@ -230,6 +230,7 @@ public:
             Args.TraceSerializer,
             Args.EndpointEventHandler,
             Args.RdmaClient,
+            Args.PartitionBudgetManager,
             Args.VolumeStats,
             Args.PreemptedVolumes,
             Args.RootKmsKeyProvider,
@@ -387,6 +388,7 @@ private:
     const NNotify::IServicePtr NotifyService;
     const NRdma::IClientPtr RdmaClient;
     const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
+    const TPartitionBudgetManagerPtr PartitionBudgetManager;
     const bool IsDiskRegistrySpareNode;
 
 public:
@@ -402,6 +404,7 @@ public:
             NNotify::IServicePtr notifyService,
             NRdma::IClientPtr rdmaClient,
             NServer::IEndpointEventHandlerPtr endpointEventHandler,
+            TPartitionBudgetManagerPtr partitionBudgetManager,
             bool isDiskRegistrySpareNode)
         : AppConfig(appConfig)
         , Logging(std::move(logging))
@@ -414,6 +417,7 @@ public:
         , NotifyService(std::move(notifyService))
         , RdmaClient(std::move(rdmaClient))
         , EndpointEventHandler(std::move(endpointEventHandler))
+        , PartitionBudgetManager(std::move(partitionBudgetManager))
         , IsDiskRegistrySpareNode(isDiskRegistrySpareNode)
     {}
 
@@ -431,6 +435,7 @@ public:
         auto rdmaClient = RdmaClient;
         auto endpointEventHandler = EndpointEventHandler;
         auto logging = Logging;
+        auto partitionBudgetManager = PartitionBudgetManager;
 
         auto volumeFactory = [=] (const TActorId& owner, TTabletStorageInfo* storage) {
             Y_ABORT_UNLESS(storage->TabletType == TTabletTypes::BlockStoreVolume);
@@ -444,6 +449,7 @@ public:
                 blockDigestGenerator,
                 traceSerializer,
                 rdmaClient,
+                partitionBudgetManager,
                 endpointEventHandler,
                 EVolumeStartMode::ONLINE,
                 {}   // diskId
@@ -578,6 +584,7 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
             sArgs.NotifyService,
             sArgs.RdmaClient,
             sArgs.EndpointEventHandler,
+            sArgs.PartitionBudgetManager,
             sArgs.IsDiskRegistrySpareNode));
     };
 

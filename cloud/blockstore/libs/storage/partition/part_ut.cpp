@@ -13474,7 +13474,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             SUCCEEDED(response->GetStatus()),
             response->GetErrorReason());
 
-        const auto& stats = partition.StatPartition()->Record.GetStats();
+        NProto::TVolumeStats stats =
+            partition.StatPartition()->Record.GetStats();
         UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 1);
 
         UNIT_ASSERT(traceId.has_value());

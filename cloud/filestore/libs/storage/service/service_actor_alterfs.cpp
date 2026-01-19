@@ -973,7 +973,7 @@ void TStorageServiceActor::HandleAlterFileStore(
         StatsRegistry->GetRequestStats(),
         ctx.Now());
 
-    InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
 
     auto requestInfo = CreateRequestInfo(
         SelfId(),
@@ -999,7 +999,7 @@ void TStorageServiceActor::HandleResizeFileStore(
         StatsRegistry->GetRequestStats(),
         ctx.Now());
 
-    InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
 
     auto requestInfo = CreateRequestInfo(
         SelfId(),

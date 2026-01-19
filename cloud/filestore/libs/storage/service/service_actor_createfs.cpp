@@ -453,7 +453,7 @@ void TStorageServiceActor::HandleCreateFileStore(
         StatsRegistry->GetRequestStats(),
         ctx.Now());
 
-    InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
 
     auto error = ValidateCreateFileSystemRequest(msg->Record);
     if (HasError(error)) {

@@ -23,6 +23,7 @@ NActors::IActorPtr CreateMirrorPartition(
     TMigrations migrations,
     TVector<TDevices> replicas,
     NRdma::IClientPtr rdmaClient,
+    TPartitionBudgetManagerPtr partitionBudgetManager,
     NActors::TActorId volumeActorId,
     NActors::TActorId statActorId,
     NActors::TActorId resyncActorId = NActors::TActorId());

@@ -212,8 +212,8 @@ void TStorageServiceActor::HandleDestroySession(
         StatsRegistry->GetRequestStats(),
         ctx.Now());
 
-    InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
-    inflight->ProfileLogRequest.SetClientId(clientId);
+    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
+    inflight->AccessProfileLogRequest().SetClientId(clientId);
 
     auto reply = [&] (const auto& error) {
         auto response =

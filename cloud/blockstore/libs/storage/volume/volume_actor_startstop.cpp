@@ -267,6 +267,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     migrations,
                     std::move(replicas),
                     GetRdmaClient(),
+                    PartitionBudgetManager,
                     SelfId(),
                     SelfId(),
                     State->GetMeta().GetResyncIndex(),
@@ -286,6 +287,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     migrations,
                     std::move(replicas),
                     GetRdmaClient(),
+                    PartitionBudgetManager,
                     SelfId(),
                     SelfId()));
         }

@@ -103,6 +103,7 @@ void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
     NCloud::Register<TMirrorPartitionResyncFastPathActor>(
         ctx,
         std::move(requestInfo),
+        PartConfig->GetName(),
         blockSize,
         range,
         fastPathRecord.SgList,
@@ -139,6 +140,7 @@ void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
     NCloud::Register<TMirrorPartitionResyncFastPathActor>(
         ctx,
         std::move(requestInfo),
+        PartConfig->GetName(),
         blockSize,
         range,
         fastPathRecord.SgList,

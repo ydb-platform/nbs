@@ -94,17 +94,22 @@ private:
     TInFlightRequestStoragePtr InFlightRequests;
     ui64 InFlightRequestCounter = 0;
 
-    NMonitoring::TDynamicCounters::TCounterPtr CpuWaitCounter;
+    using TCounterPtr = NMonitoring::TDynamicCounters::TCounterPtr;
 
-    NMonitoring::TDynamicCounters::TCounterPtr TotalFileSystemCount;
-    NMonitoring::TDynamicCounters::TCounterPtr TotalTabletCount;
-    NMonitoring::TDynamicCounters::TCounterPtr InFlightRequestCount;
+    TCounterPtr CpuWaitCounter;
 
-    NMonitoring::TDynamicCounters::TCounterPtr HddFileSystemCount;
-    NMonitoring::TDynamicCounters::TCounterPtr HddTabletCount;
+    TCounterPtr TotalFileSystemCount;
+    TCounterPtr TotalTabletCount;
+    TCounterPtr InFlightRequestCount;
+    TCounterPtr CompletedRequestCountWithLogData;
+    TCounterPtr CompletedRequestCountWithError;
+    TCounterPtr CompletedRequestCountWithoutErrorOrLogData;
 
-    NMonitoring::TDynamicCounters::TCounterPtr SsdFileSystemCount;
-    NMonitoring::TDynamicCounters::TCounterPtr SsdTabletCount;
+    TCounterPtr HddFileSystemCount;
+    TCounterPtr HddTabletCount;
+
+    TCounterPtr SsdFileSystemCount;
+    TCounterPtr SsdTabletCount;
 
     NProto::EServiceState ServiceState = NProto::SERVICE_STATE_UNKNOWN;
 
@@ -298,6 +303,22 @@ private:
         TString input);
 
     NActors::IActorPtr CreateUnsafeGetNodeActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateUnsafeCreateNodeRefActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateUnsafeDeleteNodeRefActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateUnsafeUpdateNodeRefActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateUnsafeGetNodeRefActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

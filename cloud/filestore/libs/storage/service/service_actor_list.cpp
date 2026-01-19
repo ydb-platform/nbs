@@ -152,7 +152,7 @@ void TStorageServiceActor::HandleListFileStores(
         StatsRegistry->GetRequestStats(),
         ctx.Now());
 
-    InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
 
     auto requestInfo = CreateRequestInfo(
         SelfId(),

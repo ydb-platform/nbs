@@ -710,7 +710,7 @@ message TWriteCompactionMapResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Direct inode manipulation.
+// Direct inode and node ref manipulation.
 
 message TUnsafeDeleteNodeRequest
 {
@@ -747,6 +747,67 @@ message TUnsafeGetNodeResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
     NProto.TNodeAttr Node = 2;
+}
+
+message TUnsafeCreateNodeRefRequest
+{
+    string FileSystemId = 1;
+    uint64 ParentId = 2;
+    bytes Name = 3;
+    uint64 ChildId = 4;
+    string ShardId = 5;
+    string ShardNodeName = 6;
+}
+
+message TUnsafeCreateNodeRefResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+message TUnsafeDeleteNodeRefRequest
+{
+    string FileSystemId = 1;
+    uint64 ParentId = 2;
+    bytes Name = 3;
+}
+
+message TUnsafeDeleteNodeRefResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+message TUnsafeUpdateNodeRefRequest
+{
+    string FileSystemId = 1;
+    uint64 ParentId = 2;
+    bytes Name = 3;
+    uint64 ChildId = 4;
+    string ShardId = 5;
+    string ShardNodeName = 6;
+}
+
+message TUnsafeUpdateNodeRefResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+message TUnsafeGetNodeRefRequest
+{
+    string FileSystemId = 1;
+    uint64 ParentId = 2;
+    bytes Name = 3;
+}
+
+message TUnsafeGetNodeRefResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+    uint64 ChildId = 2;
+    string ShardId = 3;
+    string ShardNodeName = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

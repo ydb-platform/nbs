@@ -43,6 +43,8 @@ private:
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    NRdma::IClientPtr RdmaClient;
+    const TPartitionBudgetManagerPtr PartitionBudgetManager;
     const NProto::EResyncPolicy ResyncPolicy;
     const bool CritOnChecksumMismatch;
     const NActors::TActorId VolumeActorId;
@@ -50,7 +52,6 @@ private:
     TNonreplicatedPartitionConfigPtr PartConfig;
     TMigrations Migrations;
     TVector<TDevices> ReplicaDevices;
-    NRdma::IClientPtr RdmaClient;
     NActors::TActorId StatActorId;
 
     TMirrorPartitionResyncState State;
@@ -93,6 +94,8 @@ private:
 
     TBackoffDelayProvider BackoffProvider;
 
+    TRequestInfoPtr StatisticRequestInfo;
+
 public:
     TMirrorPartitionResyncActor(
         TStorageConfigPtr config,
@@ -104,6 +107,7 @@ public:
         TMigrations migrations,
         TVector<TDevices> replicaDevices,
         NRdma::IClientPtr rdmaClient,
+        TPartitionBudgetManagerPtr partitionBudgetManager,
         NActors::TActorId volumeActorId,
         NActors::TActorId statActorId,
         ui64 initialResyncIndex,
@@ -134,6 +138,13 @@ private:
 
     bool IsAnybodyAlive() const;
     void ReplyAndDie(const NActors::TActorContext& ctx);
+
+    void UpdateCounters(
+        const NActors::TActorContext& ctx,
+        const NActors::TActorId& sender,
+        TPartNonreplCountersData partCountersData);
+
+    TPartNonreplCountersData ExtractPartCounters();
 
 private:
     STFUNC(StateWork);
@@ -225,6 +236,16 @@ private:
 
     void HandleGetDeviceForRange(
         const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetDiskRegistryBasedPartCounters(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDiskRegistryBasedPartCountersCombined(
+        const TEvNonreplPartitionPrivate::
+            TEvDiskRegistryBasedPartCountersCombined::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocks, TEvService);

@@ -12,8 +12,10 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 TChecksumRangeActorCompanion::TChecksumRangeActorCompanion(
+        TString diskId,
         TVector<TReplicaDescriptor> replicas)
-    : Replicas(std::move(replicas))
+    : DiskId(std::move(diskId))
+    , Replicas(std::move(replicas))
 {
     Checksums.resize(Replicas.size());
 }
@@ -106,8 +108,9 @@ void TChecksumRangeActorCompanion::HandleChecksumResponse(
     auto replicaIndex = ev->Cookie;
     if (HasError(error)) {
         LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%s] Checksum error %s",
-            Replicas[replicaIndex].ReplicaId.c_str(),
+            "[%s/%u] Checksum error %s",
+            DiskId.c_str(),
+            Replicas[replicaIndex].ReplicaIndex,
             FormatError(error).c_str());
 
         Error = error;

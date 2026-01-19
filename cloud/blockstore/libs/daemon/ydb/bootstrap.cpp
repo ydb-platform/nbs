@@ -47,6 +47,7 @@
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/spdk/iface/env_stub.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
+#include <cloud/blockstore/libs/storage/core/partition_budget_manager.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/bootstrap.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
@@ -801,6 +802,12 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("NotifyService initialized");
 
+    PartitionBudgetManager =
+        std::make_shared<NStorage::TPartitionBudgetManager>(
+            Configs->StorageConfig);
+
+    STORAGE_INFO("PartitionBudgetManager initialized")
+
     NStorage::TServerActorSystemArgs args;
     args.ModuleFactories = ModuleFactories;
     args.NodeId = nodeId;
@@ -847,6 +854,7 @@ void TBootstrapYdb::InitKikimrService()
     args.RootKmsKeyProvider = RootKmsKeyProvider;
     args.TemporaryServer = Configs->Options->TemporaryServer;
     args.BackgroundThreadPool = BackgroundThreadPool;
+    args.PartitionBudgetManager = PartitionBudgetManager;
 
     ActorSystem = NStorage::CreateActorSystem(args);
 
