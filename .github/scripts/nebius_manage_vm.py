@@ -503,7 +503,11 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
     logger.info("Created VM %s", instance)
 
     network_interface = instance.status.network_interfaces[0]
-    external_ipv4 = network_interface.public_ip_address.address.replace("/32", "") if args.no_public_ip is False else None
+    external_ipv4 = (
+        network_interface.public_ip_address.address.replace("/32", "")
+        if args.no_public_ip is False
+        else None
+    )
     local_ipv4 = network_interface.ip_address.address.replace("/32", "")
     if instance_id:
         logger.info(
@@ -733,7 +737,9 @@ async def main() -> None:
     )
     create.add_argument("--name", default="", help="VM name")
     create.add_argument("--platform-id", default="cpu-e2", help="Platform ID")
-    create.add_argument("--no-public-ip", action="store_true", help="Do not assign public IP")
+    create.add_argument(
+        "--no-public-ip", action="store_true", help="Do not assign public IP"
+    )
     choices = []
     for key in PRESETS.keys():
         for preset in PRESETS[key]:
