@@ -46,7 +46,7 @@ struct TPartitionRequest
 };
 
 template <typename TMethod>
-bool ToPartitionRequests(
+NProto::TError ToPartitionRequests(
     const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
