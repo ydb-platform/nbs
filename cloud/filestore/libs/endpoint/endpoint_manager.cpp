@@ -418,55 +418,64 @@ NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
 {
     STORAGE_INFO("StopEndpoint " << DumpMessage(request));
 
-    auto g = Guard(EndpointsLock);
-    if (DrainingStarted) {
-        return TErrorResponse(E_REJECTED, "draining");
-    }
-
+    TFuture<NProto::TStopEndpointResponse> stopEndpointFuture;
     const auto& socketPath = request.GetSocketPath();
 
-    if (StartingSockets.contains(socketPath)) {
-        return TErrorResponse(E_REJECTED, TStringBuilder()
-            << "endpoint " << socketPath.Quote()
-            << " is starting now");
+    {
+        auto g = Guard(EndpointsLock);
+        if (DrainingStarted) {
+            return TErrorResponse(E_REJECTED, "draining");
+        }
+
+        if (StartingSockets.contains(socketPath)) {
+            return TErrorResponse(
+                E_REJECTED,
+                TStringBuilder()
+                    << "endpoint " << socketPath.Quote() << " is starting now");
+        }
+
+        if (const auto* p = StoppingSockets.FindPtr(socketPath)) {
+            auto future = p->Result;
+            Executor->WaitFor(future);
+            return future.GetValue();
+        }
+
+        auto it = Endpoints.find(socketPath);
+        if (it == Endpoints.end()) {
+            return TErrorResponse(
+                S_FALSE,
+                TStringBuilder()
+                    << "endpoint " << socketPath.Quote() << " not found");
+        }
+
+        auto endpoint = it->second.Endpoint;
+        stopEndpointFuture = endpoint->StopAsync().Apply(
+            [](const TFuture<void>&)
+            { return NProto::TStopEndpointResponse{}; });
+
+        AddStoppingSocket(socketPath, stopEndpointFuture);
     }
 
-    if (const auto* p = StoppingSockets.FindPtr(socketPath)) {
-        auto future = p->Result;
-        Executor->WaitFor(future);
-        return future.GetValue();
-    }
+    Executor->WaitFor(stopEndpointFuture);
 
-    auto it = Endpoints.find(request.GetSocketPath());
-    if (it == Endpoints.end()) {
-        return TErrorResponse(S_FALSE, TStringBuilder()
-            << "endpoint " << socketPath.Quote()
-            << " not found");
-    }
-
-    auto endpoint = it->second.Endpoint;
-    auto future = endpoint->StopAsync().Apply(
-        [] (const TFuture<void>&) {
-            return NProto::TStopEndpointResponse{};
-        });
-
-    AddStoppingSocket(socketPath, future);
-    Executor->WaitFor(future);
+    auto g = Guard(EndpointsLock);
     RemoveStoppingSocket(socketPath);
 
-    const auto& response = future.GetValue();
+    const auto& response = stopEndpointFuture.GetValue();
     if (SUCCEEDED(response.GetError().GetCode())) {
-        if (auto error = Storage->RemoveEndpoint(request.GetSocketPath());
-            HasError(error)
-                && !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT))
+        if (auto error = Storage->RemoveEndpoint(socketPath);
+            HasError(error) &&
+            !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT))
         {
-            STORAGE_ERROR("Failed to remove endpoint from storage: "
+            STORAGE_ERROR(
+                "Failed to remove endpoint from storage: "
                 << FormatError(error));
         }
     }
 
+    auto it = Endpoints.find(socketPath);
     Endpoints.erase(it);
-    return future.GetValue();
+    return response;
 }
 
 NProto::TListEndpointsResponse TEndpointManager::DoListEndpoints(
