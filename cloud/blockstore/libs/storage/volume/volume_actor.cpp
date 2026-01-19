@@ -1131,7 +1131,7 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(
             TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished,
             HandleDiskRegistryDeviceOperationFinished);
-            
+
         HFunc(
             TEvNonreplPartitionPrivate::
                 TEvGetDiskRegistryBasedPartCountersResponse,
