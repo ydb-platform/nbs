@@ -15,7 +15,7 @@ namespace {
 
 template <typename TMethod>
 ui32 InitPartitionRequest(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 originalBlocksCount,
     const ui32 blocksPerStripe,
     const ui32 i,
@@ -34,7 +34,7 @@ ui32 InitPartitionRequest(
     );
     const auto& partition = partitions[stripeInfo.PartitionId];
 
-    request.ActorId = partition.GetTopActorId(),
+    request.ActorId = partition.ActorId,
     request.PartitionId = stripeInfo.PartitionId;
     request.BlockRange = stripeInfo.BlockRange;
 
@@ -44,20 +44,20 @@ ui32 InitPartitionRequest(
     request.Event->Record.SetStartIndex(stripeInfo.BlockRange.Start);
     if constexpr (IsExactlyWriteMethod<TMethod>) {
         if (i < proto.ChecksumsSize()) {
-            const ui32 blockSize = partition.PartitionConfig.GetBlockSize();
+            const ui32 blockSize = partition.BlockSize;
             if (proto.GetChecksums(i).GetByteCount() ==
                 stripeInfo.BlockRange.Size() * blockSize)
             {
                 *request.Event->Record.AddChecksums() = proto.GetChecksums(i);
             } else {
                 ReportChecksumCalculationError(
-                    TStringBuilder() << "VolumeActor: Incorrectly calculated "
-                                        "checksum for block range",
+                    "VolumeActor: Incorrectly calculated checksum for block "
+                    "range",
                     {{"range", stripeInfo.BlockRange},
                      {"range length", stripeInfo.BlockRange.Size()},
                      {"checksum length",
                       proto.GetChecksums(i).GetByteCount() / blockSize},
-                     {"disk id", partition.PartitionConfig.GetDiskId()}});
+                     {"disk id", partition.DiskId}});
             }
         }
     }
@@ -67,7 +67,7 @@ ui32 InitPartitionRequest(
 
 template <typename TMethod>
 ui32 InitIORequest(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 originalBlocksCount,
     const ui32 blocksPerStripe,
     const ui32 i,
@@ -91,14 +91,14 @@ ui32 InitIORequest(
 // Mirrors the request to all partitions.
 template <typename TMethod>
 bool ToPartitionRequestsSimple(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const typename TMethod::TRequest::TPtr& ev,
     TVector<TPartitionRequest<TMethod>>* requests)
 {
     requests->resize(partitions.size());
 
     for (ui32 i = 0; i < partitions.size(); ++i) {
-        (*requests)[i].ActorId = partitions[i].GetTopActorId();
+        (*requests)[i].ActorId = partitions[i].ActorId;
         (*requests)[i].PartitionId = i;
         (*requests)[i].Event = std::make_unique<typename TMethod::TRequest>();
         (*requests)[i].Event->Record = ev->Get()->Record;
@@ -113,7 +113,7 @@ bool ToPartitionRequestsSimple(
 
 template <>
 bool ToPartitionRequests<TEvService::TWriteBlocksMethod>(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
     const TEvService::TWriteBlocksMethod::TRequest::TPtr& ev,
@@ -185,7 +185,7 @@ bool ToPartitionRequests<TEvService::TWriteBlocksMethod>(
 
 template <>
 bool ToPartitionRequests<TEvService::TReadBlocksMethod>(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
     const TEvService::TReadBlocksMethod::TRequest::TPtr& ev,
@@ -221,7 +221,7 @@ bool ToPartitionRequests<TEvService::TReadBlocksMethod>(
 
 template <>
 bool ToPartitionRequests<TEvService::TZeroBlocksMethod>(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
     const TEvService::TZeroBlocksMethod::TRequest::TPtr& ev,
@@ -259,7 +259,7 @@ bool ToPartitionRequests<TEvService::TZeroBlocksMethod>(
 
 template <typename TMethod>
 ui32 InitLocalRequest(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 blocksPerStripe,
     const ui32 i,
     const typename TMethod::TRequest::ProtoRecordType& proto,
@@ -294,7 +294,7 @@ ui32 InitLocalRequest(
 
 template <>
 bool ToPartitionRequests<TEvService::TWriteBlocksLocalMethod>(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
     const TEvService::TWriteBlocksLocalMethod::TRequest::TPtr& ev,
@@ -346,7 +346,7 @@ bool ToPartitionRequests<TEvService::TWriteBlocksLocalMethod>(
 
 template <>
 bool ToPartitionRequests<TEvService::TReadBlocksLocalMethod>(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
     const TEvService::TReadBlocksLocalMethod::TRequest::TPtr& ev,
@@ -393,7 +393,7 @@ bool ToPartitionRequests<TEvService::TReadBlocksLocalMethod>(
 
 template <>
 bool ToPartitionRequests<TEvVolume::TDescribeBlocksMethod>(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
     const TEvVolume::TDescribeBlocksMethod::TRequest::TPtr& ev,
@@ -428,7 +428,7 @@ bool ToPartitionRequests<TEvVolume::TDescribeBlocksMethod>(
 
 template <>
 bool ToPartitionRequests<TEvService::TGetChangedBlocksMethod>(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
     const TEvService::TGetChangedBlocksMethod::TRequest::TPtr& ev,
@@ -465,7 +465,7 @@ bool ToPartitionRequests<TEvService::TGetChangedBlocksMethod>(
 
 template <>
 bool ToPartitionRequests<TEvVolume::TGetPartitionInfoMethod>(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
     const TEvVolume::TGetPartitionInfoMethod::TRequest::TPtr& ev,
@@ -480,7 +480,7 @@ bool ToPartitionRequests<TEvVolume::TGetPartitionInfoMethod>(
 
     const auto partitionId = ev->Get()->Record.GetPartitionId();
     const auto& partition = partitions[partitionId];
-    (*requests)[0].ActorId = partition.GetTopActorId();
+    (*requests)[0].ActorId = partition.ActorId;
     (*requests)[0].PartitionId = partitionId;
     (*requests)[0].Event = std::make_unique<TEvVolume::TEvGetPartitionInfoRequest>();
     (*requests)[0].Event->Record = std::move(ev->Get()->Record);
@@ -490,7 +490,7 @@ bool ToPartitionRequests<TEvVolume::TGetPartitionInfoMethod>(
 
 template <>
 bool ToPartitionRequests<TEvVolume::TCompactRangeMethod>(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
     const TEvVolume::TCompactRangeMethod::TRequest::TPtr& ev,
@@ -525,7 +525,7 @@ bool ToPartitionRequests<TEvVolume::TCompactRangeMethod>(
 
 template <>
 bool ToPartitionRequests<TEvVolume::TGetCompactionStatusMethod>(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
     const TEvVolume::TGetCompactionStatusMethod::TRequest::TPtr& ev,
@@ -541,7 +541,7 @@ bool ToPartitionRequests<TEvVolume::TGetCompactionStatusMethod>(
 
 template <>
 bool ToPartitionRequests<TEvVolume::TRebuildMetadataMethod>(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
     const TEvVolume::TRebuildMetadataMethod::TRequest::TPtr& ev,
@@ -557,11 +557,12 @@ bool ToPartitionRequests<TEvVolume::TRebuildMetadataMethod>(
 
 template <>
 bool ToPartitionRequests<TEvVolume::TGetRebuildMetadataStatusMethod>(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
     const TEvVolume::TGetRebuildMetadataStatusMethod::TRequest::TPtr& ev,
-    TVector<TPartitionRequest<TEvVolume::TGetRebuildMetadataStatusMethod>>* requests,
+    TVector<TPartitionRequest<TEvVolume::TGetRebuildMetadataStatusMethod>>*
+        requests,
     TBlockRange64* blockRange)
 {
     Y_UNUSED(blockSize);
@@ -573,7 +574,7 @@ bool ToPartitionRequests<TEvVolume::TGetRebuildMetadataStatusMethod>(
 
 template <>
 bool ToPartitionRequests<TEvVolume::TScanDiskMethod>(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
     const TEvVolume::TScanDiskMethod::TRequest::TPtr& ev,
@@ -589,7 +590,7 @@ bool ToPartitionRequests<TEvVolume::TScanDiskMethod>(
 
 template <>
 bool ToPartitionRequests<TEvVolume::TGetScanDiskStatusMethod>(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
     const TEvVolume::TGetScanDiskStatusMethod::TRequest::TPtr& ev,
@@ -605,7 +606,7 @@ bool ToPartitionRequests<TEvVolume::TGetScanDiskStatusMethod>(
 
 template <>
 bool ToPartitionRequests<TEvVolume::TGetUsedBlocksMethod>(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
     const TEvVolume::TGetUsedBlocksMethod::TRequest::TPtr& ev,
@@ -622,7 +623,7 @@ bool ToPartitionRequests<TEvVolume::TGetUsedBlocksMethod>(
     STORAGE_VERIFY_C(
         false,
         NCloud::TWellKnownEntityTypes::DISK,
-        partitions[0].PartitionConfig.GetDiskId(),
+        partitions[0].DiskId,
         TStringBuilder() << "ToPartitionRequests not implemented for "
                             "TEvVolume::TGetUsedBlocksMethod");
 
@@ -631,7 +632,7 @@ bool ToPartitionRequests<TEvVolume::TGetUsedBlocksMethod>(
 
 template <>
 bool ToPartitionRequests<TEvVolume::TCheckRangeMethod>(
-    const TPartitionInfoList& partitions,
+    const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
     const TEvVolume::TCheckRangeMethod::TRequest::TPtr& ev,

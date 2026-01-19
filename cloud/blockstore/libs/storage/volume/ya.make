@@ -1,9 +1,7 @@
 LIBRARY()
 
 SRCS(
-    multi_partition_requests.cpp
     partition_info.cpp
-    tracing.cpp
     volume_throttler_logger.cpp
 
     volume.cpp

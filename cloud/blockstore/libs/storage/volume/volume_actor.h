@@ -657,6 +657,10 @@ private:
 
     void OnStarted(const NActors::TActorContext& ctx);
 
+    void OnPartitionStateChanged(
+        const NActors::TActorContext& ctx,
+        TPartitionInfo::EState oldState);
+
     void ProcessReadHistory(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
@@ -1106,7 +1110,6 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         ui64 volumeRequestId,
         TBlockRange64 blockRange,
-        ui32 partitionId,
         ui64 traceTs);
 
     template <typename TMethod>
@@ -1119,14 +1122,6 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorId& partActorId,
         const ui64 volumeRequestId);
-
-    template <typename TMethod>
-    bool HandleMultipartitionVolumeRequest(
-        const NActors::TActorContext& ctx,
-        const typename TMethod::TRequest::TPtr& ev,
-        ui64 volumeRequestId,
-        bool isTraced,
-        ui64 traceTs);
 
     template <typename TMethod>
     void HandleCheckpointRequest(
