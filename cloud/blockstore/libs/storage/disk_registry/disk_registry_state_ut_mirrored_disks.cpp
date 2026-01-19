@@ -4213,9 +4213,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         auto error = state.GetDiskInfo("disk-2", diskInfo);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Devices.size());
-        UNIT_ASSERT_VALUES_EQUAL("dev-6", diskInfo.Devices[0].GetDeviceName());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-10", diskInfo.Devices[0].GetDeviceUUID());
         ASSERT_VECTORS_EQUAL(
-            TVector<TString>{"uuid-6"},
+            TVector<TString>{"uuid-10"},
             diskInfo.DeviceReplacementIds);
 
         auto dirtyDevices = state.GetDirtyDevices();
@@ -4238,9 +4238,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Devices.size());
 
-        UNIT_ASSERT_VALUES_EQUAL("dev-9", diskInfo.Devices[0].GetDeviceName());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-6", diskInfo.Devices[0].GetDeviceUUID());
         ASSERT_VECTORS_EQUAL(
-            TVector<TString>{"uuid-9"},
+            TVector<TString>{"uuid-6"},
             diskInfo.DeviceReplacementIds);
 
         dirtyDevices = state.GetDirtyDevices();
@@ -4351,12 +4351,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         auto error = state.GetDiskInfo("disk-1", diskInfo);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Devices.size());
-        UNIT_ASSERT_VALUES_EQUAL("dev-5", diskInfo.Devices[0].GetDeviceName());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-11", diskInfo.Devices[0].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Replicas[0].size());
         UNIT_ASSERT_VALUES_EQUAL(
-            "dev-8",
-            diskInfo.Replicas[0][1].GetDeviceName());
-        TVector<TString> expectedDeviceReplacementIds = {"uuid-5", "uuid-8"};
+            "uuid-5",
+            diskInfo.Replicas[0][1].GetDeviceUUID());
+        TVector<TString> expectedDeviceReplacementIds = {"uuid-11", "uuid-5"};
         ASSERT_VECTORS_EQUAL(
             expectedDeviceReplacementIds,
             diskInfo.DeviceReplacementIds);
