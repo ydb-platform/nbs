@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include "tablet_database.h"
-#include "tablet_private.h"
 #include "tablet_state_cache.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
@@ -12,6 +11,7 @@
 #include <cloud/filestore/libs/storage/core/request_info.h>
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/model/public.h>
+#include <cloud/filestore/libs/storage/tablet/events/tablet_private.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
@@ -144,6 +144,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ChangeStorageConfig,                __VA_ARGS__)                       \
                                                                                \
     xxx(DeleteOpLogEntry,                   __VA_ARGS__)                       \
+    xxx(GetOpLogEntry,                      __VA_ARGS__)                       \
     xxx(CommitNodeCreationInShard,          __VA_ARGS__)                       \
                                                                                \
     xxx(UnsafeDeleteNode,                   __VA_ARGS__)                       \
@@ -921,6 +922,7 @@ struct TTxIndexTablet
         const TString Name;
         const NProto::TRenameNodeRequest Request;
         const TString NewParentShardId;
+        const bool IsExplicitRequest;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
@@ -933,13 +935,15 @@ struct TTxIndexTablet
         TPrepareRenameNodeInSource(
                 TRequestInfoPtr requestInfo,
                 NProto::TRenameNodeRequest request,
-                TString newParentShardId)
+                TString newParentShardId,
+                bool isExplicitRequest)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , ParentNodeId(request.GetNodeId())
             , Name(request.GetName())
             , Request(std::move(request))
             , NewParentShardId(std::move(newParentShardId))
+            , IsExplicitRequest(isExplicitRequest)
         {}
 
         void Clear() override
@@ -2253,7 +2257,7 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const TStackVec<ui64, 16> Nodes;
 
-        ui64 CommitId = InvalidNodeId;
+        ui64 CommitId = InvalidCommitId;
         TSet<ui64> AliveNodes;
 
         TFilterAliveNodes(
@@ -2330,17 +2334,39 @@ struct TTxIndexTablet
 
     struct TDeleteOpLogEntry: TTxIndexTabletBase
     {
-        // actually unused, needed in tablet_tx.h to avoid sophisticated
-        // template tricks
         const TRequestInfoPtr RequestInfo;
         const ui64 EntryId;
 
-        explicit TDeleteOpLogEntry(ui64 entryId)
-            : EntryId(entryId)
+        explicit TDeleteOpLogEntry(
+                TRequestInfoPtr requestInfo,
+                ui64 entryId)
+            : RequestInfo(std::move(requestInfo))
+            , EntryId(entryId)
         {}
 
         void Clear() override
         {
+        }
+    };
+
+    //
+    // GetOpLogEntry
+    //
+
+    struct TGetOpLogEntry: TTxIndexTabletBase
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui64 EntryId;
+        TMaybe<NProto::TOpLogEntry> Entry;
+
+        explicit TGetOpLogEntry(TRequestInfoPtr requestInfo, ui64 entryId)
+            : RequestInfo(std::move(requestInfo))
+            , EntryId(entryId)
+        {}
+
+        void Clear() override
+        {
+            Entry.Clear();
         }
     };
 

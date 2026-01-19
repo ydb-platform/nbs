@@ -975,7 +975,10 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
             NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
         }
 
-        ExecuteTx<TDeleteOpLogEntry>(ctx, msg->OpLogEntryId);
+        ExecuteTx<TDeleteOpLogEntry>(
+            ctx,
+            TRequestInfoPtr() /* requestInfo */,
+            msg->OpLogEntryId);
     } else {
         TABLET_VERIFY_C(
             0,

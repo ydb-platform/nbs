@@ -11,7 +11,9 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/filestore/libs/storage/tablet/events
     cloud/filestore/libs/storage/testlib
+
     contrib/ydb/core/testlib
 )
 

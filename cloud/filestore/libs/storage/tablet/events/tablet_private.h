@@ -1,7 +1,5 @@
 #pragma once
 
-#include "public.h"
-
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/api/components.h>
@@ -11,6 +9,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/blob.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 #include <cloud/filestore/libs/storage/tablet/model/shard_balancer.h>
+#include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/common/byte_range.h>
@@ -53,6 +52,9 @@ namespace NCloud::NFileStore::NStorage {
     xxx(GenerateCommitId,                       __VA_ARGS__)                   \
     xxx(SyncShardSessions,                      __VA_ARGS__)                   \
     xxx(LoadCompactionMapChunk,                 __VA_ARGS__)                   \
+    xxx(PrepareRenameNodeInSource,              __VA_ARGS__)                   \
+    xxx(DeleteOpLogEntry,                       __VA_ARGS__)                   \
+    xxx(GetOpLogEntry,                          __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE
 
 #define FILESTORE_TABLET_REQUESTS_PRIVATE(xxx, ...)                            \
@@ -747,6 +749,72 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // PrepareRenameNodeInSource
+    //
+    // NOTE: This event is not supposed to be sent outside of unit tests.
+    //
+
+    struct TPrepareRenameNodeInSourceRequest
+    {
+        NProto::TRenameNodeRequest Request;
+        TString NewShardId;
+
+        TPrepareRenameNodeInSourceRequest(
+                NProto::TRenameNodeRequest request,
+                TString newShardId)
+            : Request(std::move(request))
+            , NewShardId(std::move(newShardId))
+        {
+        }
+    };
+
+    struct TPrepareRenameNodeInSourceResponse
+    {
+        ui64 OpLogEntryId = 0;
+    };
+
+    //
+    // DeleteOpLogEntry
+    //
+    // NOTE: This event is not supposed to be sent outside of unit tests.
+    //
+
+    struct TDeleteOpLogEntryRequest
+    {
+        const ui64 OpLogEntryId;
+
+        explicit TDeleteOpLogEntryRequest(ui64 opLogEntryId)
+            : OpLogEntryId(opLogEntryId)
+        {
+        }
+    };
+
+    struct TDeleteOpLogEntryResponse
+    {
+    };
+
+    //
+    // GetOpLogEntry
+    //
+    // NOTE: This event is not supposed to be sent outside of unit tests.
+    //
+
+    struct TGetOpLogEntryRequest
+    {
+        const ui64 OpLogEntryId;
+
+        explicit TGetOpLogEntryRequest(ui64 opLogEntryId)
+            : OpLogEntryId(opLogEntryId)
+        {
+        }
+    };
+
+    struct TGetOpLogEntryResponse
+    {
+        TMaybe<NProto::TOpLogEntry> OpLogEntry;
+    };
+
+    //
     // DumpCompactionRange
     //
 
@@ -902,7 +970,7 @@ struct TEvIndexTabletPrivate
     {
         TStackVec<ui64, 16> Nodes;
 
-        TFilterAliveNodesRequest(TStackVec<ui64, 16> nodes)
+        explicit TFilterAliveNodesRequest(TStackVec<ui64, 16> nodes)
             : Nodes(std::move(nodes))
         {}
     };

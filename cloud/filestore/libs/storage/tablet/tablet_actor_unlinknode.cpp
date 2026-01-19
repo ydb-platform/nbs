@@ -851,7 +851,10 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
             msg->OpLogEntryId,
             response);
     } else {
-        ExecuteTx<TDeleteOpLogEntry>(ctx, msg->OpLogEntryId);
+        ExecuteTx<TDeleteOpLogEntry>(
+            ctx,
+            TRequestInfoPtr() /* requestInfo */,
+            msg->OpLogEntryId);
     }
 }
 
