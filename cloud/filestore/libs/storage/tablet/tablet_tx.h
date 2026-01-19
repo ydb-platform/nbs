@@ -520,6 +520,8 @@ struct TTxIndexTablet
         /* const */ NProto::TResetSessionRequest Request;
 
         TNodeSet Nodes;
+        bool CommitIdOverflow = false;
+        NProto::TError Error;
 
         TResetSession(
                 TRequestInfoPtr requestInfo,

@@ -133,7 +133,9 @@ void TIndexTabletActor::ExecuteTx_ResetSession(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "ResetSession");
+        args.Error = ErrorCommitIdOverflow();
+        args.CommitIdOverflow = true;
+        return;
     }
 
     auto handle = session->Handles.begin();
@@ -182,7 +184,13 @@ void TIndexTabletActor::CompleteTx_ResetSession(
 {
     RemoveTransaction(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvResetSessionResponse>();
+    auto response =
+        std::make_unique<TEvService::TEvResetSessionResponse>(args.Error);
+
+    if (args.CommitIdOverflow) {
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "ResetSession");
+    }
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     // session will be reset in other shards via the code in the main tablet
