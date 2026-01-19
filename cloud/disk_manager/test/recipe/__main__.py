@@ -306,7 +306,6 @@ def start(argv):
     set_env("DISK_MANAGER_RECIPE_NFS2_PORT", str(nfs2.port))
     set_env("DISK_MANAGER_RECIPE_NFS3_PORT", str(nfs3.port))
 
-
     if args.nfs_only:
         return
 
