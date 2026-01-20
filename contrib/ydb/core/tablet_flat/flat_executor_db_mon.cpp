@@ -138,6 +138,7 @@ public:
                     ssize_t rowLimit = FromStringWithDefault<ssize_t>(cgi.Get("MaxRows"), 1000);
                     rowLimit = Max<ssize_t>(rowLimit, 1);
                     ssize_t stringlimit = FromStringWithDefault<ssize_t>(cgi.Get("MaxString"), 1024);
+                    stringlimit = Max<ssize_t>(stringlimit, 1);
                     ssize_t rowCount = 0;
                     while (result->Next(NTable::ENext::Data) == NTable::EReady::Data && rowCount < rowOffset + rowLimit) {
                             ++rowCount;
