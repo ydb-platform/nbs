@@ -113,11 +113,6 @@ if __name__ == "__main__":
         help='GitHub repository in the format "owner/repo"',
     )
     parser.add_argument(
-        "--api-endpoint",
-        default="api.eu-north1.nebius.cloud",
-        help="Cloud API Endpoint",
-    )
-    parser.add_argument(
         "--parent-id",
         default="project-e00p3n19h92mcw7vke",
         help="Parent ID where the VM will be created",

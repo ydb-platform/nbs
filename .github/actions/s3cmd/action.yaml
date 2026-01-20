@@ -16,6 +16,10 @@ inputs:
   s3_website_suffix:
     required: true
     description: "s3 website suffix"
+  s3_region:
+    required: false
+    description: "s3 region"
+    default: "eu-north1"
   folder_prefix:
     required: true
     description: "folder prefix"
@@ -61,6 +65,7 @@ runs:
         S3_FOLDER_PREFIX: ${{ inputs.folder_prefix }}
         S3_KEY_ID: ${{ inputs.s3_key_id }}
         S3_SECRET_ACCESS_KEY: ${{ inputs.s3_key_secret }}
+        S3_REGION: ${{ inputs.s3_region }}
         BUILD_PRESET: ${{ inputs.build_preset }}
         USER: ${{ inputs.user || 'github'}}
       run: |
@@ -73,7 +78,7 @@ runs:
         [default]
         access_key = ${S3_KEY_ID}
         secret_key = ${S3_SECRET_ACCESS_KEY}
-        bucket_location = eu-north1
+        bucket_location = ${S3_REGION}
         host_base = ${S3_ENDPOINT_NO_PROTOCOL}
         host_bucket = %(bucket)s.${S3_ENDPOINT_NO_PROTOCOL}
         EOF
@@ -86,7 +91,7 @@ runs:
         EOF
         cat <<EOF | sudo -E -H -u $USER tee /home/$USER/.aws/config
         [default]
-        region = eu-north1
+        region = ${S3_REGION}
         endpoint_url=$S3_ENDPOINT
         s3 =
           max_concurrent_requests = 32
@@ -102,7 +107,7 @@ runs:
         EOF
         cat <<EOF | sudo tee /root/.aws/config
         [default]
-        region = eu-north1
+        region = ${S3_REGION}
         endpoint_url=$S3_ENDPOINT
         s3 =
           max_concurrent_requests = 32

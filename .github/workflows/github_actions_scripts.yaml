@@ -20,7 +20,7 @@ jobs:
 
         mkdir -p $GITHUB_WORKSPACE/.github/scripts/tests/test-data/
         cd $GITHUB_WORKSPACE/.github/scripts/tests/test-data/ || exit
-        wget "https://storage.eu-north1.nebius.cloud/github-actions-test-data/cloud-v${ACTIONS_TEST_DATA_VERSION}.tar.gz" -O cloud.tar.gz
+        wget "https://storage.${REGION}.nebius.cloud/github-actions-test-data/cloud-v${ACTIONS_TEST_DATA_VERSION}.tar.gz" -O cloud.tar.gz
         tar zxvf cloud.tar.gz
 
         python3 $GITHUB_WORKSPACE/.github/scripts/tests/transform-ya-junit.py \
@@ -55,6 +55,7 @@ jobs:
         cat README.md
       env:
         ACTIONS_TEST_DATA_VERSION: ${{ vars.NEBIUS_ACTIONS_TEST_DATA_VERSION }}
+        REGION: ${{ vars.POOLED_LIGHT_REGION }}
 
     - name: Checkout PR
       uses: actions/checkout@v4
@@ -89,10 +90,11 @@ jobs:
         set -x
         mkdir -p $GITHUB_WORKSPACE/.github/scripts/tests/test-data/
         cd $GITHUB_WORKSPACE/.github/scripts/tests/test-data/ || exit
-        wget "https://storage.eu-north1.nebius.cloud/github-actions-test-data/cloud-v${ACTIONS_TEST_DATA_VERSION}.tar.gz" -O cloud.tar.gz
+        wget "https://storage.${REGION}.nebius.cloud/github-actions-test-data/cloud-v${ACTIONS_TEST_DATA_VERSION}.tar.gz" -O cloud.tar.gz
         tar zxvf cloud.tar.gz
       env:
         ACTIONS_TEST_DATA_VERSION: ${{ vars.NEBIUS_ACTIONS_TEST_DATA_VERSION }}
+        REGION: ${{ vars.POOLED_LIGHT_REGION }}
     - name: Launch transform-ya-junit.py
       shell: bash
       run: |
