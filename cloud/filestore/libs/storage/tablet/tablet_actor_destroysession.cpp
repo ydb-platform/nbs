@@ -188,9 +188,14 @@ void TIndexTabletActor::CompleteTx_DestroySession(
     auto response =
         std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>(args.Error);
 
-    if (args.CommitIdOverflow) {
+    if (HasError(args.Error)) {
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "DestroySession");
+        if (args.CommitIdOverflow) {
+            return ScheduleRebootTabletOnCommitIdOverflow(
+                ctx,
+                "DestroySession");
+        }
+        return;
     }
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();

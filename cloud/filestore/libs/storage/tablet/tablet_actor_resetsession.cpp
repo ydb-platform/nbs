@@ -187,9 +187,12 @@ void TIndexTabletActor::CompleteTx_ResetSession(
     auto response =
         std::make_unique<TEvService::TEvResetSessionResponse>(args.Error);
 
-    if (args.CommitIdOverflow) {
+    if (HasError(args.Error)) {
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "ResetSession");
+        if (args.CommitIdOverflow) {
+            return ScheduleRebootTabletOnCommitIdOverflow(ctx, "ResetSession");
+        }
+        return;
     }
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
