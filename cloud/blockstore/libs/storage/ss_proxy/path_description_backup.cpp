@@ -17,6 +17,7 @@
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
+using namespace NCloud::NStorage::NSSProxy;
 
 namespace {
 

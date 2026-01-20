@@ -3,13 +3,12 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
-#include <cloud/blockstore/libs/storage/ss_proxy/protos/path_description_backup.pb.h>
 #include <cloud/blockstore/libs/storage/ss_proxy/ss_proxy_events_private.h>
 
 #include <cloud/storage/core/libs/kikimr/public.h>
+#include <cloud/storage/core/libs/ss_proxy/protos/path_description_backup.pb.h>
 
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -32,7 +31,7 @@ private:
     const bool UseBinaryFormat = false;
     const bool ReadOnlyMode = false;
 
-    NSSProxy::NProto::TPathDescriptionBackup BackupProto;
+    NCloud::NStorage::NSSProxy::NProto::TPathDescriptionBackup BackupProto;
     const TFsPath TmpBackupFilePath;
 
 public:
