@@ -88,12 +88,9 @@ namespace NKikimr {
             EvResponseTabletDistribution,
             EvResponseScaleRecommendation,
             EvConfigureScaleRecommenderReply,
-<<<<<<< HEAD
             EvDrainNodeAck,
             EvResponseDrainInfo,
             EvSetDownReply,
-=======
->>>>>>> 77d3dca44b (Copy ydb-25-1-nbis)
 
             EvEnd
         };
