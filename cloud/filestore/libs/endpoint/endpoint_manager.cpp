@@ -108,6 +108,7 @@ private:
     THashMap<TString, TStartingEndpointState> StartingSockets;
     THashMap<TString, TStoppingEndpointState> StoppingSockets;
 
+    TMutex EndpointsLock;
     bool DrainingStarted = false;
     TMap<TString, TEndpointInfo> Endpoints;
 
@@ -137,19 +138,14 @@ public:
 
     void Drain() override
     {
-        Executor->Execute([this]() { return DoDrain(); }).GetValueSync();
-    }
-
-    TFuture<void> DoDrain()
-    {
+        auto g = Guard(EndpointsLock);
         DrainingStarted = true;
 
         TVector<TFuture<void>> futures;
         for (auto&& [_, endpoint]: Endpoints) {
             futures.push_back(endpoint.Endpoint->SuspendAsync());
         }
-
-        return WaitAll(futures);
+        WaitAll(futures).GetValueSync();
     }
 
 #define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
@@ -326,6 +322,7 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
 {
     STORAGE_INFO("StartEndpoint " << DumpMessage(request));
 
+    auto g = Guard(EndpointsLock);
     if (DrainingStarted) {
         return TErrorResponse(E_REJECTED, "draining");
     }
@@ -421,6 +418,7 @@ NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
 {
     STORAGE_INFO("StopEndpoint " << DumpMessage(request));
 
+    auto g = Guard(EndpointsLock);
     if (DrainingStarted) {
         return TErrorResponse(E_REJECTED, "draining");
     }
@@ -476,6 +474,7 @@ NProto::TListEndpointsResponse TEndpointManager::DoListEndpoints(
 {
     STORAGE_TRACE("ListEndpoints " << DumpMessage(request));
 
+    auto g = Guard(EndpointsLock);
     if (DrainingStarted) {
         return TErrorResponse(E_REJECTED, "draining");
     }
