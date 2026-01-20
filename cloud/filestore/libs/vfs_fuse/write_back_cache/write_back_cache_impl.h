@@ -23,13 +23,12 @@ namespace NCloud::NFileStore::NFuse {
 struct TWriteBackCache::TWriteDataEntryDeserializationStats
 {
     ui64 EntryCount = 0;
-    ui64 ChecksumMismatchCount = 0;
     ui64 EntrySizeMismatchCount = 0;
     ui64 ProtobufDeserializationErrorCount = 0;
 
     bool HasFailed() const
     {
-        return ChecksumMismatchCount > 0 || EntrySizeMismatchCount > 0 ||
+        return EntrySizeMismatchCount > 0 ||
                ProtobufDeserializationErrorCount > 0;
     }
 };
@@ -88,7 +87,6 @@ public:
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
     TWriteDataEntry(
-        ui32 checksum,
         TStringBuf serializedRequest,
         TWriteDataEntryDeserializationStats& stats,
         TImpl* impl);
@@ -102,6 +100,11 @@ public:
     {
         Y_ABORT_UNLESS(RequestId == 0);
         RequestId = requestId;
+    }
+
+    const void* GetAllocationPtr() const
+    {
+        return CachedRequest;
     }
 
     ui64 GetNodeId() const
@@ -174,8 +177,10 @@ public:
 
     void SetPending(TImpl* impl);
 
-    void SerializeAndMoveRequestBuffer(
-        std::span<char> allocation,
+    void Serialize(std::span<char> allocation) const;
+
+    void MoveRequestBuffer(
+        const void* allocationPtr,
         TQueuedOperations& pendingOperations,
         TImpl* impl);
 
