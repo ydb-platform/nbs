@@ -9,6 +9,7 @@ import (
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -22,18 +23,21 @@ type cellSelector struct {
 	config     *cells_config.CellsConfig
 	storage    storage.Storage
 	nbsFactory nbs.Factory
+	nfsFactory nfs.Factory
 }
 
 func NewCellSelector(
 	config *cells_config.CellsConfig,
 	storage storage.Storage,
 	nbsFactory nbs.Factory,
+	nfsFactory nfs.Factory,
 ) CellSelector {
 
 	return &cellSelector{
 		config:     config,
 		storage:    storage,
 		nbsFactory: nbsFactory,
+		nfsFactory: nfsFactory,
 	}
 }
 
@@ -79,7 +83,7 @@ func (s *cellSelector) ReplaceZoneIdWithCellIdInDiskMeta(
 	}, nil
 }
 
-func (s *cellSelector) SelectCell(
+func (s *cellSelector) SelectCellForDisk(
 	ctx context.Context,
 	zoneID string,
 	folderID string,
@@ -87,7 +91,7 @@ func (s *cellSelector) SelectCell(
 	requireExactCellIDMatch bool,
 ) (nbs.Client, error) {
 
-	cellID, err := s.selectCell(
+	cellID, err := s.selectCellForDisk(
 		ctx,
 		zoneID,
 		folderID,
@@ -184,6 +188,20 @@ func (s *cellSelector) SelectCellForLocalDisk(
 	}
 }
 
+func (s *cellSelector) SelectCellForFilesystem(
+	ctx context.Context,
+	zoneID string,
+	folderID string,
+) (nfs.Client, error) {
+
+	cellID, err := s.selectCellForFilesystem(zoneID, folderID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.nfsFactory.NewClient(ctx, cellID)
+}
+
 func (s *cellSelector) ZoneContainsCell(zoneID string, cellID string) bool {
 	return slices.Contains(s.getCells(zoneID), cellID)
 }
@@ -237,7 +255,7 @@ func (s *cellSelector) isAgentAvailable(
 	return true
 }
 
-func (s *cellSelector) selectCell(
+func (s *cellSelector) selectCellForDisk(
 	ctx context.Context,
 	zoneID string,
 	folderID string,
@@ -300,6 +318,43 @@ func (s *cellSelector) selectCell(
 			})
 
 		return mostFree.CellID, nil
+	default:
+		return "", errors.NewNonCancellableErrorf(
+			"unknown cell selection policy: %v",
+			s.config.GetCellSelectionPolicy().String(),
+		)
+	}
+}
+
+func (s *cellSelector) selectCellForFilesystem(
+	zoneID string,
+	folderID string,
+) (string, error) {
+
+	if s.config == nil {
+		return zoneID, nil
+	}
+
+	if !s.isFolderAllowed(folderID) {
+		return zoneID, nil
+	}
+
+	cells := s.getCells(zoneID)
+
+	if len(cells) == 0 {
+		if s.isCell(zoneID) {
+			return zoneID, nil
+		}
+
+		return "", errors.NewNonCancellableErrorf(
+			"incorrect zone ID provided: %q",
+			zoneID,
+		)
+	}
+
+	switch s.config.GetCellSelectionPolicy() {
+	case cells_config.CellSelectionPolicy_FIRST_IN_CONFIG:
+		return cells[0], nil
 	default:
 		return "", errors.NewNonCancellableErrorf(
 			"unknown cell selection policy: %v",

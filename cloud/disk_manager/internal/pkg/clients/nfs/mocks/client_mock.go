@@ -19,6 +19,11 @@ func (c *ClientMock) Close() error {
 	return args.Error(0)
 }
 
+func (c *ClientMock) ZoneID() string {
+	args := c.Called()
+	return args.String(0)
+}
+
 func (c *ClientMock) Create(
 	ctx context.Context,
 	filesystemID string,

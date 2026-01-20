@@ -101,6 +101,11 @@ func (m *clientMetrics) OnError(err nfs_client.ClientError) {
 type client struct {
 	nfs     *nfs_client.Client
 	metrics clientMetrics
+	zoneID  string
+}
+
+func (c *client) ZoneID() string {
+	return c.zoneID
 }
 
 func (c *client) Close() error {

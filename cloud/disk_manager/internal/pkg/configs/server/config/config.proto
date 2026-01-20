@@ -74,4 +74,5 @@ message ServerConfig {
     optional tracing.TracingConfig TracingConfig = 18;
     optional cells.CellsConfig CellsConfig = 19;
     optional filesystem_snapshot.FilesystemSnapshotsConfig FilesystemSnapshotsConfig = 20;
+    optional cells.CellsConfig FilestoreCellsConfig = 21;
 }
