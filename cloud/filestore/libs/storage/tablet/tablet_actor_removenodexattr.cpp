@@ -92,6 +92,8 @@ void TIndexTabletActor::ExecuteTx_RemoveNodeXAttr(
 {
     FILESTORE_VALIDATE_TX_ERROR(RemoveNodeXAttr, args);
 
+    Y_UNUSED(ctx);
+
     if (!args.Attr) {
         args.Error = ErrorAttributeDoesNotExist(args.Name);
         return;
@@ -101,7 +103,9 @@ void TIndexTabletActor::ExecuteTx_RemoveNodeXAttr(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "RemoveXAttr");
+        args.CommitIdOverflow = true;
+        args.Error = ErrorCommitIdOverflow();
+        return;
     }
 
     RemoveNodeAttr(
@@ -125,6 +129,10 @@ void TIndexTabletActor::CompleteTx_RemoveNodeXAttr(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    if (args.CommitIdOverflow) {
+        ScheduleRebootTabletOnCommitIdOverflow(ctx, "RemoveXAttr");
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
