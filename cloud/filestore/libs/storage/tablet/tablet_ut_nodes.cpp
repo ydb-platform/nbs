@@ -894,7 +894,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         tablet.AssertSetNodeXAttrFailed(id, "user.name", longStr);
     }
 
-    Y_UNIT_TEST(ShouldHandleCommitIdOverflowInSetNodeXAttr)
+    Y_UNIT_TEST(ShouldHandleCommitIdOverflowInSetNodeAndRemoveXAttr)
     {
         const ui32 maxTabletStep = 4;
 
