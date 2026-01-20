@@ -19,18 +19,15 @@ public:
         TMessageBusServerRequestBase<TMessageBusSecureRequest<TMessageBusServerRequestBase<TDerived>>>::HandleError(
                     MSTATUS_ERROR,
                     TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::AccessDenied,
-                    error.Message,
+                    TString{error.Message},
                     ctx);
     }
 
     template <typename... Args>
     TMessageBusSecureRequest(Args&&... args)
         : TSecureRequestActor<TMessageBusServerRequestBase<TMessageBusSecureRequest<TMessageBusServerRequestBase<TDerived>>>, TDerived>(std::forward<Args>(args)...)
-    {}
-
-    template<typename T>
-    void Become(T stateFunc) {
-        IActorCallback::Become(stateFunc);
+    {
+        this->SetInternalToken(this->GetInternalToken()); // No effect if token is nullptr
     }
 };
 
@@ -46,7 +43,7 @@ public:
     }
 
     void HandleError(EResponseStatus status,  TEvTxUserProxy::TResultStatus::EStatus proxyStatus, const TString& message, const TActorContext &ctx) {
-        TAutoPtr<TBusResponse> response(new TBusResponseStatus(status, message));
+        TAutoPtr<TBusResponse> response(new TBusResponseStatus(status, TString{message}));
 
         if (proxyStatus != TEvTxUserProxy::TResultStatus::Unknown)
             response->Record.SetProxyErrorCode(proxyStatus);
@@ -70,7 +67,9 @@ public:
           TMessageBusSimpleTabletRequest<TDerived, TTabletReplyEvent, Activity>,
           TMessageBusSecureRequest<TMessageBusSimpleTabletRequest<TDerived, TTabletReplyEvent, Activity>>,
           TMessageBusSimpleTabletRequest<TDerived, TTabletReplyEvent, Activity>>(std::forward<Args>(args)...)
-    {}
+    {
+        this->SetInternalToken(this->GetInternalToken()); // No effect if token is nullptr
+    }
 };
 
 template <typename TDerived, typename TTabletReplyEvent>
@@ -99,7 +98,7 @@ public:
         HandleError(
                     MSTATUS_ERROR,
                     TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::AccessDenied,
-                    error.Message,
+                    TString{error.Message},
                     ctx);
     }
 
@@ -109,7 +108,9 @@ public:
           TMessageBusTabletRequest<TDerived, TTabletReplyEvent>,
           TMessageBusSecureRequest<TMessageBusTabletRequest<TDerived, TTabletReplyEvent>>,
           TMessageBusTabletRequest<TDerived, TTabletReplyEvent>>(std::forward<Args>(args)...)
-    {}
+    {
+        this->SetInternalToken(this->GetInternalToken()); // No effect if token is nullptr
+    }
 };
 
 }

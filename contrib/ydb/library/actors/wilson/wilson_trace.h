@@ -1,13 +1,16 @@
 #pragma once
 
 #include <contrib/ydb/library/actors/core/monotonic.h>
-#include <contrib/ydb/library/actors/protos/actors.pb.h>
 
 #include <util/random/random.h>
 #include <util/random/fast.h>
 #include <util/stream/output.h>
 
 #include <array>
+
+namespace NActorsProto {
+    class TTraceId;
+} // NActorsProto
 
 namespace NWilson {
     class TTraceId {
@@ -119,16 +122,7 @@ namespace NWilson {
             Y_DEBUG_ABORT_UNLESS(p - in == sizeof(TSerializedTraceId));
         }
 
-        TTraceId(const NActorsProto::TTraceId& pb)
-            : TTraceId()
-        {
-            if (pb.HasData()) {
-                const auto& data = pb.GetData();
-                if (data.size() == sizeof(TSerializedTraceId)) {
-                    *this = *reinterpret_cast<const TSerializedTraceId*>(data.data());
-                }
-            }
-        }
+        TTraceId(const NActorsProto::TTraceId& pb);
 
         void Serialize(TSerializedTraceId *out) const {
             char *p = *out;
@@ -141,13 +135,7 @@ namespace NWilson {
             Y_DEBUG_ABORT_UNLESS(p - *out == sizeof(TSerializedTraceId));
         }
 
-        void Serialize(NActorsProto::TTraceId *pb) const {
-            if (*this) {
-                TSerializedTraceId data;
-                Serialize(&data);
-                pb->SetData(reinterpret_cast<const char*>(&data), sizeof(data));
-            }
-        }
+        void Serialize(NActorsProto::TTraceId *pb) const;
 
         TTraceId& operator=(TTraceId&& other) {
             if (this != &other) {
@@ -185,7 +173,8 @@ namespace NWilson {
             return TTraceId();
         }
 
-        static TTraceId FromTraceparentHeader(const TStringBuf header);
+        static TTraceId FromTraceparentHeader(const TStringBuf header, ui8 verbosity = 15);
+        TString ToTraceresponseHeader() const;
 
         TTraceId Span(ui8 verbosity) const {
             Validate();

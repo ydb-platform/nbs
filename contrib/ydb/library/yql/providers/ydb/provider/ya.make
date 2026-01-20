@@ -23,30 +23,31 @@ PEERDIR(
     library/cpp/time_provider
     library/cpp/yson/node
     contrib/ydb/core/fq/libs/common
-    contrib/ydb/library/yql/ast
-    contrib/ydb/library/yql/minikql/comp_nodes
-    contrib/ydb/library/yql/providers/common/structured_token
+    yql/essentials/ast
+    yql/essentials/minikql/comp_nodes
+    yql/essentials/providers/common/structured_token
     contrib/ydb/library/yql/providers/common/token_accessor/client
-    contrib/ydb/library/yql/core
-    contrib/ydb/library/yql/core/type_ann
+    yql/essentials/core
+    yql/essentials/core/type_ann
     contrib/ydb/library/yql/dq/expr_nodes
-    contrib/ydb/library/yql/dq/integration
-    contrib/ydb/library/yql/providers/common/config
+    yql/essentials/core/dq_integration
+    yql/essentials/providers/common/config
     contrib/ydb/library/yql/providers/common/db_id_async_resolver
-    contrib/ydb/library/yql/providers/common/dq
-    contrib/ydb/library/yql/providers/common/mkql
-    contrib/ydb/library/yql/providers/common/proto
-    contrib/ydb/library/yql/providers/common/provider
-    contrib/ydb/library/yql/providers/common/schema/expr
-    contrib/ydb/library/yql/providers/common/transform
+    yql/essentials/providers/common/dq
+    yql/essentials/providers/common/mkql
+    yql/essentials/providers/common/proto
+    yql/essentials/providers/common/provider
+    yql/essentials/providers/common/schema/expr
+    yql/essentials/providers/common/transform
     contrib/ydb/library/yql/providers/dq/common
     contrib/ydb/library/yql/providers/dq/expr_nodes
-    contrib/ydb/library/yql/providers/result/expr_nodes
+    yql/essentials/providers/result/expr_nodes
     contrib/ydb/library/yql/providers/ydb/expr_nodes
     contrib/ydb/library/yql/providers/ydb/proto
     contrib/ydb/public/lib/experimental
-    contrib/ydb/public/sdk/cpp/client/ydb_driver
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/public/sdk/cpp/adapters/issue
+    contrib/ydb/public/sdk/cpp/src/client/driver
+    contrib/ydb/public/sdk/cpp/src/client/table
 )
 
 YQL_LAST_ABI_VERSION()

@@ -7,7 +7,7 @@ LICENSE(
     Public-Domain
 )
 
-LICENSE_TEXTS(LICENSE.txt)
+LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
 VERSION(2021-03-11)
 

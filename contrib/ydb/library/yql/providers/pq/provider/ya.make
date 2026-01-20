@@ -23,32 +23,38 @@ SRCS(
 PEERDIR(
     library/cpp/random_provider
     library/cpp/time_provider
-    contrib/ydb/library/yql/ast
-    contrib/ydb/library/yql/minikql/comp_nodes
-    contrib/ydb/library/yql/providers/common/db_id_async_resolver
-    contrib/ydb/library/yql/providers/common/structured_token
-    contrib/ydb/library/yql/public/udf
-    contrib/ydb/public/sdk/cpp/client/ydb_driver
-    contrib/ydb/library/yql/core
-    contrib/ydb/library/yql/core/type_ann
+    yql/essentials/ast
+    yql/essentials/core
+    yql/essentials/core/type_ann
     contrib/ydb/library/yql/dq/expr_nodes
-    contrib/ydb/library/yql/dq/integration
+    yql/essentials/core/dq_integration
     contrib/ydb/library/yql/dq/opt
-    contrib/ydb/library/yql/providers/common/config
-    contrib/ydb/library/yql/providers/common/dq
-    contrib/ydb/library/yql/providers/common/proto
-    contrib/ydb/library/yql/providers/common/provider
-    contrib/ydb/library/yql/providers/common/transform
+    yql/essentials/minikql/comp_nodes
+    yql/essentials/providers/common/config
+    contrib/ydb/library/yql/providers/common/db_id_async_resolver
+    yql/essentials/providers/common/dq
+    yql/essentials/providers/common/proto
+    yql/essentials/providers/common/provider
+    contrib/ydb/library/yql/providers/common/pushdown
+    yql/essentials/providers/common/structured_token
+    yql/essentials/providers/common/transform
     contrib/ydb/library/yql/providers/dq/common
     contrib/ydb/library/yql/providers/dq/expr_nodes
     contrib/ydb/library/yql/providers/dq/provider/exec
+    contrib/ydb/library/yql/providers/generic/provider
     contrib/ydb/library/yql/providers/pq/cm_client
     contrib/ydb/library/yql/providers/pq/common
     contrib/ydb/library/yql/providers/pq/expr_nodes
     contrib/ydb/library/yql/providers/pq/proto
-    contrib/ydb/library/yql/providers/result/expr_nodes
+    yql/essentials/providers/result/expr_nodes
+    yql/essentials/public/udf
+    contrib/ydb/public/sdk/cpp/src/client/driver
 )
 
 YQL_LAST_ABI_VERSION()
 
 END()
+
+RECURSE_FOR_TESTS(
+    ut
+)

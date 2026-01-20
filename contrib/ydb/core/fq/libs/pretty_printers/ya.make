@@ -9,7 +9,7 @@ PEERDIR(
     contrib/libs/protobuf
     contrib/ydb/core/fq/libs/graph_params/proto
     contrib/ydb/library/protobuf_printer
-    contrib/ydb/library/yql/minikql
+    yql/essentials/minikql
     contrib/ydb/library/yql/providers/dq/api/protos
 )
 

@@ -15,6 +15,7 @@ PEERDIR(
     contrib/ydb/core/grpc_services/local_rpc
     contrib/ydb/core/grpc_services/base
     contrib/ydb/core/grpc_services
+    contrib/ydb/core/ydb_convert
     contrib/ydb/services/metadata/request
     contrib/ydb/services/ext_index/metadata/extractor
 )
