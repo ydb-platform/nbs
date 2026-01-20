@@ -99,7 +99,7 @@ env:
   subnet_id: ${{ inputs.flavor == 'heavy' && vars.POOLED_HEAVY_SUBNET_ID || vars.POOLED_LIGHT_SUBNET_ID }}
   public_ip: ${{ inputs.flavor == 'heavy' && vars.POOLED_HEAVY_PUBLIC_IP_ENABLE || vars.POOLED_LIGHT_PUBLIC_IP_ENABLE }}
   platform_id: ${{ inputs.flavor == 'heavy' && vars.POOLED_HEAVY_PLATFORM_ID || vars.POOLED_LIGHT_PLATFORM_ID }}
-  image_id: ${{ inputs.flavor == 'heavy' && vars.POOLED_HEAVY_IMAGE_ID || vars.POOLED_LIGHT_IMAGE_ID }}
+  image_id: ${{ inputs.flavor == 'heavy' && vars.POOLED_HEAVY_IMAGE_ID_2204 || vars.POOLED_LIGHT_IMAGE_ID_2204 }}
 
 
 jobs:
