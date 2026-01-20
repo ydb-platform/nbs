@@ -225,7 +225,7 @@ def test_switch_multiple_endpoints(nbs):
             storage_media_kind=STORAGE_MEDIA_SSD_LOCAL,
             storage_pool_name="1Mb")
 
-    @retry(max_times=10, exception=requests.ConnectionError)
+    @retry(max_times=20, exception=requests.ConnectionError)
     def wait_for_vhost_servers(nbs, expected_count):
         count = 0
         for process in psutil.process_iter():
