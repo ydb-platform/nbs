@@ -71,21 +71,21 @@ class TResultManager
     TVector<TBlockRange64> ProblemRanges;
 
     bool HasBootstrapError{false};
-    bool RangeWtitten{false};
+    bool RangeWritten{false};
 
     struct TSummary
     {
         TString Summary;
-        NProto::TError Err;
+        NProto::TError Error;
     };
 
 public:
     explicit TResultManager(IOutputStream& output);
     ~TResultManager();
 
-    void SetBootstrapError(const NProto::TError& err);
+    void SetBootstrapError(const NProto::TError& error);
 
-    void IncRequestCnt();
+    void IncRequestCount();
 
     void SetRangeResult(
         const TBlockRange64& range,
@@ -164,7 +164,7 @@ bool TCheckRangeCommand::DoExecute()
 
         request->SetAction("checkrange");
         request->SetInput(CreateNextInput(*range));
-        resultManager.IncRequestCnt();
+        resultManager.IncRequestCount();
         const auto requestId = GetRequestId(*request);
         auto result = WaitFor(ClientEndpoint->ExecuteAction(
             MakeIntrusive<TCallContext>(requestId),
@@ -296,7 +296,7 @@ TResultManager::TResultManager(IOutputStream& output)
 TResultManager::~TResultManager()
 {
     if (!HasBootstrapError) {
-        if (RangeWtitten) {
+        if (RangeWritten) {
             Output << "],\n";
         }
         WriteSummary();
@@ -304,15 +304,15 @@ TResultManager::~TResultManager()
     Output << "}";
 }
 
-void TResultManager::SetBootstrapError(const NProto::TError& err)
+void TResultManager::SetBootstrapError(const NProto::TError& error)
 {
     Y_ABORT_IF(HasBootstrapError);
     HasBootstrapError = true;
-    auto j = FormatErrorJson(err);
+    auto j = FormatErrorJson(error);
     WriteKV("GlobalError", j);
 }
 
-void TResultManager::IncRequestCnt()
+void TResultManager::IncRequestCount()
 {
     Y_ABORT_IF(HasBootstrapError);
     RequestCount++;
@@ -364,15 +364,15 @@ void TResultManager::AddProblemRangeWithMerging(const TBlockRange64& range)
 
 void TResultManager::WriteKV(const TString& key, const NJson::TJsonValue& val)
 {
-    Output << "\"" << key << "\": " << NJson::WriteJson(val);
+    Output << key.Quote() << ": " << NJson::WriteJson(val);
 }
 
 void TResultManager::WriteRangeResult(const NJson::TJsonValue& rangeRes)
 {
-    if (RangeWtitten) {
+    if (RangeWritten) {
         Output << ",";
     } else {
-        RangeWtitten = true;
+        RangeWritten = true;
         Output << "\n\"Ranges\": [";
     }
     Output << NJson::WriteJson(rangeRes);
