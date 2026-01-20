@@ -6,7 +6,9 @@ SRCDIR(cloud/filestore/libs/vfs_fuse/write_back_cache)
 
 SRCS(
     overlapping_interval_set_ut.cpp
+    persistent_storage_ut.cpp
     read_write_range_lock_ut.cpp
+    test/persistent_storage_test.cpp
     test/write_back_cache_stats_test.cpp
     write_back_cache_ut.cpp
     write_back_cache_util_ut.cpp

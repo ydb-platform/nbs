@@ -305,11 +305,6 @@ private:
             : TEntryInfo::CreateInvalid();
     }
 
-    void SetCorrupted()
-    {
-        Corrupted = true;
-    }
-
     void ValidateStructure()
     {
         const ui64 mapLength = static_cast<ui64>(Map.Length());
@@ -655,6 +650,11 @@ public:
         return Corrupted;
     }
 
+    void SetCorrupted()
+    {
+        Corrupted = true;
+    }
+
     ui64 GetRawCapacity() const
     {
         return Header()->DataCapacity;
@@ -780,6 +780,11 @@ void TFileRingBuffer::Visit(const TVisitor& visitor)
 bool TFileRingBuffer::IsCorrupted() const
 {
     return Impl->IsCorrupted();
+}
+
+void TFileRingBuffer::SetCorrupted()
+{
+    Impl->SetCorrupted();
 }
 
 ui64 TFileRingBuffer::GetRawCapacity() const
