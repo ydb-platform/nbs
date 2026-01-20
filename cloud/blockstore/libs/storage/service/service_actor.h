@@ -438,6 +438,20 @@ private:
     TResultOrError<NActors::IActorPtr> CreateSetVhostDiscardEnabledFlagActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
+
+    // Local NVMe disks
+
+    TResultOrError<NActors::IActorPtr> CreateListNVMeDevicesActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateAcquireNVMeDeviceActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateReleaseNVMeDeviceActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -473,4 +487,5 @@ void RegisterAlterVolumeActor(
     TStorageConfigPtr config,
     const NPrivateProto::TSetupChannelsRequest& request,
     const NActors::TActorContext& ctx);
+
 }   // namespace NCloud::NBlockStore::NStorage

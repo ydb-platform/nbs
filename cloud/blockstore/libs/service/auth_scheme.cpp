@@ -195,6 +195,7 @@ TPermissionList GetRequestPermissions(
         perms("getscandiskstatus", {EPermission::Get}),
         perms("scandisk", {EPermission::Get}),
         perms("getdiskregistrytabletinfo", {EPermission::Get}),
+        perms("listnvmedevices", {EPermission::Get}),
 
         // Update
         perms("configurevolumebalancer", {EPermission::Update}),
@@ -204,6 +205,8 @@ TPermissionList GetRequestPermissions(
         perms("rebindvolumes", {EPermission::Update}),
         perms("setuserid", {EPermission::Update}),
         perms("cms", {EPermission::Update}),
+        perms("acquirenvmedevice", {EPermission::Update}),
+        perms("releasenvmedevice", {EPermission::Update}),
 
         // Delete
         perms("deletecheckpointdata", {EPermission::Delete}),

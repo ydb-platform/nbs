@@ -16,6 +16,7 @@ PEERDIR(
     cloud/blockstore/libs/endpoints
     cloud/blockstore/libs/kms/iface
     cloud/blockstore/libs/kikimr
+    cloud/blockstore/libs/local_nvme
     cloud/blockstore/libs/logbroker/iface
     cloud/blockstore/libs/notify/impl
     cloud/blockstore/libs/nvme
