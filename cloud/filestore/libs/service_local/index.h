@@ -129,14 +129,9 @@ private:
     INodeLoader& NodeLoader;
     TRWMutex& NodeLoaderLock;
     TIndexNodePtr SnapshotsNode = nullptr;
-    bool SnapshotsDirEnabled = false;
 
 public:
-    explicit TNodeMapper(
-        INodeLoader& nodeLoader,
-        TRWMutex& nodeLoaderLock,
-        bool snapshotsDirEnabled);
-
+    explicit TNodeMapper(INodeLoader& nodeLoader, TRWMutex& nodeLoaderLock);
 
     // Return value:
     // - value not present - no need to remap
@@ -382,11 +377,9 @@ private:
             }
 
             try {
-                if (NodeLoader) {
-                    NodeMapper = std::make_unique<TNodeMapper>(
-                        *NodeLoader,
-                        NodesLock,
-                        SnapshotsDirEnabled);
+                if (NodeLoader && SnapshotsDirEnabled) {
+                    NodeMapper =
+                        std::make_unique<TNodeMapper>(*NodeLoader, NodesLock);
                     STORAGE_INFO(
                         "Inititialize NodeMapper, NodeMapper="
                         << NodeMapper->ToString());

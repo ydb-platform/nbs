@@ -371,9 +371,17 @@ public:
         // Copy InodeId and FsId from RootFileId
         NLowLevel::TFileId snapshotFileId(RootFileId);
 
-        // Use AntiCollisionId from the snapshot dir inode
-        snapshotFileId.WekaInodeId.AntiCollisionId =
-            snapshotDirNodeId & 0xffff;
+        // snapshotDirNodeId is a combination of InodeId and AntiCollisionId
+        //   union {
+        //       ui64 InodeContext;
+        //       struct {
+        //           ui64 AntiCollisionId :16;
+        //           ui64 InodeId :48;
+        //       };
+        //   };
+        // Use AntiCollisionId from the snapshot dir inode to build a handle to
+        // the snapshot view of the mount root as described above
+        snapshotFileId.WekaInodeId.AntiCollisionId = snapshotDirNodeId & 0xffff;
 
         auto snapViewId =
             GetSnapViewId(snapshotFileId.WekaInodeId.AntiCollisionId);
@@ -483,45 +491,29 @@ INodeLoaderPtr CreateNodeLoader(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TNodeMapper::TNodeMapper(
-        INodeLoader& nodeLoader,
-        TRWMutex& nodeLoaderLock,
-        bool snapshotsDirEnabled)
+TNodeMapper::TNodeMapper(INodeLoader& nodeLoader, TRWMutex& nodeLoaderLock)
     : NodeLoader(nodeLoader)
     , NodeLoaderLock(nodeLoaderLock)
-    , SnapshotsDirEnabled(snapshotsDirEnabled)
 {
-    if (!SnapshotsDirEnabled) {
-        return;
-    }
-
     TWriteGuard guard(NodeLoaderLock);
 
     SnapshotsNode = std::move(NodeLoader.LoadSnapshotsDirNode());
     if (!SnapshotsNode) {
-        SnapshotsDirEnabled = false;
+        STORAGE_THROW_SERVICE_ERROR(E_FS_NOTSUPP)
+            << "Node loader doesn't support snapshots directory";
     }
 }
 
 TString TNodeMapper::ToString() const
 {
-    auto str = TStringBuilder()
-               << "NodeMapper(SnapshotsDirEnabled=" << SnapshotsDirEnabled;
-    if (SnapshotsNode) {
-        str << ", SnapshotsNodeId=0x" << Hex(SnapshotsNode->GetNodeId());
-    }
-    str << ")";
-    return str;
+    return TStringBuilder() << "NodeMapper(SnapshotsNodeId=0x"
+                            << Hex(SnapshotsNode->GetNodeId()) << ")";
 }
 
 std::optional<TIndexNodePtr> TNodeMapper::RemapNode(
     ui64 parentNodeId,
     const TString& name)
 {
-    if (!SnapshotsDirEnabled) {
-        return {};
-    }
-
     if (parentNodeId == RootNodeId && name == ".snapshots") {
         return SnapshotsNode;
     }
@@ -544,10 +536,6 @@ std::optional<TIndexNodePtr> TNodeMapper::RemapNode(
     ui64 parentNodeId,
     ui64 nodeId)
 {
-    if (!SnapshotsDirEnabled) {
-        return {};
-    }
-
     if (parentNodeId != SnapshotsNode->GetNodeId()) {
         return {};
     }
