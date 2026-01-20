@@ -13,6 +13,7 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration.h>
 #include <cloud/blockstore/libs/storage/volume/actors/create_volume_link_actor.h>
 #include <cloud/blockstore/libs/storage/volume/actors/follower_disk_actor.h>
+#include <cloud/blockstore/libs/storage/volume/actors/multi_partition_wrapper_actor.h>
 #include <cloud/blockstore/libs/storage/volume/actors/shadow_disk_actor.h>
 
 #include <cloud/storage/core/libs/common/format.h>
@@ -123,6 +124,50 @@ void TVolumeActor::OnStarted(const TActorContext& ctx)
 
     ProcessCheckpointRequests(ctx);
     DestroyOutdatedLeaderIfNeeded(ctx);
+}
+
+void TVolumeActor::OnPartitionStateChanged(
+    const TActorContext& ctx,
+    TPartitionInfo::EState oldState)
+{
+    if (oldState == State->GetPartitionsState()) {
+        return;
+    }
+
+    if (State->IsDiskRegistryMediaKind() || State->GetPartitions().size() < 2) {
+        return;
+    }
+
+    // A multi-partitioned wrapper is only needed for multi-partitioned
+    // YDB-based disks
+    if (State->GetPartitionsState() == TPartitionInfo::EState::READY) {
+        if (!State->GetMultiPartitionWrapperActor()) {
+            TVector<NActors::TActorId> partitionActors;
+            for (const auto& partition: State->GetPartitions()) {
+                partitionActors.push_back(partition.GetTopActorId());
+            }
+            TActorsStack actorStack;
+            actorStack.Push(
+                NCloud::Register<TMultiPartitionWrapperActor>(
+                    ctx,
+                    LogTitle.GetChild(GetCycleCount()),
+                    TraceSerializer,
+                    GetDiskId(),
+                    State->GetMeta().GetVolumeConfig().GetBlockSize(),
+                    State->GetMeta().GetVolumeConfig().GetBlocksPerStripe(),
+                    std::move(partitionActors)),
+                TActorsStack::EActorPurpose::MultiPartitionWrapper);
+
+            State->SetMultiPartitionWrapperActor(std::move(actorStack));
+        }
+    } else {
+        if (State->GetMultiPartitionWrapperActor()) {
+            NCloud::Send<TEvents::TEvPoisonPill>(
+                ctx,
+                State->GetMultiPartitionWrapperActor());
+            State->SetMultiPartitionWrapperActor({});
+        }
+    }
 }
 
 void TVolumeActor::StartPartitionsIfNeeded(const TActorContext& ctx)
@@ -428,9 +473,15 @@ void TVolumeActor::RestartPartition(
 
 void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
 {
-    StartInitializationTimestamp = ctx.Now();
-
     Y_ABORT_UNLESS(State);
+
+    auto oldState = State->GetPartitionsState();
+    Y_DEFER
+    {
+        OnPartitionStateChanged(ctx, oldState);
+    };
+
+    StartInitializationTimestamp = ctx.Now();
     State->SetReadWriteError({});
 
     // Request storage info for partitions
@@ -836,6 +887,12 @@ void TVolumeActor::HandleTabletStatus(
     const TEvBootstrapper::TEvStatus::TPtr& ev,
     const TActorContext& ctx)
 {
+    auto oldState = State->GetPartitionsState();
+    Y_DEFER
+    {
+        OnPartitionStateChanged(ctx, oldState);
+    };
+
     const auto* msg = ev->Get();
 
     auto* partition = State->GetPartition(msg->TabletId);
@@ -929,6 +986,12 @@ void TVolumeActor::HandleWaitReadyResponse(
     const TEvPartition::TEvWaitReadyResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    auto oldState = State->GetPartitionsState();
+    Y_DEFER
+    {
+        OnPartitionStateChanged(ctx, oldState);
+    };
+
     const ui64 tabletId = ev->Cookie;
 
     auto* partition = State->GetPartition(tabletId);

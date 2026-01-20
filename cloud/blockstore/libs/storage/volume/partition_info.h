@@ -64,7 +64,17 @@ struct TPartitionStartInfo
 // Stack:
 //   [TFollowerDiskActor] (wrapper)     (owned by TVolumeActor)
 //   [TPartitionActor]                  (owned by bootstraper)
-
+//
+//
+// 7. Linked Disk (BlobStorage-based with two partitions)
+// Stack:
+//   [TFollowerDiskActor] (wrapper)           (owned by TVolumeActor)
+//   [TMultiPartitionWrapperActor] (wrapper)  (owned by TVolumeActor)
+//
+//
+// 8.TMultiPartitionWrapperActor (BlobStorage-based with two partitions)
+// Stack:
+//   [TMultiPartitionWrapperActor] (wrapper)  (owned by TVolumeActor)
 
 class TActorsStack
 {
@@ -75,6 +85,7 @@ public:
         DiskRegistryBasedPartitionActor,
         FollowerWrapper,
         ShadowDiskWrapper,
+        MultiPartitionWrapper,
     };
 
 private:
@@ -107,6 +118,7 @@ public:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
 struct TPartitionInfo
 {
     enum EState

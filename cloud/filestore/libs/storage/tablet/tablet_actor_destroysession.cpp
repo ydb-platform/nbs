@@ -149,9 +149,11 @@ void TIndexTabletActor::ExecuteTx_DestroySession(
         return;
     }
 
-    auto commitId = GenerateCommitId();
-    if (commitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "DestroySession");
+    args.CommitId = GenerateCommitId();
+    if (args.CommitId == InvalidCommitId) {
+        args.Error = ErrorCommitIdOverflow();
+        args.CommitIdOverflow = true;
+        return;
     }
 
     auto handle = session->Handles.begin();
@@ -161,11 +163,7 @@ void TIndexTabletActor::ExecuteTx_DestroySession(
 
         auto it = args.Nodes.find(nodeId);
         if (it != args.Nodes.end() && !HasOpenHandles(nodeId)) {
-            auto e = RemoveNode(
-                db,
-                *it,
-                it->MinCommitId,
-                commitId);
+            auto e = RemoveNode(db, *it, it->MinCommitId, args.CommitId);
 
             if (HasError(e)) {
                 WriteOrphanNode(db, TStringBuilder()
@@ -188,7 +186,12 @@ void TIndexTabletActor::CompleteTx_DestroySession(
     RemoveTransaction(*args.RequestInfo);
 
     auto response =
-        std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>();
+        std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>(args.Error);
+
+    if (args.CommitIdOverflow) {
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "DestroySession");
+    }
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     // session will be deleted in other shards via the code in the main tablet
