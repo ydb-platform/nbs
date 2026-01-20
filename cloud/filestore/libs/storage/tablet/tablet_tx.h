@@ -1027,6 +1027,7 @@ struct TTxIndexTablet
         const NProto::TRenameNodeRequest Request;
         const NProtoPrivate::TRenameNodeInDestinationResponse Response;
         const ui64 OpLogEntryId;
+        const bool IsExplicitRequest;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNodeRef> ChildRef;
@@ -1035,12 +1036,14 @@ struct TTxIndexTablet
                 TRequestInfoPtr requestInfo,
                 NProto::TRenameNodeRequest request,
                 NProtoPrivate::TRenameNodeInDestinationResponse response,
-                ui64 opLogEntryId)
+                ui64 opLogEntryId,
+                bool isExplicitRequest)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
             , Response(std::move(response))
             , OpLogEntryId(opLogEntryId)
+            , IsExplicitRequest(isExplicitRequest)
         {}
 
         void Clear() override

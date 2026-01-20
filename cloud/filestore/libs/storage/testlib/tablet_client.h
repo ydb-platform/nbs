@@ -367,6 +367,15 @@ public:
         return request;
     }
 
+    auto CreateUnsafeGetNodeRefRequest(ui64 parentId, const TString& name)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvUnsafeGetNodeRefRequest;
+        auto request = std::make_unique<TRequestEvent>();
+        request->Record.SetParentId(parentId);
+        request->Record.SetName(name);
+        return request;
+    }
+
     //
     // TEvIndexTabletPrivate
     //
@@ -475,6 +484,19 @@ public:
         return std::make_unique<TRequestEvent>(
             std::move(subRequest),
             newShardId);
+    }
+
+    auto CreateCommitRenameNodeInSourceRequest(
+        NProto::TRenameNodeRequest subRequest,
+        NProtoPrivate::TRenameNodeInDestinationResponse subResponse,
+        ui64 opLogEntryId)
+    {
+        using TRequestEvent =
+            TEvIndexTabletPrivate::TEvCommitRenameNodeInSourceRequest;
+        return std::make_unique<TRequestEvent>(
+            std::move(subRequest),
+            std::move(subResponse),
+            opLogEntryId);
     }
 
     auto CreateDeleteOpLogEntryRequest(ui64 entryId)

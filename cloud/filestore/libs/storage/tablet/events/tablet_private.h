@@ -53,6 +53,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(SyncShardSessions,                      __VA_ARGS__)                   \
     xxx(LoadCompactionMapChunk,                 __VA_ARGS__)                   \
     xxx(PrepareRenameNodeInSource,              __VA_ARGS__)                   \
+    xxx(CommitRenameNodeInSource,               __VA_ARGS__)                   \
     xxx(DeleteOpLogEntry,                       __VA_ARGS__)                   \
     xxx(GetOpLogEntry,                          __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE
@@ -771,6 +772,33 @@ struct TEvIndexTabletPrivate
     struct TPrepareRenameNodeInSourceResponse
     {
         ui64 OpLogEntryId = 0;
+    };
+
+    //
+    // CommitRenameNodeInSource
+    //
+    // NOTE: This event is not supposed to be sent outside of unit tests.
+    //
+
+    struct TCommitRenameNodeInSourceRequest
+    {
+        NProto::TRenameNodeRequest Request;
+        NProtoPrivate::TRenameNodeInDestinationResponse Response;
+        const ui64 OpLogEntryId;
+
+        TCommitRenameNodeInSourceRequest(
+                NProto::TRenameNodeRequest request,
+                NProtoPrivate::TRenameNodeInDestinationResponse response,
+                ui64 opLogEntryId)
+            : Request(std::move(request))
+            , Response(std::move(response))
+            , OpLogEntryId(opLogEntryId)
+        {
+        }
+    };
+
+    struct TCommitRenameNodeInSourceResponse
+    {
     };
 
     //
