@@ -105,6 +105,7 @@ private:
     TExecutorPtr Executor = TExecutor::Create("SVC");
     TLog Log;
 
+    // Fields may only be accessed from the Executor thread
     THashMap<TString, TStartingEndpointState> StartingSockets;
     THashMap<TString, TStoppingEndpointState> StoppingSockets;
 
@@ -140,18 +141,6 @@ public:
         Executor->Execute([this]() { return DoDrain(); }).GetValueSync();
     }
 
-    TFuture<void> DoDrain()
-    {
-        DrainingStarted = true;
-
-        TVector<TFuture<void>> futures;
-        for (auto&& [_, endpoint]: Endpoints) {
-            futures.push_back(endpoint.Endpoint->SuspendAsync());
-        }
-
-        return WaitAll(futures);
-    }
-
 #define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
 public:                                                                        \
     TFuture<NProto::T##name##Response> name(                                   \
@@ -173,6 +162,18 @@ private:                                                                       \
 #undef FILESTORE_IMPLEMENT_METHOD
 
 private:
+    TFuture<void> DoDrain()
+    {
+        DrainingStarted = true;
+
+        TVector<TFuture<void>> futures;
+        for (auto&& [_, endpoint]: Endpoints) {
+            futures.push_back(endpoint.Endpoint->SuspendAsync());
+        }
+
+        return WaitAll(futures);
+    }
+
     TFuture<void> RestoreEndpoints() override
     {
         return Executor->Execute([weakSelf = weak_from_this()] () mutable {
