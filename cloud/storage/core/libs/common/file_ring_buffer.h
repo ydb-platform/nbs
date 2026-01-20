@@ -44,6 +44,8 @@ public:
         ui64 dataCapacity,
         ui64 metadataCapacity = 0);
 
+    TFileRingBuffer(TFileRingBuffer&&) noexcept;
+
     ~TFileRingBuffer();
 
 public:
