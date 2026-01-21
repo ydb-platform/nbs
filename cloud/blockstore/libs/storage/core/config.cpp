@@ -653,6 +653,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(SendLocalTabletMetricsToHiveEnabled,  bool,        false              )\
                                                                                \
     xxx(EnableVhostDiscardForNewVolumes,      bool,        false              )\
+    xxx(TabletExecutorRejectionThreshold,     ui32,        0                  )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
