@@ -27,7 +27,7 @@ def main():
                     # Write empty JSON object to report file
                     with open(report_file, "w") as f:
                         f.write('{"report":{}}')
-                    print(f"Written '{{}}' to {report_file}")
+                    print(f"Written '{...}' to {report_file}")
                 else:
                     print("No report_file found in params")
             except Exception as e:
