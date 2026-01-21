@@ -99,7 +99,7 @@ func (s *storageYDB) createFilesystemSnapshot(
 		createTaskID: snapshotMeta.CreateTaskID,
 		creatingAt:   time.Now(),
 		status:       filesystemSnapshotStatusCreating,
-		zoneID: snapshotMeta.Filesystem.ZoneId,
+		zoneID:       snapshotMeta.Filesystem.ZoneId,
 		filesystemID: snapshotMeta.Filesystem.FilesystemId,
 	}
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
