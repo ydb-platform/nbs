@@ -115,8 +115,7 @@ void TIndexTabletActor::ExecuteTx_SetNodeXAttr(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        args.CommitIdOverflow = true;
-        args.Error = ErrorCommitIdOverflow();
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -162,10 +161,6 @@ void TIndexTabletActor::CompleteTx_SetNodeXAttr(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    if (args.CommitIdOverflow) {
-        ScheduleRebootTabletOnCommitIdOverflow(ctx, "SetXAttr");
-    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

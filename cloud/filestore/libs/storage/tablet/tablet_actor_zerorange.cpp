@@ -76,7 +76,7 @@ void TIndexTabletActor::ExecuteTx_ZeroRange(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -112,11 +112,6 @@ void TIndexTabletActor::CompleteTx_ZeroRange(
         std::make_unique<TEvIndexTabletPrivate::TEvZeroRangeResponse>(
             std::move(args.Error));
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    if (args.CommitId == InvalidCommitId) {
-        ScheduleRebootTabletOnCommitIdOverflow(ctx, "ZeroRange");
-        return;
-    }
 
     EnqueueCollectGarbageIfNeeded(ctx);
 }

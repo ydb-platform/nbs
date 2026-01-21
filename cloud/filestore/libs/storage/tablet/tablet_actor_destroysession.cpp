@@ -151,8 +151,7 @@ void TIndexTabletActor::ExecuteTx_DestroySession(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
-        args.CommitIdOverflow = true;
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -190,11 +189,6 @@ void TIndexTabletActor::CompleteTx_DestroySession(
 
     if (HasError(args.Error)) {
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-        if (args.CommitIdOverflow) {
-            return ScheduleRebootTabletOnCommitIdOverflow(
-                ctx,
-                "DestroySession");
-        }
         return;
     }
 

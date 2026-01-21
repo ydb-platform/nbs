@@ -295,7 +295,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -416,9 +416,6 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
     if (FAILED(args.Error.GetCode())) {
         reply(ctx, args);
-        if (args.CommitId == InvalidCommitId) {
-            ScheduleRebootTabletOnCommitIdOverflow(ctx, "WriteData");
-        }
         return;
     }
 
@@ -462,9 +459,9 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
+        args.OnCommitIdOverflow();
         reply(ctx, args);
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "WriteData");
+        return;
     }
 
     ui32 blobIndex = 0;
