@@ -1302,6 +1302,7 @@ struct TTxIndexTablet
 
         ui64 Version = 0;
         ui64 CommitId = InvalidCommitId;
+        bool CommitIdOverflow = false;
         TMaybe<IIndexTabletDatabase::TNode> Node;
         TMaybe<TIndexTabletDatabase::TNodeAttr> Attr;
 
@@ -1321,6 +1322,7 @@ struct TTxIndexTablet
             TIndexStateNodeUpdates::Clear();
             Version = 0;
             CommitId = InvalidCommitId;
+            CommitIdOverflow = false;
             Node.Clear();
             Attr.Clear();
         }
@@ -1413,6 +1415,7 @@ struct TTxIndexTablet
         const TString Name;
 
         ui64 CommitId = InvalidCommitId;
+        bool CommitIdOverflow = false;
         TMaybe<IIndexTabletDatabase::TNode> Node;
         TMaybe<TIndexTabletDatabase::TNodeAttr> Attr;
 
@@ -1430,6 +1433,7 @@ struct TTxIndexTablet
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
+            CommitIdOverflow = false;
             Node.Clear();
             Attr.Clear();
         }

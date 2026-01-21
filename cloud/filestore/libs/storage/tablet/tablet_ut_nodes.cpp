@@ -894,6 +894,98 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         tablet.AssertSetNodeXAttrFailed(id, "user.name", longStr);
     }
 
+    Y_UNIT_TEST(ShouldHandleCommitIdOverflowInSetNodeAndRemoveXAttr)
+    {
+        const ui32 maxTabletStep = 4;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxTabletStep(maxTabletStep);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        auto reconnectIfNeeded = [&]()
+        {
+            if (rebootTracker.IsPipeDestroyed()) {
+                tablet.ReconnectPipe();
+                tablet.WaitReady();
+                tablet.RecoverSession();
+                rebootTracker.ClearPipeDestroyed();
+            }
+        };
+
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        bool setXAttrFailed = false;
+        TVector<std::pair<TString, TString>> successfulAttrs;
+
+        for (int i = 0; i < 10;) {
+            TString attrName = TStringBuilder() << "user.attr" << i;
+            TString attrValue = TStringBuilder() << "value" << i;
+
+            tablet.SendSetNodeXAttrRequest(id, attrName, attrValue);
+            auto response = tablet.RecvSetNodeXAttrResponse();
+            reconnectIfNeeded();
+
+            if (HasError(response->GetError())) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_REJECTED,
+                    response->GetError().GetCode());
+                setXAttrFailed = true;
+            } else {
+                successfulAttrs.emplace_back(attrName, attrValue);
+                ++i;
+            }
+        }
+
+        for (const auto& [attrName, attrValue]: successfulAttrs) {
+            auto response = tablet.GetNodeXAttr(id, attrName);
+            UNIT_ASSERT_VALUES_EQUAL(attrValue, response->Record.GetValue());
+        }
+
+        UNIT_ASSERT(setXAttrFailed);
+
+        bool removeXAttrFailed = false;
+        TVector<TString> successfullyRemovedAttrs;
+
+        for (size_t i = 0; i < successfulAttrs.size();) {
+            const auto& [attrName, _] = successfulAttrs[i];
+            tablet.SendRemoveNodeXAttrRequest(id, attrName);
+            auto response = tablet.RecvRemoveNodeXAttrResponse();
+            reconnectIfNeeded();
+
+            if (HasError(response->GetError())) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_REJECTED,
+                    response->GetError().GetCode());
+                removeXAttrFailed = true;
+            } else {
+                successfullyRemovedAttrs.push_back(attrName);
+                ++i;
+            }
+        }
+
+        for (const auto& attrName: successfullyRemovedAttrs) {
+            tablet.AssertGetNodeXAttrFailed(id, attrName);
+        }
+
+        UNIT_ASSERT(removeXAttrFailed);
+        UNIT_ASSERT_C(
+            rebootTracker.GetGenerationCount() >= 3,
+            "Expected at least 3 different generations due to tablet reboots");
+    }
+
     Y_UNIT_TEST(ShouldPayRespectToInodeLimits)
     {
         TTestEnv env;

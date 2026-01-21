@@ -109,11 +109,15 @@ void TIndexTabletActor::ExecuteTx_SetNodeXAttr(
 {
     FILESTORE_VALIDATE_TX_ERROR(SetNodeXAttr, args);
 
+    Y_UNUSED(ctx);
+
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "SetXAttr");
+        args.CommitIdOverflow = true;
+        args.Error = ErrorCommitIdOverflow();
+        return;
     }
 
     if (args.Attr) {
@@ -158,6 +162,10 @@ void TIndexTabletActor::CompleteTx_SetNodeXAttr(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    if (args.CommitIdOverflow) {
+        ScheduleRebootTabletOnCommitIdOverflow(ctx, "SetXAttr");
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
