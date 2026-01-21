@@ -332,7 +332,7 @@ public:
     TIndexNodePtr LoadSnapshotsDirNode() override
     {
         // We need a handle to the snapshots dir which resides at the root
-        // of weka file system. The mount root (fsdir) is also resides at this
+        // of weka file system. The mount root (fsdir) also resides at this
         // level.
         // Example:
         //   root:                  /mnt/weka/wekadir/fsdir
