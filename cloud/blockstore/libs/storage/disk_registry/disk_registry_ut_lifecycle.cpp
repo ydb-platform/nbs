@@ -3121,9 +3121,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         config.SetRestoreBackFromUnavailableAgentsDelay(
             TDuration::Minutes(12).MilliSeconds());
-        config.SetCheckAgentsToRestoreToOnlineInterval(
+        config.SetBackFromUnavailableAgentsRestoreInterval(
             TDuration::Minutes(1).MilliSeconds());
-        config.SetRestoreAgentsCountPerTransaction(2);
+        config.SetRestoreAgentCountPerTransaction(2);
         config.SetNonReplicatedDiskRecyclingPeriod(Max<ui32>());
         config.SetAllocationUnitNonReplicatedSSD(10);
 
@@ -3169,7 +3169,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         assertAgentStatus(NProto::EAgentState::AGENT_STATE_WARNING, "back from unavailable");
-        
+
         runtime->AdvanceCurrentTime(6min);
         runtime->DispatchEvents({}, 100ms);
         assertAgentStatus(NProto::EAgentState::AGENT_STATE_WARNING, "back from unavailable");

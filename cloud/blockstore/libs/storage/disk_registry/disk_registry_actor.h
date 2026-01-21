@@ -94,7 +94,7 @@ private:
     THashSet<TString> SecureEraseInProgressPerPool;
     bool StartMigrationInProgress = false;
 
-    uint32_t RestoreAgentsToOnlineIterations = 1;
+    ui32 RestoreAgentsToOnlineIterations = 1;
 
     TVector<TString> DisksBeingDestroyed;
     TVector<TDiskNotification> DisksBeingNotified;

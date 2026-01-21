@@ -23,8 +23,7 @@ void TDiskRegistryActor::ProcessRestoreAgentsToOnline(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
         "Restoring agents with status \"back from unavailable\" and last state "
-        "change more than "
-        "%s ago",
+        "change more than %s ago",
         FormatDuration(Config->GetRestoreBackFromUnavailableAgentsDelay())
             .c_str());
 
@@ -62,6 +61,13 @@ void TDiskRegistryActor::CompleteRestoreAgentsToOnline(
     const TActorContext& ctx,
     TTxDiskRegistry::TRestoreAgentsToOnline& args)
 {
+    if(HasError(args.Error)) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "Failed to restore agents to online state: %s",
+            args.Error.GetMessage().c_str());
+    }
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
