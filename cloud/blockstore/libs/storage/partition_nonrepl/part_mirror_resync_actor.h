@@ -230,6 +230,12 @@ private:
         const TFastPathRecord& record,
         const NActors::TActorContext& ctx);
 
+    template <typename TMethod>
+    void SendReadBlocksResponseImpl(
+        const NProto::TError& error,
+        NActors::IEventHandle& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleGetDeviceForRange(
         const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::TPtr& ev,
         const NActors::TActorContext& ctx);

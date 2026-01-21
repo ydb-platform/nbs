@@ -24,7 +24,7 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 ////////////////////////////////////////////////////////////////////////////////
 
 void TMirrorPartitionResyncActor::ContinueResyncIfNeeded(
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     if (ResyncFinished) {
         return;
@@ -135,7 +135,7 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
 
 void TMirrorPartitionResyncActor::ResyncRangeAfterError(
     TBlockRange64 range,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     const auto rangeId = BlockRange2RangeId(range, PartConfig->GetBlockSize());
     for (ui32 id = rangeId.first; id <= rangeId.second; ++id) {
