@@ -51,6 +51,7 @@ private:
 
     bool LoadFromTextFormat(const NActors::TActorContext& ctx);
     bool LoadFromBinaryFormat(const NActors::TActorContext& ctx);
+    bool LoadFromChunkedBinaryFormat(const NActors::TActorContext& ctx);
 
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,

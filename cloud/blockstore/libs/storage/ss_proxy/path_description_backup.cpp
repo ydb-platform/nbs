@@ -17,13 +17,39 @@
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
-using namespace NCloud::NStorage::NSSProxy;
+using namespace NCloud::NStorage;
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr TDuration BackupInterval = TDuration::Seconds(10);
+
+NProto::TError LoadChunk(
+    IInputStream* input,
+    NSSProxy::NProto::TPathDescriptionBackupChunk* chunk)
+{
+    ui32 size = 0;
+    if (input->Read(&size, sizeof(size)) != sizeof(size)) {
+        return MakeError(
+            size ? E_INVALID_STATE : S_FALSE,
+            "Failed to read size");
+    }
+
+    TString chunkData;
+    chunkData.resize(size);
+    if (input->Read(const_cast<char*>(chunkData.data()), size) != size) {
+        return MakeError(
+            E_INVALID_STATE,
+            TStringBuilder()
+                << "Failed to read chunk proto with size " << size);
+    }
+    if (!chunk->ParseFromString(chunkData)) {
+        return MakeError(E_INVALID_STATE, "Failed to parse chunk proto");
+    }
+
+    return MakeError(S_OK);
+}
 
 }   // namespace
 
@@ -46,7 +72,9 @@ void TPathDescriptionBackup::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 
     if (ReadOnlyMode) {
-        if (!LoadFromBinaryFormat(ctx) && !LoadFromTextFormat(ctx)) {
+        if (!LoadFromChunkedBinaryFormat(ctx) && !LoadFromBinaryFormat(ctx) &&
+            !LoadFromTextFormat(ctx))
+        {
             LOG_WARN_S(
                 ctx,
                 LogComponent,
@@ -124,7 +152,7 @@ NProto::TError TPathDescriptionBackup::Backup(const TActorContext& ctx)
 bool TPathDescriptionBackup::LoadFromTextFormat(
     const NActors::TActorContext& ctx)
 {
-    LOG_WARN_S(
+    LOG_INFO_S(
         ctx,
         LogComponent,
         "PathDescriptionBackup: loading from text format: "
@@ -136,8 +164,10 @@ bool TPathDescriptionBackup::LoadFromTextFormat(
         LOG_INFO_S(
             ctx,
             LogComponent,
-            "PathDescriptionBackup: loading from text format finished "
-                << FormatDuration(TInstant::Now() - start));
+            "PathDescriptionBackup: loading from text format finished. Items "
+            "count: "
+                << BackupProto.GetData().size()
+                << " time: " << FormatDuration(TInstant::Now() - start));
         return true;
     } catch (...) {
         LOG_WARN_S(
@@ -152,7 +182,7 @@ bool TPathDescriptionBackup::LoadFromTextFormat(
 bool TPathDescriptionBackup::LoadFromBinaryFormat(
     const NActors::TActorContext& ctx)
 {
-    LOG_WARN_S(
+    LOG_INFO_S(
         ctx,
         LogComponent,
         "PathDescriptionBackup: loading from binary format: "
@@ -163,11 +193,13 @@ bool TPathDescriptionBackup::LoadFromBinaryFormat(
         TUnbufferedFileInput input(file);
         const bool success = BackupProto.MergeFromString(input.ReadAll());
 
-        LOG_WARN_S(
+        LOG_INFO_S(
             ctx,
             LogComponent,
-            "PathDescriptionBackup: loading from binary format finished "
-                << FormatDuration(TInstant::Now() - start));
+            "PathDescriptionBackup: loading from binary format finished. "
+            "Items count: "
+                << BackupProto.GetData().size()
+                << ", time: " << FormatDuration(TInstant::Now() - start));
 
         return success;
     } catch (...) {
@@ -175,6 +207,62 @@ bool TPathDescriptionBackup::LoadFromBinaryFormat(
             ctx,
             LogComponent,
             "PathDescriptionBackup: can't load from binary format: "
+                << CurrentExceptionMessage());
+    }
+    return false;
+}
+
+bool TPathDescriptionBackup::LoadFromChunkedBinaryFormat(
+    const NActors::TActorContext& ctx)
+{
+    LOG_INFO_S(
+        ctx,
+        LogComponent,
+        "PathDescriptionBackup: loading from chunked binary format: "
+            << BackupFilePath.GetPath().Quote());
+    try {
+        TInstant start = TInstant::Now();
+
+        TUnbufferedFileInput stream(BackupFilePath);
+
+        for (;;) {
+            NSSProxy::NProto::TPathDescriptionBackupChunk chunk;
+            auto error = LoadChunk(&stream, &chunk);
+            if (HasError(error)) {
+                LOG_ERROR_S(
+                    ctx,
+                    LogComponent,
+                    "PathDescriptionBackup: failed to load chunk: "
+                        << error.GetMessage());
+                break;
+            }
+            if (chunk.GetData().empty()) {
+                break;
+            }
+            for (auto& item: *chunk.MutableData()) {
+                (*BackupProto.MutableData())[item.Getkey()].Swap(
+                    item.Mutablevalue());
+            }
+            LOG_INFO_S(
+                ctx,
+                LogComponent,
+                "PathDescriptionBackup: loaded "
+                    << BackupProto.GetData().size());
+        }
+
+        LOG_INFO_S(
+            ctx,
+            LogComponent,
+            "PathDescriptionBackup: loading from chunked binary finished. "
+            "Items count: "
+                << BackupProto.GetData().size()
+                << ", time: " << FormatDuration(TInstant::Now() - start));
+        return BackupProto.GetData().size() > 0;
+    } catch (...) {
+        LOG_WARN_S(
+            ctx,
+            LogComponent,
+            "PathDescriptionBackup: can't load chunked binary format file: "
                 << CurrentExceptionMessage());
     }
     return false;

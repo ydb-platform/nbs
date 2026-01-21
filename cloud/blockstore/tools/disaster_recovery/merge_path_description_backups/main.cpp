@@ -11,11 +11,16 @@
 #include <util/generic/string.h>
 #include <util/generic/yexception.h>
 #include <util/stream/file.h>
+#include <util/stream/null.h>
 #include <util/system/file.h>
 
 namespace NCloud::NStorage {
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr int ItemsPerChunkCount = 1000;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -41,13 +46,15 @@ bool LoadPathDescriptionBackup(
     }
 
     TFile file(backupPath, OpenExisting | RdOnly | Seq);
-    TString fileContent = TUnbufferedFileInput(file).ReadAll();
+    const TString fileContent = TUnbufferedFileInput(file).ReadAll();
     auto input = TStringInput(fileContent);
 
-    return TryMergeFromTextFormat(
+    TNullOutput warningStream;
+    return TryParseFromTextFormat(
                input,
                *backupProto,
-               EParseFromTextFormatOption::AllowUnknownField) ||
+               EParseFromTextFormatOption::AllowUnknownField,
+               &warningStream) ||
            backupProto->MergeFromString(fileContent);
 }
 
@@ -84,21 +91,37 @@ void ProcessDir(
          << ", time: " << FormatDuration(TInstant::Now() - start) << Endl;
 }
 
+void SaveChunk(
+    IOutputStream* out,
+    const NSSProxy::NProto::TPathDescriptionBackupChunk& chunk)
+{
+    if (chunk.GetData().empty()) {
+        return;
+    }
+
+    const TString buffer = chunk.SerializeAsString();
+    const ui32 chunkSize = buffer.size();
+    out->Write(&chunkSize, sizeof(chunkSize));
+    out->Write(buffer.data(), chunkSize);
+}
+
 void Dump(
     TSchemeShardData allData,
     const TFsPath& textOutputPath,
     const TFsPath& binaryOutputPath)
 {
-    NSSProxy::NProto::TPathDescriptionBackup allProto;
-    for (auto& [key, value]: allData) {
-        (*allProto.MutableData())[key] = std::move(value);
-    }
-
     if (textOutputPath.GetPath()) {
         Cout << "Dumping to " << textOutputPath.GetPath().Quote()
              << " with text format, items count: " << allData.size() << Endl;
         TFileOutput output(textOutputPath);
-        SerializeToTextFormat(allProto, output);
+        for (auto& [key, value]: allData) {
+            NSSProxy::NProto::TPathDescriptionBackupChunk subBackup;
+            NSSProxy::NProto::TPathDescriptionBackupItem item;
+            item.Setkey(key);
+            *item.Mutablevalue() = value;
+            subBackup.MutableData()->Add(std::move(item));
+            SerializeToTextFormat(subBackup, output);
+        }
         Cout << "OK" << Endl;
     }
 
@@ -106,7 +129,24 @@ void Dump(
         Cout << "Dumping to " << binaryOutputPath.GetPath().Quote()
              << " with binary format, items count: " << allData.size() << Endl;
         TOFStream out(binaryOutputPath.GetPath());
-        allProto.SerializeToArcadiaStream(&out);
+
+        NSSProxy::NProto::TPathDescriptionBackupChunk chunk;
+        auto& chunkData = *chunk.MutableData();
+        for (auto& [key, value]: allData) {
+            NSSProxy::NProto::TPathDescriptionBackupItem item;
+            item.Setkey(key);
+            *item.Mutablevalue() = value;
+            chunkData.Add(std::move(item));
+            if (chunkData.size() >= ItemsPerChunkCount) {
+                SaveChunk(&out, chunk);
+                chunkData.Clear();
+                Cout << ".";
+            }
+        }
+
+        SaveChunk(&out, chunk);
+        out.Flush();
+
         Cout << "OK" << Endl;
     }
 }

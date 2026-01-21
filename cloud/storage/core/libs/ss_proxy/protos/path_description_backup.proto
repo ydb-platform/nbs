@@ -6,6 +6,32 @@ package NCloud.NStorage.NSSProxy.NProto;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TPathDescriptionBackupItem
+{
+    // Scheme shard path.
+    required string key = 1;
+
+    // Path description.
+    required NKikimrSchemeOp.TPathDescription value = 2;
+}
+
+// To get around the 2GiB limit of proto deserialization multiple
+// TPathDescriptionBackupChunk messages are sequentially saved to the file,
+// preceded by 4 bytes of their length. Such file cannot be deserialized in
+// the standard way.
+//                 File
+// ----------------------------------------
+//  ui32 size (little endian)
+//  serialized TPathDescriptionBackupChunk
+//  ui32 size (little endian)
+//  serialized TPathDescriptionBackupChunk
+//  ...
+// ----------------------------------------
+message TPathDescriptionBackupChunk
+{
+    repeated TPathDescriptionBackupItem Data = 1;
+}
+
 message TPathDescriptionBackup
 {
     // Mapping from path.
