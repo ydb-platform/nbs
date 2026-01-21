@@ -284,6 +284,128 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
         UNIT_ASSERT_GT(failures, 0);
     }
+
+    TABLET_TEST_4K_ONLY(
+        ShouldHandleCommitIdOverflowUponCommitRenameNodeInSource)
+    {
+        const auto maxTabletStep = 5;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxTabletStep(maxTabletStep);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto dir =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+
+        const ui64 dstDir = 11111;
+
+        auto reconnectIfNeeded = [&]()
+        {
+            if (rebootTracker.IsPipeDestroyed()) {
+                tablet.ReconnectPipe();
+                tablet.WaitReady();
+                tablet.RecoverSession();
+                rebootTracker.ClearPipeDestroyed();
+            }
+        };
+
+        ui32 failures = 0;
+
+        const TString shardId = "shard";
+        const TString shardNodeName = CreateGuidAsString();
+        const ui64 opLogEntryId = Max<ui64>();
+
+        //
+        // Pre-creating N fake node-refs to apply the rename op to.
+        //
+
+        const ui32 iterations = 10;
+        TVector<TString> fileNames;
+
+        for (ui32 i = 0; i < iterations;) {
+            auto fileName = TStringBuilder() << "file" << i;
+            tablet.SendUnsafeCreateNodeRefRequest(
+                dir,
+                fileName,
+                0 /* childId */,
+                shardId,
+                shardNodeName);
+            auto response = tablet.RecvUnsafeCreateNodeRefResponse();
+            reconnectIfNeeded();
+            if (HasError(response->GetError())) {
+                continue;
+            }
+
+            fileNames.push_back(fileName);
+            ++i;
+        }
+
+        //
+        // Calling CommitRenameNodeInSource for each of those fake node-refs.
+        // Comparing the response to the expected values as well, not just
+        // checking CommitIdOverflow processing logic.
+        //
+
+        for (ui32 i = 0; i < iterations; ++i) {
+            auto newFileName = TStringBuilder() << "new-file" << i;
+            auto dstShardId = TStringBuilder() << "shard" << i;
+
+            auto renameNodeRequest = tablet.CreateRenameNodeRequest(
+                dir,
+                fileNames[i],
+                dstDir,
+                newFileName);
+
+            NProtoPrivate::TRenameNodeInDestinationResponse subResponse;
+
+            tablet.SendCommitRenameNodeInSourceRequest(
+                renameNodeRequest->Record,
+                subResponse,
+                opLogEntryId);
+            auto response = tablet.RecvCommitRenameNodeInSourceResponse();
+            reconnectIfNeeded();
+
+            if (HasError(response->GetError())) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_REJECTED,
+                    response->GetStatus(),
+                    FormatError(response->GetError()));
+                ++failures;
+                continue;
+            }
+
+            tablet.SendUnsafeGetNodeRefRequest(dir, fileNames[i]);
+            auto getNodeRefResponse = tablet.RecvUnsafeGetNodeRefResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOENT,
+                getNodeRefResponse->GetStatus(),
+                FormatError(getNodeRefResponse->GetError()));
+        }
+
+        UNIT_ASSERT_C(
+            rebootTracker.GetGenerationCount() >= 2,
+            "Expected at least 2 different generations due to tablet reboot, "
+            "got "
+                << rebootTracker.GetGenerationCount());
+
+        UNIT_ASSERT_GT(failures, 0);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

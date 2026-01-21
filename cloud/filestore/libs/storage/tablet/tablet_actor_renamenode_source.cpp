@@ -434,9 +434,35 @@ void TIndexTabletActor::HandleNodeRenamedInDestination(
         std::move(msg->RequestInfo),
         std::move(msg->Request),
         std::move(msg->Response),
-        msg->OpLogEntryId);
+        msg->OpLogEntryId,
+        false /* isExplicitRequest */);
 
     WorkerActors.erase(ev->Sender);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleCommitRenameNodeInSource(
+    const TEvIndexTabletPrivate::TEvCommitRenameNodeInSourceRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    AddTransaction<TEvIndexTabletPrivate::TCommitRenameNodeInSourceMethod>(
+        *requestInfo);
+
+    ExecuteTx<TCommitRenameNodeInSource>(
+        ctx,
+        std::move(requestInfo),
+        std::move(msg->Request),
+        std::move(msg->Response),
+        msg->OpLogEntryId,
+        true /* isExplicitRequest */);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -500,11 +526,14 @@ void TIndexTabletActor::ExecuteTx_CommitRenameNodeInSource(
     TTransactionContext& tx,
     TTxIndexTablet::TCommitRenameNodeInSource& args)
 {
+    Y_UNUSED(ctx);
+
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "CommitRenameNodeInSource");
+        args.Error = ErrorCommitIdOverflow();
+        return;
     }
 
     UnlockNodeRef({args.Request.GetNodeId(), args.Request.GetName()});
@@ -517,6 +546,7 @@ void TIndexTabletActor::ExecuteTx_CommitRenameNodeInSource(
             args.SessionId,
             args.RequestId,
             std::move(response));
+        args.Error = args.Response.GetError();
     } else {
         RemoveNodeRef(
             db,
@@ -555,23 +585,41 @@ void TIndexTabletActor::CompleteTx_CommitRenameNodeInSource(
     InvalidateNodeCaches(args.Request.GetNodeId());
     CommitDupCacheEntry(args.SessionId, args.RequestId);
 
-    if (args.RequestInfo) {
-        RemoveTransaction(*args.RequestInfo);
+    Y_DEFER {
+        if (args.CommitId == InvalidCommitId) {
+            ScheduleRebootTabletOnCommitIdOverflow(
+                ctx,
+                "CommitRenameNodeInSource");
+        }
+    };
 
-        Metrics.RenameNode.Update(
-            1,
-            0,
-            ctx.Now() - args.RequestInfo->StartedTs);
-
-        auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(
-            args.Response.GetError());
-        CompleteResponse<TEvService::TRenameNodeMethod>(
-            response->Record,
-            args.RequestInfo->CallContext,
-            ctx);
-
-        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    if (!args.RequestInfo) {
+        return;
     }
+
+    RemoveTransaction(*args.RequestInfo);
+
+    if (args.IsExplicitRequest) {
+        using TResponse =
+            TEvIndexTabletPrivate::TEvCommitRenameNodeInSourceResponse;
+        auto response = std::make_unique<TResponse>(args.Error);
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        return;
+    }
+
+    Metrics.RenameNode.Update(
+        1,
+        0,
+        ctx.Now() - args.RequestInfo->StartedTs);
+
+    auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(
+        args.Error);
+    CompleteResponse<TEvService::TRenameNodeMethod>(
+        response->Record,
+        args.RequestInfo->CallContext,
+        ctx);
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 
 }   // namespace NCloud::NFileStore::NStorage
