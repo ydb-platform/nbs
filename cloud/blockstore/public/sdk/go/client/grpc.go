@@ -106,7 +106,7 @@ func (client *grpcClient) executeRequest(
 	requestId := nextRequestId()
 	client.setupHeaders(ctx, req)
 
-	format := "%s %s #%d sending request"
+	format := "%s #%d sending request"
 	if requestLogLevel(req) == LOG_DEBUG {
 		client.logger.Debugf(format, requestName(req), requestId)
 	}else{
