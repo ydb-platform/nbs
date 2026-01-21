@@ -1293,6 +1293,10 @@ TVector<NProto::TDiskAgentDeviceSession> TDiskAgentState::GetSessions() const
 
 TFuture<void> TDiskAgentState::DetachPaths(const TVector<TString>& paths)
 {
+    if (!paths) {
+        return MakeFuture();
+    }
+
     TVector<TStorageAdapterPtr> storageAdaptersToDrop;
 
     for (const auto& path: paths) {
@@ -1335,6 +1339,11 @@ TFuture<void> TDiskAgentState::DetachPaths(const TVector<TString>& paths)
 auto TDiskAgentState::PreparePaths(TVector<TString> pathsToAttach)
     -> TFuture<TResultOrError<TPreparePathsResult>>
 {
+    if (!pathsToAttach) {
+        return MakeFuture<TResultOrError<TPreparePathsResult>>(
+            TPreparePathsResult{});
+    }
+
     return BackgroundThreadPool->Execute(
         [agentConfig = AgentConfig,
          devices = GetDevicesByPath(pathsToAttach),

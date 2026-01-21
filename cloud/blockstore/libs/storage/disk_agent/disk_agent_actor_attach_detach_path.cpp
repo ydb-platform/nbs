@@ -77,7 +77,7 @@ NProto::TError TDiskAgentActor::UpdateControlPlaneRequestNumber(
 {
     if (controlPlaneRequestNumber <= ControlPlaneRequestNumber) {
         return MakeError(
-            E_ARGUMENT,
+            E_TRY_AGAIN,
             Sprintf(
                 "outdated control plane request: %s vs %s",
                 ToString(ControlPlaneRequestNumber).c_str(),
@@ -153,7 +153,7 @@ void TDiskAgentActor::HandleDetachPaths(
 
     // We should ignore error if all paths already detached.
     if (auto error = UpdateControlPlaneRequestNumber(controlPlaneRequestNumber);
-        HasError(error) || !attachedPaths)
+        HasError(error))
     {
         auto response = std::make_unique<TEvDiskAgentPrivate::TEvPathsDetached>(
             std::move(error),
@@ -254,7 +254,7 @@ void TDiskAgentActor::HandleAttachPaths(
 
     // We should ignore error if all paths already attached.
     if (auto error = UpdateControlPlaneRequestNumber(controlPlaneRequestNumber);
-        HasError(error) || !detachedPaths)
+        HasError(error))
     {
         auto response = std::make_unique<TEvDiskAgentPrivate::TEvPathsPrepared>(
             std::move(error),
