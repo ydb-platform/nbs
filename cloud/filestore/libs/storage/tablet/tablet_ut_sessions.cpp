@@ -946,6 +946,69 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         UNIT_ASSERT(destroySessionFailed);
     }
 
+    Y_UNIT_TEST(ShouldHandleCommitIdOverflowInResetSession)
+    {
+        const ui32 maxTabletStep = 4;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxTabletStep(maxTabletStep);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        auto reconnectIfNeeded = [&]()
+        {
+            if (rebootTracker.IsPipeDestroyed()) {
+                tablet.ReconnectPipe();
+                tablet.WaitReady();
+                rebootTracker.ClearPipeDestroyed();
+            }
+        };
+
+        TString sessionId = "good_session";
+        tablet.InitSession("client", sessionId);
+
+        auto id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, sessionId));
+        auto handle = CreateHandle(tablet, id);
+        Y_UNUSED(handle);
+
+        tablet.UnlinkNode(RootNodeId, sessionId, false);
+
+        bool resetSessionFailed = false;
+
+        do {
+            tablet.SendResetSessionRequest("client", sessionId, 0, "state");
+            auto response = tablet.RecvResetSessionResponse();
+            reconnectIfNeeded();
+
+            if (!HasError(response->GetError())) {
+                break;
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_REJECTED,
+                response->GetError().GetCode());
+            resetSessionFailed = true;
+        } while (true);
+
+        tablet.InitSession("client", sessionId);
+        tablet.AssertGetNodeAttrFailed(id);
+        tablet.DestroySession();
+
+        UNIT_ASSERT_VALUES_EQUAL(2, rebootTracker.GetGenerationCount());
+        UNIT_ASSERT(resetSessionFailed);
+    }
+
     Y_UNIT_TEST(ShardShouldNotCheckSessionUponCreateNodeAndUnlinkNode)
     {
         TTestEnv env;
