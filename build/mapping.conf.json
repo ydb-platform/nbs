@@ -152,7 +152,8 @@
         "5569066861": "{registry_endpoint}/5569066861",
         "2980468199": "{registry_endpoint}/2980468199",
         "5562224408": "{registry_endpoint}/5562224408",
-        "8580453620": "{registry_endpoint}/8580453620"
+        "8580453620": "{registry_endpoint}/8580453620",
+        "8580445392": "{registry_endpoint}/8580445392"
     },
     "resources_descriptions": {
         "2214720943": "Clang 11.0.0 for darwin-arm64",
@@ -243,6 +244,7 @@
         "5559524010": "devtools/ya/test/programs/test_tool/bin/test_tool for linux",
         "5572005924": "devtools/ya/test/programs/test_tool/bin/test_tool for linux",
         "8580453620": "devtools/ya/test/programs/test_tool/bin/test_tool for linux",
+        "8580445392": "devtools/ya/test/programs/test_tool/bin/test_tool for linux",
         "5486731632": "devtools/ya/test/programs/test_tool/bin3/test_tool3 for linux",
         "5514350352": "devtools/ya/test/programs/test_tool/bin3/test_tool3 for linux",
         "5514360398": "devtools/ya/test/programs/test_tool/bin3/test_tool3 for linux",
