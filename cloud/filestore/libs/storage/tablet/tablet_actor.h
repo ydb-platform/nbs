@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include "tablet_counters.h"
-#include "tablet_private.h"
 #include "tablet_state.h"
 #include "tablet_tx.h"
 
@@ -18,6 +17,7 @@
 #include <cloud/filestore/libs/storage/core/tablet.h>
 #include <cloud/filestore/libs/storage/model/public.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
+#include <cloud/filestore/libs/storage/tablet/events/tablet_private.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 

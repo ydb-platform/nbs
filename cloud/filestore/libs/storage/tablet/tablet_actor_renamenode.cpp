@@ -135,7 +135,8 @@ void TIndexTabletActor::HandleRenameNode(
                     std::move(msg->Record),
                     newParentShardNo
                         ? shardIds[newParentShardNo - 1]
-                        : GetMainFileSystemId());
+                        : GetMainFileSystemId(),
+                    false /* isExplicitRequest */);
             }
             return;
         }

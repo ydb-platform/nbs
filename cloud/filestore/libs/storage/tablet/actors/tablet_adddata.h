@@ -4,7 +4,7 @@
 #include <cloud/filestore/libs/diagnostics/throttler_info_serializer.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/core/public.h>
-#include <cloud/filestore/libs/storage/tablet/tablet_private.h>
+#include <cloud/filestore/libs/storage/tablet/events/tablet_private.h>
 
 #include <util/generic/string.h>
 #include <util/generic/vector.h>

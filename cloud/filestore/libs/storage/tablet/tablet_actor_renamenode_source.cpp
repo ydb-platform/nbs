@@ -201,6 +201,27 @@ STFUNC(TRenameNodeInDestinationActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TIndexTabletActor::HandlePrepareRenameNodeInSource(
+    const TEvIndexTabletPrivate::TEvPrepareRenameNodeInSourceRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    ExecuteTx<TPrepareRenameNodeInSource>(
+        ctx,
+        std::move(requestInfo),
+        std::move(msg->Request),
+        std::move(msg->NewShardId),
+        true /* isExplicitRequest */);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 bool TIndexTabletActor::PrepareTx_PrepareRenameNodeInSource(
     const TActorContext& ctx,
     TTransactionContext& tx,
@@ -268,9 +289,8 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(
-            ctx,
-            "PrepareRenameNodeInSource");
+        args.Error = ErrorCommitIdOverflow();
+        return;
     }
 
     // OpLogEntryId doesn't have to be a CommitId - it's just convenient
@@ -335,6 +355,27 @@ void TIndexTabletActor::CompleteTx_PrepareRenameNodeInSource(
         auto message = ReportChildRefIsNull(TStringBuilder()
             << "RenameNode: " << args.Request.ShortDebugString());
         args.Error = MakeError(E_INVALID_STATE, std::move(message));
+    }
+
+    Y_DEFER {
+        if (args.CommitId == InvalidCommitId) {
+            ScheduleRebootTabletOnCommitIdOverflow(
+                ctx,
+                "PrepareRenameNodeInSource");
+        }
+    };
+
+    if (args.IsExplicitRequest) {
+        //
+        // This branch is supposed to be used only in unit tests.
+        //
+
+        using TResponse =
+            TEvIndexTabletPrivate::TEvPrepareRenameNodeInSourceResponse;
+        auto response = std::make_unique<TResponse>(args.Error);
+        response->OpLogEntryId = args.OpLogEntry.GetEntryId();
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        return;
     }
 
     if (!HasError(args.Error)) {

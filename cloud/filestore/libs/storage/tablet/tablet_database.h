@@ -531,6 +531,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
 
     void WriteOpLogEntry(const NProto::TOpLogEntry& entry);
     void DeleteOpLogEntry(ui64 entryId);
+    bool ReadOpLogEntry(ui64 entryId, TMaybe<NProto::TOpLogEntry>& entry);
     bool ReadOpLog(TVector<NProto::TOpLogEntry>& opLog);
 };
 
