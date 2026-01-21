@@ -97,19 +97,6 @@ func (client *grpcClient) setupHeaders(ctx context.Context, req request) {
 	headers.ClientId = clientId
 }
 
-func (client *grpcClient) log(
-	req request,
-	format string,
-	v ...interface{},
-) {
-
-	if requestLogLevel(req) == LOG_DEBUG {
-		client.logger.Debugf("%s "+format, v...)
-	} else {
-		client.logger.Infof("%s "+format, v...)
-	}
-}
-
 func (client *grpcClient) executeRequest(
 	ctx context.Context,
 	req request,
@@ -118,7 +105,13 @@ func (client *grpcClient) executeRequest(
 
 	requestId := nextRequestId()
 	client.setupHeaders(ctx, req)
-	client.log(req, "%s #%d sending request", requestName(req), requestId)
+
+	format := "%s %s #%d sending request"
+	if requestLogLevel(req) == LOG_DEBUG {
+		client.logger.Debugf(format, requestName(req), requestId)
+	}else{
+		client.logger.Infof(format, requestName(req), requestId)
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, client.timeout)
 	defer cancel()
@@ -136,20 +129,32 @@ func (client *grpcClient) executeRequest(
 		err = NewClientError(err)
 	}
 
+	format = "%s%s #%d request completed (time: %v, size: %d, error: %v)"
 	if requestTime < requestTimeWarnThreshold {
-		client.log(
-			req,
-			"%s%s #%d request completed (time: %v, size: %d, error: %v)",
-			requestName(req),
-			requestDetails(req),
-			requestId,
-			requestTime,
-			requestSize(req),
-			err,
-		)
+		if requestLogLevel(req) == LOG_DEBUG {
+			client.logger.Debugf(
+				format,
+				requestName(req),
+				requestDetails(req),
+				requestId,
+				requestTime,
+				requestSize(req),
+				err,
+			)
+		} else {
+			client.logger.Infof(
+				format,
+				requestName(req),
+				requestDetails(req),
+				requestId,
+				requestTime,
+				requestSize(req),
+				err,
+			)
+		}
 	} else {
 		client.logger.Warnf(
-			"%s%s #%d request too slow (time: %v, size: %d, error: %v)",
+			format,
 			requestName(req),
 			requestDetails(req),
 			requestId,
