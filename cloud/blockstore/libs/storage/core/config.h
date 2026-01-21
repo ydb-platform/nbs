@@ -759,6 +759,8 @@ public:
     [[nodiscard]] ui32 GetTabletExecutorRejectionThreshold() const;
 
     [[nodiscard]] TDuration GetVolumeProxyPipeInactivityTimeout() const;
+
+    [[nodiscard]] TDuration GetAttachDetachPathRequestTimeout() const;
 };
 
 ui64 GetAllocationUnit(
