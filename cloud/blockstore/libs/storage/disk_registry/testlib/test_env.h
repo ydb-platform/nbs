@@ -168,6 +168,8 @@ private:
             HFunc(TEvDiskAgent::TEvSecureEraseDeviceRequest, HandleSecureEraseDevice);
             HFunc(TEvDiskAgent::TEvEnableAgentDeviceRequest, HandleEnableAgentDevice);
 
+            HFunc(TEvDiskAgent::TEvDetachPathsRequest, HandleDetachPaths)
+
             HFunc(TEvRegisterAgent, HandleRegisterAgent)
 
             default:
@@ -270,6 +272,15 @@ private:
             ctx,
             *ev,
             std::make_unique<TEvDiskAgent::TEvEnableAgentDeviceResponse>());
+    }
+
+    void HandleDetachPaths(
+        const TEvDiskAgent::TEvDetachPathsRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        auto response = std::make_unique<TEvDiskAgent::TEvDetachPathsResponse>();
+
+        NCloud::Reply(ctx, *ev, std::move(response));
     }
 };
 
@@ -465,7 +476,7 @@ private:
 struct TTestRuntimeBuilder
 {
     TVector<NActors::IActor*> DiskAgents;
-    TStorageConfigPtr StorageConfig;
+    std::function<TStorageConfigPtr()> CreateStorageConfig;
     TDiagnosticsConfigPtr DiagnosticsConfig;
     NLogbroker::IServicePtr LogbrokerService;
     NNotify::IServicePtr NotifyService;
@@ -477,6 +488,7 @@ struct TTestRuntimeBuilder
     TTestRuntimeBuilder& WithAgents(const TVector<NProto::TAgentConfig>& configs);
     TTestRuntimeBuilder& With(NProto::TStorageServiceConfig config);
     TTestRuntimeBuilder& With(TStorageConfigPtr config);
+    TTestRuntimeBuilder& With(std::function<TStorageConfigPtr()> configFactory);
     TTestRuntimeBuilder& With(NLogbroker::IServicePtr service);
     TTestRuntimeBuilder& With(NNotify::IServicePtr service);
 };

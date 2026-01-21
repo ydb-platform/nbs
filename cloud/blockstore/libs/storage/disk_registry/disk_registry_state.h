@@ -909,6 +909,13 @@ public:
     THashSet<TDeviceId> GetUnavailableDevicesForDisk(
         const TString& diskId) const;
 
+    void DetachPathIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        const TString& path);
+
+    bool HasDependentDisks(const TAgentId& agentId, const TString& path);
+
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);

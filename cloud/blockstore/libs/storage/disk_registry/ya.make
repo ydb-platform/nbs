@@ -4,6 +4,7 @@ SRCS(
     disk_registry_actor_acquire.cpp
     disk_registry_actor_add_lagging_devices.cpp
     disk_registry_actor_allocate.cpp
+    disk_registry_actor_attach_detach_path.cpp
     disk_registry_actor_backup_state.cpp
     disk_registry_actor_change_agent_state.cpp
     disk_registry_actor_change_device_state.cpp
