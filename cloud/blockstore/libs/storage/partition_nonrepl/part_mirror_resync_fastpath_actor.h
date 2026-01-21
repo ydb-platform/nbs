@@ -40,7 +40,7 @@ private:
     const bool OptimizeFastPathReadsOnResync;
     TGuardedSgList SgList;
 
-    std::optional<NProto::TError> Error;
+    std::optional<NProto::TError> CompareChecksumsError;
     THashMap<ui32, ui32> Checksums;
     std::optional<ui32> DataChecksum;
     bool ReplySent = false;
@@ -62,15 +62,20 @@ private:
     void ChecksumBlocks(const NActors::TActorContext& ctx);
     void ReadBlocks(const NActors::TActorContext& ctx);
     void ChecksumReplicaBlocks(const NActors::TActorContext& ctx, int idx);
-    void CompareChecksums(const NActors::TActorContext& ctx);
+    NProto::TError CompareChecksums(const NActors::TActorContext& ctx) const;
     void MaybeCompareChecksums(const NActors::TActorContext& ctx);
-    bool MaybeReplyAndDie(const NActors::TActorContext& ctx);
-    void CalculateChecksum(const NActors::TActorContext& ctx);
-    [[nodiscard]] std::optional<ui32> FindChecksumMismatch() const;
+    bool MaybeReplyAndDie(
+        const NActors::TActorContext& ctx,
+        const NProto::TError& error);
+    TResultOrError<ui32> CalculateDataChecksum() const;
     bool AllChecksumsReceived() const;
-    void Reply(const NActors::TActorContext& ctx);
-    void FinishResync(const NActors::TActorContext& ctx);
-    void ReplyAndDie(const NActors::TActorContext& ctx);
+    void Reply(const NActors::TActorContext& ctx, const NProto::TError& error);
+    void FinishResync(
+        const NActors::TActorContext& ctx,
+        const NProto::TError& error);
+    void ReplyAndDie(
+        const NActors::TActorContext& ctx,
+        const NProto::TError& error);
 
 private:
     STFUNC(StateWork);
