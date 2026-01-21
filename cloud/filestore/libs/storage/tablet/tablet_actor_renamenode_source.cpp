@@ -289,7 +289,7 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -356,14 +356,6 @@ void TIndexTabletActor::CompleteTx_PrepareRenameNodeInSource(
             << "RenameNode: " << args.Request.ShortDebugString());
         args.Error = MakeError(E_INVALID_STATE, std::move(message));
     }
-
-    Y_DEFER {
-        if (args.CommitId == InvalidCommitId) {
-            ScheduleRebootTabletOnCommitIdOverflow(
-                ctx,
-                "PrepareRenameNodeInSource");
-        }
-    };
 
     if (args.IsExplicitRequest) {
         //
@@ -532,7 +524,7 @@ void TIndexTabletActor::ExecuteTx_CommitRenameNodeInSource(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -584,14 +576,6 @@ void TIndexTabletActor::CompleteTx_CommitRenameNodeInSource(
 {
     InvalidateNodeCaches(args.Request.GetNodeId());
     CommitDupCacheEntry(args.SessionId, args.RequestId);
-
-    Y_DEFER {
-        if (args.CommitId == InvalidCommitId) {
-            ScheduleRebootTabletOnCommitIdOverflow(
-                ctx,
-                "CommitRenameNodeInSource");
-        }
-    };
 
     if (!args.RequestInfo) {
         return;

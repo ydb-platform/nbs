@@ -332,8 +332,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeCreateNodeRef(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
-        args.CommitIdOverflowDetected = true;
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -373,10 +372,6 @@ void TIndexTabletActor::CompleteTx_UnsafeCreateNodeRef(
             std::move(args.Error));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    if (args.CommitIdOverflowDetected) {
-        ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnsafeCreateNodeRef");
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -435,7 +430,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeDeleteNodeRef(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -478,10 +473,6 @@ void TIndexTabletActor::CompleteTx_UnsafeDeleteNodeRef(
             std::move(args.Error));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    if (args.CommitIdOverflowDetected) {
-        ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnsafeDeleteNodeRef");
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -540,8 +531,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeUpdateNodeRef(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
-        args.CommitIdOverflowDetected = true;
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -591,10 +581,6 @@ void TIndexTabletActor::CompleteTx_UnsafeUpdateNodeRef(
         std::make_unique<TEvIndexTablet::TEvUnsafeUpdateNodeRefResponse>();
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    if (args.CommitIdOverflowDetected) {
-        ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnsafeUpdateNodeRef");
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

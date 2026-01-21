@@ -146,24 +146,6 @@ enum class EAddBlobMode
     Compaction,
 };
 
-inline TString GetAddBlobModeName(EAddBlobMode mode)
-{
-    switch (mode) {
-        case EAddBlobMode::Write:
-            return "AddBlobWrite";
-        case EAddBlobMode::WriteBatch:
-            return "AddBlobWriteBatch";
-        case EAddBlobMode::Flush:
-            return "AddBlobFlush";
-        case EAddBlobMode::FlushBytes:
-            return "AddBlobFlushBytes";
-        case EAddBlobMode::Compaction:
-            return "AddBlobCompaction";
-        default:
-            return "AddBlobUnknown";
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 enum class EDeleteCheckpointMode

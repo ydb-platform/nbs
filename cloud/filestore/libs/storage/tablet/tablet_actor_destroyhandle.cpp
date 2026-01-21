@@ -96,8 +96,7 @@ void TIndexTabletActor::ExecuteTx_DestroyHandle(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
-        args.CommitIdOverflowDetected = true;
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -143,10 +142,6 @@ void TIndexTabletActor::CompleteTx_DestroyHandle(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    if (args.CommitIdOverflowDetected) {
-        ScheduleRebootTabletOnCommitIdOverflow(ctx, "DestroyHandle");
-    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

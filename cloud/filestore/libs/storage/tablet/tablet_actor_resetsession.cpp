@@ -133,8 +133,7 @@ void TIndexTabletActor::ExecuteTx_ResetSession(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
-        args.CommitIdOverflow = true;
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -189,9 +188,6 @@ void TIndexTabletActor::CompleteTx_ResetSession(
 
     if (HasError(args.Error)) {
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-        if (args.CommitIdOverflow) {
-            return ScheduleRebootTabletOnCommitIdOverflow(ctx, "ResetSession");
-        }
         return;
     }
 
