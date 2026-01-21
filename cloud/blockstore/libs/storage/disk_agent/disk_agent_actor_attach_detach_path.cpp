@@ -75,13 +75,16 @@ NProto::TError TDiskAgentActor::CheckAttachDetachPathsAvailable() const
 NProto::TError TDiskAgentActor::UpdateControlPlaneRequestNumber(
     TControlPlaneRequestNumber controlPlaneRequestNumber)
 {
+    if (PendingControlPlaneRequest) {
+        return MakeError(E_REJECTED, "another request is in progress");
+    }
+
     if (controlPlaneRequestNumber <= ControlPlaneRequestNumber) {
         return MakeError(
             E_TRY_AGAIN,
-            Sprintf(
-                "outdated control plane request: %s vs %s",
-                ToString(ControlPlaneRequestNumber).c_str(),
-                ToString(controlPlaneRequestNumber).c_str()));
+            TStringBuilder() << "outdated control plane request: "
+                             << ControlPlaneRequestNumber << " vs "
+                             << controlPlaneRequestNumber);
     }
 
     ControlPlaneRequestNumber = controlPlaneRequestNumber;
@@ -89,7 +92,8 @@ NProto::TError TDiskAgentActor::UpdateControlPlaneRequestNumber(
     return {};
 }
 
-auto TDiskAgentActor::SplitPaths(TVector<TString> paths) const
+auto TDiskAgentActor::SplitPaths(
+    google::protobuf::RepeatedPtrField<TString> paths) const
     -> std::pair<TVector<TString>, TVector<TString>>
 {
     THashSet<TString> allKnownPaths;
@@ -104,10 +108,14 @@ auto TDiskAgentActor::SplitPaths(TVector<TString> paths) const
         [&](const auto& p) { return allKnownPaths.contains(p); });
     paths.erase(unknownPaths.begin(), unknownPaths.end());
 
-    TVector<TString> attachedPaths = std::move(paths);
+    TVector<TString> attachedPaths{
+        std::make_move_iterator(paths.begin()),
+        std::make_move_iterator(paths.end())};
+
     auto [it, end] = std::ranges::partition(
         attachedPaths,
         [&](const auto& p) { return State->IsPathAttached(p); });
+
     TVector<TString> detachedPaths(
         std::make_move_iterator(it),
         std::make_move_iterator(end));
@@ -135,36 +143,22 @@ void TDiskAgentActor::HandleDetachPaths(
         return;
     }
 
-    if (PendingControlPlaneRequest) {
-        auto response = std::make_unique<TEvDiskAgent::TEvDetachPathsResponse>(
-            MakeError(E_REJECTED, "another request is in progress"));
+    const TControlPlaneRequestNumber controlPlaneRequestNumber(
+        record.GetControlPlaneRequestNumber());
+
+    if (auto error = UpdateControlPlaneRequestNumber(controlPlaneRequestNumber);
+        HasError(error))
+    {
+        auto response =
+            std::make_unique<TEvDiskAgent::TEvDetachPathsResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 
-    const TControlPlaneRequestNumber controlPlaneRequestNumber(
-        record.GetControlPlaneRequestNumber());
-
     PendingControlPlaneRequest =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    auto [attachedPaths, detachedPaths] = SplitPaths(
-        {record.GetPathsToDetach().begin(), record.GetPathsToDetach().end()});
-
-    // We should ignore error if all paths already detached.
-    if (auto error = UpdateControlPlaneRequestNumber(controlPlaneRequestNumber);
-        HasError(error))
-    {
-        auto response = std::make_unique<TEvDiskAgentPrivate::TEvPathsDetached>(
-            std::move(error),
-            TEvDiskAgentPrivate::TPathsDetached{
-                .PathsToDetach = std::move(attachedPaths),
-                .AlreadyDetachedPaths = std::move(detachedPaths),
-                .ControlPlaneRequestNumber = controlPlaneRequestNumber});
-
-        NCloud::Send(ctx, SelfId(), std::move(response));
-        return;
-    }
+    auto [attachedPaths, detachedPaths] = SplitPaths(record.GetPathsToDetach());
 
     auto future = State->DetachPaths(attachedPaths);
 
@@ -230,42 +224,25 @@ void TDiskAgentActor::HandleAttachPaths(
         auto response =
             std::make_unique<TEvDiskAgent::TEvAttachPathsResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
-
         return;
     }
 
-    if (PendingControlPlaneRequest) {
-        auto response = std::make_unique<TEvDiskAgent::TEvAttachPathsResponse>(
-            MakeError(E_REJECTED, "another request is in progress"));
+    const TControlPlaneRequestNumber controlPlaneRequestNumber(
+        record.GetControlPlaneRequestNumber());
 
+    if (auto error = UpdateControlPlaneRequestNumber(controlPlaneRequestNumber);
+        HasError(error))
+    {
+        auto response =
+            std::make_unique<TEvDiskAgent::TEvAttachPathsResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
-
         return;
     }
 
     PendingControlPlaneRequest =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    const TControlPlaneRequestNumber controlPlaneRequestNumber(
-        record.GetControlPlaneRequestNumber());
-
-    auto [attachedPaths, detachedPaths] = SplitPaths(
-        {record.GetPathsToAttach().begin(), record.GetPathsToAttach().end()});
-
-    // We should ignore error if all paths already attached.
-    if (auto error = UpdateControlPlaneRequestNumber(controlPlaneRequestNumber);
-        HasError(error))
-    {
-        auto response = std::make_unique<TEvDiskAgentPrivate::TEvPathsPrepared>(
-            std::move(error),
-            TEvDiskAgentPrivate::TPathsPrepared{
-                .PathsToAttach = std::move(detachedPaths),
-                .AlreadyAttachedPaths = std::move(attachedPaths),
-                .ControlPlaneRequestNumber = controlPlaneRequestNumber});
-
-        NCloud::Send(ctx, SelfId(), std::move(response));
-        return;
-    }
+    auto [attachedPaths, detachedPaths] = SplitPaths(record.GetPathsToAttach());
 
     auto future = State->PreparePaths(detachedPaths);
 

@@ -189,7 +189,7 @@ private:
     // Separates valid paths into attached and detached categories, filtering
     // out unknown paths.
     // Returns: [attached paths, detached paths]
-    auto SplitPaths(TVector<TString> paths) const
+    auto SplitPaths(google::protobuf::RepeatedPtrField<TString> paths) const
         -> std::pair<TVector<TString>, TVector<TString>>;
 
 private:
