@@ -246,6 +246,20 @@ void TMirrorPartitionResyncFastPathActor::ReplyAndDie(
     Die(ctx);
 }
 
+void TMirrorPartitionResyncFastPathActor::ReplyErrorAndDie(
+    const TActorContext& ctx,
+    const NProto::TError& error)
+{
+    Y_DEBUG_ABORT_UNLESS(HasError(error));
+
+    if (ReplySent) {
+        FinishResync(ctx, error);
+    } else {
+        Reply(ctx, error);
+    }
+    Die(ctx);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TMirrorPartitionResyncFastPathActor::HandleChecksumUndelivery(
@@ -254,10 +268,9 @@ void TMirrorPartitionResyncFastPathActor::HandleChecksumUndelivery(
 {
     Y_UNUSED(ev);
 
-    const bool dead = MaybeReplyAndDie(
+    ReplyErrorAndDie(
         ctx,
         MakeError(E_REJECTED, "ChecksumBlocks request undelivered"));
-    Y_DEBUG_ABORT_UNLESS(dead);
 }
 
 void TMirrorPartitionResyncFastPathActor::HandleChecksumResponse(
@@ -265,10 +278,10 @@ void TMirrorPartitionResyncFastPathActor::HandleChecksumResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+    const auto& error = msg->Record.GetError();
 
-    if (HasError(msg->Record.GetError())) {
-        const bool dead = MaybeReplyAndDie(ctx, msg->Record.GetError());
-        Y_DEBUG_ABORT_UNLESS(dead);
+    if (HasError(error)) {
+        ReplyErrorAndDie(ctx, error);
         return;
     }
 
@@ -321,7 +334,7 @@ void TMirrorPartitionResyncFastPathActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    MaybeReplyAndDie(ctx, MakeError(E_REJECTED, "Dead"));
+    ReplyErrorAndDie(ctx, MakeError(E_REJECTED, "Dead"));
 }
 
 STFUNC(TMirrorPartitionResyncFastPathActor::StateWork)

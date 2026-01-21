@@ -76,6 +76,9 @@ private:
     void ReplyAndDie(
         const NActors::TActorContext& ctx,
         const NProto::TError& error);
+    void ReplyErrorAndDie(
+        const NActors::TActorContext& ctx,
+        const NProto::TError& error);
 
 private:
     STFUNC(StateWork);
