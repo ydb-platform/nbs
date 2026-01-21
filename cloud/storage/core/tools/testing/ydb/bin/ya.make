@@ -1,4 +1,4 @@
-IF(NOT USE_BUNDLED_YDBD)
+IF(USE_BUNDLED_YDBD)
     INCLUDE(${ARCADIA_ROOT}/contrib/ydb/apps/ydbd/ya.make)
 ELSE()
 
