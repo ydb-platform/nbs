@@ -21,6 +21,18 @@ using namespace NActors;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool IsReadBlocksRequest(IEventHandle& ev)
+{
+    return ev.GetTypeRewrite() == TEvService::EvReadBlocksRequest ||
+           ev.GetTypeRewrite() == TEvService::EvReadBlocksLocalRequest;
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
@@ -227,44 +239,16 @@ void TMirrorPartitionResyncActor::ProcessReadResponseFastPath(
     NCloud::Reply(ctx, *requestInfo, std::move(response));
 }
 
-void TMirrorPartitionResyncActor::SendReadBlocksResponse(
+template <typename TMethod>
+void TMirrorPartitionResyncActor::SendReadBlocksResponseImpl(
     const NProto::TError& error,
-    const TFastPathRecord& record,
-    const NActors::TActorContext& ctx)
+    IEventHandle& ev,
+    const TActorContext& ctx)
 {
-    TRequestInfoPtr requestInfo;
-    NActors::IEventBasePtr response;
-    switch (record.Ev->GetTypeRewrite()) {
-        case TEvService::EvReadBlocksRequest:
-            requestInfo = CreateRequestInfo(
-                record.Ev->Sender,
-                record.Ev->Cookie,
-                record.Ev->Get<TEvService::TEvReadBlocksRequest>()
-                    ->CallContext);
-            response = std::make_unique<TEvService::TEvReadBlocksResponse>(
-                std::move(error));
-            break;
-
-        case TEvService::EvReadBlocksLocalRequest:
-            requestInfo = CreateRequestInfo(
-                record.Ev->Sender,
-                record.Ev->Cookie,
-                record.Ev->Get<TEvService::TEvReadBlocksLocalRequest>()
-                    ->CallContext);
-            response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
-                std::move(error));
-            break;
-
-        default:
-            STORAGE_VERIFY_C(
-                false,
-                TWellKnownEntityTypes::DISK,
-                PartConfig->GetName(),
-                TStringBuilder()
-                    << "unexpected ev type: "
-                    << static_cast<int>(record.Ev->GetTypeRewrite()));
-            break;
-    }
+    auto requestInfo = CreateRequestInfo(
+        ev.Sender,
+        ev.Cookie,
+        ev.template Get<typename TMethod::TRequest>()->CallContext);
 
     LWTRACK(
         ResponseSent_PartitionWorker,
@@ -272,7 +256,26 @@ void TMirrorPartitionResyncActor::SendReadBlocksResponse(
         "HandleReadBlocksResponse",
         requestInfo->CallContext->RequestId);
 
-    NCloud::Reply(ctx, *requestInfo, std::move(response));
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<typename TMethod::TResponse>(std::move(error)));
+}
+
+void TMirrorPartitionResyncActor::SendReadBlocksResponse(
+    const NProto::TError& error,
+    const TFastPathRecord& record,
+    const NActors::TActorContext& ctx)
+{
+    IEventHandle& ev = *record.Ev;
+
+    Y_DEBUG_ABORT_UNLESS(IsReadBlocksRequest(ev));
+
+    if (ev.GetTypeRewrite() == TEvService::EvReadBlocksRequest) {
+        SendReadBlocksResponseImpl<TEvService::TReadBlocksMethod>(error, ev, ctx);
+    } else {
+        SendReadBlocksResponseImpl<TEvService::TReadBlocksLocalMethod>(error, ev, ctx);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -317,43 +320,33 @@ void TMirrorPartitionResyncActor::HandleResyncFastPathReadResponse(
     const TEvNonreplPartitionPrivate::TEvResyncFastPathReadResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto respMsg = ev->Get();
     auto* record = FastPathRecords.FindPtr(ev->Cookie);
+    Y_DEFER
+    {
+        FastPathRecords.erase(ev->Cookie);
+    };
+
     STORAGE_VERIFY(
         record,
         TWellKnownEntityTypes::DISK,
         PartConfig->GetName());
 
+    Y_DEBUG_ABORT_UNLESS(IsReadBlocksRequest(*record->Ev));
+
+    auto* respMsg = ev->Get();
     if (HasError(respMsg->GetError())) {
         ProcessReadRequestSlowPath(
             NActors::IEventHandlePtr(record->Ev.release()),
             record->BlockRange,
             ctx);
-        FastPathRecords.erase(ev->Cookie);
         return;
     }
 
-    switch (record->Ev->GetTypeRewrite()) {
-        case TEvService::EvReadBlocksRequest: {
-            ProcessReadResponseFastPath(*record, ctx);
-            break;
-        }
-        case TEvService::EvReadBlocksLocalRequest: {
-            ProcessReadResponseFastPathLocal(*record, ctx);
-            break;
-        }
-
-        default:
-            STORAGE_VERIFY_C(
-                false,
-                TWellKnownEntityTypes::DISK,
-                PartConfig->GetName(),
-                TStringBuilder() << "unexpected ev type: "
-                    << static_cast<int>(record->Ev->GetTypeRewrite()));
-            break;
+    if (record->Ev->GetTypeRewrite() == TEvService::EvReadBlocksRequest) {
+        ProcessReadResponseFastPath(*record, ctx);
+    } else {
+        ProcessReadResponseFastPathLocal(*record, ctx);
     }
-
-    FastPathRecords.erase(ev->Cookie);
 }
 
 void TMirrorPartitionResyncActor::HandleGetDeviceForRange(
