@@ -319,6 +319,9 @@ jobs:
 
       - name: install action-validator with asdf
         uses: asdf-vm/actions/install@v4.0.1
+        with:
+          tool_versions: |
+            action-validator 0.8.0 
 
       - name: check workflows syntax
         id: lint
