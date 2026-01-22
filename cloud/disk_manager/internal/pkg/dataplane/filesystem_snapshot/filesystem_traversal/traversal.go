@@ -19,7 +19,12 @@ const RootNodeID = uint64(1)
 
 type StateSaver func(ctx context.Context) error
 
-type OnListedNodesFunc func(ctx context.Context, nodes []nfs.Node, session nfs.Session, client nfs.Client) error
+type OnListedNodesFunc func(
+	ctx context.Context,
+	nodes []nfs.Node,
+	session nfs.Session,
+	client nfs.Client,
+) error
 
 ////////////////////////////////////////////////////////////////////////////////
 
