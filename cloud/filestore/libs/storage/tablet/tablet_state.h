@@ -645,7 +645,7 @@ public:
         const TString& shardNodeName);
 
     bool TryLockNodeRef(TNodeRefKey key);
-    void UnlockNodeRef(TNodeRefKey key);
+    void UnlockNodeRef(const TNodeRefKey& key);
 
     //
     // Sessions

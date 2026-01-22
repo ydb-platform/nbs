@@ -407,9 +407,7 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
         return true;
     }
 
-    if (args.ChildNode &&
-        args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE)
-    {
+    if (args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE) {
         TVector<IIndexTabletDatabase::TNodeRef> refs;
         // 1 entry is enough to prevent deletion
         if (!ReadNodeRefs(db, childNodeId, args.CommitId, {}, refs, 1)) {
@@ -418,17 +416,17 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
 
         if (!refs.empty()) {
             // cannot unlink non empty directory
-            args.Error = ErrorIsNotEmpty(args.ParentNodeId);
+            args.Error = ErrorIsNotEmpty(args.ChildNode->NodeId);
             return true;
         }
 
         if (!args.Request.GetUnlinkDirectory()) {
             // should explicitly unlink directory node
-            args.Error = ErrorIsDirectory(args.ParentNodeId);
+            args.Error = ErrorIsDirectory(args.ChildNode->NodeId);
             return true;
         }
     } else if (args.Request.GetUnlinkDirectory()) {
-        args.Error = ErrorIsNotDirectory(args.ParentNodeId);
+        args.Error = ErrorIsNotDirectory(args.ChildNode->NodeId);
         return true;
     }
 

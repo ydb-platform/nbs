@@ -1053,6 +1053,9 @@ STFUNC(TIndexTabletActor::StateInit)
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
         HFunc(
+            TEvIndexTabletPrivate::TEvDoRenameNodeInDestination,
+            HandleDoRenameNodeInDestination);
+        HFunc(
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
         HFunc(
@@ -1114,6 +1117,9 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
+        HFunc(
+            TEvIndexTabletPrivate::TEvDoRenameNodeInDestination,
+            HandleDoRenameNodeInDestination);
         HFunc(
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
@@ -1207,6 +1213,9 @@ STFUNC(TIndexTabletActor::StateZombie)
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
         HFunc(
+            TEvIndexTabletPrivate::TEvDoRenameNodeInDestination,
+            HandleDoRenameNodeInDestination);
+        HFunc(
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
         HFunc(
@@ -1263,6 +1272,9 @@ STFUNC(TIndexTabletActor::StateBroken)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
+        HFunc(
+            TEvIndexTabletPrivate::TEvDoRenameNodeInDestination,
+            HandleDoRenameNodeInDestination);
         HFunc(
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);

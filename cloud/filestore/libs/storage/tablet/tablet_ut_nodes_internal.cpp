@@ -1,5 +1,6 @@
 #include "tablet.h"
 
+#include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
@@ -15,10 +16,194 @@ using namespace NKikimr;
 Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 {
     // TODO(#2674):
-    // * check error when src == dir and dst == file
-    //      OR src == file and dst == dir
-    //      OR src == dir and dst == non-empty dir
     // * check dupcache - retry an already completed op
+
+    void OverrideDescribeFileStore(
+        TTestActorRuntime& runtime,
+        ui32 nodeIdx,
+        ui64 tabletId)
+    {
+        runtime.SetEventFilter([=] (auto& runtime, auto& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvSSProxy::EvDescribeFileStoreResponse: {
+                    using TResponse = TEvSSProxy::TEvDescribeFileStoreResponse;
+                    NKikimrSchemeOp::TPathDescription pd;
+                    pd.MutableFileStoreDescription()->SetIndexTabletId(tabletId);
+                    auto response = std::make_unique<TResponse>(
+                        "some_path",
+                        std::move(pd));
+
+                    runtime.Send(new IEventHandle(
+                        event->Recipient,
+                        event->Sender,
+                        response.release(),
+                        0, // flags
+                        event->Cookie), nodeIdx);
+
+                    return true;
+                }
+            }
+
+            return false;
+        });
+    }
+
+    TABLET_TEST_4K_ONLY(
+        ShouldReturnErrorUponRenameNodeInDestinationForFileToDirOp)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        //
+        //  Scenario:
+        //
+        //  uuid1 -> id1 (file)
+        //  name1 -> uuid1
+        //
+        //  uuid2 -> id2 (dir)
+        //  name2 -> uuid2
+        //
+        //  move name1 to name2 -> fail
+        //  move name2 to name1 -> ok
+        //
+
+        const TString shardId1 = "shard1";
+        const TString name1 = "name1";
+        const TString uuid1 = CreateGuidAsString();
+
+        const TString shardId2 = "shard2";
+        const TString name2 = "name2";
+        const TString uuid2 = CreateGuidAsString();
+
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, uuid1));
+        CreateExternalRef(tablet, RootNodeId, name1, shardId1, uuid1);
+
+        CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, uuid2));
+        CreateExternalRef(tablet, RootNodeId, name2, shardId2, uuid2);
+
+        tablet.SendRenameNodeInDestinationRequest(
+            RootNodeId,
+            name2,
+            shardId1,
+            uuid1);
+        auto response = tablet.RecvRenameNodeInDestinationResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_ISDIR,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+
+        tablet.SendRenameNodeInDestinationRequest(
+            RootNodeId,
+            name1,
+            shardId2,
+            uuid2);
+        response = tablet.RecvRenameNodeInDestinationResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+    }
+
+    TABLET_TEST_4K_ONLY(
+        ShouldCheckDstEmptinessUponRenameNodeInDestinationForDirToDirOp)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        //
+        //  Scenario:
+        //
+        //  uuid1 -> id1 (dir)
+        //  name1 -> uuid1
+        //
+        //  uuid2 -> id2 (dir)
+        //  name2 -> uuid2
+        //
+        //  uuid3 -> id3 (dir)
+        //  name2/name3 -> uuid3
+        //
+        //  move name1 to name2 -> fail
+        //
+        //  unlink name2/name3
+        //
+        //  move name1 to name2 -> success
+        //
+
+        const TString shardId1 = "shard1";
+        const TString name1 = "name1";
+        const TString uuid1 = CreateGuidAsString();
+
+        const TString shardId2 = "shard2";
+        const TString name2 = "name2";
+        const TString uuid2 = CreateGuidAsString();
+
+        const TString shardId3 = "shard3";
+        const TString name3 = "name3";
+        const TString uuid3 = CreateGuidAsString();
+
+        CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, uuid1));
+        CreateExternalRef(tablet, RootNodeId, name1, shardId1, uuid1);
+
+        const ui64 dir2 =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, uuid2));
+        CreateExternalRef(tablet, RootNodeId, name2, shardId2, uuid2);
+
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, uuid3));
+        CreateExternalRef(tablet, dir2, name3, shardId3, uuid3);
+
+        // TODO(#2674): uncomment after implementing dir emptiness check
+        /*
+        tablet.SendRenameNodeInDestinationRequest(
+            RootNodeId,
+            name2,
+            shardId1,
+            uuid1);
+        auto response = tablet.RecvRenameNodeInDestinationResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NOTEMPTY,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+        */
+
+        DeleteRef(tablet, dir2, name3);
+
+        tablet.SendRenameNodeInDestinationRequest(
+            RootNodeId,
+            name2,
+            shardId1,
+            uuid1);
+        auto response = tablet.RecvRenameNodeInDestinationResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+
+        const auto nodeRef = tablet.UnsafeGetNodeRef(RootNodeId, name2)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(shardId1, nodeRef.GetShardId());
+        UNIT_ASSERT_VALUES_EQUAL(uuid1, nodeRef.GetShardNodeName());
+    }
 
     TABLET_TEST_4K_ONLY(
         ShouldReturnErrorUponRenameNodeInDestinationForLocalNode)
@@ -53,7 +238,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
     TABLET_TEST_4K_ONLY(ShouldHandleCommitIdOverflowUponRenameNodeInDestination)
     {
-        const auto maxTabletStep = 5;
+        const ui32 maxTabletStep = 5;
 
         NProto::TStorageConfig storageConfig;
         storageConfig.SetMaxTabletStep(maxTabletStep);
@@ -146,7 +331,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     TABLET_TEST_4K_ONLY(
         ShouldHandleCommitIdOverflowUponPrepareRenameNodeInSource)
     {
-        const auto maxTabletStep = 5;
+        const ui32 maxTabletStep = 5;
 
         NProto::TStorageConfig storageConfig;
         storageConfig.SetMaxTabletStep(maxTabletStep);
@@ -288,7 +473,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     TABLET_TEST_4K_ONLY(
         ShouldHandleCommitIdOverflowUponCommitRenameNodeInSource)
     {
-        const auto maxTabletStep = 5;
+        const ui32 maxTabletStep = 5;
 
         NProto::TStorageConfig storageConfig;
         storageConfig.SetMaxTabletStep(maxTabletStep);
