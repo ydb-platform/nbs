@@ -1,7 +1,8 @@
 #include "disk_agent.h"
 
 #include "disk_agent_actor.h"
-#include "testlib/test_env.h"
+
+#include <cloud/blockstore/libs/storage/disk_registry/testlib/test_env.h>
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 
@@ -19,6 +20,9 @@ using namespace NDiskAgentTest;
 using namespace std::chrono_literals;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TFixture: public NUnitTest::TBaseFixture
 {
     const TTempDir TempDir;
