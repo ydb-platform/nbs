@@ -358,6 +358,12 @@ jobs:
       - check-running-allowed
     if: needs.check-running-allowed.outputs.result == 'true'
     runs-on: [self-hosted, "self-hosted", "runner_light"]
+    outputs:
+      matrix_include: ${{ steps.set-build-and-test-targets.outputs.matrix_include }}
+      matrix_include_asan: ${{ steps.set-build-and-test-targets.outputs.matrix_include_asan }}
+      matrix_include_tsan: ${{ steps.set-build-and-test-targets.outputs.matrix_include_tsan }}
+      matrix_include_msan: ${{ steps.set-build-and-test-targets.outputs.matrix_include_msan }}
+      matrix_include_ubsan: ${{ steps.set-build-and-test-targets.outputs.matrix_include_ubsan }}
     steps:
       - name: checkout PR
         uses: actions/checkout@v4
