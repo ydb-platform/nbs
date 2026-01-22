@@ -48,6 +48,8 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(SetHasXAttrs,               __VA_ARGS__)                               \
     xxx(MarkNodeRefsExhaustive,     __VA_ARGS__)                               \
+                                                                               \
+    xxx(UnsafeCreateHandle,         __VA_ARGS__)                               \
 // FILESTORE_TABLET_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -154,6 +156,9 @@ struct TEvIndexTablet
 
         EvUnsafeGetNodeRefRequest = EvBegin + 61,
         EvUnsafeGetNodeRefResponse,
+
+        EvUnsafeCreateHandleRequest = EvBegin + 63,
+        EvUnsafeCreateHandleResponse,
 
         EvEnd
     };

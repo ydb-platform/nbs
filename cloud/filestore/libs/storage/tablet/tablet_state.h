@@ -735,6 +735,14 @@ public:
         ui64 commitId,
         ui32 flags);
 
+    TSessionHandle* UnsafeCreateHandle(
+        TIndexTabletDatabase& db,
+        TSession* session,
+        ui64 handleId,
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 flags);
+
     void DestroyHandle(
         TIndexTabletDatabase& db,
         TSessionHandle* handle);

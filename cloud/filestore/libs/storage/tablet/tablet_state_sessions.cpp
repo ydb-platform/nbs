@@ -714,6 +714,27 @@ TSessionHandle* TIndexTabletState::CreateHandle(
     return CreateHandle(session, proto);
 }
 
+TSessionHandle* TIndexTabletState::UnsafeCreateHandle(
+    TIndexTabletDatabase& db,
+    TSession* session,
+    ui64 handleId,
+    ui64 nodeId,
+    ui64 commitId,
+    ui32 flags)
+{
+    NProto::TSessionHandle proto;
+    proto.SetSessionId(session->GetSessionId());
+    proto.SetHandle(handleId);
+    proto.SetNodeId(nodeId);
+    proto.SetCommitId(commitId);
+    proto.SetFlags(flags);
+
+    db.WriteSessionHandle(proto);
+    IncrementUsedHandlesCount(db);
+
+    return CreateHandle(session, proto);
+}
+
 void TIndexTabletState::DestroyHandle(
     TIndexTabletDatabase& db,
     TSessionHandle* handle)

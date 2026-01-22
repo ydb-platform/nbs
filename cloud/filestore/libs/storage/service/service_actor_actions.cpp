@@ -131,6 +131,10 @@ void TStorageServiceActor::HandleExecuteAction(
         {
             "marknoderefsexhaustive",
             &TStorageServiceActor::CreateMarkNodeRefsExhaustiveActionActor
+        },
+        {
+            "unsafecreatehandle",
+            &TStorageServiceActor::CreateUnsafeCreateHandleActor
         }
     };
 

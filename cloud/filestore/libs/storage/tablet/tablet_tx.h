@@ -151,6 +151,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(UnsafeCreateNodeRef,                __VA_ARGS__)                       \
     xxx(UnsafeDeleteNodeRef,                __VA_ARGS__)                       \
     xxx(UnsafeUpdateNodeRef,                __VA_ARGS__)                       \
+    xxx(UnsafeCreateHandle,                 __VA_ARGS__)                       \
 // FILESTORE_TABLET_RW_TRANSACTIONS
 
 #define FILESTORE_TABLET_TRANSACTIONS(xxx, ...)                                \
@@ -2548,6 +2549,25 @@ struct TTxIndexTablet
             TIndexStateNodeUpdates::Clear();
             NodeRef.Clear();
         }
+    };
+
+    struct TUnsafeCreateHandle: TTxIndexTabletBase
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TUnsafeCreateHandleRequest Request;
+        NProtoPrivate::TUnsafeCreateHandleResponse Response;
+
+        NProto::TError Error;
+
+        TUnsafeCreateHandle(
+            TRequestInfoPtr requestInfo,
+            NProtoPrivate::TUnsafeCreateHandleRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear() override
+        {}
     };
 
     // The whole point of these transactions is to observe some data in NodeRefs

@@ -811,6 +811,24 @@ message TUnsafeGetNodeRefResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Unsafe handle manipulation
+
+message TUnsafeCreateHandleRequest
+{
+    string FileSystemId = 1;
+    string SessionId = 2;
+    uint64 Handle = 3;
+    uint64 NodeId = 4;
+    uint64 CommitId = 5;
+    uint32 Flags = 6;
+}
+
+message TUnsafeCreateHandleResponse
+{
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // GetFileSystemTopology request/response.
 
 message TGetFileSystemTopologyRequest
