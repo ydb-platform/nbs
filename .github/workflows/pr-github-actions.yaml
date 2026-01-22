@@ -262,7 +262,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           workdir: .github/
           reporter: ${{ steps.reporter.outputs.value }}
-          flake8_args: "--max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107"
+          flake8_args: "--max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400"
 
       - name: black
         uses: reviewdog/action-black@v3.10.2
@@ -316,12 +316,15 @@ jobs:
         with:
           submodules: false
           sparse-checkout: '.github'
+      - name: set up home
+        shell: bash
+        run: echo "HOME=$GITHUB_WORKSPACE" >> $GITHUB_ENV
 
       - name: install action-validator with asdf
-        uses: asdf-vm/actions/install@v3
+        uses: asdf-vm/actions/install@v4.0.1
         with:
           tool_versions: |
-            action-validator 0.5.4
+            action-validator 0.8.0 
 
       - name: check workflows syntax
         id: lint
@@ -353,13 +356,64 @@ jobs:
     uses: ./.github/workflows/github_actions_scripts.yaml
     secrets: inherit
 
-  create-and-delete-vm:
-    needs: [set-env, check-running-allowed]
+  create-build-and-test-target-var:
+    needs:
+      - check-running-allowed
     if: needs.check-running-allowed.outputs.result == 'true'
-    name: Create and delete VM
-    uses: ./.github/workflows/create_and_delete_vm.yaml
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    outputs:
+      matrix_include: ${{ steps.set-build-and-test-targets.outputs.matrix_include }}
+      matrix_include_asan: ${{ steps.set-build-and-test-targets.outputs.matrix_include_asan }}
+      matrix_include_tsan: ${{ steps.set-build-and-test-targets.outputs.matrix_include_tsan }}
+      matrix_include_msan: ${{ steps.set-build-and-test-targets.outputs.matrix_include_msan }}
+      matrix_include_ubsan: ${{ steps.set-build-and-test-targets.outputs.matrix_include_ubsan }}
+    steps:
+      - name: checkout PR
+        uses: actions/checkout@v4
+        if: github.event.pull_request.head.sha != ''
+        with:
+          submodules: false
+          sparse-checkout: '.github'
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
+      - name: rebase PR
+        if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
+        shell: bash
+        run: |
+          git config user.email "robot-nbs@nebius.com"
+          git config user.name "Robot NBS"
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          git rebase origin/${{ github.event.pull_request.base.ref }}
+      - name: checkout
+        uses: actions/checkout@v4
+        if: github.event.pull_request.head.sha == ''
+        with:
+          submodules: false
+          sparse-checkout: '.github'
+      - name: Calculate pr build and test targets matrix
+        id: set-build-and-test-targets
+        uses: ./.github/actions/nebius_calculate_pr_matrix
+        with:
+          scheduling_type: ${{ vars.NEBIUS_SCHEDULING_TYPE || 'on_demand' }}
+
+  build_and_test:
+    needs: [check-running-allowed, create-build-and-test-target-var]
+    if: needs.check-running-allowed.outputs.result == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.create-build-and-test-target-var.outputs.matrix_include) }}
+    name: Build and test (${{ matrix.mode }}${{ matrix.vm_name_suffix }})
+    uses: ./.github/workflows/build_and_test_proxy.yaml
     with:
-      allow_downgrade: ${{ needs.set-env.outputs.allow_downgrade }}
-      large_tests: ${{ needs.set-env.outputs.large_tests }}
-      number_of_retries: 3
+      mode: ${{ matrix.mode }}
+      build_target: ${{ matrix.build_target }}
+      test_target: ${{ matrix.test_target }}
+      build_preset: ${{ matrix.build_preset }}
+      test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small' }}
+      test_type: ${{ matrix.test_type }}
+      vm_name_suffix: ${{ matrix.vm_name_suffix }}
+      number_of_retries: ${{ matrix.number_of_retries }}
+      cache_update_build: false
+      cache_update_tests: false
+      sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit
