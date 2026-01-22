@@ -503,7 +503,7 @@ async def main():
     parser.add_argument(
         "--loop-interval",
         type=int,
-        default=60, # initially there was 15s but there is some rate limiting on github api side
+        default=60,  # initially there was 15s but there is some rate limiting on github api side
     )
     parser.add_argument(
         "--loop-timeout",

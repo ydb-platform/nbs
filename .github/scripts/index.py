@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import contextlib
 import boto3
 import re
 import os
@@ -211,7 +212,7 @@ def process_directory(
 
     if not dirs and not files_without_index:
         # The directory is empty (or only contains 'index.html'), so delete 'index.html' if it exists
-        try:
+        with contextlib.suppress(s3.exceptions.NoSuchKey):
             if apply_changes:
                 s3.delete_object(Bucket=bucket, Key=os.path.join(prefix, "index.html"))
                 logging.info(f"Removed 'index.html' from empty directory: {prefix}")
@@ -219,9 +220,6 @@ def process_directory(
                 logging.info(
                     f"Dry-run: Would remove 'index.html' from empty directory: {prefix}"
                 )
-        except s3.exceptions.NoSuchKey:
-            # 'index.html' does not exist, no action needed
-            pass
     else:
         # The directory is not empty, generate/update 'index.html'
         html_content = generate_index_html(

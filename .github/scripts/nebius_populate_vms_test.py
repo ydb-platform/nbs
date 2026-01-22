@@ -6,6 +6,7 @@ from .nebius_populate_vms import decide_scaling
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
 @dataclass
 class ScalingTestCase:
     alive: int

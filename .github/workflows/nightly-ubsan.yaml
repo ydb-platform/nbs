@@ -10,44 +10,19 @@ on:
   workflow_dispatch:
 
 jobs:
-  build_on_demand:
-    name: Build/test x86_64 using YA (ubsan) (regular)
-    if: ${{ vars.NEBIUS_SCHEDULING_TYPE == 'regular' || vars.NEBIUS_SCHEDULING_TYPE == '' }}
-    uses: ./.github/workflows/on_demand_build_and_test.yaml
+  build:
+    name: Build/test x86_64 using YA (release-ubsan) (dispatch)
+    uses: ./.github/workflows/build_and_test_proxy.yaml
     secrets: inherit
     with:
+      mode: ${{ vars.NEBIUS_SCHEDULING_TYPE }}
+      allow_split_workload: false
+      vm_preset: ${{ vars.POOLED_HEAVY_VM_PRESET_NIGHTLY }}
       build_target: 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/storage/'
       test_target: 'cloud/blockstore/,cloud/filestore/,cloud/storage/'
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest"
+      test_size: small,medium,large
       build_preset: release-ubsan
-      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
-      cache_update_build: true
-      cache_update_tests: true
-      sleep_after_tests: 1
-      number_of_retries: 1
-  build_hybrid:
-    name: Build/test x86_64 using YA (ubsan) (hybrid)
-    if: ${{ vars.NEBIUS_SCHEDULING_TYPE == 'hybrid' }}
-    uses: ./.github/workflows/on_hybrid_build_and_test.yaml
-    secrets: inherit
-    with:
-      build_target: 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/storage/'
-      test_target: 'cloud/blockstore/,cloud/filestore/,cloud/storage/'
-      build_preset: release-ubsan
-      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
-      cache_update_build: true
-      cache_update_tests: true
-      sleep_after_tests: 1
-      number_of_retries: 1
-  build_pooled:
-    name: Build/test x86_64 using YA (ubsan) (pooled)
-    if: ${{ vars.NEBIUS_SCHEDULING_TYPE == 'pooled' }}
-    uses: ./.github/workflows/on_pooled_build_and_test.yaml
-    secrets: inherit
-    with:
-      build_target: 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/storage/'
-      test_target: 'cloud/blockstore/,cloud/filestore/,cloud/storage/'
-      build_preset: release-ubsan
-      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
       cache_update_build: true
       cache_update_tests: true
       sleep_after_tests: 1

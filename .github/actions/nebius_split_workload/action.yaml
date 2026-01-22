@@ -1,0 +1,24 @@
+name: Set build and test targets
+description: >
+  Computes build/test targets and matrix definitions for PR checks,
+  including sanitizer handling and optional runner splitting.
+
+outputs:
+  matrix_include:
+    description: "JSON for strategy.matrix (include)"
+    value: ${{ steps.plan.outputs.matrix_include }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: install dependencies
+      shell: bash
+      run: |
+        pip install -r .github/scripts/requirements.txt
+    - id: plan
+      shell: bash
+      run: |
+        export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
+        python3 -m scripts.set_build_and_test_targets
+        cat $GITHUB_OUTPUT
+      

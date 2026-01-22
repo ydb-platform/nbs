@@ -1,6 +1,9 @@
 name: Run tests (ya make)
 description: Run tests using ya make
 inputs:
+  component:
+    required: false
+    description: "component name"
   test_target:
     required: false
     description: "test target"
@@ -76,7 +79,14 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       id: init
       run: |
-        export TMP_DIR=/home/github/tmp_test
+        export TMP_DIR=/home/github/tmp_test      
+        COMPONENT_DIR="" 
+        if [ -n "$COMPONENT" ]; then
+          COMPONENT_DIR="${COMPONENT}/"
+        fi
+        if [ "$COMPONENT" == "all" ]; then
+          COMPONENT_DIR=""
+        fi
         {
           echo "TMP_DIR=$TMP_DIR"
           echo "LOG_DIR=$TMP_DIR/logs"
@@ -85,18 +95,20 @@ runs:
           echo "TESTS_DATA_DIR=$TMP_DIR/test_data"
           echo "REPORTS_ARTIFACTS_DIR=$TMP_DIR/artifacts/test_reports"
           echo "JUNIT_REPORT_XML=$TMP_DIR/junit.xml"
-          echo "JUNIT_REPORT_PARTS=$TMP_DIR/junit-split"
           echo "SUMMARY_LINKS=$(mktemp -p /home/github summary_links.XXXX)"
+          echo "COMPONENT_DIR=$COMPONENT_DIR"
         } | tee -a $GITHUB_ENV
+      env:
+        COMPONENT: ${{ inputs.component }}
 
     - name: prepare
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
         CLEAN_YA_DIR: ${{ inputs.clean_ya_dir }}
       run: |
-        rm -rf $TMP_DIR $JUNIT_REPORT_XML $JUNIT_REPORT_PARTS $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
-        mkdir -p $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR $JUNIT_REPORT_PARTS $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
-        chown -R github:github $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR $JUNIT_REPORT_PARTS \
+        rm -rf $TMP_DIR $JUNIT_REPORT_XML $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
+        mkdir -p $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
+        chown -R github:github $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR \
                                $REPORTS_ARTIFACTS_DIR $SUMMARY_LINKS $GITHUB_WORKSPACE \
                                $GITHUB_STEP_SUMMARY $TESTS_DATA_DIR
         # shellcheck disable=SC2193
@@ -239,6 +251,8 @@ runs:
         # will kill VM with runner
         echo "failed_tests=yes" >> $GITHUB_OUTPUT
         while [ "$RETRIES" -gt 0 ]; do
+          TEST_START_TIME=$(date +%s)
+          echo TEST_START_TIME=$TEST_START_TIME  | tee -a "$GITHUB_ENV"
           RETRIES=$((RETRIES - 1))
           i=$((i + 1))
           RETRY_LOG_DIR="$LOG_DIR/$i"
@@ -299,11 +313,13 @@ runs:
           esac
 
           touch "$LOG_DIR/${i}_build_finished"
+          TEST_END_TIME=$(date +%s)
+          echo TEST_END_TIME=$TEST_END_TIME  | tee -a "$GITHUB_ENV"
 
           echo "::group::s3-sync-logs"
           if [ "$SYNC_TO_S3" = "true" ];
           then
-            sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$RETRY_LOG_DIR/" "$S3_BUCKET_PATH/test_logs/${i}/"
+            sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$RETRY_LOG_DIR/" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}${i}/"
           fi
           echo "::endgroup::"
 
@@ -319,16 +335,17 @@ runs:
             MUTED_CONFIG=".github/config/muted_ya.txt"
             echo "::endgroup::"
             echo "::group::postprocess-junit-${i}"
-            sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/orig_junit.${i}.xml.gz"
+            sudo -E -H -u github mkdir -p "$ARTIFACTS_DIR/${COMPONENT_DIR}"
+            sudo -E -H -u github mkdir -p "$REPORTS_ARTIFACTS_DIR/${COMPONENT_DIR}"
+            sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/${COMPONENT_DIR}orig_junit.${i}.xml.gz"
             sudo -E -H -u github .github/scripts/tests/transform-ya-junit.py -i \
               -m "${MUTED_CONFIG}" \
               --ya-out "$OUT_DIR" \
-              --log-url-prefix "$S3_WEBSITE_PREFIX/logs/${i}/" \
-              --data-url-prefix "$S3_WEBSITE_PREFIX/test_data/${i}$GITHUB_WORKSPACE" \
-              --log-out-dir "$ARTIFACTS_DIR/logs/${i}" \
+              --log-url-prefix "$S3_WEBSITE_PREFIX/logs/${COMPONENT_DIR}${i}/" \
+              --data-url-prefix "$S3_WEBSITE_PREFIX/test_data/${COMPONENT_DIR}${i}$GITHUB_WORKSPACE" \
+              --log-out-dir "$ARTIFACTS_DIR/logs/${COMPONENT_DIR}${i}" \
               "${JUNIT_REPORT_XML}.${i}"
 
-            sudo -E -H -u github .github/scripts/tests/split-junit.py -o "$JUNIT_REPORT_PARTS/${i}" "${JUNIT_REPORT_XML}.${i}"
             echo "::endgroup::"
             # exports BUILD_FAILED_COUNT if it is not zero, we need to save current value to compare it to new one in retries and if it is bigger - update it
             if [ -z "$BUILD_FAILED_COUNT" ]; then
@@ -341,6 +358,9 @@ runs:
             set -e
             if [ -f "$FAIL_CHECKER_TEMP_FILE" ]; then
               BUILD_FAILED_COUNT=$(grep -E '^BUILD_FAILED_COUNT=' "$FAIL_CHECKER_TEMP_FILE" | cut -d '=' -f2) || true
+              if [ -z "$BUILD_FAILED_COUNT" ]; then
+                BUILD_FAILED_COUNT=0
+              fi
               rm "$FAIL_CHECKER_TEMP_FILE"
             fi
             if [ "$BUILD_FAILED_COUNT" -gt "$BUILD_FAILED_COUNT_TMP" ]; then
@@ -395,18 +415,16 @@ runs:
             if [ "$SYNC_TO_S3" = "true" ];
             then
               du -h "$TESTS_DATA_DIR/"
-              sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/${i}/"
+              sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/${COMPONENT_DIR}${i}/"
             fi
             touch "$LOG_DIR/${i}_test_data_synced"
             echo "::endgroup::"
           fi
           # shellcheck disable=SC2024
-          sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/transformed_junit.${i}.xml.gz"
-          sudo -E -H -u github tar -C "$JUNIT_REPORT_PARTS/.." -czf "${REPORTS_ARTIFACTS_DIR}/junit_parts.${i}.xml.tar.gz" "$(basename $JUNIT_REPORT_PARTS)/${i}" "${JUNIT_REPORT_XML}.${i}"*
-
+          sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/${COMPONENT_DIR}transformed_junit.${i}.xml.gz"
 
           echo "::group::write-summary-${i}"
-          sudo -E -H -u github mkdir -p $ARTIFACTS_DIR/summary/${i}
+          sudo -E -H -u github mkdir -p $ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}
 
           cat $SUMMARY_LINKS | python3 -c 'import sys; print(" | ".join([v for _, v in sorted([l.strip().split(" ", 1) for l in sys.stdin], key=lambda a: (int(a[0]), a))]))' >> $GITHUB_STEP_SUMMARY
 
@@ -415,10 +433,12 @@ runs:
           export SUMMARY_OUT_ENV_PATH=$(mktemp -p /home/github)
           chown github:github $SUMMARY_OUT_ENV_PATH
           sudo -E -H -u github .github/scripts/tests/generate-summary.py \
-            --summary-out-path "$ARTIFACTS_DIR/summary/${i}/" \
+            --summary-out-path "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/" \
             --summary-out-env-path "$SUMMARY_OUT_ENV_PATH" \
-            --summary-url-prefix "$S3_WEBSITE_PREFIX/summary/${i}/" \
+            --summary-url-prefix "$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/" \
             --build-preset "${platform_name}-${BUILD_PRESET}" \
+            --test-target "${TEST_TARGET//\"/}" \
+            --test-time $((TEST_END_TIME - TEST_START_TIME)) \
             "Tests" ya-test.html "${JUNIT_REPORT_XML}.${i}"
 
           cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
@@ -477,7 +497,7 @@ runs:
         sudo cp /var/log/atop/atop_* "$LOG_DIR/system_logs/" || true
         sudo cp /var/log/syslog "$LOG_DIR/system_logs/syslog.log" || true
         sudo chown -R github:github "$LOG_DIR/system_logs/" || true
-        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/system_logs/" "$S3_BUCKET_PATH/test_logs/"
+        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/system_logs/" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}"
         echo "::endgroup::"
 
     - name: sync logs in case of cancel and additional debug info
@@ -497,7 +517,7 @@ runs:
 
         sudo chown -R github:github "$LOG_DIR/"
 
-        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/" || true
+        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}" || true
 
         if [ ! -f "${LAST_STEP}_artifacts_synced" ]; then
           echo "Syncing artifacts dir"
@@ -529,7 +549,7 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::s3-sync"
-        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
+        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/test_reports/" "$S3_BUCKET_PATH/test_reports/"
         echo "::endgroup::"
 
     - name: Display links to s3 summary
@@ -537,8 +557,10 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::s3-report-links"
-        echo ${S3_URL_PREFIX}/summary/ya-test.html
-        echo ${S3_WEBSITE_PREFIX}/summary/ya-test.html
+        for i in $(seq 1 $LAST_STEP); do
+          echo ${S3_URL_PREFIX}/summary/${COMPONENT_DIR}${i}/ya-test.html
+          echo ${S3_WEBSITE_PREFIX}/summary/${COMPONENT_DIR}${i}/ya-test.html
+        done
         echo "::endgroup::"
 
     - name: upload ya dir to s3 on success
@@ -600,9 +622,9 @@ runs:
           if [ "$EXTENSION" = "tar.gz" ]; then COMPRESS_ARGS=pigz; fi
           sudo -E -H -u github time tar -S -C /home/github -I "$COMPRESS_ARGS" -c -f  /home/github/tmp/ya.${EXTENSION} /home/github/.ya
           ls -lsha /home/github/tmp/ya.${EXTENSION}
-          sudo -E -H -u github time aws s3 cp --no-progress  /home/github/tmp/ya.${EXTENSION} "$S3_BUCKET_PATH/ya_archive/ya.${EXTENSION}"
-          echo "${S3_WEBSITE_PREFIX}/ya_archive/ya.${EXTENSION}" > /home/github/ya_web_url.txt
-          echo "${S3_BUCKET_PATH}/ya_archive/ya.${EXTENSION}" > /home/github/ya_s3_url.txt
+          sudo -E -H -u github time aws s3 cp --no-progress  /home/github/tmp/ya.${EXTENSION} "$S3_BUCKET_PATH/ya_archive/${COMPONENT_DIR}ya.${EXTENSION}"
+          echo "${S3_WEBSITE_PREFIX}/ya_archive/${COMPONENT_DIR}ya.${EXTENSION}" > /home/github/ya_web_url.txt
+          echo "${S3_BUCKET_PATH}/ya_archive/${COMPONENT_DIR}ya.${EXTENSION}" > /home/github/ya_s3_url.txt
           df -h
           echo "::endgroup::"
         fi
@@ -624,7 +646,7 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::generate-listing"
-        sudo -E -H -u github python3 .github/scripts/index.py "$S3_BUCKET_PATH" --generate-indexes --apply
+        sudo -E -H -u github python3 .github/scripts/index.py "$S3_BUCKET_PATH/" --generate-indexes --apply
         echo "::endgroup::"
     - name: show free space
       if: always()
