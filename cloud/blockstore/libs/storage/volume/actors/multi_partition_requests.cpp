@@ -90,7 +90,7 @@ ui32 InitIORequest(
 
 // Mirrors the request to all partitions.
 template <typename TMethod>
-bool ToPartitionRequestsSimple(
+NProto::TError ToPartitionRequestsSimple(
     const TBriefPartitionInfoList& partitions,
     const typename TMethod::TRequest::TPtr& ev,
     TVector<TPartitionRequest<TMethod>>* requests)
@@ -104,7 +104,7 @@ bool ToPartitionRequestsSimple(
         (*requests)[i].Event->Record = ev->Get()->Record;
     }
 
-    return true;
+    return MakeError(S_OK);
 }
 
 }   // namespace
@@ -112,7 +112,7 @@ bool ToPartitionRequestsSimple(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <>
-bool ToPartitionRequests<TEvService::TWriteBlocksMethod>(
+NProto::TError ToPartitionRequests<TEvService::TWriteBlocksMethod>(
     const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
@@ -180,11 +180,11 @@ bool ToPartitionRequests<TEvService::TWriteBlocksMethod>(
         }
     }
 
-    return true;
+    return MakeError(S_OK);
 }
 
 template <>
-bool ToPartitionRequests<TEvService::TReadBlocksMethod>(
+NProto::TError ToPartitionRequests<TEvService::TReadBlocksMethod>(
     const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
@@ -216,11 +216,11 @@ bool ToPartitionRequests<TEvService::TReadBlocksMethod>(
         (*requests)[i].Event->Record.SetSessionId(proto.GetSessionId());
     }
 
-    return true;
+    return MakeError(S_OK);
 }
 
 template <>
-bool ToPartitionRequests<TEvService::TZeroBlocksMethod>(
+NProto::TError ToPartitionRequests<TEvService::TZeroBlocksMethod>(
     const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
@@ -254,7 +254,7 @@ bool ToPartitionRequests<TEvService::TZeroBlocksMethod>(
         request.Event->Record.SetSessionId(proto.GetSessionId());
     }
 
-    return true;
+    return MakeError(S_OK);
 }
 
 template <typename TMethod>
@@ -293,7 +293,7 @@ ui32 InitLocalRequest(
 }
 
 template <>
-bool ToPartitionRequests<TEvService::TWriteBlocksLocalMethod>(
+NProto::TError ToPartitionRequests<TEvService::TWriteBlocksLocalMethod>(
     const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
@@ -305,7 +305,7 @@ bool ToPartitionRequests<TEvService::TWriteBlocksLocalMethod>(
 
     auto guard = proto.Sglist.Acquire();
     if (!guard) {
-        return false;
+        return MakeError(E_REJECTED, "Sglist destroyed");
     }
 
     const auto& blockDatas = guard.Get();
@@ -341,11 +341,11 @@ bool ToPartitionRequests<TEvService::TWriteBlocksLocalMethod>(
         request.Event->Record.BlockSize = blockSize;
     }
 
-    return true;
+    return MakeError(S_OK);
 }
 
 template <>
-bool ToPartitionRequests<TEvService::TReadBlocksLocalMethod>(
+NProto::TError ToPartitionRequests<TEvService::TReadBlocksLocalMethod>(
     const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
@@ -357,7 +357,7 @@ bool ToPartitionRequests<TEvService::TReadBlocksLocalMethod>(
 
     auto guard = proto.Sglist.Acquire();
     if (!guard) {
-        return false;
+        return MakeError(E_REJECTED, "Sglist destroyed");
     }
 
     const auto& blockDatas = guard.Get();
@@ -388,11 +388,11 @@ bool ToPartitionRequests<TEvService::TReadBlocksLocalMethod>(
             ev->Get()->Record.ShouldReportFailedRangesOnFailure;
     }
 
-    return true;
+    return MakeError(S_OK);
 }
 
 template <>
-bool ToPartitionRequests<TEvVolume::TDescribeBlocksMethod>(
+NProto::TError ToPartitionRequests<TEvVolume::TDescribeBlocksMethod>(
     const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
@@ -423,11 +423,11 @@ bool ToPartitionRequests<TEvVolume::TDescribeBlocksMethod>(
         (*requests)[i].Event->Record.SetCheckpointId(proto.GetCheckpointId());
     }
 
-    return true;
+    return MakeError(S_OK);
 }
 
 template <>
-bool ToPartitionRequests<TEvService::TGetChangedBlocksMethod>(
+NProto::TError ToPartitionRequests<TEvService::TGetChangedBlocksMethod>(
     const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
@@ -460,11 +460,11 @@ bool ToPartitionRequests<TEvService::TGetChangedBlocksMethod>(
         (*requests)[i].Event->Record.SetIgnoreBaseDisk(proto.GetIgnoreBaseDisk());
     }
 
-    return true;
+    return MakeError(S_OK);
 }
 
 template <>
-bool ToPartitionRequests<TEvVolume::TGetPartitionInfoMethod>(
+NProto::TError ToPartitionRequests<TEvVolume::TGetPartitionInfoMethod>(
     const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
@@ -485,11 +485,11 @@ bool ToPartitionRequests<TEvVolume::TGetPartitionInfoMethod>(
     (*requests)[0].Event = std::make_unique<TEvVolume::TEvGetPartitionInfoRequest>();
     (*requests)[0].Event->Record = std::move(ev->Get()->Record);
 
-    return true;
+    return MakeError(S_OK);
 }
 
 template <>
-bool ToPartitionRequests<TEvVolume::TCompactRangeMethod>(
+NProto::TError ToPartitionRequests<TEvVolume::TCompactRangeMethod>(
     const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
@@ -520,11 +520,11 @@ bool ToPartitionRequests<TEvVolume::TCompactRangeMethod>(
         (*requests)[i].Event->Record.SetOperationId(ev->Get()->Record.GetOperationId());
     }
 
-    return true;
+    return MakeError(S_OK);
 }
 
 template <>
-bool ToPartitionRequests<TEvVolume::TGetCompactionStatusMethod>(
+NProto::TError ToPartitionRequests<TEvVolume::TGetCompactionStatusMethod>(
     const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
@@ -540,7 +540,7 @@ bool ToPartitionRequests<TEvVolume::TGetCompactionStatusMethod>(
 }
 
 template <>
-bool ToPartitionRequests<TEvVolume::TRebuildMetadataMethod>(
+NProto::TError ToPartitionRequests<TEvVolume::TRebuildMetadataMethod>(
     const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
@@ -556,7 +556,7 @@ bool ToPartitionRequests<TEvVolume::TRebuildMetadataMethod>(
 }
 
 template <>
-bool ToPartitionRequests<TEvVolume::TGetRebuildMetadataStatusMethod>(
+NProto::TError ToPartitionRequests<TEvVolume::TGetRebuildMetadataStatusMethod>(
     const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
@@ -573,7 +573,7 @@ bool ToPartitionRequests<TEvVolume::TGetRebuildMetadataStatusMethod>(
 }
 
 template <>
-bool ToPartitionRequests<TEvVolume::TScanDiskMethod>(
+NProto::TError ToPartitionRequests<TEvVolume::TScanDiskMethod>(
     const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
@@ -589,7 +589,7 @@ bool ToPartitionRequests<TEvVolume::TScanDiskMethod>(
 }
 
 template <>
-bool ToPartitionRequests<TEvVolume::TGetScanDiskStatusMethod>(
+NProto::TError ToPartitionRequests<TEvVolume::TGetScanDiskStatusMethod>(
     const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
@@ -605,7 +605,7 @@ bool ToPartitionRequests<TEvVolume::TGetScanDiskStatusMethod>(
 }
 
 template <>
-bool ToPartitionRequests<TEvVolume::TGetUsedBlocksMethod>(
+NProto::TError ToPartitionRequests<TEvVolume::TGetUsedBlocksMethod>(
     const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
@@ -627,11 +627,11 @@ bool ToPartitionRequests<TEvVolume::TGetUsedBlocksMethod>(
         TStringBuilder() << "ToPartitionRequests not implemented for "
                             "TEvVolume::TGetUsedBlocksMethod");
 
-    return false;
+    return MakeError(E_NOT_IMPLEMENTED);
 }
 
 template <>
-bool ToPartitionRequests<TEvVolume::TCheckRangeMethod>(
+NProto::TError ToPartitionRequests<TEvVolume::TCheckRangeMethod>(
     const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
