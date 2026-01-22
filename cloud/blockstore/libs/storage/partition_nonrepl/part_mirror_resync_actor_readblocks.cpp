@@ -272,9 +272,15 @@ void TMirrorPartitionResyncActor::SendReadBlocksResponse(
     Y_DEBUG_ABORT_UNLESS(IsReadBlocksRequest(ev));
 
     if (ev.GetTypeRewrite() == TEvService::EvReadBlocksRequest) {
-        SendReadBlocksResponseImpl<TEvService::TReadBlocksMethod>(error, ev, ctx);
+        SendReadBlocksResponseImpl<TEvService::TReadBlocksMethod>(
+            error,
+            ev,
+            ctx);
     } else {
-        SendReadBlocksResponseImpl<TEvService::TReadBlocksLocalMethod>(error, ev, ctx);
+        SendReadBlocksResponseImpl<TEvService::TReadBlocksLocalMethod>(
+            error,
+            ev,
+            ctx);
     }
 }
 
