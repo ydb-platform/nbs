@@ -23,6 +23,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr TStringBuf ChunkedProtoFileHeader = "CHKPROTO";
 constexpr TDuration BackupInterval = TDuration::Seconds(10);
 
 NProto::TError LoadChunk(
@@ -225,6 +226,22 @@ bool TPathDescriptionBackup::LoadFromChunkedBinaryFormat(
 
         TUnbufferedFileInput stream(BackupFilePath);
 
+        {   // Check header
+            TString header;
+            header.resize(ChunkedProtoFileHeader.size());
+            if (stream.Read(const_cast<char*>(header.data()), header.size()) !=
+                    header.size() ||
+                header != ChunkedProtoFileHeader)
+            {
+                LOG_TRACE_S(
+                    ctx,
+                    LogComponent,
+                    "PathDescriptionBackup: loading from chunked binary "
+                    "format. Invalid header");
+                return false;
+            }
+        }
+
         for (;;) {
             NSSProxy::NProto::TPathDescriptionBackupChunk chunk;
             auto error = LoadChunk(&stream, &chunk);
@@ -305,8 +322,8 @@ void TPathDescriptionBackup::HandleReadPathDescriptionBackup(
         LOG_DEBUG_S(ctx, LogComponent,
             "PathDescriptionBackup: found data for path " << msg->Path);
 
-        response = std::make_unique<TResponse>(
-            std::move(msg->Path), std::move(pathDescription));
+        response =
+            std::make_unique<TResponse>(msg->Path, std::move(pathDescription));
     } else {
         LOG_DEBUG_S(ctx, LogComponent,
             "PathDescriptionBackup: no data for path " << msg->Path);
@@ -323,7 +340,7 @@ void TPathDescriptionBackup::HandleUpdatePathDescriptionBackup(
     auto* msg = ev->Get();
     auto& data = *BackupProto.MutableData();
 
-    data[msg->Path] = std::move(msg->PathDescription);
+    data[msg->Path].Swap(&msg->PathDescription);
 
     LOG_DEBUG_S(ctx, LogComponent,
         "PathDescriptionBackup: updated data for path " << msg->Path);

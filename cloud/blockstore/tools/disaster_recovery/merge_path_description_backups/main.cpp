@@ -21,6 +21,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr int ItemsPerChunkCount = 1000;
+constexpr TStringBuf ChunkedProtoFileHeader = "CHKPROTO";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -105,50 +106,60 @@ void SaveChunk(
     out->Write(buffer.data(), chunkSize);
 }
 
-void Dump(
-    TSchemeShardData allData,
-    const TFsPath& textOutputPath,
+void DumpToChunkedProto(
+    const TSchemeShardData& allData,
     const TFsPath& binaryOutputPath)
 {
-    if (textOutputPath.GetPath()) {
-        Cout << "Dumping to " << textOutputPath.GetPath().Quote()
-             << " with text format, items count: " << allData.size() << Endl;
-        TFileOutput output(textOutputPath);
-        for (auto& [key, value]: allData) {
-            NSSProxy::NProto::TPathDescriptionBackupChunk subBackup;
-            NSSProxy::NProto::TPathDescriptionBackupItem item;
-            item.Setkey(key);
-            *item.Mutablevalue() = value;
-            subBackup.MutableData()->Add(std::move(item));
-            SerializeToTextFormat(subBackup, output);
-        }
-        Cout << "OK" << Endl;
+    if (!binaryOutputPath.GetPath()) {
+        return;
     }
 
-    if (binaryOutputPath.GetPath()) {
-        Cout << "Dumping to " << binaryOutputPath.GetPath().Quote()
-             << " with binary format, items count: " << allData.size() << Endl;
-        TOFStream out(binaryOutputPath.GetPath());
+    Cout << "Dumping to " << binaryOutputPath.GetPath().Quote()
+         << " with binary format, items count: " << allData.size() << Endl;
 
-        NSSProxy::NProto::TPathDescriptionBackupChunk chunk;
-        auto& chunkData = *chunk.MutableData();
-        for (auto& [key, value]: allData) {
-            NSSProxy::NProto::TPathDescriptionBackupItem item;
-            item.Setkey(key);
-            *item.Mutablevalue() = value;
-            chunkData.Add(std::move(item));
-            if (chunkData.size() >= ItemsPerChunkCount) {
-                SaveChunk(&out, chunk);
-                chunkData.Clear();
-                Cout << ".";
-            }
+    TOFStream out(binaryOutputPath.GetPath());
+
+    out.Write(ChunkedProtoFileHeader.data(), ChunkedProtoFileHeader.size());
+
+    NSSProxy::NProto::TPathDescriptionBackupChunk chunk;
+    auto& chunkData = *chunk.MutableData();
+    for (const auto& [key, value]: allData) {
+        NSSProxy::NProto::TPathDescriptionBackupItem item;
+        item.Setkey(key);
+        *item.Mutablevalue() = value;
+        chunkData.Add(std::move(item));
+        if (chunkData.size() >= ItemsPerChunkCount) {
+            SaveChunk(&out, chunk);
+            chunkData.Clear();
+            Cout << ".";
         }
-
-        SaveChunk(&out, chunk);
-        out.Flush();
-
-        Cout << "OK" << Endl;
     }
+
+    SaveChunk(&out, chunk);
+    out.Flush();
+    Cout << "OK" << Endl;
+}
+
+void DumpToTextProto(
+    const TSchemeShardData& allData,
+    const TFsPath& textOutputPath)
+{
+    if (!textOutputPath.GetPath()) {
+        return;
+    }
+
+    Cout << "Dumping to " << textOutputPath.GetPath().Quote()
+         << " with text format, items count: " << allData.size() << Endl;
+    TFileOutput output(textOutputPath);
+    for (const auto& [key, value]: allData) {
+        NSSProxy::NProto::TPathDescriptionBackupChunk subBackup;
+        NSSProxy::NProto::TPathDescriptionBackupItem item;
+        item.Setkey(key);
+        *item.Mutablevalue() = value;
+        subBackup.MutableData()->Add(std::move(item));
+        SerializeToTextFormat(subBackup, output);
+    }
+    Cout << "OK" << Endl;
 }
 
 void Run(const TOptions& options)
@@ -167,7 +178,9 @@ void Run(const TOptions& options)
             ++dirIndex,
             children.size());
     }
-    Dump(std::move(allData), options.TextOutputPath, options.BinaryOutputPath);
+
+    DumpToTextProto(allData, options.TextOutputPath);
+    DumpToChunkedProto(allData, options.BinaryOutputPath);
 }
 
 }   // namespace

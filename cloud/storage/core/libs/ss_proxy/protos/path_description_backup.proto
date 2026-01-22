@@ -5,6 +5,34 @@ import "contrib/ydb/core/protos/flat_scheme_op.proto";
 package NCloud.NStorage.NSSProxy.NProto;
 
 ////////////////////////////////////////////////////////////////////////////////
+/*
+Backups can be saved in three formats:
+  - text proto
+  - binary proto,
+  - chunked binary proto
+
+The chunked binary proto format is needed to work around the 2GiB limit of
+proto file.
+
+In the case of text and binary proto, they can be deserialized through both
+TPathDescriptionBackup and TPathDescriptionBackupChunk messages, as they are
+compatible.
+
+Chunked binary proto format is a sequence of TPathDescriptionBackupChunk messages,
+preceded by 4 bytes of their length. At the beginning of the file is an 8 byte
+header containing the "CHKPROTO" signature.
+
+
+       Chunked binary proto file
+ --------------------------------------------------------
+  MAGIC (CHKPROTO)                       |   8 byte
+  ui32 size (little endian)              |   4 byte
+  serialized TPathDescriptionBackupChunk |   size bytes
+  ui32 size (little endian)              |   4 byte
+  serialized TPathDescriptionBackupChunk |   size bytes
+  ...
+ ----------------------------------------
+*/
 
 message TPathDescriptionBackupItem
 {
@@ -15,18 +43,6 @@ message TPathDescriptionBackupItem
     required NKikimrSchemeOp.TPathDescription value = 2;
 }
 
-// To get around the 2GiB limit of proto deserialization multiple
-// TPathDescriptionBackupChunk messages are sequentially saved to the file,
-// preceded by 4 bytes of their length. Such file cannot be deserialized in
-// the standard way.
-//                 File
-// ----------------------------------------
-//  ui32 size (little endian)
-//  serialized TPathDescriptionBackupChunk
-//  ui32 size (little endian)
-//  serialized TPathDescriptionBackupChunk
-//  ...
-// ----------------------------------------
 message TPathDescriptionBackupChunk
 {
     repeated TPathDescriptionBackupItem Data = 1;
