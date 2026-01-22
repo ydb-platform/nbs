@@ -2,18 +2,68 @@ package testing
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 const RootNodeID = uint64(1)
+
+////////////////////////////////////////////////////////////////////////////////
+
+func NewContext() context.Context {
+	return logging.SetLogger(
+		context.Background(),
+		logging.NewStderrLogger(logging.DebugLevel),
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func GetEndpoint() string {
+	return fmt.Sprintf(
+		"localhost:%v",
+		os.Getenv("DISK_MANAGER_RECIPE_NFS_PORT"),
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func newFactory(ctx context.Context) nfs.Factory {
+	clientTimeout := "60s"
+	rootCertsFile := os.Getenv("DISK_MANAGER_RECIPE_ROOT_CERTS_FILE")
+	return nfs.NewFactory(
+		ctx,
+		&config.ClientConfig{
+			Zones: map[string]*config.Zone{
+				"zone": {
+					Endpoints: []string{GetEndpoint(), GetEndpoint()},
+				},
+			},
+			RootCertsFile:        &rootCertsFile,
+			DurableClientTimeout: &clientTimeout,
+		},
+		metrics.NewEmptyRegistry(),
+	)
+}
+
+func NewClient(t *testing.T, ctx context.Context) nfs.Client {
+	factory := newFactory(ctx)
+	client, err := factory.NewClient(ctx, "zone")
+	require.NoError(t, err)
+	return client
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
