@@ -20,15 +20,29 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename ...T>
-IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&& ...args)
+enum class ERequestType
 {
-    if (replyLocal) {
-        return std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
-            std::forward<T>(args)...);
+    WriteBlocks,
+    WriteBlocksLocal,
+    ZeroBlocks
+};
+
+template <typename... T>
+static IEventBasePtr CreateResponse(ERequestType requestType, T&&... args)
+{
+    switch (requestType) {
+        case ERequestType::WriteBlocks:
+            return std::make_unique<TEvService::TEvWriteBlocksResponse>(
+                std::forward<T>(args)...);
+
+        case ERequestType::WriteBlocksLocal:
+            return std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
+                std::forward<T>(args)...);
+
+        case ERequestType::ZeroBlocks:
+            return std::make_unique<TEvService::TEvZeroBlocksResponse>(
+                std::forward<T>(args)...);
     }
-    return std::make_unique<TEvService::TEvWriteBlocksResponse>(
-        std::forward<T>(args)...);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -40,11 +54,11 @@ public:
     struct TRequest
     {
         TRequestInfoPtr RequestInfo;
-        bool ReplyLocal;
+        ERequestType RequestType;
 
-        TRequest(TRequestInfoPtr requestInfo, bool replyLocal)
+        TRequest(TRequestInfoPtr requestInfo, ERequestType requestType)
             : RequestInfo(std::move(requestInfo))
-            , ReplyLocal(replyLocal)
+            , RequestType(requestType)
         {}
     };
 
@@ -57,6 +71,7 @@ private:
     TVector<TBlockRange32> BlockRanges;
     TVector<IWriteBlocksHandlerPtr> WriteHandlers;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const bool IsZeroRequest;
 
     TString BlobContent;
     ui64 BlobSize = 0;
@@ -84,6 +99,7 @@ private:
     void WriteBlob(const TActorContext& ctx);
     void AddBlocks(const TActorContext& ctx);
 
+    template<typename TEvent, typename TCompleted>
     void NotifyCompleted(const TActorContext& ctx, const NProto::TError& error);
     bool HandleError(const TActorContext& ctx, const NProto::TError& error);
     void ReplyAllAndDie(const TActorContext& ctx, const NProto::TError& error);
@@ -121,8 +137,22 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
     , BlockRanges(std::move(blockRanges))
     , WriteHandlers(std::move(writeHandlers))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
+    , IsZeroRequest(
+          Requests.size() == 1 &&
+          Requests.front().RequestType == ERequestType::ZeroBlocks)
 {
-    Y_ABORT_UNLESS(BlockRanges.size() == WriteHandlers.size());
+    if (!IsZeroRequest) {
+        Y_ABORT_UNLESS(BlockRanges.size() == WriteHandlers.size());
+
+        const bool hasAnyZeroRequest = AnyOf(
+            Requests,
+            [](auto r) { return r.RequestType == ERequestType::ZeroBlocks; });
+
+        Y_ABORT_UNLESS(!hasAnyZeroRequest);
+    } else {
+        Y_ABORT_UNLESS(WriteHandlers.empty());
+        Y_ABORT_UNLESS(BlockRanges.size() == 1);
+    }
 }
 
 void TWriteFreshBlocksActor::Bootstrap(const TActorContext& ctx)
@@ -135,7 +165,7 @@ void TWriteFreshBlocksActor::Bootstrap(const TActorContext& ctx)
         LWTRACK(
             RequestReceived_PartitionWorker,
             r.RequestInfo->CallContext->LWOrbit,
-            "WriteFreshBlocks",
+            IsZeroRequest ? "ZeroFreshBlocks" : "WriteFreshBlocks",
             r.RequestInfo->CallContext->RequestId);
 
         timers.emplace_back(*r.RequestInfo);
@@ -161,6 +191,13 @@ void TWriteFreshBlocksActor::Bootstrap(const TActorContext& ctx)
 
 NProto::TError TWriteFreshBlocksActor::BuildBlobContentAndComputeDigest()
 {
+    if (IsZeroRequest) {
+        BlobContent = BuildZeroFreshBlocksBlobContent(BlockRanges.front());
+        BlobSize = BlobContent.size();
+
+        return {};
+    }
+
     TVector<TGuardHolder> holders(Reserve(BlockRanges.size()));
 
     auto blockRange = BlockRanges.begin();
@@ -237,13 +274,25 @@ void TWriteFreshBlocksActor::AddBlocks(const TActorContext& ctx)
 {
     Y_ABORT_UNLESS(BlobSize > 0);
 
-    using TEvent = TEvPartitionPrivate::TEvAddFreshBlocksRequest;
-    auto request = std::make_unique<TEvent>(
-        CombinedContext,
-        CommitId,
-        BlobSize,
-        std::move(BlockRanges),
-        std::move(WriteHandlers));
+    IEventBasePtr request;
+
+    if (IsZeroRequest) {
+        request =
+            std::make_unique<TEvPartitionPrivate::TEvAddFreshBlocksRequest>( // Add Zero Fresh Blocks
+                CombinedContext,
+                CommitId,
+                BlobSize,
+                std::move(BlockRanges));
+
+    } else {
+        request =
+            std::make_unique<TEvPartitionPrivate::TEvAddFreshBlocksRequest>( // Add Fresh Blocks
+                CombinedContext,
+                CommitId,
+                BlobSize,
+                std::move(BlockRanges),
+                std::move(WriteHandlers));
+    }
 
     NCloud::Send(
         ctx,
@@ -251,15 +300,28 @@ void TWriteFreshBlocksActor::AddBlocks(const TActorContext& ctx)
         std::move(request));
 }
 
+template<typename TEvent, typename TCompleted>
 void TWriteFreshBlocksActor::NotifyCompleted(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    using TEvent = TEvPartitionPrivate::TEvWriteBlocksCompleted;
-    using TCompleted = TEvPartitionPrivate::TWriteBlocksCompleted;
-    auto ev = std::make_unique<TEvent>(
-        error,
-        TCompleted::CreateFreshBlocksCompleted());
+    std::unique_ptr<TEvent> ev;
+
+    if constexpr (
+        std::is_same_v<TCompleted, TEvPartitionPrivate::TWriteBlocksCompleted>)
+    {
+        ev = std::make_unique<TEvent>(
+            error,
+            TCompleted::CreateFreshBlocksCompleted());
+    } else if constexpr (
+        std::is_same_v<TCompleted, TEvPartitionPrivate::TZeroBlocksCompleted>)
+    {
+        ev = std::make_unique<TEvent>(
+            error,
+            TCompleted{
+                true   // trimFreshLogBarrierAcquired
+            });
+    }
 
     ev->ExecCycles = Requests.front().RequestInfo->GetExecCycles();
     ev->TotalCycles = Requests.front().RequestInfo->GetTotalCycles();
@@ -294,10 +356,19 @@ void TWriteFreshBlocksActor::ReplyAllAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    NotifyCompleted(ctx, error);
+    if (IsZeroRequest) {
+        NotifyCompleted<
+            TEvPartitionPrivate::TEvZeroBlocksCompleted,
+            TEvPartitionPrivate::TZeroBlocksCompleted>(ctx, error);
+
+    } else {
+        NotifyCompleted<
+            TEvPartitionPrivate::TEvWriteBlocksCompleted,
+            TEvPartitionPrivate::TWriteBlocksCompleted>(ctx, error);
+    }
 
     for (const auto& r: Requests) {
-        auto response = CreateWriteBlocksResponse(r.ReplyLocal, error);
+        auto response = CreateResponse(r.RequestType, error);
 
         LWTRACK(
             ResponseSent_Partition,
@@ -401,13 +472,14 @@ void TPartitionActor::WriteFreshBlocks(
         for (auto& r: requestsInBuffer) {
             ui32 flags = 0;
             SetProtoFlag(flags, NProto::EF_SILENT);
-            auto response = CreateWriteBlocksResponse(
-                r.Data.ReplyLocal,
-                MakeError(E_REJECTED,
-                          TStringBuilder()
-                              << "FreshByteCountHardLimit exceeded: "
-                              << State->GetUnflushedFreshBlobByteCount(),
-                          flags));
+            auto response = CreateResponse(
+                r.Data.ReplyLocal ? ERequestType::WriteBlocksLocal
+                                  : ERequestType::WriteBlocks,
+                MakeError(
+                    E_REJECTED,
+                    TStringBuilder() << "FreshByteCountHardLimit exceeded: "
+                                     << State->GetUnflushedFreshBlobByteCount(),
+                    flags));
 
             LWTRACK(
                 ResponseSent_Partition,
@@ -454,7 +526,10 @@ void TPartitionActor::WriteFreshBlocks(
         ui32 blockCount = 0;
 
         for (const auto& r: requestsInBuffer) {
-            requests.emplace_back(r.Data.RequestInfo, r.Data.ReplyLocal);
+            requests.emplace_back(
+                r.Data.RequestInfo,
+                r.Data.ReplyLocal ? ERequestType::WriteBlocksLocal
+                                  : ERequestType::WriteBlocks);
 
             if (!r.Weight) {
                 continue;
@@ -531,21 +606,34 @@ void TPartitionActor::HandleAddFreshBlocks(
 {
     auto* msg = ev->Get();
 
-    auto blockRange = msg->BlockRanges.begin();
-    auto writeHandler = msg->WriteHandlers.begin();
+    if (msg->IsZeroRequest) {
+        Y_ABORT_UNLESS(msg->WriteHandlers.empty());
+        Y_ABORT_UNLESS(msg->BlockRanges.size() == 1);
+    } else {
+        Y_ABORT_UNLESS(msg->WriteHandlers.size() == msg->BlockRanges.size());
+    }
 
-    while (blockRange != msg->BlockRanges.end()) {
-        auto guardedSgList = (**writeHandler).GetBlocks(
-            ConvertRangeSafe(*blockRange));
+    for (size_t i = 0; i < msg->BlockRanges.size(); ++i) {
+        auto& blockRange = msg->BlockRanges[i];
+
+        if (msg->IsZeroRequest) {
+            State->ZeroFreshBlocks(blockRange, msg->CommitId);
+
+            continue;
+        }
+
+        auto& writeHandler = msg->WriteHandlers[i];
+        auto guardedSgList =
+            (*writeHandler).GetBlocks(ConvertRangeSafe(blockRange));
 
         if (auto guard = guardedSgList.Acquire()) {
             const auto& sgList = guard.Get();
             State->WriteFreshBlocks(
-                *blockRange,
+                blockRange,
                 msg->CommitId,
                 sgList
             );
-            State->DecrementFreshBlocksInFlight(blockRange->Size());
+            State->DecrementFreshBlocksInFlight(blockRange.Size());
         } else {
             LOG_ERROR(
                 ctx,
@@ -555,9 +643,6 @@ void TPartitionActor::HandleAddFreshBlocks(
             Suicide(ctx);
             return;
         }
-
-        ++blockRange;
-        ++writeHandler;
     }
 
     State->AddFreshBlob({msg->CommitId, msg->BlobSize});
@@ -680,7 +765,10 @@ void TPartitionActor::CompleteWriteBlocks(
                 error = MakeError(E_REJECTED, "WriteBlocks transaction was interrupted");
             }
 
-            auto response = CreateWriteBlocksResponse(sr.ReplyLocal, error);
+            auto response = CreateResponse(
+                sr.ReplyLocal ? ERequestType::WriteBlocksLocal
+                              : ERequestType::WriteBlocks,
+                error);
 
             LWTRACK(
                 ResponseSent_Partition,
@@ -748,6 +836,54 @@ void TPartitionActor::CompleteWriteBlocks(
     EnqueueFlushIfNeeded(ctx);
     DrainActorCompanion.ProcessDrainRequests(ctx);
     ProcessCommitQueue(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TPartitionActor::ZeroFreshBlocks(
+    const NActors::TActorContext& ctx,
+    TRequestInfoPtr requestInfo,
+    TBlockRange32 writeRange,
+    ui64 commitId)
+{
+    const bool freshChannelZeroRequestsEnabled =
+        Config->GetFreshChannelZeroRequestsEnabled();
+
+    const ui32 blockCount = writeRange.Size();
+    State->IncrementFreshBlocksInFlight(blockCount);
+
+    if (freshChannelZeroRequestsEnabled && State->GetFreshChannelCount() > 0) {
+        TVector<TWriteFreshBlocksActor::TRequest> requests;
+        TVector<TBlockRange32> blockRanges;
+
+        requests.emplace_back(requestInfo, ERequestType::ZeroBlocks);
+        blockRanges.emplace_back(writeRange);
+
+        State->GetTrimFreshLogBarriers().AcquireBarrierN(commitId, blockCount);
+
+        const ui32 channel = State->PickNextChannel(
+            EChannelDataKind::Fresh,
+            EChannelPermission::UserWritesAllowed);
+
+        auto actor = NCloud::Register<TWriteFreshBlocksActor>(
+            ctx,
+            SelfId(),
+            commitId,
+            channel,
+            blockCount,
+            std::move(requests),
+            std::move(blockRanges),
+            TVector<IWriteBlocksHandlerPtr>{},
+            BlockDigestGenerator);
+
+        Actors.Insert(actor);
+    } else {
+        AddTransaction<TEvService::TZeroBlocksMethod>(*requestInfo);
+
+        auto tx = CreateTx<TZeroBlocks>(requestInfo, commitId, writeRange);
+
+        ExecuteTx(ctx, std::move(tx));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

@@ -406,6 +406,7 @@ struct TEvPartitionPrivate
         ui64 BlobSize;
         TVector<TBlockRange32> BlockRanges;
         TVector<IWriteBlocksHandlerPtr> WriteHandlers;
+        bool IsZeroRequest;
 
         TAddFreshBlocksRequest(
                 ui64 commitId,
@@ -416,6 +417,17 @@ struct TEvPartitionPrivate
             , BlobSize(blobSize)
             , BlockRanges(std::move(blockRanges))
             , WriteHandlers(std::move(writeHandlers))
+            , IsZeroRequest(false)
+        {}
+
+        TAddFreshBlocksRequest(
+            ui64 commitId,
+            ui64 blobSize,
+            TVector<TBlockRange32> blockRanges)
+            : CommitId(commitId)
+            , BlobSize(blobSize)
+            , BlockRanges(std::move(blockRanges))
+            , IsZeroRequest(true)
         {}
     };
 
@@ -919,6 +931,19 @@ struct TEvPartitionPrivate
     };
 
     //
+    // ZeroBlocksCompleted
+    //
+
+    struct TZeroBlocksCompleted: TOperationCompleted
+    {
+        const bool TrimFreshLogBarrierAcquired = false;
+
+        explicit TZeroBlocksCompleted(bool trimFreshLogBarrierAcquired)
+            : TrimFreshLogBarrierAcquired(trimFreshLogBarrierAcquired)
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -967,7 +992,7 @@ struct TEvPartitionPrivate
     using TEvWriteBlobCompleted = TResponseEvent<TWriteBlobCompleted, EvWriteBlobCompleted>;
     using TEvReadBlocksCompleted = TResponseEvent<TReadBlocksCompleted, EvReadBlocksCompleted>;
     using TEvWriteBlocksCompleted = TResponseEvent<TWriteBlocksCompleted, EvWriteBlocksCompleted>;
-    using TEvZeroBlocksCompleted = TResponseEvent<TOperationCompleted, EvZeroBlocksCompleted>;
+    using TEvZeroBlocksCompleted = TResponseEvent<TZeroBlocksCompleted, EvZeroBlocksCompleted>;
     using TEvFlushCompleted = TResponseEvent<TFlushCompleted, EvFlushCompleted>;
     using TEvCompactionCompleted = TResponseEvent<TCompactionCompleted, EvCompactionCompleted>;
     using TEvCollectGarbageCompleted = TResponseEvent<TOperationCompleted, EvCollectGarbageCompleted>;
