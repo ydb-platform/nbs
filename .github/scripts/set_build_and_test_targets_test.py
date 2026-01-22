@@ -3,6 +3,10 @@ import json
 from .set_build_and_test_targets import Inputs, compute_outputs, COMPONENTS
 
 
+DEFAULT_BUILD_TARGET = 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/'
+DEFAULT_TEST_TARGET = 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/'
+
+
 def mk_inputs(*, contains=None, san=None, split=False, split_san=None):
     contains = contains or {}
     san = san or {}
@@ -28,12 +32,10 @@ def mk_inputs(*, contains=None, san=None, split=False, split_san=None):
 def test_all_false_means_all_components():
     out = compute_outputs(mk_inputs())
     assert (
-        out.build_target
-        == "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+        out.build_target == DEFAULT_BUILD_TARGET
     )
     assert (
-        out.test_target
-        == "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+        out.test_target == DEFAULT_TEST_TARGET
     )
 
 
@@ -50,12 +52,10 @@ def test_all_true_means_all_components():
         )
     )
     assert (
-        out.build_target
-        == "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+        out.build_target == DEFAULT_BUILD_TARGET
     )
     assert (
-        out.test_target
-        == "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+        out.test_target == DEFAULT_TEST_TARGET
     )
 
 

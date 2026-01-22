@@ -318,10 +318,7 @@ jobs:
           sparse-checkout: '.github'
 
       - name: install action-validator with asdf
-        uses: asdf-vm/actions/install@v3
-        with:
-          tool_versions: |
-            action-validator 0.5.4
+        uses: asdf-vm/actions/install@v4.0.1
 
       - name: check workflows syntax
         id: lint
