@@ -19,20 +19,22 @@ const RootNodeID = uint64(1)
 
 type StateSaver func(ctx context.Context) error
 
-type OnListedNodesFunc func(ctx context.Context, nodes []nfs.Node, client nfs.Client) error
+type OnListedNodesFunc func(ctx context.Context, nodes []nfs.Node, session nfs.Session, client nfs.Client) error
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type FilesystemTraverser struct {
-	scheduledNodes       chan *storage.NodeQueueEntry
-	processedNodes       chan uint64
-	workersCount         int
-	filesystemSnapshotID string
-	session              nfs.Session
-	client               nfs.Client
-	storage              storage.Storage
-	stateSaver           StateSaver
-	selectLimit          uint64
+	scheduledNodes           chan *storage.NodeQueueEntry
+	processedNodes           chan uint64
+	workersCount             int
+	filesystemSnapshotID     string
+	filesystemID             string
+	checkpointID             string
+	client                   nfs.Client
+	storage                  storage.Storage
+	stateSaver               StateSaver
+	selectLimit              uint64
+	rootNodeAlreadyScheduled bool
 }
 
 // FilesystemTravers follows the following protocol:
@@ -60,29 +62,27 @@ type FilesystemTraverser struct {
 
 func NewFilesystemTraverser(
 	filesystemSnapshotID string,
-	session nfs.Session,
+	filesystemID string,
+	checkpointID string,
 	client nfs.Client,
 	snapshotStorage storage.Storage,
 	stateSaver StateSaver,
 	workersCount int,
 	selectLimit uint64,
+	rootNodeAlreadyScheduled bool,
 ) *FilesystemTraverser {
-	if selectLimit == 0 {
-		selectLimit = 100
-	}
-	if workersCount == 0 {
-		workersCount = 1
-	}
 	return &FilesystemTraverser{
-		scheduledNodes:       make(chan *storage.NodeQueueEntry),
-		processedNodes:       make(chan uint64),
-		workersCount:         workersCount,
-		filesystemSnapshotID: filesystemSnapshotID,
-		session:              session,
-		client:               client,
-		storage:              snapshotStorage,
-		stateSaver:           stateSaver,
-		selectLimit:          selectLimit,
+		scheduledNodes:           make(chan *storage.NodeQueueEntry),
+		processedNodes:           make(chan uint64),
+		workersCount:             workersCount,
+		filesystemSnapshotID:     filesystemSnapshotID,
+		filesystemID:             filesystemID,
+		checkpointID:             checkpointID,
+		client:                   client,
+		storage:                  snapshotStorage,
+		stateSaver:               stateSaver,
+		selectLimit:              selectLimit,
+		rootNodeAlreadyScheduled: rootNodeAlreadyScheduled,
 	}
 }
 
@@ -91,18 +91,20 @@ func (t *FilesystemTraverser) Traverse(
 	onListedNodes OnListedNodesFunc,
 ) error {
 
-	scheduled, err := t.storage.ScheduleRootNodeForListing(ctx, t.filesystemSnapshotID)
-	if err != nil {
-		return errors.NewRetriableErrorf("failed to schedule root node: %w", err)
-	}
-	if scheduled {
-		logging.Info(ctx, "Root node scheduled for filesystem snapshot %s", t.filesystemSnapshotID)
-	}
-
-	if t.stateSaver != nil {
-		err = t.stateSaver(ctx)
+	if !t.rootNodeAlreadyScheduled {
+		scheduled, err := t.storage.ScheduleRootNodeForListing(ctx, t.filesystemSnapshotID)
 		if err != nil {
-			return errors.NewRetriableErrorf("failed to save state: %w", err)
+			return errors.NewRetriableErrorf("failed to schedule root node: %w", err)
+		}
+		if scheduled {
+			logging.Info(ctx, "Root node scheduled for filesystem snapshot %s", t.filesystemSnapshotID)
+		}
+
+		if t.stateSaver != nil {
+			err = t.stateSaver(ctx)
+			if err != nil {
+				return errors.NewRetriableErrorf("failed to save state: %w", err)
+			}
 		}
 	}
 
@@ -181,6 +183,12 @@ func (t *FilesystemTraverser) directoryLister(
 	onListedNodes OnListedNodesFunc,
 ) error {
 
+	session, err := t.client.CreateSession(ctx, t.filesystemID, t.checkpointID, true)
+	if err != nil {
+		return errors.NewRetriableErrorf("failed to create session: %w", err)
+	}
+	defer t.client.DestroySession(ctx, session)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -190,7 +198,7 @@ func (t *FilesystemTraverser) directoryLister(
 				return nil
 			}
 
-			err := t.listNode(ctx, node, onListedNodes)
+			err := t.listNode(ctx, session, node, onListedNodes)
 			if err != nil {
 				return err
 			}
@@ -206,19 +214,20 @@ func (t *FilesystemTraverser) directoryLister(
 
 func (t *FilesystemTraverser) listNode(
 	ctx context.Context,
+	session nfs.Session,
 	node *storage.NodeQueueEntry,
 	onListedNodes OnListedNodesFunc,
 ) error {
 
 	cookie := node.Cookie
 	for {
-		nodes, nextCookie, err := t.client.ListNodes(ctx, t.session, node.NodeID, cookie)
+		nodes, nextCookie, err := t.client.ListNodes(ctx, session, node.NodeID, cookie)
 		if err != nil {
 			return errors.NewRetriableErrorf("failed to list node %d: %w", node.NodeID, err)
 		}
 
 		if len(nodes) > 0 {
-			err = onListedNodes(ctx, nodes, t.client)
+			err = onListedNodes(ctx, nodes, session, t.client)
 			if err != nil {
 				return errors.NewRetriableErrorf("callback failed for node %d: %w", node.NodeID, err)
 			}
