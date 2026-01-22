@@ -61,9 +61,9 @@ func newStorage(
 
 type fixture struct {
 	ctx     context.Context
-	db    *persistence.YDBClient
+	db      *persistence.YDBClient
 	storage storage.Storage
-	client nfs.Client
+	client  nfs.Client
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -117,7 +117,7 @@ func (f *fixture) fillFilesystem(
 	t *testing.T,
 	filesystemID string,
 	rootDir nfs_testing.Node,
-) *nfs_testing.FileSystemModel{
+) *nfs_testing.FileSystemModel {
 	session, err := f.client.CreateSession(f.ctx, filesystemID, "", false)
 	require.NoError(t, err)
 	// todo close session at model?

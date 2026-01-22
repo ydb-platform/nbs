@@ -192,7 +192,11 @@ func (t *FilesystemTraverser) directoryLister(
 	if err != nil {
 		return errors.NewRetriableErrorf("failed to create session: %w", err)
 	}
-	defer t.client.DestroySession(ctx, session)
+
+	cleanupCtx := context.WithoutCancel(ctx)
+	defer func() {
+		t.client.DestroySession(cleanupCtx, session)
+	}()
 
 	for {
 		select {
@@ -264,4 +268,3 @@ func (t *FilesystemTraverser) listNode(
 		cookie = nextCookie
 	}
 }
-
