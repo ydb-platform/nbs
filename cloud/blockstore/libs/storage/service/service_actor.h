@@ -434,6 +434,10 @@ private:
     TResultOrError<NActors::IActorPtr> CreateGetClusterCapacityActor(
         TRequestInfoPtr requestInfo,
         TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateSetVhostDiscardEnabledFlagActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
