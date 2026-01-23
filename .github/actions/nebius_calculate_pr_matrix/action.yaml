@@ -1,6 +1,12 @@
 name: "PR Build & Test Matrix Plan"
 description: "Decide which build/test workflows to run and compute CSV targets & matrix_include"
 
+inputs:
+  scheduling_type:
+    description: "Scheduling type: on_demand, pooled, hybrid"
+    required: true
+
+
 outputs:
   matrix_include:
     description: "JSON for strategy.matrix (include)"
@@ -36,4 +42,4 @@ runs:
 
           HAS_LARGE_TESTS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'true' || 'false' }}
 
-          SCHEDULING_TYPE: ${{ vars.NEBIUS_SCHEDULING_TYPE }}
+          SCHEDULING_TYPE: ${{ inputs.scheduling_type }}

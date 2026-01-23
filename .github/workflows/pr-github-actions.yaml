@@ -393,6 +393,8 @@ jobs:
       - name: Calculate pr build and test targets matrix
         id: set-build-and-test-targets
         uses: ./.github/actions/nebius_calculate_pr_matrix
+        with:
+          scheduling_type: ${{ vars.NEBIUS_SCHEDULING_TYPE || 'on_demand' }}
 
   build_and_test:
     needs: [check-running-allowed, create-build-and-test-target-var]
