@@ -341,6 +341,9 @@ runs:
             set -e
             if [ -f "$FAIL_CHECKER_TEMP_FILE" ]; then
               BUILD_FAILED_COUNT=$(grep -E '^BUILD_FAILED_COUNT=' "$FAIL_CHECKER_TEMP_FILE" | cut -d '=' -f2) || true
+              if [ -z "$BUILD_FAILED_COUNT" ]; then
+                BUILD_FAILED_COUNT=0
+              fi
               rm "$FAIL_CHECKER_TEMP_FILE"
             fi
             if [ "$BUILD_FAILED_COUNT" -gt "$BUILD_FAILED_COUNT_TMP" ]; then

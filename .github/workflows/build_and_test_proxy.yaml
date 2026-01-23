@@ -77,12 +77,11 @@ jobs:
           BUILD_PRESET: ${{ inputs.build_preset }}
           TEST_TYPE: ${{ inputs.test_type }}
           NUMBER_OF_RETRIES: ${{ inputs.number_of_retries }}
-          #NEBIUS_SPLIT_RUNNERS: ${{ vars.NEBIUS_SPLIT_RUNNERS == 'true' && 'true' || 'false' }}
+          NEBIUS_SPLIT_RUNNERS: ${{ vars.NEBIUS_SPLIT_RUNNERS == 'true' && 'true' || 'false' }}
           NEBIUS_SPLIT_RUNNERS_ASAN: ${{ vars.NEBIUS_SPLIT_RUNNERS_ASAN == 'true' && 'true' || 'false' }}
           NEBIUS_SPLIT_RUNNERS_TSAN: ${{ vars.NEBIUS_SPLIT_RUNNERS_TSAN == 'true' && 'true' || 'false' }}
           NEBIUS_SPLIT_RUNNERS_MSAN: ${{ vars.NEBIUS_SPLIT_RUNNERS_MSAN == 'true' && 'true' || 'false' }}
           NEBIUS_SPLIT_RUNNERS_UBSAN: ${{ vars.NEBIUS_SPLIT_RUNNERS_UBSAN == 'true' && 'true' || 'false' }}
-          NEBIUS_SPLIT_RUNNERS: 'true'
 
   on_demand:
     if: ${{ inputs.mode == 'on_demand' }}

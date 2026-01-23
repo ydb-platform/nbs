@@ -374,8 +374,8 @@ def get_comment_text(
         job_url = None
 
     test_target_message = ""
-    if test_target == "":
-        test_target_message = f" target: **{build_preset}**"
+    if test_target != "":
+        test_target_message = f" target: **{test_target}**"
 
     if summary.is_empty:
         empty_summary = f":red_circle: **{build_preset}**{test_target_message}"
