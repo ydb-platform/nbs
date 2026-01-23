@@ -6,6 +6,7 @@ SRCS(
     overlapping_interval_set.cpp
     persistent_storage.cpp
     read_write_range_lock.cpp
+    sequence_id_generator.cpp
     write_back_cache.cpp
     write_back_cache_util.cpp
     write_data_request_builder.cpp
