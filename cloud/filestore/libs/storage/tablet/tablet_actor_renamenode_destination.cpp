@@ -24,8 +24,8 @@ NProto::TError ValidateRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGetNodeAttrActor final
-    : public TActorBootstrapped<TGetNodeAttrActor>
+class TGetExtraSourceAndDestinationInfoActor final
+    : public TActorBootstrapped<TGetExtraSourceAndDestinationInfoActor>
 {
 private:
     const TString LogTag;
@@ -40,7 +40,7 @@ private:
     ui32 ResultCount = 0;
 
 public:
-    TGetNodeAttrActor(
+    TGetExtraSourceAndDestinationInfoActor(
         TString logTag,
         TRequestInfoPtr requestInfo,
         const TActorId& parentId,
@@ -74,7 +74,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TGetNodeAttrActor::TGetNodeAttrActor(
+TGetExtraSourceAndDestinationInfoActor::TGetExtraSourceAndDestinationInfoActor(
         TString logTag,
         TRequestInfoPtr requestInfo,
         const TActorId& parentId,
@@ -88,13 +88,13 @@ TGetNodeAttrActor::TGetNodeAttrActor(
     , Result(std::move(requestInfo), std::move(request))
 {}
 
-void TGetNodeAttrActor::Bootstrap(const TActorContext& ctx)
+void TGetExtraSourceAndDestinationInfoActor::Bootstrap(const TActorContext& ctx)
 {
     SendRequests(ctx);
     Become(&TThis::StateWork);
 }
 
-void TGetNodeAttrActor::SendRequest(
+void TGetExtraSourceAndDestinationInfoActor::SendRequest(
     const TActorContext& ctx,
     const TString& shardId,
     const TString& shardNodeName,
@@ -121,7 +121,7 @@ void TGetNodeAttrActor::SendRequest(
         cookie);
 }
 
-void TGetNodeAttrActor::SendRequests(const TActorContext& ctx)
+void TGetExtraSourceAndDestinationInfoActor::SendRequests(const TActorContext& ctx)
 {
     SendRequest(
         ctx,
@@ -136,7 +136,7 @@ void TGetNodeAttrActor::SendRequests(const TActorContext& ctx)
         DstCookie);
 }
 
-void TGetNodeAttrActor::HandleGetNodeAttrResponse(
+void TGetExtraSourceAndDestinationInfoActor::HandleGetNodeAttrResponse(
     const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -172,7 +172,7 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
     }
 }
 
-void TGetNodeAttrActor::HandlePoisonPill(
+void TGetExtraSourceAndDestinationInfoActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -180,7 +180,7 @@ void TGetNodeAttrActor::HandlePoisonPill(
     ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
-void TGetNodeAttrActor::ReplyAndDie(
+void TGetExtraSourceAndDestinationInfoActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
@@ -193,7 +193,7 @@ void TGetNodeAttrActor::ReplyAndDie(
     Die(ctx);
 }
 
-STFUNC(TGetNodeAttrActor::StateWork)
+STFUNC(TGetExtraSourceAndDestinationInfoActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -287,6 +287,8 @@ void TIndexTabletActor::HandleDoRenameNodeInDestination(
     const TEvIndexTabletPrivate::TEvDoRenameNodeInDestination::TPtr& ev,
     const TActorContext& ctx)
 {
+    WorkerActors.erase(ev->Sender);
+
     auto* msg = ev->Get();
 
     if (HasError(msg->Error)) {
@@ -542,19 +544,24 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
     TTxIndexTablet::TRenameNodeInDestination& args)
 {
     if (args.SecondPassRequired) {
-        // TODO: verify args.NewChildRef
+        if (args.NewChildRef) {
+            using TActor = TGetExtraSourceAndDestinationInfoActor;
+            auto actor = std::make_unique<TActor>(
+                LogTag,
+                args.RequestInfo,
+                ctx.SelfID,
+                args.Request,
+                args.NewChildRef->ShardId,
+                args.NewChildRef->ShardNodeName);
 
-        auto actor = std::make_unique<TGetNodeAttrActor>(
-            LogTag,
-            args.RequestInfo,
-            ctx.SelfID,
-            args.Request,
-            args.NewChildRef->ShardId,
-            args.NewChildRef->ShardNodeName);
+            auto actorId = NCloud::Register(ctx, std::move(actor));
+            WorkerActors.insert(actorId);
+            return;
+        }
 
-        auto actorId = NCloud::Register(ctx, std::move(actor));
-        WorkerActors.insert(actorId);
-        return;
+        auto message = ReportChildRefIsNull(TStringBuilder()
+            << "RenameNodeInDestination: " << args.Request.ShortDebugString());
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
     }
 
     UnlockNodeRef({args.Request.GetNewParentId(), args.Request.GetNewName()});
