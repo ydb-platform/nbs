@@ -11,6 +11,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/storage/core/libs/ss_proxy/model
     cloud/storage/core/libs/ss_proxy/protos
 
     cloud/storage/core/libs/actors

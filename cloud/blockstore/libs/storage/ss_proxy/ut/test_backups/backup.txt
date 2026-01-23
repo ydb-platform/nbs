@@ -1,0 +1,244 @@
+Data {
+  key: "/Root/NBS"
+  value {
+    Self {
+      Name: "NBS"
+      PathId: 2
+      SchemeshardId: 72075186232723360
+      PathType: EPathTypeSubDomain
+      CreateFinished: true
+      CreateTxId: 281474976715658
+      CreateStep: 1768894714470
+      ParentPathId: 1
+      PathState: EPathStateNoChanges
+      Owner: "root@builtin"
+      ACL: ""
+      EffectiveACL: ""
+      PathVersion: 5
+      PathSubType: EPathSubTypeEmpty
+      Version {
+        GeneralVersion: 5
+        ACLVersion: 0
+        EffectiveACLVersion: 0
+        UserAttrsVersion: 2
+        ChildrenVersion: 1
+        SubDomainVersion: 2
+        SecurityStateVersion: 0
+      }
+    }
+    DomainDescription {
+      SchemeShardId_Depricated: 72075186232723360
+      PathId_Depricated: 1
+      ProcessingParams {
+        Version: 2
+        PlanResolution: 0
+        TimeCastBucketsPerMediator: 0
+      }
+      DomainKey {
+        SchemeShard: 72075186232723360
+        PathId: 2
+      }
+      StoragePools {
+        Name: "/Root/NBS:rot"
+        Kind: "rot"
+      }
+      StoragePools {
+        Name: "/Root/NBS:ssd"
+        Kind: "ssd"
+      }
+      PathsInside: 0
+      PathsLimit: 10000
+      ShardsInside: 0
+      ShardsLimit: 200000
+      ResourcesDomainKey {
+        SchemeShard: 72075186232723360
+        PathId: 2
+      }
+      DiskSpaceUsage {
+        Tables {
+          TotalSize: 0
+          DataSize: 0
+          IndexSize: 0
+        }
+        Topics {
+          ReserveSize: 0
+          AccountSize: 0
+          DataSize: 0
+          UsedReserveSize: 0
+        }
+      }
+      PQPartitionsInside: 0
+      PQPartitionsLimit: 1000000
+    }
+  }
+}
+Data {
+  key: "/Root/NBS/_1E7/vol0"
+  value {
+    Self {
+      Name: "vol0"
+      PathId: 4
+      SchemeshardId: 72075186232723360
+      PathType: EPathTypeBlockStoreVolume
+      CreateFinished: true
+      CreateTxId: 281474976930657
+      CreateStep: 1769062975030
+      ParentPathId: 3
+      PathState: EPathStateCreate
+      Owner: "root@builtin"
+      ACL: ""
+      EffectiveACL: ""
+      PathVersion: 2
+      PathSubType: EPathSubTypeEmpty
+      Version {
+        GeneralVersion: 2
+        ACLVersion: 0
+        EffectiveACLVersion: 0
+        UserAttrsVersion: 1
+        ChildrenVersion: 0
+        BSVVersion: 1
+      }
+    }
+    BlockStoreVolumeDescription {
+      Name: "vol0"
+      PathId: 4
+      VolumeConfig {
+        BlockSize: 4096
+        Partitions {
+          BlockCount: 262144
+        }
+        Version: 1
+        DiskId: "vol0"
+        ProjectId: ""
+        FolderId: "test-folder"
+        CloudId: "test-cloud"
+        TabletVersion: 1
+        StorageMediaKind: 1
+        PerformanceProfileMaxPostponedWeight: 134217728
+        PerformanceProfileThrottlingEnabled: false
+        PerformanceProfileBoostTime: 1800000
+        PerformanceProfileBoostRefillTime: 43200000
+        PerformanceProfileBoostPercentage: 0
+        PerformanceProfileBurstPercentage: 100
+        BaseDiskId: ""
+        BaseDiskCheckpointId: ""
+        ExplicitChannelProfiles {
+          PoolKind: "ssd"
+          Size: 134217728
+          ReadIops: 0
+          ReadBandwidth: 0
+          WriteIops: 0
+          WriteBandwidth: 0
+          DataKind: 1
+        }
+        ExplicitChannelProfiles {
+          PoolKind: "ssd"
+          Size: 134217728
+          ReadIops: 0
+          ReadBandwidth: 0
+          WriteIops: 0
+          WriteBandwidth: 0
+          DataKind: 2
+        }
+        ExplicitChannelProfiles {
+          PoolKind: "ssd"
+          Size: 16777216
+          ReadIops: 0
+          ReadBandwidth: 0
+          WriteIops: 0
+          WriteBandwidth: 0
+          DataKind: 3
+        }
+        ExplicitChannelProfiles {
+          PoolKind: "ssd"
+          Size: 34359738368
+          ReadIops: 0
+          ReadBandwidth: 0
+          WriteIops: 0
+          WriteBandwidth: 0
+          DataKind: 5
+        }
+        ExplicitChannelProfiles {
+          PoolKind: "ssd"
+          Size: 34359738368
+          ReadIops: 0
+          ReadBandwidth: 0
+          WriteIops: 0
+          WriteBandwidth: 0
+          DataKind: 5
+        }
+        ExplicitChannelProfiles {
+          PoolKind: "ssd"
+          Size: 34359738368
+          ReadIops: 0
+          ReadBandwidth: 0
+          WriteIops: 0
+          WriteBandwidth: 0
+          DataKind: 5
+        }
+        ExplicitChannelProfiles {
+          PoolKind: "ssd"
+          Size: 34359738368
+          ReadIops: 0
+          ReadBandwidth: 0
+          WriteIops: 0
+          WriteBandwidth: 0
+          DataKind: 5
+        }
+        ExplicitChannelProfiles {
+          PoolKind: "ssd"
+          Size: 134217728
+          ReadIops: 0
+          ReadBandwidth: 0
+          WriteIops: 0
+          WriteBandwidth: 0
+          DataKind: 6
+        }
+        CreationTs: 1769062973914868
+        PlacementGroupId: ""
+        TagsStr: ""
+        ZoneBlockCount: 32768
+        IsSystem: false
+        VolumeExplicitChannelProfiles {
+          PoolKind: "ssd"
+          Size: 1048576
+          ReadIops: 1
+          ReadBandwidth: 1048576
+          WriteIops: 1
+          WriteBandwidth: 1048576
+          DataKind: 1
+        }
+        VolumeExplicitChannelProfiles {
+          PoolKind: "ssd"
+          Size: 1048576
+          ReadIops: 1
+          ReadBandwidth: 1048576
+          WriteIops: 1
+          WriteBandwidth: 1048576
+          DataKind: 2
+        }
+        VolumeExplicitChannelProfiles {
+          PoolKind: "ssd"
+          Size: 1048576
+          ReadIops: 1
+          ReadBandwidth: 1048576
+          WriteIops: 1
+          WriteBandwidth: 1048576
+          DataKind: 3
+        }
+        BaseDiskTabletId: 0
+        PlacementPartitionIndex: 0
+        FillGeneration: 0
+        VhostDiscardEnabled: false
+      }
+      Partitions {
+        PartitionId: 0
+        TabletId: 72075186224037889
+      }
+      VolumeTabletId: 72075186224037890
+      AlterVersion: 1
+      MountToken: ""
+      TokenVersion: 0
+    }
+  }
+}
