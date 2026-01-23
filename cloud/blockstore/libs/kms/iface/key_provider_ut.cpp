@@ -173,6 +173,56 @@ Y_UNIT_TEST_SUITE(TKmsKeyProviderTest)
         auto key = response.ExtractResult();
         UNIT_ASSERT_VALUES_EQUAL(dek, key.GetKey());
     }
+
+    Y_UNIT_TEST(ShouldRespondNotFoundIfCreateTokenForDEKReturnsGrpcNotFound)
+    {
+        const auto encryptedDEK = "testEncryptedDEK";
+
+        NProto::TKmsKey kmsKey;
+        kmsKey.SetKekId("testKekId");
+        kmsKey.SetEncryptedDEK(Base64Encode(encryptedDEK));
+        kmsKey.SetTaskId("testTaskId");
+        const TString diskId = "testDiskId";
+        const TString nbsToken = "testNbsToken";
+        const TString computeToken = "testComputeToken";
+        const TString dek = "testDEK";
+
+        auto iamTokenClient = std::make_shared<TTestIamTokenClient>(
+            TTokenInfo(nbsToken, TInstant::Now()));
+
+        const auto computeClient =
+            std::make_shared<TTestComputeClient>(MakeError(E_GRPC_NOT_FOUND));
+        computeClient->ExpectedDiskId = diskId;
+        computeClient->ExpectedTaskId = kmsKey.GetTaskId();
+        computeClient->ExpectedToken = nbsToken;
+
+        const auto kmsClient = std::make_shared<TTestKmsClient>(dek);
+        kmsClient->ExpectedKeyId = kmsKey.GetKekId();
+        kmsClient->ExpectedCiphertext = encryptedDEK;
+        kmsClient->ExpectedToken = computeToken;
+
+        const auto executor = TExecutor::Create("TestService");
+        const auto kmsKeyProvider = CreateKmsKeyProvider(
+            executor,
+            iamTokenClient,
+            computeClient,
+            kmsClient);
+
+        executor->Start();
+        Y_DEFER
+        {
+            executor->Stop();
+        };
+
+        auto future = kmsKeyProvider->GetKey(kmsKey, diskId);
+
+        const auto response = future.ExtractValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(HasError(response), response.GetError());
+        UNIT_ASSERT_EQUAL_C(
+            response.GetError().GetCode(),
+            E_NOT_FOUND,
+            FormatError(response.GetError()));
+    }
 }
 
 }   // namespace NCloud::NBlockStore
