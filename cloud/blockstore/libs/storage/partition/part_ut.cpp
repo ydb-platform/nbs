@@ -1033,8 +1033,7 @@ public:
         return request;
     }
 
-    std::unique_ptr<TEvVolume::TEvGetPartitionInfoRequest>
-    CreateGetPartitionInfoRequest()
+    auto CreateGetPartitionInfoRequest()
     {
         auto request =
             std::make_unique<TEvVolume::TEvGetPartitionInfoRequest>();

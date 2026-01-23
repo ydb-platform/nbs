@@ -421,9 +421,9 @@ struct TEvPartitionPrivate
         {}
 
         TAddFreshBlocksRequest(
-            ui64 commitId,
-            ui64 blobSize,
-            TVector<TBlockRange32> blockRanges)
+                ui64 commitId,
+                ui64 blobSize,
+                TVector<TBlockRange32> blockRanges)
             : CommitId(commitId)
             , BlobSize(blobSize)
             , BlockRanges(std::move(blockRanges))
@@ -936,7 +936,7 @@ struct TEvPartitionPrivate
 
     struct TZeroBlocksCompleted: TOperationCompleted
     {
-        const bool TrimFreshLogBarrierAcquired = false;
+        const bool TrimFreshLogBarrierAcquired;
 
         explicit TZeroBlocksCompleted(bool trimFreshLogBarrierAcquired)
             : TrimFreshLogBarrierAcquired(trimFreshLogBarrierAcquired)
