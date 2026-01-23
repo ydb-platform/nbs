@@ -315,9 +315,9 @@ def write_summary(summary: TestSummary, summary_out_env_path=""):
         summary_fn = summary_out_env_path
 
     fp_ctx = (
-        open(summary_fn, "at")
+        open(summary_fn, "at")  # noqa: SIM115
         if summary_fn
-        else nullcontext(sys.stdout)  # noqa: SIM115
+        else nullcontext(sys.stdout)
     )
     with fp_ctx as fp:
         if summary.is_empty:
@@ -363,17 +363,8 @@ def get_comment_text(
     build_preset: str,
     test_history_url: str,
     test_target: str,
-    run_id: str,
-    job_id: str,
     test_time: str,
 ):
-    if run_id and job_id:
-        server_url = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
-        repo = os.environ.get("GITHUB_REPOSITORY", "ydb-platform/nbs")
-        job_url = f"{server_url}/{repo}/actions/runs/{run_id}/jobs/{job_id}"
-    else:
-        job_url = None
-
     test_target_message = ""
     if test_target != "":
         test_target_message = f" target: **{test_target}**"
@@ -401,10 +392,6 @@ def get_comment_text(
         body.append("")
         body.append(f"[Test history]({test_history_url})")
 
-    if job_url:
-        body.append("")
-        body.append(f"[Job details]({job_url})")
-
     body.extend(summary.render())
 
     return body
@@ -417,8 +404,6 @@ def update_pr_comment(
     build_preset: str,
     test_history_url: str,
     test_target: str,
-    run_id: str,
-    job_id: str,
     test_time: str,
     is_dry_run: bool,
 ):
@@ -462,8 +447,6 @@ def update_pr_comment(
             build_preset,
             test_history_url,
             test_target,
-            run_id,
-            job_id,
             test_time,
         )
     )
@@ -493,8 +476,6 @@ def main():
         "--build-preset", default="default-linux-x86-64-relwithdebinfo", required=False
     )
     parser.add_argument("--test-target", default="", required=False)
-    parser.add_argument("--run-id", default="", required=False)
-    parser.add_argument("--job-id", default="", required=False)
     parser.add_argument(
         "--is-dry-run",
         default=False,
@@ -530,8 +511,6 @@ def main():
             args.build_preset,
             args.test_history_url,
             args.test_target,
-            args.run_id,
-            args.job_id,
             args.test_time,
             args.is_dry_run,
         )
