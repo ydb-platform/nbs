@@ -1,5 +1,9 @@
 #include "write_back_cache_impl.h"
 #include "write_data_request_builder.h"
+#include "write_data_request_manager.h"
+
+#include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_persistent_storage.h>
+#include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_write_back_cache_stats.h>
 
 #include <cloud/storage/core/libs/common/disjoint_interval_map.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -12,6 +16,8 @@
 #include <util/system/tempfile.h>
 
 namespace NCloud::NFileStore::NFuse {
+
+using namespace NWriteBackCache;
 
 namespace {
 
@@ -137,7 +143,7 @@ IOutputStream& operator<<(
 
 struct TTestUtilBootstrap
 {
-    using TWriteDataEntry = TWriteBackCache::TWriteDataEntry;
+    using TWriteDataEntry = NWriteBackCache::TCachedWriteDataRequest;
     using TWriteDataEntryPart = TWriteBackCache::TWriteDataEntryPart;
     using TCachedIntervalsMap = TWriteBackCache::TWriteDataEntryIntervalMap;
 
@@ -284,9 +290,16 @@ IOutputStream& operator<<(
     IOutputStream& out,
     const TDeque<TWriteDataEntry*>& values)
 {
-    return PrintValues(
-        out,
-        TVector<TWriteDataEntry*>(values.begin(), values.end()));
+    out << "[";
+    for (size_t i = 0; i != values.size();) {
+        out << values[i];
+        i++;
+        if (i != values.size()) {
+            out << ", ";
+        }
+    }
+    out << "]";
+    return out;
 }
 
 IOutputStream& operator<<(
@@ -309,10 +322,25 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
 {
     constexpr ui64 MaxLength = 100;
 
+    std::unique_ptr<TWriteDataRequestManager> CreateStorage()
+    {
+        auto sequenceIdGenerator = std::make_shared<TSequenceIdGenerator>();
+        auto stats = std::make_shared<TTestWriteBackCacheStats>();
+        auto storage = std::make_shared<TTestStorage>(stats);
+        auto timer = CreateWallClockTimer();
+
+        return std::make_unique<TWriteDataRequestManager>(
+            sequenceIdGenerator,
+            storage,
+            timer,
+            stats);
+    }
+
     void TestShouldCorrectlyCalculateDataPartsToRead(
         const TVector<TTestCaseWriteDataEntry>& testCaseEntries,
         const TVector<TTestCaseWriteDataEntryPart>& expectedParts)
     {
+        auto storage = CreateStorage();
         TVector<std::unique_ptr<TWriteDataEntry>> entries;
         for (const auto& e: testCaseEntries) {
             Y_ABORT_UNLESS(e.Offset + e.Length < MaxLength);
@@ -322,10 +350,8 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             request->SetOffset(e.Offset);
             request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
 
-            auto entry = std::make_unique<TWriteDataEntry>(
-                std::move(request),
-                NThreading::NewPromise<NProto::TWriteDataResponse>());
-            entries.push_back(std::move(entry));
+            auto entry = storage->AddRequest(std::move(request));
+            entries.push_back(std::get<1>(std::move(entry)));
         }
 
         TDeque<TWriteDataEntry*> entryPtrs;
@@ -368,6 +394,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
     void TestShouldCorrectlyCalculateDataPartsToReadWithReferenceImpl(
         const TVector<TTestCaseWriteDataEntry>& testCaseEntries)
     {
+        auto storage = CreateStorage();
         TVector<std::unique_ptr<TWriteDataEntry>> entries;
         for (const auto& e: testCaseEntries) {
             Y_ABORT_UNLESS(e.Offset + e.Length <= MaxLength);
@@ -377,10 +404,8 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             request->SetOffset(e.Offset);
             request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
 
-            auto entry = std::make_unique<TWriteDataEntry>(
-                std::move(request),
-                NThreading::NewPromise<NProto::TWriteDataResponse>());
-            entries.push_back(std::move(entry));
+            auto entry = storage->AddRequest(std::move(request));
+            entries.push_back(std::get<1>(std::move(entry)));
         }
 
         TDeque<TWriteDataEntry*> entryPtrs;
@@ -476,6 +501,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
         ui64 rangeOffset,
         ui64 rangeLength)
     {
+        auto storage = CreateStorage();
         TVector<std::unique_ptr<TWriteDataEntry>> entries;
         for (const auto& e: testCaseEntries) {
             Y_ABORT_UNLESS(e.Offset + e.Length <= MaxLength);
@@ -485,10 +511,8 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             request->SetOffset(e.Offset);
             request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
 
-            auto entry = std::make_unique<TWriteDataEntry>(
-                std::move(request),
-                NThreading::NewPromise<NProto::TWriteDataResponse>());
-            entries.push_back(std::move(entry));
+            auto entry = storage->AddRequest(std::move(request));
+            entries.push_back(std::get<1>(std::move(entry)));
         }
 
         TDeque<TWriteDataEntry*> entryPtrs;
