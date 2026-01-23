@@ -427,8 +427,6 @@ runs:
             --summary-url-prefix "$S3_WEBSITE_PREFIX/summary/${i}/" \
             --build-preset "${platform_name}-${BUILD_PRESET}" \
             --test-target "${TEST_TARGET//\"/}" \
-            --run-id "$GITHUB_RUN_ID" \
-            --job-id "$GITHUB_JOB" \
             --test-time $((TEST_END_TIME - TEST_START_TIME)) \
             "Tests" ya-test.html "${JUNIT_REPORT_XML}.${i}"
 
