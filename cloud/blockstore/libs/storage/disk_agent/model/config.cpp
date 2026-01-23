@@ -19,6 +19,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// clang-format off
+
 #define BLOCKSTORE_AGENT_CONFIG(xxx)                                           \
     xxx(Enabled,                    bool,               false                 )\
     xxx(AgentId,                    TString,            ""                    )\
@@ -38,6 +40,7 @@ namespace {
     xxx(DeviceEraseMethod,                                                     \
         NProto::EDeviceEraseMethod,                                            \
         NProto::DEVICE_ERASE_METHOD_ZERO_FILL                                 )\
+    xxx(ValidatedBlocksRatio,       ui32,               1000                  )\
                                                                                \
     xxx(AcquireRequired,                    bool,       false                 )\
     xxx(ReleaseInactiveSessionsTimeout,     TDuration,  10s                   )\
@@ -65,6 +68,8 @@ namespace {
     xxx(KickOutOldClientsEnabled,           bool,       false                 )\
     xxx(UseOneSubmissionThreadPerAIOServiceEnabled,     bool,       false     )\
 // BLOCKSTORE_AGENT_CONFIG
+
+// clang-format on
 
 #define BLOCKSTORE_DECLARE_CONFIG(name, type, value)                           \
     Y_DECLARE_UNUSED static const type Default##name = value;                  \

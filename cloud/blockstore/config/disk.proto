@@ -356,6 +356,10 @@ message TDiskAgentConfig
 
     // Allows to control data integrity validation for DR-based disks.
     optional EDataIntegrityValidationPolicy DataIntegrityValidationPolicyForDrBasedDisks = 46;
+
+    // The ratio of the validated blocks after deallocation.
+    // 1000 means every thousandth or 0.1%.
+    optional uint32 ValidatedBlocksRatio = 47;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
