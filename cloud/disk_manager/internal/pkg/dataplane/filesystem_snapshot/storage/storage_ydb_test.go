@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem_snapshot/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -54,6 +55,17 @@ func newStorage(
 	require.NotNil(t, storage)
 
 	return storage
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func getNodesIDs(entries []NodeQueueEntry) []uint64 {
+	ids := make([]uint64, 0, len(entries))
+	for _, entry := range entries {
+		ids = append(ids, entry.NodeID)
+	}
+
+	return ids
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -604,4 +616,90 @@ func TestGetFilesystemSnapshotMeta(t *testing.T) {
 	require.Equal(t, uint64(100), meta.Size)
 	require.Equal(t, uint64(50), meta.StorageSize)
 	require.Equal(t, uint32(10), meta.ChunkCount)
+}
+
+func TestNodesScheduling(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	filesystemSnapshotID := "snapshot"
+	scheduled, err := f.storage.ScheduleRootNodeForListing(f.ctx, filesystemSnapshotID)
+	require.NoError(t, err)
+	require.True(t, scheduled)
+
+	require.NoError(
+		t,
+		f.storage.ScheduleNodesForListing(
+			f.ctx,
+			filesystemSnapshotID,
+			1,
+			"cookie1",
+			1,
+			[]nfs.Node{
+				{NodeID: 2, ParentID: 1},
+				{NodeID: 3, ParentID: 1},
+				{NodeID: 5, ParentID: 1},
+				{NodeID: 6, ParentID: 1},
+			},
+		),
+	)
+	require.NoError(
+		t,
+		f.storage.ScheduleNodesForListing(
+			f.ctx,
+			filesystemSnapshotID,
+			2,
+			"cookie2",
+			2,
+			[]nfs.Node{
+				{NodeID: 4, ParentID: 2},
+			},
+		),
+	)
+
+	otherSnapshot := "other"
+	scheduled, err = f.storage.ScheduleRootNodeForListing(f.ctx, otherSnapshot)
+	require.True(t, scheduled)
+	require.NoError(t, err)
+	require.NoError(
+		t,
+		f.storage.ScheduleNodesForListing(
+			f.ctx,
+			otherSnapshot,
+			99,
+			"cookie99",
+			1,
+			[]nfs.Node{{NodeID: 100, ParentID: 99}},
+		),
+	)
+
+	entries, err := f.storage.SelectNodesToList(f.ctx, filesystemSnapshotID, map[uint64]struct{}{}, 100)
+	require.NoError(t, err)
+	require.ElementsMatch(t, getNodesIDs(entries), []uint64{1, 2, 3, 4, 5, 6})
+
+	entries, err = f.storage.SelectNodesToList(
+		f.ctx,
+		filesystemSnapshotID,
+		map[uint64]struct{}{2: {}, 4: {}},
+		100,
+	)
+	require.NoError(t, err)
+	require.ElementsMatch(t, getNodesIDs(entries), []uint64{1, 3, 5, 6})
+
+	// 3) limit 1, fetched 1 element
+	entries, err = f.storage.SelectNodesToList(
+		f.ctx,
+		filesystemSnapshotID,
+		map[uint64]struct{}{},
+		1,
+	)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Contains(t, []uint64{1, 2, 3, 4, 5, 6}, entries[0].NodeID)
+	// 4) all the nodes are excluded -> empty result
+	// Build exclude map with all known ids
+	allExclude := map[uint64]struct{}{1: {}, 2: {}, 3: {}, 4: {}, 5: {}, 6: {}}
+	entries, err = f.storage.SelectNodesToList(f.ctx, filesystemSnapshotID, allExclude, 100)
+	require.NoError(t, err)
+	require.Len(t, entries, 0)
 }
