@@ -127,6 +127,7 @@ jobs:
     with:
       runner_kind: self-hosted
       runner_flavor: "heavy"
+      component: ${{ inputs.component }}
       build_target: ${{ inputs.build_target }}
       test_target: ${{ inputs.test_target }}
       build_preset: ${{ inputs.build_preset }}

@@ -204,6 +204,7 @@ jobs:
       runner_label: ${{ needs.provide-runner.outputs.label }}
       runner_instance_id: ${{ needs.provide-runner.outputs.instance-id }}
       runner_ipv4: ${{ needs.provide-runner.outputs.runner_local_ipv4 }}
+      component: ${{ inputs.component }}
       build_target: ${{ inputs.build_target }}
       test_target: ${{ inputs.test_target }}
       build_preset: ${{ inputs.build_preset }}
