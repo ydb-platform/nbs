@@ -108,6 +108,7 @@ public:
     ui32 GetForcedCompactionRangeCountPerRun() const;
     TDuration GetCompactionCountPerRunChangingPeriod() const;
     bool GetBatchCompactionEnabled() const;
+    bool GetSplitTxInBatchCompactionEnabled() const;
     bool GetBlobPatchingEnabled() const;
     ui32 GetMaxDiffPercentageForBlobPatching() const;
 
@@ -340,6 +341,10 @@ public:
         const TString& folderId,
         const TString& diskId) const;
     bool IsBatchCompactionFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+    bool IsSplitTxInBatchCompactionFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;

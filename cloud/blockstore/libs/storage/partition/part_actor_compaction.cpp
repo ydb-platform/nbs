@@ -1,4 +1,5 @@
 #include "part_actor.h"
+#include "part_compaction.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -30,89 +31,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRangeCompactionInfo
-{
-    const TBlockRange32 BlockRange;
-    const TPartialBlobId OriginalBlobId;
-    const TPartialBlobId DataBlobId;
-    const TBlockMask DataBlobSkipMask;
-    const TPartialBlobId ZeroBlobId;
-    const TBlockMask ZeroBlobSkipMask;
-    const ui32 BlobsSkippedByCompaction;
-    const ui32 BlocksSkippedByCompaction;
-    const TVector<ui32> BlockChecksums;
-    const EChannelDataKind ChannelDataKind;
-
-    TGuardedBuffer<TBlockBuffer> BlobContent;
-    TVector<ui32> ZeroBlocks;
-    TAffectedBlobs AffectedBlobs;
-    TAffectedBlocks AffectedBlocks;
-    TVector<ui16> UnchangedBlobOffsets;
-    TArrayHolder<TEvBlobStorage::TEvPatch::TDiff> Diffs;
-    ui32 DiffCount = 0;
-
-    TRangeCompactionInfo(
-            TBlockRange32 blockRange,
-            TPartialBlobId originalBlobId,
-            TPartialBlobId dataBlobId,
-            TBlockMask dataBlobSkipMask,
-            TPartialBlobId zeroBlobId,
-            TBlockMask zeroBlobSkipMask,
-            ui32 blobsSkippedByCompaction,
-            ui32 blocksSkippedByCompaction,
-            TVector<ui32> blockChecksums,
-            EChannelDataKind channelDataKind,
-            TBlockBuffer blobContent,
-            TVector<ui32> zeroBlocks,
-            TAffectedBlobs affectedBlobs,
-            TAffectedBlocks affectedBlocks)
-        : BlockRange(blockRange)
-        , OriginalBlobId(originalBlobId)
-        , DataBlobId(dataBlobId)
-        , DataBlobSkipMask(dataBlobSkipMask)
-        , ZeroBlobId(zeroBlobId)
-        , ZeroBlobSkipMask(zeroBlobSkipMask)
-        , BlobsSkippedByCompaction(blobsSkippedByCompaction)
-        , BlocksSkippedByCompaction(blocksSkippedByCompaction)
-        , BlockChecksums(std::move(blockChecksums))
-        , ChannelDataKind(channelDataKind)
-        , BlobContent(std::move(blobContent))
-        , ZeroBlocks(std::move(zeroBlocks))
-        , AffectedBlobs(std::move(affectedBlobs))
-        , AffectedBlocks(std::move(affectedBlocks))
-    {}
-};
-
 class TCompactionActor final
     : public TActorBootstrapped<TCompactionActor>
 {
 public:
-    struct TRequest
-    {
-        TPartialBlobId BlobId;
-        TActorId Proxy;
-        ui16 BlobOffset;
-        ui32 BlockIndex;
-        size_t IndexInBlobContent;
-        ui32 GroupId;
-        ui32 RangeCompactionIndex;
-
-        TRequest(const TPartialBlobId& blobId,
-                 const TActorId& proxy,
-                 ui16 blobOffset,
-                 ui32 blockIndex,
-                 size_t indexInBlobContent,
-                 ui32 groupId,
-                 ui32 rangeCompactionIndex)
-            : BlobId(blobId)
-            , Proxy(proxy)
-            , BlobOffset(blobOffset)
-            , BlockIndex(blockIndex)
-            , IndexInBlobContent(indexInBlobContent)
-            , GroupId(groupId)
-            , RangeCompactionIndex(rangeCompactionIndex)
-        {}
-    };
+    using TRequest = TCompactionRequest;
 
     struct TBatchRequest
     {
@@ -276,7 +199,9 @@ TCompactionActor::TCompactionActor(
     , CommitId(commitId)
     , RangeCompactionInfos(std::move(rangeCompactionInfos))
     , Requests(std::move(requests))
-{}
+{
+}
+
 
 void TCompactionActor::Bootstrap(const TActorContext& ctx)
 {
@@ -1365,13 +1290,13 @@ void TPartitionActor::HandleCompaction(
 
     TVector<TCompactionCounter> tops;
 
-    const bool batchCompactionEnabledForCloud =
+    const bool batchCompactionEnabledForDisk =
         Config->IsBatchCompactionFeatureEnabled(
             PartitionConfig.GetCloudId(),
             PartitionConfig.GetFolderId(),
             PartitionConfig.GetDiskId());
     const bool batchCompactionEnabled =
-        Config->GetBatchCompactionEnabled() || batchCompactionEnabledForCloud;
+        Config->GetBatchCompactionEnabled() || batchCompactionEnabledForDisk;
 
     const auto& cm = State->GetCompactionMap();
 
@@ -1415,7 +1340,6 @@ void TPartitionActor::HandleCompaction(
         return;
     }
 
-    TVector<std::pair<ui32, TBlockRange32>> ranges(Reserve(tops.size()));
     for (const auto& x: tops) {
         const ui32 rangeIdx = cm.GetRangeIndex(x.BlockIndex);
 
@@ -1440,7 +1364,7 @@ void TPartitionActor::HandleCompaction(
             x.Stat.ReadRequestBlockCount,
             x.Stat.CompactionScore.Score);
 
-        ranges.emplace_back(rangeIdx, blockRange);
+        PendingCompactionRanges.emplace_back(rangeIdx, blockRange);
     }
 
     State->GetCompactionState(compactionType).SetStatus(EOperationStatus::Started);
@@ -1449,23 +1373,48 @@ void TPartitionActor::HandleCompaction(
     State->GetCleanupQueue().AcquireBarrier(commitId);
     State->GetGarbageQueue().AcquireBarrier(commitId);
 
-    AddTransaction<TEvPartitionPrivate::TCompactionMethod>(*requestInfo);
+    auto executeOrEnqueueCompactionTransactoin =
+        [&](TVector<std::pair<ui32, TBlockRange32>> tx_ranges)
+    {
+        AddTransaction<TEvPartitionPrivate::TCompactionMethod>(*requestInfo);
 
-    auto tx = CreateTx<TCompaction>(
-        requestInfo,
-        commitId,
-        msg->CompactionOptions,
-        std::move(ranges));
+        auto tx = CreateTx<TCompaction>(
+            requestInfo,
+            commitId,
+            msg->CompactionOptions,
+            std::move(tx_ranges));
 
-    ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
-    Y_ABORT_UNLESS(minCommitId <= commitId);
+        ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
+        Y_ABORT_UNLESS(minCommitId <= commitId);
 
-    if (minCommitId == commitId) {
-        // start execution
-        ExecuteTx(ctx, std::move(tx));
+        if (minCommitId == commitId) {
+            // start execution
+            ExecuteTx(ctx, std::move(tx));
+        } else {
+            // delay execution until all previous commits completed
+            State->GetCommitQueue().Enqueue(std::move(tx), commitId);
+        }
+    };
+
+    const bool splitTxInBatchCompactionEnabledForDisk =
+        Config->IsSplitTxInBatchCompactionFeatureEnabled(
+            PartitionConfig.GetCloudId(),
+            PartitionConfig.GetFolderId(),
+            PartitionConfig.GetDiskId());
+    const bool splitTxInBatchCompactionEnabled =
+        Config->GetSplitTxInBatchCompactionEnabled() ||
+        splitTxInBatchCompactionEnabledForDisk;
+
+    if (batchCompactionEnabled && splitTxInBatchCompactionEnabled) {
+        TVector<std::pair<ui32, TBlockRange32>> ranges = {
+            std::move(PendingCompactionRanges.back())};
+        PendingCompactionRanges.pop_back();
+        executeOrEnqueueCompactionTransactoin(std::move(ranges));
     } else {
-        // delay execution until all previous commits completed
-        State->GetCommitQueue().Enqueue(std::move(tx), commitId);
+        TVector<std::pair<ui32, TBlockRange32>> ranges =
+            std::move(PendingCompactionRanges);
+        PendingCompactionRanges.clear();
+        executeOrEnqueueCompactionTransactoin(std::move(ranges));
     }
 }
 
@@ -2034,16 +1983,13 @@ void TPartitionActor::CompleteCompaction(
         State->RaiseRangeTemperature(rangeCompaction.RangeIdx);
     }
 
-    const bool blobPatchingEnabledForCloud =
+    const bool blobPatchingEnabledForDisk =
         Config->IsBlobPatchingFeatureEnabled(
             PartitionConfig.GetCloudId(),
             PartitionConfig.GetFolderId(),
             PartitionConfig.GetDiskId());
     const bool blobPatchingEnabled =
-        Config->GetBlobPatchingEnabled() || blobPatchingEnabledForCloud;
-
-    TVector<TRangeCompactionInfo> rangeCompactionInfos;
-    TVector<TCompactionActor::TRequest> requests;
+        Config->GetBlobPatchingEnabled() || blobPatchingEnabledForDisk;
 
     const auto mergedBlobThreshold =
         PartitionConfig.GetStorageMediaKind() ==
@@ -2058,19 +2004,38 @@ void TPartitionActor::CompleteCompaction(
             *Info(),
             *State,
             rangeCompaction,
-            requests,
-            rangeCompactionInfos,
+            PendingCompactionRequests,
+            PendingRangeCompactionInfos,
             Config->GetMaxDiffPercentageForBlobPatching());
 
-        if (rangeCompactionInfos.back().OriginalBlobId) {
+        if (PendingRangeCompactionInfos.back().OriginalBlobId) {
             LOG_DEBUG(
                 ctx,
                 TBlockStoreComponents::PARTITION,
                 "%s Selected patching candidate: %s, data blob: %s",
                 LogTitle.GetWithTime().c_str(),
-                ToString(rangeCompactionInfos.back().OriginalBlobId).c_str(),
-                ToString(rangeCompactionInfos.back().DataBlobId).c_str());
+                ToString(PendingRangeCompactionInfos.back().OriginalBlobId).c_str(),
+                ToString(PendingRangeCompactionInfos.back().DataBlobId).c_str());
         }
+    }
+
+    if (!PendingCompactionRanges.empty()) {
+        AddTransaction<TEvPartitionPrivate::TCompactionMethod>(*args.RequestInfo);
+
+        auto tx = CreateTx<TCompaction>(
+            args.RequestInfo,
+            args.CommitId,
+            args.CompactionOptions,
+            TVector<std::pair<ui32, TBlockRange32>>{
+                std::move(PendingCompactionRanges.back())});
+
+        PendingCompactionRanges.pop_back();
+
+        ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
+        Y_ABORT_UNLESS(minCommitId == args.CommitId);
+
+        ExecuteTx(ctx, std::move(tx));
+        return;
     }
 
     const auto compactionType =
@@ -2092,17 +2057,21 @@ void TPartitionActor::CompleteCompaction(
         GetBlobStorageAsyncRequestTimeout(),
         compactionType,
         args.CommitId,
-        std::move(rangeCompactionInfos),
-        std::move(requests),
+        std::move(PendingRangeCompactionInfos),
+        std::move(PendingCompactionRequests),
         LogTitle.GetChild(GetCycleCount()));
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Partition registered TCompactionActor with id [%lu]",
+        "%s Partition registered TCompactionActor with id [%lu]; commit id %lu",
         LogTitle.GetWithTime().c_str(),
-        actor.ToString().c_str());
+        actor.ToString().c_str(),
+        args.CommitId);
 
     Actors.Insert(actor);
+
+    PendingRangeCompactionInfos.clear();
+    PendingCompactionRequests.clear();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

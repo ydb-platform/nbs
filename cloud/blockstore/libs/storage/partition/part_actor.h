@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "part_compaction.h"
 #include "part_counters.h"
 #include "part_events_private.h"
 #include "part_state.h"
@@ -152,6 +153,13 @@ private:
     // Pending forced compaction requests
     TDeque<TForcedCompactionInfo> PendingForcedCompactionRequests;
     THashMap<TString, TForcedCompactionResult> CompletedForcedCompactionRequests;
+
+    // Ranges to execute CompactionTransactoin for in the current batch
+    TVector<std::pair<ui32, TBlockRange32>> PendingCompactionRanges;
+    // Compaction infos and requests, waiting until all transactions of the
+    // current batch are completed
+    TVector<TRangeCompactionInfo> PendingRangeCompactionInfos;
+    TVector<TCompactionRequest> PendingCompactionRequests;
 
     NBlobMetrics::TBlobLoadMetrics PrevMetrics;
     NBlobMetrics::TBlobLoadMetrics OverlayMetrics;

@@ -349,8 +349,8 @@ auto InitTestActorRuntime(
 void InitLogSettings(TTestActorRuntime& runtime)
 {
     for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
-        runtime.SetLogPriority(i, NLog::PRI_INFO);
-        // runtime.SetLogPriority(i, NLog::PRI_DEBUG);
+        // runtime.SetLogPriority(i, NLog::PRI_INFO);
+        runtime.SetLogPriority(i, NLog::PRI_DEBUG);
     }
     // runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
     runtime.SetLogPriority(NKikimrServices::BS_NODE, NLog::PRI_ERROR);
@@ -8899,11 +8899,14 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT(suicideHappened);
     }
 
-    Y_UNIT_TEST(ShouldProcessMultipleRangesUponCompaction)
+    void DoShouldProcessMultipleRangesUponCompaction(
+        bool splitTxInBatchCompactionEnabled)
     {
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1_MB);
         config.SetBatchCompactionEnabled(true);
+        config.SetSplitTxInBatchCompactionEnabled(
+            splitTxInBatchCompactionEnabled);
         config.SetCompactionRangeCountPerRun(3);
         config.SetSSDMaxBlobsPerRange(999);
         config.SetHDDMaxBlobsPerRange(999);
@@ -8996,6 +8999,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
         }
+    }
+
+    Y_UNIT_TEST(ShouldProcessMultipleRangesUponCompaction)
+    {
+        DoShouldProcessMultipleRangesUponCompaction(true);
+        DoShouldProcessMultipleRangesUponCompaction(false);
     }
 
     Y_UNIT_TEST(ShouldPatchBlobsDuringCompaction)
@@ -10462,11 +10471,14 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         ui32 increasingPercentageThreshold,
         ui32 decreasingPercentageThreshold,
         ui32 compactionRangeCountPerRun,
-        ui32 maxCompactionRangeCountPerRun = 10)
+        ui32 maxCompactionRangeCountPerRun = 10,
+        bool splitTxInBatchCompactionEnabled = true)
     {
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1_MB);
         config.SetBatchCompactionEnabled(true);
+        config.SetSplitTxInBatchCompactionEnabled(
+            splitTxInBatchCompactionEnabled);
         config.SetV1GarbageCompactionEnabled(true);
         config.SetCompactionGarbageThreshold(diskGarbageThreshold);
         config.SetCompactionRangeGarbageThreshold(rangeGarbageThreshold);
@@ -10563,7 +10575,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         // blobs percentage: (10 - 9 / 10) * 100 = 10
         // 10 < 100, so batch size should decrement
         CheckIncrementAndDecrementCompactionPerRun(
-            2, 9, 999999, 999999, 99999, 7, 200, 100, 1);
+            2, 9, 999999, 999999, 99999, 7, 200, 100, 1, 10, true);
+        CheckIncrementAndDecrementCompactionPerRun(
+            2, 9, 999999, 999999, 99999, 7, 200, 100, 1, 10, false);
     }
 
     Y_UNIT_TEST(ShouldChangeBatchSizeDueToBlocksPerDisk)
@@ -10576,11 +10590,15 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         // 9 > 8, so should increment and compact 2 ranges
         CheckIncrementAndDecrementCompactionPerRun(
-                1, 1000, 99999, 203, 99999, 5, 8, 5, 2);
+                1, 1000, 99999, 203, 99999, 5, 8, 5, 2, 10, true);
+        CheckIncrementAndDecrementCompactionPerRun(
+                1, 1000, 99999, 203, 99999, 5, 8, 5, 2, 10, false);
 
         // 9 < 15, so should decrement and compact only 1 range
         CheckIncrementAndDecrementCompactionPerRun(
-                2, 1000, 99999, 203, 99999, 7, 30, 15, 1);
+                2, 1000, 99999, 203, 99999, 7, 30, 15, 1, 10, true);
+        CheckIncrementAndDecrementCompactionPerRun(
+                2, 1000, 99999, 203, 99999, 7, 30, 15, 1, 10, false);
     }
 
     Y_UNIT_TEST(ShouldChangeBatchSizeDueToBlocksPerRangeCount)
@@ -10592,29 +10610,40 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         // 7 > 6, so should increment and compact 2 ranges
         CheckIncrementAndDecrementCompactionPerRun(
-            1, 1000, 99999, 9999, 280, 5, 6, 4, 2);
+            1, 1000, 99999, 9999, 280, 5, 6, 4, 2, 10, true);
+        CheckIncrementAndDecrementCompactionPerRun(
+            1, 1000, 99999, 9999, 280, 5, 6, 4, 2, 10, false);
 
         // 7 > 6, but should compact only 1 range due to maxRangeCountPerRun
         CheckIncrementAndDecrementCompactionPerRun(
-            1, 1000, 99999, 9999, 280, 7, 6, 4, 1, 1);
+            1, 1000, 99999, 9999, 280, 7, 6, 4, 1, 1, true);
+        CheckIncrementAndDecrementCompactionPerRun(
+            1, 1000, 99999, 9999, 280, 7, 6, 4, 1, 1, false);
 
         // 7 < 8, so should decrement and compact only 1 range
         CheckIncrementAndDecrementCompactionPerRun(
-            2, 1000, 99999, 9999, 280, 7, 30, 8, 1);
+            2, 1000, 99999, 9999, 280, 7, 30, 8, 1, 10, true);
+        CheckIncrementAndDecrementCompactionPerRun(
+            2, 1000, 99999, 9999, 280, 7, 30, 8, 1, 10, false);
     }
 
     Y_UNIT_TEST(ShouldDecrementBatchSizeWhenBlobsPerRangeCountIsSmall) {
         // CompactionScore in range3: 4 - 4 + eps
         // 100 * (eps - 0) / 1024 < 3, so should decrement and compact 1 range
         CheckIncrementAndDecrementCompactionPerRun(
-            2, 1000, 4, 9999, 9999, 7, 50, 10, 1);
+            2, 1000, 4, 9999, 9999, 7, 50, 10, 1, 10, true);
+        CheckIncrementAndDecrementCompactionPerRun(
+            2, 1000, 4, 9999, 9999, 7, 50, 10, 1, 10, false);
     }
 
-    Y_UNIT_TEST(ShouldRespectCompactionCountPerRunChangingPeriod)
+    void DoShouldRespectCompactionCountPerRunChangingPeriod(
+        bool splitTxInBatchCompactionEnabled)
     {
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1_MB);
         config.SetBatchCompactionEnabled(true);
+        config.SetSplitTxInBatchCompactionEnabled(
+            splitTxInBatchCompactionEnabled);
         config.SetV1GarbageCompactionEnabled(true);
         config.SetCompactionGarbageThreshold(99999);
         config.SetCompactionRangeGarbageThreshold(280);
@@ -10719,6 +10748,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             // Shouldn't increase compactionRangeCountPerRun due to period
             UNIT_ASSERT_VALUES_EQUAL(2, resultCompactionRangeCountPerRun);
         }
+    }
+
+    Y_UNIT_TEST(ShouldRespectCompactionCountPerRunChangingPeriod)
+    {
+        DoShouldRespectCompactionCountPerRunChangingPeriod(true);
+        DoShouldRespectCompactionCountPerRunChangingPeriod(false);
     }
 
     template <typename FSend, typename FReceive>
@@ -11693,10 +11728,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, response->GetStatus());
     }
 
-    Y_UNIT_TEST(ShouldProcessMultipleRangesUponGarbageCompaction)
+    void DoShouldProcessMultipleRangesUponGarbageCompaction(
+        bool splitTxInBatchCompactionEnabled)
     {
         auto config = DefaultConfig();
         config.SetBatchCompactionEnabled(true);
+        config.SetSplitTxInBatchCompactionEnabled(
+            splitTxInBatchCompactionEnabled);
         config.SetGarbageCompactionRangeCountPerRun(3);
         config.SetV1GarbageCompactionEnabled(true);
         config.SetCompactionGarbageThreshold(20);
@@ -11792,10 +11830,19 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldProcessMultipleRangesUponForceCompaction)
+    Y_UNIT_TEST(ShouldProcessMultipleRangesUponGarbageCompaction)
+    {
+        DoShouldProcessMultipleRangesUponGarbageCompaction(true);
+        DoShouldProcessMultipleRangesUponGarbageCompaction(false);
+    }
+
+    void DoShouldProcessMultipleRangesUponForceCompaction(
+        bool splitTxInBatchCompactionEnabled)
     {
         auto config = DefaultConfig();
         config.SetBatchCompactionEnabled(true);
+        config.SetSplitTxInBatchCompactionEnabled(
+            splitTxInBatchCompactionEnabled);
         config.SetForcedCompactionRangeCountPerRun(3);
         config.SetV1GarbageCompactionEnabled(false);
 
@@ -11896,10 +11943,19 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldSkipEmptyRangesUponForcedCompactionWithMultipleRanges)
+    Y_UNIT_TEST(ShouldProcessMultipleRangesUponForceCompaction)
+    {
+        DoShouldProcessMultipleRangesUponForceCompaction(true);
+        DoShouldProcessMultipleRangesUponForceCompaction(false);
+    }
+
+    void DoShouldSkipEmptyRangesUponForcedCompactionWithMultipleRanges(
+        bool splitTxInBatchCompactionEnabled)
     {
         auto config = DefaultConfig();
         config.SetBatchCompactionEnabled(true);
+        config.SetSplitTxInBatchCompactionEnabled(
+            splitTxInBatchCompactionEnabled);
         config.SetForcedCompactionRangeCountPerRun(3);
         config.SetV1GarbageCompactionEnabled(false);
 
@@ -11927,6 +11983,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         const auto compactionStatus = partition.RecvGetCompactionStatusResponse();
         UNIT_ASSERT(SUCCEEDED(compactionStatus->GetStatus()));
         UNIT_ASSERT_EQUAL(5, compactionStatus->Record.GetTotal());
+    }
+
+    Y_UNIT_TEST(ShouldSkipEmptyRangesUponForcedCompactionWithMultipleRanges)
+    {
+        DoShouldSkipEmptyRangesUponForcedCompactionWithMultipleRanges(true);
+        DoShouldSkipEmptyRangesUponForcedCompactionWithMultipleRanges(false);
     }
 
     Y_UNIT_TEST(ShouldBatchSmallWritesToFreshChannelIfThresholdNotExceeded)
@@ -12294,10 +12356,14 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    void TestForcedCompaction(ui32 rangesPerRun)
+    void TestForcedCompaction(
+        ui32 rangesPerRun,
+        bool splitTxInBatchCompactionEnabled)
     {
         auto config = DefaultConfig();
         config.SetBatchCompactionEnabled(true);
+        config.SetSplitTxInBatchCompactionEnabled(
+            splitTxInBatchCompactionEnabled);
         config.SetForcedCompactionRangeCountPerRun(rangesPerRun);
         config.SetV1GarbageCompactionEnabled(false);
         config.SetWriteBlobThreshold(15_KB);
@@ -12416,12 +12482,14 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldCompactSeveralBlobsInTheSameRangeWithOneRangePerRun)
     {
-        TestForcedCompaction(1);
+        TestForcedCompaction(1, true);
+        TestForcedCompaction(1, false);
     }
 
     Y_UNIT_TEST(ShouldCompactSeveralBlobsInTheSameRangeWithSeveralRangesPerRun)
     {
-        TestForcedCompaction(10);
+        TestForcedCompaction(10, true);
+        TestForcedCompaction(10, false);
     }
 
     Y_UNIT_TEST(ShouldWriteToMixedChannelOnHddIfThresholdExceeded)
