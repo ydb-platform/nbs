@@ -714,6 +714,10 @@ TSessionHandle* TIndexTabletState::CreateHandle(
     return CreateHandle(session, proto);
 }
 
+// This method is unsafe because it accepts a handleId that may not follow the
+// conventions enforced by TIndexTabletState::GenerateHandle. We need this
+// method for testing purposes, such as verifying the response to handles with
+// an incorrect shard number.
 TSessionHandle* TIndexTabletState::UnsafeCreateHandle(
     TIndexTabletDatabase& db,
     TSession* session,

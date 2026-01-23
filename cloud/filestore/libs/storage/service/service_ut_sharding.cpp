@@ -6515,7 +6515,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
         NActors::TDispatchOptions options;
-        // As the main tablet is restarted after CnfigureShards we need to
+        // As the main tablet is restarted after ConfigureShards we need to
         // dispatch shard count + 2 EvUpdateCounters events.
         options.FinalEvents.emplace_back(
             TDispatchOptions::TFinalEventCondition(
