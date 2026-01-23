@@ -371,16 +371,20 @@ def get_comment_text(
     else:
         job_url = None
 
+    
+    if test_target == "":
+        test_target_message= f" target: **{build_preset}**"
+
     if summary.is_empty:
-        empty_summary = f":red_circle: **{build_preset}** target: **{test_target}**:"
+        empty_summary = f":red_circle: **{build_preset}**{test_target_message}"
         empty_summary += (
             f" Test run completed, no test results found for commit {pr.head.sha}."
         )
         return [empty_summary, "Please check build logs."]
     elif summary.is_failed or BUILD_FAILED_COUNT > 0:
-        result = f":red_circle: **{build_preset}** target: **{test_target}**: some tests FAILED"
+        result = f":red_circle: **{build_preset}**{test_target_message}: some tests FAILED"
     else:
-        result = f":green_circle: **{build_preset}** target: **{test_target}**: all tests PASSED"
+        result = f":green_circle: **{build_preset}**{test_target_message}: all tests PASSED"
 
     body = [f"{result} for commit {pr.head.sha}."]
 
