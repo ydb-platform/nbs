@@ -2395,6 +2395,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
 
         partition.Flush();
+        // Fresh Zero blocks from the database are flushed only if the 4MB
+        // threshold is reached or if there are no blocks with content.
+        partition.Flush();
 
         {
             auto response = partition.StatPartition();
