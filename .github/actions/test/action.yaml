@@ -644,7 +644,7 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::generate-listing"
-        sudo -E -H -u github python3 .github/scripts/index.py "$S3_BUCKET_PATH/${COMPONENT_DIR}" --generate-indexes --apply
+        sudo -E -H -u github python3 .github/scripts/index.py "$S3_BUCKET_PATH/" --generate-indexes --apply
         echo "::endgroup::"
     - name: show free space
       if: always()
