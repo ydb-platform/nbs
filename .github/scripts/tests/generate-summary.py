@@ -383,19 +383,17 @@ def get_comment_text(
         test_time_message = f" (test time: {test_time}s)"
 
     if summary.is_empty:
-        empty_summary = f":red_circle: **{build_preset}**{test_target_message}{test_time_message}"
+        empty_summary = (
+            f":red_circle: **{build_preset}**{test_target_message}{test_time_message}"
+        )
         empty_summary += (
             f" Test run completed, no test results found for commit {pr.head.sha}."
         )
         return [empty_summary, "Please check build logs."]
     elif summary.is_failed or BUILD_FAILED_COUNT > 0:
-        result = (
-            f":red_circle: **{build_preset}**{test_target_message}{test_time_message}: some tests FAILED"
-        )
+        result = f":red_circle: **{build_preset}**{test_target_message}{test_time_message}: some tests FAILED"
     else:
-        result = (
-            f":green_circle: **{build_preset}**{test_target_message}{test_time_message}: all tests PASSED"
-        )
+        result = f":green_circle: **{build_preset}**{test_target_message}{test_time_message}: all tests PASSED"
 
     body = [f"{result} for commit {pr.head.sha}."]
 
@@ -459,7 +457,14 @@ def update_pr_comment(
 
     body.extend(
         get_comment_text(
-            pr, summary, build_preset, test_history_url, test_target, run_id, job_id, test_time
+            pr,
+            summary,
+            build_preset,
+            test_history_url,
+            test_target,
+            run_id,
+            job_id,
+            test_time,
         )
     )
 
