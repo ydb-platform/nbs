@@ -171,6 +171,9 @@ jobs:
           s = """${{ steps.plan.outputs.matrix_include }}""".strip()
           print(json.dumps(json.loads(s), indent=2))
           PY
+          echo $matrix_include
+        env:
+          matrix_include: ${{ steps.plan.outputs.matrix_include }}
 
   debug:
     name: Debug plan output
