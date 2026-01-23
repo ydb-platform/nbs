@@ -9,14 +9,13 @@ outputs:
     value: ${{ steps.plan.outputs.matrix_include }}
 
 runs:
-  using: composite
+  using: "composite"
   steps:
     - name: install dependencies
       shell: bash
       run: |
         pip install -r .github/scripts/requirements.txt
-    - name: compute build and test targets
-      id: compute
+    - id: plan
       shell: bash
       run: |
         export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
