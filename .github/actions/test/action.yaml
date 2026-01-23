@@ -335,7 +335,8 @@ runs:
             MUTED_CONFIG=".github/config/muted_ya.txt"
             echo "::endgroup::"
             echo "::group::postprocess-junit-${i}"
-            sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/orig_junit.${i}.xml.gz"
+            sudo -E -H -u github mkdir -p "$ARTIFACTS_DIR/${COMPONENT_DIR}"
+            sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/${COMPONENT_DIR}orig_junit.${i}.xml.gz"
             sudo -E -H -u github .github/scripts/tests/transform-ya-junit.py -i \
               -m "${MUTED_CONFIG}" \
               --ya-out "$OUT_DIR" \
@@ -419,8 +420,7 @@ runs:
             echo "::endgroup::"
           fi
           # shellcheck disable=SC2024
-          sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/transformed_junit.${i}.xml.gz"
-
+          sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/${COMPONENT_DIR}transformed_junit.${i}.xml.gz"
 
           echo "::group::write-summary-${i}"
           sudo -E -H -u github mkdir -p $ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}
@@ -455,7 +455,7 @@ runs:
           fi
 
           echo "::group::s3-sync"
-          sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/${COMPONENT_DIR}"
+          sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
           touch "$LOG_DIR/${i}_artifacts_synced"
           echo "::endgroup::"
 
@@ -530,7 +530,7 @@ runs:
             done
             echo "::endgroup::"
           fi
-          sudo -E -H -u github aws s3 sync --acl private --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/artifacts/${COMPONENT_DIR}" || true
+          sudo -E -H -u github aws s3 sync --acl private --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/artifacts/" || true
         fi
 
     - name: Finish with END_EXIT_CODE
