@@ -119,12 +119,28 @@ jobs:
     outputs:
       matrix_include: ${{ steps.plan.outputs.matrix_include }}
     steps:
-      - name: Checkout .github
+      - name: Checkout PR (.github only)
         uses: actions/checkout@v4
+        if: github.event.pull_request.head.sha != ''
         with:
           submodules: false
           sparse-checkout: '.github'
-          fetch-depth: 1
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
+      - name: rebase PR
+        if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
+        shell: bash
+        run: |
+          git config user.email "robot-nbs@nebius.com"
+          git config user.name "Robot NBS"
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          git rebase origin/${{ github.event.pull_request.base.ref }}
+      - name: checkout
+        uses: actions/checkout@v4
+        if: github.event.pull_request.head.sha == ''
+        with:
+          submodules: false
+          sparse-checkout: '.github'
 
       - name: Build matrix_include
         id: plan
