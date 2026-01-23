@@ -941,6 +941,8 @@ func (s *storageYDB) selectNodesToList(
 		excludeNodeIDs = append(excludeNodeIDs, persistence.Uint64Value(nodeID))
 	}
 
+	// Exclude invalid node ID.
+	excludeNodeIDs = append(excludeNodeIDs, persistence.Uint64Value(0))
 	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";

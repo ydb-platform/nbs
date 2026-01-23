@@ -238,6 +238,11 @@ func (f *FileSystemModel) SetSession(session nfs.Session) {
 	f.session = session
 }
 
+func (f *FileSystemModel) Close() {
+	err := f.client.DestroySession(f.ctx, f.session)
+	require.NoError(f.t, err)
+}
+
 func NewFileSystemModel(
 	t *testing.T,
 	ctx context.Context,

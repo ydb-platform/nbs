@@ -82,6 +82,7 @@ func newFixture(t *testing.T) *fixture {
 		ctx:     ctx,
 		storage: storage,
 		client:  client,
+		db:      db,
 	}
 }
 
@@ -146,6 +147,7 @@ func TestTraversal(t *testing.T) {
 			nfs_testing.File("file2"),
 		),
 	)
+	defer fsModel.Close()
 
 	expectedNodeNames := nfs_testing.NodeNames(fsModel.ExpectedNodes)
 	traversal := NewFilesystemTraverser(
