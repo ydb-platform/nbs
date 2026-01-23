@@ -315,7 +315,9 @@ def write_summary(summary: TestSummary, summary_out_env_path=""):
         summary_fn = summary_out_env_path
 
     fp_ctx = (
-        open(summary_fn, "at") if summary_fn else nullcontext(sys.stdout)  # noqa: SIM115
+        open(summary_fn, "at")
+        if summary_fn
+        else nullcontext(sys.stdout)  # noqa: SIM115
     )
     with fp_ctx as fp:
         if summary.is_empty:
@@ -371,9 +373,9 @@ def get_comment_text(
     else:
         job_url = None
 
-    
+    test_target_message = ""
     if test_target == "":
-        test_target_message= f" target: **{build_preset}**"
+        test_target_message = f" target: **{build_preset}**"
 
     if summary.is_empty:
         empty_summary = f":red_circle: **{build_preset}**{test_target_message}"
@@ -382,9 +384,13 @@ def get_comment_text(
         )
         return [empty_summary, "Please check build logs."]
     elif summary.is_failed or BUILD_FAILED_COUNT > 0:
-        result = f":red_circle: **{build_preset}**{test_target_message}: some tests FAILED"
+        result = (
+            f":red_circle: **{build_preset}**{test_target_message}: some tests FAILED"
+        )
     else:
-        result = f":green_circle: **{build_preset}**{test_target_message}: all tests PASSED"
+        result = (
+            f":green_circle: **{build_preset}**{test_target_message}: all tests PASSED"
+        )
 
     body = [f"{result} for commit {pr.head.sha}."]
 
