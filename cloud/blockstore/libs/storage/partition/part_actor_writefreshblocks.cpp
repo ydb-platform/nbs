@@ -139,23 +139,17 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
     , DiskId(std::move(diskId))
 {
     if (!IsZeroRequest) {
-        STORAGE_VERIFY(
-            BlockRanges.size() == WriteHandlers.size(),
-            TWellKnownEntityTypes::DISK,
-            DiskId);
-
         const bool hasAnyZeroRequest = AnyOf(
             Requests,
             [](auto r) { return r.RequestType == ERequestType::ZeroBlocks; });
 
-        STORAGE_VERIFY(!hasAnyZeroRequest, TWellKnownEntityTypes::DISK, DiskId);
-    } else {
         STORAGE_VERIFY(
-            WriteHandlers.empty(),
+            !hasAnyZeroRequest && BlockRanges.size() == WriteHandlers.size(),
             TWellKnownEntityTypes::DISK,
             DiskId);
+    } else {
         STORAGE_VERIFY(
-            BlockRanges.size() == 1,
+            WriteHandlers.empty() && BlockRanges.size() == 1,
             TWellKnownEntityTypes::DISK,
             DiskId);
     }
@@ -608,14 +602,10 @@ void TPartitionActor::HandleAddFreshBlocks(
 
     if (msg->IsZeroRequest) {
         STORAGE_VERIFY(
-            msg->WriteHandlers.empty(),
+            msg->WriteHandlers.empty() && msg->BlockRanges.size() == 1,
             TWellKnownEntityTypes::DISK,
             PartitionConfig.GetDiskId());
 
-        STORAGE_VERIFY(
-            msg->BlockRanges.size() == 1,
-            TWellKnownEntityTypes::DISK,
-            PartitionConfig.GetDiskId());
     } else {
         STORAGE_VERIFY(
             msg->WriteHandlers.size() == msg->BlockRanges.size(),
