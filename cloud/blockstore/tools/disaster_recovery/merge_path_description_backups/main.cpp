@@ -22,7 +22,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool operator<(
+// Returns true if the lhs is less than the rhs. This means that the rhs should
+// be saved in the merged backup.
+bool ComparePathVersion(
     const NKikimrSchemeOp::TPathDescription& lhs,
     const NKikimrSchemeOp::TPathDescription& rhs)
 {
@@ -74,7 +76,7 @@ void ProcessDir(
     for (auto& [key, value]: *pathDescriptionProto.MutableData()) {
         auto it = data.find(key);
         if (it != data.end()) {
-            if (it->second < value) {
+            if (ComparePathVersion(it->second, value)) {
                 it->second = std::move(value);
             }
         } else {
