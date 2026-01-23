@@ -18,6 +18,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/core
     cloud/storage/core/libs/ss_proxy
+    cloud/storage/core/libs/ss_proxy/model
 
     contrib/ydb/core/base
     contrib/ydb/core/tablet

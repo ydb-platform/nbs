@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/ss_proxy/model/chunked_path_description_backup.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -23,34 +24,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TStringBuf ChunkedProtoFileHeader = "CHKPROTO";
 constexpr TDuration BackupInterval = TDuration::Seconds(10);
-
-NProto::TError LoadChunk(
-    IInputStream* input,
-    NSSProxy::NProto::TPathDescriptionBackupChunk* chunk)
-{
-    ui32 size = 0;
-    if (input->Read(&size, sizeof(size)) != sizeof(size)) {
-        return MakeError(
-            size ? E_INVALID_STATE : S_FALSE,
-            "Failed to read size");
-    }
-
-    TString chunkData;
-    chunkData.resize(size);
-    if (input->Read(const_cast<char*>(chunkData.data()), size) != size) {
-        return MakeError(
-            E_INVALID_STATE,
-            TStringBuilder()
-                << "Failed to read chunk proto with size " << size);
-    }
-    if (!chunk->ParseFromString(chunkData)) {
-        return MakeError(E_INVALID_STATE, "Failed to parse chunk proto");
-    }
-
-    return MakeError(S_OK);
-}
 
 }   // namespace
 
@@ -224,48 +198,9 @@ bool TPathDescriptionBackup::LoadFromChunkedBinaryFormat(
     try {
         TInstant start = TInstant::Now();
 
-        TUnbufferedFileInput stream(BackupFilePath);
-
-        {   // Check header
-            TString header;
-            header.resize(ChunkedProtoFileHeader.size());
-            if (stream.Read(const_cast<char*>(header.data()), header.size()) !=
-                    header.size() ||
-                header != ChunkedProtoFileHeader)
-            {
-                LOG_TRACE_S(
-                    ctx,
-                    LogComponent,
-                    "PathDescriptionBackup: loading from chunked binary "
-                    "format. Invalid header");
-                return false;
-            }
-        }
-
-        for (;;) {
-            NSSProxy::NProto::TPathDescriptionBackupChunk chunk;
-            auto error = LoadChunk(&stream, &chunk);
-            if (HasError(error)) {
-                LOG_ERROR_S(
-                    ctx,
-                    LogComponent,
-                    "PathDescriptionBackup: failed to load chunk: "
-                        << error.GetMessage());
-                break;
-            }
-            if (chunk.GetData().empty()) {
-                break;
-            }
-            for (auto& item: *chunk.MutableData()) {
-                (*BackupProto.MutableData())[item.Getkey()].Swap(
-                    item.Mutablevalue());
-            }
-            LOG_INFO_S(
-                ctx,
-                LogComponent,
-                "PathDescriptionBackup: loaded "
-                    << BackupProto.GetData().size());
-        }
+        auto error = NSSProxy::LoadPathDescriptionBackupFromChunkedBinaryFormat(
+            BackupFilePath,
+            &BackupProto);
 
         LOG_INFO_S(
             ctx,
