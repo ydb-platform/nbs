@@ -21,4 +21,5 @@ runs:
       run: |
         export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
         python3 -m scripts.set_build_and_test_targets
+        cat $GITHUB_OUTPUT
       
