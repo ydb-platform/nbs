@@ -213,7 +213,7 @@ func TestListNodesFromCheckpoint(t *testing.T) {
 		checkpointID,
 	)
 
-	model.CreateNodes(nfs_testing.RootNodeID, nfs_testing.Dir("after_checkpoint"))
+	model.CreateNodes(uint64(nfs.RootNodeID), nfs_testing.Dir("after_checkpoint"))
 	nodes := model.ListAllNodesRecursively()
 	require.Equal(t, []string{
 		"after_checkpoint",

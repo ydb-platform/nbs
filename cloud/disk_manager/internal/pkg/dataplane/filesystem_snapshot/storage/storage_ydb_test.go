@@ -634,7 +634,7 @@ func TestNodesScheduling(t *testing.T) {
 			filesystemSnapshotID,
 			1,
 			"cookie1",
-			1,
+			0,
 			[]nfs.Node{
 				{NodeID: 2, ParentID: 1},
 				{NodeID: 3, ParentID: 1},
@@ -650,7 +650,7 @@ func TestNodesScheduling(t *testing.T) {
 			filesystemSnapshotID,
 			2,
 			"cookie2",
-			2,
+			1,
 			[]nfs.Node{
 				{NodeID: 4, ParentID: 2},
 			},
@@ -666,10 +666,13 @@ func TestNodesScheduling(t *testing.T) {
 		f.storage.ScheduleNodesForListing(
 			f.ctx,
 			otherSnapshot,
-			99,
-			"cookie99",
 			1,
-			[]nfs.Node{{NodeID: 100, ParentID: 99}},
+			"cookie99",
+			0,
+			[]nfs.Node{
+				{NodeID: 99, ParentID: 1},
+				{NodeID: 100, ParentID: 1},
+			},
 		),
 	)
 
@@ -702,4 +705,16 @@ func TestNodesScheduling(t *testing.T) {
 	entries, err = f.storage.SelectNodesToList(f.ctx, filesystemSnapshotID, allExclude, 100)
 	require.NoError(t, err)
 	require.Len(t, entries, 0)
+
+	f.storage.ScheduleNodesForListing(
+		f.ctx,
+		otherSnapshot,
+		99,
+		"",
+		1,
+		[]nfs.Node{{NodeID: 101, ParentID: 99}},
+	)
+	entries, err = f.storage.SelectNodesToList(f.ctx, otherSnapshot, map[uint64]struct{}{}, 100)
+	require.NoError(t, err)
+	require.ElementsMatch(t, getNodesIDs(entries), []uint64{1, 100, 101})
 }

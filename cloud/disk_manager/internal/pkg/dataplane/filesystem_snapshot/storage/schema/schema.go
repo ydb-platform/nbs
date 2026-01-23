@@ -101,7 +101,7 @@ func Create(
 			persistence.WithColumn("node_id", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("cookie", persistence.Optional(persistence.TypeString)),
 			persistence.WithColumn("depth", persistence.Optional(persistence.TypeUint64)),
-			persistence.WithPrimaryKeyColumn("filesystem_backup_id", "node_id", "cookie"),
+			persistence.WithPrimaryKeyColumn("filesystem_backup_id", "node_id"),
 		),
 		dropUnusedColumns,
 	)

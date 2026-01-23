@@ -85,6 +85,7 @@ func File(name string) Node {
 	}
 }
 
+// TODO (jkuradobery): support sockets, devices, etc.
 func Symlink(name string, target string) Node {
 	return Node{
 		Name:     name,
@@ -157,7 +158,7 @@ func (f *FileSystemModel) Create() {
 		},
 	)
 	for _, child := range f.root.Children {
-		f.CreateNodes(nfs.RootNodeID, child)
+		f.CreateNodes(uint64(nfs.RootNodeID), child)
 	}
 }
 
@@ -227,7 +228,7 @@ func (f *FileSystemModel) ListNodesRecursively(parentNodeID uint64) []nfs.Node {
 }
 
 func (f *FileSystemModel) ListAllNodesRecursively() []nfs.Node {
-	return f.ListNodesRecursively(nfs.RootNodeID)
+	return f.ListNodesRecursively(uint64(nfs.RootNodeID))
 }
 
 func (f *FileSystemModel) SetSession(session nfs.Session) {
