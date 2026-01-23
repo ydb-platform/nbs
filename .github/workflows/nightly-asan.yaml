@@ -15,10 +15,11 @@ jobs:
     uses: ./.github/workflows/build_and_test_proxy.yaml
     secrets: inherit
     with:
-      mode: ${{ vars.NEBIUS_SCHEDULING_TYPE }}
+      mode: 'false'
       build_target: 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/storage/'
       test_target: 'cloud/blockstore/,cloud/filestore/,cloud/storage/'
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest"
+      test_size: small,medium,large
       build_preset: release-asan
       cache_update_build: true
       cache_update_tests: true

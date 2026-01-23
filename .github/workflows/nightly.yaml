@@ -40,9 +40,11 @@ jobs:
     uses: ./.github/workflows/build_and_test_proxy.yaml
     secrets: inherit
     with:
-      mode: ${{ vars.NEBIUS_SCHEDULING_TYPE }}
+      mode: 'false'
       build_target: ${{ inputs.build_target }}
       test_target: ${{ inputs.test_target }}
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
+      test_size: small,medium,large
       build_preset: relwithdebinfo
       cache_update_build: true
       cache_update_tests: true
@@ -54,9 +56,11 @@ jobs:
     uses: ./.github/workflows/build_and_test_proxy.yaml
     secrets: inherit
     with:
-      mode: ${{ vars.NEBIUS_SCHEDULING_TYPE }}
+      mode: 'false'
       build_target: 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/'
       test_target: 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/'
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
+      test_size: small,medium,large
       build_preset: relwithdebinfo
       cache_update_build: true
       cache_update_tests: true
