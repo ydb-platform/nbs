@@ -1,203 +1,131 @@
 import json
 
-from .set_build_and_test_targets import Inputs, compute_outputs, COMPONENTS
+from .set_build_and_test_targets import (
+    Inputs,
+    compute_matrix_include,
+)
+
+# Adjust import path to your package layout
 
 
-DEFAULT_BUILD_TARGET = 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/'
-DEFAULT_TEST_TARGET = 'cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/'
-
-
-def mk_inputs(*, contains=None, san=None, split=False, split_san=None):
-    contains = contains or {}
-    san = san or {}
-    split_san = split_san or {}
-
-    full_contains = {name: False for name, _, _ in COMPONENTS}
-    full_contains.update(contains)
-
-    full_san = {"asan": False, "tsan": False, "msan": False, "ubsan": False}
-    full_san.update(san)
-
-    full_split_san = {"asan": False, "tsan": False, "msan": False, "ubsan": False}
-    full_split_san.update(split_san)
-
+def mk(
+    *,
+    build_target: str,
+    test_target: str,
+    build_preset: str,
+    split: bool = False,
+    split_san=None,
+    test_type: str = "",
+    retries: str = "",
+):
+    split_san = split_san or {
+        "asan": False,
+        "tsan": False,
+        "msan": False,
+        "ubsan": False,
+    }
     return Inputs(
-        contains=full_contains,
-        has_san=full_san,
+        build_target=build_target,
+        test_target=test_target,
+        build_preset=build_preset,
         split_runners=split,
-        split_runners_san=full_split_san,
+        split_runners_san=split_san,
+        test_type=test_type,
+        number_of_retries=retries,
     )
 
 
-def test_all_false_means_all_components():
-    out = compute_outputs(mk_inputs())
-    assert (
-        out.build_target == DEFAULT_BUILD_TARGET
-    )
-    assert (
-        out.test_target == DEFAULT_TEST_TARGET
-    )
+def parse(inp: Inputs):
+    obj = json.loads(compute_matrix_include(inp))
+    return obj["include"]
 
 
-def test_all_true_means_all_components():
-    out = compute_outputs(
-        mk_inputs(
-            contains={
-                "blockstore": True,
-                "filestore": True,
-                "disk_manager": True,
-                "tasks": True,
-                "storage": True,
-            }
+def test_regular_no_split_singleton():
+    inc = parse(
+        mk(
+            build_target="cloud/blockstore/apps/,cloud/tasks/",
+            test_target="cloud/blockstore/,cloud/tasks/",
+            build_preset="relwithdebinfo",
+            split=False,
         )
     )
-    assert (
-        out.build_target == DEFAULT_BUILD_TARGET
-    )
-    assert (
-        out.test_target == DEFAULT_TEST_TARGET
-    )
+    assert len(inc) == 1
+    assert inc[0]["component"] == "all"
+    assert inc[0]["vm_name_suffix"] == ""
+    assert inc[0]["build_preset"] == "relwithdebinfo"
 
 
-def test_mixed_selects_only_true_components():
-    out = compute_outputs(mk_inputs(contains={"tasks": True, "storage": True}))
-    assert out.build_target == "cloud/tasks/,cloud/storage/"
-    assert out.test_target == "cloud/tasks/,cloud/storage/"
-
-
-def test_sanitizer_targets_only_include_san_components():
-    out = compute_outputs(
-        mk_inputs(
-            contains={"disk_manager": True, "tasks": True, "storage": True},
-            san={"asan": True},
-        )
-    )
-    assert out.build_target == "cloud/disk_manager/,cloud/tasks/,cloud/storage/"
-    assert out.build_target_san["asan"] == "cloud/storage/"
-    assert out.test_target_san["asan"] == "cloud/storage/"
-
-
-def test_split_true_splits_regular_matrix_arrays():
-    out = compute_outputs(
-        mk_inputs(contains={"blockstore": True, "tasks": True}, split=True)
-    )
-    assert json.loads(out.build_matrix) == ["cloud/blockstore/apps/", "cloud/tasks/"]
-    assert json.loads(out.test_matrix) == ["cloud/blockstore/", "cloud/tasks/"]
-
-
-def test_split_false_singleton_regular_matrix_arrays():
-    out = compute_outputs(
-        mk_inputs(contains={"blockstore": True, "tasks": True}, split=False)
-    )
-    assert json.loads(out.build_matrix) == ["cloud/blockstore/apps/,cloud/tasks/"]
-    assert json.loads(out.test_matrix) == ["cloud/blockstore/,cloud/tasks/"]
-
-
-def test_san_matrix_arrays_default_singleton_even_if_regular_split_true():
-    out = compute_outputs(
-        mk_inputs(
-            contains={"blockstore": True, "filestore": True},
-            san={"asan": True},
+def test_regular_split_only_when_targets_are_exact_roots():
+    inc = parse(
+        mk(
+            build_target="cloud/blockstore/apps/,cloud/tasks/",
+            test_target="cloud/blockstore/,cloud/tasks/",
+            build_preset="relwithdebinfo",
             split=True,
         )
     )
-    assert json.loads(out.build_matrix_san["asan"]) == [
-        "cloud/blockstore/apps/,cloud/filestore/apps/"
-    ]
-    assert json.loads(out.test_matrix_san["asan"]) == [
-        "cloud/blockstore/,cloud/filestore/"
-    ]
+    assert len(inc) == 2
+    assert {r["component"] for r in inc} == {"blockstore", "tasks"}
+    # each has single root targets
+    by = {r["component"]: r for r in inc}
+    assert by["blockstore"]["build_target"] == "cloud/blockstore/apps/"
+    assert by["blockstore"]["test_target"] == "cloud/blockstore/"
+    assert by["tasks"]["build_target"] == "cloud/tasks/"
+    assert by["tasks"]["test_target"] == "cloud/tasks/"
 
 
-def test_matrix_include_split_true_has_per_component_entries_and_suffix():
-    out = compute_outputs(
-        mk_inputs(contains={"blockstore": True, "tasks": True}, split=True)
-    )
-    m = json.loads(out.matrix_include)
-    assert m["include"] == [
-        {
-            "build_target": "cloud/blockstore/apps/",
-            "test_target": "cloud/blockstore/",
-            "vm_name_suffix": "-blockstore",
-        },
-        {
-            "build_target": "cloud/tasks/",
-            "test_target": "cloud/tasks/",
-            "vm_name_suffix": "-tasks",
-        },
-    ]
-
-
-def test_matrix_include_split_false_is_singleton_like_san():
-    out = compute_outputs(
-        mk_inputs(contains={"blockstore": True, "tasks": True}, split=False)
-    )
-    m = json.loads(out.matrix_include)
-    assert m["include"] == [
-        {
-            "build_target": "cloud/blockstore/apps/,cloud/tasks/",
-            "test_target": "cloud/blockstore/,cloud/tasks/",
-            "vm_name_suffix": "",
-        }
-    ]
-
-
-def test_matrix_include_san_default_singleton():
-    out = compute_outputs(
-        mk_inputs(
-            contains={"blockstore": True, "filestore": True},
-            san={"asan": True},
+def test_custom_target_disables_split():
+    # build target is not a known root => disable split
+    inc = parse(
+        mk(
+            build_target="cloud/blockstore/libs/,cloud/tasks/",
+            test_target="cloud/blockstore/,cloud/tasks/",
+            build_preset="relwithdebinfo",
             split=True,
         )
     )
-    m = json.loads(out.matrix_include_san["asan"])
-    assert m["include"] == [
-        {
-            "build_target": "cloud/blockstore/apps/,cloud/filestore/apps/",
-            "test_target": "cloud/blockstore/,cloud/filestore/",
-            "vm_name_suffix": "",
-        }
-    ]
+    assert len(inc) == 1
+    assert inc[0]["build_target"] == "cloud/blockstore/libs/,cloud/tasks/"
 
 
-def test_matrix_include_san_can_split_when_flag_enabled():
-    out = compute_outputs(
-        mk_inputs(
-            contains={"blockstore": True, "filestore": True, "tasks": True},
-            san={"asan": True},
-            split=False,  # regular split doesn't matter
-            split_san={"asan": True},
+def test_san_preset_uses_per_san_split_flag_off_by_default():
+    inc = parse(
+        mk(
+            build_target="cloud/blockstore/apps/,cloud/filestore/apps/",
+            test_target="cloud/blockstore/,cloud/filestore/",
+            build_preset="release-asan",
+            split=True,  # should be ignored for san
+            split_san={"asan": False, "tsan": False, "msan": False, "ubsan": False},
         )
     )
-    m = json.loads(out.matrix_include_san["asan"])
-    # tasks is not san-eligible => should NOT be present
-    assert m["include"] == [
-        {
-            "build_target": "cloud/blockstore/apps/",
-            "test_target": "cloud/blockstore/",
-            "vm_name_suffix": "-blockstore",
-        },
-        {
-            "build_target": "cloud/filestore/apps/",
-            "test_target": "cloud/filestore/",
-            "vm_name_suffix": "-filestore",
-        },
-    ]
+    assert len(inc) == 1
+    assert inc[0]["vm_name_suffix"].startswith("-asan")
 
 
-def test_san_matrix_arrays_can_split_when_flag_enabled():
-    out = compute_outputs(
-        mk_inputs(
-            contains={"blockstore": True, "filestore": True, "tasks": True},
-            san={"asan": True},
-            split_san={"asan": True},
+def test_san_split_enabled_splits_only_san_components():
+    # tasks is not san-eligible, so asan split should only include blockstore
+    inc = parse(
+        mk(
+            build_target="cloud/blockstore/apps/,cloud/tasks/",
+            test_target="cloud/blockstore/,cloud/tasks/",
+            build_preset="release-asan",
+            split_san={"asan": True, "tsan": False, "msan": False, "ubsan": False},
         )
     )
-    assert json.loads(out.build_matrix_san["asan"]) == [
-        "cloud/blockstore/apps/",
-        "cloud/filestore/apps/",
-    ]
-    assert json.loads(out.test_matrix_san["asan"]) == [
-        "cloud/blockstore/",
-        "cloud/filestore/",
-    ]
+    assert len(inc) == 1
+    assert inc[0]["component"] == "blockstore"
+    assert inc[0]["build_target"] == "cloud/blockstore/apps/"
+    assert inc[0]["vm_name_suffix"].startswith("-asan")
+
+
+def test_san_custom_target_disables_split_even_if_flag_true():
+    inc = parse(
+        mk(
+            build_target="cloud/blockstore/libs/",
+            test_target="cloud/blockstore/",
+            build_preset="release-asan",
+            split_san={"asan": True, "tsan": False, "msan": False, "ubsan": False},
+        )
+    )
+    assert len(inc) == 1
+    assert inc[0]["build_target"] == "cloud/blockstore/libs/"

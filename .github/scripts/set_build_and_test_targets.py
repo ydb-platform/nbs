@@ -2,75 +2,47 @@
 from __future__ import annotations
 
 import os
-import json
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
-from .helpers import setup_logger, github_output  # type: ignore
-
-
-# (component, build_path, test_path)
-COMPONENTS: List[Tuple[str, str, str]] = [
-    ("blockstore", "cloud/blockstore/apps/", "cloud/blockstore/"),
-    ("filestore", "cloud/filestore/apps/", "cloud/filestore/"),
-    ("disk_manager", "cloud/disk_manager/", "cloud/disk_manager/"),
-    ("tasks", "cloud/tasks/", "cloud/tasks/"),
-    ("storage", "cloud/storage/", "cloud/storage/"),
-]
-
-SAN_COMPONENTS = {"blockstore", "filestore", "storage"}
-SAN_TYPES = ("asan", "tsan", "msan", "ubsan")
-
-
-def truthy(v: str | None) -> bool:
-    return (v or "").strip().lower() == "true"
-
-
-def csv_join(parts: List[str]) -> str:
-    return ",".join(parts)
-
-
-def split_csv(csv_value: str) -> List[str]:
-    return [p.strip() for p in csv_value.split(",") if p.strip()]
-
-
-def json_array(items: List[str]) -> str:
-    return json.dumps(items, separators=(",", ":"))
-
-
-def json_obj(obj) -> str:
-    return json.dumps(obj, separators=(",", ":"))
-
-
-def vm_suffix_for_component(component: str) -> str:
-    return f"-{component}"
+from .helpers import (
+    setup_logger,
+    github_output,
+    truthy,
+    split_csv,
+    json_obj,
+    vm_suffix_for_component,
+    is_san_preset,
+    san_from_preset,
+)
+from .helpers import (
+    COMPONENTS,
+    SAN_COMPONENTS,
+    SAN_SUFFIX,
+    TEST_TYPE_REGULAR,
+    TEST_TYPE_SAN,
+)
 
 
 @dataclass(frozen=True)
 class Inputs:
-    contains: Dict[str, bool]
-    has_san: Dict[str, bool]
+    build_target: str
+    test_target: str
+    build_preset: str
 
     split_runners: bool
-    split_runners_san: Dict[str, bool]  # per-sanitizer split flags
+    split_runners_san: Dict[str, bool]  # per-sanitizer split flags (optional)
+
+    test_type: str  # already computed upstream if you want; otherwise we set it
+    number_of_retries: str  # keep string like in your workflows
 
     @staticmethod
-    def from_env(env: Dict[str, str] | None = None) -> "Inputs":
+    def from_env(env=None) -> "Inputs":
         env = env or os.environ
 
-        contains = {
-            "blockstore": truthy(env.get("CONTAINS_BLOCKSTORE")),
-            "filestore": truthy(env.get("CONTAINS_FILESTORE")),
-            "disk_manager": truthy(env.get("CONTAINS_DISK_MANAGER")),
-            "tasks": truthy(env.get("CONTAINS_TASKS")),
-            "storage": truthy(env.get("CONTAINS_STORAGE")),
-        }
-        has_san = {
-            "asan": truthy(env.get("HAS_ASAN_LABEL")),
-            "tsan": truthy(env.get("HAS_TSAN_LABEL")),
-            "msan": truthy(env.get("HAS_MSAN_LABEL")),
-            "ubsan": truthy(env.get("HAS_UBSAN_LABEL")),
-        }
+        build_target = (env.get("BUILD_TARGET") or "").strip()
+        test_target = (env.get("TEST_TARGET") or "").strip()
+        build_preset = (env.get("BUILD_PRESET") or "").strip()
 
         split_runners = truthy(env.get("NEBIUS_SPLIT_RUNNERS"))
         split_runners_san = {
@@ -80,200 +52,175 @@ class Inputs:
             "ubsan": truthy(env.get("NEBIUS_SPLIT_RUNNERS_UBSAN")),
         }
 
+        # optional overrides from workflow, else default based on preset
+        test_type = (env.get("TEST_TYPE") or "").strip()
+        if not test_type:
+            test_type = (
+                TEST_TYPE_SAN if is_san_preset(build_preset) else TEST_TYPE_REGULAR
+            )
+
+        number_of_retries = (env.get("NUMBER_OF_RETRIES") or "").strip()
+        if not number_of_retries:
+            number_of_retries = "1" if is_san_preset(build_preset) else "3"
+
         return Inputs(
-            contains=contains,
-            has_san=has_san,
+            build_target=build_target,
+            test_target=test_target,
+            build_preset=build_preset,
             split_runners=split_runners,
             split_runners_san=split_runners_san,
+            test_type=test_type,
+            number_of_retries=number_of_retries,
         )
 
 
-@dataclass(frozen=True)
-class Outputs:
-    # CSVs (existing interface)
-    build_target: str
-    test_target: str
-    build_target_san: Dict[str, str]
-    test_target_san: Dict[str, str]
-
-    # JSON arrays (kept for compatibility)
-    build_matrix: str
-    test_matrix: str
-    build_matrix_san: Dict[str, str]
-    test_matrix_san: Dict[str, str]
-
-    # Paired include matrices with vm_name_suffix
-    matrix_include: str
-    matrix_include_san: Dict[str, str]
+def known_component_maps() -> tuple[Dict[str, str], Dict[str, str]]:
+    """
+    Returns:
+      build_root_by_component: {"blockstore": "cloud/blockstore/apps/", ...}
+      test_root_by_component:  {"blockstore": "cloud/blockstore/", ...}
+    """
+    build_roots = {c: b for (c, b, _) in COMPONENTS}
+    test_roots = {c: t for (c, _, t) in COMPONENTS}
+    return build_roots, test_roots
 
 
-def compute_outputs(inp: Inputs) -> Outputs:
-    true_count = sum(1 for c, _, _ in COMPONENTS if inp.contains.get(c, False))
-    false_count = len(COMPONENTS) - true_count
+def is_splittable_csv(csv_value: str, allowed_values: set[str]) -> bool:
+    """
+    Splittable iff:
+      - non-empty
+      - every element (after split_csv) is in allowed_values
+    """
+    parts = split_csv(csv_value)
+    if not parts:
+        return False
+    return all(p in allowed_values for p in parts)
 
-    build_parts: List[str] = []
-    test_parts: List[str] = []
 
-    build_san_parts: Dict[str, List[str]] = {k: [] for k in SAN_TYPES}
-    test_san_parts: Dict[str, List[str]] = {k: [] for k in SAN_TYPES}
+def compute_matrix_include(inp: Inputs) -> str:
+    build_roots, test_roots = known_component_maps()
+    allowed_build = set(build_roots.values())
+    allowed_test = set(test_roots.values())
 
-    selected_components: List[Tuple[str, str, str]] = []
+    preset = inp.build_preset
+    is_san = is_san_preset(preset)
+    san = san_from_preset(preset)
 
-    def add(component: str, build_path: str, test_path: str) -> None:
-        build_parts.append(build_path)
-        test_parts.append(test_path)
-        selected_components.append((component, build_path, test_path))
-
-        if component in SAN_COMPONENTS:
-            for san in SAN_TYPES:
-                if inp.has_san.get(san, False):
-                    build_san_parts[san].append(build_path)
-                    test_san_parts[san].append(test_path)
-
-    # Keep exact bash semantics: if all true OR all false -> everything
-    if true_count == len(COMPONENTS) or false_count == len(COMPONENTS):
-        for c, b, t in COMPONENTS:
-            add(c, b, t)
+    # Decide whether splitting is allowed for this run:
+    # - if preset is san => use per-san flag (default false unless enabled)
+    # - else use NEBIUS_SPLIT_RUNNERS
+    if is_san:
+        split_enabled = bool(san) and inp.split_runners_san.get(san, False)
     else:
-        for c, b, t in COMPONENTS:
-            if inp.contains.get(c, False):
-                add(c, b, t)
+        split_enabled = inp.split_runners
 
-    build_target = csv_join(build_parts)
-    test_target = csv_join(test_parts)
+    # Disable splitting if user passed any custom targets (not exact component roots)
+    # Either build_target OR test_target has a custom entry -> no split.
+    build_splittable = is_splittable_csv(inp.build_target, allowed_build)
+    test_splittable = is_splittable_csv(inp.test_target, allowed_test)
+    split_enabled = split_enabled and build_splittable and test_splittable
 
-    build_target_san = {san: csv_join(build_san_parts[san]) for san in SAN_TYPES}
-    test_target_san = {san: csv_join(test_san_parts[san]) for san in SAN_TYPES}
+    include: List[dict] = []
 
-    # Regular array matrices
-    if inp.split_runners:
-        build_matrix = json_array(split_csv(build_target))
-        test_matrix = json_array(split_csv(test_target))
-    else:
-        build_matrix = json_array([build_target])
-        test_matrix = json_array([test_target])
-
-    # Sanitizer array matrices: split only if NEBIUS_SPLIT_RUNNERS_<SAN> is true
-    build_matrix_san: Dict[str, str] = {}
-    test_matrix_san: Dict[str, str] = {}
-    for san in SAN_TYPES:
-        if inp.split_runners_san.get(san, False):
-            build_matrix_san[san] = json_array(split_csv(build_target_san[san]))
-            test_matrix_san[san] = json_array(split_csv(test_target_san[san]))
-        else:
-            build_matrix_san[san] = json_array([build_target_san[san]])
-            test_matrix_san[san] = json_array([test_target_san[san]])
-
-    # Regular include matrix (paired + suffix)
-    if inp.split_runners:
-        include = [
+    if not split_enabled:
+        # single shard
+        vm_suffix = ""
+        if is_san and san:
+            vm_suffix = SAN_SUFFIX[san]
+        include.append(
             {
-                "build_target": b,
-                "test_target": t,
-                "vm_name_suffix": vm_suffix_for_component(c),
+                "build_target": inp.build_target,
+                "test_target": inp.test_target,
+                "vm_name_suffix": vm_suffix,
+                "build_preset": preset,
+                "test_type": inp.test_type,
+                "number_of_retries": inp.number_of_retries,
+                "san": san or "",
+                "component": "all",
             }
-            for (c, b, t) in selected_components
-        ]
-    else:
-        include = [
-            {
-                "build_target": build_target,
-                "test_target": test_target,
-                "vm_name_suffix": "",
-            }
-        ]
-    matrix_include = json_obj({"include": include})
+        )
+        return json_obj({"include": include})
 
-    # Sanitizer include matrices:
-    # - default singleton (no split)
-    # - if NEBIUS_SPLIT_RUNNERS_<SAN> == true -> per-component include entries
-    matrix_include_san: Dict[str, str] = {}
-    for san in SAN_TYPES:
-        if inp.split_runners_san.get(san, False):
-            # only components that were selected AND are san-eligible are present in san lists
-            include_san = [
-                {
-                    "build_target": b,
-                    "test_target": t,
-                    "vm_name_suffix": vm_suffix_for_component(c),
-                }
-                for (c, b, t) in selected_components
-                if c in SAN_COMPONENTS and inp.has_san.get(san, False)
-            ]
+    # Split by component: we can derive component from the roots.
+    # Since we already validated all elements are exact roots, this is safe.
+    build_items = split_csv(inp.build_target)
+    test_items = split_csv(inp.test_target)
 
-            # If sanitizer label is on but nothing eligible was selected, keep a single empty entry
-            if not include_san:
-                include_san = [
-                    {
-                        "build_target": build_target_san[san],
-                        "test_target": test_target_san[san],
-                        "vm_name_suffix": "",
-                    }
-                ]
+    comp_by_build = {v: k for k, v in build_roots.items()}
+    comp_by_test = {v: k for k, v in test_roots.items()}
+
+    # We want paired shards by component; use build roots as primary.
+    # (Assumes build+test list correspond to same set when produced by your target calculator.)
+    by_comp: Dict[str, tuple[str, str]] = {}
+
+    for b in build_items:
+        c = comp_by_build[b]
+        by_comp.setdefault(c, ("", ""))
+
+    for c in list(by_comp.keys()):
+        b = build_roots[c]
+        t = test_roots[c]
+        by_comp[c] = (b, t)
+
+    # If somehow test list differs, only include comps present in both.
+    # (Or keep build-only comps with empty test_target.)
+    for t in test_items:
+        c = comp_by_test[t]
+        if c not in by_comp:
+            by_comp[c] = ("", t)
         else:
-            include_san = [
-                {
-                    "build_target": build_target_san[san],
-                    "test_target": test_target_san[san],
-                    "vm_name_suffix": "",
-                }
-            ]
+            b, _ = by_comp[c]
+            by_comp[c] = (b, t)
 
-        matrix_include_san[san] = json_obj({"include": include_san})
+    # For sanitizers, only split san-eligible components
+    comps = sorted(by_comp.keys())
+    if is_san:
+        comps = [c for c in comps if c in SAN_COMPONENTS]
 
-    return Outputs(
-        build_target=build_target,
-        test_target=test_target,
-        build_target_san=build_target_san,
-        test_target_san=test_target_san,
-        build_matrix=build_matrix,
-        test_matrix=test_matrix,
-        build_matrix_san=build_matrix_san,
-        test_matrix_san=test_matrix_san,
-        matrix_include=matrix_include,
-        matrix_include_san=matrix_include_san,
-    )
+    # If san split flag is enabled but no san comps -> fall back to singleton
+    if is_san and not comps:
+        vm_suffix = SAN_SUFFIX[san] if san else ""
+        include.append(
+            {
+                "build_target": inp.build_target,
+                "test_target": inp.test_target,
+                "vm_name_suffix": vm_suffix,
+                "build_preset": preset,
+                "test_type": inp.test_type,
+                "number_of_retries": inp.number_of_retries,
+                "san": san or "",
+                "component": "none",
+            }
+        )
+        return json_obj({"include": include})
+
+    for c in comps:
+        b, t = by_comp[c]
+        suffix = vm_suffix_for_component(c)
+        if is_san and san:
+            suffix = f"{SAN_SUFFIX[san]}{suffix}"
+
+        include.append(
+            {
+                "build_target": b if b else inp.build_target,
+                "test_target": t if t else inp.test_target,
+                "vm_name_suffix": suffix,
+                "build_preset": preset,
+                "test_type": inp.test_type,
+                "number_of_retries": inp.number_of_retries,
+                "san": san or "",
+                "component": c,
+            }
+        )
+
+    return json_obj({"include": include})
 
 
 def main() -> int:
     logger = setup_logger()
     inp = Inputs.from_env()
-    out = compute_outputs(inp)
-
-    # Existing outputs:
-    github_output(logger, "build_target", out.build_target)
-    github_output(logger, "test_target", out.test_target)
-
-    github_output(logger, "build_target_asan", out.build_target_san["asan"])
-    github_output(logger, "build_target_tsan", out.build_target_san["tsan"])
-    github_output(logger, "build_target_msan", out.build_target_san["msan"])
-    github_output(logger, "build_target_ubsan", out.build_target_san["ubsan"])
-
-    github_output(logger, "test_target_asan", out.test_target_san["asan"])
-    github_output(logger, "test_target_tsan", out.test_target_san["tsan"])
-    github_output(logger, "test_target_msan", out.test_target_san["msan"])
-    github_output(logger, "test_target_ubsan", out.test_target_san["ubsan"])
-
-    github_output(logger, "build_matrix", out.build_matrix)
-    github_output(logger, "test_matrix", out.test_matrix)
-
-    github_output(logger, "build_matrix_asan", out.build_matrix_san["asan"])
-    github_output(logger, "build_matrix_tsan", out.build_matrix_san["tsan"])
-    github_output(logger, "build_matrix_msan", out.build_matrix_san["msan"])
-    github_output(logger, "build_matrix_ubsan", out.build_matrix_san["ubsan"])
-
-    github_output(logger, "test_matrix_asan", out.test_matrix_san["asan"])
-    github_output(logger, "test_matrix_tsan", out.test_matrix_san["tsan"])
-    github_output(logger, "test_matrix_msan", out.test_matrix_san["msan"])
-    github_output(logger, "test_matrix_ubsan", out.test_matrix_san["ubsan"])
-
-    # Include matrices:
-    github_output(logger, "matrix_include", out.matrix_include)
-    github_output(logger, "matrix_include_asan", out.matrix_include_san["asan"])
-    github_output(logger, "matrix_include_tsan", out.matrix_include_san["tsan"])
-    github_output(logger, "matrix_include_msan", out.matrix_include_san["msan"])
-    github_output(logger, "matrix_include_ubsan", out.matrix_include_san["ubsan"])
-
+    matrix_include = compute_matrix_include(inp)
+    github_output(logger, "matrix_include", matrix_include)
     return 0
 
 

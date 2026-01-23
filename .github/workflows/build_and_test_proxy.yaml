@@ -1,0 +1,88 @@
+name: Build and test proxy
+
+on:
+  workflow_call:
+    inputs:
+      mode:
+        required: true
+        type: string
+      build_target:
+        required: true
+        type: string
+      test_target:
+        required: true
+        type: string
+      build_preset:
+        required: true
+        type: string
+      test_size:
+        required: true
+        type: string
+      test_type:
+        required: true
+        type: string
+      vm_name_suffix:
+        required: false
+        type: string
+        default: ""
+      cache_update_build:
+        required: true
+        type: boolean
+      cache_update_tests:
+        required: true
+        type: boolean
+      number_of_retries:
+        required: true
+        type: number
+      sleep_after_tests:
+        required: true
+        type: string
+
+jobs:
+  on_demand:
+    if: ${{ inputs.mode == 'on_demand' }}
+    uses: ./.github/workflows/on_demand_build_and_test.yaml
+    with:
+      build_target: ${{ inputs.build_target }}
+      test_target:  ${{ inputs.test_target }}
+      build_preset: ${{ inputs.build_preset }}
+      test_size:    ${{ inputs.test_size }}
+      test_type:    ${{ inputs.test_type }}
+      vm_name_suffix: ${{ inputs.vm_name_suffix }}
+      cache_update_build: ${{ inputs.cache_update_build }}
+      cache_update_tests: ${{ inputs.cache_update_tests }}
+      number_of_retries: ${{ inputs.number_of_retries }}
+      sleep_after_tests: ${{ inputs.sleep_after_tests }}
+    secrets: inherit
+
+  pooled:
+    if: ${{ inputs.mode == 'pooled' }}
+    uses: ./.github/workflows/on_pooled_build_and_test.yaml
+    with:
+      build_target: ${{ inputs.build_target }}
+      test_target:  ${{ inputs.test_target }}
+      build_preset: ${{ inputs.build_preset }}
+      test_size:    ${{ inputs.test_size }}
+      test_type:    ${{ inputs.test_type }}
+      vm_name_suffix: ${{ inputs.vm_name_suffix }}
+      cache_update_build: ${{ inputs.cache_update_build }}
+      cache_update_tests: ${{ inputs.cache_update_tests }}
+      number_of_retries: ${{ inputs.number_of_retries }}
+      sleep_after_tests: ${{ inputs.sleep_after_tests }}
+    secrets: inherit
+
+  hybrid:
+    if: ${{ inputs.mode == 'hybrid' }}
+    uses: ./.github/workflows/on_hybrid_build_and_test.yaml
+    with:
+      build_target: ${{ inputs.build_target }}
+      test_target:  ${{ inputs.test_target }}
+      build_preset: ${{ inputs.build_preset }}
+      test_size:    ${{ inputs.test_size }}
+      test_type:    ${{ inputs.test_type }}
+      vm_name_suffix: ${{ inputs.vm_name_suffix }}
+      cache_update_build: ${{ inputs.cache_update_build }}
+      cache_update_tests: ${{ inputs.cache_update_tests }}
+      number_of_retries: ${{ inputs.number_of_retries }}
+      sleep_after_tests: ${{ inputs.sleep_after_tests }}
+    secrets: inherit

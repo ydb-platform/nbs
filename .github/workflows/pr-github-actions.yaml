@@ -387,77 +387,28 @@ jobs:
         with:
           submodules: false
           sparse-checkout: '.github'
-      - name: Set build and test targets
+      - name: Calculate pr build and test targets matrix
         id: set-build-and-test-targets
-        uses: ./.github/actions/nebius_calculate_targets
-        with:
-          split_runners: 'true'
+        uses: ./.github/actions/nebius_calculate_pr_matrix
 
   build_and_test:
-    needs:
-      - check-running-allowed
-      - create-build-and-test-target-var
-    if: needs.check-running-allowed.outputs.result == 'true' && (((vars.NEBIUS_SCHEDULING_TYPE == 'regular' || vars.NEBIUS_SCHEDULING_TYPE == '') && !contains(github.event.pull_request.labels.*.name, 'pooled') && !contains(github.event.pull_request.labels.*.name, 'hybrid')) || ((vars.NEBIUS_SCHEDULING_TYPE != 'regular' && vars.NEBIUS_SCHEDULING_TYPE != '') && contains(github.event.pull_request.labels.*.name, 'on_demand')))
+    needs: [check-running-allowed, create-build-and-test-target-var]
+    if: needs.check-running-allowed.outputs.result == 'true'
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.create-build-and-test-target-var.outputs.matrix_include) }}
-    name: Build and test ${{ matrix.vm_name_suffix }}
-    uses: ./.github/workflows/on_demand_build_and_test.yaml
+    name: Build and test (${{ matrix.mode }}${{ matrix.vm_name_suffix }})
+    uses: ./.github/workflows/build_and_test_proxy.yaml
     with:
+      mode: ${{ matrix.mode }}
       build_target: ${{ matrix.build_target }}
       test_target: ${{ matrix.test_target }}
+      build_preset: ${{ matrix.build_preset }}
+      test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small' }}
+      test_type: ${{ matrix.test_type }}
       vm_name_suffix: ${{ matrix.vm_name_suffix }}
-      build_preset: "relwithdebinfo"
-      test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small' }}
-      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
+      number_of_retries: ${{ matrix.number_of_retries }}
       cache_update_build: false
       cache_update_tests: false
-      number_of_retries: 3
-      sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
-    secrets: inherit
-
-  build_and_test_pooled:
-    needs:
-      - check-running-allowed
-      - create-build-and-test-target-var
-    if: needs.check-running-allowed.outputs.result == 'true' && (vars.NEBIUS_SCHEDULING_TYPE == 'pooled' || contains(github.event.pull_request.labels.*.name, 'pooled'))
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.create-build-and-test-target-var.outputs.matrix_include) }}
-    name: Build and test (pooled) ${{ matrix.vm_name_suffix }}
-    uses: ./.github/workflows/on_pooled_build_and_test.yaml
-    with:
-      build_target: ${{ matrix.build_target }}
-      test_target: ${{ matrix.test_target }}
-      build_preset: "relwithdebinfo"
-      vm_name_suffix: "${{ matrix.vm_name_suffix }}"
-      test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small' }}
-      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
-      cache_update_build: false
-      cache_update_tests: false
-      number_of_retries: 3
-      sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
-    secrets: inherit
-
-  build_and_test_hybrid:
-    needs:
-      - check-running-allowed
-      - create-build-and-test-target-var
-    if: needs.check-running-allowed.outputs.result == 'true' && (vars.NEBIUS_SCHEDULING_TYPE == 'hybrid' || contains(github.event.pull_request.labels.*.name, 'hybrid'))
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.create-build-and-test-target-var.outputs.matrix_include) }}
-    name: Build and test (hybrid${{ matrix.vm_name_suffix }})
-    uses: ./.github/workflows/on_hybrid_build_and_test.yaml
-    with:
-      build_target: ${{ matrix.build_target }}
-      test_target: ${{ matrix.test_target }}
-      vm_name_suffix: "${{ matrix.vm_name_suffix }}"
-      build_preset: "relwithdebinfo"
-      test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small' }}
-      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
-      cache_update_build: false
-      cache_update_tests: false
-      number_of_retries: 3
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit

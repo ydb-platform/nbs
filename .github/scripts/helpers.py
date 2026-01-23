@@ -1,16 +1,91 @@
 import os
 import math
+import json
 import logging
 import argparse
 import requests
 from dataclasses import dataclass
 import datetime
+from typing import List, Tuple
+
 
 SENSITIVE_DATA_VALUES = {}
 if os.environ.get("GITHUB_TOKEN"):
     SENSITIVE_DATA_VALUES["github_token"] = os.environ.get("GITHUB_TOKEN")
 if os.environ.get("VM_USER_PASSWD"):
     SENSITIVE_DATA_VALUES["passwd"] = os.environ.get("VM_USER_PASSWD")
+
+COMPONENTS: List[Tuple[str, str, str]] = [
+    ("blockstore", "cloud/blockstore/apps/", "cloud/blockstore/"),
+    ("filestore", "cloud/filestore/apps/", "cloud/filestore/"),
+    ("disk_manager", "cloud/disk_manager/", "cloud/disk_manager/"),
+    ("tasks", "cloud/tasks/", "cloud/tasks/"),
+    ("storage", "cloud/storage/", "cloud/storage/"),
+]
+
+SAN_COMPONENTS = {"blockstore", "filestore", "storage"}
+SAN_TYPES = ("asan", "tsan", "msan", "ubsan")
+
+TEST_TYPE_REGULAR = "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
+TEST_TYPE_SAN = "unittest,clang_tidy,gtest,py3test,py2test,pytest"
+
+SAN_PRESET = {
+    "asan": ("release-asan", "-asan"),
+    "tsan": ("release-tsan", "-tsan"),
+    "msan": ("release-msan", "-msan"),
+    "ubsan": ("release-ubsan", "-ubsan"),
+}
+
+SAN_PRESETS = {"release-asan", "release-tsan", "release-msan", "release-ubsan"}
+SAN_SUFFIX = {"asan": "-asan", "tsan": "-tsan", "msan": "-msan", "ubsan": "-ubsan"}
+SAN_PRESET_BY_SAN = {
+    "asan": "release-asan",
+    "tsan": "release-tsan",
+    "msan": "release-msan",
+    "ubsan": "release-ubsan",
+}
+
+
+DEFAULT_BUILD_TARGET = "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+DEFAULT_TEST_TARGET = (
+    "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+)
+
+
+def truthy(v: str | None) -> bool:
+    return (v or "").strip().lower() == "true"
+
+
+def csv_join(parts: List[str]) -> str:
+    return ",".join(parts)
+
+
+def split_csv(csv_value: str) -> List[str]:
+    return [p.strip() for p in csv_value.split(",") if p.strip()]
+
+
+def json_array(items: List[str]) -> str:
+    return json.dumps(items, separators=(",", ":"))
+
+
+def json_obj(obj) -> str:
+    return json.dumps(obj, separators=(",", ":"))
+
+
+def vm_suffix_for_component(component: str) -> str:
+    return f"-{component}"
+
+
+def is_san_preset(build_preset: str) -> bool:
+    return (build_preset or "").strip() in SAN_PRESETS
+
+
+def san_from_preset(build_preset: str) -> str | None:
+    preset = (build_preset or "").strip()
+    for san, p in SAN_PRESET_BY_SAN.items():
+        if preset == p:
+            return san
+    return None
 
 
 class KeyValueAction(argparse.Action):
