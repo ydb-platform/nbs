@@ -549,7 +549,7 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::s3-sync"
-        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/test_reports/" "$S3_BUCKET_PATH/test_reports/${COMPONENT_DIR}"
+        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/test_reports/" "$S3_BUCKET_PATH/test_reports/"
         echo "::endgroup::"
 
     - name: Display links to s3 summary
@@ -557,8 +557,10 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::s3-report-links"
-        echo ${S3_URL_PREFIX}/summary/${COMPONENT_DIR}ya-test.html
-        echo ${S3_WEBSITE_PREFIX}/summary/${COMPONENT_DIR}ya-test.html
+        for i in $(seq 1 $LAST_STEP); do
+          echo ${S3_URL_PREFIX}/summary/${COMPONENT_DIR}${i}/ya-test.html
+          echo ${S3_WEBSITE_PREFIX}/summary/${COMPONENT_DIR}${i}/ya-test.html
+        done
         echo "::endgroup::"
 
     - name: upload ya dir to s3 on success
