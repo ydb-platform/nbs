@@ -365,6 +365,7 @@ def get_comment_text(
     test_target: str,
     run_id: str,
     job_id: str,
+    test_time: str,
 ):
     if run_id and job_id:
         server_url = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
@@ -377,19 +378,23 @@ def get_comment_text(
     if test_target != "":
         test_target_message = f" target: **{test_target}**"
 
+    test_time_message = ""
+    if test_time and test_time != "0":
+        test_time_message = f" (test time: {test_time}s)"
+
     if summary.is_empty:
-        empty_summary = f":red_circle: **{build_preset}**{test_target_message}"
+        empty_summary = f":red_circle: **{build_preset}**{test_target_message}{test_time_message}"
         empty_summary += (
             f" Test run completed, no test results found for commit {pr.head.sha}."
         )
         return [empty_summary, "Please check build logs."]
     elif summary.is_failed or BUILD_FAILED_COUNT > 0:
         result = (
-            f":red_circle: **{build_preset}**{test_target_message}: some tests FAILED"
+            f":red_circle: **{build_preset}**{test_target_message}{test_time_message}: some tests FAILED"
         )
     else:
         result = (
-            f":green_circle: **{build_preset}**{test_target_message}: all tests PASSED"
+            f":green_circle: **{build_preset}**{test_target_message}{test_time_message}: all tests PASSED"
         )
 
     body = [f"{result} for commit {pr.head.sha}."]
@@ -416,6 +421,7 @@ def update_pr_comment(
     test_target: str,
     run_id: str,
     job_id: str,
+    test_time: str,
     is_dry_run: bool,
 ):
     header = f"<!-- status pr={pr.number}, run={run_number}, build_preset={build_preset}, dry_run={is_dry_run} -->"
@@ -453,7 +459,7 @@ def update_pr_comment(
 
     body.extend(
         get_comment_text(
-            pr, summary, build_preset, test_history_url, test_target, run_id, job_id
+            pr, summary, build_preset, test_history_url, test_target, run_id, job_id, test_time
         )
     )
 
@@ -490,6 +496,7 @@ def main():
         action="store_true",
         help="Add mark in comments that this is simulation, not real result",
     )
+    parser.add_argument("--test-time", default="0", required=False)
     parser.add_argument("args", nargs="+", metavar="TITLE html_out path")
     args = parser.parse_args()
 
@@ -520,6 +527,7 @@ def main():
             args.test_target,
             args.run_id,
             args.job_id,
+            args.test_time,
             args.is_dry_run,
         )
 

@@ -239,6 +239,8 @@ runs:
         # will kill VM with runner
         echo "failed_tests=yes" >> $GITHUB_OUTPUT
         while [ "$RETRIES" -gt 0 ]; do
+          TEST_START_TIME=$(date +%s)
+          echo TEST_START_TIME=$TEST_START_TIME  | tee -a "$GITHUB_ENV"
           RETRIES=$((RETRIES - 1))
           i=$((i + 1))
           RETRY_LOG_DIR="$LOG_DIR/$i"
@@ -299,6 +301,8 @@ runs:
           esac
 
           touch "$LOG_DIR/${i}_build_finished"
+          TEST_END_TIME=$(date +%s)
+          echo TEST_END_TIME=$TEST_END_TIME  | tee -a "$GITHUB_ENV"
 
           echo "::group::s3-sync-logs"
           if [ "$SYNC_TO_S3" = "true" ];
@@ -425,6 +429,7 @@ runs:
             --test-target "${TEST_TARGET//\"/}" \
             --run-id "$GITHUB_RUN_ID" \
             --job-id "$GITHUB_JOB" \
+            --test-time $((TEST_END_TIME - TEST_START_TIME)) \
             "Tests" ya-test.html "${JUNIT_REPORT_XML}.${i}"
 
           cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
