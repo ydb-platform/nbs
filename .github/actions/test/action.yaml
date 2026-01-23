@@ -419,7 +419,7 @@ runs:
             echo "::endgroup::"
           fi
           # shellcheck disable=SC2024
-          sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/${transformed_junit.${i}.xml.gz"
+          sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/transformed_junit.${i}.xml.gz"
 
 
           echo "::group::write-summary-${i}"
