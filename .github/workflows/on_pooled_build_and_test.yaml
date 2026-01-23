@@ -119,7 +119,7 @@ jobs:
     outputs:
       matrix_include: ${{ steps.plan.outputs.matrix_include }}
     steps:
-      - name: Checkout PR (.github only)
+      - name: checkout PR
         uses: actions/checkout@v4
         if: github.event.pull_request.head.sha != ''
         with:
@@ -146,15 +146,11 @@ jobs:
         id: plan
         uses: ./.github/actions/nebius_split_workload
         env:
-          # inputs for this workflow
           BUILD_TARGET: ${{ inputs.build_target }}
           TEST_TARGET:  ${{ inputs.test_target }}
           BUILD_PRESET: ${{ inputs.build_preset }}
-
           TEST_TYPE: ${{ inputs.test_type }}
           NUMBER_OF_RETRIES: ${{ inputs.number_of_retries }}
-
-          # split flags (regular + per-san)
           NEBIUS_SPLIT_RUNNERS: ${{ vars.NEBIUS_SPLIT_RUNNERS == 'true' && 'true' || 'false' }}
           NEBIUS_SPLIT_RUNNERS_ASAN: ${{ vars.NEBIUS_SPLIT_RUNNERS_ASAN == 'true' && 'true' || 'false' }}
           NEBIUS_SPLIT_RUNNERS_TSAN: ${{ vars.NEBIUS_SPLIT_RUNNERS_TSAN == 'true' && 'true' || 'false' }}

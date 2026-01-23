@@ -124,7 +124,7 @@ jobs:
     outputs:
       matrix_include: ${{ steps.plan.outputs.matrix_include }}
     steps:
-      - name: Checkout PR (.github only)
+      - name: checkout PR
         uses: actions/checkout@v4
         if: github.event.pull_request.head.sha != ''
         with:
