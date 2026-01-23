@@ -932,17 +932,22 @@ func (s *storageYDB) selectNodesToList(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshotID string,
-	processingNodes map[uint64]struct{},
+	nodesToExclude map[uint64]struct{},
 	limit uint64,
 ) ([]NodeQueueEntry, error) {
 
-	excludeNodeIDs := make([]persistence.Value, 0, len(processingNodes))
-	for nodeID := range processingNodes {
+	excludeNodeIDs := make([]persistence.Value, 0, len(nodesToExclude))
+	for nodeID := range nodesToExclude {
 		excludeNodeIDs = append(excludeNodeIDs, persistence.Uint64Value(nodeID))
 	}
 
-	// Exclude invalid node ID.
-	excludeNodeIDs = append(excludeNodeIDs, persistence.Uint64Value(0))
+	// Exclude InvalidNodeID to avoid handling empty excludeNodeIDs slice case.
+	excludeNodeIDs = append(
+		excludeNodeIDs,
+		persistence.Uint64Value(
+			uint64(nfs.InvalidNodeID),
+		),
+	)
 	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
@@ -991,9 +996,9 @@ func (s *storageYDB) scheduleNodesForListing(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshotID string,
-	parentNodeID uint64,
-	parentCookie string,
-	parentDepth uint64,
+	nodeID uint64,
+	nextCookie string,
+	depth uint64,
 	children []nfs.Node,
 ) error {
 
@@ -1003,7 +1008,10 @@ func (s *storageYDB) scheduleNodesForListing(
 	}
 	defer tx.Rollback(ctx)
 
-	if parentCookie == "" {
+	// Empty nextCookie means there are no more directory listing to do for this node.
+	// So we delete it from the queue.
+	// Update the cookie otherwise.
+	if nextCookie == "" {
 		_, err = tx.Execute(ctx, fmt.Sprintf(`
 			--!syntax_v1
 			pragma TablePathPrefix = "%v";
@@ -1014,7 +1022,7 @@ func (s *storageYDB) scheduleNodesForListing(
 			where filesystem_backup_id = $snapshot_id and node_id = $node_id
 		`, s.tablesPath),
 			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
-			persistence.ValueParam("$node_id", persistence.Uint64Value(parentNodeID)),
+			persistence.ValueParam("$node_id", persistence.Uint64Value(nodeID)),
 		)
 	} else {
 		_, err = tx.Execute(ctx, fmt.Sprintf(`
@@ -1029,9 +1037,9 @@ func (s *storageYDB) scheduleNodesForListing(
 			values ($snapshot_id, $node_id, $cookie, $depth)
 		`, s.tablesPath),
 			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
-			persistence.ValueParam("$node_id", persistence.Uint64Value(parentNodeID)),
-			persistence.ValueParam("$cookie", persistence.StringValue([]byte(parentCookie))),
-			persistence.ValueParam("$depth", persistence.Uint64Value(parentDepth)),
+			persistence.ValueParam("$node_id", persistence.Uint64Value(nodeID)),
+			persistence.ValueParam("$cookie", persistence.StringValue([]byte(nextCookie))),
+			persistence.ValueParam("$depth", persistence.Uint64Value(depth)),
 		)
 	}
 	if err != nil {
@@ -1039,7 +1047,7 @@ func (s *storageYDB) scheduleNodesForListing(
 	}
 
 	if len(children) > 0 {
-		childDepth := parentDepth + 1
+		childDepth := depth + 1
 		childEntries := make([]persistence.Value, 0, len(children))
 		for _, child := range children {
 			childEntries = append(childEntries, persistence.StructValue(
@@ -1091,7 +1099,7 @@ func (s *storageYDB) ScheduleRootNodeForListing(
 func (s *storageYDB) SelectNodesToList(
 	ctx context.Context,
 	snapshotID string,
-	processingNodes map[uint64]struct{},
+	nodesToExclude map[uint64]struct{},
 	limit uint64,
 ) (entries []NodeQueueEntry, err error) {
 
@@ -1102,7 +1110,7 @@ func (s *storageYDB) SelectNodesToList(
 				ctx,
 				session,
 				snapshotID,
-				processingNodes,
+				nodesToExclude,
 				limit,
 			)
 			return err
@@ -1114,9 +1122,9 @@ func (s *storageYDB) SelectNodesToList(
 func (s *storageYDB) ScheduleNodesForListing(
 	ctx context.Context,
 	snapshotID string,
-	parentNodeID uint64,
-	parentCookie string,
-	parentDepth uint64,
+	nodeID uint64,
+	nextCookie string,
+	depth uint64,
 	children []nfs.Node,
 ) error {
 
@@ -1127,9 +1135,9 @@ func (s *storageYDB) ScheduleNodesForListing(
 				ctx,
 				session,
 				snapshotID,
-				parentNodeID,
-				parentCookie,
-				parentDepth,
+				nodeID,
+				nextCookie,
+				depth,
 				children,
 			)
 		},

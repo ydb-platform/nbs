@@ -136,14 +136,14 @@ func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
 
 	for {
 		if len(pendingNodes) > 0 {
-			node := pendingNodes[0]
+			node := pendingNodes[len(pendingNodes)-1]
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
 			case nodeID := <-t.processedNodes:
 				delete(processingNodes, nodeID)
 			case t.scheduledNodes <- node:
-				pendingNodes = pendingNodes[1:]
+				pendingNodes = pendingNodes[:len(pendingNodes)-1]
 				processingNodes[node.NodeID] = struct{}{}
 			}
 			continue

@@ -108,16 +108,16 @@ type Storage interface {
 	SelectNodesToList(
 		ctx context.Context,
 		snapshotID string,
-		processingNodes map[uint64]struct{},
+		nodesToExclude map[uint64]struct{},
 		limit uint64,
 	) ([]NodeQueueEntry, error)
 
 	ScheduleNodesForListing(
 		ctx context.Context,
 		snapshotID string,
-		parentNodeID uint64,
-		parentCookie string,
-		parentDepth uint64,
+		nodeID uint64,
+		nextCookie string,
+		depth uint64,
 		children []nfs.Node,
 	) error
 }

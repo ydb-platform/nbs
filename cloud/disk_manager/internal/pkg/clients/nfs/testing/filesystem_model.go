@@ -18,10 +18,6 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const RootNodeID = uint64(1)
-
-////////////////////////////////////////////////////////////////////////////////
-
 func NewContext() context.Context {
 	return logging.SetLogger(
 		context.Background(),
@@ -161,7 +157,7 @@ func (f *FileSystemModel) Create() {
 		},
 	)
 	for _, child := range f.root.Children {
-		f.CreateNodes(RootNodeID, child)
+		f.CreateNodes(nfs.RootNodeID, child)
 	}
 }
 
@@ -231,7 +227,7 @@ func (f *FileSystemModel) ListNodesRecursively(parentNodeID uint64) []nfs.Node {
 }
 
 func (f *FileSystemModel) ListAllNodesRecursively() []nfs.Node {
-	return f.ListNodesRecursively(RootNodeID)
+	return f.ListNodesRecursively(nfs.RootNodeID)
 }
 
 func (f *FileSystemModel) SetSession(session nfs.Session) {
