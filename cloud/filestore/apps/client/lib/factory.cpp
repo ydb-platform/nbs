@@ -40,6 +40,7 @@ TCommandPtr NewFindGarbageCommand();
 TCommandPtr NewForcedCompactionCommand();
 TCommandPtr NewFindCommand();
 TCommandPtr NewDiffCommand();
+TCommandPtr NewPingCommand();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -78,6 +79,7 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "stopendpoint", NewStopEndpointCommand },
     { "touch", NewTouchCommand },
     { "write", NewWriteCommand },
+    { "ping", NewPingCommand },
 };
 
 ////////////////////////////////////////////////////////////////////////////////
