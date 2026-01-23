@@ -6,7 +6,6 @@ inputs:
     description: "Scheduling type: on_demand, pooled, hybrid"
     required: true
 
-
 outputs:
   matrix_include:
     description: "JSON for strategy.matrix (include)"

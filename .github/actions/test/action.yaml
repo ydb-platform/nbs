@@ -340,12 +340,12 @@ runs:
             sudo -E -H -u github .github/scripts/tests/transform-ya-junit.py -i \
               -m "${MUTED_CONFIG}" \
               --ya-out "$OUT_DIR" \
-              --log-url-prefix "$S3_WEBSITE_PREFIX/logs/${i}/" \
+              --log-url-prefix "$S3_WEBSITE_PREFIX/logs/${COMPONENT_DIR}${i}/" \
               --data-url-prefix "$S3_WEBSITE_PREFIX/test_data/${COMPONENT_DIR}${i}$GITHUB_WORKSPACE" \
-              --log-out-dir "$ARTIFACTS_DIR/logs/${i}" \
+              --log-out-dir "$ARTIFACTS_DIR/logs/${COMPONENT_DIR}${i}" \
               "${JUNIT_REPORT_XML}.${i}"
 
-            sudo -E -H -u github .github/scripts/tests/split-junit.py -o "$JUNIT_REPORT_PARTS/${i}" "${JUNIT_REPORT_XML}.${i}"
+            sudo -E -H -u github .github/scripts/tests/split-junit.py -o "$JUNIT_REPORT_PARTS/${COMPONENT_DIR}${i}" "${JUNIT_REPORT_XML}.${i}"
             echo "::endgroup::"
             # exports BUILD_FAILED_COUNT if it is not zero, we need to save current value to compare it to new one in retries and if it is bigger - update it
             if [ -z "$BUILD_FAILED_COUNT" ]; then
