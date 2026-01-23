@@ -84,6 +84,9 @@ runs:
         if [ -n "$COMPONENT" ]; then
           COMPONENT_DIR="${COMPONENT}/"
         fi
+        if [ "$COMPONENT" == "all" ]; then
+          COMPONENT_DIR=""
+        fi
         {
           echo "TMP_DIR=$TMP_DIR"
           echo "LOG_DIR=$TMP_DIR/logs"
