@@ -87,6 +87,7 @@ jobs:
   on_demand:
     if: ${{ inputs.mode == 'on_demand' }}
     uses: ./.github/workflows/on_demand_build_and_test.yaml
+    name: On-demand build and test
     needs: plan
     strategy:
       fail-fast: false
@@ -107,6 +108,7 @@ jobs:
   pooled:
     if: ${{ inputs.mode == 'pooled' }}
     uses: ./.github/workflows/on_pooled_build_and_test.yaml
+    name: Pooled build and test
     needs: plan
     strategy:
       fail-fast: false
@@ -127,6 +129,7 @@ jobs:
   hybrid:
     if: ${{ inputs.mode == 'hybrid' }}
     uses: ./.github/workflows/on_hybrid_build_and_test.yaml
+    name: Hybrid build and test
     needs: plan
     strategy:
       fail-fast: false

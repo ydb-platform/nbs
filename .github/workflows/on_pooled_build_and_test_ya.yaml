@@ -153,14 +153,12 @@ jobs:
         nebius compute instance get --id "${RUNNER_NAME}" --format json > instance.json
         LABEL=$(jq -r '.metadata.labels."runner-label"' instance.json)
         RUNNER_FLAVOR=$(jq -r '.metadata.labels."runner-flavor"' instance.json)
-        EXTERNAL_IPV4=$(jq -r '.status.network_interfaces[0].public_ip_address.address' instance.json | sed -e 's/\/32//g')
         LOCAL_IPV4=$(jq -r '.status.network_interfaces[0].ip_address.address' instance.json | sed -e 's/\/32//g')
         VM_PRESET=$(jq -r '.spec.resources.preset' instance.json)
         {
           echo "LABEL=${LABEL}"
           echo "RUNNER_FLAVOR=${RUNNER_FLAVOR}"
           echo "INSTANCE_ID=${INSTANCE_ID}"
-          echo "RUNNER_IPV4=${EXTERNAL_IPV4}"
           echo "RUNNER_LOCAL_IPV4=${LOCAL_IPV4}"
           echo "VM_PRESET=${VM_PRESET}"
         } | tee -a "$GITHUB_OUTPUT"

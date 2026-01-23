@@ -419,6 +419,9 @@ runs:
             --summary-out-env-path "$SUMMARY_OUT_ENV_PATH" \
             --summary-url-prefix "$S3_WEBSITE_PREFIX/summary/${i}/" \
             --build-preset "${platform_name}-${BUILD_PRESET}" \
+            --test-target "${TEST_TARGET//\"/}" \
+            --run-id "$GITHUB_RUN_ID" \
+            --job-id "$GITHUB_JOB" \
             "Tests" ya-test.html "${JUNIT_REPORT_XML}.${i}"
 
           cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
