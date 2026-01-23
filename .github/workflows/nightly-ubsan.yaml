@@ -16,9 +16,11 @@ jobs:
     secrets: inherit
     with:
       mode: ${{ vars.NEBIUS_SCHEDULING_TYPE }}
+      allow_split_workload: false
       build_target: 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/storage/'
       test_target: 'cloud/blockstore/,cloud/filestore/,cloud/storage/'
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest"
+      test_size: small,medium,large
       build_preset: release-ubsan
       cache_update_build: true
       cache_update_tests: true

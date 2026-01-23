@@ -15,7 +15,8 @@ jobs:
     uses: ./.github/workflows/build_and_test_proxy.yaml
     secrets: inherit
     with:
-      mode: 'false'
+      mode: ${{ vars.NEBIUS_SCHEDULING_TYPE }}
+      allow_split_workload: false
       build_target: 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/storage/'
       test_target: 'cloud/blockstore/,cloud/filestore/,cloud/storage/'
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest"
