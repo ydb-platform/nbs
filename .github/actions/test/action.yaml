@@ -95,7 +95,6 @@ runs:
           echo "TESTS_DATA_DIR=$TMP_DIR/test_data"
           echo "REPORTS_ARTIFACTS_DIR=$TMP_DIR/artifacts/test_reports"
           echo "JUNIT_REPORT_XML=$TMP_DIR/junit.xml"
-          echo "JUNIT_REPORT_PARTS=$TMP_DIR/junit-split"
           echo "SUMMARY_LINKS=$(mktemp -p /home/github summary_links.XXXX)"
           echo "COMPONENT_DIR=$COMPONENT_DIR"
         } | tee -a $GITHUB_ENV
@@ -107,9 +106,9 @@ runs:
       env:
         CLEAN_YA_DIR: ${{ inputs.clean_ya_dir }}
       run: |
-        rm -rf $TMP_DIR $JUNIT_REPORT_XML $JUNIT_REPORT_PARTS $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
-        mkdir -p $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR $JUNIT_REPORT_PARTS $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
-        chown -R github:github $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR $JUNIT_REPORT_PARTS \
+        rm -rf $TMP_DIR $JUNIT_REPORT_XML $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
+        mkdir -p $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
+        chown -R github:github $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR \
                                $REPORTS_ARTIFACTS_DIR $SUMMARY_LINKS $GITHUB_WORKSPACE \
                                $GITHUB_STEP_SUMMARY $TESTS_DATA_DIR
         # shellcheck disable=SC2193
@@ -345,7 +344,6 @@ runs:
               --log-out-dir "$ARTIFACTS_DIR/logs/${COMPONENT_DIR}${i}" \
               "${JUNIT_REPORT_XML}.${i}"
 
-            sudo -E -H -u github .github/scripts/tests/split-junit.py -o "$JUNIT_REPORT_PARTS/${COMPONENT_DIR}${i}" "${JUNIT_REPORT_XML}.${i}"
             echo "::endgroup::"
             # exports BUILD_FAILED_COUNT if it is not zero, we need to save current value to compare it to new one in retries and if it is bigger - update it
             if [ -z "$BUILD_FAILED_COUNT" ]; then
@@ -421,8 +419,7 @@ runs:
             echo "::endgroup::"
           fi
           # shellcheck disable=SC2024
-          sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/transformed_junit.${i}.xml.gz"
-          sudo -E -H -u github tar -C "$JUNIT_REPORT_PARTS/.." -czf "${REPORTS_ARTIFACTS_DIR}/junit_parts.${i}.xml.tar.gz" "$(basename $JUNIT_REPORT_PARTS)/${i}" "${JUNIT_REPORT_XML}.${i}"*
+          sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/${transformed_junit.${i}.xml.gz"
 
 
           echo "::group::write-summary-${i}"
@@ -499,7 +496,7 @@ runs:
         sudo cp /var/log/atop/atop_* "$LOG_DIR/system_logs/" || true
         sudo cp /var/log/syslog "$LOG_DIR/system_logs/syslog.log" || true
         sudo chown -R github:github "$LOG_DIR/system_logs/" || true
-        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/system_logs/${COMPONENT_DIR}" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}"
+        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/system_logs/" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}"
         echo "::endgroup::"
 
     - name: sync logs in case of cancel and additional debug info
@@ -519,7 +516,7 @@ runs:
 
         sudo chown -R github:github "$LOG_DIR/"
 
-        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/${COMPONENT_DIR}" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}" || true
+        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}" || true
 
         if [ ! -f "${LAST_STEP}_artifacts_synced" ]; then
           echo "Syncing artifacts dir"
@@ -551,7 +548,7 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::s3-sync"
-        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/${COMPONENT_DIR}"
+        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/test_reports/" "$S3_BUCKET_PATH/test_reports/${COMPONENT_DIR}"
         echo "::endgroup::"
 
     - name: Display links to s3 summary
