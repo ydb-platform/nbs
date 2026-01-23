@@ -199,6 +199,7 @@ jobs:
       uses: ./.github/actions/build
       if: inputs.run_build
       with:
+        component: ${{ inputs.component }}
         build_target: ${{ inputs.build_target }}
         build_preset: ${{ inputs.build_preset }}
         cache_update: ${{ inputs.cache_update_build }}
@@ -215,6 +216,7 @@ jobs:
       id: test
       if: inputs.run_tests
       with:
+        component: ${{ inputs.component }}
         test_target: ${{ inputs.test_target }}
         build_preset: ${{ inputs.build_preset }}
         test_size: ${{ inputs.test_size }}
