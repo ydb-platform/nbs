@@ -1,6 +1,9 @@
 name: Run tests (ya make)
 description: Run tests using ya make
 inputs:
+  component:
+    required: false
+    description: "component name"
   test_target:
     required: false
     description: "test target"
@@ -76,7 +79,11 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       id: init
       run: |
-        export TMP_DIR=/home/github/tmp_test
+        export TMP_DIR=/home/github/tmp_test      
+        COMPONENT_DIR="" 
+        if [ -n "$COMPONENT" ]; then
+          COMPONENT_DIR="${COMPONENT}/"
+        fi
         {
           echo "TMP_DIR=$TMP_DIR"
           echo "LOG_DIR=$TMP_DIR/logs"
@@ -87,7 +94,10 @@ runs:
           echo "JUNIT_REPORT_XML=$TMP_DIR/junit.xml"
           echo "JUNIT_REPORT_PARTS=$TMP_DIR/junit-split"
           echo "SUMMARY_LINKS=$(mktemp -p /home/github summary_links.XXXX)"
+          echo "COMPONENT_DIR=$COMPONENT_DIR"
         } | tee -a $GITHUB_ENV
+      env:
+        COMPONENT: ${{ inputs.component }}
 
     - name: prepare
       shell: bash --noprofile --norc -eo pipefail -x {0}
@@ -307,7 +317,7 @@ runs:
           echo "::group::s3-sync-logs"
           if [ "$SYNC_TO_S3" = "true" ];
           then
-            sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$RETRY_LOG_DIR/" "$S3_BUCKET_PATH/test_logs/${i}/"
+            sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$RETRY_LOG_DIR/" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}${i}/"
           fi
           echo "::endgroup::"
 
@@ -328,7 +338,7 @@ runs:
               -m "${MUTED_CONFIG}" \
               --ya-out "$OUT_DIR" \
               --log-url-prefix "$S3_WEBSITE_PREFIX/logs/${i}/" \
-              --data-url-prefix "$S3_WEBSITE_PREFIX/test_data/${i}$GITHUB_WORKSPACE" \
+              --data-url-prefix "$S3_WEBSITE_PREFIX/test_data/${COMPONENT_DIR}${i}$GITHUB_WORKSPACE" \
               --log-out-dir "$ARTIFACTS_DIR/logs/${i}" \
               "${JUNIT_REPORT_XML}.${i}"
 
@@ -402,7 +412,7 @@ runs:
             if [ "$SYNC_TO_S3" = "true" ];
             then
               du -h "$TESTS_DATA_DIR/"
-              sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/${i}/"
+              sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/${COMPONENT_DIR}${i}/"
             fi
             touch "$LOG_DIR/${i}_test_data_synced"
             echo "::endgroup::"
@@ -413,7 +423,7 @@ runs:
 
 
           echo "::group::write-summary-${i}"
-          sudo -E -H -u github mkdir -p $ARTIFACTS_DIR/summary/${i}
+          sudo -E -H -u github mkdir -p $ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}
 
           cat $SUMMARY_LINKS | python3 -c 'import sys; print(" | ".join([v for _, v in sorted([l.strip().split(" ", 1) for l in sys.stdin], key=lambda a: (int(a[0]), a))]))' >> $GITHUB_STEP_SUMMARY
 
@@ -422,9 +432,9 @@ runs:
           export SUMMARY_OUT_ENV_PATH=$(mktemp -p /home/github)
           chown github:github $SUMMARY_OUT_ENV_PATH
           sudo -E -H -u github .github/scripts/tests/generate-summary.py \
-            --summary-out-path "$ARTIFACTS_DIR/summary/${i}/" \
+            --summary-out-path "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/" \
             --summary-out-env-path "$SUMMARY_OUT_ENV_PATH" \
-            --summary-url-prefix "$S3_WEBSITE_PREFIX/summary/${i}/" \
+            --summary-url-prefix "$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/" \
             --build-preset "${platform_name}-${BUILD_PRESET}" \
             --test-target "${TEST_TARGET//\"/}" \
             --test-time $((TEST_END_TIME - TEST_START_TIME)) \
@@ -445,7 +455,7 @@ runs:
           fi
 
           echo "::group::s3-sync"
-          sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
+          sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/${COMPONENT_DIR}"
           touch "$LOG_DIR/${i}_artifacts_synced"
           echo "::endgroup::"
 
@@ -486,7 +496,7 @@ runs:
         sudo cp /var/log/atop/atop_* "$LOG_DIR/system_logs/" || true
         sudo cp /var/log/syslog "$LOG_DIR/system_logs/syslog.log" || true
         sudo chown -R github:github "$LOG_DIR/system_logs/" || true
-        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/system_logs/" "$S3_BUCKET_PATH/test_logs/"
+        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/system_logs/${COMPONENT_DIR}" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}"
         echo "::endgroup::"
 
     - name: sync logs in case of cancel and additional debug info
@@ -506,7 +516,7 @@ runs:
 
         sudo chown -R github:github "$LOG_DIR/"
 
-        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/" || true
+        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/${COMPONENT_DIR}" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}" || true
 
         if [ ! -f "${LAST_STEP}_artifacts_synced" ]; then
           echo "Syncing artifacts dir"
@@ -520,7 +530,7 @@ runs:
             done
             echo "::endgroup::"
           fi
-          sudo -E -H -u github aws s3 sync --acl private --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/artifacts/" || true
+          sudo -E -H -u github aws s3 sync --acl private --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/artifacts/${COMPONENT_DIR}" || true
         fi
 
     - name: Finish with END_EXIT_CODE
@@ -538,7 +548,7 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::s3-sync"
-        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
+        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/${COMPONENT_DIR}"
         echo "::endgroup::"
 
     - name: Display links to s3 summary
@@ -546,8 +556,8 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::s3-report-links"
-        echo ${S3_URL_PREFIX}/summary/ya-test.html
-        echo ${S3_WEBSITE_PREFIX}/summary/ya-test.html
+        echo ${S3_URL_PREFIX}/summary/${COMPONENT_DIR}ya-test.html
+        echo ${S3_WEBSITE_PREFIX}/summary/${COMPONENT_DIR}ya-test.html
         echo "::endgroup::"
 
     - name: upload ya dir to s3 on success
@@ -609,9 +619,9 @@ runs:
           if [ "$EXTENSION" = "tar.gz" ]; then COMPRESS_ARGS=pigz; fi
           sudo -E -H -u github time tar -S -C /home/github -I "$COMPRESS_ARGS" -c -f  /home/github/tmp/ya.${EXTENSION} /home/github/.ya
           ls -lsha /home/github/tmp/ya.${EXTENSION}
-          sudo -E -H -u github time aws s3 cp --no-progress  /home/github/tmp/ya.${EXTENSION} "$S3_BUCKET_PATH/ya_archive/ya.${EXTENSION}"
-          echo "${S3_WEBSITE_PREFIX}/ya_archive/ya.${EXTENSION}" > /home/github/ya_web_url.txt
-          echo "${S3_BUCKET_PATH}/ya_archive/ya.${EXTENSION}" > /home/github/ya_s3_url.txt
+          sudo -E -H -u github time aws s3 cp --no-progress  /home/github/tmp/ya.${EXTENSION} "$S3_BUCKET_PATH/ya_archive/${COMPONENT_DIR}ya.${EXTENSION}"
+          echo "${S3_WEBSITE_PREFIX}/ya_archive/${COMPONENT_DIR}ya.${EXTENSION}" > /home/github/ya_web_url.txt
+          echo "${S3_BUCKET_PATH}/ya_archive/${COMPONENT_DIR}ya.${EXTENSION}" > /home/github/ya_s3_url.txt
           df -h
           echo "::endgroup::"
         fi
@@ -633,7 +643,7 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::generate-listing"
-        sudo -E -H -u github python3 .github/scripts/index.py "$S3_BUCKET_PATH" --generate-indexes --apply
+        sudo -E -H -u github python3 .github/scripts/index.py "$S3_BUCKET_PATH/${COMPONENT_DIR}" --generate-indexes --apply
         echo "::endgroup::"
     - name: show free space
       if: always()

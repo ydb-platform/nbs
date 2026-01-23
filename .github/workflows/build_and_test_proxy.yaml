@@ -86,6 +86,7 @@ jobs:
           NEBIUS_SPLIT_RUNNERS_TSAN: ${{ inputs.allow_split_workload && vars.NEBIUS_SPLIT_RUNNERS_TSAN == 'true' && 'true' || 'false' }}
           NEBIUS_SPLIT_RUNNERS_MSAN: ${{ inputs.allow_split_workload && vars.NEBIUS_SPLIT_RUNNERS_MSAN == 'true' && 'true' || 'false' }}
           NEBIUS_SPLIT_RUNNERS_UBSAN: ${{ inputs.allow_split_workload && vars.NEBIUS_SPLIT_RUNNERS_UBSAN == 'true' && 'true' || 'false' }}
+ 
   on_demand:
     if: ${{ inputs.mode == 'on_demand' }}
     uses: ./.github/workflows/on_demand_build_and_test.yaml
@@ -95,6 +96,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.plan.outputs.matrix_include) }}
     with:
+      component: ${{ matrix.component }}
       build_target: ${{ matrix.build_target }}
       test_target:  ${{ matrix.test_target }}
       build_preset: ${{ matrix.build_preset }}
@@ -116,6 +118,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.plan.outputs.matrix_include) }}
     with:
+      component: ${{ matrix.component }}
       build_target: ${{ matrix.build_target }}
       test_target:  ${{ matrix.test_target }}
       build_preset: ${{ matrix.build_preset }}
@@ -137,6 +140,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.plan.outputs.matrix_include) }}
     with:
+      component: ${{ matrix.component }}
       build_target: ${{ matrix.build_target }}
       test_target:  ${{ matrix.test_target }}
       build_preset: ${{ matrix.build_preset }}

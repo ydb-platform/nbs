@@ -1,6 +1,9 @@
 name: Build (ya make)
 description: Build targets
 inputs:
+  component:
+    default: ""
+    description: "component name"
   build_target:
     required: false
     description: "build target"
@@ -46,9 +49,16 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
         CLEAN_YA_DIR: ${{ inputs.clean_ya_dir }}
+        COMPONENT: ${{ inputs.component }}
       run: |
         export TMP_DIR=/home/github/tmp_build
         echo "TMP_DIR=$TMP_DIR" >> $GITHUB_ENV
+        if [ -n "$COMPONENT" ]; then
+          echo S3_BUCKET_PATH="$S3_BUCKET_PATH/$COMPONENT/" | tee -a $GITHUB_ENV
+        else
+          echo S3_BUCKET_PATH="$S3_BUCKET_PATH/" | tee -a $GITHUB_ENV
+        fi
+        
         rm -rf $TMP_DIR && mkdir $TMP_DIR && chown -R github:github $TMP_DIR $GITHUB_WORKSPACE
 
         

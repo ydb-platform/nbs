@@ -3,6 +3,10 @@ name: Build and test
 on:
   workflow_call:
     inputs:
+      component:
+        type: string
+        default: ""
+        description: "component name"
       build_target:
         type: string
         default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
