@@ -173,6 +173,7 @@ jobs:
           PY
 
   debug:
+    name: Debug plan output
     needs: [ plan ]
     runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     steps:
@@ -186,9 +187,7 @@ jobs:
           s = """${{ needs.plan.outputs.matrix_include }}""".strip()
           print(json.dumps(json.loads(s), indent=2))
           PY
-        with:
-          matrix_include: ${{ needs.plan.outputs.matrix_include }}
-          
+
   shard:
     name: Build and test (${{ matrix.build_preset }}${{ matrix.vm_name_suffix }})
     needs: [ plan ]
