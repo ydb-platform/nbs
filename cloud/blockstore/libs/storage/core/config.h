@@ -568,6 +568,8 @@ public:
     TDuration GetResyncAfterClientInactivityInterval() const;
     NProto::EResyncPolicy GetAutoResyncPolicy() const;
     NProto::EResyncPolicy GetForceResyncPolicy() const;
+    TDuration GetResyncNextRangeInterval() const;
+    bool GetOptimizeFastPathReadsOnResync() const;
     ui32 GetMirrorReadReplicaCount() const;
 
     TString GetManuallyPreemptedVolumesFile() const;
