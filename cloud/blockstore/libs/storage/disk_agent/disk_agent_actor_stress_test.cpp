@@ -2,7 +2,7 @@
 
 #include "disk_agent_actor.h"
 
-#include <cloud/blockstore/libs/storage/disk_registry/testlib/test_env.h>
+#include <cloud/blockstore/libs/storage/disk_agent/testlib/test_env.h>
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 
