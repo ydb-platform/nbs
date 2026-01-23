@@ -316,6 +316,9 @@ jobs:
         with:
           submodules: false
           sparse-checkout: '.github'
+      - name: set up home
+        shell: bash
+        run: echo "HOME=$GITHUB_WORKSPACE" >> $GITHUB_ENV
 
       - name: install action-validator with asdf
         uses: asdf-vm/actions/install@v4.0.1
