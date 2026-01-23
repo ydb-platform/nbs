@@ -122,7 +122,7 @@ jobs:
     name: Plan split workload
     runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     outputs:
-      matrix_include: ${{ steps.plan.outputs.matrix_include }}
+      matrix_include: ${{ steps.build-matrix-include.outputs.matrix_include }}
     steps:
       - name: checkout PR
         uses: actions/checkout@v4
@@ -148,7 +148,7 @@ jobs:
           sparse-checkout: '.github'
 
       - name: Build matrix_include
-        id: plan
+        id: build-matrix-include
         uses: ./.github/actions/nebius_split_workload
         env:
           BUILD_TARGET: ${{ inputs.build_target }}
@@ -164,16 +164,17 @@ jobs:
       - name: Debug matrix_include
         shell: bash
         run: |
-          echo "matrix_include(raw)='${{ steps.plan.outputs.matrix_include }}'"
+          echo $matrix_include
+          echo "matrix_include(raw)='${{ steps.build-matrix-include.outputs.matrix_include }}'"
           echo "matrix_include(pretty):"
           python3 - <<'PY'
           import json, os
-          s = """${{ steps.plan.outputs.matrix_include }}""".strip()
+          s = """${{ steps.build-matrix-include.outputs.matrix_include }}""".strip()
           print(json.dumps(json.loads(s), indent=2))
           PY
-          echo $matrix_include
+          
         env:
-          matrix_include: ${{ steps.plan.outputs.matrix_include }}
+          matrix_include: ${{ steps.build-matrix-include.outputs.matrix_include }}
 
   debug:
     name: Debug plan output
