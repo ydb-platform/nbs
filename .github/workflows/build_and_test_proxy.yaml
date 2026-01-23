@@ -39,50 +39,107 @@ on:
         type: string
 
 jobs:
+  plan:
+    name: Plan split workload
+    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
+    outputs:
+      matrix_include: ${{ steps.build-matrix-include.outputs.matrix_include }}
+    steps:
+      - name: checkout PR
+        uses: actions/checkout@v4
+        if: github.event.pull_request.head.sha != ''
+        with:
+          submodules: false
+          sparse-checkout: '.github'
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
+      - name: rebase PR
+        if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
+        shell: bash
+        run: |
+          git config user.email "robot-nbs@nebius.com"
+          git config user.name "Robot NBS"
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          git rebase origin/${{ github.event.pull_request.base.ref }}
+      - name: checkout
+        uses: actions/checkout@v4
+        if: github.event.pull_request.head.sha == ''
+        with:
+          submodules: false
+          sparse-checkout: '.github'
+
+      - name: Build matrix_include
+        id: build-matrix-include
+        uses: ./.github/actions/nebius_split_workload
+        env:
+          BUILD_TARGET: ${{ inputs.build_target }}
+          TEST_TARGET:  ${{ inputs.test_target }}
+          BUILD_PRESET: ${{ inputs.build_preset }}
+          TEST_TYPE: ${{ inputs.test_type }}
+          NUMBER_OF_RETRIES: ${{ inputs.number_of_retries }}
+          #NEBIUS_SPLIT_RUNNERS: ${{ vars.NEBIUS_SPLIT_RUNNERS == 'true' && 'true' || 'false' }}
+          NEBIUS_SPLIT_RUNNERS_ASAN: ${{ vars.NEBIUS_SPLIT_RUNNERS_ASAN == 'true' && 'true' || 'false' }}
+          NEBIUS_SPLIT_RUNNERS_TSAN: ${{ vars.NEBIUS_SPLIT_RUNNERS_TSAN == 'true' && 'true' || 'false' }}
+          NEBIUS_SPLIT_RUNNERS_MSAN: ${{ vars.NEBIUS_SPLIT_RUNNERS_MSAN == 'true' && 'true' || 'false' }}
+          NEBIUS_SPLIT_RUNNERS_UBSAN: ${{ vars.NEBIUS_SPLIT_RUNNERS_UBSAN == 'true' && 'true' || 'false' }}
+          NEBIUS_SPLIT_RUNNERS: 'true'
+
   on_demand:
     if: ${{ inputs.mode == 'on_demand' }}
     uses: ./.github/workflows/on_demand_build_and_test.yaml
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix_include) }}
     with:
-      build_target: ${{ inputs.build_target }}
-      test_target:  ${{ inputs.test_target }}
-      build_preset: ${{ inputs.build_preset }}
+      build_target: ${{ matrix.build_target }}
+      test_target:  ${{ matrix.test_target }}
+      build_preset: ${{ matrix.build_preset }}
       test_size:    ${{ inputs.test_size }}
-      test_type:    ${{ inputs.test_type }}
-      vm_name_suffix: ${{ inputs.vm_name_suffix }}
+      test_type:    ${{ matrix.test_type }}
+      vm_name_suffix: "${{ inputs.vm_name_suffix }}${ matrix.vm_name_suffix }"
       cache_update_build: ${{ inputs.cache_update_build }}
       cache_update_tests: ${{ inputs.cache_update_tests }}
-      number_of_retries: ${{ inputs.number_of_retries }}
+      number_of_retries: ${{ matrix.number_of_retries }}
       sleep_after_tests: ${{ inputs.sleep_after_tests }}
     secrets: inherit
 
   pooled:
     if: ${{ inputs.mode == 'pooled' }}
     uses: ./.github/workflows/on_pooled_build_and_test.yaml
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix_include) }}
     with:
-      build_target: ${{ inputs.build_target }}
-      test_target:  ${{ inputs.test_target }}
-      build_preset: ${{ inputs.build_preset }}
+      build_target: ${{ matrix.build_target }}
+      test_target:  ${{ matrix.test_target }}
+      build_preset: ${{ matrix.build_preset }}
       test_size:    ${{ inputs.test_size }}
-      test_type:    ${{ inputs.test_type }}
-      vm_name_suffix: ${{ inputs.vm_name_suffix }}
+      test_type:    ${{ matrix.test_type }}
+      vm_name_suffix: "${{ inputs.vm_name_suffix }}${ matrix.vm_name_suffix }"
       cache_update_build: ${{ inputs.cache_update_build }}
       cache_update_tests: ${{ inputs.cache_update_tests }}
-      number_of_retries: ${{ inputs.number_of_retries }}
+      number_of_retries: ${{ matrix.number_of_retries }}
       sleep_after_tests: ${{ inputs.sleep_after_tests }}
     secrets: inherit
 
   hybrid:
     if: ${{ inputs.mode == 'hybrid' }}
     uses: ./.github/workflows/on_hybrid_build_and_test.yaml
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix_include) }}
     with:
-      build_target: ${{ inputs.build_target }}
-      test_target:  ${{ inputs.test_target }}
-      build_preset: ${{ inputs.build_preset }}
+      build_target: ${{ matrix.build_target }}
+      test_target:  ${{ matrix.test_target }}
+      build_preset: ${{ matrix.build_preset }}
       test_size:    ${{ inputs.test_size }}
-      test_type:    ${{ inputs.test_type }}
-      vm_name_suffix: ${{ inputs.vm_name_suffix }}
+      test_type:    ${{ matrix.test_type }}
+      vm_name_suffix: "${{ inputs.vm_name_suffix }}${ matrix.vm_name_suffix }"
       cache_update_build: ${{ inputs.cache_update_build }}
       cache_update_tests: ${{ inputs.cache_update_tests }}
-      number_of_retries: ${{ inputs.number_of_retries }}
+      number_of_retries: ${{ matrix.number_of_retries }}
       sleep_after_tests: ${{ inputs.sleep_after_tests }}
     secrets: inherit
