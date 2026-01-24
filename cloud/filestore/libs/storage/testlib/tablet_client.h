@@ -367,6 +367,15 @@ public:
         return request;
     }
 
+    auto CreateUnsafeDeleteNodeRefRequest(ui64 parentId, const TString& name)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvUnsafeDeleteNodeRefRequest;
+        auto request = std::make_unique<TRequestEvent>();
+        request->Record.SetParentId(parentId);
+        request->Record.SetName(name);
+        return request;
+    }
+
     auto CreateUnsafeGetNodeRefRequest(ui64 parentId, const TString& name)
     {
         using TRequestEvent = TEvIndexTablet::TEvUnsafeGetNodeRefRequest;
@@ -1148,6 +1157,29 @@ inline TString ReadData(TIndexTabletClient& tablet, ui64 handle, ui64 size, ui64
 {
     auto response = tablet.ReadData(handle, offset, size);
     return response->Record.GetBuffer();
+}
+
+inline void CreateExternalRef(
+    TIndexTabletClient& tablet,
+    ui64 parentId,
+    const TString& name,
+    const TString& shardId,
+    const TString& shardNodeName)
+{
+    tablet.UnsafeCreateNodeRef(
+        parentId,
+        name,
+        0 /* childId */,
+        shardId,
+        shardNodeName);
+}
+
+inline void DeleteRef(
+    TIndexTabletClient& tablet,
+    ui64 parentId,
+    const TString& name)
+{
+    tablet.UnsafeDeleteNodeRef(parentId, name);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

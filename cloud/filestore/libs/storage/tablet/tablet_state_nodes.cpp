@@ -579,12 +579,12 @@ void TIndexTabletState::RewriteNodeRef(
 
 bool TIndexTabletState::TryLockNodeRef(TNodeRefKey key)
 {
-    return Impl->LockedNodeRefs.insert(std::move(key)).second;
+    return Impl->LockedNodeRefs.emplace(std::move(key)).second;
 }
 
-void TIndexTabletState::UnlockNodeRef(TNodeRefKey key)
+void TIndexTabletState::UnlockNodeRef(const TNodeRefKey& key)
 {
-    Impl->LockedNodeRefs.erase(std::move(key));
+    Impl->LockedNodeRefs.erase(key);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

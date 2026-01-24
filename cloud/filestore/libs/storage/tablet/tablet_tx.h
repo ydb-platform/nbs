@@ -1025,6 +1025,10 @@ struct TTxIndexTablet
         const TString NewName;
         const ui32 Flags;
         const NProtoPrivate::TRenameNodeInDestinationRequest Request;
+        const NProto::TNodeAttr SourceNodeAttr;
+        const NProto::TNodeAttr DestinationNodeAttr;
+        const bool IsDestinationEmptyDir;
+        const bool IsSecondPass;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNode> NewParentNode;
@@ -1036,15 +1040,37 @@ struct TTxIndexTablet
         TString ShardIdForUnlink;
         TString ShardNodeNameForUnlink;
 
+        bool SecondPassRequired = false;
+
         TRenameNodeInDestination(
                 TRequestInfoPtr requestInfo,
                 NProtoPrivate::TRenameNodeInDestinationRequest request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , NewParentNodeId(request.GetNewParentId())
-            , NewName(std::move(*request.MutableNewName()))
+            , NewName(request.GetNewName())
             , Flags(request.GetFlags())
             , Request(std::move(request))
+            , IsDestinationEmptyDir(false)
+            , IsSecondPass(false)
+        {}
+
+        TRenameNodeInDestination(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TRenameNodeInDestinationRequest request,
+                NProto::TNodeAttr sourceNodeAttr,
+                NProto::TNodeAttr destinationNodeAttr,
+                bool isDestinationEmptyDir)
+            : TSessionAware(request)
+            , RequestInfo(std::move(requestInfo))
+            , NewParentNodeId(request.GetNewParentId())
+            , NewName(request.GetNewName())
+            , Flags(request.GetFlags())
+            , Request(std::move(request))
+            , SourceNodeAttr(std::move(sourceNodeAttr))
+            , DestinationNodeAttr(std::move(destinationNodeAttr))
+            , IsDestinationEmptyDir(isDestinationEmptyDir)
+            , IsSecondPass(true)
         {}
 
         void Clear() override
@@ -1063,6 +1089,8 @@ struct TTxIndexTablet
 
             ShardIdForUnlink.clear();
             ShardNodeNameForUnlink.clear();
+
+            SecondPassRequired = false;
         }
     };
 
@@ -1298,6 +1326,7 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNode> TargetNode;
         TString ShardId;
         TString ShardNodeName;
+        bool IsEmptyDirectory = false;
 
         TGetNodeAttr(
                 TRequestInfoPtr requestInfo,
@@ -1320,6 +1349,7 @@ struct TTxIndexTablet
             TargetNode.Clear();
             ShardId.clear();
             ShardNodeName.clear();
+            IsEmptyDirectory = false;
         }
     };
 

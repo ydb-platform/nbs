@@ -702,6 +702,28 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // DoRenameNodeInDestination
+    //
+
+    struct TDoRenameNodeInDestination
+    {
+        TRequestInfoPtr RequestInfo;
+        NProtoPrivate::TRenameNodeInDestinationRequest Request;
+        NProto::TNodeAttr SourceNodeAttr;
+        NProto::TNodeAttr DestinationNodeAttr;
+        bool IsDestinationEmptyDir = false;
+        NProto::TError Error;
+
+        TDoRenameNodeInDestination(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TRenameNodeInDestinationRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {
+        }
+    };
+
+    //
     // NodeRenamedInDestination
     //
 
@@ -1053,6 +1075,7 @@ struct TEvIndexTabletPrivate
 
         EvNodeCreatedInShard,
         EvNodeUnlinkedInShard,
+        EvDoRenameNodeInDestination,
         EvNodeRenamedInDestination,
 
         EvAggregateStatsCompleted,
@@ -1096,6 +1119,9 @@ struct TEvIndexTabletPrivate
 
     using TEvNodeUnlinkedInShard =
         TRequestEvent<TNodeUnlinkedInShard, EvNodeUnlinkedInShard>;
+
+    using TEvDoRenameNodeInDestination =
+        TRequestEvent<TDoRenameNodeInDestination, EvDoRenameNodeInDestination>;
 
     using TEvNodeRenamedInDestination =
         TRequestEvent<TNodeRenamedInDestination, EvNodeRenamedInDestination>;
