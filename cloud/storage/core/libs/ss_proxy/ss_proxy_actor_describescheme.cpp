@@ -115,7 +115,7 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
     const auto* msg = ev->Get();
     const auto& record = msg->GetRecord();
 
-    if (HandleError(ctx, MakeSchemeShardError(record.GetStatus(), record.GetReason()))) {
+    if (HandleError(ctx, MakeDescribeSchemeError(record))) {
         return;
     }
 
