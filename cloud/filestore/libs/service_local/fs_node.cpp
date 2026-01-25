@@ -238,14 +238,17 @@ NProto::TListNodesResponse TLocalFileSystem::ListNodes(
     for (auto& entry: entries) {
         auto remapResult =
             session->RemapNode(parent->GetNodeId(), entry.second.INode);
-        if (remapResult) {
-            auto remappedNode = *remapResult;
-            if (!remappedNode) {
+        if (remapResult.HasRemap()) {
+            if (!remapResult.IsFound()) {
                 continue;
             }
             try {
-                entry.second = remappedNode->Stat();
+                entry.second = remapResult.GetNode()->Stat();
             } catch (...) {
+                STORAGE_ERROR(
+                    "Failed to stat remappedNode, parentNodeId="
+                    << Hex(parent->GetNodeId())
+                    << ", nodeId=" << Hex(entry.second.INode))
                 continue;
             }
         }

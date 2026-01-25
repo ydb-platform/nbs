@@ -485,8 +485,8 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
 
         // check that we map .snapshots -> some-dir-for-snapshots
         auto remapResult = index->RemapNode(RootNodeId, ".snapshots");
-        UNIT_ASSERT(remapResult);
-        auto remappedSnapshotsNode = *remapResult;
+        UNIT_ASSERT(remapResult.HasRemap());
+        auto remappedSnapshotsNode = remapResult.GetNode();
         UNIT_ASSERT(remappedSnapshotsNode);
         UNIT_ASSERT_VALUES_EQUAL(
             snapshotsNode->GetNodeId(),
@@ -508,8 +508,8 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
         // some-dir-for-snapshots/snap1 -> some-dir-for-snapshots/snap1-remapped
         remapResult =
             index->RemapNode(remappedSnapshotsNode->GetNodeId(), "snap1");
-        UNIT_ASSERT(remapResult);
-        auto node = *remapResult;
+        UNIT_ASSERT(remapResult.HasRemap());
+        auto node = remapResult.GetNode();
         UNIT_ASSERT(node);
         UNIT_ASSERT_VALUES_EQUAL(
             snap1RemappedNode->GetNodeId(),
@@ -521,8 +521,8 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
         remapResult = index->RemapNode(
             remappedSnapshotsNode->GetNodeId(),
             snap1Node->GetNodeId());
-        UNIT_ASSERT(remapResult);
-        node = *remapResult;
+        UNIT_ASSERT(remapResult.HasRemap());
+        node = remapResult.GetNode();
         UNIT_ASSERT(node);
         UNIT_ASSERT_VALUES_EQUAL(
             snap1RemappedNode->GetNodeId(),

@@ -255,8 +255,13 @@ public:
         fileId.LustreFid.Oid = nodeId & 0xffffff;
         fileId.LustreFid.Seq = (nodeId >> 24) & 0xffffffffff;
 
-        auto handle = fileId.Open(RootHandle, O_PATH);
-        return std::make_shared<TIndexNode>(nodeId, std::move(handle));
+        try {
+            auto handle = fileId.Open(RootHandle, O_PATH);
+            return std::make_shared<TIndexNode>(nodeId, std::move(handle));
+        } catch (...) {
+        }
+
+        return nullptr;
     }
 };
 
@@ -284,8 +289,13 @@ public:
         // https://github.com/torvalds/linux/blob/dd83757f6e686a2188997cb58b5975f744bb7786/fs/nfs/export.c#L98
         fileId.VastNfsInodeId.FileType = S_IFREG;
 
-        auto handle = fileId.Open(RootHandle, O_PATH);
-        return std::make_shared<TIndexNode>(nodeId, std::move(handle));
+        try {
+            auto handle = fileId.Open(RootHandle, O_PATH);
+            return std::make_shared<TIndexNode>(nodeId, std::move(handle));
+        } catch (...) {
+        }
+
+        return nullptr;
     }
 };
 
@@ -428,6 +438,9 @@ private:
         try {
             entries = SnapshotsDirNode->List(true /* ignore errors */);
         } catch (...) {
+            ReportLocalFsFailedToRefreshSnapshotsDir(
+                TStringBuilder()
+                << "List failed, exception=" << CurrentExceptionMessage());
         }
 
         for (auto& entry: entries) {
@@ -442,15 +455,19 @@ private:
                 newMap[fileId.WekaInodeId.AntiCollisionId] =
                     fileId.WekaInodeId.SnapViewId;
             } catch (...) {
+                ReportLocalFsFailedToRefreshSnapshotsDir(
+                    TStringBuilder()
+                    << "Open failed, name=" << entry.first
+                    << ", exception=" << CurrentExceptionMessage());
             }
         }
+
+        LastSnapshotsDirRefreshCycles = GetCycleCount();
 
         if (newMap != AntiCollisionToSnapViewMap) {
             AntiCollisionToSnapViewMap = std::move(newMap);
             OnSnapshotsChanged();
         }
-
-        LastSnapshotsDirRefreshCycles = GetCycleCount();
     }
 };
 
@@ -510,42 +527,63 @@ TString TNodeMapper::ToString() const
                             << Hex(SnapshotsNode->GetNodeId()) << ")";
 }
 
-std::optional<TIndexNodePtr> TNodeMapper::RemapNode(
+TNodeMapper::TRemapResult TNodeMapper::RemapNode(
     ui64 parentNodeId,
     const TString& name)
 {
     if (parentNodeId == RootNodeId && name == ".snapshots") {
-        return SnapshotsNode;
+        return TRemapResult::Remapped(SnapshotsNode);
     }
 
     if (parentNodeId != SnapshotsNode->GetNodeId()) {
-        return {};
+        return TRemapResult::NotNeeded();
+    }
+
+    NLowLevel::TFileStatEx stat;
+
+    try {
+        stat = SnapshotsNode->Stat(name);
+    } catch (...) {
+        // name doesn't exist in snapshots directory
+        return TRemapResult::NotFound();
+    }
+
+    if (!stat.IsDir()) {
+        // ignore non-directory nodes in snapshots directory
+        return TRemapResult::NotFound();
     }
 
     try {
-        auto stat = SnapshotsNode->Stat(name);
         TWriteGuard guard(NodeLoaderLock);
-        return {NodeLoader.LoadSnapshotDirNode(stat.INode)};
+        return TRemapResult::Remapped(
+            NodeLoader.LoadSnapshotDirNode(stat.INode));
     } catch (...) {
+        ReportLocalFsFailedToLoadSnapshotDir(
+            TStringBuilder()
+            << "name=" << name << ", exception=" << CurrentExceptionMessage());
     }
 
-    return {nullptr};
+    return TRemapResult::NotFound();
 }
 
-std::optional<TIndexNodePtr> TNodeMapper::RemapNode(
+TNodeMapper::TRemapResult TNodeMapper::RemapNode(
     ui64 parentNodeId,
     ui64 nodeId)
 {
     if (parentNodeId != SnapshotsNode->GetNodeId()) {
-        return {};
+        return TRemapResult::NotNeeded();
     }
 
     try {
         TWriteGuard guard(NodeLoaderLock);
-        return {NodeLoader.LoadSnapshotDirNode(nodeId)};
+        return TRemapResult::Remapped(
+            NodeLoader.LoadSnapshotDirNode(nodeId));
     } catch (...) {
+        ReportLocalFsFailedToLoadSnapshotDir(
+            TStringBuilder() << "nodeId=0x" << Hex(nodeId)
+                             << ", exception=" << CurrentExceptionMessage());
     }
 
-    return {nullptr};
+    return TRemapResult::NotFound();
 }
 }   // namespace NCloud::NFileStore

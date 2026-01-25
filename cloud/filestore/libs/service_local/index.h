@@ -4,6 +4,7 @@
 
 #include "lowlevel.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/filestore.h>
 
 #include <cloud/storage/core/libs/common/persistent_table.h>
@@ -133,14 +134,52 @@ private:
 public:
     explicit TNodeMapper(INodeLoader& nodeLoader, TRWMutex& nodeLoaderLock);
 
-    // Return value:
-    // - value not present - no need to remap
-    // - value present and nullptr - remap didn't find the node
-    // - value present and != nullptr - the node was remapped successfully
-    std::optional<TIndexNodePtr> RemapNode(
+    struct TRemapResult
+    {
+        enum class EStatus
+        {
+            NotNeeded,
+            Remapped,
+        };
+
+        EStatus Status = EStatus::NotNeeded;
+        TIndexNodePtr Node;
+
+        static TRemapResult NotNeeded()
+        {
+            return {EStatus::NotNeeded, nullptr};
+        }
+
+        static TRemapResult NotFound()
+        {
+            return {EStatus::Remapped, nullptr};
+        }
+
+        static TRemapResult Remapped(TIndexNodePtr node)
+        {
+            return {EStatus::Remapped, std::move(node)};
+        }
+
+        [[nodiscard]] bool HasRemap() const
+        {
+            return Status == EStatus::Remapped;
+        }
+
+        [[nodiscard]] bool IsFound() const
+        {
+            return Status == EStatus::Remapped && Node;
+        }
+
+        [[nodiscard]] const TIndexNodePtr& GetNode() const
+        {
+            return Node;
+        }
+    };
+
+    TRemapResult RemapNode(
         ui64 parentNodeId,
         const TString& name);
-    std::optional<TIndexNodePtr> RemapNode(ui64 parentNodeId, ui64 nodeId);
+    TRemapResult RemapNode(ui64 parentNodeId, ui64 nodeId);
     TString ToString() const;
 };
 
@@ -256,21 +295,21 @@ public:
         return node;
     }
 
-    std::optional<TIndexNodePtr> RemapNode(
+    TNodeMapper::TRemapResult RemapNode(
         ui64 parentNodeId,
         const TString& name)
     {
         if (!NodeMapper) {
-            return {};
+            return TNodeMapper::TRemapResult::NotNeeded();
         }
 
         return NodeMapper->RemapNode(parentNodeId, name);
     }
 
-    std::optional<TIndexNodePtr> RemapNode(ui64 parentNodeId, ui64 nodeId)
+    TNodeMapper::TRemapResult RemapNode(ui64 parentNodeId, ui64 nodeId)
     {
         if (!NodeMapper) {
-            return {};
+            return TNodeMapper::TRemapResult::NotNeeded();
         }
 
         return NodeMapper->RemapNode(parentNodeId, nodeId);
@@ -374,6 +413,7 @@ private:
                 STORAGE_ERROR(
                     "Failed to initialize NodeLoader" <<
                     ", Exception=" << CurrentExceptionMessage());
+                ReportLocalFsFailedToInitNodeLoader();
             }
 
             try {
@@ -388,6 +428,7 @@ private:
                 STORAGE_ERROR(
                     "Failed to initialize NodeMapper" <<
                     ", Exception=" << CurrentExceptionMessage());
+                ReportLocalFsFailedToInitNodeMapper();
             }
         }
 

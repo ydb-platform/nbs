@@ -236,14 +236,14 @@ public:
         return Index.LookupNode(nodeId);
     }
 
-    std::optional<TIndexNodePtr> RemapNode(
+    TNodeMapper::TRemapResult RemapNode(
         ui64 parentNodeId,
         const TString& name)
     {
         return Index.RemapNode(parentNodeId, name);
     }
 
-    std::optional<TIndexNodePtr> RemapNode(ui64 parentNodeId, ui64 nodeId)
+    TNodeMapper::TRemapResult RemapNode(ui64 parentNodeId, ui64 nodeId)
     {
         return Index.RemapNode(parentNodeId, nodeId);
     }

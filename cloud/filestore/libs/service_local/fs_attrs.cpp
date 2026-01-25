@@ -84,12 +84,11 @@ NProto::TGetNodeAttrResponse TLocalFileSystem::GetNodeAttr(
     NLowLevel::TFileStatEx stat;
     if (const auto& name = request.GetName()) {
         auto remapResult = session->RemapNode(node->GetNodeId(), name);
-        if (remapResult) {
-            auto remappedNode = *remapResult;
-            if (!remappedNode) {
+        if (remapResult.HasRemap()) {
+            if (!remapResult.IsFound()) {
                 return TErrorResponse(E_FS_NOENT);
             }
-            stat = remappedNode->Stat();
+            stat = remapResult.GetNode()->Stat();
         } else {
             stat = node->Stat(name);
             if (!session->LookupNode(stat.INode)) {
