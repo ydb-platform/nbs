@@ -72,8 +72,7 @@ private:
     TLocalIndex Index;
     THashMap<ui64, std::pair<bool, TInstant>> SubSessions;
 
-    THolder<TFileLock> HandlesFileLock;
-    THolder<TFileLock> IndexFileLock;
+    THolder<TFileLock> SessionFileLock;
 public:
     TSession(
              const TString& fileSystemId,
@@ -105,22 +104,20 @@ public:
 
     virtual ~TSession()
     {
-        UnlockFile(HandlesFileLock);
-        UnlockFile(IndexFileLock);
+        UnlockFile(SessionFileLock);
     }
 
     NProto::TError TryInit(bool restoreClientSession)
     {
         auto handlesPath = StatePath / "handles";
-        auto indexPath = StatePath / "nodes";
 
-        if (!TryLockFile(handlesPath, HandlesFileLock) ||
-            !TryLockFile(indexPath, IndexFileLock))
+        auto lockPath = StatePath / "session.lock";
+        if (!TryLockFile(lockPath, SessionFileLock))
         {
             return MakeError(
                 E_FAIL,
                 TStringBuilder()
-                    << "Failed to lock state file, path: " << handlesPath);
+                    << "Failed to lock session state file " << lockPath);
         }
 
         Index.Init();
