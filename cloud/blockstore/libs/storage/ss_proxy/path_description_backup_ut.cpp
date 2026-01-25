@@ -146,12 +146,12 @@ Y_UNIT_TEST_SUITE(TPathDescriptionBackupTest)
 
     Y_UNIT_TEST(ShouldLoadFromBinaryFormat)
     {
-        DoShouldLoadFromBackup("backup.proto");
+        DoShouldLoadFromBackup("backup.bin");
     }
 
     Y_UNIT_TEST(ShouldLoadFromChunkedBinaryFormat)
     {
-        DoShouldLoadFromBackup("backup.chunked.proto");
+        DoShouldLoadFromBackup("backup.chunked.bin");
     }
 }
 
