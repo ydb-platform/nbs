@@ -35,8 +35,6 @@ Y_HAS_MEMBER(GetThrottlerDelay);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TDuration PipeInactivityTimeout = TDuration::Minutes(1);
-
 std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
     const TStorageConfig& config)
 {
@@ -176,6 +174,7 @@ class TVolumeProxyActor final
 
 private:
     const TStorageConfigPtr Config;
+    const TDuration PipeInactivityTimeout;
     const ITraceSerializerPtr TraceSerializer;
     const bool TemporaryServer = false;
 
@@ -298,11 +297,12 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumeProxyActor::TVolumeProxyActor(
-        TStorageConfigPtr config,
-        ITraceSerializerPtr traceSerializer,
-        bool temporaryServer)
+    TStorageConfigPtr config,
+    ITraceSerializerPtr traceSerializer,
+    bool temporaryServer)
     : TActor(&TThis::StateWork)
     , Config(std::move(config))
+    , PipeInactivityTimeout(Config->GetVolumeProxyPipeInactivityTimeout())
     , TraceSerializer(std::move(traceSerializer))
     , TemporaryServer(temporaryServer)
     , ClientCache(CreateTabletPipeClientCache(*Config))
