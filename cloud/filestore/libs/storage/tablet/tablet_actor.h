@@ -836,6 +836,10 @@ private:
         const TEvIndexTabletPrivate::TEvNodeUnlinkedInShard::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleUnlinkDirectoryNodeAbortedInShard(
+        const TEvIndexTabletPrivate::TEvUnlinkDirectoryNodeAbortedInShard::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleDoRenameNodeInDestination(
         const TEvIndexTabletPrivate::TEvDoRenameNodeInDestination::TPtr& ev,
         const NActors::TActorContext& ctx);
