@@ -73,7 +73,7 @@ def _setup_disk_registry_config(nbs, agent_id):
 
 def _wait_for_devices_to_be_cleared(client, expected_dirty_count=0):
     while True:
-        bkp = client.backup_disk_registry_state()["Backup"]
+        bkp = client.backup_disk_registry_state()["LocalBackup"]
         dirty_devices = bkp.get("DirtyDevices", [])
         dirty_count = len(dirty_devices)
         if dirty_count == expected_dirty_count:
@@ -305,7 +305,7 @@ def test_storage_discovery(
     client = NbsClient(nbs.port)
 
     _check_disk_agent_config(
-        client.backup_disk_registry_state()["Backup"]["Agents"][0],
+        client.backup_disk_registry_state()["LocalDBBackup"]["Agents"][0],
         agent_id,
         data_path)
 
@@ -338,7 +338,7 @@ def test_config_comparison(
     client = NbsClient(nbs.port)
 
     _check_disk_agent_config(
-        client.backup_disk_registry_state()["Backup"]["Agents"][0],
+        client.backup_disk_registry_state()["LocalDBBackup"]["Agents"][0],
         agent_id,
         data_path)
 
@@ -375,7 +375,7 @@ def test_add_devices(
     # just pools in the DR config
     client.update_disk_registry_config(KNOWN_DEVICE_POOLS)
 
-    bkp = client.backup_disk_registry_state()["Backup"]
+    bkp = client.backup_disk_registry_state()["LocalDBBackup"]
     assert bkp["Agents"][0]["AgentId"] == agent_id
     assert bkp["Agents"][0].get("Devices") is None
 
@@ -409,7 +409,7 @@ def test_add_devices(
     assert default_storage[0].ChunkCount == 1
     assert default_storage[0].ChunkSize == DEVICE_SIZE
 
-    bkp = client.backup_disk_registry_state()["Backup"]
+    bkp = client.backup_disk_registry_state()["LocalDBBackup"]
     assert bkp.get("DirtyDevices") is None
     assert bkp["Agents"][0]["AgentId"] == agent_id
     assert len(bkp["Agents"][0]["Devices"]) == 1
@@ -457,7 +457,7 @@ def test_add_devices(
     assert local_storage[0].ChunkCount == 4
     assert local_storage[0].ChunkSize == DEVICE_SIZE
 
-    bkp = client.backup_disk_registry_state()["Backup"]
+    bkp = client.backup_disk_registry_state()["LocalDBBackup"]
     assert bkp.get("DirtyDevices") is None
     assert len(bkp["Agents"][0]["Devices"]) == 10
     assert all([d.get("State") is None for d in bkp["Agents"][0]["Devices"]])
@@ -475,7 +475,7 @@ def test_add_devices(
     assert r.ActionResults[0].Result.Code == 0, r
 
     # we see all the devices in the backup
-    bkp = client.backup_disk_registry_state()["Backup"]
+    bkp = client.backup_disk_registry_state()["LocalDBBackup"]
     assert bkp.get("DirtyDevices") is not None
 
     # wait until rot devices to be cleared.
@@ -517,7 +517,7 @@ def test_remove_devices(
 
     def get_bkp():
         r = client.backup_disk_registry_state(source)
-        return r["Backup"]
+        return r["LocalDBBackup"] if source == EBackupDiskRegistryStateSource.BDRSS_LOCAL_DB else r['MemoryBackup']
 
     client = NbsClient(nbs.port)
     bkp = get_bkp()
@@ -605,13 +605,13 @@ def test_change_layout(
     disk_agent = start_disk_agent(disk_agent_configurator)
     disk_agent.wait_for_registration()
 
-    bkp = client.backup_disk_registry_state()["Backup"]
+    bkp = client.backup_disk_registry_state()["LocalDBBackup"]
 
     grpc_client = CreateClient(f"localhost:{nbs.port}")
 
     _add_devices(grpc_client, agent_id, [os.path.join(data_path, 'ROTNBS01')])
 
-    bkp = client.backup_disk_registry_state()["Backup"]
+    bkp = client.backup_disk_registry_state()["LocalDBBackup"]
 
     assert len(bkp["Config"]["KnownAgents"]) == 1
     assert bkp["Config"]["KnownAgents"][0]["AgentId"] == agent_id
@@ -633,7 +633,7 @@ def test_change_layout(
     disk_agent.wait_for_registration()
 
     # nothing has changed
-    bkp = client.backup_disk_registry_state()["Backup"]
+    bkp = client.backup_disk_registry_state()["LocalDBBackup"]
 
     assert len(bkp["Config"]["KnownAgents"]) == 1
     assert bkp["Config"]["KnownAgents"][0]["AgentId"] == agent_id
@@ -645,7 +645,7 @@ def test_change_layout(
     _add_devices(grpc_client, agent_id, [os.path.join(data_path, 'ROTNBS01')])
 
     # and again nothing has changed
-    bkp = client.backup_disk_registry_state()["Backup"]
+    bkp = client.backup_disk_registry_state()["LocalDBBackup"]
 
     assert len(bkp["Config"]["KnownAgents"]) == 1
     assert bkp["Config"]["KnownAgents"][0]["AgentId"] == agent_id
@@ -657,7 +657,7 @@ def test_change_layout(
     # remove all devices from config
     client.update_disk_registry_config({"Version": 2} | KNOWN_DEVICE_POOLS)
 
-    bkp = client.backup_disk_registry_state()["Backup"]
+    bkp = client.backup_disk_registry_state()["LocalDBBackup"]
 
     assert bkp["Config"].get("KnownAgents") is None
     assert bkp["Agents"][0]["AgentId"] == agent_id
@@ -666,7 +666,7 @@ def test_change_layout(
     _add_devices(grpc_client, agent_id, [os.path.join(data_path, 'ROTNBS01')])
 
     # now we have a new device
-    bkp = client.backup_disk_registry_state()["Backup"]
+    bkp = client.backup_disk_registry_state()["LocalDBBackup"]
 
     assert len(bkp["Config"]["KnownAgents"]) == 1
     assert bkp["Config"]["KnownAgents"][0]["AgentId"] == agent_id
@@ -747,7 +747,7 @@ def test_override_storage_discovery_config(
 
     _add_devices(grpc_client, custom_agent_id, [device_path])
 
-    bkp = client.backup_disk_registry_state()["Backup"]
+    bkp = client.backup_disk_registry_state()["LocalDBBackup"]
 
     assert len(bkp["Agents"]) == 2
 
