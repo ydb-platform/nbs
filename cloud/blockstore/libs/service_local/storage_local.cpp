@@ -810,6 +810,10 @@ TFuture<NProto::TError> TLocalStorage::EraseDevice(
             (DirectIO ? EOpenModeFlag::DirectAligned | EOpenModeFlag::Sync
                       : EOpenModeFlag());
 
+        TWriteGuard writeGuard(WriteSubmissionLock);
+
+        auto w = weak_from_this();
+
         return SafeDeallocateDevice(
                    File.GetName(),
                    TFileHandle{File.GetName(), flags},
@@ -817,20 +821,21 @@ TFuture<NProto::TError> TLocalStorage::EraseDevice(
                    StorageStartIndex,
                    StorageBlockCount,
                    BlockSize,
-                   NvmeManager)
+                   NvmeManager,
+                   ValidatedBlocksRatio)
             .Apply(
-                [this](const TFuture<NProto::TError>& future)
+                [w](const TFuture<NProto::TError>& future)
                 {
-                    if (future.GetValue().GetCode() == E_IO) {
+                    auto self = w.lock();
+                    if (self && future.GetValue().GetCode() == E_IO) {
                         Cerr << "Fallback to writing zeros" << Endl;
-                        TWriteGuard writeGuard(WriteSubmissionLock);
 
                         auto future = WriteZeroes(
-                            this->weak_from_this(),
+                            w,
                             MakeIntrusive<TCallContext>(),
-                            StorageStartIndex,
-                            StorageBlockCount,
-                            BlockSize);
+                            self->StorageStartIndex,
+                            self->StorageBlockCount,
+                            self->BlockSize);
 
                         return future.Apply(
                             [=](auto& future)
