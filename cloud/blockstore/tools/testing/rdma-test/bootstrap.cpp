@@ -68,6 +68,7 @@ void TBootstrap::Init()
         config->WaitMode = NRdma::EWaitMode(Options->WaitMode);
         config->IpTypeOfService = Options->Tos;
         config->SourceInterface = Options->SourceInterface;
+        config->VerbsQP = Options->VerbsQP;
 
         Verbs = NRdma::NVerbs::CreateVerbs();
 
@@ -83,6 +84,7 @@ void TBootstrap::Init()
         config->WaitMode = NRdma::EWaitMode(Options->WaitMode);
         config->IpTypeOfService = Options->Tos;
         config->SourceInterface = Options->SourceInterface;
+        config->VerbsQP = Options->VerbsQP;
 
         Verbs = NRdma::NVerbs::CreateVerbs();
 

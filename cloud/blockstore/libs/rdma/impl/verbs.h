@@ -124,10 +124,12 @@ struct IVerbs
         const void* private_data,
         ui8 private_data_len) = 0;
 
-    virtual void CreateQP(rdma_cm_id* id, ibv_qp_init_attr* attr) = 0;
-    virtual void DestroyQP(rdma_cm_id* id) = 0;
+    virtual void RdmaCreateQP(rdma_cm_id* id, ibv_qp_init_attr* attr) = 0;
+    virtual void RdmaDestroyQP(rdma_cm_id* id) = 0;
 
-    virtual void ModifyQP(ibv_qp *qp, ibv_qp_attr* attr, int mask) = 0;
+    virtual ibv_qp* CreateQP(ibv_pd* pd, ibv_qp_init_attr* attr) = 0;
+    virtual void DestroyQP(ibv_qp* qp) = 0;
+    virtual void ModifyQP(ibv_qp* qp, ibv_qp_attr* attr, int mask) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

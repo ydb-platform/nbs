@@ -72,6 +72,9 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument()
         .StoreResult(&SourceInterface);
 
+    opts.AddLongOption("verbs-qp")
+        .StoreTrue(&VerbsQP);
+
     // device geometry
     opts.AddLongOption("storage")
         .RequiredArgument("{" + GetEnumAllNames<EStorageKind>() + "}")

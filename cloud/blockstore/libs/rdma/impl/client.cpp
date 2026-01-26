@@ -663,7 +663,11 @@ void TClientEndpoint::CreateQP()
         .sq_sig_all = 1,
     };
 
-    Verbs->CreateQP(Connection.get(), &qp_attrs);
+    if (Config.VerbsQP) {
+        Connection->qp = Verbs->CreateQP(Connection->pd, &qp_attrs);
+    } else {
+        Verbs->RdmaCreateQP(Connection.get(), &qp_attrs);
+    }
 
     SendBuffers.Init(
         Verbs,
@@ -725,7 +729,11 @@ void TClientEndpoint::CreateQP()
 
 void TClientEndpoint::DestroyQP() noexcept
 {
-    Verbs->DestroyQP(Connection.get());
+    if (Config.VerbsQP) {
+        Verbs->DestroyQP(Connection->qp);
+    } else {
+        Verbs->RdmaDestroyQP(Connection.get());
+    }
 
     CompletionQueue.reset();
     CompletionChannel.reset();

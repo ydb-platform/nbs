@@ -53,6 +53,7 @@ struct TOptions
     ui32 ConnectTimeout = 5;
     ui8 Tos = 0;
     TString SourceInterface;
+    bool VerbsQP = false;
 
     // storage options
     EStorageKind StorageKind = EStorageKind::Null;
