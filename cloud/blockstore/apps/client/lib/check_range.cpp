@@ -12,6 +12,7 @@
 #include <library/cpp/json/easy_parse/json_easy_parser.h>
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/json/json_writer.h>
+#include <library/cpp/json/writer/json.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/folder/path.h>
@@ -65,7 +66,7 @@ struct TRequestBuilder
 // Full documentation is located in doc/blockstore/diagnostics/checkrange.md
 class TResultManager
 {
-    IOutputStream& Output;
+    NJsonWriter::TBuf Buffer;
     ui32 ErrorCount{0};
     ui32 RequestCount{0};
     TVector<TBlockRange64> ProblemRanges;
@@ -288,20 +289,21 @@ std::optional<TBlockRange64> TRequestBuilder::Next()
 }
 
 TResultManager::TResultManager(IOutputStream& output)
-    : Output(output)
+    : Buffer(NJsonWriter::EHtmlEscapeMode::HEM_DONT_ESCAPE_HTML, &output)
 {
-    Output << "{";
+    Buffer.BeginObject();
 }
 
 TResultManager::~TResultManager()
 {
     if (!HasBootstrapError) {
         if (RangeWritten) {
-            Output << "],\n";
+            Buffer.EndList();
         }
         WriteSummary();
     }
-    Output << "}";
+
+    Buffer.EndObject();
 }
 
 void TResultManager::SetBootstrapError(const NProto::TError& error)
@@ -364,18 +366,19 @@ void TResultManager::AddProblemRangeWithMerging(const TBlockRange64& range)
 
 void TResultManager::WriteKV(const TString& key, const NJson::TJsonValue& val)
 {
-    Output << key.Quote() << ": " << NJson::WriteJson(val);
+    Buffer.WriteKey(key);
+    Buffer.WriteJsonValue(&val);
 }
 
 void TResultManager::WriteRangeResult(const NJson::TJsonValue& rangeRes)
 {
-    if (RangeWritten) {
-        Output << ",";
-    } else {
+    if (!RangeWritten) {
         RangeWritten = true;
-        Output << "\n\"Ranges\": [";
+        Buffer.WriteKey("Ranges");
+        Buffer.BeginList();
     }
-    Output << NJson::WriteJson(rangeRes);
+
+    Buffer.WriteJsonValue(&rangeRes);
 }
 
 void TResultManager::WriteSummary()
