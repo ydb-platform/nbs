@@ -1,0 +1,1 @@
+/home/sergei-vorobev/.ya/build/symres/a9d7de6b5b035b8a3432a9e54036d4e2/service.pb.gw.go

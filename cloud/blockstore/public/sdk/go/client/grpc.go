@@ -109,7 +109,7 @@ func (client *grpcClient) executeRequest(
 	format := "%s #%d sending request"
 	if requestLogLevel(req) == LOG_DEBUG {
 		client.logger.Debugf(format, requestName(req), requestId)
-	}else{
+	} else {
 		client.logger.Infof(format, requestName(req), requestId)
 	}
 
