@@ -45,6 +45,7 @@ namespace NCloud::NFileStore{
     xxx(LocalFsFailedToInitNodeMapper)                                         \
     xxx(LocalFsFailedToRefreshSnapshotsDir)                                    \
     xxx(LocalFsFailedToLoadSnapshotDir)                                        \
+    xxx(IsNotDirectory)                                                        \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \
