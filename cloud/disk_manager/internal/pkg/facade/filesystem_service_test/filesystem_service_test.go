@@ -104,7 +104,7 @@ func TestCreateFilesystemInCells(t *testing.T) {
 	require.NoError(t, err)
 	defer zoneNfsClient.Close()
 
-	session, err = zoneNfsClient.CreateSession(
+	_, err = zoneNfsClient.CreateSession(
 		ctx,
 		filesystemID,
 		"",
