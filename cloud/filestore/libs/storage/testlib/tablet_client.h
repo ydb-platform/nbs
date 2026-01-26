@@ -66,7 +66,7 @@ struct TPerformanceProfile
     ui64 DefaultPostponedRequestWeight = 0;
 };
 
-const TString DefaultFileSystemId = "test";
+const TStringBuf DefaultFileSystemId = "test";
 
 struct TFileSystemConfig
 {

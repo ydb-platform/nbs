@@ -986,7 +986,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             "Expected at least 3 different generations due to tablet reboots");
     }
 
-    Y_UNIT_TEST(ShouldHandleCommitIdOverflowInNodesOperations)
+    Y_UNIT_TEST(ShouldHandleCommitIdOverflowInCreateAndUnlinkNode)
     {
         const ui32 maxTabletStep = 4;
 
@@ -1021,7 +1021,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
 
         THashMap<ui64, ui64> nodeIds;
 
-        for (int i = 0; i < 10;) {
+        for (int i = 0; i < 5;) {
             tablet.SendCreateNodeRequest(
                 TCreateNodeArgs::File(RootNodeId, "test" + ToString(i)));
             auto response = tablet.RecvCreateNodeResponse();
@@ -1045,51 +1045,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
 
         UNIT_ASSERT(createNodeFailed);
 
-        bool updateNodeFailed = false;
-
-        for (int i = 0; i < 5;) {
-            tablet.SendUnsafeUpdateNodeRequest(nodeIds[i], i * 100);
-            auto response = tablet.RecvUnsafeUpdateNodeResponse();
-            reconnectIfNeeded();
-
-            if (HasError(response->GetError())) {
-                UNIT_ASSERT_VALUES_EQUAL(
-                    E_REJECTED,
-                    response->GetError().GetCode());
-                updateNodeFailed = true;
-            } else {
-                auto getResponse = tablet.GetNodeAttr(nodeIds[i]);
-                UNIT_ASSERT(getResponse);
-                UNIT_ASSERT_VALUES_EQUAL(
-                    i * 100,
-                    getResponse->Record.GetNode().GetSize());
-                ++i;
-            }
-        }
-
-        UNIT_ASSERT(updateNodeFailed);
-
-        bool deleteNodeFailed = false;
-
-        for (int i = 0; i < 5; ++i) {
-            tablet.SendUnsafeDeleteNodeRequest(nodeIds[i]);
-            auto deleteResponse = tablet.RecvUnsafeDeleteNodeResponse();
-            reconnectIfNeeded();
-
-            if (!HasError(deleteResponse->GetError())) {
-                tablet.SendUnsafeGetNodeRequest(nodeIds[i]);
-                auto getResponse = tablet.RecvUnsafeGetNodeResponse();
-                UNIT_ASSERT(HasError(getResponse->GetError()));
-            } else {
-                deleteNodeFailed = true;
-            }
-        }
-
-        UNIT_ASSERT(deleteNodeFailed);
-
         bool unlinkNodeFailed = false;
 
-        for (int i = 5; i < 10; ++i) {
+        for (int i = 0; i < 5; ++i) {
             tablet.SendUnlinkNodeRequest(
                 RootNodeId,
                 "test" + ToString(i),
@@ -1111,8 +1069,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         UNIT_ASSERT(unlinkNodeFailed);
 
         UNIT_ASSERT_C(
-            rebootTracker.GetGenerationCount() >= 4,
-            "Expected at least 4 different generations due to tablet reboots");
+            rebootTracker.GetGenerationCount() >= 2,
+            "Expected at least 2 different generations due to tablet reboots");
     }
 
     Y_UNIT_TEST(ShouldPayRespectToInodeLimits)

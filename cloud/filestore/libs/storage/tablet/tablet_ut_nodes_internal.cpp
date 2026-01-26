@@ -285,6 +285,101 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         UNIT_ASSERT_GT(failures, 0);
     }
 
+    Y_UNIT_TEST(ShouldHandleCommitIdOverflowInUnsafeNodeOperations)
+    {
+        const ui32 maxTabletStep = 4;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxTabletStep(maxTabletStep);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        auto reconnectIfNeeded = [&]()
+        {
+            if (rebootTracker.IsPipeDestroyed()) {
+                tablet.ReconnectPipe();
+                tablet.WaitReady();
+                tablet.RecoverSession();
+                rebootTracker.ClearPipeDestroyed();
+            }
+        };
+
+        tablet.InitSession("client", "session");
+
+        THashMap<ui64, ui64> nodeIds;
+
+        for (int i = 0; i < 5;) {
+            tablet.SendCreateNodeRequest(
+                TCreateNodeArgs::File(RootNodeId, "test" + ToString(i)));
+            auto response = tablet.RecvCreateNodeResponse();
+            reconnectIfNeeded();
+            if (HasError(response->GetError())) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_REJECTED,
+                    response->GetError().GetCode());
+            } else {
+                nodeIds[i] = response->Record.GetNode().GetId();
+                ++i;
+            }
+        }
+
+        bool updateNodeFailed = false;
+
+        for (int i = 0; i < 5;) {
+            tablet.SendUnsafeUpdateNodeRequest(nodeIds[i], i * 100);
+            auto response = tablet.RecvUnsafeUpdateNodeResponse();
+            reconnectIfNeeded();
+
+            if (HasError(response->GetError())) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_REJECTED,
+                    response->GetError().GetCode());
+                updateNodeFailed = true;
+            } else {
+                auto getResponse = tablet.GetNodeAttr(nodeIds[i]);
+                UNIT_ASSERT(getResponse);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    i * 100,
+                    getResponse->Record.GetNode().GetSize());
+                ++i;
+            }
+        }
+
+        UNIT_ASSERT(updateNodeFailed);
+
+        bool deleteNodeFailed = false;
+
+        for (int i = 0; i < 5; ++i) {
+            tablet.SendUnsafeDeleteNodeRequest(nodeIds[i]);
+            auto deleteResponse = tablet.RecvUnsafeDeleteNodeResponse();
+            reconnectIfNeeded();
+
+            if (!HasError(deleteResponse->GetError())) {
+                tablet.SendUnsafeGetNodeRequest(nodeIds[i]);
+                auto getResponse = tablet.RecvUnsafeGetNodeResponse();
+                UNIT_ASSERT(HasError(getResponse->GetError()));
+            } else {
+                deleteNodeFailed = true;
+            }
+        }
+
+        UNIT_ASSERT(deleteNodeFailed);
+
+        UNIT_ASSERT_C(
+            rebootTracker.GetGenerationCount() >= 3,
+            "Expected at least 3 different generations due to tablet reboots");
+    }
+
     TABLET_TEST_4K_ONLY(
         ShouldHandleCommitIdOverflowUponCommitRenameNodeInSource)
     {
