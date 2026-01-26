@@ -3,6 +3,10 @@ name: Build and test NBS on demand
 on:
   workflow_dispatch:
     inputs:
+      component:
+        type: string
+        default: ""
+        description: "component name"
       build_target:
         type: string
         default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
@@ -57,6 +61,10 @@ on:
         description: "Number of retries for tests"
   workflow_call:
     inputs:
+      component:
+        type: string
+        default: ""
+        description: "component name"
       build_target:
         type: string
         default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
@@ -188,7 +196,7 @@ jobs:
           tests_size: ${{ inputs.test_size }}
 
   build-and-test:
-    name: Build and test NBS (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
+    name: Build and test NBS (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }}]
     uses: ./.github/workflows/on_demand_build_and_test_ya.yaml
     needs:
       - provide-runner
@@ -196,7 +204,8 @@ jobs:
       runner_kind: self-hosted
       runner_label: ${{ needs.provide-runner.outputs.label }}
       runner_instance_id: ${{ needs.provide-runner.outputs.instance-id }}
-      runner_ipv4: ${{ needs.provide-runner.outputs.runner_ipv4 }}
+      runner_ipv4: ${{ needs.provide-runner.outputs.local_ipv4 }}
+      component: ${{ inputs.component }}
       build_target: ${{ inputs.build_target }}
       test_target: ${{ inputs.test_target }}
       build_preset: ${{ inputs.build_preset }}
@@ -235,7 +244,7 @@ jobs:
           /usr/bin/sleep ${{ needs.build-and-test.outputs.sleep_after_tests }}
 
   release-runner:
-    name: Release self-hosted runner (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
+    name: Release self-hosted runner (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }}]
     needs:
       - provide-runner  # required to get output from the start-runner job
       - build-and-test  # required to wait when the main job is done
