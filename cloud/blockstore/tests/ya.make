@@ -13,6 +13,7 @@ RECURSE(
     disk_agent_config
     disk_states
     default_encryption
+    ensure_disk_registry_state_integrity
     external_endpoint
     e2e-tests
     e2e-tests-vhost

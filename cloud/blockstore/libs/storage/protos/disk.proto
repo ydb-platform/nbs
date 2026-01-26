@@ -1352,8 +1352,11 @@ message TBackupDiskRegistryStateRequest
     // Optional request headers.
     THeaders Headers = 1;
 
-    // Backup local DB instead of memory state.
+    // deprecated
     bool BackupLocalDB = 2;
+
+    // Source of Disk Registry state backup
+    EBackupDiskRegistryStateSource Source = 4;
 
     // File to save backup file.
     string BackupFilePath = 3;
@@ -1365,10 +1368,12 @@ message TBackupDiskRegistryStateResponse
     NCloud.NProto.TError Error = 1;
 
     // Disk Regsitry state backup
-    TDiskRegistryStateBackup Backup = 2;
+    TDiskRegistryStateBackup MemoryBackup = 2;
 
     // File to save backup file.
     string BackupFilePath = 3;
+
+    TDiskRegistryStateBackup LocalDBBackup = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1885,4 +1890,16 @@ message TAttachPathsResponse
 
     // List of attached devices.
     repeated TDeviceConfig AttachedDevices = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// TEnsureDiskRegistryStateIntegrityRequest request/response.
+
+message TEnsureDiskRegistryStateIntegrityRequest
+{
+}
+
+message TEnsureDiskRegistryStateIntegrityResponse
+{
+    NCloud.NProto.TError Error = 1;
 }

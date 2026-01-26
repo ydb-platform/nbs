@@ -129,7 +129,6 @@ private:
     ILoggingServicePtr Logging;
 
     TTransactionTimeTracker TransactionTimeTracker;
-
 public:
     TDiskRegistryActor(
         const NActors::TActorId& owner,
@@ -322,10 +321,12 @@ private:
     void ScheduleDiskRegistryAgentListExpiredParamsCleanup(
         const NActors::TActorContext& ctx);
 
+    void ScheduleEnsureDiskRegistryStateIntegrity(
+        const NActors::TActorContext& ctx);
+
     void InitializeState(TDiskRegistryStateSnapshot snapshot);
 
     void ProcessInitialAgentRejectionPhase(const NActors::TActorContext& ctx);
-
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);
@@ -516,6 +517,14 @@ private:
 
     void HandleSwitchAgentDisksToReadOnlyReshedule(
         const TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleEnsureDiskRegistryStateIntegrityResponse(
+        const TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleScheduledEnsureDiskRegistryStateIntegrity(
+        const TEvDiskRegistryPrivate::TEvEnsureDiskRegistryStateIntegrity::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_DISK_REGISTRY_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskRegistry)

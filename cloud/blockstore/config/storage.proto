@@ -1405,4 +1405,8 @@ message TStorageServiceConfig
     // When disabled, fast path waits for data and 2 checksums before replying
     // to the client.
     optional bool OptimizeFastPathReadsOnResync = 476;
+
+    // Periodically checks disk registry state consistency with local db.
+    // If equals zero check is disabled.
+    optional uint32 EnsureDiskRegistryStateIntegrityInterval = 477;
 }

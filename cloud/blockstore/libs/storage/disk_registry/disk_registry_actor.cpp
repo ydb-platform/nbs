@@ -95,7 +95,7 @@ void TDiskRegistryActor::ScheduleMakeBackup(
     }
     auto request =
         std::make_unique<TEvDiskRegistry::TEvBackupDiskRegistryStateRequest>();
-    request->Record.SetBackupLocalDB(true);
+    request->Record.SetSource(NProto::BDRSS_LOCAL_DB);
     request->Record.SetBackupFilePath(TStringBuilder()
         << backupDirPath << "/" + hostPrefix << FormatIsoLocal(ctx.Now()) << ".json");
 
@@ -297,6 +297,18 @@ void TDiskRegistryActor::ScheduleDiskRegistryAgentListExpiredParamsCleanup(
         new TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup());
 }
 
+void TDiskRegistryActor::ScheduleEnsureDiskRegistryStateIntegrity(
+    const NActors::TActorContext& ctx)
+{
+    if (!Config->GetEnsureDiskRegistryStateIntegrityInterval()) {
+        return;
+    }
+
+    ctx.Schedule(
+        Config->GetEnsureDiskRegistryStateIntegrityInterval(),
+        new TEvDiskRegistryPrivate::TEvEnsureDiskRegistryStateIntegrity());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryActor::HandlePoisonPill(
@@ -373,7 +385,7 @@ void TDiskRegistryActor::HandleBackupDiskRegistryStateResponse(
         const TString filePath = msg->Record.GetBackupFilePath();
         if (!filePath.empty()) {
             try {
-                if (!msg->Record.GetBackup().GetConfig().ByteSize()) {
+                if (!msg->Record.GetLocalDBBackup().GetConfig().ByteSize()) {
                     LOG_WARN(
                         ctx, TBlockStoreComponents::DISK_REGISTRY,
                         "The backup file is not created "
@@ -724,6 +736,19 @@ STFUNC(TDiskRegistryActor::StateWork)
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanup);
 
+        HFunc(
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest,
+            HandleEnsureDiskRegistryStateIntegrity);
+
+        HFunc(
+            TEvDiskRegistryPrivate::TEvEnsureDiskRegistryStateIntegrity,
+            HandleScheduledEnsureDiskRegistryStateIntegrity);
+
+        HFunc(
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse,
+            HandleEnsureDiskRegistryStateIntegrityResponse
+        )
+
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
                 HandleUnexpectedEvent(
@@ -772,6 +797,19 @@ STFUNC(TDiskRegistryActor::StateRestore)
         HFunc(
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly);
+
+        HFunc(
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest,
+            HandleEnsureDiskRegistryStateIntegrity);
+
+        HFunc(
+            TEvDiskRegistryPrivate::TEvEnsureDiskRegistryStateIntegrity,
+            HandleScheduledEnsureDiskRegistryStateIntegrity);
+
+        HFunc(
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse,
+            HandleEnsureDiskRegistryStateIntegrityResponse
+        )
 
         IgnoreFunc(TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
 
@@ -843,6 +881,19 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
         HFunc(
             TEvDiskRegistry::TEvGetClusterCapacityRequest,
             HandleGetClusterCapacity);
+
+        HFunc(
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest,
+            HandleEnsureDiskRegistryStateIntegrity);
+
+        HFunc(
+            TEvDiskRegistryPrivate::TEvEnsureDiskRegistryStateIntegrity,
+            HandleScheduledEnsureDiskRegistryStateIntegrity);
+
+        HFunc(
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse,
+            HandleEnsureDiskRegistryStateIntegrityResponse
+        )
 
         IgnoreFunc(
             TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);

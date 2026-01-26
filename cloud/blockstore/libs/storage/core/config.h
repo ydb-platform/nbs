@@ -757,6 +757,8 @@ public:
     [[nodiscard]] bool GetEnableVhostDiscardForNewVolumes() const;
 
     [[nodiscard]] ui32 GetTabletExecutorRejectionThreshold() const;
+
+    [[nodiscard]] TDuration GetEnsureDiskRegistryStateIntegrityInterval() const;
 };
 
 ui64 GetAllocationUnit(

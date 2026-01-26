@@ -4,7 +4,7 @@ import subprocess
 from subprocess import PIPE
 
 from cloud.blockstore.public.sdk.python.protos import TUpdateDiskRegistryConfigRequest, \
-    TDescribeDiskRegistryConfigResponse
+    TDescribeDiskRegistryConfigResponse, EBackupDiskRegistryStateSource
 
 from google.protobuf.text_format import MessageToString, Parse as ProtoParse
 from google.protobuf.json_format import MessageToDict, ParseDict
@@ -112,8 +112,8 @@ class NbsClient:
 
         return self.__execute_action('DiskRegistrySetWritableState', req)
 
-    def backup_disk_registry_state(self, backup_local_db=True):
-        req = {"BackupLocalDB": backup_local_db}
+    def backup_disk_registry_state(self, source=EBackupDiskRegistryStateSource.BDRSS_LOCAL_DB):
+        req = {"Source": source}
 
         resp = self.__execute_action('BackupDiskRegistryState', req)
 
@@ -185,5 +185,12 @@ class NbsClient:
         req = {"ChangeAgentState": {"AgentId": agent_id, "State": state}, "Message": "XXX"}
 
         resp = self.__execute_action("diskregistrychangestate", req, timeout)
+
+        return json.loads(resp)
+
+    def ensure_disk_registry_state_integrity(self, timeout=300):
+        req = {}
+
+        resp = self.__execute_action("ensurediskregistrystateintegrity", req, timeout)
 
         return json.loads(resp)

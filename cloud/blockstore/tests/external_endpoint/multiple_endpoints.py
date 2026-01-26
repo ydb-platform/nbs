@@ -147,7 +147,7 @@ def setup_env(nbs, disk_agent, data_path):
     # wait for devices to be cleared
     nbs_client = NbsClient(nbs.port)
     while True:
-        bkp = nbs_client.backup_disk_registry_state()["Backup"]
+        bkp = nbs_client.backup_disk_registry_state()["LocalDBBackup"]
         if bkp.get("DirtyDevices", 0) == 0:
             break
         time.sleep(1)

@@ -158,6 +158,10 @@ private:
                 TEvDiskRegistry::TEvGetClusterCapacityRequest,
                 HandleGetClusterCapacity);
 
+            HFunc(
+                TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest,
+                HandleEnsureDiskRegistryStateIntegrity);
+
             IgnoreFunc(NKikimr::TEvLocal::TEvTabletMetrics);
 
             default:
@@ -805,7 +809,7 @@ private:
     {
         auto response = std::make_unique<TEvDiskRegistry::TEvBackupDiskRegistryStateResponse>();
 
-        auto& backup = *response->Record.MutableBackup();
+        auto& backup = *response->Record.MutableMemoryBackup();
 
         for (const auto& [id, disk]: State->Disks) {
             auto& config = *backup.AddDisks();
@@ -1099,6 +1103,16 @@ private:
 
         *response->Record.AddCapacity() = std::move(capacityInfo);
         NCloud::Reply(ctx, *ev, std::move(response));
+    }
+
+    void HandleEnsureDiskRegistryStateIntegrity(
+        const TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse>());
     }
 };
 
