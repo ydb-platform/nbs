@@ -444,9 +444,7 @@ async def run(github: Github, sdk: SDK, args: argparse.Namespace) -> bool:
 
 async def main():
     parser = argparse.ArgumentParser(description="Manage GitHub runners on Nebius.")
-    parser.add_argument(
-        "--api-endpoint", default="api.ai.nebius.cloud", help="Cloud API endpoint"
-    )
+
     parser.add_argument(
         "--service-account-key",
         required=True,

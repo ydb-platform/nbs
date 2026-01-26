@@ -716,6 +716,8 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
     TTransactionContext& tx,
     TTxIndexTablet::TCreateNode& args)
 {
+    Y_UNUSED(ctx);
+
     FILESTORE_VALIDATE_TX_ERROR(CreateNode, args);
 
     TSession* session = nullptr;
@@ -733,7 +735,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "CreateNode");
+        return args.OnCommitIdOverflow();
     }
 
     if (args.TargetNodeId == InvalidNodeId) {
@@ -975,7 +977,10 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
             NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
         }
 
-        ExecuteTx<TDeleteOpLogEntry>(ctx, msg->OpLogEntryId);
+        ExecuteTx<TDeleteOpLogEntry>(
+            ctx,
+            TRequestInfoPtr() /* requestInfo */,
+            msg->OpLogEntryId);
     } else {
         TABLET_VERIFY_C(
             0,

@@ -1,7 +1,5 @@
 #pragma once
 
-#include "public.h"
-
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/api/components.h>
@@ -11,6 +9,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/blob.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 #include <cloud/filestore/libs/storage/tablet/model/shard_balancer.h>
+#include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/common/byte_range.h>
@@ -53,6 +52,11 @@ namespace NCloud::NFileStore::NStorage {
     xxx(GenerateCommitId,                       __VA_ARGS__)                   \
     xxx(SyncShardSessions,                      __VA_ARGS__)                   \
     xxx(LoadCompactionMapChunk,                 __VA_ARGS__)                   \
+    xxx(PrepareRenameNodeInSource,              __VA_ARGS__)                   \
+    xxx(CommitRenameNodeInSource,               __VA_ARGS__)                   \
+    xxx(CompleteUnlinkNode,                     __VA_ARGS__)                   \
+    xxx(DeleteOpLogEntry,                       __VA_ARGS__)                   \
+    xxx(GetOpLogEntry,                          __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE
 
 #define FILESTORE_TABLET_REQUESTS_PRIVATE(xxx, ...)                            \
@@ -142,24 +146,6 @@ enum class EAddBlobMode
     FlushBytes,
     Compaction,
 };
-
-inline TString GetAddBlobModeName(EAddBlobMode mode)
-{
-    switch (mode) {
-        case EAddBlobMode::Write:
-            return "AddBlobWrite";
-        case EAddBlobMode::WriteBatch:
-            return "AddBlobWriteBatch";
-        case EAddBlobMode::Flush:
-            return "AddBlobFlush";
-        case EAddBlobMode::FlushBytes:
-            return "AddBlobFlushBytes";
-        case EAddBlobMode::Compaction:
-            return "AddBlobCompaction";
-        default:
-            return "AddBlobUnknown";
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -717,6 +703,28 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // DoRenameNodeInDestination
+    //
+
+    struct TDoRenameNodeInDestination
+    {
+        TRequestInfoPtr RequestInfo;
+        NProtoPrivate::TRenameNodeInDestinationRequest Request;
+        NProto::TNodeAttr SourceNodeAttr;
+        NProto::TNodeAttr DestinationNodeAttr;
+        bool IsDestinationEmptyDir = false;
+        NProto::TError Error;
+
+        TDoRenameNodeInDestination(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TRenameNodeInDestinationRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {
+        }
+    };
+
+    //
     // NodeRenamedInDestination
     //
 
@@ -744,6 +752,126 @@ struct TEvIndexTabletPrivate
             , Response(std::move(response))
         {
         }
+    };
+
+    //
+    // PrepareRenameNodeInSource
+    //
+    // NOTE: This event is not supposed to be sent outside of unit tests.
+    //
+
+    struct TPrepareRenameNodeInSourceRequest
+    {
+        NProto::TRenameNodeRequest Request;
+        TString NewShardId;
+
+        TPrepareRenameNodeInSourceRequest(
+                NProto::TRenameNodeRequest request,
+                TString newShardId)
+            : Request(std::move(request))
+            , NewShardId(std::move(newShardId))
+        {
+        }
+    };
+
+    struct TPrepareRenameNodeInSourceResponse
+    {
+        ui64 OpLogEntryId = 0;
+    };
+
+    //
+    // CommitRenameNodeInSource
+    //
+    // NOTE: This event is not supposed to be sent outside of unit tests.
+    //
+
+    struct TCommitRenameNodeInSourceRequest
+    {
+        NProto::TRenameNodeRequest Request;
+        NProtoPrivate::TRenameNodeInDestinationResponse Response;
+        const ui64 OpLogEntryId;
+
+        TCommitRenameNodeInSourceRequest(
+                NProto::TRenameNodeRequest request,
+                NProtoPrivate::TRenameNodeInDestinationResponse response,
+                ui64 opLogEntryId)
+            : Request(std::move(request))
+            , Response(std::move(response))
+            , OpLogEntryId(opLogEntryId)
+        {
+        }
+    };
+
+    struct TCommitRenameNodeInSourceResponse
+    {
+    };
+
+    //
+    // CompleteUnlinkNode
+    //
+    // NOTE: This event is not supposed to be sent outside of unit tests.
+    //
+
+    struct TCompleteUnlinkNodeRequest
+    {
+        NProto::TUnlinkNodeRequest Request;
+        NProto::TUnlinkNodeResponse Response;
+        const ui64 OpLogEntryId;
+
+        TCompleteUnlinkNodeRequest(
+                NProto::TUnlinkNodeRequest request,
+                NProto::TUnlinkNodeResponse response,
+                ui64 opLogEntryId)
+            : Request(std::move(request))
+            , Response(std::move(response))
+            , OpLogEntryId(opLogEntryId)
+        {
+        }
+    };
+
+    struct TCompleteUnlinkNodeResponse
+    {
+    };
+
+    //
+    // DeleteOpLogEntry
+    //
+    // NOTE: This event is not supposed to be sent outside of unit tests.
+    //
+
+    struct TDeleteOpLogEntryRequest
+    {
+        const ui64 OpLogEntryId;
+
+        explicit TDeleteOpLogEntryRequest(ui64 opLogEntryId)
+            : OpLogEntryId(opLogEntryId)
+        {
+        }
+    };
+
+    struct TDeleteOpLogEntryResponse
+    {
+    };
+
+    //
+    // GetOpLogEntry
+    //
+    // NOTE: This event is not supposed to be sent outside of unit tests.
+    //
+
+    struct TGetOpLogEntryRequest
+    {
+        const ui64 OpLogEntryId;
+
+        explicit TGetOpLogEntryRequest(ui64 opLogEntryId)
+            : OpLogEntryId(opLogEntryId)
+        {
+        }
+    };
+
+    struct TGetOpLogEntryResponse
+    {
+        TMaybe<NProto::TOpLogEntry> OpLogEntry;
     };
 
     //
@@ -902,7 +1030,7 @@ struct TEvIndexTabletPrivate
     {
         TStackVec<ui64, 16> Nodes;
 
-        TFilterAliveNodesRequest(TStackVec<ui64, 16> nodes)
+        explicit TFilterAliveNodesRequest(TStackVec<ui64, 16> nodes)
             : Nodes(std::move(nodes))
         {}
     };
@@ -975,6 +1103,7 @@ struct TEvIndexTabletPrivate
 
         EvNodeCreatedInShard,
         EvNodeUnlinkedInShard,
+        EvDoRenameNodeInDestination,
         EvNodeRenamedInDestination,
 
         EvAggregateStatsCompleted,
@@ -1018,6 +1147,9 @@ struct TEvIndexTabletPrivate
 
     using TEvNodeUnlinkedInShard =
         TRequestEvent<TNodeUnlinkedInShard, EvNodeUnlinkedInShard>;
+
+    using TEvDoRenameNodeInDestination =
+        TRequestEvent<TDoRenameNodeInDestination, EvDoRenameNodeInDestination>;
 
     using TEvNodeRenamedInDestination =
         TRequestEvent<TNodeRenamedInDestination, EvNodeRenamedInDestination>;

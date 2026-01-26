@@ -1,6 +1,7 @@
 #include "tablet_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
+#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -19,6 +20,193 @@ NProto::TError ValidateRequest(
     Y_UNUSED(request);
 
     return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TGetExtraSourceAndDestinationInfoActor final
+    : public TActorBootstrapped<TGetExtraSourceAndDestinationInfoActor>
+{
+private:
+    const TString LogTag;
+    const TActorId ParentId;
+    TString DstShardId;
+    TString DstShardNodeName;
+    TEvIndexTabletPrivate::TDoRenameNodeInDestination Result;
+
+    static constexpr ui64 SourceCookie = 1;
+    static constexpr ui64 DstCookie = 2;
+
+    ui32 ResultCount = 0;
+
+public:
+    TGetExtraSourceAndDestinationInfoActor(
+        TString logTag,
+        TRequestInfoPtr requestInfo,
+        const TActorId& parentId,
+        NProtoPrivate::TRenameNodeInDestinationRequest request,
+        TString dstShardId,
+        TString dstShardNodeName);
+
+    void Bootstrap(const TActorContext& ctx);
+
+private:
+    STFUNC(StateWork);
+
+    void SendRequests(const TActorContext& ctx);
+
+    void SendRequest(
+        const TActorContext& ctx,
+        const TString& shardId,
+        const TString& shardNodeName,
+        ui64 cookie);
+
+    void HandleGetNodeAttrResponse(
+        const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandlePoisonPill(
+        const TEvents::TEvPoisonPill::TPtr& ev,
+        const TActorContext& ctx);
+
+    void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TGetExtraSourceAndDestinationInfoActor::TGetExtraSourceAndDestinationInfoActor(
+        TString logTag,
+        TRequestInfoPtr requestInfo,
+        const TActorId& parentId,
+        NProtoPrivate::TRenameNodeInDestinationRequest request,
+        TString dstShardId,
+        TString dstShardNodeName)
+    : LogTag(std::move(logTag))
+    , ParentId(parentId)
+    , DstShardId(std::move(dstShardId))
+    , DstShardNodeName(std::move(dstShardNodeName))
+    , Result(std::move(requestInfo), std::move(request))
+{}
+
+void TGetExtraSourceAndDestinationInfoActor::Bootstrap(const TActorContext& ctx)
+{
+    SendRequests(ctx);
+    Become(&TThis::StateWork);
+}
+
+void TGetExtraSourceAndDestinationInfoActor::SendRequest(
+    const TActorContext& ctx,
+    const TString& shardId,
+    const TString& shardNodeName,
+    ui64 cookie)
+{
+    auto request = std::make_unique<TEvService::TEvGetNodeAttrRequest>();
+    request->Record.MutableHeaders()->CopyFrom(Result.Request.GetHeaders());
+    request->Record.SetFileSystemId(shardId);
+    request->Record.SetNodeId(RootNodeId);
+    request->Record.SetName(shardNodeName);
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s Sending GetNodeAttrRequest to shard %s, %s",
+        LogTag.c_str(),
+        request->Record.GetFileSystemId().c_str(),
+        request->Record.GetName().c_str());
+
+    ctx.Send(
+        MakeIndexTabletProxyServiceId(),
+        request.release(),
+        0 /* flags */,
+        cookie);
+}
+
+void TGetExtraSourceAndDestinationInfoActor::SendRequests(const TActorContext& ctx)
+{
+    SendRequest(
+        ctx,
+        Result.Request.GetSourceNodeShardId(),
+        Result.Request.GetSourceNodeShardNodeName(),
+        SourceCookie);
+
+    SendRequest(
+        ctx,
+        DstShardId,
+        DstShardNodeName,
+        DstCookie);
+}
+
+void TGetExtraSourceAndDestinationInfoActor::HandleGetNodeAttrResponse(
+    const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s Got GetNodeAttrResponse %s, %lu",
+        LogTag.c_str(),
+        msg->Record.ShortUtf8DebugString().Quote().c_str(),
+        ev->Cookie);
+
+    if (HasError(msg->GetError())) {
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
+    if (ev->Cookie == SourceCookie) {
+        Result.SourceNodeAttr = *msg->Record.MutableNode();
+    } else {
+        Y_DEBUG_ABORT_UNLESS(ev->Cookie == DstCookie);
+        Result.DestinationNodeAttr = *msg->Record.MutableNode();
+    }
+
+    if (++ResultCount == 2) {
+        // TODO(#2674): if dst is a dir, it's going to be unlinked - we need
+        // to do an atomic check-emptiness-and-lock op for that dir before
+        // replying
+        Result.IsDestinationEmptyDir = true;
+
+        ReplyAndDie(ctx, MakeError(S_OK));
+    }
+}
+
+void TGetExtraSourceAndDestinationInfoActor::HandlePoisonPill(
+    const TEvents::TEvPoisonPill::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
+}
+
+void TGetExtraSourceAndDestinationInfoActor::ReplyAndDie(
+    const TActorContext& ctx,
+    NProto::TError error)
+{
+    using TResponse = TEvIndexTabletPrivate::TEvDoRenameNodeInDestination;
+    Result.Error = std::move(error);
+    ctx.Send(
+        ParentId,
+        std::make_unique<TResponse>(std::move(Result)));
+
+    Die(ctx);
+}
+
+STFUNC(TGetExtraSourceAndDestinationInfoActor::StateWork)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        HFunc(TEvService::TEvGetNodeAttrResponse, HandleGetNodeAttrResponse);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
+            break;
+    }
 }
 
 }   // namespace
@@ -66,6 +254,19 @@ void TIndexTabletActor::HandleRenameNodeInDestination(
     }
     */
 
+    const bool locked = TryLockNodeRef({
+        msg->Record.GetNewParentId(),
+        msg->Record.GetNewName()});
+    if (!locked) {
+        auto response = std::make_unique<TMethod::TResponse>(
+            MakeError(E_REJECTED, TStringBuilder() << "node ref "
+                << msg->Record.GetNewParentId()
+                << " " << msg->Record.GetNewName()
+                << " is locked for RenameNodeInDestination"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
@@ -78,6 +279,37 @@ void TIndexTabletActor::HandleRenameNodeInDestination(
         ctx,
         std::move(requestInfo),
         std::move(msg->Record));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleDoRenameNodeInDestination(
+    const TEvIndexTabletPrivate::TEvDoRenameNodeInDestination::TPtr& ev,
+    const TActorContext& ctx)
+{
+    WorkerActors.erase(ev->Sender);
+
+    auto* msg = ev->Get();
+
+    if (HasError(msg->Error)) {
+        UnlockNodeRef({
+            msg->Request.GetNewParentId(),
+            msg->Request.GetNewName()});
+
+        using TMethod = TEvIndexTablet::TRenameNodeInDestinationMethod;
+        auto response =
+            std::make_unique<TMethod::TResponse>(std::move(msg->Error));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
+    ExecuteTx<TRenameNodeInDestination>(
+        ctx,
+        std::move(msg->RequestInfo),
+        std::move(msg->Request),
+        std::move(msg->SourceNodeAttr),
+        std::move(msg->DestinationNodeAttr),
+        msg->IsDestinationEmptyDir);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -163,10 +395,27 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
             return true;
         }
 
-        // TODO(#2674): implement this check - will need to make a GetNodeAttr
-        // call to find out node types
-        // oldpath directory: newpath must either not exist, or it must specify
-        // an empty directory.
+        if (args.IsSecondPass) {
+            // oldpath directory: newpath must either not exist, or it must
+            // specify an empty directory.
+            if (args.DestinationNodeAttr.GetType() == NProto::E_DIRECTORY_NODE) {
+                if (args.SourceNodeAttr.GetType()
+                        != NProto::E_DIRECTORY_NODE)
+                {
+                    args.Error =
+                        ErrorIsDirectory(args.SourceNodeAttr.GetId());
+                    return true;
+                }
+
+                if (!args.IsDestinationEmptyDir) {
+                    args.Error =
+                        ErrorIsNotEmpty(args.DestinationNodeAttr.GetId());
+                    return true;
+                }
+            }
+        } else {
+            args.SecondPassRequired = true;
+        }
     } else if (HasFlag(args.Flags, NProto::TRenameNodeRequest::F_EXCHANGE)) {
         args.Error = ErrorInvalidTarget(args.NewParentNodeId, args.NewName);
         return true;
@@ -182,14 +431,18 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
 {
     FILESTORE_VALIDATE_TX_ERROR(RenameNodeInDestination, args);
     if (args.Error.GetCode() == S_ALREADY) {
-        return; // nothing to do
+        return;
+    }
+
+    if (args.SecondPassRequired) {
+        return;
     }
 
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -239,6 +492,8 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
             shardRequest->SetFileSystemId(args.NewChildRef->ShardId);
             shardRequest->SetNodeId(RootNodeId);
             shardRequest->SetName(args.NewChildRef->ShardNodeName);
+            shardRequest->SetUnlinkDirectory(
+                args.DestinationNodeAttr.GetType() == NProto::E_DIRECTORY_NODE);
 
             db.WriteOpLogEntry(args.OpLogEntry);
         }
@@ -288,6 +543,29 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
     const TActorContext& ctx,
     TTxIndexTablet::TRenameNodeInDestination& args)
 {
+    if (args.SecondPassRequired) {
+        if (args.NewChildRef) {
+            using TActor = TGetExtraSourceAndDestinationInfoActor;
+            auto actor = std::make_unique<TActor>(
+                LogTag,
+                args.RequestInfo,
+                ctx.SelfID,
+                args.Request,
+                args.NewChildRef->ShardId,
+                args.NewChildRef->ShardNodeName);
+
+            auto actorId = NCloud::Register(ctx, std::move(actor));
+            WorkerActors.insert(actorId);
+            return;
+        }
+
+        auto message = ReportChildRefIsNull(TStringBuilder()
+            << "RenameNodeInDestination: " << args.Request.ShortDebugString());
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+    }
+
+    UnlockNodeRef({args.Request.GetNewParentId(), args.Request.GetNewName()});
+
     InvalidateNodeCaches(args.NewParentNodeId);
     if (args.NewChildRef) {
         InvalidateNodeCaches(args.NewChildRef->ChildNodeId);
@@ -323,6 +601,8 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
         CommitDupCacheEntry(args.SessionId, args.RequestId);
 
         // TODO(#1350): support session events for external nodes
+    } else {
+        // TODO(#2674): if dst is a dir, it was locked - we need to unlock it
     }
 
     RemoveTransaction(*args.RequestInfo);
@@ -340,12 +620,6 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    if (args.CommitId == InvalidCommitId) {
-        ScheduleRebootTabletOnCommitIdOverflow(
-            ctx,
-            "RenameNodeInDestination");
-    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

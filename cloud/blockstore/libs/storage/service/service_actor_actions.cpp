@@ -91,6 +91,7 @@ void TServiceActor::HandleExecuteAction(
         {"backuppathdescriptions",            &TServiceActor::CreateBackupPathDescriptionsActor            },
         {"backuptabletbootinfos",             &TServiceActor::CreateBackupTabletBootInfosActor             },
         {"getclustercapacity",                &TServiceActor::CreateGetClusterCapacityActor                },
+        {"setvhostdiscardenabledflag",        &TServiceActor::CreateSetVhostDiscardEnabledFlagActionActor  },
     };
 
     NProto::TError error;

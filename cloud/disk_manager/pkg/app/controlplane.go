@@ -246,6 +246,7 @@ func registerControlplaneTasks(
 	resourceStorage resources.Storage,
 	cellStorage cells_storage.Storage,
 	cellSelector cells.CellSelector,
+	filestoreCellsSelector cells.CellSelector,
 ) error {
 
 	logging.Info(ctx, "Registering pool tasks")
@@ -327,6 +328,7 @@ func registerControlplaneTasks(
 			taskRegistry,
 			resourceStorage,
 			nfsFactory,
+			filestoreCellsSelector,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to register filesystem tasks: %v", err)
@@ -335,8 +337,11 @@ func registerControlplaneTasks(
 
 		err = filesystem_snapshot.RegisterForExecution(
 			ctx,
+			config.GetFilesystemSnapshotsConfig(),
 			taskRegistry,
 			taskScheduler,
+			filestoreCellsSelector,
+			resourceStorage,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to register filesystem snapshot tasks: %v", err)
@@ -460,6 +465,14 @@ func initControlplane(
 		config.GetCellsConfig(),
 		cellStorage,
 		nbsFactory,
+		nfsFactory,
+	)
+
+	filestoreCellsSelector := cells.NewCellSelector(
+		config.GetFilestoreCellsConfig(),
+		cellStorage,
+		nbsFactory,
+		nfsFactory,
 	)
 
 	err = registerControlplaneTasks(
@@ -479,6 +492,7 @@ func initControlplane(
 		resourceStorage,
 		cellStorage,
 		cellSelector,
+		filestoreCellsSelector,
 	)
 	if err != nil {
 		return nil, err

@@ -1,0 +1,48 @@
+services:
+  bastion:
+    image: linuxserver/openssh-server:latest
+    container_name: bastion
+    restart: unless-stopped
+
+    volumes:
+      - bastion_config:/config
+      - github_authorized_keys:/github-keys:ro
+      - ./bastion-entrypoint.sh:/bastion-entrypoint.sh:ro
+
+    environment:
+      - TZ=Europe/Amsterdam
+      - USER_NAME=github
+      - PUBLIC_KEY_FILE=/github-keys/authorized_keys
+      - LOG_STDOUT=true
+    entrypoint: ["/bin/sh", "/bastion-entrypoint.sh"]
+
+    ports:
+      - "2222:2222"
+
+    depends_on:
+      - gh-keys-sync
+
+  gh-keys-sync:
+    build:
+      context: ./sync
+    container_name: gh-keys-sync
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - OUTPUT_FILE=/out/authorized_keys
+
+    volumes:
+      - github_authorized_keys:/out
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - WATCHTOWER_POLL_INTERVAL=3600
+      - WATCHTOWER_CLEANUP=true
+volumes:
+  bastion_config:
+  github_authorized_keys:

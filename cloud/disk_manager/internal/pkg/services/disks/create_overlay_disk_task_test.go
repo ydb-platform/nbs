@@ -91,7 +91,7 @@ func TestCreateOverlayDiskTask(t *testing.T) {
 	)
 
 	cellSelector.On(
-		"SelectCell",
+		"SelectCellForDisk",
 		ctx,
 		"zone",
 		"folder",
@@ -166,7 +166,7 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskId(t *testin
 	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{}, nil)
 
 	cellSelector.On(
-		"SelectCell",
+		"SelectCellForDisk",
 		ctx,
 		"zone",
 		"folder",
@@ -241,7 +241,7 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskCheckpointId
 	// TODO: Improve this expectation.
 	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{}, nil)
 
-	cellSelector.On("SelectCell",
+	cellSelector.On("SelectCellForDisk",
 		ctx,
 		"zone",
 		"folder",

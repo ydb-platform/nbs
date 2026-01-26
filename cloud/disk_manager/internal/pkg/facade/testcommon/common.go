@@ -22,6 +22,8 @@ import (
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	nfs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/config"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
@@ -330,6 +332,8 @@ func newNbsClientClientConfig() *nbs_config.ClientConfig {
 	}
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 func NewNbsTestingClient(
 	t *testing.T,
 	ctx context.Context,
@@ -337,6 +341,64 @@ func NewNbsTestingClient(
 ) nbs.TestingClient {
 
 	client, err := nbs.NewTestingClient(ctx, zoneID, newNbsClientClientConfig())
+	require.NoError(t, err)
+	return client
+}
+
+func newNfsClientConfig() *nfs_config.ClientConfig {
+	rootCertsFile := os.Getenv("DISK_MANAGER_RECIPE_ROOT_CERTS_FILE")
+
+	return &nfs_config.ClientConfig{
+		Zones: map[string]*nfs_config.Zone{
+			"zone-a": {
+				Endpoints: []string{
+					fmt.Sprintf(
+						"localhost:%v",
+						os.Getenv("DISK_MANAGER_RECIPE_NFS_PORT"),
+					),
+				},
+			},
+			"zone-b": {
+				Endpoints: []string{
+					fmt.Sprintf(
+						"localhost:%v",
+						os.Getenv("DISK_MANAGER_RECIPE_NFS_PORT"),
+					),
+				},
+			},
+			"zone-c": {
+				Endpoints: []string{
+					fmt.Sprintf(
+						"localhost:%v",
+						os.Getenv("DISK_MANAGER_RECIPE_NFS2_PORT"),
+					),
+				},
+			},
+			"zone-c-shard1": {
+				Endpoints: []string{
+					fmt.Sprintf(
+						"localhost:%v",
+						os.Getenv("DISK_MANAGER_RECIPE_NFS3_PORT"),
+					),
+				},
+			},
+		},
+		RootCertsFile: &rootCertsFile,
+	}
+}
+
+func NewNfsTestingClient(
+	t *testing.T,
+	ctx context.Context,
+	zoneID string,
+) nfs.Client {
+
+	nfsFactory := nfs.NewFactory(
+		ctx,
+		newNfsClientConfig(),
+		metrics.NewEmptyRegistry(),
+	)
+	client, err := nfsFactory.NewClient(ctx, zoneID)
 	require.NoError(t, err)
 	return client
 }

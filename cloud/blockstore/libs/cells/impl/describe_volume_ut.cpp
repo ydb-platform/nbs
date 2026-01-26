@@ -145,6 +145,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         bootstrap.Logging = CreateLoggingService("console");
         bootstrap.Scheduler = CreateScheduler();
         bootstrap.Scheduler->Start();
+        Y_DEFER { bootstrap.Scheduler->Stop(); };
 
         auto response = DescribeVolume(
             config,
@@ -186,6 +187,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         bootstrap.Logging = CreateLoggingService("console");
         bootstrap.Scheduler = CreateScheduler();
         bootstrap.Scheduler->Start();
+        Y_DEFER { bootstrap.Scheduler->Stop(); };
 
         auto response = DescribeVolume(
             config,
@@ -244,6 +246,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         bootstrap.Logging = CreateLoggingService("console");
         bootstrap.Scheduler = CreateScheduler();
         bootstrap.Scheduler->Start();
+        Y_DEFER { bootstrap.Scheduler->Stop(); };
 
         auto response = DescribeVolume(
             config,
@@ -285,6 +288,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         bootstrap.Logging = CreateLoggingService("console");
         bootstrap.Scheduler = CreateScheduler();
         bootstrap.Scheduler->Start();
+        Y_DEFER { bootstrap.Scheduler->Stop(); };
 
         auto response = DescribeVolume(
             config,
@@ -343,6 +347,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         bootstrap.Logging = CreateLoggingService("console");
         bootstrap.Scheduler = CreateScheduler();
         bootstrap.Scheduler->Start();
+        Y_DEFER { bootstrap.Scheduler->Stop(); };
 
         auto response = DescribeVolume(
             config,
@@ -400,6 +405,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         bootstrap.Logging = CreateLoggingService("console");
         bootstrap.Scheduler = CreateScheduler();
         bootstrap.Scheduler->Start();
+        Y_DEFER { bootstrap.Scheduler->Stop(); };
 
         auto response = DescribeVolume(
             config,
@@ -456,6 +462,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         bootstrap.Logging = CreateLoggingService("console");
         bootstrap.Scheduler = CreateScheduler();
         bootstrap.Scheduler->Start();
+        Y_DEFER { bootstrap.Scheduler->Stop(); };
 
         auto response = DescribeVolume(
             config,
@@ -519,6 +526,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         bootstrap.Logging = CreateLoggingService("console");
         bootstrap.Scheduler = CreateScheduler();
         bootstrap.Scheduler->Start();
+        Y_DEFER { bootstrap.Scheduler->Stop(); };
 
         auto response = DescribeVolume(
             config,

@@ -19,6 +19,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr ui32 DefaultValidatedBlocksRatio = 1000;
+
 struct TTestNvmeManager final: NNvme::INvmeManager
 {
     struct TDeallocateRequest
@@ -164,7 +166,7 @@ struct TFixture: public NUnitTest::TBaseFixture
     static constexpr ui64 StartIndex = 0;
     static constexpr ui64 BlocksCount = StorageSize / BlockSize;
     const ui32 ExpectedDeallocations = 93;
-    const ui32 ExpectedReads = BlocksCount / 1000;
+    const ui32 ExpectedReads = BlocksCount / DefaultValidatedBlocksRatio;
 
     const TString Filename = "filename";
 
@@ -195,7 +197,8 @@ struct TFixture: public NUnitTest::TBaseFixture
             StartIndex,
             BlocksCount,
             BlockSize,
-            NvmeManager);
+            NvmeManager,
+            DefaultValidatedBlocksRatio);
 
         const auto& error = future.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
@@ -256,7 +259,8 @@ Y_UNIT_TEST_SUITE(TSafeDeallocateDeviceTest)
             StartIndex,
             BlocksCount,
             BlockSize,
-            NvmeManager);
+            NvmeManager,
+            DefaultValidatedBlocksRatio);
 
         const auto& error = future.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -293,7 +297,8 @@ Y_UNIT_TEST_SUITE(TSafeDeallocateDeviceTest)
             StartIndex,
             BlocksCount,
             BlockSize,
-            NvmeManager);
+            NvmeManager,
+            DefaultValidatedBlocksRatio);
 
         const auto& error = future.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), FormatError(error));
@@ -323,7 +328,8 @@ Y_UNIT_TEST_SUITE(TSafeDeallocateDeviceTest)
             StartIndex,
             BlocksCount,
             BlockSize,
-            NvmeManager);
+            NvmeManager,
+            DefaultValidatedBlocksRatio);
 
         const auto& error = future.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), FormatError(error));
@@ -350,7 +356,8 @@ Y_UNIT_TEST_SUITE(TSafeDeallocateDeviceTest)
             StartIndex,
             BlocksCount,
             BlockSize,
-            NvmeManager);
+            NvmeManager,
+            DefaultValidatedBlocksRatio);
 
         const auto& error = future.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), FormatError(error));
@@ -377,11 +384,36 @@ Y_UNIT_TEST_SUITE(TSafeDeallocateDeviceTest)
             StartIndex,
             BlocksCount,
             BlockSize,
-            NvmeManager);
+            NvmeManager,
+            DefaultValidatedBlocksRatio);
 
         const auto& error = future.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), FormatError(error));
         UNIT_ASSERT_VALUES_EQUAL(ExpectedReads, FileIO->ReadRequests.size());
+    }
+
+    Y_UNIT_TEST_F(ShouldUseValidatedBlocksRatioParam, TFixture)
+    {
+        FileIO->ReadImpl = [&](i64 offset, auto buffer) -> TResultOrError<ui32>
+        {
+            Y_UNUSED(offset);
+            std::memset(buffer.data(), 0, buffer.size());
+            return buffer.size();
+        };
+
+        auto future = SafeDeallocateDevice(
+            Filename,
+            TFileHandle{},
+            FileIO,
+            StartIndex,
+            BlocksCount,
+            BlockSize,
+            NvmeManager,
+            10);
+
+        const auto& error = future.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(BlocksCount / 10, FileIO->ReadRequests.size());
     }
 
     Y_UNIT_TEST_F(ShouldHandleShortRead, TFixture)
@@ -407,7 +439,8 @@ Y_UNIT_TEST_SUITE(TSafeDeallocateDeviceTest)
             StartIndex,
             BlocksCount,
             BlockSize,
-            NvmeManager);
+            NvmeManager,
+            DefaultValidatedBlocksRatio);
 
         const auto& error = future.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), FormatError(error));
@@ -439,7 +472,8 @@ Y_UNIT_TEST_SUITE(TSafeDeallocateDeviceTest)
             StartIndex,
             BlocksCount,
             BlockSize,
-            NvmeManager);
+            NvmeManager,
+            DefaultValidatedBlocksRatio);
 
         const auto& error = future.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(

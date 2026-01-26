@@ -50,7 +50,7 @@ func TestCreateEmptyDiskTask(t *testing.T) {
 	storage.On("DiskCreated", ctx, mock.Anything).Return(nil)
 
 	cellSelector.On(
-		"SelectCell",
+		"SelectCellForDisk",
 		ctx,
 		"zone",
 		"folder",
@@ -113,7 +113,7 @@ func TestCreateEmptyDiskTaskFailure(t *testing.T) {
 	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{}, nil)
 
 	cellSelector.On(
-		"SelectCell",
+		"SelectCellForDisk",
 		ctx,
 		"zone",
 		"folder",

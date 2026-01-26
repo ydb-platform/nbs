@@ -135,7 +135,8 @@ void TIndexTabletActor::HandleRenameNode(
                     std::move(msg->Record),
                     newParentShardNo
                         ? shardIds[newParentShardNo - 1]
-                        : GetMainFileSystemId());
+                        : GetMainFileSystemId(),
+                    false /* isExplicitRequest */);
             }
             return;
         }
@@ -347,7 +348,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -568,10 +569,6 @@ void TIndexTabletActor::CompleteTx_RenameNode(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    if (args.CommitId == InvalidCommitId) {
-        ScheduleRebootTabletOnCommitIdOverflow(ctx, "RenameNode");
-    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

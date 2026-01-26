@@ -19,6 +19,14 @@ namespace NCloud::NBlockStore::NStorage {
 // for all replicas are equal.
 // Otherwise returns an error - the recipient is supposed to fall back to
 // slow path.
+// When "OptimizeFastPathReadsOnResync" is enabled, the actor replies to the
+// client after reading data and 1 checksum with "EvResyncFastPathReadResponse".
+// After all checksums are read, the actor compares the checksums and replies
+// with "EvResyncFastPathChecksumCompareResponse", which should trigger resync
+// of the range.
+// "EvResyncFastPathChecksumCompareResponse" will only be sent if
+// "OptimizeFastPathReadsOnResync" is true and "EvResyncFastPathReadResponse"
+// was already sent and did not contain an error.
 class TMirrorPartitionResyncFastPathActor final
     : public NActors::TActorBootstrapped<TMirrorPartitionResyncFastPathActor>
 {
@@ -29,10 +37,12 @@ private:
     const TBlockRange64 Range;
     const TVector<TReplicaDescriptor> Replicas;
     const TString ClientId;
+    const bool OptimizeFastPathReadsOnResync;
     TGuardedSgList SgList;
 
-    THashMap<int, ui64> Checksums;
-    NProto::TError Error;
+    THashMap<ui32, ui32> Checksums;
+    std::optional<ui32> DataChecksum;
+    bool ReplySent = false;
 
 public:
     TMirrorPartitionResyncFastPathActor(
@@ -42,17 +52,29 @@ public:
         TBlockRange64 range,
         TGuardedSgList sgList,
         TVector<TReplicaDescriptor> replicas,
-        TString clientId);
+        TString clientId,
+        bool optimizeFastPathReadsOnResync);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
     void ChecksumBlocks(const NActors::TActorContext& ctx);
-    void ChecksumReplicaBlocks(const NActors::TActorContext& ctx, int idx);
-    void CompareChecksums(const NActors::TActorContext& ctx);
-    void CalculateChecksum();
     void ReadBlocks(const NActors::TActorContext& ctx);
-    void Done(const NActors::TActorContext& ctx);
+    void ChecksumReplicaBlocks(const NActors::TActorContext& ctx, int idx);
+    NProto::TError CompareChecksums(const NActors::TActorContext& ctx) const;
+    void MaybeCompareChecksums(const NActors::TActorContext& ctx);
+    bool MaybeReplyAndDie(
+        const NActors::TActorContext& ctx,
+        const NProto::TError& error);
+    TResultOrError<ui32> CalculateDataChecksum() const;
+    bool AllChecksumsReceived() const;
+    void Reply(const NActors::TActorContext& ctx, const NProto::TError& error);
+    void FinishResync(
+        const NActors::TActorContext& ctx,
+        const NProto::TError& error);
+    void ReplyAndDie(
+        const NActors::TActorContext& ctx,
+        const NProto::TError& error);
 
 private:
     STFUNC(StateWork);

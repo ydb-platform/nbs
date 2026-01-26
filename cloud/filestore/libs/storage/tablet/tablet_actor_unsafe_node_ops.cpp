@@ -60,7 +60,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeDeleteNode(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnsafeDeleteNode");
+        return args.OnCommitIdOverflow();
     }
 
     if (!args.Node) {
@@ -144,7 +144,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeUpdateNode(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnsafeUpdateNode");
+        return args.OnCommitIdOverflow();
     }
 
     NProto::TNode prevNode;
@@ -155,24 +155,27 @@ void TIndexTabletActor::ExecuteTx_UnsafeUpdateNode(
         prevNode = args.Node->Attrs;
         node = args.Node->Attrs;
         nodeCommitId = args.Node->MinCommitId;
+
+        ConvertAttrsToNode(args.Request.GetNode(), &node);
+        UpdateNode(
+            db,
+            args.Request.GetNode().GetId(),
+            nodeCommitId,
+            commitId,
+            node,
+            prevNode);
     } else {
-        LOG_WARN(ctx, TFileStoreComponents::TABLET,
+        // Create new node with specified ID
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s UnsafeUpdateNode: %s - node not found, creating",
             LogTag.c_str(),
             args.Request.DebugString().Quote().c_str());
 
-        // creation here is still done via UpdateNode since CreateNode generates
-        // a new nodeId
+        ConvertAttrsToNode(args.Request.GetNode(), &node);
+        CreateNodeWithId(db, args.Request.GetNode().GetId(), commitId, node);
     }
-
-    ConvertAttrsToNode(args.Request.GetNode(), &node);
-    UpdateNode(
-        db,
-        args.Request.GetNode().GetId(),
-        nodeCommitId,
-        commitId,
-        node,
-        prevNode);
 }
 
 void TIndexTabletActor::CompleteTx_UnsafeUpdateNode(
@@ -192,7 +195,8 @@ void TIndexTabletActor::CompleteTx_UnsafeUpdateNode(
         oldNode.Quote().c_str());
 
     auto response =
-        std::make_unique<TEvIndexTablet::TEvUnsafeUpdateNodeResponse>();
+        std::make_unique<TEvIndexTablet::TEvUnsafeUpdateNodeResponse>(
+            std::move(args.Error));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
@@ -332,8 +336,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeCreateNodeRef(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
-        args.CommitIdOverflowDetected = true;
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -373,10 +376,6 @@ void TIndexTabletActor::CompleteTx_UnsafeCreateNodeRef(
             std::move(args.Error));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    if (args.CommitIdOverflowDetected) {
-        ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnsafeCreateNodeRef");
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -435,7 +434,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeDeleteNodeRef(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -478,10 +477,6 @@ void TIndexTabletActor::CompleteTx_UnsafeDeleteNodeRef(
             std::move(args.Error));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    if (args.CommitIdOverflowDetected) {
-        ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnsafeDeleteNodeRef");
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -540,8 +535,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeUpdateNodeRef(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
-        args.CommitIdOverflowDetected = true;
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -591,10 +585,6 @@ void TIndexTabletActor::CompleteTx_UnsafeUpdateNodeRef(
         std::make_unique<TEvIndexTablet::TEvUnsafeUpdateNodeRefResponse>();
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    if (args.CommitIdOverflowDetected) {
-        ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnsafeUpdateNodeRef");
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
@@ -21,7 +22,7 @@ type CellSelector interface {
 	// Returns an nbs Client for the most suitable cell in the specified zone.
 	// If the Cells mechanism is not enabled for this folder, returns an
 	// nbs Client for specified zone.
-	SelectCell(
+	SelectCellForDisk(
 		ctx context.Context,
 		zoneID string,
 		folderID string,
@@ -34,6 +35,15 @@ type CellSelector interface {
 		zoneID string,
 		agentIDs []string,
 	) (nbs.Client, error)
+
+	// Returns an nfs Client for the most suitable cell in the specified zone.
+	// If the Cells mechanism is not enabled for this folder, returns an
+	// nfs Client for specified zone.
+	SelectCellForFilesystem(
+		ctx context.Context,
+		zoneID string,
+		folderID string,
+	) (nfs.Client, error)
 
 	ZoneContainsCell(zoneID string, cellID string) bool
 }

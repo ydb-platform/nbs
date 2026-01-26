@@ -59,7 +59,7 @@ func (t *createDiskFromImageTask) Run(
 		)
 	}
 
-	client, err := SelectCell(
+	client, err := SelectCellForDisk(
 		ctx,
 		execCtx,
 		t.state,

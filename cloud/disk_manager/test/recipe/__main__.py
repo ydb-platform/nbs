@@ -53,6 +53,7 @@ def parse_args(args):
     parser.add_argument("--encryption", action=argparse.BooleanOptionalAction)
     parser.add_argument("--multiple-nbs", action=argparse.BooleanOptionalAction)
     parser.add_argument("--with-cells", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--with-filestore-cells", action=argparse.BooleanOptionalAction)
     parser.add_argument("--nbs-only", action=argparse.BooleanOptionalAction)
     parser.add_argument("--nfs-only", action=argparse.BooleanOptionalAction)
     parser.add_argument("--multiple-disk-managers", action=argparse.BooleanOptionalAction)
@@ -268,6 +269,42 @@ def start(argv):
     set_env("DISK_MANAGER_RECIPE_NFS_PORT", str(nfs.port))
 
     append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nfs.nfs_server.stderr_file_name)
+    if args.with_filestore_cells:
+        ydb6 = YDBLauncher(ydb_binary_path=ydb_binary_path)
+        ydb6.start()
+
+        nfs2 = NfsLauncher(
+            dynamic_storage_pools=ydb6.dynamic_storage_pools,
+            ydb_domain=ydb6.domain,
+            ydb_port=ydb6.port,
+            domains_txt=ydb6.domains_txt,
+            names_txt=ydb6.names_txt,
+            nfs_binary_path=nfs_binary_path,
+            ydb_binary_path=ydb_binary_path,
+        )
+        nfs2.start()
+        append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nfs2.nfs_server.stderr_file_name)
+
+        ydb7 = YDBLauncher(ydb_binary_path=ydb_binary_path)
+        ydb7.start()
+
+        nfs3 = NfsLauncher(
+            dynamic_storage_pools=ydb7.dynamic_storage_pools,
+            ydb_domain=ydb7.domain,
+            ydb_port=ydb7.port,
+            domains_txt=ydb7.domains_txt,
+            names_txt=ydb7.names_txt,
+            nfs_binary_path=nfs_binary_path,
+            ydb_binary_path=ydb_binary_path,
+        )
+        nfs3.start()
+        append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nfs3.nfs_server.stderr_file_name)
+    else:
+        nfs2 = nfs
+        nfs3 = nfs
+
+    set_env("DISK_MANAGER_RECIPE_NFS2_PORT", str(nfs2.port))
+    set_env("DISK_MANAGER_RECIPE_NFS3_PORT", str(nfs3.port))
 
     if args.nfs_only:
         return
@@ -306,6 +343,8 @@ def start(argv):
             disk_manager_binary_path=disk_manager_binary_path,
             with_nemesis=args.nemesis,
             nfs_port=nfs.port,
+            nfs2_port=nfs2.port,
+            nfs3_port=nfs3.port,
             access_service_port=os.getenv('DISK_MANAGER_RECIPE_ACCESS_SERVICE_PORT'),
             cert_file=cert_file,
             cert_key_file=cert_key_file,

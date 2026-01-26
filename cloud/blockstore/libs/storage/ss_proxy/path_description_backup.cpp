@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/ss_proxy/model/chunked_path_description_backup.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -17,6 +18,7 @@
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
+using namespace NCloud::NStorage;
 
 namespace {
 
@@ -45,7 +47,9 @@ void TPathDescriptionBackup::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 
     if (ReadOnlyMode) {
-        if (!LoadFromBinaryFormat(ctx) && !LoadFromTextFormat(ctx)) {
+        if (!LoadFromChunkedBinaryFormat(ctx) && !LoadFromBinaryFormat(ctx) &&
+            !LoadFromTextFormat(ctx))
+        {
             LOG_WARN_S(
                 ctx,
                 LogComponent,
@@ -123,7 +127,7 @@ NProto::TError TPathDescriptionBackup::Backup(const TActorContext& ctx)
 bool TPathDescriptionBackup::LoadFromTextFormat(
     const NActors::TActorContext& ctx)
 {
-    LOG_WARN_S(
+    LOG_INFO_S(
         ctx,
         LogComponent,
         "PathDescriptionBackup: loading from text format: "
@@ -135,8 +139,10 @@ bool TPathDescriptionBackup::LoadFromTextFormat(
         LOG_INFO_S(
             ctx,
             LogComponent,
-            "PathDescriptionBackup: loading from text format finished "
-                << FormatDuration(TInstant::Now() - start));
+            "PathDescriptionBackup: loading from text format finished. Items "
+            "count: "
+                << BackupProto.GetData().size()
+                << " time: " << FormatDuration(TInstant::Now() - start));
         return true;
     } catch (...) {
         LOG_WARN_S(
@@ -151,7 +157,7 @@ bool TPathDescriptionBackup::LoadFromTextFormat(
 bool TPathDescriptionBackup::LoadFromBinaryFormat(
     const NActors::TActorContext& ctx)
 {
-    LOG_WARN_S(
+    LOG_INFO_S(
         ctx,
         LogComponent,
         "PathDescriptionBackup: loading from binary format: "
@@ -162,11 +168,13 @@ bool TPathDescriptionBackup::LoadFromBinaryFormat(
         TUnbufferedFileInput input(file);
         const bool success = BackupProto.MergeFromString(input.ReadAll());
 
-        LOG_WARN_S(
+        LOG_INFO_S(
             ctx,
             LogComponent,
-            "PathDescriptionBackup: loading from binary format finished "
-                << FormatDuration(TInstant::Now() - start));
+            "PathDescriptionBackup: loading from binary format finished. "
+            "Items count: "
+                << BackupProto.GetData().size()
+                << ", time: " << FormatDuration(TInstant::Now() - start));
 
         return success;
     } catch (...) {
@@ -174,6 +182,39 @@ bool TPathDescriptionBackup::LoadFromBinaryFormat(
             ctx,
             LogComponent,
             "PathDescriptionBackup: can't load from binary format: "
+                << CurrentExceptionMessage());
+    }
+    return false;
+}
+
+bool TPathDescriptionBackup::LoadFromChunkedBinaryFormat(
+    const NActors::TActorContext& ctx)
+{
+    LOG_INFO_S(
+        ctx,
+        LogComponent,
+        "PathDescriptionBackup: loading from chunked binary format: "
+            << BackupFilePath.GetPath().Quote());
+    try {
+        TInstant start = TInstant::Now();
+
+        auto error = NSSProxy::LoadPathDescriptionBackupFromChunkedBinaryFormat(
+            BackupFilePath,
+            &BackupProto);
+
+        LOG_INFO_S(
+            ctx,
+            LogComponent,
+            "PathDescriptionBackup: loading from chunked binary finished. "
+            "Items count: "
+                << BackupProto.GetData().size()
+                << ", time: " << FormatDuration(TInstant::Now() - start));
+        return BackupProto.GetData().size() > 0;
+    } catch (...) {
+        LOG_WARN_S(
+            ctx,
+            LogComponent,
+            "PathDescriptionBackup: can't load chunked binary format file: "
                 << CurrentExceptionMessage());
     }
     return false;
@@ -216,8 +257,8 @@ void TPathDescriptionBackup::HandleReadPathDescriptionBackup(
         LOG_DEBUG_S(ctx, LogComponent,
             "PathDescriptionBackup: found data for path " << msg->Path);
 
-        response = std::make_unique<TResponse>(
-            std::move(msg->Path), std::move(pathDescription));
+        response =
+            std::make_unique<TResponse>(msg->Path, std::move(pathDescription));
     } else {
         LOG_DEBUG_S(ctx, LogComponent,
             "PathDescriptionBackup: no data for path " << msg->Path);
@@ -234,7 +275,7 @@ void TPathDescriptionBackup::HandleUpdatePathDescriptionBackup(
     auto* msg = ev->Get();
     auto& data = *BackupProto.MutableData();
 
-    data[msg->Path] = std::move(msg->PathDescription);
+    data[msg->Path].Swap(&msg->PathDescription);
 
     LOG_DEBUG_S(ctx, LogComponent,
         "PathDescriptionBackup: updated data for path " << msg->Path);

@@ -80,6 +80,8 @@ public:
              ui32 maxHandleCount,
              bool openNodeByHandleEnabled,
              ui32 nodeCleanupBatchSize,
+             bool snapshotsDirEnabled,
+             const TDuration& snapshotsDirRefreshInterval,
              ILoggingServicePtr logging)
         : RootPath(root.RealPath())
         , StatePath(statePath.RealPath())
@@ -96,6 +98,8 @@ public:
               MaxNodeCount,
               OpenNodeByHandleEnabled,
               NodeCleanupBatchSize,
+              snapshotsDirEnabled,
+              snapshotsDirRefreshInterval,
               Log)
     {}
 
@@ -230,6 +234,18 @@ public:
     TIndexNodePtr LookupNode(ui64 nodeId)
     {
         return Index.LookupNode(nodeId);
+    }
+
+    TNodeMapper::TRemapResult RemapNode(
+        ui64 parentNodeId,
+        const TString& name)
+    {
+        return Index.RemapNode(parentNodeId, name);
+    }
+
+    TNodeMapper::TRemapResult RemapNode(ui64 parentNodeId, ui64 nodeId)
+    {
+        return Index.RemapNode(parentNodeId, nodeId);
     }
 
     [[nodiscard]] bool TryInsertNode(

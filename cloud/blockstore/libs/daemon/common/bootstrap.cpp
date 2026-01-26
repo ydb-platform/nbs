@@ -791,11 +791,14 @@ void TBootstrapBase::InitLocalService()
         CreateLocalStorageProvider(
             FileIOServiceProvider,
             NvmeManager,
-            {.DirectIO = false,
-             .UseSubmissionThread = false,
-             .DataIntegrityValidationPolicy =
-                 Configs->DiskAgentConfig
-                     ->GetDataIntegrityValidationPolicyForDrBasedDisks()}));
+            TLocalStorageProviderParams{
+                .DirectIO = false,
+                .UseSubmissionThread = false,
+                .ValidatedBlocksRatio =
+                    Configs->DiskAgentConfig->GetValidatedBlocksRatio(),
+                .DataIntegrityValidationPolicy =
+                    Configs->DiskAgentConfig
+                        ->GetDataIntegrityValidationPolicyForDrBasedDisks()}));
 }
 
 void TBootstrapBase::InitNullService()

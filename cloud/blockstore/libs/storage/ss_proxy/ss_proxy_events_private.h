@@ -57,7 +57,7 @@ struct TEvSSProxyPrivate
     struct TUpdatePathDescriptionBackupRequest
     {
         const TString Path;
-        const NKikimrSchemeOp::TPathDescription PathDescription;
+        NKikimrSchemeOp::TPathDescription PathDescription;
 
         TUpdatePathDescriptionBackupRequest(
                 TString path,

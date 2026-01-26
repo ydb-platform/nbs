@@ -108,6 +108,8 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         Config->GetMaxHandlePerSessionCount(),
         Config->GetOpenNodeByHandleEnabled(),
         Config->GetNodeCleanupBatchSize(),
+        Config->GetSnapshotsDirEnabled(),
+        Config->GetSnapshotsDirRefreshInterval(),
         Logging);
 
     session->Init(request.GetRestoreClientSession());

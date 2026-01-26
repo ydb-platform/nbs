@@ -41,6 +41,10 @@ namespace NCloud::NFileStore{
     xxx(CalculateChecksumsBufferOverflow)                                      \
     xxx(UnexpectedFakeDescribeDataResponse)                                    \
     xxx(CreateLinkRequestWithShardNodeNameAndNoShardId)                        \
+    xxx(LocalFsFailedToInitNodeLoader)                                         \
+    xxx(LocalFsFailedToInitNodeMapper)                                         \
+    xxx(LocalFsFailedToRefreshSnapshotsDir)                                    \
+    xxx(LocalFsFailedToLoadSnapshotDir)                                        \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \

@@ -17,7 +17,7 @@ type CreateDiskTaskState interface {
 	GetSelectedCellId() string
 }
 
-func SelectCell(
+func SelectCellForDisk(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	state CreateDiskTaskState,
@@ -45,7 +45,7 @@ func SelectCell(
 				params.AgentIds,
 			)
 		} else {
-			client, err = cellSelector.SelectCell(
+			client, err = cellSelector.SelectCellForDisk(
 				ctx,
 				params.Disk.ZoneId,
 				params.FolderId,

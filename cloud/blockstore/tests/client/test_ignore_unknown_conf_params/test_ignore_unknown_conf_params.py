@@ -16,7 +16,7 @@ def test_ignore_unknown_conf_params():
     # so make sure file exists at test path
     assert os.path.exists(CONF)
 
-    WAIT_TIMEOUT = 5
+    WAIT_TIMEOUT = 100
 
     # use most simple 'ping' commant, wich parses --config file and can be run
     # without additional environment preparations

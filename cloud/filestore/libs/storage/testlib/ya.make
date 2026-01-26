@@ -19,6 +19,7 @@ PEERDIR(
     cloud/filestore/libs/storage/service
     cloud/filestore/libs/storage/ss_proxy
     cloud/filestore/libs/storage/tablet
+    cloud/filestore/libs/storage/tablet/events
     cloud/filestore/libs/storage/tablet_proxy
     cloud/storage/core/libs/api
     cloud/storage/core/libs/common

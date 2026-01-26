@@ -7,7 +7,7 @@
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
-#include <cloud/filestore/libs/storage/tablet/tablet_private.h>
+#include <cloud/filestore/libs/storage/tablet/events/tablet_private.h>
 
 #include <contrib/ydb/core/testlib/actors/test_runtime.h>
 #include <contrib/ydb/core/testlib/test_client.h>
@@ -66,9 +66,11 @@ struct TPerformanceProfile
     ui64 DefaultPostponedRequestWeight = 0;
 };
 
+const TStringBuf DefaultFileSystemId = "test";
+
 struct TFileSystemConfig
 {
-    TString FileSystemId = "test";
+    TString FileSystemId = TString(DefaultFileSystemId);
     TString CloudId = "test_cloud";
     TString FolderId = "test_folder";
     ui32 BlockSize = DefaultBlockSize;
@@ -333,6 +335,86 @@ public:
         return request;
     }
 
+    auto CreateRenameNodeInDestinationRequest(
+        ui64 newParent,
+        const TString& newName,
+        const TString& sourceNodeShardId,
+        const TString& sourceNodeShardNodeName,
+        ui32 flags = 0)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvRenameNodeInDestinationRequest;
+        auto request = CreateSessionRequest<TRequestEvent>();
+        request->Record.SetNewParentId(newParent);
+        request->Record.SetNewName(newName);
+        request->Record.SetSourceNodeShardId(sourceNodeShardId);
+        request->Record.SetSourceNodeShardNodeName(sourceNodeShardNodeName);
+        request->Record.SetFlags(flags);
+        return request;
+    }
+
+    auto CreateUnsafeCreateNodeRefRequest(
+        ui64 parentId,
+        const TString& name,
+        ui64 childId,
+        const TString& shardId,
+        const TString& shardNodeName)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvUnsafeCreateNodeRefRequest;
+        auto request = std::make_unique<TRequestEvent>();
+        request->Record.SetParentId(parentId);
+        request->Record.SetName(name);
+        request->Record.SetChildId(childId);
+        request->Record.SetShardId(shardId);
+        request->Record.SetShardNodeName(shardNodeName);
+        return request;
+    }
+
+    auto CreateUnsafeDeleteNodeRefRequest(ui64 parentId, const TString& name)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvUnsafeDeleteNodeRefRequest;
+        auto request = std::make_unique<TRequestEvent>();
+        request->Record.SetParentId(parentId);
+        request->Record.SetName(name);
+        return request;
+    }
+
+    auto CreateUnsafeGetNodeRefRequest(ui64 parentId, const TString& name)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvUnsafeGetNodeRefRequest;
+        auto request = std::make_unique<TRequestEvent>();
+        request->Record.SetParentId(parentId);
+        request->Record.SetName(name);
+        return request;
+    }
+
+    auto CreateUnsafeUpdateNodeRequest(ui64 nodeId, ui64 newSize)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvUnsafeUpdateNodeRequest;
+        auto request = std::make_unique<TRequestEvent>();
+        request->Record.SetFileSystemId(TString(DefaultFileSystemId));
+        auto* node = request->Record.MutableNode();
+        node->SetId(nodeId);
+        node->SetSize(newSize);
+        return request;
+    }
+
+    auto CreateUnsafeGetNodeRequest(ui64 nodeId)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvUnsafeGetNodeRequest;
+        auto request = std::make_unique<TRequestEvent>();
+        request->Record.SetId(nodeId);
+        return request;
+    }
+
+    auto CreateUnsafeDeleteNodeRequest(ui64 nodeId)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvUnsafeDeleteNodeRequest;
+        auto request = std::make_unique<TRequestEvent>();
+        request->Record.SetFileSystemId(TString(DefaultFileSystemId));
+        request->Record.SetId(nodeId);
+        return request;
+    }
+
     //
     // TEvIndexTabletPrivate
     //
@@ -432,6 +514,55 @@ public:
         return std::make_unique<TEvIndexTabletPrivate::TEvUpdateCounters>();
     }
 
+    auto CreatePrepareRenameNodeInSourceRequest(
+        NProto::TRenameNodeRequest subRequest,
+        const TString& newShardId)
+    {
+        using TRequestEvent =
+            TEvIndexTabletPrivate::TEvPrepareRenameNodeInSourceRequest;
+        return std::make_unique<TRequestEvent>(
+            std::move(subRequest),
+            newShardId);
+    }
+
+    auto CreateCommitRenameNodeInSourceRequest(
+        NProto::TRenameNodeRequest subRequest,
+        NProtoPrivate::TRenameNodeInDestinationResponse subResponse,
+        ui64 opLogEntryId)
+    {
+        using TRequestEvent =
+            TEvIndexTabletPrivate::TEvCommitRenameNodeInSourceRequest;
+        return std::make_unique<TRequestEvent>(
+            std::move(subRequest),
+            std::move(subResponse),
+            opLogEntryId);
+    }
+
+    auto CreateCompleteUnlinkNodeRequest(
+        NProto::TUnlinkNodeRequest request,
+        NProto::TUnlinkNodeResponse response,
+        ui64 opLogEntryId)
+    {
+        using TRequestEvent =
+            TEvIndexTabletPrivate::TEvCompleteUnlinkNodeRequest;
+        return std::make_unique<TRequestEvent>(
+            std::move(request),
+            std::move(response),
+            opLogEntryId);
+    }
+
+    auto CreateDeleteOpLogEntryRequest(ui64 entryId)
+    {
+        using TRequestEvent = TEvIndexTabletPrivate::TEvDeleteOpLogEntryRequest;
+        return std::make_unique<TRequestEvent>(entryId);
+    }
+
+    auto CreateGetOpLogEntryRequest(ui64 entryId)
+    {
+        using TRequestEvent = TEvIndexTabletPrivate::TEvGetOpLogEntryRequest;
+        return std::make_unique<TRequestEvent>(entryId);
+    }
+
     //
     // TEvService
     //
@@ -473,23 +604,6 @@ public:
         request->Record.SetName(name);
         request->Record.SetNewParentId(newparent);
         request->Record.SetNewName(newname);
-        request->Record.SetFlags(flags);
-        return request;
-    }
-
-    auto CreateRenameNodeInDestinationRequest(
-        ui64 newParent,
-        const TString& newName,
-        const TString& sourceNodeShardId,
-        const TString& sourceNodeShardNodeName,
-        ui32 flags = 0)
-    {
-        using TRequestEvent = TEvIndexTablet::TEvRenameNodeInDestinationRequest;
-        auto request = CreateSessionRequest<TRequestEvent>();
-        request->Record.SetNewParentId(newParent);
-        request->Record.SetNewName(newName);
-        request->Record.SetSourceNodeShardId(sourceNodeShardId);
-        request->Record.SetSourceNodeShardNodeName(sourceNodeShardNodeName);
         request->Record.SetFlags(flags);
         return request;
     }
@@ -1086,6 +1200,29 @@ inline TString ReadData(TIndexTabletClient& tablet, ui64 handle, ui64 size, ui64
 {
     auto response = tablet.ReadData(handle, offset, size);
     return response->Record.GetBuffer();
+}
+
+inline void CreateExternalRef(
+    TIndexTabletClient& tablet,
+    ui64 parentId,
+    const TString& name,
+    const TString& shardId,
+    const TString& shardNodeName)
+{
+    tablet.UnsafeCreateNodeRef(
+        parentId,
+        name,
+        0 /* childId */,
+        shardId,
+        shardNodeName);
+}
+
+inline void DeleteRef(
+    TIndexTabletClient& tablet,
+    ui64 parentId,
+    const TString& name)
+{
+    tablet.UnsafeDeleteNodeRef(parentId, name);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

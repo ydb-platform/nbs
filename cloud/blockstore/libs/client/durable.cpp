@@ -47,6 +47,8 @@ const TVector<EWellKnownResultCodes> NeverRetriableErrors = {
                             // passed up to the client
     E_IO,                   // Unrecoverable error, that must be
                             // passed up to the client
+    E_BS_MOUNT_CONFLICT,    // Must not be retriable, as it may break
+                            // mounting/remounting logic
 };
 
 ////////////////////////////////////////////////////////////////////////////////

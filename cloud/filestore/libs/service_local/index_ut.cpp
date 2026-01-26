@@ -42,7 +42,15 @@ protected:
         StatePath.ForceDelete();
         StatePath.MkDir();
 
-        TLocalIndex index(RootPath, StatePath, pathLen, false, 1000, Log);
+        TLocalIndex index(
+            RootPath,
+            StatePath,
+            pathLen,
+            false,
+            1000,
+            false,
+            TDuration::Zero(),
+            Log);
 
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup RootNode");
@@ -108,7 +116,15 @@ protected:
         StatePath.ForceDelete();
         StatePath.MkDir();
 
-        TLocalIndex index(RootPath, StatePath, pathLen, false, 1000, Log);
+        TLocalIndex index(
+            RootPath,
+            StatePath,
+            pathLen,
+            false,
+            1000,
+            false,
+            TDuration::Zero(),
+            Log);
 
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup RootNode");
@@ -169,7 +185,15 @@ protected:
 
     void CheckNestedDir(ui32 pathLen, const TMap<TString, ui64>& nodeMap)
     {
-        TLocalIndex index(RootPath, StatePath, pathLen, false, 1000, Log);
+        TLocalIndex index(
+            RootPath,
+            StatePath,
+            pathLen,
+            false,
+            1000,
+            false,
+            TDuration::Zero(),
+            Log);
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup root node");
 
@@ -197,7 +221,15 @@ protected:
 
     void CheckMissingNodes(ui32 pathLen, const TVector<ui64>& nodeIds)
     {
-        TLocalIndex index(RootPath, StatePath, pathLen, false, 1000, Log);
+        TLocalIndex index(
+            RootPath,
+            StatePath,
+            pathLen,
+            false,
+            1000,
+            false,
+            TDuration::Zero(),
+            Log);
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup root node");
 
@@ -226,11 +258,32 @@ struct NodeLoaderStub
 {
 
     TMap<ui64, TIndexNodePtr> NodeMap;
+    TIndexNodePtr SnapshotsNode = nullptr;
+    TMap<ui64, TIndexNodePtr> SnapshotNodeMap;
+
+    NodeLoaderStub(TIndexNodePtr snapshotsNode = nullptr)
+        : SnapshotsNode(snapshotsNode)
+    {
+    }
 
     TIndexNodePtr LoadNode(ui64 nodeId) const override
     {
         auto it = NodeMap.find(nodeId);
         if (it != NodeMap.end()) {
+            return it->second;
+        }
+        return nullptr;
+    }
+
+    TIndexNodePtr LoadSnapshotsDirNode() override
+    {
+        return SnapshotsNode;
+    }
+
+    TIndexNodePtr LoadSnapshotDirNode(ui64 snapshotDirNodeId) override
+    {
+        auto it = SnapshotNodeMap.find(snapshotDirNodeId);
+        if (it != SnapshotNodeMap.end()) {
             return it->second;
         }
         return nullptr;
@@ -305,6 +358,8 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
             100,
             false,
             1000,
+            false,
+            TDuration::Zero(),
             Log);
         auto rootNode = index->LookupNode(RootNodeId);
 
@@ -346,6 +401,8 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
             100,
             false,
             1000,
+            false,
+            TDuration::Zero(),
             Log);
 
         // /dir1 and /dir2 restored
@@ -376,8 +433,10 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
             RootPath,
             StatePath,
             100,
-            true, // openNodeByHandleEnabled
-            10,   // nodeCleanupBatchSize
+            true,    // openNodeByHandleEnabled
+            10,      // nodeCleanupBatchSize
+            false,   // snapshotDirEnabled
+            TDuration::Zero(),
             Log,
             nodeLoader);
 
@@ -398,6 +457,78 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
 
     }
 
+    Y_UNIT_TEST_F(ShouldRemapSnapshotNodes, TEnvironment)
+    {
+        RootPath.ForceDelete();
+        RootPath.MkDir();
+
+        auto rootNode = TIndexNode::CreateRoot(RootPath);
+
+        auto snapshotsNode =
+            rootNode->CreateDirectory("some-dir-for-snapshots", 0777);
+
+        auto nodeLoader = std::make_shared<NodeLoaderStub>(snapshotsNode);
+
+        auto index = std::make_unique<TLocalIndex>(
+            RootPath,
+            StatePath,
+            100,
+            true,   // openNodeByHandleEnabled
+            10,     // nodeCleanupBatchSize
+            true,   // snapshotDirEnabled
+            TDuration::Zero(),
+            Log,
+            nodeLoader);
+
+        rootNode = index->LookupNode(RootNodeId);
+        UNIT_ASSERT_C(rootNode, "Failed to lookup root node");
+
+        // check that we map .snapshots -> some-dir-for-snapshots
+        auto remapResult = index->RemapNode(RootNodeId, ".snapshots");
+        UNIT_ASSERT(remapResult.HasRemap());
+        auto remappedSnapshotsNode = remapResult.GetNode();
+        UNIT_ASSERT(remappedSnapshotsNode);
+        UNIT_ASSERT_VALUES_EQUAL(
+            snapshotsNode->GetNodeId(),
+            remappedSnapshotsNode->GetNodeId());
+
+        auto nodes =
+            remappedSnapshotsNode->List(false /* don't ignore errors */);
+        UNIT_ASSERT_VALUES_EQUAL(nodes.size(), 0);
+
+        auto snap1Node = remappedSnapshotsNode->CreateDirectory("snap1", 0777);
+        auto snap1RemappedNode =
+            remappedSnapshotsNode->CreateDirectory("snap1-remapped", 0777);
+
+        nodeLoader->SnapshotNodeMap.emplace(
+            snap1Node->GetNodeId(),
+            snap1RemappedNode);
+
+        // check that we map by name:
+        // some-dir-for-snapshots/snap1 -> some-dir-for-snapshots/snap1-remapped
+        remapResult =
+            index->RemapNode(remappedSnapshotsNode->GetNodeId(), "snap1");
+        UNIT_ASSERT(remapResult.HasRemap());
+        auto node = remapResult.GetNode();
+        UNIT_ASSERT(node);
+        UNIT_ASSERT_VALUES_EQUAL(
+            snap1RemappedNode->GetNodeId(),
+            node->GetNodeId());
+
+
+        // check that we map by nodeId:
+        // some-dir-for-snapshots/snap1 -> some-dir-for-snapshots/snap1-remapped
+        remapResult = index->RemapNode(
+            remappedSnapshotsNode->GetNodeId(),
+            snap1Node->GetNodeId());
+        UNIT_ASSERT(remapResult.HasRemap());
+        node = remapResult.GetNode();
+        UNIT_ASSERT(node);
+        UNIT_ASSERT_VALUES_EQUAL(
+            snap1RemappedNode->GetNodeId(),
+            node->GetNodeId());
+    }
+
     Y_UNIT_TEST_F(ShouldCleanupNodes, TEnvironment)
     {
         RootPath.ForceDelete();
@@ -409,8 +540,10 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
             RootPath,
             StatePath,
             8,
-            true, // openNodeByHandleEnabled
-            2,    // nodeCleanupBatchSize
+            true,    // openNodeByHandleEnabled
+            2,       // nodeCleanupBatchSize
+            false,   // snapshotDirEnabled
+            TDuration::Zero(),
             Log,
             nodeLoader);
 

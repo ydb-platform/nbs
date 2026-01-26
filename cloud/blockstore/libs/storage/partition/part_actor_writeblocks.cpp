@@ -259,12 +259,13 @@ void TPartitionActor::WriteBlocks(
         return;
     }
 
-    // RejectProbability is broken in our case (KIKIMR-10194)
-    // if (Executor()->GetRejectProbability() >= 0.95) {
-    //     replyError(ctx, MakeError(E_REJECTED, "rejected by tablet executor"));
-    //
-    //     return;
-    // }
+    if (Config->GetTabletExecutorRejectionThreshold() &&
+        Executor()->GetRejectProbability() * 100 >
+            Config->GetTabletExecutorRejectionThreshold())
+    {
+        replyError(ctx, MakeError(E_REJECTED, "rejected by tablet executor"));
+        return;
+    }
 
     ++WriteAndZeroRequestsInProgress;
 

@@ -1,4 +1,3 @@
-
 #include "multi_partition_wrapper_actor.h"
 
 #include <cloud/blockstore/libs/kikimr/components.h>
@@ -133,7 +132,7 @@ void TMultiPartitionWrapperActor::HandleRequest(
     TVector<TPartitionRequest<TMethod>> partitionRequests;
     TBlockRange64 blockRange;
 
-    const bool ok = ToPartitionRequests<TMethod>(
+    const auto error = ToPartitionRequests<TMethod>(
         Partitions,
         BlockSize,
         BlocksPerStripe,
@@ -149,9 +148,8 @@ void TMultiPartitionWrapperActor::HandleRequest(
         TMethod::Name,
         blockRange.Print().c_str());
 
-    if (!ok) {
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            MakeError(E_REJECTED, "Sglist destroyed"));
+    if (HasError(error)) {
+        auto response = std::make_unique<typename TMethod::TResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }

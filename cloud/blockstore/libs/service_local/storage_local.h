@@ -16,6 +16,7 @@ struct TLocalStorageProviderParams
 {
     bool DirectIO = false;
     bool UseSubmissionThread = false;
+    ui32 ValidatedBlocksRatio = 1000;
     NProto::EDataIntegrityValidationPolicy DataIntegrityValidationPolicy =
         NProto::DIVP_DISABLED;
     TString SubmissionThreadName = "AIO.SQ";
