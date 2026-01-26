@@ -703,6 +703,28 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // UnlinkDirectoryNodeAbortedInShard
+    //
+
+    struct TUnlinkDirectoryNodeAbortedInShard
+    {
+        TRequestInfoPtr RequestInfo;
+        NProtoPrivate::TRenameNodeInDestinationRequest Request;
+        NProto::TError OriginalError;
+        NProto::TError Error;
+
+        TUnlinkDirectoryNodeAbortedInShard(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TRenameNodeInDestinationRequest request,
+                NProto::TError originalError)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+            , OriginalError(std::move(originalError))
+        {
+        }
+    };
+
+    //
     // DoRenameNodeInDestination
     //
 
@@ -712,7 +734,6 @@ struct TEvIndexTabletPrivate
         NProtoPrivate::TRenameNodeInDestinationRequest Request;
         NProto::TNodeAttr SourceNodeAttr;
         NProto::TNodeAttr DestinationNodeAttr;
-        bool IsDestinationEmptyDir = false;
         NProto::TError Error;
 
         TDoRenameNodeInDestination(
@@ -1104,6 +1125,7 @@ struct TEvIndexTabletPrivate
         EvNodeCreatedInShard,
         EvNodeUnlinkedInShard,
         EvDoRenameNodeInDestination,
+        EvUnlinkDirectoryNodeAbortedInShard,
         EvNodeRenamedInDestination,
 
         EvAggregateStatsCompleted,
@@ -1147,6 +1169,10 @@ struct TEvIndexTabletPrivate
 
     using TEvNodeUnlinkedInShard =
         TRequestEvent<TNodeUnlinkedInShard, EvNodeUnlinkedInShard>;
+
+    using TEvUnlinkDirectoryNodeAbortedInShard = TRequestEvent<
+        TUnlinkDirectoryNodeAbortedInShard,
+        EvUnlinkDirectoryNodeAbortedInShard>;
 
     using TEvDoRenameNodeInDestination =
         TRequestEvent<TDoRenameNodeInDestination, EvDoRenameNodeInDestination>;
