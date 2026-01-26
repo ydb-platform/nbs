@@ -83,19 +83,27 @@ NProto::TGetNodeAttrResponse TLocalFileSystem::GetNodeAttr(
 
     NLowLevel::TFileStatEx stat;
     if (const auto& name = request.GetName()) {
-        stat = node->Stat(name);
-        if (!session->LookupNode(stat.INode)) {
-            auto child = TIndexNode::Create(*node, name);
-            // TODO: better? race between statting one child and creating another one
-            // but maybe too costly...
-            stat = child->Stat();
-            if (!session->TryInsertNode(
-                    std::move(child),
-                    node->GetNodeId(),
-                    name))
-            {
-                ReportLocalFsMaxSessionNodesInUse();
-                return TErrorResponse(ErrorNoSpaceLeft());
+        auto remapResult = session->RemapNode(node->GetNodeId(), name);
+        if (remapResult.HasRemap()) {
+            if (!remapResult.IsFound()) {
+                return TErrorResponse(E_FS_NOENT);
+            }
+            stat = remapResult.GetNode()->Stat();
+        } else {
+            stat = node->Stat(name);
+            if (!session->LookupNode(stat.INode)) {
+                auto child = TIndexNode::Create(*node, name);
+                // TODO: better? race between statting one child and creating
+                // another one but maybe too costly...
+                stat = child->Stat();
+                if (!session->TryInsertNode(
+                        std::move(child),
+                        node->GetNodeId(),
+                        name))
+                {
+                    ReportLocalFsMaxSessionNodesInUse();
+                    return TErrorResponse(ErrorNoSpaceLeft());
+                }
             }
         }
     } else {
