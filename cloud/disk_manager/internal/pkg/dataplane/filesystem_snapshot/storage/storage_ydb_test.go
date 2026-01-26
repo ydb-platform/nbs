@@ -700,7 +700,7 @@ func TestNodesScheduling(t *testing.T) {
 		f.ctx,
 		filesystemSnapshotID,
 		map[uint64]struct{}{}, // nodesToExclude
-		100, // limit
+		100,                   // limit
 	)
 	require.NoError(t, err)
 	require.ElementsMatch(t, getNodesIDs(entries), []uint64{1, 2, 3, 4, 5, 6})
@@ -709,7 +709,7 @@ func TestNodesScheduling(t *testing.T) {
 		f.ctx,
 		filesystemSnapshotID,
 		map[uint64]struct{}{2: {}, 4: {}}, // nodesToExclude
-		100, // limit
+		100,                               // limit
 	)
 	require.NoError(t, err)
 	require.ElementsMatch(t, getNodesIDs(entries), []uint64{1, 3, 5, 6})
@@ -719,7 +719,7 @@ func TestNodesScheduling(t *testing.T) {
 		f.ctx,
 		filesystemSnapshotID,
 		map[uint64]struct{}{}, // nodesToExclude
-		1, // limit
+		1,                     // limit
 	)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
@@ -739,16 +739,16 @@ func TestNodesScheduling(t *testing.T) {
 	f.storage.ScheduleNodesForListing(
 		f.ctx,
 		otherSnapshot,
-		99, // nodeID
-		"", // nextCookie
-		1, // depth
+		99,                                      // nodeID
+		"",                                      // nextCookie
+		1,                                       // depth
 		[]nfs.Node{{NodeID: 101, ParentID: 99}}, // children
 	)
 	entries, err = f.storage.SelectNodesToList(
 		f.ctx,
 		otherSnapshot,
 		map[uint64]struct{}{}, // nodesToExclude
-		100, // limit
+		100,                   // limit
 	)
 	require.NoError(t, err)
 	require.ElementsMatch(t, getNodesIDs(entries), []uint64{1, 100, 101})

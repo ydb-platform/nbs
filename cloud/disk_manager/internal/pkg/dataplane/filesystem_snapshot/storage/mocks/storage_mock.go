@@ -132,28 +132,31 @@ func (s *StorageMock) ScheduleRootNodeForListing(
 	ctx context.Context,
 	snapshotID string,
 ) (bool, error) {
+
 	args := s.Called(ctx, snapshotID)
 	return args.Get(0).(bool), args.Error(1)
 }
 
-func (s * StorageMock)SelectNodesToList(
-		ctx context.Context,
-		snapshotID string,
-		nodesToExclude map[uint64]struct{},
-		limit uint64,
-	) ([]storage.NodeQueueEntry, error){
+func (s *StorageMock) SelectNodesToList(
+	ctx context.Context,
+	snapshotID string,
+	nodesToExclude map[uint64]struct{},
+	limit uint64,
+) ([]storage.NodeQueueEntry, error) {
+
 	args := s.Called(ctx, snapshotID, nodesToExclude, limit)
 	return args.Get(0).([]storage.NodeQueueEntry), args.Error(1)
 }
 
-func (s * StorageMock) ScheduleNodesForListing(
-		ctx context.Context,
-		snapshotID string,
-		nodeID uint64,
-		nextCookie string,
-		depth uint64,
-		children []nfs.Node,
-	) error{
+func (s *StorageMock) ScheduleNodesForListing(
+	ctx context.Context,
+	snapshotID string,
+	nodeID uint64,
+	nextCookie string,
+	depth uint64,
+	children []nfs.Node,
+) error {
+
 	args := s.Called(ctx, snapshotID, nodeID, nextCookie, depth, children)
 	return args.Error(0)
 }
