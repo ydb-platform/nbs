@@ -450,6 +450,12 @@ private:
     //
 
 public:
+    void CreateNodeWithId(
+        TIndexTabletDatabase& db,
+        ui64 nodeId,
+        ui64 commitId,
+        const NProto::TNode& attrs);
+
     ui64 CreateNode(
         TIndexTabletDatabase& db,
         ui64 commitId,

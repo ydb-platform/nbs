@@ -37,6 +37,19 @@ void TIndexTabletState::UpdateUsedBlocksCount(
     }
 }
 
+void TIndexTabletState::CreateNodeWithId(
+    TIndexTabletDatabase& db,
+    ui64 nodeId,
+    ui64 commitId,
+    const NProto::TNode& attrs)
+{
+    db.WriteNode(nodeId, commitId, attrs);
+    IncrementUsedNodesCount(db);
+
+    // so far symlink node has size
+    UpdateUsedBlocksCount(db, attrs.GetSize(), 0);
+}
+
 ui64 TIndexTabletState::CreateNode(
     TIndexTabletDatabase& db,
     ui64 commitId,
@@ -45,11 +58,7 @@ ui64 TIndexTabletState::CreateNode(
     const ui64 nodeId =
         ShardedId(IncrementLastNodeId(db), GetFileSystem().GetShardNo());
 
-    db.WriteNode(nodeId, commitId, attrs);
-    IncrementUsedNodesCount(db);
-
-    // so far symlink node has size
-    UpdateUsedBlocksCount(db, attrs.GetSize(), 0);
+    CreateNodeWithId(db, nodeId, commitId, attrs);
 
     return nodeId;
 }

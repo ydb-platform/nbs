@@ -986,6 +986,93 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             "Expected at least 3 different generations due to tablet reboots");
     }
 
+    Y_UNIT_TEST(ShouldHandleCommitIdOverflowInCreateAndUnlinkNode)
+    {
+        const ui32 maxTabletStep = 4;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxTabletStep(maxTabletStep);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        auto reconnectIfNeeded = [&]()
+        {
+            if (rebootTracker.IsPipeDestroyed()) {
+                tablet.ReconnectPipe();
+                tablet.WaitReady();
+                tablet.RecoverSession();
+                rebootTracker.ClearPipeDestroyed();
+            }
+        };
+
+        tablet.InitSession("client", "session");
+
+        bool createNodeFailed = false;
+
+        THashMap<ui64, ui64> nodeIds;
+
+        for (int i = 0; i < 5;) {
+            tablet.SendCreateNodeRequest(
+                TCreateNodeArgs::File(RootNodeId, "test" + ToString(i)));
+            auto response = tablet.RecvCreateNodeResponse();
+            reconnectIfNeeded();
+            if (HasError(response->GetError())) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_REJECTED,
+                    response->GetError().GetCode());
+                createNodeFailed = true;
+            } else {
+                nodeIds[i] = response->Record.GetNode().GetId();
+                auto response =
+                    tablet.GetNodeAttr(RootNodeId, "test" + ToString(i));
+                UNIT_ASSERT(!HasError(response->GetError()));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    nodeIds[i],
+                    response->Record.GetNode().GetId());
+                ++i;
+            }
+        }
+
+        UNIT_ASSERT(createNodeFailed);
+
+        bool unlinkNodeFailed = false;
+
+        for (int i = 0; i < 5; ++i) {
+            tablet.SendUnlinkNodeRequest(
+                RootNodeId,
+                "test" + ToString(i),
+                false);
+            auto unlinkResponse = tablet.RecvUnlinkNodeResponse();
+            reconnectIfNeeded();
+
+            if (!HasError(unlinkResponse->GetError())) {
+                tablet.SendGetNodeAttrRequest(RootNodeId, "test" + ToString(i));
+                auto getResponse = tablet.RecvGetNodeAttrResponse();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_FS_NOENT,
+                    getResponse->GetError().GetCode());
+            } else {
+                unlinkNodeFailed = true;
+            }
+        }
+
+        UNIT_ASSERT(unlinkNodeFailed);
+
+        UNIT_ASSERT_C(
+            rebootTracker.GetGenerationCount() >= 2,
+            "Expected at least 2 different generations due to tablet reboots");
+    }
+
     Y_UNIT_TEST(ShouldPayRespectToInodeLimits)
     {
         TTestEnv env;

@@ -2576,6 +2576,7 @@ struct TTxIndexTablet
 
     struct TUnsafeUpdateNode
         : TTxIndexTabletBase
+        , TErrorAware
         , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
@@ -2592,6 +2593,7 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
             Node.Clear();
         }

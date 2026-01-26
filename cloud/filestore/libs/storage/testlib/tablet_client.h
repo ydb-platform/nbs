@@ -66,9 +66,11 @@ struct TPerformanceProfile
     ui64 DefaultPostponedRequestWeight = 0;
 };
 
+const TStringBuf DefaultFileSystemId = "test";
+
 struct TFileSystemConfig
 {
-    TString FileSystemId = "test";
+    TString FileSystemId = DefaultFileSystemId;
     TString CloudId = "test_cloud";
     TString FolderId = "test_folder";
     ui32 BlockSize = DefaultBlockSize;
@@ -382,6 +384,34 @@ public:
         auto request = std::make_unique<TRequestEvent>();
         request->Record.SetParentId(parentId);
         request->Record.SetName(name);
+        return request;
+    }
+
+    auto CreateUnsafeUpdateNodeRequest(ui64 nodeId, ui64 newSize)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvUnsafeUpdateNodeRequest;
+        auto request = std::make_unique<TRequestEvent>();
+        request->Record.SetFileSystemId(DefaultFileSystemId);
+        auto* node = request->Record.MutableNode();
+        node->SetId(nodeId);
+        node->SetSize(newSize);
+        return request;
+    }
+
+    auto CreateUnsafeGetNodeRequest(ui64 nodeId)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvUnsafeGetNodeRequest;
+        auto request = std::make_unique<TRequestEvent>();
+        request->Record.SetId(nodeId);
+        return request;
+    }
+
+    auto CreateUnsafeDeleteNodeRequest(ui64 nodeId)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvUnsafeDeleteNodeRequest;
+        auto request = std::make_unique<TRequestEvent>();
+        request->Record.SetFileSystemId(DefaultFileSystemId);
+        request->Record.SetId(nodeId);
         return request;
     }
 
