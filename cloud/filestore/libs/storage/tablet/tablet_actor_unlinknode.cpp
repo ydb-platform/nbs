@@ -446,7 +446,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnlinkNode");
+        return args.OnCommitIdOverflow();
     }
 
     if (args.ChildRef && args.ChildRef->IsExternal()) {

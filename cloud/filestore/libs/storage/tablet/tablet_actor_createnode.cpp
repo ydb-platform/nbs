@@ -716,6 +716,8 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
     TTransactionContext& tx,
     TTxIndexTablet::TCreateNode& args)
 {
+    Y_UNUSED(ctx);
+
     FILESTORE_VALIDATE_TX_ERROR(CreateNode, args);
 
     TSession* session = nullptr;
@@ -733,7 +735,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "CreateNode");
+        return args.OnCommitIdOverflow();
     }
 
     if (args.TargetNodeId == InvalidNodeId) {
