@@ -853,6 +853,7 @@ struct TTxIndexTablet
         const TString Name;
         ui64 OpLogEntryId;
         NProto::TUnlinkNodeResponse Response;
+        const bool IsExplicitRequest;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
@@ -865,7 +866,8 @@ struct TTxIndexTablet
                 TRequestInfoPtr requestInfo,
                 NProto::TUnlinkNodeRequest request,
                 ui64 opLogEntryId,
-                NProto::TUnlinkNodeResponse response)
+                NProto::TUnlinkNodeResponse response,
+                bool isExplicitRequest)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
@@ -873,6 +875,7 @@ struct TTxIndexTablet
             , Name(Request.GetName())
             , OpLogEntryId(opLogEntryId)
             , Response(std::move(response))
+            , IsExplicitRequest(isExplicitRequest)
         {}
 
         void Clear() override

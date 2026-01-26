@@ -2408,7 +2408,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
 
     TABLET_TEST_4K_ONLY(ShouldHandleCommitIdOverflowUponRenameNode)
     {
-        const auto maxTabletStep = 5;
+        const ui32 maxTabletStep = 5;
 
         NProto::TStorageConfig storageConfig;
         storageConfig.SetMaxTabletStep(maxTabletStep);

@@ -7832,8 +7832,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldHandleCommitIdOverflowAndPreserveLastWrittenData)
     {
-        const auto block = tabletConfig.BlockSize;
-        const auto maxTabletStep = 5;
+        const ui64 block = tabletConfig.BlockSize;
+        const ui32 maxTabletStep = 5;
 
         NProto::TStorageConfig storageConfig;
         storageConfig.SetMaxTabletStep(maxTabletStep);
@@ -7855,7 +7855,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             tabletConfig);
         tablet.InitSession("client", "session");
 
-        const auto id =
+        const ui64 id =
             CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tablet, id);
 

@@ -391,7 +391,7 @@ public:
     {
         using TRequestEvent = TEvIndexTablet::TEvUnsafeUpdateNodeRequest;
         auto request = std::make_unique<TRequestEvent>();
-        request->Record.SetFileSystemId(DefaultFileSystemId.data());
+        request->Record.SetFileSystemId(TString(DefaultFileSystemId));
         auto* node = request->Record.MutableNode();
         node->SetId(nodeId);
         node->SetSize(newSize);
@@ -410,7 +410,7 @@ public:
     {
         using TRequestEvent = TEvIndexTablet::TEvUnsafeDeleteNodeRequest;
         auto request = std::make_unique<TRequestEvent>();
-        request->Record.SetFileSystemId(DefaultFileSystemId.data());
+        request->Record.SetFileSystemId(TString(DefaultFileSystemId));
         request->Record.SetId(nodeId);
         return request;
     }
@@ -535,6 +535,19 @@ public:
         return std::make_unique<TRequestEvent>(
             std::move(subRequest),
             std::move(subResponse),
+            opLogEntryId);
+    }
+
+    auto CreateCompleteUnlinkNodeRequest(
+        NProto::TUnlinkNodeRequest request,
+        NProto::TUnlinkNodeResponse response,
+        ui64 opLogEntryId)
+    {
+        using TRequestEvent =
+            TEvIndexTabletPrivate::TEvCompleteUnlinkNodeRequest;
+        return std::make_unique<TRequestEvent>(
+            std::move(request),
+            std::move(response),
             opLogEntryId);
     }
 
