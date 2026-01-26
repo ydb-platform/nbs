@@ -39,6 +39,11 @@ private:
 
     ui32 ResultCount = 0;
 
+    using TEvPrepareUnlinkRequest =
+        TEvIndexTablet::TEvPrepareUnlinkDirectoryNodeInShardRequest;
+    using TEvPrepareUnlinkResponse =
+        TEvIndexTablet::TEvPrepareUnlinkDirectoryNodeInShardResponse;
+
 public:
     TGetExtraSourceAndDestinationInfoActor(
         TString logTag,
@@ -61,8 +66,14 @@ private:
         const TString& shardNodeName,
         ui64 cookie);
 
+    void PrepareUnlink(const TActorContext& ctx);
+
     void HandleGetNodeAttrResponse(
         const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandlePrepareUnlinkResponse(
+        const TEvPrepareUnlinkResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePoisonPill(
@@ -136,6 +147,25 @@ void TGetExtraSourceAndDestinationInfoActor::SendRequests(const TActorContext& c
         DstCookie);
 }
 
+void TGetExtraSourceAndDestinationInfoActor::PrepareUnlink(
+    const TActorContext& ctx)
+{
+    auto request = std::make_unique<TEvPrepareUnlinkRequest>();
+    request->Record.MutableHeaders()->CopyFrom(Result.Request.GetHeaders());
+    request->Record.SetFileSystemId(DstShardId);
+    request->Record.SetNodeId(Result.DestinationNodeAttr.GetId());
+    request->Record.MutableOriginalRequest()->CopyFrom(Result.Request);
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s Sending PrepareUnlinkRequest to shard %s",
+        LogTag.c_str(),
+        request->Record.ShortUtf8DebugString().Quote().c_str());
+
+    ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+}
+
 void TGetExtraSourceAndDestinationInfoActor::HandleGetNodeAttrResponse(
     const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -162,14 +192,32 @@ void TGetExtraSourceAndDestinationInfoActor::HandleGetNodeAttrResponse(
         Result.DestinationNodeAttr = *msg->Record.MutableNode();
     }
 
-    if (++ResultCount == 2) {
-        // TODO(#2674): if dst is a dir, it's going to be unlinked - we need
-        // to do an atomic check-emptiness-and-lock op for that dir before
-        // replying
-        Result.IsDestinationEmptyDir = true;
-
-        ReplyAndDie(ctx, MakeError(S_OK));
+    if (++ResultCount < 2) {
+        return;
     }
+
+    if (Result.DestinationNodeAttr.GetType() == NProto::E_DIRECTORY_NODE) {
+        PrepareUnlink(ctx);
+        return;
+    }
+
+    ReplyAndDie(ctx, MakeError(S_OK));
+}
+
+void TGetExtraSourceAndDestinationInfoActor::HandlePrepareUnlinkResponse(
+    const TEvPrepareUnlinkResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s Got PrepareUnlinkResponse %s, %lu",
+        LogTag.c_str(),
+        msg->Record.ShortUtf8DebugString().Quote().c_str());
+
+    ReplyAndDie(ctx, msg->GetError());
 }
 
 void TGetExtraSourceAndDestinationInfoActor::HandlePoisonPill(
@@ -199,6 +247,152 @@ STFUNC(TGetExtraSourceAndDestinationInfoActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         HFunc(TEvService::TEvGetNodeAttrResponse, HandleGetNodeAttrResponse);
+
+        HFunc(
+            TEvIndexTablet::TEvPrepareUnlinkDirectoryNodeInShardResponse,
+            HandlePrepareUnlinkResponse);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TAbortUnlinkDirectoryInShardActor final
+    : public TActorBootstrapped<TAbortUnlinkDirectoryInShardActor>
+{
+private:
+    const TString LogTag;
+    const TActorId ParentId;
+    const TString ShardId;
+    const ui64 NodeId;
+    TEvIndexTabletPrivate::TUnlinkDirectoryNodeAbortedInShard Result;
+
+    using TEvAbortUnlinkRequest =
+        TEvIndexTablet::TEvAbortUnlinkDirectoryNodeInShardRequest;
+    using TEvAbortUnlinkResponse =
+        TEvIndexTablet::TEvAbortUnlinkDirectoryNodeInShardResponse;
+
+public:
+    TAbortUnlinkDirectoryInShardActor(
+        TString logTag,
+        TRequestInfoPtr requestInfo,
+        const TActorId& parentId,
+        NProtoPrivate::TRenameNodeInDestinationRequest request,
+        NProto::TError originalError,
+        TString shardId,
+        ui64 nodeId);
+
+    void Bootstrap(const TActorContext& ctx);
+
+private:
+    STFUNC(StateWork);
+
+    void AbortUnlink(const TActorContext& ctx);
+
+    void HandleAbortUnlinkResponse(
+        const TEvAbortUnlinkResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandlePoisonPill(
+        const TEvents::TEvPoisonPill::TPtr& ev,
+        const TActorContext& ctx);
+
+    void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TAbortUnlinkDirectoryInShardActor::TAbortUnlinkDirectoryInShardActor(
+        TString logTag,
+        TRequestInfoPtr requestInfo,
+        const TActorId& parentId,
+        NProtoPrivate::TRenameNodeInDestinationRequest request,
+        NProto::TError originalError,
+        TString shardId,
+        ui64 nodeId)
+    : LogTag(std::move(logTag))
+    , ParentId(parentId)
+    , ShardId(std::move(shardId))
+    , NodeId(nodeId)
+    , Result(std::move(requestInfo), std::move(request), std::move(originalError))
+{}
+
+void TAbortUnlinkDirectoryInShardActor::Bootstrap(const TActorContext& ctx)
+{
+    AbortUnlink(ctx);
+    Become(&TThis::StateWork);
+}
+
+void TAbortUnlinkDirectoryInShardActor::AbortUnlink(const TActorContext& ctx)
+{
+    auto request = std::make_unique<TEvAbortUnlinkRequest>();
+    request->Record.MutableHeaders()->CopyFrom(Result.Request.GetHeaders());
+    request->Record.SetFileSystemId(ShardId);
+    request->Record.SetNodeId(NodeId);
+    request->Record.MutableOriginalRequest()->CopyFrom(Result.Request);
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s Sending AbortUnlinkRequest to shard %s",
+        LogTag.c_str(),
+        request->Record.ShortUtf8DebugString().Quote().c_str());
+
+    ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+}
+
+void TAbortUnlinkDirectoryInShardActor::HandleAbortUnlinkResponse(
+    const TEvAbortUnlinkResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s Got AbortUnlinkResponse %s, %lu",
+        LogTag.c_str(),
+        msg->Record.ShortUtf8DebugString().Quote().c_str());
+
+    ReplyAndDie(ctx, msg->GetError());
+}
+
+void TAbortUnlinkDirectoryInShardActor::HandlePoisonPill(
+    const TEvents::TEvPoisonPill::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
+}
+
+void TAbortUnlinkDirectoryInShardActor::ReplyAndDie(
+    const TActorContext& ctx,
+    NProto::TError error)
+{
+    using TResponse =
+        TEvIndexTabletPrivate::TEvUnlinkDirectoryNodeAbortedInShard;
+    Result.Error = std::move(error);
+    ctx.Send(
+        ParentId,
+        std::make_unique<TResponse>(std::move(Result)));
+
+    Die(ctx);
+}
+
+STFUNC(TAbortUnlinkDirectoryInShardActor::StateWork)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        HFunc(
+            TEvIndexTablet::TEvAbortUnlinkDirectoryNodeInShardResponse,
+            HandleAbortUnlinkResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -299,7 +493,7 @@ void TIndexTabletActor::HandleDoRenameNodeInDestination(
         using TMethod = TEvIndexTablet::TRenameNodeInDestinationMethod;
         auto response =
             std::make_unique<TMethod::TResponse>(std::move(msg->Error));
-        NCloud::Reply(ctx, *ev, std::move(response));
+        NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
         return;
     }
 
@@ -308,8 +502,7 @@ void TIndexTabletActor::HandleDoRenameNodeInDestination(
         std::move(msg->RequestInfo),
         std::move(msg->Request),
         std::move(msg->SourceNodeAttr),
-        std::move(msg->DestinationNodeAttr),
-        msg->IsDestinationEmptyDir);
+        std::move(msg->DestinationNodeAttr));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -412,11 +605,9 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
                     return true;
                 }
 
-                if (!args.IsDestinationEmptyDir) {
-                    args.Error =
-                        ErrorIsNotEmpty(args.DestinationNodeAttr.GetId());
-                    return true;
-                }
+                // we don't need a separate emptiness check here because
+                // emptiness is checked upon PrepareUnlinkDirectoryNodeInShard
+                // which happens after the first pass
             }
         } else {
             args.SecondPassRequired = true;
@@ -569,6 +760,24 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
         args.Error = MakeError(E_INVALID_STATE, std::move(message));
     }
 
+    if (HasError(args.Error)
+            && args.IsSecondPass
+            && args.DestinationNodeAttr.GetType() == NProto::E_DIRECTORY_NODE)
+    {
+        auto actor = std::make_unique<TAbortUnlinkDirectoryInShardActor>(
+            LogTag,
+            args.RequestInfo,
+            ctx.SelfID,
+            args.Request,
+            args.Error,
+            args.NewChildRef->ShardId,
+            args.DestinationNodeAttr.GetId());
+
+        auto actorId = NCloud::Register(ctx, std::move(actor));
+        WorkerActors.insert(actorId);
+        return;
+    }
+
     UnlockNodeRef({args.Request.GetNewParentId(), args.Request.GetNewName()});
 
     InvalidateNodeCaches(args.NewParentNodeId);
@@ -606,8 +815,6 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
         CommitDupCacheEntry(args.SessionId, args.RequestId);
 
         // TODO(#1350): support session events for external nodes
-    } else {
-        // TODO(#2674): if dst is a dir, it was locked - we need to unlock it
     }
 
     RemoveTransaction(*args.RequestInfo);
@@ -625,6 +832,39 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleUnlinkDirectoryNodeAbortedInShard(
+    const TEvIndexTabletPrivate::TEvUnlinkDirectoryNodeAbortedInShard::TPtr& ev,
+    const TActorContext& ctx)
+{
+    WorkerActors.erase(ev->Sender);
+
+    auto* msg = ev->Get();
+
+    UnlockNodeRef({msg->Request.GetNewParentId(), msg->Request.GetNewName()});
+
+    RemoveTransaction(*msg->RequestInfo);
+
+    Metrics.RenameNode.Update(
+        1,
+        0,
+        ctx.Now() - msg->RequestInfo->StartedTs);
+
+    if (!HasError(msg->Error)) {
+        msg->Error = std::move(msg->OriginalError);
+    }
+
+    using TMethod = TEvIndexTablet::TRenameNodeInDestinationMethod;
+    auto response = std::make_unique<TMethod::TResponse>(std::move(msg->Error));
+    CompleteResponse<TMethod>(
+        response->Record,
+        msg->RequestInfo->CallContext,
+        ctx);
+
+    NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
 }
 
 }   // namespace NCloud::NFileStore::NStorage
