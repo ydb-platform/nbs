@@ -686,6 +686,115 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
         UNIT_ASSERT_GT(failures, 0);
     }
+
+    TABLET_TEST_4K_ONLY(ShouldHandleCommitIdOverflowUponCompleteUnlinkNode)
+    {
+        const ui32 maxTabletStep = 5;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxTabletStep(maxTabletStep);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto dir =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+
+        auto reconnectIfNeeded = [&]()
+        {
+            if (rebootTracker.IsPipeDestroyed()) {
+                tablet.ReconnectPipe();
+                tablet.WaitReady();
+                tablet.RecoverSession();
+                rebootTracker.ClearPipeDestroyed();
+            }
+        };
+
+        ui32 failures = 0;
+
+        const TString shardId = "shard";
+        const ui64 opLogEntryId = Max<ui64>();
+
+        //
+        // Pre-creating N fake external node-refs to apply the unlink op to.
+        //
+
+        const ui32 iterations = 5;
+        TVector<TString> fileNames;
+
+        for (ui32 i = 0; i < iterations;) {
+            auto fileName = TStringBuilder() << "file" << i;
+            auto shardNodeName = CreateGuidAsString();
+            tablet.SendUnsafeCreateNodeRefRequest(
+                dir,
+                fileName,
+                0 /* childId */,
+                shardId,
+                shardNodeName);
+            auto response = tablet.RecvUnsafeCreateNodeRefResponse();
+            reconnectIfNeeded();
+            if (HasError(response->GetError())) {
+                continue;
+            }
+
+            fileNames.push_back(fileName);
+            ++i;
+        }
+
+        for (ui32 i = 0; i < iterations; ++i) {
+            auto unlinkNodeRequest = tablet.CreateUnlinkNodeRequest(
+                dir,
+                fileNames[i],
+                false /* unlinkDirectory */);
+
+            NProto::TUnlinkNodeResponse unlinkResponse;
+
+            tablet.SendCompleteUnlinkNodeRequest(
+                unlinkNodeRequest->Record,
+                unlinkResponse,
+                opLogEntryId);
+            auto response = tablet.RecvCompleteUnlinkNodeResponse();
+            reconnectIfNeeded();
+
+            if (HasError(response->GetError())) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_REJECTED,
+                    response->GetStatus(),
+                    FormatError(response->GetError()));
+                ++failures;
+                continue;
+            }
+
+            tablet.SendUnsafeGetNodeRefRequest(dir, fileNames[i]);
+            auto getNodeRefResponse = tablet.RecvUnsafeGetNodeRefResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOENT,
+                getNodeRefResponse->GetStatus(),
+                FormatError(getNodeRefResponse->GetError()));
+        }
+
+        UNIT_ASSERT_C(
+            rebootTracker.GetGenerationCount() >= 3,
+            "Expected at least 3 different generations due to tablet reboot, "
+            "got "
+                << rebootTracker.GetGenerationCount());
+
+        UNIT_ASSERT_GT(failures, 0);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

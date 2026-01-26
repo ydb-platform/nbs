@@ -54,6 +54,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(LoadCompactionMapChunk,                 __VA_ARGS__)                   \
     xxx(PrepareRenameNodeInSource,              __VA_ARGS__)                   \
     xxx(CommitRenameNodeInSource,               __VA_ARGS__)                   \
+    xxx(CompleteUnlinkNode,                     __VA_ARGS__)                   \
     xxx(DeleteOpLogEntry,                       __VA_ARGS__)                   \
     xxx(GetOpLogEntry,                          __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE
@@ -802,6 +803,33 @@ struct TEvIndexTabletPrivate
     };
 
     struct TCommitRenameNodeInSourceResponse
+    {
+    };
+
+    //
+    // CompleteUnlinkNode
+    //
+    // NOTE: This event is not supposed to be sent outside of unit tests.
+    //
+
+    struct TCompleteUnlinkNodeRequest
+    {
+        NProto::TUnlinkNodeRequest Request;
+        NProto::TUnlinkNodeResponse Response;
+        const ui64 OpLogEntryId;
+
+        TCompleteUnlinkNodeRequest(
+                NProto::TUnlinkNodeRequest request,
+                NProto::TUnlinkNodeResponse response,
+                ui64 opLogEntryId)
+            : Request(std::move(request))
+            , Response(std::move(response))
+            , OpLogEntryId(opLogEntryId)
+        {
+        }
+    };
+
+    struct TCompleteUnlinkNodeResponse
     {
     };
 
