@@ -278,6 +278,16 @@ public:
         return FileSystem.GetFileSystemId();
     }
 
+    TString GetCloudId() const
+    {
+        return FileSystem.GetCloudId();
+    }
+
+    TString GetFolderId() const
+    {
+        return FileSystem.GetFolderId();
+    }
+
     TString GetMainFileSystemId() const
     {
         return FileSystem.GetMainFileSystemId();

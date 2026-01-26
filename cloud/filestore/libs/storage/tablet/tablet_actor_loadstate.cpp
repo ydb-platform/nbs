@@ -384,6 +384,17 @@ void TIndexTabletActor::CompleteTx_LoadState(
         LogTag << " Scheduling OpLog ops");
     ReplayOpLog(ctx, args.OpLog);
 
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
+        LogTag << " Setting CloudId=" << GetCloudId() << ", FolderId="
+               << GetFolderId() << ", EntityId=" << GetFileSystemId()
+               << " for the storage config features overrides");
+    Config->SetCloudFolderEntity(
+        GetCloudId(),
+        GetFolderId(),
+        GetFileSystemId());
+
     CompleteStateLoad();
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
