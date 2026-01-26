@@ -70,7 +70,7 @@ const TStringBuf DefaultFileSystemId = "test";
 
 struct TFileSystemConfig
 {
-    TString FileSystemId = DefaultFileSystemId;
+    TString FileSystemId = TString(DefaultFileSystemId);
     TString CloudId = "test_cloud";
     TString FolderId = "test_folder";
     ui32 BlockSize = DefaultBlockSize;
@@ -391,7 +391,7 @@ public:
     {
         using TRequestEvent = TEvIndexTablet::TEvUnsafeUpdateNodeRequest;
         auto request = std::make_unique<TRequestEvent>();
-        request->Record.SetFileSystemId(DefaultFileSystemId);
+        request->Record.SetFileSystemId(DefaultFileSystemId.data());
         auto* node = request->Record.MutableNode();
         node->SetId(nodeId);
         node->SetSize(newSize);
@@ -410,7 +410,7 @@ public:
     {
         using TRequestEvent = TEvIndexTablet::TEvUnsafeDeleteNodeRequest;
         auto request = std::make_unique<TRequestEvent>();
-        request->Record.SetFileSystemId(DefaultFileSystemId);
+        request->Record.SetFileSystemId(DefaultFileSystemId.data());
         request->Record.SetId(nodeId);
         return request;
     }
