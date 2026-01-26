@@ -119,10 +119,17 @@ func (f *fixture) fillFilesystem(
 	filesystemID string,
 	rootDir nfs_testing.Node,
 ) *nfs_testing.FileSystemModel {
+
 	session, err := f.client.CreateSession(f.ctx, filesystemID, "", false)
 	require.NoError(t, err)
 	// todo close session at model?
-	model := nfs_testing.NewFileSystemModel(t, f.ctx, f.client, session, rootDir)
+	model := nfs_testing.NewFileSystemModel(
+		t,
+		f.ctx,
+		f.client,
+		session,
+		rootDir,
+	)
 	model.Create()
 	return model
 }
@@ -136,6 +143,7 @@ func TestTraversal(t *testing.T) {
 	filesystemID := t.Name()
 	fixture.prepareFilesystem(t, filesystemID)
 	defer fixture.cleanupFilesystem(t, filesystemID)
+
 	fsModel := fixture.fillFilesystem(
 		t,
 		filesystemID,

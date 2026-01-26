@@ -91,7 +91,10 @@ func createFixture(t *testing.T) *fixture {
 	db, err := newYDB(ctx)
 	require.NoError(t, err)
 
-	storageFolder := fmt.Sprintf("filesystem_snapshot_storage_ydb_test/%v", t.Name())
+	storageFolder := fmt.Sprintf(
+		"filesystem_snapshot_storage_ydb_test/%v",
+		t.Name(),
+	)
 	storage := newStorage(t, ctx, db, storageFolder)
 
 	return &fixture{
@@ -127,7 +130,10 @@ func TestCreateFilesystemSnapshot(t *testing.T) {
 	require.False(t, created.Ready)
 	require.Equal(t, snapshotMeta.ID, created.ID)
 	require.Equal(t, snapshotMeta.Filesystem.ZoneId, created.Filesystem.ZoneId)
-	require.Equal(t, snapshotMeta.Filesystem.FilesystemId, created.Filesystem.FilesystemId)
+	require.Equal(
+		t,
+		snapshotMeta.Filesystem.FilesystemId, created.Filesystem.FilesystemId,
+	)
 	require.Equal(t, snapshotMeta.CreateTaskID, created.CreateTaskID)
 
 	// Check idempotency of Create - calling again should succeed
@@ -368,7 +374,11 @@ func TestLockUnlockFilesystemSnapshot(t *testing.T) {
 	require.Empty(t, meta.LockTaskID)
 
 	// Now deletion should succeed after unlock
-	deleting, err := f.storage.DeletingFilesystemSnapshot(f.ctx, "snapshot", "delete1")
+	deleting, err := f.storage.DeletingFilesystemSnapshot(
+		f.ctx,
+		"snapshot",
+		"delete1",
+	)
 	require.NoError(t, err)
 	require.NotNil(t, deleting)
 
@@ -383,7 +393,11 @@ func TestLockNonexistingFilesystemSnapshot(t *testing.T) {
 	defer f.teardown()
 
 	// Lock non-existing snapshot - should succeed but return false
-	locked, err := f.storage.LockFilesystemSnapshot(f.ctx, "nonexisting", "lock")
+	locked, err := f.storage.LockFilesystemSnapshot(
+		f.ctx,
+		"nonexisting",
+		"lock",
+	)
 	require.NoError(t, err)
 	require.False(t, locked)
 }
@@ -600,7 +614,10 @@ func TestGetFilesystemSnapshotMeta(t *testing.T) {
 	require.NotNil(t, meta)
 	require.Equal(t, snapshotMeta.ID, meta.ID)
 	require.Equal(t, snapshotMeta.Filesystem.ZoneId, meta.Filesystem.ZoneId)
-	require.Equal(t, snapshotMeta.Filesystem.FilesystemId, meta.Filesystem.FilesystemId)
+	require.Equal(
+		t,
+		snapshotMeta.Filesystem.FilesystemId, meta.Filesystem.FilesystemId,
+	)
 	require.Equal(t, snapshotMeta.CreateTaskID, meta.CreateTaskID)
 	require.False(t, meta.Ready)
 
@@ -623,7 +640,10 @@ func TestNodesScheduling(t *testing.T) {
 	defer f.teardown()
 
 	filesystemSnapshotID := "snapshot"
-	scheduled, err := f.storage.ScheduleRootNodeForListing(f.ctx, filesystemSnapshotID)
+	scheduled, err := f.storage.ScheduleRootNodeForListing(
+		f.ctx,
+		filesystemSnapshotID,
+	)
 	require.NoError(t, err)
 	require.True(t, scheduled)
 
@@ -666,25 +686,30 @@ func TestNodesScheduling(t *testing.T) {
 		f.storage.ScheduleNodesForListing(
 			f.ctx,
 			otherSnapshot,
-			1,
+			1, // nodeID
 			"cookie99",
-			0,
+			0, // depth
 			[]nfs.Node{
 				{NodeID: 99, ParentID: 1},
 				{NodeID: 100, ParentID: 1},
-			},
+			}, // children
 		),
 	)
 
-	entries, err := f.storage.SelectNodesToList(f.ctx, filesystemSnapshotID, map[uint64]struct{}{}, 100)
+	entries, err := f.storage.SelectNodesToList(
+		f.ctx,
+		filesystemSnapshotID,
+		map[uint64]struct{}{}, // nodesToExclude
+		100, // limit
+	)
 	require.NoError(t, err)
 	require.ElementsMatch(t, getNodesIDs(entries), []uint64{1, 2, 3, 4, 5, 6})
 
 	entries, err = f.storage.SelectNodesToList(
 		f.ctx,
 		filesystemSnapshotID,
-		map[uint64]struct{}{2: {}, 4: {}},
-		100,
+		map[uint64]struct{}{2: {}, 4: {}}, // nodesToExclude
+		100, // limit
 	)
 	require.NoError(t, err)
 	require.ElementsMatch(t, getNodesIDs(entries), []uint64{1, 3, 5, 6})
@@ -693,28 +718,38 @@ func TestNodesScheduling(t *testing.T) {
 	entries, err = f.storage.SelectNodesToList(
 		f.ctx,
 		filesystemSnapshotID,
-		map[uint64]struct{}{},
-		1,
+		map[uint64]struct{}{}, // nodesToExclude
+		1, // limit
 	)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Contains(t, []uint64{1, 2, 3, 4, 5, 6}, entries[0].NodeID)
-	// 4) all the nodes are excluded -> empty result
-	// Build exclude map with all known ids
-	allExclude := map[uint64]struct{}{1: {}, 2: {}, 3: {}, 4: {}, 5: {}, 6: {}}
-	entries, err = f.storage.SelectNodesToList(f.ctx, filesystemSnapshotID, allExclude, 100)
+	nodeIDsToExclude := map[uint64]struct{}{
+		1: {}, 2: {}, 3: {}, 4: {}, 5: {}, 6: {},
+	}
+	entries, err = f.storage.SelectNodesToList(
+		f.ctx,
+		filesystemSnapshotID,
+		nodeIDsToExclude,
+		100, // limit
+	)
 	require.NoError(t, err)
 	require.Len(t, entries, 0)
 
 	f.storage.ScheduleNodesForListing(
 		f.ctx,
 		otherSnapshot,
-		99,
-		"",
-		1,
-		[]nfs.Node{{NodeID: 101, ParentID: 99}},
+		99, // nodeID
+		"", // nextCookie
+		1, // depth
+		[]nfs.Node{{NodeID: 101, ParentID: 99}}, // children
 	)
-	entries, err = f.storage.SelectNodesToList(f.ctx, otherSnapshot, map[uint64]struct{}{}, 100)
+	entries, err = f.storage.SelectNodesToList(
+		f.ctx,
+		otherSnapshot,
+		map[uint64]struct{}{}, // nodesToExclude
+		100, // limit
+	)
 	require.NoError(t, err)
 	require.ElementsMatch(t, getNodesIDs(entries), []uint64{1, 100, 101})
 }

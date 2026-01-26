@@ -230,15 +230,28 @@ func (t *FilesystemTraverser) listNode(
 
 	cookie := node.Cookie
 	for {
-		nodes, nextCookie, err := t.client.ListNodes(ctx, session, node.NodeID, cookie)
+		nodes, nextCookie, err := t.client.ListNodes(
+			ctx,
+			session,
+			node.NodeID,
+			cookie,
+		)
 		if err != nil {
-			return errors.NewRetriableErrorf("failed to list node %d: %w", node.NodeID, err)
+			return errors.NewRetriableErrorf(
+				"failed to list node %d: %w",
+				node.NodeID,
+				err,
+			)
 		}
 
 		if len(nodes) > 0 {
 			err = onListedNodes(ctx, nodes, session, t.client)
 			if err != nil {
-				return errors.NewRetriableErrorf("callback failed for node %d: %w", node.NodeID, err)
+				return errors.NewRetriableErrorf(
+					"callback failed for node %d: %w",
+					node.NodeID,
+					err,
+				)
 			}
 		}
 
@@ -258,7 +271,11 @@ func (t *FilesystemTraverser) listNode(
 			childDirs,
 		)
 		if err != nil {
-			return errors.NewRetriableErrorf("failed to schedule children for node %d: %w", node.NodeID, err)
+			return errors.NewRetriableErrorf(
+				"failed to schedule children for node %d: %w",
+				node.NodeID,
+				err,
+			)
 		}
 
 		if nextCookie == "" {
