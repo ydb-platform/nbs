@@ -380,6 +380,12 @@ struct TTestBootstrap
         AIOService->Stop();
     }
 
+    void StopFileStore()
+    {
+        Store->Stop();
+        Store.reset();
+    }
+
     std::optional<TFsPath> GetFsStateDir(const TString& id)
     {
         TVector<TFsPath> dirs;
@@ -1189,19 +1195,10 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
 
     Y_UNIT_TEST(ShouldRecoverLocalStores)
     {
-        TTempDirectoryPtr bootstrapCwd;
+        TTestBootstrap bootstrap;
+        bootstrap.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
 
-        {
-            TTestBootstrap bootstrap;
-            bootstrap.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
-            bootstrapCwd = bootstrap.Cwd;
-
-            // We can not have two sessions sharing the same state files
-            // So we should destroy bootstrap with session
-            // before creating another one
-        }
-
-        TTestBootstrap other(bootstrapCwd);
+        TTestBootstrap other(bootstrap.Cwd);
         auto store = other.GetFileStoreInfo("fs").GetFileStore();
 
         UNIT_ASSERT_VALUES_EQUAL(store.GetFileSystemId(), "fs");
@@ -1213,8 +1210,8 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
 
     Y_UNIT_TEST(ShouldRecoverFsNodes)
     {
-        TTempDirectoryPtr bootstrapCwd;
-        TString expectedSessionId;
+        TTestBootstrap bootstrap("fs", "client");
+        auto ctx = MakeIntrusive<TCallContext>();
 
         TVector<std::pair<TString, TVector<TString>>> testPaths = {
             {"a/b/c/d/e", {"file1", "file2", "file3"}},
@@ -1222,61 +1219,51 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         };
 
         TVector<std::tuple<TVector<ui64>, TVector<ui64>, TVector<ui64>>>
-                testNodes;
+            testNodes;
 
-        {
-            TTestBootstrap bootstrap("fs", "client");
-            auto ctx = MakeIntrusive<TCallContext>();
-
-            for (auto& [dir, files]: testPaths) {
-                auto dirNodes = CreateDirectories(bootstrap, RootNodeId, dir);
-                TVector<ui64> fileNodes;
-                for (auto& file: files) {
-                    auto fileNode =
-                        CreateFile(bootstrap, dirNodes.back(), file, 0755);
-                    fileNodes.push_back(fileNode);
-                }
-
-                TVector<ui64> deletedNodes;
-                deletedNodes.push_back(
-                    CreateFile(bootstrap, dirNodes.back(), "deletedFile", 0755));
-                deletedNodes.push_back(CreateDirectory(
-                    bootstrap,
-                    dirNodes.back(),
-                    "deletedDir",
-                    0755));
-
-                testNodes.emplace_back(
-                    std::move(dirNodes),
-                    std::move(fileNodes),
-                    std::move(deletedNodes));
+        for (auto& [dir, files]: testPaths) {
+            auto dirNodes = CreateDirectories(bootstrap, RootNodeId, dir);
+            TVector<ui64> fileNodes;
+            for (auto& file: files) {
+                auto fileNode =
+                    CreateFile(bootstrap, dirNodes.back(), file, 0755);
+                fileNodes.push_back(fileNode);
             }
 
-            // Delete nodes after all files/directories were created
-            // so nodes won't be reused
-            // then we can safely check that deleted nodes were not recovered
-            for (auto& nodes: testNodes) {
-                auto& dirNodes = std::get<0>(nodes);
-                bootstrap.UnlinkNode(dirNodes.back(), "deletedFile", false);
-                bootstrap.UnlinkNode(dirNodes.back(), "deletedDir", true);
-            }
+            TVector<ui64> deletedNodes;
+            deletedNodes.push_back(
+                CreateFile(bootstrap, dirNodes.back(), "deletedFile", 0755));
+            deletedNodes.push_back(CreateDirectory(
+                bootstrap,
+                dirNodes.back(),
+                "deletedDir",
+                0755));
 
-            bootstrapCwd = bootstrap.Cwd;
-            expectedSessionId = bootstrap.Headers.SessionId;
-
-            // We can not have two sessions sharing the same state files
-            // So we should destroy bootstrap with session
-            // before creating another one
+            testNodes.emplace_back(
+                std::move(dirNodes),
+                std::move(fileNodes),
+                std::move(deletedNodes));
         }
 
-        TTestBootstrap other(bootstrapCwd);
+        // delete nodes after all files/directories were created so nodes won't
+        // be reused then we can safely check that delete nodes were not
+        // recovered
+        for (auto& nodes: testNodes) {
+            auto& dirNodes = std::get<0>(nodes);
+            bootstrap.UnlinkNode(dirNodes.back(), "deletedFile", false);
+            bootstrap.UnlinkNode(dirNodes.back(), "deletedDir", true);
+        }
+
+        bootstrap.StopFileStore();
+
+        TTestBootstrap other(bootstrap.Cwd);
 
         auto id = other.CreateSession("fs", "client", "", false, 0, true)
                       .GetSession()
                       .GetSessionId();
         other.Headers.SessionId = id;
         UNIT_ASSERT_VALUES_EQUAL(
-            expectedSessionId,
+            bootstrap.Headers.SessionId,
             other.Headers.SessionId);
 
         for (ui32 testIndex = 0; testIndex < testPaths.size(); testIndex++) {
@@ -1309,58 +1296,47 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
 
     Y_UNIT_TEST(ShouldRecoverSessionHandles)
     {
+        TTestBootstrap bootstrap("fs", "client");
         auto ctx = MakeIntrusive<TCallContext>();
 
         TVector<TString> files = {"file1", "file2", "file3", "file4", "file5"};
         TVector<ui64> handles;
         TString expectedData = "aaaabbbbcccccdddddeeee";
-        TTempDirectoryPtr bootstrapCwd;
-        TString expectedSessionId;
 
-        {
-            TTestBootstrap bootstrap("fs", "client");
-            for (auto& file: files) {
-                auto handle = bootstrap
-                                  .CreateHandle(
-                                      RootNodeId,
-                                      file,
-                                      TCreateHandleArgs::CREATE)
-                                  .GetHandle();
+        for (auto& file: files) {
+            auto handle =
+                bootstrap
+                    .CreateHandle(RootNodeId, file, TCreateHandleArgs::CREATE)
+                    .GetHandle();
 
-                auto data = bootstrap.ReadData(handle, 0, 100).GetBuffer();
-                UNIT_ASSERT_VALUES_EQUAL(data.size(), 0);
-                handles.push_back(handle);
+            auto data = bootstrap.ReadData(handle, 0, 100).GetBuffer();
+            UNIT_ASSERT_VALUES_EQUAL(data.size(), 0);
+            handles.push_back(handle);
 
-                data = expectedData;
-                bootstrap.WriteData(handle, 0, data);
+            data = expectedData;
+            bootstrap.WriteData(handle, 0, data);
 
-                auto buffer = bootstrap.ReadData(handle, 0, 100).GetBuffer();
-                UNIT_ASSERT_VALUES_EQUAL(buffer, data);
-            }
-
-            // close half of the handles
-            for (ui32 i = 0; i < handles.size(); i++) {
-                if (i % 2 == 0) {
-                    bootstrap.DestroyHandle(handles[i]);
-                }
-            }
-
-            bootstrapCwd = bootstrap.Cwd;
-            expectedSessionId = bootstrap.Headers.SessionId;
-
-            // We can not have two sessions sharing the same state files
-            // So we should destroy bootstrap with session
-            // before creating another one
+            auto buffer = bootstrap.ReadData(handle, 0, 100).GetBuffer();
+            UNIT_ASSERT_VALUES_EQUAL(buffer, data);
         }
 
-        TTestBootstrap other(bootstrapCwd);
+        // close half of the handles
+        for (ui32 i = 0; i < handles.size(); i++) {
+            if (i % 2 == 0) {
+                bootstrap.DestroyHandle(handles[i]);
+            }
+        }
+
+        bootstrap.StopFileStore();
+
+        TTestBootstrap other(bootstrap.Cwd);
 
         auto id = other.CreateSession("fs", "client", "", false, 0, true)
                       .GetSession()
                       .GetSessionId();
         other.Headers.SessionId = id;
         UNIT_ASSERT_VALUES_EQUAL(
-            expectedSessionId,
+            bootstrap.Headers.SessionId,
             other.Headers.SessionId);
 
         for (ui32 i = 0; i < handles.size(); i++) {
@@ -1922,34 +1898,23 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
     Y_UNIT_TEST(ShouldResetSessionStateAndRestoreByClient)
     {
         const TString state = "abcde";
-        TTempDirectoryPtr bootstrapCwd;
-        TString expectedSessionId;
 
-        {
-            TTestBootstrap bootstrap("fs");
-            bootstrap.ResetSession(state);
+        TTestBootstrap bootstrap("fs");
+        bootstrap.ResetSession(state);
 
-            auto response = bootstrap.CreateSession("fs", "client", "", true);
-            UNIT_ASSERT_VALUES_EQUAL(
-                response.GetSession().GetSessionState(),
-                state);
+        auto response = bootstrap.CreateSession("fs", "client", "", true);
+        UNIT_ASSERT_VALUES_EQUAL(response.GetSession().GetSessionState(), state);
 
-            bootstrapCwd = bootstrap.Cwd;
-            expectedSessionId =response.GetSession().GetSessionId();
+        bootstrap.StopFileStore();
 
-            // We can not have two sessions sharing the same state files
-            // So we should destroy bootstrap with session
-            // before creating another one
-        }
-
-        TTestBootstrap other(bootstrapCwd);
+        TTestBootstrap other(bootstrap.Cwd);
 
         auto otherResponse =
             other.CreateSession("fs", "client", "", false, 0, true);
         UNIT_ASSERT_VALUES_EQUAL(otherResponse.GetSession().GetSessionState(), state);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            expectedSessionId,
+            response.GetSession().GetSessionId(),
             otherResponse.GetSession().GetSessionId());
     }
 
@@ -2440,6 +2405,28 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
                 response.GetFileStore().GetFeatures().GetEntryTimeout(),
                 defaultTimeout);
         }
+    }
+
+    Y_UNIT_TEST(ShouldFailToLockSessionStateTwice)
+    {
+        TTestBootstrap bootstrap("fs", "client");
+        TTestBootstrap other(bootstrap.Cwd);
+
+        // Here we have to create and wait for request manually because
+        // we need to get resulting error code
+        auto request =
+            other
+                .CreateCreateSessionRequest("fs", "client", "", false, 0, true);
+        TCallContextPtr ctx = MakeIntrusive<TCallContext>("fs");
+        auto future = other.Store->CreateSession(ctx, std::move(request));
+        future.Wait();
+        auto response = future.GetValue();
+
+        // Creation of the second session with the same state should fail
+        UNIT_ASSERT(HasError(response));
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(E_FAIL),
+            response.GetError().GetCode());
     }
 };
 
