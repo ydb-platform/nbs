@@ -757,6 +757,10 @@ public:
     [[nodiscard]] bool GetEnableVhostDiscardForNewVolumes() const;
 
     [[nodiscard]] ui32 GetTabletExecutorRejectionThreshold() const;
+
+    [[nodiscard]] TDuration GetRestoreBackFromUnavailableAgentsDelay() const;
+    [[nodiscard]] TDuration GetBackFromUnavailableAgentsRestoreInterval() const;
+    [[nodiscard]] ui32 GetRestoreAgentCountPerTransaction() const;
 };
 
 ui64 GetAllocationUnit(

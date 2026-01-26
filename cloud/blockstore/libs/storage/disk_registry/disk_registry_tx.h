@@ -63,6 +63,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(PurgeHostCms,                       __VA_ARGS__)                       \
     xxx(RemoveOrphanDevices,                __VA_ARGS__)                       \
     xxx(AddOutdatedLaggingDevices,          __VA_ARGS__)                       \
+    xxx(RestoreAgentsToOnline,              __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1477,6 +1478,26 @@ struct TTxDiskRegistry
         void Clear()
         {
             Error.Clear();
+        }
+    };
+
+    //
+    // RestoreDisksToOnline
+    //
+
+    struct TRestoreAgentsToOnline
+    {
+        NProto::TError Error;
+        TVector<TString> AffectedAgents;
+        bool RemainingAgents = false;
+
+        TRestoreAgentsToOnline() = default;
+
+        void Clear()
+        {
+            Error.Clear();
+            AffectedAgents.clear();
+            RemainingAgents = false;
         }
     };
 };
