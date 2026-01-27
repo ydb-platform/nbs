@@ -4,6 +4,8 @@
 
 #include <cloud/filestore/config/storage.pb.h>
 
+#include <cloud/storage/core/libs/features/public.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 
@@ -23,6 +25,9 @@ class TStorageConfig
 {
 private:
     NProto::TStorageConfig ProtoConfig;
+
+    // Some of the fields can be overridden by feature config
+    NFeatures::TFeaturesConfigPtr FeaturesConfig;
 
 public:
     struct TValueByName
@@ -51,11 +56,18 @@ public:
         : ProtoConfig(config)
     {}
 
+    void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
+
+    void SetCloudFolderEntity(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& entityId);
+
     TStorageConfig(const TStorageConfig&) = default;
 
     void Merge(const NProto::TStorageConfig& storageConfig);
 
-    TValueByName GetValueByName(const TString& name) const;
+    TValueByName GetValueByName(const TString& fieldName) const;
 
     TString GetSchemeShardDir() const;
 
