@@ -6670,7 +6670,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const ui64 nodeId = createNodeResponse.GetNode().GetId();
 
             sevenBytesHandlesCount += IsSeventhByteUsed(nodeId);
-            UNIT_ASSERT_VALUES_EQUAL(shardNo > 0xff, IsSeventhByteUsed(nodeId));
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardNo > MaxOneByteShardCount,
+                IsSeventhByteUsed(nodeId));
             UNIT_ASSERT_VALUES_EQUAL(shardNo, ExtractShardNo(nodeId));
 
             const ui64 handle = service.CreateHandle(
@@ -6708,49 +6710,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(
             sevenBytesHandlesCount,
             mainStats.GetStats().GetSevenBytesHandlesCount());
-
-        // Forcefully leave only shard with numbers >= 256
-        auto mainFsTopology = GetFileSystemTopology(service, fsId);
-        NProtoPrivate::TConfigureShardsRequest configureShardsRequest;
-        configureShardsRequest.SetFileSystemId(fsId);
-        configureShardsRequest.SetForce(true);
-        configureShardsRequest.SetDirectoryCreationInShardsEnabled(
-            mainFsTopology.GetDirectoryCreationInShardsEnabled());
-        configureShardsRequest.SetStrictFileSystemSizeEnforcementEnabled(
-            mainFsTopology.GetStrictFileSystemSizeEnforcementEnabled());
-
-        const auto& mainFsShards = mainFsTopology.GetShardFileSystemIds();
-        for (int i = 0xff; i < mainFsShards.size(); ++i) {
-            configureShardsRequest.AddShardFileSystemIds(mainFsShards[i]);
-        }
-
-        TString buf;
-        google::protobuf::util::MessageToJsonString(
-            configureShardsRequest,
-            &buf);
-        auto jsonResponse = service.ExecuteAction("configureshards", buf);
-        NProtoPrivate::TConfigureShardsResponse response;
-        UNIT_ASSERT(
-            google::protobuf::util::JsonStringToMessage(
-                jsonResponse->Record.GetOutput(),
-                &response)
-                .ok());
-
-        WaitForTabletStart(service);
-
-        service.AssertResizeFileStoreFailed(fsId, fsSize);
-
-        const auto counters =
-            env.GetCounters()->FindSubgroup("component", "service");
-        UNIT_ASSERT(counters);
-        const auto counter = counters->GetCounter(
-            "AppCriticalEvents/TryingToUseTwoBytesShardNoWithObsoleteHandles");
-
-        UNIT_ASSERT_EQUAL(1, counter->GetAtomic());
-
-        // We should get error when we try to increase number of shards to more
-        // than 255 and there are handles with non-zero 7th byte
-        // service.AssertResizeFileStoreFailed(fsId, fsSize);
     }
 
     SERVICE_TEST_SIMPLE(ShouldUseOldHandles)
@@ -6839,6 +6798,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(shardAllocationUnit);
         config.SetShardBalancerPolicy(NProto::SBP_ROUND_ROBIN);
+        config.SetMaxShardCount(1024);
 
         const TString fsId = "test";
 
@@ -6925,6 +6885,28 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
               1},
              {{{"sensor", "SevenBytesHandlesCount"}, {"filesystem", "test_s4"}},
               1}});
+
+        // Try to resize to more than MaxOneByteShardCount shards.
+        const ui64 newShardCount = MaxOneByteShardCount + 8;
+        const ui64 newFsSize =
+            shardBlockCount * (newShardCount - 1) + shardBlockCount / 2;
+        service.ResizeFileStore(fsId, newFsSize);
+
+        WaitForTabletStart(service);
+
+        // The filesystem should be resized to have 255 (MaxOneByteShardCount)
+        // shards and a critical event should be raised.
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter = counters->GetCounter(
+            "AppCriticalEvents/TryingToUseTwoBytesShardNoWithObsoleteHandles");
+
+        UNIT_ASSERT_EQUAL(1, counter->GetAtomic());
+
+        const auto response = GetStorageStats(service, fsId);
+        const auto& stats = response.GetStats();
+        UNIT_ASSERT_EQUAL(MaxOneByteShardCount, stats.GetShardStats().size());
     }
 }
 
