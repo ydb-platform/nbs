@@ -86,7 +86,6 @@ private:
     // Only for testing purposes
     friend struct TTestUtilBootstrap;
 
-    struct TWriteDataEntryPart;
     struct TNodeState;
     struct TFlushState;
     class TUtil;
