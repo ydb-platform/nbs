@@ -28,8 +28,8 @@ const TString cloudId = "cloud";
 const TString folderId = "folder";
 const TString otherDiskId = "vol1";
 
-const ui64 maxBandwidth = 100;
-const ui64 maxIops = 100;
+constexpr ui64 MaxBandwidth = 100;
+constexpr ui64 MaxIops = 100;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -77,8 +77,8 @@ TVolumeClient CreateVolume(
 {
     TVolumeClient volume(runtime);
     volume.UpdateVolumeConfig(
-        maxBandwidth,   // maxBandwidth
-        maxIops,        // maxIops
+        MaxBandwidth,   // maxBandwidth
+        MaxIops,        // maxIops
         100,            // burstPercentage
         100,            // maxPostponedWeight
         true,           // throttlingEnabled
@@ -110,7 +110,8 @@ void SendThrottlingConfig(
     ui32 version,
     const TVector<NProto::TVolumeThrottlingRule>& rules)
 {
-    auto notification = std::make_unique<TEvVolumeThrottlingManager::TEvVolumeThrottlingConfigNotification>();
+    auto notification = std::make_unique<
+        TEvVolumeThrottlingManager::TEvVolumeThrottlingConfigNotification>();
     notification->Config.SetVersion(version);
     for (const auto& rule: rules) {
         *notification->Config.AddRules() = rule;
@@ -150,9 +151,9 @@ Y_UNIT_TEST_SUITE(TVolumeActorUpdateThrottlingConfigTest)
 
         const auto& policy = throttlingInfo.GetActualPerformanceProfile();
         UNIT_ASSERT_VALUES_EQUAL(
-            maxBandwidth * readBwCoef,
+            MaxBandwidth * readBwCoef,
             policy.GetMaxReadBandwidth());
-        UNIT_ASSERT_VALUES_EQUAL(maxBandwidth, policy.GetMaxWriteBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(MaxBandwidth, policy.GetMaxWriteBandwidth());
     }
 
     Y_UNIT_TEST(ShouldIgnoreOldConfig)
@@ -182,7 +183,7 @@ Y_UNIT_TEST_SUITE(TVolumeActorUpdateThrottlingConfigTest)
 
         const auto& policy = throttlingInfo.GetActualPerformanceProfile();
         UNIT_ASSERT_VALUES_EQUAL(
-            maxBandwidth * readBwCoef,
+            MaxBandwidth * readBwCoef,
             policy.GetMaxReadBandwidth());
     }
 
@@ -207,7 +208,7 @@ Y_UNIT_TEST_SUITE(TVolumeActorUpdateThrottlingConfigTest)
 
             const auto& policy = throttlingInfo.GetActualPerformanceProfile();
             UNIT_ASSERT_VALUES_EQUAL(
-                maxBandwidth * readBwCoef,
+                MaxBandwidth * readBwCoef,
                 policy.GetMaxReadBandwidth());
         }
 
@@ -223,7 +224,7 @@ Y_UNIT_TEST_SUITE(TVolumeActorUpdateThrottlingConfigTest)
 
             const auto& policy = throttlingInfo.GetActualPerformanceProfile();
             UNIT_ASSERT_VALUES_EQUAL(
-                maxBandwidth,
+                MaxBandwidth,
                 policy.GetMaxReadBandwidth());
         }
     }
@@ -253,7 +254,7 @@ Y_UNIT_TEST_SUITE(TVolumeActorUpdateThrottlingConfigTest)
 
         const auto& policy = throttlingInfo.GetActualPerformanceProfile();
         UNIT_ASSERT_VALUES_EQUAL(
-            maxBandwidth * readBwCoef,
+            MaxBandwidth * readBwCoef,
             policy.GetMaxReadBandwidth());
     }
 
@@ -284,7 +285,7 @@ Y_UNIT_TEST_SUITE(TVolumeActorUpdateThrottlingConfigTest)
 
         const auto& policy = throttlingInfo.GetActualPerformanceProfile();
         UNIT_ASSERT_VALUES_EQUAL(
-            maxBandwidth * readBwCoef,
+            MaxBandwidth * readBwCoef,
             policy.GetMaxReadBandwidth());
     }
 
@@ -314,7 +315,7 @@ Y_UNIT_TEST_SUITE(TVolumeActorUpdateThrottlingConfigTest)
 
         const auto& policy = throttlingInfo.GetActualPerformanceProfile();
         UNIT_ASSERT_VALUES_EQUAL(
-            maxBandwidth * readBwCoef,
+            MaxBandwidth * readBwCoef,
             policy.GetMaxReadBandwidth());
     }
 
@@ -336,7 +337,7 @@ Y_UNIT_TEST_SUITE(TVolumeActorUpdateThrottlingConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(version, throttlingInfo.GetVersion());
 
         const auto& policy = throttlingInfo.GetActualPerformanceProfile();
-        UNIT_ASSERT_VALUES_EQUAL(maxBandwidth, policy.GetMaxReadBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(MaxBandwidth, policy.GetMaxReadBandwidth());
     }
 }
 
