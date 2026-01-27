@@ -18,6 +18,7 @@ PEERDIR(
     cloud/filestore/public/api/protos
 
     cloud/storage/core/libs/common
+    cloud/storage/core/libs/features
 
     contrib/ydb/library/actors/core
     library/cpp/deprecated/atomic
