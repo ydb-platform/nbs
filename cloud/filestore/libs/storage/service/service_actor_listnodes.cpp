@@ -37,7 +37,7 @@ private:
     // Control flags
     const bool MultiTabletForwardingEnabled;
     const bool GetNodeAttrBatchEnabled;
-
+    const bool ReturnENoEnt = false;
     // Response data
     NProto::TListNodesResponse Response;
     ui32 GetNodeAttrResponses = 0;
@@ -117,6 +117,7 @@ TListNodesActor::TListNodesActor(
     , GetNodeAttrBatchEnabled(getNodeAttrBatchEnabled)
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
+    , ReturnENoEnt(ListNodesRequest.GetReturnENoEnt())
 {
 }
 
@@ -473,7 +474,7 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
 
     bool exists = true;
     if (HasError(msg->GetError())) {
-        if (msg->GetError().GetCode() == NoEnt) {
+        if (msg->GetError().GetCode() == NoEnt && !ReturnENoEnt) {
             exists = false;
         } else {
             LOG_WARN(
