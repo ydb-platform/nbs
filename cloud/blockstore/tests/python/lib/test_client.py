@@ -32,9 +32,8 @@ class TestClient:
 
     @_handle_errors
     def backup_disk_registry_state(self):
-        response = self.execute_BackupDiskRegistryState(BackupLocalDB=True)
-
-        return json.loads(response)["Backup"]
+        response = self.execute_BackupDiskRegistryState(Source=protos.BDRSS_LOCAL_DB)
+        return json.loads(response)["LocalDBBackup"]
 
     @_handle_errors
     def add_host(self, agent_id):

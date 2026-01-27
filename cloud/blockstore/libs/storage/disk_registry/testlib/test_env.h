@@ -917,10 +917,10 @@ public:
         return request;
     }
 
-    auto CreateBackupDiskRegistryStateRequest(bool localDB)
+    auto CreateBackupDiskRegistryStateRequest(NProto::EBackupDiskRegistryStateSource source)
     {
         auto request = std::make_unique<TEvDiskRegistry::TEvBackupDiskRegistryStateRequest>();
-        request->Record.SetBackupLocalDB(localDB);
+        request->Record.SetSource(source);
 
         return request;
     }

@@ -63,7 +63,7 @@ TDiskRegistryState Load(bool disableFullGroupsCalc)
                                  ->GetSubgroup("counters", "blockstore")
                                  ->GetSubgroup("component", "disk_registry");
 
-    auto snapshot = MakeNewLoadState(std::move(*backup.MutableBackup()));
+    auto snapshot = MakeNewLoadState(std::move(*backup.MutableMemoryBackup()));
 
     auto storeageConfigProto =
         NDiskRegistryStateTest::CreateDefaultStorageConfigProto();
