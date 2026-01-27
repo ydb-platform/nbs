@@ -1,0 +1,308 @@
+#pragma once
+
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
+#include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
+#include <cloud/blockstore/libs/storage/partition/model/barrier.h>
+#include <cloud/blockstore/libs/storage/partition/model/block_index.h>
+#include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
+#include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
+
+#include <cloud/storage/core/libs/tablet/gc_logic.h>
+
+#include <util/generic/set.h>
+#include <util/system/types.h>
+
+namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class IPartitionFreshBlocksStateContextProvider
+{
+public:
+    [[nodiscard]] virtual TVector<ui64> GetCheckpointCommitIds() = 0;
+
+    [[nodiscard]] virtual ui64 GetLastCommitId() const = 0;
+
+    [[nodiscard]] virtual const NProto::TPartitionStats& GetStats() const = 0;
+    [[nodiscard]] virtual NProto::TPartitionStats& AccessStats() = 0;
+
+    virtual ~IPartitionFreshBlocksStateContextProvider() = default;
+};
+
+class TPartitionFreshBlocksState
+{
+private:
+    IPartitionFreshBlocksStateContextProvider* ContextProvider = nullptr;
+
+public:
+
+    void SetContextProvider(IPartitionFreshBlocksStateContextProvider* contextProvider)
+    {
+        ContextProvider = contextProvider;
+    }
+
+private:
+    bool FreshBlocksLoaded = false;
+
+public:
+    void FinishLoadFreshBlocks()
+    {
+        FreshBlocksLoaded = true;
+    }
+
+    [[nodiscard]] bool IsReady() const
+    {
+        return FreshBlocksLoaded && ContextProvider;
+    }
+
+    //
+    // Flush
+    //
+
+private:
+    NPartition::TOperationState FlushState;
+    TRequestBuffer<TWriteBufferRequestData> WriteBuffer;
+    ui32 FreshBlocksInFlight = 0;
+    ui32 UnflushedFreshBlobCount = 0;
+    ui64 UnflushedFreshBlobByteCount = 0;
+
+protected:
+    THashSet<ui64> FlushedCommitIdsInProgress;
+
+public:
+    NPartition::TOperationState& GetFlushState()
+    {
+        return FlushState;
+    }
+
+    TRequestBuffer<TWriteBufferRequestData>& GetWriteBuffer()
+    {
+        return WriteBuffer;
+    }
+
+    ui32 GetFreshBlocksQueued() const
+    {
+        return WriteBuffer.GetWeight();
+    }
+
+    ui32 GetFreshBlocksInFlight() const
+    {
+        return FreshBlocksInFlight;
+    }
+
+    ui32 GetUnflushedFreshBlobCount() const
+    {
+        return UnflushedFreshBlobCount;
+    }
+
+    ui32 GetUnflushedFreshBlobByteCount() const
+    {
+        return UnflushedFreshBlobByteCount;
+    }
+
+    void IncrementUnflushedFreshBlobCount(ui32 value);
+    void DecrementUnflushedFreshBlobCount(ui32 value);
+    void IncrementUnflushedFreshBlobByteCount(ui64 value);
+    void DecrementUnflushedFreshBlobByteCount(ui64 value);
+
+    ui32 IncrementFreshBlocksInFlight(size_t value);
+    ui32 DecrementFreshBlocksInFlight(size_t value);
+
+    THashSet<ui64>& GetFlushedCommitIdsInProgress()
+    {
+        return FlushedCommitIdsInProgress;
+    }
+
+    //
+    // Fresh blobs
+    //
+
+public:
+    struct TFreshBlobMeta
+    {
+        const ui64 CommitId;
+        const ui64 BlobSize;
+
+        bool operator<(const TFreshBlobMeta& other) const
+        {
+            return CommitId < other.CommitId;
+        }
+    };
+
+private:
+    ui64 UntrimmedFreshBlobByteCount = 0;
+    TSet<TFreshBlobMeta> UntrimmedFreshBlobs;
+
+public:
+    ui64 GetUntrimmedFreshBlobByteCount() const
+    {
+        return UntrimmedFreshBlobByteCount;
+    }
+
+    void AddFreshBlob(TFreshBlobMeta freshBlobMeta);
+    void TrimFreshBlobs(ui64 commitId);
+
+    //
+    // Fresh Blocks
+    //
+
+private:
+    ui32 UnflushedFreshBlocksFromChannelCount = 0;
+
+protected:
+    NPartition::TBlockIndex Blocks;
+
+private:
+    void WriteFreshBlocksImpl(
+        const TBlockRange32& writeRange,
+        ui64 commitId,
+        auto getBlockContent)
+    {
+        TVector<ui64> checkpoints = ContextProvider->GetCheckpointCommitIds();
+
+        TVector<ui64> existingCommitIds;
+        TVector<ui64> garbage;
+
+        for (ui32 blockIndex: xrange(writeRange)) {
+            ui32 index = blockIndex - writeRange.Start;
+            const auto& blockContent = getBlockContent(index);
+
+            Blocks.GetCommitIds(blockIndex, existingCommitIds);
+
+            NCloud::NStorage::FindGarbageVersions(checkpoints, existingCommitIds, garbage);
+            for (auto garbageCommitId: garbage) {
+                // This block is being flushed; we'll remove it on AddBlobs
+                // and we'll release barrier on FlushCompleted
+                if (FlushedCommitIdsInProgress.contains(garbageCommitId)) {
+                    continue;
+                }
+
+                // Do not remove block if it is stored in db
+                // to be able to remove it during flush, otherwise
+                // we'll leave garbage in FreshBlocksTable
+                auto removed = Blocks.RemoveBlock(
+                    blockIndex,
+                    garbageCommitId,
+                    false);  // isStoredInDb
+
+                if (removed) {
+                    DecrementUnflushedFreshBlocksFromChannelCount(1);
+                    TrimFreshLogBarriers.ReleaseBarrier(garbageCommitId);
+                }
+            }
+
+            Blocks.AddBlock(
+                blockIndex,
+                commitId,
+                false,  // isStoredInDb
+                blockContent.AsStringBuf());
+
+            existingCommitIds.clear();
+            garbage.clear();
+        }
+
+        IncrementUnflushedFreshBlocksFromChannelCount(writeRange.Size());
+    }
+
+public:
+    void InitFreshBlocks(
+        const TVector<NPartition::TOwningFreshBlock>& freshBlocks);
+
+    void FindFreshBlocks(
+        NPartition::IFreshBlocksIndexVisitor& visitor,
+        const TBlockRange32& readRange,
+        ui64 maxCommitId = Max());
+
+    void WriteFreshBlocks(
+        const TBlockRange32& writeRange,
+        ui64 commitId,
+        TSgList sglist);
+
+    void ZeroFreshBlocks(
+        const TBlockRange32& zeroRange,
+        ui64 commitId);
+
+    void DeleteFreshBlock(
+        ui32 blockIndex,
+        ui64 commitId);
+
+    ui32 GetUnflushedFreshBlocksCount() const
+    {
+        return ContextProvider->GetStats().GetFreshBlocksCount() +
+               UnflushedFreshBlocksFromChannelCount;
+    }
+
+    ui32 IncrementUnflushedFreshBlocksFromChannelCount(size_t value);
+    ui32 DecrementUnflushedFreshBlocksFromChannelCount(size_t value);
+
+    //
+    // TrimFreshLog
+    //
+
+private:
+    NPartition::TBarriers TrimFreshLogBarriers;
+    NPartition::TOperationState TrimFreshLogState;
+    ui64 LastTrimFreshLogToCommitId = 0;
+    TBackoffDelayProvider TrimFreshLogBackoffDelayProvider{
+        TDuration::Zero(),
+        TDuration::MilliSeconds(100),
+        TDuration::Seconds(5)};
+
+public:
+    NPartition::TBarriers& GetTrimFreshLogBarriers()
+    {
+        return TrimFreshLogBarriers;
+    }
+
+    ui64 GetTrimFreshLogToCommitId() const
+    {
+        return Min(
+            // if there are no fresh blocks, we should trim up to current
+            // commitId
+            ContextProvider->GetLastCommitId(),
+            // if there are some fresh blocks, we should trim till the lowest
+            // fresh commitId minus 1
+            TrimFreshLogBarriers.GetMinCommitId() - 1);
+    }
+
+    NPartition::TOperationState& GetTrimFreshLogState()
+    {
+        return TrimFreshLogState;
+    }
+
+    TDuration GetTrimFreshLogBackoffDelay()
+    {
+        return TrimFreshLogBackoffDelayProvider.GetDelay();
+    }
+
+    void RegisterTrimFreshLogError()
+    {
+        TrimFreshLogBackoffDelayProvider.IncreaseDelay();
+    }
+
+    void RegisterTrimFreshLogSuccess()
+    {
+        TrimFreshLogBackoffDelayProvider.Reset();
+    }
+
+    ui64 GetLastTrimFreshLogToCommitId() const
+    {
+        return LastTrimFreshLogToCommitId;
+    }
+
+    void SetLastTrimFreshLogToCommitId(ui64 commitId)
+    {
+        LastTrimFreshLogToCommitId = commitId;
+    }
+
+    //
+    // Stats
+    //
+
+public:
+
+    void DumpHtml(IOutputStream& out) const;
+    void AsJson(NJson::TJsonValue& state) const;
+};
+
+}  // namespace NCloud::NBlockStore::NStorage

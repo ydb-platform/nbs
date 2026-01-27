@@ -113,6 +113,7 @@ TPartitionState::TPartitionState(
     , CleanupScoreHistory(cleanupScoreHistorySize)
 {
     InitChannels();
+    TPartitionFreshBlocksState::SetContextProvider(&ContextProvider);
 }
 
 bool TPartitionState::CheckBlockRange(const TBlockRange64& range) const
@@ -359,26 +360,6 @@ BLOCKSTORE_PARTITION_PROTO_COUNTERS(BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER)
 
 #undef BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER
 
-void TPartitionState::AddFreshBlob(TFreshBlobMeta freshBlobMeta)
-{
-    Y_ABORT_UNLESS(freshBlobMeta.CommitId > LastTrimFreshLogToCommitId);
-    const bool inserted = UntrimmedFreshBlobs.insert(freshBlobMeta).second;
-    Y_ABORT_UNLESS(inserted);
-    UntrimmedFreshBlobByteCount += freshBlobMeta.BlobSize;
-}
-
-void TPartitionState::TrimFreshBlobs(ui64 commitId)
-{
-    auto& blobs = UntrimmedFreshBlobs;
-
-    while (blobs && blobs.begin()->CommitId <= commitId)
-    {
-        Y_ABORT_UNLESS(UntrimmedFreshBlobByteCount >= blobs.begin()->BlobSize);
-        UntrimmedFreshBlobByteCount -= blobs.begin()->BlobSize;
-        blobs.erase(blobs.begin());
-    }
-}
-
 ui32 TPartitionState::IncrementUnflushedFreshBlocksFromDbCount(size_t value)
 {
     auto& stats = AccessStats();
@@ -395,61 +376,6 @@ ui32 TPartitionState::DecrementUnflushedFreshBlocksFromDbCount(size_t value)
     return counter;
 }
 
-ui32 TPartitionState::IncrementUnflushedFreshBlocksFromChannelCount(size_t value)
-{
-    UnflushedFreshBlocksFromChannelCount = SafeIncrement(
-        UnflushedFreshBlocksFromChannelCount,
-        value);
-
-    return UnflushedFreshBlocksFromChannelCount;
-}
-
-ui32 TPartitionState::DecrementUnflushedFreshBlocksFromChannelCount(size_t value)
-{
-    UnflushedFreshBlocksFromChannelCount = SafeDecrement(
-        UnflushedFreshBlocksFromChannelCount,
-        value);
-
-    return UnflushedFreshBlocksFromChannelCount;
-}
-
-ui32 TPartitionState::IncrementFreshBlocksInFlight(size_t value)
-{
-    FreshBlocksInFlight = SafeIncrement(FreshBlocksInFlight, value);
-    return FreshBlocksInFlight;
-}
-
-ui32 TPartitionState::DecrementFreshBlocksInFlight(size_t value)
-{
-    FreshBlocksInFlight = SafeDecrement(FreshBlocksInFlight, value);
-    return FreshBlocksInFlight;
-}
-
-void TPartitionState::InitFreshBlocks(const TVector<TOwningFreshBlock>& freshBlocks)
-{
-    for (const auto& freshBlock: freshBlocks) {
-        const auto& meta = freshBlock.Meta;
-
-        bool added = Blocks.AddBlock(
-            meta.BlockIndex,
-            meta.CommitId,
-            meta.IsStoredInDb,
-            freshBlock.Content);
-
-        Y_ABORT_UNLESS(added, "Duplicate block detected: %u @%lu",
-            meta.BlockIndex,
-            meta.CommitId);
-    }
-}
-
-void TPartitionState::FindFreshBlocks(
-    IFreshBlocksIndexVisitor& visitor,
-    const TBlockRange32& readRange,
-    ui64 maxCommitId)
-{
-    Blocks.FindBlocks(visitor, readRange, maxCommitId);
-}
-
 void TPartitionState::WriteFreshBlocks(
     TPartitionDatabase& db,
     const TBlockRange32& writeRange,
@@ -466,21 +392,6 @@ void TPartitionState::WriteFreshBlocks(
     );
 }
 
-void TPartitionState::WriteFreshBlocks(
-    const TBlockRange32& writeRange,
-    ui64 commitId,
-    TSgList sglist)
-{
-    Y_ABORT_UNLESS(writeRange.Size() == sglist.size());
-
-    WriteFreshBlocksImpl(
-        writeRange,
-        commitId,
-        [&](ui32 index) { return sglist[index]; }
-    );
-}
-
-
 void TPartitionState::ZeroFreshBlocks(
     TPartitionDatabase& db,
     const TBlockRange32& zeroRange,
@@ -488,17 +399,6 @@ void TPartitionState::ZeroFreshBlocks(
 {
     WriteFreshBlocksImpl(
         db,
-        zeroRange,
-        commitId,
-        [](ui32) { return TBlockDataRef(); }
-    );
-}
-
-void TPartitionState::ZeroFreshBlocks(
-    const TBlockRange32& zeroRange,
-    ui64 commitId)
-{
-    WriteFreshBlocksImpl(
         zeroRange,
         commitId,
         [](ui32) { return TBlockDataRef(); }
@@ -519,20 +419,6 @@ void TPartitionState::DeleteFreshBlock(
 
     db.DeleteFreshBlock(blockIndex, commitId);
     DecrementUnflushedFreshBlocksFromDbCount(1);
-}
-
-void TPartitionState::DeleteFreshBlock(
-    ui32 blockIndex,
-    ui64 commitId)
-{
-    bool removed = Blocks.RemoveBlock(
-        blockIndex,
-        commitId,
-        false);  // isStoredInDb
-
-    Y_ABORT_UNLESS(removed);
-
-    DecrementUnflushedFreshBlocksFromChannelCount(1);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -795,28 +681,6 @@ void TPartitionState::WriteUsedBlocksToDB(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionState::IncrementUnflushedFreshBlobCount(ui32 value)
-{
-    UnflushedFreshBlobCount = SafeIncrement(UnflushedFreshBlobCount, value);
-}
-
-void TPartitionState::DecrementUnflushedFreshBlobCount(ui32 value)
-{
-    UnflushedFreshBlobCount = SafeDecrement(UnflushedFreshBlobCount, value);
-}
-
-void TPartitionState::IncrementUnflushedFreshBlobByteCount(ui64 value)
-{
-    UnflushedFreshBlobByteCount = SafeIncrement(UnflushedFreshBlobByteCount, value);
-}
-
-void TPartitionState::DecrementUnflushedFreshBlobByteCount(ui64 value)
-{
-    UnflushedFreshBlobByteCount = SafeDecrement(UnflushedFreshBlobByteCount, value);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 void TPartitionState::RegisterDowntime(TInstant now, ui32 groupId)
 {
     GroupId2Downtimes[groupId].PushBack(now, EDowntimeStateChange::DOWN);
@@ -844,23 +708,9 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                     TABLED() { out << "LastCommitId"; }
                     TABLED() { out << GetLastCommitId(); }
                 }
-                TABLER() {
-                    TABLED() { out << "FreshBlocks"; }
-                    TABLED() {
-                        out << "Total: " << GetUnflushedFreshBlocksCount()
-                            << ", FromDb: " << GetStats().GetFreshBlocksCount()
-                            << ", FromChannel: "
-                            << UnflushedFreshBlocksFromChannelCount
-                            << ", InFlight: " << GetFreshBlocksInFlight()
-                            << ", Queued: " << GetFreshBlocksQueued()
-                            << ", UntrimmedBytes: "
-                            << GetUntrimmedFreshBlobByteCount();
-                    }
-                }
-                TABLER() {
-                    TABLED() { out << "Flush"; }
-                    TABLED() { DumpOperationState(out, FlushState); }
-                }
+
+                TPartitionFreshBlocksState::DumpHtml(out);
+
                 TABLER() {
                     TABLED() { out << "Compaction"; }
                     TABLED() { DumpOperationState(out, CompactionState); }
@@ -893,13 +743,7 @@ TJsonValue TPartitionState::AsJson() const
     {
         TJsonValue state;
         state["LastCommitId"] = GetLastCommitId();
-        state["FreshBlocksTotal"] = GetUnflushedFreshBlocksCount();
-        state["FreshBlocksFromDb"] = GetStats().GetFreshBlocksCount();
-        state["FreshBlocksFromChannel"] = UnflushedFreshBlocksFromChannelCount;
-        state["FreshBlocksInFlight"] = GetFreshBlocksInFlight();
-        state["FreshBlocksQueued"] = GetFreshBlocksQueued();
-        state["FreshBlobUntrimmedBytes"] = GetUntrimmedFreshBlobByteCount();
-        state["FlushState"] = ToJson(FlushState);
+        TPartitionFreshBlocksState::AsJson(state);
         state["Compaction"] = ToJson(CompactionState);
         state["Cleanup"] = ToJson(CleanupState);
         state["CollectGarbage"] = ToJson(CollectGarbageState);
