@@ -25,17 +25,20 @@ namespace {
 // The steps of the resize mode:
 // 1. Describe main filestore. Store NKikimrFileStore::TConfig of the main
 // filesystem for later use.
-// 2. Get filesystem topology. Using the topology and the config from the
+// 2. Get storage statistics to determine SevenBytesHandlesCount.
+// We need this to prohibit a user from creating more than 255 shards
+// if the filesystem has obsolete handles (with a non-zero seventh byte).
+// 3. Get filesystem topology. Using the topology and the config from the
 // previous step, calculate all parameters of the transformation performed by
 // resize action: ShardsToCreate, ShardsToConfigure, ShardsToAlter,
 // ShouldConfigureMainFileStore.
-// 3. Describe shards. We need this step to get config version of shards in case
+// 4. Describe shards. We need this step to get config version of shards in case
 // we need to resize them.
-// 4. Alter (actually resize) main filestore.
-// 5. Alter shards (if we resize them)
-// 6. Create shards if needed.
-// 7. Configure shards if we created some new ones.
-// 8. Configure main filestore if new shards were created.
+// 5. Alter (actually resize) main filestore.
+// 6. Alter shards (if we resize them)
+// 7. Create shards if needed.
+// 8. Configure shards if we created some new ones.
+// 9. Configure main filestore if new shards were created.
 // The end!
 
 class TAlterFileStoreActor final
