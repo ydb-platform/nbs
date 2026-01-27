@@ -39,29 +39,6 @@ type FilesystemTraverser struct {
 	rootNodeAlreadyScheduled bool
 }
 
-// FilesystemTravers follows the following protocol:
-// 1. Checks whether the root node was already scheduled
-// 2. If not, schedules the root node
-// 3. Saves the state via StateSaver
-// 4. Starts directoryScheduler method which selects nodes to list
-// (storage.SelectNodesToList(filesystemID, processingNodes map[uint64]struct{},limit uint64)([]nodeQueueEntry, error))
-// in a loop and sends them to scheduledNodes channel. Before scheduling a node is is added to processingNodes map
-// when the node is fully processed, it is send to processedNodes channel
-// directoryScheduler select both channels using select statement, so it can receive processed nodes while scheduling nodes
-// SelectNodesToList excludes nodes already in processingNodes map
-
-// workers start in parallel and read from scheduledNodes channel,
-// they list node based on cookie and node id using ListNodes api call
-
-// 5. Start directoryLister's using waitgroup up to workersCount
-// 6. Each worker get callback passed, lists nodes, calls callback with the list of nodes and a client,
-// and schedules child directories back to scheduledNodes channel, updating the initial queue entry via the following call:
-// storage.EnqueueChildren(filesystemSnapshotID string, parentNodeID string, parentCookie string, children []nfs.Node)(error)
-// worker keeps listing the node until no more cookie (see the dfs traversal in nfs client)
-// 7. When all workers are done, the method returns
-// All the mentioned things happen in Traverse() method which takes a onListedNodes callback
-// func OnListedNodes(ctx context.Context, nodes []nfs.Node, client nfs.Client) error
-
 func NewFilesystemTraverser(
 	filesystemSnapshotID string,
 	filesystemID string,

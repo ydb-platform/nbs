@@ -21,8 +21,8 @@ type Session nfs_client.Session
 
 const (
 	maxConsecutiveRetries = 3
-	InvalidNodeID         = nfs_protos.ENodeConstants_E_INVALID_NODE_ID
-	RootNodeID            = nfs_protos.ENodeConstants_E_ROOT_NODE_ID
+	InvalidNodeID         = uint64(nfs_protos.ENodeConstants_E_INVALID_NODE_ID)
+	RootNodeID            = uint64(nfs_protos.ENodeConstants_E_ROOT_NODE_ID)
 )
 
 func getStorageMediaKind(

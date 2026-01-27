@@ -894,7 +894,7 @@ func (s *storageYDB) scheduleRootNodeForListing(
 		limit 1
 	`, s.tablesPath),
 		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
-		persistence.ValueParam("$root_node_id", persistence.Uint64Value(1)),
+		persistence.ValueParam("$root_node_id", persistence.Uint64Value(nfs.RootNodeID)),
 	)
 	if err != nil {
 		return false, err
@@ -917,7 +917,7 @@ func (s *storageYDB) scheduleRootNodeForListing(
 		values ($snapshot_id, $root_node_id, $cookie, $depth)
 	`, s.tablesPath),
 		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
-		persistence.ValueParam("$root_node_id", persistence.Uint64Value(1)),
+		persistence.ValueParam("$root_node_id", persistence.Uint64Value(nfs.RootNodeID)),
 		persistence.ValueParam("$cookie", persistence.StringValue([]byte(""))),
 		persistence.ValueParam("$depth", persistence.Uint64Value(0)),
 	)
