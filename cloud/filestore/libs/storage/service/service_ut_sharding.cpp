@@ -6682,7 +6682,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 "",
                 TCreateHandleArgs::RDWR)->Record.GetHandle();
 
-            UNIT_ASSERT_VALUES_EQUAL(shardNo > 0xff, IsSeventhByteUsed(handle));
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardNo > MaxOneByteShardCount,
+                IsSeventhByteUsed(handle));
             UNIT_ASSERT_VALUES_EQUAL(shardNo, ExtractShardNo(handle));
 
             shardNo++;
@@ -6697,7 +6699,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             (shardCount - MaxOneByteShardCount) * 2,
             sevenBytesHandlesCount);
 
-        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(16));
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
 
         // Update counters in all the shards.
         TDispatchOptions options;
@@ -6861,7 +6863,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT(status.ok());
         }
 
-        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(16));
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
         NActors::TDispatchOptions options;
         // As the main tablet is restarted after CnfigureShards we need to
         // dispatch tablet count + 1 (== shard count + 2) EvUpdateCounters
