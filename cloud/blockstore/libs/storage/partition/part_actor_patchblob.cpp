@@ -4,8 +4,9 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
+#include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
 
+#include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
@@ -50,6 +51,8 @@ private:
 
     const ui64 BSGroupOperationId = 0;
 
+    const bool PassTraceIdToBlobstorage = false;
+
 public:
     TPatchBlobActor(
         const TActorId& tabletActorId,
@@ -59,7 +62,8 @@ public:
         std::unique_ptr<TRequest> request,
         ui32 originalGroupId,
         TChildLogTitle logTitle,
-        ui64 bsGroupOperationId);
+        ui64 bsGroupOperationId,
+        bool passTraceIdToBlobstorage);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -99,7 +103,8 @@ TPatchBlobActor::TPatchBlobActor(
         std::unique_ptr<TRequest> request,
         ui32 originalGroupId,
         TChildLogTitle logTitle,
-        ui64 bsGroupOperationId)
+        ui64 bsGroupOperationId,
+        bool passTraceIdToBlobstorage)
     : TabletActorId(tabletActorId)
     , RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
@@ -108,6 +113,7 @@ TPatchBlobActor::TPatchBlobActor(
     , LogTitle(std::move(logTitle))
     , OriginalGroupId(originalGroupId)
     , BSGroupOperationId(bsGroupOperationId)
+    , PassTraceIdToBlobstorage(passTraceIdToBlobstorage)
 {}
 
 void TPatchBlobActor::Bootstrap(const TActorContext& ctx)
@@ -137,6 +143,12 @@ void TPatchBlobActor::SendPatchRequest(const TActorContext& ctx)
         Request->DiffCount,
         Request->Deadline);
 
+    NWilson::TTraceId traceId;
+    if (PassTraceIdToBlobstorage) {
+        traceId = GetTraceIdForRequestId(
+            RequestInfo->CallContext->LWOrbit,
+            RequestInfo->CallContext->RequestId);
+    }
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
     RequestSent = ctx.Now();
@@ -144,7 +156,9 @@ void TPatchBlobActor::SendPatchRequest(const TActorContext& ctx)
     SendToBSProxy(
         ctx,
         Request->Proxy,
-        request.release());
+        request.release(),
+        RequestInfo->Cookie,
+        std::move(traceId));
 }
 
 void TPatchBlobActor::NotifyCompleted(
@@ -338,7 +352,8 @@ void TPartitionActor::HandlePatchBlob(
                 msg.Release()),
             originalGroupId,
             LogTitle.GetChild(GetCycleCount()),
-            bsGroupOperationId),
+            bsGroupOperationId,
+            DiagnosticsConfig->GetPassTraceIdToBlobstorage()),
         bsGroupOperationId,
         originalGroupId,
         TBSGroupOperationTimeTracker::EOperationType::Patch,

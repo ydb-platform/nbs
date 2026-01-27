@@ -1582,10 +1582,8 @@ void TServer::Listen(TServerEndpoint* endpoint)
 
     // find the first non local address of the specified interface
     for (auto& interface: NAddr::GetNetworkInterfaces()) {
-        auto& addr = static_cast<NAddr::TOpaqueAddr&>(*interface.Address);
-
         if (interface.Name == Config->SourceInterface &&
-            GetScopeId(addr.Addr()) == 0)
+            GetScopeId(interface.Address->Addr()) == 0)
         {
             endpoint->Host = NAddr::PrintHost(*interface.Address);
             break;

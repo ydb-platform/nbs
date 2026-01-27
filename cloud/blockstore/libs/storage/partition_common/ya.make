@@ -10,6 +10,7 @@ SRCS(
     actor_trimfreshlog.cpp
     drain_actor_companion.cpp
     long_running_operation_companion.cpp
+    part_channels_state.cpp
 )
 
 PEERDIR(

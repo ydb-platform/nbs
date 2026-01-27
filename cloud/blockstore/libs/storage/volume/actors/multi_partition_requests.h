@@ -1,15 +1,12 @@
 #pragma once
 
-#include "partition_info.h"
-#include "tracing.h"
-
 #include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/volume/model/merge.h>
 #include <cloud/blockstore/libs/storage/volume/model/stripe.h>
-#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+#include <cloud/blockstore/libs/storage/volume/model/tracing.h>
 
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
@@ -30,6 +27,15 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TBriefPartitionInfo
+{
+    NActors::TActorId ActorId;
+    ui32 BlockSize = 0;
+    TString DiskId;
+};
+
+using TBriefPartitionInfoList = TVector<TBriefPartitionInfo>;
+
 template <typename TMethod>
 struct TPartitionRequest
 {
@@ -40,8 +46,8 @@ struct TPartitionRequest
 };
 
 template <typename TMethod>
-bool ToPartitionRequests(
-    const TPartitionInfoList& partitions,
+NProto::TError ToPartitionRequests(
+    const TBriefPartitionInfoList& partitions,
     const ui32 blockSize,
     const ui32 blocksPerStripe,
     const typename TMethod::TRequest::TPtr& ev,

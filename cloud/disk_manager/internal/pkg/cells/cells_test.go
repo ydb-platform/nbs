@@ -189,7 +189,7 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 		config: config,
 	}
 
-	selectedCell, err := selector.selectCell(
+	selectedCell, err := selector.selectCellForDisk(
 		ctx,
 		shardedZoneID,
 		"folder",
@@ -199,7 +199,7 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, shardedZoneID, selectedCell)
 
-	selectedCell, err = selector.selectCell(
+	selectedCell, err = selector.selectCellForDisk(
 		ctx,
 		shardedZoneID,
 		"folder",
@@ -209,7 +209,7 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, cellID2, selectedCell) // First in the config.
 
-	selectedCell, err = selector.selectCell(
+	selectedCell, err = selector.selectCellForDisk(
 		ctx,
 		cellID2,
 		"folder",
@@ -219,7 +219,7 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, cellID2, selectedCell)
 
-	selectedCell, err = selector.selectCell(
+	selectedCell, err = selector.selectCellForDisk(
 		ctx,
 		otherZoneID,
 		"folder",
@@ -229,7 +229,7 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, otherZoneID, selectedCell)
 
-	selectedCell, err = selector.selectCell(
+	selectedCell, err = selector.selectCellForDisk(
 		ctx,
 		"incorrectZoneID",
 		"folder",
@@ -245,7 +245,7 @@ func TestCellSelectorReturnsCorrectNBSClientIfConfigsIsNotSet(t *testing.T) {
 	ctx := newContext()
 	cellSelector := cellSelector{}
 
-	selectedCell, err := cellSelector.selectCell(
+	selectedCell, err := cellSelector.selectCellForDisk(
 		ctx,
 		otherZoneID,
 		"folder",
@@ -284,7 +284,7 @@ func TestCellSelectorReturnsCorrectCellWithMaxFreeBytesPolicy(t *testing.T) {
 		storage: cellStorage,
 	}
 
-	selectedCell, err := selector.selectCell(
+	selectedCell, err := selector.selectCellForDisk(
 		ctx,
 		shardedZoneID,
 		"folder",
@@ -322,7 +322,7 @@ func TestCellSelectorReturnsCorrectCellWithMaxFreeBytesPolicyIfNoCapacities(
 		storage: cellStorage,
 	}
 
-	selectedCell, err := selector.selectCell(
+	selectedCell, err := selector.selectCellForDisk(
 		ctx,
 		shardedZoneID,
 		"folder",

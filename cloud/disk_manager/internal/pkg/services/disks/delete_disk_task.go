@@ -72,11 +72,21 @@ func (t *deleteDiskTask) deleteDisk(
 		return err
 	}
 
+	zoneID := ""
 	if diskMeta == nil {
-		return nil
-	}
+		// Disk does not exist in the database.
+		if !t.request.DeleteIfNonExistent {
+			return nil
+		}
 
-	zoneID := diskMeta.ZoneID
+		zoneID = t.request.Disk.ZoneId
+		if len(zoneID) == 0 {
+			// Zone was not specified in the request.
+			return t.storage.DiskDeleted(ctx, diskID, time.Now())
+		}
+	} else {
+		zoneID = diskMeta.ZoneID
+	}
 
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
@@ -116,7 +126,7 @@ func (t *deleteDiskTask) deleteDisk(
 	}
 
 	// Only overlay disks (created from image) should be released.
-	if len(diskMeta.SrcImageID) != 0 {
+	if diskMeta != nil && len(diskMeta.SrcImageID) != 0 {
 		taskID, err = t.poolService.ReleaseBaseDisk(
 			headers.SetIncomingIdempotencyKey(
 				ctx,

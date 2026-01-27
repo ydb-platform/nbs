@@ -135,7 +135,8 @@ void TIndexTabletActor::HandleRenameNode(
                     std::move(msg->Record),
                     newParentShardNo
                         ? shardIds[newParentShardNo - 1]
-                        : GetMainFileSystemId());
+                        : GetMainFileSystemId(),
+                    false /* isExplicitRequest */);
             }
             return;
         }
@@ -347,7 +348,8 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "RenameNode");
+        args.OnCommitIdOverflow();
+        return;
     }
 
     // remove existing source ref

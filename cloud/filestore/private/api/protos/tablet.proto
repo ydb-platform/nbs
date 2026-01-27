@@ -380,6 +380,10 @@ message TDescribeDataResponse
     // File size.
     uint64 FileSize = 4;
 
+    // This constitutes a “fake” response, meaning it is not related to real
+    // blobs and is used solely for performance modeling and testing purposes
+    bool FakeResponse = 5;
+
     // Optional response headers.
     NProto.TResponseHeaders Headers = 1000;
 }
@@ -708,7 +712,7 @@ message TWriteCompactionMapResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Direct inode manipulation.
+// Direct inode and node ref manipulation.
 
 message TUnsafeDeleteNodeRequest
 {
@@ -745,6 +749,85 @@ message TUnsafeGetNodeResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
     NProto.TNodeAttr Node = 2;
+}
+
+message TUnsafeCreateNodeRefRequest
+{
+    string FileSystemId = 1;
+    uint64 ParentId = 2;
+    bytes Name = 3;
+    uint64 ChildId = 4;
+    string ShardId = 5;
+    string ShardNodeName = 6;
+}
+
+message TUnsafeCreateNodeRefResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+message TUnsafeDeleteNodeRefRequest
+{
+    string FileSystemId = 1;
+    uint64 ParentId = 2;
+    bytes Name = 3;
+}
+
+message TUnsafeDeleteNodeRefResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+message TUnsafeUpdateNodeRefRequest
+{
+    string FileSystemId = 1;
+    uint64 ParentId = 2;
+    bytes Name = 3;
+    uint64 ChildId = 4;
+    string ShardId = 5;
+    string ShardNodeName = 6;
+}
+
+message TUnsafeUpdateNodeRefResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+message TUnsafeGetNodeRefRequest
+{
+    string FileSystemId = 1;
+    uint64 ParentId = 2;
+    bytes Name = 3;
+}
+
+message TUnsafeGetNodeRefResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+    uint64 ChildId = 2;
+    string ShardId = 3;
+    string ShardNodeName = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Unsafe handle manipulation
+
+message TUnsafeCreateHandleRequest
+{
+    string FileSystemId = 1;
+    string SessionId = 2;
+    uint64 Handle = 3;
+    uint64 NodeId = 4;
+    uint64 CommitId = 5;
+    uint32 Flags = 6;
+}
+
+message TUnsafeCreateHandleResponse
+{
+    NCloud.NProto.TError Error = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

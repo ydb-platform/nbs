@@ -1,5 +1,6 @@
 #include "tablet_actor.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/throttler_info_serializer.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
@@ -7,6 +8,8 @@
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
+#include <util/datetime/base.h>
+#include <util/datetime/cputimer.h>
 #include <util/generic/algorithm.h>
 #include <util/generic/cast.h>
 #include <util/generic/hash.h>
@@ -696,6 +699,11 @@ void TIndexTabletActor::HandleDescribeData(
     const TEvIndexTablet::TEvDescribeDataRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (Config->GetFakeDescribeDataEnabled()) {
+        HandleFakeDescribeData(ev, ctx);
+        return;
+    }
+
     auto* msg = ev->Get();
 
     NProto::TProfileLogRequestInfo profileLogRequest;
@@ -891,7 +899,6 @@ bool TIndexTabletActor::PrepareTx_ReadData(
             args.Error = ErrorInvalidTarget(args.NodeId);
             return true;
         }
-        // TODO: access check
     }
 
     TSet<ui32> ranges;
@@ -1130,6 +1137,81 @@ void TIndexTabletActor::CompleteTx_ReadData(
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleFakeDescribeData(
+    const TEvIndexTablet::TEvDescribeDataRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto startCycles = GetCycleCount();
+
+    auto* msg = ev->Get();
+
+    ReportFakeDescribeDataHappened();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
+
+    constexpr ui64 FakeFileSize = 1_GB;
+
+    NProtoPrivate::TDescribeDataResponse result;
+    result.SetFileSize(FakeFileSize);
+    result.SetFakeResponse(true);
+
+    constexpr ui64 FakeTabletId = 11111111;
+    constexpr ui64 FakeBSGroupId = 2222222;
+    constexpr ui32 FakeBlobSize = 256_KB;
+
+    ui64 offset = 1000;
+    ui64 commitId = 12345678;
+    ui64 uniqueId = 23456789;
+
+    for (int i = 0; i < 4; i++) {
+        const TPartialBlobId partialBlobId(commitId, uniqueId);
+
+        auto& piece = *result.AddBlobPieces();
+        LogoBlobIDFromLogoBlobID(
+            MakeBlobId(FakeTabletId, partialBlobId),
+            piece.MutableBlobId());
+
+        piece.SetBSGroupId(FakeBSGroupId);
+
+        NProtoPrivate::TRangeInBlob rangeInBlob;
+        rangeInBlob.SetOffset(offset);
+        rangeInBlob.SetLength(FakeBlobSize);
+
+        offset += FakeBlobSize;
+        commitId++;
+        uniqueId++;
+    }
+
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvDescribeDataResponse>();
+    response->Record = std::move(result);
+
+    CompleteResponse<TEvIndexTablet::TDescribeDataMethod>(
+        response->Record,
+        requestInfo->CallContext,
+        ctx);
+
+    constexpr ui32 MaxLatencyUs = 100;
+    const ui32 latencyUs = ClampVal(
+        Config->GetFakeDescribeDataLatencyUs(),
+        0u,
+        MaxLatencyUs);
+    const auto deadlineCycles = NDateTimeHelpers::SumWithSaturation(
+        startCycles,
+        DurationToCyclesSafe(TDuration::MicroSeconds(latencyUs)));
+
+    // Spin until deadline
+    while (GetCycleCount() < deadlineCycles) {}
+
+    NCloud::Reply(ctx, *requestInfo, std::move(response));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

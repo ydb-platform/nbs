@@ -640,7 +640,7 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         }
 
         // The shards are resized only if
-        // StrictFileSystemSizeEnforcementEnabled, otherwise the shards doesn't
+        // StrictFileSystemSizeEnforcementEnabled, otherwise the shards don't
         // change their size.
         if (StrictFileSystemSizeEnforcementEnabled) {
             ShardsToDescribe = ExistingShardIds.size();
@@ -1032,7 +1032,7 @@ void TStorageServiceActor::HandleAlterFileStore(
         StatsRegistry->GetRequestStats(),
         ctx.Now());
 
-    InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
 
     auto requestInfo = CreateRequestInfo(
         SelfId(),
@@ -1058,7 +1058,7 @@ void TStorageServiceActor::HandleResizeFileStore(
         StatsRegistry->GetRequestStats(),
         ctx.Now());
 
-    InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
 
     auto requestInfo = CreateRequestInfo(
         SelfId(),

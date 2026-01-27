@@ -269,4 +269,7 @@ message TDiagnosticsConfig
     // Report time histograms with milliseconds buckets. Percentiles are still
     // reported in microseconds.
     optional bool UseMsUnitsForTimeHistogram = 57;
+
+    // Enables passing trace id to blobstorage.
+    optional bool PassTraceIdToBlobstorage = 58;
 }

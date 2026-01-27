@@ -2,8 +2,6 @@
 
 #include "part_events_private.h"
 
-#include <cloud/blockstore/public/api/protos/volume.pb.h>
-
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -18,14 +16,15 @@
 #include <cloud/blockstore/libs/storage/core/compaction_options.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
-#include <cloud/blockstore/libs/storage/partition/model/fresh_blob_test.h>
 #include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
+#include <cloud/blockstore/libs/storage/partition/model/fresh_blob_test.h>
 #include <cloud/blockstore/libs/storage/partition/part.h>
 #include <cloud/blockstore/libs/storage/partition/part_events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
+#include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 // TODO: invalid reference
 #include <cloud/blockstore/libs/storage/service/service_events_private.h>
@@ -53,6 +52,8 @@ using namespace NActors;
 using namespace NKikimr;
 
 using namespace NCloud::NStorage;
+
+using namespace NLWTrace;
 
 namespace {
 
@@ -122,7 +123,9 @@ NProto::TStorageServiceConfig DefaultConfig(ui32 flushBlobSizeThreshold = 4_KB)
 
 TDiagnosticsConfigPtr CreateTestDiagnosticsConfig()
 {
-    return std::make_shared<TDiagnosticsConfig>(NProto::TDiagnosticsConfig());
+    NProto::TDiagnosticsConfig config;
+    config.SetPassTraceIdToBlobstorage(true);
+    return std::make_shared<TDiagnosticsConfig>(std::move(config));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -136,6 +139,7 @@ struct TTestPartitionInfo
     ui64 BaseTabletId = 0;
     NCloud::NProto::EStorageMediaKind MediaKind =
         NCloud::NProto::STORAGE_MEDIA_DEFAULT;
+    TMaybe<ui32> MaxBlocksInBlob;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -168,6 +172,7 @@ public:
     {
         for (const auto& [prerequisiteEvent, dependentEvent]: eventOrders) {
             EventDependencies[dependentEvent] = prerequisiteEvent;
+            PrerequisiteEvents.insert(prerequisiteEvent);
         }
     }
 
@@ -198,7 +203,6 @@ public:
             auto& delayedEventsByRecipient = DelayedEvents[recipient];
             auto delayedEventIt = delayedEventsByRecipient.find(eventType);
             if (delayedEventIt != delayedEventsByRecipient.end()) {
-                ProcessedEvents[recipient].insert(eventType);
                 TAutoPtr<IEventHandle> delayedEvent =
                     std::move(delayedEventIt->second);
                 delayedEventsByRecipient.erase(delayedEventIt);
@@ -212,6 +216,10 @@ public:
                 Runtime.Schedule(delayedEvent, TDuration::MilliSeconds(100));
             }
 
+            if (PrerequisiteEvents.contains(eventType)) {
+                ProcessedEvents[recipient].insert(eventType);
+            }
+
             return baseFilterResult;
         };
     }
@@ -219,6 +227,7 @@ public:
 private:
     TTestActorRuntimeBase& Runtime;
     THashMap<ui32, ui32> EventDependencies;
+    THashSet<ui32> PrerequisiteEvents;
     THashMap<TActorId, THashSet<ui32>> ProcessedEvents;
     // Map of delayed events by recipient and event type
     THashMap<TActorId, THashMap<ui32, TAutoPtr<IEventHandle>>> DelayedEvents;
@@ -251,6 +260,10 @@ void InitTestActorRuntime(
 
     partConfig.SetBlockSize(DefaultBlockSize);
     partConfig.SetBlocksCount(blockCount);
+
+    if (partitionInfo.MaxBlocksInBlob) {
+        partConfig.SetMaxBlocksInBlob(*partitionInfo.MaxBlocksInBlob);
+    }
 
     auto* cps = partConfig.MutableExplicitChannelProfiles();
     cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::System));
@@ -1461,7 +1474,8 @@ TPartitionWithRuntime SetupOverlayPartition(
     TMaybe<ui32> channelsCount = {},
     ui32 blockSize = DefaultBlockSize,
     ui32 blockCount = 1024,
-    const NProto::TStorageServiceConfig& config = DefaultConfig())
+    const NProto::TStorageServiceConfig& config = DefaultConfig(),
+    TMaybe<ui32> MaxBlocksInBlob = {})
 {
     TPartitionWithRuntime result;
 
@@ -1475,7 +1489,8 @@ TPartitionWithRuntime SetupOverlayPartition(
             "checkpoint",
             overlayTabletId,
             baseTabletId,
-            NCloud::NProto::STORAGE_MEDIA_DEFAULT
+            NCloud::NProto::STORAGE_MEDIA_DEFAULT,
+            MaxBlocksInBlob
         },
         std::make_unique<TTestVolumeProxyActor>(
             baseTabletId,
@@ -1589,6 +1604,43 @@ void SendUndeliverableRequest(
             &undeliveryActor),
         0);
 }
+
+class TMockShuttle: public IShuttle
+{
+public:
+    TMockShuttle(ui64 traceIdx, ui64 spanId)
+        : IShuttle(traceIdx, spanId)
+    {}
+
+protected:
+    bool DoAddProbe(TProbe*, const TParams&, ui64) override
+    {
+        return true;
+    }
+
+    void DoEndOfTrack() override
+    {}
+
+    void DoDrop() override
+    {}
+
+    void DoSerialize(TShuttleTrace&) override
+    {}
+
+    bool DoFork(TShuttlePtr& child) override
+    {
+        auto shuttle = MakeIntrusive<TMockShuttle>(GetTraceIdx(), GetSpanId());
+        shuttle->SetNext(child);
+        child = shuttle;
+        child->SetParentSpanId(GetSpanId());
+        return true;
+    }
+
+    bool DoJoin(const TShuttlePtr&) override
+    {
+        return true;
+    }
+};
 
 }   // namespace
 
@@ -12999,6 +13051,92 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldDropAllCommitBlobsWhenUnrecoverableBlobExists)
+    {
+        auto config = DefaultConfig();
+
+        config.SetWriteBlobThreshold(1);
+        config.SetAddingUnconfirmedBlobsEnabled(true);
+
+        // Set MaxBlocksInBlob to 1 so writing 2 blocks will create 2 blobs
+        TTestPartitionInfo partitionInfo;
+        partitionInfo.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID;
+        partitionInfo.MaxBlocksInBlob = 1;
+
+        auto runtime = PrepareTestActorRuntime(config, 4096, {}, partitionInfo);
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvAddConfirmedBlobsRequest: {
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(2, 2), 2);
+        partition.WriteBlocks(TBlockRange32::WithLength(4, 2), 2);
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetConfirmedBlobCount());
+        }
+
+        bool tabletActivated = false;
+        ui32 filterCallCount = 0;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case NKikimr::TEvLocal::EvTabletMetrics: {
+                        tabletActivated = true;
+                        return false;
+                    }
+                    case TEvBlobStorage::EvGetResult: {
+                        auto* msg = ev->Get<TEvBlobStorage::TEvGetResult>();
+                        auto* mutableMsg =
+                            const_cast<TEvBlobStorage::TEvGetResult*>(msg);
+
+                        if (tabletActivated) {
+                            if (filterCallCount == 0) {
+                                mutableMsg->Responses[0].Status =
+                                    NKikimrProto::NODATA;
+                            } else if (filterCallCount == 2) {
+                                mutableMsg->Responses[0].Status =
+                                    NKikimrProto::ERROR;
+                            }
+                            ++filterCallCount;
+                        }
+                        return false;
+                    }
+                }
+                return false;
+            });
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetConfirmedBlobCount());
+        }
+    }
+
     Y_UNIT_TEST(ShouldSendPartitionStatistics)
     {
         auto config = DefaultConfig();
@@ -13294,6 +13432,69 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(trimFreshLogToCommitId, stats.GetTrimFreshLogToCommitId());
         }
+    }
+
+    Y_UNIT_TEST(ShouldPassTraceIdToBlobstorage)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        auto writeReq = partition.CreateWriteBlocksRequest(0, 1);
+        writeReq->CallContext->RequestId = 12345;
+
+        auto shuttle = MakeIntrusive<TMockShuttle>(ui64{10}, ui64{10});
+        writeReq->CallContext->LWOrbit.AddShuttle(shuttle);
+
+        ui64 spanId = 0;
+        writeReq->CallContext->LWOrbit.ForEachShuttle(
+            [&](const NLWTrace::IShuttle* s) { spanId = s->GetSpanId(); });
+
+        std::optional<NWilson::TTraceId> traceId;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvPut) {
+                    traceId = NWilson::TTraceId(event->TraceId);
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.SendToPipe(std::move(writeReq));
+
+        auto response =
+            partition.RecvResponse<TEvService::TEvWriteBlocksResponse>();
+        UNIT_ASSERT_C(
+            SUCCEEDED(response->GetStatus()),
+            response->GetErrorReason());
+
+        NProto::TVolumeStats stats =
+            partition.StatPartition()->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 1);
+
+        UNIT_ASSERT(traceId.has_value());
+
+        NWilson::TTraceId expectedTraceId(
+            {12345, 0},
+            spanId,
+            NWilson::TTraceId::MAX_VERBOSITY,
+            NWilson::TTraceId::MAX_TIME_TO_LIVE);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedTraceId.GetHexTraceId(),
+            traceId->GetHexTraceId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedTraceId.GetVerbosity(),
+            traceId->GetVerbosity());
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedTraceId.GetTimeToLive(),
+            traceId->GetTimeToLive());
     }
 }
 

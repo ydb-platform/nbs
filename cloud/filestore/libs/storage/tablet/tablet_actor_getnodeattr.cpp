@@ -151,7 +151,6 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttr(
             return true;
         }
 
-        // TODO: access check
         TABLET_VERIFY(args.ParentNode);
 
         // validate target node exists
@@ -344,8 +343,6 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttrBatch(
         args.Error = ErrorInvalidParent(args.Request.GetNodeId());
         return true;
     }
-
-    // TODO: access check
 
     TVector<TMaybe<IIndexTabletDatabase::TNodeRef>> refs(
         args.Request.NamesSize());

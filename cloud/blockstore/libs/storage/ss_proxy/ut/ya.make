@@ -7,6 +7,7 @@ ELSE()
 ENDIF()
 
 SRCS(
+    path_description_backup_ut.cpp
     ss_proxy_ut.cpp
 )
 

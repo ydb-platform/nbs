@@ -1,7 +1,6 @@
 #include "volume_actor.h"
 
-#include "multi_partition_requests.h"
-
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -131,90 +130,6 @@ void TVolumeActor::UpdateIngestTimeStats(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-bool TVolumeActor::HandleMultipartitionVolumeRequest(
-    const TActorContext& ctx,
-    const typename TMethod::TRequest::TPtr& ev,
-    ui64 volumeRequestId,
-    bool isTraced,
-    ui64 traceTs)
-{
-    static_assert(!IsCheckpointMethod<TMethod>);
-    Y_ABORT_UNLESS(!State->IsDiskRegistryMediaKind());
-    Y_ABORT_UNLESS(State->GetPartitions().size() > 1);
-
-    const auto blocksPerStripe =
-        State->GetMeta().GetVolumeConfig().GetBlocksPerStripe();
-    Y_ABORT_UNLESS(blocksPerStripe);
-
-    TVector<TPartitionRequest<TMethod>> partitionRequests;
-    TBlockRange64 blockRange;
-
-    bool ok = ToPartitionRequests<TMethod>(
-        State->GetPartitions(),
-        State->GetBlockSize(),
-        blocksPerStripe,
-        ev,
-        &partitionRequests,
-        &blockRange);
-
-    if (!ok) {
-        return false;
-    }
-
-    // For DescribeBlocks should always forward request to
-    // TMultiPartitionRequestActor
-    if (partitionRequests.size() == 1 && !IsDescribeBlocksMethod<TMethod>) {
-        ev->Get()->Record = std::move(partitionRequests.front().Event->Record);
-        SendRequestToPartition<TMethod>(
-            ctx,
-            ev,
-            volumeRequestId,
-            blockRange,
-            partitionRequests.front().PartitionId,
-            traceTs);
-
-        return true;
-    }
-
-    for (const auto& partitionRequest: partitionRequests) {
-        LOG_TRACE(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "%s Forward %s request to partition: %u (%s)",
-            LogTitle.GetWithTime().c_str(),
-            TMethod::Name,
-            partitionRequest.PartitionId,
-            ToString(partitionRequest.ActorId).data());
-    }
-
-    auto wrappedRequest = WrapRequest<TMethod>(
-        ev,
-        TActorId{},
-        volumeRequestId,
-        blockRange,
-        traceTs,
-        false,
-        IsWriteMethod<TMethod>);
-
-    NCloud::Register<TMultiPartitionRequestActor<TMethod>>(
-        ctx,
-        CreateRequestInfo(
-            wrappedRequest->Sender,
-            wrappedRequest->Cookie,
-            wrappedRequest->Get()->CallContext),
-        blockRange,
-        blocksPerStripe,
-        State->GetBlockSize(),
-        State->GetPartitions().size(),
-        std::move(partitionRequests),
-        TRequestTraceInfo(isTraced, traceTs, TraceSerializer));
-
-    return true;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-template <typename TMethod>
 typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
     const typename TMethod::TRequest::TPtr& ev,
     NActors::TActorId newRecipient,
@@ -306,7 +221,6 @@ void TVolumeActor::SendRequestToPartition(
     const typename TMethod::TRequest::TPtr& ev,
     ui64 volumeRequestId,
     TBlockRange64 blockRange,
-    ui32 partitionId,
     ui64 traceTime)
 {
     STORAGE_VERIFY_C(
@@ -315,22 +229,42 @@ void TVolumeActor::SendRequestToPartition(
         TabletID(),
         "Empty partition list");
 
-    auto partActorId = State->IsDiskRegistryMediaKind()
-        ? State->GetDiskRegistryBasedPartitionActor()
-        : State->GetPartitions()[partitionId].GetTopActorId();
+    NActors::TActorId partActorId;
+    bool forkTraces = true;
+    bool isMultipartitionWriteOrZero = false;
+    if (State->IsDiskRegistryMediaKind()) {
+        partActorId = State->GetDiskRegistryBasedPartitionActor();
+    } else if (State->GetPartitions().size() == 1) {
+        partActorId = State->GetPartitions()[0].GetTopActorId();
+    } else {
+        forkTraces = false;
+        partActorId = State->GetMultiPartitionWrapperActor();
+        const ui32 blocksPerStripe =
+            State->GetMeta().GetVolumeConfig().GetBlocksPerStripe();
+        isMultipartitionWriteOrZero =
+            IsWriteMethod<TMethod> && (blockRange.Start / blocksPerStripe !=
+                                       blockRange.End / blocksPerStripe);
+    }
+
+    STORAGE_VERIFY_C(
+        partActorId,
+        TWellKnownEntityTypes::TABLET,
+        TabletID(),
+        "Partition actorId not set");
 
     if (State->GetPartitions()) {
         LOG_TRACE(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s Sending %s request to partition: %lu %s",
+            "%s Sending %s request to partition: %s",
             LogTitle.GetWithTime().c_str(),
             TMethod::Name,
-            State->GetPartitions()[partitionId].TabletId,
             ToString(partActorId).data());
 
         if constexpr (IsExactlyWriteMethod<TMethod>) {
-            CombineChecksumsInPlace(*ev->Get()->Record.MutableChecksums());
+            if (!isMultipartitionWriteOrZero) {
+                CombineChecksumsInPlace(*ev->Get()->Record.MutableChecksums());
+            }
         }
     }
 
@@ -340,8 +274,8 @@ void TVolumeActor::SendRequestToPartition(
         volumeRequestId,
         blockRange,
         traceTime,
-        true,
-        false);
+        forkTraces,
+        isMultipartitionWriteOrZero);
 
     if (SendRequestToPartitionWithUsedBlockTracking<TMethod>(
             ctx,
@@ -659,8 +593,7 @@ void TVolumeActor::ForwardRequest(
 
     bool isTraced = false;
 
-    if (ev->Recipient != ev->GetRecipientRewrite())
-    {
+    if (IsForwardedEvent(*ev)) {
         if (TraceSerializer->IsTraced(msg->CallContext->LWOrbit)) {
             isTraced = true;
             now = msg->Record.GetHeaders().GetInternal().GetTraceTs();
@@ -748,6 +681,12 @@ void TVolumeActor::ForwardRequest(
             }
             return;
         }
+    }
+
+    // Ready to execute checkpoint-related request.
+    if constexpr (IsCheckpointMethod<TMethod>) {
+        HandleCheckpointRequest<TMethod>(ctx, ev, isTraced, now);
+        return;
     }
 
     const auto& clientId = GetClientId(*msg);
@@ -922,7 +861,7 @@ void TVolumeActor::ForwardRequest(
             auto& clientInfo = clientsIt->second;
             NProto::TError error;
 
-            if (ev->Recipient != ev->GetRecipientRewrite()) {
+            if (IsForwardedEvent(*ev)) {
                 error = clientInfo.CheckPipeRequest(
                     ev->Recipient,
                     RequiresReadWriteAccess<TMethod>,
@@ -1050,31 +989,7 @@ void TVolumeActor::ForwardRequest(
     // prepared by the WrapRequest<TMethod>() method, which replaces the sender
     // and receiver.
 
-    const bool isSinglePartitionVolume = State->GetPartitions().size() <= 1;
-    if constexpr (IsCheckpointMethod<TMethod>) {
-        HandleCheckpointRequest<TMethod>(ctx, ev, isTraced, now);
-    } else if (isSinglePartitionVolume) {
-        SendRequestToPartition<TMethod>(
-            ctx,
-            ev,
-            volumeRequestId,
-            blockRange,
-            0,
-            now);
-    } else {
-        if (!HandleMultipartitionVolumeRequest<TMethod>(
-                ctx,
-                ev,
-                volumeRequestId,
-                isTraced,
-                now))
-        {
-            if constexpr (IsWriteMethod<TMethod>) {
-                WriteAndZeroRequestsInFlight.RemoveRequest(volumeRequestId);
-            }
-            replyError(MakeError(E_REJECTED, "Sglist destroyed"));
-        }
-    }
+    SendRequestToPartition<TMethod>(ctx, ev, volumeRequestId, blockRange, now);
 }
 
 #define BLOCKSTORE_FORWARD_REQUEST(name, ns)                                   \

@@ -4,6 +4,8 @@
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
 
+#include <cloud/storage/core/libs/common/verify.h>
+
 #include <util/datetime/cputimer.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -30,11 +32,11 @@ void TInFlightRequest::Complete(
         currentTs.MicroSeconds() - ProfileLogRequest.GetTimestampMcs());
     ProfileLogRequest.SetErrorCode(error.GetCode());
 
-    if (ProfileLogRequest.HasLockInfo() ||
-        ProfileLogRequest.HasNodeInfo() ||
-        !ProfileLogRequest.GetRanges().empty())
-    {
-        ProfileLog->Write({CallContext->FileSystemId, std::move(ProfileLogRequest)});
+    if (HasLogData()) {
+        ProfileLog->Write({
+            CallContext->FileSystemId,
+            std::move(ProfileLogRequest)});
+        ProfileLogRequest.Clear();
     }
 
     //
@@ -44,6 +46,13 @@ void TInFlightRequest::Complete(
     //
 
     Completed.store(true, std::memory_order_release);
+}
+
+bool TInFlightRequest::HasLogData() const
+{
+    return ProfileLogRequest.HasLockInfo() ||
+        ProfileLogRequest.HasNodeInfo() ||
+        !ProfileLogRequest.GetRanges().empty();
 }
 
 bool TInFlightRequest::IsCompleted() const
@@ -96,7 +105,7 @@ TInFlightRequest* TInFlightRequestStorage::Register(
     Y_ABORT_UNLESS(inserted);
     it->second.Start(start);
 
-    it->second.ProfileLogRequest.SetLoopThreadId(
+    it->second.AccessProfileLogRequest().SetLoopThreadId(
         it->second.CallContext->LoopThreadId);
 
     return &it->second;
@@ -124,10 +133,27 @@ TInFlightRequestStorage::TLockedRequest TInFlightRequestStorage::FindAndLock(
     return result;
 }
 
-void TInFlightRequestStorage::Erase(ui64 key)
+void TInFlightRequestStorage::CompleteAndErase(
+    TInstant currentTs,
+    const NCloud::NProto::TError& error,
+    TInFlightRequest& request,
+    ui64 key)
 {
-    auto g = Guard(Lock);
+    if (request.HasLogData()) {
+        CompletedRequestCountWithLogData.fetch_add(1, StatsMemOrder);
+    } else if (HasError(error)) {
+        CompletedRequestCountWithError.fetch_add(1, StatsMemOrder);
+    } else {
+        CompletedRequestCountWithoutErrorOrLogData.fetch_add(1, StatsMemOrder);
+    }
 
+    request.Complete(currentTs, error);
+
+    auto g = Guard(Lock);
+    STORAGE_VERIFY_DEBUG(
+        &request == Requests.FindPtr(key),
+        request.CallContext->FileSystemId,
+        TWellKnownEntityTypes::FILESYSTEM);
     Requests.erase(key);
 }
 

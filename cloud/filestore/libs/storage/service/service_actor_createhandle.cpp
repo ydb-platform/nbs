@@ -328,8 +328,8 @@ void TStorageServiceActor::HandleCreateHandle(
         session->RequestStats,
         ctx.Now());
 
-    InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
-    inflight->ProfileLogRequest.SetClientId(session->ClientId);
+    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
+    inflight->AccessProfileLogRequest().SetClientId(session->ClientId);
 
     auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 

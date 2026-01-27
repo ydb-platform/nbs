@@ -1861,7 +1861,8 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
         service.CreateVolume(DefaultDiskId);
-        auto sessionId = service.MountVolume(DefaultDiskId)->Record.GetSessionId();
+        auto sessionId =
+            service.MountVolume(DefaultDiskId)->Record.GetSessionId();
         service.WriteBlocks(
             DefaultDiskId,
             TBlockRange64::WithLength(0, 1024),
@@ -1880,12 +1881,110 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             const auto response = service.ExecuteAction("CheckRange", buf);
             NProto::TCheckRangeResponse checkRangeResponse;
 
-            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                            response->Record.GetOutput(),
-                            &checkRangeResponse)
-                            .ok());
+            UNIT_ASSERT(
+                google::protobuf::util::JsonStringToMessage(
+                    response->Record.GetOutput(),
+                    &checkRangeResponse)
+                    .ok());
 
-            UNIT_ASSERT_VALUES_EQUAL(blockCount, checkRangeResponse.ChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                blockCount,
+                checkRangeResponse.GetDiskChecksums().DataSize());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSetVhostDiscardEnabledFlag)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume(DefaultDiskId);
+
+        auto setVhostDiscardEnabledFlagAndCheckResult = [&](bool discardEnabled)
+        {
+            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
+            request.SetDiskId(DefaultDiskId);
+            request.SetVhostDiscardEnabled(discardEnabled);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("setvhostdiscardenabledflag", buf);
+
+            auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                discardEnabled,
+                volumeConfig.GetVhostDiscardEnabled());
+        };
+
+        setVhostDiscardEnabledFlagAndCheckResult(false);
+        setVhostDiscardEnabledFlagAndCheckResult(false);
+        setVhostDiscardEnabledFlagAndCheckResult(true);
+        setVhostDiscardEnabledFlagAndCheckResult(true);
+        setVhostDiscardEnabledFlagAndCheckResult(false);
+    }
+
+    Y_UNIT_TEST(ShouldValidateSetVhostDiscardEnabledFlag)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume(DefaultDiskId);
+
+        {
+            // Correct ConfigVersion.
+            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
+            request.SetDiskId(DefaultDiskId);
+            request.SetConfigVersion(1);
+            request.SetVhostDiscardEnabled(false);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("setvhostdiscardenabledflag", buf);
+
+            auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                volumeConfig.GetVhostDiscardEnabled());
+        }
+
+        {
+            // Incorrect ConfigVersion.
+            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
+            request.SetDiskId(DefaultDiskId);
+            request.SetConfigVersion(3);
+            request.SetVhostDiscardEnabled(true);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("SetVhostDiscardEnabledFlag", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->GetStatus());
+
+            auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                volumeConfig.GetVhostDiscardEnabled());
+        }
+
+        {
+            // DiskId should be supplied.
+            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
+            request.SetVhostDiscardEnabled(true);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("SetVhostDiscardEnabledFlag", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+
+            auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                volumeConfig.GetVhostDiscardEnabled());
         }
     }
 }

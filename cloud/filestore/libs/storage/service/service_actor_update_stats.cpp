@@ -70,6 +70,16 @@ void TStorageServiceActor::HandleUpdateStats(
         }
     }
 
+    {
+        const auto stats = InFlightRequests->GetStats();
+        CompletedRequestCountWithLogData->Set(
+            stats.CompletedRequestCountWithLogData);
+        CompletedRequestCountWithError->Set(
+            stats.CompletedRequestCountWithError);
+        CompletedRequestCountWithoutErrorOrLogData->Set(
+            stats.CompletedRequestCountWithoutErrorOrLogData);
+    }
+
     if (StatsFetcher) {
         auto [cpuWait, error] = StatsFetcher->GetCpuWait();
         auto now = ctx.Monotonic();

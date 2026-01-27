@@ -96,7 +96,6 @@ struct TMultiCellDescribeHandler
     NProto::TDescribeVolumeRequest Request;
     bool HasUnavailableCells;
 
-    TAdaptiveLock Lock;
     TPromise<NProto::TDescribeVolumeResponse> Promise;
     TVector<std::shared_ptr<TDescribeResponseHandler>> Handlers;
 

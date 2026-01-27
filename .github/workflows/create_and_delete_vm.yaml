@@ -77,6 +77,9 @@ jobs:
       runner_local_ipv4: ${{ steps.start-runner.outputs.RUNNER_LOCAL_IPV4 }}
       allow_downgrade: ${{ env.allow_downgrade == 'false' && 'no' || 'yes' }}
       large_tests: ${{ env.large_tests == 'false' && 'no' || 'yes' }}
+      build_threads: ${{ steps.calculate-threads.outputs.build_threads || '60' }}
+      test_threads: ${{ steps.calculate-threads.outputs.test_threads || '32' }}
+      link_threads: ${{ steps.calculate-threads.outputs.link_threads || '24' }}
     steps:
       - name: checkout PR
         uses: actions/checkout@v4
@@ -109,20 +112,28 @@ jobs:
           team: nbs
           repo_owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
-          service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+          service_account_key: ${{ secrets.POOLED_HEAVY_SA_JSON }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+          vm_parent_id: ${{ vars.POOLED_HEAVY_PARENT_ID }}
           vm_name: ${{ github.event.pull_request.number && format('pr-{0}{1}-{2}-{3}', github.event.pull_request.number, inputs.vm_name_suffix, github.run_id, github.run_attempt) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
-          vm_platform_id: ${{ vars.NEBIUS_PLATFORM_ID }}
-          vm_preset: ${{ env.large_tests == 'true' && vars.NEBIUS_VM_PRESET || '16vcpu-64gb' }}
+          vm_platform_id: ${{ vars.POOLED_HEAVY_PLATFORM_ID }}
+          vm_preset: ${{ env.large_tests == 'true' && vars.POOLED_HEAVY_VM_PRESET || '16vcpu-64gb' }}
           vm_disk_type: ${{ inputs.disk_type || 'network-ssd-nonreplicated' }}
           vm_disk_size: 1023
-          vm_subnet: ${{ vars.NEBIUS_SUBNET_ID }}
-          vm_image: ${{ inputs.vm_image || vars.NEBIUS_IMAGE_ID_2204 }}
+          vm_subnet: ${{ vars.POOLED_HEAVY_SUBNET_ID }}
+          vm_image: ${{ inputs.vm_image || vars.POOLED_HEAVY_IMAGE_ID_2204 }}
           vm_labels: ${{ github.event.pull_request.number && format('pr={0},run={1}-{2},repo={3},owner={4}', github.event.pull_request.number, github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) || format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
           vm_flavor: "none"
           vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
           vm_allow_downgrade: 'no'
+          vm_public_ip: ${{ vars.POOLED_HEAVY_PUBLIC_IP_ENABLE == 'yes' && 'yes' || 'no' }}
+      - name: Calculate threads
+        id: calculate-threads
+        if: always()
+        uses: ./.github/actions/nebius_threads_calculator
+        with:
+          vm_preset: ${{ steps.start-runner.outputs.VM_PRESET }}
+          tests_size: ${{ env.large_tests == 'false' && 'small' || 'small,medium,large' }}
 
   build-and-test:
     name: Build and test
@@ -144,6 +155,9 @@ jobs:
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
       cache_update_build: false
       cache_update_tests: false
+      build_threads: ${{ needs.provide-runner.outputs.build_threads || '60' }}
+      link_threads: ${{ needs.provide-runner.outputs.link_threads || '24' }}
+      test_threads: ${{ needs.provide-runner.outputs.test_threads || '12' }}
       upload_ya_dir: "no"
       clean_ya_dir: "no"
       use_network_cache: "yes"
@@ -156,7 +170,7 @@ jobs:
     needs:
       - provide-runner
       - build-and-test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
     if: always()
     steps:
       - name: checkout PR
@@ -185,9 +199,9 @@ jobs:
         uses: ./.github/actions/nebius_runner_remove
         timeout-minutes: 60
         with:
-          service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+          service_account_key: ${{ secrets.POOLED_HEAVY_SA_JSON }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           repo_owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
-          vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+          vm_parent_id: ${{ vars.POOLED_HEAVY_PARENT_ID }}
           vm_id: ${{ needs.provide-runner.outputs.instance-id }}

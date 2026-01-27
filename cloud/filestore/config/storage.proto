@@ -715,4 +715,15 @@ message TStorageConfig
     // Maximum step value for the tablet. This
     // parameter is supposed to be used only for testing purposes.
     optional uint32 MaxTabletStep = 478;
+
+    // Enables “fake” DescribeData responses, meaning the responses are not
+    // related to real blobs and are used solely for performance modeling and
+    // testing purposes
+    optional bool FakeDescribeDataEnabled = 479;
+    optional uint32 FakeDescribeDataLatencyUs = 480;
+
+    // If enabled, if the S_ISGID is set on the directory, its gid will be
+    // propagated to newly created files (including directories, symlinks, etc.)
+    // inside that directory.
+    optional bool GidPropagationEnabled = 481;
 }

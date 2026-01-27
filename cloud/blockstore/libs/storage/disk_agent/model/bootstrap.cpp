@@ -119,10 +119,11 @@ IStorageProviderPtr CreateStorageProvider(
             result = CreateLocalStorageProvider(
                 std::move(provider),
                 std::move(nvmeManager),
-                {
+                NServer::TLocalStorageProviderParams{
                     .DirectIO = !config.GetDirectIoFlagDisabled(),
                     .UseSubmissionThread =
                         config.GetUseLocalStorageSubmissionThread(),
+                    .ValidatedBlocksRatio = config.GetValidatedBlocksRatio(),
                     .DataIntegrityValidationPolicy =
                         config
                             .GetDataIntegrityValidationPolicyForDrBasedDisks(),
@@ -138,11 +139,12 @@ IStorageProviderPtr CreateStorageProvider(
             result = CreateLocalStorageProvider(
                 std::move(provider),
                 std::move(nvmeManager),
-                {
+                NServer::TLocalStorageProviderParams{
                     .DirectIO = !config.GetDirectIoFlagDisabled(),
                     // Each io_uring service already has its own submission
                     // thread, so we don't need one here
                     .UseSubmissionThread = false,
+                    .ValidatedBlocksRatio = config.GetValidatedBlocksRatio(),
                     .DataIntegrityValidationPolicy =
                         config
                             .GetDataIntegrityValidationPolicyForDrBasedDisks(),

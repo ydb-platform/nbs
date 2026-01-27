@@ -24,6 +24,7 @@ class TResyncRangeActor final
 {
 private:
     const TRequestInfoPtr RequestInfo;
+    const TString DiskId;
     const ui32 BlockSize;
     const TBlockRange64 Range;
     const TVector<TReplicaDescriptor> Replicas;
@@ -49,7 +50,7 @@ private:
     ui64 VolumeRequestId = 0;
     int ReplicaIndexToReadFrom = 0;
 
-    TChecksumRangeActorCompanion ChecksumRangeActorCompanion{Replicas};
+    TChecksumRangeActorCompanion ChecksumRangeActorCompanion{DiskId, Replicas};
 
     bool ErrorFound = false;
     bool ErrorFixed = false;
@@ -57,6 +58,7 @@ private:
 public:
     TResyncRangeActor(
         TRequestInfoPtr requestInfo,
+        TString diskId,
         ui32 blockSize,
         TBlockRange64 range,
         TVector<TReplicaDescriptor> replicas,

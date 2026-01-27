@@ -185,6 +185,12 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
             return true;
         }
 
+        if (Config->GetGidPropagationEnabled()) {
+            if (args.ParentNode->Attrs.GetMode() & S_ISGID) {
+                args.Gid = args.ParentNode->Attrs.GetGid();
+            }
+        }
+
         // check whether child node exists
         TMaybe<IIndexTabletDatabase::TNodeRef> ref;
         if (!ReadNodeRef(db, args.NodeId, args.ReadCommitId, args.Name, ref)) {
@@ -270,6 +276,8 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
     TTransactionContext& tx,
     TTxIndexTablet::TCreateHandle& args)
 {
+    Y_UNUSED(ctx);
+
     FILESTORE_VALIDATE_TX_ERROR(CreateHandle, args);
 
     auto* session = FindSession(args.SessionId);
@@ -283,7 +291,8 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
     // TODO: check if session is read only
     args.WriteCommitId = GenerateCommitId();
     if (args.WriteCommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "CreateHandle");
+        args.OnCommitIdOverflow();
+        return;
     }
 
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);

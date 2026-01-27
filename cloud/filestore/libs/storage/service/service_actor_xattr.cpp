@@ -182,7 +182,7 @@ void TStorageServiceActor::ForwardXAttrRequest(
         session->RequestStats,
         ctx.Now());
 
-    InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
     TraceSerializer->BuildTraceRequest(
         *msg->Record.MutableHeaders()->MutableInternal()->MutableTrace(),
         msg->CallContext->LWOrbit);
@@ -227,11 +227,11 @@ void TStorageServiceActor::ReplyToXAttrRequest(
         session->MediaKind,
         session->RequestStats);
 
-    InitProfileLogRequestInfo(inflight.ProfileLogRequest, msg->Record);
+    InitProfileLogRequestInfo(inflight.AccessProfileLogRequest(), msg->Record);
     inflight.Start(ctx.Now());
 
     FinalizeProfileLogRequestInfo(
-        inflight.ProfileLogRequest,
+        inflight.AccessProfileLogRequest(),
         response->Record);
     inflight.Complete(ctx.Now(), response->GetError());
 

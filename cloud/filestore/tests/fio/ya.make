@@ -9,6 +9,7 @@ RECURSE_FOR_TESTS(
     qemu-kikimr-zero-copy-test
     qemu-kikimr-zero-copy-fallback-test
     qemu-local-noserver-direct-io-test
+    qemu-local-noserver-mq-test
     qemu-local-noserver-test
     qemu-local-test
 )

@@ -453,13 +453,17 @@ void TStorageServiceActor::HandleCreateFileStore(
         StatsRegistry->GetRequestStats(),
         ctx.Now());
 
-    InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
 
     auto error = ValidateCreateFileSystemRequest(msg->Record);
     if (HasError(error)) {
-        auto response = std::make_unique<TEvService::TEvCreateFileStoreResponse>(error);
-        inflight->Complete(ctx.Now(), error);
-        InFlightRequests->Erase(cookie);
+        auto response =
+            std::make_unique<TEvService::TEvCreateFileStoreResponse>(error);
+        InFlightRequests->CompleteAndErase(
+            ctx.Now(),
+            error,
+            *inflight,
+            cookie);
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }

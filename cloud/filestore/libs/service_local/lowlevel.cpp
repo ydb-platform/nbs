@@ -776,10 +776,14 @@ TString TFileId::ToString() const
             << ")";
         break;
     case EFileIdType::Weka:
-        out << ", Weka(Id=" << Hex(WekaInodeId.Id)
-            << ", Context=" << Hex(WekaInodeId.Context)
-            << ", ParentId=" << Hex(WekaInodeId.ParentId)
+        out << ", Weka(InodeContext=" << Hex(WekaInodeId.InodeContext)
+            << ", InodeId=" << Hex(WekaInodeId.InodeId)
+            << ", AntiCollisionId=" << Hex(WekaInodeId.AntiCollisionId)
+            << ", InodeSupplemental=" << Hex(WekaInodeId.InodeSupplemental)
+            << ", SnapViewId=" << Hex(WekaInodeId.SnapViewId)
+            << ", FsId=" << Hex(WekaInodeId.FsId)
             << ", ParentContext=" << Hex(WekaInodeId.ParentContext)
+            << ", ParentSupplemental=" << Hex(WekaInodeId.ParentSupplemental)
             << ")";
         break;
     case EFileIdType::VastNfs:

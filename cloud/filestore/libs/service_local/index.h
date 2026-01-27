@@ -4,6 +4,7 @@
 
 #include "lowlevel.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/filestore.h>
 
 #include <cloud/storage/core/libs/common/persistent_table.h>
@@ -111,21 +112,74 @@ struct INodeLoader
 {
     virtual ~INodeLoader() = default;
     virtual TIndexNodePtr LoadNode(ui64 nodeId) const = 0;
+    virtual TIndexNodePtr LoadSnapshotsDirNode() = 0;
+    virtual TIndexNodePtr LoadSnapshotDirNode(ui64 snapshotDirNodeId) = 0;
     virtual TString ToString() const = 0;
 };
 
-class TNodeLoader
-    : public INodeLoader
+INodeLoaderPtr CreateNodeLoader(
+    const TIndexNodePtr& rootNode,
+    const TDuration& snapshotsDirRefreshInterval,
+    std::function<void()> onSnapshotsChanged);
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TNodeMapper
 {
 private:
-    TFileHandle RootHandle;
-    NLowLevel::TFileId RootFileId;
+    INodeLoader& NodeLoader;
+    TRWMutex& NodeLoaderLock;
+    TIndexNodePtr SnapshotsNode = nullptr;
 
 public:
-    TNodeLoader(const TIndexNodePtr& rootNode);
+    explicit TNodeMapper(INodeLoader& nodeLoader, TRWMutex& nodeLoaderLock);
 
-    [[nodiscard]] TIndexNodePtr LoadNode(ui64 nodeId) const;
+    struct TRemapResult
+    {
+        enum class EStatus
+        {
+            NotNeeded,
+            Remapped,
+        };
 
+        EStatus Status = EStatus::NotNeeded;
+        TIndexNodePtr Node;
+
+        static TRemapResult NotNeeded()
+        {
+            return {EStatus::NotNeeded, nullptr};
+        }
+
+        static TRemapResult NotFound()
+        {
+            return {EStatus::Remapped, nullptr};
+        }
+
+        static TRemapResult Remapped(TIndexNodePtr node)
+        {
+            return {EStatus::Remapped, std::move(node)};
+        }
+
+        [[nodiscard]] bool HasRemap() const
+        {
+            return Status == EStatus::Remapped;
+        }
+
+        [[nodiscard]] bool IsFound() const
+        {
+            return Status == EStatus::Remapped && Node;
+        }
+
+        [[nodiscard]] const TIndexNodePtr& GetNode() const
+        {
+            return Node;
+        }
+    };
+
+    TRemapResult RemapNode(
+        ui64 parentNodeId,
+        const TString& name);
+    TRemapResult RemapNode(ui64 parentNodeId, ui64 nodeId);
     TString ToString() const;
 };
 
@@ -171,11 +225,14 @@ private:
     ui32 MaxNodeCount;
     bool OpenNodeByHandleEnabled;
     ui32 NodeCleanupBatchSize;
+    bool SnapshotsDirEnabled;
+    TDuration SnapshotsDirRefreshInterval;
     TNodeMap Nodes;
     std::unique_ptr<TNodeTable> NodeTable;
     TRWMutex NodesLock;
     TLog Log;
-    std::shared_ptr<INodeLoader> NodeLoader;
+    INodeLoaderPtr NodeLoader;
+    std::shared_ptr<TNodeMapper> NodeMapper;
     TIntrusiveList<TIndexNode> NodeInsertOrderList;
     bool ShouldCleanupNodes = false;
 
@@ -186,15 +243,20 @@ public:
             ui32 maxNodeCount,
             bool openNodeByHandleEnabled,
             ui32 nodeCleanupBatchSize,
+            bool snapshotsDirEnabled,
+            const TDuration& snapshotsDirRefreshInterval,
             TLog log,
-            std::shared_ptr<INodeLoader> nodeLoader = nullptr)
+            INodeLoaderPtr nodeLoader = nullptr)
         : RootPath(std::move(root))
         , StatePath(std::move(statePath))
         , MaxNodeCount(maxNodeCount)
         , OpenNodeByHandleEnabled(openNodeByHandleEnabled)
         , NodeCleanupBatchSize(nodeCleanupBatchSize)
+        , SnapshotsDirEnabled(snapshotsDirEnabled)
+        , SnapshotsDirRefreshInterval(snapshotsDirRefreshInterval)
         , Log(std::move(log))
         , NodeLoader(std::move(nodeLoader))
+        , NodeMapper(nullptr)
     {
         Init();
     }
@@ -231,6 +293,26 @@ public:
         }
 
         return node;
+    }
+
+    TNodeMapper::TRemapResult RemapNode(
+        ui64 parentNodeId,
+        const TString& name)
+    {
+        if (!NodeMapper) {
+            return TNodeMapper::TRemapResult::NotNeeded();
+        }
+
+        return NodeMapper->RemapNode(parentNodeId, name);
+    }
+
+    TNodeMapper::TRemapResult RemapNode(ui64 parentNodeId, ui64 nodeId)
+    {
+        if (!NodeMapper) {
+            return TNodeMapper::TRemapResult::NotNeeded();
+        }
+
+        return NodeMapper->RemapNode(parentNodeId, nodeId);
     }
 
     [[nodiscard]] bool
@@ -278,10 +360,8 @@ public:
         return ForgetNodeWriteLocked(nodeId);
     }
 
-    void Clear()
+    void ClearLocked()
     {
-        TWriteGuard guard(NodesLock);
-
         if (NodeTable) {
             NodeTable->Clear();
         }
@@ -294,10 +374,18 @@ public:
         Nodes.insert(root);
     }
 
+    void Clear()
+    {
+        TWriteGuard guard(NodesLock);
+        ClearLocked();
+    }
+
 private:
     void Init()
     {
         auto root = TIndexNode::CreateRoot(RootPath);
+        Nodes.insert(root);
+
         STORAGE_INFO(
             "Init index, Root=" << RootPath <<
             ", StatePath=" << StatePath <<
@@ -306,7 +394,15 @@ private:
         if (OpenNodeByHandleEnabled) {
             try {
                 if (!NodeLoader) {
-                    NodeLoader = std::make_unique<TNodeLoader>(root);
+                    auto clearCache = [this]()
+                    {
+                        ClearLocked();
+                    };
+
+                    NodeLoader = CreateNodeLoader(
+                        root,
+                        SnapshotsDirRefreshInterval,
+                        std::move(clearCache));
                 }
 
                 STORAGE_INFO(
@@ -317,10 +413,24 @@ private:
                 STORAGE_ERROR(
                     "Failed to initialize NodeLoader" <<
                     ", Exception=" << CurrentExceptionMessage());
+                ReportLocalFsFailedToInitNodeLoader();
+            }
+
+            try {
+                if (NodeLoader && SnapshotsDirEnabled) {
+                    NodeMapper =
+                        std::make_unique<TNodeMapper>(*NodeLoader, NodesLock);
+                    STORAGE_INFO(
+                        "Inititialize NodeMapper, NodeMapper="
+                        << NodeMapper->ToString());
+                }
+            } catch (...) {
+                STORAGE_ERROR(
+                    "Failed to initialize NodeMapper" <<
+                    ", Exception=" << CurrentExceptionMessage());
+                ReportLocalFsFailedToInitNodeMapper();
             }
         }
-
-        Nodes.insert(root);
 
         if (!NodeLoader) {
             NodeTable = std::make_unique<TNodeTable>(

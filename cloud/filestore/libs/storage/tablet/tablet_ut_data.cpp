@@ -1,5 +1,6 @@
 #include "tablet_schema.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 #include <cloud/filestore/libs/storage/tablet/model/operation.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
@@ -62,6 +63,7 @@ public:
 }   // namespace
 
 using namespace NKikimr;
+using namespace NMonitoring;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -4765,6 +4767,55 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
+    void DoTestShouldHandleFakeDescribeData(
+        const TFileSystemConfig& tabletConfig,
+        ui32 fakeDescribeDataLatencyUs)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetFakeDescribeDataEnabled(true);
+        storageConfig.SetFakeDescribeDataLatencyUs(
+            fakeDescribeDataLatencyUs);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto fakeDescribeDataHappened = counters->GetCounter(
+            "AppCriticalEvents/FakeDescribeDataHappened",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, fakeDescribeDataHappened->Val());
+
+        auto response = tablet.DescribeData(0, 0, 256_KB);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1_GB,
+            response->Record.GetFileSize());
+        UNIT_ASSERT(response->Record.GetFakeResponse());
+
+        const auto& blobPieces = response->Record.GetBlobPieces();
+        UNIT_ASSERT_VALUES_EQUAL(4, blobPieces.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, fakeDescribeDataHappened->Val());
+    }
+
+    TABLET_TEST_16K(ShouldHandleFakeDescribeData)
+    {
+        // Zero is a special value
+        DoTestShouldHandleFakeDescribeData(tabletConfig, 0);
+        DoTestShouldHandleFakeDescribeData(tabletConfig, 100);
+        DoTestShouldHandleFakeDescribeData(tabletConfig, 1000);
+    }
+
     // See #2737 for more details
     TABLET_TEST_16K(ReadAheadCacheShouldNotBeAffectedByConcurrentModifications)
     {
@@ -7781,8 +7832,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldHandleCommitIdOverflowAndPreserveLastWrittenData)
     {
-        const auto block = tabletConfig.BlockSize;
-        const auto maxTabletStep = 5;
+        const ui64 block = tabletConfig.BlockSize;
+        const ui32 maxTabletStep = 5;
 
         NProto::TStorageConfig storageConfig;
         storageConfig.SetMaxTabletStep(maxTabletStep);
@@ -7792,26 +7843,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         const ui32 nodeIdx = env.CreateNode("nfs");
 
-        bool pipeDestroyed = false;
-        TSet<ui32> generations;
-        env.GetRuntime().SetEventFilter(
-            [&](auto& runtime, auto& event)
-            {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case NKikimr::TEvTablet::EvBoot: {
-                        auto* msg =
-                            event->template Get<NKikimr::TEvTablet::TEvBoot>();
-                        generations.insert(msg->Generation);
-                        break;
-                    }
-                    case NKikimr::TEvTabletPipe::EvClientDestroyed: {
-                        pipeDestroyed = true;
-                        break;
-                    }
-                }
-                return false;
-            });
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
 
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
@@ -7822,18 +7855,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             tabletConfig);
         tablet.InitSession("client", "session");
 
-        const auto id =
+        const ui64 id =
             CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tablet, id);
 
         auto reconnectAndRecreateHandleIfNeeded = [&]()
         {
-            if (pipeDestroyed) {
+            if (rebootTracker.IsPipeDestroyed()) {
                 tablet.ReconnectPipe();
                 tablet.WaitReady();
                 tablet.RecoverSession();
                 handle = CreateHandle(tablet, id);
-                pipeDestroyed = false;
+                rebootTracker.ClearPipeDestroyed();
             }
         };
 
@@ -7857,8 +7890,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         tablet.DestroyHandle(handle);
         UNIT_ASSERT_C(
-            generations.size() >= 2,
-            "Expected at least 2 different generations due to tablet reboot");
+            rebootTracker.GetGenerationCount() >= 2,
+            "Expected at least 2 different generations due to tablet reboot, "
+            "got "
+                << rebootTracker.GetGenerationCount());
     }
 }
 

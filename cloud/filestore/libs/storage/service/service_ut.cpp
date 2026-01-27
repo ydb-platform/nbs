@@ -1,6 +1,7 @@
 #include "service.h"
 #include "service_private.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
@@ -22,6 +23,7 @@ namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
+using namespace NMonitoring;
 
 namespace {
 
@@ -113,6 +115,40 @@ NProtoPrivate::TSetHasXAttrsResponse ExecuteSetHasXAttrs(
             &response)
             .ok());
     return response;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TVector<TString> CreateIovecs(size_t num, size_t size)
+{
+    TVector<TString> iovecs;
+    iovecs.reserve(num);
+    for (size_t i = 0; i < num; ++i) {
+        iovecs.emplace_back(size, '\0');
+    }
+    return iovecs;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString GetBufferFromIovecs(const TVector<TString>& iovecs, size_t length)
+{
+    size_t bufOffset = 0;
+    TString buf;
+    buf.resize(length);
+
+    for (const auto& iovec: iovecs) {
+        if (length == 0) {
+            break;
+        }
+
+        size_t len = std::min(iovec.size(), length);
+        memcpy(&buf[bufOffset], iovec.data(), len);
+        length -= len;
+        bufOffset += len;
+    }
+
+    return buf;
 }
 
 }   // namespace
@@ -3203,7 +3239,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, evPuts);
         // clang-format on
 
-
         auto counters = env.GetCounters()
                             ->FindSubgroup("component", "service_fs")
                             ->FindSubgroup("host", "cluster")
@@ -3922,6 +3957,21 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             ->FindSubgroup("component", "service")
             ->GetCounter("InFlightRequestCount", false);
 
+        auto requestCountWithLogDataCounter = counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service")
+            ->GetCounter("CompletedRequestCountWithLogData", true);
+
+        auto requestCountWithErrorCounter = counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service")
+            ->GetCounter("CompletedRequestCountWithError", true);
+
+        auto requestCountWithoutLogDataOrErrorCounter = counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service")
+            ->GetCounter("CompletedRequestCountWithoutLogDataOrError", true);
+
         auto hddTabletCounter = counters
             ->FindSubgroup("counters", "filestore")
             ->FindSubgroup("component", "service")
@@ -3943,6 +3993,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         // smoke
         UNIT_ASSERT_VALUES_EQUAL(0, inFlightRequestCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            requestCountWithLogDataCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, requestCountWithErrorCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            requestCountWithoutLogDataOrErrorCounter->GetAtomic());
 
         service.UnregisterLocalFileStore("test", 1);
 
@@ -3958,6 +4015,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         // smoke
         UNIT_ASSERT_VALUES_EQUAL(0, inFlightRequestCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            requestCountWithLogDataCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, requestCountWithErrorCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            requestCountWithoutLogDataOrErrorCounter->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldUseThreeStageWriteAndTwoStageReadForHandlelessIO)
@@ -4164,32 +4228,28 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
                 ->Record.GetHandle();
 
-        std::vector<TString> data;
+        TVector<TString> writeIovecs;
+        TVector<TString> readIovecs;
 
         ui64 dataSize = 0;
         for (auto iovecSize: iovecSizes) {
             dataSize += iovecSize;
         }
-        data.reserve(dataSize);
+        writeIovecs.reserve(iovecSizes.size());
         for (size_t i = 0; i < iovecSizes.size(); ++i) {
-            data.push_back(GenerateValidateData(iovecSizes[i], i));
+            writeIovecs.push_back(GenerateValidateData(iovecSizes[i], i));
+            readIovecs.emplace_back(iovecSizes[i], '\0');
         }
-        service.WriteData(headers, fs, nodeId, handle, offset, data);
-        for (size_t i = 0; i < iovecSizes.size(); ++i) {
-            if (data[i].size() == 0) {
-                continue;
-            }
-            auto readDataResult = service.ReadData(
-                headers,
-                fs,
-                nodeId,
-                handle,
-                offset,
-                data[i].size());
-            const auto& buffer = readDataResult->Record.GetBuffer();
-            UNIT_ASSERT_VALUES_EQUAL_C(data[i], buffer, i);
-            offset += data[i].size();
-        }
+        service.WriteData(headers, fs, nodeId, handle, offset, writeIovecs);
+        auto readDataResult = service.ReadData(
+            headers,
+            fs,
+            nodeId,
+            handle,
+            offset,
+            dataSize,
+            readIovecs);
+        UNIT_ASSERT_VALUES_EQUAL(writeIovecs, readIovecs);
     }
 
     Y_UNIT_TEST(TestAlignedZeroCopyWrite)
@@ -4327,13 +4387,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
                 ->Record.GetHandle();
 
-        std::vector<TString> data(64);
+        TVector<TString> data(64);
         service.AssertWriteDataFailed(headers, fs, nodeId, handle, 0, data);
     }
 
     Y_UNIT_TEST(ShouldUseIovecsForReadDataRequest)
     {
-        // TODO(#4664): add more comprehensive tests for zero-copy read
         TTestEnv env;
         env.CreateSubDomain("nfs");
 
@@ -4362,31 +4421,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         const auto& data = GenerateValidateData(256_KB);
         service.WriteData(headers, fs, nodeId, handle, 0, data);
 
-        TVector<std::array<char, 4_KB>> buffers(64);
-        TVector<std::span<char>> spans;
-        for (size_t i = 0; i < buffers.size(); ++i) {
-            spans.push_back(std::span<char>(buffers[i].data(), buffers[i].size()));
-        }
+        auto iovecs = CreateIovecs(64, 4_KB);
+        auto readDataResult =
+            service
+                .ReadData(headers, fs, nodeId, handle, 0, data.size(), iovecs);
 
-        auto readDataResult = service.ReadData(
-            headers,
-            fs,
-            nodeId,
-            handle,
-            0,
-            data.size(),
-            spans);
-
-        TString result;
-        for (const auto& buf: spans) {
-            result.append(buf.data(), buf.size());
-        }
-
-        UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetLength(), data.size());
-        UNIT_ASSERT_VALUES_EQUAL(result, data);
+        UNIT_ASSERT_VALUES_EQUAL(
+            readDataResult->Record.GetLength(),
+            data.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBufferFromIovecs(iovecs, data.size()),
+            data);
 
         // Passing less target data than requested size should fail
-        spans.pop_back();
+        iovecs.pop_back();
         service.AssertReadDataFailed(
             headers,
             fs,
@@ -4394,7 +4442,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             handle,
             0,
             data.size(),
-            spans);
+            iovecs);
     }
 
     Y_UNIT_TEST(ShouldHandleToggleServiceState)
@@ -4428,6 +4476,135 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             NProto::EServiceState::SERVICE_STATE_STOPPING,
             pingResponse->Record.GetServiceState(),
             pingResponse->Record.ShortDebugString());
+    }
+
+    Y_UNIT_TEST(ShouldReadFakeDataWhenReadBlobDisabled)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::STORAGE_MEDIA_SSD);
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetTwoStageReadEnabled(true);
+            newConfig.SetReadBlobDisabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                response.GetStorageConfig().GetTwoStageReadEnabled());
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        auto headers = service.InitSession(fs, "client");
+
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto fakeBlobWasRead = counters->GetCounter(
+            "AppCriticalEvents/FakeBlobWasRead",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, fakeBlobWasRead->Val());
+
+        TString data(1_MB, 'b');
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+        service.ReadData(headers, fs, nodeId, handle, 0, data.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, fakeBlobWasRead->Val());
+    }
+
+    Y_UNIT_TEST(ShouldReadFakeDataWhenFakeDescribeDataEnabled)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::STORAGE_MEDIA_SSD);
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetTwoStageReadEnabled(true);
+            // Enabled fake DescribeData but forgot to set ReadBlobDisabled
+            newConfig.SetFakeDescribeDataEnabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        auto headers = service.InitSession(fs, "client");
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto fakeBlobWasRead = counters->GetCounter(
+            "AppCriticalEvents/FakeBlobWasRead",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, fakeBlobWasRead->Val());
+        auto unexpectedFakeDescribeDataResponse = counters->GetCounter(
+            "AppCriticalEvents/UnexpectedFakeDescribeDataResponse",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            unexpectedFakeDescribeDataResponse->Val());
+
+        service.SendReadDataRequest(headers, fs, 0, 0, 0, 1_MB);
+        auto response = service.RecvReadDataResponse();
+        // Misconfiguration: requests should hang until ReadBlobDisabled is
+        // set
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, fakeBlobWasRead->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, unexpectedFakeDescribeDataResponse->Val());
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetTwoStageReadEnabled(true);
+            newConfig.SetFakeDescribeDataEnabled(true);
+            // Fix misconfiguration by setting ReadBlobDisabled
+            newConfig.SetReadBlobDisabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        headers = service.InitSession(fs, "client");
+
+        // Should succeed because FakeDescribeDataEnabled and ReadBlobDisabled
+        // are set
+        service.ReadData(headers, fs, 0, 0, 0, 1_MB);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, fakeBlobWasRead->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, unexpectedFakeDescribeDataResponse->Val());
     }
 }
 

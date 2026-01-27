@@ -105,10 +105,10 @@ private:
     TExecutorPtr Executor = TExecutor::Create("SVC");
     TLog Log;
 
+    // Fields may only be accessed from the Executor thread
     THashMap<TString, TStartingEndpointState> StartingSockets;
     THashMap<TString, TStoppingEndpointState> StoppingSockets;
 
-    TMutex EndpointsLock;
     bool DrainingStarted = false;
     TMap<TString, TEndpointInfo> Endpoints;
 
@@ -138,14 +138,7 @@ public:
 
     void Drain() override
     {
-        auto g = Guard(EndpointsLock);
-        DrainingStarted = true;
-
-        TVector<TFuture<void>> futures;
-        for (auto&& [_, endpoint]: Endpoints) {
-            futures.push_back(endpoint.Endpoint->SuspendAsync());
-        }
-        WaitAll(futures).GetValueSync();
+        Executor->Execute([this]() { return DoDrain(); }).GetValueSync();
     }
 
 #define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
@@ -169,6 +162,18 @@ private:                                                                       \
 #undef FILESTORE_IMPLEMENT_METHOD
 
 private:
+    TFuture<void> DoDrain()
+    {
+        DrainingStarted = true;
+
+        TVector<TFuture<void>> futures;
+        for (auto&& [_, endpoint]: Endpoints) {
+            futures.push_back(endpoint.Endpoint->SuspendAsync());
+        }
+
+        return WaitAll(futures);
+    }
+
     TFuture<void> RestoreEndpoints() override
     {
         return Executor->Execute([weakSelf = weak_from_this()] () mutable {
@@ -322,7 +327,6 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
 {
     STORAGE_INFO("StartEndpoint " << DumpMessage(request));
 
-    auto g = Guard(EndpointsLock);
     if (DrainingStarted) {
         return TErrorResponse(E_REJECTED, "draining");
     }
@@ -418,7 +422,6 @@ NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
 {
     STORAGE_INFO("StopEndpoint " << DumpMessage(request));
 
-    auto g = Guard(EndpointsLock);
     if (DrainingStarted) {
         return TErrorResponse(E_REJECTED, "draining");
     }
@@ -474,7 +477,6 @@ NProto::TListEndpointsResponse TEndpointManager::DoListEndpoints(
 {
     STORAGE_TRACE("ListEndpoints " << DumpMessage(request));
 
-    auto g = Guard(EndpointsLock);
     if (DrainingStarted) {
         return TErrorResponse(E_REJECTED, "draining");
     }

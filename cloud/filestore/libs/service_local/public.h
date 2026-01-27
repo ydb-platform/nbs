@@ -18,4 +18,7 @@ using TLocalFileSystemPtr = std::shared_ptr<TLocalFileSystem>;
 class TSession;
 using TSessionPtr = std::shared_ptr<TSession>;
 
+struct INodeLoader;
+using INodeLoaderPtr = std::shared_ptr<INodeLoader>;
+
 }   // namespace NCloud::NFileStore

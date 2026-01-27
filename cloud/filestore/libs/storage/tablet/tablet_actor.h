@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include "tablet_counters.h"
-#include "tablet_private.h"
 #include "tablet_state.h"
 #include "tablet_tx.h"
 
@@ -18,6 +17,7 @@
 #include <cloud/filestore/libs/storage/core/tablet.h>
 #include <cloud/filestore/libs/storage/model/public.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
+#include <cloud/filestore/libs/storage/tablet/events/tablet_private.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
@@ -836,6 +836,10 @@ private:
         const TEvIndexTabletPrivate::TEvNodeUnlinkedInShard::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleDoRenameNodeInDestination(
+        const TEvIndexTabletPrivate::TEvDoRenameNodeInDestination::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleNodeRenamedInDestination(
         const TEvIndexTabletPrivate::TEvNodeRenamedInDestination::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -854,6 +858,10 @@ private:
 
     void HandleEnqueueBlobIndexOpIfNeeded(
         const TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleFakeDescribeData(
+        const TEvIndexTablet::TEvDescribeDataRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);

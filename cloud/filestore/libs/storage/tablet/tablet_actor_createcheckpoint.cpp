@@ -58,13 +58,16 @@ void TIndexTabletActor::ExecuteTx_CreateCheckpoint(
     TTransactionContext& tx,
     TTxIndexTablet::TCreateCheckpoint& args)
 {
+    Y_UNUSED(ctx);
+
     FILESTORE_VALIDATE_TX_ERROR(CreateCheckpoint, args);
 
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "CreateCheckpoint");
+        args.OnCommitIdOverflow();
+        return;
     }
 
     auto* checkpoint = CreateCheckpoint(

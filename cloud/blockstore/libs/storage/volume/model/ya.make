@@ -18,6 +18,7 @@ SRCS(
     requests_inflight.cpp
     retry_policy.cpp
     stripe.cpp
+    tracing.cpp
     volume_params.cpp
     volume_throttling_policy.cpp
 )

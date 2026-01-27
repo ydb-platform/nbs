@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
+#include <cloud/blockstore/libs/storage/core/partition_budget_manager.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/unimplemented.h>
@@ -57,6 +58,7 @@ TMirrorPartitionActor::TMirrorPartitionActor(
         TMigrations migrations,
         TVector<TDevices> replicas,
         NRdma::IClientPtr rdmaClient,
+        TPartitionBudgetManagerPtr partitionBudgetManager,
         TActorId volumeActorId,
         TActorId statActorId,
         TActorId resyncActorId)
@@ -65,6 +67,7 @@ TMirrorPartitionActor::TMirrorPartitionActor(
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(digestGenerator))
     , RdmaClient(std::move(rdmaClient))
+    , PartitionBudgetManager(std::move(partitionBudgetManager))
     , DiskId(partConfig->GetName())
     , VolumeActorId(volumeActorId)
     , StatActorId(statActorId)
@@ -76,9 +79,6 @@ TMirrorPartitionActor::TMirrorPartitionActor(
           std::move(partConfig),
           std::move(migrations),
           std::move(replicas))
-    , MultiAgentWriteEnabled(Config->GetMultiAgentWriteEnabled())
-    , MultiAgentWriteRequestSizeThreshold(
-          Config->GetMultiAgentWriteRequestSizeThreshold())
 {}
 
 TMirrorPartitionActor::~TMirrorPartitionActor() = default;
@@ -86,8 +86,9 @@ TMirrorPartitionActor::~TMirrorPartitionActor() = default;
 void TMirrorPartitionActor::Bootstrap(const TActorContext& ctx)
 {
     SetupPartitions(ctx);
-    ScheduleCountersUpdate(ctx);
-
+    if (!Config->GetUsePullSchemeForVolumeStatistics()) {
+        ScheduleCountersUpdate(ctx);
+    }
     if (Config->GetDataScrubbingEnabled() && !ResyncActorId) {
         StartScrubbingRange(ctx, 0);
     }
@@ -299,10 +300,8 @@ void TMirrorPartitionActor::StartResyncRange(
     const auto& replicaInfos = State.GetReplicaInfos();
     for (ui32 i = 0; i < replicaInfos.size(); i++) {
         if (State.DevicesReadyForReading(i, GetScrubbingRange())) {
-            replicas.emplace_back(
-                replicaInfos[i].Config->GetName(),
-                i,
-                State.GetReplicaActor(i));
+            replicas.push_back(
+                {.ReplicaIndex = i, .ActorId = State.GetReplicaActor(i)});
         }
     }
 
@@ -311,6 +310,7 @@ void TMirrorPartitionActor::StartResyncRange(
                                 : Config->GetScrubbingResyncPolicy();
     auto resyncActor = MakeResyncRangeActor(
         std::move(requestInfo),
+        DiskId,
         State.GetBlockSize(),
         GetScrubbingRange(),
         std::move(replicas),
@@ -356,24 +356,11 @@ TMirrorPartitionActor::SuggestWriteRequestType(
     const TActorContext& ctx,
     TBlockRange64 range)
 {
-    if (!MultiAgentWriteEnabled || range.Size() * State.GetBlockSize() <
-                                       MultiAgentWriteRequestSizeThreshold)
-    {
-        return EWriteRequestType::DirectWrite;
-    }
-
-    if (!Config->GetDirectWriteBandwidthQuota()) {
-        return EWriteRequestType::MultiAgentWrite;
-    }
-
-    const bool hasEnoughBudget =
-        DirectWriteBandwidthQuota.Register(
-            ctx.Now(),
-            static_cast<double>(range.Size() * State.GetBlockSize()) /
-                Config->GetDirectWriteBandwidthQuota()) == 0;
-
-    return hasEnoughBudget ? EWriteRequestType::DirectWrite
-                           : EWriteRequestType::MultiAgentWrite;
+    return PartitionBudgetManager->HasEnoughDirectWriteBudget(
+               ctx.Now(),
+               range.Size() * State.GetBlockSize())
+               ? EWriteRequestType::DirectWrite
+               : EWriteRequestType::MultiAgentWrite;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -487,10 +474,8 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
     const auto& replicaInfos = State.GetReplicaInfos();
     for (ui32 i = 0; i < replicaInfos.size(); i++) {
         if (State.DevicesReadyForReading(i, scrubbingRange)) {
-            replicas.emplace_back(
-                replicaInfos[i].Config->GetName(),
-                i,
-                State.GetReplicaActor(i));
+            replicas.push_back(
+                {.ReplicaIndex = i, .ActorId = State.GetReplicaActor(i)});
         }
     }
 
@@ -514,7 +499,8 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
         DescribeRange(scrubbingRange).c_str());
 
     ScrubbingThroughput += scrubbingRange.Size() * State.GetBlockSize();
-    ChecksumRangeActorCompanion = TChecksumRangeActorCompanion(replicas);
+    ChecksumRangeActorCompanion =
+        TChecksumRangeActorCompanion(DiskId, std::move(replicas));
     ChecksumRangeActorCompanion.CalculateChecksums(ctx, scrubbingRange);
 }
 
@@ -694,7 +680,6 @@ void TMirrorPartitionActor::HandleInconsistentDiskAgent(
 
     ReportDiskAgentInconsistentMultiWriteResponse(
         {{"disk", DiskId}, {"DiskAgent", msg->AgentId}});
-    MultiAgentWriteEnabled = false;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -861,6 +846,7 @@ STFUNC(TMirrorPartitionActor::StateWork)
         HFunc(TEvVolume::TEvScanDiskRequest, HandleScanDisk);
         HFunc(TEvVolume::TEvGetScanDiskStatusRequest, HandleGetScanDiskStatus);
         HFunc(TEvVolume::TEvCheckRangeRequest, HandleCheckRange);
+        HFunc(TEvVolume::TEvCheckRangeResponse, HandleCheckRangeResponse);
 
         HFunc(
             TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted,
@@ -886,6 +872,15 @@ STFUNC(TMirrorPartitionActor::StateWork)
             HandleLockAndDrainRange);
 
         HFunc(TEvPartition::TEvReleaseRange, HandleReleaseRange);
+
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest,
+            HandleGetDiskRegistryBasedPartCounters);
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvDiskRegistryBasedPartCountersCombined,
+            HandleDiskRegistryBasedPartCountersCombined);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         IgnoreFunc(TEvents::TEvPoisonTaken);
@@ -945,6 +940,11 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         IgnoreFunc(TEvPartition::TEvLockAndDrainRangeRequest);
 
         IgnoreFunc(TEvPartition::TEvReleaseRange);
+
+        IgnoreFunc(TEvNonreplPartitionPrivate::
+                       TEvGetDiskRegistryBasedPartCountersRequest);
+        IgnoreFunc(TEvNonreplPartitionPrivate::
+                       TEvDiskRegistryBasedPartCountersCombined);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);

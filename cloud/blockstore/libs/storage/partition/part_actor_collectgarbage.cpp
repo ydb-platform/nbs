@@ -1,16 +1,15 @@
 #include "part_actor.h"
 
-#include <cloud/storage/core/libs/common/format.h>
-
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
+#include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
 #include <cloud/storage/core/libs/tablet/gc_logic.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
@@ -47,6 +46,8 @@ private:
     const TDuration Timeout;
     TChildLogTitle LogTitle;
 
+    const bool PassTraceIdToBlobstorage;
+
     TVector<TPartialBlobId> NewBlobs;
     TVector<TPartialBlobId> GarbageBlobs;
 
@@ -72,7 +73,8 @@ public:
         TVector<ui32> mixedAndMergedChannels,
         bool cleanupWholeHistory,
         TChildLogTitle logTitle,
-        TDuration timeout);
+        TDuration timeout,
+        bool passTraceIdToBlobstorage);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -116,7 +118,8 @@ TCollectGarbageActor::TCollectGarbageActor(
         TVector<ui32> mixedAndMergedChannels,
         bool cleanupWholeHistory,
         TChildLogTitle logTitle,
-        TDuration timeout)
+        TDuration timeout,
+        bool passTraceIdToBlobstorage)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
     , DiskId(std::move(diskId))
@@ -127,6 +130,7 @@ TCollectGarbageActor::TCollectGarbageActor(
     , PerGenerationCounter(perGenerationCounter)
     , Timeout(timeout)
     , LogTitle(std::move(logTitle))
+    , PassTraceIdToBlobstorage(passTraceIdToBlobstorage)
     , NewBlobs(std::move(newBlobs))
     , GarbageBlobs(std::move(garbageBlobs))
     , MixedAndMergedChannels(std::move(mixedAndMergedChannels))
@@ -195,10 +199,19 @@ void TCollectGarbageActor::CollectGarbage(const TActorContext& ctx)
                 LogTitle.GetWithTime().c_str(),
                 request->Print(true).c_str());
 
+            NWilson::TTraceId traceId;
+            if (PassTraceIdToBlobstorage) {
+                traceId = GetTraceIdForRequestId(
+                    RequestInfo->CallContext->LWOrbit,
+                    RequestInfo->CallContext->RequestId);
+            }
+
             SendToBSProxy(
                 ctx,
                 kv.first,
-                request.release());
+                request.release(),
+                RequestInfo->Cookie,
+                std::move(traceId));
 
             ++RequestsInFlight;
         }
@@ -725,9 +738,10 @@ void TPartitionActor::HandleCollectGarbage(
         std::move(mixedAndMergedChannels),
         !State->GetStartupGcExecuted(),
         LogTitle.GetChild(GetCycleCount()),
-        PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD ?
-            Config->GetCollectGarbageTimeoutSSD() :
-            Config->GetCollectGarbageTimeoutHDD());
+        PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+            ? Config->GetCollectGarbageTimeoutSSD()
+            : Config->GetCollectGarbageTimeoutHDD(),
+        DiagnosticsConfig->GetPassTraceIdToBlobstorage());
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,

@@ -142,6 +142,7 @@ void TServiceActor::HandleMountVolume(
                 TraceSerializer,
                 EndpointEventHandler,
                 RdmaClient,
+                PartitionBudgetManager,
                 Counters,
                 SharedCounters,
                 clientId,

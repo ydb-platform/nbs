@@ -34,6 +34,8 @@ private:
 
     const ui64 BSGroupOperationId = 0;
 
+    const bool PassTraceIdToBlobstorage = false;
+
     TInstant RequestSent;
     TInstant ResponseReceived;
 
@@ -50,7 +52,8 @@ public:
         const EStorageAccessMode storageAccessMode,
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
-        ui64 bsGroupOperationId);
+        ui64 bsGroupOperationId,
+        bool passTraceIdToBlobstorage);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

@@ -1,7 +1,9 @@
+#pragma once
+
 #include "cloud/filestore/libs/storage/api/ss_proxy.h"
 
 #include <cloud/filestore/libs/storage/api/tablet.h>
-#include <cloud/filestore/libs/storage/tablet/tablet_private.h>
+#include <cloud/filestore/libs/storage/tablet/events/tablet_private.h>
 #include <cloud/filestore/libs/storage/testlib/service_client.h>
 
 #include <contrib/ydb/library/actors/interconnect/types.h>

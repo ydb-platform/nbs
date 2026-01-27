@@ -1,6 +1,8 @@
 #include "options.h"
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/ss_proxy/model/chunked_path_description_backup.h>
 #include <cloud/storage/core/libs/ss_proxy/protos/path_description_backup.pb.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
@@ -11,6 +13,7 @@
 #include <util/generic/string.h>
 #include <util/generic/yexception.h>
 #include <util/stream/file.h>
+#include <util/stream/null.h>
 #include <util/system/file.h>
 
 namespace NCloud::NStorage {
@@ -19,14 +22,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool operator<(
+// Returns true if the lhs is less than the rhs. This means that the rhs should
+// be saved in the merged backup.
+bool ComparePathVersion(
     const NKikimrSchemeOp::TPathDescription& lhs,
     const NKikimrSchemeOp::TPathDescription& rhs)
 {
     return lhs.GetSelf().GetPathVersion() < rhs.GetSelf().GetPathVersion();
 }
-
-using TSchemeShardData = TMap<TString, NKikimrSchemeOp::TPathDescription>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -41,20 +44,22 @@ bool LoadPathDescriptionBackup(
     }
 
     TFile file(backupPath, OpenExisting | RdOnly | Seq);
-    TString fileContent = TUnbufferedFileInput(file).ReadAll();
+    const TString fileContent = TUnbufferedFileInput(file).ReadAll();
     auto input = TStringInput(fileContent);
 
-    return TryMergeFromTextFormat(
+    TNullOutput warningStream;
+    return TryParseFromTextFormat(
                input,
                *backupProto,
-               EParseFromTextFormatOption::AllowUnknownField) ||
+               EParseFromTextFormatOption::AllowUnknownField,
+               &warningStream) ||
            backupProto->MergeFromString(fileContent);
 }
 
 void ProcessDir(
     const TOptions& options,
     const TFsPath& path,
-    TSchemeShardData* allData,
+    NSSProxy::NProto::TPathDescriptionBackup* allData,
     size_t dirIndex,
     size_t totalDirCount)
 {
@@ -67,47 +72,59 @@ void ProcessDir(
         return;
     }
 
+    auto& data = *allData->MutableData();
     for (auto& [key, value]: *pathDescriptionProto.MutableData()) {
-        auto* exist = allData->FindPtr(key);
-        if (exist) {
-            if (*exist < value) {
-                *exist = std::move(value);
+        auto it = data.find(key);
+        if (it != data.end()) {
+            if (ComparePathVersion(it->second, value)) {
+                it->second = std::move(value);
             }
         } else {
-            allData->emplace(key, std::move(value));
+            data[key] = std::move(value);
         }
     }
 
     Cout << dirIndex << "/" << totalDirCount << " " << path.GetPath().Quote()
          << " OK, file count: " << pathDescriptionProto.GetData().size()
-         << ", total count: " << allData->size()
+         << ", total count: " << data.size()
          << ", time: " << FormatDuration(TInstant::Now() - start) << Endl;
 }
 
-void Dump(
-    TSchemeShardData allData,
-    const TFsPath& textOutputPath,
+void DumpToTextProto(
+    const NSSProxy::NProto::TPathDescriptionBackup& allData,
+    const TFsPath& textOutputPath)
+{
+    if (!textOutputPath.GetPath()) {
+        return;
+    }
+
+    Cout << "Dumping to " << textOutputPath.GetPath().Quote()
+         << " with text format, items count: " << allData.GetData().size()
+         << Endl;
+    TFileOutput output(textOutputPath);
+    SerializeToTextFormat(allData, output);
+    Cout << "OK" << Endl;
+}
+
+void DumpToChunkedProto(
+    const NSSProxy::NProto::TPathDescriptionBackup& allData,
     const TFsPath& binaryOutputPath)
 {
-    NSSProxy::NProto::TPathDescriptionBackup allProto;
-    for (auto& [key, value]: allData) {
-        (*allProto.MutableData())[key] = std::move(value);
+    if (!binaryOutputPath.GetPath()) {
+        return;
     }
 
-    if (textOutputPath.GetPath()) {
-        Cout << "Dumping to " << textOutputPath.GetPath().Quote()
-             << " with text format, items count: " << allData.size() << Endl;
-        TFileOutput output(textOutputPath);
-        SerializeToTextFormat(allProto, output);
-        Cout << "OK" << Endl;
-    }
+    Cout << "Dumping to " << binaryOutputPath.GetPath().Quote()
+         << " with binary format, items count: " << allData.GetData().size()
+         << Endl;
 
-    if (binaryOutputPath.GetPath()) {
-        Cout << "Dumping to " << binaryOutputPath.GetPath().Quote()
-             << " with binary format, items count: " << allData.size() << Endl;
-        TOFStream out(binaryOutputPath.GetPath());
-        allProto.SerializeToArcadiaStream(&out);
+    auto result = NSSProxy::SavePathDescriptionBackupToChunkedBinaryFormat(
+        binaryOutputPath.GetPath(),
+        allData);
+    if (!HasError(result)) {
         Cout << "OK" << Endl;
+    } else {
+        Cout << FormatError(result) << Endl;
     }
 }
 
@@ -117,7 +134,7 @@ void Run(const TOptions& options)
 
     TVector<TString> children;
     srcBackupsFilePath.ListNames(children);
-    TSchemeShardData allData;
+    NSSProxy::NProto::TPathDescriptionBackup allData;
     size_t dirIndex = 0;
     for (const auto& child: children) {
         ProcessDir(
@@ -127,7 +144,9 @@ void Run(const TOptions& options)
             ++dirIndex,
             children.size());
     }
-    Dump(std::move(allData), options.TextOutputPath, options.BinaryOutputPath);
+
+    DumpToTextProto(allData, options.TextOutputPath);
+    DumpToChunkedProto(allData, options.BinaryOutputPath);
 }
 
 }   // namespace

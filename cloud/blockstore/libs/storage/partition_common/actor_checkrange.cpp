@@ -74,6 +74,11 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     auto sgList = Buffer.GetGuardedSgList();
     auto sgListOrError = SgListNormalize(sgList.Acquire().Get(), BlockSize);
     if (HasError(sgListOrError)) {
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::PARTITION_WORKER,
+            LogTitle.GetWithTime() << " sgList error occured: "
+                                   << FormatError(sgListOrError.GetError()));
         ReplyAndDie(ctx, sgListOrError.GetError());
         return;
     }
@@ -97,16 +102,8 @@ void TCheckRangeActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::PARTITION_WORKER,
-        "%s CheckRangeActor has finished",
-        LogTitle.GetWithTime().c_str());
-
     auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
-
-    Die(ctx);
+    ReplyAndDie(ctx, std::move(response));
 }
 
 void TCheckRangeActor::ReplyAndDie(
@@ -116,8 +113,9 @@ void TCheckRangeActor::ReplyAndDie(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "%s CheckRangeActor has finished",
-        LogTitle.GetWithTime().c_str());
+        "%s CheckRangeActor has finished with status %d",
+        LogTitle.GetWithTime().c_str(),
+        response->GetStatus());
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
@@ -125,9 +123,20 @@ void TCheckRangeActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TCheckRangeActor::OnMessage(TAutoPtr<NActors::IEventHandle>& ev)
+{
+    Y_UNUSED(ev);
+
+    return false;
+}
+
 STFUNC(TCheckRangeActor::StateWork)
 {
     TRequestScope timer(*RequestInfo);
+
+    if (OnMessage(ev)) {
+        return;
+    }
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvService::TEvReadBlocksLocalResponse, HandleReadBlocksResponse);
@@ -148,7 +157,6 @@ void TCheckRangeActor::HandlePoisonPill(
     Y_UNUSED(ev);
 
     auto error = MakeError(E_REJECTED, "tablet is shutting down");
-
     ReplyAndDie(ctx, error);
 }
 
@@ -172,7 +180,7 @@ void TCheckRangeActor::HandleReadBlocksResponse(
              offset += BlockSize, ++i)
         {
             const char* data = Buffer.Get().data() + offset;
-            response->Record.MutableChecksums()->Add(
+            response->Record.MutableDiskChecksums()->MutableData()->Add(
                 TBlockChecksum().Extend(data, BlockSize));
         }
     }

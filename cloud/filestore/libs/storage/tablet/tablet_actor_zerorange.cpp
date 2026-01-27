@@ -70,11 +70,14 @@ void TIndexTabletActor::ExecuteTx_ZeroRange(
     TTransactionContext& tx,
     TTxIndexTablet::TZeroRange& args)
 {
+    Y_UNUSED(ctx);
+
     TIndexTabletDatabase db(tx.DB);
 
-    ui64 commitId = GenerateCommitId();
-    if (commitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "ZeroRange");
+    args.CommitId = GenerateCommitId();
+    if (args.CommitId == InvalidCommitId) {
+        args.OnCommitIdOverflow();
+        return;
     }
 
     AddRange(
@@ -83,7 +86,7 @@ void TIndexTabletActor::ExecuteTx_ZeroRange(
         args.Range.Length,
         args.ProfileLogRequest);
 
-    args.Error = ZeroRange(db, args.NodeId, commitId, args.Range);
+    args.Error = ZeroRange(db, args.NodeId, args.CommitId, args.Range);
 }
 
 void TIndexTabletActor::CompleteTx_ZeroRange(

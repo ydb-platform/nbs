@@ -568,6 +568,8 @@ public:
     TDuration GetResyncAfterClientInactivityInterval() const;
     NProto::EResyncPolicy GetAutoResyncPolicy() const;
     NProto::EResyncPolicy GetForceResyncPolicy() const;
+    TDuration GetResyncNextRangeInterval() const;
+    bool GetOptimizeFastPathReadsOnResync() const;
     ui32 GetMirrorReadReplicaCount() const;
 
     TString GetManuallyPreemptedVolumesFile() const;
@@ -753,6 +755,10 @@ public:
     [[nodiscard]] bool GetSendLocalTabletMetricsToHiveEnabled() const;
 
     [[nodiscard]] bool GetEnableVhostDiscardForNewVolumes() const;
+
+    [[nodiscard]] ui32 GetTabletExecutorRejectionThreshold() const;
+
+    [[nodiscard]] TDuration GetVolumeProxyPipeInactivityTimeout() const;
 };
 
 ui64 GetAllocationUnit(

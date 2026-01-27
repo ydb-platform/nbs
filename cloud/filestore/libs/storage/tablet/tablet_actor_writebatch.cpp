@@ -337,8 +337,6 @@ bool TIndexTabletActor::PrepareTx_WriteBatch(
             continue;
         }
 
-        // TODO: access check
-
         write.NodeId = handle->GetNodeId();
 
         SplitRange(
@@ -364,7 +362,6 @@ bool TIndexTabletActor::PrepareTx_WriteBatch(
                 continue;
             }
 
-            // TODO: access check
             TABLET_VERIFY(node);
 
             bool inserted = false;

@@ -36,6 +36,8 @@ type FilesystemModel struct {
 type Client interface {
 	Close() error
 
+	ZoneID() string
+
 	Create(
 		ctx context.Context,
 		filesystemID string,

@@ -180,10 +180,8 @@ void TVolumeActor::HandleRemoveClient(
     const auto& clientId = GetClientId(*msg);
     const bool isMonRequest = msg->Record.GetIsMonRequest();
 
-    // If event was forwarded through pipe, its recipient and recipient
-    // rewrite would be different
     TActorId pipeServerActorId;
-    if (ev->Recipient != ev->GetRecipientRewrite()) {
+    if (IsForwardedEvent(*ev)) {
         pipeServerActorId = ev->Recipient;
     }
 

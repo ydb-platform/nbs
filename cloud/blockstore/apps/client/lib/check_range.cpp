@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -83,6 +84,7 @@ class TCheckRangeCommand final: public TCommand
 {
 private:
     TString DiskId;
+    bool IsMirror = false;
     ui64 StartIndex = 0;
     ui64 BlocksCount = 0;
     ui64 BlocksPerRequest = 0;
@@ -90,7 +92,6 @@ private:
     bool SaveResultsEnabled = false;
     bool CompareResultsEnabled = false;
     TString FolderPostfix;
-    ui32 ReplicaCount = 0;
 
 public:
     TCheckRangeCommand(IBlockStorePtr client)
@@ -165,7 +166,7 @@ protected:
             auto request = std::make_shared<NProto::TExecuteActionRequest>();
 
             request->SetAction("checkrange");
-            request->SetInput(CreateNextInput(*range, isRetry));
+            request->SetInput(CreateNextInput(*range));
 
             const auto requestId = GetRequestId(*request);
             auto result = WaitFor(ClientEndpoint->ExecuteAction(
@@ -190,7 +191,7 @@ protected:
 
                 if (HasError(status)) {
                     if (status.GetCode() == E_REJECTED && !isRetry &&
-                        ReplicaCount)
+                        IsMirror)
                     {
                         if (ShowReadErrorsEnabled) {
                             output << "ReadBlocks error while reading all "
@@ -222,7 +223,7 @@ protected:
         }
 
         output << "Total requests sended: " << requestCount << Endl;
-        if (ReplicaCount && mirrorErrorsCount) {
+        if (mirrorErrorsCount) {
             output << "Errors while reading all mirror disk replicas caught: "
                    << mirrorErrorsCount << Endl;
         }
@@ -286,18 +287,10 @@ private:
             return result.GetError();
         }
 
-        ui64 diskBlockCount = result.GetVolume().GetBlocksCount();
-        if (result.GetVolume().GetStorageMediaKind() ==
-            NProto::STORAGE_MEDIA_SSD_MIRROR3)
-        {
-            ReplicaCount = 3;
-        } else if (
-            result.GetVolume().GetStorageMediaKind() ==
-            NProto::STORAGE_MEDIA_SSD_MIRROR2)
-        {
-            ReplicaCount = 2;
-        }
+        IsMirror = NCloud::IsReliableDiskRegistryMediaKind(
+            result.GetVolume().GetStorageMediaKind());
 
+        ui64 diskBlockCount = result.GetVolume().GetBlocksCount();
         ui64 remainingBlocks = diskBlockCount;
 
         if (BlocksCount) {
@@ -311,15 +304,12 @@ private:
         return TRequestBuilder(StartIndex, remainingBlocks, BlocksPerRequest);
     }
 
-    TString CreateNextInput(TBlockRange64 range, bool isRetry) const
+    TString CreateNextInput(TBlockRange64 range) const
     {
         NJson::TJsonValue input;
         input["DiskId"] = DiskId;
         input["StartIndex"] = range.Start;
         input["BlocksCount"] = range.Size();
-        if (!isRetry && ReplicaCount) {
-            input["ReplicaCount"] = ReplicaCount;
-        }
 
         return input.GetStringRobust();
     }

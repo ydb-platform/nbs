@@ -29,6 +29,7 @@ inputs:
   service_account_key:
     required: true
     description: "service account key"
+
 outputs:
   VMS_TO_CREATE:
     value: ${{ steps.populate.outputs.VMS_TO_CREATE }}

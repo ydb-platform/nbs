@@ -39,12 +39,19 @@ namespace NCloud::NFileStore{
     xxx(ErrorWasSentToTheGuest)                                                \
     xxx(DirectoryHandlesStorageError)                                          \
     xxx(CalculateChecksumsBufferOverflow)                                      \
+    xxx(UnexpectedFakeDescribeDataResponse)                                    \
+    xxx(CreateLinkRequestWithShardNodeNameAndNoShardId)                        \
+    xxx(LocalFsFailedToInitNodeLoader)                                         \
+    xxx(LocalFsFailedToInitNodeMapper)                                         \
+    xxx(LocalFsFailedToRefreshSnapshotsDir)                                    \
+    xxx(LocalFsFailedToLoadSnapshotDir)                                        \
     xxx(TryingToUseTwoBytesShardNoWithObsoleteHandles)                         \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \
     xxx(FakeBlobWasRead)                                                       \
     xxx(FakeBlobWasWritten)                                                    \
+    xxx(FakeDescribeDataHappened)                                              \
 // FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING
 
 #define FILESTORE_IMPOSSIBLE_EVENTS(xxx)                                       \

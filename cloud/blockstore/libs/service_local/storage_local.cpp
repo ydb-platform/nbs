@@ -182,17 +182,19 @@ struct TStorageContext
     TFile File;
     const bool DirectIO;
     const NProto::EDataIntegrityValidationPolicy DataIntegrityValidationPolicy;
+    const ui32 ValidatedBlocksRatio;
 
     TStorageContext(
-            ITaskQueuePtr submitQueue,
-            IFileIOServicePtr fileIO,
-            INvmeManagerPtr nvmeManager,
-            ui32 blockSize,
-            ui64 startIndex,
-            ui64 blockCount,
-            TFile file,
-            bool directIO,
-            NProto::EDataIntegrityValidationPolicy dataIntegrityValidationPolicy)
+        ITaskQueuePtr submitQueue,
+        IFileIOServicePtr fileIO,
+        INvmeManagerPtr nvmeManager,
+        ui32 blockSize,
+        ui64 startIndex,
+        ui64 blockCount,
+        TFile file,
+        bool directIO,
+        NProto::EDataIntegrityValidationPolicy dataIntegrityValidationPolicy,
+        ui32 validatedBlocksRatio)
         : SubmitQueue(std::move(submitQueue))
         , FileIOService(std::move(fileIO))
         , NvmeManager(std::move(nvmeManager))
@@ -202,6 +204,7 @@ struct TStorageContext
         , File(std::move(file))
         , DirectIO(directIO)
         , DataIntegrityValidationPolicy(dataIntegrityValidationPolicy)
+        , ValidatedBlocksRatio(validatedBlocksRatio)
     {}
 };
 
@@ -814,7 +817,8 @@ TFuture<NProto::TError> TLocalStorage::EraseDevice(
             StorageStartIndex,
             StorageBlockCount,
             BlockSize,
-            NvmeManager);
+            NvmeManager,
+            ValidatedBlocksRatio);
     }
 
     case NProto::DEVICE_ERASE_METHOD_NONE:
@@ -841,19 +845,22 @@ private:
     INvmeManagerPtr NvmeManager;
     const bool DirectIO;
     const NProto::EDataIntegrityValidationPolicy DataIntegrityValidationPolicy;
+    const ui32 ValidatedBlocksRatio;
 
 public:
     explicit TLocalStorageProvider(
-            ITaskQueuePtr submitQueue,
-            IFileIOServiceProviderPtr fileIOProvider,
-            INvmeManagerPtr nvmeManager,
-            bool directIO,
-            NProto::EDataIntegrityValidationPolicy dataIntegrityValidationPolicy)
+        ITaskQueuePtr submitQueue,
+        IFileIOServiceProviderPtr fileIOProvider,
+        INvmeManagerPtr nvmeManager,
+        bool directIO,
+        NProto::EDataIntegrityValidationPolicy dataIntegrityValidationPolicy,
+        ui32 validatedBlocksRatio)
         : SubmitQueue(std::move(submitQueue))
         , FileIOServiceProvider(std::move(fileIOProvider))
         , NvmeManager(std::move(nvmeManager))
         , DirectIO(directIO)
         , DataIntegrityValidationPolicy(dataIntegrityValidationPolicy)
+        , ValidatedBlocksRatio(validatedBlocksRatio)
     {}
 
     TFuture<IStoragePtr> CreateStorage(
@@ -888,7 +895,8 @@ public:
             volume.GetBlocksCount(),
             TFile{filePath, flags},
             DirectIO,
-            DataIntegrityValidationPolicy);
+            DataIntegrityValidationPolicy,
+            ValidatedBlocksRatio);
 
         return MakeFuture<IStoragePtr>(storage);
     };
@@ -914,7 +922,8 @@ IStorageProviderPtr CreateLocalStorageProvider(
         std::move(fileIOProvider),
         std::move(nvmeManager),
         params.DirectIO,
-        params.DataIntegrityValidationPolicy);
+        params.DataIntegrityValidationPolicy,
+        params.ValidatedBlocksRatio);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

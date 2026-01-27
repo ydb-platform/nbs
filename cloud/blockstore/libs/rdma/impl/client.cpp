@@ -2047,11 +2047,11 @@ void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
 
         // find the first non local address of the specified interface
         for (auto& interface: NAddr::GetNetworkInterfaces()) {
-            auto& addr = static_cast<NAddr::TOpaqueAddr&>(*interface.Address);
-
             if (interface.Name == Config->SourceInterface &&
-                GetScopeId(addr.Addr()) == 0)
+                GetScopeId(interface.Address->Addr()) == 0)
             {
+                auto& addr = static_cast<NAddr::TOpaqueAddr&>(*interface.Address);
+
                 RDMA_INFO(endpoint->Log, "bind to " << interface.Name
                     << " address " << NAddr::PrintHost(addr));
 

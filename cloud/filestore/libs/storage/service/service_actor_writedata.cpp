@@ -1,4 +1,5 @@
 #include "service_actor.h"
+#include "rope_utils.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
@@ -41,72 +42,6 @@ bool IsThreeStageWriteEnabled(const NProto::TFileStore& fs)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <bool Owner = false>
-class TIovecContiguousChunk: public IContiguousChunk
-{
-private:
-    char* Base = 0;
-    ui64 Size = 0;
-
-public:
-    TIovecContiguousChunk(ui64 base, ui64 size)
-        : Base(reinterpret_cast<char*>(base))
-        , Size(size)
-    {
-        static_assert(sizeof(ui64) == sizeof(char*));
-    }
-
-    ~TIovecContiguousChunk() {
-        if constexpr(Owner) {
-            delete[] Base;
-        }
-    }
-
-    TContiguousSpan GetData() const override
-    {
-        return TContiguousSpan(Base, Size);
-    }
-
-    TMutableContiguousSpan UnsafeGetDataMut() override
-    {
-        return TMutableContiguousSpan(Base, Size);
-    }
-
-    IContiguousChunk::TPtr Clone() override
-    {
-        auto copy = new char[Size];
-        ::memcpy(copy, Base, Size);
-
-        return MakeIntrusive<TIovecContiguousChunk<true>>(
-            reinterpret_cast<ui64>(copy),
-            Size);
-    }
-
-    size_t GetOccupiedMemorySize() const override
-    {
-        return Size;
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-TRope CreateRopeFromIovecs(const NProto::TWriteDataRequest& request)
-{
-    TRope rope;
-    for (const auto& iovec: request.GetIovecs()) {
-        if (iovec.GetLength() == 0) {
-            continue;
-        }
-        rope.Insert(
-            rope.End(),
-            TRope(TRcBuf(
-                MakeIntrusive<TIovecContiguousChunk<>>(
-                    iovec.GetBase(),
-                    iovec.GetLength()))));
-    }
-    return rope;
-}
-
 /**
  * @brief Copies a slice of data from the rope in the request into the buffer
  *        and returns the buffer with data
@@ -147,7 +82,7 @@ void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
         return;
     }
 
-    auto rope = CreateRopeFromIovecs(request);
+    auto rope = CreateRope(request.GetIovecs());
     auto* buffer = request.MutableBuffer();
     const auto bytesToCopy = CalculateByteCount(request);
     buffer->ReserveAndResize(bytesToCopy);
@@ -225,7 +160,7 @@ public:
             RequestInfo->CallContext,
             "GenerateBlobIds");
 
-        Rope = CreateRopeFromIovecs(WriteRequest);
+        Rope = CreateRope(WriteRequest.GetIovecs());
 
         auto request =
             std::make_unique<TEvIndexTablet::TEvGenerateBlobIdsRequest>();
@@ -252,7 +187,7 @@ public:
             RequestStats);
         InFlightRequest->Start(ctx.Now());
         InitProfileLogRequestInfo(
-            InFlightRequest->ProfileLogRequest,
+            InFlightRequest->AccessProfileLogRequest(),
             request->Record);
         auto* trace =
             request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
@@ -310,10 +245,10 @@ private:
 
         TABLET_VERIFY(InFlightRequest);
 
-        InFlightRequest->Complete(ctx.Now(), error);
         FinalizeProfileLogRequestInfo(
-            InFlightRequest->ProfileLogRequest,
+            InFlightRequest->AccessProfileLogRequest(),
             msg->Record);
+        InFlightRequest->Complete(ctx.Now(), error);
         HandleServiceTraceInfo(
             "GenerateBlobIds",
             ctx,
@@ -585,7 +520,7 @@ private:
             RequestStats);
         InFlightRequest->Start(ctx.Now());
         InitProfileLogRequestInfo(
-            InFlightRequest->ProfileLogRequest,
+            InFlightRequest->AccessProfileLogRequest(),
             request->Record);
         auto* trace =
             request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
@@ -610,10 +545,10 @@ private:
         auto* msg = ev->Get();
 
         TABLET_VERIFY(InFlightRequest);
-        InFlightRequest->Complete(ctx.Now(), msg->GetError());
         FinalizeProfileLogRequestInfo(
-            InFlightRequest->ProfileLogRequest,
+            InFlightRequest->AccessProfileLogRequest(),
             msg->Record);
+        InFlightRequest->Complete(ctx.Now(), msg->GetError());
         HandleServiceTraceInfo(
             "AddData",
             ctx,
@@ -834,13 +769,15 @@ void TStorageServiceActor::HandleWriteData(
             session->RequestStats,
             startTime);
 
-        InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
-        inflight->ProfileLogRequest.SetClientId(session->ClientId);
+        InitProfileLogRequestInfo(
+            inflight->AccessProfileLogRequest(),
+            msg->Record);
+        inflight->AccessProfileLogRequest().SetClientId(session->ClientId);
         if (blockChecksumsEnabled) {
             CalculateWriteDataRequestChecksums(
                 msg->Record,
                 blockSize,
-                inflight->ProfileLogRequest);
+                inflight->AccessProfileLogRequest());
         }
 
         auto requestInfo =

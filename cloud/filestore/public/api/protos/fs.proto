@@ -50,6 +50,7 @@ message TFileStoreFeatures
     uint32 RegularFileEntryTimeout = 35;
     bool ReadBlobDisabled = 36;
     bool WriteBlobDisabled = 37;
+    bool FakeDescribeDataEnabled = 38;
 }
 
 message TFileStore

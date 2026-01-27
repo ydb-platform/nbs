@@ -67,6 +67,7 @@ struct TServerActorSystemArgs
     IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
     NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     IRootKmsKeyProviderPtr RootKmsKeyProvider;
+    TPartitionBudgetManagerPtr PartitionBudgetManager;
 
     TVector<NCloud::NStorage::IUserMetricsSupplierPtr> UserCounterProviders;
 

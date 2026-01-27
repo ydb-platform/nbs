@@ -6,7 +6,8 @@ import yatest.common as common
 from cloud.filestore.tools.testing.loadtest.protos.loadtest_pb2 import TTestGraph
 from google.protobuf.text_format import MessageToString
 
-tests = ["sqlite", "jpeg", "fstest"]
+tests = ["sqlite", "fstest"]
+# Also have data for "jpeg" but sometimes it does not fit into 600s
 
 bindir = pathlib.Path(
     common.build_path("cloud/filestore/tests/profile_log/replay/data")

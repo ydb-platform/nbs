@@ -127,11 +127,11 @@ jobs:
     - name: Prepare s3cmd
       uses: ./.github/actions/s3cmd
       with:
-        s3_bucket: ${{ vars.AWS_BUCKET }}
-        s3_endpoint: ${{ vars.NEBIUS_AWS_ENDPOINT }}
-        s3_website_suffix: ${{ vars.NEBIUS_AWS_WEBSITE_SUFFIX }}
-        s3_key_id: ${{ secrets.NEBIUS_AWS_ACCESS_KEY_ID }}
-        s3_key_secret: ${{ secrets.NEBIUS_AWS_SECRET_ACCESS_KEY }}
+        s3_bucket: ${{ vars.POOLED_HEAVY_AWS_BUCKET }}
+        s3_endpoint: ${{ vars.POOLED_HEAVY_AWS_ENDPOINT }}
+        s3_website_suffix: ${{ vars.POOLED_HEAVY_AWS_WEBSITE_SUFFIX }}
+        s3_key_id: ${{ secrets.POOLED_HEAVY_AWS_KEY_ID }}
+        s3_key_secret: ${{ secrets.POOLED_HEAVY_AWS_SECRET_KEY }}
         folder_prefix: nebius-
         build_preset: ${{ inputs.build_preset }}
         install: false
@@ -160,7 +160,7 @@ jobs:
         build_target: ${{ inputs.build_target }}
         build_preset: ${{ inputs.build_preset }}
         cache_update: ${{ inputs.cache_update_build }}
-        bazel_remote_uri: ${{ vars.NEBIUS_BAZEL_REMOTE_CACHE_URL }}
+        bazel_remote_uri: ${{ vars.POOLED_HEAVY_BAZEL_REMOTE_CACHE_URL }}
         bazel_remote_username: ${{ secrets.REMOTE_CACHE_USERNAME }}
         bazel_remote_password: ${{ secrets.REMOTE_CACHE_PASSWORD }}
         build_threads: ${{ inputs.build_threads }}
@@ -177,7 +177,7 @@ jobs:
         test_size: ${{ inputs.test_size }}
         test_type: ${{ inputs.test_type }}
         cache_update: ${{ inputs.cache_update_tests }}
-        bazel_remote_uri: ${{ vars.NEBIUS_BAZEL_REMOTE_CACHE_URL }}
+        bazel_remote_uri: ${{ vars.POOLED_HEAVY_BAZEL_REMOTE_CACHE_URL }}
         bazel_remote_username: ${{ secrets.REMOTE_CACHE_USERNAME }}
         bazel_remote_password: ${{ secrets.REMOTE_CACHE_PASSWORD }}
         link_threads: ${{ inputs.link_threads }}

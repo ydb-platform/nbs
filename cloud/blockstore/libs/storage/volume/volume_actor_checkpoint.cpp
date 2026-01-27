@@ -8,7 +8,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/volume/actors/shadow_disk_actor.h>
-#include <cloud/blockstore/libs/storage/volume/tracing.h>
+#include <cloud/blockstore/libs/storage/volume/model/tracing.h>
 
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>

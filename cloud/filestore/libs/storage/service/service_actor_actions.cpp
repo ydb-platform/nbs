@@ -89,6 +89,22 @@ void TStorageServiceActor::HandleExecuteAction(
             &TStorageServiceActor::CreateUnsafeGetNodeActionActor
         },
         {
+            "unsafecreatenoderef",
+            &TStorageServiceActor::CreateUnsafeCreateNodeRefActionActor
+        },
+        {
+            "unsafedeletenoderef",
+            &TStorageServiceActor::CreateUnsafeDeleteNodeRefActionActor
+        },
+        {
+            "unsafeupdatenoderef",
+            &TStorageServiceActor::CreateUnsafeUpdateNodeRefActionActor
+        },
+        {
+            "unsafegetnoderef",
+            &TStorageServiceActor::CreateUnsafeGetNodeRefActionActor
+        },
+        {
             "getstoragestats",
             &TStorageServiceActor::CreateGetStorageStatsActionActor
         },
@@ -115,6 +131,10 @@ void TStorageServiceActor::HandleExecuteAction(
         {
             "marknoderefsexhaustive",
             &TStorageServiceActor::CreateMarkNodeRefsExhaustiveActionActor
+        },
+        {
+            "unsafecreatehandle",
+            &TStorageServiceActor::CreateUnsafeCreateHandleActor
         }
     };
 

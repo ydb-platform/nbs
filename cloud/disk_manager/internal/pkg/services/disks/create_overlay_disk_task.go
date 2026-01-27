@@ -54,7 +54,7 @@ func (t *createOverlayDiskTask) Run(
 
 	params := t.request.Params
 
-	client, err := SelectCell(
+	client, err := SelectCellForDisk(
 		ctx,
 		execCtx,
 		t.state,
