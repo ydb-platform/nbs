@@ -330,13 +330,7 @@ public:
         }
         fileId.WekaInodeId.SnapViewId = *snapViewId;
 
-        try {
-            auto handle = fileId.Open(RootHandle, O_PATH);
-            return std::make_shared<TIndexNode>(nodeId, std::move(handle));
-        } catch (...) {
-        }
-
-        return nullptr;
+        return LoadNodeByFileId(fileId);
     }
 
     TIndexNodePtr LoadSnapshotsDirNode() override
@@ -348,14 +342,35 @@ public:
         //   root:                  /mnt/weka/wekadir/fsdir
         //   snapshots dir:         /mnt/weka/wekadir/.snapshots
         //
-        // This is a special directory with InodeId == 0x2
+        // The parent of .snapshots is the root wekadir and it has special inode
+        // scheme which we can use to load it by crafting it's handle.
+        //
+        // The InodeId (upper 48 bits) has lower 32 bits equal to the mount
+        // root fsdir FsId and the upper 16 bit equal to 0xFFFF.
+        // The AntiCollisionId is equal to 0xFFFE
+        // The FsId field is equal to 0x0
+        // The SnapViewId is equal to 0xFFFFFFFE
+        //
+        // After loading the wekadir node we can get the .snapshots from it
         if (!SnapshotsDirNode) {
-            NLowLevel::TFileId snapshotFileId(RootFileId);
-            snapshotFileId.WekaInodeId.InodeId = 0x2;
-            SnapshotsDirNode =
-                std::move(LoadNode(snapshotFileId.WekaInodeId.InodeContext));
+            NLowLevel::TFileId snapshotParentFileId(RootFileId);
+            snapshotParentFileId.WekaInodeId.InodeId =
+                (0xFFFFULL << 32) | RootFileId.WekaInodeId.FsId;
+            snapshotParentFileId.WekaInodeId.AntiCollisionId = 0xFFFE;
+            // FsId field is forced to 0 but the lower 32 bits of InodeId carry
+            // the mount FsId
+            snapshotParentFileId.WekaInodeId.FsId = 0x0;
+            snapshotParentFileId.WekaInodeId.SnapViewId = 0xFFFFFFFE;
 
-            RefreshAntiCollisionToSnapViewMap();
+            auto snapshotParentNode = LoadNodeByFileId(snapshotParentFileId);
+            if (snapshotParentNode) {
+                try {
+                    SnapshotsDirNode =
+                        TIndexNode::Create(*snapshotParentNode, ".snapshots");
+                    RefreshAntiCollisionToSnapViewMap();
+                } catch (...) {
+                }
+            }
         }
 
         return SnapshotsDirNode;
@@ -404,6 +419,19 @@ public:
     }
 
 private:
+
+    TIndexNodePtr LoadNodeByFileId(NLowLevel::TFileId& fileId) const
+    {
+        try {
+            auto handle = fileId.Open(RootHandle, O_PATH);
+            return std::make_shared<TIndexNode>(
+                fileId.WekaInodeId.InodeContext,
+                std::move(handle));
+        } catch (...) {
+        }
+        return nullptr;
+    }
+
     std::optional<ui32> GetSnapViewId(ui16 antiCollisionId) const
     {
         if (antiCollisionId == RootFileId.WekaInodeId.AntiCollisionId) {
