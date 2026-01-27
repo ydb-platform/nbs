@@ -52,7 +52,7 @@ public:
         Write,
         Zero,
         Describe,
-        Last,
+        Last = Describe,
     };
 
     struct TSplittedUsedQuota {
