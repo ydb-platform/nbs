@@ -731,6 +731,7 @@ void TClientEndpoint::DestroyQP() noexcept
 {
     if (Config.VerbsQP) {
         Verbs->DestroyQP(Connection->qp);
+        Connection->qp = nullptr;
     } else {
         Verbs->RdmaDestroyQP(Connection.get());
     }
