@@ -686,7 +686,7 @@ void TIndexTabletActor::HandleUnsafeCreateHandle(
     LOG_WARN(
         ctx,
         TFileStoreComponents::TABLET,
-        "%s UnsafeCreateNode: %s",
+        "%s UnsafeCreateHandle: %s",
         LogTag.c_str(),
         msg->Record.DebugString().Quote().c_str());
 
@@ -698,8 +698,7 @@ void TIndexTabletActor::HandleUnsafeCreateHandle(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool NCloud::NFileStore::NStorage::TIndexTabletActor::
-    PrepareTx_UnsafeCreateHandle(
+bool TIndexTabletActor::PrepareTx_UnsafeCreateHandle(
         const TActorContext& ctx,
         TTransactionContext& tx,
         TTxIndexTablet::TUnsafeCreateHandle& args)
