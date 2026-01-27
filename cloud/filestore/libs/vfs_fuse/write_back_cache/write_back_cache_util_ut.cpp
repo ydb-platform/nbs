@@ -153,22 +153,6 @@ struct TTestUtilBootstrap
 
     ~TTestUtilBootstrap() = default;
 
-    TVector<TWriteDataEntryPart> CalculateDataPartsToRead(
-        const TDeque<TWriteDataEntry*>& entries,
-        ui64 startingFromOffset,
-        ui64 length)
-    {
-        TCachedIntervalsMap map;
-        for (auto* entry: entries) {
-            map.Add(entry);
-        }
-
-        return TWriteBackCache::TUtil::CalculateDataPartsToRead(
-            map,
-            startingFromOffset,
-            length);
-    }
-
     TVector<TWriteDataEntryPart> InvertDataParts(
         const TVector<TWriteDataEntryPart>& parts,
         ui64 startingFromOffset,
@@ -310,98 +294,6 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
 {
     constexpr ui64 MaxLength = 100;
 
-    void TestShouldCorrectlyCalculateDataPartsToRead(
-        const TVector<TTestCaseWriteDataEntry>& testCaseEntries,
-        const TVector<TTestCaseWriteDataEntryPart>& expectedParts)
-    {
-        TVector<std::unique_ptr<TWriteDataEntry>> entries;
-        for (const auto& e: testCaseEntries) {
-            Y_ABORT_UNLESS(e.Offset + e.Length < MaxLength);
-
-            auto request = std::make_shared<NProto::TWriteDataRequest>();
-            request->SetNodeId(e.NodeId);
-            request->SetOffset(e.Offset);
-            request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
-
-            auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
-            entries.push_back(std::move(entry));
-        }
-
-        TDeque<TWriteDataEntry*> entryPtrs;
-        for (auto& entry: entries) {
-            entryPtrs.push_back(entry.get());
-        }
-
-        TTestUtilBootstrap b;
-        const auto parts = b.CalculateDataPartsToRead(
-            entryPtrs,
-            0,
-            MaxLength);
-
-        TVector<TTestCaseWriteDataEntryPart> actualParts;
-        for (auto& part: parts) {
-            std::optional<size_t> sourceIndex;
-            for (size_t i = 0; i < entryPtrs.size(); i++) {
-                if (part.Source == entryPtrs[i]) {
-                    sourceIndex = i;
-                    break;
-                }
-            }
-            UNIT_ASSERT_C(
-                sourceIndex,
-                "read part " << part << " that is not found in entries list");
-
-            actualParts.emplace_back(
-                *sourceIndex,
-                part.OffsetInSource,
-                part.Offset,
-                part.Length);
-        }
-
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            expectedParts,
-            actualParts,
-            "failed for test case with entries: " << testCaseEntries);
-    }
-
-    void TestShouldCorrectlyCalculateDataPartsToReadWithReferenceImpl(
-        const TVector<TTestCaseWriteDataEntry>& testCaseEntries)
-    {
-        TVector<std::unique_ptr<TWriteDataEntry>> entries;
-        for (const auto& e: testCaseEntries) {
-            Y_ABORT_UNLESS(e.Offset + e.Length <= MaxLength);
-
-            auto request = std::make_shared<NProto::TWriteDataRequest>();
-            request->SetNodeId(e.NodeId);
-            request->SetOffset(e.Offset);
-            request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
-
-            auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
-            entries.push_back(std::move(entry));
-        }
-
-        TDeque<TWriteDataEntry*> entryPtrs;
-        for (auto& entry: entries) {
-            entryPtrs.push_back(entry.get());
-        }
-
-        TTestUtilBootstrap b;
-
-        auto expectedParts = b.CalculateDataPartsToReadReferenceImpl(
-            entryPtrs,
-            0,
-            MaxLength);
-        auto actualParts = b.CalculateDataPartsToRead(
-            entryPtrs,
-            0,
-            MaxLength);
-
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            expectedParts,
-            actualParts,
-            "failed for test case with entries: " << testCaseEntries);
-    }
-
     void TestShouldCorrectlyInvertDataParts(
         const TVector<TTestCaseWriteDataRange>& testCaseEntries,
         const TVector<TTestCaseWriteDataRange>& expectedResult,
@@ -514,64 +406,6 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
                 "failed for test case with entries: " << testCaseEntries <<
                 " for offset = " << offset);
         }
-    }
-
-    Y_UNIT_TEST(ShouldCorrectlyCalculateDataPartsToRead)
-    {
-        TestShouldCorrectlyCalculateDataPartsToRead(
-            {
-                {1, 0, 10}
-            },
-            {
-                {0, 0, 0, 10}
-            }
-        );
-        TestShouldCorrectlyCalculateDataPartsToRead(
-            {
-                {1, 0, 10}, {1, 0, 10}
-            },
-            {
-                {1, 0, 0, 10}
-            }
-        );
-        TestShouldCorrectlyCalculateDataPartsToRead(
-            {
-                {1, 0, 10}, {1, 1, 8}
-            },
-            {
-                {0, 0, 0, 1}, {1, 0, 1, 8}, {0, 9, 9, 1}
-            }
-        );
-        TestShouldCorrectlyCalculateDataPartsToRead(
-            {
-                {1, 0, 10}, {1, 12, 10}, {1, 24, 11}
-            },
-            {
-                {0, 0, 0, 10}, {1, 0, 12, 10}, {2, 0, 24, 11}
-            }
-        );
-        TestShouldCorrectlyCalculateDataPartsToRead(
-            {
-                {1, 0, 10}, {1, 12, 10}, {1, 24, 11}, {1, 3, 30}
-            },
-            {
-                {0, 0, 0, 3}, {3, 0, 3, 30}, {2, 9, 33, 2}
-            }
-        );
-    }
-
-    Y_UNIT_TEST(ShouldCorrectlyCalculateDataPartsToReadRandomized)
-    {
-        TVector<TTestCaseWriteDataEntry> entries;
-
-        size_t remainingEntries = 111;
-        while (remainingEntries--) {
-            const auto offset = RandomNumber<ui64>(MaxLength);
-            const auto length = RandomNumber<ui64>(MaxLength - offset) + 1;
-            entries.emplace_back(1, offset, length);
-        }
-
-        TestShouldCorrectlyCalculateDataPartsToReadWithReferenceImpl(entries);
     }
 
     Y_UNIT_TEST(ShouldCorrectlyInvertDataParts)
