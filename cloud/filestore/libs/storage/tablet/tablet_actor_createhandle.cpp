@@ -185,6 +185,11 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
             return true;
         }
 
+        if (args.ParentNode->Attrs.GetIsPreparedForUnlink()) {
+            args.Error = ErrorIsPreparedForUnlink(args.ParentNode->NodeId);
+            return true;
+        }
+
         if (Config->GetGidPropagationEnabled()) {
             if (args.ParentNode->Attrs.GetMode() & S_ISGID) {
                 args.Gid = args.ParentNode->Attrs.GetGid();

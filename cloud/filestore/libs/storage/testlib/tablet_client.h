@@ -335,6 +335,30 @@ public:
         return request;
     }
 
+    auto CreatePrepareUnlinkDirectoryNodeInShardRequest(
+        ui64 nodeId,
+        NProtoPrivate::TRenameNodeInDestinationRequest originalRequest)
+    {
+        using TRequestEvent =
+            TEvIndexTablet::TEvPrepareUnlinkDirectoryNodeInShardRequest;
+        auto request = CreateSessionRequest<TRequestEvent>();
+        request->Record.SetNodeId(nodeId);
+        *request->Record.MutableOriginalRequest() = std::move(originalRequest);
+        return request;
+    }
+
+    auto CreateAbortUnlinkDirectoryNodeInShardRequest(
+        ui64 nodeId,
+        NProtoPrivate::TRenameNodeInDestinationRequest originalRequest)
+    {
+        using TRequestEvent =
+            TEvIndexTablet::TEvAbortUnlinkDirectoryNodeInShardRequest;
+        auto request = CreateSessionRequest<TRequestEvent>();
+        request->Record.SetNodeId(nodeId);
+        *request->Record.MutableOriginalRequest() = std::move(originalRequest);
+        return request;
+    }
+
     auto CreateRenameNodeInDestinationRequest(
         ui64 newParent,
         const TString& newName,

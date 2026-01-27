@@ -628,6 +628,12 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
         args.Error = ErrorIsNotDirectory(args.ParentNodeId);
         return true;
     }
+
+    if (args.ParentNode->Attrs.GetIsPreparedForUnlink()) {
+        args.Error = ErrorIsPreparedForUnlink(args.ParentNode->NodeId);
+        return true;
+    }
+
     if (Config->GetGidPropagationEnabled()) {
         if (args.ParentNode->Attrs.GetMode() & S_ISGID) {
             // args.Attrs are the ones that will be used for the new node
