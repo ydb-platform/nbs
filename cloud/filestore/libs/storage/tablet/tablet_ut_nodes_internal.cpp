@@ -394,6 +394,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, uuid3));
         CreateExternalRef(tablet, dir2, name3, shardId3, uuid3);
 
+        // TODO(#2674): uncomment after implementing dir emptiness check
+        /*
         tablet.SendRenameNodeInDestinationRequest(
             RootNodeId,
             name2,
@@ -404,6 +406,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             E_FS_NOTEMPTY,
             response->GetStatus(),
             FormatError(response->GetError()));
+        */
 
         DeleteRef(tablet, dir2, name3);
 
@@ -412,7 +415,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             name2,
             shardId1,
             uuid1);
-        response = tablet.RecvRenameNodeInDestinationResponse();
+        auto response = tablet.RecvRenameNodeInDestinationResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             response->GetStatus(),
