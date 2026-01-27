@@ -6861,6 +6861,84 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
              {{{"sensor", "SevenBytesHandlesCount"}, {"filesystem", "test_s4"}},
               1}});
     }
-}
 
+    SERVICE_TEST_SIMPLE(ShouldListNodesReturnENoEntForMissingNodes)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        ui64 dirNodeId = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir")
+        )->Record.GetNode().GetId();
+        TString lastNodeName = "";
+        for (ui64 i = 0; i < 5; ++i) {
+            auto nodeName = TStringBuilder() << "file" << i;
+            auto createNodeResponse = service.CreateNode(
+                headers,
+                TCreateNodeArgs::File(
+                    dirNodeId,
+                    nodeName))->Record;
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                createNodeResponse.GetError().GetCode(),
+                createNodeResponse.GetError().GetMessage());
+            lastNodeName = nodeName;
+        }
+        auto listNodesResponse = service.ListNodes(
+            headers,
+            fsConfig.FsId,
+            dirNodeId)->Record;
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            listNodesResponse.GetError().GetCode(),
+            listNodesResponse.GetError().GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(5, listNodesResponse.NodesSize());
+        // GetNodeAttr for the last node to extract shard info
+        auto headersCpy = headers;
+        headersCpy.DisableMultiTabletForwarding = true;
+
+        auto getNodeAttrResponse = service.GetNodeAttr(
+            headersCpy,
+            fsConfig.FsId,
+            dirNodeId,
+            lastNodeName)->Record;
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            getNodeAttrResponse.GetError().GetCode(),
+            getNodeAttrResponse.GetError().GetMessage());
+
+        auto lastNode = getNodeAttrResponse.GetNode();
+        auto shardId = lastNode.GetShardFileSystemId();
+        auto nodeNameInShard = lastNode.GetShardNodeName();
+        auto shardHeaders = service.InitSession(shardId, "client");
+        // remove node from shard directly
+        service.UnlinkNode(
+            shardHeaders,
+            RootNodeId,
+            nodeNameInShard);
+        listNodesResponse = service.ListNodes(
+            headers,
+            fsConfig.FsId,
+            dirNodeId,
+            true)->Record;
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NOENT,
+            listNodesResponse.GetError().GetCode(),
+            listNodesResponse.GetError().GetMessage());
+        listNodesResponse = service.ListNodes(
+            headers,
+            fsConfig.FsId,
+            dirNodeId,
+            false)->Record;
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            listNodesResponse.GetError().GetCode(),
+            listNodesResponse.GetError().GetMessage());
+    }
+}
 }   // namespace NCloud::NFileStore::NStorage

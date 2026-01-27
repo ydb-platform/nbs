@@ -115,9 +115,9 @@ TListNodesActor::TListNodesActor(
     , LogTag(ListNodesRequest.GetFileSystemId())
     , MultiTabletForwardingEnabled(multiTabletForwardingEnabled)
     , GetNodeAttrBatchEnabled(getNodeAttrBatchEnabled)
+    , ReturnENoEnt(ListNodesRequest.GetReturnENoEnt())
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
-    , ReturnENoEnt(ListNodesRequest.GetReturnENoEnt())
 {
 }
 
@@ -474,7 +474,11 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
 
     bool exists = true;
     if (HasError(msg->GetError())) {
-        if (msg->GetError().GetCode() == NoEnt && !ReturnENoEnt) {
+        if (msg->GetError().GetCode() == NoEnt) {
+            if (ReturnENoEnt) {
+                HandleError(ctx, *msg->Record.MutableError());
+                return;
+            }
             exists = false;
         } else {
             LOG_WARN(

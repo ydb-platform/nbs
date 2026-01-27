@@ -105,9 +105,10 @@ public:
         const TString& checkpointId = {},
         bool restoreClientSession = false,
         ui64 sessionSeqNo = 0,
-        bool readOnly = false)
+        bool readOnly = false,
+        bool disableMultiTabletForwarding = false)
     {
-        THeaders headers = {fileSystemId, clientId, "", sessionSeqNo};
+        THeaders headers = {fileSystemId, clientId, "", sessionSeqNo, disableMultiTabletForwarding};
 
         auto response = CreateSession(headers, checkpointId, restoreClientSession, sessionSeqNo, readOnly);
         headers.SessionId = response->Record.GetSession().GetSessionId();
@@ -484,6 +485,17 @@ public:
         headers.Fill(request->Record);
         request->Record.SetFileSystemId(fileSystemId);
         request->Record.SetNodeId(nodeId);
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvListNodesRequest> CreateListNodesRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        const ui64 nodeId,
+        bool returnENoEnt)
+    {
+        auto request = CreateListNodesRequest(headers, fileSystemId, nodeId);
+        request->Record.SetReturnENoEnt(returnENoEnt);
         return request;
     }
 
