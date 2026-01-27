@@ -127,6 +127,13 @@ NProto::TError ErrorIsNotEmpty(ui64 nodeId)
             << "not empty directory node #" << nodeId);
 }
 
+NProto::TError ErrorIsPreparedForUnlink(ui64 nodeId)
+{
+    return MakeError(
+        E_REJECTED,
+        TStringBuilder() << "node #" << nodeId << " is prepared for unlink");
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TError ErrorNameTooLong(const TString& name)

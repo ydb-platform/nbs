@@ -30,6 +30,7 @@ NProto::TError ErrorAlreadyExists(const TString& path);
 NProto::TError ErrorIsDirectory(ui64 nodeId);
 NProto::TError ErrorIsNotDirectory(ui64 nodeId);
 NProto::TError ErrorIsNotEmpty(ui64 nodeId);
+NProto::TError ErrorIsPreparedForUnlink(ui64 nodeId);
 
 //
 // Limits.
