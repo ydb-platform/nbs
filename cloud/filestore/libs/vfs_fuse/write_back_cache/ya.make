@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    cached_write_data_request.cpp
     disjoint_interval_builder.cpp
     overlapping_interval_set.cpp
     persistent_storage.cpp
