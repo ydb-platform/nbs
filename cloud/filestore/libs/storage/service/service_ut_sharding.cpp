@@ -6513,10 +6513,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT_VALUES_EQUAL(shardNo, ExtractShardNo(handle));
         }
 
-        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(16));
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
         NActors::TDispatchOptions options;
-        options.FinalEvents.emplace_back(TDispatchOptions::TFinalEventCondition(
-            TEvIndexTabletPrivate::EvUpdateCounters,3));
+        // As the main tablet is restarted after ConfigureShards we need to
+        // dispatch shard count + 2 EvUpdateCounters events.
+        options.FinalEvents.emplace_back(
+            TDispatchOptions::TFinalEventCondition(
+                TEvIndexTabletPrivate::EvUpdateCounters,
+                fsConfig.ShardIds().size() + 2));
         env.GetRuntime().DispatchEvents(options);
 
         TTestRegistryVisitor visitor;
@@ -6559,12 +6563,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto registry = env.GetRegistry();
 
+        const ui32 restartsCount = (directoryCreationInShardsEnabled ||
+                                    strictFileSystemSizeEnforcementEnabled)
+                                       ? 1 : 0;
         env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(16));
         NActors::TDispatchOptions options;
         options.FinalEvents.emplace_back(
             TDispatchOptions::TFinalEventCondition(
                 TEvIndexTabletPrivate::EvUpdateCounters,
-                3));
+                fsConfig.ShardIds().size() + 1 + restartsCount));
         env.GetRuntime().DispatchEvents(options);
 
         TTestRegistryVisitor visitor;
@@ -6752,6 +6759,107 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             1);
 
         UNIT_ASSERT_VALUES_EQUAL(fsId, fsIdFromRequest);
+    }
+
+    SERVICE_TEST_SIMPLE(ShouldUnsafeCreateHandlesInShards)
+    {
+        const ui64 blockSize = 4_KB;
+        const ui64 shardBlockCount = 1024;
+        const ui64 shardAllocationUnit = shardBlockCount * blockSize;
+        const ui64 shardCount = 4;
+        const ui64 fsSize =
+            shardBlockCount * (shardCount - 1) + shardBlockCount / 2;
+
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(shardAllocationUnit);
+        config.SetShardBalancerPolicy(NProto::SBP_ROUND_ROBIN);
+
+        const TString fsId = "test";
+
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, fsSize);
+
+        WaitForTabletStart(service);
+
+        THeaders headers = service.InitSession(fsId, "client");
+
+        TVector<ui64> nodeIds;
+        nodeIds.push_back(
+            service
+                .CreateNode(
+                    headers,
+                    TCreateNodeArgs::Directory(RootNodeId, "dir"))
+                ->Record.GetNode()
+                .GetId());
+        for (ui64 i = 0; i < shardCount; ++i) {
+            nodeIds.push_back(
+                service
+                    .CreateNode(
+                        headers,
+                        TCreateNodeArgs::File(
+                            RootNodeId,
+                            TStringBuilder() << "file_" << i))
+                    ->Record.GetNode()
+                    .GetId());
+        }
+
+        NProtoPrivate::TUnsafeCreateHandleRequest request;
+        for (ui64 i = 0; i < nodeIds.size(); i++) {
+            const ui32 shardNo = ExtractShardNo(nodeIds[i]);
+            UNIT_ASSERT_EQUAL(i, shardNo);
+
+            const ui64 handle = (ShardedId(i + 1, shardNo) | (16ULL << 48));
+
+            request.SetFileSystemId(
+                shardNo == 0 ? fsId
+                             : TStringBuilder() << fsId << "_s" << shardNo);
+            request.SetSessionId(headers.SessionId);
+            request.SetHandle(handle);
+            request.SetNodeId(nodeIds[i]);
+            request.SetCommitId(2048 + i);
+            request.SetFlags(ProtoFlag(NProto::TCreateHandleRequest::E_READ));
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            const auto actionResponse =
+                service.ExecuteAction("unsafecreatehandle", buf);
+            NProtoPrivate::TUnsafeCreateHandleResponse response;
+            auto status = google::protobuf::util::JsonStringToMessage(
+                actionResponse->Record.GetOutput(),
+                &response);
+            UNIT_ASSERT(status.ok());
+        }
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(16));
+        NActors::TDispatchOptions options;
+        // As the main tablet is restarted after CnfigureShards we need to
+        // dispatch tablet count + 1 (== shard count + 2) EvUpdateCounters
+        // events
+        options.FinalEvents.emplace_back(TDispatchOptions::TFinalEventCondition(
+            TEvIndexTabletPrivate::EvUpdateCounters, shardCount + 2));
+        env.GetRuntime().DispatchEvents(options);
+
+        TTestRegistryVisitor visitor;
+        env.GetRegistry()->Visit(TInstant::Zero(), visitor);
+
+        // We should not create new handles that use seventh byte
+        visitor.ValidateExpectedCounters(
+            {{{{"sensor", "SevenBytesHandlesCount"}, {"filesystem", "test"}},
+              1},
+             {{{"sensor", "SevenBytesHandlesCount"}, {"filesystem", "test_s1"}},
+              1},
+             {{{"sensor", "SevenBytesHandlesCount"}, {"filesystem", "test_s2"}},
+              1},
+             {{{"sensor", "SevenBytesHandlesCount"}, {"filesystem", "test_s3"}},
+              1},
+             {{{"sensor", "SevenBytesHandlesCount"}, {"filesystem", "test_s4"}},
+              1}});
     }
 }
 

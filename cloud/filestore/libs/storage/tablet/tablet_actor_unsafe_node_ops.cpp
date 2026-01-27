@@ -669,4 +669,101 @@ void TIndexTabletActor::CompleteTx_UnsafeGetNodeRef(
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleUnsafeCreateHandle(
+    const TEvIndexTablet::TEvUnsafeCreateHandleRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
+
+    AddTransaction<TEvIndexTablet::TUnsafeCreateHandleMethod>(*requestInfo);
+
+    LOG_WARN(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s UnsafeCreateHandle: %s",
+        LogTag.c_str(),
+        msg->Record.DebugString().Quote().c_str());
+
+    ExecuteTx<TUnsafeCreateHandle>(
+        ctx,
+        std::move(requestInfo),
+        std::move(msg->Record));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::PrepareTx_UnsafeCreateHandle(
+        const TActorContext& ctx,
+        TTransactionContext& tx,
+        TTxIndexTablet::TUnsafeCreateHandle& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+
+    return true;
+}
+
+void TIndexTabletActor::ExecuteTx_UnsafeCreateHandle(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TUnsafeCreateHandle& args)
+{
+    Y_UNUSED(ctx);
+
+    TSession* session = FindSession(args.Request.GetSessionId());
+    if (!session) {
+        auto message = ReportSessionNotFoundInTx(
+            TStringBuilder()
+            << "CreateHandle: " << args.Request.ShortDebugString());
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        return;
+    }
+
+    TIndexTabletDatabase db(tx.DB);
+
+    TSessionHandle* handle = UnsafeCreateHandle(
+        db,
+        session,
+        args.Request.GetHandle(),
+        args.Request.GetNodeId(),
+        args.Request.GetCommitId(),
+        args.Request.GetFlags());
+
+    if (!handle) {
+        TString message = ReportFailedToCreateHandle(
+            TStringBuilder()
+            << "UnsafeCreateHandle: " << args.Request.ShortDebugString());
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        return;
+    }
+}
+
+void TIndexTabletActor::CompleteTx_UnsafeCreateHandle(
+    const TActorContext& ctx,
+    TTxIndexTablet::TUnsafeCreateHandle& args)
+{
+    RemoveTransaction(*args.RequestInfo);
+
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvUnsafeCreateHandleResponse>(
+            args.Error);
+
+    LOG_WARN(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s UnsafeCreateHandle: %s, result: %s",
+        LogTag.c_str(),
+        args.Request.DebugString().Quote().c_str(),
+        response->Record.ShortUtf8DebugString().Quote().c_str());
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
 }   // namespace NCloud::NFileStore::NStorage

@@ -322,6 +322,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    NActors::IActorPtr CreateUnsafeCreateHandleActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     NActors::IActorPtr CreateGetStorageStatsActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
