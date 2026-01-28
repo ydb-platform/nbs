@@ -45,6 +45,7 @@ TClientConfig::TClientConfig(const NProto::TRdmaClient& config)
     SET(AlignedDataEnabled);
     SET(IpTypeOfService);
     SET(SourceInterface);
+    SET(VerbsQP);
 }
 
 #undef SET
@@ -71,6 +72,7 @@ void TClientConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(AlignedDataEnabled, AlignedDataEnabled);
                 ENTRY(IpTypeOfService, IpTypeOfService);
                 ENTRY(SourceInterface, SourceInterface);
+                ENTRY(VerbsQP, VerbsQP);
             }
         }
     }

@@ -408,7 +408,11 @@ void TServerSession::CreateQP()
         .sq_sig_all = 1,
     };
 
-    Verbs->CreateQP(Connection.get(), &qp_attrs);
+    if (Config->VerbsQP) {
+        Connection->qp = Verbs->CreateQP(Connection->pd, &qp_attrs);
+    } else {
+        Verbs->RdmaCreateQP(Connection.get(), &qp_attrs);
+    }
 
     SendBuffers.Init(
         Verbs,
@@ -469,7 +473,12 @@ TServerSession::~TServerSession()
     RDMA_INFO("stop session");
 
     if (Connection->qp) {
-        Verbs->DestroyQP(Connection.get());
+        if (Config->VerbsQP) {
+            Verbs->DestroyQP(Connection->qp);
+            Connection->qp = nullptr;
+        } else {
+            Verbs->RdmaDestroyQP(Connection.get());
+        }
     }
 
     CompletionQueue.reset();
