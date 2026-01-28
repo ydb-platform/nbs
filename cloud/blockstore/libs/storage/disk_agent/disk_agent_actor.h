@@ -38,6 +38,8 @@ namespace NCloud::NBlockStore::NStorage {
 class TDiskAgentActor final
     : public NActors::TActorBootstrapped<TDiskAgentActor>
 {
+    using TControlPlaneRequestNumber =
+        TEvDiskAgentPrivate::TControlPlaneRequestNumber;
     struct TPostponedRequest
     {
         ui64 VolumeRequestId = 0;
@@ -97,7 +99,8 @@ private:
 
     NActors::TActorId HealthCheckActor;
 
-    TRequestInfoPtr PendingAttachDetachPathsRequest;
+    TRequestInfoPtr PendingControlPlaneRequest;
+    TControlPlaneRequestNumber ControlPlaneRequestNumber;
 
     ITaskQueuePtr BackgroundThreadPool;
 
@@ -177,6 +180,17 @@ private:
         TVector<TString> devicesToDisableIO);
 
     TDuration GetMaxRequestTimeout() const;
+
+    NProto::TError CheckAttachDetachPathsAvailable() const;
+
+    NProto::TError UpdateControlPlaneRequestNumber(
+        TControlPlaneRequestNumber controlPlaneRequestNumber);
+
+    // Separates valid paths into attached and detached categories, filtering
+    // out unknown paths.
+    // Returns: [attached paths, detached paths]
+    auto SplitPaths(google::protobuf::RepeatedPtrField<TString> paths) const
+        -> std::pair<TVector<TString>, TVector<TString>>;
 
 private:
     STFUNC(StateInit);

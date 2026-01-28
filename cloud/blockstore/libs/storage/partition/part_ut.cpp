@@ -1033,6 +1033,13 @@ public:
         return request;
     }
 
+    auto CreateGetPartitionInfoRequest()
+    {
+        auto request =
+            std::make_unique<TEvVolume::TEvGetPartitionInfoRequest>();
+        return request;
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \
@@ -2016,12 +2023,26 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WaitReady();
 
         partition.WriteBlocks(1, 1);
+        partition.ZeroBlocks(4);
         partition.WriteBlocks(2, 2);
+        partition.ZeroBlocks(5);
         partition.WriteBlocks(3, 3);
+        partition.ZeroBlocks(6);
 
         auto response = partition.StatPartition();
         const auto& stats = response->Record.GetStats();
-        UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(6, stats.GetFreshBlocksCount());
+
+        auto partitionInfo = partition.GetPartitionInfo();
+        auto value =
+            NJson::ReadJsonFastTree(partitionInfo->Record.GetPayload());
+        auto stateJson = value["State"];
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            stateJson["FreshBlocksFromChannel"].GetInteger());
+        UNIT_ASSERT_VALUES_EQUAL(
+            6,
+            stateJson["FreshBlocksFromDb"].GetInteger());
 
         partition.RebootTablet();
 
@@ -2036,6 +2057,19 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(3),
             GetBlockContent(partition.ReadBlocks(3))
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(),
+            GetBlockContent(partition.ReadBlocks(4))
+        );
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(),
+            GetBlockContent(partition.ReadBlocks(5))
+        );
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(),
+            GetBlockContent(partition.ReadBlocks(6))
         );
     }
 
@@ -2043,6 +2077,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshChannelZeroRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -2050,12 +2085,26 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WaitReady();
 
         partition.WriteBlocks(1, 1);
+        partition.ZeroBlocks(4);
         partition.WriteBlocks(2, 2);
+        partition.ZeroBlocks(5);
         partition.WriteBlocks(3, 3);
+        partition.ZeroBlocks(6);
 
         auto response = partition.StatPartition();
         const auto& stats = response->Record.GetStats();
-        UNIT_ASSERT_VALUES_EQUAL(3, stats.GetFreshBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(6, stats.GetFreshBlocksCount());
+
+        auto partitionInfo = partition.GetPartitionInfo();
+        auto value =
+            NJson::ReadJsonFastTree(partitionInfo->Record.GetPayload());
+        auto stateJson = value["State"];
+        UNIT_ASSERT_VALUES_EQUAL(
+            6,
+            stateJson["FreshBlocksFromChannel"].GetInteger());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            stateJson["FreshBlocksFromDb"].GetInteger());
 
         partition.RebootTablet();
 
@@ -2071,6 +2120,20 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             GetBlockContent(3),
             GetBlockContent(partition.ReadBlocks(3))
         );
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(),
+            GetBlockContent(partition.ReadBlocks(4))
+        );
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(),
+            GetBlockContent(partition.ReadBlocks(5))
+        );
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(),
+            GetBlockContent(partition.ReadBlocks(6))
+        );
+
     }
 
     Y_UNIT_TEST(ShouldRecoverBlocksOnRebootFromFreshChannelWithLongHistory)
@@ -2307,14 +2370,33 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WriteBlocks(2, 2);
         partition.WriteBlocks(3, 3);
 
+        partition.ZeroBlocks(4);
+        partition.ZeroBlocks(5);
+        partition.ZeroBlocks(6);
+
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(6, stats.GetFreshBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+
+            auto partitionInfo = partition.GetPartitionInfo();
+            auto value =
+                NJson::ReadJsonFastTree(partitionInfo->Record.GetPayload());
+            auto stateJson = value["State"];
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                stateJson["FreshBlocksFromChannel"].GetInteger());
+            UNIT_ASSERT_VALUES_EQUAL(
+                6,
+                stateJson["FreshBlocksFromDb"].GetInteger());
+
         }
 
+        partition.Flush();
+        // Fresh Zero blocks from the database are flushed only if the 4MB
+        // threshold is reached or if there are no blocks with content.
         partition.Flush();
 
         {
@@ -2322,29 +2404,29 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMixedBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
 
             UNIT_ASSERT(stats.GetSysWriteCounters().GetExecTime() != 0);
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            GetBlockContent(1),
-            GetBlockContent(partition.ReadBlocks(1))
-        );
-        UNIT_ASSERT_VALUES_EQUAL(
-            GetBlockContent(2),
-            GetBlockContent(partition.ReadBlocks(2))
-        );
-        UNIT_ASSERT_VALUES_EQUAL(
-            GetBlockContent(3),
-            GetBlockContent(partition.ReadBlocks(3))
-        );
+        for (auto i: {1, 2, 3}) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(i),
+                GetBlockContent(partition.ReadBlocks(i)));
+        }
+
+        for (auto i: {4, 5, 6}) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                TString(),
+                GetBlockContent(partition.ReadBlocks(i)));
+        }
     }
 
     Y_UNIT_TEST(ShouldFlushBlocksFromFreshChannelAsNewBlob)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshChannelZeroRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -2355,12 +2437,27 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WriteBlocks(2, 2);
         partition.WriteBlocks(3, 3);
 
+        partition.ZeroBlocks(4);
+        partition.ZeroBlocks(5);
+        partition.ZeroBlocks(6);
+
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(6, stats.GetFreshBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+
+            auto partitionInfo = partition.GetPartitionInfo();
+            auto value =
+                NJson::ReadJsonFastTree(partitionInfo->Record.GetPayload());
+            auto stateJson = value["State"];
+            UNIT_ASSERT_VALUES_EQUAL(
+                6,
+                stateJson["FreshBlocksFromChannel"].GetInteger());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                stateJson["FreshBlocksFromDb"].GetInteger());
         }
 
         partition.Flush();
@@ -2370,23 +2467,22 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMixedBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
 
             UNIT_ASSERT(stats.GetSysWriteCounters().GetExecTime() != 0);
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            GetBlockContent(1),
-            GetBlockContent(partition.ReadBlocks(1))
-        );
-        UNIT_ASSERT_VALUES_EQUAL(
-            GetBlockContent(2),
-            GetBlockContent(partition.ReadBlocks(2))
-        );
-        UNIT_ASSERT_VALUES_EQUAL(
-            GetBlockContent(3),
-            GetBlockContent(partition.ReadBlocks(3))
-        );
+        for (auto i: {1, 2, 3}) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(i),
+                GetBlockContent(partition.ReadBlocks(i)));
+        }
+
+        for (auto i: {4, 5, 6}) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                TString{},
+                GetBlockContent(partition.ReadBlocks(i)));
+        }
     }
 
     Y_UNIT_TEST(ShouldAutomaticallyFlush)
@@ -13496,6 +13592,61 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             expectedTraceId.GetTimeToLive(),
             traceId->GetTimeToLive());
     }
+
+    Y_UNIT_TEST(ShouldZeroFreshBlocks)
+    {
+        auto config = DefaultConfig();
+
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshChannelZeroRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+
+        auto checkFreshBlocksCount = [&](ui32 expectedCount)
+        {
+            auto partitionInfo = partition.GetPartitionInfo();
+            auto value =
+                NJson::ReadJsonFastTree(partitionInfo->Record.GetPayload());
+            auto stateJson = value["State"];
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedCount,
+                stateJson["FreshBlocksFromChannel"].GetInteger());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                stateJson["FreshBlocksFromDb"].GetInteger());
+        };
+
+        partition.WriteBlocks(2, 2);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(2)));
+
+        checkFreshBlocksCount(1);
+
+        partition.ZeroBlocks(2);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(),
+            GetBlockContent(partition.ReadBlocks(2)));
+
+        checkFreshBlocksCount(1);
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(),
+            GetBlockContent(partition.ReadBlocks(2)));
+
+        // 0 blocks because of flush
+        checkFreshBlocksCount(0);
+    }
+
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

@@ -105,6 +105,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(CreateNode,                         __VA_ARGS__)                       \
     xxx(UnlinkNode,                         __VA_ARGS__)                       \
     xxx(CompleteUnlinkNode,                 __VA_ARGS__)                       \
+    xxx(PrepareUnlinkDirectoryNode,         __VA_ARGS__)                       \
+    xxx(AbortUnlinkDirectoryNode,           __VA_ARGS__)                       \
     xxx(RenameNode,                         __VA_ARGS__)                       \
     xxx(PrepareRenameNodeInSource,          __VA_ARGS__)                       \
     xxx(RenameNodeInDestination,            __VA_ARGS__)                       \
@@ -893,6 +895,76 @@ struct TTxIndexTablet
     };
 
     //
+    // PrepareUnlinkDirectoryNode
+    //
+
+    struct TPrepareUnlinkDirectoryNode
+        : TTxIndexTabletBase
+        , TErrorAware
+        , TSessionAware
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TPrepareUnlinkDirectoryNodeInShardRequest Request;
+        NProtoPrivate::TPrepareUnlinkDirectoryNodeInShardResponse Response;
+
+        ui64 CommitId = InvalidCommitId;
+        TMaybe<IIndexTabletDatabase::TNode> Node;
+
+        TPrepareUnlinkDirectoryNode(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TPrepareUnlinkDirectoryNodeInShardRequest request)
+            : TSessionAware(request)
+            , RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
+            TIndexStateNodeUpdates::Clear();
+
+            CommitId = InvalidCommitId;
+            Node.Clear();
+        }
+    };
+
+    //
+    // AbortUnlinkDirectoryNode
+    //
+
+    struct TAbortUnlinkDirectoryNode
+        : TTxIndexTabletBase
+        , TErrorAware
+        , TSessionAware
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TAbortUnlinkDirectoryNodeInShardRequest Request;
+        NProtoPrivate::TAbortUnlinkDirectoryNodeInShardResponse Response;
+
+        ui64 CommitId = InvalidCommitId;
+        TMaybe<IIndexTabletDatabase::TNode> Node;
+
+        TAbortUnlinkDirectoryNode(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TAbortUnlinkDirectoryNodeInShardRequest request)
+            : TSessionAware(request)
+            , RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
+            TIndexStateNodeUpdates::Clear();
+
+            CommitId = InvalidCommitId;
+            Node.Clear();
+        }
+    };
+
+    //
     // RenameNode
     //
 
@@ -1330,7 +1402,6 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNode> TargetNode;
         TString ShardId;
         TString ShardNodeName;
-        bool IsEmptyDirectory = false;
 
         TGetNodeAttr(
                 TRequestInfoPtr requestInfo,
@@ -1353,7 +1424,6 @@ struct TTxIndexTablet
             TargetNode.Clear();
             ShardId.clear();
             ShardNodeName.clear();
-            IsEmptyDirectory = false;
         }
     };
 
@@ -2859,7 +2929,6 @@ struct TTxIndexTablet
             NextCookie.clear();
         }
    };
-
 };
 
 }   // namespace NCloud::NFileStore::NStorage

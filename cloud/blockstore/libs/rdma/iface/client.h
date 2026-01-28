@@ -38,6 +38,7 @@ struct TClientConfig
     bool AlignedDataEnabled = false;
     ui8 IpTypeOfService = 0;
     TString SourceInterface;
+    bool VerbsQP = false;
 
     TClientConfig() = default;
 

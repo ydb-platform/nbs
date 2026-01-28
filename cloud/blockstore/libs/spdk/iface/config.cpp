@@ -24,9 +24,9 @@ BLOCKSTORE_SPDK_ENV_CONFIG(BLOCKSTORE_SPDK_ENV_DECLARE_CONFIG)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TTarget, typename TSource>
-TTarget ConvertValue(TSource value)
+TTarget ConvertValue(const TSource& value)
 {
-    return static_cast<TTarget>(std::move(value));
+    return TTarget(value);
 }
 
 template <typename T>

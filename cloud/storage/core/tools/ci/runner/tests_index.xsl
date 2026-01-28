@@ -17,10 +17,17 @@
             </div>
         </td>
         <td>
-            <xsl:attribute name="style">
-                color: <xsl:value-of select="@status-color"/>
-            </xsl:attribute>
-            <xsl:value-of select="@status-message"/>
+            <div>
+                <a>
+                    <xsl:attribute name="href">
+                        <xsl:value-of select="@junit-link"/>
+                    </xsl:attribute>
+                    <xsl:attribute name="style">
+                        color: <xsl:value-of select="@status-color"/>
+                    </xsl:attribute>
+                    <xsl:value-of select="@status-message"/>
+                </a>
+            </div>
         </td>
     </tr>
 </xsl:template>

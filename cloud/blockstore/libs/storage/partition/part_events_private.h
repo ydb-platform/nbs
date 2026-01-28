@@ -919,6 +919,19 @@ struct TEvPartitionPrivate
     };
 
     //
+    // ZeroBlocksCompleted
+    //
+
+    struct TZeroBlocksCompleted: TOperationCompleted
+    {
+        const bool TrimFreshLogBarrierAcquired;
+
+        explicit TZeroBlocksCompleted(bool trimFreshLogBarrierAcquired)
+            : TrimFreshLogBarrierAcquired(trimFreshLogBarrierAcquired)
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -967,7 +980,7 @@ struct TEvPartitionPrivate
     using TEvWriteBlobCompleted = TResponseEvent<TWriteBlobCompleted, EvWriteBlobCompleted>;
     using TEvReadBlocksCompleted = TResponseEvent<TReadBlocksCompleted, EvReadBlocksCompleted>;
     using TEvWriteBlocksCompleted = TResponseEvent<TWriteBlocksCompleted, EvWriteBlocksCompleted>;
-    using TEvZeroBlocksCompleted = TResponseEvent<TOperationCompleted, EvZeroBlocksCompleted>;
+    using TEvZeroBlocksCompleted = TResponseEvent<TZeroBlocksCompleted, EvZeroBlocksCompleted>;
     using TEvFlushCompleted = TResponseEvent<TFlushCompleted, EvFlushCompleted>;
     using TEvCompactionCompleted = TResponseEvent<TCompactionCompleted, EvCompactionCompleted>;
     using TEvCollectGarbageCompleted = TResponseEvent<TOperationCompleted, EvCollectGarbageCompleted>;

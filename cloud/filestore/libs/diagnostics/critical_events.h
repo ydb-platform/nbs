@@ -45,6 +45,8 @@ namespace NCloud::NFileStore{
     xxx(LocalFsFailedToInitNodeMapper)                                         \
     xxx(LocalFsFailedToRefreshSnapshotsDir)                                    \
     xxx(LocalFsFailedToLoadSnapshotDir)                                        \
+    xxx(IsNotDirectory)                                                        \
+    xxx(NotPreparedForUnlink)                                                  \
     xxx(TryingToUseTwoBytesShardNoWithObsoleteHandles)                         \
 // FILESTORE_CRITICAL_EVENTS
 

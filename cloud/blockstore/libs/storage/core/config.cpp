@@ -662,6 +662,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(TabletExecutorRejectionThreshold,     ui32,        0                  )\
                                                                                \
     xxx(VolumeProxyPipeInactivityTimeout,     TDuration,   Minutes(1)         )\
+    xxx(FreshChannelZeroRequestsEnabled,      bool,        false              )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on

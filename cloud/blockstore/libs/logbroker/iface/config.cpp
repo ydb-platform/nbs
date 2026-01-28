@@ -50,9 +50,9 @@ BLOCKSTORE_LOGBROKER_IAM_METADATA_SERVER_CONFIG(BLOCKSTORE_DECLARE_CONFIG)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TTarget, typename TSource>
-TTarget ConvertValue(TSource value)
+TTarget ConvertValue(const TSource& value)
 {
-    return static_cast<TTarget>(std::move(value));
+    return TTarget(value);
 }
 
 IOutputStream& operator <<(
@@ -87,7 +87,7 @@ BLOCKSTORE_LOGBROKER_IAM_METADATA_SERVER_CONFIG(CONFIG_ITEM_IS_SET_CHECKER);
 #undef CONFIG_ITEM_IS_SET_CHECKER
 
 #define BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(ns, config, name, type, value)      \
-    (Is##ns##name##Set(config) ? ConvertValue<type>(config.Get##name()) : value)
+    (Is##ns##name##Set(config) ? ConvertValue<type>((config).Get##name()) : (value))
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -358,7 +358,7 @@ struct TVerbs
         }
     }
 
-    void CreateQP(rdma_cm_id* id, ibv_qp_init_attr* attr) override
+    void RdmaCreateQP(rdma_cm_id* id, ibv_qp_init_attr* attr) override
     {
         int res = rdma_create_qp(id, id->pd, attr);
         if (res < 0) {
@@ -366,16 +366,33 @@ struct TVerbs
         }
     }
 
-    void DestroyQP(rdma_cm_id* id) override
+    void RdmaDestroyQP(rdma_cm_id* id) override
     {
         rdma_destroy_qp(id);
+    }
+
+    ibv_qp* CreateQP(ibv_pd* pd, ibv_qp_init_attr* attr) override
+    {
+        ibv_qp* qp = ibv_create_qp(pd, attr);
+        if (qp == nullptr) {
+            RDMA_THROW_ERROR("ibv_create_qp");
+        }
+        return qp;
+    }
+
+    void DestroyQP(ibv_qp* qp) override
+    {
+        int res = ibv_destroy_qp(qp);
+        if (res < 0) {
+            RDMA_THROW_ERROR("ibv_destroy_qp");
+        }
     }
 
     void ModifyQP(ibv_qp* qp, ibv_qp_attr* attr, int mask) override
     {
         int res = ibv_modify_qp(qp, attr, mask);
         if (res < 0) {
-            RDMA_THROW_ERROR("rdma_modify_qp");
+            RDMA_THROW_ERROR("ibv_modify_qp");
         }
     }
 };

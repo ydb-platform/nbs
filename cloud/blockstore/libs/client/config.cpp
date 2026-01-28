@@ -90,9 +90,9 @@ BLOCKSTORE_CLIENT_CONFIG(BLOCKSTORE_CLIENT_DECLARE_CONFIG)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TTarget, typename TSource>
-TTarget ConvertValue(TSource value)
+TTarget ConvertValue(const TSource& value)
 {
-    return static_cast<TTarget>(std::move(value));
+    return TTarget(value);
 }
 
 template <>
@@ -104,7 +104,7 @@ TDuration ConvertValue<TDuration, const ui32&>(const ui32& value)
 template <>
 TRequestThresholds
 ConvertValue<TRequestThresholds, TProtoRequestThresholds>(
-    const TProtoRequestThresholds value)
+    const TProtoRequestThresholds& value)
 {
     return ConvertRequestThresholds(value);
 }
