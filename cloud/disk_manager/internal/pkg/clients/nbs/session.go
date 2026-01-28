@@ -408,7 +408,7 @@ func (s *Session) discoverAndMount(ctx context.Context) (*protos.TVolume, error)
 	s.client = client
 	s.session = nbs_client.NewSession(
 		*client,
-		NewNbsClientLog(nbs_client.LOG_DEBUG),
+		logging.GetLogger(ctx),
 	)
 	s.metrics = newSessionMetrics(s.metricsRegistry, host)
 
