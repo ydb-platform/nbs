@@ -33,12 +33,14 @@ std::unique_ptr<NActors::TTestActorRuntime> TTestRuntimeBuilder::Build()
         NotifyService = NNotify::CreateServiceStub();
     }
 
-    if (!StorageConfig) {
-        StorageConfig = std::make_shared<TStorageConfig>(
-            CreateDefaultStorageConfig(),
-            std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+    if (!StorageConfigFactory) {
+        StorageConfigFactory = []
+        {
+            return std::make_shared<TStorageConfig>(
+                CreateDefaultStorageConfig(),
+                std::make_shared<NFeatures::TFeaturesConfig>(
+                    NCloud::NProto::TFeaturesConfig()));
+        };
     }
 
     if (!DiagnosticsConfig) {
@@ -124,7 +126,7 @@ std::unique_ptr<NActors::TTestActorRuntime> TTestRuntimeBuilder::Build()
         )
     );
 
-    auto storageConfig = StorageConfig;
+    auto storageConfigFactory = StorageConfigFactory;
     auto diagnosticsConfig = DiagnosticsConfig;
     auto logbrokerService = LogbrokerService;
     auto notifyService = NotifyService;
@@ -136,7 +138,7 @@ std::unique_ptr<NActors::TTestActorRuntime> TTestRuntimeBuilder::Build()
                 owner,
                 logging,
                 info,
-                storageConfig,
+                storageConfigFactory(),
                 diagnosticsConfig,
                 logbrokerService,
                 notifyService);
@@ -175,17 +177,29 @@ TTestRuntimeBuilder& TTestRuntimeBuilder::WithAgents(
 TTestRuntimeBuilder& TTestRuntimeBuilder::With(
     NProto::TStorageServiceConfig config)
 {
-    StorageConfig = std::make_shared<TStorageConfig>(
-        config,
-        std::make_shared<NFeatures::TFeaturesConfig>(
-            NCloud::NProto::TFeaturesConfig())
-    );
+    StorageConfigFactory = [config = std::move(config)]()
+    {
+        return std::make_shared<TStorageConfig>(
+            config,
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig()));
+    };
     return *this;
 }
 
 TTestRuntimeBuilder& TTestRuntimeBuilder::With(TStorageConfigPtr config)
 {
-    StorageConfig = std::move(config);
+    StorageConfigFactory = [config = std::move(config)]()
+    {
+        return config;
+    };
+    return *this;
+}
+
+TTestRuntimeBuilder& TTestRuntimeBuilder::With(
+    std::function<TStorageConfigPtr()> configFactory)
+{
+    StorageConfigFactory = std::move(configFactory);
     return *this;
 }
 
