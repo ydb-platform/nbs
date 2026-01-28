@@ -341,7 +341,7 @@ void TAlterFileStoreActor::HandleGetStorageStatsResponse(
         LOG_ERROR(
             ctx,
             TFileStoreComponents::SERVICE,
-            "[%s] Getting file system stitistics failed: %s",
+            "[%s] Getting file system statistics failed: %s",
             FileSystemId.c_str(),
             FormatError(msg->GetError()).Quote().c_str());
 
