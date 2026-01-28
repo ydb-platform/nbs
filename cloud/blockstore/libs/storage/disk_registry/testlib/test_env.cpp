@@ -33,8 +33,8 @@ std::unique_ptr<NActors::TTestActorRuntime> TTestRuntimeBuilder::Build()
         NotifyService = NNotify::CreateServiceStub();
     }
 
-    if (!CreateStorageConfig) {
-        CreateStorageConfig = []
+    if (!StorageConfigFactory) {
+        StorageConfigFactory = []
         {
             return std::make_shared<TStorageConfig>(
                 CreateDefaultStorageConfig(),
@@ -126,7 +126,7 @@ std::unique_ptr<NActors::TTestActorRuntime> TTestRuntimeBuilder::Build()
         )
     );
 
-    auto createStorageConfig = CreateStorageConfig;
+    auto storageConfigFactory = StorageConfigFactory;
     auto diagnosticsConfig = DiagnosticsConfig;
     auto logbrokerService = LogbrokerService;
     auto notifyService = NotifyService;
@@ -138,7 +138,7 @@ std::unique_ptr<NActors::TTestActorRuntime> TTestRuntimeBuilder::Build()
                 owner,
                 logging,
                 info,
-                createStorageConfig(),
+                storageConfigFactory(),
                 diagnosticsConfig,
                 logbrokerService,
                 notifyService);
@@ -177,7 +177,7 @@ TTestRuntimeBuilder& TTestRuntimeBuilder::WithAgents(
 TTestRuntimeBuilder& TTestRuntimeBuilder::With(
     NProto::TStorageServiceConfig config)
 {
-    CreateStorageConfig = [config = std::move(config)]()
+    StorageConfigFactory = [config = std::move(config)]()
     {
         return std::make_shared<TStorageConfig>(
             config,
@@ -189,7 +189,7 @@ TTestRuntimeBuilder& TTestRuntimeBuilder::With(
 
 TTestRuntimeBuilder& TTestRuntimeBuilder::With(TStorageConfigPtr config)
 {
-    CreateStorageConfig = [config = std::move(config)]()
+    StorageConfigFactory = [config = std::move(config)]()
     {
         return config;
     };
@@ -199,7 +199,7 @@ TTestRuntimeBuilder& TTestRuntimeBuilder::With(TStorageConfigPtr config)
 TTestRuntimeBuilder& TTestRuntimeBuilder::With(
     std::function<TStorageConfigPtr()> configFactory)
 {
-    CreateStorageConfig = std::move(configFactory);
+    StorageConfigFactory = std::move(configFactory);
     return *this;
 }
 
