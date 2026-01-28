@@ -1600,8 +1600,7 @@ void TServer::Listen(TServerEndpoint* endpoint)
         endpoint->Port,
         &hints);
 
-    RDMA_INFO("listen on "
-        << NAddr::PrintHostAndPort(NAddr::TOpaqueAddr(addrinfo->ai_src_addr)));
+    RDMA_INFO("listen on " << NVerbs::PrintAddressAndPort(addrinfo->ai_src_addr));
 
     Verbs->BindAddress(endpoint->Connection.get(), addrinfo->ai_src_addr);
     Verbs->Listen(endpoint->Connection.get(), Config->Backlog);

@@ -2044,19 +2044,21 @@ void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
         rdma_addrinfo hints = {
             .ai_port_space = RDMA_PS_TCP,
         };
+        NAddr::IRemoteAddrRef src;
 
         // find the first non local address of the specified interface
         for (auto& interface: NAddr::GetNetworkInterfaces()) {
             if (interface.Name == Config->SourceInterface &&
                 GetScopeId(interface.Address->Addr()) == 0)
             {
-                auto& addr = static_cast<NAddr::TOpaqueAddr&>(*interface.Address);
+                src = interface.Address;
 
                 RDMA_INFO(endpoint->Log, "bind to " << interface.Name
-                    << " address " << NAddr::PrintHost(addr));
+                    << " address " << NAddr::PrintHost(*src));
 
-                hints.ai_src_addr = addr.MutableAddr();
-                hints.ai_src_len = addr.Len();
+                // it's a TOpaqueAddr, so it's safe to cast the const away
+                hints.ai_src_addr = const_cast<sockaddr*>(src->Addr());
+                hints.ai_src_len = src->Len();
                 break;
             }
         }
