@@ -38,6 +38,7 @@ private:
     const bool MultiTabletForwardingEnabled;
     const bool GetNodeAttrBatchEnabled;
     const bool ReturnNodesNotFoundInShard = false;
+
     // Response data
     NProto::TListNodesResponse Response;
     ui32 GetNodeAttrResponses = 0;

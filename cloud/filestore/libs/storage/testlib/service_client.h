@@ -105,15 +105,13 @@ public:
         const TString& checkpointId = {},
         bool restoreClientSession = false,
         ui64 sessionSeqNo = 0,
-        bool readOnly = false,
-        bool disableMultiTabletForwarding = false)
+        bool readOnly = false)
     {
         THeaders headers = {
             .FileSystemId = fileSystemId,
             .ClientId = clientId,
             .SessionId = "",
-            .SessionSeqNo = sessionSeqNo,
-            .DisableMultiTabletForwarding = disableMultiTabletForwarding};
+            .SessionSeqNo = sessionSeqNo};
 
         auto response = CreateSession(headers, checkpointId, restoreClientSession, sessionSeqNo, readOnly);
         headers.SessionId = response->Record.GetSession().GetSessionId();
