@@ -6837,7 +6837,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             1,
             FindProcessesWithOpenFile(Devices[0]).size());
 
-        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}});
+        diskAgent.DetachPaths(
+            TVector<TString>{{PartLabels[0]}},
+            1,    // diskRegistryGeneration
+            1);   // requestNumber
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
@@ -6863,13 +6866,19 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             1,
             FindProcessesWithOpenFile(Devices[0]).size());
 
-        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}});
+        diskAgent.DetachPaths(
+            TVector<TString>{{PartLabels[0]}},
+            1,    // diskRegistryGeneration
+            1);   // requestNumber
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             FindProcessesWithOpenFile(Devices[0]).size());
 
-        diskAgent.AttachPaths(TVector<TString>{{PartLabels[0]}});
+        diskAgent.AttachPaths(
+            TVector<TString>{{PartLabels[0]}},
+            1,    // diskRegistryGeneration
+            2);   // requestNumber
 
         UNIT_ASSERT_VALUES_EQUAL(
             1,
@@ -6907,7 +6916,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             1,
             FindProcessesWithOpenFile(Devices[0]).size());
 
-        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}});
+        diskAgent.DetachPaths(
+            TVector<TString>{{PartLabels[0]}},
+            1,    // diskRegistryGeneration
+            1);   // requestNumber
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
@@ -6917,7 +6929,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             nvmeManager->PathToSerial[Devices[0].GetPath()] = "another serial";
         }
 
-        diskAgent.SendAttachPathsRequest(TVector<TString>{{PartLabels[0]}});
+        diskAgent.SendAttachPathsRequest(
+            TVector<TString>{{PartLabels[0]}},
+            1,    // diskRegistryGeneration
+            2);   // requestNumber
 
         auto resp = diskAgent.RecvAttachPathsResponse();
 
@@ -6947,7 +6962,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             1,
             FindProcessesWithOpenFile(Devices[0]).size());
 
-        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}});
+        diskAgent.DetachPaths(
+            TVector<TString>{{PartLabels[0]}},
+            1,    // diskRegistryGeneration
+            1);   // requestNumber
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
@@ -6955,7 +6973,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         unlink(PartLabels[0].c_str());
 
-        diskAgent.SendAttachPathsRequest(TVector<TString>{{PartLabels[0]}});
+        diskAgent.SendAttachPathsRequest(
+            TVector<TString>{{PartLabels[0]}},
+            1,    // diskRegistryGeneration
+            2);   // requestNumber
 
         auto resp = diskAgent.RecvAttachPathsResponse();
 
@@ -6965,6 +6986,67 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             0,
             FindProcessesWithOpenFile(Devices[0]).size());
     }
-}
 
+    Y_UNIT_TEST_F(ShouldRejectOldAttachDetachRequests, TFixture)
+    {
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
+                       .With(storageConfig)
+                       .Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.DetachPaths(
+            TVector<TString>{{PartLabels[0]}},
+            5,     // diskRegistryGeneration
+            10);   // requestNumber
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.SendAttachPathsRequest(
+            TVector<TString>{{PartLabels[0]}},
+            5,    // diskRegistryGeneration
+            1);   // requestNumber
+
+        auto resp = diskAgent.RecvAttachPathsResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, resp->GetError().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.SendAttachPathsRequest(
+            TVector<TString>{{PartLabels[0]}},
+            4,      // diskRegistryGeneration
+            100);   // requestNumber
+
+        resp = diskAgent.RecvAttachPathsResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, resp->GetError().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.AttachPaths(
+            TVector<TString>{{PartLabels[0]}},
+            6,    // diskRegistryGeneration
+            1);   // requestNumber
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[0]).size());
+    }
+}
 }   // namespace NCloud::NBlockStore::NStorage
