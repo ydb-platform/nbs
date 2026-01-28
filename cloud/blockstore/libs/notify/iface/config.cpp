@@ -26,9 +26,9 @@ BLOCKSTORE_NOTIFY_CONFIG(BLOCKSTORE_DECLARE_CONFIG)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TTarget, typename TSource>
-TTarget ConvertValue(TSource value)
+TTarget ConvertValue(const TSource& value)
 {
-    return static_cast<TTarget>(std::move(value));
+    return TTarget(value);
 }
 
 }   // namespace
@@ -41,7 +41,7 @@ TNotifyConfig::TNotifyConfig(
 {}
 
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
-type TNotifyConfig::Get##name() const                                       \
+type TNotifyConfig::Get##name() const                                          \
 {                                                                              \
     if (Config.Has##name()) {                                                  \
         const auto value = Config.Get##name();                                 \
