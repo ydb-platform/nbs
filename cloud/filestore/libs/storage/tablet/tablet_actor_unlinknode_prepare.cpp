@@ -99,7 +99,7 @@ void TIndexTabletActor::ExecuteTx_PrepareUnlinkDirectoryNode(
 {
     Y_UNUSED(ctx);
 
-    FILESTORE_VALIDATE_TX_ERROR(UnlinkNode, args);
+    FILESTORE_VALIDATE_TX_ERROR(PrepareUnlinkDirectoryNode, args);
 
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
