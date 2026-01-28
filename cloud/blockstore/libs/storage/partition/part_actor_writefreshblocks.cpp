@@ -330,6 +330,13 @@ void TWriteFreshBlocksActor::ReplyWrite(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
+    auto completeEvent =
+        std::make_unique<TEvPartitionPrivate::TEvWriteBlocksCompleted>(
+            error,
+            TEvPartitionPrivate::TWriteBlocksCompleted::
+                CreateFreshBlocksCompleted());
+    NotifyCompleted(ctx, std::move(completeEvent));
+
     for (const auto& r: Requests) {
         IEventBasePtr response = CreateWriteBlocksResponse(
             r.RequestType == ERequestType::WriteBlocksLocal,
@@ -349,6 +356,12 @@ void TWriteFreshBlocksActor::ReplyZero(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
+    auto completeEvent =
+        std::make_unique<TEvPartitionPrivate::TEvZeroBlocksCompleted>(
+            error,
+            true);   // trimFreshLogBarrierAcquired
+    NotifyCompleted(ctx, std::move(completeEvent));
+
     for (const auto& r: Requests) {
         IEventBasePtr response =
             std::make_unique<TEvService::TEvZeroBlocksResponse>(error);
@@ -368,21 +381,8 @@ void TWriteFreshBlocksActor::ReplyAllAndDie(
     const NProto::TError& error)
 {
     if (IsZeroRequest) {
-        auto completeEvent =
-            std::make_unique<TEvPartitionPrivate::TEvZeroBlocksCompleted>(
-                error,
-                true);   // trimFreshLogBarrierAcquired
-        NotifyCompleted(ctx, std::move(completeEvent));
-
         ReplyZero(ctx, error);
     } else {
-        auto completeEvent =
-            std::make_unique<TEvPartitionPrivate::TEvWriteBlocksCompleted>(
-                error,
-                TEvPartitionPrivate::TWriteBlocksCompleted::
-                    CreateFreshBlocksCompleted());
-        NotifyCompleted(ctx, std::move(completeEvent));
-
         ReplyWrite(ctx, error);
     }
 
