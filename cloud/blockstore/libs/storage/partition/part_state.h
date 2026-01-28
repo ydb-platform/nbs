@@ -388,7 +388,6 @@ public:
     //
 
 private:
-
     class TPartitionFreshBlocksStateContextProvider
         : public IPartitionFreshBlocksStateContextProvider
     {
@@ -401,7 +400,7 @@ private:
             : PartitionState(partitionState)
         {}
 
-        [[nodiscard]] TVector<ui64> GetCheckpointCommitIds() override
+        [[nodiscard]] TVector<ui64> GetCheckpointCommitIds() const override
         {
             TVector<ui64> checkpoints;
             PartitionState.GetCheckpoints().GetCommitIds(checkpoints);
@@ -417,11 +416,6 @@ private:
         [[nodiscard]] const NProto::TPartitionStats& GetStats() const override
         {
             return PartitionState.GetStats();
-        }
-
-        [[nodiscard]] NProto::TPartitionStats& AccessStats() override
-        {
-            return PartitionState.AccessStats();
         }
     };
 
@@ -456,7 +450,7 @@ private:
             for (auto garbageCommitId: garbage) {
                 // This block is being flushed; we'll remove it on AddBlobs
                 // and we'll release barrier on FlushCompleted
-                if (FlushedCommitIdsInProgress.contains(garbageCommitId)) {
+                if (GetFlushedCommitIdsInProgress().contains(garbageCommitId)) {
                     continue;
                 }
 
