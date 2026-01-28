@@ -108,7 +108,12 @@ public:
         bool readOnly = false,
         bool disableMultiTabletForwarding = false)
     {
-        THeaders headers = {fileSystemId, clientId, "", sessionSeqNo, disableMultiTabletForwarding};
+        THeaders headers = {
+            .FileSystemId = fileSystemId,
+            .ClientId = clientId,
+            .SessionId = "",
+            .SessionSeqNo = sessionSeqNo,
+            .DisableMultiTabletForwarding = disableMultiTabletForwarding};
 
         auto response = CreateSession(headers, checkpointId, restoreClientSession, sessionSeqNo, readOnly);
         headers.SessionId = response->Record.GetSession().GetSessionId();
@@ -479,22 +484,13 @@ public:
     std::unique_ptr<TEvService::TEvListNodesRequest> CreateListNodesRequest(
         const THeaders& headers,
         const TString& fileSystemId,
-        const ui64 nodeId)
+        const ui64 nodeId,
+        bool returnNodesNotFoundInShard = false)
     {
         auto request = std::make_unique<TEvService::TEvListNodesRequest>();
         headers.Fill(request->Record);
         request->Record.SetFileSystemId(fileSystemId);
         request->Record.SetNodeId(nodeId);
-        return request;
-    }
-
-    std::unique_ptr<TEvService::TEvListNodesRequest> CreateListNodesRequest(
-        const THeaders& headers,
-        const TString& fileSystemId,
-        const ui64 nodeId,
-        bool returnNodesNotFoundInShard)
-    {
-        auto request = CreateListNodesRequest(headers, fileSystemId, nodeId);
         request->Record.SetReturnNodesNotFoundInShard(
             returnNodesNotFoundInShard);
         return request;

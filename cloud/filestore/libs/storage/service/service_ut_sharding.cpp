@@ -6944,7 +6944,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto& node = listNodesResponseWithFlag.GetNodes(i);
             const auto& name = listNodesResponseWithFlag.GetNames(i);
             if (name == lastNodeName) {
-                UNIT_ASSERT_EQUAL(node.GetId(), 0);
+                UNIT_ASSERT_EQUAL(0, node.GetId());
             } else {
                 foundNodeIds.insert(node.GetId());
             }
