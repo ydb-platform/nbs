@@ -6876,6 +6876,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             TCreateNodeArgs::Directory(RootNodeId, "dir")
         )->Record.GetNode().GetId();
         TString lastNodeName = "";
+        TSet<ui64> expectedNodeIds;
+        ui64 lastNodeId = 0;
         for (ui64 i = 0; i < 5; ++i) {
             auto nodeName = TStringBuilder() << "file" << i;
             auto createNodeResponse = service.CreateNode(
@@ -6887,8 +6889,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 S_OK,
                 createNodeResponse.GetError().GetCode(),
                 createNodeResponse.GetError().GetMessage());
+            lastNodeId = createNodeResponse.GetNode().GetId();
+            expectedNodeIds.insert(lastNodeId);
             lastNodeName = nodeName;
         }
+
+        // last node will be unlinked directly in shard
+        expectedNodeIds.erase(lastNodeId);
         auto listNodesResponse = service.ListNodes(
             headers,
             fsConfig.FsId,
@@ -6921,24 +6928,39 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             shardHeaders,
             RootNodeId,
             nodeNameInShard);
-        listNodesResponse = service.ListNodes(
+        // with the flag, the missing in the shard node should be returned with id=0
+        auto listNodesResponseWithFlag = service.ListNodes(
             headers,
             fsConfig.FsId,
             dirNodeId,
             true)->Record;
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
-            listNodesResponse.GetError().GetCode(),
-            listNodesResponse.GetError().GetMessage());
-        listNodesResponse = service.ListNodes(
+            listNodesResponseWithFlag.GetError().GetCode(),
+            listNodesResponseWithFlag.GetError().GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(5, listNodesResponseWithFlag.NodesSize());
+        TSet<ui64> foundNodeIds;
+        for (size_t i = 0; i < listNodesResponseWithFlag.NodesSize(); ++i) {
+            const auto& node = listNodesResponseWithFlag.GetNodes(i);
+            const auto& name = listNodesResponseWithFlag.GetNames(i);
+            if (name == lastNodeName) {
+                UNIT_ASSERT_EQUAL(node.GetId(), 0);
+            } else {
+                foundNodeIds.insert(node.GetId());
+            }
+        }
+        UNIT_ASSERT_VALUES_EQUAL(expectedNodeIds, foundNodeIds);
+        // without the flag, the missing in the shard node should be skipped
+        auto listNodesResponseRegular = service.ListNodes(
             headers,
             fsConfig.FsId,
             dirNodeId,
             false)->Record;
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
-            listNodesResponse.GetError().GetCode(),
-            listNodesResponse.GetError().GetMessage());
+            listNodesResponseRegular.GetError().GetCode(),
+            listNodesResponseRegular.GetError().GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(4, listNodesResponseRegular.NodesSize());
     }
 }
 }   // namespace NCloud::NFileStore::NStorage
