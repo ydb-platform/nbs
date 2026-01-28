@@ -1103,7 +1103,6 @@ struct TTxIndexTablet
         const NProtoPrivate::TRenameNodeInDestinationRequest Request;
         const NProto::TNodeAttr SourceNodeAttr;
         const NProto::TNodeAttr DestinationNodeAttr;
-        const bool IsDestinationEmptyDir;
         const bool IsSecondPass;
 
         ui64 CommitId = InvalidCommitId;
@@ -1127,7 +1126,6 @@ struct TTxIndexTablet
             , NewName(request.GetNewName())
             , Flags(request.GetFlags())
             , Request(std::move(request))
-            , IsDestinationEmptyDir(false)
             , IsSecondPass(false)
         {}
 
@@ -1135,8 +1133,7 @@ struct TTxIndexTablet
                 TRequestInfoPtr requestInfo,
                 NProtoPrivate::TRenameNodeInDestinationRequest request,
                 NProto::TNodeAttr sourceNodeAttr,
-                NProto::TNodeAttr destinationNodeAttr,
-                bool isDestinationEmptyDir)
+                NProto::TNodeAttr destinationNodeAttr)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , NewParentNodeId(request.GetNewParentId())
@@ -1145,7 +1142,6 @@ struct TTxIndexTablet
             , Request(std::move(request))
             , SourceNodeAttr(std::move(sourceNodeAttr))
             , DestinationNodeAttr(std::move(destinationNodeAttr))
-            , IsDestinationEmptyDir(isDestinationEmptyDir)
             , IsSecondPass(true)
         {}
 
