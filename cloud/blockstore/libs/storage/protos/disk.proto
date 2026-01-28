@@ -1352,13 +1352,13 @@ message TBackupDiskRegistryStateRequest
     // Optional request headers.
     THeaders Headers = 1;
 
-    // deprecated
+    // Deprecated. Use "Source" instead.
     bool BackupLocalDB = 2;
 
     // File to save backup file.
     string BackupFilePath = 3;
 
-    // Source of Disk Registry state backup
+    // Source of Disk Registry state backup.
     EBackupDiskRegistryStateSource Source = 4;
 }
 
@@ -1367,12 +1367,13 @@ message TBackupDiskRegistryStateResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
-    // Disk Regsitry state backup
+    // Disk Regsitry state backup from memory.
     TDiskRegistryStateBackup MemoryBackup = 2;
 
     // File to save backup file.
     string BackupFilePath = 3;
 
+    // Disk Regsitry state backup from local db.
     TDiskRegistryStateBackup LocalDBBackup = 4;
 }
 

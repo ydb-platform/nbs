@@ -334,11 +334,11 @@ message TListDiskStatesResponse
 
 enum EBackupDiskRegistryStateSource
 {
-    // Getting DiskRegistry State backup from memory
+    // Getting DiskRegistry State backup from memory.
     BDRSS_MEMORY = 0;
-    // Getting DiskRegistry State backup from local db
+    // Getting DiskRegistry State backup from local db.
     BDRSS_LOCAL_DB = 1;
     // Getting DiskRegistry State backup from
-    // local db and memory for state comparison
+    // local db and memory for state comparison.
     BDRSS_MEMORY_AND_LOCAL_DB = 2;
 }
