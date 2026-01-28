@@ -539,6 +539,12 @@ bool TVolumeThrottlingPolicy::TryPostpone(
     return Impl->TryPostpone(ts, requestInfo);
 }
 
+TDuration TVolumeThrottlingPolicy::GetRequestCost(
+    const TThrottlingRequestInfo& requestInfo) const
+{
+    return Impl->GetRequestCost(requestInfo);
+}
+
 TMaybe<TDuration> TVolumeThrottlingPolicy::SuggestDelay(
     TInstant ts,
     TDuration queueTime,
