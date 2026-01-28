@@ -103,7 +103,7 @@ type Storage interface {
 	ScheduleRootNodeForListing(
 		ctx context.Context,
 		snapshotID string,
-	) (bool, error)
+	) error
 
 	SelectNodesToList(
 		ctx context.Context,

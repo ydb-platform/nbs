@@ -131,10 +131,10 @@ func (s *StorageMock) ListFilesystemSnapshots(
 func (s *StorageMock) ScheduleRootNodeForListing(
 	ctx context.Context,
 	snapshotID string,
-) (bool, error) {
+) error {
 
 	args := s.Called(ctx, snapshotID)
-	return args.Get(0).(bool), args.Error(1)
+	return args.Error(0)
 }
 
 func (s *StorageMock) SelectNodesToList(

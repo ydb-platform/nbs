@@ -874,36 +874,13 @@ func (s *storageYDB) scheduleRootNodeForListing(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshotID string,
-) (bool, error) {
+) error {
 
 	tx, err := session.BeginRWTransaction(ctx)
 	if err != nil {
-		return false, err
+		return err
 	}
 	defer tx.Rollback(ctx)
-
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $snapshot_id as Utf8;
-		declare $root_node_id as Uint64;
-
-		select node_id
-		from directory_listing_queue
-		where filesystem_backup_id = $snapshot_id and node_id = $root_node_id
-		limit 1
-	`, s.tablesPath),
-		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
-		persistence.ValueParam("$root_node_id", persistence.Uint64Value(nfs.RootNodeID)),
-	)
-	if err != nil {
-		return false, err
-	}
-	defer res.Close()
-
-	if res.NextResultSet(ctx) && res.NextRow() {
-		return false, tx.Commit(ctx)
-	}
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -922,10 +899,10 @@ func (s *storageYDB) scheduleRootNodeForListing(
 		persistence.ValueParam("$depth", persistence.Uint64Value(0)),
 	)
 	if err != nil {
-		return false, err
+		return err
 	}
 
-	return true, tx.Commit(ctx)
+	return tx.Commit(ctx)
 }
 
 func (s *storageYDB) selectNodesToList(

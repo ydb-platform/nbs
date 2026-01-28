@@ -640,12 +640,11 @@ func TestNodesScheduling(t *testing.T) {
 	defer f.teardown()
 
 	filesystemSnapshotID := "snapshot"
-	scheduled, err := f.storage.ScheduleRootNodeForListing(
+	err := f.storage.ScheduleRootNodeForListing(
 		f.ctx,
 		filesystemSnapshotID,
 	)
 	require.NoError(t, err)
-	require.True(t, scheduled)
 
 	require.NoError(
 		t,
@@ -678,8 +677,7 @@ func TestNodesScheduling(t *testing.T) {
 	)
 
 	otherSnapshot := "other"
-	scheduled, err = f.storage.ScheduleRootNodeForListing(f.ctx, otherSnapshot)
-	require.True(t, scheduled)
+	err = f.storage.ScheduleRootNodeForListing(f.ctx, otherSnapshot)
 	require.NoError(t, err)
 	require.NoError(
 		t,

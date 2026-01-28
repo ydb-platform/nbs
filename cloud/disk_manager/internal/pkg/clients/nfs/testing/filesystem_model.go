@@ -139,6 +139,7 @@ func (f *FileSystemModel) CreateNodes(parentID uint64, nodeToCreate Node) {
 		return
 	}
 
+	// Sort nodes by name to have a deterministic order
 	slices.SortFunc(
 		nodeToCreate.Children,
 		func(i, j Node) int {
@@ -207,6 +208,7 @@ func (f *FileSystemModel) ListAllNodes(parentNodeID uint64) []nfs.Node {
 
 func (f *FileSystemModel) ListNodesRecursively(parentNodeID uint64) []nfs.Node {
 	nodes := f.ListAllNodes(parentNodeID)
+	// Sort nodes by name to have a deterministic order
 	slices.SortFunc(
 		nodes,
 		func(i, j nfs.Node) int {

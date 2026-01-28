@@ -70,12 +70,9 @@ func (t *FilesystemTraverser) Traverse(
 ) error {
 
 	if !t.rootNodeAlreadyScheduled {
-		scheduled, err := t.storage.ScheduleRootNodeForListing(ctx, t.filesystemSnapshotID)
+		err := t.storage.ScheduleRootNodeForListing(ctx, t.filesystemSnapshotID)
 		if err != nil {
 			return errors.NewRetriableErrorf("failed to schedule root node: %w", err)
-		}
-		if scheduled {
-			logging.Info(ctx, "Root node scheduled for filesystem snapshot %s", t.filesystemSnapshotID)
 		}
 
 		if t.stateSaver != nil {
