@@ -259,7 +259,7 @@ void TMirrorPartitionResyncActor::SendReadBlocksResponseImpl(
     NCloud::Reply(
         ctx,
         *requestInfo,
-        std::make_unique<typename TMethod::TResponse>(std::move(error)));
+        std::make_unique<typename TMethod::TResponse>(error));
 }
 
 void TMirrorPartitionResyncActor::SendReadBlocksResponse(
