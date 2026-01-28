@@ -1395,6 +1395,8 @@ private:
         TInstant now,
         TDiskRegistryDatabase& db,
         const TString& masterDiskId);
+
+    [[nodiscard]] bool IsUnavailableOrBroken(const TDeviceId& deviceId) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

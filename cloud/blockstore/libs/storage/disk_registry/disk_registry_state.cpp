@@ -8264,20 +8264,10 @@ void TDiskRegistryState::ReplaceBrokenDevices(
             return;
         }
 
+        bool replaced = false;
         for (const auto& deviceId: replicaState->Devices) {
-            const auto* device = DeviceList.FindDevice(deviceId);
-            if (!device) {
-                continue;
-            }
-
-            const auto* agent = AgentList.FindAgent(device->GetAgentId());
-            if (!agent) {
-                continue;
-            }
-
-            if (device->GetState() == NProto::DEVICE_STATE_ERROR ||
-                agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE)
-            {
+            if (IsUnavailableOrBroken(deviceId)) {
+                replaced = true;
                 TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
                     db,
                     *replicaState,
@@ -8285,9 +8275,11 @@ void TDiskRegistryState::ReplaceBrokenDevices(
                     deviceId,
                     now,
                     "postponed replacement");
-
-                TryUpdateDiskState(db, replicaId, *replicaState, now);
             }
+        }
+
+        if (replaced) {
+            TryUpdateDiskState(db, replicaId, *replicaState, now);
         }
     }
 }
@@ -8299,6 +8291,23 @@ void TDiskRegistryState::ReplaceBrokenDevicesAfterRestart(
     for (const auto& masterDiskId: GetMasterDiskIds()) {
         ReplaceBrokenDevices(now, db, masterDiskId);
     }
+}
+
+[[nodiscard]] bool TDiskRegistryState::IsUnavailableOrBroken(
+    const TDeviceId& deviceId) const
+{
+    const auto* device = DeviceList.FindDevice(deviceId);
+    if (!device) {
+        return false;
+    }
+
+    const auto* agent = AgentList.FindAgent(device->GetAgentId());
+    if (!agent) {
+        return false;
+    }
+
+    return agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE ||
+           device->GetState() == NProto::DEVICE_STATE_ERROR;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
