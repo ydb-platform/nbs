@@ -615,6 +615,12 @@ message TRegisterAgentResponse
 
     // List of device IDs to which Disk Agent should disable IO operations.
     repeated string DevicesToDisableIO = 2;
+
+    // Request number, needed to order attach detach requests.
+    TControlPlaneRequestNumber ControlPlaneRequestNumber = 3;
+
+    // Devices that should be attached to the agent.
+    repeated string PathsToAttach = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
