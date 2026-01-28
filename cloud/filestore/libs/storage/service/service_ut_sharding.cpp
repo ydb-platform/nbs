@@ -6927,7 +6927,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             dirNodeId,
             true)->Record;
         UNIT_ASSERT_VALUES_EQUAL_C(
-            E_FS_NOENT,
+            S_OK,
             listNodesResponse.GetError().GetCode(),
             listNodesResponse.GetError().GetMessage());
         listNodesResponse = service.ListNodes(
@@ -6937,8 +6937,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             false)->Record;
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
-            listNode
-            sResponse.GetError().GetCode(),
+            listNodesResponse.GetError().GetCode(),
             listNodesResponse.GetError().GetMessage());
     }
 }
