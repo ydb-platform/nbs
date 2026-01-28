@@ -146,14 +146,20 @@ void TMaskSensitiveData::MaskRequest(
     NProto::TProfileLogRequestInfo& request) const
 {
     if (request.GetNodeInfo().HasNodeName()) {
-        request.MutableNodeInfo()->SetNodeName(Transform(
-            request.GetNodeInfo().GetNodeName(),
-            request.GetNodeInfo().GetNodeId()));
+        if (const auto& nodeName = request.GetNodeInfo().GetNodeName();
+            !nodeName.empty())
+        {
+            request.MutableNodeInfo()->SetNodeName(
+                Transform(nodeName, request.GetNodeInfo().GetNodeId()));
+        }
     }
     if (request.GetNodeInfo().HasNewNodeName()) {
-        request.MutableNodeInfo()->SetNewNodeName(Transform(
-            request.GetNodeInfo().GetNewNodeName(),
-            request.GetNodeInfo().GetNodeId()));
+        if (const auto& newNodeName = request.GetNodeInfo().GetNewNodeName();
+            !newNodeName.empty())
+        {
+            request.MutableNodeInfo()->SetNewNodeName(
+                Transform(newNodeName, request.GetNodeInfo().GetNodeId()));
+        }
     }
 }
 
