@@ -492,10 +492,11 @@ public:
         const THeaders& headers,
         const TString& fileSystemId,
         const ui64 nodeId,
-        bool returnENoEnt)
+        bool returnNodesNotFoundInShard)
     {
         auto request = CreateListNodesRequest(headers, fileSystemId, nodeId);
-        request->Record.SetReturnENoEnt(returnENoEnt);
+        request->Record.SetReturnNodesNotFoundInShard(
+            returnNodesNotFoundInShard);
         return request;
     }
 

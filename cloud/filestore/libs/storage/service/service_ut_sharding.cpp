@@ -6862,7 +6862,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
               1}});
     }
 
-    SERVICE_TEST_SIMPLE(ShouldListNodesReturnENoEntForMissingNodes)
+    SERVICE_TEST_SIMPLE(ShouldListNodesReturnNodesNotFoundInShardForMissingNodes)
     {
         config.SetMultiTabletForwardingEnabled(true);
 
@@ -6937,7 +6937,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             false)->Record;
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
-            listNodesResponse.GetError().GetCode(),
+            listNode
+            sResponse.GetError().GetCode(),
             listNodesResponse.GetError().GetMessage());
     }
 }

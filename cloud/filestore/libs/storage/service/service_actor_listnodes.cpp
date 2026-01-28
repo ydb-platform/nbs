@@ -37,7 +37,7 @@ private:
     // Control flags
     const bool MultiTabletForwardingEnabled;
     const bool GetNodeAttrBatchEnabled;
-    const bool ReturnENoEnt = false;
+    const bool ReturnNodesNotFoundInShard = false;
     // Response data
     NProto::TListNodesResponse Response;
     ui32 GetNodeAttrResponses = 0;
@@ -115,7 +115,7 @@ TListNodesActor::TListNodesActor(
     , LogTag(ListNodesRequest.GetFileSystemId())
     , MultiTabletForwardingEnabled(multiTabletForwardingEnabled)
     , GetNodeAttrBatchEnabled(getNodeAttrBatchEnabled)
-    , ReturnENoEnt(ListNodesRequest.GetReturnENoEnt())
+    , ReturnNodesNotFoundInShard(ListNodesRequest.GetReturnNodesNotFoundInShard())
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
 {
@@ -475,10 +475,6 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
     bool exists = true;
     if (HasError(msg->GetError())) {
         if (msg->GetError().GetCode() == NoEnt) {
-            if (ReturnENoEnt) {
-                HandleError(ctx, *msg->Record.MutableError());
-                return;
-            }
             exists = false;
         } else {
             LOG_WARN(
@@ -545,12 +541,14 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
             return;
         }
 
-        // Here we need to remove the Names and Nodes corresponding to the
-        // missing nodes from the response. Plain Erase/EraseIf don't seem to
-        // be applicable since we need to do this operation over 2 repeated
-        // fields - not over a single stl-like container.
-        RemoveByIndices(*Response.MutableNodes(), MissingNodeIndices);
-        RemoveByIndices(*Response.MutableNames(), MissingNodeIndices);
+        if (!ReturnNodesNotFoundInShard) {
+            // Here we need to remove the Names and Nodes corresponding to the
+            // missing nodes from the response. Plain Erase/EraseIf don't seem to
+            // be applicable since we need to do this operation over 2 repeated
+            // fields - not over a single stl-like container.
+            RemoveByIndices(*Response.MutableNodes(), MissingNodeIndices);
+            RemoveByIndices(*Response.MutableNames(), MissingNodeIndices);
+        }
 
         ReplyAndDie(ctx);
     }
