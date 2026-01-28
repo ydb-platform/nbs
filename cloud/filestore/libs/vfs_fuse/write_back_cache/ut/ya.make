@@ -11,6 +11,7 @@ SRCS(
     persistent_request_storage_ut.cpp
     persistent_storage_ut.cpp
     read_write_range_lock_ut.cpp
+    write_back_cache_state_ut.cpp
     write_back_cache_ut.cpp
     write_back_cache_util_ut.cpp
 )
