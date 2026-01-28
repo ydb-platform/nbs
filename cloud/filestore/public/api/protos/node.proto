@@ -320,7 +320,7 @@ message TListNodesRequest
     uint32 MaxBytes = 5;
 
     // Optional flag to return ENOENT for missing nodes in shards
-    bool ReturnENoEnt = 6;
+    bool ReturnNodesNotFoundInShard = 6;
 }
 
 message TListNodesResponse
