@@ -173,7 +173,7 @@ void TStorageServiceActor::ForwardRequest(
     InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
     inflight->AccessProfileLogRequest().SetClientId(session->ClientId);
     const bool blockChecksumsEnabled =
-        filestore.GetFeatures().GetBlockChecksu msInProfileLogEnabled()
+        filestore.GetFeatures().GetBlockChecksumsInProfileLogEnabled()
         || StorageConfig->GetBlockChecksumsInProfileLogEnabled();
     if (blockChecksumsEnabled) {
         CalculateRequestChecksums(
