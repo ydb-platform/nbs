@@ -27,13 +27,13 @@ BLOCKSTORE_DISK_REGISTRY_PROXY_CONFIG(BLOCKSTORE_DECLARE_CONFIG)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TTarget, typename TSource>
-TTarget ConvertValue(TSource value)
+TTarget ConvertValue(const TSource& value)
 {
-    return static_cast<TTarget>(std::move(value));
+    return TTarget(value);
 }
 
 template <>
-TDuration ConvertValue<TDuration, ui32>(ui32 value)
+TDuration ConvertValue<TDuration, ui32>(const ui32& value)
 {
     return TDuration::MilliSeconds(value);
 }
