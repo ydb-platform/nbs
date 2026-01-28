@@ -1,6 +1,6 @@
 #include "disk_registry_actor.h"
 
-#include "util/string/join.h"
+#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -47,7 +47,7 @@ private:
     const TDuration DiskAgentRequestTimeout;
     TVector<TString> Paths;
 
-    std::optional<TRequestContext> RequestContext;
+    TRequestContext RequestContext;
 
 public:
     TDetachPathActor(
@@ -56,7 +56,7 @@ public:
         ui64 nodeId,
         TVector<TString> paths,
         TDuration diskAgentRequestTimeout,
-        std::optional<TRequestContext> requestContext);
+        TRequestContext requestContext);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -93,7 +93,7 @@ TDetachPathActor::TDetachPathActor(
         ui64 nodeId,
         TVector<TString> paths,
         TDuration diskAgentRequestTimeout,
-        std::optional<TRequestContext> requestContext)
+        TRequestContext requestContext)
     : Owner(owner)
     , AgentId(std::move(agentId))
     , NodeId(nodeId)
@@ -142,11 +142,9 @@ void TDetachPathActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    if (RequestContext) {
-        auto response =
-            CreateResponseByActionType(RequestContext->ActionType, error);
-        NCloud::Reply(ctx, *RequestContext->RequestInfo, std::move(response));
-    }
+    auto response =
+        CreateResponseByActionType(RequestContext.ActionType, error);
+    NCloud::Reply(ctx, *RequestContext.RequestInfo, std::move(response));
 
     auto request = std::make_unique<
         TEvDiskRegistryPrivate::TEvDetachPathsOperationCompleted>(

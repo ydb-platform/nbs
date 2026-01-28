@@ -476,7 +476,7 @@ private:
 struct TTestRuntimeBuilder
 {
     TVector<NActors::IActor*> DiskAgents;
-    std::function<TStorageConfigPtr()> CreateStorageConfig;
+    std::function<TStorageConfigPtr()> StorageConfigFactory;
     TDiagnosticsConfigPtr DiagnosticsConfig;
     NLogbroker::IServicePtr LogbrokerService;
     NNotify::IServicePtr NotifyService;
