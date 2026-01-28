@@ -1,6 +1,5 @@
 GO_LIBRARY()
 
-
 GO_TEST_SRCS(
     traversal_test.go
 )
