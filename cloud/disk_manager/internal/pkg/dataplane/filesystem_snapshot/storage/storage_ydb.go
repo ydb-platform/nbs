@@ -1061,16 +1061,16 @@ func (s *storageYDB) scheduleNodesForListing(
 func (s *storageYDB) ScheduleRootNodeForListing(
 	ctx context.Context,
 	snapshotID string,
-) (scheduled bool, err error) {
+) (err error) {
 
 	err = s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			scheduled, err = s.scheduleRootNodeForListing(ctx, session, snapshotID)
+			err = s.scheduleRootNodeForListing(ctx, session, snapshotID)
 			return err
 		},
 	)
-	return scheduled, err
+	return err
 }
 
 func (s *storageYDB) SelectNodesToList(
