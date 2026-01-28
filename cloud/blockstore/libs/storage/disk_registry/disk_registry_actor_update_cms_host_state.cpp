@@ -82,8 +82,8 @@ void TDiskRegistryActor::CompleteUpdateCmsHostState(
     const TActorContext& ctx,
     TTxDiskRegistry::TUpdateCmsHostState& args)
 {
-    const auto* agent = State->FindAgent(args.Host);
-    const bool agentAvailable = agent && agent->GetState() != NProto::AGENT_STATE_UNAVAILABLE;
+    auto* agentRegInfo = AgentRegInfo.FindPtr(args.Host);
+    const bool agentAvailable = agentRegInfo && agentRegInfo->Connected;
     const bool needToDetachPaths = Config->GetAttachDetachPathsEnabled() &&
                                    args.State == NProto::AGENT_STATE_WARNING &&
                                    !HasError(args.Error) && agentAvailable;

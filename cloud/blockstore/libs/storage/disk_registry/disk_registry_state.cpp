@@ -1034,8 +1034,8 @@ auto TDiskRegistryState::RegisterAgent(
             }
         }
 
-        // Needed to initialize path states at first start, can be deleted after
-        // full feature enabling.
+        // Need to initialize path states at the first start, can be deleted
+        // after the feature is fully enabled.
         if (StorageConfig->GetAttachDetachPathsEnabled()) {
             for (const auto& device: agent.GetDevices()) {
                 if (agent.GetPathAttachStates().contains(
@@ -5628,18 +5628,7 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
         return result;
     }
 
-    TVector<TString> paths;
-    for (const auto& device: agent->GetDevices()) {
-        paths.emplace_back(device.GetDeviceName());
-    }
-    for (const auto& [path, _]: agent->GetPathAttachStates()) {
-        paths.emplace_back(path);
-    }
-    SortUnique(paths);
-
-    for (auto& path: paths) {
-        DetachPathIfNeeded(db, *agent, path);
-    }
+    DetachPathsOnAgentIfNeeded(db, *agent);
 
     return result;
 }
@@ -8364,6 +8353,7 @@ void TDiskRegistryState::DetachPathIfNeeded(
         ReportDiskRegistryDetachPathWithDependentDisk(
             "Can't detach path with dependent disks",
             {{"agent", agent.GetAgentId()}, {"path", path}});
+        return;
     }
 
     auto& pathStates = *agent.MutablePathAttachStates();
@@ -8406,6 +8396,24 @@ bool TDiskRegistryState::HasDependentDisks(
 
             return !!FindDisk(device.GetDeviceUUID());
         });
+}
+
+void TDiskRegistryState::DetachPathsOnAgentIfNeeded(
+    TDiskRegistryDatabase& db,
+    NProto::TAgentConfig& agent)
+{
+    TVector<TString> paths;
+    for (const auto& device: agent.GetDevices()) {
+        paths.emplace_back(device.GetDeviceName());
+    }
+    for (const auto& [path, _]: agent.GetPathAttachStates()) {
+        paths.emplace_back(path);
+    }
+    SortUnique(paths);
+
+    for (auto& path: paths) {
+        DetachPathIfNeeded(db, agent, path);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
