@@ -1409,4 +1409,7 @@ message TStorageServiceConfig
     // VolumeProxy to Volume inactive (with no requests from client) connection
     // reset timeout (in milliseconds).
     optional uint32 VolumeProxyPipeInactivityTimeout = 477;
+
+    // Enables fresh channel zero requests.
+    optional bool FreshChannelZeroRequestsEnabled = 478;
 }

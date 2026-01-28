@@ -332,6 +332,12 @@ private:
         TTxPartition::TDescribeBlocks& args,
         TEvVolume::TEvDescribeBlocksResponse* response);
 
+    void ZeroFreshBlocks(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        TBlockRange32 writeRange,
+        ui64 commitId);
+
     void ProcessIOQueue(const NActors::TActorContext& ctx, ui32 channel);
     void ClearWriteQueue(const NActors::TActorContext& ctx);
     void ProcessCommitQueue(const NActors::TActorContext& ctx);
