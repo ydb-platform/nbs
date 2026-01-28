@@ -165,7 +165,14 @@ func (t *FilesystemTraverser) directoryLister(
 
 	cleanupCtx := context.WithoutCancel(ctx)
 	defer func() {
-		t.client.DestroySession(cleanupCtx, session)
+		err = t.client.DestroySession(cleanupCtx, session)
+		if err != nil {
+			logging.Error(
+				cleanupCtx,
+				"failed to destroy session for traversal: %v",
+				err,
+			)
+		}
 	}()
 
 	for {
