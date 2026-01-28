@@ -277,7 +277,7 @@ void TDiskRegistryActor::KillActors(const TActorContext& ctx)
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, actor);
     }
 
-    for (const auto& [agentId, actorId]: AgentsWithDetachRequestsInProgress) {
+    for (const auto& [_, actorId]: AgentsWithDetachRequestsInProgress) {
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, actorId);
     }
 }

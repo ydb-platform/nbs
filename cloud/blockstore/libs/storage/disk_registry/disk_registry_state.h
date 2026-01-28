@@ -905,6 +905,10 @@ public:
     THashSet<TDeviceId> GetUnavailableDevicesForDisk(
         const TString& diskId) const;
 
+    void DetachPathsOnAgentIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent);
+
     void DetachPathIfNeeded(
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,
