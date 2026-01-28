@@ -234,6 +234,11 @@ func (t *FilesystemTraverser) listNode(
 
 		var childDirs []nfs.Node
 		for _, n := range nodes {
+			// See: https://github.com/ydb-platform/nbs/issues/5094
+			if node.NodeID == nfs.InvalidNodeID {
+				continue
+			}
+
 			if n.Type.IsDirectory() {
 				childDirs = append(childDirs, n)
 			}
