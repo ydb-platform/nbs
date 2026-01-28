@@ -19,7 +19,7 @@ constexpr ui64 MaxDiskRegistryBasedVolumeSize = 256_TB;
 constexpr ui64 MaxDiskRegistryBasedVolumeBlocksCount =
     MaxDiskRegistryBasedVolumeSize / DefaultBlockSize;
 constexpr ui64 MaxSsdLocalVolumeBlocksCount =
-    MaxDiskRegistryBasedVolumeSize / 512;
+    MaxDiskRegistryBasedVolumeSize / DefaultLocalSSDBlockSize;
 constexpr ui64 MaxHddLocalVolumeBlocksCount =
     MaxDiskRegistryBasedVolumeSize / DefaultBlockSize;
 
