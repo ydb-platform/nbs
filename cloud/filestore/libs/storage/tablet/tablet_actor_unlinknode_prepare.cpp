@@ -56,11 +56,6 @@ bool TIndexTabletActor::PrepareTx_PrepareUnlinkDirectoryNode(
     }
 
     if (!args.Node) {
-        args.Error = ErrorInvalidTarget(args.Request.GetNodeId());
-        return true;
-    }
-
-    if (!args.Node) {
         auto message = ReportNodeNotFoundInShard(TStringBuilder()
             << "PrepareUnlinkDirectoryNode: "
             << args.Request.ShortDebugString());
@@ -75,7 +70,6 @@ bool TIndexTabletActor::PrepareTx_PrepareUnlinkDirectoryNode(
         args.Error = ErrorIsNotDirectory(args.Request.GetNodeId());
         return true;
     }
-
 
     TVector<IIndexTabletDatabase::TNodeRef> refs;
     // 1 entry is enough to prevent deletion

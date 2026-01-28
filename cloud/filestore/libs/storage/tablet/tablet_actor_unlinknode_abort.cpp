@@ -56,11 +56,6 @@ bool TIndexTabletActor::PrepareTx_AbortUnlinkDirectoryNode(
     }
 
     if (!args.Node) {
-        args.Error = ErrorInvalidTarget(args.Request.GetNodeId());
-        return true;
-    }
-
-    if (!args.Node) {
         auto message = ReportNodeNotFoundInShard(TStringBuilder()
             << "AbortUnlinkDirectoryNode: "
             << args.Request.ShortDebugString());
@@ -74,6 +69,23 @@ bool TIndexTabletActor::PrepareTx_AbortUnlinkDirectoryNode(
             << args.Request.ShortDebugString());
         args.Error = ErrorIsNotDirectory(args.Request.GetNodeId());
         return true;
+    }
+
+    if (!args.Node->Attrs.GetIsPreparedForUnlink()) {
+        //
+        // Should be safe to continue the operation but a crit event + a log
+        // message will be useful.
+        //
+
+        auto message = ReportNotPreparedForUnlink(TStringBuilder()
+            << "AbortUnlinkDirectoryNode: "
+            << args.Request.ShortDebugString());
+
+        LOG_WARN(ctx, TFileStoreComponents::TABLET,
+            "%s[%s] %s",
+            LogTag.c_str(),
+            args.SessionId.c_str(),
+            message.Quote().c_str());
     }
 
     return true;
