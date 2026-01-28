@@ -343,6 +343,11 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
         return true;
     }
 
+    if (args.NewParentNode->Attrs.GetIsPreparedForUnlink()) {
+        args.Error = ErrorIsPreparedForUnlink(args.NewParentNode->NodeId);
+        return true;
+    }
+
     // TODO: AccessCheck
 
     // check if new ref exists

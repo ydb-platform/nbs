@@ -923,7 +923,61 @@ message TRenameNodeInDestinationResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// UnlinkNodeInShard request/response
+// PrepareUnlinkDirectoryNodeInShard request/response
+
+message TPrepareUnlinkDirectoryNodeInShardRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // The node.
+    uint64 NodeId = 3;
+
+    // Original request that caused this request.
+    TRenameNodeInDestinationRequest OriginalRequest = 4;
+}
+
+message TPrepareUnlinkDirectoryNodeInShardResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Optional response headers.
+    NProto.TResponseHeaders Headers = 1000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// AbortUnlinkDirectoryNodeInShard request/response
+
+message TAbortUnlinkDirectoryNodeInShardRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // The node.
+    uint64 NodeId = 3;
+
+    // Original request that caused this request.
+    TRenameNodeInDestinationRequest OriginalRequest = 4;
+}
+
+message TAbortUnlinkDirectoryNodeInShardResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Optional response headers.
+    NProto.TResponseHeaders Headers = 1000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// UnlinkNodeInShard request
 
 message TUnlinkNodeInShardRequest
 {

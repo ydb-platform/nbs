@@ -107,6 +107,8 @@ message TNode
     string SymLink = 10;
 
     uint64 DevId = 11;
+
+    bool IsPreparedForUnlink = 12;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

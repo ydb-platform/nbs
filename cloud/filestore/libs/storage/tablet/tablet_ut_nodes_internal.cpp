@@ -48,6 +48,227 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         });
     }
 
+    TABLET_TEST_4K_ONLY(ShouldPrepareUnlinkDirectoryNodeInShard)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const TString uuid1 = CreateGuidAsString();
+        const TString uuid2 = CreateGuidAsString();
+
+        const ui64 dirId =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, uuid1));
+        CreateNode(tablet, TCreateNodeArgs::File(dirId, uuid2));
+
+        //
+        // dir is not empty - prepare-unlink should fail.
+        //
+
+        NProtoPrivate::TRenameNodeInDestinationRequest originalRequest;
+        tablet.SendPrepareUnlinkDirectoryNodeInShardRequest(
+            dirId,
+            originalRequest);
+        {
+            auto response =
+                tablet.RecvPrepareUnlinkDirectoryNodeInShardResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOTEMPTY,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        //
+        // dir shouldn't be locked for node-ref addition.
+        //
+
+        const TString uuid3 = CreateGuidAsString();
+        tablet.SendCreateNodeRequest(TCreateNodeArgs::File(dirId, uuid3));
+        {
+            auto response = tablet.RecvCreateNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        //
+        // Let's make the dir empty - after that prepare-unlink should succeed.
+        //
+
+        tablet.UnlinkNode(dirId, uuid2, false /* unlinkDirectory */);
+        tablet.UnlinkNode(dirId, uuid3, false /* unlinkDirectory */);
+
+        tablet.SendPrepareUnlinkDirectoryNodeInShardRequest(
+            dirId,
+            originalRequest);
+        {
+            auto response =
+                tablet.RecvPrepareUnlinkDirectoryNodeInShardResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        //
+        // Now dir should be locked for new node-ref addition.
+        //
+        // We should return retriable errors because there's a chance that the
+        // unlink op will be aborted.
+        //
+
+        const TString uuid4 = CreateGuidAsString();
+        tablet.SendCreateNodeRequest(TCreateNodeArgs::File(dirId, uuid4));
+        {
+            auto response = tablet.RecvCreateNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        const TString uuid5 = CreateGuidAsString();
+        tablet.SendCreateHandleRequest(dirId, uuid5, TCreateHandleArgs::CREATE);
+        {
+            auto response = tablet.RecvCreateHandleResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        const TString shardId6 = "shard6";
+        const TString uuid6 = CreateGuidAsString();
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, uuid6));
+
+        const TString uuid7 = CreateGuidAsString();
+        tablet.SendRenameNodeRequest(RootNodeId, uuid6, dirId, uuid7);
+        {
+            auto response = tablet.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        const TString uuid8 = CreateGuidAsString();
+        tablet.SendRenameNodeInDestinationRequest(
+            dirId,
+            uuid8,
+            shardId6,
+            uuid6);
+        {
+            auto response = tablet.RecvRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        //
+        // It should be possible to unlink dir and after that node creation
+        // attempts should start returning E_FS_NOENT instead of E_REJECTED.
+        //
+
+        tablet.UnlinkNode(RootNodeId, uuid1, true /* unlinkDirectory */);
+
+        const TString uuid9 = CreateGuidAsString();
+        tablet.SendCreateNodeRequest(TCreateNodeArgs::File(dirId, uuid9));
+        {
+            auto response = tablet.RecvCreateNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOENT,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldAbortUnlinkDirectoryNodeInShard)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const TString uuid1 = CreateGuidAsString();
+
+        const ui64 dirId =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, uuid1));
+
+        NProtoPrivate::TRenameNodeInDestinationRequest originalRequest;
+        tablet.SendPrepareUnlinkDirectoryNodeInShardRequest(
+            dirId,
+            originalRequest);
+        {
+            auto response =
+                tablet.RecvPrepareUnlinkDirectoryNodeInShardResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        //
+        // Now dir should be locked for new node-ref addition.
+        //
+
+        const TString uuid2 = CreateGuidAsString();
+        tablet.SendCreateNodeRequest(TCreateNodeArgs::File(dirId, uuid2));
+        {
+            auto response = tablet.RecvCreateNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        //
+        // Aborting unlink - after this the dir should become unlocked.
+        //
+
+        tablet.SendAbortUnlinkDirectoryNodeInShardRequest(
+            dirId,
+            originalRequest);
+        {
+            auto response =
+                tablet.RecvAbortUnlinkDirectoryNodeInShardResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        const TString uuid3 = CreateGuidAsString();
+        tablet.SendCreateNodeRequest(TCreateNodeArgs::File(dirId, uuid3));
+        {
+            auto response = tablet.RecvCreateNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+    }
+
     TABLET_TEST_4K_ONLY(
         ShouldReturnErrorUponRenameNodeInDestinationForFileToDirOp)
     {
