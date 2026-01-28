@@ -406,7 +406,6 @@ struct TEvPartitionPrivate
         ui64 BlobSize;
         TVector<TBlockRange32> BlockRanges;
         TVector<IWriteBlocksHandlerPtr> WriteHandlers;
-        bool IsZeroRequest;
 
         TAddFreshBlocksRequest(
                 ui64 commitId,
@@ -417,17 +416,6 @@ struct TEvPartitionPrivate
             , BlobSize(blobSize)
             , BlockRanges(std::move(blockRanges))
             , WriteHandlers(std::move(writeHandlers))
-            , IsZeroRequest(false)
-        {}
-
-        TAddFreshBlocksRequest(
-                ui64 commitId,
-                ui64 blobSize,
-                TVector<TBlockRange32> blockRanges)
-            : CommitId(commitId)
-            , BlobSize(blobSize)
-            , BlockRanges(std::move(blockRanges))
-            , IsZeroRequest(true)
         {}
     };
 

@@ -97,6 +97,10 @@ private:
     template <typename TEvent>
     void NotifyCompleted(const TActorContext& ctx, std::unique_ptr<TEvent> ev);
     bool HandleError(const TActorContext& ctx, const NProto::TError& error);
+
+    void ReplyWrite(const TActorContext& ctx, const NProto::TError& error);
+    void ReplyZero(const TActorContext& ctx, const NProto::TError& error);
+
     void ReplyAllAndDie(const TActorContext& ctx, const NProto::TError& error);
 
 private:
@@ -274,24 +278,13 @@ void TWriteFreshBlocksActor::AddBlocks(const TActorContext& ctx)
 {
     Y_ABORT_UNLESS(BlobSize > 0);
 
-    IEventBasePtr request;
-
-    if (IsZeroRequest) {
-        request =
-            std::make_unique<TEvPartitionPrivate::TEvAddFreshBlocksRequest>(
-                CombinedContext,
-                CommitId,
-                BlobSize,
-                std::move(BlockRanges));
-    } else {
-        request =
-            std::make_unique<TEvPartitionPrivate::TEvAddFreshBlocksRequest>(
-                CombinedContext,
-                CommitId,
-                BlobSize,
-                std::move(BlockRanges),
-                std::move(WriteHandlers));
-    }
+    IEventBasePtr request =
+        std::make_unique<TEvPartitionPrivate::TEvAddFreshBlocksRequest>(
+            CombinedContext,
+            CommitId,
+            BlobSize,
+            std::move(BlockRanges),
+            std::move(WriteHandlers));
 
     NCloud::Send(
         ctx,
@@ -333,6 +326,43 @@ bool TWriteFreshBlocksActor::HandleError(
     return false;
 }
 
+void TWriteFreshBlocksActor::ReplyWrite(
+    const TActorContext& ctx,
+    const NProto::TError& error)
+{
+    for (const auto& r: Requests) {
+        IEventBasePtr response = CreateWriteBlocksResponse(
+            r.RequestType == ERequestType::WriteBlocksLocal,
+            error);
+
+        LWTRACK(
+            ResponseSent_Partition,
+            r.RequestInfo->CallContext->LWOrbit,
+            "WriteFreshBlocks",
+            r.RequestInfo->CallContext->RequestId);
+
+        NCloud::Reply(ctx, *r.RequestInfo, std::move(response));
+    }
+}
+
+void TWriteFreshBlocksActor::ReplyZero(
+    const TActorContext& ctx,
+    const NProto::TError& error)
+{
+    for (const auto& r: Requests) {
+        IEventBasePtr response =
+            std::make_unique<TEvService::TEvZeroBlocksResponse>(error);
+
+        LWTRACK(
+            ResponseSent_Partition,
+            r.RequestInfo->CallContext->LWOrbit,
+            "ZeroFreshBlocks",
+            r.RequestInfo->CallContext->RequestId);
+
+        NCloud::Reply(ctx, *r.RequestInfo, std::move(response));
+    }
+}
+
 void TWriteFreshBlocksActor::ReplyAllAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
@@ -343,6 +373,8 @@ void TWriteFreshBlocksActor::ReplyAllAndDie(
                 error,
                 true);   // trimFreshLogBarrierAcquired
         NotifyCompleted(ctx, std::move(completeEvent));
+
+        ReplyZero(ctx, error);
     } else {
         auto completeEvent =
             std::make_unique<TEvPartitionPrivate::TEvWriteBlocksCompleted>(
@@ -350,27 +382,8 @@ void TWriteFreshBlocksActor::ReplyAllAndDie(
                 TEvPartitionPrivate::TWriteBlocksCompleted::
                     CreateFreshBlocksCompleted());
         NotifyCompleted(ctx, std::move(completeEvent));
-    }
 
-    for (const auto& r: Requests) {
-        IEventBasePtr response;
-
-        if (IsZeroRequest) {
-            response =
-                std::make_unique<TEvService::TEvZeroBlocksResponse>(error);
-        } else {
-            response = CreateWriteBlocksResponse(
-                r.RequestType == ERequestType::WriteBlocksLocal,
-                error);
-        }
-
-        LWTRACK(
-            ResponseSent_Partition,
-            r.RequestInfo->CallContext->LWOrbit,
-            "WriteFreshBlocks",
-            r.RequestInfo->CallContext->RequestId);
-
-        NCloud::Reply(ctx, *r.RequestInfo, std::move(response));
+        ReplyWrite(ctx, error);
     }
 
     Die(ctx);
@@ -600,24 +613,18 @@ void TPartitionActor::HandleAddFreshBlocks(
 {
     auto* msg = ev->Get();
 
-    if (msg->IsZeroRequest) {
-        STORAGE_VERIFY(
-            msg->WriteHandlers.empty() && msg->BlockRanges.size() == 1,
-            TWellKnownEntityTypes::DISK,
-            PartitionConfig.GetDiskId());
-
-    } else {
-        STORAGE_VERIFY(
-            msg->WriteHandlers.size() == msg->BlockRanges.size(),
-            TWellKnownEntityTypes::DISK,
-            PartitionConfig.GetDiskId());
-    }
+    STORAGE_VERIFY(
+        msg->WriteHandlers.size() == msg->BlockRanges.size() ||
+            msg->WriteHandlers.empty(),
+        TWellKnownEntityTypes::DISK,
+        PartitionConfig.GetDiskId());
 
     for (size_t i = 0; i < msg->BlockRanges.size(); ++i) {
         auto& blockRange = msg->BlockRanges[i];
 
-        if (msg->IsZeroRequest) {
+        if (!msg->WriteHandlers) {
             State->ZeroFreshBlocks(blockRange, msg->CommitId);
+            State->DecrementFreshBlocksInFlight(blockRange.Size());
 
             continue;
         }
