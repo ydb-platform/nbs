@@ -12,14 +12,26 @@ void TDiskAgentMock::HandleListNVMeDevices(
     TEvDiskAgentPrivate::TEvListNVMeDevicesRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto [disks, error] = LocalNVMeService->ListNVMeDevices();
+    LocalNVMeService->ListNVMeDevices().Subscribe(
+        [actorSystem = TActivationContext::ActorSystem(),
+         replyTo = ev->Sender,
+         replyFrom = ctx.SelfID,
+         cookie = ev->Cookie](const auto& future)
+        {
+            auto [devices, error] = future.GetValue();
 
-    auto response =
-        std::make_unique<TEvDiskAgentPrivate::TEvListNVMeDevicesResponse>(
-            std::move(error),
-            std::move(disks));
+            auto response = std::make_unique<
+                TEvDiskAgentPrivate::TEvListNVMeDevicesResponse>(
+                error,
+                devices);
 
-    Reply(ctx, *ev, std::move(response));
+            actorSystem->Send(new IEventHandle{
+                replyTo,
+                replyFrom,
+                response.release(),
+                0,   // flags
+                cookie});
+        });
 }
 
 void TDiskAgentMock::HandleAcquireNVMeDevice(

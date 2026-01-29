@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/config/grpc_client.pb.h>
+#include <cloud/blockstore/config/local_nvme.pb.h>
 #include <cloud/blockstore/config/root_kms.pb.h>
 
 #include <cloud/blockstore/libs/client/config.h>
@@ -63,6 +64,7 @@ struct TConfigInitializerYdb final
     NProto::TGrpcClientConfig KmsClientConfig;
     NProto::TGrpcClientConfig ComputeClientConfig;
     NProto::TRootKmsConfig RootKmsConfig;
+    NProto::TLocalNVMeConfig LocalNVMeConfig;
 
     TConfigInitializerYdb(TOptionsYdbPtr options);
 
@@ -75,7 +77,7 @@ struct TConfigInitializerYdb final
     void InitKmsClientConfig();
     void InitRootKmsConfig();
     void InitComputeClientConfig();
-    void InitTraceServiceClientConfig();
+    void InitLocalNVMeConfig();
 
     bool GetUseNonreplicatedRdmaActor() const override;
     TDuration GetInactiveClientsTimeout() const override;
@@ -100,6 +102,7 @@ private:
     void ApplyKmsClientConfig(const TString& text);
     void ApplyRootKmsConfig(const TString& text);
     void ApplyComputeClientConfig(const TString& text);
+    void ApplyLocalNVMeConfig(const TString& text);
 
     void ApplyNamedConfigs(const NKikimrConfig::TAppConfig& config);
     void ApplyBlockstoreConfig(const NKikimrConfig::TAppConfig& config);

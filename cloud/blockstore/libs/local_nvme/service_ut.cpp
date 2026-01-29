@@ -5,13 +5,11 @@
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/future.h>
 
-#include <util/folder/tempdir.h>
-
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
+Y_UNIT_TEST_SUITE(TLocalNVMeServiceStubTest)
 {
     Y_UNIT_TEST(ShouldStub)
     {
@@ -19,7 +17,8 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         service->Start();
 
         {
-            auto [list, error] = service->ListNVMeDevices();
+            auto future = service->ListNVMeDevices();
+            auto [list, error] = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(0, list.size());
         }
