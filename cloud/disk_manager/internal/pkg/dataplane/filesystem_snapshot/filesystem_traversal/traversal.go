@@ -37,6 +37,24 @@ type FilesystemTraverser struct {
 	rootNodeAlreadyScheduled bool
 }
 
+// FilesystemTravers performs parallel traversal of a filesystem.
+// For traversal durability, the traverasl queue is stored within a database table.
+// 1. Checks whether the root node was already scheduled.
+// 2. If not, schedules the root node.
+// 3. Saves the state via StateSaver.
+// Saving the information about root node scheduling is required,
+// because nodes are removed from the traversal queue when they are fully processed.
+// 4. Starts directoryScheduler method which fetchs nodes from database, saves them to inflight hashmap and send them to scheduledNodes channel.
+// directoryScheduler also removes inflight nodes when it receives their IDs from processedNodeIDs channel.
+// 5. Start directoryLister workers.
+// A directoryLister worker fetches the node from scheduledNodes channel, lists its children via the Filestore client,
+// calls onListedNodes callback with the listed nodes, and schedules child directories for listing.
+// Scheduling means saving child nodes to the database and they will be later fetched by directoryScheduler.
+// Node listing operation has pagination support using pagination cookie.
+// The cookie must be saved to the database in the same transaction as scheduling child nodes for listing.
+// Each node is repeatedly listed until the cookie becomes empty.
+// Traversal is finished when there is no processing nodes and no nodes to be scheduled.
+
 func NewFilesystemTraverser(
 	filesystemSnapshotID string,
 	filesystemID string,
@@ -108,7 +126,7 @@ func (t *FilesystemTraverser) Traverse(
 func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
 	defer close(t.scheduledNodes)
 
-	processingNodes := make(map[uint64]struct{})
+	processedNodeIDs := make(map[uint64]struct{})
 	pendingNodes := make([]*storage.NodeQueueEntry, 0)
 
 	for {
@@ -118,10 +136,10 @@ func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
 			case <-ctx.Done():
 				return ctx.Err()
 			case nodeID := <-t.processedNodeIDs:
-				delete(processingNodes, nodeID)
+				delete(processedNodeIDs, nodeID)
 			case t.scheduledNodes <- node:
 				pendingNodes = pendingNodes[:len(pendingNodes)-1]
-				processingNodes[node.NodeID] = struct{}{}
+				processedNodeIDs[node.NodeID] = struct{}{}
 			}
 			continue
 		}
@@ -129,7 +147,7 @@ func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
 		entries, err := t.storage.SelectNodesToList(
 			ctx,
 			t.filesystemSnapshotID,
-			processingNodes,
+			processedNodeIDs,
 			t.selectNodesToListLimit,
 		)
 		if err != nil {
@@ -137,7 +155,7 @@ func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
 		}
 
 		if len(entries) == 0 {
-			if len(processingNodes) == 0 {
+			if len(processedNodeIDs) == 0 {
 				logging.Info(ctx, "Traversal complete for %s", t.filesystemSnapshotID)
 				return nil
 			}
@@ -145,7 +163,7 @@ func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
 			case <-ctx.Done():
 				return ctx.Err()
 			case nodeID := <-t.processedNodeIDs:
-				delete(processingNodes, nodeID)
+				delete(processedNodeIDs, nodeID)
 			}
 			continue
 		}
