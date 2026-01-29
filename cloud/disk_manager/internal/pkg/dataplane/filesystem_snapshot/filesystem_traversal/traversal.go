@@ -69,6 +69,13 @@ func (t *FilesystemTraverser) Traverse(
 	onListedNodes OnListedNodesFunc,
 ) error {
 
+	ctx = logging.WithFields(
+		ctx,
+		logging.Bool("FILESYSTEM_TRAVERSAL_IN_PROGRESS", true),
+		logging.String("FILESYSTEM_SNAPSHOT_ID", t.filesystemSnapshotID),
+		logging.String("FILESYSTEM_ID", t.filesystemID),
+		logging.String("FILESYSTEM_CHECKPOINT_ID", t.filesystemCheckpointID),
+	)
 	if !t.rootNodeAlreadyScheduled {
 		err := t.storage.ScheduleRootNodeForListing(ctx, t.filesystemSnapshotID)
 		if err != nil {
