@@ -4,6 +4,7 @@ SRCS(
     overlapping_interval_set.cpp
     read_write_range_lock.cpp
     write_back_cache.cpp
+    write_back_cache_stats.cpp
     write_back_cache_util.cpp
 )
 

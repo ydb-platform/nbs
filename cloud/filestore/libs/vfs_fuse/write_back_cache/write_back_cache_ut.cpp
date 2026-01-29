@@ -4,6 +4,7 @@
 
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
+#include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/write_back_cache_stats_test.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/scheduler_test.h>
@@ -27,10 +28,9 @@
 namespace NCloud::NFileStore::NFuse {
 
 using namespace std::chrono_literals;
-
 using namespace NThreading;
+using namespace NWriteBackCache;
 
-using EWriteDataRequestStatus = TWriteBackCache::EWriteDataRequestStatus;
 using TIovecs = TVector<TStringBuf>;
 
 namespace {
@@ -130,161 +130,6 @@ struct TInFlightRequestTracker
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TWriteDataRequestStats
-{
-    ui64 InProgressCount = 0;
-    TInstant MinTime = TInstant::Zero();
-    TVector<TDuration> Data;
-    ui64 Count = 0;
-
-    void ResetNonDerivativeCounters()
-    {
-        InProgressCount = 0;
-        MinTime = TInstant::Zero();
-    }
-};
-
-struct TReadDataRequestStats
-{
-    TVector<TDuration> Data;
-    ui64 CacheMissCount = 0;
-    ui64 CachePartialHitCount = 0;
-    ui64 CacheFullHitCount = 0;
-};
-
-struct TWriteBackCacheStats
-    : public IWriteBackCacheStats
-{
-    ui64 InProgressFlushCount = 0;
-    ui64 CompletedFlushCount = 0;
-    ui64 FailedFlushCount = 0;
-
-    ui64 NodeCount = 0;
-
-    TWriteDataRequestStats PendingStats;
-    TWriteDataRequestStats CachedStats;
-    TWriteDataRequestStats FlushingStats;
-    TWriteDataRequestStats FlushedStats;
-
-    TReadDataRequestStats ReadStats;
-
-    TWriteBackCache::TPersistentQueueStats PersistentQueueStats;
-
-    // Do not store more than the specified amount of elements in the following
-    // vectors in order to prevent OOM for large tests
-    ui64 MaxItems = 1000000;
-
-    void ResetNonDerivativeCounters() override
-    {
-        InProgressFlushCount = 0;
-        NodeCount = 0;
-
-        PendingStats.ResetNonDerivativeCounters();
-        CachedStats.ResetNonDerivativeCounters();
-        FlushingStats.ResetNonDerivativeCounters();
-        FlushedStats.ResetNonDerivativeCounters();
-    }
-
-    void FlushStarted() override
-    {
-        InProgressFlushCount++;
-    }
-
-    void FlushCompleted() override
-    {
-        InProgressFlushCount--;
-        CompletedFlushCount++;
-    }
-
-    void FlushFailed() override
-    {
-        FailedFlushCount++;
-    }
-
-    void IncrementNodeCount() override
-    {
-        NodeCount++;
-    }
-
-    void DecrementNodeCount() override
-    {
-        NodeCount--;
-    }
-
-    TWriteDataRequestStats& GetWriteStats(EWriteDataRequestStatus status)
-    {
-        switch (status) {
-            case EWriteDataRequestStatus::Pending:
-                return PendingStats;
-            case EWriteDataRequestStatus::Cached:
-                return CachedStats;
-            case EWriteDataRequestStatus::Flushing:
-                return FlushingStats;
-            case EWriteDataRequestStatus::Flushed:
-                return FlushedStats;
-            default:
-                Y_ABORT("Unknown EWriteDataRequestStatus value");
-        }
-    }
-
-    void WriteDataRequestEnteredStatus(
-        TWriteBackCache::EWriteDataRequestStatus status) override
-    {
-        auto& stats = GetWriteStats(status);
-        stats.InProgressCount++;
-    }
-
-    void WriteDataRequestExitedStatus(
-        TWriteBackCache::EWriteDataRequestStatus status,
-        TDuration duration) override
-    {
-        auto& stats = GetWriteStats(status);
-        stats.Count++;
-        stats.InProgressCount--;
-        if (stats.Data.size() < MaxItems) {
-            stats.Data.push_back(duration);
-        }
-    }
-
-    void WriteDataRequestUpdateMinTime(
-        TWriteBackCache::EWriteDataRequestStatus status,
-        TInstant minTime) override
-    {
-        auto& stats = GetWriteStats(status);
-        stats.MinTime = minTime;
-    }
-
-    void AddReadDataStats(
-        IWriteBackCacheStats::EReadDataRequestCacheStatus status,
-        TDuration pendingDuration) override
-    {
-        if (ReadStats.Data.size() < MaxItems) {
-            ReadStats.Data.push_back(pendingDuration);
-        }
-        switch (status) {
-            case EReadDataRequestCacheStatus::Miss:
-                ReadStats.CacheMissCount++;
-                break;
-            case EReadDataRequestCacheStatus::PartialHit:
-                ReadStats.CachePartialHitCount++;
-                break;
-            case EReadDataRequestCacheStatus::FullHit:
-                ReadStats.CacheFullHitCount++;
-                break;
-            default:
-                Y_ABORT("Unknown EReadDataRequestCacheState value");
-        }
-    }
-
-    void UpdatePersistentQueueStats(
-        const TWriteBackCache::TPersistentQueueStats& stats) override
-    {
-        PersistentQueueStats = stats;
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TTestTimer
     : public ITimer
 {
@@ -323,7 +168,7 @@ struct TBootstrap
     std::shared_ptr<TFileStoreTest> Session;
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
-    std::shared_ptr<TWriteBackCacheStats> Stats;
+    std::shared_ptr<TTestWriteBackCacheStats> Stats;
     TDuration CacheAutomaticFlushPeriod;
     TDuration CacheFlushRetryPeriod;
     TTempFileHandle TempFileHandle;
@@ -379,7 +224,7 @@ struct TBootstrap
         }
         Scheduler->Start();
 
-        Stats = std::make_shared<TWriteBackCacheStats>();
+        Stats = std::make_shared<TTestWriteBackCacheStats>();
 
         Session = std::make_shared<TFileStoreTest>();
 
@@ -735,7 +580,7 @@ struct TBootstrap
     {
         UNIT_ASSERT_EQUAL(0, Stats->InProgressFlushCount);
         UNIT_ASSERT_EQUAL(0, Stats->NodeCount);
-        UNIT_ASSERT_EQUAL(0, Stats->PersistentQueueStats.RawUsedBytesCount);
+        UNIT_ASSERT_EQUAL(0, Stats->StorageStats.RawUsedByteCount);
         UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->PendingStats.MinTime);
         UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->CachedStats.MinTime);
         UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->FlushingStats.MinTime);
@@ -747,7 +592,7 @@ struct TBootstrap
     }
 
     void CheckWriteDataRequestStats(
-        const TWriteDataRequestStats& stats,
+        const TTestWriteDataRequestStats& stats,
         const TString& name,
         ui64 expectedInProgressCount,
         ui64 expectedCount,
@@ -1748,39 +1593,34 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     Y_UNIT_TEST(ShouldReportPersistentQueueStats)
     {
         TBootstrap b;
-        auto& stats = b.Stats->PersistentQueueStats;
+        auto& stats = b.Stats->StorageStats;
 
-        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.RawCapacity);
-        UNIT_ASSERT_EQUAL(0, stats.RawUsedBytesCount);
-        UNIT_ASSERT_LT(0, stats.MaxAllocationBytesCount);
-        UNIT_ASSERT_GT(CacheCapacityBytes, stats.MaxAllocationBytesCount);
+        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.RawCapacityByteCount);
+        UNIT_ASSERT_EQUAL(0, stats.RawUsedByteCount);
+        UNIT_ASSERT_EQUAL(0, stats.EntryCount);
         UNIT_ASSERT_EQUAL(false, stats.IsCorrupted);
 
         b.WriteToCacheSync(1, 0, "abc");
 
-        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.RawCapacity);
-        UNIT_ASSERT_LT(0, stats.RawUsedBytesCount);
-        UNIT_ASSERT_LT(0, stats.MaxAllocationBytesCount);
-        UNIT_ASSERT_GT(CacheCapacityBytes, stats.MaxAllocationBytesCount);
+        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.RawCapacityByteCount);
+        UNIT_ASSERT_LT(0, stats.RawUsedByteCount);
+        UNIT_ASSERT_EQUAL(1, stats.EntryCount);
         UNIT_ASSERT_EQUAL(false, stats.IsCorrupted);
 
-        auto prevUsedBytesCount = stats.RawUsedBytesCount;
-        auto prevMaxAllocationSize = stats.MaxAllocationBytesCount;
+        auto prevUsedBytesCount = stats.RawUsedByteCount;
 
         b.RecreateCache();
 
-        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.RawCapacity);
-        UNIT_ASSERT_EQUAL(prevUsedBytesCount, stats.RawUsedBytesCount);
-        UNIT_ASSERT_EQUAL(prevMaxAllocationSize, stats.MaxAllocationBytesCount);
-        UNIT_ASSERT_GT(CacheCapacityBytes, stats.MaxAllocationBytesCount);
+        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.RawCapacityByteCount);
+        UNIT_ASSERT_EQUAL(prevUsedBytesCount, stats.RawUsedByteCount);
+        UNIT_ASSERT_EQUAL(1, stats.EntryCount);
         UNIT_ASSERT_EQUAL(false, stats.IsCorrupted);
 
         b.FlushCache();
 
-        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.RawCapacity);
-        UNIT_ASSERT_EQUAL(0, stats.RawUsedBytesCount);
-        UNIT_ASSERT_LT(0, stats.MaxAllocationBytesCount);
-        UNIT_ASSERT_GT(CacheCapacityBytes, stats.MaxAllocationBytesCount);
+        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.RawCapacityByteCount);
+        UNIT_ASSERT_EQUAL(0, stats.RawUsedByteCount);
+        UNIT_ASSERT_EQUAL(0, stats.EntryCount);
         UNIT_ASSERT_EQUAL(false, stats.IsCorrupted);
 
         b.WriteToCacheSync(1, 0, "abc");

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "write_back_cache.h"
+#include "write_back_cache_stats.h"
 
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/core/helpers.h>
@@ -77,7 +78,9 @@ private:
 
     NThreading::TPromise<NProto::TWriteDataResponse> CachedPromise;
 
-    EWriteDataRequestStatus Status = EWriteDataRequestStatus::Initial;
+    NWriteBackCache::EWriteDataRequestStatus Status =
+        NWriteBackCache::EWriteDataRequestStatus::Initial;
+
     TInstant StatusChangeTime = TInstant::Zero();
 
 public:
@@ -154,17 +157,17 @@ public:
 
     bool IsCached() const
     {
-        return Status == EWriteDataRequestStatus::Cached;
+        return Status == NWriteBackCache::EWriteDataRequestStatus::Cached;
     }
 
     bool IsCorrupted() const
     {
-        return Status == EWriteDataRequestStatus::Corrupted;
+        return Status == NWriteBackCache::EWriteDataRequestStatus::Corrupted;
     }
 
     bool IsFlushed() const
     {
-        return Status == EWriteDataRequestStatus::Flushed;
+        return Status == NWriteBackCache::EWriteDataRequestStatus::Flushed;
     }
 
     size_t GetSerializedSize() const;
@@ -183,7 +186,9 @@ public:
     NThreading::TFuture<NProto::TWriteDataResponse> GetCachedFuture();
 
 private:
-    void SetStatus(EWriteDataRequestStatus status, TImpl* impl);
+    void SetStatus(
+        NWriteBackCache::EWriteDataRequestStatus status,
+        TImpl* impl);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
