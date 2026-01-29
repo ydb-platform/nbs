@@ -39,7 +39,7 @@ runs:
   steps:
     - name: install s3cmd and awscli
       if: inputs.install == 'true'
-      shell: bash 
+      shell: bash
       run: |
         which s3cmd || true
         which s3cmd || {
