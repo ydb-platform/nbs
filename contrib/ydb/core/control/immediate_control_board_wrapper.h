@@ -38,6 +38,14 @@ public:
         return Control == another.Control;
     }
 
+    bool IsDefault() const {
+        return Control->IsDefault();
+    }
+
+    TAtomicBase GetDefault() const {
+        return Control->GetDefault();
+    }
+
     /**
      * Resets an existing control to different values.
      *

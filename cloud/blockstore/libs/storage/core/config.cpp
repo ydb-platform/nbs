@@ -993,9 +993,8 @@ BLOCKSTORE_STORAGE_CONFIG_RO(BLOCKSTORE_CONFIG_GETTER)
             type,                                                              \
             Default##name);                                                    \
         const ui64 rawControlValue = Impl->Control##name;                      \
-        const type controlValue = ConvertValue<type>(rawControlValue);         \
-        if (controlValue != configValue) {                                     \
-            return controlValue;                                               \
+        if (!Impl->Control##name.IsDefault()) {                                \
+            return ConvertValue<type>(rawControlValue);                        \
         }                                                                      \
         return configValue;                                                    \
     }                                                                          \

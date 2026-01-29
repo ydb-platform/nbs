@@ -16,6 +16,8 @@
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
+#include <contrib/ydb/library/actors/core/executor_thread.h>
+
 #include <util/generic/guid.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -459,17 +461,20 @@ bool TVolumeActor::ReplyToOriginalRequest(
         volumeRequest.CallerCookie);
 
     if (const TDuration minThrottleDelay =
-            (volumeRequest.RequestStartTime + volumeRequest.RequestCost -
-             ctx.Now()) *
-            Config->GetMinumumThrottlerMultiplier();
+            volumeRequest.RequestStartTime +
+            Config->GetMinumumThrottlerMultiplier() *
+                volumeRequest.RequestCost -
+            ctx.Now();
         minThrottleDelay > TDuration::Zero())
     {
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::METERING,
-            "Scheduling response for %s request in %s",
+            "Scheduling response for %s request in %s. RequestCost: %s; RequestConstMultipled: %s",
             TMethod::Name,
-            FormatDuration(minThrottleDelay).c_str());
+            FormatDuration(minThrottleDelay).c_str(),
+            FormatDuration(volumeRequest.RequestCost).c_str(),
+            FormatDuration(volumeRequest.RequestCost * Config->GetMinumumThrottlerMultiplier()).c_str());
         ctx.ExecutorThread.Schedule(minThrottleDelay, event.release());
     } else {
         ctx.Send(std::move(event));
