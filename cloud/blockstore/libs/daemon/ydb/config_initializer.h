@@ -103,6 +103,8 @@ private:
 
     void ApplyNamedConfigs(const NKikimrConfig::TAppConfig& config);
     void ApplyBlockstoreConfig(const NKikimrConfig::TAppConfig& config);
+    void ApplyAllowedKikimrFeatureFlags(
+        const NKikimrConfig::TAppConfig& config);
 };
 
 }   // namespace NCloud::NBlockStore::NServer
