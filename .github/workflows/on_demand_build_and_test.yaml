@@ -127,7 +127,7 @@ on:
 
 env:
   allow_downgrade: ${{ vars.GLOBAL_ALLOW_DOWNGRADE == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'allow-downgrade')) || inputs.allow_downgrade == 'yes') }}
-  vm_preset: ${{ inputs.vm_preset != "" && inputs.vm_preset || vars.POOLED_HEAVY_VM_PRESET }}
+  vm_preset: ${{ inputs.vm_preset != '' && inputs.vm_preset || vars.POOLED_HEAVY_VM_PRESET }}
 
 jobs:
   provide-runner:

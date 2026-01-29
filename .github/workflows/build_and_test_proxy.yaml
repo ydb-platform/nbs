@@ -47,7 +47,7 @@ on:
         type: string
 
 env:
-  vm_preset: ${{ inputs.vm_preset != "" && inputs.vm_preset || ( inputs.allow_split_workload == false && vars.POOLED_HEAVY_VM_PRESET_SPLIT || vars.POOLED_HEAVY_VM_PRESET ) }}
+  vm_preset: ${{ inputs.vm_preset != '' && inputs.vm_preset || ( inputs.allow_split_workload == false && vars.POOLED_HEAVY_VM_PRESET_SPLIT || vars.POOLED_HEAVY_VM_PRESET ) }}
 
 jobs:
   plan:
