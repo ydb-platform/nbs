@@ -62,7 +62,9 @@ class Inputs:
 
         test_type = (env.get("TEST_TYPE") or "").strip()
         if not test_type:
-            test_type = TEST_TYPE_SAN if is_san_preset(build_preset) else TEST_TYPE_REGULAR
+            test_type = (
+                TEST_TYPE_SAN if is_san_preset(build_preset) else TEST_TYPE_REGULAR
+            )
 
         number_of_retries = (env.get("NUMBER_OF_RETRIES") or "").strip()
         if not number_of_retries:

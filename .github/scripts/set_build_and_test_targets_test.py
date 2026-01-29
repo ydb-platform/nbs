@@ -101,6 +101,7 @@ def test_join_rule_tasks_storage_with_third_component():
     assert by["blockstore"]["build_target"] == "cloud/blockstore/apps/"
     assert by["tasks_storage"]["build_target"] == "cloud/tasks/,cloud/storage/"
 
+
 def test_join_rule_tasks_and_other_component():
     inc = parse(
         mk(
@@ -115,7 +116,6 @@ def test_join_rule_tasks_and_other_component():
     by = {r["component"]: r for r in inc}
     assert by["blockstore"]["build_target"] == "cloud/blockstore/apps/"
     assert by["tasks"]["build_target"] == "cloud/tasks/"
-
 
 
 def test_custom_target_disables_split():
