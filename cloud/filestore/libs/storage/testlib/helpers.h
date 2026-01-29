@@ -18,6 +18,7 @@ struct THeaders
     TString ClientId;
     TString SessionId;
     ui64 SessionSeqNo = 0;
+    bool DisableMultiTabletForwarding = false;
 
     template <typename T>
     void Fill(T& request) const
@@ -26,6 +27,7 @@ struct THeaders
         headers->SetClientId(ClientId);
         headers->SetSessionId(SessionId);
         headers->SetSessionSeqNo(SessionSeqNo);
+        headers->SetDisableMultiTabletForwarding(DisableMultiTabletForwarding);
     }
 };
 
