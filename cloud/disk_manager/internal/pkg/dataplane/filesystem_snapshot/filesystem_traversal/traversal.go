@@ -38,13 +38,13 @@ type FilesystemTraverser struct {
 }
 
 // FilesystemTravers performs parallel traversal of a filesystem.
-// For traversal durability, the traverasl queue is stored within a database table.
+// For traversal durability, the traversal queue is stored within a database table.
 // 1. Checks whether the root node was already scheduled.
 // 2. If not, schedules the root node.
 // 3. Saves the state via StateSaver.
 // Saving the information about root node scheduling is required,
 // because nodes are removed from the traversal queue when they are fully processed.
-// 4. Starts directoryScheduler method which fetchs nodes from database, saves them to inflight hashmap and send them to scheduledNodes channel.
+// 4. Starts directoryScheduler method which fetches nodes from database, saves them to inflight hashmap, and sends them to scheduledNodes channel.
 // directoryScheduler also removes inflight nodes when it receives their IDs from processedNodeIDs channel.
 // 5. Start directoryLister workers.
 // A directoryLister worker fetches the node from scheduledNodes channel, lists its children via the Filestore client,
@@ -53,7 +53,7 @@ type FilesystemTraverser struct {
 // Node listing operation has pagination support using pagination cookie.
 // The cookie must be saved to the database in the same transaction as scheduling child nodes for listing.
 // Each node is repeatedly listed until the cookie becomes empty.
-// Traversal is finished when there is no processing nodes and no nodes to be scheduled.
+// Traversal is finished when there are no processing nodes and no nodes to be scheduled.
 
 func NewFilesystemTraverser(
 	filesystemSnapshotID string,
