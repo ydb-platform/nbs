@@ -39,7 +39,7 @@ runs:
   steps:
     - name: install s3cmd and awscli
       if: inputs.install == 'true'
-      shell: bash
+      shell: bash 
       run: |
         which s3cmd || true
         which s3cmd || {
@@ -57,13 +57,6 @@ runs:
         }
         aws --version
 
-
-        MIME_TYPES_PLAINTEXT_LINE="text/plain out err log stderr stdout"
-        MIME_TYPE_JSON_LINE="application/json    trace jsonl"
-        MIME_TYPES_FILE='/etc/mime.types'
-        # add if not exists
-        grep -qF -- "$MIME_TYPES_PLAINTEXT_LINE" "$MIME_TYPES_FILE" || echo "$MIME_TYPES_PLAINTEXT_LINE" >> "$MIME_TYPES_FILE"
-        grep -qF -- "$MIME_TYPE_JSON_LINE" "$MIME_TYPES_FILE" || echo "$MIME_TYPE_JSON_LINE" >> "$MIME_TYPES_FILE"
     - name: configure s3cmd and awscli
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
@@ -77,6 +70,12 @@ runs:
         BUILD_PRESET: ${{ inputs.build_preset }}
         USER: ${{ inputs.user || 'github'}}
       run: |
+        MIME_TYPES_PLAINTEXT_LINE="text/plain out err log stderr stdout"
+        MIME_TYPE_JSON_LINE="application/json    trace jsonl"
+        MIME_TYPES_FILE='/etc/mime.types'
+        grep -qF -- "$MIME_TYPES_PLAINTEXT_LINE" "$MIME_TYPES_FILE" || echo "$MIME_TYPES_PLAINTEXT_LINE" | tee -a "$MIME_TYPES_FILE" || true
+        grep -qF -- "$MIME_TYPE_JSON_LINE" "$MIME_TYPES_FILE" || echo "$MIME_TYPE_JSON_LINE" | tee -a "$MIME_TYPES_FILE" || true
+
         export S3CMD_CONFIG=$(sudo -E -H -u $USER mktemp -p /home/$USER)
         sudo chown $USER: $S3CMD_CONFIG
         echo "S3CMD_CONFIG=$S3CMD_CONFIG" >> $GITHUB_ENV
