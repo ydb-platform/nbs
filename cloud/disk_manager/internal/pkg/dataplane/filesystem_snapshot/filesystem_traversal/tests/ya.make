@@ -6,9 +6,6 @@ REQUIREMENTS(
     ram:16
 )
 
-FORK_SUBTESTS()
-SPLIT_FACTOR(16)
-
 IF (RACE)
     SIZE(LARGE)
     TAG(ya:fat ya:force_sandbox ya:sandbox_coverage)
