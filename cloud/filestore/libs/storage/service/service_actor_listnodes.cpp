@@ -37,7 +37,7 @@ private:
     // Control flags
     const bool MultiTabletForwardingEnabled;
     const bool GetNodeAttrBatchEnabled;
-    const bool Unsafe = false;
+    const bool Unsafe;
 
     // Response data
     NProto::TListNodesResponse Response;
