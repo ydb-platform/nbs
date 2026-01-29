@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     disjoint_interval_builder.cpp
+    flusher.cpp
     node_cache.cpp
     overlapping_interval_set.cpp
     persistent_storage.cpp
