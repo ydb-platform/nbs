@@ -160,7 +160,7 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
     const auto* msg = ev->Get();
     const auto& record = msg->GetRecord();
 
-    auto error = MakeSchemeShardError(record.GetStatus(), record.GetReason());
+    auto error = MakeDescribeSchemeError(record);
 
     LWTRACK(
         ResponseReceived_Proxy,
