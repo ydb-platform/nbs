@@ -35,6 +35,7 @@ struct fuse_req {
     } u;
     struct fuse_req *next;
     struct fuse_req *prev;
+    int queue_index;
 };
 
 struct fuse_notify_req {
@@ -57,9 +58,9 @@ struct fuse_session {
     void *userdata;
     uid_t owner;
     struct fuse_conn_info conn;
-    struct fuse_req list;
+    struct fuse_req list[256];
     struct fuse_req interrupts;
-    pthread_mutex_t lock;
+    pthread_mutex_t lock[256];
     pthread_rwlock_t init_rwlock;
     int got_destroy;
     int broken_splice_nonblock;
@@ -91,7 +92,8 @@ void fuse_free_req(fuse_req_t req);
 
 void fuse_session_process_buf_int(struct fuse_session *se,
                                   struct fuse_bufvec *bufv,
-                                  struct fuse_chan *ch);
+                                  struct fuse_chan *ch,
+                                  int queue_index);
 
 
 #define FUSE_MAX_MAX_PAGES 256
