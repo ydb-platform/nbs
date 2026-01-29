@@ -129,14 +129,15 @@ func (f *fixture) fillFilesystem(
 func (f *fixture) getFilesAfterTraversal(
 	t *testing.T,
 	filesystemID string,
+	fsModel *nfs_testing.FileSystemModel,
 ) []string {
 
 	traverser := NewFilesystemTraverser(
 		fmt.Sprintf("snapshot_%v", filesystemID),
 		filesystemID,
 		"",
-		fixture.client,
-		fixture.storage,
+		f.client,
+		f.storage,
 		func(ctx context.Context) error {
 			return nil
 		},
@@ -147,8 +148,8 @@ func (f *fixture) getFilesAfterTraversal(
 
 	actualNodeNames := []string{}
 	nodesMutex := &sync.Mutex{}
-	err := traversal.Traverse(
-		fixture.ctx,
+	err := traverser.Traverse(
+		f.ctx,
 		func(
 			ctx context.Context,
 			nodes []nfs.Node,
@@ -197,6 +198,7 @@ func TestTraversal(t *testing.T) {
 	actualNodeNames := fixture.getFilesAfterTraversal(
 		t,
 		filesystemID,
+		fsModel,
 	)
 	require.ElementsMatch(t, expectedNodeNames, actualNodeNames)
 }
@@ -217,19 +219,20 @@ func TestRandomFilesystemTraversal(t *testing.T) {
 		10,  // maxDirsPerDir
 		100, // maxFilesPerDir
 	)
-	model := nfs_testing.NewFileSystemModel(
+	fsModel := nfs_testing.NewFileSystemModel(
 		t,
 		fixture.ctx,
 		fixture.client,
 		session,
 		rootDir,
 	)
-	model.CreateAllNodesRecursively()
+	fsModel.CreateAllNodesRecursively()
 
 	expectedNodeNames := nfs_testing.NodeNames(fsModel.ExpectedNodes)
 	actualNodeNames := fixture.getFilesAfterTraversal(
 		t,
 		filesystemID,
+		fsModel,
 	)
 	require.ElementsMatch(t, expectedNodeNames, actualNodeNames)
 }
