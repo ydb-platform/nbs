@@ -16,6 +16,8 @@ jobs:
     secrets: inherit
     with:
       mode: ${{ vars.NEBIUS_SCHEDULING_TYPE }}
+      allow_split_workload: false
+      vm_preset: ${{ vars.POOLED_HEAVY_VM_PRESET_NIGHTLY }}
       build_target: 'cloud/blockstore/apps/,cloud/filestore/apps/,cloud/storage/'
       test_target: 'cloud/blockstore/,cloud/filestore/,cloud/storage/'
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest"
