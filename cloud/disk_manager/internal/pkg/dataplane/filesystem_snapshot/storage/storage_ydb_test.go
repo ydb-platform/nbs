@@ -59,7 +59,7 @@ func newStorage(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func getNodesIDs(entries []NodeQueueEntry) []uint64 {
+func getNodeIDs(entries []NodeQueueEntry) []uint64 {
 	ids := make([]uint64, 0, len(entries))
 	for _, entry := range entries {
 		ids = append(ids, entry.NodeID)
@@ -701,7 +701,7 @@ func TestNodesScheduling(t *testing.T) {
 		100,                   // limit
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, getNodesIDs(entries), []uint64{1, 2, 3, 4, 5, 6})
+	require.ElementsMatch(t, getNodeIDs(entries), []uint64{1, 2, 3, 4, 5, 6})
 
 	entries, err = f.storage.SelectNodesToList(
 		f.ctx,
@@ -710,7 +710,7 @@ func TestNodesScheduling(t *testing.T) {
 		100,                               // limit
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, getNodesIDs(entries), []uint64{1, 3, 5, 6})
+	require.ElementsMatch(t, getNodeIDs(entries), []uint64{1, 3, 5, 6})
 
 	// 3) limit 1, fetched 1 element
 	entries, err = f.storage.SelectNodesToList(
@@ -749,5 +749,5 @@ func TestNodesScheduling(t *testing.T) {
 		100,                   // limit
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, getNodesIDs(entries), []uint64{1, 100, 101})
+	require.ElementsMatch(t, getNodeIDs(entries), []uint64{1, 100, 101})
 }
