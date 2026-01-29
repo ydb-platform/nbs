@@ -25,15 +25,15 @@ type OnListedNodesFunc func(
 
 type FilesystemTraverser struct {
 	scheduledNodes           chan *storage.NodeQueueEntry
-	processedNodeIDs           chan uint64
+	processedNodeIDs         chan uint64
 	workersCount             int
 	filesystemSnapshotID     string
 	filesystemID             string
-	filesystemCheckpointID             string
+	filesystemCheckpointID   string
 	client                   nfs.Client
 	storage                  storage.Storage
 	stateSaver               StateSaver
-	selectNodesToListLimit              uint64
+	selectNodesToListLimit   uint64
 	rootNodeAlreadyScheduled bool
 }
 
@@ -51,15 +51,15 @@ func NewFilesystemTraverser(
 
 	return &FilesystemTraverser{
 		scheduledNodes:           make(chan *storage.NodeQueueEntry),
-		processedNodeIDs:           make(chan uint64),
+		processedNodeIDs:         make(chan uint64),
 		workersCount:             workersCount,
 		filesystemSnapshotID:     filesystemSnapshotID,
 		filesystemID:             filesystemID,
-		filesystemCheckpointID:             filesystemCheckpointID,
+		filesystemCheckpointID:   filesystemCheckpointID,
 		client:                   client,
 		storage:                  snapshotStorage,
 		stateSaver:               stateSaver,
-		selectNodesToListLimit:              selectNodesToListLimit,
+		selectNodesToListLimit:   selectNodesToListLimit,
 		rootNodeAlreadyScheduled: rootNodeAlreadyScheduled,
 	}
 }

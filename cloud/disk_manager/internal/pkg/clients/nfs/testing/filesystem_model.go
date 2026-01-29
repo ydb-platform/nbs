@@ -3,6 +3,7 @@ package testing
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"slices"
 	"strings"
@@ -100,6 +101,48 @@ func Root(children ...Node) Node {
 		FileType: nfs_client.NODE_KIND_DIR,
 		Children: children,
 	}
+}
+
+func RandomDirectory(
+	name string,
+	maxDepth,
+	maxDirsPerDir,
+	maxFilesPerDir int,
+) Node {
+
+	if maxDepth <= 0 {
+		return Dir(name)
+	}
+
+	nDirs := rand.Intn(maxDirsPerDir + 1)
+	nFiles := rand.Intn(maxFilesPerDir + 1)
+	children := make([]Node, 0, nDirs+nFiles)
+	for i := 0; i < nDirs; i++ {
+		children = append(
+			children,
+			RandomDirectory(
+				fmt.Sprintf("dir_%d_%d", i, maxDepth),
+				maxDepth-1,
+				maxDirsPerDir,
+				maxFilesPerDir,
+			),
+		)
+	}
+
+	for i := 0; i < nFiles; i++ {
+		children = append(
+			children,
+			File(fmt.Sprintf("file_%d_%d", i, maxDepth)),
+		)
+	}
+
+	return Dir(name, children...)
+}
+
+func RandomDirectoryTree(maxDepth, maxDirsPerDir, maxFilesPerDir int) Node {
+	return Root(
+		RandomDirectory("base", maxDepth, maxDirsPerDir, maxFilesPerDir),
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

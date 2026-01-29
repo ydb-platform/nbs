@@ -126,6 +126,50 @@ func (f *fixture) fillFilesystem(
 	return model
 }
 
+func (f *fixture) getFilesAfterTraversal(
+	t *testing.T,
+	filesystemID string,
+) []string {
+
+	traverser := NewFilesystemTraverser(
+		fmt.Sprintf("snapshot_%v", filesystemID),
+		filesystemID,
+		"",
+		fixture.client,
+		fixture.storage,
+		func(ctx context.Context) error {
+			return nil
+		},
+		10,
+		10,
+		false,
+	)
+
+	actualNodeNames := []string{}
+	nodesMutex := &sync.Mutex{}
+	err := traversal.Traverse(
+		fixture.ctx,
+		func(
+			ctx context.Context,
+			nodes []nfs.Node,
+			_ nfs.Session,
+			_ nfs.Client,
+		) error {
+
+			nodesMutex.Lock()
+			defer nodesMutex.Unlock()
+			for _, node := range nodes {
+				actualNodeNames = append(actualNodeNames, node.Name)
+			}
+
+			return nil
+		},
+	)
+	require.NoError(t, err)
+
+	return actualNodeNames
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestTraversal(t *testing.T) {
@@ -150,39 +194,42 @@ func TestTraversal(t *testing.T) {
 	defer fsModel.Close()
 
 	expectedNodeNames := nfs_testing.NodeNames(fsModel.ExpectedNodes)
-	traversal := NewFilesystemTraverser(
-		"test_traverse",
+	actualNodeNames := fixture.getFilesAfterTraversal(
+		t,
 		filesystemID,
-		"",
-		fixture.client,
-		fixture.storage,
-		func(ctx context.Context) error {
-			return nil
-		},
-		10,
-		10,
-		false,
 	)
-	actualNodeNames := []string{}
-	nodesMutex := &sync.Mutex{}
-	err := traversal.Traverse(
-		fixture.ctx,
-		func(
-			ctx context.Context,
-			nodes []nfs.Node,
-			_ nfs.Session,
-			_ nfs.Client,
-		) error {
+	require.ElementsMatch(t, expectedNodeNames, actualNodeNames)
+}
 
-			nodesMutex.Lock()
-			defer nodesMutex.Unlock()
-			for _, node := range nodes {
-				actualNodeNames = append(actualNodeNames, node.Name)
-			}
+func TestRandomFilesystemTraversal(t *testing.T) {
+	fixture := newFixture(t)
+	defer fixture.close(t)
 
-			return nil
-		},
-	)
+	filesystemID := t.Name()
+	fixture.prepareFilesystem(t, filesystemID)
+	defer fixture.cleanupFilesystem(t, filesystemID)
+	session, err := fixture.client.CreateSession(fixture.ctx, filesystemID, "", false)
 	require.NoError(t, err)
+	defer fixture.client.DestroySession(fixture.ctx, session)
+
+	rootDir := nfs_testing.RandomDirectoryTree(
+		10,  // maxDepth
+		10,  // maxDirsPerDir
+		100, // maxFilesPerDir
+	)
+	model := nfs_testing.NewFileSystemModel(
+		t,
+		fixture.ctx,
+		fixture.client,
+		session,
+		rootDir,
+	)
+	model.CreateAllNodesRecursively()
+
+	expectedNodeNames := nfs_testing.NodeNames(fsModel.ExpectedNodes)
+	actualNodeNames := fixture.getFilesAfterTraversal(
+		t,
+		filesystemID,
+	)
 	require.ElementsMatch(t, expectedNodeNames, actualNodeNames)
 }
