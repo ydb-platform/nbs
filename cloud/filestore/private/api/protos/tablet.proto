@@ -115,6 +115,8 @@ message TStorageStats
     uint64 UsedLocksCount = 4;
     uint64 UsedBlocksCount = 5;
     uint64 TotalBlocksCount = 6;
+    // TODO(#2566) Should be dropped after migration.
+    uint64 SevenBytesHandlesCount = 7;
 
     // data stats
     uint64 FreshBlocksCount = 100;

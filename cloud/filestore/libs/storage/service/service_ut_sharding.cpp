@@ -4287,6 +4287,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         TVector<TString> expected = {fsId, fsId + "_s1", fsId + "_s2"};
 
         service.CreateFileStore(fsId, 2_GB / 4_KB);
+        WaitForTabletStart(service);
+
         auto listing = service.ListFileStores();
         auto fsIds = listing->Record.GetFileStores();
         TVector<TString> ids(fsIds.begin(), fsIds.end());
@@ -6656,6 +6658,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         const ui64 filesCount = shardCount * 2;
         ui64 shardNo = 1;
+        ui64 sevenBytesHandlesCount = 0;
         for (ui64 i = 0; i < filesCount; ++i) {
             auto createNodeResponse =
                 service.CreateNode(
@@ -6666,7 +6669,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     ->Record;
             const ui64 nodeId = createNodeResponse.GetNode().GetId();
 
-            UNIT_ASSERT_VALUES_EQUAL(shardNo > 0xff, IsSeventhByteUsed(nodeId));
+            sevenBytesHandlesCount += IsSeventhByteUsed(nodeId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardNo > MaxOneByteShardCount,
+                IsSeventhByteUsed(nodeId));
             UNIT_ASSERT_VALUES_EQUAL(shardNo, ExtractShardNo(nodeId));
 
             const ui64 handle = service.CreateHandle(
@@ -6676,16 +6682,36 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 "",
                 TCreateHandleArgs::RDWR)->Record.GetHandle();
 
-            UNIT_ASSERT_VALUES_EQUAL(shardNo > 0xff, IsSeventhByteUsed(handle));
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardNo > MaxOneByteShardCount,
+                IsSeventhByteUsed(handle));
             UNIT_ASSERT_VALUES_EQUAL(shardNo, ExtractShardNo(handle));
-
-            service.DestroyHandle(headers, fsId, nodeId, handle);
 
             shardNo++;
             if (shardNo > shardCount) {
                 shardNo = 1;
             }
         }
+
+        // We created 2 files in each shard. Files in the shards with
+        // shardNo > 255 have handles that use 7th byte.
+        UNIT_ASSERT_VALUES_EQUAL(
+            (shardCount - MaxOneByteShardCount) * 2,
+            sevenBytesHandlesCount);
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+
+        // Update counters in all the shards.
+        TDispatchOptions options;
+        options.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+            TEvIndexTabletPrivate::EvAggregateStatsCompleted,
+            shardCount + 1)};
+        service.AccessRuntime().DispatchEvents(options);
+
+        const auto mainStats = GetStorageStats(service, fsId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            sevenBytesHandlesCount,
+            mainStats.GetStats().GetSevenBytesHandlesCount());
     }
 
     SERVICE_TEST_SIMPLE(ShouldUseOldHandles)
@@ -6774,6 +6800,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(shardAllocationUnit);
         config.SetShardBalancerPolicy(NProto::SBP_ROUND_ROBIN);
+        config.SetMaxShardCount(1024);
 
         const TString fsId = "test";
 
@@ -6836,9 +6863,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT(status.ok());
         }
 
-        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(16));
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
         NActors::TDispatchOptions options;
-        // As the main tablet is restarted after CnfigureShards we need to
+        // As the main tablet is restarted after ConfigureShards we need to
         // dispatch tablet count + 1 (== shard count + 2) EvUpdateCounters
         // events
         options.FinalEvents.emplace_back(TDispatchOptions::TFinalEventCondition(
@@ -6860,6 +6887,28 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
               1},
              {{{"sensor", "SevenBytesHandlesCount"}, {"filesystem", "test_s4"}},
               1}});
+
+        // Try to resize to more than MaxOneByteShardCount shards.
+        const ui64 newShardCount = MaxOneByteShardCount + 8;
+        const ui64 newFsSize =
+            shardBlockCount * (newShardCount - 1) + shardBlockCount / 2;
+        service.ResizeFileStore(fsId, newFsSize);
+
+        WaitForTabletStart(service);
+
+        // The filesystem should be resized to have 255 (MaxOneByteShardCount)
+        // shards and a critical event should be raised.
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter = counters->GetCounter(
+            "AppCriticalEvents/TryingToUseTwoBytesShardNoWithObsoleteHandles");
+
+        UNIT_ASSERT_EQUAL(1, counter->GetAtomic());
+
+        const auto response = GetStorageStats(service, fsId);
+        const auto& stats = response.GetStats();
+        UNIT_ASSERT_EQUAL(MaxOneByteShardCount, stats.GetShardStats().size());
     }
 }
 

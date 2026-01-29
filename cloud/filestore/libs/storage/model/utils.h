@@ -16,6 +16,8 @@ inline bool IsAligned(size_t len, size_t align) noexcept
     return (len & (align - 1)) == 0;
 }
 
+constexpr ui64 MaxOneByteShardCount = Max<ui8>();
+
 namespace {
 
 constexpr ui64 SeventhByteMask = static_cast<ui64>(Max<ui8>()) << (6U * 8U);
