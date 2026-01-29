@@ -16,6 +16,7 @@ END()
 
 RECURSE(
     config
+    testing
 )
 
 RECURSE_FOR_TESTS(
