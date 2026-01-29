@@ -6910,6 +6910,71 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         const auto& stats = response.GetStats();
         UNIT_ASSERT_EQUAL(MaxOneByteShardCount, stats.GetShardStats().size());
     }
-}
 
+    SERVICE_TEST_SIMPLE(ShouldListNodesMissingFromShardsWithUnsafeFlag)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        ui64 dirNodeId = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir")
+        )->Record.GetNode().GetId();
+        TString lastNodeName = "file2";
+        auto node1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(
+            dirNodeId,
+            "file1"))->Record.GetNode().GetId();
+        // we assume that file2 will be created in shard 1 since shards are distributed in round-robin
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(
+            dirNodeId,
+            lastNodeName))->Record.GetNode().GetId();
+
+        auto listNodesResponse = service.ListNodes(
+            headers,
+            fsConfig.FsId,
+            dirNodeId)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NodesSize());
+
+        const auto shardId = fsConfig.Shard2Id;
+        const auto shardHeaders = service.InitSession(shardId, "client1");
+        const auto nodeNameInShard = service.ListNodes(
+            shardHeaders,
+            shardId,
+            RootNodeId)->Record.GetNames(0);
+        // remove node from shard directly
+        service.UnlinkNode(
+            shardHeaders,
+            RootNodeId,
+            nodeNameInShard);
+        // with the flag, the missing in the shard node should be returned with id=0
+        auto listNodesResponseWithFlag = service.ListNodes(
+            headers,
+            fsConfig.FsId,
+            dirNodeId,
+            true)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponseWithFlag.NodesSize());
+
+        TSet<ui64> expectedNodeIds = {node1Id, InvalidNodeId};
+        TSet<ui64> foundNodeIds;
+        for (const auto & node: listNodesResponseWithFlag.GetNodes()) {
+            foundNodeIds.insert(node.GetId());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(expectedNodeIds, foundNodeIds);
+        // without the flag, the node missing in the shard should be skipped
+        auto listNodesResponseRegular = service.ListNodes(
+            headers,
+            fsConfig.FsId,
+            dirNodeId,
+            false)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponseRegular.NodesSize());
+    }
+}
 }   // namespace NCloud::NFileStore::NStorage

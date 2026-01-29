@@ -37,6 +37,7 @@ private:
     // Control flags
     const bool MultiTabletForwardingEnabled;
     const bool GetNodeAttrBatchEnabled;
+    const bool Unsafe;
 
     // Response data
     NProto::TListNodesResponse Response;
@@ -115,6 +116,7 @@ TListNodesActor::TListNodesActor(
     , LogTag(ListNodesRequest.GetFileSystemId())
     , MultiTabletForwardingEnabled(multiTabletForwardingEnabled)
     , GetNodeAttrBatchEnabled(getNodeAttrBatchEnabled)
+    , Unsafe(ListNodesRequest.GetUnsafe())
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
 {
@@ -540,12 +542,14 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
             return;
         }
 
-        // Here we need to remove the Names and Nodes corresponding to the
-        // missing nodes from the response. Plain Erase/EraseIf don't seem to
-        // be applicable since we need to do this operation over 2 repeated
-        // fields - not over a single stl-like container.
-        RemoveByIndices(*Response.MutableNodes(), MissingNodeIndices);
-        RemoveByIndices(*Response.MutableNames(), MissingNodeIndices);
+        if (!Unsafe) {
+            // Here we need to remove the Names and Nodes corresponding to the
+            // missing nodes from the response. Plain Erase/EraseIf don't seem to
+            // be applicable since we need to do this operation over 2 repeated
+            // fields - not over a single stl-like container.
+            RemoveByIndices(*Response.MutableNodes(), MissingNodeIndices);
+            RemoveByIndices(*Response.MutableNames(), MissingNodeIndices);
+        }
 
         ReplyAndDie(ctx);
     }

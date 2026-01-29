@@ -107,7 +107,11 @@ public:
         ui64 sessionSeqNo = 0,
         bool readOnly = false)
     {
-        THeaders headers = {fileSystemId, clientId, "", sessionSeqNo};
+        THeaders headers = {
+            .FileSystemId = fileSystemId,
+            .ClientId = clientId,
+            .SessionId = "",
+            .SessionSeqNo = sessionSeqNo};
 
         auto response = CreateSession(headers, checkpointId, restoreClientSession, sessionSeqNo, readOnly);
         headers.SessionId = response->Record.GetSession().GetSessionId();
@@ -478,12 +482,14 @@ public:
     std::unique_ptr<TEvService::TEvListNodesRequest> CreateListNodesRequest(
         const THeaders& headers,
         const TString& fileSystemId,
-        const ui64 nodeId)
+        const ui64 nodeId,
+        bool unsafe = false)
     {
         auto request = std::make_unique<TEvService::TEvListNodesRequest>();
         headers.Fill(request->Record);
         request->Record.SetFileSystemId(fileSystemId);
         request->Record.SetNodeId(nodeId);
+        request->Record.SetUnsafe(unsafe);
         return request;
     }
 
