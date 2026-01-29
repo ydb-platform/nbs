@@ -6,6 +6,7 @@ SRCDIR(cloud/filestore/libs/vfs_fuse/write_back_cache)
 
 SRCS(
     disjoint_interval_builder_ut.cpp
+    flusher_ut.cpp
     node_cache_ut.cpp
     overlapping_interval_set_ut.cpp
     persistent_storage_ut.cpp
