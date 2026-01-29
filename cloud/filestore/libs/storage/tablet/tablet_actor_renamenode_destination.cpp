@@ -66,10 +66,16 @@ private:
         const TString& shardNodeName,
         ui64 cookie);
 
+    void LogAbort(const TActorContext& ctx);
+
     void PrepareUnlink(const TActorContext& ctx);
 
     void HandleGetNodeAttrResponse(
         const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleLogAbortResponse(
+        const TEvIndexTabletPrivate::TEvWriteOpLogEntryResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePrepareUnlinkResponse(
@@ -147,6 +153,29 @@ void TGetExtraSourceAndDestinationInfoActor::SendRequests(const TActorContext& c
         DstCookie);
 }
 
+void TGetExtraSourceAndDestinationInfoActor::LogAbort(
+    const TActorContext& ctx)
+{
+    NProto::TOpLogEntry entry;
+    auto* abortRequest = entry.MutableAbortUnlinkDirectoryNodeInShardRequest();
+    abortRequest->MutableHeaders()->CopyFrom(Result.Request.GetHeaders());
+    abortRequest->SetFileSystemId(DstShardId);
+    abortRequest->SetNodeId(Result.DestinationNodeAttr.GetId());
+    abortRequest->MutableOriginalRequest()->CopyFrom(Result.Request);
+
+    using TRequest = TEvIndexTabletPrivate::TEvWriteOpLogEntryRequest;
+    auto request = std::make_unique<TRequest>(std::move(entry));
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s Sending WriteOpLogEntryRequest to parent",
+        LogTag.c_str(),
+        request->OpLogEntry.ShortUtf8DebugString().Quote().c_str());
+
+    ctx.Send(ParentId, request.release());
+}
+
 void TGetExtraSourceAndDestinationInfoActor::PrepareUnlink(
     const TActorContext& ctx)
 {
@@ -197,11 +226,40 @@ void TGetExtraSourceAndDestinationInfoActor::HandleGetNodeAttrResponse(
     }
 
     if (Result.DestinationNodeAttr.GetType() == NProto::E_DIRECTORY_NODE) {
-        PrepareUnlink(ctx);
+        LogAbort(ctx);
         return;
     }
 
     ReplyAndDie(ctx, MakeError(S_OK));
+}
+
+void TGetExtraSourceAndDestinationInfoActor::HandleLogAbortResponse(
+    const TEvIndexTabletPrivate::TEvWriteOpLogEntryResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (HasError(msg->Error)) {
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s WriteOpLogEntry failed: %s",
+            LogTag.c_str(),
+            FormatError(msg->Error).Quote().c_str());
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s Got WriteOpLogEntryResponse %lu",
+        LogTag.c_str(),
+        msg->OpLogEntryId);
+
+    Result.OpLogEntryId = msg->OpLogEntryId;
+
+    PrepareUnlink(ctx);
 }
 
 void TGetExtraSourceAndDestinationInfoActor::HandlePrepareUnlinkResponse(
@@ -249,150 +307,12 @@ STFUNC(TGetExtraSourceAndDestinationInfoActor::StateWork)
         HFunc(TEvService::TEvGetNodeAttrResponse, HandleGetNodeAttrResponse);
 
         HFunc(
-            TEvIndexTablet::TEvPrepareUnlinkDirectoryNodeInShardResponse,
-            HandlePrepareUnlinkResponse);
-
-        default:
-            HandleUnexpectedEvent(
-                ev,
-                TFileStoreComponents::TABLET_WORKER,
-                __PRETTY_FUNCTION__);
-            break;
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TAbortUnlinkDirectoryInShardActor final
-    : public TActorBootstrapped<TAbortUnlinkDirectoryInShardActor>
-{
-private:
-    const TString LogTag;
-    const TActorId ParentId;
-    const TString ShardId;
-    const ui64 NodeId;
-    TEvIndexTabletPrivate::TUnlinkDirectoryNodeAbortedInShard Result;
-
-    using TEvAbortUnlinkRequest =
-        TEvIndexTablet::TEvAbortUnlinkDirectoryNodeInShardRequest;
-    using TEvAbortUnlinkResponse =
-        TEvIndexTablet::TEvAbortUnlinkDirectoryNodeInShardResponse;
-
-public:
-    TAbortUnlinkDirectoryInShardActor(
-        TString logTag,
-        TRequestInfoPtr requestInfo,
-        const TActorId& parentId,
-        NProtoPrivate::TRenameNodeInDestinationRequest request,
-        NProto::TError originalError,
-        TString shardId,
-        ui64 nodeId);
-
-    void Bootstrap(const TActorContext& ctx);
-
-private:
-    STFUNC(StateWork);
-
-    void AbortUnlink(const TActorContext& ctx);
-
-    void HandleAbortUnlinkResponse(
-        const TEvAbortUnlinkResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandlePoisonPill(
-        const TEvents::TEvPoisonPill::TPtr& ev,
-        const TActorContext& ctx);
-
-    void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-TAbortUnlinkDirectoryInShardActor::TAbortUnlinkDirectoryInShardActor(
-        TString logTag,
-        TRequestInfoPtr requestInfo,
-        const TActorId& parentId,
-        NProtoPrivate::TRenameNodeInDestinationRequest request,
-        NProto::TError originalError,
-        TString shardId,
-        ui64 nodeId)
-    : LogTag(std::move(logTag))
-    , ParentId(parentId)
-    , ShardId(std::move(shardId))
-    , NodeId(nodeId)
-    , Result(std::move(requestInfo), std::move(request), std::move(originalError))
-{}
-
-void TAbortUnlinkDirectoryInShardActor::Bootstrap(const TActorContext& ctx)
-{
-    AbortUnlink(ctx);
-    Become(&TThis::StateWork);
-}
-
-void TAbortUnlinkDirectoryInShardActor::AbortUnlink(const TActorContext& ctx)
-{
-    auto request = std::make_unique<TEvAbortUnlinkRequest>();
-    request->Record.MutableHeaders()->CopyFrom(Result.Request.GetHeaders());
-    request->Record.SetFileSystemId(ShardId);
-    request->Record.SetNodeId(NodeId);
-    request->Record.MutableOriginalRequest()->CopyFrom(Result.Request);
-
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::TABLET_WORKER,
-        "%s Sending AbortUnlinkRequest to shard %s",
-        LogTag.c_str(),
-        request->Record.ShortUtf8DebugString().Quote().c_str());
-
-    ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
-}
-
-void TAbortUnlinkDirectoryInShardActor::HandleAbortUnlinkResponse(
-    const TEvAbortUnlinkResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    auto* msg = ev->Get();
-
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::TABLET_WORKER,
-        "%s Got AbortUnlinkResponse %s, %lu",
-        LogTag.c_str(),
-        msg->Record.ShortUtf8DebugString().Quote().c_str());
-
-    ReplyAndDie(ctx, msg->GetError());
-}
-
-void TAbortUnlinkDirectoryInShardActor::HandlePoisonPill(
-    const TEvents::TEvPoisonPill::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
-}
-
-void TAbortUnlinkDirectoryInShardActor::ReplyAndDie(
-    const TActorContext& ctx,
-    NProto::TError error)
-{
-    using TResponse =
-        TEvIndexTabletPrivate::TEvUnlinkDirectoryNodeAbortedInShard;
-    Result.Error = std::move(error);
-    ctx.Send(
-        ParentId,
-        std::make_unique<TResponse>(std::move(Result)));
-
-    Die(ctx);
-}
-
-STFUNC(TAbortUnlinkDirectoryInShardActor::StateWork)
-{
-    switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+            TEvIndexTabletPrivate::TEvWriteOpLogEntryResponse,
+            HandleLogAbortResponse);
 
         HFunc(
-            TEvIndexTablet::TEvAbortUnlinkDirectoryNodeInShardResponse,
-            HandleAbortUnlinkResponse);
+            TEvIndexTablet::TEvPrepareUnlinkDirectoryNodeInShardResponse,
+            HandlePrepareUnlinkResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -502,7 +422,8 @@ void TIndexTabletActor::HandleDoRenameNodeInDestination(
         std::move(msg->RequestInfo),
         std::move(msg->Request),
         std::move(msg->SourceNodeAttr),
-        std::move(msg->DestinationNodeAttr));
+        std::move(msg->DestinationNodeAttr),
+        msg->OpLogEntryId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -667,6 +588,10 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
             args.Error = MakeError(E_INVALID_STATE, std::move(message));
             return;
         } else {
+            if (args.AbortUnlinkOpLogEntryId) {
+                db.DeleteOpLogEntry(args.AbortUnlinkOpLogEntryId);
+            }
+
             // remove target ref
             UnlinkExternalNode(
                 db,
@@ -764,17 +689,23 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
             && args.IsSecondPass
             && args.DestinationNodeAttr.GetType() == NProto::E_DIRECTORY_NODE)
     {
-        auto actor = std::make_unique<TAbortUnlinkDirectoryInShardActor>(
-            LogTag,
+        if (!args.AbortUnlinkOpLogEntryId) {
+            auto message = ReportMissingOpLogEntryId(TStringBuilder()
+                << "RenameNodeInDestination: "
+                << args.Request.ShortDebugString()
+                << ", original error: " << FormatError(args.Error));
+            args.Error = MakeError(E_INVALID_STATE, std::move(message));
+            return;
+        }
+
+        RegisterAbortUnlinkDirectoryInShardActor(
+            ctx,
             args.RequestInfo,
-            ctx.SelfID,
             args.Request,
             args.Error,
             args.NewChildRef->ShardId,
-            args.DestinationNodeAttr.GetId());
-
-        auto actorId = NCloud::Register(ctx, std::move(actor));
-        WorkerActors.insert(actorId);
+            args.DestinationNodeAttr.GetId(),
+            args.AbortUnlinkOpLogEntryId);
         return;
     }
 
@@ -845,6 +776,17 @@ void TIndexTabletActor::HandleUnlinkDirectoryNodeAbortedInShard(
     auto* msg = ev->Get();
 
     UnlockNodeRef({msg->Request.GetNewParentId(), msg->Request.GetNewName()});
+
+    Y_DEFER {
+        ExecuteTx<TDeleteOpLogEntry>(
+            ctx,
+            nullptr /* requestInfo */,
+            msg->OpLogEntryId);
+    };
+
+    if (!msg->RequestInfo) {
+        return;
+    }
 
     RemoveTransaction(*msg->RequestInfo);
 

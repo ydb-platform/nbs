@@ -701,6 +701,15 @@ private:
         ui64 requestId,
         ui64 opLogEntryId);
 
+    void RegisterAbortUnlinkDirectoryInShardActor(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        NProtoPrivate::TRenameNodeInDestinationRequest request,
+        NProto::TError originalError,
+        TString shardId,
+        ui64 nodeId,
+        ui64 opLogEntryId);
+
     void ReplayOpLog(
         const NActors::TActorContext& ctx,
         const TVector<NProto::TOpLogEntry>& opLog);

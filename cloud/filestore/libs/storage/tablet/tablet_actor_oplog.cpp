@@ -102,6 +102,25 @@ void TIndexTabletActor::ReplayOpLog(
                 0, // requestId (TODO(#2674): either idempotency or use real
                    // requestId)
                 op.GetEntryId());
+        } else if (op.HasAbortUnlinkDirectoryNodeInShardRequest()) {
+            const auto& request =
+                op.GetAbortUnlinkDirectoryNodeInShardRequest();
+            const bool locked = TryLockNodeRef({
+                request.GetOriginalRequest().GetNewParentId(),
+                request.GetOriginalRequest().GetNewName()});
+            if (!locked) {
+                ReportFailedToLockNodeRef(TStringBuilder() << "Request: "
+                    << request.GetOriginalRequest().ShortUtf8DebugString());
+            }
+
+            RegisterAbortUnlinkDirectoryInShardActor(
+                ctx,
+                nullptr, // requestInfo
+                request.GetOriginalRequest(),
+                {}, // originalError, doesn't matter w/o requestInfo
+                request.GetFileSystemId(),
+                request.GetNodeId(),
+                op.GetEntryId());
         } else {
             const TString message = ReportUnknownOpLogEntry(
                 TStringBuilder() << "OpLogEntry: " << op.DebugString().Quote());
@@ -241,6 +260,85 @@ void TIndexTabletActor::CompleteTx_GetOpLogEntry(
     auto response =
         std::make_unique<TEvIndexTabletPrivate::TEvGetOpLogEntryResponse>();
     response->OpLogEntry = std::move(args.Entry);
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleWriteOpLogEntry(
+    const TEvIndexTabletPrivate::TEvWriteOpLogEntryRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    AddTransaction<TEvIndexTabletPrivate::TWriteOpLogEntryMethod>(*requestInfo);
+
+    ExecuteTx<TWriteOpLogEntry>(
+        ctx,
+        std::move(requestInfo),
+        std::move(msg->OpLogEntry));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::PrepareTx_WriteOpLogEntry(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TWriteOpLogEntry& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+
+    return true;
+}
+
+void TIndexTabletActor::ExecuteTx_WriteOpLogEntry(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TWriteOpLogEntry& args)
+{
+    Y_UNUSED(ctx);
+
+    const ui64 commitId = GenerateCommitId();
+    if (commitId == InvalidCommitId) {
+        args.OnCommitIdOverflow();
+        return;
+    }
+
+    TIndexTabletDatabase db(tx.DB);
+    args.Entry.SetEntryId(commitId);
+    db.WriteOpLogEntry(args.Entry);
+}
+
+void TIndexTabletActor::CompleteTx_WriteOpLogEntry(
+    const TActorContext& ctx,
+    TTxIndexTablet::TWriteOpLogEntry& args)
+{
+    RemoveTransaction(*args.RequestInfo);
+
+    if (HasError(args.Error)) {
+        LOG_ERROR(ctx, TFileStoreComponents::TABLET,
+            "%s WriteOpLogEntry failed: %s, error: %s",
+            LogTag.c_str(),
+            args.Entry.ShortUtf8DebugString().Quote().c_str(),
+            FormatError(args.Error).Quote().c_str());
+    } else {
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            "%s WriteOpLogEntry completed: %s",
+            LogTag.c_str(),
+            args.Entry.ShortUtf8DebugString().Quote().c_str());
+    }
+
+    using TResponse = TEvIndexTabletPrivate::TEvWriteOpLogEntryResponse;
+
+    auto response = std::make_unique<TResponse>(std::move(args.Error));
+    response->OpLogEntryId = args.Entry.GetEntryId();
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 
