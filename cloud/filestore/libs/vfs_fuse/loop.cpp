@@ -1030,21 +1030,30 @@ private:
                     }
 
                     WriteBackCache = TWriteBackCache(
-                        Session,
-                        Scheduler,
-                        Timer,
-                        NWriteBackCache::CreateDummyWriteBackCacheStats(),
-                        Log,
-                        Config->GetFileSystemId(),
-                        Config->GetClientId(),
-                        path / WriteBackCacheFileName,
-                        Config->GetWriteBackCacheCapacity(),
-                        Config->GetWriteBackCacheAutomaticFlushPeriod(),
-                        Config->GetWriteBackCacheFlushRetryPeriod(),
-                        Config->GetWriteBackCacheFlushMaxWriteRequestSize(),
-                        Config->GetWriteBackCacheFlushMaxWriteRequestsCount(),
-                        Config->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
-                        FileSystemConfig->GetZeroCopyWriteEnabled());
+                        {.Session = Session,
+                         .Scheduler = Scheduler,
+                         .Timer = Timer,
+                         .Stats = nullptr,
+                         .Log = Log,
+                         .FileSystemId = Config->GetFileSystemId(),
+                         .ClientId = Config->GetClientId(),
+                         .FilePath = path / WriteBackCacheFileName,
+                         .CapacityBytes = Config->GetWriteBackCacheCapacity(),
+                         .AutomaticFlushPeriod =
+                             Config->GetWriteBackCacheAutomaticFlushPeriod(),
+                         .FlushRetryPeriod =
+                             Config->GetWriteBackCacheFlushRetryPeriod(),
+                         .FlushMaxWriteRequestSize =
+                             Config
+                                 ->GetWriteBackCacheFlushMaxWriteRequestSize(),
+                         .FlushMaxWriteRequestsCount =
+                             Config
+                                 ->GetWriteBackCacheFlushMaxWriteRequestsCount(),
+                         .FlushMaxSumWriteRequestsSize =
+                             Config
+                                 ->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
+                         .ZeroCopyWriteEnabled =
+                             FileSystemConfig->GetZeroCopyWriteEnabled()});
                 }
             } else if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
                 ReportWriteBackCacheCreatingOrDeletingError(Sprintf(

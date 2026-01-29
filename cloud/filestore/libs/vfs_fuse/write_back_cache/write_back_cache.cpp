@@ -154,35 +154,35 @@ private:
     TQueuedOperations QueuedOperations;
 
 public:
-    TImpl(
-            IFileStorePtr session,
-            ISchedulerPtr scheduler,
-            ITimerPtr timer,
-            IWriteBackCacheStatsPtr stats,
-            NWriteBackCache::IWriteDataRequestBuilderPtr requestBuilder,
-            TLog log,
-            const TString& fileSystemId,
-            const TString& clientId,
-            const TString& filePath,
-            ui64 capacityBytes,
-            TFlushConfig flushConfig)
-        : Session(std::move(session))
-        , Scheduler(std::move(scheduler))
-        , Timer(std::move(timer))
-        , Stats(std::move(stats))
-        , RequestBuilder(std::move(requestBuilder))
+    explicit TImpl(TWriteBackCacheArgs args)
+        : Session(std::move(args.Session))
+        , Scheduler(std::move(args.Scheduler))
+        , Timer(std::move(args.Timer))
+        , Stats(
+              args.Stats ? std::move(args.Stats)
+                         : CreateDummyWriteBackCacheStats())
+        , RequestBuilder(CreateWriteDataRequestBuilder(
+              {.FileSystemId = args.FileSystemId,
+               .MaxWriteRequestSize = args.FlushMaxWriteRequestSize,
+               .MaxWriteRequestsCount = args.FlushMaxWriteRequestsCount,
+               .MaxSumWriteRequestsSize = args.FlushMaxSumWriteRequestsSize,
+               .ZeroCopyWriteEnabled = args.ZeroCopyWriteEnabled}))
         , SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
-        , FlushConfig(flushConfig)
-        , Log(std::move(log))
-        , LogTag(
-              Sprintf("[f:%s][c:%s]", fileSystemId.c_str(), clientId.c_str()))
-        , FileSystemId(fileSystemId)
+        , FlushConfig(
+              {.AutomaticFlushPeriod = args.AutomaticFlushPeriod,
+               .FlushRetryPeriod = args.FlushRetryPeriod})
+        , Log(std::move(args.Log))
+        , LogTag(Sprintf(
+              "[f:%s][c:%s]",
+              args.FileSystemId.c_str(),
+              args.ClientId.c_str()))
+        , FileSystemId(args.FileSystemId)
         , NodeStates(Stats)
     {
         auto createPersistentStorageResult =
             CreateFileRingBufferPersistentStorage(
                 Stats,
-                {.FilePath = filePath, .DataCapacity = capacityBytes});
+                {.FilePath = args.FilePath, .DataCapacity = args.CapacityBytes});
 
         if (HasError(createPersistentStorageResult)) {
             ReportWriteBackCacheCorruptionError(
@@ -235,7 +235,7 @@ public:
 
         STORAGE_INFO(
             LogTag << " WriteBackCache has been initialized "
-            << "{\"FilePath\": " << filePath.Quote()
+            << "{\"FilePath\": " << args.FilePath.Quote()
             << ", \"RawCapacityByteCount\": "
             << persistentStorageStats.RawCapacityByteCount
             << ", \"RawUsedByteCount\": "
@@ -1039,40 +1039,8 @@ private:
 
 TWriteBackCache::TWriteBackCache() = default;
 
-TWriteBackCache::TWriteBackCache(
-        IFileStorePtr session,
-        ISchedulerPtr scheduler,
-        ITimerPtr timer,
-        IWriteBackCacheStatsPtr stats,
-        TLog log,
-        const TString& fileSystemId,
-        const TString& clientId,
-        const TString& filePath,
-        ui64 capacityBytes,
-        TDuration automaticFlushPeriod,
-        TDuration flushRetryPeriod,
-        ui32 maxWriteRequestSize,
-        ui32 maxWriteRequestsCount,
-        ui32 maxSumWriteRequestsSize,
-        bool zeroCopyWriteEnabled)
-    : Impl(new TImpl(
-          std::move(session),
-          std::move(scheduler),
-          std::move(timer),
-          std::move(stats),
-          NWriteBackCache::CreateWriteDataRequestBuilder(
-              {.FileSystemId = fileSystemId,
-               .MaxWriteRequestSize = maxWriteRequestSize,
-               .MaxWriteRequestsCount = maxWriteRequestsCount,
-               .MaxSumWriteRequestsSize = maxSumWriteRequestsSize,
-               .ZeroCopyWriteEnabled = zeroCopyWriteEnabled}),
-          std::move(log),
-          fileSystemId,
-          clientId,
-          filePath,
-          capacityBytes,
-          {.AutomaticFlushPeriod = automaticFlushPeriod,
-           .FlushRetryPeriod = flushRetryPeriod}))
+TWriteBackCache::TWriteBackCache(TWriteBackCacheArgs args)
+    : Impl(std::make_shared<TImpl>(std::move(args)))
 {
     Impl->ScheduleAutomaticFlushIfNeeded();
 }
