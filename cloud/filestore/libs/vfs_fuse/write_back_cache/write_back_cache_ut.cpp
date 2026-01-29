@@ -354,21 +354,21 @@ struct TBootstrap
         STORAGE_INFO("Recreating cache");
 
         Cache = TWriteBackCache(
-            Session,
-            Scheduler,
-            Timer,
-            Stats,
-            Log,
-            "FileSystemId",
-            "ClientId",
-            TempFileHandle.GetName(),
-            CacheCapacityBytes,
-            CacheAutomaticFlushPeriod,
-            CacheFlushRetryPeriod,
-            MaxWriteRequestSize,
-            MaxWriteRequestsCount,
-            MaxSumWriteRequestsSize,
-            ZeroCopyWriteEnabled);
+            {.Session = Session,
+             .Scheduler = Scheduler,
+             .Timer = Timer,
+             .Stats = Stats,
+             .Log = Log,
+             .FileSystemId = "FileSystemId",
+             .ClientId = "ClientId",
+             .FilePath = TempFileHandle.GetName(),
+             .CapacityBytes = CacheCapacityBytes,
+             .AutomaticFlushPeriod = CacheAutomaticFlushPeriod,
+             .FlushRetryPeriod = CacheFlushRetryPeriod,
+             .FlushMaxWriteRequestSize = MaxWriteRequestSize,
+             .FlushMaxWriteRequestsCount = MaxWriteRequestsCount,
+             .FlushMaxSumWriteRequestsSize = MaxSumWriteRequestsSize,
+             .ZeroCopyWriteEnabled = ZeroCopyWriteEnabled});
     }
 
     TFuture<NProto::TReadDataResponse> ReadFromCache(
