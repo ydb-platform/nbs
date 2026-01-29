@@ -23,6 +23,14 @@ from .helpers import (
     TEST_TYPE_SAN,
 )
 
+# Explicit join rules (priority order):
+# If ALL components in a group are present -> they will be emitted as ONE shard.
+JOIN_GROUPS: List[List[str]] = [
+    ["tasks", "storage"],
+    # Add more rules if needed, e.g.:
+    # ["disk_manager", "tasks"],
+]
+
 
 @dataclass(frozen=True)
 class Inputs:
@@ -33,8 +41,8 @@ class Inputs:
     split_runners: bool
     split_runners_san: Dict[str, bool]  # per-sanitizer split flags (optional)
 
-    test_type: str  # already computed upstream if you want; otherwise we set it
-    number_of_retries: str  # keep string like in your workflows
+    test_type: str
+    number_of_retries: str
 
     @staticmethod
     def from_env(env=None) -> "Inputs":
@@ -52,12 +60,9 @@ class Inputs:
             "ubsan": truthy(env.get("NEBIUS_SPLIT_RUNNERS_UBSAN")),
         }
 
-        # optional overrides from workflow, else default based on preset
         test_type = (env.get("TEST_TYPE") or "").strip()
         if not test_type:
-            test_type = (
-                TEST_TYPE_SAN if is_san_preset(build_preset) else TEST_TYPE_REGULAR
-            )
+            test_type = TEST_TYPE_SAN if is_san_preset(build_preset) else TEST_TYPE_REGULAR
 
         number_of_retries = (env.get("NUMBER_OF_RETRIES") or "").strip()
         if not number_of_retries:
@@ -97,6 +102,38 @@ def is_splittable_csv(csv_value: str, allowed_values: set[str]) -> bool:
     return all(p in allowed_values for p in parts)
 
 
+def _group_components(components: List[str]) -> List[List[str]]:
+    """
+    Apply JOIN_GROUPS rules over a component list.
+    Returns list of groups (each group is list[str]) in stable order.
+    """
+    remaining = list(components)
+    remaining_set = set(remaining)
+
+    groups: List[List[str]] = []
+
+    # Apply join rules in priority order
+    for rule in JOIN_GROUPS:
+        rule_set = set(rule)
+        if rule_set.issubset(remaining_set):
+            groups.append(rule[:])  # preserve rule order
+            remaining_set -= rule_set
+            remaining = [c for c in remaining if c not in rule_set]
+
+    # Leftovers as singletons (preserve original order)
+    for c in remaining:
+        groups.append([c])
+
+    return groups
+
+
+def _suffix_for_group(group: List[str]) -> str:
+    # Concatenate per-component suffixes; expected to yield things like "-tasks-storage"
+    # If vm_suffix_for_component already includes "-", this produces a nice combined suffix.
+    s = "".join(vm_suffix_for_component(c) for c in group)
+    return s
+
+
 def compute_matrix_include(inp: Inputs) -> str:
     build_roots, test_roots = known_component_maps()
     allowed_build = set(build_roots.values())
@@ -106,16 +143,13 @@ def compute_matrix_include(inp: Inputs) -> str:
     is_san = is_san_preset(preset)
     san = san_from_preset(preset)
 
-    # Decide whether splitting is allowed for this run:
-    # - if preset is san => use per-san flag (default false unless enabled)
-    # - else use NEBIUS_SPLIT_RUNNERS
+    # Decide whether splitting is allowed for this run.
     if is_san:
         split_enabled = bool(san) and inp.split_runners_san.get(san, False)
     else:
         split_enabled = inp.split_runners
 
-    # Disable splitting if user passed any custom targets (not exact component roots)
-    # Either build_target OR test_target has a custom entry -> no split.
+    # Disable splitting if any custom targets are present
     build_splittable = is_splittable_csv(inp.build_target, allowed_build)
     test_splittable = is_splittable_csv(inp.test_target, allowed_test)
     split_enabled = split_enabled and build_splittable and test_splittable
@@ -123,7 +157,6 @@ def compute_matrix_include(inp: Inputs) -> str:
     include: List[dict] = []
 
     if not split_enabled:
-        # single shard
         vm_suffix = ""
         if is_san and san:
             vm_suffix = SAN_SUFFIX[san]
@@ -141,43 +174,31 @@ def compute_matrix_include(inp: Inputs) -> str:
         )
         return json_obj({"include": include})
 
-    # Split by component: we can derive component from the roots.
-    # Since we already validated all elements are exact roots, this is safe.
+    # Split by component (we already validated exact roots)
     build_items = split_csv(inp.build_target)
     test_items = split_csv(inp.test_target)
 
     comp_by_build = {v: k for k, v in build_roots.items()}
     comp_by_test = {v: k for k, v in test_roots.items()}
 
-    # We want paired shards by component; use build roots as primary.
-    # (Assumes build+test list correspond to same set when produced by your target calculator.)
+    # Build per-component mapping
     by_comp: Dict[str, tuple[str, str]] = {}
-
     for b in build_items:
         c = comp_by_build[b]
-        by_comp.setdefault(c, ("", ""))
+        by_comp[c] = (build_roots[c], test_roots[c])
 
-    for c in list(by_comp.keys()):
-        b = build_roots[c]
-        t = test_roots[c]
-        by_comp[c] = (b, t)
-
-    # If somehow test list differs, only include comps present in both.
-    # (Or keep build-only comps with empty test_target.)
+    # Ensure any test-only entries are included (shouldn't happen normally, but safe)
     for t in test_items:
         c = comp_by_test[t]
-        if c not in by_comp:
-            by_comp[c] = ("", t)
-        else:
-            b, _ = by_comp[c]
-            by_comp[c] = (b, t)
+        by_comp.setdefault(c, (build_roots.get(c, ""), test_roots.get(c, "")))
+
+    comps = sorted(by_comp.keys())
 
     # For sanitizers, only split san-eligible components
-    comps = sorted(by_comp.keys())
     if is_san:
         comps = [c for c in comps if c in SAN_COMPONENTS]
 
-    # If san split flag is enabled but no san comps -> fall back to singleton
+    # If san split enabled but no san comps, fall back to singleton
     if is_san and not comps:
         vm_suffix = SAN_SUFFIX[san] if san else ""
         include.append(
@@ -194,22 +215,27 @@ def compute_matrix_include(inp: Inputs) -> str:
         )
         return json_obj({"include": include})
 
-    for c in comps:
-        b, t = by_comp[c]
-        suffix = vm_suffix_for_component(c)
+    # Apply explicit join rules (Option 1)
+    groups = _group_components(comps)
+
+    for group in groups:
+        build_group = ",".join(build_roots[c] for c in group)
+        test_group = ",".join(test_roots[c] for c in group)
+
+        suffix = _suffix_for_group(group)
         if is_san and san:
             suffix = f"{SAN_SUFFIX[san]}{suffix}"
 
         include.append(
             {
-                "build_target": b if b else inp.build_target,
-                "test_target": t if t else inp.test_target,
+                "build_target": build_group,
+                "test_target": test_group,
                 "vm_name_suffix": suffix,
                 "build_preset": preset,
                 "test_type": inp.test_type,
                 "number_of_retries": inp.number_of_retries,
                 "san": san or "",
-                "component": c,
+                "component": "_".join(group),
             }
         )
 

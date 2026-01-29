@@ -1,11 +1,6 @@
 import json
 
-from .set_build_and_test_targets import (
-    Inputs,
-    compute_matrix_include,
-)
-
-# Adjust import path to your package layout
+from .set_build_and_test_targets import Inputs, compute_matrix_include
 
 
 def mk(
@@ -66,7 +61,6 @@ def test_regular_split_only_when_targets_are_exact_roots():
     )
     assert len(inc) == 2
     assert {r["component"] for r in inc} == {"blockstore", "tasks"}
-    # each has single root targets
     by = {r["component"]: r for r in inc}
     assert by["blockstore"]["build_target"] == "cloud/blockstore/apps/"
     assert by["blockstore"]["test_target"] == "cloud/blockstore/"
@@ -74,8 +68,57 @@ def test_regular_split_only_when_targets_are_exact_roots():
     assert by["tasks"]["test_target"] == "cloud/tasks/"
 
 
+def test_join_rule_tasks_storage_applies_when_both_present():
+    inc = parse(
+        mk(
+            build_target="cloud/tasks/,cloud/storage/",
+            test_target="cloud/tasks/,cloud/storage/",
+            build_preset="relwithdebinfo",
+            split=True,
+        )
+    )
+    assert len(inc) == 1
+    assert inc[0]["component"] == "tasks_storage"
+    assert inc[0]["build_target"] == "cloud/tasks/,cloud/storage/"
+    assert inc[0]["test_target"] == "cloud/tasks/,cloud/storage/"
+    # suffix should include both (exact string depends on vm_suffix_for_component)
+    assert "tasks" in inc[0]["vm_name_suffix"]
+    assert "storage" in inc[0]["vm_name_suffix"]
+
+
+def test_join_rule_tasks_storage_with_third_component():
+    inc = parse(
+        mk(
+            build_target="cloud/blockstore/apps/,cloud/tasks/,cloud/storage/",
+            test_target="cloud/blockstore/,cloud/tasks/,cloud/storage/",
+            build_preset="relwithdebinfo",
+            split=True,
+        )
+    )
+    assert len(inc) == 2
+    assert {r["component"] for r in inc} == {"blockstore", "tasks_storage"}
+    by = {r["component"]: r for r in inc}
+    assert by["blockstore"]["build_target"] == "cloud/blockstore/apps/"
+    assert by["tasks_storage"]["build_target"] == "cloud/tasks/,cloud/storage/"
+
+def test_join_rule_tasks_and_other_component():
+    inc = parse(
+        mk(
+            build_target="cloud/blockstore/apps/,cloud/tasks/",
+            test_target="cloud/blockstore/,cloud/tasks/",
+            build_preset="relwithdebinfo",
+            split=True,
+        )
+    )
+    assert len(inc) == 2
+    assert {r["component"] for r in inc} == {"blockstore", "tasks"}
+    by = {r["component"]: r for r in inc}
+    assert by["blockstore"]["build_target"] == "cloud/blockstore/apps/"
+    assert by["tasks"]["build_target"] == "cloud/tasks/"
+
+
+
 def test_custom_target_disables_split():
-    # build target is not a known root => disable split
     inc = parse(
         mk(
             build_target="cloud/blockstore/libs/,cloud/tasks/",
@@ -94,7 +137,7 @@ def test_san_preset_uses_per_san_split_flag_off_by_default():
             build_target="cloud/blockstore/apps/,cloud/filestore/apps/",
             test_target="cloud/blockstore/,cloud/filestore/",
             build_preset="release-asan",
-            split=True,  # should be ignored for san
+            split=True,  # ignored for san
             split_san={"asan": False, "tsan": False, "msan": False, "ubsan": False},
         )
     )
