@@ -483,14 +483,13 @@ public:
         const THeaders& headers,
         const TString& fileSystemId,
         const ui64 nodeId,
-        bool returnNodesNotFoundInShard = false)
+        bool unsafe = false)
     {
         auto request = std::make_unique<TEvService::TEvListNodesRequest>();
         headers.Fill(request->Record);
         request->Record.SetFileSystemId(fileSystemId);
         request->Record.SetNodeId(nodeId);
-        request->Record.SetReturnNodesNotFoundInShard(
-            returnNodesNotFoundInShard);
+        request->Record.SetUnsafe(unsafe);
         return request;
     }
 

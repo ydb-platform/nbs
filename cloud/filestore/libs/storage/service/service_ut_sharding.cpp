@@ -6862,7 +6862,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
               1}});
     }
 
-    SERVICE_TEST_SIMPLE(ShouldListNodesReturnNodesNotFoundInShardForMissingNodes)
+    SERVICE_TEST_SIMPLE(ShouldListNodesMissingFromShardsWithUnsafeFlag)
     {
         config.SetMultiTabletForwardingEnabled(true);
 
