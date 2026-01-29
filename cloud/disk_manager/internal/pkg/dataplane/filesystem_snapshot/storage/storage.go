@@ -100,12 +100,13 @@ type Storage interface {
 		ctx context.Context,
 	) (tasks_common.StringSet, error)
 
-	// saves the root node to the directory listing queue.
+	// Saves the root node to the directory listing queue.
 	ScheduleRootNodeForListing(
 		ctx context.Context,
 		snapshotID string,
 	) error
 
+	// Selects nodes to be listed from the directory listing queue.
 	SelectNodesToList(
 		ctx context.Context,
 		snapshotID string,
@@ -113,6 +114,7 @@ type Storage interface {
 		limit uint64,
 	) ([]NodeQueueEntry, error)
 
+	// Updates the node cookie after listing and saves child nodes to the listing queue.
 	ScheduleNodesForListing(
 		ctx context.Context,
 		snapshotID string,
