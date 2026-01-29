@@ -78,7 +78,7 @@ struct TVolumeThrottlingPolicy::TImpl
         ui64 RecalculatedIops = 0;
     };
 
-    using TMaxQoutas =
+    using TMaxQuotas =
         std::array<TMaxQuota, static_cast<size_t>(EOpType::Last) + 1>;
 
     const NProto::TVolumeThrottlingRule ThrottlingRule;
@@ -90,7 +90,7 @@ struct TVolumeThrottlingPolicy::TImpl
     const ui32 MaxWriteCostMultiplier;
     const ui64 DefaultPostponedRequestWeight;
     const bool UseDiskSpaceScore;
-    const TMaxQoutas MaxQuotas;
+    const TMaxQuotas MaxQuotas;
     TBoostedTimeBucket Bucket;
     TVector<TBackpressureReport> PartitionBackpressures;
     TBackpressureReport CurrentBackpressure;
@@ -187,9 +187,9 @@ struct TVolumeThrottlingPolicy::TImpl
         return result;
     }
 
-    TMaxQoutas CalculateMaxQuotas() const
+    TMaxQuotas CalculateMaxQuotas() const
     {
-        TMaxQoutas result;
+        TMaxQuotas result;
         for (size_t i = 0; i <= static_cast<size_t>(EOpType::Last); ++i) {
             const ui64 bandwidth =
                 CalculateMaxBandwidth(static_cast<EOpType>(i));
