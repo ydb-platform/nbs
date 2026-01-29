@@ -1352,14 +1352,11 @@ message TBackupDiskRegistryStateRequest
     // Optional request headers.
     THeaders Headers = 1;
 
-    // Deprecated. Use "Source" instead.
-    bool BackupLocalDB = 2;
+    // Source of Disk Registry state backup.
+    EBackupDiskRegistryStateSource Source = 2;
 
     // File to save backup file.
     string BackupFilePath = 3;
-
-    // Source of Disk Registry state backup.
-    EBackupDiskRegistryStateSource Source = 4;
 }
 
 message TBackupDiskRegistryStateResponse
